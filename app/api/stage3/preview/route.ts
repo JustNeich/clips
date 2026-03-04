@@ -186,6 +186,14 @@ function normalizeRenderPlan(
       rawPlan?.policy === "fixed_segments"
         ? rawPlan.policy
         : policyFallback,
+    backgroundAssetId:
+      typeof rawPlan?.backgroundAssetId === "string" && rawPlan.backgroundAssetId.trim()
+        ? rawPlan.backgroundAssetId.trim()
+        : null,
+    backgroundAssetMimeType:
+      typeof rawPlan?.backgroundAssetMimeType === "string" && rawPlan.backgroundAssetMimeType.trim()
+        ? rawPlan.backgroundAssetMimeType.trim()
+        : null,
     // Prompt text does not affect media transform and should not split cache keys.
     prompt: ""
   };

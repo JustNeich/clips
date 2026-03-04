@@ -84,6 +84,8 @@ export type Stage3RenderPlan = {
   smoothSlowMo: boolean;
   segments: Stage3Segment[];
   policy: Stage3RenderPolicy;
+  backgroundAssetId: string | null;
+  backgroundAssetMimeType: string | null;
   prompt: string;
 };
 

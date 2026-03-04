@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent } from "react";
+import { StepWorkspace } from "./StepWorkspace";
 
 type Step1PasteLinkProps = {
   draftUrl: string;
@@ -27,58 +28,80 @@ export function Step1PasteLink({
   };
 
   return (
-    <section className="step-wrap" aria-label="Step 1 paste link">
-      <article className="panel panel-main">
-        <header className="panel-head">
-          <p className="panel-kicker">Step 1</p>
-          <h2>Paste Link</h2>
-          <p>Insert a Shorts/Reels link and fetch source data.</p>
-        </header>
+    <StepWorkspace
+      editLabel="Edit"
+      previewLabel="Preview"
+      left={
+        <div className="step-panel-stack">
+          <header className="step-head">
+            <p className="kicker">Step 1</p>
+            <h2>Source</h2>
+            <p>Paste Shorts/Reels URL and fetch source + comments for the next steps.</p>
+          </header>
 
-        <form className="step-form" onSubmit={handleSubmit}>
-          <label htmlFor="source-url" className="field-label">
-            Video URL
-          </label>
-          <div className="input-row">
-            <input
-              id="source-url"
-              className="text-input"
-              value={draftUrl}
-              onChange={(event) => onDraftUrlChange(event.target.value)}
-              placeholder="https://www.youtube.com/shorts/..."
-              autoComplete="off"
-            />
-            <button type="button" className="btn btn-ghost" onClick={onPaste} disabled={isBusy}>
-              Paste
-            </button>
+          <section className="control-card">
+            <form className="step-form" onSubmit={handleSubmit}>
+              <label htmlFor="source-url" className="field-label">
+                Video URL
+              </label>
+              <div className="input-with-action">
+                <input
+                  id="source-url"
+                  className="text-input"
+                  value={draftUrl}
+                  onChange={(event) => onDraftUrlChange(event.target.value)}
+                  placeholder="https://www.youtube.com/shorts/..."
+                  autoComplete="off"
+                />
+                <button type="button" className="btn btn-ghost" onClick={onPaste} disabled={isBusy}>
+                  Paste
+                </button>
+              </div>
+
+              <p className="subtle-text">Examples: YouTube Shorts, Instagram Reels, Facebook Reels.</p>
+
+              <div className="control-actions">
+                <button type="submit" className="btn btn-primary" disabled={isBusy} aria-busy={isBusy}>
+                  {isBusy ? "Fetching..." : "Run Stage 1 / Fetch"}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <details className="advanced-block">
+            <summary>Advanced</summary>
+            <div className="advanced-content">
+              <p className="subtle-text">Download original source mp4 for local backup.</p>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={onDownloadSource}
+                disabled={isBusy}
+              >
+                Download source mp4
+              </button>
+            </div>
+          </details>
+        </div>
+      }
+      right={
+        <div className="preview-shell">
+          <header className="preview-header">
+            <h3>Live context</h3>
+            <span className="preview-meta">Step 1 of 3</span>
+          </header>
+
+          <div className="preview-stage static">
+            <div className="source-placeholder">
+              <p className="placeholder-title">Source link</p>
+              <p className="mono source-link-text">{activeUrl ?? "No source selected"}</p>
+              <p className="subtle-text">
+                After fetch completes, Step 2 will show caption options generated from video + comments.
+              </p>
+            </div>
           </div>
-
-          <p className="subtle-text">Example: `https://www.youtube.com/shorts/...`</p>
-
-          <div className="action-row">
-            <button type="submit" className="btn btn-primary" disabled={isBusy} aria-busy={isBusy}>
-              {isBusy ? "Fetching..." : "Run Stage 1 / Fetch"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={onDownloadSource}
-              disabled={isBusy}
-            >
-              Download source mp4
-            </button>
-          </div>
-        </form>
-      </article>
-
-      <article className="panel panel-side">
-        <h3>Current Source</h3>
-        <p className="mono">{activeUrl ?? "No source selected yet."}</p>
-        <p className="subtle-text">
-          This step fetches comments and prepares data for Stage 2.
-        </p>
-      </article>
-    </section>
+        </div>
+      }
+    />
   );
 }
-

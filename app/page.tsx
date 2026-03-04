@@ -34,6 +34,7 @@ type BusyAction =
   | "stage3-optimize"
   | "video-meta"
   | "video-preview"
+  | "background-upload"
   | "connect-codex"
   | "refresh-codex";
 
@@ -50,6 +51,10 @@ function createCodexSessionId(): string {
     return crypto.randomUUID().replace(/-/g, "");
   }
   return `${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function buildStage3BackgroundUrl(id: string): string {
+  return `/api/stage3/background/${id}`;
 }
 
 function toJsonDownload(fileName: string, data: unknown): void {
@@ -110,6 +115,8 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     smoothSlowMo: false,
     segments: [],
     policy: "full_source_normalize",
+    backgroundAssetId: null,
+    backgroundAssetMimeType: null,
     prompt: ""
   };
 }
@@ -117,6 +124,8 @@ function fallbackRenderPlan(): Stage3RenderPlan {
 function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
   return {
     ...plan,
+    backgroundAssetId: null,
+    backgroundAssetMimeType: null,
     // Prompt text must not affect preview cache keys or trigger heavy re-renders.
     prompt: ""
   };
@@ -179,6 +188,15 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
       candidate?.policy === "fixed_segments"
         ? candidate.policy
         : base.policy,
+    backgroundAssetId:
+      typeof candidate?.backgroundAssetId === "string" && candidate.backgroundAssetId.trim()
+        ? candidate.backgroundAssetId.trim()
+        : null,
+    backgroundAssetMimeType:
+      typeof candidate?.backgroundAssetMimeType === "string" &&
+      candidate.backgroundAssetMimeType.trim()
+        ? candidate.backgroundAssetMimeType.trim()
+        : null,
     prompt: typeof candidate?.prompt === "string" ? candidate.prompt : base.prompt
   };
 }
@@ -573,6 +591,9 @@ export default function HomePage() {
   const stage3PreviewRequestKeyRef = useRef<string>("");
 
   const codexLoggedIn = Boolean(codexAuth?.loggedIn);
+  const stage3BackgroundUrl = stage3RenderPlan.backgroundAssetId
+    ? buildStage3BackgroundUrl(stage3RenderPlan.backgroundAssetId)
+    : null;
 
   const parseError = async (response: Response, fallback: string): Promise<string> => {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -1159,7 +1180,19 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const renderSnapshot = selectedStage3Version?.final ?? makeLiveSnapshot();
+      const baseSnapshot = selectedStage3Version?.final ?? makeLiveSnapshot();
+      const renderSnapshot: Stage3StateSnapshot = {
+        ...baseSnapshot,
+        renderPlan: normalizeRenderPlan(
+          {
+            ...baseSnapshot.renderPlan,
+            backgroundAssetId: stage3RenderPlan.backgroundAssetId,
+            backgroundAssetMimeType: stage3RenderPlan.backgroundAssetMimeType,
+            prompt: stage3AgentPrompt.trim() || baseSnapshot.renderPlan.prompt
+          },
+          fallbackRenderPlan()
+        )
+      };
 
       await appendEvent(chat.id, {
         role: "user",
@@ -1326,6 +1359,83 @@ export default function HomePage() {
       setIsBusy(false);
       setBusyAction("");
     }
+  };
+
+  const handleUploadBackground = async (file: File): Promise<void> => {
+    if (!activeChat) {
+      setStatusType("error");
+      setStatus("Сначала добавьте ссылку.");
+      return;
+    }
+
+    setBusyAction("background-upload");
+    setStatus("");
+    setStatusType("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/stage3/background", {
+        method: "POST",
+        body: formData
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Background upload failed."));
+      }
+
+      const body = (await response.json()) as {
+        asset?: { id: string; mimeType: string; url: string };
+      };
+      const asset = body.asset;
+      if (!asset?.id) {
+        throw new Error("Background upload returned empty asset id.");
+      }
+
+      setStage3RenderPlan((prev) =>
+        normalizeRenderPlan(
+          {
+            ...prev,
+            backgroundAssetId: asset.id,
+            backgroundAssetMimeType: asset.mimeType ?? null
+          },
+          fallbackRenderPlan()
+        )
+      );
+
+      await appendEvent(activeChat.id, {
+        role: "assistant",
+        type: "note",
+        text: `Загружен фон для Stage 3 (${asset.mimeType ?? "asset"}).`,
+        data: {
+          kind: "stage3-background",
+          backgroundAssetId: asset.id,
+          backgroundAssetMimeType: asset.mimeType ?? null
+        }
+      }).catch(() => undefined);
+
+      setStatusType("ok");
+      setStatus("Фон загружен и применен к шаблону.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Background upload failed.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const handleClearBackground = (): void => {
+    setStage3RenderPlan((prev) =>
+      normalizeRenderPlan(
+        {
+          ...prev,
+          backgroundAssetId: null,
+          backgroundAssetMimeType: null
+        },
+        fallbackRenderPlan()
+      )
+    );
+    setStatusType("ok");
+    setStatus("Кастомный фон очищен. Используется blur исходного видео.");
   };
 
   const latestComments = useMemo(() => {
@@ -1922,6 +2032,8 @@ export default function HomePage() {
         <Step3RenderTemplate
           sourceUrl={activeChat?.url ?? null}
           previewVideoUrl={stage3PreviewVideoUrl}
+          backgroundAssetUrl={stage3BackgroundUrl}
+          backgroundAssetMimeType={stage3RenderPlan.backgroundAssetMimeType}
           versions={stage3Versions}
           selectedVersionId={stage3SelectedVersionId}
           selectedPassIndex={selectedStage3PassIndex}
@@ -1936,12 +2048,16 @@ export default function HomePage() {
           focusY={stage3FocusY}
           isRendering={busyAction === "render"}
           isOptimizing={busyAction === "stage3-optimize"}
+          isUploadingBackground={busyAction === "background-upload"}
           onRender={() => {
             void handleRenderVideo();
           }}
           onOptimize={() => {
             void handleOptimizeStage3();
           }}
+          onReset={handleResetFlow}
+          onUploadBackground={handleUploadBackground}
+          onClearBackground={handleClearBackground}
           onAgentPromptChange={setStage3AgentPrompt}
           onSelectVersionId={(runId) => {
             const version = stage3Versions.find((item) => item.runId === runId);

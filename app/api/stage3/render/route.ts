@@ -15,6 +15,7 @@ import {
 import { getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
+import { readStage3BackgroundAsset } from "../../../../lib/stage3-background";
 
 export const runtime = "nodejs";
 
@@ -111,6 +112,8 @@ async function runRemotionRender(params: {
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  backgroundAssetFileName: string | null;
+  backgroundAssetMimeType: string | null;
   timeoutMs: number;
 }) {
   const { bundle, getCompositions, renderMedia, selectComposition } = ensureRemotionRuntime();
@@ -127,7 +130,9 @@ async function runRemotionRender(params: {
     bottomText: params.bottomText,
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
-    focusY: params.focusY
+    focusY: params.focusY,
+    backgroundAssetFileName: params.backgroundAssetFileName,
+    backgroundAssetMimeType: params.backgroundAssetMimeType
   };
 
   const composition =
@@ -269,6 +274,14 @@ export async function POST(request: Request): Promise<Response> {
         rawPlan?.policy === "fixed_segments"
           ? rawPlan.policy
           : policyFallback,
+      backgroundAssetId:
+        typeof rawPlan?.backgroundAssetId === "string" && rawPlan.backgroundAssetId.trim()
+          ? rawPlan.backgroundAssetId.trim()
+          : null,
+      backgroundAssetMimeType:
+        typeof rawPlan?.backgroundAssetMimeType === "string" && rawPlan.backgroundAssetMimeType.trim()
+          ? rawPlan.backgroundAssetMimeType.trim()
+          : null,
       prompt: rawPlan?.prompt?.trim() || body?.agentPrompt?.trim() || ""
     };
 
@@ -282,6 +295,21 @@ export async function POST(request: Request): Promise<Response> {
       profile: "render"
     });
 
+    let backgroundAssetFileName: string | null = null;
+    let backgroundAssetMimeType: string | null = null;
+    if (renderPlan.backgroundAssetId) {
+      const asset = await readStage3BackgroundAsset(renderPlan.backgroundAssetId);
+      if (asset) {
+        const ext = path.extname(asset.fileName) || (asset.kind === "video" ? ".mp4" : ".jpg");
+        backgroundAssetFileName = `background${ext.toLowerCase()}`;
+        await fs.copyFile(
+          asset.filePath,
+          path.join(path.dirname(prepared.preparedPath), backgroundAssetFileName)
+        );
+        backgroundAssetMimeType = asset.mimeType;
+      }
+    }
+
     const outputPath = path.join(tmpDir, `${downloaded.fileName}_${templateId}.mp4`);
     await runRemotionRender({
       templateId,
@@ -292,6 +320,8 @@ export async function POST(request: Request): Promise<Response> {
       clipStartSec: prepared.clipStartSec,
       clipDurationSec: prepared.clipDurationSec,
       focusY,
+      backgroundAssetFileName,
+      backgroundAssetMimeType,
       timeoutMs
     });
 

@@ -9,7 +9,7 @@ import {
   Stage3TimingMode,
   Stage3Version
 } from "../app/components/types";
-import { getScienceCardComputed } from "./stage3-template";
+import { SCIENCE_CARD, getScienceCardComputed } from "./stage3-template";
 
 export type {
   Stage3RenderPlan,
@@ -181,6 +181,8 @@ function createDefaultRenderPlan(sourceDurationSec: number | null): Stage3Render
     smoothSlowMo: false,
     segments: [],
     policy: inferPolicyFromSourceDuration(sourceDurationSec),
+    backgroundAssetId: null,
+    backgroundAssetMimeType: null,
     prompt: ""
   };
 }
@@ -237,6 +239,14 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       policy === "adaptive_window" || policy === "full_source_normalize" || policy === "fixed_segments"
         ? policy
         : defaultPlan.policy,
+    backgroundAssetId:
+      typeof input?.backgroundAssetId === "string" && input.backgroundAssetId.trim()
+        ? input.backgroundAssetId.trim()
+        : null,
+    backgroundAssetMimeType:
+      typeof input?.backgroundAssetMimeType === "string" && input.backgroundAssetMimeType.trim()
+        ? input.backgroundAssetMimeType.trim()
+        : null,
     prompt: typeof input?.prompt === "string" ? input.prompt : defaultPlan.prompt
   };
 }
@@ -275,6 +285,8 @@ function buildPromptPlan(
     smoothSlowMo: explicitSlowMo || (timingMode === "stretch" && baselinePlan.smoothSlowMo),
     segments: hasSegments ? parsedSegments : baselinePlan.segments,
     policy,
+    backgroundAssetId: baselinePlan.backgroundAssetId,
+    backgroundAssetMimeType: baselinePlan.backgroundAssetMimeType,
     prompt: promptNorm
   };
 }
@@ -441,11 +453,16 @@ function evaluateScore(snapshot: Stage3StateSnapshot, context: EvaluationContext
   if (snapshot.textFit.bottomCompacted) {
     textReadability += 7;
   }
-  if (snapshot.textFit.topFontPx < 34) {
-    textReadability += ((34 - snapshot.textFit.topFontPx) / 34) * 10;
+  if (snapshot.textFit.topFontPx < SCIENCE_CARD.typography.top.min) {
+    textReadability +=
+      ((SCIENCE_CARD.typography.top.min - snapshot.textFit.topFontPx) / SCIENCE_CARD.typography.top.min) *
+      10;
   }
-  if (snapshot.textFit.bottomFontPx < 30) {
-    textReadability += ((30 - snapshot.textFit.bottomFontPx) / 30) * 10;
+  if (snapshot.textFit.bottomFontPx < SCIENCE_CARD.typography.bottom.min) {
+    textReadability +=
+      ((SCIENCE_CARD.typography.bottom.min - snapshot.textFit.bottomFontPx) /
+        SCIENCE_CARD.typography.bottom.min) *
+      10;
   }
 
   const actionCoverage =

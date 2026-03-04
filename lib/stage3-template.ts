@@ -3,41 +3,59 @@ export const STAGE3_TEMPLATE_ID = "science-card-v1";
 export const SCIENCE_CARD = {
   frame: { width: 1080, height: 1920 },
   card: {
-    x: 82,
-    y: 83,
-    width: 917,
-    height: 1766,
-    radius: 26,
-    borderWidth: 6,
-    borderColor: "rgba(255,255,255,0.06)",
-    fill: "#ffffff"
+    x: 78,
+    y: 198,
+    width: 924,
+    height: 1518,
+    radius: 30,
+    borderWidth: 5,
+    borderColor: "#0a1119",
+    fill: "#f9fafc"
   },
   slot: {
-    topHeight: 442,
-    bottomHeight: 353,
-    topPaddingX: 28,
-    topPaddingY: 18,
-    bottomPaddingX: 28,
-    bottomPaddingY: 18
+    topHeight: 486,
+    bottomHeight: 294,
+    topPaddingX: 42,
+    topPaddingY: 26,
+    bottomMetaHeight: 112,
+    bottomMetaPaddingX: 24,
+    bottomMetaPaddingY: 14,
+    bottomTextPaddingX: 24,
+    bottomTextPaddingY: 16
+  },
+  author: {
+    name: "Science Snack",
+    handle: "@Science_Snack_1",
+    avatarSize: 78,
+    avatarBorder: 3,
+    checkSize: 35
   },
   typography: {
     top: {
-      min: 36,
-      max: 70,
-      softLimit: 120,
+      min: 42,
+      max: 74,
+      softLimit: 128,
       penalty: 0.22,
-      lineHeight: 1.12,
-      maxLines: 6,
+      lineHeight: 1.1,
+      maxLines: 7,
       maxChars: 460
     },
     bottom: {
-      min: 30,
-      max: 56,
+      min: 24,
+      max: 40,
       softLimit: 110,
       penalty: 0.24,
-      lineHeight: 1.12,
-      maxLines: 5,
+      lineHeight: 1.16,
+      maxLines: 4,
       maxChars: 390
+    },
+    authorName: {
+      font: 53,
+      lineHeight: 1.06
+    },
+    authorHandle: {
+      font: 49,
+      lineHeight: 1.04
     }
   }
 } as const;
@@ -55,7 +73,9 @@ type SlotSize = {
   height: number;
 };
 
-const AVERAGE_GLYPH_FACTOR = 0.53;
+const AVERAGE_GLYPH_FACTOR = 0.56;
+const HORIZONTAL_SAFETY = 0.96;
+const VERTICAL_SAFETY = 0.97;
 const FILLER_WORDS = new Set([
   "really",
   "very",
@@ -76,7 +96,10 @@ function estimateLineCount(text: string, fontPx: number, widthPx: number): numbe
     return 1;
   }
 
-  const maxCharsPerLine = Math.max(3, Math.floor(widthPx / Math.max(1, fontPx * AVERAGE_GLYPH_FACTOR)));
+  const maxCharsPerLine = Math.max(
+    3,
+    Math.floor((widthPx * HORIZONTAL_SAFETY) / Math.max(1, fontPx * AVERAGE_GLYPH_FACTOR))
+  );
   const words = normalized.split(" ");
   let lines = 1;
   let currentLen = 0;
@@ -118,7 +141,7 @@ function findBestFontForSlot(
   for (let font = config.max; font >= config.min; font -= 1) {
     const lines = estimateLineCount(text, font, slot.width);
     const contentHeight = lines * font * config.lineHeight;
-    if (lines <= config.maxLines && contentHeight <= slot.height) {
+    if (lines <= config.maxLines && contentHeight <= slot.height * VERTICAL_SAFETY) {
       return { font, lines, fits: true };
     }
 
@@ -238,14 +261,19 @@ export function getScienceCardComputed(topText: string, bottomText: string): {
   topCompacted: boolean;
   bottomCompacted: boolean;
   videoHeight: number;
+  bottomBodyHeight: number;
 } {
   const topSlot: SlotSize = {
     width: SCIENCE_CARD.card.width - SCIENCE_CARD.slot.topPaddingX * 2,
     height: SCIENCE_CARD.slot.topHeight - SCIENCE_CARD.slot.topPaddingY * 2
   };
+  const bottomBodyHeight = Math.max(
+    80,
+    SCIENCE_CARD.slot.bottomHeight - SCIENCE_CARD.slot.bottomMetaHeight
+  );
   const bottomSlot: SlotSize = {
-    width: SCIENCE_CARD.card.width - SCIENCE_CARD.slot.bottomPaddingX * 2,
-    height: SCIENCE_CARD.slot.bottomHeight - SCIENCE_CARD.slot.bottomPaddingY * 2
+    width: SCIENCE_CARD.card.width - SCIENCE_CARD.slot.bottomTextPaddingX * 2,
+    height: bottomBodyHeight - SCIENCE_CARD.slot.bottomTextPaddingY * 2
   };
 
   const topFit = optimizeTextForSlot(topText, topSlot, SCIENCE_CARD.typography.top, "Top text");
@@ -268,6 +296,7 @@ export function getScienceCardComputed(topText: string, bottomText: string): {
     bottomLines: bottomFit.lines,
     topCompacted: topFit.compacted,
     bottomCompacted: bottomFit.compacted,
-    videoHeight
+    videoHeight,
+    bottomBodyHeight
   };
 }

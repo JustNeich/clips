@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useMemo, useState } from "react";
 
 export type FlowStep = {
   id: 1 | 2 | 3;
@@ -36,6 +36,16 @@ type AppShellProps = {
   details: ReactNode;
 };
 
+function getStepState(stepId: number, currentStep: number): "completed" | "current" | "next" {
+  if (stepId < currentStep) {
+    return "completed";
+  }
+  if (stepId === currentStep) {
+    return "current";
+  }
+  return "next";
+}
+
 export function AppShell({
   title,
   subtitle,
@@ -57,65 +67,125 @@ export function AppShell({
   children,
   details
 }: AppShellProps) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
+
+  const filteredHistory = useMemo(() => {
+    const query = historyQuery.trim().toLowerCase();
+    if (!query) {
+      return historyItems;
+    }
+    return historyItems.filter((item) => {
+      const title = item.title.toLowerCase();
+      const subtitle = item.subtitle.toLowerCase();
+      return title.includes(query) || subtitle.includes(query);
+    });
+  }, [historyItems, historyQuery]);
+
   return (
-    <main className="flow-layout">
-      <aside className="history-sidebar" aria-label="History list">
-        <div className="history-sidebar-head">
-          <div>
-            <p className="history-kicker">History</p>
-            <h2>Recent Items</h2>
-          </div>
-          <button type="button" className="btn btn-secondary" onClick={onCreateNew}>
-            + New
-          </button>
-        </div>
+    <main className="app-layout">
+      <section className="app-main">
+        <header className="app-topbar">
+          <div className="topbar-left">
+            <div
+              className="history-flyout"
+              onMouseEnter={() => setHistoryOpen(true)}
+              onMouseLeave={() => setHistoryOpen(false)}
+            >
+              <button
+                type="button"
+                className="history-trigger"
+                aria-label="Open history"
+                aria-expanded={historyOpen}
+                onFocus={() => setHistoryOpen(true)}
+                onClick={() => setHistoryOpen((prev) => !prev)}
+              >
+                <span aria-hidden="true">🕘</span>
+                <span>History</span>
+                <span className="history-count">{historyItems.length}</span>
+              </button>
 
-        <div className="history-list-wrap">
-          {historyItems.length === 0 ? (
-            <p className="history-empty">No items yet. Add a link in Step 1.</p>
-          ) : (
-            <ul className="history-list">
-              {historyItems.map((item) => {
-                const active = item.id === activeHistoryId;
-                return (
-                  <li key={item.id} className={`history-item ${active ? "active" : ""}`}>
+              {historyOpen ? (
+                <div
+                  className="history-popover"
+                  onFocusCapture={() => setHistoryOpen(true)}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setHistoryOpen(false);
+                    }
+                  }}
+                >
+                  <div className="history-popover-head">
+                    <h2>Recent</h2>
                     <button
                       type="button"
-                      className="history-select"
-                      onClick={() => onHistoryChange(item.id)}
-                      aria-current={active ? "true" : undefined}
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        onCreateNew();
+                        setHistoryOpen(false);
+                      }}
                     >
-                      <span className="history-title">{item.title}</span>
-                      <span className="history-subtitle">{item.subtitle}</span>
+                      + New
                     </button>
-                    <button
-                      type="button"
-                      className="history-delete"
-                      aria-label={`Delete ${item.title}`}
-                      onClick={() => onDeleteHistory(item.id)}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </aside>
+                  </div>
 
-      <section className="flow-app">
-        <header className="flow-header">
-          <div className="brand-block">
-            <h1>{title}</h1>
-            <p>{subtitle}</p>
+                  <input
+                    className="text-input"
+                    value={historyQuery}
+                    onChange={(event) => setHistoryQuery(event.target.value)}
+                    placeholder="Search..."
+                    aria-label="Search history"
+                  />
+
+                  <div className="history-popover-scroll">
+                    {filteredHistory.length === 0 ? (
+                      <p className="empty-box">No items found.</p>
+                    ) : (
+                      <ul className="history-list">
+                        {filteredHistory.map((item) => {
+                          const active = item.id === activeHistoryId;
+                          return (
+                            <li key={item.id} className={`history-row ${active ? "active" : ""}`}>
+                              <button
+                                type="button"
+                                className="history-open"
+                                onClick={() => {
+                                  onHistoryChange(item.id);
+                                  setHistoryOpen(false);
+                                }}
+                                aria-current={active ? "true" : undefined}
+                              >
+                                <span className="history-title">{item.title}</span>
+                                <span className="history-subtitle">{item.subtitle}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="history-remove"
+                                aria-label={`Delete ${item.title}`}
+                                onClick={() => onDeleteHistory(item.id)}
+                              >
+                                ✕
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="topbar-brand">
+              <h1>{title}</h1>
+              <p>{subtitle}</p>
+            </div>
           </div>
 
-          <div className="header-controls">
-            <span className={`status-badge ${codexConnected ? "connected" : "idle"}`}>
-              Codex {codexConnected ? "Connected" : "Disconnected"}
+          <div className="topbar-actions">
+            <span className={`status-chip ${codexConnected ? "online" : "offline"}`}>
+              {codexConnected ? "Codex connected" : "Codex disconnected"}
             </span>
-
             <button
               type="button"
               className="btn btn-secondary"
@@ -137,27 +207,29 @@ export function AppShell({
           </div>
         </header>
 
-        <nav className="flow-stepper" aria-label="Workflow steps">
+        <nav className="wizard-stepper" aria-label="Workflow steps">
           {steps.map((step) => {
-            const active = step.id === currentStep;
-            const done = step.id < currentStep;
+            const stepState = getStepState(step.id, currentStep);
+            const statusLabel =
+              stepState === "completed" ? "Completed" : stepState === "current" ? "Current" : "Next";
             return (
               <button
                 key={step.id}
                 type="button"
-                className={`step-pill ${active ? "active" : ""} ${done ? "done" : ""}`}
+                className={`wizard-step ${stepState}`}
                 onClick={() => onStepChange(step.id)}
                 disabled={!step.enabled}
-                aria-current={active ? "step" : undefined}
+                aria-current={stepState === "current" ? "step" : undefined}
               >
-                <span className="step-num">Step {step.id}</span>
-                <span className="step-label">{step.label}</span>
+                <span className="wizard-step-num">Step {step.id}</span>
+                <span className="wizard-step-label">{step.label}</span>
+                <span className="wizard-step-state">{statusLabel}</span>
               </button>
             );
           })}
         </nav>
 
-        <section className="flow-main">{children}</section>
+        <section className="shell-content">{children}</section>
 
         {statusText ? (
           <p

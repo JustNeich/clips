@@ -8,6 +8,8 @@ export type ScienceCardV1Props = {
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  backgroundAssetFileName?: string | null;
+  backgroundAssetMimeType?: string | null;
 };
 
 export const SCENE_ID = "science-card-v1";
@@ -26,7 +28,9 @@ export const RemotionRoot = () => {
         bottomText: "",
         clipStartSec: 0,
         clipDurationSec: 6,
-        focusY: 0.5
+        focusY: 0.5,
+        backgroundAssetFileName: null,
+        backgroundAssetMimeType: null
       }}
     />
   );
