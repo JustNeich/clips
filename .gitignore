@@ -1,0 +1,30 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next
+/out
+
+# production
+/build
+
+# misc
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# local env
+.env.local
+.env
+
+# codex user sessions
+/.codex-user-sessions
+/.codex-user-test
+/.codex
+/.data
+
+# local build/cache outputs
+/output
+*.tsbuildinfo
