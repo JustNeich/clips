@@ -183,6 +183,13 @@ function createDefaultRenderPlan(sourceDurationSec: number | null): Stage3Render
     policy: inferPolicyFromSourceDuration(sourceDurationSec),
     backgroundAssetId: null,
     backgroundAssetMimeType: null,
+    musicAssetId: null,
+    musicAssetMimeType: null,
+    avatarAssetId: null,
+    avatarAssetMimeType: null,
+    authorName: SCIENCE_CARD.author.name,
+    authorHandle: SCIENCE_CARD.author.handle,
+    templateId: "science-card-v1",
     prompt: ""
   };
 }
@@ -247,6 +254,34 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       typeof input?.backgroundAssetMimeType === "string" && input.backgroundAssetMimeType.trim()
         ? input.backgroundAssetMimeType.trim()
         : null,
+    musicAssetId:
+      typeof input?.musicAssetId === "string" && input.musicAssetId.trim()
+        ? input.musicAssetId.trim()
+        : null,
+    musicAssetMimeType:
+      typeof input?.musicAssetMimeType === "string" && input.musicAssetMimeType.trim()
+        ? input.musicAssetMimeType.trim()
+        : null,
+    avatarAssetId:
+      typeof input?.avatarAssetId === "string" && input.avatarAssetId.trim()
+        ? input.avatarAssetId.trim()
+        : null,
+    avatarAssetMimeType:
+      typeof input?.avatarAssetMimeType === "string" && input.avatarAssetMimeType.trim()
+        ? input.avatarAssetMimeType.trim()
+        : null,
+    authorName:
+      typeof input?.authorName === "string" && input.authorName.trim()
+        ? input.authorName.trim()
+        : defaultPlan.authorName,
+    authorHandle:
+      typeof input?.authorHandle === "string" && input.authorHandle.trim()
+        ? input.authorHandle.trim()
+        : defaultPlan.authorHandle,
+    templateId:
+      typeof input?.templateId === "string" && input.templateId.trim()
+        ? input.templateId.trim()
+        : defaultPlan.templateId,
     prompt: typeof input?.prompt === "string" ? input.prompt : defaultPlan.prompt
   };
 }
@@ -287,6 +322,13 @@ function buildPromptPlan(
     policy,
     backgroundAssetId: baselinePlan.backgroundAssetId,
     backgroundAssetMimeType: baselinePlan.backgroundAssetMimeType,
+    musicAssetId: baselinePlan.musicAssetId,
+    musicAssetMimeType: baselinePlan.musicAssetMimeType,
+    avatarAssetId: baselinePlan.avatarAssetId,
+    avatarAssetMimeType: baselinePlan.avatarAssetMimeType,
+    authorName: baselinePlan.authorName,
+    authorHandle: baselinePlan.authorHandle,
+    templateId: baselinePlan.templateId,
     prompt: promptNorm
   };
 }

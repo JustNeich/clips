@@ -13,10 +13,12 @@ import {
   buildStage2Prompt,
   parseStage2Output,
   STAGE2_OUTPUT_SCHEMA,
+  STAGE2_SYSTEM_PROMPT,
   validateStage2Output
 } from "../../../../lib/stage2";
 import { ensureCodexHomeForSession, normalizeCodexSessionId } from "../../../../lib/codex-session";
 import { getYtDlpError, isSupportedUrl, sanitizeFileName } from "../../../../lib/ytdlp";
+import { getChannelById, getChatById, getDefaultChannel } from "../../../../lib/chat-history";
 
 const execFileAsync = promisify(execFile);
 
@@ -183,9 +185,11 @@ function getPipelineErrorMessage(error: unknown): string {
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as
-    | { url?: string; userInstruction?: string }
+    | { url?: string; chatId?: string; userInstruction?: string }
     | null;
-  const rawUrl = body?.url?.trim();
+  const chatId = body?.chatId?.trim();
+  const chat = chatId ? await getChatById(chatId) : null;
+  const rawUrl = body?.url?.trim() || chat?.url?.trim();
   const userInstructionRaw = body?.userInstruction?.trim() ?? "";
   const userInstruction = userInstructionRaw ? userInstructionRaw.slice(0, 2000) : null;
 
@@ -217,8 +221,12 @@ export async function POST(request: Request): Promise<Response> {
     });
     const frames = await extractFrameImages(downloaded.videoPath, tmpDir);
 
+    const channel =
+      (chat?.channelId ? await getChannelById(chat.channelId) : null) ?? (await getDefaultChannel());
     const examplesPath = path.join(process.cwd(), "data", "examples.json");
-    const examplesJson = await fs.readFile(examplesPath, "utf-8");
+    const fallbackExamplesJson = await fs.readFile(examplesPath, "utf-8").catch(() => "[]");
+    const examplesJson = channel.examplesJson?.trim() || fallbackExamplesJson;
+    const systemPrompt = channel.systemPrompt?.trim() || STAGE2_SYSTEM_PROMPT;
     const prompt = buildStage2Prompt({
       sourceUrl: rawUrl,
       title: downloaded.title,
@@ -226,6 +234,7 @@ export async function POST(request: Request): Promise<Response> {
       omittedCommentsCount: promptComments.omittedCount,
       frameDescriptions: frames.frameDescriptions,
       examplesJson,
+      systemPrompt,
       userInstruction
     });
 
@@ -286,7 +295,12 @@ export async function POST(request: Request): Promise<Response> {
         warnings,
         model: model ?? "default",
         reasoningEffort,
-        userInstructionUsed: userInstruction
+        userInstructionUsed: userInstruction,
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username
+        }
       },
       { status: 200 }
     );

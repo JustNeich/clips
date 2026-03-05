@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, FlowStep } from "./components/AppShell";
+import { ChannelManager } from "./components/ChannelManager";
 import { DetailsDrawer } from "./components/DetailsDrawer";
 import { Step1PasteLink } from "./components/Step1PasteLink";
 import { Step2PickCaption } from "./components/Step2PickCaption";
 import { Step3RenderTemplate } from "./components/Step3RenderTemplate";
 import {
+  Channel,
+  ChannelAsset,
   ChatEvent,
   ChatThread,
   CodexAuthResponse,
@@ -35,6 +38,12 @@ type BusyAction =
   | "video-meta"
   | "video-preview"
   | "background-upload"
+  | "music-upload"
+  | "channel-load"
+  | "channel-save"
+  | "channel-create"
+  | "channel-delete"
+  | "channel-asset-delete"
   | "connect-codex"
   | "refresh-codex";
 
@@ -53,8 +62,8 @@ function createCodexSessionId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
 }
 
-function buildStage3BackgroundUrl(id: string): string {
-  return `/api/stage3/background/${id}`;
+function buildChannelAssetUrl(channelId: string, assetId: string): string {
+  return `/api/channels/${channelId}/assets/${assetId}`;
 }
 
 function toJsonDownload(fileName: string, data: unknown): void {
@@ -117,6 +126,13 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     policy: "full_source_normalize",
     backgroundAssetId: null,
     backgroundAssetMimeType: null,
+    musicAssetId: null,
+    musicAssetMimeType: null,
+    avatarAssetId: null,
+    avatarAssetMimeType: null,
+    authorName: "Science Snack",
+    authorHandle: "@Science_Snack_1",
+    templateId: STAGE3_TEMPLATE_ID,
     prompt: ""
   };
 }
@@ -124,8 +140,6 @@ function fallbackRenderPlan(): Stage3RenderPlan {
 function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
   return {
     ...plan,
-    backgroundAssetId: null,
-    backgroundAssetMimeType: null,
     // Prompt text must not affect preview cache keys or trigger heavy re-renders.
     prompt: ""
   };
@@ -197,6 +211,34 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
       candidate.backgroundAssetMimeType.trim()
         ? candidate.backgroundAssetMimeType.trim()
         : null,
+    musicAssetId:
+      typeof candidate?.musicAssetId === "string" && candidate.musicAssetId.trim()
+        ? candidate.musicAssetId.trim()
+        : null,
+    musicAssetMimeType:
+      typeof candidate?.musicAssetMimeType === "string" && candidate.musicAssetMimeType.trim()
+        ? candidate.musicAssetMimeType.trim()
+        : null,
+    avatarAssetId:
+      typeof candidate?.avatarAssetId === "string" && candidate.avatarAssetId.trim()
+        ? candidate.avatarAssetId.trim()
+        : null,
+    avatarAssetMimeType:
+      typeof candidate?.avatarAssetMimeType === "string" && candidate.avatarAssetMimeType.trim()
+        ? candidate.avatarAssetMimeType.trim()
+        : null,
+    authorName:
+      typeof candidate?.authorName === "string" && candidate.authorName.trim()
+        ? candidate.authorName.trim()
+        : base.authorName,
+    authorHandle:
+      typeof candidate?.authorHandle === "string" && candidate.authorHandle.trim()
+        ? candidate.authorHandle.trim()
+        : base.authorHandle,
+    templateId:
+      typeof candidate?.templateId === "string" && candidate.templateId.trim()
+        ? candidate.templateId.trim()
+        : base.templateId,
     prompt: typeof candidate?.prompt === "string" ? candidate.prompt : base.prompt
   };
 }
@@ -563,6 +605,10 @@ export default function HomePage() {
   const [busyAction, setBusyAction] = useState<BusyAction>("");
 
   const [draftUrl, setDraftUrl] = useState("");
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+  const [channelAssets, setChannelAssets] = useState<ChannelAsset[]>([]);
+  const [isChannelManagerOpen, setIsChannelManagerOpen] = useState(false);
   const [chats, setChats] = useState<ChatThread[]>([]);
   const [activeChat, setActiveChat] = useState<ChatThread | null>(null);
 
@@ -587,21 +633,92 @@ export default function HomePage() {
   const appliedCaptionKeyRef = useRef("");
   const initializedStage3ChatRef = useRef<string | null>(null);
   const stage3InitInFlightRef = useRef<string | null>(null);
+  const previousChannelIdRef = useRef<string | null>(null);
   const stage3PreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
   const stage3PreviewRequestKeyRef = useRef<string>("");
 
   const codexLoggedIn = Boolean(codexAuth?.loggedIn);
-  const stage3BackgroundUrl = stage3RenderPlan.backgroundAssetId
-    ? buildStage3BackgroundUrl(stage3RenderPlan.backgroundAssetId)
-    : null;
+  const activeChannel = useMemo(
+    () => channels.find((channel) => channel.id === activeChannelId) ?? null,
+    [channels, activeChannelId]
+  );
+  const stage3BackgroundUrl =
+    activeChannelId && stage3RenderPlan.backgroundAssetId
+      ? buildChannelAssetUrl(activeChannelId, stage3RenderPlan.backgroundAssetId)
+      : null;
+  const stage3AvatarUrl =
+    activeChannelId && stage3RenderPlan.avatarAssetId
+      ? buildChannelAssetUrl(activeChannelId, stage3RenderPlan.avatarAssetId)
+      : null;
+  const backgroundOptions = useMemo(
+    () => channelAssets.filter((asset) => asset.kind === "background"),
+    [channelAssets]
+  );
+  const musicOptions = useMemo(
+    () => channelAssets.filter((asset) => asset.kind === "music"),
+    [channelAssets]
+  );
 
   const parseError = async (response: Response, fallback: string): Promise<string> => {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     return body?.error ?? fallback;
   };
 
+  const applyChannelToRenderPlan = useCallback(
+    (channel: Channel | null): Stage3RenderPlan => {
+      const base = fallbackRenderPlan();
+      if (!channel) {
+        return base;
+      }
+      return normalizeRenderPlan(
+        {
+          ...base,
+          templateId: channel.templateId || STAGE3_TEMPLATE_ID,
+          authorName: channel.name || base.authorName,
+          authorHandle: channel.username.startsWith("@")
+            ? channel.username
+            : `@${channel.username || "channel"}`,
+          avatarAssetId: channel.avatarAssetId,
+          backgroundAssetId: channel.defaultBackgroundAssetId,
+          musicAssetId: channel.defaultMusicAssetId
+        },
+        base
+      );
+    },
+    []
+  );
+
+  const refreshChannels = useCallback(async (): Promise<Channel[]> => {
+    const response = await fetch("/api/channels");
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Failed to load channels."));
+    }
+    const body = (await response.json()) as { channels: Channel[] };
+    const nextChannels = body.channels ?? [];
+    setChannels(nextChannels);
+    setActiveChannelId((prev) => {
+      if (prev && nextChannels.some((channel) => channel.id === prev)) {
+        return prev;
+      }
+      return nextChannels[0]?.id ?? null;
+    });
+    return nextChannels;
+  }, []);
+
+  const refreshChannelAssets = useCallback(async (channelId: string): Promise<ChannelAsset[]> => {
+    const response = await fetch(`/api/channels/${channelId}/assets`);
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Failed to load channel assets."));
+    }
+    const body = (await response.json()) as { assets: ChannelAsset[] };
+    const nextAssets = body.assets ?? [];
+    setChannelAssets(nextAssets);
+    return nextAssets;
+  }, []);
+
   const refreshChats = async (): Promise<void> => {
-    const response = await fetch("/api/chats");
+    const query = activeChannelId ? `?channelId=${encodeURIComponent(activeChannelId)}` : "";
+    const response = await fetch(`/api/chats${query}`);
     if (!response.ok) {
       throw new Error(await parseError(response, "Failed to load history."));
     }
@@ -718,9 +835,50 @@ export default function HomePage() {
     const sid = ensureSession();
     setCodexSessionId(sid);
     void refreshCodexAuth(sid).catch(() => undefined);
-    void refreshChats().catch(() => undefined);
+    void refreshChannels().catch((error) => {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Failed to load channels.");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!activeChannelId) {
+      setChats([]);
+      setActiveChat(null);
+      return;
+    }
+    void refreshChats().catch(() => undefined);
+    void refreshChannelAssets(activeChannelId).catch(() => undefined);
+  }, [activeChannelId]);
+
+  useEffect(() => {
+    if (!activeChannel) {
+      previousChannelIdRef.current = null;
+      return;
+    }
+    if (previousChannelIdRef.current === activeChannel.id) {
+      return;
+    }
+    previousChannelIdRef.current = activeChannel.id;
+
+    setStage3RenderPlan((prev) =>
+      normalizeRenderPlan(
+        {
+          ...prev,
+          templateId: activeChannel.templateId || STAGE3_TEMPLATE_ID,
+          authorName: activeChannel.name || prev.authorName,
+          authorHandle: activeChannel.username.startsWith("@")
+            ? activeChannel.username
+            : `@${activeChannel.username || "channel"}`,
+          avatarAssetId: activeChannel.avatarAssetId,
+          backgroundAssetId: activeChannel.defaultBackgroundAssetId,
+          musicAssetId: activeChannel.defaultMusicAssetId
+        },
+        fallbackRenderPlan()
+      )
+    );
+  }, [activeChannel]);
 
   useEffect(() => {
     return () => {
@@ -906,6 +1064,11 @@ export default function HomePage() {
       setStatus("Paste a Shorts/Reels link first.");
       return;
     }
+    if (!activeChannelId) {
+      setStatusType("error");
+      setStatus("Сначала создайте/выберите канал.");
+      return;
+    }
 
     setBusyAction("fetch");
     setIsBusy(true);
@@ -918,7 +1081,7 @@ export default function HomePage() {
       const createResponse = await fetch("/api/chats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url, channelId: activeChannelId })
       });
       if (!createResponse.ok) {
         throw new Error(await parseError(createResponse, "Failed to create item."));
@@ -1129,7 +1292,11 @@ export default function HomePage() {
           "Content-Type": "application/json",
           "x-codex-session-id": codexSessionId
         },
-        body: JSON.stringify({ url: chat.url, userInstruction: instruction || undefined })
+        body: JSON.stringify({
+          chatId: chat.id,
+          url: chat.url,
+          userInstruction: instruction || undefined
+        })
       });
 
       if (!response.ok) {
@@ -1188,6 +1355,13 @@ export default function HomePage() {
             ...baseSnapshot.renderPlan,
             backgroundAssetId: stage3RenderPlan.backgroundAssetId,
             backgroundAssetMimeType: stage3RenderPlan.backgroundAssetMimeType,
+            musicAssetId: stage3RenderPlan.musicAssetId,
+            musicAssetMimeType: stage3RenderPlan.musicAssetMimeType,
+            avatarAssetId: stage3RenderPlan.avatarAssetId,
+            avatarAssetMimeType: stage3RenderPlan.avatarAssetMimeType,
+            authorName: stage3RenderPlan.authorName,
+            authorHandle: stage3RenderPlan.authorHandle,
+            templateId: stage3RenderPlan.templateId,
             prompt: stage3AgentPrompt.trim() || baseSnapshot.renderPlan.prompt
           },
           fallbackRenderPlan()
@@ -1205,7 +1379,8 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sourceUrl: chat.url,
-          templateId: STAGE3_TEMPLATE_ID,
+          channelId: activeChannelId,
+          templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
           topText: renderSnapshot.topText,
           bottomText: renderSnapshot.bottomText,
           clipStartSec: renderSnapshot.clipStartSec,
@@ -1362,9 +1537,9 @@ export default function HomePage() {
   };
 
   const handleUploadBackground = async (file: File): Promise<void> => {
-    if (!activeChat) {
+    if (!activeChannelId) {
       setStatusType("error");
-      setStatus("Сначала добавьте ссылку.");
+      setStatus("Сначала выберите канал.");
       return;
     }
 
@@ -1375,7 +1550,8 @@ export default function HomePage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const response = await fetch("/api/stage3/background", {
+      formData.append("kind", "background");
+      const response = await fetch(`/api/channels/${activeChannelId}/assets`, {
         method: "POST",
         body: formData
       });
@@ -1383,9 +1559,7 @@ export default function HomePage() {
         throw new Error(await parseError(response, "Background upload failed."));
       }
 
-      const body = (await response.json()) as {
-        asset?: { id: string; mimeType: string; url: string };
-      };
+      const body = (await response.json()) as { asset?: ChannelAsset };
       const asset = body.asset;
       if (!asset?.id) {
         throw new Error("Background upload returned empty asset id.");
@@ -1402,22 +1576,64 @@ export default function HomePage() {
         )
       );
 
-      await appendEvent(activeChat.id, {
-        role: "assistant",
-        type: "note",
-        text: `Загружен фон для Stage 3 (${asset.mimeType ?? "asset"}).`,
-        data: {
-          kind: "stage3-background",
-          backgroundAssetId: asset.id,
-          backgroundAssetMimeType: asset.mimeType ?? null
-        }
-      }).catch(() => undefined);
+      await refreshChannelAssets(activeChannelId).catch(() => undefined);
 
       setStatusType("ok");
       setStatus("Фон загружен и применен к шаблону.");
     } catch (error) {
       setStatusType("error");
       setStatus(error instanceof Error ? error.message : "Background upload failed.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const handleUploadMusic = async (file: File): Promise<void> => {
+    if (!activeChannelId) {
+      setStatusType("error");
+      setStatus("Сначала выберите канал.");
+      return;
+    }
+
+    setBusyAction("music-upload");
+    setStatus("");
+    setStatusType("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("kind", "music");
+      const response = await fetch(`/api/channels/${activeChannelId}/assets`, {
+        method: "POST",
+        body: formData
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Music upload failed."));
+      }
+      const body = (await response.json()) as { asset?: ChannelAsset };
+      const asset = body.asset;
+      if (!asset?.id) {
+        throw new Error("Music upload returned empty asset id.");
+      }
+
+      setStage3RenderPlan((prev) =>
+        normalizeRenderPlan(
+          {
+            ...prev,
+            musicAssetId: asset.id,
+            musicAssetMimeType: asset.mimeType ?? null,
+            audioMode: "source_plus_music"
+          },
+          fallbackRenderPlan()
+        )
+      );
+
+      await refreshChannelAssets(activeChannelId).catch(() => undefined);
+      setStatusType("ok");
+      setStatus("Музыка загружена.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Music upload failed.");
     } finally {
       setBusyAction("");
     }
@@ -1436,6 +1652,22 @@ export default function HomePage() {
     );
     setStatusType("ok");
     setStatus("Кастомный фон очищен. Используется blur исходного видео.");
+  };
+
+  const handleClearMusic = (): void => {
+    setStage3RenderPlan((prev) =>
+      normalizeRenderPlan(
+        {
+          ...prev,
+          musicAssetId: null,
+          musicAssetMimeType: null,
+          audioMode: "source_only"
+        },
+        fallbackRenderPlan()
+      )
+    );
+    setStatusType("ok");
+    setStatus("Музыка отключена.");
   };
 
   const latestComments = useMemo(() => {
@@ -1588,11 +1820,26 @@ export default function HomePage() {
     appliedCaptionKeyRef.current = key;
     setStage3TopText(selectedCaption?.top ?? "");
     setStage3BottomText(selectedCaption?.bottom ?? "");
-    setStage3RenderPlan((prev) => ({ ...fallbackRenderPlan(), policy: prev.policy }));
+    setStage3RenderPlan((prev) =>
+      normalizeRenderPlan(
+        {
+          ...applyChannelToRenderPlan(activeChannel),
+          policy: prev.policy
+        },
+        fallbackRenderPlan()
+      )
+    );
     setStage3SelectedVersionId(null);
     setStage3PassSelectionByVersion({});
     setStage3PreviewNotice(null);
-  }, [activeChat?.id, selectedCaption?.option, selectedCaption?.top, selectedCaption?.bottom]);
+  }, [
+    activeChat?.id,
+    selectedCaption?.option,
+    selectedCaption?.top,
+    selectedCaption?.bottom,
+    activeChannel,
+    applyChannelToRenderPlan
+  ]);
 
   useEffect(() => {
     if (currentStep !== 3) {
@@ -1628,7 +1875,11 @@ export default function HomePage() {
       setStage3SelectedVersionId(null);
       setStage3PassSelectionByVersion({});
       setStage3AgentPrompt("");
-      setStage3RenderPlan(fallbackRenderPlan());
+      setStage3TopText("");
+      setStage3BottomText("");
+      setStage3ClipStartSec(0);
+      setStage3FocusY(0.5);
+      setStage3RenderPlan(applyChannelToRenderPlan(activeChannel));
       stage3PreviewRequestKeyRef.current = "";
       setStage3PreviewVideoUrl(null);
       setStage3PreviewNotice(null);
@@ -1657,7 +1908,7 @@ export default function HomePage() {
       setStage3AgentPrompt(latestVersion.prompt);
     }
     applyStage3Snapshot(latestVersion.final);
-  }, [activeChat?.id, stage3Versions]);
+  }, [activeChat?.id, stage3Versions, activeChannel, applyChannelToRenderPlan]);
 
   useEffect(() => {
     if (currentStep !== 3 || !activeChat?.url) {
@@ -1746,6 +1997,7 @@ export default function HomePage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               sourceUrl: activeChat.url,
+              channelId: activeChannelId,
               clipDurationSec: CLIP_DURATION_SEC,
               renderPlan: previewState.renderPlan,
               snapshot: {
@@ -1853,7 +2105,7 @@ export default function HomePage() {
     setStage3BottomText("");
     setStage3ClipStartSec(0);
     setStage3FocusY(0.5);
-    setStage3RenderPlan(fallbackRenderPlan());
+    setStage3RenderPlan(applyChannelToRenderPlan(activeChannel));
     setSourceDurationSec(null);
     setStage3AgentPrompt("");
     setStage3SelectedVersionId(null);
@@ -1867,6 +2119,40 @@ export default function HomePage() {
     setStatus("");
     setStatusType("");
   };
+
+  const handleSwitchChannel = useCallback(
+    (channelId: string): void => {
+      if (!channelId || channelId === activeChannelId) {
+        return;
+      }
+      const nextChannel = channels.find((channel) => channel.id === channelId) ?? null;
+      setActiveChannelId(channelId);
+      setChats([]);
+      setActiveChat(null);
+      setDraftUrl("");
+      setCurrentStep(1);
+      setStage2Instruction("");
+      setSelectedOption(null);
+      setStage3TopText("");
+      setStage3BottomText("");
+      setStage3ClipStartSec(0);
+      setStage3FocusY(0.5);
+      setStage3RenderPlan(applyChannelToRenderPlan(nextChannel));
+      setSourceDurationSec(null);
+      setStage3AgentPrompt("");
+      setStage3SelectedVersionId(null);
+      setStage3PassSelectionByVersion({});
+      initializedStage3ChatRef.current = null;
+      appliedCaptionKeyRef.current = "";
+      stage3PreviewRequestKeyRef.current = "";
+      clearStage3PreviewCache();
+      setStage3PreviewVideoUrl(null);
+      setStage3PreviewNotice(null);
+      setStatus("");
+      setStatusType("");
+    },
+    [activeChannelId, channels, applyChannelToRenderPlan]
+  );
 
   const handleDeleteHistory = async (chatId: string): Promise<void> => {
     if (!window.confirm("Delete this item from history?")) {
@@ -1892,6 +2178,250 @@ export default function HomePage() {
     } catch (error) {
       setStatusType("error");
       setStatus(error instanceof Error ? error.message : "Failed to delete history item.");
+    }
+  };
+
+  const handleCreateChannel = async (): Promise<void> => {
+    setBusyAction("channel-create");
+    try {
+      const response = await fetch("/api/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "New channel", username: "channel" })
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to create channel."));
+      }
+      const body = (await response.json()) as { channel: Channel };
+      await refreshChannels();
+      handleSwitchChannel(body.channel.id);
+      setStatusType("ok");
+      setStatus("Канал создан.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Failed to create channel.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const handleSaveChannel = async (
+    channelId: string,
+    patch: Partial<{
+      name: string;
+      username: string;
+      systemPrompt: string;
+      examplesJson: string;
+      templateId: string;
+      avatarAssetId: string | null;
+      defaultBackgroundAssetId: string | null;
+      defaultMusicAssetId: string | null;
+    }>
+  ): Promise<void> => {
+    setBusyAction("channel-save");
+    try {
+      const response = await fetch(`/api/channels/${channelId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to save channel."));
+      }
+      const body = (await response.json()) as { channel: Channel };
+      await refreshChannels();
+      let refreshedAssets: ChannelAsset[] = [];
+      if (activeChannelId) {
+        refreshedAssets = await refreshChannelAssets(activeChannelId).catch(() => []);
+      }
+      if (body.channel.id === activeChannelId) {
+        const resolvedAvatar = refreshedAssets.find((item) => item.id === body.channel.avatarAssetId);
+        const resolvedBg = refreshedAssets.find((item) => item.id === body.channel.defaultBackgroundAssetId);
+        const resolvedMusic = refreshedAssets.find((item) => item.id === body.channel.defaultMusicAssetId);
+        setStage3RenderPlan((prev) =>
+          normalizeRenderPlan(
+            {
+              ...prev,
+              templateId: body.channel.templateId || prev.templateId,
+              authorName: body.channel.name || prev.authorName,
+              authorHandle: body.channel.username.startsWith("@")
+                ? body.channel.username
+                : `@${body.channel.username || "channel"}`,
+              avatarAssetId:
+                patch.avatarAssetId !== undefined || patch.name !== undefined || patch.username !== undefined
+                  ? body.channel.avatarAssetId
+                  : prev.avatarAssetId,
+              avatarAssetMimeType:
+                patch.avatarAssetId !== undefined || patch.name !== undefined || patch.username !== undefined
+                  ? resolvedAvatar?.mimeType ?? null
+                  : prev.avatarAssetMimeType,
+              backgroundAssetId:
+                patch.defaultBackgroundAssetId !== undefined
+                  ? body.channel.defaultBackgroundAssetId
+                  : prev.backgroundAssetId,
+              backgroundAssetMimeType:
+                patch.defaultBackgroundAssetId !== undefined
+                  ? resolvedBg?.mimeType ?? null
+                  : prev.backgroundAssetMimeType,
+              musicAssetId:
+                patch.defaultMusicAssetId !== undefined
+                  ? body.channel.defaultMusicAssetId
+                  : prev.musicAssetId,
+              musicAssetMimeType:
+                patch.defaultMusicAssetId !== undefined
+                  ? resolvedMusic?.mimeType ?? null
+                  : prev.musicAssetMimeType
+            },
+            fallbackRenderPlan()
+          )
+        );
+      }
+      setStatusType("ok");
+      setStatus("Канал сохранен.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Failed to save channel.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const handleDeleteChannel = async (channelId: string): Promise<void> => {
+    if (!window.confirm("Удалить канал вместе с его историей и ассетами?")) {
+      return;
+    }
+    setBusyAction("channel-delete");
+    try {
+      const response = await fetch(`/api/channels/${channelId}`, {
+        method: "DELETE"
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to delete channel."));
+      }
+      const channelsNext = await refreshChannels();
+      const nextActive = channelsNext[0]?.id ?? null;
+      if (nextActive) {
+        handleSwitchChannel(nextActive);
+      }
+      setStatusType("ok");
+      setStatus("Канал удален.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Failed to delete channel.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const handleDeleteChannelAsset = async (assetId: string): Promise<void> => {
+    if (!activeChannelId) {
+      return;
+    }
+    setBusyAction("channel-asset-delete");
+    try {
+      const response = await fetch(`/api/channels/${activeChannelId}/assets/${assetId}`, {
+        method: "DELETE"
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to delete asset."));
+      }
+      await refreshChannelAssets(activeChannelId);
+      await refreshChannels();
+      setStage3RenderPlan((prev) =>
+        normalizeRenderPlan(
+          {
+            ...prev,
+            avatarAssetId: prev.avatarAssetId === assetId ? null : prev.avatarAssetId,
+            avatarAssetMimeType: prev.avatarAssetId === assetId ? null : prev.avatarAssetMimeType,
+            backgroundAssetId: prev.backgroundAssetId === assetId ? null : prev.backgroundAssetId,
+            backgroundAssetMimeType:
+              prev.backgroundAssetId === assetId ? null : prev.backgroundAssetMimeType,
+            musicAssetId: prev.musicAssetId === assetId ? null : prev.musicAssetId,
+            musicAssetMimeType: prev.musicAssetId === assetId ? null : prev.musicAssetMimeType,
+            audioMode: prev.musicAssetId === assetId ? "source_only" : prev.audioMode
+          },
+          fallbackRenderPlan()
+        )
+      );
+      setStatusType("ok");
+      setStatus("Ассет удален.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Failed to delete asset.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const handleUploadChannelAsset = async (kind: "avatar" | "background" | "music", file: File): Promise<void> => {
+    if (!activeChannelId) {
+      setStatusType("error");
+      setStatus("Сначала выберите канал.");
+      return;
+    }
+    const action: BusyAction =
+      kind === "background" ? "background-upload" : kind === "music" ? "music-upload" : "channel-save";
+    setBusyAction(action);
+    try {
+      const formData = new FormData();
+      formData.append("kind", kind);
+      formData.append("file", file);
+      const response = await fetch(`/api/channels/${activeChannelId}/assets`, {
+        method: "POST",
+        body: formData
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to upload asset."));
+      }
+      const body = (await response.json()) as { asset?: ChannelAsset };
+      await refreshChannelAssets(activeChannelId);
+      await refreshChannels();
+
+      if (body.asset?.kind === "background") {
+        setStage3RenderPlan((prev) =>
+          normalizeRenderPlan(
+            {
+              ...prev,
+              backgroundAssetId: body.asset?.id ?? null,
+              backgroundAssetMimeType: body.asset?.mimeType ?? null
+            },
+            fallbackRenderPlan()
+          )
+        );
+      }
+      if (body.asset?.kind === "music") {
+        setStage3RenderPlan((prev) =>
+          normalizeRenderPlan(
+            {
+              ...prev,
+              musicAssetId: body.asset?.id ?? null,
+              musicAssetMimeType: body.asset?.mimeType ?? null,
+              audioMode: "source_plus_music"
+            },
+            fallbackRenderPlan()
+          )
+        );
+      }
+      if (body.asset?.kind === "avatar") {
+        setStage3RenderPlan((prev) =>
+          normalizeRenderPlan(
+            {
+              ...prev,
+              avatarAssetId: body.asset?.id ?? null,
+              avatarAssetMimeType: body.asset?.mimeType ?? null
+            },
+            fallbackRenderPlan()
+          )
+        );
+      }
+
+      setStatusType("ok");
+      setStatus("Ассет загружен.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Failed to upload asset.");
+    } finally {
+      setBusyAction("");
     }
   };
 
@@ -1921,7 +2451,7 @@ export default function HomePage() {
     const payload = {
       exportedAt: new Date().toISOString(),
       sourceUrl: chat.url,
-      templateId: STAGE3_TEMPLATE_ID,
+      templateId: stage3RenderPlan.templateId,
       stage2EventId: latestStage2Event?.id ?? null,
       selectedOption: selectedCaption?.option ?? null,
       top: stage3TopText,
@@ -1961,6 +2491,14 @@ export default function HomePage() {
         void handleDeleteHistory(id);
       }}
       onCreateNew={handleResetFlow}
+      channels={channels.map((channel) => ({
+        id: channel.id,
+        name: channel.name,
+        username: channel.username
+      }))}
+      activeChannelId={activeChannelId}
+      onSelectChannel={handleSwitchChannel}
+      onManageChannels={() => setIsChannelManagerOpen(true)}
       codexConnected={codexBadgeConnected}
       codexBusyConnect={busyAction === "connect-codex"}
       codexBusyRefresh={busyAction === "refresh-codex" || isCodexAuthLoading}
@@ -2011,6 +2549,8 @@ export default function HomePage() {
 
       {currentStep === 2 ? (
         <Step2PickCaption
+          channelName={activeChannel?.name ?? null}
+          channelUsername={activeChannel?.username ?? null}
           stage2={latestStage2Event?.payload ?? null}
           stageCreatedAt={latestStage2Event?.createdAt ?? null}
           instruction={stage2Instruction}
@@ -2031,9 +2571,20 @@ export default function HomePage() {
       {currentStep === 3 ? (
         <Step3RenderTemplate
           sourceUrl={activeChat?.url ?? null}
+          templateId={stage3RenderPlan.templateId}
+          channelName={activeChannel?.name ?? stage3RenderPlan.authorName ?? "Channel"}
+          channelUsername={
+            (activeChannel?.username?.trim() || "").replace(/^@/, "") ||
+            (stage3RenderPlan.authorHandle || "@channel").replace(/^@/, "")
+          }
+          avatarUrl={stage3AvatarUrl}
           previewVideoUrl={stage3PreviewVideoUrl}
           backgroundAssetUrl={stage3BackgroundUrl}
           backgroundAssetMimeType={stage3RenderPlan.backgroundAssetMimeType}
+          backgroundOptions={backgroundOptions}
+          musicOptions={musicOptions}
+          selectedBackgroundAssetId={stage3RenderPlan.backgroundAssetId}
+          selectedMusicAssetId={stage3RenderPlan.musicAssetId}
           versions={stage3Versions}
           selectedVersionId={stage3SelectedVersionId}
           selectedPassIndex={selectedStage3PassIndex}
@@ -2057,7 +2608,36 @@ export default function HomePage() {
           }}
           onReset={handleResetFlow}
           onUploadBackground={handleUploadBackground}
+          onUploadMusic={handleUploadMusic}
           onClearBackground={handleClearBackground}
+          onClearMusic={handleClearMusic}
+          onSelectBackgroundAssetId={(value) => {
+            const selected = backgroundOptions.find((asset) => asset.id === value) ?? null;
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  backgroundAssetId: value,
+                  backgroundAssetMimeType: selected?.mimeType ?? null
+                },
+                fallbackRenderPlan()
+              )
+            );
+          }}
+          onSelectMusicAssetId={(value) => {
+            const selected = musicOptions.find((asset) => asset.id === value) ?? null;
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  musicAssetId: value,
+                  musicAssetMimeType: selected?.mimeType ?? null,
+                  audioMode: value ? "source_plus_music" : "source_only"
+                },
+                fallbackRenderPlan()
+              )
+            );
+          }}
           onAgentPromptChange={setStage3AgentPrompt}
           onSelectVersionId={(runId) => {
             const version = stage3Versions.find((item) => item.runId === runId);
@@ -2101,6 +2681,30 @@ export default function HomePage() {
           onExport={handleExportTemplate}
         />
       ) : null}
+
+      <ChannelManager
+        open={isChannelManagerOpen}
+        channels={channels}
+        activeChannelId={activeChannelId}
+        assets={channelAssets}
+        onClose={() => setIsChannelManagerOpen(false)}
+        onSelectChannel={handleSwitchChannel}
+        onCreateChannel={() => {
+          void handleCreateChannel();
+        }}
+        onDeleteChannel={(channelId) => {
+          void handleDeleteChannel(channelId);
+        }}
+        onSaveChannel={(channelId, patch) => {
+          void handleSaveChannel(channelId, patch);
+        }}
+        onUploadAsset={(kind, file) => {
+          void handleUploadChannelAsset(kind, file);
+        }}
+        onDeleteAsset={(assetId) => {
+          void handleDeleteChannelAsset(assetId);
+        }}
+      />
     </AppShell>
   );
 }

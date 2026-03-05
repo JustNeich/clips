@@ -15,7 +15,9 @@ import {
 import { getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
-import { readStage3BackgroundAsset } from "../../../../lib/stage3-background";
+import { getChannelAssetById } from "../../../../lib/chat-history";
+import { readChannelAssetFile } from "../../../../lib/channel-assets";
+import { SCIENCE_CARD } from "../../../../lib/stage3-template";
 
 export const runtime = "nodejs";
 
@@ -23,6 +25,7 @@ const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 
 type RenderBody = {
   sourceUrl?: string;
+  channelId?: string;
   topText?: string;
   bottomText?: string;
   templateId?: string;
@@ -112,6 +115,10 @@ async function runRemotionRender(params: {
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  authorName: string;
+  authorHandle: string;
+  avatarAssetFileName: string | null;
+  avatarAssetMimeType: string | null;
   backgroundAssetFileName: string | null;
   backgroundAssetMimeType: string | null;
   timeoutMs: number;
@@ -131,6 +138,10 @@ async function runRemotionRender(params: {
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
     focusY: params.focusY,
+    authorName: params.authorName,
+    authorHandle: params.authorHandle,
+    avatarAssetFileName: params.avatarAssetFileName,
+    avatarAssetMimeType: params.avatarAssetMimeType,
     backgroundAssetFileName: params.backgroundAssetFileName,
     backgroundAssetMimeType: params.backgroundAssetMimeType
   };
@@ -170,7 +181,6 @@ async function runRemotionRender(params: {
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as RenderBody | null;
   const rawSource = body?.sourceUrl?.trim();
-  const templateId = body?.templateId?.trim() || STAGE3_TEMPLATE_ID;
 
   if (!rawSource) {
     return Response.json({ error: "Передайте sourceUrl в теле запроса." }, { status: 400 });
@@ -282,8 +292,51 @@ export async function POST(request: Request): Promise<Response> {
         typeof rawPlan?.backgroundAssetMimeType === "string" && rawPlan.backgroundAssetMimeType.trim()
           ? rawPlan.backgroundAssetMimeType.trim()
           : null,
+      musicAssetId:
+        typeof rawPlan?.musicAssetId === "string" && rawPlan.musicAssetId.trim()
+          ? rawPlan.musicAssetId.trim()
+          : null,
+      musicAssetMimeType:
+        typeof rawPlan?.musicAssetMimeType === "string" && rawPlan.musicAssetMimeType.trim()
+          ? rawPlan.musicAssetMimeType.trim()
+          : null,
+      avatarAssetId:
+        typeof rawPlan?.avatarAssetId === "string" && rawPlan.avatarAssetId.trim()
+          ? rawPlan.avatarAssetId.trim()
+          : null,
+      avatarAssetMimeType:
+        typeof rawPlan?.avatarAssetMimeType === "string" && rawPlan.avatarAssetMimeType.trim()
+          ? rawPlan.avatarAssetMimeType.trim()
+          : null,
+      authorName:
+        typeof rawPlan?.authorName === "string" && rawPlan.authorName.trim()
+          ? rawPlan.authorName.trim()
+          : SCIENCE_CARD.author.name,
+      authorHandle:
+        typeof rawPlan?.authorHandle === "string" && rawPlan.authorHandle.trim()
+          ? rawPlan.authorHandle.trim()
+          : SCIENCE_CARD.author.handle,
+      templateId:
+        typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
+          ? rawPlan.templateId.trim()
+          : body?.templateId?.trim() || STAGE3_TEMPLATE_ID,
       prompt: rawPlan?.prompt?.trim() || body?.agentPrompt?.trim() || ""
     };
+
+    const templateId = renderPlan.templateId || STAGE3_TEMPLATE_ID;
+    let musicFilePath: string | null = null;
+    if (body?.channelId && renderPlan.musicAssetId) {
+      const musicAsset = await getChannelAssetById(body.channelId, renderPlan.musicAssetId);
+      if (musicAsset) {
+        const musicFile = await readChannelAssetFile({
+          channelId: body.channelId,
+          fileName: musicAsset.fileName
+        });
+        if (musicFile) {
+          musicFilePath = musicFile.filePath;
+        }
+      }
+    }
 
     const prepared = await prepareStage3SourceClip({
       sourcePath: downloaded.filePath,
@@ -292,21 +345,42 @@ export async function POST(request: Request): Promise<Response> {
       clipStartSec,
       clipDurationSec: renderPlan.targetDurationSec,
       renderPlan,
+      musicFilePath,
       profile: "render"
     });
 
     let backgroundAssetFileName: string | null = null;
     let backgroundAssetMimeType: string | null = null;
-    if (renderPlan.backgroundAssetId) {
-      const asset = await readStage3BackgroundAsset(renderPlan.backgroundAssetId);
+    let avatarAssetFileName: string | null = null;
+    let avatarAssetMimeType: string | null = null;
+    if (body?.channelId && renderPlan.backgroundAssetId) {
+      const asset = await getChannelAssetById(body.channelId, renderPlan.backgroundAssetId);
       if (asset) {
-        const ext = path.extname(asset.fileName) || (asset.kind === "video" ? ".mp4" : ".jpg");
-        backgroundAssetFileName = `background${ext.toLowerCase()}`;
-        await fs.copyFile(
-          asset.filePath,
-          path.join(path.dirname(prepared.preparedPath), backgroundAssetFileName)
-        );
-        backgroundAssetMimeType = asset.mimeType;
+        const bgFile = await readChannelAssetFile({ channelId: body.channelId, fileName: asset.fileName });
+        if (bgFile) {
+          const ext = path.extname(asset.fileName) || ".jpg";
+          backgroundAssetFileName = `background${ext.toLowerCase()}`;
+          await fs.copyFile(
+            bgFile.filePath,
+            path.join(path.dirname(prepared.preparedPath), backgroundAssetFileName)
+          );
+          backgroundAssetMimeType = asset.mimeType;
+        }
+      }
+    }
+    if (body?.channelId && renderPlan.avatarAssetId) {
+      const asset = await getChannelAssetById(body.channelId, renderPlan.avatarAssetId);
+      if (asset) {
+        const avatarFile = await readChannelAssetFile({ channelId: body.channelId, fileName: asset.fileName });
+        if (avatarFile) {
+          const ext = path.extname(asset.fileName) || ".jpg";
+          avatarAssetFileName = `avatar${ext.toLowerCase()}`;
+          await fs.copyFile(
+            avatarFile.filePath,
+            path.join(path.dirname(prepared.preparedPath), avatarAssetFileName)
+          );
+          avatarAssetMimeType = asset.mimeType;
+        }
       }
     }
 
@@ -320,6 +394,10 @@ export async function POST(request: Request): Promise<Response> {
       clipStartSec: prepared.clipStartSec,
       clipDurationSec: prepared.clipDurationSec,
       focusY,
+      authorName: renderPlan.authorName,
+      authorHandle: renderPlan.authorHandle,
+      avatarAssetFileName,
+      avatarAssetMimeType,
       backgroundAssetFileName,
       backgroundAssetMimeType,
       timeoutMs

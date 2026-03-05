@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type FlowStep = {
   id: 1 | 2 | 3;
@@ -14,6 +14,12 @@ export type HistoryItem = {
   subtitle: string;
 };
 
+export type ChannelSelectorItem = {
+  id: string;
+  name: string;
+  username: string;
+};
+
 type AppShellProps = {
   title: string;
   subtitle: string;
@@ -25,6 +31,10 @@ type AppShellProps = {
   onHistoryChange: (id: string) => void;
   onDeleteHistory: (id: string) => void;
   onCreateNew: () => void;
+  channels: ChannelSelectorItem[];
+  activeChannelId: string | null;
+  onSelectChannel: (channelId: string) => void;
+  onManageChannels: () => void;
   codexConnected: boolean;
   codexBusyConnect: boolean;
   codexBusyRefresh: boolean;
@@ -57,6 +67,10 @@ export function AppShell({
   onHistoryChange,
   onDeleteHistory,
   onCreateNew,
+  channels,
+  activeChannelId,
+  onSelectChannel,
+  onManageChannels,
   codexConnected,
   codexBusyConnect,
   codexBusyRefresh,
@@ -69,6 +83,33 @@ export function AppShell({
 }: AppShellProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
+  const historyCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearHistoryCloseTimer = useCallback(() => {
+    if (historyCloseTimerRef.current) {
+      clearTimeout(historyCloseTimerRef.current);
+      historyCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const openHistory = useCallback(() => {
+    clearHistoryCloseTimer();
+    setHistoryOpen(true);
+  }, [clearHistoryCloseTimer]);
+
+  const scheduleCloseHistory = useCallback(() => {
+    clearHistoryCloseTimer();
+    historyCloseTimerRef.current = setTimeout(() => {
+      setHistoryOpen(false);
+      historyCloseTimerRef.current = null;
+    }, 140);
+  }, [clearHistoryCloseTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearHistoryCloseTimer();
+    };
+  }, [clearHistoryCloseTimer]);
 
   const filteredHistory = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
@@ -89,15 +130,15 @@ export function AppShell({
           <div className="topbar-left">
             <div
               className="history-flyout"
-              onMouseEnter={() => setHistoryOpen(true)}
-              onMouseLeave={() => setHistoryOpen(false)}
+              onMouseEnter={openHistory}
+              onMouseLeave={scheduleCloseHistory}
             >
               <button
                 type="button"
                 className="history-trigger"
                 aria-label="Open history"
                 aria-expanded={historyOpen}
-                onFocus={() => setHistoryOpen(true)}
+                onFocus={openHistory}
                 onClick={() => setHistoryOpen((prev) => !prev)}
               >
                 <span aria-hidden="true">🕘</span>
@@ -108,10 +149,12 @@ export function AppShell({
               {historyOpen ? (
                 <div
                   className="history-popover"
-                  onFocusCapture={() => setHistoryOpen(true)}
+                  onMouseEnter={openHistory}
+                  onMouseLeave={scheduleCloseHistory}
+                  onFocusCapture={openHistory}
                   onBlur={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                      setHistoryOpen(false);
+                      scheduleCloseHistory();
                     }
                   }}
                 >
@@ -179,6 +222,29 @@ export function AppShell({
             <div className="topbar-brand">
               <h1>{title}</h1>
               <p>{subtitle}</p>
+            </div>
+
+            <div className="channel-switcher">
+              <label className="field-label" htmlFor="channelSelect">
+                Channel
+              </label>
+              <div className="channel-switcher-row">
+                <select
+                  id="channelSelect"
+                  className="text-input"
+                  value={activeChannelId ?? ""}
+                  onChange={(event) => onSelectChannel(event.target.value)}
+                >
+                  {channels.map((channel) => (
+                    <option key={channel.id} value={channel.id}>
+                      {channel.name} @{channel.username}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn btn-secondary" onClick={onManageChannels}>
+                  Manage channels
+                </button>
+              </div>
             </div>
           </div>
 

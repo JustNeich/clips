@@ -8,6 +8,10 @@ type ScienceCardV1Props = {
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  authorName: string;
+  authorHandle: string;
+  avatarAssetFileName?: string | null;
+  avatarAssetMimeType?: string | null;
   backgroundAssetFileName?: string | null;
   backgroundAssetMimeType?: string | null;
 };
@@ -67,7 +71,33 @@ function OverlayText({
   );
 }
 
-function AuthorBlock(): React.JSX.Element {
+function avatarInitials(name: string): string {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!parts.length) {
+    return "SS";
+  }
+  return parts.map((item) => item[0]?.toUpperCase() ?? "").join("") || "SS";
+}
+
+function AuthorBlock({
+  authorName,
+  authorHandle,
+  avatarAssetFileName,
+  avatarAssetMimeType
+}: {
+  authorName: string;
+  authorHandle: string;
+  avatarAssetFileName?: string | null;
+  avatarAssetMimeType?: string | null;
+}): React.JSX.Element {
+  const avatarSrc = avatarAssetFileName ? staticFile(avatarAssetFileName) : null;
+  const avatarIsImage = Boolean(avatarSrc) && (avatarAssetMimeType ?? "").toLowerCase().startsWith("image/");
+  const initials = avatarInitials(authorName);
+
   return (
     <div
       style={{
@@ -83,26 +113,41 @@ function AuthorBlock(): React.JSX.Element {
         borderBottom: "1px solid rgba(8, 12, 19, 0.12)"
       }}
     >
-      <div
-        style={{
-          width: SCIENCE_CARD.author.avatarSize,
-          height: SCIENCE_CARD.author.avatarSize,
-          borderRadius: 999,
-          border: `${SCIENCE_CARD.author.avatarBorder}px solid rgba(7, 13, 23, 0.25)`,
-          background: "radial-gradient(circle at 30% 30%, #f4dc96, #2f86bb 70%, #20506f)",
-          color: "rgba(255,255,255,0.92)",
-          display: "grid",
-          placeItems: "center",
-          fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
-          fontWeight: 800,
-          fontSize: Math.round(SCIENCE_CARD.author.avatarSize * 0.32),
-          letterSpacing: "0.02em",
-          boxSizing: "border-box",
-          flex: "0 0 auto"
-        }}
-      >
-        SS
-      </div>
+      {avatarIsImage && avatarSrc ? (
+        <Img
+          src={avatarSrc}
+          style={{
+            width: SCIENCE_CARD.author.avatarSize,
+            height: SCIENCE_CARD.author.avatarSize,
+            borderRadius: 999,
+            border: `${SCIENCE_CARD.author.avatarBorder}px solid rgba(7, 13, 23, 0.25)`,
+            objectFit: "cover",
+            boxSizing: "border-box",
+            flex: "0 0 auto"
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: SCIENCE_CARD.author.avatarSize,
+            height: SCIENCE_CARD.author.avatarSize,
+            borderRadius: 999,
+            border: `${SCIENCE_CARD.author.avatarBorder}px solid rgba(7, 13, 23, 0.25)`,
+            background: "radial-gradient(circle at 30% 30%, #f4dc96, #2f86bb 70%, #20506f)",
+            color: "rgba(255,255,255,0.92)",
+            display: "grid",
+            placeItems: "center",
+            fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
+            fontWeight: 800,
+            fontSize: Math.round(SCIENCE_CARD.author.avatarSize * 0.32),
+            letterSpacing: "0.02em",
+            boxSizing: "border-box",
+            flex: "0 0 auto"
+          }}
+        >
+          {initials}
+        </div>
+      )}
       <div style={{ minWidth: 0, display: "grid", gap: 3 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span
@@ -115,7 +160,7 @@ function AuthorBlock(): React.JSX.Element {
               whiteSpace: "nowrap"
             }}
           >
-            {SCIENCE_CARD.author.name}
+            {authorName}
           </span>
           <span
             style={{
@@ -144,7 +189,7 @@ function AuthorBlock(): React.JSX.Element {
             letterSpacing: "-0.005em"
           }}
         >
-          {SCIENCE_CARD.author.handle}
+          {authorHandle}
         </span>
       </div>
     </div>
@@ -157,6 +202,10 @@ export function ScienceCardV1({
   clipStartSec,
   clipDurationSec,
   focusY,
+  authorName,
+  authorHandle,
+  avatarAssetFileName,
+  avatarAssetMimeType,
   backgroundAssetFileName,
   backgroundAssetMimeType
 }: ScienceCardV1Props): React.JSX.Element {
@@ -294,7 +343,12 @@ export function ScienceCardV1({
             gridTemplateRows: `${SCIENCE_CARD.slot.bottomMetaHeight}px minmax(0, 1fr)`
           }}
         >
-          <AuthorBlock />
+          <AuthorBlock
+            authorName={authorName}
+            authorHandle={authorHandle}
+            avatarAssetFileName={avatarAssetFileName}
+            avatarAssetMimeType={avatarAssetMimeType}
+          />
 
           <OverlayText
             text={computed.bottom}

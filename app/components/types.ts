@@ -45,6 +45,11 @@ export type Stage2Response = {
   model?: string;
   reasoningEffort?: string;
   userInstructionUsed?: string | null;
+  channel?: {
+    id: string;
+    name: string;
+    username: string;
+  };
 };
 
 export type Stage3AgentPass = {
@@ -86,6 +91,13 @@ export type Stage3RenderPlan = {
   policy: Stage3RenderPolicy;
   backgroundAssetId: string | null;
   backgroundAssetMimeType: string | null;
+  musicAssetId: string | null;
+  musicAssetMimeType: string | null;
+  avatarAssetId: string | null;
+  avatarAssetMimeType: string | null;
+  authorName: string;
+  authorHandle: string;
+  templateId: string;
   prompt: string;
 };
 
@@ -152,11 +164,45 @@ export type ChatEvent = {
 
 export type ChatThread = {
   id: string;
+  channelId: string;
   url: string;
   title: string;
   createdAt: string;
   updatedAt: string;
   events: ChatEvent[];
+};
+
+export type ChannelAssetKind = "avatar" | "background" | "music";
+
+export type ChannelAsset = {
+  id: string;
+  channelId: string;
+  kind: ChannelAssetKind;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  url: string;
+};
+
+export type Channel = {
+  id: string;
+  name: string;
+  username: string;
+  systemPrompt: string;
+  examplesJson: string;
+  templateId: string;
+  avatarAssetId: string | null;
+  defaultBackgroundAssetId: string | null;
+  defaultMusicAssetId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assets?: {
+    avatar?: ChannelAsset | null;
+    backgrounds?: ChannelAsset[];
+    music?: ChannelAsset[];
+  };
 };
 
 export type CodexDeviceAuth = {

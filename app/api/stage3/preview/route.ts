@@ -12,6 +12,9 @@ import {
 import { getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
+import { getChannelAssetById } from "../../../../lib/chat-history";
+import { readChannelAssetFile } from "../../../../lib/channel-assets";
+import { SCIENCE_CARD } from "../../../../lib/stage3-template";
 
 export const runtime = "nodejs";
 
@@ -26,6 +29,7 @@ const previewInflight = new Map<string, Promise<void>>();
 
 type PreviewBody = {
   sourceUrl?: string;
+  channelId?: string;
   clipStartSec?: number;
   clipDurationSec?: number;
   agentPrompt?: string;
@@ -194,6 +198,34 @@ function normalizeRenderPlan(
       typeof rawPlan?.backgroundAssetMimeType === "string" && rawPlan.backgroundAssetMimeType.trim()
         ? rawPlan.backgroundAssetMimeType.trim()
         : null,
+    musicAssetId:
+      typeof rawPlan?.musicAssetId === "string" && rawPlan.musicAssetId.trim()
+        ? rawPlan.musicAssetId.trim()
+        : null,
+    musicAssetMimeType:
+      typeof rawPlan?.musicAssetMimeType === "string" && rawPlan.musicAssetMimeType.trim()
+        ? rawPlan.musicAssetMimeType.trim()
+        : null,
+    avatarAssetId:
+      typeof rawPlan?.avatarAssetId === "string" && rawPlan.avatarAssetId.trim()
+        ? rawPlan.avatarAssetId.trim()
+        : null,
+    avatarAssetMimeType:
+      typeof rawPlan?.avatarAssetMimeType === "string" && rawPlan.avatarAssetMimeType.trim()
+        ? rawPlan.avatarAssetMimeType.trim()
+        : null,
+    authorName:
+      typeof rawPlan?.authorName === "string" && rawPlan.authorName.trim()
+        ? rawPlan.authorName.trim()
+        : SCIENCE_CARD.author.name,
+    authorHandle:
+      typeof rawPlan?.authorHandle === "string" && rawPlan.authorHandle.trim()
+        ? rawPlan.authorHandle.trim()
+        : SCIENCE_CARD.author.handle,
+    templateId:
+      typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
+        ? rawPlan.templateId.trim()
+        : "science-card-v1",
     // Prompt text does not affect media transform and should not split cache keys.
     prompt: ""
   };
@@ -224,13 +256,27 @@ export async function POST(request: Request): Promise<Response> {
     const clipStartSec = clampClipStart(clipStartCandidate, source.sourceDurationSec, clipDurationSec);
     const rawPlan = snapshot?.renderPlan ?? body?.renderPlan;
     const renderPlan = normalizeRenderPlan(rawPlan, source.sourceDurationSec);
+    let musicFilePath: string | null = null;
+    if (body?.channelId && renderPlan.musicAssetId) {
+      const musicAsset = await getChannelAssetById(body.channelId, renderPlan.musicAssetId);
+      if (musicAsset) {
+        const musicFile = await readChannelAssetFile({
+          channelId: body.channelId,
+          fileName: musicAsset.fileName
+        });
+        if (musicFile) {
+          musicFilePath = musicFile.filePath;
+        }
+      }
+    }
 
     const previewKey = hashKey(
       JSON.stringify({
         sourceKey: source.sourceKey,
         clipStartSec: Number(clipStartSec.toFixed(3)),
         clipDurationSec: renderPlan.targetDurationSec,
-        renderPlan
+        renderPlan,
+        musicAssetId: renderPlan.musicAssetId
       })
     );
     const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);
@@ -262,6 +308,7 @@ export async function POST(request: Request): Promise<Response> {
             clipStartSec,
             clipDurationSec: renderPlan.targetDurationSec,
             renderPlan,
+            musicFilePath,
             profile: "preview"
           });
           await fs.copyFile(prepared.preparedPath, previewPath);

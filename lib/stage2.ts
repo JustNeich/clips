@@ -140,10 +140,12 @@ type BuildStage2PromptInput = {
   omittedCommentsCount: number;
   frameDescriptions: string[];
   examplesJson: string;
+  systemPrompt?: string;
   userInstruction?: string | null;
 };
 
 export function buildStage2Prompt(input: BuildStage2PromptInput): string {
+  const systemPrompt = input.systemPrompt?.trim() || STAGE2_SYSTEM_PROMPT;
   const commentsPayload = input.comments.map((comment) => ({
     author: comment.author,
     likes: comment.likes,
@@ -154,7 +156,7 @@ export function buildStage2Prompt(input: BuildStage2PromptInput): string {
     "You must follow the SYSTEM PROMPT exactly.",
     "",
     "SYSTEM PROMPT:",
-    STAGE2_SYSTEM_PROMPT,
+    systemPrompt,
     "",
     "TASK CONTEXT:",
     `Source URL: ${input.sourceUrl}`,

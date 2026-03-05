@@ -5,6 +5,8 @@ import { Stage2Response } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 
 type Step2PickCaptionProps = {
+  channelName?: string | null;
+  channelUsername?: string | null;
   stage2: Stage2Response | null;
   stageCreatedAt: string | null;
   instruction: string;
@@ -28,6 +30,8 @@ function formatDate(value: string): string {
 }
 
 export function Step2PickCaption({
+  channelName,
+  channelUsername,
   stage2,
   stageCreatedAt,
   instruction,
@@ -72,6 +76,12 @@ export function Step2PickCaption({
             <p className="kicker">Step 2</p>
             <h2>Pick</h2>
             <p>Run Stage 2, compare all options at once, then choose one for render.</p>
+            {channelName ? (
+              <p className="subtle-text">
+                Channel: <strong>{channelName}</strong>
+                {channelUsername ? ` (@${channelUsername})` : ""}
+              </p>
+            ) : null}
           </header>
 
           <section className="control-card">

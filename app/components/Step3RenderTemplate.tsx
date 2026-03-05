@@ -8,7 +8,7 @@ import {
   useState,
   type MutableRefObject
 } from "react";
-import { Stage3Version } from "./types";
+import { ChannelAsset, Stage3Version } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 import {
   SCIENCE_CARD,
@@ -18,9 +18,17 @@ import {
 
 type Step3RenderTemplateProps = {
   sourceUrl: string | null;
+  templateId: string;
+  channelName: string;
+  channelUsername: string;
+  avatarUrl: string | null;
   previewVideoUrl: string | null;
   backgroundAssetUrl: string | null;
   backgroundAssetMimeType: string | null;
+  backgroundOptions: ChannelAsset[];
+  musicOptions: ChannelAsset[];
+  selectedBackgroundAssetId: string | null;
+  selectedMusicAssetId: string | null;
   versions: Stage3Version[];
   selectedVersionId: string | null;
   selectedPassIndex: number;
@@ -41,7 +49,11 @@ type Step3RenderTemplateProps = {
   onOptimize: () => void;
   onReset: () => void;
   onUploadBackground: (file: File) => Promise<void>;
+  onUploadMusic: (file: File) => Promise<void>;
   onClearBackground: () => void;
+  onClearMusic: () => void;
+  onSelectBackgroundAssetId: (value: string | null) => void;
+  onSelectMusicAssetId: (value: string | null) => void;
   onSelectVersionId: (runId: string) => void;
   onSelectPassIndex: (index: number) => void;
   onAgentPromptChange: (value: string) => void;
@@ -177,9 +189,17 @@ function PreviewClipVideo({
 
 export function Step3RenderTemplate({
   sourceUrl,
+  templateId,
+  channelName,
+  channelUsername,
+  avatarUrl,
   previewVideoUrl,
   backgroundAssetUrl,
   backgroundAssetMimeType,
+  backgroundOptions,
+  musicOptions,
+  selectedBackgroundAssetId,
+  selectedMusicAssetId,
   versions,
   selectedVersionId,
   selectedPassIndex,
@@ -200,7 +220,11 @@ export function Step3RenderTemplate({
   onOptimize,
   onReset,
   onUploadBackground,
+  onUploadMusic,
   onClearBackground,
+  onClearMusic,
+  onSelectBackgroundAssetId,
+  onSelectMusicAssetId,
   onSelectVersionId,
   onSelectPassIndex,
   onAgentPromptChange,
@@ -559,9 +583,12 @@ export function Step3RenderTemplate({
           <section className="control-card">
             <div className="template-inline">
               <span className="badge">Template</span>
-              <strong>Science Card v1</strong>
-              <span className="subtle-text mono">{STAGE3_TEMPLATE_ID}</span>
+              <strong>{templateId === STAGE3_TEMPLATE_ID ? "Science Card v1" : templateId}</strong>
+              <span className="subtle-text mono">{templateId}</span>
             </div>
+            <p className="subtle-text">
+              Channel brand: <strong>{channelName}</strong> (@{channelUsername})
+            </p>
             <div className="background-upload-row">
               <label className="btn btn-ghost background-upload-btn">
                 <input
@@ -580,6 +607,18 @@ export function Step3RenderTemplate({
                 />
                 {isUploadingBackground ? "Uploading..." : "Upload background"}
               </label>
+              <select
+                className="text-input"
+                value={selectedBackgroundAssetId ?? ""}
+                onChange={(event) => onSelectBackgroundAssetId(event.target.value || null)}
+              >
+                <option value="">Blur source background</option>
+                {backgroundOptions.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.originalName}
+                  </option>
+                ))}
+              </select>
               {backgroundAssetUrl ? (
                 <button
                   type="button"
@@ -596,6 +635,42 @@ export function Step3RenderTemplate({
                 ? `Кастомный фон: ${(backgroundAssetMimeType ?? "asset").toLowerCase()}`
                 : "Фон по умолчанию: blur исходного видео."}
             </p>
+            <div className="background-upload-row">
+              <label className="btn btn-ghost background-upload-btn">
+                <input
+                  type="file"
+                  accept="audio/*"
+                  className="background-upload-input"
+                  disabled={isUploadingBackground}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                      return;
+                    }
+                    void onUploadMusic(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                Upload music
+              </label>
+              <select
+                className="text-input"
+                value={selectedMusicAssetId ?? ""}
+                onChange={(event) => onSelectMusicAssetId(event.target.value || null)}
+              >
+                <option value="">No music</option>
+                {musicOptions.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.originalName}
+                  </option>
+                ))}
+              </select>
+              {selectedMusicAssetId ? (
+                <button type="button" className="btn btn-ghost" onClick={onClearMusic}>
+                  Clear music
+                </button>
+              ) : null}
+            </div>
           </section>
 
           <section className="control-card">
@@ -966,10 +1041,13 @@ export function Step3RenderTemplate({
                               width: SCIENCE_CARD.author.avatarSize,
                               height: SCIENCE_CARD.author.avatarSize,
                               borderWidth: SCIENCE_CARD.author.avatarBorder,
-                              fontSize: Math.round(SCIENCE_CARD.author.avatarSize * 0.32)
+                              fontSize: Math.round(SCIENCE_CARD.author.avatarSize * 0.32),
+                              backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
+                              backgroundSize: avatarUrl ? "cover" : undefined,
+                              backgroundPosition: avatarUrl ? "center" : undefined
                             }}
                           >
-                            SS
+                            {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
                           </div>
                           <div className="preview-author-copy">
                             <div className="preview-author-name-row">
@@ -980,7 +1058,7 @@ export function Step3RenderTemplate({
                                   lineHeight: SCIENCE_CARD.typography.authorName.lineHeight
                                 }}
                               >
-                                {SCIENCE_CARD.author.name}
+                                {channelName}
                               </span>
                               <span
                                 className="preview-author-check"
@@ -995,13 +1073,13 @@ export function Step3RenderTemplate({
                             </div>
                             <span
                               className="preview-author-handle"
-                              style={{
-                                fontSize: SCIENCE_CARD.typography.authorHandle.font,
-                                lineHeight: SCIENCE_CARD.typography.authorHandle.lineHeight
-                              }}
-                            >
-                              {SCIENCE_CARD.author.handle}
-                            </span>
+                                style={{
+                                  fontSize: SCIENCE_CARD.typography.authorHandle.font,
+                                  lineHeight: SCIENCE_CARD.typography.authorHandle.lineHeight
+                                }}
+                              >
+                                @{channelUsername}
+                              </span>
                           </div>
                         </div>
 

@@ -2,13 +2,15 @@ import { createOrGetChatByUrl, listChats } from "../../../lib/chat-history";
 
 export const runtime = "nodejs";
 
-export async function GET(): Promise<Response> {
-  const chats = await listChats();
+export async function GET(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const channelId = url.searchParams.get("channelId")?.trim() || undefined;
+  const chats = await listChats(channelId);
   return Response.json({ chats }, { status: 200 });
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as { url?: string } | null;
+  const body = (await request.json().catch(() => null)) as { url?: string; channelId?: string } | null;
   const url = body?.url?.trim() ?? "";
   if (!url) {
     return Response.json({ error: "Передайте url." }, { status: 400 });
@@ -22,6 +24,6 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Некорректный URL." }, { status: 400 });
   }
 
-  const chat = await createOrGetChatByUrl(url);
+  const chat = await createOrGetChatByUrl(url, body?.channelId?.trim());
   return Response.json({ chat }, { status: 200 });
 }

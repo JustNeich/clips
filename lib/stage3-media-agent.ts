@@ -527,41 +527,46 @@ async function mixMusicIfNeeded(params: {
   tmpDir: string;
   durationSec: number;
   audioMode: "source_only" | "source_plus_music";
+  musicFilePath?: string | null;
 }): Promise<string> {
   if (params.audioMode !== "source_plus_music") {
     return params.inputPath;
   }
 
   const withAudio = await ensureAudioTrack(params.inputPath, params.tmpDir, params.durationSec);
-  const musicPath = path.join(params.tmpDir, "music-bed.wav");
+  const generatedMusicPath = path.join(params.tmpDir, "music-bed.wav");
   const output = path.join(params.tmpDir, "clip-music.mp4");
 
-  await execFileAsync(
-    "ffmpeg",
-    [
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      `sine=frequency=220:sample_rate=48000:duration=${params.durationSec},volume=0.025`,
-      "-f",
-      "lavfi",
-      "-i",
-      `sine=frequency=330:sample_rate=48000:duration=${params.durationSec},volume=0.018`,
-      "-filter_complex",
-      "[0:a][1:a]amix=inputs=2:normalize=0,afade=t=in:st=0:d=0.25,afade=t=out:st=5.4:d=0.6[m]",
-      "-map",
-      "[m]",
-      "-c:a",
-      "aac",
-      "-ar",
-      "48000",
-      "-ac",
-      "2",
-      musicPath
-    ],
-    { timeout: 60_000, maxBuffer: 1024 * 1024 * 8 }
-  );
+  let musicInputPath = params.musicFilePath ?? null;
+  if (!musicInputPath) {
+    await execFileAsync(
+      "ffmpeg",
+      [
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        `sine=frequency=220:sample_rate=48000:duration=${params.durationSec},volume=0.025`,
+        "-f",
+        "lavfi",
+        "-i",
+        `sine=frequency=330:sample_rate=48000:duration=${params.durationSec},volume=0.018`,
+        "-filter_complex",
+        "[0:a][1:a]amix=inputs=2:normalize=0,afade=t=in:st=0:d=0.25,afade=t=out:st=5.4:d=0.6[m]",
+        "-map",
+        "[m]",
+        "-c:a",
+        "aac",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        generatedMusicPath
+      ],
+      { timeout: 60_000, maxBuffer: 1024 * 1024 * 8 }
+    );
+    musicInputPath = generatedMusicPath;
+  }
 
   await execFileAsync(
     "ffmpeg",
@@ -569,10 +574,12 @@ async function mixMusicIfNeeded(params: {
       "-y",
       "-i",
       withAudio,
+      "-stream_loop",
+      "-1",
       "-i",
-      musicPath,
+      musicInputPath,
       "-filter_complex",
-      "[0:a]volume=1.0[a0];[1:a]volume=0.65[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]",
+      `[1:a]atrim=duration=${params.durationSec},asetpts=N/SR/TB[mus];[0:a]volume=1.0[a0];[mus]volume=0.65[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]`,
       "-map",
       "0:v:0",
       "-map",
@@ -602,6 +609,7 @@ export async function prepareStage3SourceClip(params: {
   clipStartSec: number;
   clipDurationSec: number;
   renderPlan: Stage3RenderPlan;
+  musicFilePath?: string | null;
   profile?: Stage3MediaProfile;
 }): Promise<{ preparedPath: string; clipStartSec: number; clipDurationSec: number }> {
   const profile = params.profile ?? "render";
@@ -626,7 +634,8 @@ export async function prepareStage3SourceClip(params: {
     inputPath: fitted,
     tmpDir: params.tmpDir,
     durationSec: params.renderPlan.targetDurationSec,
-    audioMode: params.renderPlan.audioMode
+    audioMode: params.renderPlan.audioMode,
+    musicFilePath: params.musicFilePath
   });
 
   const finalPath = path.join(params.tmpDir, "source.mp4");
