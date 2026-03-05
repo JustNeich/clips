@@ -527,6 +527,7 @@ async function mixMusicIfNeeded(params: {
   tmpDir: string;
   durationSec: number;
   audioMode: "source_only" | "source_plus_music";
+  musicGain?: number;
   musicFilePath?: string | null;
 }): Promise<string> {
   if (params.audioMode !== "source_plus_music") {
@@ -536,6 +537,7 @@ async function mixMusicIfNeeded(params: {
   const withAudio = await ensureAudioTrack(params.inputPath, params.tmpDir, params.durationSec);
   const generatedMusicPath = path.join(params.tmpDir, "music-bed.wav");
   const output = path.join(params.tmpDir, "clip-music.mp4");
+  const musicGain = clampNumber(params.musicGain ?? 0.65, 0, 1);
 
   let musicInputPath = params.musicFilePath ?? null;
   if (!musicInputPath) {
@@ -579,7 +581,7 @@ async function mixMusicIfNeeded(params: {
       "-i",
       musicInputPath,
       "-filter_complex",
-      `[1:a]atrim=duration=${params.durationSec},asetpts=N/SR/TB[mus];[0:a]volume=1.0[a0];[mus]volume=0.65[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]`,
+      `[1:a]atrim=duration=${params.durationSec},asetpts=N/SR/TB[mus];[0:a]volume=1.0[a0];[mus]volume=${musicGain.toFixed(3)}[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0[a]`,
       "-map",
       "0:v:0",
       "-map",
@@ -635,6 +637,7 @@ export async function prepareStage3SourceClip(params: {
     tmpDir: params.tmpDir,
     durationSec: params.renderPlan.targetDurationSec,
     audioMode: params.renderPlan.audioMode,
+    musicGain: params.renderPlan.musicGain,
     musicFilePath: params.musicFilePath
   });
 

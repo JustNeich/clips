@@ -8,6 +8,7 @@ type ScienceCardV1Props = {
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  videoZoom: number;
   authorName: string;
   authorHandle: string;
   avatarAssetFileName?: string | null;
@@ -202,6 +203,7 @@ export function ScienceCardV1({
   clipStartSec,
   clipDurationSec,
   focusY,
+  videoZoom,
   authorName,
   authorHandle,
   avatarAssetFileName,
@@ -220,6 +222,7 @@ export function ScienceCardV1({
   const clipFrames = Math.max(1, Math.round(clipDurationSec * fps));
   const endAt = startFrom + clipFrames;
   const objectPosition = `50% ${Math.round(Math.min(88, Math.max(12, focusY * 100)))}%`;
+  const normalizedZoom = Math.min(1.6, Math.max(1, Number.isFinite(videoZoom) ? videoZoom : 1));
 
   return (
     <AbsoluteFill
@@ -324,7 +327,9 @@ export function ScienceCardV1({
               width: SCIENCE_CARD.card.width,
               height: computed.videoHeight,
               objectFit: "cover",
-              objectPosition
+              objectPosition,
+              transform: `scale(${normalizedZoom})`,
+              transformOrigin: "center center"
             }}
             volume={1}
           />

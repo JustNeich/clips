@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import {
   Stage3AgentPass,
   Stage3AudioMode,
+  Stage3Operation,
   Stage3RenderPlan,
   Stage3RenderPolicy,
   Stage3Segment,
   Stage3StateSnapshot,
+  Stage3TextPolicy,
   Stage3TimingMode,
   Stage3Version
 } from "../app/components/types";
@@ -22,9 +24,11 @@ export type {
 } from "../app/components/types";
 
 const TARGET_DURATION_SEC = 6 as const;
-const MAX_PASSES = 8;
-const SCORE_STOP_THRESHOLD = 88;
-const SCORE_EPSILON = 0.35;
+const MAX_PASSES = 12;
+const SCORE_STOP_THRESHOLD = 91;
+const SCORE_EPSILON = 0.45;
+const MAX_ALLOWED_DEGRADE = 3;
+const DEFAULT_ZOOM = 1.2;
 
 type BuildStage3VersionInput = {
   versionNo: number;
@@ -45,6 +49,7 @@ type EvaluationContext = {
   sourceDurationSec: number | null;
   autoClipStartSec: number;
   autoFocusY: number;
+  userIntent: Stage3UserIntent;
 };
 
 type EvaluatedScore = {
@@ -54,6 +59,60 @@ type EvaluatedScore = {
   actionCoverage: number;
   instructionCompliance: number;
   renderStability: number;
+};
+
+type Stage3UserIntent = {
+  zoomRequested: boolean;
+  zoomValue: number | null;
+  actionOnly: boolean;
+  segments: Stage3Segment[];
+  timingMode: Stage3TimingMode | null;
+  audioMode: Stage3AudioMode | null;
+  smoothSlowMo: boolean;
+  noZoom: boolean;
+};
+
+type PlannerResult = {
+  summary: string;
+  operations: Stage3Operation[];
+  intent?: Partial<{
+    zoomRequested: boolean;
+    zoomValue: number | null;
+    actionOnly: boolean;
+    segmentsRequested: number;
+    timingMode: Stage3TimingMode | null;
+    audioMode: Stage3AudioMode | null;
+  }>;
+};
+
+type OptimizeStage3VersionInput = BuildStage3VersionInput & {
+  planner?: ((input: {
+    passIndex: number;
+    maxPasses: number;
+    snapshot: Stage3StateSnapshot;
+    scoreBefore: EvaluatedScore;
+    prompt: string;
+    sourceDurationSec: number | null;
+    lastPassSummary?: string | null;
+    userIntent: Stage3UserIntent;
+  }) => Promise<PlannerResult>) | null;
+  model?: string;
+  reasoningEffort?: string;
+};
+
+export type OptimizeStage3VersionOutput = {
+  changed: boolean;
+  version?: Stage3Version;
+  noOpReason?: string;
+  suggestions?: string[];
+  intent: {
+    zoomRequested: boolean;
+    zoomValue: number | null;
+    actionOnly: boolean;
+    segmentsRequested: number;
+    timingMode: Stage3TimingMode | null;
+    audioMode: Stage3AudioMode | null;
+  };
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -78,10 +137,32 @@ function parseTimecode(value: string): number | null {
   return min * 60 + sec + tenth / 10;
 }
 
-function parseSegmentsFromPrompt(
-  prompt: string,
+function normalizeSegment(
+  segment: Stage3Segment,
   sourceDurationSec: number | null
-): Stage3Segment[] {
+): Stage3Segment | null {
+  const start = Number.isFinite(segment.startSec) ? Math.max(0, segment.startSec) : null;
+  if (start === null) {
+    return null;
+  }
+  const endCandidate =
+    segment.endSec === null
+      ? sourceDurationSec
+      : Number.isFinite(segment.endSec)
+        ? segment.endSec
+        : null;
+  const end = endCandidate === null ? null : Math.max(start + 0.05, endCandidate);
+  return {
+    startSec: start,
+    endSec: end,
+    label:
+      typeof segment.label === "string" && segment.label.trim()
+        ? segment.label.trim()
+        : `${start.toFixed(2)}-${end === null ? "end" : end.toFixed(2)}`
+  };
+}
+
+function parseSegmentsFromPrompt(prompt: string, sourceDurationSec: number | null): Stage3Segment[] {
   const normalized = prompt.toLowerCase();
   const segments: Stage3Segment[] = [];
   const pattern = /(\d{1,2}:\d{2}(?:\.\d)?)\s*-\s*(\d{1,2}:\d{2}(?:\.\d)?|конец|end)/g;
@@ -106,8 +187,7 @@ function parseSegmentsFromPrompt(
   while (secMatch) {
     const startSec = Number.parseFloat(secMatch[1]);
     const endToken = secMatch[2];
-    const endSec =
-      endToken === "конец" || endToken === "end" ? sourceDurationSec : Number.parseFloat(endToken);
+    const endSec = endToken === "конец" || endToken === "end" ? sourceDurationSec : Number.parseFloat(endToken);
     if (Number.isFinite(startSec)) {
       segments.push({
         startSec,
@@ -118,7 +198,9 @@ function parseSegmentsFromPrompt(
     secMatch = secondsPattern.exec(normalized);
   }
 
-  return segments;
+  return segments
+    .map((segment) => normalizeSegment(segment, sourceDurationSec))
+    .filter((segment): segment is Stage3Segment => Boolean(segment));
 }
 
 function detectTimingMode(promptLower: string): Stage3TimingMode | null {
@@ -130,11 +212,7 @@ function detectTimingMode(promptLower: string): Stage3TimingMode | null {
   ) {
     return "stretch";
   }
-  if (
-    promptLower.includes("сжать") ||
-    promptLower.includes("ускор") ||
-    promptLower.includes("speed up")
-  ) {
+  if (promptLower.includes("сжать") || promptLower.includes("ускор") || promptLower.includes("speed up")) {
     return "compress";
   }
   return null;
@@ -161,9 +239,74 @@ function detectAudioMode(promptLower: string): Stage3AudioMode | null {
 function smoothSlowMoRequested(promptLower: string): boolean {
   return (
     promptLower.includes("плавный слоумо") ||
+    promptLower.includes("slow motion") ||
     promptLower.includes("smooth slowmo") ||
     promptLower.includes("smooth slow-mo")
   );
+}
+
+function parseZoomValue(promptLower: string): { requested: boolean; value: number | null; noZoom: boolean } {
+  const noZoom =
+    promptLower.includes("без зума") ||
+    promptLower.includes("убери зум") ||
+    promptLower.includes("zoom 1x") ||
+    promptLower.includes("no zoom");
+  if (noZoom) {
+    return { requested: true, value: 1, noZoom: true };
+  }
+
+  const requested =
+    promptLower.includes("зум") ||
+    promptLower.includes("zoom") ||
+    promptLower.includes("приблиз") ||
+    promptLower.includes("увелич");
+  if (!requested) {
+    return { requested: false, value: null, noZoom: false };
+  }
+
+  const mulMatch = promptLower.match(/x\s*(1(?:\.\d+)?|0?\.\d+)/i);
+  if (mulMatch?.[1]) {
+    const parsed = Number.parseFloat(mulMatch[1]);
+    if (Number.isFinite(parsed)) {
+      return { requested: true, value: clamp(parsed, 1, 1.6), noZoom: false };
+    }
+  }
+
+  const percentMatch = promptLower.match(/(\d{2,3})\s*%/);
+  if (percentMatch?.[1]) {
+    const parsed = Number.parseInt(percentMatch[1], 10);
+    if (Number.isFinite(parsed)) {
+      return { requested: true, value: clamp(parsed / 100, 1, 1.6), noZoom: false };
+    }
+  }
+
+  if (promptLower.includes("сильный зум") || promptLower.includes("strong zoom")) {
+    return { requested: true, value: 1.35, noZoom: false };
+  }
+  if (promptLower.includes("легкий зум") || promptLower.includes("slight zoom")) {
+    return { requested: true, value: 1.1, noZoom: false };
+  }
+  return { requested: true, value: DEFAULT_ZOOM, noZoom: false };
+}
+
+function parseUserIntent(prompt: string, sourceDurationSec: number | null): Stage3UserIntent {
+  const promptLower = prompt.trim().toLowerCase();
+  const zoom = parseZoomValue(promptLower);
+  const actionOnly =
+    promptLower.includes("только действия") ||
+    promptLower.includes("где происходят действия") ||
+    promptLower.includes("only action") ||
+    promptLower.includes("main action");
+  return {
+    zoomRequested: zoom.requested,
+    zoomValue: zoom.value,
+    actionOnly,
+    segments: parseSegmentsFromPrompt(promptLower, sourceDurationSec),
+    timingMode: detectTimingMode(promptLower),
+    audioMode: detectAudioMode(promptLower),
+    smoothSlowMo: smoothSlowMoRequested(promptLower),
+    noZoom: zoom.noZoom
+  };
 }
 
 function inferPolicyFromSourceDuration(sourceDurationSec: number | null): Stage3RenderPolicy {
@@ -179,6 +322,9 @@ function createDefaultRenderPlan(sourceDurationSec: number | null): Stage3Render
     timingMode: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC ? "stretch" : "auto",
     audioMode: "source_only",
     smoothSlowMo: false,
+    videoZoom: 1,
+    musicGain: 0.65,
+    textPolicy: "strict_fit",
     segments: [],
     policy: inferPolicyFromSourceDuration(sourceDurationSec),
     backgroundAssetId: null,
@@ -199,34 +345,10 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
   const timingMode = input?.timingMode;
   const audioMode = input?.audioMode;
   const policy = input?.policy;
+  const textPolicy = input?.textPolicy;
   const segments = Array.isArray(input?.segments)
     ? input.segments
-        .map((segment) => {
-          if (!segment || typeof segment !== "object") {
-            return null;
-          }
-          const startSec =
-            typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
-              ? segment.startSec
-              : null;
-          const endSec =
-            segment.endSec === null
-              ? null
-              : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
-                ? segment.endSec
-                : null;
-          if (startSec === null) {
-            return null;
-          }
-          return {
-            startSec,
-            endSec,
-            label:
-              typeof segment.label === "string" && segment.label.trim()
-                ? segment.label
-                : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`
-          };
-        })
+        .map((segment) => normalizeSegment(segment, sourceDurationSec))
         .filter((segment): segment is Stage3Segment => Boolean(segment))
     : [];
 
@@ -241,6 +363,18 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
         ? audioMode
         : defaultPlan.audioMode,
     smoothSlowMo: Boolean(input?.smoothSlowMo),
+    videoZoom:
+      typeof input?.videoZoom === "number" && Number.isFinite(input.videoZoom)
+        ? clamp(input.videoZoom, 1, 1.6)
+        : defaultPlan.videoZoom,
+    musicGain:
+      typeof input?.musicGain === "number" && Number.isFinite(input.musicGain)
+        ? clamp(input.musicGain, 0, 1)
+        : defaultPlan.musicGain,
+    textPolicy:
+      textPolicy === "strict_fit" || textPolicy === "preserve_words" || textPolicy === "aggressive_compact"
+        ? textPolicy
+        : defaultPlan.textPolicy,
     segments,
     policy:
       policy === "adaptive_window" || policy === "full_source_normalize" || policy === "fixed_segments"
@@ -283,53 +417,6 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
         ? input.templateId.trim()
         : defaultPlan.templateId,
     prompt: typeof input?.prompt === "string" ? input.prompt : defaultPlan.prompt
-  };
-}
-
-function buildPromptPlan(
-  prompt: string,
-  sourceDurationSec: number | null,
-  baselinePlan: Stage3RenderPlan
-): Stage3RenderPlan {
-  const promptNorm = prompt.trim();
-  const promptLower = promptNorm.toLowerCase();
-  const parsedSegments = parseSegmentsFromPrompt(promptNorm, sourceDurationSec);
-  const explicitTiming = detectTimingMode(promptLower);
-  const explicitAudio = detectAudioMode(promptLower);
-  const explicitSlowMo = smoothSlowMoRequested(promptLower);
-
-  const hasSegments = parsedSegments.length > 0;
-  let policy: Stage3RenderPolicy = hasSegments ? "fixed_segments" : inferPolicyFromSourceDuration(sourceDurationSec);
-
-  if (hasSegments) {
-    policy = "fixed_segments";
-  } else if (explicitTiming) {
-    policy = "full_source_normalize";
-  }
-
-  const timingMode: Stage3TimingMode =
-    explicitTiming ??
-    (sourceDurationSec !== null && sourceDurationSec <= TARGET_DURATION_SEC
-      ? "stretch"
-      : baselinePlan.timingMode);
-
-  return {
-    targetDurationSec: TARGET_DURATION_SEC,
-    timingMode,
-    audioMode: explicitAudio ?? baselinePlan.audioMode,
-    smoothSlowMo: explicitSlowMo || (timingMode === "stretch" && baselinePlan.smoothSlowMo),
-    segments: hasSegments ? parsedSegments : baselinePlan.segments,
-    policy,
-    backgroundAssetId: baselinePlan.backgroundAssetId,
-    backgroundAssetMimeType: baselinePlan.backgroundAssetMimeType,
-    musicAssetId: baselinePlan.musicAssetId,
-    musicAssetMimeType: baselinePlan.musicAssetMimeType,
-    avatarAssetId: baselinePlan.avatarAssetId,
-    avatarAssetMimeType: baselinePlan.avatarAssetMimeType,
-    authorName: baselinePlan.authorName,
-    authorHandle: baselinePlan.authorHandle,
-    templateId: baselinePlan.templateId,
-    prompt: promptNorm
   };
 }
 
@@ -432,30 +519,33 @@ function estimateOutputDuration(snapshot: Stage3StateSnapshot): number {
   return target;
 }
 
-function evaluateInstructionCompliance(snapshot: Stage3StateSnapshot, promptLower: string): number {
+function evaluateInstructionCompliance(
+  snapshot: Stage3StateSnapshot,
+  promptLower: string,
+  intent: Stage3UserIntent
+): number {
   if (!promptLower.trim()) {
     return 0;
   }
   let penalty = 0;
-  const hasFragmentsInstruction =
-    /\d{1,2}:\d{2}(?:\.\d)?\s*-\s*(?:\d{1,2}:\d{2}(?:\.\d)?|конец|end)/.test(promptLower);
-  if (hasFragmentsInstruction && snapshot.renderPlan.segments.length === 0) {
+  if (intent.segments.length > 0 && snapshot.renderPlan.segments.length === 0) {
     penalty += 22;
   }
-  if ((promptLower.includes("сжать") || promptLower.includes("ускор")) && snapshot.renderPlan.timingMode !== "compress") {
+  if (intent.timingMode && snapshot.renderPlan.timingMode !== intent.timingMode) {
     penalty += 14;
   }
-  if ((promptLower.includes("растянуть") || promptLower.includes("слоумо")) && snapshot.renderPlan.timingMode !== "stretch") {
-    penalty += 14;
-  }
-  if ((promptLower.includes("только звук") || promptLower.includes("отключить музыку")) && snapshot.renderPlan.audioMode !== "source_only") {
+  if (intent.audioMode && snapshot.renderPlan.audioMode !== intent.audioMode) {
     penalty += 16;
   }
-  if (
-    (promptLower.includes("звук + музыка") || promptLower.includes("звук+музыка") || promptLower.includes("звук и музыка")) &&
-    snapshot.renderPlan.audioMode !== "source_plus_music"
-  ) {
-    penalty += 16;
+  if (intent.zoomRequested) {
+    const expectedZoom = intent.zoomValue ?? DEFAULT_ZOOM;
+    if (Math.abs(snapshot.renderPlan.videoZoom - expectedZoom) > 0.04) {
+      penalty += 12;
+    }
+  }
+  if (intent.actionOnly) {
+    const dist = Math.abs(snapshot.clipStartSec) + Math.abs(snapshot.focusY - 0.5) * 2.4;
+    penalty += clamp(dist * 1.2, 0, 10);
   }
   return penalty;
 }
@@ -497,8 +587,7 @@ function evaluateScore(snapshot: Stage3StateSnapshot, context: EvaluationContext
   }
   if (snapshot.textFit.topFontPx < SCIENCE_CARD.typography.top.min) {
     textReadability +=
-      ((SCIENCE_CARD.typography.top.min - snapshot.textFit.topFontPx) / SCIENCE_CARD.typography.top.min) *
-      10;
+      ((SCIENCE_CARD.typography.top.min - snapshot.textFit.topFontPx) / SCIENCE_CARD.typography.top.min) * 10;
   }
   if (snapshot.textFit.bottomFontPx < SCIENCE_CARD.typography.bottom.min) {
     textReadability +=
@@ -509,9 +598,14 @@ function evaluateScore(snapshot: Stage3StateSnapshot, context: EvaluationContext
 
   const actionCoverage =
     Math.min(14, Math.abs(snapshot.clipStartSec - context.autoClipStartSec) * 1.8) +
-    Math.abs(snapshot.focusY - context.autoFocusY) * 18;
+    Math.abs(snapshot.focusY - context.autoFocusY) * 18 +
+    (context.userIntent.actionOnly && snapshot.renderPlan.videoZoom < 1.08 ? 6 : 0);
 
-  const instructionCompliance = evaluateInstructionCompliance(snapshot, context.promptLower);
+  const instructionCompliance = evaluateInstructionCompliance(
+    snapshot,
+    context.promptLower,
+    context.userIntent
+  );
   const renderStability = evaluateRenderStability(snapshot);
   const total = Math.max(
     0,
@@ -527,12 +621,55 @@ function evaluateScore(snapshot: Stage3StateSnapshot, context: EvaluationContext
   };
 }
 
+function hasMeaningfulMediaChange(before: Stage3StateSnapshot, after: Stage3StateSnapshot): boolean {
+  if (before.topText !== after.topText || before.bottomText !== after.bottomText) {
+    return true;
+  }
+  if (Math.abs(before.clipStartSec - after.clipStartSec) >= 0.01) {
+    return true;
+  }
+  if (Math.abs(before.focusY - after.focusY) >= 0.005) {
+    return true;
+  }
+  if (Math.abs(before.renderPlan.videoZoom - after.renderPlan.videoZoom) >= 0.01) {
+    return true;
+  }
+  if (Math.abs(before.renderPlan.musicGain - after.renderPlan.musicGain) >= 0.01) {
+    return true;
+  }
+  if (before.renderPlan.timingMode !== after.renderPlan.timingMode) {
+    return true;
+  }
+  if (before.renderPlan.audioMode !== after.renderPlan.audioMode) {
+    return true;
+  }
+  if (before.renderPlan.smoothSlowMo !== after.renderPlan.smoothSlowMo) {
+    return true;
+  }
+  if (before.renderPlan.policy !== after.renderPlan.policy) {
+    return true;
+  }
+  if (before.renderPlan.textPolicy !== after.renderPlan.textPolicy) {
+    return true;
+  }
+  if (JSON.stringify(before.renderPlan.segments) !== JSON.stringify(after.renderPlan.segments)) {
+    return true;
+  }
+  return false;
+}
+
 function snapshotToPass(args: {
   pass: number;
   label: string;
   summary: string;
   changes: string[];
   snapshot: Stage3StateSnapshot;
+  proposedOps: Stage3Operation[];
+  accepted: boolean;
+  scoreBefore: number;
+  scoreAfter: number;
+  delta: number;
+  rejectionReason?: string;
 }): Stage3AgentPass {
   const { snapshot } = args;
   return {
@@ -540,6 +677,12 @@ function snapshotToPass(args: {
     label: args.label,
     summary: args.summary,
     changes: args.changes,
+    proposedOps: args.proposedOps,
+    accepted: args.accepted,
+    scoreBefore: Number(args.scoreBefore.toFixed(2)),
+    scoreAfter: Number(args.scoreAfter.toFixed(2)),
+    delta: Number(args.delta.toFixed(2)),
+    rejectionReason: args.rejectionReason,
     topText: snapshot.topText,
     bottomText: snapshot.bottomText,
     topFontPx: snapshot.textFit.topFontPx,
@@ -554,96 +697,12 @@ function snapshotToPass(args: {
   };
 }
 
-function updatePlanFromPrompt(
-  snapshot: Stage3StateSnapshot,
-  promptPlan: Stage3RenderPlan
-): { next: Stage3StateSnapshot; changed: boolean; changes: string[] } {
-  const next = createSnapshot({
-    topText: snapshot.topText,
-    bottomText: snapshot.bottomText,
-    clipStartSec: snapshot.clipStartSec,
-    clipDurationSec: snapshot.clipDurationSec,
-    focusY: snapshot.focusY,
-    sourceDurationSec: snapshot.sourceDurationSec,
-    renderPlan: promptPlan
-  });
-  const changed = JSON.stringify(snapshot.renderPlan) !== JSON.stringify(next.renderPlan);
-  const changes: string[] = [];
-  if (changed) {
-    changes.push(`Политика монтажа: ${snapshot.renderPlan.policy} -> ${next.renderPlan.policy}.`);
-    if (snapshot.renderPlan.timingMode !== next.renderPlan.timingMode) {
-      changes.push(`Режим длительности: ${snapshot.renderPlan.timingMode} -> ${next.renderPlan.timingMode}.`);
-    }
-    if (snapshot.renderPlan.audioMode !== next.renderPlan.audioMode) {
-      changes.push(`Режим аудио: ${snapshot.renderPlan.audioMode} -> ${next.renderPlan.audioMode}.`);
-    }
-    if (snapshot.renderPlan.segments.length !== next.renderPlan.segments.length) {
-      changes.push(`Фрагменты: ${snapshot.renderPlan.segments.length} -> ${next.renderPlan.segments.length}.`);
-    }
-  }
-  return { next, changed, changes };
-}
-
-function adjustFraming(
-  snapshot: Stage3StateSnapshot,
-  autoClipStartSec: number,
-  autoFocusY: number
-): { next: Stage3StateSnapshot; changed: boolean; changes: string[] } {
-  let changed = false;
-  const next = createSnapshot({
-    ...snapshot,
-    clipStartSec: snapshot.clipStartSec,
-    clipDurationSec: snapshot.clipDurationSec,
-    focusY: snapshot.focusY,
-    sourceDurationSec: snapshot.sourceDurationSec,
-    renderPlan: snapshot.renderPlan
-  });
-  const changes: string[] = [];
-
-  if (Math.abs(snapshot.clipStartSec - autoClipStartSec) >= 0.08) {
-    next.clipStartSec = Math.max(0, autoClipStartSec);
-    changed = true;
-    changes.push(`Сдвиг старта клипа: ${snapshot.clipStartSec.toFixed(1)}с -> ${next.clipStartSec.toFixed(1)}с.`);
-  }
-  if (Math.abs(snapshot.focusY - autoFocusY) >= 0.01) {
-    next.focusY = clamp(autoFocusY, 0.12, 0.88);
-    changed = true;
-    changes.push(`Вертикальный фокус: ${Math.round(snapshot.focusY * 100)}% -> ${Math.round(next.focusY * 100)}%.`);
-  }
-
-  return { next, changed, changes };
-}
-
-function applyTextFit(snapshot: Stage3StateSnapshot): { next: Stage3StateSnapshot; changed: boolean; changes: string[] } {
-  const fit = computeTextFit(snapshot.topText, snapshot.bottomText);
-  const next = createSnapshot({
-    ...snapshot,
-    topText: fit.topText,
-    bottomText: fit.bottomText,
-    clipStartSec: snapshot.clipStartSec,
-    clipDurationSec: snapshot.clipDurationSec,
-    focusY: snapshot.focusY,
-    sourceDurationSec: snapshot.sourceDurationSec,
-    renderPlan: snapshot.renderPlan
-  });
-  const changed = fit.topText !== snapshot.topText || fit.bottomText !== snapshot.bottomText;
-  const changes: string[] = [];
-  if (changed) {
-    changes.push("Подогнал TOP/BOTTOM под реальные размеры слотов.");
-  }
-  if (fit.topCompacted || fit.bottomCompacted) {
-    changes.push("Сократил текст только в местах, где это нужно для полного влезания.");
-  } else {
-    changes.push("Текст полностью помещается без дополнительного сокращения.");
-  }
-  return { next, changed, changes };
-}
-
 function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): Stage3Version["diff"] {
   const textChanged = baseline.topText !== final.topText || baseline.bottomText !== final.bottomText;
   const framingChanged =
     Math.abs(baseline.clipStartSec - final.clipStartSec) >= 0.01 ||
-    Math.abs(baseline.focusY - final.focusY) >= 0.005;
+    Math.abs(baseline.focusY - final.focusY) >= 0.005 ||
+    Math.abs(baseline.renderPlan.videoZoom - final.renderPlan.videoZoom) >= 0.01;
   const timingChanged =
     baseline.renderPlan.timingMode !== final.renderPlan.timingMode ||
     baseline.renderPlan.policy !== final.renderPlan.policy ||
@@ -656,7 +715,7 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
     summary.push("Обновлены TOP/BOTTOM для стабильной читаемости.");
   }
   if (framingChanged) {
-    summary.push("Скорректирован фокус и момент старта клипа.");
+    summary.push("Скорректированы фокус/старт и масштаб видео-слота.");
   }
   if (segmentsChanged) {
     summary.push("Пересобран монтаж по фрагментам.");
@@ -665,7 +724,7 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
     summary.push("Обновлен режим длительности/темпа до ровно 6 секунд.");
   }
   if (audioChanged) {
-    summary.push("Изменен режим аудио (только source или source + music).");
+    summary.push("Изменен режим аудио (source/source+music).");
   }
   if (!summary.length) {
     summary.push("Существенных изменений не потребовалось, подтверждена стабильность рендера.");
@@ -680,8 +739,211 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
   };
 }
 
-export function buildStage3Version(input: BuildStage3VersionInput): Stage3Version {
+function normalizeSegmentsForPlan(
+  segments: Stage3Segment[],
+  sourceDurationSec: number | null
+): Stage3Segment[] {
+  return segments
+    .map((segment) => normalizeSegment(segment, sourceDurationSec))
+    .filter((segment): segment is Stage3Segment => Boolean(segment))
+    .slice(0, 12);
+}
+
+function applyOperations(
+  snapshot: Stage3StateSnapshot,
+  operations: Stage3Operation[],
+  sourceDurationSec: number | null
+): { next: Stage3StateSnapshot; changes: string[] } {
+  let nextTop = snapshot.topText;
+  let nextBottom = snapshot.bottomText;
+  let nextClipStart = snapshot.clipStartSec;
+  let nextFocus = snapshot.focusY;
+  const nextPlan: Stage3RenderPlan = normalizePlan(
+    { ...snapshot.renderPlan, prompt: snapshot.renderPlan.prompt },
+    sourceDurationSec
+  );
+  const changes: string[] = [];
+
+  for (const operation of operations) {
+    switch (operation.op) {
+      case "set_segments": {
+        nextPlan.segments = normalizeSegmentsForPlan(operation.segments, sourceDurationSec);
+        nextPlan.policy = nextPlan.segments.length > 0 ? "fixed_segments" : nextPlan.policy;
+        changes.push(`Фрагменты установлены: ${nextPlan.segments.length}.`);
+        break;
+      }
+      case "append_segment": {
+        const normalized = normalizeSegment(operation.segment, sourceDurationSec);
+        if (normalized) {
+          nextPlan.segments = normalizeSegmentsForPlan([...nextPlan.segments, normalized], sourceDurationSec);
+          if (nextPlan.segments.length > 0) {
+            nextPlan.policy = "fixed_segments";
+          }
+          changes.push("Добавлен фрагмент монтажа.");
+        }
+        break;
+      }
+      case "clear_segments":
+        if (nextPlan.segments.length > 0) {
+          nextPlan.segments = [];
+          if (nextPlan.policy === "fixed_segments") {
+            nextPlan.policy = inferPolicyFromSourceDuration(sourceDurationSec);
+          }
+          changes.push("Фрагменты очищены.");
+        }
+        break;
+      case "set_timing_mode":
+        if (nextPlan.timingMode !== operation.timingMode) {
+          changes.push(`Timing mode: ${nextPlan.timingMode} -> ${operation.timingMode}.`);
+          nextPlan.timingMode = operation.timingMode;
+        }
+        break;
+      case "set_audio_mode":
+        if (nextPlan.audioMode !== operation.audioMode) {
+          changes.push(`Audio mode: ${nextPlan.audioMode} -> ${operation.audioMode}.`);
+          nextPlan.audioMode = operation.audioMode;
+        }
+        break;
+      case "set_slowmo":
+        if (nextPlan.smoothSlowMo !== operation.smoothSlowMo) {
+          nextPlan.smoothSlowMo = operation.smoothSlowMo;
+          changes.push(`Slow-mo: ${operation.smoothSlowMo ? "on" : "off"}.`);
+        }
+        break;
+      case "set_clip_start":
+        nextClipStart = Math.max(0, operation.clipStartSec);
+        changes.push(`Смещение старта клипа до ${nextClipStart.toFixed(2)}с.`);
+        break;
+      case "set_focus_y":
+        nextFocus = clamp(operation.focusY, 0.12, 0.88);
+        changes.push(`Фокус Y: ${Math.round(nextFocus * 100)}%.`);
+        break;
+      case "set_video_zoom":
+        nextPlan.videoZoom = clamp(operation.videoZoom, 1, 1.6);
+        changes.push(`Zoom video slot: x${nextPlan.videoZoom.toFixed(2)}.`);
+        break;
+      case "set_music_gain":
+        nextPlan.musicGain = clamp(operation.musicGain, 0, 1);
+        changes.push(`Music gain: ${(nextPlan.musicGain * 100).toFixed(0)}%.`);
+        break;
+      case "set_text_policy":
+        nextPlan.textPolicy = operation.textPolicy;
+        changes.push(`Text policy: ${operation.textPolicy}.`);
+        break;
+      case "rewrite_top_text":
+        nextTop = normalizeText(operation.topText);
+        changes.push("TOP текст переписан.");
+        break;
+      case "rewrite_bottom_text":
+        nextBottom = normalizeText(operation.bottomText);
+        changes.push("BOTTOM текст переписан.");
+        break;
+      default:
+        break;
+    }
+  }
+
+  const next = createSnapshot({
+    topText: nextTop,
+    bottomText: nextBottom,
+    clipStartSec: nextClipStart,
+    clipDurationSec: snapshot.clipDurationSec,
+    focusY: nextFocus,
+    sourceDurationSec,
+    renderPlan: nextPlan
+  });
+  return { next, changes };
+}
+
+function inferHeuristicOperations(input: {
+  snapshot: Stage3StateSnapshot;
+  prompt: string;
+  intent: Stage3UserIntent;
+  autoClipStartSec: number;
+  autoFocusY: number;
+  sourceDurationSec: number | null;
+}): Stage3Operation[] {
+  const operations: Stage3Operation[] = [];
+  const promptNorm = input.prompt.trim();
+  if (!promptNorm) {
+    if (Math.abs(input.snapshot.clipStartSec - input.autoClipStartSec) >= 0.08) {
+      operations.push({ op: "set_clip_start", clipStartSec: input.autoClipStartSec });
+    }
+    if (Math.abs(input.snapshot.focusY - input.autoFocusY) >= 0.01) {
+      operations.push({ op: "set_focus_y", focusY: input.autoFocusY });
+    }
+    return operations;
+  }
+
+  if (input.intent.zoomRequested) {
+    operations.push({
+      op: "set_video_zoom",
+      videoZoom: input.intent.zoomValue ?? DEFAULT_ZOOM
+    });
+  }
+  if (input.intent.timingMode) {
+    operations.push({ op: "set_timing_mode", timingMode: input.intent.timingMode });
+  }
+  if (input.intent.audioMode) {
+    operations.push({ op: "set_audio_mode", audioMode: input.intent.audioMode });
+  }
+  if (input.intent.smoothSlowMo) {
+    operations.push({ op: "set_slowmo", smoothSlowMo: true });
+  }
+  if (input.intent.segments.length > 0) {
+    operations.push({
+      op: "set_segments",
+      segments: normalizeSegmentsForPlan(input.intent.segments, input.sourceDurationSec)
+    });
+  }
+  if (input.intent.actionOnly) {
+    operations.push({ op: "set_clip_start", clipStartSec: input.autoClipStartSec });
+    operations.push({ op: "set_focus_y", focusY: input.autoFocusY });
+    if (!input.intent.zoomRequested) {
+      operations.push({ op: "set_video_zoom", videoZoom: DEFAULT_ZOOM });
+    }
+  }
+
+  if (input.intent.noZoom) {
+    operations.push({ op: "set_video_zoom", videoZoom: 1 });
+  }
+
+  return operations;
+}
+
+function createNoOpSuggestions(intent: Stage3UserIntent): string[] {
+  const suggestions: string[] = [];
+  if (intent.zoomRequested) {
+    suggestions.push("Уточните силу зума, например: «zoom x1.35» или «легкий зум x1.1».");
+  }
+  if (intent.actionOnly && intent.segments.length === 0) {
+    suggestions.push("Добавьте конкретные интервалы: «0:00-0:02, 0:08-конец».");
+  }
+  if (intent.segments.length === 0 && !intent.zoomRequested && !intent.timingMode && !intent.audioMode) {
+    suggestions.push("Уточните задачу: длительность/фрагменты/аудио/зум.");
+  }
+  if (!suggestions.length) {
+    suggestions.push("Попробуйте дать более конкретную инструкцию по фрагментам, темпу или зуму.");
+  }
+  return suggestions;
+}
+
+function mergeOperations(primary: Stage3Operation[], secondary: Stage3Operation[]): Stage3Operation[] {
+  if (!primary.length) {
+    return secondary;
+  }
+  if (!secondary.length) {
+    return primary;
+  }
+  return [...primary, ...secondary].slice(0, 12);
+}
+
+export async function optimizeStage3Version(
+  input: OptimizeStage3VersionInput
+): Promise<OptimizeStage3VersionOutput> {
   const baselinePlan = normalizePlan(input.currentSnapshot?.renderPlan, input.sourceDurationSec);
+  const prompt = input.prompt.trim();
+  const userIntent = parseUserIntent(prompt, input.sourceDurationSec);
   const baseline = createSnapshot({
     topText: normalizeText(input.currentSnapshot?.topText ?? input.topText),
     bottomText: normalizeText(input.currentSnapshot?.bottomText ?? input.bottomText),
@@ -693,97 +955,213 @@ export function buildStage3Version(input: BuildStage3VersionInput): Stage3Versio
       ? Number(input.currentSnapshot?.focusY)
       : input.manualFocusY,
     sourceDurationSec: input.sourceDurationSec,
-    renderPlan: baselinePlan
+    renderPlan: {
+      ...baselinePlan,
+      prompt
+    }
   });
 
-  const promptPlan = buildPromptPlan(input.prompt, input.sourceDurationSec, baseline.renderPlan);
-  const ctx: EvaluationContext = {
-    promptLower: input.prompt.trim().toLowerCase(),
+  const context: EvaluationContext = {
+    promptLower: prompt.toLowerCase(),
     sourceDurationSec: input.sourceDurationSec,
     autoClipStartSec: input.autoClipStartSec,
-    autoFocusY: input.autoFocusY
+    autoFocusY: input.autoFocusY,
+    userIntent
   };
 
   let current = baseline;
-  let currentScore = evaluateScore(current, ctx);
-  let stableCount = 0;
+  let currentScore = evaluateScore(current, context);
+  let lastPassSummary: string | null = null;
+  let acceptedPasses = 0;
+  let stagnantPasses = 0;
   const passes: Stage3AgentPass[] = [];
-  let passNo = 1;
+  let stoppedBy: NonNullable<Stage3Version["agentMeta"]>["stoppedBy"] = "max_pass";
 
-  const runOperation = (
-    summary: string,
-    operation: (snapshot: Stage3StateSnapshot) => { next: Stage3StateSnapshot; changed: boolean; changes: string[] }
-  ) => {
-    if (passNo > MAX_PASSES) {
-      return;
+  for (let passIndex = 1; passIndex <= MAX_PASSES; passIndex += 1) {
+    const heuristicOps =
+      passIndex === 1
+        ? inferHeuristicOperations({
+            snapshot: current,
+            prompt,
+            intent: userIntent,
+            autoClipStartSec: input.autoClipStartSec,
+            autoFocusY: input.autoFocusY,
+            sourceDurationSec: input.sourceDurationSec
+          })
+        : [];
+
+    let plannerSummary = "Heuristic pass.";
+    let plannerOps: Stage3Operation[] = [];
+    if (input.planner && prompt) {
+      try {
+        const planned = await input.planner({
+          passIndex,
+          maxPasses: MAX_PASSES,
+          snapshot: current,
+          scoreBefore: currentScore,
+          prompt,
+          sourceDurationSec: input.sourceDurationSec,
+          lastPassSummary,
+          userIntent
+        });
+        plannerSummary = planned.summary || plannerSummary;
+        plannerOps = planned.operations ?? [];
+      } catch (error) {
+        plannerSummary = error instanceof Error ? `Planner fallback: ${error.message}` : "Planner fallback.";
+      }
     }
-    const { next, changed, changes } = operation(current);
-    if (!changed) {
-      return;
+
+    const proposedOps = mergeOperations(heuristicOps, plannerOps);
+    if (!proposedOps.length) {
+      stoppedBy = acceptedPasses > 0 ? "epsilon" : "no_change";
+      break;
     }
-    const nextScore = evaluateScore(next, ctx);
-    const delta = nextScore.total - currentScore.total;
+
+    const scoreBefore = currentScore.total;
+    const { next, changes } = applyOperations(current, proposedOps, input.sourceDurationSec);
+    const scoreAfterResult = evaluateScore(next, context);
+    const scoreAfter = scoreAfterResult.total;
+    const delta = scoreAfter - scoreBefore;
+    const changed = hasMeaningfulMediaChange(current, next);
+    const forcedByInstruction = Boolean(prompt);
+    const accepted =
+      changed && (delta >= SCORE_EPSILON || (forcedByInstruction && delta >= -MAX_ALLOWED_DEGRADE));
+
+    if (accepted) {
+      acceptedPasses += 1;
+      current = next;
+      currentScore = scoreAfterResult;
+    }
+
     if (delta < SCORE_EPSILON) {
-      stableCount += 1;
+      stagnantPasses += 1;
     } else {
-      stableCount = 0;
+      stagnantPasses = 0;
     }
-    current = next;
-    currentScore = nextScore;
 
     passes.push(
       snapshotToPass({
-        pass: passNo,
-        label: `Проход ${passNo}`,
-        summary,
+        pass: passIndex,
+        label: `Проход ${passIndex}`,
+        summary: plannerSummary,
         changes: [
           ...changes,
-          `Оценка качества: ${nextScore.total.toFixed(1)} (duration ${nextScore.durationError.toFixed(1)}, text ${nextScore.textReadability.toFixed(1)}, action ${nextScore.actionCoverage.toFixed(1)}).`
+          `Оценка качества: ${scoreAfter.toFixed(1)} (duration ${scoreAfterResult.durationError.toFixed(1)}, text ${scoreAfterResult.textReadability.toFixed(1)}, action ${scoreAfterResult.actionCoverage.toFixed(1)}).`
         ],
-        snapshot: current
+        snapshot: accepted ? current : next,
+        proposedOps,
+        accepted,
+        scoreBefore,
+        scoreAfter,
+        delta,
+        rejectionReason: accepted
+          ? undefined
+          : !changed
+            ? "Pass не дал реального изменения кадра/монтажа."
+            : `Pass ухудшил score сильнее порога (${delta.toFixed(2)}).`
       })
     );
-    passNo += 1;
-  };
+    lastPassSummary = plannerSummary;
 
-  runOperation("Разобрал инструкцию и обновил монтажный план.", (snapshot) =>
-    updatePlanFromPrompt(snapshot, promptPlan)
-  );
-  runOperation("Скорректировал фокус и старт клипа по активности.", (snapshot) =>
-    adjustFraming(snapshot, input.autoClipStartSec, input.autoFocusY)
-  );
-  runOperation("Привел текст к стабильному отображению в шаблоне.", (snapshot) =>
-    applyTextFit(snapshot)
-  );
-
-  if (passNo <= MAX_PASSES && (stableCount < 2 || currentScore.total < SCORE_STOP_THRESHOLD)) {
-    const finalScore = evaluateScore(current, ctx);
-    passes.push(
-      snapshotToPass({
-        pass: passNo,
-        label: `Проход ${passNo}`,
-        summary: "Финальная валидация перед рендером.",
-        changes: [
-          "Проверил итоговую длительность, текстовую читаемость и покрытие действия в кадре.",
-          `Финальная оценка качества: ${finalScore.total.toFixed(1)}.`
-        ],
-        snapshot: current
-      })
-    );
+    if (currentScore.total >= SCORE_STOP_THRESHOLD) {
+      stoppedBy = "quality_threshold";
+      break;
+    }
+    if (stagnantPasses >= 2) {
+      stoppedBy = "epsilon";
+      break;
+    }
   }
 
-  const recommendedPass = passes.length ? passes[passes.length - 1].pass : 1;
-  const diff = createDiff(baseline, current);
+  const changed = hasMeaningfulMediaChange(baseline, current);
+  const builtVersion: Stage3Version = {
+    versionNo: Math.max(1, input.versionNo || 1),
+    runId: randomUUID().replace(/-/g, ""),
+    createdAt: new Date().toISOString(),
+    prompt,
+    baseline,
+    final: current,
+    diff: createDiff(baseline, current),
+    internalPasses: passes,
+    recommendedPass: passes.length ? passes[Math.max(0, passes.length - 1)].pass : 1,
+    agentMeta: {
+      model: input.model ?? "gpt-5.2",
+      reasoningEffort: input.reasoningEffort ?? "extra-high",
+      passesExecuted: passes.length,
+      acceptedPasses,
+      stoppedBy: changed ? stoppedBy : "no_change"
+    }
+  };
+
+  if (!changed) {
+    return {
+      changed: false,
+      version: builtVersion,
+      noOpReason:
+        "Агент не нашел pass с реальным улучшением. Текущая версия уже близка к оптимальной для этого запроса.",
+      suggestions: createNoOpSuggestions(userIntent),
+      intent: {
+        zoomRequested: userIntent.zoomRequested,
+        zoomValue: userIntent.zoomValue,
+        actionOnly: userIntent.actionOnly,
+        segmentsRequested: userIntent.segments.length,
+        timingMode: userIntent.timingMode,
+        audioMode: userIntent.audioMode
+      }
+    };
+  }
+
+  return {
+    changed: true,
+    version: builtVersion,
+    intent: {
+      zoomRequested: userIntent.zoomRequested,
+      zoomValue: userIntent.zoomValue,
+      actionOnly: userIntent.actionOnly,
+      segmentsRequested: userIntent.segments.length,
+      timingMode: userIntent.timingMode,
+      audioMode: userIntent.audioMode
+    }
+  };
+}
+
+// Legacy export used by older call-sites.
+export async function buildStage3Version(input: BuildStage3VersionInput): Promise<Stage3Version> {
+  const optimized = await optimizeStage3Version(input);
+  if (optimized.changed && optimized.version) {
+    return optimized.version;
+  }
+
+  const fallback = createSnapshot({
+    topText: normalizeText(input.currentSnapshot?.topText ?? input.topText),
+    bottomText: normalizeText(input.currentSnapshot?.bottomText ?? input.bottomText),
+    clipStartSec: Number.isFinite(input.currentSnapshot?.clipStartSec ?? NaN)
+      ? Number(input.currentSnapshot?.clipStartSec)
+      : input.manualClipStartSec,
+    clipDurationSec: TARGET_DURATION_SEC,
+    focusY: Number.isFinite(input.currentSnapshot?.focusY ?? NaN)
+      ? Number(input.currentSnapshot?.focusY)
+      : input.manualFocusY,
+    sourceDurationSec: input.sourceDurationSec,
+    renderPlan: normalizePlan(input.currentSnapshot?.renderPlan, input.sourceDurationSec)
+  });
 
   return {
     versionNo: Math.max(1, input.versionNo || 1),
     runId: randomUUID().replace(/-/g, ""),
     createdAt: new Date().toISOString(),
     prompt: input.prompt.trim(),
-    baseline,
-    final: current,
-    diff,
-    internalPasses: passes,
-    recommendedPass
+    baseline: fallback,
+    final: fallback,
+    diff: createDiff(fallback, fallback),
+    internalPasses: [],
+    recommendedPass: 1,
+    agentMeta: {
+      model: "gpt-5.2",
+      reasoningEffort: "extra-high",
+      passesExecuted: 0,
+      acceptedPasses: 0,
+      stoppedBy: "no_change"
+    }
   };
 }

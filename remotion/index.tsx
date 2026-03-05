@@ -8,6 +8,7 @@ export type ScienceCardV1Props = {
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  videoZoom: number;
   authorName: string;
   authorHandle: string;
   avatarAssetFileName?: string | null;
@@ -33,6 +34,7 @@ export const RemotionRoot = () => {
         clipStartSec: 0,
         clipDurationSec: 6,
         focusY: 0.5,
+        videoZoom: 1,
         authorName: "Science Snack",
         authorHandle: "@Science_Snack_1",
         avatarAssetFileName: null,

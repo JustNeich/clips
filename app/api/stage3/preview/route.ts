@@ -155,6 +155,20 @@ function normalizeRenderPlan(
         ? rawPlan.audioMode
         : "source_only",
     smoothSlowMo: Boolean(rawPlan?.smoothSlowMo),
+    videoZoom:
+      typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
+        ? Math.min(1.6, Math.max(1, rawPlan.videoZoom))
+        : 1,
+    musicGain:
+      typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)
+        ? Math.min(1, Math.max(0, rawPlan.musicGain))
+        : 0.65,
+    textPolicy:
+      rawPlan?.textPolicy === "strict_fit" ||
+      rawPlan?.textPolicy === "preserve_words" ||
+      rawPlan?.textPolicy === "aggressive_compact"
+        ? rawPlan.textPolicy
+        : "strict_fit",
     segments: Array.isArray(rawPlan?.segments)
       ? rawPlan.segments
           .map((segment) => {
@@ -276,7 +290,8 @@ export async function POST(request: Request): Promise<Response> {
         clipStartSec: Number(clipStartSec.toFixed(3)),
         clipDurationSec: renderPlan.targetDurationSec,
         renderPlan,
-        musicAssetId: renderPlan.musicAssetId
+        musicAssetId: renderPlan.musicAssetId,
+        musicGain: Number(renderPlan.musicGain.toFixed(3))
       })
     );
     const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);

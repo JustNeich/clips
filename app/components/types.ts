@@ -57,6 +57,12 @@ export type Stage3AgentPass = {
   label: string;
   summary: string;
   changes: string[];
+  proposedOps?: Stage3Operation[];
+  accepted?: boolean;
+  scoreBefore?: number;
+  scoreAfter?: number;
+  delta?: number;
+  rejectionReason?: string;
   topText: string;
   bottomText: string;
   topFontPx: number;
@@ -76,17 +82,37 @@ export type Stage3AudioMode = "source_only" | "source_plus_music";
 
 export type Stage3RenderPolicy = "full_source_normalize" | "adaptive_window" | "fixed_segments";
 
+export type Stage3TextPolicy = "strict_fit" | "preserve_words" | "aggressive_compact";
+
 export type Stage3Segment = {
   startSec: number;
   endSec: number | null;
   label: string;
 };
 
+export type Stage3Operation =
+  | { op: "set_segments"; segments: Stage3Segment[] }
+  | { op: "append_segment"; segment: Stage3Segment }
+  | { op: "clear_segments" }
+  | { op: "set_timing_mode"; timingMode: Stage3TimingMode }
+  | { op: "set_audio_mode"; audioMode: Stage3AudioMode }
+  | { op: "set_slowmo"; smoothSlowMo: boolean }
+  | { op: "set_clip_start"; clipStartSec: number }
+  | { op: "set_focus_y"; focusY: number }
+  | { op: "set_video_zoom"; videoZoom: number }
+  | { op: "set_music_gain"; musicGain: number }
+  | { op: "set_text_policy"; textPolicy: Stage3TextPolicy }
+  | { op: "rewrite_top_text"; topText: string }
+  | { op: "rewrite_bottom_text"; bottomText: string };
+
 export type Stage3RenderPlan = {
   targetDurationSec: 6;
   timingMode: Stage3TimingMode;
   audioMode: Stage3AudioMode;
   smoothSlowMo: boolean;
+  videoZoom: number;
+  musicGain: number;
+  textPolicy: Stage3TextPolicy;
   segments: Stage3Segment[];
   policy: Stage3RenderPolicy;
   backgroundAssetId: string | null;
@@ -134,11 +160,29 @@ export type Stage3Version = {
   };
   internalPasses: Stage3AgentPass[];
   recommendedPass: number;
+  agentMeta?: {
+    model: string;
+    reasoningEffort: string;
+    passesExecuted: number;
+    acceptedPasses: number;
+    stoppedBy: "quality_threshold" | "epsilon" | "max_pass" | "timeout" | "no_change";
+  };
 };
 
 export type Stage3OptimizeResponse = {
   optimization: {
-    version: Stage3Version;
+    changed: boolean;
+    version?: Stage3Version;
+    noOpReason?: string;
+    suggestions?: string[];
+    intent?: {
+      zoomRequested: boolean;
+      zoomValue: number | null;
+      actionOnly: boolean;
+      segmentsRequested: number;
+      timingMode: Stage3TimingMode | null;
+      audioMode: Stage3AudioMode | null;
+    };
     run?: Stage3OptimizationRun;
   };
 };

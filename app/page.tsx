@@ -122,6 +122,9 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     timingMode: "auto",
     audioMode: "source_only",
     smoothSlowMo: false,
+    videoZoom: 1,
+    musicGain: 0.65,
+    textPolicy: "strict_fit",
     segments: [],
     policy: "full_source_normalize",
     backgroundAssetId: null,
@@ -195,6 +198,20 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
         ? candidate.audioMode
         : base.audioMode,
     smoothSlowMo: Boolean(candidate?.smoothSlowMo ?? base.smoothSlowMo),
+    videoZoom:
+      typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
+        ? Math.min(1.6, Math.max(1, candidate.videoZoom))
+        : base.videoZoom,
+    musicGain:
+      typeof candidate?.musicGain === "number" && Number.isFinite(candidate.musicGain)
+        ? Math.min(1, Math.max(0, candidate.musicGain))
+        : base.musicGain,
+    textPolicy:
+      candidate?.textPolicy === "strict_fit" ||
+      candidate?.textPolicy === "preserve_words" ||
+      candidate?.textPolicy === "aggressive_compact"
+        ? candidate.textPolicy
+        : base.textPolicy,
     segments,
     policy:
       candidate?.policy === "adaptive_window" ||
@@ -1465,7 +1482,10 @@ export default function HomePage() {
 
       const response = await fetch("/api/stage3/optimize", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(codexSessionId ? { "x-codex-session-id": codexSessionId } : {})
+        },
         body: JSON.stringify({
           sourceUrl: chat.url,
           chatId: chat.id,
@@ -1484,14 +1504,28 @@ export default function HomePage() {
       }
 
       const body = (await response.json()) as Stage3OptimizeResponse;
-      const version = body.optimization.version;
+      const optimization = body.optimization;
+      const version = optimization.version;
       const passes = version?.internalPasses ?? [];
-      if (!version || !passes.length) {
-        throw new Error("Stage 3 optimization returned no version.");
+      if (!version) {
+        const suggestions = optimization.suggestions?.length
+          ? ` Подсказки: ${optimization.suggestions.join(" ")}`
+          : "";
+        const noOpMessage = optimization.noOpReason ?? "Stage 3 optimization returned no version.";
+        await appendEvent(chat.id, {
+          role: "assistant",
+          type: "note",
+          text: `Stage 3: ${noOpMessage}${suggestions}`
+        });
+        setStatusType("ok");
+        setStatus(`Без изменений. ${noOpMessage}${suggestions}`);
+        return;
       }
 
       const recommendedPass = version.recommendedPass ?? passes.length;
-      const recommendedIndex = Math.max(0, Math.min(passes.length - 1, recommendedPass - 1));
+      const recommendedIndex = passes.length
+        ? Math.max(0, Math.min(passes.length - 1, recommendedPass - 1))
+        : 0;
       const selected = passes[recommendedIndex] ?? null;
 
       setStage3SelectedVersionId(version.runId);
@@ -1508,7 +1542,9 @@ export default function HomePage() {
       await appendEvent(chat.id, {
         role: "assistant",
         type: "note",
-        text: `Stage 3 оптимизирован. Версия v${version.versionNo} готова: ${version.diff.summary.join(" ")}`,
+        text: optimization.changed
+          ? `Stage 3 оптимизирован. Версия v${version.versionNo} готова: ${version.diff.summary.join(" ")}`
+          : `Stage 3 без критичных изменений. Создана версия v${version.versionNo}: ${version.diff.summary.join(" ")}`,
         data: {
           kind: "stage3-version",
           version
@@ -1517,9 +1553,14 @@ export default function HomePage() {
 
       const compactedTop = selected?.topCompacted ? "TOP сжат" : "TOP без изменений";
       const compactedBottom = selected?.bottomCompacted ? "BOTTOM сжат" : "BOTTOM без изменений";
+      const suggestions = optimization.suggestions?.length
+        ? ` Подсказки: ${optimization.suggestions.join(" ")}`
+        : "";
       setStatusType("ok");
       setStatus(
-        `Версия v${version.versionNo} создана. ${compactedTop}, ${compactedBottom}. Внутренних проходов: ${passes.length}.`
+        optimization.changed
+          ? `Версия v${version.versionNo} создана. ${compactedTop}, ${compactedBottom}. Внутренних проходов: ${passes.length}.${suggestions}`
+          : `Версия v${version.versionNo} создана без заметных правок. ${optimization.noOpReason ?? "Текущее состояние уже стабильное."}${suggestions}`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Stage 3 optimization failed.";
@@ -2597,6 +2638,7 @@ export default function HomePage() {
           clipDurationSec={CLIP_DURATION_SEC}
           sourceDurationSec={sourceDurationSec}
           focusY={stage3FocusY}
+          videoZoom={stage3RenderPlan.videoZoom}
           isRendering={busyAction === "render"}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}

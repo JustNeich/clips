@@ -44,6 +44,7 @@ type Step3RenderTemplateProps = {
   clipDurationSec: number;
   sourceDurationSec: number | null;
   focusY: number;
+  videoZoom: number;
   onRender: () => void;
   onExport: () => void;
   onOptimize: () => void;
@@ -98,6 +99,7 @@ function PreviewClipVideo({
   clipDurationSec,
   className,
   objectPosition,
+  videoZoom,
   videoRef,
   isPlaying,
   loopEnabled,
@@ -108,6 +110,7 @@ function PreviewClipVideo({
   clipDurationSec: number;
   className: string;
   objectPosition?: string;
+  videoZoom?: number;
   videoRef: MutableRefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   loopEnabled: boolean;
@@ -182,7 +185,11 @@ function PreviewClipVideo({
       playsInline
       preload="metadata"
       onTimeUpdate={handleTimeUpdate}
-      style={objectPosition ? { objectPosition } : undefined}
+      style={{
+        ...(objectPosition ? { objectPosition } : {}),
+        transform: `scale(${Math.min(1.6, Math.max(1, videoZoom ?? 1)).toFixed(3)})`,
+        transformOrigin: "center center"
+      }}
     />
   );
 }
@@ -215,6 +222,7 @@ export function Step3RenderTemplate({
   clipDurationSec,
   sourceDurationSec,
   focusY,
+  videoZoom,
   onRender,
   onExport,
   onOptimize,
@@ -278,6 +286,7 @@ export function Step3RenderTemplate({
 
   const previewTopText = previewVersion?.final.topText ?? computed.top;
   const previewBottomText = previewVersion?.final.bottomText ?? computed.bottom;
+  const previewVideoZoom = clamp(previewVersion?.final.renderPlan.videoZoom ?? videoZoom ?? 1, 1, 1.6);
 
   const previewComputed = getScienceCardComputed(previewTopText, previewBottomText);
 
@@ -1005,6 +1014,7 @@ export function Step3RenderTemplate({
                             clipDurationSec={clipDurationSec}
                             className="preview-slot-video"
                             objectPosition={objectPosition}
+                            videoZoom={previewVideoZoom}
                             videoRef={slotPreviewRef}
                             isPlaying={isPlaying}
                             loopEnabled={loopEnabled}
