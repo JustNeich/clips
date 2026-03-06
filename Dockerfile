@@ -1,7 +1,6 @@
 FROM node:22-bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV NODE_ENV=production
 ENV APP_DATA_DIR=/var/data/app
 ENV CODEX_SESSIONS_DIR=/var/data/codex-sessions
 ENV CODEX_BIN=/usr/local/bin/codex
@@ -22,12 +21,15 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY . .
 
 RUN npx remotion browser ensure
 RUN npm run build
+RUN npm prune --omit=dev
+
+ENV NODE_ENV=production
 
 EXPOSE 10000
 
