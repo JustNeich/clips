@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { isSupportedUrl } from "../../../../lib/ytdlp";
+import { createYtDlpAuthContext, getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
 import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
 
 const execFileAsync = promisify(execFile);
@@ -31,9 +31,17 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const ytDlpPath = await requireRuntimeTool("ytDlp");
+    const ytDlpAuth = await createYtDlpAuthContext();
     const { stdout } = await execFileAsync(
       ytDlpPath,
-      ["--dump-single-json", "--skip-download", "--no-warnings", "--no-playlist", rawUrl],
+      [
+        ...ytDlpAuth.args,
+        "--dump-single-json",
+        "--skip-download",
+        "--no-warnings",
+        "--no-playlist",
+        rawUrl
+      ],
       { timeout: 60_000, maxBuffer: 1024 * 1024 * 8 }
     );
 
@@ -48,8 +56,18 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof Error && error.message.toLowerCase().includes("yt-dlp")) {
       return Response.json({ error: error.message }, { status: 503 });
     }
+    const stderr =
+      typeof error === "object" && error && "stderr" in error
+        ? String((error as { stderr?: string }).stderr ?? "")
+        : "";
     return Response.json(
-      { error: error instanceof Error ? error.message : "Не удалось получить duration." },
+      {
+        error: stderr
+          ? getYtDlpError(stderr)
+          : error instanceof Error
+            ? error.message
+            : "Не удалось получить duration."
+      },
       { status: 500 }
     );
   }

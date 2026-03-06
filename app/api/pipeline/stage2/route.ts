@@ -20,7 +20,12 @@ import {
   STAGE2_SYSTEM_PROMPT,
   validateStage2Output
 } from "../../../../lib/stage2";
-import { getYtDlpError, isSupportedUrl, sanitizeFileName } from "../../../../lib/ytdlp";
+import {
+  createYtDlpAuthContext,
+  getYtDlpError,
+  isSupportedUrl,
+  sanitizeFileName
+} from "../../../../lib/ytdlp";
 import { getChannelById, getChatById, getDefaultChannel } from "../../../../lib/chat-history";
 import {
   requireAuth,
@@ -47,7 +52,9 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   commentsExtractionFallbackUsed: boolean;
 }> {
   const outputTemplate = path.join(tmpDir, "video.%(ext)s");
+  const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
   const baseArgs = [
+    ...ytDlpAuth.args,
     "--no-playlist",
     "--no-warnings",
     "--write-info-json",

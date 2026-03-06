@@ -16,6 +16,10 @@ services:
         value: /var/data/codex-sessions
       - key: CODEX_BIN
         value: /usr/local/bin/codex
+      - key: YTDLP_COOKIES
+        sync: false
+      - key: YTDLP_COOKIES_PATH
+        sync: false
       - key: CODEX_STAGE2_MODEL
         value: gpt-5.2
       - key: CODEX_STAGE2_REASONING_EFFORT

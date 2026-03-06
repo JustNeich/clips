@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { normalizeComments, sortCommentsByPopularity } from "../../../lib/comments";
-import { getYtDlpError, isSupportedUrl } from "../../../lib/ytdlp";
+import { createYtDlpAuthContext, getYtDlpError, isSupportedUrl } from "../../../lib/ytdlp";
 import { requireRuntimeTool } from "../../../lib/runtime-capabilities";
 
 const execFileAsync = promisify(execFile);
@@ -32,8 +32,10 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const ytDlpPath = await requireRuntimeTool("ytDlp");
+    const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
     const outputTemplate = path.join(tmpDir, "metadata.%(ext)s");
     const args = [
+      ...ytDlpAuth.args,
       "--skip-download",
       "--no-playlist",
       "--no-warnings",

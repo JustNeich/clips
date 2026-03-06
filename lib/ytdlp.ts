@@ -1,3 +1,7 @@
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 const SUPPORTED_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -38,6 +42,53 @@ export function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "video";
 }
 
+export type YtDlpAuthContext = {
+  args: string[];
+  cleanup: () => Promise<void>;
+};
+
+function normalizeCookieSecret(value: string): string {
+  const trimmed = value.trim();
+  const normalized = trimmed.includes("\n") ? trimmed : trimmed.replace(/\\n/g, "\n");
+  return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
+}
+
+export async function createYtDlpAuthContext(tmpDir?: string): Promise<YtDlpAuthContext> {
+  const cookiesPath = process.env.YTDLP_COOKIES_PATH?.trim();
+  if (cookiesPath) {
+    return {
+      args: ["--cookies", cookiesPath],
+      cleanup: async () => {}
+    };
+  }
+
+  const cookiesRaw = process.env.YTDLP_COOKIES?.trim();
+  if (!cookiesRaw) {
+    return {
+      args: [],
+      cleanup: async () => {}
+    };
+  }
+
+  let ownedDir: string | null = null;
+  const targetDir = tmpDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), "yt-dlp-cookies-")));
+  if (!tmpDir) {
+    ownedDir = targetDir;
+  }
+
+  const filePath = path.join(targetDir, "cookies.txt");
+  await fs.writeFile(filePath, normalizeCookieSecret(cookiesRaw), "utf-8");
+
+  return {
+    args: ["--cookies", filePath],
+    cleanup: async () => {
+      if (ownedDir) {
+        await fs.rm(ownedDir, { recursive: true, force: true });
+      }
+    }
+  };
+}
+
 export function getYtDlpError(stderr: string): string {
   const normalized = stderr.toLowerCase();
 
@@ -52,6 +103,14 @@ export function getYtDlpError(stderr: string): string {
   }
   if (normalized.includes("private")) {
     return "Это приватное видео, скачать его нельзя.";
+  }
+  if (
+    normalized.includes("sign in to confirm you're not a bot") ||
+    normalized.includes("sign in to confirm you’re not a bot") ||
+    normalized.includes("cookies-from-browser") ||
+    normalized.includes("cookies for the authentication")
+  ) {
+    return "YouTube требует cookies. Задайте на сервере YTDLP_COOKIES_PATH или YTDLP_COOKIES и повторите.";
   }
   if (normalized.includes("login")) {
     return "Источник требует авторизацию. Публичные ссылки работают лучше.";

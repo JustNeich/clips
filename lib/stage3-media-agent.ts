@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { getTemplateComputed } from "./stage3-template";
-import { sanitizeFileName } from "./ytdlp";
+import { createYtDlpAuthContext, sanitizeFileName } from "./ytdlp";
 
 const execFileAsync = promisify(execFile);
 
@@ -124,7 +124,9 @@ export async function downloadSourceVideo(
   tmpDir: string
 ): Promise<{ filePath: string; fileName: string }> {
   const outputTemplate = path.join(tmpDir, "source.%(ext)s");
+  const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
   const args = [
+    ...ytDlpAuth.args,
     "--no-playlist",
     "--no-warnings",
     "--merge-output-format",

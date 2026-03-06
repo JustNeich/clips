@@ -3,7 +3,12 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { getYtDlpError, isSupportedUrl, sanitizeFileName } from "../../../lib/ytdlp";
+import {
+  createYtDlpAuthContext,
+  getYtDlpError,
+  isSupportedUrl,
+  sanitizeFileName
+} from "../../../lib/ytdlp";
 import { requireRuntimeTool } from "../../../lib/runtime-capabilities";
 
 const execFileAsync = promisify(execFile);
@@ -31,8 +36,10 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const ytDlpPath = await requireRuntimeTool("ytDlp");
+    const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
     const outputTemplate = path.join(tmpDir, "video.%(ext)s");
     const args = [
+      ...ytDlpAuth.args,
       "--no-playlist",
       "--no-warnings",
       "--merge-output-format",

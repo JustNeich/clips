@@ -171,6 +171,9 @@ cp .env.example .env.local
 3. Выберите `Starter` или выше
 4. Добавьте persistent disk на `/var/data`
 5. Добавьте `APP_BOOTSTRAP_SECRET`
+6. Если YouTube отвечает `Sign in to confirm you’re not a bot`, добавьте:
+   - `YTDLP_COOKIES_PATH=/var/data/yt-dlp/cookies.txt`
+   - или `YTDLP_COOKIES` с содержимым `cookies.txt`
 
 В репозитории уже есть:
 - `Dockerfile` с установкой `yt-dlp`, `ffmpeg`, `ffprobe` и `codex`

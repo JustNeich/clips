@@ -103,7 +103,7 @@ function parseRenderError(error: unknown): string {
     return "Ошибка ffmpeg/Remotion rendering. Проверьте ffmpeg и remotion runtime.";
   }
   if (lower.includes("yt-dlp")) {
-    return "Ошибка скачивания видео через yt-dlp.";
+    return getYtDlpError(message);
   }
   if (lower.includes("remotion")) {
     return message;
