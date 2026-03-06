@@ -430,6 +430,78 @@ select.text-input:focus {
   gap: 8px;
 }
 
+.codex-device-card {
+  width: min(520px, 100%);
+  margin-top: 4px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 92%, black);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.codex-device-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.codex-device-head strong {
+  font-size: 14px;
+}
+
+.codex-device-row {
+  display: grid;
+  gap: 6px;
+}
+
+.codex-device-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.codex-device-link {
+  text-decoration: none;
+}
+
+.codex-device-code {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0.08em;
+  font-size: 14px;
+}
+
+.codex-device-log {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px 12px;
+}
+
+.codex-device-log summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.codex-device-log pre {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .status-chip {
   height: 34px;
   border: 1px solid var(--border);
@@ -1947,6 +2019,11 @@ select.text-input:focus {
 
   .topbar-actions {
     justify-content: flex-start;
+  }
+
+  .codex-device-card {
+    width: 100%;
+    margin-left: 0;
   }
 
   .wizard-stepper {

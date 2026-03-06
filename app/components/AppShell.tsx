@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CodexDeviceAuth } from "./types";
 
 export type FlowStep = {
   id: 1 | 2 | 3;
@@ -45,10 +46,14 @@ type AppShellProps = {
   canConnectCodex: boolean;
   codexConnectBlockedReason?: string | null;
   codexStatusLabel?: string;
+  codexActionLabel?: string;
+  codexDeviceAuth?: CodexDeviceAuth | null;
   codexSecondaryActionLabel?: string | null;
   onConnectCodex: () => void;
   onRefreshCodex: () => void;
   onSecondaryCodexAction?: () => void;
+  onCopyCodexLoginUrl?: () => void;
+  onCopyCodexUserCode?: () => void;
   currentUserName: string | null;
   currentUserRole: string | null;
   workspaceName: string | null;
@@ -67,6 +72,21 @@ function getStepState(stepId: number, currentStep: number): "completed" | "curre
     return "current";
   }
   return "next";
+}
+
+function formatDeviceAuthStatus(status: CodexDeviceAuth["status"]): string {
+  switch (status) {
+    case "running":
+      return "Waiting for device auth";
+    case "done":
+      return "Device auth completed";
+    case "error":
+      return "Device auth failed";
+    case "canceled":
+      return "Device auth canceled";
+    default:
+      return "Device auth idle";
+  }
 }
 
 export function AppShell({
@@ -94,10 +114,14 @@ export function AppShell({
   canConnectCodex,
   codexConnectBlockedReason,
   codexStatusLabel,
+  codexActionLabel,
+  codexDeviceAuth,
   codexSecondaryActionLabel,
   onConnectCodex,
   onRefreshCodex,
   onSecondaryCodexAction,
+  onCopyCodexLoginUrl,
+  onCopyCodexUserCode,
   currentUserName,
   currentUserRole,
   workspaceName,
@@ -299,7 +323,7 @@ export function AppShell({
                 disabled={codexBusyConnect || !canConnectCodex}
                 title={!canConnectCodex ? codexConnectBlockedReason ?? undefined : undefined}
               >
-                {codexBusyConnect ? "Connecting..." : "Connect"}
+                {codexBusyConnect ? "Connecting..." : codexActionLabel ?? "Connect"}
               </button>
             ) : null}
             {canManageCodex && codexSecondaryActionLabel && onSecondaryCodexAction ? (
@@ -319,6 +343,61 @@ export function AppShell({
             <button type="button" className="btn btn-ghost" onClick={onLogout}>
               Logout
             </button>
+            {canManageCodex && codexDeviceAuth && (
+              codexDeviceAuth.status !== "idle" ||
+              Boolean(codexDeviceAuth.loginUrl) ||
+              Boolean(codexDeviceAuth.userCode) ||
+              Boolean(codexDeviceAuth.output.trim())
+            ) ? (
+              <section className="codex-device-card">
+                <div className="codex-device-head">
+                  <strong>Shared Codex Device Auth</strong>
+                  <span className="status-chip">{formatDeviceAuthStatus(codexDeviceAuth.status)}</span>
+                </div>
+                <p className="subtle-text">
+                  Run `Connect`, open the login URL, enter the code, then press `Refresh`.
+                </p>
+                {codexDeviceAuth.loginUrl ? (
+                  <div className="codex-device-row">
+                    <span className="field-label">Login URL</span>
+                    <div className="codex-device-actions">
+                      <a
+                        className="btn btn-secondary codex-device-link"
+                        href={codexDeviceAuth.loginUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open login page
+                      </a>
+                      {onCopyCodexLoginUrl ? (
+                        <button type="button" className="btn btn-ghost" onClick={onCopyCodexLoginUrl}>
+                          Copy URL
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+                {codexDeviceAuth.userCode ? (
+                  <div className="codex-device-row">
+                    <span className="field-label">User code</span>
+                    <div className="codex-device-actions">
+                      <code className="codex-device-code">{codexDeviceAuth.userCode}</code>
+                      {onCopyCodexUserCode ? (
+                        <button type="button" className="btn btn-ghost" onClick={onCopyCodexUserCode}>
+                          Copy code
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+                {codexDeviceAuth.output.trim() ? (
+                  <details className="codex-device-log">
+                    <summary>CLI output</summary>
+                    <pre>{codexDeviceAuth.output}</pre>
+                  </details>
+                ) : null}
+              </section>
+            ) : null}
           </div>
         </header>
 

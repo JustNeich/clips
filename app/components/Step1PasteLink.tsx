@@ -6,6 +6,8 @@ import { StepWorkspace } from "./StepWorkspace";
 type Step1PasteLinkProps = {
   draftUrl: string;
   activeUrl: string | null;
+  commentsFallbackActive?: boolean;
+  commentsFallbackReason?: string | null;
   isBusy: boolean;
   fetchAvailable: boolean;
   fetchBlockedReason?: string | null;
@@ -20,6 +22,8 @@ type Step1PasteLinkProps = {
 export function Step1PasteLink({
   draftUrl,
   activeUrl,
+  commentsFallbackActive,
+  commentsFallbackReason,
   isBusy,
   fetchAvailable,
   fetchBlockedReason,
@@ -44,7 +48,7 @@ export function Step1PasteLink({
           <header className="step-head">
             <p className="kicker">Step 1</p>
             <h2>Source</h2>
-            <p>Paste Shorts/Reels URL and fetch source + comments for the next steps.</p>
+            <p>Paste Shorts/Reels URL and fetch source. Comments are best-effort and do not block the flow.</p>
           </header>
 
           <section className="control-card">
@@ -82,6 +86,12 @@ export function Step1PasteLink({
               {!fetchAvailable && fetchBlockedReason ? (
                 <p className="subtle-text danger-text">{fetchBlockedReason}</p>
               ) : null}
+              {commentsFallbackActive ? (
+                <p className="subtle-text">
+                  Comments were skipped for this source. Step 2 can continue without them.
+                  {commentsFallbackReason ? ` Reason: ${commentsFallbackReason}` : ""}
+                </p>
+              ) : null}
             </form>
           </section>
 
@@ -117,7 +127,7 @@ export function Step1PasteLink({
               <p className="placeholder-title">Source link</p>
               <p className="mono source-link-text">{activeUrl ?? "No source selected"}</p>
               <p className="subtle-text">
-                After fetch completes, Step 2 will show caption options generated from video + comments.
+                After fetch completes, Step 2 will show caption options generated from the video, with comments if available.
               </p>
             </div>
           </div>

@@ -376,6 +376,57 @@ function formatStage3Operation(op: string): string {
   }
 }
 
+type Stage1FetchState = {
+  ready: boolean;
+  commentsAvailable: boolean;
+  commentsError: string | null;
+};
+
+function extractStage1FetchState(chat: Pick<ChatThread, "events"> | null): Stage1FetchState {
+  if (!chat) {
+    return { ready: false, commentsAvailable: false, commentsError: null };
+  }
+
+  let ready = false;
+  let commentsAvailable = false;
+  let commentsError: string | null = null;
+
+  for (const event of chat.events) {
+    if (event.role === "assistant" && event.type === "comments" && extractCommentsPayload(event.data)) {
+      ready = true;
+      commentsAvailable = true;
+      commentsError = null;
+      continue;
+    }
+
+    if (
+      event.role === "assistant" &&
+      event.type === "note" &&
+      event.data &&
+      typeof event.data === "object" &&
+      (event.data as Record<string, unknown>).stage1Ready === true
+    ) {
+      ready = true;
+      commentsAvailable = Boolean((event.data as Record<string, unknown>).commentsAvailable);
+      commentsError =
+        typeof (event.data as Record<string, unknown>).commentsError === "string"
+          ? String((event.data as Record<string, unknown>).commentsError)
+          : null;
+    }
+  }
+
+  return { ready, commentsAvailable, commentsError };
+}
+
+function getCurrentStepForChat(chat: Pick<ChatThread, "events"> | null): 1 | 2 | 3 {
+  if (!chat) {
+    return 1;
+  }
+  const hasStage2 = chat.events.some((event) => event.type === "stage2" && event.role === "assistant");
+  const stage1 = extractStage1FetchState(chat);
+  return hasStage2 ? 3 : stage1.ready ? 2 : 1;
+}
+
 function mergeStage3Versions(groups: Stage3Version[][]): Stage3Version[] {
   const byRunId = new Map<string, Stage3Version>();
   for (const group of groups) {
@@ -551,6 +602,7 @@ export default function HomePage() {
   const stage3PreviewRequestKeyRef = useRef<string>("");
 
   const codexLoggedIn = Boolean(codexAuth?.loggedIn);
+  const codexRunning = codexAuth?.deviceAuth.status === "running";
   const currentRole = authState?.membership.role ?? null;
   const canManageCodex = Boolean(authState?.effectivePermissions.canManageCodex);
   const canCreateChannel = Boolean(authState?.effectivePermissions.canCreateChannel);
@@ -561,6 +613,9 @@ export default function HomePage() {
   const fetchSourceBlockedReason = runtimeCapabilities?.tools.ytDlp.message ?? null;
   const downloadSourceBlockedReason = runtimeCapabilities?.tools.ytDlp.message ?? null;
   const codexBlockedReason = runtimeCapabilities?.tools.codex.message ?? null;
+  const effectiveCodexBlockedReason = codexRunning
+    ? "Device auth already started. Complete it or cancel it first."
+    : codexBlockedReason;
   const stage2BlockedReason =
     !sharedCodexAvailable
       ? codexBlockedReason
@@ -572,7 +627,11 @@ export default function HomePage() {
         : null;
   const codexStatusLabel = codexLoggedIn
     ? "Shared Codex connected"
-    : sharedCodexAvailable
+    : codexAuth?.deviceAuth.status === "running"
+      ? "Shared Codex waiting for device auth"
+      : codexAuth?.deviceAuth.status === "error"
+        ? "Shared Codex connect failed"
+        : sharedCodexAvailable
       ? "Shared Codex unavailable"
       : "Codex runtime unavailable";
   const activeChannel = useMemo(
@@ -1017,8 +1076,6 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChat?.id]);
 
-  const codexRunning = codexAuth?.deviceAuth.status === "running";
-
   useEffect(() => {
     if (!codexRunning) {
       return;
@@ -1223,6 +1280,10 @@ export default function HomePage() {
     setStatusType("");
 
     let chatId: string | null = null;
+    let stage1Ready = false;
+    let commentsAvailable = false;
+    let commentsCount = 0;
+    let commentsError: string | null = null;
 
     try {
       const createResponse = await fetch("/api/chats", {
@@ -1251,24 +1312,39 @@ export default function HomePage() {
         body: JSON.stringify({ url })
       });
 
-      if (!commentsResponse.ok) {
-        throw new Error(await parseError(commentsResponse, "Source fetched, comments failed."));
+      if (commentsResponse.ok) {
+        const comments = (await commentsResponse.json()) as CommentsPayload;
+        commentsAvailable = true;
+        commentsCount = comments.totalComments;
+        await appendEvent(chatId, {
+          role: "assistant",
+          type: "comments",
+          text: `Comments loaded: ${comments.totalComments}`,
+          data: comments
+        });
+      } else {
+        commentsError = await parseError(commentsResponse, "Source fetched, comments failed.");
+        await appendEvent(chatId, {
+          role: "assistant",
+          type: "note",
+          text: `Source fetched. Comments unavailable: ${commentsError}`,
+          data: {
+            stage1Ready: true,
+            commentsAvailable: false,
+            commentsError
+          }
+        });
       }
 
-      const comments = (await commentsResponse.json()) as CommentsPayload;
-      await appendEvent(chatId, {
-        role: "assistant",
-        type: "comments",
-        text: `Comments loaded: ${comments.totalComments}`,
-        data: comments
-      });
-
+      stage1Ready = true;
       setCurrentStep(2);
 
       if (!codexLoggedIn) {
         setStatusType("ok");
         setStatus(
-          `Source fetched. Comments: ${comments.totalComments}. Shared Codex unavailable — contact owner.`
+          commentsAvailable
+            ? `Source fetched. Comments: ${commentsCount}. Shared Codex unavailable — contact owner.`
+            : `Source fetched without comments. ${commentsError ?? "Comments are temporarily unavailable."} Shared Codex unavailable — contact owner.`
         );
         return;
       }
@@ -1276,7 +1352,11 @@ export default function HomePage() {
       setBusyAction("stage2");
       await runStage2ForChat({ id: chatId, url }, "", "auto");
       setStatusType("ok");
-      setStatus(`Source fetched. Comments: ${comments.totalComments}. Stage 2 completed.`);
+      setStatus(
+        commentsAvailable
+          ? `Source fetched. Comments: ${commentsCount}. Stage 2 completed.`
+          : "Source fetched without comments. Stage 2 completed."
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch source.";
       if (chatId) {
@@ -1286,7 +1366,7 @@ export default function HomePage() {
           text: message
         }).catch(() => undefined);
       }
-      setCurrentStep(1);
+      setCurrentStep(stage1Ready ? 2 : 1);
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -1939,6 +2019,7 @@ export default function HomePage() {
     }
     return null;
   }, [activeChat]);
+  const stage1FetchState = useMemo(() => extractStage1FetchState(activeChat), [activeChat]);
 
   const stage2Events = useMemo(() => {
     if (!activeChat) {
@@ -2355,10 +2436,10 @@ export default function HomePage() {
   const steps: FlowStep[] = useMemo(
     () => [
       { id: 1, label: "Paste link", enabled: true },
-      { id: 2, label: "Review & pick", enabled: Boolean(activeChat && latestComments) },
+      { id: 2, label: "Review & pick", enabled: Boolean(activeChat && stage1FetchState.ready) },
       { id: 3, label: "Render video", enabled: Boolean(latestStage2Event) }
     ],
-    [activeChat, latestComments, latestStage2Event]
+    [activeChat, latestStage2Event, stage1FetchState.ready]
   );
 
   const historyItems = useMemo(
@@ -2383,11 +2464,7 @@ export default function HomePage() {
 
     try {
       const chat = await refreshActiveChat(id);
-      const hasComments = chat.events.some(
-        (event) => event.type === "comments" && event.role === "assistant"
-      );
-      const hasStage2 = chat.events.some((event) => event.type === "stage2" && event.role === "assistant");
-      setCurrentStep(hasStage2 ? 3 : hasComments ? 2 : 1);
+      setCurrentStep(getCurrentStepForChat(chat));
     } catch (error) {
       setStatusType("error");
       setStatus(error instanceof Error ? error.message : "Failed to open history item.");
@@ -2759,17 +2836,10 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!activeChat) {
+      setCurrentStep(1);
       return;
     }
-    const hasStage2 = activeChat.events.some(
-      (event) => event.type === "stage2" && event.role === "assistant"
-    );
-    setCurrentStep((prev) => {
-      if (prev !== 1) {
-        return prev;
-      }
-      return hasStage2 ? 3 : 2;
-    });
+    setCurrentStep(getCurrentStepForChat(activeChat));
   }, [activeChat]);
 
   const handleExportTemplate = (): void => {
@@ -2858,9 +2928,11 @@ export default function HomePage() {
       codexBusyConnect={busyAction === "connect-codex"}
       codexBusyRefresh={busyAction === "refresh-codex" || isCodexAuthLoading}
       canManageCodex={canManageCodex}
-      canConnectCodex={sharedCodexAvailable}
-      codexConnectBlockedReason={codexBlockedReason}
+      canConnectCodex={sharedCodexAvailable && !codexRunning}
+      codexConnectBlockedReason={effectiveCodexBlockedReason}
       codexStatusLabel={codexStatusLabel}
+      codexActionLabel={codexLoggedIn ? "Reconnect" : "Connect"}
+      codexDeviceAuth={canManageCodex ? codexAuth?.deviceAuth ?? null : null}
       codexSecondaryActionLabel={
         canManageCodex
           ? codexAuth?.deviceAuth.status === "running"
@@ -2878,6 +2950,12 @@ export default function HomePage() {
       }}
       onSecondaryCodexAction={() => {
         void handleCodexSecondaryAction();
+      }}
+      onCopyCodexLoginUrl={() => {
+        void copyToClipboard(codexAuth?.deviceAuth.loginUrl ?? "", "Login URL copied.");
+      }}
+      onCopyCodexUserCode={() => {
+        void copyToClipboard(codexAuth?.deviceAuth.userCode ?? "", "Device code copied.");
       }}
       currentUserName={authState?.user.displayName ?? null}
       currentUserRole={currentRole}
@@ -2910,6 +2988,8 @@ export default function HomePage() {
         <Step1PasteLink
           draftUrl={draftUrl}
           activeUrl={activeChat?.url ?? null}
+          commentsFallbackActive={stage1FetchState.ready && !stage1FetchState.commentsAvailable}
+          commentsFallbackReason={stage1FetchState.commentsError}
           isBusy={isBusy}
           fetchAvailable={fetchSourceAvailable}
           fetchBlockedReason={fetchSourceBlockedReason}
@@ -2934,6 +3014,8 @@ export default function HomePage() {
           channelUsername={activeChannel?.username ?? null}
           stage2={latestStage2Event?.payload ?? null}
           stageCreatedAt={latestStage2Event?.createdAt ?? null}
+          commentsAvailable={stage1FetchState.commentsAvailable}
+          commentsFallbackReason={stage1FetchState.commentsError}
           instruction={stage2Instruction}
           canRunStage2={Boolean(activeChat && codexLoggedIn && stage2RuntimeAvailable) && !isBusy}
           runBlockedReason={stage2BlockedReason}

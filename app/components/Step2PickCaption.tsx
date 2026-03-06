@@ -9,6 +9,8 @@ type Step2PickCaptionProps = {
   channelUsername?: string | null;
   stage2: Stage2Response | null;
   stageCreatedAt: string | null;
+  commentsAvailable?: boolean;
+  commentsFallbackReason?: string | null;
   instruction: string;
   canRunStage2: boolean;
   runBlockedReason?: string | null;
@@ -35,6 +37,8 @@ export function Step2PickCaption({
   channelUsername,
   stage2,
   stageCreatedAt,
+  commentsAvailable = true,
+  commentsFallbackReason,
   instruction,
   canRunStage2,
   runBlockedReason,
@@ -87,6 +91,12 @@ export function Step2PickCaption({
             {stageCreatedAt ? (
               <p className="subtle-text">Updated: {formatDate(stageCreatedAt)}</p>
             ) : null}
+            {!commentsAvailable ? (
+              <p className="subtle-text">
+                Comments are unavailable for this source. Stage 2 will run from video-only context.
+                {commentsFallbackReason ? ` Reason: ${commentsFallbackReason}` : ""}
+              </p>
+            ) : null}
           </header>
 
           <section className="control-card">
@@ -120,7 +130,10 @@ export function Step2PickCaption({
           </section>
 
           {!stage2 ? (
-            <div className="empty-box">Stage 2 output is empty. Run Stage 2 first.</div>
+            <div className="empty-box">
+              Stage 2 output is empty. Run Stage 2 first.
+              {!commentsAvailable ? " Comments are optional for this run." : ""}
+            </div>
           ) : (
             <>
               <section className="options-grid options-grid-stage2">
