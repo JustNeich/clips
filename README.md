@@ -162,6 +162,22 @@ cp .env.example .env.local
 
 Если нужен рабочий production для всего пайплайна, а не только UI preview, выносите backend на VM/container, где можно поставить `codex`, `yt-dlp`, `ffmpeg` и держать постоянное файловое хранилище.
 
+## Render deployment (recommended)
+
+Для полного пайплайна на Render используйте не native `Node` runtime, а `Docker`:
+
+1. Подключите репозиторий к Render.
+2. Создайте `Web Service` с `Docker` runtime
+3. Выберите `Starter` или выше
+4. Добавьте persistent disk на `/var/data`
+5. Добавьте `APP_BOOTSTRAP_SECRET`
+
+В репозитории уже есть:
+- `Dockerfile` с установкой `yt-dlp`, `ffmpeg`, `ffprobe` и `codex`
+- `render.yaml` с рекомендованным регионом `Frankfurt`, `Starter` plan и mount path `/var/data`
+
+Если сервис создан как native `Node` web service, он не увидит системные бинарники. В этом случае создайте новый Docker-based service или переведите сервис на `runtime: docker` через Render Blueprint.
+
 ## Ограничения
 
 - Работают только публичные ссылки.

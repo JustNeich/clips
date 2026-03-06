@@ -39,9 +39,16 @@ const YTDLP_CANDIDATES = ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp", "
 const FFMPEG_CANDIDATES = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"];
 const FFPROBE_CANDIDATES = ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe", "ffprobe"];
 
+function isRenderRuntime(): boolean {
+  return process.env.RENDER === "true" || process.env.RENDER === "1";
+}
+
 function codexUnavailableMessage(): string {
   if (process.env.VERCEL === "1") {
     return "Codex CLI недоступен на этом Vercel deployment. Shared Codex device auth здесь не заработает без внешнего runtime/worker.";
+  }
+  if (isRenderRuntime()) {
+    return "Codex CLI не найден на Render. Для этого проекта нужен Docker runtime с `npm i -g @openai/codex`.";
   }
   return "Codex CLI не найден. Установите Codex или задайте CODEX_BIN, затем перезапустите сервер.";
 }
@@ -50,12 +57,18 @@ function ytDlpUnavailableMessage(): string {
   if (process.env.VERCEL === "1") {
     return "yt-dlp недоступен на этом Vercel deployment. Step 1 fetch/download/comments не сможет обработать исходное видео.";
   }
+  if (isRenderRuntime()) {
+    return "yt-dlp не найден на Render. Для этого проекта нужен Docker runtime с установленными yt-dlp и ffmpeg.";
+  }
   return "yt-dlp не найден на сервере.";
 }
 
 function ffmpegUnavailableMessage(tool: "ffmpeg" | "ffprobe"): string {
   if (process.env.VERCEL === "1") {
     return `${tool} недоступен на этом Vercel deployment. Media pipeline Step 2/Step 3 не сможет обработать видео.`;
+  }
+  if (isRenderRuntime()) {
+    return `${tool} не найден на Render. Для этого проекта нужен Docker runtime с установленными yt-dlp и ffmpeg.`;
   }
   return `${tool} не найден на сервере.`;
 }

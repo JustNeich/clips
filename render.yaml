@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: clips
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_BOOTSTRAP_SECRET
+        sync: false
+      - key: APP_DATA_DIR
+        value: /var/data/app
+      - key: CODEX_SESSIONS_DIR
+        value: /var/data/codex-sessions
+      - key: CODEX_BIN
+        value: /usr/local/bin/codex
+      - key: CODEX_STAGE2_MODEL
+        value: gpt-5.2
+      - key: CODEX_STAGE2_REASONING_EFFORT
+        value: high
+      - key: CODEX_STAGE2_TIMEOUT_MS
+        value: "120000"
+      - key: CODEX_STAGE2_DESCRIPTION_MODEL
+        value: gpt-5.2
+      - key: CODEX_STAGE2_DESCRIPTION_REASONING_EFFORT
+        value: medium
+      - key: CODEX_STAGE2_DESCRIPTION_TIMEOUT_MS
+        value: "90000"
+      - key: CODEX_STAGE3_MODEL
+        value: gpt-5.2
+      - key: CODEX_STAGE3_REASONING_EFFORT
+        value: extra-high
+      - key: CODEX_STAGE3_TIMEOUT_MS
+        value: "120000"
+      - key: REMOTION_RENDER_TIMEOUT_MS
+        value: "180000"
+    disk:
+      name: clips-data
+      mountPath: /var/data
+      sizeGB: 10

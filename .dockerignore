@@ -1,0 +1,9 @@
+.git
+.next
+.data
+.codex-user-sessions
+.playwright
+.playwright-cli
+node_modules
+npm-debug.log
+.DS_Store
