@@ -14,6 +14,8 @@
 
 ## 1. Установка зависимостей проекта
 
+Требуется `Node.js 22`.
+
 ```bash
 npm install
 ```
@@ -118,6 +120,47 @@ npm run dev
 - `CODEX_BIN` — путь к бинарнику codex, если Next.js не видит его в PATH.
   Пример для macOS app: `/Applications/Codex.app/Contents/Resources/codex`
 - `REMOTION_RENDER_TIMEOUT_MS` — таймаут Stage 3 рендера в миллисекундах.
+- `APP_BOOTSTRAP_SECRET` — обязателен в production и на Vercel для one-time owner bootstrap.
+
+Шаблон:
+
+```bash
+cp .env.example .env.local
+```
+
+## Vercel deployment
+
+Текущее приложение не является полностью Vercel-native. В серверной части оно использует:
+- локальный `codex` CLI;
+- `yt-dlp`;
+- `ffmpeg` и `ffprobe`;
+- локальную файловую БД `.data/app.db`.
+
+Из-за этого на Vercel:
+- UI и базовый auth shell могут собраться;
+- полный `Step 2`, `Step 3`, shared Codex integration и media pipeline в текущем виде не гарантированно заработают.
+
+Если всё же нужен preview deploy:
+
+1. В `Project Settings -> Build and Deployment`:
+   - `Framework Preset` = `Next.js`
+   - `Node.js Version` = `22.x`
+   - `Build Command` = `npm run build`
+   - `Install Command` = `npm install`
+   - `Output Directory` = пусто
+2. В `Environment Variables` добавьте:
+   - `APP_BOOTSTRAP_SECRET`
+   - при необходимости `APP_DATA_DIR` и `CODEX_SESSIONS_DIR`
+   - при желании tuning vars из `.env.example`
+3. Не задавайте `CODEX_BIN=/Applications/...` на Vercel. Этот путь работает только локально на macOS.
+
+На Vercel приложение теперь по умолчанию использует:
+- `APP_DATA_DIR=/tmp/clips-automations-data`
+- `CODEX_SESSIONS_DIR=/tmp/clips-automations-codex-sessions`
+
+Это убирает проблему записи в read-only deployment bundle, но не делает автоматически доступными системные бинарники вроде `yt-dlp`, `ffmpeg` и локального `codex`.
+
+Если нужен рабочий production для всего пайплайна, а не только UI preview, выносите backend на VM/container, где можно поставить `codex`, `yt-dlp`, `ffmpeg` и держать постоянное файловое хранилище.
 
 ## Ограничения
 

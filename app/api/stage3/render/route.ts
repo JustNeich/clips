@@ -2,7 +2,11 @@ import { createRequire } from "node:module";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getScienceCardComputed, STAGE3_TEMPLATE_ID } from "../../../../lib/stage3-template";
+import {
+  STAGE3_TEMPLATE_ID,
+  getTemplateById,
+  getTemplateComputed
+} from "../../../../lib/stage3-template";
 import {
   analyzeBestClipAndFocus,
   clampClipStart,
@@ -17,11 +21,12 @@ import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChannelAssetById } from "../../../../lib/chat-history";
 import { readChannelAssetFile } from "../../../../lib/channel-assets";
-import { SCIENCE_CARD } from "../../../../lib/stage3-template";
+import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
 
 const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
+const DEFAULT_TEXT_SCALE = 1.25;
 
 type RenderBody = {
   sourceUrl?: string;
@@ -116,6 +121,8 @@ async function runRemotionRender(params: {
   clipDurationSec: number;
   focusY: number;
   videoZoom: number;
+  topFontScale: number;
+  bottomFontScale: number;
   authorName: string;
   authorHandle: string;
   avatarAssetFileName: string | null;
@@ -134,12 +141,15 @@ async function runRemotionRender(params: {
   });
 
   const inputProps = {
+    templateId: params.templateId,
     topText: params.topText,
     bottomText: params.bottomText,
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
     focusY: params.focusY,
     videoZoom: params.videoZoom,
+    topFontScale: params.topFontScale,
+    bottomFontScale: params.bottomFontScale,
     authorName: params.authorName,
     authorHandle: params.authorHandle,
     avatarAssetFileName: params.avatarAssetFileName,
@@ -203,6 +213,10 @@ export async function POST(request: Request): Promise<Response> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-"));
 
   try {
+    const auth = await requireAuth();
+    if (body?.channelId?.trim()) {
+      await requireChannelVisibility(auth, body.channelId.trim());
+    }
     const downloaded = await downloadSourceVideo(rawSource, tmpDir);
     const sourceDurationSec = await probeVideoDurationSeconds(downloaded.filePath);
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
@@ -232,10 +246,14 @@ export async function POST(request: Request): Promise<Response> {
       clipDurationSec
     );
     const focusY = sanitizeFocusY(requestedFocus ?? auto.focusY);
-    const computed = getScienceCardComputed(
-      snapshot?.topText ?? body?.topText ?? "",
-      snapshot?.bottomText ?? body?.bottomText ?? ""
-    );
+    const templateIdFromInput =
+      typeof (snapshot?.renderPlan as Partial<Stage3RenderPlan> | undefined)?.templateId === "string" &&
+      (snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId?.trim()
+        ? String((snapshot?.renderPlan as Partial<Stage3RenderPlan>).templateId).trim()
+        : typeof body?.renderPlan?.templateId === "string" && body.renderPlan.templateId.trim()
+          ? body.renderPlan.templateId.trim()
+          : body?.templateId?.trim() || STAGE3_TEMPLATE_ID;
+    const template = getTemplateById(templateIdFromInput);
     const rawPlan = snapshot?.renderPlan ?? body?.renderPlan;
     const policyFallback =
       sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
@@ -254,6 +272,14 @@ export async function POST(request: Request): Promise<Response> {
         typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
           ? Math.min(1.6, Math.max(1, rawPlan.videoZoom))
           : 1,
+      topFontScale:
+        typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
+          ? Math.min(1.9, Math.max(0.7, rawPlan.topFontScale))
+          : DEFAULT_TEXT_SCALE,
+      bottomFontScale:
+        typeof rawPlan?.bottomFontScale === "number" && Number.isFinite(rawPlan.bottomFontScale)
+          ? Math.min(1.9, Math.max(0.7, rawPlan.bottomFontScale))
+          : DEFAULT_TEXT_SCALE,
       musicGain:
         typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)
           ? Math.min(1, Math.max(0, rawPlan.musicGain))
@@ -327,17 +353,26 @@ export async function POST(request: Request): Promise<Response> {
       authorName:
         typeof rawPlan?.authorName === "string" && rawPlan.authorName.trim()
           ? rawPlan.authorName.trim()
-          : SCIENCE_CARD.author.name,
+          : template.author.name,
       authorHandle:
         typeof rawPlan?.authorHandle === "string" && rawPlan.authorHandle.trim()
           ? rawPlan.authorHandle.trim()
-          : SCIENCE_CARD.author.handle,
+          : template.author.handle,
       templateId:
         typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
           ? rawPlan.templateId.trim()
-          : body?.templateId?.trim() || STAGE3_TEMPLATE_ID,
+          : templateIdFromInput,
       prompt: rawPlan?.prompt?.trim() || body?.agentPrompt?.trim() || ""
     };
+    const computed = getTemplateComputed(
+      renderPlan.templateId,
+      snapshot?.topText ?? body?.topText ?? "",
+      snapshot?.bottomText ?? body?.bottomText ?? "",
+      {
+        topFontScale: renderPlan.topFontScale,
+        bottomFontScale: renderPlan.bottomFontScale
+      }
+    );
 
     const templateId = renderPlan.templateId || STAGE3_TEMPLATE_ID;
     let musicFilePath: string | null = null;
@@ -411,6 +446,8 @@ export async function POST(request: Request): Promise<Response> {
       clipDurationSec: prepared.clipDurationSec,
       focusY,
       videoZoom: renderPlan.videoZoom,
+      topFontScale: renderPlan.topFontScale,
+      bottomFontScale: renderPlan.bottomFontScale,
       authorName: renderPlan.authorName,
       authorHandle: renderPlan.authorHandle,
       avatarAssetFileName,
@@ -433,6 +470,9 @@ export async function POST(request: Request): Promise<Response> {
       }
     });
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     const stderr =
       typeof error === "object" && error && "stderr" in error
         ? String((error as { stderr?: string }).stderr ?? "")

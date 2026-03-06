@@ -35,11 +35,24 @@ type AppShellProps = {
   activeChannelId: string | null;
   onSelectChannel: (channelId: string) => void;
   onManageChannels: () => void;
+  canManageChannels: boolean;
+  canManageTeam: boolean;
+  onOpenTeam: () => void;
   codexConnected: boolean;
   codexBusyConnect: boolean;
   codexBusyRefresh: boolean;
+  canManageCodex: boolean;
+  canConnectCodex: boolean;
+  codexConnectBlockedReason?: string | null;
+  codexStatusLabel?: string;
+  codexSecondaryActionLabel?: string | null;
   onConnectCodex: () => void;
   onRefreshCodex: () => void;
+  onSecondaryCodexAction?: () => void;
+  currentUserName: string | null;
+  currentUserRole: string | null;
+  workspaceName: string | null;
+  onLogout: () => void;
   statusText: string;
   statusTone: "ok" | "error" | "";
   children: ReactNode;
@@ -71,11 +84,24 @@ export function AppShell({
   activeChannelId,
   onSelectChannel,
   onManageChannels,
+  canManageChannels,
+  canManageTeam,
+  onOpenTeam,
   codexConnected,
   codexBusyConnect,
   codexBusyRefresh,
+  canManageCodex,
+  canConnectCodex,
+  codexConnectBlockedReason,
+  codexStatusLabel,
+  codexSecondaryActionLabel,
   onConnectCodex,
   onRefreshCodex,
+  onSecondaryCodexAction,
+  currentUserName,
+  currentUserRole,
+  workspaceName,
+  onLogout,
   statusText,
   statusTone,
   children,
@@ -241,26 +267,46 @@ export function AppShell({
                     </option>
                   ))}
                 </select>
-                <button type="button" className="btn btn-secondary" onClick={onManageChannels}>
-                  Manage channels
-                </button>
+                {canManageChannels ? (
+                  <button type="button" className="btn btn-secondary" onClick={onManageChannels}>
+                    Manage channels
+                  </button>
+                ) : null}
+                {canManageTeam ? (
+                  <button type="button" className="btn btn-ghost" onClick={onOpenTeam}>
+                    Team
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
 
           <div className="topbar-actions">
+            <div className="topbar-identity">
+              {workspaceName ? <span className="status-chip">{workspaceName}</span> : null}
+              {currentUserName ? <span className="status-chip">{currentUserName}</span> : null}
+              {currentUserRole ? <span className="status-chip">{currentUserRole}</span> : null}
+            </div>
             <span className={`status-chip ${codexConnected ? "online" : "offline"}`}>
-              {codexConnected ? "Codex connected" : "Codex disconnected"}
+              {codexStatusLabel ?? (codexConnected ? "Shared Codex connected" : "Shared Codex unavailable")}
             </span>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={onConnectCodex}
-              aria-busy={codexBusyConnect}
-              disabled={codexBusyConnect}
-            >
-              {codexBusyConnect ? "Connecting..." : "Connect"}
-            </button>
+            {canManageCodex ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={onConnectCodex}
+                aria-busy={codexBusyConnect}
+                disabled={codexBusyConnect || !canConnectCodex}
+                title={!canConnectCodex ? codexConnectBlockedReason ?? undefined : undefined}
+              >
+                {codexBusyConnect ? "Connecting..." : "Connect"}
+              </button>
+            ) : null}
+            {canManageCodex && codexSecondaryActionLabel && onSecondaryCodexAction ? (
+              <button type="button" className="btn btn-ghost" onClick={onSecondaryCodexAction}>
+                {codexSecondaryActionLabel}
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-ghost"
@@ -269,6 +315,9 @@ export function AppShell({
               disabled={codexBusyRefresh}
             >
               {codexBusyRefresh ? "Refreshing..." : "Refresh"}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onLogout}>
+              Logout
             </button>
           </div>
         </header>

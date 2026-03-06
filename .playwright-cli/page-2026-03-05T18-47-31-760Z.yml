@@ -1,0 +1,64 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - button "Open history" [ref=e7] [cursor=pointer]:
+            - generic [ref=e8]: 🕘
+            - generic [ref=e9]: History
+            - generic [ref=e10]: "0"
+          - generic [ref=e11]:
+            - heading "Clips Automations" [level=1] [ref=e12]
+            - paragraph [ref=e13]: "Minimal 3-step flow: fetch source, pick caption, render output."
+          - generic [ref=e14]:
+            - generic [ref=e15]: Channel
+            - generic [ref=e16]:
+              - combobox "Channel" [ref=e17]
+              - button "Manage channels" [ref=e18] [cursor=pointer]
+        - generic [ref=e19]:
+          - generic [ref=e20]: Codex disconnected
+          - button "Connect" [ref=e21] [cursor=pointer]
+          - button "Refreshing..." [disabled] [ref=e22]
+      - navigation "Workflow steps" [ref=e23]:
+        - button "Step 1 Paste link Current" [ref=e24] [cursor=pointer]:
+          - generic [ref=e25]: Step 1
+          - generic [ref=e26]: Paste link
+          - generic [ref=e27]: Current
+        - button "Step 2 Review & pick Next" [disabled] [ref=e28]:
+          - generic [ref=e29]: Step 2
+          - generic [ref=e30]: Review & pick
+          - generic [ref=e31]: Next
+        - button "Step 3 Render video Next" [disabled] [ref=e32]:
+          - generic [ref=e33]: Step 3
+          - generic [ref=e34]: Render video
+          - generic [ref=e35]: Next
+      - region "Step workspace" [ref=e37]:
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - paragraph [ref=e42]: Step 1
+            - heading "Source" [level=2] [ref=e43]
+            - paragraph [ref=e44]: Paste Shorts/Reels URL and fetch source + comments for the next steps.
+          - generic [ref=e46]:
+            - generic [ref=e47]: Video URL
+            - generic [ref=e48]:
+              - textbox "Video URL" [ref=e49]:
+                - /placeholder: https://www.youtube.com/shorts/...
+              - button "Paste" [ref=e50] [cursor=pointer]
+            - paragraph [ref=e51]: "Examples: YouTube Shorts, Instagram Reels, Facebook Reels."
+            - button "Run Stage 1 / Fetch" [ref=e53] [cursor=pointer]
+          - group [ref=e54]:
+            - generic "Advanced" [ref=e55] [cursor=pointer]
+        - complementary [ref=e56]:
+          - generic [ref=e58]:
+            - generic [ref=e59]:
+              - heading "Live context" [level=3] [ref=e60]
+              - generic [ref=e61]: Step 1 of 3
+            - generic [ref=e63]:
+              - paragraph [ref=e64]: Source link
+              - paragraph [ref=e65]: No source selected
+              - paragraph [ref=e66]: After fetch completes, Step 2 will show caption options generated from video + comments.
+      - group [ref=e67]:
+        - generic "Details Logs, comments, diagnostics" [ref=e68] [cursor=pointer]:
+          - generic [ref=e69]: Details
+          - generic [ref=e70]: Logs, comments, diagnostics
+  - alert [ref=e71]

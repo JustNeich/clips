@@ -1,8 +1,9 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ChannelAssetKind } from "./chat-history";
+import { getAppDataDir } from "./app-paths";
 
-const CHANNEL_ASSETS_ROOT = path.join(process.cwd(), ".data", "channel-assets");
+const CHANNEL_ASSETS_ROOT = path.join(getAppDataDir(), "channel-assets");
 
 function sanitizeId(raw: string): string | null {
   const value = raw.trim();
@@ -115,4 +116,3 @@ export async function deleteChannelAssetDir(channelId: string): Promise<void> {
 export function buildChannelAssetUrl(channelId: string, assetId: string): string {
   return `/api/channels/${channelId}/assets/${assetId}`;
 }
-

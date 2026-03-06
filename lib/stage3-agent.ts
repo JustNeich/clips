@@ -11,7 +11,12 @@ import {
   Stage3TimingMode,
   Stage3Version
 } from "../app/components/types";
-import { SCIENCE_CARD, getScienceCardComputed } from "./stage3-template";
+import {
+  SCIENCE_CARD,
+  TURBO_FACE,
+  TURBO_FACE_TEMPLATE_ID,
+  getTemplateComputed
+} from "./stage3-template";
 
 export type {
   Stage3RenderPlan,
@@ -29,8 +34,124 @@ const SCORE_STOP_THRESHOLD = 91;
 const SCORE_EPSILON = 0.45;
 const MAX_ALLOWED_DEGRADE = 3;
 const DEFAULT_ZOOM = 1.2;
+const DEFAULT_TEXT_SCALE = 1.25;
+const FONT_SCALE_MIN = 0.7;
+const FONT_SCALE_MAX = 1.9;
 
-type BuildStage3VersionInput = {
+function hasAnyCue(promptLower: string, cues: string[]): boolean {
+  return cues.some((cue) => promptLower.includes(cue));
+}
+
+export function hasFullSourceCue(promptLower: string): boolean {
+  return hasAnyCue(promptLower, [
+    "все видео",
+    "всё видео",
+    "все 15с",
+    "все 15 сек",
+    "всё 15с",
+    "исходного видео",
+    "исходное видео целиком",
+    "полностью исходное видео",
+    "целиком",
+    "полностью",
+    "весь исходник",
+    "весь ролик",
+    "all source video",
+    "entire source",
+    "whole video",
+    "entire video",
+    "full video"
+  ]);
+}
+
+export function hasSubjectIsolationCue(promptLower: string): boolean {
+  const audioOnlyCue =
+    promptLower.includes("только звук") ||
+    promptLower.includes("без музыки") ||
+    promptLower.includes("source only") ||
+    promptLower.includes("only audio");
+  if (audioOnlyCue) {
+    return false;
+  }
+
+  return hasAnyCue(promptLower, [
+    "видно только",
+    "покажи только",
+    "оставь только",
+    "нужно только",
+    "только квадрат",
+    "только видео",
+    "только исходное видео",
+    "оставался только",
+    "only show",
+    "show only",
+    "keep only",
+    "only the square",
+    "only the video",
+    "only the source video",
+    "just the video",
+    "focus only",
+    "только модель",
+    "только лицо",
+    "только объект",
+    "только персонаж",
+    "только целев",
+    "целевое видео",
+    "основное видео",
+    "main subject",
+    "target video",
+    "main video",
+    "главный объект",
+    "основной объект",
+    "subject only"
+  ]);
+}
+
+export function hasActionRegionCue(promptLower: string): boolean {
+  return hasAnyCue(promptLower, [
+    "только действия",
+    "где происходят действия",
+    "где происходит действие",
+    "где происходят события",
+    "где происходит событие",
+    "в котором происходят события",
+    "в котором происходит действие",
+    "в кадре только",
+    "где главное действие",
+    "только то, где",
+    "зона действия",
+    "только сцена с действием",
+    "only action",
+    "main action",
+    "where the action",
+    "where it happens",
+    "where things happen",
+    "event area",
+    "action area"
+  ]);
+}
+
+export function inferIsolationZoomValue(promptLower: string): number {
+  if (
+    promptLower.includes("только") ||
+    promptLower.includes("only") ||
+    promptLower.includes("show only") ||
+    promptLower.includes("keep only")
+  ) {
+    return 1.26;
+  }
+  if (
+    promptLower.includes("сильный") ||
+    promptLower.includes("aggressive") ||
+    promptLower.includes("крупно") ||
+    promptLower.includes("closer")
+  ) {
+    return 1.32;
+  }
+  return 1.18;
+}
+
+export type BuildStage3VersionInput = {
   versionNo: number;
   prompt: string;
   topText: string;
@@ -52,7 +173,15 @@ type EvaluationContext = {
   userIntent: Stage3UserIntent;
 };
 
-type EvaluatedScore = {
+export type Stage3EvaluationContext = {
+  promptLower: string;
+  sourceDurationSec: number | null;
+  autoClipStartSec: number;
+  autoFocusY: number;
+  userIntent: Stage3UserIntent;
+};
+
+export type Stage3EvaluatedScore = {
   total: number;
   durationError: number;
   textReadability: number;
@@ -61,7 +190,7 @@ type EvaluatedScore = {
   renderStability: number;
 };
 
-type Stage3UserIntent = {
+export type Stage3UserIntent = {
   zoomRequested: boolean;
   zoomValue: number | null;
   actionOnly: boolean;
@@ -70,6 +199,9 @@ type Stage3UserIntent = {
   audioMode: Stage3AudioMode | null;
   smoothSlowMo: boolean;
   noZoom: boolean;
+  fontTarget: "top" | "bottom" | "both" | null;
+  fontDirection: "increase" | "decrease" | null;
+  fontPercent: number | null;
 };
 
 type PlannerResult = {
@@ -90,7 +222,7 @@ type OptimizeStage3VersionInput = BuildStage3VersionInput & {
     passIndex: number;
     maxPasses: number;
     snapshot: Stage3StateSnapshot;
-    scoreBefore: EvaluatedScore;
+    scoreBefore: Stage3EvaluatedScore;
     prompt: string;
     sourceDurationSec: number | null;
     lastPassSummary?: string | null;
@@ -98,6 +230,7 @@ type OptimizeStage3VersionInput = BuildStage3VersionInput & {
   }) => Promise<PlannerResult>) | null;
   model?: string;
   reasoningEffort?: string;
+  maxPasses?: number;
 };
 
 export type OptimizeStage3VersionOutput = {
@@ -135,6 +268,22 @@ function parseTimecode(value: string): number | null {
     return null;
   }
   return min * 60 + sec + tenth / 10;
+}
+
+function parseLooseSecondToken(value: string, sourceDurationSec: number | null): number | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "конец" || normalized === "end") {
+    return sourceDurationSec;
+  }
+  const numeric = normalized.replace(/(?:секунд(?:ы|у)?|сек|seconds?|secs?|sec|с)\.?$/i, "").trim();
+  if (!numeric) {
+    return null;
+  }
+  const parsed = Number.parseFloat(numeric);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeSegment(
@@ -182,16 +331,16 @@ function parseSegmentsFromPrompt(prompt: string, sourceDurationSec: number | nul
     match = pattern.exec(normalized);
   }
 
-  const secondsPattern = /(?:^|[\s,;])(\d{1,3}(?:\.\d+)?)\s*-\s*(\d{1,3}(?:\.\d+)?|конец|end)(?=$|[\s,;])/g;
+  const secondsPattern =
+    /(?:^|[\s,;[(])(?:\d+\s*[.)]\s*)?(\d{1,3}(?:\.\d+)?)\s*(?:секунд(?:ы|у)?|сек|seconds?|secs?|sec|с)?\s*-\s*((?:\d{1,3}(?:\.\d+)?\s*(?:секунд(?:ы|у)?|сек|seconds?|secs?|sec|с)?)|конец|end)(?=$|[\s,;)\].])/g;
   let secMatch = secondsPattern.exec(normalized);
   while (secMatch) {
-    const startSec = Number.parseFloat(secMatch[1]);
-    const endToken = secMatch[2];
-    const endSec = endToken === "конец" || endToken === "end" ? sourceDurationSec : Number.parseFloat(endToken);
-    if (Number.isFinite(startSec)) {
+    const startSec = parseLooseSecondToken(secMatch[1], sourceDurationSec);
+    const endSec = parseLooseSecondToken(secMatch[2], sourceDurationSec);
+    if (startSec !== null) {
       segments.push({
         startSec,
-        endSec: endSec !== null && Number.isFinite(endSec) ? endSec : null,
+        endSec,
         label: `${secMatch[1]}-${secMatch[2]}`
       });
     }
@@ -203,17 +352,80 @@ function parseSegmentsFromPrompt(prompt: string, sourceDurationSec: number | nul
     .filter((segment): segment is Stage3Segment => Boolean(segment));
 }
 
-function detectTimingMode(promptLower: string): Stage3TimingMode | null {
+function hasExactTargetDurationCue(promptLower: string): boolean {
+  return (
+    /(?:ровно|exactly|strictly)\s*6(?:[.,]\d+)?\s*(?:секунд(?:ы|у)?|сек|seconds?|secs?|sec|с)\b/i.test(promptLower) ||
+    /(?:make|keep|render)\s+(?:it\s+)?exactly\s*6(?:[.,]\d+)?\s*(?:seconds?|secs?|sec)\b/i.test(promptLower)
+  );
+}
+
+export function approxSegmentsDuration(
+  segments: Stage3Segment[],
+  sourceDurationSec: number | null,
+  fallbackDuration: number
+): number {
+  if (!segments.length) {
+    return fallbackDuration;
+  }
+  const raw = segments.reduce((acc, segment) => {
+    const start = Math.max(0, segment.startSec);
+    const endRaw = segment.endSec ?? sourceDurationSec ?? start + fallbackDuration;
+    const end = Math.max(start + 0.03, endRaw);
+    return acc + (end - start);
+  }, 0);
+  return Math.max(0.05, raw);
+}
+
+function detectTimingMode(
+  promptLower: string,
+  sourceDurationSec: number | null,
+  segments: Stage3Segment[]
+): Stage3TimingMode | null {
   if (
     promptLower.includes("растянуть") ||
+    promptLower.includes("растяни") ||
+    promptLower.includes("удлини") ||
+    promptLower.includes("замедли") ||
     promptLower.includes("слоумо") ||
     promptLower.includes("slowmo") ||
-    promptLower.includes("slow-mo")
+    promptLower.includes("slow-mo") ||
+    promptLower.includes("растяни до 6") ||
+    promptLower.includes("дотяни до 6") ||
+    promptLower.includes("extend to 6") ||
+    promptLower.includes("stretch to 6")
   ) {
     return "stretch";
   }
-  if (promptLower.includes("сжать") || promptLower.includes("ускор") || promptLower.includes("speed up")) {
+  if (
+    promptLower.includes("сжать") ||
+    promptLower.includes("ужать") ||
+    promptLower.includes("сократи") ||
+    promptLower.includes("ускор") ||
+    promptLower.includes("умести в 6") ||
+    promptLower.includes("до 6с") ||
+    promptLower.includes("до 6 сек") ||
+    promptLower.includes("shorten to 6") ||
+    promptLower.includes("compress to 6") ||
+    promptLower.includes("fit into 6") ||
+    promptLower.includes("speed up")
+  ) {
     return "compress";
+  }
+  if (hasExactTargetDurationCue(promptLower)) {
+    const requestedSourceDuration =
+      segments.length > 0
+        ? approxSegmentsDuration(segments, sourceDurationSec, TARGET_DURATION_SEC)
+        : sourceDurationSec;
+    if (requestedSourceDuration !== null) {
+      if (requestedSourceDuration > TARGET_DURATION_SEC + 0.12) {
+        return "compress";
+      }
+      if (requestedSourceDuration < TARGET_DURATION_SEC - 0.12) {
+        return "stretch";
+      }
+      return "auto";
+    }
+    return "auto";
   }
   return null;
 }
@@ -239,6 +451,9 @@ function detectAudioMode(promptLower: string): Stage3AudioMode | null {
 function smoothSlowMoRequested(promptLower: string): boolean {
   return (
     promptLower.includes("плавный слоумо") ||
+    promptLower.includes("плавное слоумо") ||
+    promptLower.includes("плавный slowmo") ||
+    promptLower.includes("slomo") ||
     promptLower.includes("slow motion") ||
     promptLower.includes("smooth slowmo") ||
     promptLower.includes("smooth slow-mo")
@@ -246,6 +461,7 @@ function smoothSlowMoRequested(promptLower: string): boolean {
 }
 
 function parseZoomValue(promptLower: string): { requested: boolean; value: number | null; noZoom: boolean } {
+  const subjectIsolation = hasSubjectIsolationCue(promptLower);
   const noZoom =
     promptLower.includes("без зума") ||
     promptLower.includes("убери зум") ||
@@ -259,7 +475,8 @@ function parseZoomValue(promptLower: string): { requested: boolean; value: numbe
     promptLower.includes("зум") ||
     promptLower.includes("zoom") ||
     promptLower.includes("приблиз") ||
-    promptLower.includes("увелич");
+    promptLower.includes("увелич") ||
+    subjectIsolation;
   if (!requested) {
     return { requested: false, value: null, noZoom: false };
   }
@@ -286,26 +503,82 @@ function parseZoomValue(promptLower: string): { requested: boolean; value: numbe
   if (promptLower.includes("легкий зум") || promptLower.includes("slight zoom")) {
     return { requested: true, value: 1.1, noZoom: false };
   }
+  if (subjectIsolation) {
+    return { requested: true, value: inferIsolationZoomValue(promptLower), noZoom: false };
+  }
   return { requested: true, value: DEFAULT_ZOOM, noZoom: false };
 }
 
-function parseUserIntent(prompt: string, sourceDurationSec: number | null): Stage3UserIntent {
+function parseFontIntent(
+  promptLower: string
+): {
+  target: "top" | "bottom" | "both" | null;
+  direction: "increase" | "decrease" | null;
+  percent: number | null;
+} {
+  const hasFontKeyword =
+    promptLower.includes("шрифт") ||
+    promptLower.includes("font") ||
+    promptLower.includes("размер текста") ||
+    promptLower.includes("text size");
+  if (!hasFontKeyword) {
+    return { target: null, direction: null, percent: null };
+  }
+
+  const target: "top" | "bottom" | "both" =
+    promptLower.includes("top") ||
+    promptLower.includes("верх") ||
+    promptLower.includes("верхн")
+      ? "top"
+      : promptLower.includes("bottom") || promptLower.includes("низ") || promptLower.includes("нижн")
+        ? "bottom"
+        : "both";
+
+  const direction: "increase" | "decrease" | null =
+    promptLower.includes("увелич") ||
+    promptLower.includes("крупн") ||
+    promptLower.includes("больше") ||
+    promptLower.includes("increase") ||
+    promptLower.includes("bigger") ||
+    promptLower.includes("larger")
+      ? "increase"
+      : promptLower.includes("уменьш") ||
+          promptLower.includes("меньше") ||
+          promptLower.includes("сниз") ||
+          promptLower.includes("decrease") ||
+          promptLower.includes("smaller")
+        ? "decrease"
+        : null;
+
+  const percentMatch = promptLower.match(/(?:шрифт|font|text size)[^0-9]{0,24}(\d{2,3})\s*%/i) ?? promptLower.match(/(\d{2,3})\s*%/);
+  const percentRaw = percentMatch?.[1] ? Number.parseInt(percentMatch[1], 10) : null;
+  const percent =
+    percentRaw !== null && Number.isFinite(percentRaw)
+      ? clamp(percentRaw / 100, FONT_SCALE_MIN, FONT_SCALE_MAX)
+      : null;
+
+  return { target, direction, percent };
+}
+
+export function parseUserIntent(prompt: string, sourceDurationSec: number | null): Stage3UserIntent {
   const promptLower = prompt.trim().toLowerCase();
   const zoom = parseZoomValue(promptLower);
+  const fontIntent = parseFontIntent(promptLower);
+  const segments = parseSegmentsFromPrompt(promptLower, sourceDurationSec);
   const actionOnly =
-    promptLower.includes("только действия") ||
-    promptLower.includes("где происходят действия") ||
-    promptLower.includes("only action") ||
-    promptLower.includes("main action");
+    hasActionRegionCue(promptLower) || hasSubjectIsolationCue(promptLower);
   return {
     zoomRequested: zoom.requested,
     zoomValue: zoom.value,
     actionOnly,
-    segments: parseSegmentsFromPrompt(promptLower, sourceDurationSec),
-    timingMode: detectTimingMode(promptLower),
+    segments,
+    timingMode: detectTimingMode(promptLower, sourceDurationSec, segments),
     audioMode: detectAudioMode(promptLower),
     smoothSlowMo: smoothSlowMoRequested(promptLower),
-    noZoom: zoom.noZoom
+    noZoom: zoom.noZoom,
+    fontTarget: fontIntent.target,
+    fontDirection: fontIntent.direction,
+    fontPercent: fontIntent.percent
   };
 }
 
@@ -323,6 +596,8 @@ function createDefaultRenderPlan(sourceDurationSec: number | null): Stage3Render
     audioMode: "source_only",
     smoothSlowMo: false,
     videoZoom: 1,
+    topFontScale: DEFAULT_TEXT_SCALE,
+    bottomFontScale: DEFAULT_TEXT_SCALE,
     musicGain: 0.65,
     textPolicy: "strict_fit",
     segments: [],
@@ -367,6 +642,14 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       typeof input?.videoZoom === "number" && Number.isFinite(input.videoZoom)
         ? clamp(input.videoZoom, 1, 1.6)
         : defaultPlan.videoZoom,
+    topFontScale:
+      typeof input?.topFontScale === "number" && Number.isFinite(input.topFontScale)
+        ? clamp(input.topFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX)
+        : defaultPlan.topFontScale,
+    bottomFontScale:
+      typeof input?.bottomFontScale === "number" && Number.isFinite(input.bottomFontScale)
+        ? clamp(input.bottomFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX)
+        : defaultPlan.bottomFontScale,
     musicGain:
       typeof input?.musicGain === "number" && Number.isFinite(input.musicGain)
         ? clamp(input.musicGain, 0, 1)
@@ -420,11 +703,19 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
   };
 }
 
-function computeTextFit(topText: string, bottomText: string): Stage3StateSnapshot["textFit"] & {
+function computeTextFit(
+  templateId: string,
+  topText: string,
+  bottomText: string,
+  renderPlan: Stage3RenderPlan
+): Stage3StateSnapshot["textFit"] & {
   topText: string;
   bottomText: string;
 } {
-  const computed = getScienceCardComputed(topText, bottomText);
+  const computed = getTemplateComputed(templateId, topText, bottomText, {
+    topFontScale: renderPlan.topFontScale,
+    bottomFontScale: renderPlan.bottomFontScale
+  });
   return {
     topText: computed.top,
     bottomText: computed.bottom,
@@ -435,7 +726,7 @@ function computeTextFit(topText: string, bottomText: string): Stage3StateSnapsho
   };
 }
 
-function createSnapshot(input: {
+export function createSnapshot(input: {
   topText: string;
   bottomText: string;
   clipStartSec: number;
@@ -444,7 +735,13 @@ function createSnapshot(input: {
   sourceDurationSec: number | null;
   renderPlan: Stage3RenderPlan;
 }): Stage3StateSnapshot {
-  const fit = computeTextFit(input.topText, input.bottomText);
+  const normalizedPlan = normalizePlan(input.renderPlan, input.sourceDurationSec);
+  const fit = computeTextFit(
+    normalizedPlan.templateId || "science-card-v1",
+    input.topText,
+    input.bottomText,
+    normalizedPlan
+  );
   return {
     topText: fit.topText,
     bottomText: fit.bottomText,
@@ -452,7 +749,7 @@ function createSnapshot(input: {
     clipDurationSec: TARGET_DURATION_SEC,
     focusY: clamp(input.focusY, 0.12, 0.88),
     sourceDurationSec: input.sourceDurationSec,
-    renderPlan: normalizePlan(input.renderPlan, input.sourceDurationSec),
+    renderPlan: normalizedPlan,
     textFit: {
       topFontPx: fit.topFontPx,
       bottomFontPx: fit.bottomFontPx,
@@ -462,24 +759,7 @@ function createSnapshot(input: {
   };
 }
 
-function approxSegmentsDuration(
-  segments: Stage3Segment[],
-  sourceDurationSec: number | null,
-  fallbackDuration: number
-): number {
-  if (!segments.length) {
-    return fallbackDuration;
-  }
-  const raw = segments.reduce((acc, segment) => {
-    const start = Math.max(0, segment.startSec);
-    const endRaw = segment.endSec ?? sourceDurationSec ?? start + fallbackDuration;
-    const end = Math.max(start + 0.03, endRaw);
-    return acc + (end - start);
-  }, 0);
-  return Math.max(0.05, raw);
-}
-
-function estimatePreTimingDuration(snapshot: Stage3StateSnapshot): number {
+export function estimatePreTimingDuration(snapshot: Stage3StateSnapshot): number {
   const sourceDurationSec = snapshot.sourceDurationSec;
   const policy = snapshot.renderPlan.policy;
 
@@ -531,15 +811,56 @@ function evaluateInstructionCompliance(
   if (intent.segments.length > 0 && snapshot.renderPlan.segments.length === 0) {
     penalty += 22;
   }
+  if (intent.segments.length > 0 && snapshot.renderPlan.segments.length > 0) {
+    if (snapshot.renderPlan.segments.length !== intent.segments.length) {
+      penalty += 14;
+    } else {
+      const segmentDelta = intent.segments.reduce((acc, segment, index) => {
+        const actual = snapshot.renderPlan.segments[index];
+        if (!actual) {
+          return acc + 2;
+        }
+        const actualEnd = actual.endSec ?? snapshot.sourceDurationSec ?? actual.startSec + TARGET_DURATION_SEC;
+        const intentEnd = segment.endSec ?? snapshot.sourceDurationSec ?? segment.startSec + TARGET_DURATION_SEC;
+        return acc + Math.abs(actual.startSec - segment.startSec) + Math.abs(actualEnd - intentEnd);
+      }, 0);
+      penalty += clamp(segmentDelta * 3.2, 0, 18);
+    }
+  }
   if (intent.timingMode && snapshot.renderPlan.timingMode !== intent.timingMode) {
     penalty += 14;
+  }
+  if (intent.timingMode && hasFullSourceCue(promptLower) && snapshot.sourceDurationSec && snapshot.sourceDurationSec > snapshot.clipDurationSec) {
+    const fullCoverage =
+      snapshot.renderPlan.segments.length === 1 &&
+      Math.abs(snapshot.renderPlan.segments[0].startSec - 0) <= 0.05 &&
+      Math.abs((snapshot.renderPlan.segments[0].endSec ?? snapshot.sourceDurationSec) - snapshot.sourceDurationSec) <= 0.2;
+    if (!fullCoverage) {
+      penalty += 18;
+    }
   }
   if (intent.audioMode && snapshot.renderPlan.audioMode !== intent.audioMode) {
     penalty += 16;
   }
+  if (intent.smoothSlowMo && !snapshot.renderPlan.smoothSlowMo) {
+    penalty += 14;
+  }
   if (intent.zoomRequested) {
     const expectedZoom = intent.zoomValue ?? DEFAULT_ZOOM;
     if (Math.abs(snapshot.renderPlan.videoZoom - expectedZoom) > 0.04) {
+      penalty += 12;
+    }
+  }
+  if (intent.fontTarget && intent.fontDirection) {
+    const topChanged = Math.abs(snapshot.renderPlan.topFontScale - DEFAULT_TEXT_SCALE) >= 0.03;
+    const bottomChanged = Math.abs(snapshot.renderPlan.bottomFontScale - DEFAULT_TEXT_SCALE) >= 0.03;
+    if (intent.fontTarget === "top" && !topChanged) {
+      penalty += 9;
+    }
+    if (intent.fontTarget === "bottom" && !bottomChanged) {
+      penalty += 9;
+    }
+    if (intent.fontTarget === "both" && (!topChanged || !bottomChanged)) {
       penalty += 12;
     }
   }
@@ -574,26 +895,49 @@ function evaluateRenderStability(snapshot: Stage3StateSnapshot): number {
   return penalty;
 }
 
-function evaluateScore(snapshot: Stage3StateSnapshot, context: EvaluationContext): EvaluatedScore {
+export function evaluateScore(snapshot: Stage3StateSnapshot, context: Stage3EvaluationContext): Stage3EvaluatedScore {
   const durationOut = estimateOutputDuration(snapshot);
   const durationError = (Math.abs(durationOut - TARGET_DURATION_SEC) / TARGET_DURATION_SEC) * 28;
 
   let textReadability = 0;
+  const computed = getTemplateComputed(
+    snapshot.renderPlan.templateId,
+    snapshot.topText,
+    snapshot.bottomText,
+    {
+      topFontScale: snapshot.renderPlan.topFontScale,
+      bottomFontScale: snapshot.renderPlan.bottomFontScale
+    }
+  );
+  const typography =
+    snapshot.renderPlan.templateId === TURBO_FACE_TEMPLATE_ID
+      ? TURBO_FACE.typography
+      : SCIENCE_CARD.typography;
   if (snapshot.textFit.topCompacted) {
     textReadability += 7;
   }
   if (snapshot.textFit.bottomCompacted) {
     textReadability += 7;
   }
-  if (snapshot.textFit.topFontPx < SCIENCE_CARD.typography.top.min) {
+  if (snapshot.textFit.topFontPx < typography.top.min) {
     textReadability +=
-      ((SCIENCE_CARD.typography.top.min - snapshot.textFit.topFontPx) / SCIENCE_CARD.typography.top.min) * 10;
+      ((typography.top.min - snapshot.textFit.topFontPx) / typography.top.min) * 10;
   }
-  if (snapshot.textFit.bottomFontPx < SCIENCE_CARD.typography.bottom.min) {
+  if (snapshot.textFit.bottomFontPx < typography.bottom.min) {
     textReadability +=
-      ((SCIENCE_CARD.typography.bottom.min - snapshot.textFit.bottomFontPx) /
-        SCIENCE_CARD.typography.bottom.min) *
-      10;
+      ((typography.bottom.min - snapshot.textFit.bottomFontPx) / typography.bottom.min) * 10;
+  }
+  const topFillRatio = clamp(
+    (computed.topLines * computed.topFont * computed.topLineHeight) /
+      Math.max(1, computed.topBlockHeight),
+    0,
+    1.6
+  );
+  if (topFillRatio < 0.66) {
+    textReadability += (0.66 - topFillRatio) * 16;
+  }
+  if (topFillRatio > 1.03) {
+    textReadability += Math.min(10, (topFillRatio - 1.03) * 20);
   }
 
   const actionCoverage =
@@ -621,7 +965,7 @@ function evaluateScore(snapshot: Stage3StateSnapshot, context: EvaluationContext
   };
 }
 
-function hasMeaningfulMediaChange(before: Stage3StateSnapshot, after: Stage3StateSnapshot): boolean {
+export function hasMeaningfulMediaChange(before: Stage3StateSnapshot, after: Stage3StateSnapshot): boolean {
   if (before.topText !== after.topText || before.bottomText !== after.bottomText) {
     return true;
   }
@@ -632,6 +976,12 @@ function hasMeaningfulMediaChange(before: Stage3StateSnapshot, after: Stage3Stat
     return true;
   }
   if (Math.abs(before.renderPlan.videoZoom - after.renderPlan.videoZoom) >= 0.01) {
+    return true;
+  }
+  if (Math.abs(before.renderPlan.topFontScale - after.renderPlan.topFontScale) >= 0.01) {
+    return true;
+  }
+  if (Math.abs(before.renderPlan.bottomFontScale - after.renderPlan.bottomFontScale) >= 0.01) {
     return true;
   }
   if (Math.abs(before.renderPlan.musicGain - after.renderPlan.musicGain) >= 0.01) {
@@ -698,7 +1048,11 @@ function snapshotToPass(args: {
 }
 
 function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): Stage3Version["diff"] {
-  const textChanged = baseline.topText !== final.topText || baseline.bottomText !== final.bottomText;
+  const fontChanged =
+    Math.abs(baseline.renderPlan.topFontScale - final.renderPlan.topFontScale) >= 0.01 ||
+    Math.abs(baseline.renderPlan.bottomFontScale - final.renderPlan.bottomFontScale) >= 0.01;
+  const textChanged =
+    baseline.topText !== final.topText || baseline.bottomText !== final.bottomText || fontChanged;
   const framingChanged =
     Math.abs(baseline.clipStartSec - final.clipStartSec) >= 0.01 ||
     Math.abs(baseline.focusY - final.focusY) >= 0.005 ||
@@ -713,6 +1067,9 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
   const summary: string[] = [];
   if (textChanged) {
     summary.push("Обновлены TOP/BOTTOM для стабильной читаемости.");
+  }
+  if (fontChanged) {
+    summary.push("Скорректирован размер шрифта TOP/BOTTOM.");
   }
   if (framingChanged) {
     summary.push("Скорректированы фокус/старт и масштаб видео-слота.");
@@ -749,7 +1106,7 @@ function normalizeSegmentsForPlan(
     .slice(0, 12);
 }
 
-function applyOperations(
+export function applyOperations(
   snapshot: Stage3StateSnapshot,
   operations: Stage3Operation[],
   sourceDurationSec: number | null
@@ -822,6 +1179,14 @@ function applyOperations(
         nextPlan.videoZoom = clamp(operation.videoZoom, 1, 1.6);
         changes.push(`Zoom video slot: x${nextPlan.videoZoom.toFixed(2)}.`);
         break;
+      case "set_top_font_scale":
+        nextPlan.topFontScale = clamp(operation.topFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX);
+        changes.push(`Размер TOP шрифта: ${(nextPlan.topFontScale * 100).toFixed(0)}%.`);
+        break;
+      case "set_bottom_font_scale":
+        nextPlan.bottomFontScale = clamp(operation.bottomFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX);
+        changes.push(`Размер BOTTOM шрифта: ${(nextPlan.bottomFontScale * 100).toFixed(0)}%.`);
+        break;
       case "set_music_gain":
         nextPlan.musicGain = clamp(operation.musicGain, 0, 1);
         changes.push(`Music gain: ${(nextPlan.musicGain * 100).toFixed(0)}%.`);
@@ -855,7 +1220,7 @@ function applyOperations(
   return { next, changes };
 }
 
-function inferHeuristicOperations(input: {
+export function inferHeuristicOperations(input: {
   snapshot: Stage3StateSnapshot;
   prompt: string;
   intent: Stage3UserIntent;
@@ -865,12 +1230,46 @@ function inferHeuristicOperations(input: {
 }): Stage3Operation[] {
   const operations: Stage3Operation[] = [];
   const promptNorm = input.prompt.trim();
+  const promptLower = promptNorm.toLowerCase();
+  const fullSourceRequested = hasFullSourceCue(promptLower);
+  const explicitSegments = normalizeSegmentsForPlan(input.intent.segments, input.sourceDurationSec);
+  const computed = getTemplateComputed(
+    input.snapshot.renderPlan.templateId,
+    input.snapshot.topText,
+    input.snapshot.bottomText,
+    {
+      topFontScale: input.snapshot.renderPlan.topFontScale,
+      bottomFontScale: input.snapshot.renderPlan.bottomFontScale
+    }
+  );
+  const typography =
+    input.snapshot.renderPlan.templateId === TURBO_FACE_TEMPLATE_ID
+      ? TURBO_FACE.typography
+      : SCIENCE_CARD.typography;
+  const topFillRatio = clamp(
+    (computed.topLines * computed.topFont * computed.topLineHeight) /
+      Math.max(1, computed.topBlockHeight),
+    0,
+    1.6
+  );
+
   if (!promptNorm) {
     if (Math.abs(input.snapshot.clipStartSec - input.autoClipStartSec) >= 0.08) {
       operations.push({ op: "set_clip_start", clipStartSec: input.autoClipStartSec });
     }
     if (Math.abs(input.snapshot.focusY - input.autoFocusY) >= 0.01) {
       operations.push({ op: "set_focus_y", focusY: input.autoFocusY });
+    }
+    if (input.snapshot.textFit.topCompacted && input.snapshot.renderPlan.topFontScale > 0.82) {
+      operations.push({
+        op: "set_top_font_scale",
+        topFontScale: clamp(input.snapshot.renderPlan.topFontScale * 0.93, FONT_SCALE_MIN, FONT_SCALE_MAX)
+      });
+    } else if (!input.snapshot.textFit.topCompacted && topFillRatio < 0.7) {
+      operations.push({
+        op: "set_top_font_scale",
+        topFontScale: clamp(input.snapshot.renderPlan.topFontScale * 1.08, FONT_SCALE_MIN, FONT_SCALE_MAX)
+      });
     }
     return operations;
   }
@@ -881,20 +1280,71 @@ function inferHeuristicOperations(input: {
       videoZoom: input.intent.zoomValue ?? DEFAULT_ZOOM
     });
   }
+  if (explicitSegments.length > 0) {
+    operations.push({
+      op: "set_segments",
+      segments: explicitSegments
+    });
+  } else if (input.intent.timingMode && fullSourceRequested && input.sourceDurationSec && input.sourceDurationSec > 0.05) {
+    operations.push({
+      op: "set_segments",
+      segments: normalizeSegmentsForPlan(
+        [
+          {
+            startSec: 0,
+            endSec: input.sourceDurationSec,
+            label: `0-${input.sourceDurationSec.toFixed(2)}`
+          }
+        ],
+        input.sourceDurationSec
+      )
+    });
+  } else if (input.intent.timingMode) {
+    const implicitDuration =
+      input.intent.timingMode === "stretch"
+        ? Math.min(input.sourceDurationSec ?? TARGET_DURATION_SEC, Math.max(1.8, TARGET_DURATION_SEC * 0.78))
+        : Math.min(input.sourceDurationSec ?? TARGET_DURATION_SEC, Math.max(TARGET_DURATION_SEC + 1.2, TARGET_DURATION_SEC * 1.35));
+    const shouldSeedTimingSegments =
+      input.sourceDurationSec !== null &&
+      ((input.intent.timingMode === "stretch" && implicitDuration < TARGET_DURATION_SEC - 0.08) ||
+        (input.intent.timingMode === "compress" && implicitDuration > TARGET_DURATION_SEC + 0.08));
+
+    if (shouldSeedTimingSegments) {
+      const implicitStart =
+        input.sourceDurationSec && input.sourceDurationSec > implicitDuration
+          ? clamp(input.autoClipStartSec, 0, Math.max(0, input.sourceDurationSec - implicitDuration))
+          : 0;
+      operations.push({
+        op: "set_segments",
+        segments: normalizeSegmentsForPlan(
+          [
+            {
+              startSec: implicitStart,
+              endSec: Math.min(input.sourceDurationSec ?? implicitStart + implicitDuration, implicitStart + implicitDuration),
+              label: `${implicitStart.toFixed(2)}-${Math.min(input.sourceDurationSec ?? implicitStart + implicitDuration, implicitStart + implicitDuration).toFixed(2)}`
+            }
+          ],
+          input.sourceDurationSec
+        )
+      });
+    }
+  }
   if (input.intent.timingMode) {
     operations.push({ op: "set_timing_mode", timingMode: input.intent.timingMode });
+    if (
+      fullSourceRequested &&
+      input.sourceDurationSec &&
+      input.sourceDurationSec > 0.05 &&
+      input.snapshot.clipStartSec !== 0
+    ) {
+      operations.push({ op: "set_clip_start", clipStartSec: 0 });
+    }
   }
   if (input.intent.audioMode) {
     operations.push({ op: "set_audio_mode", audioMode: input.intent.audioMode });
   }
   if (input.intent.smoothSlowMo) {
     operations.push({ op: "set_slowmo", smoothSlowMo: true });
-  }
-  if (input.intent.segments.length > 0) {
-    operations.push({
-      op: "set_segments",
-      segments: normalizeSegmentsForPlan(input.intent.segments, input.sourceDurationSec)
-    });
   }
   if (input.intent.actionOnly) {
     operations.push({ op: "set_clip_start", clipStartSec: input.autoClipStartSec });
@@ -908,6 +1358,39 @@ function inferHeuristicOperations(input: {
     operations.push({ op: "set_video_zoom", videoZoom: 1 });
   }
 
+  if (input.intent.fontTarget) {
+    const factor =
+      input.intent.fontPercent !== null
+        ? input.intent.fontPercent
+        : input.intent.fontDirection === "increase"
+          ? 1.12
+          : input.intent.fontDirection === "decrease"
+            ? 0.9
+            : 1;
+    const nextTop = clamp(input.snapshot.renderPlan.topFontScale * factor, FONT_SCALE_MIN, FONT_SCALE_MAX);
+    const nextBottom = clamp(
+      input.snapshot.renderPlan.bottomFontScale * factor,
+      FONT_SCALE_MIN,
+      FONT_SCALE_MAX
+    );
+    if (input.intent.fontTarget === "top" || input.intent.fontTarget === "both") {
+      operations.push({ op: "set_top_font_scale", topFontScale: nextTop });
+    }
+    if (input.intent.fontTarget === "bottom" || input.intent.fontTarget === "both") {
+      operations.push({ op: "set_bottom_font_scale", bottomFontScale: nextBottom });
+    }
+  } else if (input.snapshot.textFit.topCompacted || topFillRatio < 0.66 || topFillRatio > 1.05) {
+    const scaleCandidate = input.snapshot.textFit.topCompacted
+      ? input.snapshot.renderPlan.topFontScale * 0.92
+      : topFillRatio < 0.66
+        ? input.snapshot.renderPlan.topFontScale * 1.08
+        : input.snapshot.renderPlan.topFontScale * 0.95;
+    operations.push({
+      op: "set_top_font_scale",
+      topFontScale: clamp(scaleCandidate, FONT_SCALE_MIN, FONT_SCALE_MAX)
+    });
+  }
+
   return operations;
 }
 
@@ -919,8 +1402,17 @@ function createNoOpSuggestions(intent: Stage3UserIntent): string[] {
   if (intent.actionOnly && intent.segments.length === 0) {
     suggestions.push("Добавьте конкретные интервалы: «0:00-0:02, 0:08-конец».");
   }
-  if (intent.segments.length === 0 && !intent.zoomRequested && !intent.timingMode && !intent.audioMode) {
+  if (
+    intent.segments.length === 0 &&
+    !intent.zoomRequested &&
+    !intent.timingMode &&
+    !intent.audioMode &&
+    !intent.fontTarget
+  ) {
     suggestions.push("Уточните задачу: длительность/фрагменты/аудио/зум.");
+  }
+  if (intent.fontTarget) {
+    suggestions.push("Для шрифта используйте явную команду, например: «top font 92%» или «увеличь шрифт bottom».");
   }
   if (!suggestions.length) {
     suggestions.push("Попробуйте дать более конкретную инструкцию по фрагментам, темпу или зуму.");

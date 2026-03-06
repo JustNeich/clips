@@ -8,12 +8,19 @@ import {
   useState,
   type MutableRefObject
 } from "react";
-import { ChannelAsset, Stage3Version } from "./types";
+import {
+  ChannelAsset,
+  Stage3AgentConversationItem,
+  Stage3SessionRecord,
+  Stage3Version
+} from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 import {
-  SCIENCE_CARD,
+  TURBO_FACE,
+  TURBO_FACE_TEMPLATE_ID,
+  getTemplateComputed,
   STAGE3_TEMPLATE_ID,
-  getScienceCardComputed
+  getTemplateById
 } from "../../lib/stage3-template";
 
 type Step3RenderTemplateProps = {
@@ -35,6 +42,12 @@ type Step3RenderTemplateProps = {
   isPreviewLoading: boolean;
   previewNotice: string | null;
   agentPrompt: string;
+  agentSession: Stage3SessionRecord | null;
+  agentMessages: Stage3AgentConversationItem[];
+  agentCurrentScore: number | null;
+  isAgentTimelineLoading: boolean;
+  canResumeAgent: boolean;
+  canRollbackSelectedVersion: boolean;
   topText: string;
   bottomText: string;
   isRendering: boolean;
@@ -45,9 +58,14 @@ type Step3RenderTemplateProps = {
   sourceDurationSec: number | null;
   focusY: number;
   videoZoom: number;
+  topFontScale: number;
+  bottomFontScale: number;
+  musicGain: number;
   onRender: () => void;
   onExport: () => void;
   onOptimize: () => void;
+  onResumeAgent: () => void;
+  onRollbackSelectedVersion: () => void;
   onReset: () => void;
   onUploadBackground: (file: File) => Promise<void>;
   onUploadMusic: (file: File) => Promise<void>;
@@ -60,6 +78,10 @@ type Step3RenderTemplateProps = {
   onAgentPromptChange: (value: string) => void;
   onClipStartChange: (value: number) => void;
   onFocusYChange: (value: number) => void;
+  onVideoZoomChange: (value: number) => void;
+  onTopFontScaleChange: (value: number) => void;
+  onBottomFontScaleChange: (value: number) => void;
+  onMusicGainChange: (value: number) => void;
 };
 
 function formatTimeSec(value: number): string {
@@ -94,12 +116,35 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function formatScore(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "n/a";
+  }
+  return value.toFixed(2);
+}
+
+function formatSessionStatus(value: Stage3SessionRecord["status"]): string {
+  switch (value) {
+    case "running":
+      return "В работе";
+    case "completed":
+      return "Готово";
+    case "partiallyApplied":
+      return "Best attempt";
+    case "failed":
+      return "Stopped";
+    default:
+      return value;
+  }
+}
+
 function PreviewClipVideo({
   sourceUrl,
   clipDurationSec,
   className,
   objectPosition,
   videoZoom,
+  muted,
   videoRef,
   isPlaying,
   loopEnabled,
@@ -111,6 +156,7 @@ function PreviewClipVideo({
   className: string;
   objectPosition?: string;
   videoZoom?: number;
+  muted: boolean;
   videoRef: MutableRefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   loopEnabled: boolean;
@@ -181,7 +227,7 @@ function PreviewClipVideo({
       ref={videoRef}
       className={className}
       src={sourceUrl}
-      muted
+      muted={muted}
       playsInline
       preload="metadata"
       onTimeUpdate={handleTimeUpdate}
@@ -213,6 +259,12 @@ export function Step3RenderTemplate({
   isPreviewLoading,
   previewNotice,
   agentPrompt,
+  agentSession,
+  agentMessages,
+  agentCurrentScore,
+  isAgentTimelineLoading,
+  canResumeAgent,
+  canRollbackSelectedVersion,
   topText,
   bottomText,
   isRendering,
@@ -223,9 +275,14 @@ export function Step3RenderTemplate({
   sourceDurationSec,
   focusY,
   videoZoom,
+  topFontScale,
+  bottomFontScale,
+  musicGain,
   onRender,
   onExport,
   onOptimize,
+  onResumeAgent,
+  onRollbackSelectedVersion,
   onReset,
   onUploadBackground,
   onUploadMusic,
@@ -237,29 +294,44 @@ export function Step3RenderTemplate({
   onSelectPassIndex,
   onAgentPromptChange,
   onClipStartChange,
-  onFocusYChange
+  onFocusYChange,
+  onVideoZoomChange,
+  onTopFontScaleChange,
+  onBottomFontScaleChange,
+  onMusicGainChange
 }: Step3RenderTemplateProps) {
   const slotPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const backgroundPreviewRef = useRef<HTMLVideoElement | null>(null);
   const previewCanvasRef = useRef<HTMLDivElement | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
+  const videoZoomCommitTimerRef = useRef<number | null>(null);
+  const topFontScaleCommitTimerRef = useRef<number | null>(null);
+  const bottomFontScaleCommitTimerRef = useRef<number | null>(null);
+  const musicGainCommitTimerRef = useRef<number | null>(null);
 
   const [localClipStartSec, setLocalClipStartSec] = useState(clipStartSec);
   const [localFocusY, setLocalFocusY] = useState(focusY);
+  const [localVideoZoom, setLocalVideoZoom] = useState(videoZoom);
+  const [localTopFontScale, setLocalTopFontScale] = useState(topFontScale);
+  const [localBottomFontScale, setLocalBottomFontScale] = useState(bottomFontScale);
+  const [localMusicGain, setLocalMusicGain] = useState(musicGain);
   const [isTimelineScrubbing, setIsTimelineScrubbing] = useState(false);
   const [timelineSec, setTimelineSec] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
   const [loopEnabled, setLoopEnabled] = useState(true);
   const [zoomMode, setZoomMode] = useState<"fit" | 75 | 100>("fit");
   const [versionsDrawerOpen, setVersionsDrawerOpen] = useState(false);
-  const [compareEnabled, setCompareEnabled] = useState(false);
-  const [compareSide, setCompareSide] = useState<"A" | "B">("A");
-  const [compareAId, setCompareAId] = useState<string | null>(null);
-  const [compareBId, setCompareBId] = useState<string | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 720, height: 1280 });
 
-  const computed = getScienceCardComputed(topText, bottomText);
+  const templateConfig = getTemplateById(templateId);
+  const isTurboTemplate = templateId === TURBO_FACE_TEMPLATE_ID;
+  const computed = getTemplateComputed(templateId, topText, bottomText, {
+    topFontScale: localTopFontScale,
+    bottomFontScale: localBottomFontScale
+  });
 
   const displayVersions = useMemo(
     () => [...versions].sort((a, b) => (a.versionNo < b.versionNo ? 1 : -1)),
@@ -272,31 +344,38 @@ export function Step3RenderTemplate({
   );
 
   const selectedPass = selectedVersion?.internalPasses[selectedPassIndex] ?? null;
-
-  const versionA = useMemo(
-    () => (compareAId ? versions.find((version) => version.runId === compareAId) ?? null : null),
-    [versions, compareAId]
+  const currentSessionVersion = useMemo(
+    () =>
+      agentSession?.currentVersionId
+        ? versions.find((version) => version.runId === agentSession.currentVersionId) ?? null
+        : null,
+    [agentSession?.currentVersionId, versions]
   );
-  const versionB = useMemo(
-    () => (compareBId ? versions.find((version) => version.runId === compareBId) ?? null : null),
-    [versions, compareBId]
+  const bestSessionVersion = useMemo(
+    () =>
+      agentSession?.bestVersionId
+        ? versions.find((version) => version.runId === agentSession.bestVersionId) ?? null
+        : null,
+    [agentSession?.bestVersionId, versions]
   );
 
-  const previewVersion = compareEnabled ? (compareSide === "A" ? versionA : versionB) : selectedVersion;
-
+  const previewVersion = selectedVersion;
   const previewTopText = previewVersion?.final.topText ?? computed.top;
   const previewBottomText = previewVersion?.final.bottomText ?? computed.bottom;
-  const previewVideoZoom = clamp(previewVersion?.final.renderPlan.videoZoom ?? videoZoom ?? 1, 1, 1.6);
+  const previewVideoZoom = clamp(localVideoZoom ?? 1, 1, 1.6);
 
-  const previewComputed = getScienceCardComputed(previewTopText, previewBottomText);
+  const previewComputed = getTemplateComputed(templateId, previewTopText, previewBottomText, {
+    topFontScale: localTopFontScale,
+    bottomFontScale: localBottomFontScale
+  });
 
   const maxStartSec = Math.max(0, (sourceDurationSec ?? clipDurationSec) - clipDurationSec);
   const clipEndSec = localClipStartSec + clipDurationSec;
   const focusPercent = Math.round(localFocusY * 100);
   const objectPosition = `50% ${focusPercent}%`;
 
-  const frameWidth = SCIENCE_CARD.frame.width;
-  const frameHeight = SCIENCE_CARD.frame.height;
+  const frameWidth = templateConfig.frame.width;
+  const frameHeight = templateConfig.frame.height;
 
   const fitScale = useMemo(() => {
     const width = canvasSize.width;
@@ -317,18 +396,24 @@ export function Step3RenderTemplate({
   }, [zoomMode]);
 
   const layoutScale = fitScale * previewScaleMultiplier;
-  const cardLeft = SCIENCE_CARD.card.x;
-  const cardTop = SCIENCE_CARD.card.y;
-  const cardWidth = SCIENCE_CARD.card.width;
-  const cardHeight = SCIENCE_CARD.card.height;
-  const topHeight = SCIENCE_CARD.slot.topHeight;
-  const bottomHeight = SCIENCE_CARD.slot.bottomHeight;
-  const bottomMetaHeight = SCIENCE_CARD.slot.bottomMetaHeight;
+  const cardLeft = templateConfig.card.x;
+  const cardTop = templateConfig.card.y;
+  const cardWidth = templateConfig.card.width;
+  const cardHeight = templateConfig.card.height;
+  const topHeight = templateConfig.slot.topHeight;
+  const bottomHeight = templateConfig.slot.bottomHeight;
+  const bottomMetaHeight = templateConfig.slot.bottomMetaHeight;
+  const bottomTextPaddingTop =
+    templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY;
+  const bottomTextPaddingBottom =
+    templateConfig.slot.bottomTextPaddingBottom ?? templateConfig.slot.bottomTextPaddingY;
   const videoHeight = previewComputed.videoHeight;
 
   const timelinePercent = clamp((timelineSec / Math.max(0.01, clipDurationSec)) * 100, 0, 100);
   const backgroundIsVideo =
-    Boolean(backgroundAssetUrl) && (backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/");
+    Boolean(backgroundAssetUrl) &&
+    ((backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/") ||
+      /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(backgroundAssetUrl ?? ""));
 
   useEffect(() => {
     setLocalClipStartSec(clamp(clipStartSec, 0, maxStartSec));
@@ -337,6 +422,22 @@ export function Step3RenderTemplate({
   useEffect(() => {
     setLocalFocusY(clamp(focusY, 0.12, 0.88));
   }, [focusY]);
+
+  useEffect(() => {
+    setLocalVideoZoom(clamp(videoZoom, 1, 1.6));
+  }, [videoZoom]);
+
+  useEffect(() => {
+    setLocalTopFontScale(clamp(topFontScale, 0.7, 1.9));
+  }, [topFontScale]);
+
+  useEffect(() => {
+    setLocalBottomFontScale(clamp(bottomFontScale, 0.7, 1.9));
+  }, [bottomFontScale]);
+
+  useEffect(() => {
+    setLocalMusicGain(clamp(musicGain, 0, 1));
+  }, [musicGain]);
 
   useEffect(() => {
     const element = previewCanvasRef.current;
@@ -368,40 +469,38 @@ export function Step3RenderTemplate({
   }, []);
 
   useEffect(() => {
-    if (!displayVersions.length) {
-      setCompareAId(null);
-      setCompareBId(null);
-      return;
-    }
-
-    setCompareAId((prev) => {
-      if (prev && displayVersions.some((version) => version.runId === prev)) {
-        return prev;
-      }
-      return selectedVersionId ?? displayVersions[0].runId;
-    });
-
-    setCompareBId((prev) => {
-      if (prev && displayVersions.some((version) => version.runId === prev)) {
-        return prev;
-      }
-      return displayVersions[1]?.runId ?? displayVersions[0].runId;
-    });
-  }, [displayVersions, selectedVersionId]);
-
-  useEffect(() => {
-    if (!compareEnabled) {
-      return;
-    }
-    const targetId = compareSide === "A" ? compareAId : compareBId;
-    if (targetId && targetId !== selectedVersionId) {
-      onSelectVersionId(targetId);
-    }
-  }, [compareEnabled, compareSide, compareAId, compareBId, selectedVersionId, onSelectVersionId]);
-
-  useEffect(() => {
     setTimelineSec(0);
   }, [previewVideoUrl]);
+
+  const syncBackgroundTo = useCallback((sec: number) => {
+    const bg = backgroundPreviewRef.current;
+    if (!bg) {
+      return;
+    }
+    if (bg.readyState < 1) {
+      return;
+    }
+    const duration = Number.isFinite(bg.duration) && bg.duration > 0 ? bg.duration : null;
+    const next = duration ? sec % duration : sec;
+    if (Math.abs(bg.currentTime - next) > 0.08) {
+      bg.currentTime = next;
+    }
+    if (isPlaying && bg.paused) {
+      void bg.play().catch(() => undefined);
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    const bg = backgroundPreviewRef.current;
+    if (!bg) {
+      return;
+    }
+    if (isPlaying) {
+      void bg.play().catch(() => undefined);
+    } else {
+      bg.pause();
+    }
+  }, [isPlaying, backgroundAssetUrl, previewVideoUrl]);
 
   useEffect(() => {
     return () => {
@@ -410,6 +509,18 @@ export function Step3RenderTemplate({
       }
       if (focusCommitTimerRef.current !== null) {
         window.clearTimeout(focusCommitTimerRef.current);
+      }
+      if (videoZoomCommitTimerRef.current !== null) {
+        window.clearTimeout(videoZoomCommitTimerRef.current);
+      }
+      if (topFontScaleCommitTimerRef.current !== null) {
+        window.clearTimeout(topFontScaleCommitTimerRef.current);
+      }
+      if (bottomFontScaleCommitTimerRef.current !== null) {
+        window.clearTimeout(bottomFontScaleCommitTimerRef.current);
+      }
+      if (musicGainCommitTimerRef.current !== null) {
+        window.clearTimeout(musicGainCommitTimerRef.current);
       }
     };
   }, []);
@@ -454,6 +565,86 @@ export function Step3RenderTemplate({
     }, 450);
   };
 
+  const flushVideoZoomCommit = (value: number) => {
+    if (videoZoomCommitTimerRef.current !== null) {
+      window.clearTimeout(videoZoomCommitTimerRef.current);
+      videoZoomCommitTimerRef.current = null;
+    }
+    onVideoZoomChange(clamp(value, 1, 1.6));
+  };
+
+  const scheduleVideoZoomCommit = (value: number) => {
+    const next = clamp(value, 1, 1.6);
+    setLocalVideoZoom(next);
+    if (videoZoomCommitTimerRef.current !== null) {
+      window.clearTimeout(videoZoomCommitTimerRef.current);
+    }
+    videoZoomCommitTimerRef.current = window.setTimeout(() => {
+      onVideoZoomChange(next);
+      videoZoomCommitTimerRef.current = null;
+    }, 320);
+  };
+
+  const flushTopFontScaleCommit = (value: number) => {
+    if (topFontScaleCommitTimerRef.current !== null) {
+      window.clearTimeout(topFontScaleCommitTimerRef.current);
+      topFontScaleCommitTimerRef.current = null;
+    }
+    onTopFontScaleChange(clamp(value, 0.7, 1.9));
+  };
+
+  const scheduleTopFontScaleCommit = (value: number) => {
+    const next = clamp(value, 0.7, 1.9);
+    setLocalTopFontScale(next);
+    if (topFontScaleCommitTimerRef.current !== null) {
+      window.clearTimeout(topFontScaleCommitTimerRef.current);
+    }
+    topFontScaleCommitTimerRef.current = window.setTimeout(() => {
+      onTopFontScaleChange(next);
+      topFontScaleCommitTimerRef.current = null;
+    }, 320);
+  };
+
+  const flushBottomFontScaleCommit = (value: number) => {
+    if (bottomFontScaleCommitTimerRef.current !== null) {
+      window.clearTimeout(bottomFontScaleCommitTimerRef.current);
+      bottomFontScaleCommitTimerRef.current = null;
+    }
+    onBottomFontScaleChange(clamp(value, 0.7, 1.9));
+  };
+
+  const scheduleBottomFontScaleCommit = (value: number) => {
+    const next = clamp(value, 0.7, 1.9);
+    setLocalBottomFontScale(next);
+    if (bottomFontScaleCommitTimerRef.current !== null) {
+      window.clearTimeout(bottomFontScaleCommitTimerRef.current);
+    }
+    bottomFontScaleCommitTimerRef.current = window.setTimeout(() => {
+      onBottomFontScaleChange(next);
+      bottomFontScaleCommitTimerRef.current = null;
+    }, 320);
+  };
+
+  const flushMusicGainCommit = (value: number) => {
+    if (musicGainCommitTimerRef.current !== null) {
+      window.clearTimeout(musicGainCommitTimerRef.current);
+      musicGainCommitTimerRef.current = null;
+    }
+    onMusicGainChange(clamp(value, 0, 1));
+  };
+
+  const scheduleMusicGainCommit = (value: number) => {
+    const next = clamp(value, 0, 1);
+    setLocalMusicGain(next);
+    if (musicGainCommitTimerRef.current !== null) {
+      window.clearTimeout(musicGainCommitTimerRef.current);
+    }
+    musicGainCommitTimerRef.current = window.setTimeout(() => {
+      onMusicGainChange(next);
+      musicGainCommitTimerRef.current = null;
+    }, 320);
+  };
+
   const seekTimeline = useCallback(
     (value: number) => {
       const clamped = clamp(value, 0, clipDurationSec);
@@ -462,8 +653,9 @@ export function Step3RenderTemplate({
       if (video) {
         video.currentTime = clamped;
       }
+      syncBackgroundTo(clamped);
     },
-    [clipDurationSec]
+    [clipDurationSec, syncBackgroundTo]
   );
 
   const seekTimelineAtClientX = useCallback(
@@ -535,16 +727,18 @@ export function Step3RenderTemplate({
 
   const handleSelectVersion = (runId: string) => {
     onSelectVersionId(runId);
-    if (compareEnabled) {
-      if (compareSide === "A") {
-        setCompareAId(runId);
-      } else {
-        setCompareBId(runId);
-      }
-    }
   };
 
   const summaryLines = previewVersion?.diff.summary ?? ["Используется текущий live draft без сохраненной версии."];
+
+  const commitAdvancedControls = () => {
+    flushClipCommit(localClipStartSec);
+    flushFocusCommit(localFocusY);
+    flushVideoZoomCommit(localVideoZoom);
+    flushTopFontScaleCommit(localTopFontScale);
+    flushBottomFontScaleCommit(localBottomFontScale);
+    flushMusicGainCommit(localMusicGain);
+  };
 
   const leftFooter = (
     <div className="sticky-action-bar">
@@ -554,7 +748,10 @@ export function Step3RenderTemplate({
       <button
         type="button"
         className="btn btn-secondary"
-        onClick={onOptimize}
+        onClick={() => {
+          commitAdvancedControls();
+          onOptimize();
+        }}
         disabled={!sourceUrl || isOptimizing || isRendering}
         aria-busy={isOptimizing}
       >
@@ -566,7 +763,10 @@ export function Step3RenderTemplate({
       <button
         type="button"
         className="btn btn-primary"
-        onClick={onRender}
+        onClick={() => {
+          commitAdvancedControls();
+          onRender();
+        }}
         disabled={!sourceUrl || isRendering}
         aria-busy={isRendering}
       >
@@ -592,7 +792,13 @@ export function Step3RenderTemplate({
           <section className="control-card">
             <div className="template-inline">
               <span className="badge">Template</span>
-              <strong>{templateId === STAGE3_TEMPLATE_ID ? "Science Card v1" : templateId}</strong>
+              <strong>
+                {templateId === STAGE3_TEMPLATE_ID
+                  ? "Science Card v1"
+                  : templateId === TURBO_FACE_TEMPLATE_ID
+                    ? "Turbo Face v1"
+                    : templateId}
+              </strong>
               <span className="subtle-text mono">{templateId}</span>
             </div>
             <p className="subtle-text">
@@ -683,21 +889,86 @@ export function Step3RenderTemplate({
           </section>
 
           <section className="control-card">
-            <label className="field-label" htmlFor="agentPrompt">
-              Optimize with editor agent
-            </label>
+            <div className="agent-chat-header">
+              <div>
+                <label className="field-label" htmlFor="agentPrompt">
+                  Redactor agent
+                </label>
+                <p className="subtle-text">
+                  Агент сам итерирует изменения, сверяет результат и сохраняет timeline версий.
+                </p>
+              </div>
+              {agentSession ? (
+                <div className="agent-session-badges">
+                  <span className="agent-badge">{formatSessionStatus(agentSession.status)}</span>
+                  <span className="agent-badge">score {formatScore(agentCurrentScore)}</span>
+                </div>
+              ) : null}
+            </div>
+
+            {agentSession ? (
+              <div className="agent-session-summary">
+                <span>goal: {agentSession.goalType}</span>
+                <span>target {agentSession.targetScore.toFixed(2)}</span>
+                <span>{agentSession.maxIterations} iter max</span>
+                <span>budget {agentSession.operationBudget} ops</span>
+                <span>
+                  current {currentSessionVersion ? `v${currentSessionVersion.versionNo}` : "n/a"}
+                </span>
+                <span>best {bestSessionVersion ? `v${bestSessionVersion.versionNo}` : "n/a"}</span>
+              </div>
+            ) : null}
+
+            <div className="agent-chat-shell" aria-live="polite">
+              {isAgentTimelineLoading ? (
+                <p className="subtle-text">Загружаю timeline сессии...</p>
+              ) : null}
+
+              {!agentMessages.length && !isAgentTimelineLoading ? (
+                <div className="agent-empty-state">
+                  <strong>Чат появится после первого запуска.</strong>
+                  <p>
+                    Напишите общую цель вроде "собери так, чтобы было видно только модель", затем агент
+                    сам применит несколько итераций и опишет фактические изменения.
+                  </p>
+                </div>
+              ) : (
+                agentMessages.map((message) => (
+                  <article
+                    key={message.id}
+                    className={`agent-message agent-message-${message.role} agent-tone-${message.tone ?? "neutral"}`}
+                  >
+                    <div className="agent-message-head">
+                      <strong>{message.title}</strong>
+                      <span>{formatDateShort(message.createdAt)}</span>
+                    </div>
+                    <p>{message.text}</p>
+                    {message.meta.length ? (
+                      <div className="agent-message-meta">
+                        {message.meta.map((meta, index) => (
+                          <span key={`${message.id}-meta-${index}`}>{meta}</span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ))
+              )}
+            </div>
+
             <textarea
               id="agentPrompt"
               className="text-area"
               rows={5}
               value={agentPrompt}
               onChange={(event) => onAgentPromptChange(event.target.value)}
-              placeholder={`Пример:\n❗️ровно 6 секунд\n❗️только звук\nфрагменты:\n0:00-0:02\n0:08-конец`}
+              placeholder={`Примеры:\nСожми исходное видео до 6с.\nРастяни исходное видео до 6с без резких jump cut.\nФрагменты: 1. 3-6с 2. 9-12с.\nСмонтируй так, чтобы было видно только модель.`}
             />
             <p className="subtle-text">
-              Опишите целевой монтаж: длительность, фрагменты, audio mode, slow-mo.
+              Можно писать общую цель. Агент сам выберет шаги, оценит результат и продолжит цикл без
+              ручной паузы. Поддерживаются запросы на сжатие/растягивание до 6с, нарезку по фрагментам,
+              зум, позиционирование, audio mode и смешанные инструкции.
             </p>
-            <div className="control-actions">
+            <div className="control-actions agent-chat-actions">
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -705,7 +976,23 @@ export function Step3RenderTemplate({
                 disabled={!sourceUrl || isOptimizing || isRendering}
                 aria-busy={isOptimizing}
               >
-                {isOptimizing ? "Optimizing..." : "Optimize with editor agent"}
+                {isOptimizing ? "Agent is iterating..." : "Send to redactor agent"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={onResumeAgent}
+                disabled={!canResumeAgent}
+              >
+                Continue current session
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={onRollbackSelectedVersion}
+                disabled={!canRollbackSelectedVersion}
+              >
+                Rollback to selected version
               </button>
             </div>
           </section>
@@ -713,111 +1000,9 @@ export function Step3RenderTemplate({
           <details className="advanced-block">
             <summary>Advanced</summary>
             <div className="advanced-content advanced-grid">
-              <div className="compact-field">
-                <label className="field-label" htmlFor="clipStartInput">
-                  Clip start
-                </label>
-                <div className="number-stepper">
-                  <input
-                    id="clipStartInput"
-                    type="number"
-                    className="text-input"
-                    min={0}
-                    max={maxStartSec}
-                    step={0.1}
-                    value={Number.isFinite(localClipStartSec) ? localClipStartSec : 0}
-                    onChange={(event) => {
-                      const next = Number.parseFloat(event.target.value);
-                      if (!Number.isFinite(next)) {
-                        return;
-                      }
-                      scheduleClipCommit(next);
-                    }}
-                    onBlur={() => flushClipCommit(localClipStartSec)}
-                  />
-                  <div className="stepper-buttons">
-                    <button
-                      type="button"
-                      aria-label="Decrease clip start"
-                      onClick={() => {
-                        const next = localClipStartSec - 0.1;
-                        scheduleClipCommit(next);
-                        flushClipCommit(next);
-                      }}
-                    >
-                      −
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Increase clip start"
-                      onClick={() => {
-                        const next = localClipStartSec + 0.1;
-                        scheduleClipCommit(next);
-                        flushClipCommit(next);
-                      }}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <p className="subtle-text">
-                  {formatTimeSec(localClipStartSec)} → {formatTimeSec(clipEndSec)}
-                </p>
-              </div>
-
-              <div className="compact-field">
-                <label className="field-label" htmlFor="focusInput">
-                  Vertical focus
-                </label>
-                <div className="number-stepper">
-                  <input
-                    id="focusInput"
-                    type="number"
-                    className="text-input"
-                    min={12}
-                    max={88}
-                    step={1}
-                    value={focusPercent}
-                    onChange={(event) => {
-                      const nextPercent = Number.parseInt(event.target.value, 10);
-                      if (!Number.isFinite(nextPercent)) {
-                        return;
-                      }
-                      scheduleFocusCommit(nextPercent / 100);
-                    }}
-                    onBlur={() => flushFocusCommit(localFocusY)}
-                  />
-                  <div className="stepper-buttons">
-                    <button
-                      type="button"
-                      aria-label="Decrease vertical focus"
-                      onClick={() => {
-                        const next = localFocusY - 0.01;
-                        scheduleFocusCommit(next);
-                        flushFocusCommit(next);
-                      }}
-                    >
-                      −
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Increase vertical focus"
-                      onClick={() => {
-                        const next = localFocusY + 0.01;
-                        scheduleFocusCommit(next);
-                        flushFocusCommit(next);
-                      }}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <p className="subtle-text">{focusPercent}% (12% top, 50% center, 88% bottom)</p>
-              </div>
-
               <div className="slider-field advanced-span-2">
                 <label className="field-label" htmlFor="clipStartRange">
-                  Clip start slider ({formatTimeSec(localClipStartSec)})
+                  Clip start ({formatTimeSec(localClipStartSec)} → {formatTimeSec(clipEndSec)})
                 </label>
                 <input
                   id="clipStartRange"
@@ -835,7 +1020,7 @@ export function Step3RenderTemplate({
               </div>
               <div className="slider-field advanced-span-2">
                 <label className="field-label" htmlFor="focusRange">
-                  Vertical focus slider ({focusPercent}%)
+                  Vertical focus ({focusPercent}%)
                 </label>
                 <input
                   id="focusRange"
@@ -848,6 +1033,79 @@ export function Step3RenderTemplate({
                   onMouseUp={() => flushFocusCommit(localFocusY)}
                   onTouchEnd={() => flushFocusCommit(localFocusY)}
                   onBlur={() => flushFocusCommit(localFocusY)}
+                />
+                <p className="subtle-text">12% = top, 50% = center, 88% = bottom</p>
+              </div>
+
+              <div className="slider-field advanced-span-2">
+                <label className="field-label" htmlFor="videoZoomRange">
+                  Video zoom (x{localVideoZoom.toFixed(2)})
+                </label>
+                <input
+                  id="videoZoomRange"
+                  type="range"
+                  min={1}
+                  max={1.6}
+                  step={0.01}
+                  value={localVideoZoom}
+                  onChange={(event) => scheduleVideoZoomCommit(Number.parseFloat(event.target.value))}
+                  onMouseUp={() => flushVideoZoomCommit(localVideoZoom)}
+                  onTouchEnd={() => flushVideoZoomCommit(localVideoZoom)}
+                  onBlur={() => flushVideoZoomCommit(localVideoZoom)}
+                />
+              </div>
+
+              <div className="slider-field advanced-span-2">
+                <label className="field-label" htmlFor="topFontScaleRange">
+                  Top text size ({Math.round(localTopFontScale * 100)}%)
+                </label>
+                <input
+                  id="topFontScaleRange"
+                  type="range"
+                  min={0.7}
+                  max={1.9}
+                  step={0.01}
+                  value={localTopFontScale}
+                  onChange={(event) => scheduleTopFontScaleCommit(Number.parseFloat(event.target.value))}
+                  onMouseUp={() => flushTopFontScaleCommit(localTopFontScale)}
+                  onTouchEnd={() => flushTopFontScaleCommit(localTopFontScale)}
+                  onBlur={() => flushTopFontScaleCommit(localTopFontScale)}
+                />
+              </div>
+
+              <div className="slider-field advanced-span-2">
+                <label className="field-label" htmlFor="bottomFontScaleRange">
+                  Bottom text size ({Math.round(localBottomFontScale * 100)}%)
+                </label>
+                <input
+                  id="bottomFontScaleRange"
+                  type="range"
+                  min={0.7}
+                  max={1.9}
+                  step={0.01}
+                  value={localBottomFontScale}
+                  onChange={(event) => scheduleBottomFontScaleCommit(Number.parseFloat(event.target.value))}
+                  onMouseUp={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                  onTouchEnd={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                  onBlur={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                />
+              </div>
+
+              <div className="slider-field advanced-span-2">
+                <label className="field-label" htmlFor="musicGainRange">
+                  Music gain ({Math.round(localMusicGain * 100)}%)
+                </label>
+                <input
+                  id="musicGainRange"
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={localMusicGain}
+                  onChange={(event) => scheduleMusicGainCommit(Number.parseFloat(event.target.value))}
+                  onMouseUp={() => flushMusicGainCommit(localMusicGain)}
+                  onTouchEnd={() => flushMusicGainCommit(localMusicGain)}
+                  onBlur={() => flushMusicGainCommit(localMusicGain)}
                 />
               </div>
               <div className="advanced-span-2">
@@ -874,6 +1132,13 @@ export function Step3RenderTemplate({
               <button type="button" className="btn btn-ghost" onClick={handleTogglePlay}>
                 {isPlaying ? "Pause" : "Play"}
               </button>
+              <button
+                type="button"
+                className={`btn btn-ghost ${!isMuted ? "is-active" : ""}`}
+                onClick={() => setIsMuted((prev) => !prev)}
+              >
+                {!isMuted ? "Sound on" : "Sound off"}
+              </button>
               <button type="button" className={`btn btn-ghost ${loopEnabled ? "is-active" : ""}`} onClick={() => setLoopEnabled((prev) => !prev)}>
                 Loop
               </button>
@@ -897,41 +1162,11 @@ export function Step3RenderTemplate({
                 ))}
               </div>
 
-              <button type="button" className={`btn btn-ghost ${compareEnabled ? "is-active" : ""}`} onClick={() => setCompareEnabled((prev) => !prev)}>
-                A/B
-              </button>
-
               <button type="button" className="btn btn-secondary" onClick={() => setVersionsDrawerOpen((prev) => !prev)}>
                 Versions ({displayVersions.length})
               </button>
             </div>
           </header>
-
-          {compareEnabled ? (
-            <div className="compare-strip">
-              <div className="compare-side-toggle" role="group" aria-label="Compare side">
-                <button
-                  type="button"
-                  className={compareSide === "A" ? "active" : ""}
-                  onClick={() => setCompareSide("A")}
-                >
-                  A
-                </button>
-                <button
-                  type="button"
-                  className={compareSide === "B" ? "active" : ""}
-                  onClick={() => setCompareSide("B")}
-                >
-                  B
-                </button>
-              </div>
-              <span className="subtle-text">
-                {compareSide === "A"
-                  ? `Showing A (${versionA ? `v${versionA.versionNo}` : "—"})`
-                  : `Showing B (${versionB ? `v${versionB.versionNo}` : "—"})`}
-              </span>
-            </div>
-          ) : null}
 
           <div className="stage3-main">
             <div className="preview-stage stage3-preview-stage">
@@ -944,13 +1179,21 @@ export function Step3RenderTemplate({
                     {backgroundAssetUrl ? (
                       backgroundIsVideo ? (
                         <video
+                          ref={backgroundPreviewRef}
                           className="preview-bg-video preview-bg-custom"
                           src={backgroundAssetUrl}
                           muted
-                          autoPlay
-                          loop
                           playsInline
                           preload="metadata"
+                          onLoadedMetadata={() => {
+                            syncBackgroundTo(timelineSec);
+                            if (isPlaying) {
+                              const bg = backgroundPreviewRef.current;
+                              if (bg) {
+                                void bg.play().catch(() => undefined);
+                              }
+                            }
+                          }}
                         />
                       ) : (
                         <div
@@ -960,13 +1203,21 @@ export function Step3RenderTemplate({
                       )
                     ) : previewVideoUrl ? (
                       <video
+                        ref={backgroundPreviewRef}
                         className="preview-bg-video"
                         src={previewVideoUrl}
                         muted
-                        autoPlay
-                        loop
                         playsInline
                         preload="metadata"
+                        onLoadedMetadata={() => {
+                          syncBackgroundTo(timelineSec);
+                          if (isPlaying) {
+                            const bg = backgroundPreviewRef.current;
+                            if (bg) {
+                              void bg.play().catch(() => undefined);
+                            }
+                          }
+                        }}
                       />
                     ) : (
                       <div className="preview-bg-video preview-bg-fallback" />
@@ -976,143 +1227,304 @@ export function Step3RenderTemplate({
                       <span>SAFE AREA</span>
                     </div>
 
-                    <div
-                      className="preview-card"
-                      style={{
-                        left: cardLeft,
-                        top: cardTop,
-                        width: cardWidth,
-                        height: cardHeight,
-                        borderRadius: SCIENCE_CARD.card.radius,
-                        borderWidth: SCIENCE_CARD.card.borderWidth,
-                        borderColor: SCIENCE_CARD.card.borderColor
-                      }}
-                    >
-                      <div
-                        className="preview-top"
-                        style={{
-                          height: topHeight,
-                          padding: `${SCIENCE_CARD.slot.topPaddingY}px ${SCIENCE_CARD.slot.topPaddingX}px`
-                        }}
-                      >
-                        <p
-                          className="preview-text preview-text-top"
+                    {isTurboTemplate ? (
+                      <>
+                        <div
+                          className="preview-top"
                           style={{
-                            fontSize: previewComputed.topFont,
-                            WebkitLineClamp: SCIENCE_CARD.typography.top.maxLines,
-                            lineHeight: SCIENCE_CARD.typography.top.lineHeight
+                            position: "absolute",
+                            left: TURBO_FACE.top.x,
+                            top: TURBO_FACE.top.y,
+                            width: TURBO_FACE.top.width,
+                            height: previewComputed.topBlockHeight,
+                            borderRadius: TURBO_FACE.top.radius,
+                            backgroundColor: "#ffffff",
+                            boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
+                            border: "2px solid rgba(0,0,0,0.18)",
+                            padding: `${TURBO_FACE.top.paddingY}px ${TURBO_FACE.top.paddingX}px`
                           }}
                         >
-                          {previewComputed.top || "TOP text from Step 2 will appear here."}
-                        </p>
-                      </div>
+                          <p
+                            className="preview-text preview-text-top"
+                              style={{
+                                fontSize: previewComputed.topFont,
+                                WebkitLineClamp: TURBO_FACE.typography.top.maxLines,
+                                lineHeight: previewComputed.topLineHeight
+                              }}
+                          >
+                            {previewComputed.top || "TOP text from Step 2 will appear here."}
+                          </p>
+                        </div>
 
-                      <div className="preview-video" style={{ height: videoHeight }}>
-                        {previewVideoUrl ? (
-                          <PreviewClipVideo
-                            sourceUrl={previewVideoUrl}
-                            clipDurationSec={clipDurationSec}
-                            className="preview-slot-video"
-                            objectPosition={objectPosition}
-                            videoZoom={previewVideoZoom}
-                            videoRef={slotPreviewRef}
-                            isPlaying={isPlaying}
-                            loopEnabled={loopEnabled}
-                            onPositionChange={(sec) => {
-                              if (!isTimelineScrubbing) {
-                                setTimelineSec(sec);
-                              }
-                            }}
-                            onClipEnd={() => {
-                              setIsPlaying(false);
-                            }}
-                          />
-                        ) : (
-                          <span>VIDEO SLOT</span>
-                        )}
-                      </div>
-
-                      <div
-                        className="preview-bottom"
-                        style={{
-                          height: bottomHeight
-                        }}
-                      >
                         <div
-                          className="preview-author"
+                          className="preview-video"
                           style={{
-                            height: bottomMetaHeight,
-                            padding: `${SCIENCE_CARD.slot.bottomMetaPaddingY}px ${SCIENCE_CARD.slot.bottomMetaPaddingX}px`
+                            position: "absolute",
+                            left: previewComputed.videoX,
+                            top: previewComputed.videoY,
+                            width: previewComputed.videoWidth,
+                            height: previewComputed.videoHeight
+                          }}
+                        >
+                          {previewVideoUrl ? (
+                            <PreviewClipVideo
+                              sourceUrl={previewVideoUrl}
+                              clipDurationSec={clipDurationSec}
+                              className="preview-slot-video"
+                              objectPosition={objectPosition}
+                              videoZoom={previewVideoZoom}
+                              muted={isMuted}
+                              videoRef={slotPreviewRef}
+                              isPlaying={isPlaying}
+                              loopEnabled={loopEnabled}
+                              onPositionChange={(sec) => {
+                                if (!isTimelineScrubbing) {
+                                  setTimelineSec(sec);
+                                }
+                                syncBackgroundTo(sec);
+                              }}
+                              onClipEnd={() => {
+                                setIsPlaying(false);
+                              }}
+                            />
+                          ) : (
+                            <span>VIDEO SLOT</span>
+                          )}
+                        </div>
+
+                        <div
+                          className="preview-bottom"
+                          style={{
+                            position: "absolute",
+                            left: TURBO_FACE.bottom.x,
+                            top: TURBO_FACE.frame.height - TURBO_FACE.bottom.bottom - previewComputed.bottomBlockHeight,
+                            width: TURBO_FACE.bottom.width,
+                            height: previewComputed.bottomBlockHeight,
+                            borderRadius: TURBO_FACE.bottom.radius,
+                            backgroundColor: "#ffffff",
+                            boxShadow: "0 16px 36px rgba(0,0,0,0.26)",
+                            border: "2px solid rgba(0,0,0,0.18)"
                           }}
                         >
                           <div
-                            className="preview-author-avatar"
+                            className="preview-author"
                             style={{
-                              width: SCIENCE_CARD.author.avatarSize,
-                              height: SCIENCE_CARD.author.avatarSize,
-                              borderWidth: SCIENCE_CARD.author.avatarBorder,
-                              fontSize: Math.round(SCIENCE_CARD.author.avatarSize * 0.32),
-                              backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
-                              backgroundSize: avatarUrl ? "cover" : undefined,
-                              backgroundPosition: avatarUrl ? "center" : undefined
+                              height: TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2,
+                              padding: `${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
                             }}
                           >
-                            {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div className="preview-author-copy">
-                            <div className="preview-author-name-row">
-                              <span
-                                className="preview-author-name"
-                                style={{
-                                  fontSize: SCIENCE_CARD.typography.authorName.font,
-                                  lineHeight: SCIENCE_CARD.typography.authorName.lineHeight
-                                }}
-                              >
-                                {channelName}
-                              </span>
-                              <span
-                                className="preview-author-check"
-                                style={{
-                                  width: SCIENCE_CARD.author.checkSize,
-                                  height: SCIENCE_CARD.author.checkSize,
-                                  fontSize: Math.round(SCIENCE_CARD.author.checkSize * 0.56)
-                                }}
-                              >
-                                ✓
-                              </span>
+                            <div
+                              className="preview-author-avatar"
+                              style={{
+                                width: TURBO_FACE.author.avatarSize,
+                                height: TURBO_FACE.author.avatarSize,
+                                borderWidth: TURBO_FACE.author.avatarBorder,
+                                fontSize: Math.round(TURBO_FACE.author.avatarSize * 0.32),
+                                backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
+                                backgroundSize: avatarUrl ? "cover" : undefined,
+                                backgroundPosition: avatarUrl ? "center" : undefined
+                              }}
+                            >
+                              {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
                             </div>
-                            <span
-                              className="preview-author-handle"
+                            <div className="preview-author-copy">
+                              <div className="preview-author-name-row">
+                                <span
+                                  className="preview-author-name"
+                                  style={{
+                                    fontSize: TURBO_FACE.typography.authorName.font,
+                                    lineHeight: TURBO_FACE.typography.authorName.lineHeight
+                                  }}
+                                >
+                                  {channelName}
+                                </span>
+                                <span
+                                  className="preview-author-check"
+                                  style={{
+                                    width: TURBO_FACE.author.checkSize,
+                                    height: TURBO_FACE.author.checkSize,
+                                    fontSize: Math.round(TURBO_FACE.author.checkSize * 0.56)
+                                  }}
+                                >
+                                  ✓
+                                </span>
+                              </div>
+                              <span
+                                className="preview-author-handle"
                                 style={{
-                                  fontSize: SCIENCE_CARD.typography.authorHandle.font,
-                                  lineHeight: SCIENCE_CARD.typography.authorHandle.lineHeight
+                                  fontSize: TURBO_FACE.typography.authorHandle.font,
+                                  lineHeight: TURBO_FACE.typography.authorHandle.lineHeight,
+                                  color: "#666666"
                                 }}
                               >
                                 @{channelUsername}
                               </span>
+                            </div>
+                          </div>
+
+                          <div
+                            className="preview-bottom-body"
+                            style={{
+                              height:
+                                previewComputed.bottomBlockHeight -
+                                (TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2),
+                              padding: `0 ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
+                            }}
+                          >
+                            <p
+                              className="preview-text preview-text-bottom"
+                              style={{
+                                fontSize: previewComputed.bottomFont,
+                                WebkitLineClamp: TURBO_FACE.typography.bottom.maxLines,
+                                lineHeight: previewComputed.bottomLineHeight
+                              }}
+                            >
+                              {previewComputed.bottom || "BOTTOM text from Step 2 will appear here."}
+                            </p>
                           </div>
                         </div>
-
+                      </>
+                    ) : (
+                      <div
+                        className="preview-card"
+                        style={{
+                          left: cardLeft,
+                          top: cardTop,
+                          width: cardWidth,
+                          height: cardHeight,
+                          borderRadius: templateConfig.card.radius,
+                          borderWidth: templateConfig.card.borderWidth,
+                          borderColor: templateConfig.card.borderColor
+                        }}
+                      >
                         <div
-                          className="preview-bottom-body"
+                          className="preview-top"
                           style={{
-                            height: previewComputed.bottomBodyHeight,
-                            padding: `${SCIENCE_CARD.slot.bottomTextPaddingY}px ${SCIENCE_CARD.slot.bottomTextPaddingX}px`
+                            height: topHeight,
+                            padding: `${templateConfig.slot.topPaddingY}px ${templateConfig.slot.topPaddingX}px`
                           }}
                         >
                           <p
-                            className="preview-text preview-text-bottom"
+                            className="preview-text preview-text-top"
                             style={{
-                              fontSize: previewComputed.bottomFont,
-                              WebkitLineClamp: SCIENCE_CARD.typography.bottom.maxLines,
-                              lineHeight: SCIENCE_CARD.typography.bottom.lineHeight
+                              fontSize: previewComputed.topFont,
+                              WebkitLineClamp: templateConfig.typography.top.maxLines,
+                              lineHeight: previewComputed.topLineHeight
                             }}
                           >
-                            {previewComputed.bottom || "BOTTOM text from Step 2 will appear here."}
+                            {previewComputed.top || "TOP text from Step 2 will appear here."}
                           </p>
                         </div>
+
+                        <div className="preview-video" style={{ height: videoHeight }}>
+                          {previewVideoUrl ? (
+                            <PreviewClipVideo
+                              sourceUrl={previewVideoUrl}
+                              clipDurationSec={clipDurationSec}
+                              className="preview-slot-video"
+                              objectPosition={objectPosition}
+                              videoZoom={previewVideoZoom}
+                              muted={isMuted}
+                              videoRef={slotPreviewRef}
+                              isPlaying={isPlaying}
+                              loopEnabled={loopEnabled}
+                              onPositionChange={(sec) => {
+                                if (!isTimelineScrubbing) {
+                                  setTimelineSec(sec);
+                                }
+                                syncBackgroundTo(sec);
+                              }}
+                              onClipEnd={() => {
+                                setIsPlaying(false);
+                              }}
+                            />
+                          ) : (
+                            <span>VIDEO SLOT</span>
+                          )}
+                        </div>
+
+                        <div
+                          className="preview-bottom"
+                          style={{
+                            height: bottomHeight
+                          }}
+                        >
+                          <div
+                            className="preview-author"
+                            style={{
+                              height: bottomMetaHeight,
+                              padding: `${templateConfig.slot.bottomMetaPaddingY}px ${templateConfig.slot.bottomMetaPaddingX}px`
+                            }}
+                          >
+                            <div
+                              className="preview-author-avatar"
+                              style={{
+                                width: templateConfig.author.avatarSize,
+                                height: templateConfig.author.avatarSize,
+                                borderWidth: templateConfig.author.avatarBorder,
+                                fontSize: Math.round(templateConfig.author.avatarSize * 0.32),
+                                backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
+                                backgroundSize: avatarUrl ? "cover" : undefined,
+                                backgroundPosition: avatarUrl ? "center" : undefined
+                              }}
+                            >
+                              {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="preview-author-copy">
+                              <div className="preview-author-name-row">
+                                <span
+                                  className="preview-author-name"
+                                  style={{
+                                    fontSize: templateConfig.typography.authorName.font,
+                                    lineHeight: templateConfig.typography.authorName.lineHeight
+                                  }}
+                                >
+                                  {channelName}
+                                </span>
+                                <span
+                                  className="preview-author-check"
+                                  style={{
+                                    width: templateConfig.author.checkSize,
+                                    height: templateConfig.author.checkSize,
+                                    fontSize: Math.round(templateConfig.author.checkSize * 0.56)
+                                  }}
+                                >
+                                  ✓
+                                </span>
+                              </div>
+                              <span
+                                className="preview-author-handle"
+                                style={{
+                                  fontSize: templateConfig.typography.authorHandle.font,
+                                  lineHeight: templateConfig.typography.authorHandle.lineHeight
+                                }}
+                              >
+                                @{channelUsername}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div
+                            className="preview-bottom-body"
+                            style={{
+                              height: previewComputed.bottomBodyHeight,
+                              padding: `${bottomTextPaddingTop}px ${templateConfig.slot.bottomTextPaddingX}px ${bottomTextPaddingBottom}px`
+                            }}
+                          >
+                            <p
+                              className="preview-text preview-text-bottom"
+                            style={{
+                              fontSize: previewComputed.bottomFont,
+                              WebkitLineClamp: templateConfig.typography.bottom.maxLines,
+                              lineHeight: previewComputed.bottomLineHeight
+                            }}
+                            >
+                              {previewComputed.bottom || "BOTTOM text from Step 2 will appear here."}
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1180,37 +1592,6 @@ export function Step3RenderTemplate({
                   Close
                 </button>
               </header>
-
-              {compareEnabled ? (
-                <div className="compare-selects">
-                  <label className="field-label" htmlFor="compareA">Version A</label>
-                  <select
-                    id="compareA"
-                    className="text-input"
-                    value={compareAId ?? ""}
-                    onChange={(event) => setCompareAId(event.target.value || null)}
-                  >
-                    {displayVersions.map((version) => (
-                      <option key={`a-${version.runId}`} value={version.runId}>
-                        v{version.versionNo} · {shortPrompt(version.prompt)}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="field-label" htmlFor="compareB">Version B</label>
-                  <select
-                    id="compareB"
-                    className="text-input"
-                    value={compareBId ?? ""}
-                    onChange={(event) => setCompareBId(event.target.value || null)}
-                  >
-                    {displayVersions.map((version) => (
-                      <option key={`b-${version.runId}`} value={version.runId}>
-                        v{version.versionNo} · {shortPrompt(version.prompt)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
 
               <div className="versions-drawer-list">
                 {displayVersions.length === 0 ? (

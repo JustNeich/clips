@@ -23,6 +23,8 @@ export type Stage2Output = {
     option: number;
     top: string;
     bottom: string;
+    topRu?: string;
+    bottomRu?: string;
   }>;
   titleOptions: string[];
   finalPick: {
@@ -41,6 +43,10 @@ export type Stage2Response = {
     commentsUsedForPrompt: number;
   };
   output: Stage2Output;
+  seo?: {
+    description: string;
+    tags: string;
+  } | null;
   warnings: Array<{ field: string; message: string }>;
   model?: string;
   reasoningEffort?: string;
@@ -100,6 +106,8 @@ export type Stage3Operation =
   | { op: "set_clip_start"; clipStartSec: number }
   | { op: "set_focus_y"; focusY: number }
   | { op: "set_video_zoom"; videoZoom: number }
+  | { op: "set_top_font_scale"; topFontScale: number }
+  | { op: "set_bottom_font_scale"; bottomFontScale: number }
   | { op: "set_music_gain"; musicGain: number }
   | { op: "set_text_policy"; textPolicy: Stage3TextPolicy }
   | { op: "rewrite_top_text"; topText: string }
@@ -111,6 +119,8 @@ export type Stage3RenderPlan = {
   audioMode: Stage3AudioMode;
   smoothSlowMo: boolean;
   videoZoom: number;
+  topFontScale: number;
+  bottomFontScale: number;
   musicGain: number;
   textPolicy: Stage3TextPolicy;
   segments: Stage3Segment[];
@@ -169,6 +179,7 @@ export type Stage3Version = {
   };
 };
 
+// Legacy `/api/stage3/optimize` compatibility shape.
 export type Stage3OptimizeResponse = {
   optimization: {
     changed: boolean;
@@ -187,7 +198,160 @@ export type Stage3OptimizeResponse = {
   };
 };
 
-// Legacy shape compatibility (for old events/response parsing)
+export type Stage3SessionStatus = "running" | "completed" | "partiallyApplied" | "failed";
+
+export type Stage3GoalType =
+  | "focusOnly"
+  | "crop"
+  | "zoom"
+  | "timing"
+  | "fragments"
+  | "color"
+  | "stabilization"
+  | "audio"
+  | "text"
+  | "unknown";
+
+export type Stage3IterationStopReason =
+  | "targetScoreReached"
+  | "maxIterationsReached"
+  | "minGainReached"
+  | "safety"
+  | "noProgress"
+  | "plannerFailure"
+  | "rollbackCreated"
+  | "userStop";
+
+export type Stage3IterationScores = {
+  quality: number;
+  goalFit: number;
+  safety: number;
+  stepGain: number;
+  total: number;
+};
+
+export type Stage3IterationPlan = {
+  rationale: string;
+  strategy: "heuristic" | "llm" | "fallback";
+  hypothesis: string;
+  operations: Stage3Operation[];
+  magnitudes: number[];
+  expected?: Record<string, unknown>;
+};
+
+export type Stage3VersionRecord = {
+  id: string;
+  sessionId: string;
+  parentVersionId: string | null;
+  iterationIndex: number;
+  source: "agent.auto" | "rollback";
+  transformConfig: Stage3StateSnapshot;
+  diffSummary: string[];
+  rationale: string;
+  createdAt: string;
+};
+
+export type Stage3IterationRecord = {
+  id: string;
+  sessionId: string;
+  iterationIndex: number;
+  beforeVersionId: string;
+  afterVersionId: string;
+  plan: Stage3IterationPlan;
+  appliedOps: Stage3Operation[];
+  scores: Stage3IterationScores;
+  judgeNotes: string;
+  stoppedReason: Stage3IterationStopReason | null;
+  createdAt: string;
+  timings: {
+    planMs?: number;
+    executeMs?: number;
+    judgeMs?: number;
+    totalMs?: number;
+  };
+};
+
+export type Stage3MessageRole = "user" | "assistant_auto" | "assistant_summary";
+
+export type Stage3MessageRecord = {
+  id: string;
+  sessionId: string;
+  role: Stage3MessageRole;
+  text: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type Stage3SessionRecord = {
+  id: string;
+  projectId: string;
+  mediaId: string;
+  goalText: string;
+  status: Stage3SessionStatus;
+  goalType: Stage3GoalType;
+  targetScore: number;
+  minGain: number;
+  maxIterations: number;
+  operationBudget: number;
+  createdAt: string;
+  updatedAt: string;
+  lastPlanSummary: string | null;
+  stagnationCount: number;
+  currentVersionId: string | null;
+  bestVersionId: string | null;
+};
+
+export type Stage3TimelineResponse = {
+  session: Stage3SessionRecord;
+  versions: Stage3VersionRecord[];
+  iterations: Stage3IterationRecord[];
+  messages: Stage3MessageRecord[];
+  legacyVersions: Stage3Version[];
+  uiVersions: Stage3Version[];
+};
+
+export type Stage3AgentRunResponse = {
+  status: "applied" | "partiallyApplied" | "failed";
+  sessionId: string;
+  finalVersionId: string;
+  bestVersionId: string;
+  iterations: Array<{
+    iterationIndex: number;
+    plan: Stage3IterationPlan;
+    appliedOps: Stage3Operation[];
+    beforeVersionId: string;
+    afterVersionId: string;
+    judgeNotes: string;
+    stoppedReason: Stage3IterationStopReason | null;
+    scores: Stage3IterationScores;
+    timings: {
+      planMs?: number;
+      executeMs?: number;
+      judgeMs?: number;
+      totalMs?: number;
+    };
+  }>;
+  scoreHistory: number[];
+  finalScore: number;
+  stabilityNote?: string;
+  summary: {
+    beforeVersionId: string;
+    changedOperations: string[];
+    whyStopped: Stage3IterationStopReason;
+  };
+};
+
+export type Stage3AgentConversationItem = {
+  id: string;
+  role: "user" | "assistant";
+  title: string;
+  text: string;
+  meta: string[];
+  createdAt: string;
+  tone?: "neutral" | "success" | "warning";
+};
+
+// Legacy optimize-run shape used only by compat bridge and old history parsing.
 export type Stage3OptimizationRun = {
   runId: string;
   createdAt: string;
@@ -232,9 +396,12 @@ export type ChannelAsset = {
 
 export type Channel = {
   id: string;
+  workspaceId?: string;
+  creatorUserId?: string;
   name: string;
   username: string;
   systemPrompt: string;
+  descriptionPrompt: string;
   examplesJson: string;
   templateId: string;
   avatarAssetId: string | null;
@@ -242,6 +409,11 @@ export type Channel = {
   defaultMusicAssetId: string | null;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
+  currentUserCanOperate?: boolean;
+  currentUserCanEditSetup?: boolean;
+  currentUserCanManageAccess?: boolean;
+  isVisibleToCurrentUser?: boolean;
   assets?: {
     avatar?: ChannelAsset | null;
     backgrounds?: ChannelAsset[];
@@ -257,8 +429,94 @@ export type CodexDeviceAuth = {
 };
 
 export type CodexAuthResponse = {
-  sessionId: string;
+  sessionId: string | null;
   loggedIn: boolean;
   loginStatusText: string;
   deviceAuth: CodexDeviceAuth;
+};
+
+export type RuntimeToolCapability = {
+  available: boolean;
+  resolvedPath: string | null;
+  message: string | null;
+};
+
+export type RuntimeCapabilitiesResponse = {
+  deployment: {
+    vercel: boolean;
+    nodeVersion: string;
+  };
+  tools: {
+    codex: RuntimeToolCapability;
+    ytDlp: RuntimeToolCapability;
+    ffmpeg: RuntimeToolCapability;
+    ffprobe: RuntimeToolCapability;
+  };
+  features: {
+    fetchSource: boolean;
+    downloadSource: boolean;
+    loadComments: boolean;
+    sharedCodex: boolean;
+    stage2: boolean;
+    stage3: boolean;
+  };
+};
+
+export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
+
+export type WorkspaceRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UserRecord = {
+  id: string;
+  email: string;
+  displayName: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspaceMemberRecord = {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  role: AppRole;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EffectivePermissions = {
+  canManageMembers: boolean;
+  canManageCodex: boolean;
+  canCreateChannel: boolean;
+  canManageAnyChannelAccess: boolean;
+};
+
+export type AuthMeResponse = {
+  user: UserRecord;
+  workspace: WorkspaceRecord;
+  membership: WorkspaceMemberRecord;
+  sharedCodexStatus: {
+    status: "connected" | "disconnected" | "connecting" | "error";
+    connected: boolean;
+    loginStatusText: string | null;
+    deviceAuth: CodexDeviceAuth | null;
+  };
+  effectivePermissions: EffectivePermissions;
+};
+
+export type ChannelAccessGrant = {
+  id: string;
+  channelId: string;
+  userId: string;
+  accessRole: "operate";
+  grantedByUserId: string;
+  createdAt: string;
+  revokedAt: string | null;
+  user?: UserRecord | null;
 };

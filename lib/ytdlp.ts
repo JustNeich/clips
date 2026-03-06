@@ -41,6 +41,12 @@ export function sanitizeFileName(name: string): string {
 export function getYtDlpError(stderr: string): string {
   const normalized = stderr.toLowerCase();
 
+  if (!normalized.trim()) {
+    if (process.env.VERCEL === "1") {
+      return "yt-dlp недоступен на этом Vercel deployment. Step 1 fetch/download/comments не сможет обработать исходное видео.";
+    }
+    return "yt-dlp не найден на сервере.";
+  }
   if (normalized.includes("unsupported url")) {
     return "Ссылка не поддерживается.";
   }

@@ -1,12 +1,39 @@
 import { createOrGetChatByUrl, listChats } from "../../../lib/chat-history";
+import { requireAuth, requireChannelOperate, requireChannelVisibility } from "../../../lib/auth/guards";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const channelId = url.searchParams.get("channelId")?.trim() || undefined;
-  const chats = await listChats(channelId);
-  return Response.json({ chats }, { status: 200 });
+  try {
+    const auth = await requireAuth();
+    const url = new URL(request.url);
+    const channelId = url.searchParams.get("channelId")?.trim() || undefined;
+
+    if (channelId) {
+      await requireChannelVisibility(auth, channelId);
+      const chats = await listChats(channelId, auth.workspace.id);
+      return Response.json({ chats }, { status: 200 });
+    }
+
+    const chats = await listChats(undefined, auth.workspace.id);
+    const visibleChats = [];
+    for (const chat of chats) {
+      try {
+        await requireChannelVisibility(auth, chat.channelId);
+        visibleChats.push(chat);
+      } catch {
+        continue;
+      }
+    }
+    return Response.json({ chats: visibleChats }, { status: 200 });
+  } catch (error) {
+    return error instanceof Response
+      ? error
+      : Response.json(
+          { error: error instanceof Error ? error.message : "Unable to load chats." },
+          { status: 500 }
+        );
+  }
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -24,6 +51,21 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Некорректный URL." }, { status: 400 });
   }
 
-  const chat = await createOrGetChatByUrl(url, body?.channelId?.trim());
-  return Response.json({ chat }, { status: 200 });
+  try {
+    const auth = await requireAuth();
+    const channelId = body?.channelId?.trim();
+    if (!channelId) {
+      return Response.json({ error: "Передайте channelId." }, { status: 400 });
+    }
+    await requireChannelOperate(auth, channelId);
+    const chat = await createOrGetChatByUrl(url, channelId);
+    return Response.json({ chat }, { status: 200 });
+  } catch (error) {
+    return error instanceof Response
+      ? error
+      : Response.json(
+          { error: error instanceof Error ? error.message : "Unable to create chat." },
+          { status: 500 }
+        );
+  }
 }

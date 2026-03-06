@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   ChannelAssetKind,
   createChannelAsset,
-  getChannelById,
   listChannelAssets,
   updateChannelById
 } from "../../../../../lib/chat-history";
@@ -12,6 +11,11 @@ import {
   saveChannelAssetFile,
   validateChannelAssetMime
 } from "../../../../../lib/channel-assets";
+import {
+  requireAuth,
+  requireChannelSetupEdit,
+  requireChannelVisibility
+} from "../../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
 
@@ -40,33 +44,36 @@ function maxSizeByKind(kind: ChannelAssetKind): number {
 
 export async function GET(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
-  const channel = await getChannelById(id);
-  if (!channel) {
-    return Response.json({ error: "Channel not found." }, { status: 404 });
+  try {
+    const auth = await requireAuth();
+    await requireChannelVisibility(auth, id);
+
+    const url = new URL(request.url);
+    const kind = parseKind(url.searchParams.get("kind"));
+    const assets = await listChannelAssets(id, kind ?? undefined);
+
+    return Response.json(
+      {
+        assets: assets.map((asset) => ({
+          ...asset,
+          url: buildChannelAssetUrl(asset.channelId, asset.id)
+        }))
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Unable to load channel assets." },
+      { status: 500 }
+    );
   }
-
-  const url = new URL(request.url);
-  const kind = parseKind(url.searchParams.get("kind"));
-  const assets = await listChannelAssets(id, kind ?? undefined);
-
-  return Response.json(
-    {
-      assets: assets.map((asset) => ({
-        ...asset,
-        url: buildChannelAssetUrl(asset.channelId, asset.id)
-      }))
-    },
-    { status: 200 }
-  );
 }
 
 export async function POST(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
-  const channel = await getChannelById(id);
-  if (!channel) {
-    return Response.json({ error: "Channel not found." }, { status: 404 });
-  }
-
   const formData = await request.formData().catch(() => null);
   const file = formData?.get("file");
   const kind = parseKind(String(formData?.get("kind") ?? ""));
@@ -95,6 +102,8 @@ export async function POST(request: Request, context: Context): Promise<Response
   }
 
   try {
+    const auth = await requireAuth();
+    await requireChannelSetupEdit(auth, id);
     const assetId = randomUUID().replace(/-/g, "");
     const buffer = Buffer.from(await file.arrayBuffer());
     const saved = await saveChannelAssetFile({
@@ -128,10 +137,12 @@ export async function POST(request: Request, context: Context): Promise<Response
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     return Response.json(
       { error: error instanceof Error ? error.message : "Не удалось загрузить ассет." },
       { status: 500 }
     );
   }
 }
-

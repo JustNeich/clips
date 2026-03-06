@@ -1,77 +1,72 @@
-import { ensureCodexHomeForSession, normalizeCodexSessionId } from "../../../../lib/codex-session";
-import {
-  cancelDeviceAuth,
-  getCombinedCodexAuthState,
-  startDeviceAuth
-} from "../../../../lib/codex-auth";
+import { requireAuth } from "../../../../lib/auth/guards";
+import { getWorkspaceCodexStatus, mutateWorkspaceCodexIntegration } from "../../../../lib/workspace-codex";
+import { asErrorResponse } from "../../../../lib/http";
 
 export const runtime = "nodejs";
 
-function isClientErrorMessage(message: string): boolean {
-  const lower = message.toLowerCase();
-  return lower.includes("missing or invalid") || lower.includes("unsupported action");
-}
+type Body = {
+  action?: "start" | "cancel" | "refresh" | "disconnect";
+};
 
-function errorResponse(error: unknown, fallback: string): Response {
-  const message = error instanceof Error ? error.message : fallback;
-  const status = isClientErrorMessage(message) ? 400 : 500;
-  return Response.json({ error: message }, { status });
-}
-
-function extractSessionId(request: Request): string {
-  const sessionId = normalizeCodexSessionId(request.headers.get("x-codex-session-id"));
-  if (!sessionId) {
-    throw new Error("Missing or invalid x-codex-session-id.");
-  }
-  return sessionId;
-}
-
-async function buildStatusResponse(request: Request): Promise<Response> {
-  const sessionId = extractSessionId(request);
-  const codexHome = await ensureCodexHomeForSession(sessionId);
-  const state = await getCombinedCodexAuthState(sessionId, codexHome);
-
-  return Response.json(
-    {
-      sessionId,
-      loggedIn: state.loggedIn,
-      loginStatusText: state.loginStatusText,
-      deviceAuth: state.deviceAuth
-    },
-    { status: 200 }
-  );
-}
-
-export async function GET(request: Request): Promise<Response> {
+export async function GET(): Promise<Response> {
   try {
-    return await buildStatusResponse(request);
+    const auth = await requireAuth();
+    const integration = await getWorkspaceCodexStatus(auth);
+    const ownerView = auth.membership.role === "owner";
+
+    return Response.json(
+      {
+        sessionId: integration?.codexSessionId ?? null,
+        loggedIn: integration?.status === "connected",
+        loginStatusText: integration?.loginStatusText ?? "Disconnected",
+        deviceAuth: ownerView
+          ? {
+              status: integration?.deviceAuthStatus ?? "idle",
+              output: integration?.deviceAuthOutput ?? "",
+              loginUrl: integration?.deviceAuthLoginUrl ?? null,
+              userCode: integration?.deviceAuthUserCode ?? null
+            }
+          : {
+              status: integration?.status === "connecting" ? "running" : "idle",
+              output: "",
+              loginUrl: null,
+              userCode: null
+            }
+      },
+      { status: 200 }
+    );
   } catch (error) {
-    return errorResponse(error, "Unable to read Codex auth status.");
+    return asErrorResponse(error, "Unable to read shared Codex auth status.");
   }
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as Body | null;
+  const action = body?.action;
+  if (action !== "start" && action !== "cancel" && action !== "refresh" && action !== "disconnect") {
+    return Response.json({ error: "Unsupported action." }, { status: 400 });
+  }
+
   try {
-    const sessionId = extractSessionId(request);
-    const codexHome = await ensureCodexHomeForSession(sessionId);
-    const body = (await request.json().catch(() => null)) as { action?: string } | null;
-    const action = body?.action?.trim();
-
-    if (action === "start") {
-      await startDeviceAuth(sessionId, codexHome);
-      return await buildStatusResponse(request);
-    }
-
-    if (action === "cancel") {
-      cancelDeviceAuth(sessionId);
-      return await buildStatusResponse(request);
-    }
-
+    const auth = await requireAuth();
+    const integration = await mutateWorkspaceCodexIntegration({ auth, action });
     return Response.json(
-      { error: "Unsupported action. Use action=start or action=cancel." },
-      { status: 400 }
+      {
+        sessionId: integration?.codexSessionId ?? null,
+        loggedIn: integration?.status === "connected",
+        loginStatusText: integration?.loginStatusText ?? "Disconnected",
+        deviceAuth: {
+          status: integration?.deviceAuthStatus ?? "idle",
+          output: auth.membership.role === "owner" ? integration?.deviceAuthOutput ?? "" : "",
+          loginUrl:
+            auth.membership.role === "owner" ? integration?.deviceAuthLoginUrl ?? null : null,
+          userCode:
+            auth.membership.role === "owner" ? integration?.deviceAuthUserCode ?? null : null
+        }
+      },
+      { status: 200 }
     );
   } catch (error) {
-    return errorResponse(error, "Unable to perform Codex auth action.");
+    return asErrorResponse(error, "Unable to update shared Codex auth.", 403);
   }
 }

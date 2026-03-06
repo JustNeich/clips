@@ -10,15 +10,24 @@ import {
   sortCommentsByPopularity
 } from "../../../../lib/comments";
 import {
+  buildStage2SeoPrompt,
   buildStage2Prompt,
+  parseStage2SeoOutput,
   parseStage2Output,
+  STAGE2_DESCRIPTION_SYSTEM_PROMPT,
   STAGE2_OUTPUT_SCHEMA,
+  STAGE2_SEO_OUTPUT_SCHEMA,
   STAGE2_SYSTEM_PROMPT,
   validateStage2Output
 } from "../../../../lib/stage2";
-import { ensureCodexHomeForSession, normalizeCodexSessionId } from "../../../../lib/codex-session";
 import { getYtDlpError, isSupportedUrl, sanitizeFileName } from "../../../../lib/ytdlp";
 import { getChannelById, getChatById, getDefaultChannel } from "../../../../lib/chat-history";
+import {
+  requireAuth,
+  requireChannelOperate,
+  requireSharedCodexAvailable
+} from "../../../../lib/auth/guards";
+import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,14 +37,6 @@ type VideoInfoJson = {
   title?: string;
   comments?: unknown;
 };
-
-function extractSessionId(request: Request): string {
-  const sessionId = normalizeCodexSessionId(request.headers.get("x-codex-session-id"));
-  if (!sessionId) {
-    throw new Error("Missing or invalid x-codex-session-id.");
-  }
-  return sessionId;
-}
 
 async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   videoPath: string;
@@ -209,8 +210,15 @@ export async function POST(request: Request): Promise<Response> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage2-"));
 
   try {
-    const sessionId = extractSessionId(request);
-    const codexHome = await ensureCodexHomeForSession(sessionId);
+    await Promise.all([
+      requireRuntimeTool("ytDlp"),
+      requireRuntimeTool("ffmpeg"),
+      requireRuntimeTool("ffprobe"),
+      requireRuntimeTool("codex")
+    ]);
+    const auth = await requireAuth();
+    const integration = requireSharedCodexAvailable(auth.workspace.id);
+    const codexHome = integration.codexHomePath as string;
     await ensureCodexLoggedIn(codexHome);
 
     const downloaded = await downloadVideoAndMetadata(rawUrl, tmpDir);
@@ -222,11 +230,18 @@ export async function POST(request: Request): Promise<Response> {
     const frames = await extractFrameImages(downloaded.videoPath, tmpDir);
 
     const channel =
-      (chat?.channelId ? await getChannelById(chat.channelId) : null) ?? (await getDefaultChannel());
+      chat?.channelId
+        ? (await requireChannelOperate(auth, chat.channelId)).channel
+        : await getDefaultChannel(auth.workspace.id);
+    if (!chat?.channelId && auth.membership.role === "redactor_limited") {
+      await requireChannelOperate(auth, channel.id);
+    }
     const examplesPath = path.join(process.cwd(), "data", "examples.json");
     const fallbackExamplesJson = await fs.readFile(examplesPath, "utf-8").catch(() => "[]");
     const examplesJson = channel.examplesJson?.trim() || fallbackExamplesJson;
     const systemPrompt = channel.systemPrompt?.trim() || STAGE2_SYSTEM_PROMPT;
+    const descriptionPrompt =
+      channel.descriptionPrompt?.trim() || STAGE2_DESCRIPTION_SYSTEM_PROMPT;
     const prompt = buildStage2Prompt({
       sourceUrl: rawUrl,
       title: downloaded.title,
@@ -264,6 +279,57 @@ export async function POST(request: Request): Promise<Response> {
     const parsedOutput = parseStage2Output(rawOutput);
     const warnings = validateStage2Output(parsedOutput);
 
+    let seo: { description: string; tags: string } | null = null;
+    try {
+      const seoPrompt = buildStage2SeoPrompt({
+        sourceUrl: rawUrl,
+        title: downloaded.title,
+        comments: promptComments.included,
+        omittedCommentsCount: promptComments.omittedCount,
+        stage2Output: parsedOutput,
+        descriptionPrompt,
+        userInstruction
+      });
+
+      const seoSchemaPath = path.join(tmpDir, "stage2.description.schema.json");
+      const seoOutputPath = path.join(tmpDir, "stage2.description.output.json");
+      await fs.writeFile(seoSchemaPath, JSON.stringify(STAGE2_SEO_OUTPUT_SCHEMA, null, 2), "utf-8");
+
+      const seoTimeoutFromEnv = Number.parseInt(
+        process.env.CODEX_STAGE2_DESCRIPTION_TIMEOUT_MS ?? "",
+        10
+      );
+      const seoTimeoutMs =
+        Number.isFinite(seoTimeoutFromEnv) && seoTimeoutFromEnv > 0
+          ? seoTimeoutFromEnv
+          : 4 * 60_000;
+      const seoModel = process.env.CODEX_STAGE2_DESCRIPTION_MODEL ?? model;
+      const seoReasoningEffort = process.env.CODEX_STAGE2_DESCRIPTION_REASONING_EFFORT ?? "medium";
+
+      await runCodexExec({
+        prompt: seoPrompt,
+        imagePaths: [],
+        outputSchemaPath: seoSchemaPath,
+        outputMessagePath: seoOutputPath,
+        cwd: process.cwd(),
+        codexHome,
+        timeoutMs: seoTimeoutMs,
+        model: seoModel,
+        reasoningEffort: seoReasoningEffort
+      });
+
+      const rawSeoOutput = await fs.readFile(seoOutputPath, "utf-8");
+      seo = parseStage2SeoOutput(rawSeoOutput);
+    } catch (seoError) {
+      warnings.push({
+        field: "seo",
+        message:
+          seoError instanceof Error
+            ? `SEO description generation failed: ${seoError.message}`
+            : "SEO description generation failed."
+      });
+    }
+
     return Response.json(
       {
         source: {
@@ -285,13 +351,15 @@ export async function POST(request: Request): Promise<Response> {
             "inputAnalysis",
             "captionOptions(5)",
             "titleOptions(5)",
-            "finalPick"
+            "finalPick",
+            "seo(description,tags)"
           ],
           topLengthRule: "140-210 chars",
           bottomLengthRule: "80-160 chars",
           enforcedVia: "Codex JSON schema + post-validation"
         },
         output: parsedOutput,
+        seo,
         warnings,
         model: model ?? "default",
         reasoningEffort,
@@ -305,6 +373,9 @@ export async function POST(request: Request): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     const stderr =
       typeof error === "object" && error && "stderr" in error
         ? String((error as { stderr?: string }).stderr ?? "")

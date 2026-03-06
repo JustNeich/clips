@@ -11,6 +11,7 @@ type Step2PickCaptionProps = {
   stageCreatedAt: string | null;
   instruction: string;
   canRunStage2: boolean;
+  runBlockedReason?: string | null;
   isRunning: boolean;
   selectedOption: number | null;
   onInstructionChange: (value: string) => void;
@@ -36,6 +37,7 @@ export function Step2PickCaption({
   stageCreatedAt,
   instruction,
   canRunStage2,
+  runBlockedReason,
   isRunning,
   selectedOption,
   onInstructionChange,
@@ -75,12 +77,15 @@ export function Step2PickCaption({
           <header className="step-head">
             <p className="kicker">Step 2</p>
             <h2>Pick</h2>
-            <p>Run Stage 2, compare all options at once, then choose one for render.</p>
+            <p>Run Stage 2, compare all options side by side, then choose one for render.</p>
             {channelName ? (
               <p className="subtle-text">
                 Channel: <strong>{channelName}</strong>
                 {channelUsername ? ` (@${channelUsername})` : ""}
               </p>
+            ) : null}
+            {stageCreatedAt ? (
+              <p className="subtle-text">Updated: {formatDate(stageCreatedAt)}</p>
             ) : null}
           </header>
 
@@ -104,64 +109,134 @@ export function Step2PickCaption({
                 onClick={onRunStage2}
                 disabled={!canRunStage2 || isRunning}
                 aria-busy={isRunning}
+                title={!canRunStage2 ? runBlockedReason ?? undefined : undefined}
               >
                 {isRunning ? "Running Stage 2..." : "Run Stage 2"}
               </button>
             </div>
+            {!canRunStage2 && runBlockedReason ? (
+              <p className="subtle-text danger-text">{runBlockedReason}</p>
+            ) : null}
           </section>
 
           {!stage2 ? (
             <div className="empty-box">Stage 2 output is empty. Run Stage 2 first.</div>
           ) : (
-            <section className="options-grid">
-              {stage2.output.captionOptions.map((option) => {
-                const selected = activeOption?.option === option.option;
-                const finalPick = stage2.output.finalPick.option === option.option;
+            <>
+              <section className="options-grid options-grid-stage2">
+                {stage2.output.captionOptions.map((option) => {
+                  const selected = activeOption?.option === option.option;
+                  const finalPick = stage2.output.finalPick.option === option.option;
+                  const topRu = option.topRu?.trim() || option.top;
+                  const bottomRu = option.bottomRu?.trim() || option.bottom;
 
-                return (
-                  <article
-                    key={option.option}
-                    className={`option-card ${selected ? "selected" : ""}`}
-                    aria-label={`Caption option ${option.option}`}
-                  >
-                    <div className="option-card-head">
-                      <div className="option-title-row">
-                        <h3>Option {option.option}</h3>
-                        {finalPick ? <span className="badge">Final pick</span> : null}
-                        {selected ? <span className="badge muted">Selected</span> : null}
+                  return (
+                    <article
+                      key={option.option}
+                      className={`option-card ${selected ? "selected" : ""}`}
+                      aria-label={`Caption option ${option.option}`}
+                    >
+                      <div className="option-card-head">
+                        <div className="option-title-row">
+                          <h3>Option {option.option}</h3>
+                          {finalPick ? <span className="badge">Final pick</span> : null}
+                          {selected ? <span className="badge muted">Selected</span> : null}
+                        </div>
+                        <div className="option-actions">
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => onSelectOption(option.option)}
+                          >
+                            Use
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() =>
+                              onCopy(
+                                [
+                                  `TOP EN: ${option.top}`,
+                                  `TOP RU: ${topRu}`,
+                                  `BOTTOM EN: ${option.bottom}`,
+                                  `BOTTOM RU: ${bottomRu}`
+                                ].join("\n"),
+                                `Option ${option.option} copied.`
+                              )
+                            }
+                          >
+                            Copy
+                          </button>
+                        </div>
                       </div>
-                      <div className="option-actions">
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={() => onSelectOption(option.option)}
-                        >
-                          Use
-                        </button>
+
+                      <div className="translation-row">
+                        <span className="field-label">TOP</span>
+                        <div className="translation-grid">
+                          <div className="translation-col">
+                            <span className="translation-label">EN</span>
+                            <p className="text-block">{option.top}</p>
+                          </div>
+                          <div className="translation-col">
+                            <span className="translation-label">RU</span>
+                            <p className="text-block">{topRu}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="translation-row">
+                        <span className="field-label">BOTTOM</span>
+                        <div className="translation-grid">
+                          <div className="translation-col">
+                            <span className="translation-label">EN</span>
+                            <p className="text-block">{option.bottom}</p>
+                          </div>
+                          <div className="translation-col">
+                            <span className="translation-label">RU</span>
+                            <p className="text-block">{bottomRu}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </section>
+
+              {stage2.seo?.description ? (
+                <section className="control-card seo-card">
+                  <div className="option-card-head">
+                    <div>
+                      <h3 className="seo-card-title">Описание ролика</h3>
+                      <p className="subtle-text">Сгенерировано отдельным SEO-запросом после опций.</p>
+                    </div>
+                    <div className="option-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => onCopy(stage2.seo?.description ?? "", "Описание скопировано.")}
+                      >
+                        Copy description
+                      </button>
+                      {stage2.seo?.tags ? (
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() =>
-                            onCopy(`TOP: ${option.top}\nBOTTOM: ${option.bottom}`, `Option ${option.option} copied.`)
-                          }
+                          onClick={() => onCopy(stage2.seo?.tags ?? "", "Tags скопированы.")}
                         >
-                          Copy
+                          Copy tags
                         </button>
-                      </div>
+                      ) : null}
                     </div>
-
-                    <div className="field-stack">
-                      <span className="field-label">TOP</span>
-                      <p className="text-block">{option.top}</p>
+                  </div>
+                  <pre className="seo-description-view">{stage2.seo.description}</pre>
+                  {stage2.seo.tags ? (
+                    <div className="translation-row">
+                      <span className="field-label">Tags</span>
+                      <p className="text-block seo-tags-view">{stage2.seo.tags}</p>
                     </div>
-                    <div className="field-stack">
-                      <span className="field-label">BOTTOM</span>
-                      <p className="text-block">{option.bottom}</p>
-                    </div>
-                  </article>
-                );
-              })}
-            </section>
+                  ) : null}
+                </section>
+              ) : null}
+            </>
           )}
 
           {stage2 ? (
@@ -172,34 +247,6 @@ export function Step2PickCaption({
               </div>
             </details>
           ) : null}
-        </div>
-      }
-      right={
-        <div className="preview-shell">
-          <header className="preview-header">
-            <h3>Stage 2 output</h3>
-            <span className="preview-meta">{stageCreatedAt ? `Updated ${formatDate(stageCreatedAt)}` : "No run yet"}</span>
-          </header>
-
-          <div className="preview-stage">
-            <div className="caption-preview-card">
-              <div className="caption-preview-top">{activeOption?.top ?? "TOP text appears here"}</div>
-              <div className="caption-preview-slot">VIDEO SLOT</div>
-              <div className="caption-preview-bottom">{activeOption?.bottom ?? "BOTTOM text appears here"}</div>
-            </div>
-          </div>
-
-          <div className="summary-card">
-            <p>
-              Selected: <strong>{activeOption ? `Option ${activeOption.option}` : "—"}</strong>
-            </p>
-            <p>
-              Final pick: <strong>{stage2 ? `Option ${stage2.output.finalPick.option}` : "—"}</strong>
-            </p>
-            <p>
-              Model: <strong>{stage2?.model ?? "—"}</strong>
-            </p>
-          </div>
         </div>
       }
     />

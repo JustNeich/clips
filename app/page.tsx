@@ -8,24 +8,36 @@ import { Step1PasteLink } from "./components/Step1PasteLink";
 import { Step2PickCaption } from "./components/Step2PickCaption";
 import { Step3RenderTemplate } from "./components/Step3RenderTemplate";
 import {
+  AppRole,
+  AuthMeResponse,
   Channel,
+  ChannelAccessGrant,
   ChannelAsset,
   ChatEvent,
   ChatThread,
+  Stage3AgentConversationItem,
   CodexAuthResponse,
   CommentsPayload,
-  Stage3AgentPass,
+  RuntimeCapabilitiesResponse,
+  Stage3AgentRunResponse,
+  Stage3IterationStopReason,
   Stage3RenderPlan,
+  Stage3SessionStatus,
   Stage3StateSnapshot,
+  Stage3TimelineResponse,
   Stage3Version,
-  Stage3OptimizationRun,
-  Stage3OptimizeResponse,
-  Stage2Response
+  Stage2Response,
+  UserRecord
 } from "./components/types";
-import { getScienceCardComputed, STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
+import { getTemplateComputed, STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
+import {
+  buildLegacyTimelineEntries,
+  findLatestStage3AgentSessionRef,
+  normalizeStage3SessionStatus
+} from "../lib/stage3-legacy-bridge";
 
-const CODEX_SESSION_STORAGE_KEY = "codex_session_id";
 const CLIP_DURATION_SEC = 6;
+const DEFAULT_TEXT_SCALE = 1.25;
 
 type BusyAction =
   | ""
@@ -47,23 +59,15 @@ type BusyAction =
   | "connect-codex"
   | "refresh-codex";
 
-function normalizeCodexSessionId(raw: string | null | undefined): string | null {
-  const value = (raw ?? "").trim();
-  if (!/^[a-zA-Z0-9_-]{16,96}$/.test(value)) {
-    return null;
-  }
-  return value;
-}
-
-function createCodexSessionId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID().replace(/-/g, "");
-  }
-  return `${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
-}
-
 function buildChannelAssetUrl(channelId: string, assetId: string): string {
   return `/api/channels/${channelId}/assets/${assetId}`;
+}
+
+function findAssetById(assets: ChannelAsset[], assetId: string | null | undefined): ChannelAsset | null {
+  if (!assetId) {
+    return null;
+  }
+  return assets.find((asset) => asset.id === assetId) ?? null;
 }
 
 function toJsonDownload(fileName: string, data: unknown): void {
@@ -123,6 +127,8 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     audioMode: "source_only",
     smoothSlowMo: false,
     videoZoom: 1,
+    topFontScale: DEFAULT_TEXT_SCALE,
+    bottomFontScale: DEFAULT_TEXT_SCALE,
     musicGain: 0.65,
     textPolicy: "strict_fit",
     segments: [],
@@ -143,8 +149,19 @@ function fallbackRenderPlan(): Stage3RenderPlan {
 function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
   return {
     ...plan,
-    // Prompt text must not affect preview cache keys or trigger heavy re-renders.
-    prompt: ""
+    // Keep preview lightweight: no prompt noise, no music mixing, no channel assets.
+    prompt: "",
+    audioMode: "source_only",
+    musicGain: 0,
+    musicAssetId: null,
+    musicAssetMimeType: null,
+    videoZoom: 1,
+    topFontScale: plan.topFontScale,
+    bottomFontScale: plan.bottomFontScale,
+    backgroundAssetId: null,
+    backgroundAssetMimeType: null,
+    avatarAssetId: null,
+    avatarAssetMimeType: null
   };
 }
 
@@ -202,6 +219,14 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
       typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
         ? Math.min(1.6, Math.max(1, candidate.videoZoom))
         : base.videoZoom,
+    topFontScale:
+      typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
+        ? Math.min(1.9, Math.max(0.7, candidate.topFontScale))
+        : base.topFontScale,
+    bottomFontScale:
+      typeof candidate?.bottomFontScale === "number" && Number.isFinite(candidate.bottomFontScale)
+        ? Math.min(1.9, Math.max(0.7, candidate.bottomFontScale))
+        : base.bottomFontScale,
     musicGain:
       typeof candidate?.musicGain === "number" && Number.isFinite(candidate.musicGain)
         ? Math.min(1, Math.max(0, candidate.musicGain))
@@ -260,345 +285,6 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
   };
 }
 
-function normalizeStage3Pass(pass: unknown, fallbackDurationSec = CLIP_DURATION_SEC): Stage3AgentPass | null {
-  if (!pass || typeof pass !== "object") {
-    return null;
-  }
-  const candidate = pass as Partial<Stage3AgentPass>;
-  if (
-    typeof candidate.pass !== "number" ||
-    typeof candidate.label !== "string" ||
-    typeof candidate.summary !== "string" ||
-    !Array.isArray(candidate.changes)
-  ) {
-    return null;
-  }
-
-  const topText = typeof candidate.topText === "string" ? candidate.topText : "";
-  const bottomText = typeof candidate.bottomText === "string" ? candidate.bottomText : "";
-  const clipStartSec = typeof candidate.clipStartSec === "number" ? candidate.clipStartSec : 0;
-  const clipDurationSec =
-    typeof candidate.clipDurationSec === "number" ? candidate.clipDurationSec : fallbackDurationSec;
-  const renderPlan = normalizeRenderPlan(candidate.renderPlan, fallbackRenderPlan());
-
-  return {
-    pass: candidate.pass,
-    label: candidate.label,
-    summary: candidate.summary,
-    changes: candidate.changes.map((item) => String(item)),
-    topText,
-    bottomText,
-    topFontPx: typeof candidate.topFontPx === "number" ? candidate.topFontPx : 0,
-    bottomFontPx: typeof candidate.bottomFontPx === "number" ? candidate.bottomFontPx : 0,
-    topCompacted: Boolean(candidate.topCompacted),
-    bottomCompacted: Boolean(candidate.bottomCompacted),
-    clipStartSec,
-    clipDurationSec,
-    clipEndSec:
-      typeof candidate.clipEndSec === "number" ? candidate.clipEndSec : clipStartSec + clipDurationSec,
-    focusY: typeof candidate.focusY === "number" ? candidate.focusY : 0.5,
-    renderPlan
-  };
-}
-
-function passToSnapshot(pass: Stage3AgentPass, sourceDurationSec: number | null): Stage3StateSnapshot {
-  return {
-    topText: pass.topText,
-    bottomText: pass.bottomText,
-    clipStartSec: pass.clipStartSec,
-    clipDurationSec: pass.clipDurationSec,
-    focusY: pass.focusY,
-    renderPlan: normalizeRenderPlan(pass.renderPlan),
-    sourceDurationSec,
-    textFit: {
-      topFontPx: pass.topFontPx,
-      bottomFontPx: pass.bottomFontPx,
-      topCompacted: pass.topCompacted,
-      bottomCompacted: pass.bottomCompacted
-    }
-  };
-}
-
-function normalizeSnapshot(
-  value: unknown,
-  fallback: Stage3StateSnapshot,
-  sourceDurationSec: number | null
-): Stage3StateSnapshot {
-  if (!value || typeof value !== "object") {
-    return fallback;
-  }
-  const candidate = value as Partial<Stage3StateSnapshot>;
-  return {
-    topText: typeof candidate.topText === "string" ? candidate.topText : fallback.topText,
-    bottomText: typeof candidate.bottomText === "string" ? candidate.bottomText : fallback.bottomText,
-    clipStartSec:
-      typeof candidate.clipStartSec === "number" ? candidate.clipStartSec : fallback.clipStartSec,
-    clipDurationSec:
-      typeof candidate.clipDurationSec === "number" ? candidate.clipDurationSec : fallback.clipDurationSec,
-    focusY: typeof candidate.focusY === "number" ? candidate.focusY : fallback.focusY,
-    renderPlan: normalizeRenderPlan(candidate.renderPlan, fallback.renderPlan),
-    sourceDurationSec,
-    textFit: {
-      topFontPx:
-        typeof candidate.textFit?.topFontPx === "number"
-          ? candidate.textFit.topFontPx
-          : fallback.textFit.topFontPx,
-      bottomFontPx:
-        typeof candidate.textFit?.bottomFontPx === "number"
-          ? candidate.textFit.bottomFontPx
-          : fallback.textFit.bottomFontPx,
-      topCompacted:
-        typeof candidate.textFit?.topCompacted === "boolean"
-          ? candidate.textFit.topCompacted
-          : fallback.textFit.topCompacted,
-      bottomCompacted:
-        typeof candidate.textFit?.bottomCompacted === "boolean"
-          ? candidate.textFit.bottomCompacted
-          : fallback.textFit.bottomCompacted
-    }
-  };
-}
-
-function buildDiffFromSnapshots(
-  baseline: Stage3StateSnapshot,
-  final: Stage3StateSnapshot
-): Stage3Version["diff"] {
-  const textChanged = baseline.topText !== final.topText || baseline.bottomText !== final.bottomText;
-  const framingChanged =
-    Math.abs(baseline.clipStartSec - final.clipStartSec) >= 0.01 ||
-    Math.abs(baseline.focusY - final.focusY) >= 0.005;
-  const timingChanged =
-    baseline.renderPlan.timingMode !== final.renderPlan.timingMode ||
-    baseline.renderPlan.policy !== final.renderPlan.policy ||
-    baseline.renderPlan.smoothSlowMo !== final.renderPlan.smoothSlowMo;
-  const segmentsChanged =
-    JSON.stringify(baseline.renderPlan.segments) !== JSON.stringify(final.renderPlan.segments);
-  const audioChanged = baseline.renderPlan.audioMode !== final.renderPlan.audioMode;
-  const summary: string[] = [];
-  if (textChanged) {
-    summary.push("Текст приведен к более читаемому виду.");
-  }
-  if (framingChanged) {
-    summary.push("Скорректированы фокус и старт клипа.");
-  }
-  if (segmentsChanged) {
-    summary.push("Обновлена нарезка фрагментов.");
-  }
-  if (timingChanged) {
-    summary.push("Изменена стратегия длительности/темпа.");
-  }
-  if (audioChanged) {
-    summary.push("Обновлен режим аудио.");
-  }
-  if (!summary.length) {
-    summary.push("Агент подтвердил текущие настройки без изменений.");
-  }
-  return { textChanged, framingChanged, timingChanged, segmentsChanged, audioChanged, summary };
-}
-
-function normalizeOptimizationRun(
-  value: unknown,
-  fallbackId: string,
-  fallbackCreatedAt: string
-): Stage3OptimizationRun | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Partial<Stage3OptimizationRun> & { passes?: unknown[] };
-  const rawPasses = Array.isArray(candidate.passes) ? candidate.passes : [];
-  const normalizedPasses = rawPasses
-    .map((pass) => normalizeStage3Pass(pass))
-    .filter((pass): pass is Stage3AgentPass => Boolean(pass));
-
-  if (!normalizedPasses.length) {
-    return null;
-  }
-
-  const recommendedPass =
-    typeof candidate.recommendedPass === "number" && Number.isFinite(candidate.recommendedPass)
-      ? candidate.recommendedPass
-      : normalizedPasses[normalizedPasses.length - 1].pass;
-
-  return {
-    runId: typeof candidate.runId === "string" && candidate.runId.trim() ? candidate.runId : fallbackId,
-    createdAt:
-      typeof candidate.createdAt === "string" && candidate.createdAt.trim()
-        ? candidate.createdAt
-        : fallbackCreatedAt,
-    prompt: typeof candidate.prompt === "string" ? candidate.prompt : "",
-    passes: normalizedPasses,
-    recommendedPass,
-    sourceDurationSec:
-      typeof candidate.sourceDurationSec === "number" && Number.isFinite(candidate.sourceDurationSec)
-        ? candidate.sourceDurationSec
-        : null
-  };
-}
-
-function runToVersion(run: Stage3OptimizationRun, versionNo: number): Stage3Version | null {
-  if (!run.passes.length) {
-    return null;
-  }
-  const recommendedIndex = Math.max(0, Math.min(run.passes.length - 1, run.recommendedPass - 1));
-  const baseline = passToSnapshot(run.passes[0], run.sourceDurationSec);
-  const final = passToSnapshot(run.passes[recommendedIndex], run.sourceDurationSec);
-  return {
-    versionNo,
-    runId: run.runId,
-    createdAt: run.createdAt,
-    prompt: run.prompt,
-    baseline,
-    final,
-    diff: buildDiffFromSnapshots(baseline, final),
-    internalPasses: run.passes,
-    recommendedPass: run.recommendedPass
-  };
-}
-
-function normalizeStage3Version(
-  value: unknown,
-  fallbackVersionNo: number,
-  fallbackId: string,
-  fallbackCreatedAt: string
-): Stage3Version | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Partial<Stage3Version>;
-  const passesRaw = Array.isArray(candidate.internalPasses) ? candidate.internalPasses : [];
-  const internalPasses = passesRaw
-    .map((pass) => normalizeStage3Pass(pass))
-    .filter((pass): pass is Stage3AgentPass => Boolean(pass));
-
-  if (!internalPasses.length) {
-    return null;
-  }
-  const sourceDurationSec =
-    typeof candidate.final?.sourceDurationSec === "number"
-      ? candidate.final.sourceDurationSec
-      : typeof candidate.baseline?.sourceDurationSec === "number"
-        ? candidate.baseline.sourceDurationSec
-        : null;
-  const baselineFallback = passToSnapshot(internalPasses[0], sourceDurationSec);
-  const finalFallback = passToSnapshot(
-    internalPasses[Math.max(0, Math.min(internalPasses.length - 1, (candidate.recommendedPass ?? 1) - 1))],
-    sourceDurationSec
-  );
-  const baseline = normalizeSnapshot(candidate.baseline, baselineFallback, baselineFallback.sourceDurationSec);
-  const final = normalizeSnapshot(candidate.final, finalFallback, finalFallback.sourceDurationSec);
-
-  return {
-    versionNo:
-      typeof candidate.versionNo === "number" && Number.isFinite(candidate.versionNo)
-        ? candidate.versionNo
-        : fallbackVersionNo,
-    runId:
-      typeof candidate.runId === "string" && candidate.runId.trim() ? candidate.runId : fallbackId,
-    createdAt:
-      typeof candidate.createdAt === "string" && candidate.createdAt.trim()
-        ? candidate.createdAt
-        : fallbackCreatedAt,
-    prompt: typeof candidate.prompt === "string" ? candidate.prompt : "",
-    baseline,
-    final,
-    diff:
-      candidate.diff && typeof candidate.diff === "object"
-        ? {
-            textChanged: Boolean(candidate.diff.textChanged),
-            framingChanged: Boolean(candidate.diff.framingChanged),
-            timingChanged: Boolean(candidate.diff.timingChanged),
-            segmentsChanged: Boolean(candidate.diff.segmentsChanged),
-            audioChanged: Boolean(candidate.diff.audioChanged),
-            summary: Array.isArray(candidate.diff.summary)
-              ? candidate.diff.summary.map((item) => String(item))
-              : buildDiffFromSnapshots(baseline, final).summary
-          }
-        : buildDiffFromSnapshots(baseline, final),
-    internalPasses,
-    recommendedPass:
-      typeof candidate.recommendedPass === "number" && Number.isFinite(candidate.recommendedPass)
-        ? candidate.recommendedPass
-        : internalPasses[internalPasses.length - 1].pass
-  };
-}
-
-function extractStage3Version(
-  data: unknown,
-  eventId: string,
-  createdAt: string,
-  fallbackVersionNo: number
-): Stage3Version | null {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-
-  const payload = data as {
-    kind?: string;
-    version?: unknown;
-    run?: unknown;
-    optimization?: {
-      version?: unknown;
-      run?: unknown;
-      passes?: unknown[];
-      recommendedPass?: number;
-      sourceDurationSec?: number | null;
-    };
-    passes?: unknown[];
-    recommendedPass?: number;
-    sourceDurationSec?: number | null;
-    agentPrompt?: string;
-  };
-
-  if (payload.kind === "stage3-version") {
-    const direct = normalizeStage3Version(payload.version ?? payload, fallbackVersionNo, `version_${eventId}`, createdAt);
-    if (direct) {
-      return direct;
-    }
-  }
-
-  const explicitVersion = normalizeStage3Version(
-    payload.version ?? payload.optimization?.version,
-    fallbackVersionNo,
-    `version_${eventId}`,
-    createdAt
-  );
-  if (explicitVersion) {
-    return explicitVersion;
-  }
-
-  const directRun = normalizeOptimizationRun(payload.run, `run_${eventId}`, createdAt);
-  if (directRun) {
-    return runToVersion(directRun, fallbackVersionNo);
-  }
-
-  const wrappedRun = normalizeOptimizationRun(payload.optimization?.run, `run_${eventId}`, createdAt);
-  if (wrappedRun) {
-    return runToVersion(wrappedRun, fallbackVersionNo);
-  }
-
-  const legacyPasses = payload.optimization?.passes ?? payload.passes;
-  if (Array.isArray(legacyPasses) && legacyPasses.length > 0) {
-    const legacyRun = normalizeOptimizationRun(
-      {
-        runId: `legacy_${eventId}`,
-        createdAt,
-        prompt: payload.agentPrompt ?? "",
-        passes: legacyPasses,
-        recommendedPass: payload.optimization?.recommendedPass ?? payload.recommendedPass,
-        sourceDurationSec: payload.optimization?.sourceDurationSec ?? payload.sourceDurationSec ?? null
-      },
-      `legacy_${eventId}`,
-      createdAt
-    );
-    if (legacyRun) {
-      return runToVersion(legacyRun, fallbackVersionNo);
-    }
-  }
-  return null;
-}
-
 function formatShortDate(value: string): string {
   return new Date(value).toLocaleString("ru-RU", {
     day: "2-digit",
@@ -615,23 +301,230 @@ function shorten(value: string, max = 54): string {
   return `${value.slice(0, max - 1)}...`;
 }
 
+function formatStage3Status(value: Stage3SessionStatus): string {
+  switch (value) {
+    case "running":
+      return "В работе";
+    case "completed":
+      return "Цель достигнута";
+    case "partiallyApplied":
+      return "Лучший найденный вариант";
+    case "failed":
+      return "Остановлено";
+    default:
+      return value;
+  }
+}
+
+function formatStage3StopReason(value: Stage3IterationStopReason | null | undefined): string {
+  switch (value) {
+    case "targetScoreReached":
+      return "достигнут target score";
+    case "maxIterationsReached":
+      return "исчерпан лимит итераций";
+    case "minGainReached":
+      return "прогресс стабилизировался";
+    case "safety":
+      return "остановка по safety";
+    case "noProgress":
+      return "нет прогресса";
+    case "plannerFailure":
+      return "планировщик не дал валидный план";
+    case "rollbackCreated":
+      return "создан rollback checkpoint";
+    case "userStop":
+      return "остановлено пользователем";
+    default:
+      return "цикл завершен";
+  }
+}
+
+function formatStage3Operation(op: string): string {
+  switch (op) {
+    case "set_video_zoom":
+      return "zoom";
+    case "set_focus_y":
+      return "focus";
+    case "set_clip_start":
+      return "clip start";
+    case "set_segments":
+      return "segments";
+    case "append_segment":
+      return "append segment";
+    case "clear_segments":
+      return "clear segments";
+    case "set_audio_mode":
+      return "audio";
+    case "set_slowmo":
+      return "slow-mo";
+    case "set_top_font_scale":
+      return "top size";
+    case "set_bottom_font_scale":
+      return "bottom size";
+    case "rewrite_top_text":
+      return "rewrite top";
+    case "rewrite_bottom_text":
+      return "rewrite bottom";
+    case "set_timing_mode":
+      return "timing";
+    case "set_text_policy":
+      return "text policy";
+    case "set_music_gain":
+      return "music";
+    default:
+      return op.replace(/^set_/, "").replace(/_/g, " ");
+  }
+}
+
+function mergeStage3Versions(groups: Stage3Version[][]): Stage3Version[] {
+  const byRunId = new Map<string, Stage3Version>();
+  for (const group of groups) {
+    for (const version of group) {
+      if (!version?.runId) {
+        continue;
+      }
+      byRunId.set(version.runId, version);
+    }
+  }
+
+  return [...byRunId.values()]
+    .sort((left, right) => {
+      if (left.createdAt === right.createdAt) {
+        return left.runId.localeCompare(right.runId);
+      }
+      return left.createdAt < right.createdAt ? -1 : 1;
+    })
+    .map((version, index) => ({ ...version, versionNo: index + 1 }));
+}
+
+function buildStage3AgentConversation(
+  timeline: Stage3TimelineResponse | null
+): Stage3AgentConversationItem[] {
+  if (!timeline) {
+    return [];
+  }
+
+  const items: Stage3AgentConversationItem[] = [];
+
+  for (const message of timeline.messages) {
+    if (message.role === "user") {
+      const goal =
+        typeof message.payload?.goal === "string" && message.payload.goal.trim()
+          ? message.payload.goal.trim()
+          : timeline.session.goalText;
+      items.push({
+        id: message.id,
+        role: "user",
+        title: "Задача",
+        text: goal,
+        meta: [
+          `goalType: ${timeline.session.goalType}`,
+          `target score ${timeline.session.targetScore.toFixed(2)}`
+        ],
+        createdAt: message.createdAt
+      });
+      continue;
+    }
+
+    if (message.role === "assistant_summary") {
+      const status = normalizeStage3SessionStatus(message.payload?.status);
+      const whyStopped =
+        typeof message.payload?.whyStopped === "string"
+          ? (message.payload.whyStopped as Stage3IterationStopReason)
+          : null;
+      const iterationCount =
+        typeof message.payload?.iterations === "number" && Number.isFinite(message.payload.iterations)
+          ? message.payload.iterations
+          : timeline.iterations.length;
+      items.push({
+        id: message.id,
+        role: "assistant",
+        title: "Итог",
+        text:
+          status === "completed"
+            ? "Агент завершил цикл после достижения порога качества."
+            : status === "partiallyApplied"
+              ? "Агент сохранил лучший вариант и остановился без ручной паузы."
+              : "Агент завершил цикл с остановкой по ограничению или safety.",
+        meta: [
+          status ? formatStage3Status(status) : "Статус неизвестен",
+          `${iterationCount} итерац.`,
+          formatStage3StopReason(whyStopped)
+        ],
+        createdAt: message.createdAt,
+        tone: status === "completed" ? "success" : status === "failed" ? "warning" : "neutral"
+      });
+      continue;
+    }
+
+    if (message.role === "assistant_auto" && message.text === "rollback") {
+      const targetVersionId =
+        typeof message.payload?.targetVersionId === "string" ? message.payload.targetVersionId : null;
+      const reason = typeof message.payload?.reason === "string" ? message.payload.reason : "rollback";
+      items.push({
+        id: message.id,
+        role: "assistant",
+        title: "Rollback",
+        text: "Создана новая версия-откат от выбранной точки timeline.",
+        meta: [targetVersionId ? `target ${shorten(targetVersionId, 18)}` : "target unknown", reason],
+        createdAt: message.createdAt,
+        tone: "warning"
+      });
+    }
+  }
+
+  for (const iteration of timeline.iterations) {
+    const operations = iteration.appliedOps.map((operation) => formatStage3Operation(operation.op));
+    items.push({
+      id: `iteration-${iteration.id}`,
+      role: "assistant",
+      title: `Итерация ${iteration.iterationIndex}`,
+      text: iteration.judgeNotes || iteration.plan.rationale,
+      meta: [
+        `score ${iteration.scores.total.toFixed(2)}`,
+        `gain ${iteration.scores.stepGain >= 0 ? "+" : ""}${iteration.scores.stepGain.toFixed(2)}`,
+        operations.length ? operations.join(", ") : "без операций",
+        formatStage3StopReason(iteration.stoppedReason)
+      ],
+      createdAt: iteration.createdAt,
+      tone:
+        iteration.stoppedReason === "targetScoreReached"
+          ? "success"
+          : iteration.stoppedReason === "safety"
+            ? "warning"
+            : "neutral"
+    });
+  }
+
+  return items.sort((left, right) => {
+    if (left.createdAt === right.createdAt) {
+      return left.id.localeCompare(right.id);
+    }
+    return left.createdAt < right.createdAt ? -1 : 1;
+  });
+}
+
 export default function HomePage() {
   const [status, setStatus] = useState("");
   const [statusType, setStatusType] = useState<"ok" | "error" | "">("");
   const [isBusy, setIsBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<BusyAction>("");
+  const [authState, setAuthState] = useState<AuthMeResponse | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   const [draftUrl, setDraftUrl] = useState("");
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelAssets, setChannelAssets] = useState<ChannelAsset[]>([]);
+  const [channelAccessGrants, setChannelAccessGrants] = useState<ChannelAccessGrant[]>([]);
+  const [workspaceMembers, setWorkspaceMembers] = useState<Array<{ user: UserRecord; role: AppRole }>>([]);
   const [isChannelManagerOpen, setIsChannelManagerOpen] = useState(false);
   const [chats, setChats] = useState<ChatThread[]>([]);
   const [activeChat, setActiveChat] = useState<ChatThread | null>(null);
 
-  const [codexSessionId, setCodexSessionId] = useState("");
   const [codexAuth, setCodexAuth] = useState<CodexAuthResponse | null>(null);
   const [isCodexAuthLoading, setIsCodexAuthLoading] = useState(false);
+  const [runtimeCapabilities, setRuntimeCapabilities] = useState<RuntimeCapabilitiesResponse | null>(null);
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [stage2Instruction, setStage2Instruction] = useState("");
@@ -645,16 +538,43 @@ export default function HomePage() {
   const [stage3PreviewVideoUrl, setStage3PreviewVideoUrl] = useState<string | null>(null);
   const [stage3PreviewNotice, setStage3PreviewNotice] = useState<string | null>(null);
   const [stage3AgentPrompt, setStage3AgentPrompt] = useState("");
+  const [stage3AgentSessionId, setStage3AgentSessionId] = useState<string | null>(null);
+  const [stage3AgentTimeline, setStage3AgentTimeline] = useState<Stage3TimelineResponse | null>(null);
+  const [isStage3TimelineLoading, setIsStage3TimelineLoading] = useState(false);
+  const [ignoreStage3ChatSessionRef, setIgnoreStage3ChatSessionRef] = useState(false);
   const [stage3SelectedVersionId, setStage3SelectedVersionId] = useState<string | null>(null);
   const [stage3PassSelectionByVersion, setStage3PassSelectionByVersion] = useState<Record<string, number>>({});
   const appliedCaptionKeyRef = useRef("");
   const initializedStage3ChatRef = useRef<string | null>(null);
-  const stage3InitInFlightRef = useRef<string | null>(null);
   const previousChannelIdRef = useRef<string | null>(null);
   const stage3PreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
   const stage3PreviewRequestKeyRef = useRef<string>("");
 
   const codexLoggedIn = Boolean(codexAuth?.loggedIn);
+  const currentRole = authState?.membership.role ?? null;
+  const canManageCodex = Boolean(authState?.effectivePermissions.canManageCodex);
+  const canCreateChannel = Boolean(authState?.effectivePermissions.canCreateChannel);
+  const fetchSourceAvailable = runtimeCapabilities?.features.fetchSource ?? true;
+  const downloadSourceAvailable = runtimeCapabilities?.features.downloadSource ?? true;
+  const sharedCodexAvailable = runtimeCapabilities?.features.sharedCodex ?? true;
+  const stage2RuntimeAvailable = runtimeCapabilities?.features.stage2 ?? true;
+  const fetchSourceBlockedReason = runtimeCapabilities?.tools.ytDlp.message ?? null;
+  const downloadSourceBlockedReason = runtimeCapabilities?.tools.ytDlp.message ?? null;
+  const codexBlockedReason = runtimeCapabilities?.tools.codex.message ?? null;
+  const stage2BlockedReason =
+    !sharedCodexAvailable
+      ? codexBlockedReason
+      : !stage2RuntimeAvailable
+        ? runtimeCapabilities?.tools.ytDlp.message ??
+          runtimeCapabilities?.tools.ffmpeg.message ??
+          runtimeCapabilities?.tools.ffprobe.message ??
+          "Stage 2 runtime is unavailable on this deployment."
+        : null;
+  const codexStatusLabel = codexLoggedIn
+    ? "Shared Codex connected"
+    : sharedCodexAvailable
+      ? "Shared Codex unavailable"
+      : "Codex runtime unavailable";
   const activeChannel = useMemo(
     () => channels.find((channel) => channel.id === activeChannelId) ?? null,
     [channels, activeChannelId]
@@ -676,17 +596,43 @@ export default function HomePage() {
     [channelAssets]
   );
 
-  const parseError = async (response: Response, fallback: string): Promise<string> => {
+  const parseError = useCallback(async (response: Response, fallback: string): Promise<string> => {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     return body?.error ?? fallback;
-  };
+  }, []);
+
+  const refreshAuthState = useCallback(async (): Promise<AuthMeResponse> => {
+    const response = await fetch("/api/auth/me");
+    if (!response.ok) {
+      if (response.status === 401) {
+        window.location.href = "/login";
+      }
+      throw new Error(await parseError(response, "Failed to load auth state."));
+    }
+    const body = (await response.json()) as AuthMeResponse;
+    setAuthState(body);
+    return body;
+  }, [parseError]);
+
+  const refreshRuntimeCapabilities = useCallback(async (): Promise<RuntimeCapabilitiesResponse> => {
+    const response = await fetch("/api/runtime/capabilities");
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Failed to inspect runtime capabilities."));
+    }
+    const body = (await response.json()) as RuntimeCapabilitiesResponse;
+    setRuntimeCapabilities(body);
+    return body;
+  }, [parseError]);
 
   const applyChannelToRenderPlan = useCallback(
-    (channel: Channel | null): Stage3RenderPlan => {
+    (channel: Channel | null, assets: ChannelAsset[] = []): Stage3RenderPlan => {
       const base = fallbackRenderPlan();
       if (!channel) {
         return base;
       }
+      const avatar = findAssetById(assets, channel.avatarAssetId);
+      const background = findAssetById(assets, channel.defaultBackgroundAssetId);
+      const music = findAssetById(assets, channel.defaultMusicAssetId);
       return normalizeRenderPlan(
         {
           ...base,
@@ -696,8 +642,11 @@ export default function HomePage() {
             ? channel.username
             : `@${channel.username || "channel"}`,
           avatarAssetId: channel.avatarAssetId,
+          avatarAssetMimeType: avatar?.mimeType ?? null,
           backgroundAssetId: channel.defaultBackgroundAssetId,
-          musicAssetId: channel.defaultMusicAssetId
+          backgroundAssetMimeType: background?.mimeType ?? null,
+          musicAssetId: channel.defaultMusicAssetId,
+          musicAssetMimeType: music?.mimeType ?? null
         },
         base
       );
@@ -733,6 +682,34 @@ export default function HomePage() {
     return nextAssets;
   }, []);
 
+  const refreshWorkspaceMembers = useCallback(async (): Promise<void> => {
+    if (!authState?.effectivePermissions.canManageMembers) {
+      setWorkspaceMembers([]);
+      return;
+    }
+    const response = await fetch("/api/workspace/members");
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Failed to load workspace members."));
+    }
+    const body = (await response.json()) as {
+      members: Array<{ role: AppRole; user: UserRecord }>;
+    };
+    setWorkspaceMembers(body.members ?? []);
+  }, [authState?.effectivePermissions.canManageMembers, parseError]);
+
+  const refreshChannelAccess = useCallback(async (channelId: string): Promise<void> => {
+    if (!authState?.effectivePermissions.canManageAnyChannelAccess) {
+      setChannelAccessGrants([]);
+      return;
+    }
+    const response = await fetch(`/api/channels/${channelId}/access`);
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Failed to load channel access."));
+    }
+    const body = (await response.json()) as { grants: ChannelAccessGrant[] };
+    setChannelAccessGrants(body.grants ?? []);
+  }, [authState?.effectivePermissions.canManageAnyChannelAccess, parseError]);
+
   const refreshChats = async (): Promise<void> => {
     const query = activeChannelId ? `?channelId=${encodeURIComponent(activeChannelId)}` : "";
     const response = await fetch(`/api/chats${query}`);
@@ -765,7 +742,7 @@ export default function HomePage() {
     return body.chat;
   };
 
-  const appendEvent = async (
+  const appendEvent = useCallback(async (
     chatId: string,
     event: { role: ChatEvent["role"]; type: ChatEvent["type"]; text: string; data?: unknown }
   ): Promise<void> => {
@@ -783,34 +760,82 @@ export default function HomePage() {
       const without = prev.filter((item) => item.id !== body.chat.id);
       return [body.chat, ...without];
     });
-  };
+  }, [parseError]);
 
-  const ensureSession = (): string => {
-    const existing = normalizeCodexSessionId(localStorage.getItem(CODEX_SESSION_STORAGE_KEY));
-    if (existing) {
-      return existing;
-    }
-    const created = createCodexSessionId();
-    localStorage.setItem(CODEX_SESSION_STORAGE_KEY, created);
-    return created;
-  };
+  const loadStage3AgentTimeline = useCallback(
+    async (sessionId: string): Promise<Stage3TimelineResponse> => {
+      setIsStage3TimelineLoading(true);
+      try {
+        const response = await fetch(`/api/stage3/agent/${sessionId}/timeline`);
+        if (!response.ok) {
+          throw new Error(await parseError(response, "Failed to load Stage 3 agent timeline."));
+        }
+        const body = (await response.json()) as Stage3TimelineResponse;
+        setStage3AgentSessionId(body.session.id);
+        setStage3AgentTimeline(body);
+        return body;
+      } finally {
+        setIsStage3TimelineLoading(false);
+      }
+    },
+    [parseError]
+  );
 
-  const refreshCodexAuth = async (sessionIdParam?: string): Promise<void> => {
-    const sid = sessionIdParam ?? codexSessionId;
-    if (!sid) {
-      return;
-    }
-    setBusyAction((prev) => (sessionIdParam ? prev : "refresh-codex"));
+  const appendStage3AgentSessionEvent = useCallback(
+    async (
+      chatId: string,
+      payload: {
+        sessionId: string;
+        status?: Stage3SessionStatus;
+        finalVersionId?: string | null;
+        bestVersionId?: string | null;
+        summaryText: string;
+      }
+    ): Promise<void> => {
+      await appendEvent(chatId, {
+        role: "assistant",
+        type: "note",
+        text: payload.summaryText,
+        data: {
+          kind: "stage3-agent-session",
+          sessionId: payload.sessionId,
+          status: payload.status ?? null,
+          currentVersionId: payload.finalVersionId ?? null,
+          finalVersionId: payload.finalVersionId ?? null,
+          bestVersionId: payload.bestVersionId ?? null
+        }
+      });
+    },
+    [appendEvent]
+  );
+
+  const refreshCodexAuth = async (): Promise<void> => {
+    setBusyAction("refresh-codex");
     setIsCodexAuthLoading(true);
     try {
-      const response = await fetch("/api/codex/auth", {
-        headers: { "x-codex-session-id": sid }
-      });
+      const response = await fetch("/api/codex/auth");
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to load Codex status."));
       }
       const body = (await response.json()) as CodexAuthResponse;
       setCodexAuth(body);
+      setAuthState((prev) =>
+        prev
+          ? {
+              ...prev,
+              sharedCodexStatus: {
+                status: body.loggedIn
+                  ? "connected"
+                  : body.deviceAuth.status === "running"
+                    ? "connecting"
+                    : "disconnected",
+                connected: body.loggedIn,
+                loginStatusText: body.loginStatusText,
+                deviceAuth: prev.effectivePermissions.canManageCodex ? body.deviceAuth : null
+              }
+            }
+          : prev
+      );
     } finally {
       setIsCodexAuthLoading(false);
       setBusyAction((prev) => (prev === "refresh-codex" ? "" : prev));
@@ -818,7 +843,14 @@ export default function HomePage() {
   };
 
   const startCodexDeviceAuth = async (): Promise<void> => {
-    if (!codexSessionId) {
+    if (!canManageCodex) {
+      setStatusType("error");
+      setStatus("Shared Codex integration can be managed only by owner.");
+      return;
+    }
+    if (!sharedCodexAvailable) {
+      setStatusType("error");
+      setStatus(codexBlockedReason ?? "Codex runtime is unavailable on this deployment.");
       return;
     }
     setBusyAction("connect-codex");
@@ -827,8 +859,7 @@ export default function HomePage() {
       const response = await fetch("/api/codex/auth", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "x-codex-session-id": codexSessionId
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ action: "start" })
       });
@@ -838,7 +869,7 @@ export default function HomePage() {
       const body = (await response.json()) as CodexAuthResponse;
       setCodexAuth(body);
       setStatusType("ok");
-      setStatus("Connect started. Complete sign-in and refresh status.");
+      setStatus("Shared Codex connect started. Complete device auth and refresh status.");
     } catch (error) {
       setStatusType("error");
       setStatus(error instanceof Error ? error.message : "Connect Codex failed.");
@@ -848,14 +879,51 @@ export default function HomePage() {
     }
   };
 
-  useEffect(() => {
-    const sid = ensureSession();
-    setCodexSessionId(sid);
-    void refreshCodexAuth(sid).catch(() => undefined);
-    void refreshChannels().catch((error) => {
+  const handleCodexSecondaryAction = async (): Promise<void> => {
+    if (!canManageCodex) {
+      return;
+    }
+    const action = codexAuth?.deviceAuth.status === "running" ? "cancel" : codexLoggedIn ? "disconnect" : null;
+    if (!action) {
+      return;
+    }
+    setBusyAction("connect-codex");
+    try {
+      const response = await fetch("/api/codex/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action })
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Unable to update shared Codex."));
+      }
+      const body = (await response.json()) as CodexAuthResponse;
+      setCodexAuth(body);
+      await refreshAuthState().catch(() => undefined);
+      setStatusType("ok");
+      setStatus(action === "cancel" ? "Device auth canceled." : "Shared Codex disconnected.");
+    } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to load channels.");
-    });
+      setStatus(error instanceof Error ? error.message : "Unable to update shared Codex.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        await refreshAuthState();
+        await refreshRuntimeCapabilities();
+        await refreshCodexAuth();
+        await refreshChannels();
+      } catch (error) {
+        setStatusType("error");
+        setStatus(error instanceof Error ? error.message : "Failed to initialize app.");
+      } finally {
+        setIsAuthLoading(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -863,11 +931,17 @@ export default function HomePage() {
     if (!activeChannelId) {
       setChats([]);
       setActiveChat(null);
+      setChannelAccessGrants([]);
       return;
     }
     void refreshChats().catch(() => undefined);
     void refreshChannelAssets(activeChannelId).catch(() => undefined);
+    void refreshChannelAccess(activeChannelId).catch(() => undefined);
   }, [activeChannelId]);
+
+  useEffect(() => {
+    void refreshWorkspaceMembers().catch(() => undefined);
+  }, [refreshWorkspaceMembers]);
 
   useEffect(() => {
     if (!activeChannel) {
@@ -889,13 +963,44 @@ export default function HomePage() {
             ? activeChannel.username
             : `@${activeChannel.username || "channel"}`,
           avatarAssetId: activeChannel.avatarAssetId,
+          avatarAssetMimeType: findAssetById(channelAssets, activeChannel.avatarAssetId)?.mimeType ?? null,
           backgroundAssetId: activeChannel.defaultBackgroundAssetId,
-          musicAssetId: activeChannel.defaultMusicAssetId
+          backgroundAssetMimeType:
+            findAssetById(channelAssets, activeChannel.defaultBackgroundAssetId)?.mimeType ?? null,
+          musicAssetId: activeChannel.defaultMusicAssetId,
+          musicAssetMimeType:
+            findAssetById(channelAssets, activeChannel.defaultMusicAssetId)?.mimeType ?? null
         },
         fallbackRenderPlan()
       )
     );
-  }, [activeChannel]);
+  }, [activeChannel, channelAssets]);
+
+  useEffect(() => {
+    setStage3RenderPlan((prev) => {
+      const nextAvatarMime = findAssetById(channelAssets, prev.avatarAssetId)?.mimeType ?? null;
+      const nextBackgroundMime = findAssetById(channelAssets, prev.backgroundAssetId)?.mimeType ?? null;
+      const nextMusicMime = findAssetById(channelAssets, prev.musicAssetId)?.mimeType ?? null;
+
+      if (
+        prev.avatarAssetMimeType === nextAvatarMime &&
+        prev.backgroundAssetMimeType === nextBackgroundMime &&
+        prev.musicAssetMimeType === nextMusicMime
+      ) {
+        return prev;
+      }
+
+      return normalizeRenderPlan(
+        {
+          ...prev,
+          avatarAssetMimeType: nextAvatarMime,
+          backgroundAssetMimeType: nextBackgroundMime,
+          musicAssetMimeType: nextMusicMime
+        },
+        fallbackRenderPlan()
+      );
+    });
+  }, [channelAssets]);
 
   useEffect(() => {
     return () => {
@@ -915,14 +1020,14 @@ export default function HomePage() {
   const codexRunning = codexAuth?.deviceAuth.status === "running";
 
   useEffect(() => {
-    if (!codexRunning || !codexSessionId) {
+    if (!codexRunning) {
       return;
     }
     const timer = window.setInterval(() => {
-      void refreshCodexAuth(codexSessionId).catch(() => undefined);
+      void refreshCodexAuth().catch(() => undefined);
     }, 1800);
     return () => window.clearInterval(timer);
-  }, [codexRunning, codexSessionId]);
+  }, [codexRunning]);
 
   const requireActiveChat = (): ChatThread | null => {
     if (!activeChat) {
@@ -945,7 +1050,15 @@ export default function HomePage() {
   };
 
   const makeLiveSnapshot = (): Stage3StateSnapshot => {
-    const fit = getScienceCardComputed(stage3TopText, stage3BottomText);
+    const fit = getTemplateComputed(
+      stage3RenderPlan.templateId || STAGE3_TEMPLATE_ID,
+      stage3TopText,
+      stage3BottomText,
+      {
+        topFontScale: stage3RenderPlan.topFontScale,
+        bottomFontScale: stage3RenderPlan.bottomFontScale
+      }
+    );
     return {
       topText: fit.top,
       bottomText: fit.bottom,
@@ -966,81 +1079,43 @@ export default function HomePage() {
     };
   };
 
+  const applyTimelineVersion = (
+    timeline: Stage3TimelineResponse,
+    preferredVersionId?: string | null
+  ): Stage3Version | null => {
+    const mergedVersions = mergeStage3Versions([
+      timeline.legacyVersions,
+      timeline.uiVersions
+    ]);
+    const targetVersion =
+      (preferredVersionId
+        ? mergedVersions.find((version) => version.runId === preferredVersionId) ?? null
+        : null) ??
+      mergedVersions[mergedVersions.length - 1] ??
+      null;
+
+    if (!targetVersion) {
+      setStage3SelectedVersionId(null);
+      setStage3PassSelectionByVersion({});
+      return null;
+    }
+
+    setStage3SelectedVersionId(targetVersion.runId);
+    setStage3PassSelectionByVersion((prev) => ({
+      ...prev,
+      [targetVersion.runId]: 0
+    }));
+    applyStage3Snapshot(targetVersion.final);
+    setSourceDurationSec(targetVersion.final.sourceDurationSec);
+    return targetVersion;
+  };
+
   const clearStage3PreviewCache = (): void => {
     const cache = stage3PreviewCacheRef.current;
     for (const { url } of cache.values()) {
       URL.revokeObjectURL(url);
     }
     cache.clear();
-  };
-
-  const buildStage3InitVersion = (snapshot: Stage3StateSnapshot): Stage3Version => {
-    const now = new Date().toISOString();
-    const runId = `stage3_init_${createCodexSessionId()}`;
-    const pass: Stage3AgentPass = {
-      pass: 1,
-      label: "Инициализация",
-      summary: "Создана стартовая версия из выбранного варианта Stage 2 без авто-оптимизации.",
-      changes: ["Зафиксированы исходные текст, фокус и тайминг для дальнейших итераций."],
-      topText: snapshot.topText,
-      bottomText: snapshot.bottomText,
-      topFontPx: snapshot.textFit.topFontPx,
-      bottomFontPx: snapshot.textFit.bottomFontPx,
-      topCompacted: snapshot.textFit.topCompacted,
-      bottomCompacted: snapshot.textFit.bottomCompacted,
-      clipStartSec: snapshot.clipStartSec,
-      clipDurationSec: snapshot.clipDurationSec,
-      clipEndSec: snapshot.clipStartSec + snapshot.clipDurationSec,
-      focusY: snapshot.focusY,
-      renderPlan: snapshot.renderPlan
-    };
-    return {
-      versionNo: 1,
-      runId,
-      createdAt: now,
-      prompt: "",
-      baseline: snapshot,
-      final: snapshot,
-      diff: {
-        textChanged: false,
-        framingChanged: false,
-        timingChanged: false,
-        segmentsChanged: false,
-        audioChanged: false,
-        summary: ["Базовая версия v1 создана."]
-      },
-      internalPasses: [pass],
-      recommendedPass: 1
-    };
-  };
-
-  const ensureStage3Initialized = async (chat: ChatThread): Promise<void> => {
-    if (stage3Versions.length > 0) {
-      return;
-    }
-    if (stage3InitInFlightRef.current === chat.id) {
-      return;
-    }
-    if (!stage3TopText.trim() && !stage3BottomText.trim()) {
-      return;
-    }
-
-    stage3InitInFlightRef.current = chat.id;
-    try {
-      const snapshot = makeLiveSnapshot();
-      const version = buildStage3InitVersion(snapshot);
-      await appendEvent(chat.id, {
-        role: "assistant",
-        type: "note",
-        text: "Stage 3 инициализирован. Создана стартовая версия v1.",
-        data: {
-          kind: "stage3-version",
-          version
-        }
-      });
-    } finally {
-      stage3InitInFlightRef.current = null;
-    }
   };
 
   const copyToClipboard = async (value: string, successMessage: string): Promise<void> => {
@@ -1074,6 +1149,56 @@ export default function HomePage() {
     }
   };
 
+  const runStage2ForChat = async (
+    chat: Pick<ChatThread, "id" | "url">,
+    instruction: string,
+    mode: "manual" | "auto"
+  ): Promise<Stage2Response> => {
+    if (!codexLoggedIn) {
+      throw new Error("Shared Codex unavailable. Contact owner.");
+    }
+
+    const trimmedInstruction = instruction.trim();
+    await appendEvent(chat.id, {
+      role: "user",
+      type: "stage2",
+      text:
+        mode === "auto"
+          ? "Auto Stage 2 started right after Step 1 fetch."
+          : trimmedInstruction
+            ? `User ran Stage 2 with instruction: ${trimmedInstruction}`
+            : "User ran Stage 2."
+    });
+
+    const response = await fetch("/api/pipeline/stage2", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        chatId: chat.id,
+        url: chat.url,
+        userInstruction: trimmedInstruction || undefined
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Stage 2 failed."));
+    }
+
+    const stage2 = (await response.json()) as Stage2Response;
+    await appendEvent(chat.id, {
+      role: "assistant",
+      type: "stage2",
+      text: `Stage 2 complete. Comments: ${stage2.source.totalComments}`,
+      data: stage2
+    });
+
+    setSelectedOption(stage2.output.finalPick.option);
+    setCurrentStep(3);
+    return stage2;
+  };
+
   const handleFetchSource = async (): Promise<void> => {
     const url = draftUrl.trim();
     if (!url) {
@@ -1084,6 +1209,11 @@ export default function HomePage() {
     if (!activeChannelId) {
       setStatusType("error");
       setStatus("Сначала создайте/выберите канал.");
+      return;
+    }
+    if (!fetchSourceAvailable) {
+      setStatusType("error");
+      setStatus(fetchSourceBlockedReason ?? "Source fetch is unavailable on this deployment.");
       return;
     }
 
@@ -1108,7 +1238,6 @@ export default function HomePage() {
       chatId = createBody.chat.id;
       setDraftUrl("");
       await refreshActiveChat(chatId);
-      setCurrentStep(2);
 
       await appendEvent(chatId, {
         role: "user",
@@ -1134,8 +1263,20 @@ export default function HomePage() {
         data: comments
       });
 
+      setCurrentStep(2);
+
+      if (!codexLoggedIn) {
+        setStatusType("ok");
+        setStatus(
+          `Source fetched. Comments: ${comments.totalComments}. Shared Codex unavailable — contact owner.`
+        );
+        return;
+      }
+
+      setBusyAction("stage2");
+      await runStage2ForChat({ id: chatId, url }, "", "auto");
       setStatusType("ok");
-      setStatus(`Source fetched. Comments: ${comments.totalComments}`);
+      setStatus(`Source fetched. Comments: ${comments.totalComments}. Stage 2 completed.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch source.";
       if (chatId) {
@@ -1145,6 +1286,7 @@ export default function HomePage() {
           text: message
         }).catch(() => undefined);
       }
+      setCurrentStep(1);
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -1162,6 +1304,11 @@ export default function HomePage() {
     }
 
     const chatId = activeChat?.id ?? null;
+    if (!downloadSourceAvailable) {
+      setStatusType("error");
+      setStatus(downloadSourceBlockedReason ?? "Source download is unavailable on this deployment.");
+      return;
+    }
 
     setBusyAction("download");
     setIsBusy(true);
@@ -1282,9 +1429,14 @@ export default function HomePage() {
     if (!chat) {
       return;
     }
-    if (!codexLoggedIn || !codexSessionId) {
+    if (!stage2RuntimeAvailable) {
       setStatusType("error");
-      setStatus("Connect Codex first.");
+      setStatus(stage2BlockedReason ?? "Stage 2 runtime is unavailable on this deployment.");
+      return;
+    }
+    if (!codexLoggedIn) {
+      setStatusType("error");
+      setStatus("Shared Codex unavailable — contact owner.");
       return;
     }
 
@@ -1294,42 +1446,7 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const instruction = stage2Instruction.trim();
-      await appendEvent(chat.id, {
-        role: "user",
-        type: "stage2",
-        text: instruction
-          ? `User ran Stage 2 with instruction: ${instruction}`
-          : "User ran Stage 2."
-      });
-
-      const response = await fetch("/api/pipeline/stage2", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-codex-session-id": codexSessionId
-        },
-        body: JSON.stringify({
-          chatId: chat.id,
-          url: chat.url,
-          userInstruction: instruction || undefined
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Stage 2 failed."));
-      }
-
-      const stage2 = (await response.json()) as Stage2Response;
-      await appendEvent(chat.id, {
-        role: "assistant",
-        type: "stage2",
-        text: `Stage 2 complete. Comments: ${stage2.source.totalComments}`,
-        data: stage2
-      });
-
-      setSelectedOption(stage2.output.finalPick.option);
-      setCurrentStep(3);
+      await runStage2ForChat(chat, stage2Instruction, "manual");
       setStatusType("ok");
       setStatus("Stage 2 complete.");
     } catch (error) {
@@ -1364,7 +1481,7 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const baseSnapshot = selectedStage3Version?.final ?? makeLiveSnapshot();
+      const baseSnapshot = makeLiveSnapshot();
       const renderSnapshot: Stage3StateSnapshot = {
         ...baseSnapshot,
         renderPlan: normalizeRenderPlan(
@@ -1459,116 +1576,215 @@ export default function HomePage() {
       return;
     }
 
+    const goalText = stage3AgentPrompt.trim() || activeStage3AgentTimeline?.session.goalText.trim() || "";
+    if (!goalText) {
+      setStatusType("error");
+      setStatus("Опишите задачу для Redactor Agent.");
+      return;
+    }
+
     setBusyAction("stage3-optimize");
     setIsBusy(true);
     setStatus("");
     setStatusType("");
 
     try {
-      const prompt = stage3AgentPrompt.trim();
-      const currentSnapshot = selectedStage3Snapshot ?? makeLiveSnapshot();
-      const hasInitVersion = stage3Versions.length > 0;
-      if (!hasInitVersion) {
-        await ensureStage3Initialized(chat);
-      }
-      const nextVersionNo = Math.max(2, stage3Versions.length + (hasInitVersion ? 1 : 2));
-      await appendEvent(chat.id, {
-        role: "user",
-        type: "note",
-        text: prompt
-          ? `Пользователь запустил оптимизацию Stage 3 с инструкцией: ${prompt}`
-          : "Пользователь запустил оптимизацию Stage 3."
-      });
-
-      const response = await fetch("/api/stage3/optimize", {
+      const currentSnapshot = makeLiveSnapshot();
+      const response = await fetch("/api/stage3/agent/run", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          ...(codexSessionId ? { "x-codex-session-id": codexSessionId } : {})
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          sessionId: stage3KnownSessionId ?? undefined,
+          projectId: chat.id,
+          mediaId: chat.url,
           sourceUrl: chat.url,
-          chatId: chat.id,
-          versionNo: nextVersionNo,
-          topText: currentSnapshot.topText,
-          bottomText: currentSnapshot.bottomText,
-          clipStartSec: currentSnapshot.clipStartSec,
-          focusY: currentSnapshot.focusY,
-          clipDurationSec: CLIP_DURATION_SEC,
-          agentPrompt: prompt || undefined,
-          currentSnapshot
+          sourceDurationSec,
+          goalText,
+          currentSnapshot,
+          autoClipStartSec: currentSnapshot.clipStartSec,
+          autoFocusY: currentSnapshot.focusY,
+          plannerReasoningEffort: "extra-high",
+          plannerTimeoutMs: 120000,
+          options: {
+            maxIterations: 8,
+            targetScore: 0.9,
+            minGain: 0.02,
+            operationBudget: 5
+          }
         })
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Stage 3 optimization failed."));
+        throw new Error(await parseError(response, "Stage 3 agent run failed."));
       }
 
-      const body = (await response.json()) as Stage3OptimizeResponse;
-      const optimization = body.optimization;
-      const version = optimization.version;
-      const passes = version?.internalPasses ?? [];
-      if (!version) {
-        const suggestions = optimization.suggestions?.length
-          ? ` Подсказки: ${optimization.suggestions.join(" ")}`
-          : "";
-        const noOpMessage = optimization.noOpReason ?? "Stage 3 optimization returned no version.";
-        await appendEvent(chat.id, {
-          role: "assistant",
-          type: "note",
-          text: `Stage 3: ${noOpMessage}${suggestions}`
-        });
-        setStatusType("ok");
-        setStatus(`Без изменений. ${noOpMessage}${suggestions}`);
-        return;
-      }
+      const body = (await response.json()) as Stage3AgentRunResponse;
+      const timeline = await loadStage3AgentTimeline(body.sessionId);
+      const selectedVersion = applyTimelineVersion(timeline, body.finalVersionId);
 
-      const recommendedPass = version.recommendedPass ?? passes.length;
-      const recommendedIndex = passes.length
-        ? Math.max(0, Math.min(passes.length - 1, recommendedPass - 1))
-        : 0;
-      const selected = passes[recommendedIndex] ?? null;
+      setStage3AgentSessionId(body.sessionId);
+      setIgnoreStage3ChatSessionRef(false);
+      setStage3AgentPrompt(goalText);
 
-      setStage3SelectedVersionId(version.runId);
-      setStage3PassSelectionByVersion((prev) => ({
-        ...prev,
-        [version.runId]: recommendedIndex
-      }));
-      applyStage3Snapshot(version.final);
-      setSourceDurationSec(version.final.sourceDurationSec);
-      if (version.prompt.trim()) {
-        setStage3AgentPrompt(version.prompt);
-      }
+      await appendStage3AgentSessionEvent(chat.id, {
+        sessionId: body.sessionId,
+        status: timeline.session.status,
+        finalVersionId: body.finalVersionId,
+        bestVersionId: body.bestVersionId,
+        summaryText:
+          timeline.session.status === "completed"
+            ? "Redactor Agent завершил автономный цикл и сохранил итоговую версию."
+            : timeline.session.status === "partiallyApplied"
+              ? "Redactor Agent сохранил лучший найденный вариант после автономных итераций."
+              : "Redactor Agent завершил цикл с остановкой по safety или ограничению."
+      }).catch(() => undefined);
 
-      await appendEvent(chat.id, {
-        role: "assistant",
-        type: "note",
-        text: optimization.changed
-          ? `Stage 3 оптимизирован. Версия v${version.versionNo} готова: ${version.diff.summary.join(" ")}`
-          : `Stage 3 без критичных изменений. Создана версия v${version.versionNo}: ${version.diff.summary.join(" ")}`,
-        data: {
-          kind: "stage3-version",
-          version
-        }
-      });
+      const changedOps = [...new Set(body.summary.changedOperations.map((operation) => formatStage3Operation(operation)))];
+      const versionLabel = selectedVersion ? `v${selectedVersion.versionNo}` : "текущая версия";
+      const summary = changedOps.length ? changedOps.join(", ") : "без заметных операций";
 
-      const compactedTop = selected?.topCompacted ? "TOP сжат" : "TOP без изменений";
-      const compactedBottom = selected?.bottomCompacted ? "BOTTOM сжат" : "BOTTOM без изменений";
-      const suggestions = optimization.suggestions?.length
-        ? ` Подсказки: ${optimization.suggestions.join(" ")}`
-        : "";
-      setStatusType("ok");
+      setStatusType(body.status === "failed" ? "error" : "ok");
       setStatus(
-        optimization.changed
-          ? `Версия v${version.versionNo} создана. ${compactedTop}, ${compactedBottom}. Внутренних проходов: ${passes.length}.${suggestions}`
-          : `Версия v${version.versionNo} создана без заметных правок. ${optimization.noOpReason ?? "Текущее состояние уже стабильное."}${suggestions}`
+        `${versionLabel}: ${summary}. ${formatStage3StopReason(body.summary.whyStopped)}.` +
+          (body.stabilityNote ? ` ${body.stabilityNote}` : "")
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Stage 3 optimization failed.";
+      const message = error instanceof Error ? error.message : "Stage 3 agent run failed.";
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
         text: message
       }).catch(() => undefined);
+      setStatusType("error");
+      setStatus(message);
+    } finally {
+      setIsBusy(false);
+      setBusyAction("");
+    }
+  };
+
+  const handleResumeStage3Agent = async (): Promise<void> => {
+    const chat = requireActiveChat();
+    const sessionId = stage3KnownSessionId;
+    if (!chat || !sessionId) {
+      setStatusType("error");
+      setStatus("Сначала запустите Redactor Agent хотя бы один раз.");
+      return;
+    }
+
+    setBusyAction("stage3-optimize");
+    setIsBusy(true);
+    setStatus("");
+    setStatusType("");
+
+    try {
+      const response = await fetch(`/api/stage3/agent/sessions/${sessionId}/resume`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          mediaId: chat.url,
+          sourceUrl: chat.url,
+          plannerReasoningEffort: "extra-high",
+          plannerTimeoutMs: 120000,
+          options: {
+            maxIterations: 8,
+            targetScore: 0.9,
+            minGain: 0.02,
+            operationBudget: 5
+          }
+        })
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Unable to resume Stage 3 agent session."));
+      }
+
+      const body = (await response.json()) as Stage3AgentRunResponse;
+      const timeline = await loadStage3AgentTimeline(body.sessionId);
+      const selectedVersion = applyTimelineVersion(timeline, body.finalVersionId);
+      setIgnoreStage3ChatSessionRef(false);
+
+      await appendStage3AgentSessionEvent(chat.id, {
+        sessionId: body.sessionId,
+        status: timeline.session.status,
+        finalVersionId: body.finalVersionId,
+        bestVersionId: body.bestVersionId,
+        summaryText: "Redactor Agent продолжил автономный цикл от текущей версии."
+      }).catch(() => undefined);
+
+      setStatusType(body.status === "failed" ? "error" : "ok");
+      setStatus(
+        `${selectedVersion ? `v${selectedVersion.versionNo}` : "Сессия"} обновлена: ${formatStage3StopReason(
+          body.summary.whyStopped
+        )}.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to resume Stage 3 agent session.";
+      setStatusType("error");
+      setStatus(message);
+    } finally {
+      setIsBusy(false);
+      setBusyAction("");
+    }
+  };
+
+  const handleRollbackStage3Version = async (): Promise<void> => {
+    const chat = requireActiveChat();
+    const sessionId = stage3KnownSessionId;
+    const targetVersionId = stage3SelectedVersionId;
+
+    if (!chat || !sessionId || !targetVersionId) {
+      setStatusType("error");
+      setStatus("Выберите версию из history drawer для rollback.");
+      return;
+    }
+
+    setBusyAction("stage3-optimize");
+    setIsBusy(true);
+    setStatus("");
+    setStatusType("");
+
+    try {
+      const response = await fetch(`/api/stage3/agent/${sessionId}/rollback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetVersionId,
+          reason: "user_selected_version"
+        })
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Stage 3 rollback failed."));
+      }
+
+      const body = (await response.json()) as {
+        sessionId: string;
+        targetVersionId: string;
+        reason: string;
+        rollbackVersionId: string;
+        currentVersionId: string;
+      };
+
+      const timeline = await loadStage3AgentTimeline(body.sessionId);
+      const selectedVersion = applyTimelineVersion(timeline, body.currentVersionId);
+      setIgnoreStage3ChatSessionRef(false);
+
+      await appendStage3AgentSessionEvent(chat.id, {
+        sessionId: body.sessionId,
+        status: timeline.session.status,
+        finalVersionId: body.currentVersionId,
+        bestVersionId: timeline.session.bestVersionId,
+        summaryText: "Redactor Agent создал rollback-версию от выбранной точки timeline."
+      }).catch(() => undefined);
+
+      setStatusType("ok");
+      setStatus(
+        `Rollback выполнен${selectedVersion ? ` к v${selectedVersion.versionNo}` : ""}. Причина: ${body.reason}.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Stage 3 rollback failed.";
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -1752,29 +1968,91 @@ export default function HomePage() {
     return stage2Events[stage2Events.length - 1] ?? null;
   }, [stage2Events]);
 
-  const stage3Versions = useMemo(() => {
+  const stage3AgentSessionRef = useMemo(() => {
+    if (!activeChat) {
+      return null;
+    }
+    return findLatestStage3AgentSessionRef(activeChat.events);
+  }, [activeChat]);
+
+  const legacyStage3Versions = useMemo(() => {
     if (!activeChat) {
       return [] as Stage3Version[];
     }
+    return buildLegacyTimelineEntries(
+      activeChat.events
+        .filter((event) => event.type === "note" && event.role === "assistant")
+        .map((event) => ({
+          id: event.id,
+          createdAt: event.createdAt,
+          data: event.data
+        }))
+    );
+  }, [activeChat]);
 
-    const collected: Stage3Version[] = [];
-    let fallbackVersionNo = 1;
-    for (const event of activeChat.events) {
-      if (event.type !== "note" || event.role !== "assistant") {
-        continue;
-      }
-      const version = extractStage3Version(event.data, event.id, event.createdAt, fallbackVersionNo);
-      if (!version) {
-        continue;
-      }
-      collected.push(version);
-      fallbackVersionNo = Math.max(fallbackVersionNo + 1, version.versionNo + 1);
+  const activeStage3AgentTimeline = useMemo(() => {
+    if (!stage3AgentTimeline || !activeChat?.url) {
+      return null;
+    }
+    return stage3AgentTimeline.session.mediaId === activeChat.url ? stage3AgentTimeline : null;
+  }, [activeChat?.url, stage3AgentTimeline]);
+  const stage3KnownSessionId =
+    stage3AgentSessionId ?? (ignoreStage3ChatSessionRef ? null : stage3AgentSessionRef?.sessionId ?? null);
+
+  const stage3Versions = useMemo(() => {
+    if (ignoreStage3ChatSessionRef && !activeStage3AgentTimeline) {
+      return [] as Stage3Version[];
+    }
+    if (!activeStage3AgentTimeline) {
+      return legacyStage3Versions;
     }
 
-    return collected
-      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
-      .map((version, index) => ({ ...version, versionNo: index + 1 }));
-  }, [activeChat]);
+    return mergeStage3Versions([
+      activeStage3AgentTimeline.legacyVersions,
+      activeStage3AgentTimeline.uiVersions,
+      legacyStage3Versions
+    ]);
+  }, [activeStage3AgentTimeline, ignoreStage3ChatSessionRef, legacyStage3Versions]);
+
+  const stage3AgentConversation = useMemo(
+    () => buildStage3AgentConversation(activeStage3AgentTimeline),
+    [activeStage3AgentTimeline]
+  );
+  const stage3AgentLatestIteration = useMemo(
+    () => activeStage3AgentTimeline?.iterations[activeStage3AgentTimeline.iterations.length - 1] ?? null,
+    [activeStage3AgentTimeline]
+  );
+  const stage3AgentCurrentScore = stage3AgentLatestIteration?.scores.total ?? null;
+  const canResumeStage3Agent = Boolean(
+    activeStage3AgentTimeline?.session &&
+      activeStage3AgentTimeline.session.status !== "completed" &&
+      busyAction !== "stage3-optimize" &&
+      busyAction !== "render"
+  );
+  const canRollbackStage3Version = Boolean(
+    activeStage3AgentTimeline?.versions.some((version) => version.id === stage3SelectedVersionId) &&
+      stage3SelectedVersionId &&
+      stage3SelectedVersionId !== activeStage3AgentTimeline?.session.currentVersionId &&
+      busyAction !== "stage3-optimize" &&
+      busyAction !== "render"
+  );
+
+  useEffect(() => {
+    if (!activeChat || !stage3KnownSessionId) {
+      return;
+    }
+    if (stage3AgentTimeline?.session.id === stage3KnownSessionId) {
+      return;
+    }
+
+    void loadStage3AgentTimeline(stage3KnownSessionId).catch(() => undefined);
+  }, [
+    activeChat,
+    ignoreStage3ChatSessionRef,
+    loadStage3AgentTimeline,
+    stage3KnownSessionId,
+    stage3AgentTimeline?.session.id
+  ]);
 
   // Backward-compatible aliases after run->version refactor.
   const stage3Runs = stage3Versions;
@@ -1801,13 +2079,6 @@ export default function HomePage() {
     }
     return Math.max(0, Math.min(selectedStage3Version.internalPasses.length - 1, stored));
   }, [selectedStage3Version, stage3PassSelectionByVersion]);
-
-  const selectedStage3Snapshot = useMemo(() => {
-    if (!selectedStage3Version) {
-      return null;
-    }
-    return selectedStage3Version.final;
-  }, [selectedStage3Version]);
 
   const stage3LivePreviewState = useMemo(
     () => ({
@@ -1864,7 +2135,7 @@ export default function HomePage() {
     setStage3RenderPlan((prev) =>
       normalizeRenderPlan(
         {
-          ...applyChannelToRenderPlan(activeChannel),
+          ...applyChannelToRenderPlan(activeChannel, channelAssets),
           policy: prev.policy
         },
         fallbackRenderPlan()
@@ -1872,6 +2143,9 @@ export default function HomePage() {
     );
     setStage3SelectedVersionId(null);
     setStage3PassSelectionByVersion({});
+    setStage3AgentSessionId(null);
+    setStage3AgentTimeline(null);
+    setIgnoreStage3ChatSessionRef(true);
     setStage3PreviewNotice(null);
   }, [
     activeChat?.id,
@@ -1879,40 +2153,17 @@ export default function HomePage() {
     selectedCaption?.top,
     selectedCaption?.bottom,
     activeChannel,
+    channelAssets,
     applyChannelToRenderPlan
-  ]);
-
-  useEffect(() => {
-    if (currentStep !== 3) {
-      return;
-    }
-    const chat = activeChat;
-    if (!chat) {
-      return;
-    }
-    if (stage3Versions.length > 0) {
-      return;
-    }
-    if (!stage3TopText.trim() && !stage3BottomText.trim()) {
-      return;
-    }
-    void ensureStage3Initialized(chat).catch(() => undefined);
-  }, [
-    currentStep,
-    activeChat,
-    stage3Versions.length,
-    stage3TopText,
-    stage3BottomText,
-    stage3ClipStartSec,
-    stage3FocusY,
-    stage3RenderPlan,
-    stage3AgentPrompt
   ]);
 
   useEffect(() => {
     const chatId = activeChat?.id ?? null;
     if (!chatId) {
       initializedStage3ChatRef.current = null;
+      setStage3AgentSessionId(null);
+      setStage3AgentTimeline(null);
+      setIgnoreStage3ChatSessionRef(false);
       setStage3SelectedVersionId(null);
       setStage3PassSelectionByVersion({});
       setStage3AgentPrompt("");
@@ -1920,22 +2171,24 @@ export default function HomePage() {
       setStage3BottomText("");
       setStage3ClipStartSec(0);
       setStage3FocusY(0.5);
-      setStage3RenderPlan(applyChannelToRenderPlan(activeChannel));
+      setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
       stage3PreviewRequestKeyRef.current = "";
       setStage3PreviewVideoUrl(null);
       setStage3PreviewNotice(null);
       return;
     }
-    if (initializedStage3ChatRef.current === chatId) {
-      return;
+    const isNewChat = initializedStage3ChatRef.current !== chatId;
+    if (isNewChat) {
+      initializedStage3ChatRef.current = chatId;
+      setStage3AgentSessionId(stage3AgentSessionRef?.sessionId ?? null);
+      setStage3AgentTimeline(null);
+      setIgnoreStage3ChatSessionRef(false);
     }
-
-    initializedStage3ChatRef.current = chatId;
     const latestVersion = stage3Versions[stage3Versions.length - 1] ?? null;
     if (!latestVersion) {
       setStage3SelectedVersionId(null);
       setStage3PassSelectionByVersion({});
-      setStage3AgentPrompt("");
+      setStage3AgentPrompt(activeStage3AgentTimeline?.session.goalText ?? "");
       return;
     }
 
@@ -1947,9 +2200,19 @@ export default function HomePage() {
     setStage3PassSelectionByVersion({ [latestVersion.runId]: recommendedIndex });
     if (latestVersion.prompt.trim()) {
       setStage3AgentPrompt(latestVersion.prompt);
+    } else if (activeStage3AgentTimeline?.session.goalText.trim()) {
+      setStage3AgentPrompt(activeStage3AgentTimeline.session.goalText);
     }
     applyStage3Snapshot(latestVersion.final);
-  }, [activeChat?.id, stage3Versions, activeChannel, applyChannelToRenderPlan]);
+  }, [
+    activeChat?.id,
+    stage3AgentSessionRef?.sessionId,
+    activeStage3AgentTimeline,
+    stage3Versions,
+    activeChannel,
+    channelAssets,
+    applyChannelToRenderPlan
+  ]);
 
   useEffect(() => {
     if (currentStep !== 3 || !activeChat?.url) {
@@ -2002,15 +2265,7 @@ export default function HomePage() {
       return;
     }
 
-    const previewState = selectedStage3Snapshot
-      ? {
-          clipStartSec: selectedStage3Snapshot.clipStartSec,
-          clipDurationSec: CLIP_DURATION_SEC,
-          renderPlan: stripRenderPlanForPreview(
-            normalizeRenderPlan(selectedStage3Snapshot.renderPlan, fallbackRenderPlan())
-          )
-        }
-      : stage3LivePreviewState;
+    const previewState = stage3LivePreviewState;
 
     const previewKey = JSON.stringify({
       sourceUrl: activeChat.url,
@@ -2095,15 +2350,15 @@ export default function HomePage() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [currentStep, activeChat?.url, selectedStage3Snapshot, stage3LivePreviewState]);
+  }, [currentStep, activeChat?.url, activeChannelId, stage3LivePreviewState]);
 
   const steps: FlowStep[] = useMemo(
     () => [
       { id: 1, label: "Paste link", enabled: true },
-      { id: 2, label: "Review & pick", enabled: Boolean(activeChat) },
+      { id: 2, label: "Review & pick", enabled: Boolean(activeChat && latestComments) },
       { id: 3, label: "Render video", enabled: Boolean(latestStage2Event) }
     ],
-    [activeChat, latestStage2Event]
+    [activeChat, latestComments, latestStage2Event]
   );
 
   const historyItems = useMemo(
@@ -2128,8 +2383,11 @@ export default function HomePage() {
 
     try {
       const chat = await refreshActiveChat(id);
+      const hasComments = chat.events.some(
+        (event) => event.type === "comments" && event.role === "assistant"
+      );
       const hasStage2 = chat.events.some((event) => event.type === "stage2" && event.role === "assistant");
-      setCurrentStep(hasStage2 ? 3 : 2);
+      setCurrentStep(hasStage2 ? 3 : hasComments ? 2 : 1);
     } catch (error) {
       setStatusType("error");
       setStatus(error instanceof Error ? error.message : "Failed to open history item.");
@@ -2146,9 +2404,12 @@ export default function HomePage() {
     setStage3BottomText("");
     setStage3ClipStartSec(0);
     setStage3FocusY(0.5);
-    setStage3RenderPlan(applyChannelToRenderPlan(activeChannel));
+    setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
     setSourceDurationSec(null);
     setStage3AgentPrompt("");
+    setStage3AgentSessionId(null);
+    setStage3AgentTimeline(null);
+    setIgnoreStage3ChatSessionRef(false);
     setStage3SelectedVersionId(null);
     setStage3PassSelectionByVersion({});
     initializedStage3ChatRef.current = null;
@@ -2178,9 +2439,12 @@ export default function HomePage() {
       setStage3BottomText("");
       setStage3ClipStartSec(0);
       setStage3FocusY(0.5);
-      setStage3RenderPlan(applyChannelToRenderPlan(nextChannel));
+      setStage3RenderPlan(applyChannelToRenderPlan(nextChannel, []));
       setSourceDurationSec(null);
       setStage3AgentPrompt("");
+      setStage3AgentSessionId(null);
+      setStage3AgentTimeline(null);
+      setIgnoreStage3ChatSessionRef(false);
       setStage3SelectedVersionId(null);
       setStage3PassSelectionByVersion({});
       initializedStage3ChatRef.current = null;
@@ -2192,7 +2456,7 @@ export default function HomePage() {
       setStatus("");
       setStatusType("");
     },
-    [activeChannelId, channels, applyChannelToRenderPlan]
+    [activeChannelId, channels, channelAssets, applyChannelToRenderPlan]
   );
 
   const handleDeleteHistory = async (chatId: string): Promise<void> => {
@@ -2252,6 +2516,7 @@ export default function HomePage() {
       name: string;
       username: string;
       systemPrompt: string;
+      descriptionPrompt: string;
       examplesJson: string;
       templateId: string;
       avatarAssetId: string | null;
@@ -2466,6 +2731,32 @@ export default function HomePage() {
     }
   };
 
+  const handleUpdateChannelAccess = async (
+    channelId: string,
+    input: { grantUserIds: string[]; revokeUserIds: string[] }
+  ): Promise<void> => {
+    setBusyAction("channel-save");
+    try {
+      const response = await fetch(`/api/channels/${channelId}/access`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input)
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to update channel access."));
+      }
+      const body = (await response.json()) as { grants: ChannelAccessGrant[] };
+      setChannelAccessGrants(body.grants ?? []);
+      setStatusType("ok");
+      setStatus("Доступ к каналу обновлен.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Failed to update channel access.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
   useEffect(() => {
     if (!activeChat) {
       return;
@@ -2514,7 +2805,25 @@ export default function HomePage() {
     setStatus("Template config exported.");
   };
 
+  const handleLogout = async (): Promise<void> => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.href = "/login";
+    }
+  };
+
   const codexBadgeConnected = codexLoggedIn;
+
+  if (isAuthLoading) {
+    return (
+      <main className="app-layout">
+        <section className="app-main">
+          <p className="status-line ok">Loading workspace...</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <AppShell
@@ -2540,14 +2849,41 @@ export default function HomePage() {
       activeChannelId={activeChannelId}
       onSelectChannel={handleSwitchChannel}
       onManageChannels={() => setIsChannelManagerOpen(true)}
+      canManageChannels={canCreateChannel || Boolean(activeChannel?.currentUserCanEditSetup)}
+      canManageTeam={Boolean(authState?.effectivePermissions.canManageMembers)}
+      onOpenTeam={() => {
+        window.location.href = "/team";
+      }}
       codexConnected={codexBadgeConnected}
       codexBusyConnect={busyAction === "connect-codex"}
       codexBusyRefresh={busyAction === "refresh-codex" || isCodexAuthLoading}
+      canManageCodex={canManageCodex}
+      canConnectCodex={sharedCodexAvailable}
+      codexConnectBlockedReason={codexBlockedReason}
+      codexStatusLabel={codexStatusLabel}
+      codexSecondaryActionLabel={
+        canManageCodex
+          ? codexAuth?.deviceAuth.status === "running"
+            ? "Cancel"
+            : codexLoggedIn
+              ? "Disconnect"
+              : null
+          : null
+      }
       onConnectCodex={() => {
         void startCodexDeviceAuth();
       }}
       onRefreshCodex={() => {
         void refreshCodexAuth();
+      }}
+      onSecondaryCodexAction={() => {
+        void handleCodexSecondaryAction();
+      }}
+      currentUserName={authState?.user.displayName ?? null}
+      currentUserRole={currentRole}
+      workspaceName={authState?.workspace.name ?? null}
+      onLogout={() => {
+        void handleLogout();
       }}
       statusText={status}
       statusTone={statusType}
@@ -2575,6 +2911,10 @@ export default function HomePage() {
           draftUrl={draftUrl}
           activeUrl={activeChat?.url ?? null}
           isBusy={isBusy}
+          fetchAvailable={fetchSourceAvailable}
+          fetchBlockedReason={fetchSourceBlockedReason}
+          downloadAvailable={downloadSourceAvailable}
+          downloadBlockedReason={downloadSourceBlockedReason}
           onDraftUrlChange={setDraftUrl}
           onPaste={() => {
             void handlePasteFromClipboard();
@@ -2595,7 +2935,8 @@ export default function HomePage() {
           stage2={latestStage2Event?.payload ?? null}
           stageCreatedAt={latestStage2Event?.createdAt ?? null}
           instruction={stage2Instruction}
-          canRunStage2={Boolean(activeChat && codexLoggedIn) && !isBusy}
+          canRunStage2={Boolean(activeChat && codexLoggedIn && stage2RuntimeAvailable) && !isBusy}
+          runBlockedReason={stage2BlockedReason}
           isRunning={busyAction === "stage2"}
           selectedOption={selectedOption}
           onInstructionChange={setStage2Instruction}
@@ -2632,6 +2973,12 @@ export default function HomePage() {
           isPreviewLoading={busyAction === "video-preview"}
           previewNotice={stage3PreviewNotice}
           agentPrompt={stage3AgentPrompt}
+          agentSession={activeStage3AgentTimeline?.session ?? null}
+          agentMessages={stage3AgentConversation}
+          agentCurrentScore={stage3AgentCurrentScore}
+          isAgentTimelineLoading={isStage3TimelineLoading}
+          canResumeAgent={canResumeStage3Agent}
+          canRollbackSelectedVersion={canRollbackStage3Version}
           topText={stage3TopText}
           bottomText={stage3BottomText}
           clipStartSec={stage3ClipStartSec}
@@ -2639,6 +2986,9 @@ export default function HomePage() {
           sourceDurationSec={sourceDurationSec}
           focusY={stage3FocusY}
           videoZoom={stage3RenderPlan.videoZoom}
+          topFontScale={stage3RenderPlan.topFontScale}
+          bottomFontScale={stage3RenderPlan.bottomFontScale}
+          musicGain={stage3RenderPlan.musicGain}
           isRendering={busyAction === "render"}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
@@ -2647,6 +2997,12 @@ export default function HomePage() {
           }}
           onOptimize={() => {
             void handleOptimizeStage3();
+          }}
+          onResumeAgent={() => {
+            void handleResumeStage3Agent();
+          }}
+          onRollbackSelectedVersion={() => {
+            void handleRollbackStage3Version();
           }}
           onReset={handleResetFlow}
           onUploadBackground={handleUploadBackground}
@@ -2720,6 +3076,50 @@ export default function HomePage() {
           }}
           onClipStartChange={(value) => setStage3ClipStartSec(value)}
           onFocusYChange={(value) => setStage3FocusY(value)}
+          onVideoZoomChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  videoZoom: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onMusicGainChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  musicGain: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onTopFontScaleChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  topFontScale: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onBottomFontScaleChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  bottomFontScale: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
           onExport={handleExportTemplate}
         />
       ) : null}
@@ -2731,6 +3131,7 @@ export default function HomePage() {
         assets={channelAssets}
         onClose={() => setIsChannelManagerOpen(false)}
         onSelectChannel={handleSwitchChannel}
+        canCreateChannel={canCreateChannel}
         onCreateChannel={() => {
           void handleCreateChannel();
         }}
@@ -2745,6 +3146,12 @@ export default function HomePage() {
         }}
         onDeleteAsset={(assetId) => {
           void handleDeleteChannelAsset(assetId);
+        }}
+        canManageAccess={Boolean(authState?.effectivePermissions.canManageAnyChannelAccess)}
+        accessGrants={channelAccessGrants}
+        workspaceMembers={workspaceMembers}
+        onUpdateAccess={(channelId, input) => {
+          void handleUpdateChannelAccess(channelId, input);
         }}
       />
     </AppShell>

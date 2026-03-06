@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Channel, ChannelAsset, ChannelAssetKind } from "./types";
+import {
+  Channel,
+  ChannelAccessGrant,
+  ChannelAsset,
+  ChannelAssetKind,
+  WorkspaceMemberRecord,
+  UserRecord
+} from "./types";
 
 type ChannelManagerProps = {
   open: boolean;
@@ -13,12 +20,14 @@ type ChannelManagerProps = {
   onSelectChannel: (channelId: string) => void;
   onCreateChannel: () => void;
   onDeleteChannel: (channelId: string) => void;
+  canCreateChannel: boolean;
   onSaveChannel: (
     channelId: string,
     patch: Partial<{
       name: string;
       username: string;
       systemPrompt: string;
+      descriptionPrompt: string;
       examplesJson: string;
       templateId: string;
       avatarAssetId: string | null;
@@ -28,9 +37,13 @@ type ChannelManagerProps = {
   ) => void;
   onUploadAsset: (kind: ChannelAssetKind, file: File) => void;
   onDeleteAsset: (assetId: string) => void;
+  canManageAccess: boolean;
+  accessGrants: ChannelAccessGrant[];
+  workspaceMembers: Array<{ user: UserRecord; role: WorkspaceMemberRecord["role"] }>;
+  onUpdateAccess: (channelId: string, input: { grantUserIds: string[]; revokeUserIds: string[] }) => void;
 };
 
-type TabId = "brand" | "stage2" | "render" | "assets";
+type TabId = "brand" | "stage2" | "render" | "assets" | "access";
 
 function listByKind(assets: ChannelAsset[], kind: ChannelAssetKind): ChannelAsset[] {
   return assets.filter((item) => item.kind === kind);
@@ -45,9 +58,14 @@ export function ChannelManager({
   onSelectChannel,
   onCreateChannel,
   onDeleteChannel,
+  canCreateChannel,
   onSaveChannel,
   onUploadAsset,
-  onDeleteAsset
+  onDeleteAsset,
+  canManageAccess,
+  accessGrants,
+  workspaceMembers,
+  onUpdateAccess
 }: ChannelManagerProps) {
   const [tab, setTab] = useState<TabId>("brand");
   const [mounted, setMounted] = useState(false);
@@ -59,6 +77,7 @@ export function ChannelManager({
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
+  const [descriptionPrompt, setDescriptionPrompt] = useState("");
   const [examplesJson, setExamplesJson] = useState("[]");
   const [templateId, setTemplateId] = useState("science-card-v1");
 
@@ -73,6 +92,7 @@ export function ChannelManager({
     setName(activeChannel.name);
     setUsername(activeChannel.username);
     setSystemPrompt(activeChannel.systemPrompt);
+    setDescriptionPrompt(activeChannel.descriptionPrompt);
     setExamplesJson(activeChannel.examplesJson);
     setTemplateId(activeChannel.templateId);
   }, [activeChannel]);
@@ -102,6 +122,8 @@ export function ChannelManager({
   const avatars = listByKind(assets, "avatar");
   const backgrounds = listByKind(assets, "background");
   const music = listByKind(assets, "music");
+  const activeGrantUserIds = new Set(accessGrants.map((grant) => grant.userId));
+  const accessCandidates = workspaceMembers.filter((member) => member.role !== "owner");
 
   return createPortal(
     <div
@@ -141,15 +163,17 @@ export function ChannelManager({
               </option>
             ))}
           </select>
-          <button type="button" className="btn btn-secondary" onClick={onCreateChannel}>
-            + New channel
-          </button>
+          {canCreateChannel ? (
+            <button type="button" className="btn btn-secondary" onClick={onCreateChannel}>
+              + New channel
+            </button>
+          ) : null}
           {activeChannel ? (
             <button
               type="button"
               className="btn btn-ghost"
               onClick={() => onDeleteChannel(activeChannel.id)}
-              disabled={channels.length <= 1}
+              disabled={channels.length <= 1 || !activeChannel.currentUserCanEditSetup}
             >
               Delete channel
             </button>
@@ -157,7 +181,11 @@ export function ChannelManager({
         </section>
 
         <div className="channel-tabs">
-          {(["brand", "stage2", "render", "assets"] as const).map((item) => (
+          {(["brand", "stage2", "render", "assets", "access"] as const).map((item) => {
+            if (item === "access" && !canManageAccess) {
+              return null;
+            }
+            return (
             <button
               key={item}
               type="button"
@@ -166,7 +194,8 @@ export function ChannelManager({
             >
               {item.toUpperCase()}
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {!activeChannel ? (
@@ -219,6 +248,7 @@ export function ChannelManager({
                 <button
                   type="button"
                   className="btn btn-primary"
+                  disabled={!activeChannel.currentUserCanEditSetup}
                   onClick={() =>
                     onSaveChannel(activeChannel.id, {
                       name,
@@ -239,6 +269,13 @@ export function ChannelManager({
                   rows={9}
                   value={systemPrompt}
                   onChange={(event) => setSystemPrompt(event.target.value)}
+                />
+                <label className="field-label">Description prompt (auto SEO)</label>
+                <textarea
+                  className="text-area"
+                  rows={9}
+                  value={descriptionPrompt}
+                  onChange={(event) => setDescriptionPrompt(event.target.value)}
                 />
                 <label className="field-label">examples.json</label>
                 <textarea
@@ -273,9 +310,11 @@ export function ChannelManager({
                 <button
                   type="button"
                   className="btn btn-primary"
+                  disabled={!activeChannel.currentUserCanEditSetup}
                   onClick={() =>
                     onSaveChannel(activeChannel.id, {
                       systemPrompt,
+                      descriptionPrompt,
                       examplesJson
                     })
                   }
@@ -288,11 +327,14 @@ export function ChannelManager({
             {tab === "render" ? (
               <div className="field-stack">
                 <label className="field-label">Template</label>
-                <input
+                <select
                   className="text-input"
                   value={templateId}
                   onChange={(event) => setTemplateId(event.target.value)}
-                />
+                >
+                  <option value="science-card-v1">Science Card v1</option>
+                  <option value="turbo-face-v1">Turbo Face v1</option>
+                </select>
                 <div className="compact-grid">
                   <div className="compact-field">
                     <label className="field-label">Default background</label>
@@ -336,6 +378,7 @@ export function ChannelManager({
                 <button
                   type="button"
                   className="btn btn-primary"
+                  disabled={!activeChannel.currentUserCanEditSetup}
                   onClick={() => onSaveChannel(activeChannel.id, { templateId })}
                 >
                   Save render defaults
@@ -442,6 +485,91 @@ export function ChannelManager({
                           <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
                             Delete
                           </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            ) : null}
+
+            {tab === "access" && canManageAccess ? (
+              <div className="field-stack">
+                <p className="subtle-text">
+                  Managers and owner can grant operational access to channels.
+                </p>
+                <section className="details-section">
+                  <h3>Current access ({accessGrants.length})</h3>
+                  <ul className="details-log-list">
+                    {accessGrants.length === 0 ? (
+                      <li className="log-item">
+                        <p>No explicit grants.</p>
+                      </li>
+                    ) : (
+                      accessGrants.map((grant) => (
+                        <li key={grant.id} className="log-item">
+                          <p>
+                            {grant.user?.displayName ?? grant.userId}{" "}
+                            <span className="subtle-text">{grant.user?.email ?? ""}</span>
+                          </p>
+                          <div className="control-actions">
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() =>
+                                onUpdateAccess(activeChannel.id, {
+                                  grantUserIds: [],
+                                  revokeUserIds: [grant.userId]
+                                })
+                              }
+                            >
+                              Revoke
+                            </button>
+                          </div>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </section>
+                <section className="details-section">
+                  <h3>Grant access</h3>
+                  <ul className="details-log-list">
+                    {accessCandidates.map((member) => (
+                      <li key={member.user.id} className="log-item">
+                        <p>
+                          {member.user.displayName}{" "}
+                          <span className="subtle-text">
+                            {member.user.email} · {member.role}
+                          </span>
+                        </p>
+                        <div className="control-actions">
+                          {activeGrantUserIds.has(member.user.id) ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() =>
+                                onUpdateAccess(activeChannel.id, {
+                                  grantUserIds: [],
+                                  revokeUserIds: [member.user.id]
+                                })
+                              }
+                            >
+                              Revoke
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() =>
+                                onUpdateAccess(activeChannel.id, {
+                                  grantUserIds: [member.user.id],
+                                  revokeUserIds: []
+                                })
+                              }
+                            >
+                              Grant operate
+                            </button>
+                          )}
                         </div>
                       </li>
                     ))}

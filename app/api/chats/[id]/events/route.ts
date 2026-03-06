@@ -1,4 +1,5 @@
-import { appendChatEvent } from "../../../../../lib/chat-history";
+import { appendChatEvent, getChatById } from "../../../../../lib/chat-history";
+import { requireAuth, requireChannelOperate } from "../../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,12 @@ export async function POST(
   }
 
   try {
+    const auth = await requireAuth();
+    const existingChat = await getChatById(id);
+    if (!existingChat) {
+      return Response.json({ error: "Chat not found." }, { status: 404 });
+    }
+    await requireChannelOperate(auth, existingChat.channelId);
     const chat = await appendChatEvent(id, {
       role,
       type,
@@ -32,9 +39,12 @@ export async function POST(
     });
     return Response.json({ chat }, { status: 200 });
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     return Response.json(
       { error: error instanceof Error ? error.message : "Не удалось записать событие." },
-      { status: 404 }
+      { status: 500 }
     );
   }
 }

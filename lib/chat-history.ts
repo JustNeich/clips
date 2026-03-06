@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { STAGE2_SYSTEM_PROMPT } from "./stage2";
+import { buildLegacyTimelineEntries } from "./stage3-legacy-bridge";
+import { Stage3Version } from "../app/components/types";
+import { STAGE2_DESCRIPTION_SYSTEM_PROMPT, STAGE2_SYSTEM_PROMPT } from "./stage2";
+import { getDb, newId, nowIso } from "./db/client";
+import { getWorkspace } from "./team-store";
 
 export type ChatEventRole = "user" | "assistant" | "system";
 
@@ -24,6 +25,7 @@ export type ChatEvent = {
 
 export type ChatThread = {
   id: string;
+  workspaceId: string;
   channelId: string;
   url: string;
   title: string;
@@ -36,6 +38,7 @@ export type ChannelAssetKind = "avatar" | "background" | "music";
 
 export type ChannelAsset = {
   id: string;
+  workspaceId: string;
   channelId: string;
   kind: ChannelAssetKind;
   fileName: string;
@@ -47,9 +50,12 @@ export type ChannelAsset = {
 
 export type Channel = {
   id: string;
+  workspaceId: string;
+  creatorUserId: string;
   name: string;
   username: string;
   systemPrompt: string;
+  descriptionPrompt: string;
   examplesJson: string;
   templateId: string;
   avatarAssetId: string | null;
@@ -57,27 +63,21 @@ export type Channel = {
   defaultMusicAssetId: string | null;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
 };
 
-type ChatStore = {
-  version: 2;
-  channels: Channel[];
-  channelAssets: ChannelAsset[];
-  threads: ChatThread[];
+export type ChannelAccessRecord = {
+  id: string;
+  channelId: string;
+  userId: string;
+  accessRole: "operate";
+  grantedByUserId: string;
+  createdAt: string;
+  revokedAt: string | null;
 };
 
-type LegacyStore = {
-  threads?: unknown;
-};
-
-export const CHAT_STORE_VERSION = 2 as const;
+export const CHAT_STORE_VERSION = 3 as const;
 export const DEFAULT_TEMPLATE_ID = "science-card-v1";
-
-const DATA_DIR = path.join(process.cwd(), ".data");
-const STORE_PATH = path.join(DATA_DIR, "chat-history.json");
-const EXAMPLES_PATH = path.join(process.cwd(), "data", "examples.json");
-
-let cachedDefaultExamples: string | null = null;
 
 const allowedEventTypes = new Set<ChatEventType>([
   "link",
@@ -87,18 +87,6 @@ const allowedEventTypes = new Set<ChatEventType>([
   "error",
   "note"
 ]);
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function newId(): string {
-  return randomUUID().replace(/-/g, "");
-}
-
-function normalizeUrl(raw: string): string {
-  return raw.trim();
-}
 
 function sanitizeName(value: string | null | undefined, fallback: string): string {
   const normalized = String(value ?? "")
@@ -147,258 +135,100 @@ function ensureValidJsonString(value: string): string {
   }
 }
 
-async function loadDefaultExamplesJson(): Promise<string> {
-  if (cachedDefaultExamples) {
-    return cachedDefaultExamples;
-  }
-  try {
-    const raw = await fs.readFile(EXAMPLES_PATH, "utf-8");
-    cachedDefaultExamples = raw;
-    return raw;
-  } catch {
-    const fallback = "[]";
-    cachedDefaultExamples = fallback;
-    return fallback;
-  }
-}
-
-async function buildDefaultChannel(now: string, id = newId()): Promise<Channel> {
-  const examplesJson = await loadDefaultExamplesJson();
+function mapChannel(row: Record<string, unknown>): Channel {
   return {
-    id,
-    name: "Default",
-    username: "science_snack",
-    systemPrompt: STAGE2_SYSTEM_PROMPT,
-    examplesJson,
-    templateId: DEFAULT_TEMPLATE_ID,
-    avatarAssetId: null,
-    defaultBackgroundAssetId: null,
-    defaultMusicAssetId: null,
-    createdAt: now,
-    updatedAt: now
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    creatorUserId: String(row.creator_user_id),
+    name: sanitizeName(String(row.name ?? ""), "Channel"),
+    username: sanitizeUsername(String(row.username ?? "")),
+    systemPrompt: sanitizeTextBlock(String(row.system_prompt ?? ""), STAGE2_SYSTEM_PROMPT),
+    descriptionPrompt: sanitizeTextBlock(
+      String(row.description_prompt ?? ""),
+      STAGE2_DESCRIPTION_SYSTEM_PROMPT
+    ),
+    examplesJson: safeJsonString(String(row.examples_json ?? "[]"), "[]"),
+    templateId: sanitizeName(String(row.template_id ?? ""), DEFAULT_TEMPLATE_ID),
+    avatarAssetId: row.avatar_asset_id ? String(row.avatar_asset_id) : null,
+    defaultBackgroundAssetId: row.default_background_asset_id
+      ? String(row.default_background_asset_id)
+      : null,
+    defaultMusicAssetId: row.default_music_asset_id ? String(row.default_music_asset_id) : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    archivedAt: row.archived_at ? String(row.archived_at) : null
   };
 }
 
-function sanitizeEvent(value: unknown): ChatEvent | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const event = value as Partial<ChatEvent>;
-  if (
-    typeof event.id !== "string" ||
-    typeof event.role !== "string" ||
-    typeof event.type !== "string" ||
-    typeof event.text !== "string" ||
-    typeof event.createdAt !== "string"
-  ) {
-    return null;
-  }
-  if (!allowedEventTypes.has(event.type as ChatEventType)) {
-    return null;
-  }
-  const role = event.role as ChatEventRole;
-  if (role !== "user" && role !== "assistant" && role !== "system") {
-    return null;
-  }
-
+function mapAsset(row: Record<string, unknown>): ChannelAsset {
   return {
-    id: event.id,
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    channelId: String(row.channel_id),
+    kind: String(row.kind) as ChannelAssetKind,
+    fileName: String(row.file_name),
+    originalName: String(row.original_name),
+    mimeType: String(row.mime_type),
+    sizeBytes: Number(row.size_bytes),
+    createdAt: String(row.created_at)
+  };
+}
+
+function mapEvent(row: Record<string, unknown>): ChatEvent {
+  const type = String(row.type) as ChatEventType;
+  const role = String(row.role) as ChatEventRole;
+  return {
+    id: String(row.id),
     role,
-    type: event.type as ChatEventType,
-    text: event.text,
-    data: event.data,
-    createdAt: event.createdAt
+    type: allowedEventTypes.has(type) ? type : "note",
+    text: String(row.text),
+    data: row.data_json ? JSON.parse(String(row.data_json)) : undefined,
+    createdAt: String(row.created_at)
   };
 }
 
-function sanitizeThread(value: unknown): ChatThread | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const thread = value as Partial<ChatThread>;
-  if (
-    typeof thread.id !== "string" ||
-    typeof thread.url !== "string" ||
-    typeof thread.title !== "string" ||
-    typeof thread.createdAt !== "string" ||
-    typeof thread.updatedAt !== "string"
-  ) {
-    return null;
-  }
-
-  const events = Array.isArray(thread.events) ? thread.events.map(sanitizeEvent).filter(Boolean) : [];
+function mapThread(row: Record<string, unknown>, events: ChatEvent[]): ChatThread {
   return {
-    id: thread.id,
-    channelId: typeof thread.channelId === "string" ? thread.channelId : "",
-    url: thread.url,
-    title: thread.title,
-    createdAt: thread.createdAt,
-    updatedAt: thread.updatedAt,
-    events: events as ChatEvent[]
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    channelId: String(row.channel_id),
+    url: String(row.url),
+    title: String(row.title),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    events
   };
 }
 
-function sanitizeChannel(value: unknown): Channel | null {
-  if (!value || typeof value !== "object") {
-    return null;
+function getAnyWorkspaceId(): string {
+  const workspace = getWorkspace();
+  if (!workspace) {
+    throw new Error("Workspace is not initialized.");
   }
-  const channel = value as Partial<Channel>;
-  if (
-    typeof channel.id !== "string" ||
-    typeof channel.createdAt !== "string" ||
-    typeof channel.updatedAt !== "string"
-  ) {
-    return null;
-  }
-
-  return {
-    id: channel.id,
-    name: sanitizeName(channel.name, "Channel"),
-    username: sanitizeUsername(channel.username),
-    systemPrompt: sanitizeTextBlock(channel.systemPrompt, STAGE2_SYSTEM_PROMPT),
-    examplesJson: typeof channel.examplesJson === "string" ? channel.examplesJson : "[]",
-    templateId: sanitizeName(channel.templateId, DEFAULT_TEMPLATE_ID),
-    avatarAssetId: typeof channel.avatarAssetId === "string" && channel.avatarAssetId.trim() ? channel.avatarAssetId : null,
-    defaultBackgroundAssetId:
-      typeof channel.defaultBackgroundAssetId === "string" && channel.defaultBackgroundAssetId.trim()
-        ? channel.defaultBackgroundAssetId
-        : null,
-    defaultMusicAssetId:
-      typeof channel.defaultMusicAssetId === "string" && channel.defaultMusicAssetId.trim()
-        ? channel.defaultMusicAssetId
-        : null,
-    createdAt: channel.createdAt,
-    updatedAt: channel.updatedAt
-  };
+  return workspace.id;
 }
 
-function sanitizeAsset(value: unknown): ChannelAsset | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const asset = value as Partial<ChannelAsset>;
-  if (
-    typeof asset.id !== "string" ||
-    typeof asset.channelId !== "string" ||
-    typeof asset.kind !== "string" ||
-    typeof asset.fileName !== "string" ||
-    typeof asset.originalName !== "string" ||
-    typeof asset.mimeType !== "string" ||
-    typeof asset.sizeBytes !== "number" ||
-    typeof asset.createdAt !== "string"
-  ) {
-    return null;
-  }
-  if (asset.kind !== "avatar" && asset.kind !== "background" && asset.kind !== "music") {
-    return null;
-  }
-  return {
-    id: asset.id,
-    channelId: asset.channelId,
-    kind: asset.kind,
-    fileName: asset.fileName,
-    originalName: asset.originalName,
-    mimeType: asset.mimeType,
-    sizeBytes: asset.sizeBytes,
-    createdAt: asset.createdAt
-  };
+function getThreadEvents(threadId: string): ChatEvent[] {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT * FROM chat_events WHERE thread_id = ? ORDER BY created_at ASC")
+    .all(threadId) as Record<string, unknown>[];
+  return rows.map(mapEvent);
 }
 
-async function ensureStoreExists(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    await fs.access(STORE_PATH);
-  } catch {
-    const now = nowIso();
-    const defaultChannel = await buildDefaultChannel(now);
-    const initial: ChatStore = {
-      version: CHAT_STORE_VERSION,
-      channels: [defaultChannel],
-      channelAssets: [],
-      threads: []
-    };
-    await fs.writeFile(STORE_PATH, JSON.stringify(initial, null, 2), "utf-8");
-  }
+export async function listChannels(workspaceId?: string): Promise<Channel[]> {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      "SELECT * FROM channels WHERE workspace_id = ? AND archived_at IS NULL ORDER BY updated_at DESC"
+    )
+    .all(workspaceId ?? getAnyWorkspaceId()) as Record<string, unknown>[];
+  return rows.map(mapChannel);
 }
 
-async function normalizeStore(parsedUnknown: unknown): Promise<ChatStore> {
-  const now = nowIso();
-  const parsed = (parsedUnknown ?? {}) as Partial<ChatStore> & LegacyStore;
-
-  const channels = Array.isArray(parsed.channels)
-    ? parsed.channels.map(sanitizeChannel).filter((item): item is Channel => Boolean(item))
-    : [];
-  const channelAssets = Array.isArray(parsed.channelAssets)
-    ? parsed.channelAssets.map(sanitizeAsset).filter((item): item is ChannelAsset => Boolean(item))
-    : [];
-  const threads = Array.isArray(parsed.threads)
-    ? parsed.threads.map(sanitizeThread).filter((item): item is ChatThread => Boolean(item))
-    : [];
-
-  let nextChannels = channels;
-  if (!nextChannels.length) {
-    nextChannels = [await buildDefaultChannel(now)];
-  }
-
-  const validChannelIds = new Set(nextChannels.map((item) => item.id));
-  const defaultChannelId = nextChannels[0].id;
-
-  const nextAssets = channelAssets.filter((asset) => validChannelIds.has(asset.channelId));
-  const validAssetIds = new Set(nextAssets.map((asset) => asset.id));
-
-  const finalizedChannels = nextChannels.map((channel) => ({
-    ...channel,
-    examplesJson: safeJsonString(channel.examplesJson, "[]"),
-    avatarAssetId:
-      channel.avatarAssetId && validAssetIds.has(channel.avatarAssetId) ? channel.avatarAssetId : null,
-    defaultBackgroundAssetId:
-      channel.defaultBackgroundAssetId && validAssetIds.has(channel.defaultBackgroundAssetId)
-        ? channel.defaultBackgroundAssetId
-        : null,
-    defaultMusicAssetId:
-      channel.defaultMusicAssetId && validAssetIds.has(channel.defaultMusicAssetId)
-        ? channel.defaultMusicAssetId
-        : null
-  }));
-
-  const finalizedThreads = threads.map((thread) => ({
-    ...thread,
-    channelId: validChannelIds.has(thread.channelId) ? thread.channelId : defaultChannelId
-  }));
-
-  return {
-    version: CHAT_STORE_VERSION,
-    channels: finalizedChannels,
-    channelAssets: nextAssets,
-    threads: finalizedThreads
-  };
-}
-
-async function readStore(): Promise<ChatStore> {
-  await ensureStoreExists();
-  const raw = await fs.readFile(STORE_PATH, "utf-8");
-  const parsed = JSON.parse(raw) as unknown;
-  const normalized = await normalizeStore(parsed);
-
-  // Persist migration/sanitization to disk.
-  if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
-    await writeStore(normalized);
-  }
-
-  return normalized;
-}
-
-async function writeStore(store: ChatStore): Promise<void> {
-  await ensureStoreExists();
-  await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2), "utf-8");
-}
-
-export async function listChannels(): Promise<Channel[]> {
-  const store = await readStore();
-  return [...store.channels].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-}
-
-export async function listChannelsWithStats(): Promise<
+export async function listChannelsWithStats(
+  workspaceId?: string
+): Promise<
   Array<
     Channel & {
       backgroundCount: number;
@@ -407,59 +237,97 @@ export async function listChannelsWithStats(): Promise<
     }
   >
 > {
-  const store = await readStore();
-  return [...store.channels]
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
-    .map((channel) => {
-      const assets = store.channelAssets.filter((asset) => asset.channelId === channel.id);
-      return {
-        ...channel,
-        backgroundCount: assets.filter((asset) => asset.kind === "background").length,
-        musicCount: assets.filter((asset) => asset.kind === "music").length,
-        hasAvatar: Boolean(channel.avatarAssetId)
-      };
-    });
+  const channels = await listChannels(workspaceId);
+  const db = getDb();
+  return channels.map((channel) => {
+    const rows = db
+      .prepare("SELECT kind, COUNT(*) as count FROM channel_assets WHERE channel_id = ? GROUP BY kind")
+      .all(channel.id) as Record<string, unknown>[];
+    const counts = new Map(rows.map((row) => [String(row.kind), Number(row.count)]));
+    return {
+      ...channel,
+      backgroundCount: counts.get("background") ?? 0,
+      musicCount: counts.get("music") ?? 0,
+      hasAvatar: Boolean(channel.avatarAssetId)
+    };
+  });
 }
 
 export async function getChannelById(channelId: string): Promise<Channel | null> {
-  const store = await readStore();
-  return store.channels.find((channel) => channel.id === channelId) ?? null;
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM channels WHERE id = ?").get(channelId) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? mapChannel(row) : null;
 }
 
-export async function getDefaultChannel(): Promise<Channel> {
-  const store = await readStore();
-  return store.channels[0];
+export async function getDefaultChannel(workspaceId?: string): Promise<Channel> {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT * FROM channels WHERE workspace_id = ? AND archived_at IS NULL ORDER BY created_at ASC LIMIT 1"
+    )
+    .get(workspaceId ?? getAnyWorkspaceId()) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Default channel not found.");
+  }
+  return mapChannel(row);
 }
 
-export async function createChannel(input?: {
+export async function createChannel(input: {
+  workspaceId: string;
+  creatorUserId: string;
   name?: string;
   username?: string;
   systemPrompt?: string;
+  descriptionPrompt?: string;
   examplesJson?: string;
   templateId?: string;
 }): Promise<Channel> {
-  const store = await readStore();
   const now = nowIso();
-  const baseline = store.channels[0] ?? (await buildDefaultChannel(now));
+  const baseline = await getDefaultChannel(input.workspaceId).catch(() => null);
   const channel: Channel = {
     id: newId(),
-    name: sanitizeName(input?.name, "New channel"),
-    username: sanitizeUsername(input?.username ?? "channel"),
-    systemPrompt: sanitizeTextBlock(input?.systemPrompt, baseline.systemPrompt),
+    workspaceId: input.workspaceId,
+    creatorUserId: input.creatorUserId,
+    name: sanitizeName(input.name, "New channel"),
+    username: sanitizeUsername(input.username ?? "channel"),
+    systemPrompt: sanitizeTextBlock(input.systemPrompt, baseline?.systemPrompt ?? STAGE2_SYSTEM_PROMPT),
+    descriptionPrompt: sanitizeTextBlock(
+      input.descriptionPrompt,
+      baseline?.descriptionPrompt ?? STAGE2_DESCRIPTION_SYSTEM_PROMPT
+    ),
     examplesJson:
-      typeof input?.examplesJson === "string"
+      typeof input.examplesJson === "string"
         ? ensureValidJsonString(input.examplesJson)
-        : safeJsonString(baseline.examplesJson, "[]"),
-    templateId: sanitizeName(input?.templateId, baseline.templateId),
+        : safeJsonString(baseline?.examplesJson ?? "[]", "[]"),
+    templateId: sanitizeName(input.templateId, baseline?.templateId ?? DEFAULT_TEMPLATE_ID),
     avatarAssetId: null,
     defaultBackgroundAssetId: null,
     defaultMusicAssetId: null,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    archivedAt: null
   };
 
-  store.channels.push(channel);
-  await writeStore(store);
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO channels
+    (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)`
+  ).run(
+    channel.id,
+    channel.workspaceId,
+    channel.creatorUserId,
+    channel.name,
+    channel.username,
+    channel.systemPrompt,
+    channel.descriptionPrompt,
+    channel.examplesJson,
+    channel.templateId,
+    channel.createdAt,
+    channel.updatedAt
+  );
   return channel;
 }
 
@@ -469,6 +337,7 @@ export async function updateChannelById(
     name: string;
     username: string;
     systemPrompt: string;
+    descriptionPrompt: string;
     examplesJson: string;
     templateId: string;
     avatarAssetId: string | null;
@@ -476,51 +345,83 @@ export async function updateChannelById(
     defaultMusicAssetId: string | null;
   }>
 ): Promise<Channel> {
-  const store = await readStore();
-  const channel = store.channels.find((item) => item.id === channelId);
+  const channel = await getChannelById(channelId);
   if (!channel) {
     throw new Error("Channel not found.");
   }
+  const assetIds = new Set((await listChannelAssets(channelId)).map((asset) => asset.id));
 
-  const assetIds = new Set(
-    store.channelAssets.filter((asset) => asset.channelId === channelId).map((asset) => asset.id)
+  const next = {
+    ...channel,
+    name: typeof patch.name === "string" ? sanitizeName(patch.name, channel.name) : channel.name,
+    username:
+      typeof patch.username === "string" ? sanitizeUsername(patch.username) : channel.username,
+    systemPrompt:
+      typeof patch.systemPrompt === "string"
+        ? sanitizeTextBlock(patch.systemPrompt, channel.systemPrompt)
+        : channel.systemPrompt,
+    descriptionPrompt:
+      typeof patch.descriptionPrompt === "string"
+        ? sanitizeTextBlock(patch.descriptionPrompt, channel.descriptionPrompt)
+        : channel.descriptionPrompt,
+    examplesJson:
+      typeof patch.examplesJson === "string"
+        ? ensureValidJsonString(patch.examplesJson)
+        : channel.examplesJson,
+    templateId:
+      typeof patch.templateId === "string"
+        ? sanitizeName(patch.templateId, channel.templateId)
+        : channel.templateId,
+    avatarAssetId:
+      "avatarAssetId" in patch
+        ? patch.avatarAssetId && assetIds.has(patch.avatarAssetId)
+          ? patch.avatarAssetId
+          : null
+        : channel.avatarAssetId,
+    defaultBackgroundAssetId:
+      "defaultBackgroundAssetId" in patch
+        ? patch.defaultBackgroundAssetId && assetIds.has(patch.defaultBackgroundAssetId)
+          ? patch.defaultBackgroundAssetId
+          : null
+        : channel.defaultBackgroundAssetId,
+    defaultMusicAssetId:
+      "defaultMusicAssetId" in patch
+        ? patch.defaultMusicAssetId && assetIds.has(patch.defaultMusicAssetId)
+          ? patch.defaultMusicAssetId
+          : null
+        : channel.defaultMusicAssetId,
+    updatedAt: nowIso()
+  };
+
+  const db = getDb();
+  db.prepare(
+    `UPDATE channels SET
+      name = ?,
+      username = ?,
+      system_prompt = ?,
+      description_prompt = ?,
+      examples_json = ?,
+      template_id = ?,
+      avatar_asset_id = ?,
+      default_background_asset_id = ?,
+      default_music_asset_id = ?,
+      updated_at = ?
+    WHERE id = ?`
+  ).run(
+    next.name,
+    next.username,
+    next.systemPrompt,
+    next.descriptionPrompt,
+    next.examplesJson,
+    next.templateId,
+    next.avatarAssetId,
+    next.defaultBackgroundAssetId,
+    next.defaultMusicAssetId,
+    next.updatedAt,
+    channelId
   );
 
-  if (typeof patch.name === "string") {
-    channel.name = sanitizeName(patch.name, channel.name);
-  }
-  if (typeof patch.username === "string") {
-    channel.username = sanitizeUsername(patch.username);
-  }
-  if (typeof patch.systemPrompt === "string") {
-    channel.systemPrompt = sanitizeTextBlock(patch.systemPrompt, channel.systemPrompt);
-  }
-  if (typeof patch.examplesJson === "string") {
-    channel.examplesJson = ensureValidJsonString(patch.examplesJson);
-  }
-  if (typeof patch.templateId === "string") {
-    channel.templateId = sanitizeName(patch.templateId, channel.templateId);
-  }
-  if ("avatarAssetId" in patch) {
-    channel.avatarAssetId =
-      patch.avatarAssetId && assetIds.has(patch.avatarAssetId) ? patch.avatarAssetId : null;
-  }
-  if ("defaultBackgroundAssetId" in patch) {
-    channel.defaultBackgroundAssetId =
-      patch.defaultBackgroundAssetId && assetIds.has(patch.defaultBackgroundAssetId)
-        ? patch.defaultBackgroundAssetId
-        : null;
-  }
-  if ("defaultMusicAssetId" in patch) {
-    channel.defaultMusicAssetId =
-      patch.defaultMusicAssetId && assetIds.has(patch.defaultMusicAssetId)
-        ? patch.defaultMusicAssetId
-        : null;
-  }
-
-  channel.updatedAt = nowIso();
-  await writeStore(store);
-  return channel;
+  return next;
 }
 
 export async function deleteChannelById(channelId: string): Promise<{
@@ -528,28 +429,19 @@ export async function deleteChannelById(channelId: string): Promise<{
   removedAssets: ChannelAsset[];
   removedChats: ChatThread[];
 }> {
-  const store = await readStore();
-  if (store.channels.length <= 1) {
+  const channel = await getChannelById(channelId);
+  if (!channel) {
+    return { deleted: false, removedAssets: [], removedChats: [] };
+  }
+  const channels = await listChannels(channel.workspaceId);
+  if (channels.length <= 1) {
     throw new Error("Cannot delete the last channel.");
   }
 
-  const channel = store.channels.find((item) => item.id === channelId);
-  if (!channel) {
-    return {
-      deleted: false,
-      removedAssets: [],
-      removedChats: []
-    };
-  }
-
-  const removedAssets = store.channelAssets.filter((asset) => asset.channelId === channelId);
-  const removedChats = store.threads.filter((thread) => thread.channelId === channelId);
-
-  store.channels = store.channels.filter((item) => item.id !== channelId);
-  store.channelAssets = store.channelAssets.filter((asset) => asset.channelId !== channelId);
-  store.threads = store.threads.filter((thread) => thread.channelId !== channelId);
-
-  await writeStore(store);
+  const removedAssets = await listChannelAssets(channelId);
+  const removedChats = await listChats(channelId);
+  const db = getDb();
+  db.prepare("DELETE FROM channels WHERE id = ?").run(channelId);
   return {
     deleted: true,
     removedAssets,
@@ -561,20 +453,30 @@ export async function listChannelAssets(
   channelId: string,
   kind?: ChannelAssetKind
 ): Promise<ChannelAsset[]> {
-  const store = await readStore();
-  return store.channelAssets
-    .filter((asset) => asset.channelId === channelId && (!kind || asset.kind === kind))
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const db = getDb();
+  const rows = (
+    kind
+      ? db
+          .prepare(
+            "SELECT * FROM channel_assets WHERE channel_id = ? AND kind = ? ORDER BY created_at DESC"
+          )
+          .all(channelId, kind)
+      : db
+          .prepare("SELECT * FROM channel_assets WHERE channel_id = ? ORDER BY created_at DESC")
+          .all(channelId)
+  ) as Record<string, unknown>[];
+  return rows.map(mapAsset);
 }
 
 export async function getChannelAssetById(
   channelId: string,
   assetId: string
 ): Promise<ChannelAsset | null> {
-  const store = await readStore();
-  return (
-    store.channelAssets.find((asset) => asset.id === assetId && asset.channelId === channelId) ?? null
-  );
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM channel_assets WHERE id = ? AND channel_id = ?")
+    .get(assetId, channelId) as Record<string, unknown> | undefined;
+  return row ? mapAsset(row) : null;
 }
 
 export async function createChannelAsset(params: {
@@ -586,14 +488,14 @@ export async function createChannelAsset(params: {
   sizeBytes: number;
   assetId?: string;
 }): Promise<ChannelAsset> {
-  const store = await readStore();
-  const channel = store.channels.find((item) => item.id === params.channelId);
+  const channel = await getChannelById(params.channelId);
   if (!channel) {
     throw new Error("Channel not found.");
   }
 
   const asset: ChannelAsset = {
     id: params.assetId?.trim() || newId(),
+    workspaceId: channel.workspaceId,
     channelId: params.channelId,
     kind: params.kind,
     fileName: params.fileName,
@@ -603,21 +505,39 @@ export async function createChannelAsset(params: {
     createdAt: nowIso()
   };
 
-  store.channelAssets.push(asset);
-  channel.updatedAt = nowIso();
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO channel_assets
+    (id, workspace_id, channel_id, kind, file_name, original_name, mime_type, size_bytes, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    asset.id,
+    asset.workspaceId,
+    asset.channelId,
+    asset.kind,
+    asset.fileName,
+    asset.originalName,
+    asset.mimeType,
+    asset.sizeBytes,
+    asset.createdAt
+  );
 
-  // First asset of each kind can become default to speed up UX.
+  const patch: Parameters<typeof updateChannelById>[1] = {};
   if (asset.kind === "avatar" && !channel.avatarAssetId) {
-    channel.avatarAssetId = asset.id;
+    patch.avatarAssetId = asset.id;
   }
   if (asset.kind === "background" && !channel.defaultBackgroundAssetId) {
-    channel.defaultBackgroundAssetId = asset.id;
+    patch.defaultBackgroundAssetId = asset.id;
   }
   if (asset.kind === "music" && !channel.defaultMusicAssetId) {
-    channel.defaultMusicAssetId = asset.id;
+    patch.defaultMusicAssetId = asset.id;
+  }
+  if (Object.keys(patch).length > 0) {
+    await updateChannelById(channel.id, patch);
+  } else {
+    db.prepare("UPDATE channels SET updated_at = ? WHERE id = ?").run(nowIso(), channel.id);
   }
 
-  await writeStore(store);
   return asset;
 }
 
@@ -625,121 +545,178 @@ export async function deleteChannelAssetById(
   channelId: string,
   assetId: string
 ): Promise<ChannelAsset | null> {
-  const store = await readStore();
-  const asset = store.channelAssets.find((item) => item.id === assetId && item.channelId === channelId);
+  const asset = await getChannelAssetById(channelId, assetId);
   if (!asset) {
     return null;
   }
-  store.channelAssets = store.channelAssets.filter((item) => !(item.id === assetId && item.channelId === channelId));
-
-  const channel = store.channels.find((item) => item.id === channelId);
-  if (channel) {
-    if (channel.avatarAssetId === assetId) {
-      channel.avatarAssetId = null;
-    }
-    if (channel.defaultBackgroundAssetId === assetId) {
-      channel.defaultBackgroundAssetId = null;
-    }
-    if (channel.defaultMusicAssetId === assetId) {
-      channel.defaultMusicAssetId = null;
-    }
-    channel.updatedAt = nowIso();
-  }
-
-  await writeStore(store);
+  const db = getDb();
+  db.prepare("DELETE FROM channel_assets WHERE id = ? AND channel_id = ?").run(assetId, channelId);
   return asset;
 }
 
-export async function listChats(channelId?: string): Promise<ChatThread[]> {
-  const store = await readStore();
-  const filtered = channelId ? store.threads.filter((thread) => thread.channelId === channelId) : store.threads;
-  return [...filtered].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+export async function listChats(channelId?: string, workspaceId?: string): Promise<ChatThread[]> {
+  const db = getDb();
+  const rows = (
+    channelId
+      ? db
+          .prepare("SELECT * FROM chat_threads WHERE channel_id = ? ORDER BY updated_at DESC")
+          .all(channelId)
+      : db
+          .prepare("SELECT * FROM chat_threads WHERE workspace_id = ? ORDER BY updated_at DESC")
+          .all(workspaceId ?? getAnyWorkspaceId())
+  ) as Record<string, unknown>[];
+  return rows.map((row) => mapThread(row, getThreadEvents(String(row.id))));
 }
 
 export async function getChatById(chatId: string): Promise<ChatThread | null> {
-  const store = await readStore();
-  return store.threads.find((thread) => thread.id === chatId) ?? null;
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM chat_threads WHERE id = ?").get(chatId) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? mapThread(row, getThreadEvents(chatId)) : null;
 }
 
 export async function createOrGetChatByUrl(rawUrl: string, channelIdRaw?: string): Promise<ChatThread> {
-  const url = normalizeUrl(rawUrl);
-  const store = await readStore();
-  const defaultChannelId = store.channels[0]?.id ?? "";
-  const channelId =
-    typeof channelIdRaw === "string" && store.channels.some((channel) => channel.id === channelIdRaw)
-      ? channelIdRaw
-      : defaultChannelId;
+  const url = rawUrl.trim();
+  if (!url) {
+    throw new Error("URL is required.");
+  }
+  const channel = channelIdRaw ? await getChannelById(channelIdRaw) : await getDefaultChannel().catch(() => null);
+  if (!channel) {
+    throw new Error("Channel not found.");
+  }
 
-  const existing = store.threads.find((thread) => thread.url === url && thread.channelId === channelId);
+  const db = getDb();
+  const existing = db
+    .prepare("SELECT * FROM chat_threads WHERE url = ? AND channel_id = ?")
+    .get(url, channel.id) as Record<string, unknown> | undefined;
   if (existing) {
-    return existing;
+    return mapThread(existing, getThreadEvents(String(existing.id)));
   }
 
   const createdAt = nowIso();
   const thread: ChatThread = {
     id: newId(),
-    channelId,
+    workspaceId: channel.workspaceId,
+    channelId: channel.id,
     url,
     title: url,
     createdAt,
     updatedAt: createdAt,
-    events: [
-      {
-        id: newId(),
-        role: "user",
-        type: "link",
-        text: `Ссылка добавлена: ${url}`,
-        createdAt
-      }
-    ]
+    events: []
   };
 
-  store.threads.push(thread);
-  await writeStore(store);
-  return thread;
+  db.prepare(
+    "INSERT INTO chat_threads (id, workspace_id, channel_id, url, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    thread.id,
+    thread.workspaceId,
+    thread.channelId,
+    thread.url,
+    thread.title,
+    thread.createdAt,
+    thread.updatedAt
+  );
+
+  await appendChatEvent(thread.id, {
+    role: "user",
+    type: "link",
+    text: `Ссылка добавлена: ${url}`
+  });
+
+  return (await getChatById(thread.id)) as ChatThread;
 }
 
 export async function appendChatEvent(
   chatId: string,
   event: Omit<ChatEvent, "id" | "createdAt">
 ): Promise<ChatThread> {
-  const store = await readStore();
-  const thread = store.threads.find((item) => item.id === chatId);
+  const thread = await getChatById(chatId);
   if (!thread) {
     throw new Error("Chat not found.");
   }
-
   const createdAt = nowIso();
-  thread.events.push({
-    id: newId(),
-    createdAt,
-    ...event
-  });
-  thread.updatedAt = createdAt;
+  const eventId = newId();
+  const db = getDb();
+  db.prepare(
+    "INSERT INTO chat_events (id, thread_id, role, type, text, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    eventId,
+    chatId,
+    event.role,
+    event.type,
+    event.text,
+    event.data === undefined ? null : JSON.stringify(event.data),
+    createdAt
+  );
 
+  let nextTitle = thread.title;
   if (event.type === "stage2" || event.type === "comments") {
-    thread.title =
-      typeof event.data === "object" &&
-      event.data &&
-      "title" in (event.data as Record<string, unknown>) &&
-      typeof (event.data as Record<string, unknown>).title === "string"
-        ? String((event.data as Record<string, unknown>).title)
-        : thread.title;
+    const payload = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : null;
+    if (payload && typeof payload.title === "string") {
+      nextTitle = payload.title;
+    }
   }
-
-  await writeStore(store);
-  return thread;
+  db.prepare("UPDATE chat_threads SET title = ?, updated_at = ? WHERE id = ?").run(
+    nextTitle,
+    createdAt,
+    chatId
+  );
+  return (await getChatById(chatId)) as ChatThread;
 }
 
 export async function deleteChatById(chatId: string): Promise<boolean> {
-  const store = await readStore();
-  const prevLength = store.threads.length;
-  store.threads = store.threads.filter((thread) => thread.id !== chatId);
+  const db = getDb();
+  const result = db.prepare("DELETE FROM chat_threads WHERE id = ?").run(chatId);
+  return Number(result.changes ?? 0) > 0;
+}
 
-  if (store.threads.length === prevLength) {
-    return false;
+export async function getChannelAccessForUser(
+  channelId: string,
+  userId: string
+): Promise<ChannelAccessRecord | null> {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM channel_access WHERE channel_id = ? AND user_id = ? AND revoked_at IS NULL")
+    .get(channelId, userId) as Record<string, unknown> | undefined;
+  if (!row) {
+    return null;
+  }
+  return {
+    id: String(row.id),
+    channelId: String(row.channel_id),
+    userId: String(row.user_id),
+    accessRole: "operate",
+    grantedByUserId: String(row.granted_by_user_id),
+    createdAt: String(row.created_at),
+    revokedAt: row.revoked_at ? String(row.revoked_at) : null
+  };
+}
+
+export async function listLegacyStage3VersionsByMedia(mediaId: string): Promise<Stage3Version[]> {
+  const normalizedMediaId = mediaId.trim();
+  if (!normalizedMediaId) {
+    return [];
   }
 
-  await writeStore(store);
-  return true;
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT e.id, e.created_at, e.data_json
+       FROM chat_events e
+       JOIN chat_threads t ON t.id = e.thread_id
+       WHERE t.url = ? AND e.role = 'assistant' AND e.type = 'note'
+       ORDER BY e.created_at ASC`
+    )
+    .all(normalizedMediaId) as Record<string, unknown>[];
+
+  const events = rows
+    .filter((row) => row.data_json)
+    .map((row) => ({
+      id: String(row.id),
+      createdAt: String(row.created_at),
+      data: JSON.parse(String(row.data_json))
+    }));
+
+  return buildLegacyTimelineEntries(events);
 }

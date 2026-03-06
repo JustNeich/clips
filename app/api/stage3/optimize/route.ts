@@ -1,20 +1,14 @@
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import {
-  analyzeBestClipAndFocus,
-  clampClipStart,
-  downloadSourceVideo,
-  probeVideoDurationSeconds,
-  sanitizeClipDuration,
-  sanitizeFocusY
-} from "../../../../lib/stage3-media-agent";
-import { optimizeStage3Version } from "../../../../lib/stage3-agent";
-import { planStage3OperationsWithCodex } from "../../../../lib/stage3-agent-llm";
+  buildGoalHash,
+  buildStage3VersionFromStoreVersion,
+  listVersions
+} from "../../../../lib/stage3-session-store";
+import { parseUserIntent } from "../../../../lib/stage3-agent";
+import { isSupportedUrl } from "../../../../lib/ytdlp";
+import { runAutonomousOptimization } from "../../../../lib/stage3-agent-autonomous";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
-import { getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
-import { ensureCodexLoggedIn } from "../../../../lib/codex-runner";
-import { ensureCodexHomeForSession, normalizeCodexSessionId } from "../../../../lib/codex-session";
+import { getChatById } from "../../../../lib/chat-history";
+import { requireAuth, requireChannelOperate, requireSharedCodexAvailable } from "../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
 
@@ -25,137 +19,220 @@ type OptimizeBody = {
   topText?: string;
   bottomText?: string;
   clipStartSec?: number;
-  clipDurationSec?: number;
-  focusY?: number;
   agentPrompt?: string;
   currentSnapshot?: Partial<Stage3StateSnapshot>;
+  projectId?: string;
+  idempotencyKey?: string;
+  focusY?: number;
+  clipDurationSec?: number;
+  autoClipStartSec?: number;
+  autoFocusY?: number;
 };
+
+function buildCurrentSnapshotFromLegacyInput(body: OptimizeBody): Partial<Stage3StateSnapshot> | undefined {
+  const snapshot: Partial<Stage3StateSnapshot> = {
+    ...(body.currentSnapshot ?? {})
+  };
+
+  if (typeof body.topText === "string") {
+    snapshot.topText = body.topText;
+  }
+  if (typeof body.bottomText === "string") {
+    snapshot.bottomText = body.bottomText;
+  }
+
+  const clipStartSec = parseFiniteNumber(body.clipStartSec);
+  if (clipStartSec !== null) {
+    snapshot.clipStartSec = clipStartSec;
+  }
+
+  const focusY = parseFiniteNumber(body.focusY);
+  if (focusY !== null) {
+    snapshot.focusY = focusY;
+  }
+
+  return Object.keys(snapshot).length > 0 ? snapshot : undefined;
+}
+
+function parseFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  return null;
+}
+
+function buildStableSignature(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => buildStableSignature(item)).join(",")}]`;
+  }
+
+  if (value instanceof Date) {
+    return `"${value.toISOString()}"`;
+  }
+
+  if (typeof value === "object") {
+    const sortedKeys = Object.keys(value as Record<string, unknown>).sort();
+    const entries = sortedKeys
+      .map((key) => {
+        const itemValue = (value as Record<string, unknown>)[key];
+        return `${JSON.stringify(key)}:${buildStableSignature(itemValue)}`;
+      })
+      .join(",");
+    return `{${entries}}`;
+  }
+
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
+async function buildLegacyVersion(
+  sessionId: string,
+  versionId: string
+): Promise<ReturnType<typeof buildStage3VersionFromStoreVersion> | null> {
+  const versions = await listVersions(sessionId);
+  const finalVersion = versions.find((entry) => entry.id === versionId) ?? null;
+  if (!finalVersion) {
+    return null;
+  }
+
+  const parent =
+    finalVersion.parentVersionId !== null
+      ? versions.find((entry) => entry.id === finalVersion.parentVersionId)
+      : null;
+
+  return buildStage3VersionFromStoreVersion(
+    finalVersion,
+    parent ?? finalVersion,
+    finalVersion.iterationIndex,
+    finalVersion.id
+  );
+}
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as OptimizeBody | null;
-  const rawSource = body?.sourceUrl?.trim();
+  const sourceUrl = body?.sourceUrl?.trim();
 
-  if (!rawSource) {
+  if (!sourceUrl) {
     return Response.json({ error: "Передайте sourceUrl в теле запроса." }, { status: 400 });
   }
-  if (!isSupportedUrl(rawSource)) {
+  if (!isSupportedUrl(sourceUrl)) {
     return Response.json(
       { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
       { status: 400 }
     );
   }
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-opt-"));
+  const goalText = body?.agentPrompt?.trim() || "Оптимизируй текущий кадр Stage 3.";
+  const projectId = body?.projectId?.trim() || body?.chatId?.trim() || `legacy-${buildGoalHash(sourceUrl)}`;
+  const intent = parseUserIntent(goalText, null);
 
   try {
-    const sessionId = normalizeCodexSessionId(request.headers.get("x-codex-session-id"));
-    const plannerModel = process.env.CODEX_STAGE3_MODEL ?? "gpt-5.2";
-    const plannerReasoning = process.env.CODEX_STAGE3_REASONING_EFFORT ?? "extra-high";
-    const timeoutFromEnv = Number.parseInt(process.env.CODEX_STAGE3_TIMEOUT_MS ?? "", 10);
-    const plannerTimeoutMs =
-      Number.isFinite(timeoutFromEnv) && timeoutFromEnv > 0 ? timeoutFromEnv : 90_000;
+    const auth = await requireAuth();
+    const chat = await getChatById(projectId);
+    if (!chat) {
+      return Response.json({ error: "Project chat not found." }, { status: 404 });
+    }
+    await requireChannelOperate(auth, chat.channelId);
+    const integration = requireSharedCodexAvailable(auth.workspace.id);
+    const requestIdempotencyKey = request.headers.get("idempotency-key");
+    const mergedSnapshot = buildCurrentSnapshotFromLegacyInput(body ?? {});
 
-    const downloaded = await downloadSourceVideo(rawSource, tmpDir);
-    const sourceDurationSec = await probeVideoDurationSeconds(downloaded.filePath);
-    const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
+    const result = await runAutonomousOptimization({
+      projectId,
+      mediaId: sourceUrl,
+      sourceUrl,
+      goalText,
+      options: {
+        maxIterations: 1
+      },
+      currentSnapshot: mergedSnapshot,
+      autoClipStartSec:
+        parseFiniteNumber(body?.autoClipStartSec) ?? parseFiniteNumber(body?.clipStartSec) ?? undefined,
+      autoFocusY: parseFiniteNumber(body?.autoFocusY) ?? parseFiniteNumber(body?.focusY) ?? undefined,
+      idempotencyKey:
+        requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
+      codexSessionId: integration.codexSessionId ?? undefined
+    });
 
-    const auto = await analyzeBestClipAndFocus(
-      downloaded.filePath,
-      tmpDir,
-      sourceDurationSec,
-      clipDurationSec
-    );
+    const latestVersions = await listVersions(result.sessionId);
+    const baseline =
+      latestVersions.find((item) => item.id === result.summary.beforeVersionId) ??
+      latestVersions.find((item) => item.iterationIndex === 0) ??
+      latestVersions[0] ??
+      null;
+    const final = await buildLegacyVersion(result.sessionId, result.finalVersionId);
 
-    const manualClipStartSec = clampClipStart(
-      body?.clipStartSec ?? 0,
-      sourceDurationSec,
-      clipDurationSec
-    );
-    const manualFocusY = sanitizeFocusY(body?.focusY);
-    const autoClipStartSec = clampClipStart(auto.clipStartSec, sourceDurationSec, clipDurationSec);
-    const autoFocusY = sanitizeFocusY(auto.focusY);
-    const inputTopText = body?.topText ?? "";
-    const inputBottomText = body?.bottomText ?? "";
-
-    let plannerWarning: string | null = null;
-    let planner: Parameters<typeof optimizeStage3Version>[0]["planner"] = null;
-
-    if (sessionId) {
-      try {
-        const codexHome = await ensureCodexHomeForSession(sessionId);
-        await ensureCodexLoggedIn(codexHome);
-        planner = async (input) =>
-          planStage3OperationsWithCodex({
-            codexHome,
-            prompt: input.prompt,
-            snapshot: input.snapshot,
-            sourceDurationSec: input.sourceDurationSec,
-            passIndex: input.passIndex,
-            maxPasses: input.maxPasses,
-            scoreBefore: input.scoreBefore.total,
-            lastPassSummary: input.lastPassSummary ?? null,
-            model: plannerModel,
-            reasoningEffort: plannerReasoning,
-            timeoutMs: plannerTimeoutMs
-          });
-      } catch (error) {
-        plannerWarning =
-          error instanceof Error
-            ? `LLM planner unavailable: ${error.message}`
-            : "LLM planner unavailable for this optimize run.";
-      }
+    if (!final) {
+      return Response.json(
+        {
+          optimization: {
+            changed: false,
+            version: undefined,
+            noOpReason: `Статус: ${result.status}. Идея не преобразована в версию.`,
+            suggestions: ["Повторите попытку с более конкретной постановкой задачи."],
+            intent: {
+              zoomRequested: intent.zoomRequested,
+              zoomValue: intent.zoomValue,
+              actionOnly: intent.actionOnly,
+              segmentsRequested: intent.segments.length,
+              timingMode: intent.timingMode,
+              audioMode: intent.audioMode
+            }
+          },
+          planner: {
+            mode: "autonomous",
+            warning: "No final version was produced"
+          }
+        },
+        { status: 200 }
+      );
     }
 
-    const optimized = await optimizeStage3Version({
-      versionNo:
-        typeof body?.versionNo === "number" && Number.isFinite(body.versionNo)
-          ? Math.max(1, Math.floor(body.versionNo))
-          : 1,
-      prompt: body?.agentPrompt ?? "",
-      topText: inputTopText,
-      bottomText: inputBottomText,
-      clipDurationSec,
-      sourceDurationSec,
-      manualClipStartSec,
-      manualFocusY,
-      autoClipStartSec,
-      autoFocusY,
-      currentSnapshot: body?.currentSnapshot ?? null,
-      planner,
-      model: planner ? plannerModel : "heuristic-hybrid",
-      reasoningEffort: planner ? plannerReasoning : "n/a"
-    });
+    const finalTransform = final.final;
+    const changed = baseline
+      ? buildStableSignature(baseline.transformConfig) !== buildStableSignature(finalTransform)
+      : result.status !== "failed";
 
     return Response.json(
       {
         optimization: {
-          changed: optimized.changed,
-          version: optimized.version,
-          noOpReason: optimized.noOpReason,
-          suggestions: optimized.suggestions,
-          intent: optimized.intent
+          changed,
+          version: final,
+          noOpReason: !changed ? "Агент не нашел заметных улучшений за один проход." : undefined,
+          suggestions: changed ? [] : ["Уточните цель для более точной правки."],
+          intent: {
+            zoomRequested: intent.zoomRequested,
+            zoomValue: intent.zoomValue,
+            actionOnly: intent.actionOnly,
+            segmentsRequested: intent.segments.length,
+            timingMode: intent.timingMode,
+            audioMode: intent.audioMode
+          }
         },
         planner: {
-          mode: planner ? "llm+heuristic" : "heuristic",
-          warning: plannerWarning
+          mode: "autonomous",
+          warning:
+            result.status === "partiallyApplied"
+              ? "Требуется несколько проходов для полного достижения цели."
+              : undefined
         }
       },
       { status: 200 }
     );
   } catch (error) {
-    const stderr =
-      typeof error === "object" && error && "stderr" in error
-        ? String((error as { stderr?: string }).stderr ?? "")
-        : "";
-    if (stderr) {
-      return Response.json({ error: getYtDlpError(stderr) }, { status: 500 });
+    if (error instanceof Response) {
+      return error;
     }
-
     return Response.json(
       { error: error instanceof Error ? error.message : "Stage 3 optimization failed." },
       { status: 500 }
     );
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true });
   }
 }

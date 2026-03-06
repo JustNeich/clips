@@ -48,6 +48,8 @@ const PLANNER_SCHEMA = {
               "set_clip_start",
               "set_focus_y",
               "set_video_zoom",
+              "set_top_font_scale",
+              "set_bottom_font_scale",
               "set_music_gain",
               "set_text_policy",
               "rewrite_top_text",
@@ -84,6 +86,8 @@ const PLANNER_SCHEMA = {
           clipStartSec: { type: "number" },
           focusY: { type: "number" },
           videoZoom: { type: "number" },
+          topFontScale: { type: "number" },
+          bottomFontScale: { type: "number" },
           musicGain: { type: "number" },
           textPolicy: { type: "string", enum: ["strict_fit", "preserve_words", "aggressive_compact"] },
           topText: { type: "string" },
@@ -216,6 +220,19 @@ function normalizeOperations(value: unknown): Stage3Operation[] {
           operations.push({ op: "set_video_zoom", videoZoom: clamp(raw.videoZoom, 1, 1.6) });
         }
         break;
+      case "set_top_font_scale":
+        if (typeof raw.topFontScale === "number" && Number.isFinite(raw.topFontScale)) {
+          operations.push({ op: "set_top_font_scale", topFontScale: clamp(raw.topFontScale, 0.7, 1.9) });
+        }
+        break;
+      case "set_bottom_font_scale":
+        if (typeof raw.bottomFontScale === "number" && Number.isFinite(raw.bottomFontScale)) {
+          operations.push({
+            op: "set_bottom_font_scale",
+            bottomFontScale: clamp(raw.bottomFontScale, 0.7, 1.9)
+          });
+        }
+        break;
       case "set_music_gain":
         if (typeof raw.musicGain === "number" && Number.isFinite(raw.musicGain)) {
           operations.push({ op: "set_music_gain", musicGain: clamp(raw.musicGain, 0, 1) });
@@ -292,6 +309,8 @@ export async function planStage3OperationsWithCodex(input: {
   model: string;
   reasoningEffort: string;
   timeoutMs: number;
+  imagePaths?: string[];
+  visualDiagnostics?: string | null;
 }): Promise<PlannerOutput> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-planner-"));
   try {
@@ -309,11 +328,15 @@ export async function planStage3OperationsWithCodex(input: {
       "- Target duration remains exactly 6.0s.",
       "- focusY must stay within 0.12..0.88.",
       "- videoZoom must stay within 1.0..1.6.",
+      "- topFontScale and bottomFontScale must stay within 0.7..1.9.",
       "- Keep text readable; avoid overflow.",
       "- Prefer minimal operations with high impact.",
       "",
       `Pass ${input.passIndex}/${input.maxPasses}. Current quality score: ${input.scoreBefore.toFixed(2)}`,
       input.lastPassSummary ? `Previous pass summary: ${input.lastPassSummary}` : "Previous pass summary: n/a",
+      input.visualDiagnostics?.trim()
+        ? `Current visual diagnostics: ${input.visualDiagnostics.trim()}`
+        : "Current visual diagnostics: n/a",
       "",
       "Current snapshot JSON:",
       JSON.stringify(
@@ -339,7 +362,7 @@ export async function planStage3OperationsWithCodex(input: {
 
     await runCodexExec({
       prompt,
-      imagePaths: [],
+      imagePaths: input.imagePaths ?? [],
       outputSchemaPath: schemaPath,
       outputMessagePath: outputPath,
       cwd: process.cwd(),

@@ -14,13 +14,15 @@ import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChannelAssetById } from "../../../../lib/chat-history";
 import { readChannelAssetFile } from "../../../../lib/channel-assets";
-import { SCIENCE_CARD } from "../../../../lib/stage3-template";
+import { STAGE3_TEMPLATE_ID, getTemplateById } from "../../../../lib/stage3-template";
+import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
 
 const PREVIEW_CACHE_ROOT = path.join(os.tmpdir(), "clip-stage3-cache");
 const SOURCE_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "sources");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
+const DEFAULT_TEXT_SCALE = 1.25;
 const sourceInflight = new Map<
   string,
   Promise<{ sourcePath: string; sourceDurationSec: number | null; sourceKey: string }>
@@ -143,6 +145,11 @@ function normalizeRenderPlan(
 ): Stage3RenderPlan {
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
+  const templateId =
+    typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
+      ? rawPlan.templateId.trim()
+      : STAGE3_TEMPLATE_ID;
+  const template = getTemplateById(templateId);
 
   return {
     targetDurationSec: 6,
@@ -159,6 +166,14 @@ function normalizeRenderPlan(
       typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
         ? Math.min(1.6, Math.max(1, rawPlan.videoZoom))
         : 1,
+    topFontScale:
+      typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
+        ? Math.min(1.9, Math.max(0.7, rawPlan.topFontScale))
+        : DEFAULT_TEXT_SCALE,
+    bottomFontScale:
+      typeof rawPlan?.bottomFontScale === "number" && Number.isFinite(rawPlan.bottomFontScale)
+        ? Math.min(1.9, Math.max(0.7, rawPlan.bottomFontScale))
+        : DEFAULT_TEXT_SCALE,
     musicGain:
       typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)
         ? Math.min(1, Math.max(0, rawPlan.musicGain))
@@ -231,15 +246,12 @@ function normalizeRenderPlan(
     authorName:
       typeof rawPlan?.authorName === "string" && rawPlan.authorName.trim()
         ? rawPlan.authorName.trim()
-        : SCIENCE_CARD.author.name,
+        : template.author.name,
     authorHandle:
       typeof rawPlan?.authorHandle === "string" && rawPlan.authorHandle.trim()
         ? rawPlan.authorHandle.trim()
-        : SCIENCE_CARD.author.handle,
-    templateId:
-      typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
-        ? rawPlan.templateId.trim()
-        : "science-card-v1",
+        : template.author.handle,
+    templateId,
     // Prompt text does not affect media transform and should not split cache keys.
     prompt: ""
   };
@@ -260,6 +272,10 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const auth = await requireAuth();
+    if (body?.channelId?.trim()) {
+      await requireChannelVisibility(auth, body.channelId.trim());
+    }
     await fs.mkdir(PREVIEW_CACHE_DIR, { recursive: true });
     const source = await ensureSourceCached(rawSource);
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
@@ -353,6 +369,9 @@ export async function POST(request: Request): Promise<Response> {
       }
     });
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     const stderr =
       typeof error === "object" && error && "stderr" in error
         ? String((error as { stderr?: string }).stderr ?? "")

@@ -7,6 +7,10 @@ type Step1PasteLinkProps = {
   draftUrl: string;
   activeUrl: string | null;
   isBusy: boolean;
+  fetchAvailable: boolean;
+  fetchBlockedReason?: string | null;
+  downloadAvailable: boolean;
+  downloadBlockedReason?: string | null;
   onDraftUrlChange: (value: string) => void;
   onPaste: () => void;
   onFetch: () => void;
@@ -17,6 +21,10 @@ export function Step1PasteLink({
   draftUrl,
   activeUrl,
   isBusy,
+  fetchAvailable,
+  fetchBlockedReason,
+  downloadAvailable,
+  downloadBlockedReason,
   onDraftUrlChange,
   onPaste,
   onFetch,
@@ -61,10 +69,19 @@ export function Step1PasteLink({
               <p className="subtle-text">Examples: YouTube Shorts, Instagram Reels, Facebook Reels.</p>
 
               <div className="control-actions">
-                <button type="submit" className="btn btn-primary" disabled={isBusy} aria-busy={isBusy}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isBusy || !fetchAvailable}
+                  aria-busy={isBusy}
+                  title={!fetchAvailable ? fetchBlockedReason ?? undefined : undefined}
+                >
                   {isBusy ? "Fetching..." : "Run Stage 1 / Fetch"}
                 </button>
               </div>
+              {!fetchAvailable && fetchBlockedReason ? (
+                <p className="subtle-text danger-text">{fetchBlockedReason}</p>
+              ) : null}
             </form>
           </section>
 
@@ -76,10 +93,14 @@ export function Step1PasteLink({
                 type="button"
                 className="btn btn-secondary"
                 onClick={onDownloadSource}
-                disabled={isBusy}
+                disabled={isBusy || !downloadAvailable}
+                title={!downloadAvailable ? downloadBlockedReason ?? undefined : undefined}
               >
                 Download source mp4
               </button>
+              {!downloadAvailable && downloadBlockedReason ? (
+                <p className="subtle-text danger-text">{downloadBlockedReason}</p>
+              ) : null}
             </div>
           </details>
         </div>

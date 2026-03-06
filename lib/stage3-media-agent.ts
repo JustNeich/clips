@@ -2,7 +2,8 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { Stage3RenderPlan } from "./stage3-agent";
+import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
+import { getTemplateComputed } from "./stage3-template";
 import { sanitizeFileName } from "./ytdlp";
 
 const execFileAsync = promisify(execFile);
@@ -16,6 +17,41 @@ type EncodeProfile = {
   crf: string;
   threads: string;
   fitScalePrefix: string;
+};
+
+export type VideoDimensions = {
+  width: number;
+  height: number;
+};
+
+export type Stage3ViewportBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  slotAspect: number;
+  sourceWidth: number;
+  sourceHeight: number;
+};
+
+export type Stage3FramingMetrics = {
+  activeCenterY: number;
+  activeSpan: number;
+  topEdgeEnergy: number;
+  bottomEdgeEnergy: number;
+  leftEdgeEnergy: number;
+  rightEdgeEnergy: number;
+  centerEnergy: number;
+  edgeEnergy: number;
+  visualFocus: number;
+  frameCount: number;
+};
+
+export type Stage3FramedPreviewAnalysis = {
+  previewPath: string;
+  keyframePaths: string[];
+  viewport: Stage3ViewportBox | null;
+  metrics: Stage3FramingMetrics;
 };
 
 function getEncodeProfile(profile: Stage3MediaProfile): EncodeProfile {
@@ -48,6 +84,11 @@ function parseNumeric(value: unknown): number | null {
 
 export function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function makeEven(value: number, min = 2): number {
+  const rounded = Math.max(min, Math.round(value));
+  return rounded % 2 === 0 ? rounded : rounded - 1;
 }
 
 export function sanitizeFocusY(rawFocusY?: number | null): number {
@@ -141,6 +182,90 @@ export async function probeVideoDurationSeconds(videoPath: string): Promise<numb
   }
 }
 
+export async function probeVideoDimensions(videoPath: string): Promise<VideoDimensions | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=p=0:s=x",
+        videoPath
+      ],
+      { timeout: 30_000, maxBuffer: 1024 * 1024 }
+    );
+
+    const [widthRaw, heightRaw] = stdout.trim().split("x");
+    const width = Number.parseInt(widthRaw ?? "", 10);
+    const height = Number.parseInt(heightRaw ?? "", 10);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+    return { width, height };
+  } catch {
+    return null;
+  }
+}
+
+function computeViewportBox(
+  snapshot: Stage3StateSnapshot,
+  sourceDimensions: VideoDimensions
+): Stage3ViewportBox {
+  const computed = getTemplateComputed(
+    snapshot.renderPlan.templateId,
+    snapshot.topText,
+    snapshot.bottomText,
+    {
+      topFontScale: snapshot.renderPlan.topFontScale,
+      bottomFontScale: snapshot.renderPlan.bottomFontScale
+    }
+  );
+
+  const slotAspect = computed.videoWidth / Math.max(1, computed.videoHeight);
+  const sourceAspect = sourceDimensions.width / Math.max(1, sourceDimensions.height);
+
+  let baseWidth = sourceDimensions.width;
+  let baseHeight = sourceDimensions.height;
+
+  if (sourceAspect > slotAspect) {
+    baseHeight = sourceDimensions.height;
+    baseWidth = Math.min(sourceDimensions.width, baseHeight * slotAspect);
+  } else {
+    baseWidth = sourceDimensions.width;
+    baseHeight = Math.min(sourceDimensions.height, baseWidth / slotAspect);
+  }
+
+  const zoom = clampNumber(snapshot.renderPlan.videoZoom, 1, 1.6);
+  const viewportWidth = Math.min(sourceDimensions.width, makeEven(clampNumber(baseWidth / zoom, 16, sourceDimensions.width)));
+  const viewportHeight = Math.min(sourceDimensions.height, makeEven(clampNumber(baseHeight / zoom, 16, sourceDimensions.height)));
+  const x = makeEven(
+    clampNumber((sourceDimensions.width - viewportWidth) / 2, 0, sourceDimensions.width - viewportWidth),
+    0
+  );
+  const y = Math.round(
+    clampNumber(
+      (sourceDimensions.height - viewportHeight) * clampNumber(snapshot.focusY, 0, 1),
+      0,
+      sourceDimensions.height - viewportHeight
+    )
+  );
+
+  return {
+    x,
+    y,
+    width: viewportWidth,
+    height: viewportHeight,
+    slotAspect,
+    sourceWidth: sourceDimensions.width,
+    sourceHeight: sourceDimensions.height
+  };
+}
+
 function parseMotionStats(raw: string): number[] {
   const matches = raw.match(/lavfi\.signalstats\.YDIF=([0-9.]+)/g);
   if (!matches?.length) {
@@ -175,6 +300,334 @@ function mean(values: number[]): number {
     return 0;
   }
   return values.reduce((acc, value) => acc + value, 0) / values.length;
+}
+
+function clamp01(value: number): number {
+  return clampNumber(value, 0, 1);
+}
+
+function readPpmToken(buffer: Buffer, startIndex: number): { token: string; nextIndex: number } | null {
+  let index = startIndex;
+  while (index < buffer.length) {
+    const char = buffer[index];
+    if (char === 35) {
+      while (index < buffer.length && buffer[index] !== 10) {
+        index += 1;
+      }
+      continue;
+    }
+    if (char === 9 || char === 10 || char === 13 || char === 32) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+
+  if (index >= buffer.length) {
+    return null;
+  }
+
+  let end = index;
+  while (end < buffer.length) {
+    const char = buffer[end];
+    if (char === 35 || char === 9 || char === 10 || char === 13 || char === 32) {
+      break;
+    }
+    end += 1;
+  }
+
+  return {
+    token: buffer.toString("ascii", index, end),
+    nextIndex: end
+  };
+}
+
+function parsePpm(buffer: Buffer): { width: number; height: number; data: Buffer } | null {
+  const magic = readPpmToken(buffer, 0);
+  const widthToken = magic ? readPpmToken(buffer, magic.nextIndex) : null;
+  const heightToken = widthToken ? readPpmToken(buffer, widthToken.nextIndex) : null;
+  const maxToken = heightToken ? readPpmToken(buffer, heightToken.nextIndex) : null;
+
+  if (!magic || !widthToken || !heightToken || !maxToken || magic.token !== "P6") {
+    return null;
+  }
+
+  const width = Number.parseInt(widthToken.token, 10);
+  const height = Number.parseInt(heightToken.token, 10);
+  const max = Number.parseInt(maxToken.token, 10);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || max !== 255) {
+    return null;
+  }
+
+  let dataIndex = maxToken.nextIndex;
+  while (dataIndex < buffer.length) {
+    const char = buffer[dataIndex];
+    if (char === 9 || char === 10 || char === 13 || char === 32) {
+      dataIndex += 1;
+      continue;
+    }
+    break;
+  }
+
+  const expectedLength = width * height * 3;
+  const data = buffer.subarray(dataIndex, dataIndex + expectedLength);
+  if (data.length < expectedLength) {
+    return null;
+  }
+
+  return { width, height, data };
+}
+
+function meanSlice(values: number[], from: number, to: number): number {
+  const clampedFrom = clampNumber(from, 0, values.length);
+  const clampedTo = clampNumber(to, clampedFrom + 1, values.length);
+  let total = 0;
+  for (let index = clampedFrom; index < clampedTo; index += 1) {
+    total += values[index];
+  }
+  return total / Math.max(1, clampedTo - clampedFrom);
+}
+
+function analyzePpmFrame(buffer: Buffer): Stage3FramingMetrics | null {
+  const parsed = parsePpm(buffer);
+  if (!parsed) {
+    return null;
+  }
+
+  const { width, height, data } = parsed;
+  const rowEnergy = new Array<number>(height).fill(0);
+  const colEnergy = new Array<number>(width).fill(0);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 3;
+      if (x < width - 1) {
+        const rightIndex = index + 3;
+        const diff =
+          Math.abs(data[index] - data[rightIndex]) +
+          Math.abs(data[index + 1] - data[rightIndex + 1]) +
+          Math.abs(data[index + 2] - data[rightIndex + 2]);
+        const normalized = diff / 765;
+        rowEnergy[y] += normalized;
+        colEnergy[x] += normalized;
+      }
+      if (y < height - 1) {
+        const bottomIndex = index + width * 3;
+        const diff =
+          Math.abs(data[index] - data[bottomIndex]) +
+          Math.abs(data[index + 1] - data[bottomIndex + 1]) +
+          Math.abs(data[index + 2] - data[bottomIndex + 2]);
+        const normalized = diff / 765;
+        rowEnergy[y] += normalized;
+        colEnergy[x] += normalized;
+      }
+    }
+  }
+
+  const normalizedRowEnergy = rowEnergy.map((value) => value / Math.max(1, width * 2));
+  const normalizedColEnergy = colEnergy.map((value) => value / Math.max(1, height * 2));
+  const rowMean = mean(normalizedRowEnergy);
+  const colMean = mean(normalizedColEnergy);
+  const rowThreshold = rowMean * 0.92;
+  const activeRows = normalizedRowEnergy
+    .map((value, index) => ({ value, index }))
+    .filter((row) => row.value >= rowThreshold);
+
+  const rowWeightedTotal = normalizedRowEnergy.reduce((acc, value) => acc + value, 0);
+  const weightedCenter =
+    rowWeightedTotal > 0
+      ? normalizedRowEnergy.reduce((acc, value, index) => acc + value * (index / Math.max(1, height - 1)), 0) /
+        rowWeightedTotal
+      : 0.5;
+
+  const activeFirst = activeRows.at(0)?.index ?? 0;
+  const activeLast = activeRows.at(-1)?.index ?? Math.max(0, height - 1);
+  const activeSpan = clamp01((activeLast - activeFirst + 1) / Math.max(1, height));
+
+  const topBand = Math.max(1, Math.round(height * 0.1));
+  const bottomBandStart = Math.max(0, height - topBand);
+  const sideBand = Math.max(1, Math.round(width * 0.12));
+  const rightBandStart = Math.max(0, width - sideBand);
+
+  const topEdgeEnergy = clamp01(meanSlice(normalizedRowEnergy, 0, topBand) / Math.max(0.0001, rowMean * 1.6));
+  const bottomEdgeEnergy = clamp01(
+    meanSlice(normalizedRowEnergy, bottomBandStart, height) / Math.max(0.0001, rowMean * 1.6)
+  );
+  const leftEdgeEnergy = clamp01(meanSlice(normalizedColEnergy, 0, sideBand) / Math.max(0.0001, colMean * 1.6));
+  const rightEdgeEnergy = clamp01(
+    meanSlice(normalizedColEnergy, rightBandStart, width) / Math.max(0.0001, colMean * 1.6)
+  );
+  const centerEnergy = clamp01(
+    meanSlice(normalizedRowEnergy, Math.round(height * 0.28), Math.round(height * 0.72)) /
+      Math.max(0.0001, rowMean * 1.4)
+  );
+  const edgeEnergy = clamp01((topEdgeEnergy + bottomEdgeEnergy + leftEdgeEnergy + rightEdgeEnergy) / 4);
+  const visualFocus = clamp01(centerEnergy / Math.max(0.001, centerEnergy + edgeEnergy));
+
+  return {
+    activeCenterY: clamp01(weightedCenter),
+    activeSpan,
+    topEdgeEnergy,
+    bottomEdgeEnergy,
+    leftEdgeEnergy,
+    rightEdgeEnergy,
+    centerEnergy,
+    edgeEnergy,
+    visualFocus,
+    frameCount: 1
+  };
+}
+
+function averageFramingMetrics(metrics: Stage3FramingMetrics[]): Stage3FramingMetrics {
+  if (!metrics.length) {
+    return {
+      activeCenterY: 0.5,
+      activeSpan: 0.82,
+      topEdgeEnergy: 0.18,
+      bottomEdgeEnergy: 0.18,
+      leftEdgeEnergy: 0.18,
+      rightEdgeEnergy: 0.18,
+      centerEnergy: 0.6,
+      edgeEnergy: 0.24,
+      visualFocus: 0.58,
+      frameCount: 0
+    };
+  }
+
+  const totalFrames = metrics.reduce((acc, metric) => acc + metric.frameCount, 0);
+  const average = (selector: (metric: Stage3FramingMetrics) => number) =>
+    metrics.reduce((acc, metric) => acc + selector(metric), 0) / metrics.length;
+
+  return {
+    activeCenterY: average((metric) => metric.activeCenterY),
+    activeSpan: average((metric) => metric.activeSpan),
+    topEdgeEnergy: average((metric) => metric.topEdgeEnergy),
+    bottomEdgeEnergy: average((metric) => metric.bottomEdgeEnergy),
+    leftEdgeEnergy: average((metric) => metric.leftEdgeEnergy),
+    rightEdgeEnergy: average((metric) => metric.rightEdgeEnergy),
+    centerEnergy: average((metric) => metric.centerEnergy),
+    edgeEnergy: average((metric) => metric.edgeEnergy),
+    visualFocus: average((metric) => metric.visualFocus),
+    frameCount: totalFrames
+  };
+}
+
+async function extractKeyframePpmPaths(videoPath: string, tmpDir: string): Promise<string[]> {
+  const framePattern = path.join(tmpDir, "frame-%02d.ppm");
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-v",
+      "error",
+      "-i",
+      videoPath,
+      "-vf",
+      "fps=0.5,scale=180:-1:flags=bilinear",
+      "-frames:v",
+      "3",
+      framePattern
+    ],
+    { timeout: 90_000, maxBuffer: 1024 * 1024 * 8 }
+  );
+
+  const files = (await fs.readdir(tmpDir))
+    .filter((file) => /^frame-\d+\.ppm$/i.test(file))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return files.map((file) => path.join(tmpDir, file));
+}
+
+async function renderFramedPreviewVideo(params: {
+  inputPath: string;
+  tmpDir: string;
+  snapshot: Stage3StateSnapshot;
+  profile: Stage3MediaProfile;
+}): Promise<{ outputPath: string; viewport: Stage3ViewportBox | null }> {
+  const sourceDimensions = await probeVideoDimensions(params.inputPath);
+  const outputPath = path.join(params.tmpDir, "source-framed.mp4");
+  if (!sourceDimensions) {
+    await fs.copyFile(params.inputPath, outputPath);
+    return { outputPath, viewport: null };
+  }
+
+  const viewport = computeViewportBox(params.snapshot, sourceDimensions);
+  const encode = getEncodeProfile(params.profile);
+  const targetWidth = makeEven(params.profile === "preview" ? 480 : 720);
+  const targetHeight = makeEven(targetWidth / Math.max(0.1, viewport.slotAspect));
+  const cropFilter = `crop=${viewport.width}:${viewport.height}:${viewport.x}:${viewport.y},scale=${targetWidth}:${targetHeight}:flags=lanczos,setsar=1`;
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-v",
+      "error",
+      "-i",
+      params.inputPath,
+      "-vf",
+      cropFilter,
+      "-an",
+      "-c:v",
+      "libx264",
+      "-preset",
+      encode.preset,
+      "-crf",
+      encode.crf,
+      "-threads",
+      encode.threads,
+      outputPath
+    ],
+    { timeout: 2 * 60_000, maxBuffer: 1024 * 1024 * 16 }
+  );
+
+  return { outputPath, viewport };
+}
+
+export async function analyzeStage3FramedPreview(params: {
+  sourcePath: string;
+  tmpDir: string;
+  sourceDurationSec: number | null;
+  snapshot: Stage3StateSnapshot;
+  musicFilePath?: string | null;
+  profile?: Stage3MediaProfile;
+}): Promise<Stage3FramedPreviewAnalysis> {
+  const profile = params.profile ?? "preview";
+  const prepared = await prepareStage3SourceClip({
+    sourcePath: params.sourcePath,
+    tmpDir: params.tmpDir,
+    sourceDurationSec: params.sourceDurationSec,
+    clipStartSec: params.snapshot.clipStartSec,
+    clipDurationSec: params.snapshot.clipDurationSec,
+    renderPlan: params.snapshot.renderPlan,
+    musicFilePath: params.musicFilePath,
+    profile
+  });
+
+  const framed = await renderFramedPreviewVideo({
+    inputPath: prepared.preparedPath,
+    tmpDir: params.tmpDir,
+    snapshot: params.snapshot,
+    profile
+  });
+
+  const keyframePaths = await extractKeyframePpmPaths(framed.outputPath, params.tmpDir).catch(() => []);
+  const metrics = averageFramingMetrics(
+    (
+      await Promise.all(
+        keyframePaths.map(async (filePath) => {
+          const buffer = await fs.readFile(filePath).catch(() => null);
+          return buffer ? analyzePpmFrame(buffer) : null;
+        })
+      )
+    ).filter((metric): metric is Stage3FramingMetrics => Boolean(metric))
+  );
+
+  return {
+    previewPath: framed.outputPath,
+    keyframePaths,
+    viewport: framed.viewport,
+    metrics
+  };
 }
 
 export async function analyzeBestClipAndFocus(
@@ -437,6 +890,14 @@ async function fitClipToDuration(params: {
   const output = path.join(params.tmpDir, "clip-fit.mp4");
   const shouldTransform = Math.abs(inputDuration - target) > 0.005;
   if (!shouldTransform) {
+    return withAudio;
+  }
+  const requiresCompression = inputDuration > target + 0.005;
+  const requiresStretch = inputDuration < target - 0.005;
+  if (params.timingMode === "compress" && !requiresCompression) {
+    return withAudio;
+  }
+  if (params.timingMode === "stretch" && !requiresStretch) {
     return withAudio;
   }
 

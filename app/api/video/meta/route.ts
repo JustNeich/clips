@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { isSupportedUrl } from "../../../../lib/ytdlp";
+import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,8 +30,9 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const ytDlpPath = await requireRuntimeTool("ytDlp");
     const { stdout } = await execFileAsync(
-      "yt-dlp",
+      ytDlpPath,
       ["--dump-single-json", "--skip-download", "--no-warnings", "--no-playlist", rawUrl],
       { timeout: 60_000, maxBuffer: 1024 * 1024 * 8 }
     );
@@ -43,10 +45,12 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json({ durationSec: duration }, { status: 200 });
   } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("yt-dlp")) {
+      return Response.json({ error: error.message }, { status: 503 });
+    }
     return Response.json(
       { error: error instanceof Error ? error.message : "Не удалось получить duration." },
       { status: 500 }
     );
   }
 }
-

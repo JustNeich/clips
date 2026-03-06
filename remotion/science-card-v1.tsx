@@ -1,14 +1,23 @@
 import React from "react";
 import { AbsoluteFill, Img, OffthreadVideo, staticFile } from "remotion";
-import { SCIENCE_CARD, getScienceCardComputed } from "../lib/stage3-template";
+import {
+  SCIENCE_CARD,
+  SCIENCE_CARD_TEMPLATE_ID,
+  TURBO_FACE,
+  TURBO_FACE_TEMPLATE_ID,
+  getTemplateComputed
+} from "../lib/stage3-template";
 
 type ScienceCardV1Props = {
+  templateId?: string;
   topText: string;
   bottomText: string;
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
   videoZoom: number;
+  topFontScale: number;
+  bottomFontScale: number;
   authorName: string;
   authorHandle: string;
   avatarAssetFileName?: string | null;
@@ -23,6 +32,8 @@ function OverlayText({
   maxLines,
   paddingX,
   paddingY,
+  paddingTop,
+  paddingBottom,
   lineHeight,
   fontWeight,
   textAlign = "center"
@@ -32,10 +43,14 @@ function OverlayText({
   maxLines: number;
   paddingX: number;
   paddingY: number;
+  paddingTop?: number;
+  paddingBottom?: number;
   lineHeight: number;
   fontWeight: number;
   textAlign?: "left" | "center";
 }) {
+  const resolvedPaddingTop = paddingTop ?? paddingY;
+  const resolvedPaddingBottom = paddingBottom ?? paddingY;
   return (
     <div
       style={{
@@ -46,7 +61,7 @@ function OverlayText({
         justifyContent: "center",
         boxSizing: "border-box",
         overflow: "hidden",
-        padding: `${paddingY}px ${paddingX}px`
+        padding: `${resolvedPaddingTop}px ${paddingX}px ${resolvedPaddingBottom}px`
       }}
     >
       <p
@@ -108,10 +123,8 @@ function AuthorBlock({
         boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
-        gap: 16,
-        backgroundColor: "#ffffff",
-        borderTop: "1px solid rgba(8, 12, 19, 0.12)",
-        borderBottom: "1px solid rgba(8, 12, 19, 0.12)"
+        gap: 12,
+        backgroundColor: "#ffffff"
       }}
     >
       {avatarIsImage && avatarSrc ? (
@@ -198,12 +211,15 @@ function AuthorBlock({
 }
 
 export function ScienceCardV1({
+  templateId,
   topText,
   bottomText,
   clipStartSec,
   clipDurationSec,
   focusY,
   videoZoom,
+  topFontScale,
+  bottomFontScale,
   authorName,
   authorHandle,
   avatarAssetFileName,
@@ -212,11 +228,16 @@ export function ScienceCardV1({
   backgroundAssetMimeType
 }: ScienceCardV1Props): React.JSX.Element {
   const sourceUrl = staticFile("source.mp4");
+  const isTurbo = templateId === TURBO_FACE_TEMPLATE_ID;
+  const frame = isTurbo ? TURBO_FACE.frame : SCIENCE_CARD.frame;
   const hasCustomBackground = Boolean(backgroundAssetFileName);
   const customBackgroundSrc = hasCustomBackground ? staticFile(backgroundAssetFileName as string) : null;
   const customBackgroundIsVideo =
     hasCustomBackground && (backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/");
-  const computed = getScienceCardComputed(topText, bottomText);
+  const computed = getTemplateComputed(templateId ?? SCIENCE_CARD_TEMPLATE_ID, topText, bottomText, {
+    topFontScale,
+    bottomFontScale
+  });
   const fps = 30;
   const startFrom = Math.max(0, Math.round(clipStartSec * fps));
   const clipFrames = Math.max(1, Math.round(clipDurationSec * fps));
@@ -228,8 +249,8 @@ export function ScienceCardV1({
     <AbsoluteFill
       style={{
         backgroundColor: "#060606",
-        width: SCIENCE_CARD.frame.width,
-        height: SCIENCE_CARD.frame.height
+        width: frame.width,
+        height: frame.height
       }}
     >
       <AbsoluteFill>
@@ -238,8 +259,8 @@ export function ScienceCardV1({
             <OffthreadVideo
               src={customBackgroundSrc}
               style={{
-                width: SCIENCE_CARD.frame.width,
-                height: SCIENCE_CARD.frame.height,
+                width: frame.width,
+                height: frame.height,
                 objectFit: "cover",
                 objectPosition: "center center"
               }}
@@ -249,8 +270,8 @@ export function ScienceCardV1({
             <Img
               src={customBackgroundSrc}
               style={{
-                width: SCIENCE_CARD.frame.width,
-                height: SCIENCE_CARD.frame.height,
+                width: frame.width,
+                height: frame.height,
                 objectFit: "cover",
                 objectPosition: "center center"
               }}
@@ -262,8 +283,8 @@ export function ScienceCardV1({
             startFrom={startFrom}
             endAt={endAt}
             style={{
-              width: SCIENCE_CARD.frame.width,
-              height: SCIENCE_CARD.frame.height,
+              width: frame.width,
+              height: frame.height,
               objectFit: "cover",
               objectPosition,
               filter: "blur(16px) brightness(0.82) saturate(1.05)"
@@ -273,6 +294,174 @@ export function ScienceCardV1({
         )}
       </AbsoluteFill>
 
+      {isTurbo ? (
+        <>
+          <AbsoluteFill
+            style={{
+              left: TURBO_FACE.top.x,
+              top: TURBO_FACE.top.y,
+              width: TURBO_FACE.top.width,
+              height: computed.topBlockHeight,
+              borderRadius: TURBO_FACE.top.radius,
+              backgroundColor: "#ffffff",
+              boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
+              overflow: "hidden"
+            }}
+          >
+            <OverlayText
+              text={computed.top}
+              fontSize={computed.topFont}
+              maxLines={TURBO_FACE.typography.top.maxLines}
+            paddingX={TURBO_FACE.top.paddingX}
+            paddingY={TURBO_FACE.top.paddingY}
+            lineHeight={computed.topLineHeight}
+            fontWeight={900}
+            textAlign="center"
+          />
+          </AbsoluteFill>
+
+          <AbsoluteFill
+            style={{
+              left: computed.videoX,
+              top: computed.videoY,
+              width: computed.videoWidth,
+              height: computed.videoHeight,
+              overflow: "hidden"
+            }}
+          >
+            <OffthreadVideo
+              src={sourceUrl}
+              startFrom={startFrom}
+              endAt={endAt}
+              style={{
+                width: computed.videoWidth,
+                height: computed.videoHeight,
+                objectFit: "cover",
+                objectPosition,
+                transform: `scale(${normalizedZoom})`,
+                transformOrigin: "center center"
+              }}
+              volume={1}
+            />
+          </AbsoluteFill>
+
+          <AbsoluteFill
+            style={{
+              left: TURBO_FACE.bottom.x,
+              top: frame.height - TURBO_FACE.bottom.bottom - computed.bottomBlockHeight,
+              width: TURBO_FACE.bottom.width,
+              height: computed.bottomBlockHeight,
+              borderRadius: TURBO_FACE.bottom.radius,
+              backgroundColor: "#ffffff",
+              boxShadow: "0 16px 36px rgba(0,0,0,0.26)",
+              overflow: "hidden",
+              display: "grid",
+              gridTemplateRows: `${TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2}px minmax(0, 1fr)`
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                boxSizing: "border-box",
+                padding: `${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                {avatarAssetFileName && (avatarAssetMimeType ?? "").toLowerCase().startsWith("image/") ? (
+                  <Img
+                    src={staticFile(avatarAssetFileName)}
+                    style={{
+                      width: TURBO_FACE.author.avatarSize,
+                      height: TURBO_FACE.author.avatarSize,
+                      borderRadius: 999,
+                      border: `${TURBO_FACE.author.avatarBorder}px solid rgba(0,0,0,0.18)`,
+                      objectFit: "cover",
+                      boxSizing: "border-box",
+                      flex: "0 0 auto"
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: TURBO_FACE.author.avatarSize,
+                      height: TURBO_FACE.author.avatarSize,
+                      borderRadius: 999,
+                      border: `${TURBO_FACE.author.avatarBorder}px solid rgba(0,0,0,0.18)`,
+                      background: "radial-gradient(circle at 30% 30%, #f6db98, #2f86bb 70%, #20506f)",
+                      color: "#fff",
+                      display: "grid",
+                      placeItems: "center",
+                      fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
+                      fontWeight: 800,
+                      fontSize: Math.round(TURBO_FACE.author.avatarSize * 0.32),
+                      letterSpacing: "0.02em",
+                      boxSizing: "border-box",
+                      flex: "0 0 auto"
+                    }}
+                  >
+                    {avatarInitials(authorName)}
+                  </div>
+                )}
+                <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        color: "#0c1018",
+                        fontWeight: 700,
+                        fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
+                        fontSize: TURBO_FACE.typography.authorName.font,
+                        lineHeight: TURBO_FACE.typography.authorName.lineHeight,
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      {authorName}
+                    </span>
+                    <span
+                      style={{
+                        width: TURBO_FACE.author.checkSize,
+                        height: TURBO_FACE.author.checkSize,
+                        borderRadius: 999,
+                        background: "#bf5cf4",
+                        color: "#ffffff",
+                        display: "grid",
+                        placeItems: "center",
+                        fontWeight: 800,
+                        fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
+                        fontSize: Math.round(TURBO_FACE.author.checkSize * 0.56),
+                        lineHeight: 1
+                      }}
+                    >
+                      ✓
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      color: "#666666",
+                      fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
+                      fontSize: TURBO_FACE.typography.authorHandle.font,
+                      lineHeight: TURBO_FACE.typography.authorHandle.lineHeight
+                    }}
+                  >
+                    {authorHandle}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <OverlayText
+              text={computed.bottom}
+              fontSize={computed.bottomFont}
+              maxLines={TURBO_FACE.typography.bottom.maxLines}
+              paddingX={TURBO_FACE.bottom.paddingX}
+              paddingY={0}
+              lineHeight={computed.bottomLineHeight}
+              fontWeight={400}
+              textAlign="left"
+            />
+          </AbsoluteFill>
+        </>
+      ) : (
       <AbsoluteFill
         style={{
           left: SCIENCE_CARD.card.x,
@@ -283,7 +472,8 @@ export function ScienceCardV1({
           border: `${SCIENCE_CARD.card.borderWidth}px solid ${SCIENCE_CARD.card.borderColor}`,
           backgroundColor: SCIENCE_CARD.card.fill,
           overflow: "hidden",
-          boxSizing: "border-box"
+          boxSizing: "border-box",
+          boxShadow: "13px 16px 0 rgba(10, 12, 16, 0.74), 0 24px 48px rgba(0, 0, 0, 0.42)"
         }}
       >
         <div
@@ -303,7 +493,7 @@ export function ScienceCardV1({
             maxLines={SCIENCE_CARD.typography.top.maxLines}
             paddingX={SCIENCE_CARD.slot.topPaddingX}
             paddingY={SCIENCE_CARD.slot.topPaddingY}
-            lineHeight={SCIENCE_CARD.typography.top.lineHeight}
+            lineHeight={computed.topLineHeight}
             fontWeight={800}
             textAlign="center"
           />
@@ -361,12 +551,15 @@ export function ScienceCardV1({
             maxLines={SCIENCE_CARD.typography.bottom.maxLines}
             paddingX={SCIENCE_CARD.slot.bottomTextPaddingX}
             paddingY={SCIENCE_CARD.slot.bottomTextPaddingY}
-            lineHeight={SCIENCE_CARD.typography.bottom.lineHeight}
+            paddingTop={SCIENCE_CARD.slot.bottomTextPaddingTop}
+            paddingBottom={SCIENCE_CARD.slot.bottomTextPaddingBottom}
+            lineHeight={computed.bottomLineHeight}
             fontWeight={500}
             textAlign="left"
           />
         </div>
       </AbsoluteFill>
+      )}
     </AbsoluteFill>
   );
 }

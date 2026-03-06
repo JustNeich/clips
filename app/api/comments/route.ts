@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { normalizeComments, sortCommentsByPopularity } from "../../../lib/comments";
 import { getYtDlpError, isSupportedUrl } from "../../../lib/ytdlp";
+import { requireRuntimeTool } from "../../../lib/runtime-capabilities";
 
 const execFileAsync = promisify(execFile);
 
@@ -30,6 +31,7 @@ export async function POST(request: Request): Promise<Response> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-comments-"));
 
   try {
+    const ytDlpPath = await requireRuntimeTool("ytDlp");
     const outputTemplate = path.join(tmpDir, "metadata.%(ext)s");
     const args = [
       "--skip-download",
@@ -42,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
       rawUrl
     ];
 
-    await execFileAsync("yt-dlp", args, {
+    await execFileAsync(ytDlpPath, args, {
       timeout: 3 * 60 * 1000,
       maxBuffer: 1024 * 1024 * 16
     });
@@ -73,6 +75,9 @@ export async function POST(request: Request): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("yt-dlp")) {
+      return Response.json({ error: error.message }, { status: 503 });
+    }
     const stderr =
       typeof error === "object" && error && "stderr" in error
         ? String((error as { stderr?: string }).stderr ?? "")

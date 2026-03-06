@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { getYtDlpError, isSupportedUrl, sanitizeFileName } from "../../../lib/ytdlp";
+import { requireRuntimeTool } from "../../../lib/runtime-capabilities";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,6 +30,7 @@ export async function POST(request: Request): Promise<Response> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-dl-"));
 
   try {
+    const ytDlpPath = await requireRuntimeTool("ytDlp");
     const outputTemplate = path.join(tmpDir, "video.%(ext)s");
     const args = [
       "--no-playlist",
@@ -42,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
       rawUrl
     ];
 
-    await execFileAsync("yt-dlp", args, {
+    await execFileAsync(ytDlpPath, args, {
       timeout: 2 * 60 * 1000,
       maxBuffer: 1024 * 1024 * 8
     });
@@ -67,6 +69,9 @@ export async function POST(request: Request): Promise<Response> {
       }
     });
   } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("yt-dlp")) {
+      return Response.json({ error: error.message }, { status: 503 });
+    }
     const stderr =
       typeof error === "object" && error && "stderr" in error
         ? String((error as { stderr?: string }).stderr ?? "")

@@ -1,8 +1,9 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { getCodexSessionsDir } from "./app-paths";
 
-const SESSION_DIR = path.join(process.cwd(), ".codex-user-sessions");
+const SESSION_DIR = getCodexSessionsDir();
 
 export function normalizeCodexSessionId(raw: string | null | undefined): string | null {
   const value = (raw ?? "").trim();
