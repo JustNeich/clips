@@ -115,7 +115,7 @@ npm run dev
 ## Переменные окружения (опционально)
 
 - `CODEX_STAGE2_MODEL` — принудительно выбрать модель для `codex exec`.
-- `CODEX_STAGE2_REASONING_EFFORT` — reasoning effort для модели (`low|medium|high`).
+- `CODEX_STAGE2_REASONING_EFFORT` — reasoning effort для модели (`low|medium|high|xhigh`, можно передать `extra-high`).
 - `CODEX_STAGE2_TIMEOUT_MS` — таймаут Stage 2 в миллисекундах.
 - `CODEX_BIN` — путь к бинарнику codex, если Next.js не видит его в PATH.
   Пример для macOS app: `/Applications/Codex.app/Contents/Resources/codex`

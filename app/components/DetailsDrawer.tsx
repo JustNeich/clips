@@ -1,6 +1,7 @@
 "use client";
 
 import { CommentsPayload, ChatEvent } from "./types";
+import { sanitizeDisplayText } from "../../lib/ui-error";
 
 type DetailsDrawerProps = {
   events: ChatEvent[];
@@ -28,6 +29,9 @@ export function DetailsDrawer({
   onDownloadCommentsJson
 }: DetailsDrawerProps) {
   const ordered = [...events].reverse();
+  const formatEventText = (event: ChatEvent): string => {
+    return sanitizeDisplayText(event.text);
+  };
 
   return (
     <details className="details-drawer">
@@ -94,7 +98,7 @@ export function DetailsDrawer({
                     <span>{event.type}</span>
                     <time dateTime={event.createdAt}>{formatDate(event.createdAt)}</time>
                   </div>
-                  <p>{event.text}</p>
+                  <p>{formatEventText(event)}</p>
                 </li>
               ))}
             </ul>

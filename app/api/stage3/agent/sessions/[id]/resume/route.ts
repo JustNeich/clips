@@ -1,5 +1,7 @@
 import { getSession } from "../../../../../../../lib/stage3-session-store";
 import { resumeAutonomousSession } from "../../../../../../../lib/stage3-agent-autonomous";
+import { applyHostedStage3Limits } from "../../../../../../../lib/stage3-hosted-limits";
+import { summarizeUserFacingError } from "../../../../../../../lib/ui-error";
 import { getChatById } from "../../../../../../../lib/chat-history";
 import {
   requireAuth,
@@ -62,15 +64,21 @@ export async function POST(
       return Response.json({ error: "Передайте mediaId." }, { status: 400 });
     }
 
+    const tuning = applyHostedStage3Limits({
+      options: toOptions(body?.options),
+      plannerReasoningEffort: body?.plannerReasoningEffort,
+      plannerTimeoutMs: Number.isFinite(body?.plannerTimeoutMs) ? body?.plannerTimeoutMs : undefined
+    });
+
     const result = await resumeAutonomousSession(
       id,
       mediaId,
-      toOptions(body?.options),
+      tuning.options,
       body?.sourceUrl,
       requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
       body?.plannerModel,
-      body?.plannerReasoningEffort,
-      Number.isFinite(body?.plannerTimeoutMs) ? body?.plannerTimeoutMs : undefined
+      tuning.plannerReasoningEffort,
+      tuning.plannerTimeoutMs
     );
 
     return Response.json(result, { status: 200 });
@@ -78,11 +86,12 @@ export async function POST(
     if (error instanceof Response) {
       return error;
     }
-    const message = error instanceof Error ? error.message : "Resume run failed.";
+    const rawMessage = error instanceof Error ? error.message : "Resume run failed.";
+    const message = summarizeUserFacingError(rawMessage);
     if (message === "Session not found.") {
       return Response.json({ error: message }, { status: 404 });
     }
-    if (message.includes("mediaId")) {
+    if (rawMessage.includes("mediaId")) {
       return Response.json({ error: message }, { status: 400 });
     }
 

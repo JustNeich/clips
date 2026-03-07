@@ -22,6 +22,7 @@ import {
   STAGE3_TEMPLATE_ID,
   getTemplateById
 } from "../../lib/stage3-template";
+import { sanitizeDisplayText } from "../../lib/ui-error";
 
 type Step3RenderTemplateProps = {
   sourceUrl: string | null;
@@ -942,7 +943,7 @@ export function Step3RenderTemplate({
                       <strong>{message.title}</strong>
                       <span>{formatDateShort(message.createdAt)}</span>
                     </div>
-                    <p>{message.text}</p>
+                    <p>{sanitizeDisplayText(message.text)}</p>
                     {message.meta.length ? (
                       <div className="agent-message-meta">
                         {message.meta.map((meta, index) => (
@@ -1579,7 +1580,7 @@ export function Step3RenderTemplate({
               </div>
               <div className="timeline-notice">
                 {isPreviewLoading ? <p className="subtle-text">Updating preview...</p> : null}
-                {previewNotice ? <p className="subtle-text">{previewNotice}</p> : null}
+                {previewNotice ? <p className="subtle-text">{sanitizeDisplayText(previewNotice)}</p> : null}
               </div>
             </div>
           </div>

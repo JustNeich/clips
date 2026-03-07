@@ -1,5 +1,7 @@
 import { isSupportedUrl } from "../../../../../lib/ytdlp";
 import { runAutonomousOptimization } from "../../../../../lib/stage3-agent-autonomous";
+import { applyHostedStage3Limits } from "../../../../../lib/stage3-hosted-limits";
+import { summarizeUserFacingError } from "../../../../../lib/ui-error";
 import { Stage3StateSnapshot } from "../../../../../app/components/types";
 import { getChatById } from "../../../../../lib/chat-history";
 import { requireAuth, requireChannelOperate, requireSharedCodexAvailable } from "../../../../../lib/auth/guards";
@@ -50,7 +52,7 @@ function buildRunAutonomousInput(body: Stage3RunBody, request: Request) {
     option.idempotencyKey?.trim() ||
     undefined;
 
-  return {
+  return applyHostedStage3Limits({
     projectId: trimmedProjectId,
     mediaId: trimmedMediaId,
     goalText: trimmedGoal,
@@ -72,7 +74,7 @@ function buildRunAutonomousInput(body: Stage3RunBody, request: Request) {
     plannerModel: body.plannerModel,
     plannerReasoningEffort: body.plannerReasoningEffort,
     plannerTimeoutMs: parseFiniteNumber(body.plannerTimeoutMs)
-  };
+  });
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -131,7 +133,11 @@ export async function POST(request: Request): Promise<Response> {
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Agent run failed." },
+      {
+        error: summarizeUserFacingError(
+          error instanceof Error ? error.message : "Agent run failed."
+        )
+      },
       { status: 500 }
     );
   }

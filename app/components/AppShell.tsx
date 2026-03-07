@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { sanitizeDisplayText } from "../../lib/ui-error";
 import type { CodexDeviceAuth } from "./types";
 
 export type FlowStep = {
@@ -510,7 +511,7 @@ export function AppShell({
             role="status"
             aria-live={statusTone === "error" ? "assertive" : "polite"}
           >
-            {statusText}
+            {sanitizeDisplayText(statusText)}
           </p>
         ) : null}
 

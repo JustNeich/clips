@@ -2,6 +2,7 @@
 
 import { KeyboardEvent, useEffect, useMemo, useRef } from "react";
 import { ChatThread, CodexAuthResponse, CommentsPayload, Stage2Response } from "./types";
+import { sanitizeDisplayText } from "../../lib/ui-error";
 
 type BusyAction =
   | ""
@@ -75,6 +76,13 @@ function extractStage2(data: unknown): Stage2Response | null {
     return null;
   }
   return data as Stage2Response;
+}
+
+function formatTimelineText(event: ChatThread["events"][number]): string {
+  if (event.type === "error") {
+    return sanitizeDisplayText(event.text);
+  }
+  return sanitizeDisplayText(event.text);
 }
 
 export function ThreadView({
@@ -194,7 +202,7 @@ export function ThreadView({
                         <span className="meta-dot">·</span>
                         <time dateTime={event.createdAt}>{formatDate(event.createdAt)}</time>
                       </header>
-                      <p className="timeline-text">{event.text}</p>
+                      <p className="timeline-text">{formatTimelineText(event)}</p>
 
                       {commentsPayload ? (
                         <details className="event-details">

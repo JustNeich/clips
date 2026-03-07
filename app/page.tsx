@@ -35,6 +35,7 @@ import {
   findLatestStage3AgentSessionRef,
   normalizeStage3SessionStatus
 } from "../lib/stage3-legacy-bridge";
+import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
@@ -386,46 +387,6 @@ function formatSourceProviderLabel(provider: "visolix" | "ytDlp" | null | undefi
   return null;
 }
 
-function summarizeUserFacingError(message: string): string {
-  const normalized = message.replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return "The request failed. Try again.";
-  }
-
-  const lower = normalized.toLowerCase();
-
-  if (
-    lower.includes("sign in to confirm you’re not a bot") ||
-    lower.includes("sign in to confirm you're not a bot") ||
-    lower.includes("youtube отклонил запрос")
-  ) {
-    return "YouTube blocked this action on the server.";
-  }
-  if (lower.includes("platform mismatch")) {
-    return "The hosted downloader could not recognize this link as a supported video.";
-  }
-  if (lower.includes("visolix api отклонил запрос") || lower.includes("visolix rejected the request")) {
-    return "Visolix rejected the request. Check the provider key and account access.";
-  }
-  if (lower.includes("codex cli не найден") || lower.includes("codex cli not found")) {
-    return "Shared Codex runtime is not installed on this deployment.";
-  }
-  if (lower.includes("ffmpeg") || lower.includes("ffprobe")) {
-    return "The media runtime is missing ffmpeg/ffprobe on this deployment.";
-  }
-  if (lower.startsWith("command failed:")) {
-    if (lower.includes("yt-dlp")) {
-      return "YouTube blocked this action on the server.";
-    }
-    return "A server command failed while processing the source.";
-  }
-  if (lower.includes("shared codex unavailable")) {
-    return "Shared Codex is not connected yet.";
-  }
-
-  return normalized;
-}
-
 type Stage1FetchState = {
   ready: boolean;
   commentsAvailable: boolean;
@@ -517,7 +478,7 @@ function buildStage3AgentConversation(
         id: message.id,
         role: "user",
         title: "Задача",
-        text: goal,
+        text: sanitizeDisplayText(goal),
         meta: [
           `goalType: ${timeline.session.goalType}`,
           `target score ${timeline.session.targetScore.toFixed(2)}`
@@ -580,7 +541,7 @@ function buildStage3AgentConversation(
       id: `iteration-${iteration.id}`,
       role: "assistant",
       title: `Итерация ${iteration.iterationIndex}`,
-      text: iteration.judgeNotes || iteration.plan.rationale,
+      text: sanitizeDisplayText(iteration.judgeNotes || iteration.plan.rationale),
       meta: [
         `score ${iteration.scores.total.toFixed(2)}`,
         `gain ${iteration.scores.stepGain >= 0 ? "+" : ""}${iteration.scores.stepGain.toFixed(2)}`,
@@ -1015,7 +976,7 @@ export default function HomePage() {
       setStatus("Shared Codex connect started. Complete device auth and refresh status.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Connect Codex failed.");
+      setStatus(getUiErrorMessage(error, "Connect Codex failed."));
     } finally {
       setIsCodexAuthLoading(false);
       setBusyAction("");
@@ -1047,7 +1008,7 @@ export default function HomePage() {
       setStatus(action === "cancel" ? "Device auth canceled." : "Shared Codex disconnected.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Unable to update shared Codex.");
+      setStatus(getUiErrorMessage(error, "Unable to update shared Codex."));
     } finally {
       setBusyAction("");
     }
@@ -1062,7 +1023,7 @@ export default function HomePage() {
         await refreshChannels();
       } catch (error) {
         setStatusType("error");
-        setStatus(error instanceof Error ? error.message : "Failed to initialize app.");
+        setStatus(getUiErrorMessage(error, "Failed to initialize app."));
       } finally {
         setIsAuthLoading(false);
       }
@@ -1728,7 +1689,7 @@ export default function HomePage() {
       setStatusType("ok");
       setStatus("Render export complete.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Render export failed.";
+      const message = getUiErrorMessage(error, "Render export failed.");
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
@@ -1822,7 +1783,7 @@ export default function HomePage() {
           (body.stabilityNote ? ` ${body.stabilityNote}` : "")
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Stage 3 agent run failed.";
+      const message = getUiErrorMessage(error, "Stage 3 agent run failed.");
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
@@ -1893,7 +1854,7 @@ export default function HomePage() {
         )}.`
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to resume Stage 3 agent session.";
+      const message = getUiErrorMessage(error, "Unable to resume Stage 3 agent session.");
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -1956,7 +1917,7 @@ export default function HomePage() {
         `Rollback выполнен${selectedVersion ? ` к v${selectedVersion.versionNo}` : ""}. Причина: ${body.reason}.`
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Stage 3 rollback failed.";
+      const message = getUiErrorMessage(error, "Stage 3 rollback failed.");
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -2011,7 +1972,7 @@ export default function HomePage() {
       setStatus("Фон загружен и применен к шаблону.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Background upload failed.");
+      setStatus(getUiErrorMessage(error, "Background upload failed."));
     } finally {
       setBusyAction("");
     }
@@ -2062,7 +2023,7 @@ export default function HomePage() {
       setStatus("Музыка загружена.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Music upload failed.");
+      setStatus(getUiErrorMessage(error, "Music upload failed."));
     } finally {
       setBusyAction("");
     }
@@ -2509,7 +2470,7 @@ export default function HomePage() {
           if (controller.signal.aborted || isAbortError(error)) {
             return;
           }
-          const message = error instanceof Error ? error.message : "Не удалось загрузить предпросмотр.";
+          const message = getUiErrorMessage(error, "Не удалось загрузить предпросмотр.");
           setStage3PreviewNotice(message);
         } finally {
           if (!controller.signal.aborted) {
@@ -2559,7 +2520,7 @@ export default function HomePage() {
       setCurrentStep(getCurrentStepForChat(chat));
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to open history item.");
+      setStatus(getUiErrorMessage(error, "Failed to open history item."));
     }
   };
 
@@ -2651,7 +2612,7 @@ export default function HomePage() {
       setStatus("History item deleted.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to delete history item.");
+      setStatus(getUiErrorMessage(error, "Failed to delete history item."));
     }
   };
 
@@ -2673,7 +2634,7 @@ export default function HomePage() {
       setStatus("Канал создан.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to create channel.");
+      setStatus(getUiErrorMessage(error, "Failed to create channel."));
     } finally {
       setBusyAction("");
     }
@@ -2755,7 +2716,7 @@ export default function HomePage() {
       setStatus("Канал сохранен.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to save channel.");
+      setStatus(getUiErrorMessage(error, "Failed to save channel."));
     } finally {
       setBusyAction("");
     }
@@ -2782,7 +2743,7 @@ export default function HomePage() {
       setStatus("Канал удален.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to delete channel.");
+      setStatus(getUiErrorMessage(error, "Failed to delete channel."));
     } finally {
       setBusyAction("");
     }
@@ -2822,7 +2783,7 @@ export default function HomePage() {
       setStatus("Ассет удален.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to delete asset.");
+      setStatus(getUiErrorMessage(error, "Failed to delete asset."));
     } finally {
       setBusyAction("");
     }
@@ -2894,7 +2855,7 @@ export default function HomePage() {
       setStatus("Ассет загружен.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to upload asset.");
+      setStatus(getUiErrorMessage(error, "Failed to upload asset."));
     } finally {
       setBusyAction("");
     }
@@ -2920,7 +2881,7 @@ export default function HomePage() {
       setStatus("Доступ к каналу обновлен.");
     } catch (error) {
       setStatusType("error");
-      setStatus(error instanceof Error ? error.message : "Failed to update channel access.");
+      setStatus(getUiErrorMessage(error, "Failed to update channel access."));
     } finally {
       setBusyAction("");
     }

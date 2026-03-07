@@ -16,6 +16,7 @@ import { getChannelAssetById } from "../../../../lib/chat-history";
 import { readChannelAssetFile } from "../../../../lib/channel-assets";
 import { STAGE3_TEMPLATE_ID, getTemplateById } from "../../../../lib/stage3-template";
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
+import { summarizeUserFacingError } from "../../../../lib/ui-error";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,10 @@ type PreviewBody = {
   renderPlan?: Partial<Stage3RenderPlan>;
   snapshot?: Partial<Stage3StateSnapshot>;
 };
+
+function isRenderRuntime(): boolean {
+  return process.env.RENDER === "true" || process.env.RENDER === "1";
+}
 
 function hashKey(value: string): string {
   return createHash("sha1").update(value).digest("hex");
@@ -276,6 +281,15 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
+    if (isRenderRuntime()) {
+      return Response.json(
+        {
+          error:
+            "Live Stage 3 preview is temporarily unavailable on this hosted deployment. Continue with the agent and retry later."
+        },
+        { status: 503 }
+      );
+    }
     await fs.mkdir(PREVIEW_CACHE_DIR, { recursive: true });
     const source = await ensureSourceCached(rawSource);
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
@@ -374,11 +388,13 @@ export async function POST(request: Request): Promise<Response> {
     }
     const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
     if (ytdlpMessage) {
-      return Response.json({ error: ytdlpMessage }, { status: 503 });
+      return Response.json({ error: summarizeUserFacingError(ytdlpMessage) }, { status: 503 });
     }
 
     return Response.json(
-      { error: error instanceof Error ? error.message : "Stage 3 preview failed." },
+      {
+        error: summarizeUserFacingError(error instanceof Error ? error.message : "Stage 3 preview failed.")
+      },
       { status: 500 }
     );
   }
