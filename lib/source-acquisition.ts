@@ -24,6 +24,7 @@ type VisolixInitResponse = {
   success?: unknown;
   id?: unknown;
   title?: unknown;
+  download_url?: unknown;
   info?: {
     title?: unknown;
     image?: unknown;
@@ -183,6 +184,25 @@ function normalizeUrlForVisolix(rawUrl: string): string {
   return isYouTubeUrl(rawUrl) ? normalizeYouTubeUrl(rawUrl) : rawUrl;
 }
 
+function encodeVisolixHeaderUrl(rawUrl: string): string {
+  return encodeURIComponent(rawUrl);
+}
+
+function buildVisolixUrlCandidates(rawUrl: string): string[] {
+  const trimmed = rawUrl.trim();
+  const normalized = normalizeUrlForVisolix(trimmed).trim();
+  const baseCandidates = Array.from(new Set([trimmed, normalized].filter(Boolean)));
+
+  return Array.from(
+    new Set(
+      baseCandidates.flatMap((candidate) => {
+        const encoded = encodeVisolixHeaderUrl(candidate);
+        return encoded === candidate ? [candidate] : [encoded, candidate];
+      })
+    )
+  );
+}
+
 function deriveVisolixPlatform(rawUrl: string): string | null {
   try {
     const parsed = new URL(rawUrl);
@@ -235,10 +255,8 @@ async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse>
     throw new Error("Visolix API key не задан. Добавьте VISOLIX_API_KEY на сервере.");
   }
 
-  const candidateUrls = Array.from(
-    new Set([normalizeUrlForVisolix(rawUrl), rawUrl].map((value) => value.trim()).filter(Boolean))
-  );
-  const platform = candidateUrls.map((value) => deriveVisolixPlatform(value)).find(Boolean);
+  const candidateUrls = buildVisolixUrlCandidates(rawUrl);
+  const platform = deriveVisolixPlatform(rawUrl) ?? deriveVisolixPlatform(normalizeUrlForVisolix(rawUrl));
   if (!platform) {
     throw new Error("Visolix не поддерживает этот URL.");
   }
@@ -323,7 +341,10 @@ async function pollVisolixDownload(progressUrl: string): Promise<string> {
       );
     }
 
-    const downloadUrl = asTrimmedString(body?.download_url);
+    const downloadUrl =
+      asTrimmedString(body?.download_url) ??
+      asTrimmedString(body?.url) ??
+      asTrimmedString(body?.downloadUrl);
     if (downloadUrl) {
       return downloadUrl;
     }
@@ -373,13 +394,17 @@ function sanitizeOutputName(rawName: string | null, fallback: string): string {
 async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadResult> {
   const targetPath = path.join(tmpDir, "source.mp4");
   const initPayload = await visolixDownloadInit(rawUrl);
+  const directDownloadUrl =
+    asTrimmedString(initPayload.download_url) ??
+    asTrimmedString((initPayload as Record<string, unknown>).url) ??
+    asTrimmedString((initPayload as Record<string, unknown>).downloadUrl);
   const progressUrl = asTrimmedString(initPayload.progress_url);
 
-  if (!progressUrl) {
-    throw new Error("Visolix не вернул progress_url для download job.");
+  if (!directDownloadUrl && !progressUrl) {
+    throw new Error("Visolix не вернул download_url или progress_url для download job.");
   }
 
-  const downloadUrl = await pollVisolixDownload(progressUrl);
+  const downloadUrl = directDownloadUrl ?? (await pollVisolixDownload(progressUrl as string));
   const videoSizeBytes = await downloadRemoteFile(downloadUrl, targetPath, "Visolix");
   const title = asTrimmedString(initPayload.title) ?? asTrimmedString(initPayload.info?.title);
 

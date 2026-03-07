@@ -128,6 +128,15 @@ export function getYtDlpError(stderr: string): string {
   return "Не удалось обработать ссылку.";
 }
 
+export function extractYtDlpErrorFromText(message: string): string | null {
+  const normalized = message.toLowerCase();
+  if (!YT_DLP_ERROR_SIGNALS.some((signal) => normalized.includes(signal))) {
+    return null;
+  }
+
+  return getYtDlpError(message);
+}
+
 const YT_DLP_ERROR_SIGNALS = [
   "yt-dlp",
   "[youtube]",
@@ -155,10 +164,5 @@ export function extractYtDlpErrorFromUnknown(error: unknown): string | null {
     return null;
   }
 
-  const normalized = combined.toLowerCase();
-  if (!YT_DLP_ERROR_SIGNALS.some((signal) => normalized.includes(signal))) {
-    return null;
-  }
-
-  return getYtDlpError(combined);
+  return extractYtDlpErrorFromText(combined);
 }

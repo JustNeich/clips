@@ -77,16 +77,24 @@ function getStepState(stepId: number, currentStep: number): "completed" | "curre
 function formatDeviceAuthStatus(status: CodexDeviceAuth["status"]): string {
   switch (status) {
     case "running":
-      return "Waiting for device auth";
+      return "Awaiting sign-in";
     case "done":
-      return "Device auth completed";
+      return "Sign-in completed";
     case "error":
-      return "Device auth failed";
+      return "Sign-in failed";
     case "canceled":
-      return "Device auth canceled";
+      return "Sign-in canceled";
     default:
-      return "Device auth idle";
+      return "Idle";
   }
+}
+
+function formatRoleLabel(role: string | null): string | null {
+  if (!role) {
+    return null;
+  }
+
+  return role.replace(/_/g, " ");
 }
 
 export function AppShell({
@@ -133,6 +141,7 @@ export function AppShell({
 }: AppShellProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
+  const [codexPanelOpen, setCodexPanelOpen] = useState(false);
   const historyCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearHistoryCloseTimer = useCallback(() => {
@@ -173,105 +182,152 @@ export function AppShell({
     });
   }, [historyItems, historyQuery]);
 
+  const hasCodexDeviceAuthDetails = Boolean(
+    canManageCodex &&
+      codexDeviceAuth &&
+      (codexDeviceAuth.status !== "idle" ||
+        Boolean(codexDeviceAuth.loginUrl) ||
+        Boolean(codexDeviceAuth.userCode) ||
+        Boolean(codexDeviceAuth.output.trim()))
+  );
+  const showDeviceAuthDetails = Boolean(
+    canManageCodex &&
+      codexDeviceAuth &&
+      (!codexConnected ||
+        codexDeviceAuth.status === "running" ||
+        codexDeviceAuth.status === "error" ||
+        codexDeviceAuth.status === "canceled") &&
+      (Boolean(codexDeviceAuth.loginUrl) ||
+        Boolean(codexDeviceAuth.userCode) ||
+        Boolean(codexDeviceAuth.output.trim()))
+  );
+  const codexPanelStatus =
+    codexConnected && (codexDeviceAuth?.status ?? "idle") === "idle"
+      ? "Connected"
+      : formatDeviceAuthStatus(codexDeviceAuth?.status ?? "idle");
+  const showCodexDetailsToggle = Boolean(!codexConnected && hasCodexDeviceAuthDetails);
+  const showCodexPanel = Boolean(
+    canManageCodex && (showDeviceAuthDetails || (codexPanelOpen && !codexConnected))
+  );
+
+  useEffect(() => {
+    if (
+      hasCodexDeviceAuthDetails &&
+      (codexDeviceAuth?.status === "running" ||
+        codexDeviceAuth?.status === "error" ||
+        codexDeviceAuth?.status === "canceled")
+    ) {
+      setCodexPanelOpen(true);
+    }
+  }, [codexDeviceAuth?.status, hasCodexDeviceAuthDetails]);
+
+  useEffect(() => {
+    if (codexConnected && (codexDeviceAuth?.status ?? "idle") === "idle") {
+      setCodexPanelOpen(false);
+    }
+  }, [codexConnected, codexDeviceAuth?.status]);
+
   return (
     <main className="app-layout">
       <section className="app-main">
         <header className="app-topbar">
-          <div className="topbar-left">
-            <div
-              className="history-flyout"
-              onMouseEnter={openHistory}
-              onMouseLeave={scheduleCloseHistory}
-            >
-              <button
-                type="button"
-                className="history-trigger"
-                aria-label="Open history"
-                aria-expanded={historyOpen}
-                onFocus={openHistory}
-                onClick={() => setHistoryOpen((prev) => !prev)}
+          <div className="topbar-primary">
+            <div className="topbar-brand-row">
+              <div
+                className="history-flyout"
+                onMouseEnter={openHistory}
+                onMouseLeave={scheduleCloseHistory}
               >
-                <span aria-hidden="true">🕘</span>
-                <span>History</span>
-                <span className="history-count">{historyItems.length}</span>
-              </button>
-
-              {historyOpen ? (
-                <div
-                  className="history-popover"
-                  onMouseEnter={openHistory}
-                  onMouseLeave={scheduleCloseHistory}
-                  onFocusCapture={openHistory}
-                  onBlur={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                      scheduleCloseHistory();
-                    }
-                  }}
+                <button
+                  type="button"
+                  className="history-trigger"
+                  aria-label="Open history"
+                  aria-expanded={historyOpen}
+                  onFocus={openHistory}
+                  onClick={() => setHistoryOpen((prev) => !prev)}
                 >
-                  <div className="history-popover-head">
-                    <h2>Recent</h2>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => {
-                        onCreateNew();
-                        setHistoryOpen(false);
-                      }}
-                    >
-                      + New
-                    </button>
+                  <span aria-hidden="true">🕘</span>
+                  <span>History</span>
+                  <span className="history-count">{historyItems.length}</span>
+                </button>
+
+                {historyOpen ? (
+                  <div
+                    className="history-popover"
+                    onMouseEnter={openHistory}
+                    onMouseLeave={scheduleCloseHistory}
+                    onFocusCapture={openHistory}
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        scheduleCloseHistory();
+                      }
+                    }}
+                  >
+                    <div className="history-popover-head">
+                      <h2>Recent</h2>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          onCreateNew();
+                          setHistoryOpen(false);
+                        }}
+                      >
+                        + New
+                      </button>
+                    </div>
+
+                    <input
+                      className="text-input"
+                      value={historyQuery}
+                      onChange={(event) => setHistoryQuery(event.target.value)}
+                      placeholder="Search..."
+                      aria-label="Search history"
+                    />
+
+                    <div className="history-popover-scroll">
+                      {filteredHistory.length === 0 ? (
+                        <p className="empty-box">No items found.</p>
+                      ) : (
+                        <ul className="history-list">
+                          {filteredHistory.map((item) => {
+                            const active = item.id === activeHistoryId;
+                            return (
+                              <li key={item.id} className={`history-row ${active ? "active" : ""}`}>
+                                <button
+                                  type="button"
+                                  className="history-open"
+                                  onClick={() => {
+                                    onHistoryChange(item.id);
+                                    setHistoryOpen(false);
+                                  }}
+                                  aria-current={active ? "true" : undefined}
+                                >
+                                  <span className="history-title">{item.title}</span>
+                                  <span className="history-subtitle">{item.subtitle}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="history-remove"
+                                  aria-label={`Delete ${item.title}`}
+                                  onClick={() => onDeleteHistory(item.id)}
+                                >
+                                  ✕
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
                   </div>
+                ) : null}
+              </div>
 
-                  <input
-                    className="text-input"
-                    value={historyQuery}
-                    onChange={(event) => setHistoryQuery(event.target.value)}
-                    placeholder="Search..."
-                    aria-label="Search history"
-                  />
-
-                  <div className="history-popover-scroll">
-                    {filteredHistory.length === 0 ? (
-                      <p className="empty-box">No items found.</p>
-                    ) : (
-                      <ul className="history-list">
-                        {filteredHistory.map((item) => {
-                          const active = item.id === activeHistoryId;
-                          return (
-                            <li key={item.id} className={`history-row ${active ? "active" : ""}`}>
-                              <button
-                                type="button"
-                                className="history-open"
-                                onClick={() => {
-                                  onHistoryChange(item.id);
-                                  setHistoryOpen(false);
-                                }}
-                                aria-current={active ? "true" : undefined}
-                              >
-                                <span className="history-title">{item.title}</span>
-                                <span className="history-subtitle">{item.subtitle}</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="history-remove"
-                                aria-label={`Delete ${item.title}`}
-                                onClick={() => onDeleteHistory(item.id)}
-                              >
-                                ✕
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="topbar-brand">
-              <h1>{title}</h1>
-              <p>{subtitle}</p>
+              <div className="topbar-brand">
+                <h1>{title}</h1>
+                <p>{subtitle}</p>
+              </div>
             </div>
 
             <div className="channel-switcher">
@@ -293,7 +349,7 @@ export function AppShell({
                 </select>
                 {canManageChannels ? (
                   <button type="button" className="btn btn-secondary" onClick={onManageChannels}>
-                    Manage channels
+                    Channels
                   </button>
                 ) : null}
                 {canManageTeam ? (
@@ -305,59 +361,80 @@ export function AppShell({
             </div>
           </div>
 
-          <div className="topbar-actions">
-            <div className="topbar-identity">
-              {workspaceName ? <span className="status-chip">{workspaceName}</span> : null}
-              {currentUserName ? <span className="status-chip">{currentUserName}</span> : null}
-              {currentUserRole ? <span className="status-chip">{currentUserRole}</span> : null}
-            </div>
-            <span className={`status-chip ${codexConnected ? "online" : "offline"}`}>
-              {codexStatusLabel ?? (codexConnected ? "Shared Codex connected" : "Shared Codex unavailable")}
-            </span>
-            {canManageCodex ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={onConnectCodex}
-                aria-busy={codexBusyConnect}
-                disabled={codexBusyConnect || !canConnectCodex}
-                title={!canConnectCodex ? codexConnectBlockedReason ?? undefined : undefined}
-              >
-                {codexBusyConnect ? "Connecting..." : codexActionLabel ?? "Connect"}
-              </button>
-            ) : null}
-            {canManageCodex && codexSecondaryActionLabel && onSecondaryCodexAction ? (
-              <button type="button" className="btn btn-ghost" onClick={onSecondaryCodexAction}>
-                {codexSecondaryActionLabel}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={onRefreshCodex}
-              aria-busy={codexBusyRefresh}
-              disabled={codexBusyRefresh}
-            >
-              {codexBusyRefresh ? "Refreshing..." : "Refresh"}
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={onLogout}>
-              Logout
-            </button>
-            {canManageCodex && codexDeviceAuth && (
-              codexDeviceAuth.status !== "idle" ||
-              Boolean(codexDeviceAuth.loginUrl) ||
-              Boolean(codexDeviceAuth.userCode) ||
-              Boolean(codexDeviceAuth.output.trim())
-            ) ? (
-              <section className="codex-device-card">
-                <div className="codex-device-head">
-                  <strong>Shared Codex Device Auth</strong>
-                  <span className="status-chip">{formatDeviceAuthStatus(codexDeviceAuth.status)}</span>
+          <aside className="topbar-utility">
+            <section className="workspace-card">
+              <div className="workspace-card-copy">
+                <span className="workspace-kicker">{workspaceName ?? "Workspace"}</span>
+                <div className="workspace-card-title-row">
+                  <strong>{currentUserName ?? "Workspace user"}</strong>
+                  {currentUserRole ? <span className="workspace-role">{formatRoleLabel(currentUserRole)}</span> : null}
+                  <span className={`status-chip ${codexConnected ? "online" : "offline"}`}>
+                    {codexStatusLabel ?? (codexConnected ? "Shared Codex connected" : "Shared Codex unavailable")}
+                  </span>
                 </div>
-                <p className="subtle-text">
-                  Run `Connect`, open the login URL, enter the code, then press `Refresh`.
-                </p>
-                {codexDeviceAuth.loginUrl ? (
+              </div>
+
+              <div className="workspace-card-actions">
+                {canManageCodex ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={onConnectCodex}
+                      aria-busy={codexBusyConnect}
+                      disabled={codexBusyConnect || !canConnectCodex}
+                      title={!canConnectCodex ? codexConnectBlockedReason ?? undefined : undefined}
+                    >
+                      {codexBusyConnect ? "Connecting..." : codexActionLabel ?? "Connect"}
+                    </button>
+                    {codexSecondaryActionLabel && onSecondaryCodexAction ? (
+                      <button type="button" className="btn btn-ghost" onClick={onSecondaryCodexAction}>
+                        {codexSecondaryActionLabel}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={onRefreshCodex}
+                      aria-busy={codexBusyRefresh}
+                      disabled={codexBusyRefresh}
+                    >
+                      {codexBusyRefresh ? "Refreshing..." : "Refresh"}
+                    </button>
+                    {showCodexDetailsToggle && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setCodexPanelOpen((prev) => !prev)}
+                      >
+                        {codexPanelOpen ? "Hide details" : "Show details"}
+                      </button>
+                    )}
+                  </>
+                ) : null}
+                <button type="button" className="btn btn-ghost" onClick={onLogout}>
+                  Logout
+                </button>
+              </div>
+            </section>
+
+            {showCodexPanel ? (
+              <section className="codex-control-panel">
+                <div className="codex-device-head">
+                  <div>
+                    <strong>Shared Codex sign-in</strong>
+                    <p className="subtle-text">
+                      Connect once, complete browser sign-in, then refresh the status.
+                    </p>
+                  </div>
+                  <span className={`status-chip ${codexConnected ? "online" : "offline"}`}>{codexPanelStatus}</span>
+                </div>
+
+                {!canConnectCodex && codexConnectBlockedReason ? (
+                  <p className="subtle-text danger-text">{codexConnectBlockedReason}</p>
+                ) : null}
+
+                {showDeviceAuthDetails && codexDeviceAuth?.loginUrl ? (
                   <div className="codex-device-row">
                     <span className="field-label">Login URL</span>
                     <div className="codex-device-actions">
@@ -377,9 +454,10 @@ export function AppShell({
                     </div>
                   </div>
                 ) : null}
-                {codexDeviceAuth.userCode ? (
+
+                {showDeviceAuthDetails && codexDeviceAuth?.userCode ? (
                   <div className="codex-device-row">
-                    <span className="field-label">User code</span>
+                    <span className="field-label">Device code</span>
                     <div className="codex-device-actions">
                       <code className="codex-device-code">{codexDeviceAuth.userCode}</code>
                       {onCopyCodexUserCode ? (
@@ -390,7 +468,8 @@ export function AppShell({
                     </div>
                   </div>
                 ) : null}
-                {codexDeviceAuth.output.trim() ? (
+
+                {showDeviceAuthDetails && codexDeviceAuth?.output.trim() ? (
                   <details className="codex-device-log">
                     <summary>CLI output</summary>
                     <pre>{codexDeviceAuth.output}</pre>
@@ -398,7 +477,7 @@ export function AppShell({
                 ) : null}
               </section>
             ) : null}
-          </div>
+          </aside>
         </header>
 
         <nav className="wizard-stepper" aria-label="Workflow steps">

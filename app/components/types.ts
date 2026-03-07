@@ -41,6 +41,12 @@ export type Stage2Response = {
     topComments: CommentItem[];
     allComments: CommentItem[];
     commentsUsedForPrompt: number;
+    videoFileName?: string;
+    videoSizeBytes?: number;
+    downloadProvider?: "visolix" | "ytDlp";
+    commentsOmittedFromPrompt?: number;
+    frameDescriptions?: string[];
+    commentsExtractionFallbackUsed?: boolean;
   };
   output: Stage2Output;
   seo?: {

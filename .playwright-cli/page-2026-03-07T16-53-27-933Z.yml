@@ -1,0 +1,21 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - heading "Login" [level=1] [ref=e4]
+      - paragraph [ref=e5]: Use your service account. Shared Codex is resolved server-side.
+      - generic [ref=e6]:
+        - generic [ref=e7]: Email
+        - textbox [active] [ref=e8]
+        - generic [ref=e9]: Password
+        - textbox [ref=e10]
+        - button "Sign in" [ref=e11] [cursor=pointer]
+      - generic [ref=e12]:
+        - link "Create redactor account" [ref=e13] [cursor=pointer]:
+          - /url: /register
+        - link "Accept invite" [ref=e14] [cursor=pointer]:
+          - /url: /accept-invite
+        - link "Bootstrap owner" [ref=e15] [cursor=pointer]:
+          - /url: /setup/bootstrap-owner
+  - button "Open Next.js Dev Tools" [ref=e21] [cursor=pointer]:
+    - img [ref=e22]
+  - alert [ref=e25]

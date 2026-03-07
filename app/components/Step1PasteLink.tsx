@@ -7,7 +7,6 @@ type Step1PasteLinkProps = {
   draftUrl: string;
   activeUrl: string | null;
   commentsFallbackActive?: boolean;
-  commentsFallbackReason?: string | null;
   isBusy: boolean;
   fetchAvailable: boolean;
   fetchBlockedReason?: string | null;
@@ -23,7 +22,6 @@ export function Step1PasteLink({
   draftUrl,
   activeUrl,
   commentsFallbackActive,
-  commentsFallbackReason,
   isBusy,
   fetchAvailable,
   fetchBlockedReason,
@@ -48,7 +46,7 @@ export function Step1PasteLink({
           <header className="step-head">
             <p className="kicker">Step 1</p>
             <h2>Source</h2>
-            <p>Paste Shorts/Reels URL and fetch source. Comments are best-effort and do not block the flow.</p>
+            <p>Paste a Shorts or Reels link to fetch the source. Comments are optional and never block the flow.</p>
           </header>
 
           <section className="control-card">
@@ -80,7 +78,7 @@ export function Step1PasteLink({
                   aria-busy={isBusy}
                   title={!fetchAvailable ? fetchBlockedReason ?? undefined : undefined}
                 >
-                  {isBusy ? "Fetching..." : "Run Stage 1 / Fetch"}
+                  {isBusy ? "Fetching..." : "Fetch source"}
                 </button>
               </div>
               {!fetchAvailable && fetchBlockedReason ? (
@@ -88,8 +86,7 @@ export function Step1PasteLink({
               ) : null}
               {commentsFallbackActive ? (
                 <p className="subtle-text">
-                  Comments were skipped for this source. Step 2 can continue without them.
-                  {commentsFallbackReason ? ` Reason: ${commentsFallbackReason}` : ""}
+                  Comments were skipped on this server. Step 2 will continue with video-only context.
                 </p>
               ) : null}
             </form>

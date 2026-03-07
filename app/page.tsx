@@ -376,6 +376,56 @@ function formatStage3Operation(op: string): string {
   }
 }
 
+function formatSourceProviderLabel(provider: "visolix" | "ytDlp" | null | undefined): string | null {
+  if (provider === "visolix") {
+    return "Visolix";
+  }
+  if (provider === "ytDlp") {
+    return "local downloader fallback";
+  }
+  return null;
+}
+
+function summarizeUserFacingError(message: string): string {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "The request failed. Try again.";
+  }
+
+  const lower = normalized.toLowerCase();
+
+  if (
+    lower.includes("sign in to confirm you’re not a bot") ||
+    lower.includes("sign in to confirm you're not a bot") ||
+    lower.includes("youtube отклонил запрос")
+  ) {
+    return "YouTube blocked this action on the server.";
+  }
+  if (lower.includes("platform mismatch")) {
+    return "The hosted downloader could not recognize this link as a supported video.";
+  }
+  if (lower.includes("visolix api отклонил запрос") || lower.includes("visolix rejected the request")) {
+    return "Visolix rejected the request. Check the provider key and account access.";
+  }
+  if (lower.includes("codex cli не найден") || lower.includes("codex cli not found")) {
+    return "Shared Codex runtime is not installed on this deployment.";
+  }
+  if (lower.includes("ffmpeg") || lower.includes("ffprobe")) {
+    return "The media runtime is missing ffmpeg/ffprobe on this deployment.";
+  }
+  if (lower.startsWith("command failed:")) {
+    if (lower.includes("yt-dlp")) {
+      return "YouTube blocked this action on the server.";
+    }
+    return "A server command failed while processing the source.";
+  }
+  if (lower.includes("shared codex unavailable")) {
+    return "Shared Codex is not connected yet.";
+  }
+
+  return normalized;
+}
+
 type Stage1FetchState = {
   ready: boolean;
   commentsAvailable: boolean;
@@ -410,7 +460,7 @@ function extractStage1FetchState(chat: Pick<ChatThread, "events"> | null): Stage
       commentsAvailable = Boolean((event.data as Record<string, unknown>).commentsAvailable);
       commentsError =
         typeof (event.data as Record<string, unknown>).commentsError === "string"
-          ? String((event.data as Record<string, unknown>).commentsError)
+          ? summarizeUserFacingError(String((event.data as Record<string, unknown>).commentsError))
           : null;
     }
   }
@@ -642,12 +692,12 @@ export default function HomePage() {
   const codexStatusLabel = codexLoggedIn
     ? "Shared Codex connected"
     : codexAuth?.deviceAuth.status === "running"
-      ? "Shared Codex waiting for device auth"
+      ? "Shared Codex awaiting sign-in"
       : codexAuth?.deviceAuth.status === "error"
-        ? "Shared Codex connect failed"
+        ? "Shared Codex sign-in failed"
         : sharedCodexAvailable
-      ? "Shared Codex unavailable"
-      : "Codex runtime unavailable";
+          ? "Shared Codex not connected"
+          : "Codex runtime unavailable";
   const activeChannel = useMemo(
     () => channels.find((channel) => channel.id === activeChannelId) ?? null,
     [channels, activeChannelId]
@@ -670,9 +720,29 @@ export default function HomePage() {
   );
 
   const parseError = useCallback(async (response: Response, fallback: string): Promise<string> => {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    return body?.error ?? fallback;
+    const contentType = response.headers.get("content-type") ?? "";
+    let raw = fallback;
+
+    if (contentType.includes("application/json")) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      raw = body?.error ?? fallback;
+    } else {
+      raw = (await response.text().catch(() => fallback)) || fallback;
+    }
+
+    return summarizeUserFacingError(raw);
   }, []);
+
+  const getUiErrorMessage = useCallback(
+    (error: unknown, fallback: string): string => {
+      if (error instanceof Error && error.message.trim()) {
+        return summarizeUserFacingError(error.message);
+      }
+
+      return summarizeUserFacingError(fallback);
+    },
+    []
+  );
 
   const refreshAuthState = useCallback(async (): Promise<AuthMeResponse> => {
     const response = await fetch("/api/auth/me");
@@ -1258,10 +1328,11 @@ export default function HomePage() {
     }
 
     const stage2 = (await response.json()) as Stage2Response;
+    const providerLabel = formatSourceProviderLabel(stage2.source.downloadProvider);
     await appendEvent(chat.id, {
       role: "assistant",
       type: "stage2",
-      text: `Stage 2 complete. Comments: ${stage2.source.totalComments}`,
+      text: providerLabel ? `Stage 2 completed. Source: ${providerLabel}.` : "Stage 2 completed.",
       data: stage2
     });
 
@@ -1337,11 +1408,11 @@ export default function HomePage() {
           data: comments
         });
       } else {
-        commentsError = await parseError(commentsResponse, "Source fetched, comments failed.");
+        commentsError = await parseError(commentsResponse, "Comments could not be loaded.");
         await appendEvent(chatId, {
           role: "assistant",
           type: "note",
-          text: `Source fetched. Comments unavailable: ${commentsError}`,
+          text: "Source fetched. Comments unavailable on this server.",
           data: {
             stage1Ready: true,
             commentsAvailable: false,
@@ -1357,8 +1428,12 @@ export default function HomePage() {
         setStatusType("ok");
         setStatus(
           commentsAvailable
-            ? `Source fetched. Comments: ${commentsCount}. Shared Codex unavailable — contact owner.`
-            : "Source fetched without comments. Video-only context is ready. Shared Codex unavailable — contact owner."
+            ? canManageCodex
+              ? "Source ready. Comments loaded. Connect Shared Codex to continue."
+              : "Source ready. Comments loaded. Shared Codex is not connected yet."
+            : canManageCodex
+              ? "Source ready without comments. Connect Shared Codex to continue."
+              : "Source ready without comments. Shared Codex is not connected yet."
         );
         return;
       }
@@ -1368,11 +1443,11 @@ export default function HomePage() {
       setStatusType("ok");
       setStatus(
         commentsAvailable
-          ? `Source fetched. Comments: ${commentsCount}. Stage 2 completed.`
+          ? "Source ready. Stage 2 completed."
           : "Source fetched without comments. Stage 2 completed."
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to fetch source.";
+      const message = getUiErrorMessage(error, "Failed to fetch source.");
       if (chatId) {
         await appendEvent(chatId, {
           role: "assistant",
@@ -1427,6 +1502,8 @@ export default function HomePage() {
         throw new Error(await parseError(response, "Unable to download video."));
       }
 
+      const provider = response.headers.get("X-Source-Provider") as "visolix" | "ytDlp" | null;
+      const providerLabel = formatSourceProviderLabel(provider);
       const blob = await response.blob();
       const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1443,14 +1520,14 @@ export default function HomePage() {
         await appendEvent(chatId, {
           role: "assistant",
           type: "download",
-          text: `Video downloaded: ${fileName}`
+          text: providerLabel ? `Video downloaded via ${providerLabel}: ${fileName}` : `Video downloaded: ${fileName}`
         });
       }
 
       setStatusType("ok");
-      setStatus("Video downloaded.");
+      setStatus(providerLabel ? `Video downloaded via ${providerLabel}.` : "Video downloaded.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Video download failed.";
+      const message = getUiErrorMessage(error, "Video download failed.");
       if (chatId) {
         await appendEvent(chatId, {
           role: "assistant",
@@ -1504,7 +1581,7 @@ export default function HomePage() {
       setStatusType("ok");
       setStatus("Comments loaded.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Comments loading failed.";
+      const message = getUiErrorMessage(error, "Comments loading failed.");
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
@@ -1540,11 +1617,12 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      await runStage2ForChat(chat, stage2Instruction, "manual");
+      const stage2 = await runStage2ForChat(chat, stage2Instruction, "manual");
+      const providerLabel = formatSourceProviderLabel(stage2.source.downloadProvider);
       setStatusType("ok");
-      setStatus("Stage 2 complete.");
+      setStatus(providerLabel ? `Stage 2 completed. Source: ${providerLabel}.` : "Stage 2 completed.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Stage 2 failed.";
+      const message = getUiErrorMessage(error, "Stage 2 failed.");
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
@@ -3003,7 +3081,6 @@ export default function HomePage() {
           draftUrl={draftUrl}
           activeUrl={activeChat?.url ?? null}
           commentsFallbackActive={stage1FetchState.ready && !stage1FetchState.commentsAvailable}
-          commentsFallbackReason={stage1FetchState.commentsError}
           isBusy={isBusy}
           fetchAvailable={fetchSourceAvailable}
           fetchBlockedReason={fetchSourceBlockedReason}
@@ -3029,7 +3106,6 @@ export default function HomePage() {
           stage2={latestStage2Event?.payload ?? null}
           stageCreatedAt={latestStage2Event?.createdAt ?? null}
           commentsAvailable={stage1FetchState.commentsAvailable}
-          commentsFallbackReason={stage1FetchState.commentsError}
           instruction={stage2Instruction}
           canRunStage2={Boolean(activeChat && codexLoggedIn && stage2RuntimeAvailable) && !isBusy}
           runBlockedReason={stage2BlockedReason}

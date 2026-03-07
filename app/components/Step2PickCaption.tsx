@@ -10,7 +10,6 @@ type Step2PickCaptionProps = {
   stage2: Stage2Response | null;
   stageCreatedAt: string | null;
   commentsAvailable?: boolean;
-  commentsFallbackReason?: string | null;
   instruction: string;
   canRunStage2: boolean;
   runBlockedReason?: string | null;
@@ -32,13 +31,22 @@ function formatDate(value: string): string {
   });
 }
 
+function formatSourceProviderLabel(provider: Stage2Response["source"]["downloadProvider"]): string | null {
+  if (provider === "visolix") {
+    return "Visolix";
+  }
+  if (provider === "ytDlp") {
+    return "Local downloader fallback";
+  }
+  return null;
+}
+
 export function Step2PickCaption({
   channelName,
   channelUsername,
   stage2,
   stageCreatedAt,
   commentsAvailable = true,
-  commentsFallbackReason,
   instruction,
   canRunStage2,
   runBlockedReason,
@@ -71,6 +79,7 @@ export function Step2PickCaption({
       null
     );
   }, [selectedOption, stage2]);
+  const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
 
   return (
     <StepWorkspace
@@ -81,7 +90,7 @@ export function Step2PickCaption({
           <header className="step-head">
             <p className="kicker">Step 2</p>
             <h2>Pick</h2>
-            <p>Run Stage 2, compare all options side by side, then choose one for render.</p>
+            <p>Generate caption options, compare them side by side, then choose one for render.</p>
             {channelName ? (
               <p className="subtle-text">
                 Channel: <strong>{channelName}</strong>
@@ -91,10 +100,12 @@ export function Step2PickCaption({
             {stageCreatedAt ? (
               <p className="subtle-text">Updated: {formatDate(stageCreatedAt)}</p>
             ) : null}
+            {sourceProviderLabel ? (
+              <p className="subtle-text">Source media: {sourceProviderLabel}</p>
+            ) : null}
             {!commentsAvailable ? (
               <p className="subtle-text">
-                Comments are unavailable for this source. Stage 2 will run from video-only context.
-                {commentsFallbackReason ? ` Reason: ${commentsFallbackReason}` : ""}
+                Comments are unavailable on this server. Stage 2 is using video-only context.
               </p>
             ) : null}
           </header>
@@ -121,7 +132,7 @@ export function Step2PickCaption({
                 aria-busy={isRunning}
                 title={!canRunStage2 ? runBlockedReason ?? undefined : undefined}
               >
-                {isRunning ? "Running Stage 2..." : "Run Stage 2"}
+                {isRunning ? "Generating..." : "Generate options"}
               </button>
             </div>
             {!canRunStage2 && runBlockedReason ? (

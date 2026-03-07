@@ -293,13 +293,19 @@ select.text-input:focus {
   background: color-mix(in srgb, var(--surface) 92%, black);
   box-shadow: var(--shadow);
   padding: 14px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
   gap: 12px;
-  align-items: flex-start;
+  align-items: start;
 }
 
-.topbar-left {
+.topbar-primary {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.topbar-brand-row {
   min-width: 0;
   display: flex;
   align-items: flex-start;
@@ -388,7 +394,7 @@ select.text-input:focus {
 
 .topbar-brand h1 {
   margin: 0;
-  font-size: 32px;
+  font-size: clamp(28px, 4vw, 38px);
   letter-spacing: -0.03em;
   line-height: 1.02;
 }
@@ -405,7 +411,7 @@ select.text-input:focus {
 
 .channel-switcher {
   min-width: 0;
-  width: min(480px, 40vw);
+  width: min(560px, 100%);
   display: grid;
   gap: 6px;
 }
@@ -422,12 +428,76 @@ select.text-input:focus {
   flex: 1 1 260px;
 }
 
-.topbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
+.topbar-utility {
+  min-width: 0;
+  display: grid;
   gap: 8px;
+  align-content: start;
+}
+
+.workspace-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 90%, black);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.workspace-card-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.workspace-kicker {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+}
+
+.workspace-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workspace-card-title-row strong {
+  font-size: 16px;
+}
+
+.workspace-role {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text-soft);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.workspace-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.codex-control-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 88%, black);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.codex-control-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .codex-device-card {
@@ -451,6 +521,11 @@ select.text-input:focus {
 
 .codex-device-head strong {
   font-size: 14px;
+}
+
+.codex-device-head p {
+  max-width: 34ch;
+  margin: 4px 0 0;
 }
 
 .codex-device-row {
@@ -503,13 +578,13 @@ select.text-input:focus {
 }
 
 .status-chip {
-  height: 34px;
+  height: 30px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 0 12px;
+  padding: 0 10px;
   display: inline-flex;
   align-items: center;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
@@ -521,12 +596,6 @@ select.text-input:focus {
 
 .status-chip.offline {
   background: rgba(255, 255, 255, 0.03);
-}
-
-.topbar-identity {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 .auth-page {
@@ -2001,10 +2070,10 @@ select.text-input:focus {
   }
 
   .app-topbar {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
-  .topbar-left {
+  .topbar-brand-row {
     width: 100%;
     flex-wrap: wrap;
   }
@@ -2017,13 +2086,8 @@ select.text-input:focus {
     width: 100%;
   }
 
-  .topbar-actions {
+  .workspace-card-actions {
     justify-content: flex-start;
-  }
-
-  .codex-device-card {
-    width: 100%;
-    margin-left: 0;
   }
 
   .wizard-stepper {
@@ -2147,9 +2211,23 @@ select.text-input:focus {
 }
 
 @media (max-width: 760px) {
-  .topbar-left {
+  .topbar-brand-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .workspace-card-actions,
+  .codex-control-actions,
+  .codex-device-actions {
+    align-items: stretch;
+  }
+
+  .workspace-card-actions .btn,
+  .codex-control-actions .btn,
+  .codex-device-actions .btn,
+  .codex-device-link {
+    flex: 1 1 100%;
+    justify-content: center;
   }
 
   .topbar-brand h1 {
