@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { normalizeComments, sortCommentsByPopularity } from "../../../lib/comments";
-import { createYtDlpAuthContext, getYtDlpError, isSupportedUrl } from "../../../lib/ytdlp";
+import {
+  createYtDlpAuthContext,
+  extractYtDlpErrorFromUnknown,
+  getYtDlpError,
+  isSupportedUrl
+} from "../../../lib/ytdlp";
 import { requireRuntimeTool } from "../../../lib/runtime-capabilities";
 
 const execFileAsync = promisify(execFile);
@@ -77,15 +82,14 @@ export async function POST(request: Request): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
-    if (error instanceof Error && error.message.toLowerCase().includes("yt-dlp")) {
-      return Response.json({ error: error.message }, { status: 503 });
+    const ytDlpError = extractYtDlpErrorFromUnknown(error);
+    if (ytDlpError) {
+      return Response.json({ error: ytDlpError }, { status: 503 });
     }
-    const stderr =
-      typeof error === "object" && error && "stderr" in error
-        ? String((error as { stderr?: string }).stderr ?? "")
-        : "";
-
-    return Response.json({ error: getYtDlpError(stderr) }, { status: 500 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Не удалось получить комментарии." },
+      { status: 500 }
+    );
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

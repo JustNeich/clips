@@ -284,11 +284,55 @@ function getUserWithPasswordByEmail(email: string): (UserRecord & { passwordHash
   };
 }
 
+function withoutPasswordHash(user: UserRecord & { passwordHash: string }): UserRecord {
+  const { passwordHash: _passwordHash, ...safeUser } = user;
+  return safeUser;
+}
+
+function getPendingInviteByEmail(
+  workspaceId: string,
+  email: string
+): { id: string; expiresAt: string } | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT id, expires_at
+       FROM workspace_invites
+       WHERE workspace_id = ? AND email = ? AND accepted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 1`
+    )
+    .get(workspaceId, normalizeEmail(email)) as Record<string, unknown> | undefined;
+  if (!row) {
+    return null;
+  }
+  if (new Date(String(row.expires_at)).getTime() <= Date.now()) {
+    return null;
+  }
+  return {
+    id: String(row.id),
+    expiresAt: String(row.expires_at)
+  };
+}
+
 export function getMembership(userId: string, workspaceId: string): WorkspaceMemberRecord | null {
   const db = getDb();
   const row = db
     .prepare("SELECT * FROM workspace_members WHERE user_id = ? AND workspace_id = ?")
     .get(userId, workspaceId) as Record<string, unknown> | undefined;
+  return row ? mapMember(row) : null;
+}
+
+export function getWorkspaceMember(
+  workspaceId: string,
+  memberOrUserId: string
+): WorkspaceMemberRecord | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT * FROM workspace_members WHERE workspace_id = ? AND (user_id = ? OR id = ?) LIMIT 1"
+    )
+    .get(workspaceId, memberOrUserId, memberOrUserId) as Record<string, unknown> | undefined;
   return row ? mapMember(row) : null;
 }
 
@@ -490,6 +534,9 @@ export async function createUserByInvite(input: {
   userAgent?: string | null;
   ipAddress?: string | null;
 }): Promise<AuthContext & { sessionToken: string }> {
+  if (input.role === "owner") {
+    throw new Error("Owner invite is not supported.");
+  }
   if (getUserWithPasswordByEmail(input.email)) {
     throw new Error("Пользователь с таким email уже существует.");
   }
@@ -591,7 +638,7 @@ export async function loginWithPassword(input: {
 
   return {
     workspace,
-    user: candidate,
+    user: withoutPasswordHash(candidate),
     membership,
     session: session.record,
     sessionToken: session.token
@@ -669,6 +716,10 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
     .get(hashToken(sessionToken)) as Record<string, unknown> | undefined;
 
   if (!row) {
+    return null;
+  }
+  if (String(row.user_status) !== "active") {
+    db.prepare("DELETE FROM auth_sessions WHERE id = ?").run(String(row.id));
     return null;
   }
   if (new Date(String(row.expires_at)).getTime() <= Date.now()) {
@@ -865,16 +916,11 @@ export function updateWorkspaceMemberRole(
   role: AppRole
 ): WorkspaceMemberRecord {
   const db = getDb();
-  const row = db
-    .prepare(
-      "SELECT * FROM workspace_members WHERE workspace_id = ? AND (user_id = ? OR id = ?) LIMIT 1"
-    )
-    .get(workspaceId, memberOrUserId, memberOrUserId) as Record<string, unknown> | undefined;
-  const current = row ? mapMember(row) : null;
+  const current = getWorkspaceMember(workspaceId, memberOrUserId);
   if (!current) {
     throw new Error("Member not found.");
   }
-  if (current.role === "owner") {
+  if (current.role === "owner" || role === "owner") {
     throw new Error("Owner role cannot be changed.");
   }
   const updatedAt = nowIso();
@@ -896,6 +942,15 @@ export async function createInvite(input: {
   role: AppRole;
   createdByUserId: string;
 }): Promise<{ id: string; role: AppRole; email: string; token: string; expiresAt: string }> {
+  if (input.role === "owner") {
+    throw new Error("Owner invite is not supported.");
+  }
+  if (getUserWithPasswordByEmail(input.email)) {
+    throw new Error("Пользователь с таким email уже существует.");
+  }
+  if (getPendingInviteByEmail(input.workspaceId, input.email)) {
+    throw new Error("Для этого email уже существует активный invite.");
+  }
   const token = randomBytes(24).toString("hex");
   const record = {
     id: newId(),
@@ -951,6 +1006,168 @@ export function consumeInvite(token: string): {
     workspaceId: String(row.workspace_id),
     email: String(row.email),
     role: String(row.role) as AppRole
+  };
+}
+
+export function canManageInviteRole(actorRole: AppRole, targetRole: AppRole): boolean {
+  if (actorRole === "owner") {
+    return targetRole === "manager" || targetRole === "redactor_limited";
+  }
+  if (actorRole === "manager") {
+    return targetRole === "redactor_limited";
+  }
+  return false;
+}
+
+export function canManageMemberRoleTransition(
+  actorRole: AppRole,
+  currentRole: AppRole,
+  nextRole: AppRole
+): boolean {
+  if (currentRole === "owner" || nextRole === "owner") {
+    return false;
+  }
+  if (actorRole === "owner") {
+    return true;
+  }
+  if (actorRole === "manager") {
+    const managerAllowedCurrent = currentRole === "redactor" || currentRole === "redactor_limited";
+    const managerAllowedNext = nextRole === "redactor" || nextRole === "redactor_limited";
+    return managerAllowedCurrent && managerAllowedNext;
+  }
+  return false;
+}
+
+export async function acceptInviteRegistration(input: {
+  token: string;
+  password: string;
+  displayName: string;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}): Promise<AuthContext & { sessionToken: string }> {
+  const tokenHash = hashToken(input.token.trim());
+  const workspace = getWorkspace();
+  if (!workspace) {
+    throw new Error("Workspace is not initialized.");
+  }
+
+  const preview = getDb()
+    .prepare("SELECT * FROM workspace_invites WHERE token_hash = ? AND accepted_at IS NULL")
+    .get(tokenHash) as Record<string, unknown> | undefined;
+  if (!preview) {
+    throw new Error("Invite not found or expired.");
+  }
+  if (new Date(String(preview.expires_at)).getTime() <= Date.now()) {
+    throw new Error("Invite not found or expired.");
+  }
+
+  const inviteEmail = String(preview.email);
+  if (getUserWithPasswordByEmail(inviteEmail)) {
+    throw new Error("Пользователь с таким email уже существует.");
+  }
+
+  const passwordHash = await hashPassword(input.password);
+  const now = nowIso();
+  const userId = newId();
+  const role = String(preview.role) as AppRole;
+  if (role === "owner") {
+    throw new Error("Owner invite is not supported.");
+  }
+
+  const user: UserRecord = {
+    id: userId,
+    email: inviteEmail,
+    displayName: input.displayName.trim() || role,
+    status: "active",
+    createdAt: now,
+    updatedAt: now
+  };
+  const membership: WorkspaceMemberRecord = {
+    id: newId(),
+    workspaceId: String(preview.workspace_id),
+    userId,
+    role,
+    createdAt: now,
+    updatedAt: now
+  };
+  const sessionToken = randomBytes(32).toString("hex");
+  const session: AuthSessionRecord = {
+    id: newId(),
+    workspaceId: membership.workspaceId,
+    userId,
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+    createdAt: now,
+    lastSeenAt: now,
+    userAgent: input.userAgent ?? null,
+    ipAddress: input.ipAddress ?? null
+  };
+
+  runInTransaction((db) => {
+    const inviteRow = db
+      .prepare("SELECT * FROM workspace_invites WHERE token_hash = ? AND accepted_at IS NULL")
+      .get(tokenHash) as Record<string, unknown> | undefined;
+    if (!inviteRow) {
+      throw new Error("Invite not found or expired.");
+    }
+    if (new Date(String(inviteRow.expires_at)).getTime() <= Date.now()) {
+      throw new Error("Invite not found or expired.");
+    }
+    const existingUser = db
+      .prepare("SELECT id FROM users WHERE email = ? LIMIT 1")
+      .get(inviteEmail) as Record<string, unknown> | undefined;
+    if (existingUser) {
+      throw new Error("Пользователь с таким email уже существует.");
+    }
+
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(
+      user.id,
+      user.email,
+      passwordHash,
+      user.displayName,
+      user.status,
+      user.createdAt,
+      user.updatedAt
+    );
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(
+      membership.id,
+      membership.workspaceId,
+      membership.userId,
+      membership.role,
+      membership.createdAt,
+      membership.updatedAt
+    );
+    db.prepare(
+      "INSERT INTO auth_sessions (id, workspace_id, user_id, session_token_hash, expires_at, created_at, last_seen_at, user_agent, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(
+      session.id,
+      session.workspaceId,
+      session.userId,
+      hashToken(sessionToken),
+      session.expiresAt,
+      session.createdAt,
+      session.lastSeenAt,
+      session.userAgent,
+      session.ipAddress
+    );
+    db.prepare("UPDATE workspace_invites SET accepted_at = ? WHERE id = ?").run(
+      now,
+      String(inviteRow.id)
+    );
+    db.prepare(
+      "DELETE FROM workspace_invites WHERE workspace_id = ? AND email = ? AND accepted_at IS NULL AND id != ?"
+    ).run(membership.workspaceId, inviteEmail, String(inviteRow.id));
+  });
+
+  return {
+    workspace,
+    user,
+    membership,
+    session,
+    sessionToken
   };
 }
 

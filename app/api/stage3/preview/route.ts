@@ -9,7 +9,7 @@ import {
   probeVideoDurationSeconds,
   sanitizeClipDuration
 } from "../../../../lib/stage3-media-agent";
-import { getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
+import { extractYtDlpErrorFromUnknown, getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChannelAssetById } from "../../../../lib/chat-history";
@@ -372,12 +372,9 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof Response) {
       return error;
     }
-    const stderr =
-      typeof error === "object" && error && "stderr" in error
-        ? String((error as { stderr?: string }).stderr ?? "")
-        : "";
-    if (stderr) {
-      return Response.json({ error: getYtDlpError(stderr) }, { status: 500 });
+    const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
+    if (ytdlpMessage) {
+      return Response.json({ error: ytdlpMessage }, { status: 503 });
     }
 
     return Response.json(

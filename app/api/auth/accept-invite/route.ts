@@ -1,5 +1,5 @@
 import { setAppSessionCookie } from "../../../../lib/auth/cookies";
-import { consumeInvite, createUserByInvite, getRequestMetadata } from "../../../../lib/team-store";
+import { acceptInviteRegistration, getRequestMetadata } from "../../../../lib/team-store";
 import { asErrorResponse } from "../../../../lib/http";
 
 export const runtime = "nodejs";
@@ -18,17 +18,11 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const invite = consumeInvite(token);
-    if (!invite) {
-      return Response.json({ error: "Invite not found or expired." }, { status: 404 });
-    }
     const meta = getRequestMetadata(request);
-    const result = await createUserByInvite({
-      workspaceId: invite.workspaceId,
-      role: invite.role,
-      email: invite.email,
+    const result = await acceptInviteRegistration({
+      token,
       password: body.password,
-      displayName: body.displayName?.trim() || invite.role,
+      displayName: body.displayName?.trim() || "User",
       ...meta
     });
     await setAppSessionCookie(result.sessionToken, new Date(result.session.expiresAt));

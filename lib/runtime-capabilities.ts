@@ -1,4 +1,5 @@
 import { resolveExecutableFromCandidates } from "./command-path";
+import { isFastSaverConfigured } from "./source-acquisition";
 
 export type RuntimeToolCapability = {
   available: boolean;
@@ -13,6 +14,7 @@ export type RuntimeCapabilities = {
   };
   tools: {
     codex: RuntimeToolCapability;
+    fastSaver: RuntimeToolCapability;
     ytDlp: RuntimeToolCapability;
     ffmpeg: RuntimeToolCapability;
     ffprobe: RuntimeToolCapability;
@@ -63,6 +65,10 @@ function ytDlpUnavailableMessage(): string {
   return "yt-dlp не найден на сервере.";
 }
 
+function fastSaverUnavailableMessage(): string {
+  return "FastSaver API key не задан. Добавьте FASTSAVER_API_KEY, чтобы source/mp4 скачивались через hosted provider без локального yt-dlp.";
+}
+
 function ffmpegUnavailableMessage(tool: "ffmpeg" | "ffprobe"): string {
   if (process.env.VERCEL === "1") {
     return `${tool} недоступен на этом Vercel deployment. Media pipeline Step 2/Step 3 не сможет обработать видео.`;
@@ -92,16 +98,34 @@ async function inspectTool(
   };
 }
 
+async function inspectFastSaver(): Promise<RuntimeToolCapability> {
+  if (!isFastSaverConfigured()) {
+    return {
+      available: false,
+      resolvedPath: null,
+      message: fastSaverUnavailableMessage()
+    };
+  }
+
+  return {
+    available: true,
+    resolvedPath: process.env.FASTSAVER_BASE_URL?.trim() || "https://api.fastsaver.io/v1",
+    message: null
+  };
+}
+
 export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
-  const [codex, ytDlp, ffmpeg, ffprobe] = await Promise.all([
+  const [codex, fastSaver, ytDlp, ffmpeg, ffprobe] = await Promise.all([
     inspectTool(CODEX_CANDIDATES, codexUnavailableMessage()),
+    inspectFastSaver(),
     inspectTool(YTDLP_CANDIDATES, ytDlpUnavailableMessage()),
     inspectTool(FFMPEG_CANDIDATES, ffmpegUnavailableMessage("ffmpeg")),
     inspectTool(FFPROBE_CANDIDATES, ffmpegUnavailableMessage("ffprobe"))
   ]);
 
-  const stage2 = codex.available && ytDlp.available && ffmpeg.available && ffprobe.available;
-  const stage3 = ytDlp.available && ffmpeg.available && ffprobe.available;
+  const sourceAcquisitionReady = fastSaver.available || ytDlp.available;
+  const stage2 = codex.available && sourceAcquisitionReady && ffmpeg.available && ffprobe.available;
+  const stage3 = sourceAcquisitionReady && ffmpeg.available && ffprobe.available;
 
   return {
     deployment: {
@@ -110,13 +134,14 @@ export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
     },
     tools: {
       codex,
+      fastSaver,
       ytDlp,
       ffmpeg,
       ffprobe
     },
     features: {
-      fetchSource: ytDlp.available,
-      downloadSource: ytDlp.available,
+      fetchSource: sourceAcquisitionReady,
+      downloadSource: sourceAcquisitionReady,
       loadComments: ytDlp.available,
       sharedCodex: codex.available,
       stage2,

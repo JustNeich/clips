@@ -16,7 +16,7 @@ import {
   sanitizeClipDuration,
   sanitizeFocusY
 } from "../../../../lib/stage3-media-agent";
-import { getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
+import { extractYtDlpErrorFromUnknown, getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChannelAssetById } from "../../../../lib/chat-history";
@@ -99,11 +99,12 @@ function resolveFunction(sources: unknown[], key: string, optional = false): Asy
 function parseRenderError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
+  const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
   if (lower.includes("ffmpeg")) {
     return "Ошибка ffmpeg/Remotion rendering. Проверьте ffmpeg и remotion runtime.";
   }
-  if (lower.includes("yt-dlp")) {
-    return getYtDlpError(message);
+  if (ytdlpMessage) {
+    return ytdlpMessage;
   }
   if (lower.includes("remotion")) {
     return message;
@@ -473,12 +474,9 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof Response) {
       return error;
     }
-    const stderr =
-      typeof error === "object" && error && "stderr" in error
-        ? String((error as { stderr?: string }).stderr ?? "")
-        : "";
-    if (stderr) {
-      return Response.json({ error: getYtDlpError(stderr) }, { status: 500 });
+    const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
+    if (ytdlpMessage) {
+      return Response.json({ error: ytdlpMessage }, { status: 503 });
     }
     return Response.json({ error: parseRenderError(error) }, { status: 500 });
   } finally {

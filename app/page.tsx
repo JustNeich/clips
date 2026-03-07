@@ -610,17 +610,31 @@ export default function HomePage() {
   const downloadSourceAvailable = runtimeCapabilities?.features.downloadSource ?? true;
   const sharedCodexAvailable = runtimeCapabilities?.features.sharedCodex ?? true;
   const stage2RuntimeAvailable = runtimeCapabilities?.features.stage2 ?? true;
-  const fetchSourceBlockedReason = runtimeCapabilities?.tools.ytDlp.message ?? null;
-  const downloadSourceBlockedReason = runtimeCapabilities?.tools.ytDlp.message ?? null;
   const codexBlockedReason = runtimeCapabilities?.tools.codex.message ?? null;
+  const sourceAcquisitionBlockedReason = runtimeCapabilities
+    ? [
+        runtimeCapabilities.tools.fastSaver.message,
+        runtimeCapabilities.tools.ytDlp.message
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(" ")
+    : null;
+  const fetchSourceBlockedReason = sourceAcquisitionBlockedReason;
+  const downloadSourceBlockedReason = sourceAcquisitionBlockedReason;
   const effectiveCodexBlockedReason = codexRunning
     ? "Device auth already started. Complete it or cancel it first."
     : codexBlockedReason;
   const stage2BlockedReason =
     !sharedCodexAvailable
       ? codexBlockedReason
+      : !codexLoggedIn
+        ? codexRunning
+          ? "Shared Codex device auth is in progress. Complete the browser login, then press Refresh."
+          : canManageCodex
+            ? "Shared Codex is not connected yet. Press Connect, complete device auth, then Refresh."
+            : "Shared Codex unavailable — contact owner."
       : !stage2RuntimeAvailable
-        ? runtimeCapabilities?.tools.ytDlp.message ??
+        ? sourceAcquisitionBlockedReason ??
           runtimeCapabilities?.tools.ffmpeg.message ??
           runtimeCapabilities?.tools.ffprobe.message ??
           "Stage 2 runtime is unavailable on this deployment."
@@ -1344,7 +1358,7 @@ export default function HomePage() {
         setStatus(
           commentsAvailable
             ? `Source fetched. Comments: ${commentsCount}. Shared Codex unavailable — contact owner.`
-            : `Source fetched without comments. ${commentsError ?? "Comments are temporarily unavailable."} Shared Codex unavailable — contact owner.`
+            : "Source fetched without comments. Video-only context is ready. Shared Codex unavailable — contact owner."
         );
         return;
       }

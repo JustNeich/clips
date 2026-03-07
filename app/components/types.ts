@@ -448,6 +448,7 @@ export type RuntimeCapabilitiesResponse = {
   };
   tools: {
     codex: RuntimeToolCapability;
+    fastSaver: RuntimeToolCapability;
     ytDlp: RuntimeToolCapability;
     ffmpeg: RuntimeToolCapability;
     ffprobe: RuntimeToolCapability;

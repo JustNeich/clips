@@ -110,7 +110,7 @@ export function getYtDlpError(stderr: string): string {
     normalized.includes("cookies-from-browser") ||
     normalized.includes("cookies for the authentication")
   ) {
-    return "YouTube требует cookies. Задайте на сервере YTDLP_COOKIES_PATH или YTDLP_COOKIES и повторите.";
+    return "YouTube отклонил запрос на этом сервере (anti-bot/auth). Если YTDLP_COOKIES уже заданы, проблема может быть в IP или репутации runtime.";
   }
   if (normalized.includes("login")) {
     return "Источник требует авторизацию. Публичные ссылки работают лучше.";
@@ -126,4 +126,39 @@ export function getYtDlpError(stderr: string): string {
   }
 
   return "Не удалось обработать ссылку.";
+}
+
+const YT_DLP_ERROR_SIGNALS = [
+  "yt-dlp",
+  "[youtube]",
+  "unsupported url",
+  "sign in to confirm you're not a bot",
+  "sign in to confirm you’re not a bot",
+  "cookies-from-browser",
+  "cookies for the authentication",
+  "ffmpeg is not installed",
+  "requested format is not available",
+  "private video",
+  "video unavailable",
+  "not found"
+];
+
+export function extractYtDlpErrorFromUnknown(error: unknown): string | null {
+  const stderr =
+    typeof error === "object" && error && "stderr" in error
+      ? String((error as { stderr?: string }).stderr ?? "")
+      : "";
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  const combined = [stderr, message].filter(Boolean).join("\n").trim();
+
+  if (!combined) {
+    return null;
+  }
+
+  const normalized = combined.toLowerCase();
+  if (!YT_DLP_ERROR_SIGNALS.some((signal) => normalized.includes(signal))) {
+    return null;
+  }
+
+  return getYtDlpError(combined);
 }

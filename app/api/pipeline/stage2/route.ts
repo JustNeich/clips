@@ -21,11 +21,10 @@ import {
   validateStage2Output
 } from "../../../../lib/stage2";
 import {
-  createYtDlpAuthContext,
-  getYtDlpError,
-  isSupportedUrl,
-  sanitizeFileName
-} from "../../../../lib/ytdlp";
+  fetchOptionalYtDlpInfo,
+  downloadSourceMedia
+} from "../../../../lib/source-acquisition";
+import { extractYtDlpErrorFromUnknown, isSupportedUrl, sanitizeFileName } from "../../../../lib/ytdlp";
 import { getChannelById, getChatById, getDefaultChannel } from "../../../../lib/chat-history";
 import {
   requireAuth,
@@ -51,64 +50,21 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   videoSizeBytes: number;
   commentsExtractionFallbackUsed: boolean;
 }> {
-  const outputTemplate = path.join(tmpDir, "video.%(ext)s");
-  const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
-  const baseArgs = [
-    ...ytDlpAuth.args,
-    "--no-playlist",
-    "--no-warnings",
-    "--write-info-json",
-    "--merge-output-format",
-    "mp4",
-    "-f",
-    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-    "-o",
-    outputTemplate,
-    url
-  ];
-
-  const runDownload = async (withComments: boolean): Promise<void> => {
-    const args = withComments
-      ? [...baseArgs.slice(0, 3), "--write-comments", ...baseArgs.slice(3)]
-      : baseArgs;
-    await execFileAsync("yt-dlp", args, {
-      timeout: 5 * 60 * 1000,
-      maxBuffer: 1024 * 1024 * 16
-    });
+  const downloaded = await downloadSourceMedia(url, tmpDir);
+  const optionalInfo = await fetchOptionalYtDlpInfo(url, tmpDir);
+  const title = optionalInfo.infoJson?.title?.trim() || downloaded.title?.trim() || "video";
+  const infoJson: VideoInfoJson = {
+    title,
+    comments: optionalInfo.infoJson?.comments
   };
 
-  let commentsExtractionFallbackUsed = false;
-
-  try {
-    await runDownload(true);
-  } catch {
-    commentsExtractionFallbackUsed = true;
-    await runDownload(false);
-  }
-
-  const files = await fs.readdir(tmpDir);
-  const mp4File = files.find((file) => file.endsWith(".mp4"));
-  const infoJsonFile = files.find((file) => file.endsWith(".info.json"));
-
-  if (!mp4File) {
-    throw new Error("Файл mp4 не был создан.");
-  }
-  if (!infoJsonFile) {
-    throw new Error("Не удалось получить info.json после скачивания.");
-  }
-
-  const videoPath = path.join(tmpDir, mp4File);
-  const infoJsonPath = path.join(tmpDir, infoJsonFile);
-  const infoJson = JSON.parse(await fs.readFile(infoJsonPath, "utf-8")) as VideoInfoJson;
-  const videoStat = await fs.stat(videoPath);
-
   return {
-    videoPath,
-    videoFileName: `${sanitizeFileName(path.parse(mp4File).name)}.mp4`,
-    title: infoJson.title ?? "video",
+    videoPath: downloaded.filePath,
+    videoFileName: `${sanitizeFileName(downloaded.fileName)}.mp4`,
+    title,
     infoJson,
-    videoSizeBytes: videoStat.size,
-    commentsExtractionFallbackUsed
+    videoSizeBytes: downloaded.videoSizeBytes,
+    commentsExtractionFallbackUsed: optionalInfo.commentsExtractionFallbackUsed
   };
 }
 
@@ -177,6 +133,7 @@ async function extractFrameImages(
 function getPipelineErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
+  const ytDlpError = extractYtDlpErrorFromUnknown(error);
 
   if (lower.includes("codex")) {
     return message;
@@ -184,8 +141,8 @@ function getPipelineErrorMessage(error: unknown): string {
   if (lower.includes("ffmpeg") || lower.includes("ffprobe")) {
     return "На сервере не установлен ffmpeg/ffprobe. Установите ffmpeg и повторите.";
   }
-  if (lower.includes("yt-dlp")) {
-    return "Ошибка yt-dlp при скачивании видео или комментариев.";
+  if (ytDlpError) {
+    return ytDlpError;
   }
 
   return message || "Пайплайн Stage 2 завершился с ошибкой.";
@@ -218,7 +175,6 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     await Promise.all([
-      requireRuntimeTool("ytDlp"),
       requireRuntimeTool("ffmpeg"),
       requireRuntimeTool("ffprobe"),
       requireRuntimeTool("codex")
@@ -383,12 +339,7 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof Response) {
       return error;
     }
-    const stderr =
-      typeof error === "object" && error && "stderr" in error
-        ? String((error as { stderr?: string }).stderr ?? "")
-        : "";
-
-    const ytdlpMessage = stderr ? getYtDlpError(stderr) : null;
+    const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
     const errorMessage = ytdlpMessage ?? getPipelineErrorMessage(error);
 
     return Response.json({ error: errorMessage }, { status: 500 });

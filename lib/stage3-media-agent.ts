@@ -2,9 +2,10 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { downloadSourceMedia } from "./source-acquisition";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { getTemplateComputed } from "./stage3-template";
-import { createYtDlpAuthContext, sanitizeFileName } from "./ytdlp";
+import { sanitizeFileName } from "./ytdlp";
 
 const execFileAsync = promisify(execFile);
 
@@ -123,41 +124,10 @@ export async function downloadSourceVideo(
   rawUrl: string,
   tmpDir: string
 ): Promise<{ filePath: string; fileName: string }> {
-  const outputTemplate = path.join(tmpDir, "source.%(ext)s");
-  const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
-  const args = [
-    ...ytDlpAuth.args,
-    "--no-playlist",
-    "--no-warnings",
-    "--merge-output-format",
-    "mp4",
-    "-f",
-    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-    "-o",
-    outputTemplate,
-    rawUrl
-  ];
-
-  await execFileAsync("yt-dlp", args, {
-    timeout: 5 * 60_000,
-    maxBuffer: 1024 * 1024 * 16
-  });
-
-  const files = await fs.readdir(tmpDir);
-  const mp4File = files.find((file) => file.endsWith(".mp4"));
-  if (!mp4File) {
-    throw new Error("Не удалось скачать mp4 из источника.");
-  }
-
-  const downloadedPath = path.join(tmpDir, mp4File);
-  const canonicalPath = path.join(tmpDir, "source.mp4");
-  if (downloadedPath !== canonicalPath) {
-    await fs.copyFile(downloadedPath, canonicalPath);
-  }
-
+  const downloaded = await downloadSourceMedia(rawUrl, tmpDir);
   return {
-    filePath: canonicalPath,
-    fileName: sanitizeFileName(path.parse(mp4File).name)
+    filePath: downloaded.filePath,
+    fileName: sanitizeFileName(downloaded.fileName)
   };
 }
 

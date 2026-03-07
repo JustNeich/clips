@@ -20,6 +20,12 @@ services:
         sync: false
       - key: YTDLP_COOKIES_PATH
         sync: false
+      - key: FASTSAVER_API_KEY
+        sync: false
+      - key: FASTSAVER_BASE_URL
+        value: https://api.fastsaver.io/v1
+      - key: FASTSAVER_YOUTUBE_FORMAT_PRIORITY
+        value: 1080p,720p,480p,240p,144p
       - key: CODEX_STAGE2_MODEL
         value: gpt-5.2
       - key: CODEX_STAGE2_REASONING_EFFORT

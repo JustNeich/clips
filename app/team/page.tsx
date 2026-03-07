@@ -89,6 +89,27 @@ export default function TeamPage() {
     }
   };
 
+  const inviteOptions: AppRole[] =
+    auth?.membership.role === "owner" ? ["manager", "redactor_limited"] : ["redactor_limited"];
+
+  const getAssignableRoles = (memberRole: AppRole): AppRole[] => {
+    if (!auth) {
+      return [];
+    }
+    if (memberRole === "owner") {
+      return ["owner"];
+    }
+    if (auth.membership.role === "owner") {
+      return ["manager", "redactor", "redactor_limited"];
+    }
+    if (auth.membership.role === "manager") {
+      return memberRole === "redactor" || memberRole === "redactor_limited"
+        ? ["redactor", "redactor_limited"]
+        : [memberRole];
+    }
+    return [memberRole];
+  };
+
   if (auth && !auth.effectivePermissions.canManageMembers) {
     return (
       <main className="auth-page">
@@ -127,15 +148,20 @@ export default function TeamPage() {
                   <select
                     className="text-input"
                     value={member.role}
-                    disabled={busy || member.role === "owner"}
+                    disabled={
+                      busy ||
+                      member.role === "owner" ||
+                      getAssignableRoles(member.role).length <= 1
+                    }
                     onChange={(event) => {
                       void updateRole(member.id, event.target.value as AppRole);
                     }}
                   >
-                    <option value="owner">owner</option>
-                    <option value="manager">manager</option>
-                    <option value="redactor">redactor</option>
-                    <option value="redactor_limited">redactor_limited</option>
+                    {getAssignableRoles(member.role).map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </li>
@@ -157,9 +183,11 @@ export default function TeamPage() {
               value={inviteRole}
               onChange={(event) => setInviteRole(event.target.value as AppRole)}
             >
-              {auth?.membership.role === "owner" ? <option value="manager">manager</option> : null}
-              <option value="redactor">redactor</option>
-              <option value="redactor_limited">redactor_limited</option>
+              {inviteOptions.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
             </select>
             <button type="button" className="btn btn-primary" onClick={() => void createInvite()}>
               Create invite

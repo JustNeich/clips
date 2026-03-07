@@ -1,6 +1,6 @@
 import { requireAuth, requireChannelAccessManage, requireChannelVisibility } from "../../../../../lib/auth/guards";
 import { listChannelAccess, revokeChannelAccess, setChannelAccess } from "../../../../../lib/channel-access";
-import { getUserById } from "../../../../../lib/team-store";
+import { getMembership, getUserById } from "../../../../../lib/team-store";
 import { asErrorResponse } from "../../../../../lib/http";
 
 export const runtime = "nodejs";
@@ -46,9 +46,15 @@ export async function PUT(
     const revokes = Array.isArray(body?.revokeUserIds) ? body?.revokeUserIds : [];
 
     for (const userId of grants) {
-      if (userId?.trim()) {
-        setChannelAccess({ channelId: id, userId: userId.trim(), grantedByUserId: auth.user.id });
+      const normalizedUserId = userId?.trim();
+      if (!normalizedUserId) {
+        continue;
       }
+      const membership = getMembership(normalizedUserId, auth.workspace.id);
+      if (!membership) {
+        return Response.json({ error: "Cannot grant access to a user outside this workspace." }, { status: 400 });
+      }
+      setChannelAccess({ channelId: id, userId: normalizedUserId, grantedByUserId: auth.user.id });
     }
     for (const userId of revokes) {
       if (userId?.trim()) {

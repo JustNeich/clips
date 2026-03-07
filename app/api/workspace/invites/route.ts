@@ -1,5 +1,5 @@
 import { requireAuth } from "../../../../lib/auth/guards";
-import { createInvite, validateInviteRole } from "../../../../lib/team-store";
+import { canManageInviteRole, createInvite, validateInviteRole } from "../../../../lib/team-store";
 import { asErrorResponse } from "../../../../lib/http";
 
 export const runtime = "nodejs";
@@ -20,11 +20,7 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const auth = await requireAuth();
-    if (auth.membership.role === "manager") {
-      if (role !== "redactor_limited" && role !== "redactor") {
-        return Response.json({ error: "Managers cannot invite this role." }, { status: 403 });
-      }
-    } else if (auth.membership.role !== "owner") {
+    if (!canManageInviteRole(auth.membership.role, role)) {
       return Response.json({ error: "Forbidden." }, { status: 403 });
     }
 

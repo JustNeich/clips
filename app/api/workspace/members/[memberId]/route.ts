@@ -1,5 +1,10 @@
 import { requireAuth } from "../../../../../lib/auth/guards";
-import { updateWorkspaceMemberRole, validateInviteRole } from "../../../../../lib/team-store";
+import {
+  canManageMemberRoleTransition,
+  getWorkspaceMember,
+  updateWorkspaceMemberRole,
+  validateInviteRole
+} from "../../../../../lib/team-store";
 import { asErrorResponse } from "../../../../../lib/http";
 
 export const runtime = "nodejs";
@@ -21,12 +26,14 @@ export async function PATCH(
   try {
     const auth = await requireAuth();
     const { memberId } = await context.params;
+    const currentMember = getWorkspaceMember(auth.workspace.id, memberId);
+    if (!currentMember) {
+      return Response.json({ error: "Member not found." }, { status: 404 });
+    }
 
-    if (auth.membership.role === "manager") {
-      if (role !== "redactor" && role !== "redactor_limited") {
-        return Response.json({ error: "Managers can only manage redactor roles." }, { status: 403 });
-      }
-    } else if (auth.membership.role !== "owner") {
+    if (
+      !canManageMemberRoleTransition(auth.membership.role, currentMember.role, role)
+    ) {
       return Response.json({ error: "Forbidden." }, { status: 403 });
     }
 
