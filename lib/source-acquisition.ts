@@ -235,66 +235,75 @@ async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse>
     throw new Error("Visolix API key не задан. Добавьте VISOLIX_API_KEY на сервере.");
   }
 
-  const normalizedUrl = normalizeUrlForVisolix(rawUrl);
-  const platform = deriveVisolixPlatform(normalizedUrl);
+  const candidateUrls = Array.from(
+    new Set([normalizeUrlForVisolix(rawUrl), rawUrl].map((value) => value.trim()).filter(Boolean))
+  );
+  const platform = candidateUrls.map((value) => deriveVisolixPlatform(value)).find(Boolean);
   if (!platform) {
     throw new Error("Visolix не поддерживает этот URL.");
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), getVisolixTimeoutMs());
+  let lastError: Error | null = null;
 
-  try {
-    const headers = new Headers({
-      "X-API-KEY": apiKey,
-      "X-PLATFORM": platform,
-      URL: encodeURIComponent(normalizedUrl)
-    });
+  for (const candidateUrl of candidateUrls) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), getVisolixTimeoutMs());
 
-    if (platform === "youtube") {
-      headers.set("X-FORMAT", getVisolixYoutubeFormat());
-    }
+    try {
+      const headers = new Headers({
+        "X-API-KEY": apiKey,
+        "X-PLATFORM": platform,
+        URL: candidateUrl
+      });
 
-    const response = await fetch(`${getVisolixBaseUrl()}/api/download`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-      signal: controller.signal
-    });
-    const body = await readJsonOrText(response);
+      if (platform === "youtube") {
+        headers.set("X-FORMAT", getVisolixYoutubeFormat());
+      }
 
-    if (!response.ok) {
-      const apiMessage =
-        asTrimmedString(body?.detail) ??
-        asTrimmedString(body?.error) ??
-        asTrimmedString(body?.message);
-      if (response.status === 401 || response.status === 403) {
+      const response = await fetch(`${getVisolixBaseUrl()}/api/download`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+        signal: controller.signal
+      });
+      const body = await readJsonOrText(response);
+
+      if (!response.ok) {
+        const apiMessage =
+          asTrimmedString(body?.detail) ??
+          asTrimmedString(body?.error) ??
+          asTrimmedString(body?.message);
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            apiMessage ??
+              `Visolix API отклонил запрос (HTTP ${response.status}). Проверьте VISOLIX_API_KEY и права доступа.`
+          );
+        }
+        throw new Error(apiMessage ?? `Visolix API вернул HTTP ${response.status}.`);
+      }
+
+      if (body && (body.error === true || body.success === false)) {
         throw new Error(
-          apiMessage ??
-            `Visolix API отклонил запрос (HTTP ${response.status}). Проверьте VISOLIX_API_KEY и права доступа.`
+          asTrimmedString(body.detail) ??
+            asTrimmedString(body.error) ??
+            asTrimmedString(body.message) ??
+            "Visolix API не смог обработать этот URL."
         );
       }
-      throw new Error(apiMessage ?? `Visolix API вернул HTTP ${response.status}.`);
-    }
 
-    if (body && (body.error === true || body.success === false)) {
-      throw new Error(
-        asTrimmedString(body.detail) ??
-          asTrimmedString(body.error) ??
-          asTrimmedString(body.message) ??
-          "Visolix API не смог обработать этот URL."
-      );
+      return (body ?? {}) as VisolixInitResponse;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        lastError = new Error("Visolix API не ответил вовремя.");
+      } else {
+        lastError = error instanceof Error ? error : new Error("Visolix API не смог обработать этот URL.");
+      }
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return (body ?? {}) as VisolixInitResponse;
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Visolix API не ответил вовремя.");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError ?? new Error("Visolix API не смог обработать этот URL.");
 }
 
 async function pollVisolixDownload(progressUrl: string): Promise<string> {

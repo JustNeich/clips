@@ -35,7 +35,8 @@ export async function POST(request: Request): Promise<Response> {
       headers: {
         "Content-Type": "video/mp4",
         "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Cache-Control": "no-store"
+        "Cache-Control": "no-store",
+        "X-Source-Provider": downloaded.provider
       }
     });
   } catch (error) {

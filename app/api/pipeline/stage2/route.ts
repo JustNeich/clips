@@ -48,6 +48,7 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   title: string;
   infoJson: VideoInfoJson;
   videoSizeBytes: number;
+  downloadProvider: "visolix" | "ytDlp";
   commentsExtractionFallbackUsed: boolean;
 }> {
   const downloaded = await downloadSourceMedia(url, tmpDir);
@@ -64,6 +65,7 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
     title,
     infoJson,
     videoSizeBytes: downloaded.videoSizeBytes,
+    downloadProvider: downloaded.provider,
     commentsExtractionFallbackUsed: optionalInfo.commentsExtractionFallbackUsed
   };
 }
@@ -300,6 +302,7 @@ export async function POST(request: Request): Promise<Response> {
           title: downloaded.title,
           videoFileName: downloaded.videoFileName,
           videoSizeBytes: downloaded.videoSizeBytes,
+          downloadProvider: downloaded.downloadProvider,
           totalComments: allComments.length,
           topComments: allComments.slice(0, 10),
           allComments,
