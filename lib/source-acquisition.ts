@@ -15,45 +15,39 @@ import {
 const execFileAsync = promisify(execFile);
 
 const YTDLP_CANDIDATES = ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp", "yt-dlp"];
-const DEFAULT_FASTSAVER_BASE_URL = "https://api.fastsaver.io/v1";
-const DEFAULT_FASTSAVER_TIMEOUT_MS = 120_000;
-const DEFAULT_FASTSAVER_YOUTUBE_FORMAT_PRIORITY = ["1080p", "720p", "480p", "240p", "144p"];
+const DEFAULT_VISOLIX_BASE_URL = "https://developers.visolix.com";
+const DEFAULT_VISOLIX_TIMEOUT_MS = 120_000;
+const DEFAULT_VISOLIX_POLL_INTERVAL_MS = 1_200;
+const DEFAULT_VISOLIX_YOUTUBE_FORMAT = "720";
 
-type FastSaverYouTubeFormat = {
-  type?: unknown;
-  format?: unknown;
-  filesize?: unknown;
-};
-
-type FastSaverYouTubeInfoResponse = {
-  ok?: unknown;
-  video_id?: unknown;
-  title?: unknown;
-  author?: unknown;
-  author_url?: unknown;
-  thumbnail?: unknown;
-  duration?: unknown;
-  formats?: unknown;
-};
-
-type FastSaverYouTubeDownloadResponse = {
-  ok?: unknown;
-  filename?: unknown;
-  download_url?: unknown;
-};
-
-type FastSaverFetchResponse = {
-  ok?: unknown;
+type VisolixInitResponse = {
+  success?: unknown;
   id?: unknown;
-  source?: unknown;
-  type?: unknown;
+  title?: unknown;
+  info?: {
+    title?: unknown;
+    image?: unknown;
+  } | null;
+  progress_url?: unknown;
+  message?: unknown;
+  error?: unknown;
+  cachehash?: unknown;
+  repeat_download?: unknown;
+  additional_info?: unknown;
+};
+
+type VisolixProgressResponse = {
+  success?: unknown;
+  progress?: unknown;
   download_url?: unknown;
-  thumbnail_url?: unknown;
-  width?: unknown;
-  height?: unknown;
-  duration?: unknown;
-  caption?: unknown;
-  filename?: unknown;
+  text?: unknown;
+  message?: unknown;
+  error?: unknown;
+  alternative_download_urls?: Array<{
+    type?: unknown;
+    url?: unknown;
+    has_ssl?: unknown;
+  }> | null;
 };
 
 type YtDlpInfoJson = {
@@ -62,7 +56,7 @@ type YtDlpInfoJson = {
   comments?: unknown;
 };
 
-export type SourceAcquisitionProvider = "fastSaver" | "ytDlp";
+export type SourceAcquisitionProvider = "visolix" | "ytDlp";
 
 export type SourceDownloadResult = {
   provider: SourceAcquisitionProvider;
@@ -112,38 +106,36 @@ function asPositiveNumber(value: unknown): number | null {
   return null;
 }
 
-function getFastSaverApiKey(): string | null {
-  const raw = asTrimmedString(process.env.FASTSAVER_API_KEY);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getVisolixApiKey(): string | null {
+  const raw = asTrimmedString(process.env.VISOLIX_API_KEY);
   if (!raw) {
     return null;
   }
 
-  const normalized = unwrapQuotedSecret(raw).replace(/^Bearer\s+/i, "").trim();
+  const normalized = unwrapQuotedSecret(raw).trim();
   return normalized || null;
 }
 
-function getFastSaverBaseUrl(): string {
-  return (asTrimmedString(process.env.FASTSAVER_BASE_URL) ?? DEFAULT_FASTSAVER_BASE_URL).replace(
-    /\/+$/,
-    ""
-  );
+function getVisolixBaseUrl(): string {
+  return (asTrimmedString(process.env.VISOLIX_BASE_URL) ?? DEFAULT_VISOLIX_BASE_URL).replace(/\/+$/, "");
 }
 
-function getFastSaverTimeoutMs(): number {
-  const parsed = Number.parseInt(process.env.FASTSAVER_TIMEOUT_MS ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_FASTSAVER_TIMEOUT_MS;
+function getVisolixTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.VISOLIX_TIMEOUT_MS ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_VISOLIX_TIMEOUT_MS;
 }
 
-function getFastSaverYoutubeFormatPriority(): string[] {
-  const raw = asTrimmedString(process.env.FASTSAVER_YOUTUBE_FORMAT_PRIORITY);
-  if (!raw) {
-    return [...DEFAULT_FASTSAVER_YOUTUBE_FORMAT_PRIORITY];
-  }
-  const values = raw
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return values.length > 0 ? values : [...DEFAULT_FASTSAVER_YOUTUBE_FORMAT_PRIORITY];
+function getVisolixPollIntervalMs(): number {
+  const parsed = Number.parseInt(process.env.VISOLIX_PROGRESS_POLL_INTERVAL_MS ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_VISOLIX_POLL_INTERVAL_MS;
+}
+
+function getVisolixYoutubeFormat(): string {
+  return asTrimmedString(process.env.VISOLIX_YOUTUBE_FORMAT) ?? DEFAULT_VISOLIX_YOUTUBE_FORMAT;
 }
 
 function isYouTubeUrl(rawUrl: string): boolean {
@@ -187,39 +179,43 @@ function normalizeYouTubeUrl(rawUrl: string): string {
   }
 }
 
-function normalizeUrlForFastSaver(rawUrl: string): string {
+function normalizeUrlForVisolix(rawUrl: string): string {
   return isYouTubeUrl(rawUrl) ? normalizeYouTubeUrl(rawUrl) : rawUrl;
 }
 
-export function isFastSaverConfigured(): boolean {
-  return Boolean(getFastSaverApiKey());
+function deriveVisolixPlatform(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    const hostname = parsed.hostname.toLowerCase();
+
+    if (hostname === "youtu.be" || hostname.includes("youtube.com")) {
+      return "youtube";
+    }
+    if (hostname.includes("instagram.com")) {
+      return "instagram";
+    }
+    if (hostname.includes("facebook.com") || hostname === "fb.watch") {
+      return "facebook";
+    }
+    if (hostname.includes("tiktok.com")) {
+      return "tiktok";
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export function isVisolixConfigured(): boolean {
+  return Boolean(getVisolixApiKey());
 }
 
 export async function resolveYtDlpExecutable(): Promise<string | null> {
   return resolveExecutableFromCandidates(YTDLP_CANDIDATES);
 }
 
-async function performFastSaverRequest(
-  pathname: string,
-  init: RequestInit | undefined,
-  authHeader: "X-Api-Key" | "Authorization",
-  apiKey: string,
-  signal: AbortSignal
-): Promise<Response> {
-  const authValue = authHeader === "Authorization" ? `Bearer ${apiKey}` : apiKey;
-
-  return fetch(`${getFastSaverBaseUrl()}${pathname}`, {
-    ...init,
-    headers: {
-      [authHeader]: authValue,
-      ...(init?.headers ?? {})
-    },
-    cache: "no-store",
-    signal
-  });
-}
-
-async function readFastSaverErrorBody(response: Response): Promise<Record<string, unknown> | null> {
+async function readJsonOrText(response: Response): Promise<Record<string, unknown> | null> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     return (await response.json().catch(() => null)) as Record<string, unknown> | null;
@@ -230,59 +226,70 @@ async function readFastSaverErrorBody(response: Response): Promise<Record<string
     return null;
   }
 
-  return {
-    message: text.slice(0, 500)
-  };
+  return { message: text.slice(0, 500) };
 }
 
-async function fastSaverRequest<T>(pathname: string, init?: RequestInit): Promise<T> {
-  const apiKey = getFastSaverApiKey();
+async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse> {
+  const apiKey = getVisolixApiKey();
   if (!apiKey) {
-    throw new Error("FastSaver API key не задан. Добавьте FASTSAVER_API_KEY на сервере.");
+    throw new Error("Visolix API key не задан. Добавьте VISOLIX_API_KEY на сервере.");
   }
 
-  const timeoutMs = getFastSaverTimeoutMs();
+  const normalizedUrl = normalizeUrlForVisolix(rawUrl);
+  const platform = deriveVisolixPlatform(normalizedUrl);
+  if (!platform) {
+    throw new Error("Visolix не поддерживает этот URL.");
+  }
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), getVisolixTimeoutMs());
 
   try {
-    let response = await performFastSaverRequest(pathname, init, "X-Api-Key", apiKey, controller.signal);
-    let body = await readFastSaverErrorBody(response);
+    const headers = new Headers({
+      "X-API-KEY": apiKey,
+      "X-PLATFORM": platform,
+      URL: encodeURIComponent(normalizedUrl)
+    });
 
-    if (response.status === 401 || response.status === 403) {
-      response = await performFastSaverRequest(
-        pathname,
-        init,
-        "Authorization",
-        apiKey,
-        controller.signal
-      );
-      body = await readFastSaverErrorBody(response);
+    if (platform === "youtube") {
+      headers.set("X-FORMAT", getVisolixYoutubeFormat());
     }
 
+    const response = await fetch(`${getVisolixBaseUrl()}/api/download`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      signal: controller.signal
+    });
+    const body = await readJsonOrText(response);
+
     if (!response.ok) {
-      const apiMessage = asTrimmedString(body?.error) ?? asTrimmedString(body?.message);
+      const apiMessage =
+        asTrimmedString(body?.detail) ??
+        asTrimmedString(body?.error) ??
+        asTrimmedString(body?.message);
       if (response.status === 401 || response.status === 403) {
         throw new Error(
           apiMessage ??
-            `FastSaver API отклонил запрос (HTTP ${response.status}). Проверьте FASTSAVER_API_KEY, формат секрета и права доступа.`
+            `Visolix API отклонил запрос (HTTP ${response.status}). Проверьте VISOLIX_API_KEY и права доступа.`
         );
       }
-      throw new Error(apiMessage ?? `FastSaver API вернул HTTP ${response.status}.`);
+      throw new Error(apiMessage ?? `Visolix API вернул HTTP ${response.status}.`);
     }
 
-    if (body && body.ok === false) {
+    if (body && (body.error === true || body.success === false)) {
       throw new Error(
-        asTrimmedString(body.error) ??
+        asTrimmedString(body.detail) ??
+          asTrimmedString(body.error) ??
           asTrimmedString(body.message) ??
-          "FastSaver API не смог обработать этот URL."
+          "Visolix API не смог обработать этот URL."
       );
     }
 
-    return (body ?? {}) as T;
+    return (body ?? {}) as VisolixInitResponse;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("FastSaver API не ответил вовремя.");
+      throw new Error("Visolix API не ответил вовремя.");
     }
     throw error;
   } finally {
@@ -290,106 +297,89 @@ async function fastSaverRequest<T>(pathname: string, init?: RequestInit): Promis
   }
 }
 
-function sanitizeOutputName(rawName: string | null, fallback: string): string {
-  return sanitizeFileName(rawName ?? fallback) || fallback;
-}
+async function pollVisolixDownload(progressUrl: string): Promise<string> {
+  const timeoutAt = Date.now() + getVisolixTimeoutMs();
+  let lastMessage: string | null = null;
 
-function chooseFastSaverYouTubeFormat(response: FastSaverYouTubeInfoResponse): string {
-  const priority = getFastSaverYoutubeFormatPriority();
-  const formats = Array.isArray(response.formats) ? (response.formats as FastSaverYouTubeFormat[]) : [];
-  const available = formats
-    .map((item) => asTrimmedString(item.format))
-    .filter((value): value is string => Boolean(value));
+  while (Date.now() < timeoutAt) {
+    const response = await fetch(progressUrl, { cache: "no-store" });
+    const body = (await readJsonOrText(response)) as Record<string, unknown> | null;
 
-  for (const preferred of priority) {
-    if (available.includes(preferred)) {
-      return preferred;
+    if (!response.ok) {
+      throw new Error(
+        asTrimmedString(body?.detail) ??
+          asTrimmedString(body?.error) ??
+          asTrimmedString(body?.message) ??
+          `Visolix progress API вернул HTTP ${response.status}.`
+      );
     }
+
+    const downloadUrl = asTrimmedString(body?.download_url);
+    if (downloadUrl) {
+      return downloadUrl;
+    }
+
+    if (body && (body.error === true || body.success === false)) {
+      throw new Error(
+        asTrimmedString(body.detail) ??
+          asTrimmedString(body.error) ??
+          asTrimmedString(body.message) ??
+          "Visolix progress завершился ошибкой."
+      );
+    }
+
+    lastMessage = asTrimmedString(body?.text) ?? asTrimmedString(body?.message) ?? lastMessage;
+    await sleep(getVisolixPollIntervalMs());
   }
 
-  const firstVideo = available.find((value) => value.toLowerCase() !== "audio");
-  return firstVideo ?? priority[0] ?? "720p";
+  throw new Error(
+    lastMessage
+      ? `Visolix не завершил download вовремя. Последний статус: ${lastMessage}.`
+      : "Visolix не завершил download вовремя."
+  );
 }
 
-async function downloadRemoteFile(downloadUrl: string, destinationPath: string): Promise<number> {
+async function downloadRemoteFile(
+  downloadUrl: string,
+  destinationPath: string,
+  providerLabel: string
+): Promise<number> {
   const response = await fetch(downloadUrl, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`Не удалось скачать файл из FastSaver (HTTP ${response.status}).`);
+    throw new Error(`Не удалось скачать файл из ${providerLabel} (HTTP ${response.status}).`);
   }
   if (!response.body) {
-    throw new Error("FastSaver не вернул тело файла.");
+    throw new Error(`${providerLabel} не вернул тело файла.`);
   }
 
-  await pipeline(
-    Readable.fromWeb(response.body as any),
-    createWriteStream(destinationPath)
-  );
-
+  await pipeline(Readable.fromWeb(response.body as never), createWriteStream(destinationPath));
   const stat = await fs.stat(destinationPath);
   return stat.size;
 }
 
-async function tryFastSaverDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadResult> {
-  const providerUrl = normalizeUrlForFastSaver(rawUrl);
+function sanitizeOutputName(rawName: string | null, fallback: string): string {
+  return sanitizeFileName(rawName ?? fallback) || fallback;
+}
+
+async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadResult> {
   const targetPath = path.join(tmpDir, "source.mp4");
+  const initPayload = await visolixDownloadInit(rawUrl);
+  const progressUrl = asTrimmedString(initPayload.progress_url);
 
-  if (isYouTubeUrl(providerUrl)) {
-    const info = await fastSaverRequest<FastSaverYouTubeInfoResponse>(
-      `/youtube/info?${new URLSearchParams({ url: providerUrl }).toString()}`
-    );
-    const format = chooseFastSaverYouTubeFormat(info);
-    const download = await fastSaverRequest<FastSaverYouTubeDownloadResponse>("/youtube/download", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        url: providerUrl,
-        format
-      })
-    });
-
-    const downloadUrl = asTrimmedString(download.download_url);
-    if (!downloadUrl) {
-      throw new Error("FastSaver не вернул ссылку на скачивание YouTube-видео.");
-    }
-
-    const videoSizeBytes = await downloadRemoteFile(downloadUrl, targetPath);
-    return {
-      provider: "fastSaver",
-      filePath: targetPath,
-      fileName: sanitizeOutputName(
-        asTrimmedString(info.title) ?? asTrimmedString(download.filename),
-        "source"
-      ),
-      title: asTrimmedString(info.title) ?? asTrimmedString(download.filename),
-      durationSec: asPositiveNumber(info.duration),
-      videoSizeBytes
-    };
+  if (!progressUrl) {
+    throw new Error("Visolix не вернул progress_url для download job.");
   }
 
-  const payload = await fastSaverRequest<FastSaverFetchResponse>(
-    `/fetch?${new URLSearchParams({ url: providerUrl }).toString()}`
-  );
-  const downloadUrl = asTrimmedString(payload.download_url);
-  if (!downloadUrl) {
-    throw new Error("FastSaver не вернул ссылку на скачивание media source.");
-  }
-
-  const mediaType = asTrimmedString(payload.type);
-  if (mediaType && mediaType !== "video") {
-    throw new Error(`FastSaver вернул неподдерживаемый тип media: ${mediaType}.`);
-  }
-
-  const videoSizeBytes = await downloadRemoteFile(downloadUrl, targetPath);
-  const title = asTrimmedString(payload.caption) ?? asTrimmedString(payload.filename);
+  const downloadUrl = await pollVisolixDownload(progressUrl);
+  const videoSizeBytes = await downloadRemoteFile(downloadUrl, targetPath, "Visolix");
+  const title = asTrimmedString(initPayload.title) ?? asTrimmedString(initPayload.info?.title);
 
   return {
-    provider: "fastSaver",
+    provider: "visolix",
     filePath: targetPath,
     fileName: sanitizeOutputName(title, "source"),
     title,
-    durationSec: asPositiveNumber(payload.duration),
+    durationSec: null,
     videoSizeBytes
   };
 }
@@ -468,13 +458,11 @@ export async function downloadSourceMedia(
 ): Promise<SourceDownloadResult> {
   const errors: string[] = [];
 
-  if (isFastSaverConfigured()) {
+  if (isVisolixConfigured()) {
     try {
-      return await tryFastSaverDownload(rawUrl, tmpDir);
+      return await tryVisolixDownload(rawUrl, tmpDir);
     } catch (error) {
-      errors.push(
-        error instanceof Error ? `FastSaver: ${error.message}` : "FastSaver: source fetch failed."
-      );
+      errors.push(error instanceof Error ? `Visolix: ${error.message}` : "Visolix: source fetch failed.");
     }
   }
 
@@ -485,30 +473,6 @@ export async function downloadSourceMedia(
   }
 
   throw new Error(errors.join(" Fallback: "));
-}
-
-async function tryFastSaverMetadata(rawUrl: string): Promise<SourceMetadataResult> {
-  const providerUrl = normalizeUrlForFastSaver(rawUrl);
-
-  if (isYouTubeUrl(providerUrl)) {
-    const info = await fastSaverRequest<FastSaverYouTubeInfoResponse>(
-      `/youtube/info?${new URLSearchParams({ url: providerUrl }).toString()}`
-    );
-    return {
-      provider: "fastSaver",
-      title: asTrimmedString(info.title),
-      durationSec: asPositiveNumber(info.duration)
-    };
-  }
-
-  const payload = await fastSaverRequest<FastSaverFetchResponse>(
-    `/fetch?${new URLSearchParams({ url: providerUrl }).toString()}`
-  );
-  return {
-    provider: "fastSaver",
-    title: asTrimmedString(payload.caption) ?? asTrimmedString(payload.filename),
-    durationSec: asPositiveNumber(payload.duration)
-  };
 }
 
 async function tryYtDlpMetadata(rawUrl: string): Promise<SourceMetadataResult> {
@@ -551,27 +515,15 @@ async function tryYtDlpMetadata(rawUrl: string): Promise<SourceMetadataResult> {
 }
 
 export async function fetchSourceMetadata(rawUrl: string): Promise<SourceMetadataResult> {
-  const errors: string[] = [];
-
-  if (isFastSaverConfigured()) {
-    try {
-      return await tryFastSaverMetadata(rawUrl);
-    } catch (error) {
-      errors.push(
-        error instanceof Error
-          ? `FastSaver: ${error.message}`
-          : "FastSaver: metadata fetch failed."
-      );
-    }
+  if (isVisolixConfigured()) {
+    return {
+      provider: "visolix",
+      title: null,
+      durationSec: null
+    };
   }
 
-  try {
-    return await tryYtDlpMetadata(rawUrl);
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : "yt-dlp: metadata fetch failed.");
-  }
-
-  throw new Error(errors.join(" Fallback: "));
+  return tryYtDlpMetadata(rawUrl);
 }
 
 export async function fetchOptionalYtDlpInfo(

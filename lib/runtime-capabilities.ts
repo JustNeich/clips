@@ -1,5 +1,5 @@
 import { resolveExecutableFromCandidates } from "./command-path";
-import { isFastSaverConfigured } from "./source-acquisition";
+import { isVisolixConfigured } from "./source-acquisition";
 
 export type RuntimeToolCapability = {
   available: boolean;
@@ -14,7 +14,7 @@ export type RuntimeCapabilities = {
   };
   tools: {
     codex: RuntimeToolCapability;
-    fastSaver: RuntimeToolCapability;
+    visolix: RuntimeToolCapability;
     ytDlp: RuntimeToolCapability;
     ffmpeg: RuntimeToolCapability;
     ffprobe: RuntimeToolCapability;
@@ -65,8 +65,8 @@ function ytDlpUnavailableMessage(): string {
   return "yt-dlp не найден на сервере.";
 }
 
-function fastSaverUnavailableMessage(): string {
-  return "FastSaver API key не задан. Добавьте FASTSAVER_API_KEY, чтобы source/mp4 скачивались через hosted provider без локального yt-dlp.";
+function visolixUnavailableMessage(): string {
+  return "Visolix не настроен. Для hosted source download добавьте VISOLIX_API_KEY.";
 }
 
 function ffmpegUnavailableMessage(tool: "ffmpeg" | "ffprobe"): string {
@@ -98,32 +98,32 @@ async function inspectTool(
   };
 }
 
-async function inspectFastSaver(): Promise<RuntimeToolCapability> {
-  if (!isFastSaverConfigured()) {
+async function inspectVisolix(): Promise<RuntimeToolCapability> {
+  if (!isVisolixConfigured()) {
     return {
       available: false,
       resolvedPath: null,
-      message: fastSaverUnavailableMessage()
+      message: visolixUnavailableMessage()
     };
   }
 
   return {
     available: true,
-    resolvedPath: process.env.FASTSAVER_BASE_URL?.trim() || "https://api.fastsaver.io/v1",
+    resolvedPath: process.env.VISOLIX_BASE_URL?.trim() || "https://developers.visolix.com",
     message: null
   };
 }
 
 export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
-  const [codex, fastSaver, ytDlp, ffmpeg, ffprobe] = await Promise.all([
+  const [codex, visolix, ytDlp, ffmpeg, ffprobe] = await Promise.all([
     inspectTool(CODEX_CANDIDATES, codexUnavailableMessage()),
-    inspectFastSaver(),
+    inspectVisolix(),
     inspectTool(YTDLP_CANDIDATES, ytDlpUnavailableMessage()),
     inspectTool(FFMPEG_CANDIDATES, ffmpegUnavailableMessage("ffmpeg")),
     inspectTool(FFPROBE_CANDIDATES, ffmpegUnavailableMessage("ffprobe"))
   ]);
 
-  const sourceAcquisitionReady = fastSaver.available || ytDlp.available;
+  const sourceAcquisitionReady = visolix.available || ytDlp.available;
   const stage2 = codex.available && sourceAcquisitionReady && ffmpeg.available && ffprobe.available;
   const stage3 = sourceAcquisitionReady && ffmpeg.available && ffprobe.available;
 
@@ -134,7 +134,7 @@ export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
     },
     tools: {
       codex,
-      fastSaver,
+      visolix,
       ytDlp,
       ffmpeg,
       ffprobe

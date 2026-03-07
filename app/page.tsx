@@ -613,7 +613,7 @@ export default function HomePage() {
   const codexBlockedReason = runtimeCapabilities?.tools.codex.message ?? null;
   const sourceAcquisitionBlockedReason = runtimeCapabilities
     ? [
-        runtimeCapabilities.tools.fastSaver.message,
+        runtimeCapabilities.tools.visolix.message,
         runtimeCapabilities.tools.ytDlp.message
       ]
         .filter((value): value is string => Boolean(value))
