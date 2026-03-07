@@ -88,6 +88,17 @@ function asTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function unwrapQuotedSecret(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 function asPositiveNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return value;
@@ -102,7 +113,13 @@ function asPositiveNumber(value: unknown): number | null {
 }
 
 function getFastSaverApiKey(): string | null {
-  return asTrimmedString(process.env.FASTSAVER_API_KEY);
+  const raw = asTrimmedString(process.env.FASTSAVER_API_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  const normalized = unwrapQuotedSecret(raw).replace(/^Bearer\s+/i, "").trim();
+  return normalized || null;
 }
 
 function getFastSaverBaseUrl(): string {
@@ -138,12 +155,84 @@ function isYouTubeUrl(rawUrl: string): boolean {
   }
 }
 
+function normalizeYouTubeUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const hostname = parsed.hostname.toLowerCase();
+
+    if (hostname === "youtu.be") {
+      const id = parsed.pathname.split("/").filter(Boolean)[0];
+      if (id) {
+        return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+      }
+    }
+
+    if (hostname.includes("youtube.com")) {
+      const pathname = parsed.pathname;
+      if (pathname.startsWith("/shorts/")) {
+        const id = pathname.split("/").filter(Boolean)[1];
+        if (id) {
+          return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+        }
+      }
+
+      if (pathname === "/watch" && parsed.searchParams.get("v")) {
+        return `https://www.youtube.com/watch?v=${encodeURIComponent(parsed.searchParams.get("v") ?? "")}`;
+      }
+    }
+
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function normalizeUrlForFastSaver(rawUrl: string): string {
+  return isYouTubeUrl(rawUrl) ? normalizeYouTubeUrl(rawUrl) : rawUrl;
+}
+
 export function isFastSaverConfigured(): boolean {
   return Boolean(getFastSaverApiKey());
 }
 
 export async function resolveYtDlpExecutable(): Promise<string | null> {
   return resolveExecutableFromCandidates(YTDLP_CANDIDATES);
+}
+
+async function performFastSaverRequest(
+  pathname: string,
+  init: RequestInit | undefined,
+  authHeader: "X-Api-Key" | "Authorization",
+  apiKey: string,
+  signal: AbortSignal
+): Promise<Response> {
+  const authValue = authHeader === "Authorization" ? `Bearer ${apiKey}` : apiKey;
+
+  return fetch(`${getFastSaverBaseUrl()}${pathname}`, {
+    ...init,
+    headers: {
+      [authHeader]: authValue,
+      ...(init?.headers ?? {})
+    },
+    cache: "no-store",
+    signal
+  });
+}
+
+async function readFastSaverErrorBody(response: Response): Promise<Record<string, unknown> | null> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  }
+
+  const text = (await response.text().catch(() => "")).trim();
+  if (!text) {
+    return null;
+  }
+
+  return {
+    message: text.slice(0, 500)
+  };
 }
 
 async function fastSaverRequest<T>(pathname: string, init?: RequestInit): Promise<T> {
@@ -157,27 +246,26 @@ async function fastSaverRequest<T>(pathname: string, init?: RequestInit): Promis
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(`${getFastSaverBaseUrl()}${pathname}`, {
-      ...init,
-      headers: {
-        "X-Api-Key": apiKey,
-        ...(init?.headers ?? {})
-      },
-      cache: "no-store",
-      signal: controller.signal
-    });
+    let response = await performFastSaverRequest(pathname, init, "X-Api-Key", apiKey, controller.signal);
+    let body = await readFastSaverErrorBody(response);
 
-    const contentType = response.headers.get("content-type") ?? "";
-    const body = contentType.includes("application/json")
-      ? ((await response.json().catch(() => null)) as Record<string, unknown> | null)
-      : null;
+    if (response.status === 401 || response.status === 403) {
+      response = await performFastSaverRequest(
+        pathname,
+        init,
+        "Authorization",
+        apiKey,
+        controller.signal
+      );
+      body = await readFastSaverErrorBody(response);
+    }
 
     if (!response.ok) {
       const apiMessage = asTrimmedString(body?.error) ?? asTrimmedString(body?.message);
       if (response.status === 401 || response.status === 403) {
         throw new Error(
           apiMessage ??
-            "FastSaver API отклонил запрос. Проверьте FASTSAVER_API_KEY и права доступа."
+            `FastSaver API отклонил запрос (HTTP ${response.status}). Проверьте FASTSAVER_API_KEY, формат секрета и права доступа.`
         );
       }
       throw new Error(apiMessage ?? `FastSaver API вернул HTTP ${response.status}.`);
@@ -242,11 +330,12 @@ async function downloadRemoteFile(downloadUrl: string, destinationPath: string):
 }
 
 async function tryFastSaverDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadResult> {
+  const providerUrl = normalizeUrlForFastSaver(rawUrl);
   const targetPath = path.join(tmpDir, "source.mp4");
 
-  if (isYouTubeUrl(rawUrl)) {
+  if (isYouTubeUrl(providerUrl)) {
     const info = await fastSaverRequest<FastSaverYouTubeInfoResponse>(
-      `/youtube/info?${new URLSearchParams({ url: rawUrl }).toString()}`
+      `/youtube/info?${new URLSearchParams({ url: providerUrl }).toString()}`
     );
     const format = chooseFastSaverYouTubeFormat(info);
     const download = await fastSaverRequest<FastSaverYouTubeDownloadResponse>("/youtube/download", {
@@ -255,7 +344,7 @@ async function tryFastSaverDownload(rawUrl: string, tmpDir: string): Promise<Sou
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        url: rawUrl,
+        url: providerUrl,
         format
       })
     });
@@ -280,7 +369,7 @@ async function tryFastSaverDownload(rawUrl: string, tmpDir: string): Promise<Sou
   }
 
   const payload = await fastSaverRequest<FastSaverFetchResponse>(
-    `/fetch?${new URLSearchParams({ url: rawUrl }).toString()}`
+    `/fetch?${new URLSearchParams({ url: providerUrl }).toString()}`
   );
   const downloadUrl = asTrimmedString(payload.download_url);
   if (!downloadUrl) {
@@ -399,9 +488,11 @@ export async function downloadSourceMedia(
 }
 
 async function tryFastSaverMetadata(rawUrl: string): Promise<SourceMetadataResult> {
-  if (isYouTubeUrl(rawUrl)) {
+  const providerUrl = normalizeUrlForFastSaver(rawUrl);
+
+  if (isYouTubeUrl(providerUrl)) {
     const info = await fastSaverRequest<FastSaverYouTubeInfoResponse>(
-      `/youtube/info?${new URLSearchParams({ url: rawUrl }).toString()}`
+      `/youtube/info?${new URLSearchParams({ url: providerUrl }).toString()}`
     );
     return {
       provider: "fastSaver",
@@ -411,7 +502,7 @@ async function tryFastSaverMetadata(rawUrl: string): Promise<SourceMetadataResul
   }
 
   const payload = await fastSaverRequest<FastSaverFetchResponse>(
-    `/fetch?${new URLSearchParams({ url: rawUrl }).toString()}`
+    `/fetch?${new URLSearchParams({ url: providerUrl }).toString()}`
   );
   return {
     provider: "fastSaver",
