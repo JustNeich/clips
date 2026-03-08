@@ -556,12 +556,6 @@ export function getScienceCardComputed(
     config: SCIENCE_CARD.typography.top,
     scale: topScale
   });
-  const topContentHeight = Math.ceil(topSized.lines * topSized.font * topSized.lineHeight);
-  const topBlockHeight = clampNumber(
-    topContentHeight + topPaddingTop + topPaddingBottom + 4,
-    160,
-    SCIENCE_CARD.slot.topHeight
-  );
   const bottomFit = optimizeTextForSlot(
     bottomText,
     bottomSlot,
@@ -575,16 +569,9 @@ export function getScienceCardComputed(
     config: SCIENCE_CARD.typography.bottom,
     scale: bottomScale
   });
-  const bottomContentHeight = Math.ceil(
-    bottomSized.lines * bottomSized.font * bottomSized.lineHeight
-  );
-  const bottomBodyHeight = clampNumber(
-    bottomContentHeight + bottomTextPaddingTop + bottomTextPaddingBottom + 3,
-    66,
-    bottomBodyHeightLimit
-  );
-  const bottomBlockHeight = SCIENCE_CARD.slot.bottomMetaHeight + bottomBodyHeight;
-
+  const bottomBodyHeight = bottomBodyHeightLimit;
+  const topBlockHeight = SCIENCE_CARD.slot.topHeight;
+  const bottomBlockHeight = SCIENCE_CARD.slot.bottomHeight;
   const videoHeight = SCIENCE_CARD.card.height - topBlockHeight - bottomBlockHeight;
 
   return {
