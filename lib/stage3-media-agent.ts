@@ -66,7 +66,7 @@ function getEncodeProfile(profile: Stage3MediaProfile): EncodeProfile {
       preset: "ultrafast",
       crf: "30",
       threads: constrained ? "1" : "2",
-      fitScalePrefix: "scale=540:-2:force_original_aspect_ratio=decrease,setsar=1,"
+      fitScalePrefix: ""
     };
   }
   return {
@@ -755,6 +755,8 @@ async function extractSegmentsToFiles(
   profile: Stage3MediaProfile
 ): Promise<string[]> {
   const encode = getEncodeProfile(profile);
+  const previewScaleFilter =
+    profile === "preview" ? "scale=540:-2:force_original_aspect_ratio=decrease,setsar=1" : null;
   const outputs: string[] = [];
 
   for (let i = 0; i < segments.length; i += 1) {
@@ -770,6 +772,7 @@ async function extractSegmentsToFiles(
         segment.endSec.toFixed(3),
         "-i",
         sourcePath,
+        ...(previewScaleFilter ? ["-vf", previewScaleFilter] : []),
         "-c:v",
         "libx264",
         "-preset",
@@ -1061,7 +1064,8 @@ export async function prepareStage3SourceClip(params: {
   });
 
   const segmentFiles = await extractSegmentsToFiles(params.sourcePath, params.tmpDir, segments, profile);
-  const joined = await concatSegments(segmentFiles, params.tmpDir, profile);
+  const joined =
+    segmentFiles.length === 1 ? segmentFiles[0] : await concatSegments(segmentFiles, params.tmpDir, profile);
   const fitted = await fitClipToDuration({
     inputPath: joined,
     tmpDir: params.tmpDir,

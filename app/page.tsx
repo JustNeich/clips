@@ -224,21 +224,20 @@ function getEditingPolicy(
 }
 
 function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
+  const fallback = fallbackRenderPlan();
   return {
-    ...plan,
-    // Keep preview lightweight: no prompt noise, no music mixing, no channel assets.
+    ...fallback,
+    targetDurationSec: plan.targetDurationSec,
+    timingMode: plan.timingMode,
+    smoothSlowMo: plan.smoothSlowMo,
+    segments: plan.segments,
+    policy: plan.policy,
+    // Keep preview lightweight and stable: only transport fields that affect the server preview file.
     prompt: "",
     audioMode: "source_only",
     musicGain: 0,
     musicAssetId: null,
-    musicAssetMimeType: null,
-    videoZoom: 1,
-    topFontScale: plan.topFontScale,
-    bottomFontScale: plan.bottomFontScale,
-    backgroundAssetId: null,
-    backgroundAssetMimeType: null,
-    avatarAssetId: null,
-    avatarAssetMimeType: null
+    musicAssetMimeType: null
   };
 }
 
@@ -632,6 +631,7 @@ export default function HomePage() {
   const previousChannelIdRef = useRef<string | null>(null);
   const stage3PreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
   const stage3PreviewRequestKeyRef = useRef<string>("");
+  const stage3PreviewPendingKeyRef = useRef<string>("");
   const draftSaveTimerRef = useRef<number | null>(null);
   const draftInFlightRef = useRef<Promise<void> | null>(null);
   const draftPayloadJsonRef = useRef<string>("");
@@ -852,6 +852,7 @@ export default function HomePage() {
         setStage3PassSelectionByVersion({});
         appliedCaptionKeyRef.current = "";
         stage3PreviewRequestKeyRef.current = "";
+        stage3PreviewPendingKeyRef.current = "";
         setStage3PreviewVideoUrl(null);
         setStage3PreviewNotice(null);
         return;
@@ -922,6 +923,7 @@ export default function HomePage() {
         selectedCaptionForHydration?.bottom ?? ""
       ].join("|");
       stage3PreviewRequestKeyRef.current = "";
+      stage3PreviewPendingKeyRef.current = "";
       setStage3PreviewVideoUrl(null);
       setStage3PreviewNotice(null);
     },
@@ -1306,6 +1308,7 @@ export default function HomePage() {
 
   useEffect(() => {
     stage3PreviewRequestKeyRef.current = "";
+    stage3PreviewPendingKeyRef.current = "";
     clearStage3PreviewCache();
     setStage3PreviewVideoUrl(null);
     setStage3PreviewNotice(null);
@@ -2425,7 +2428,14 @@ export default function HomePage() {
       clipDurationSec: CLIP_DURATION_SEC,
       renderPlan: stripRenderPlanForPreview(normalizeRenderPlan(stage3RenderPlan, fallbackRenderPlan()))
     }),
-    [stage3ClipStartSec, stage3RenderPlan]
+    [
+      stage3ClipStartSec,
+      stage3RenderPlan.targetDurationSec,
+      stage3RenderPlan.timingMode,
+      stage3RenderPlan.smoothSlowMo,
+      stage3RenderPlan.segments,
+      stage3RenderPlan.policy
+    ]
   );
 
   useEffect(() => {
@@ -2863,9 +2873,14 @@ export default function HomePage() {
       setStage3PreviewNotice(null);
       return;
     }
+    setStage3PreviewNotice("Обновляю предпросмотр...");
+    if (stage3PreviewPendingKeyRef.current === previewKey) {
+      return;
+    }
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
+      stage3PreviewPendingKeyRef.current = previewKey;
       setBusyAction((prev) => (prev ? prev : "video-preview"));
 
       void (async () => {
@@ -2921,12 +2936,15 @@ export default function HomePage() {
           const message = getUiErrorMessage(error, "Не удалось загрузить предпросмотр.");
           setStage3PreviewNotice(message);
         } finally {
+          if (stage3PreviewPendingKeyRef.current === previewKey) {
+            stage3PreviewPendingKeyRef.current = "";
+          }
           if (!controller.signal.aborted) {
             setBusyAction((prev) => (prev === "video-preview" ? "" : prev));
           }
         }
       })();
-    }, 220);
+    }, 650);
 
     return () => {
       controller.abort();
@@ -3048,6 +3066,7 @@ export default function HomePage() {
     initializedStage3ChatRef.current = null;
     appliedCaptionKeyRef.current = "";
     stage3PreviewRequestKeyRef.current = "";
+    stage3PreviewPendingKeyRef.current = "";
     clearStage3PreviewCache();
     setStage3PreviewVideoUrl(null);
     setStage3PreviewNotice(null);
@@ -3087,6 +3106,7 @@ export default function HomePage() {
       initializedStage3ChatRef.current = null;
       appliedCaptionKeyRef.current = "";
       stage3PreviewRequestKeyRef.current = "";
+      stage3PreviewPendingKeyRef.current = "";
       clearStage3PreviewCache();
       setStage3PreviewVideoUrl(null);
       setStage3PreviewNotice(null);

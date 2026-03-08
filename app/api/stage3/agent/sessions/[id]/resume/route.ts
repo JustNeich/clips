@@ -1,6 +1,7 @@
 import { getSession } from "../../../../../../../lib/stage3-session-store";
 import { resumeAutonomousSession } from "../../../../../../../lib/stage3-agent-autonomous";
 import { applyHostedStage3Limits } from "../../../../../../../lib/stage3-hosted-limits";
+import { runHostedStage3HeavyJob } from "../../../../../../../lib/stage3-server-control";
 import { summarizeUserFacingError } from "../../../../../../../lib/ui-error";
 import { getChatById } from "../../../../../../../lib/chat-history";
 import {
@@ -70,15 +71,17 @@ export async function POST(
       plannerTimeoutMs: Number.isFinite(body?.plannerTimeoutMs) ? body?.plannerTimeoutMs : undefined
     });
 
-    const result = await resumeAutonomousSession(
-      id,
-      mediaId,
-      tuning.options,
-      body?.sourceUrl,
-      requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
-      body?.plannerModel,
-      tuning.plannerReasoningEffort,
-      tuning.plannerTimeoutMs
+    const result = await runHostedStage3HeavyJob(() =>
+      resumeAutonomousSession(
+        id,
+        mediaId,
+        tuning.options,
+        body?.sourceUrl,
+        requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
+        body?.plannerModel,
+        tuning.plannerReasoningEffort,
+        tuning.plannerTimeoutMs
+      )
     );
 
     return Response.json(result, { status: 200 });

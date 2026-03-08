@@ -5,12 +5,10 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import {
   clampClipStart,
-  downloadSourceVideo,
   prepareStage3SourceClip,
-  probeVideoDurationSeconds,
   sanitizeClipDuration
 } from "../../../../lib/stage3-media-agent";
-import { extractYtDlpErrorFromUnknown, getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
+import { extractYtDlpErrorFromUnknown, isSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChannelAssetById } from "../../../../lib/chat-history";
@@ -18,17 +16,17 @@ import { readChannelAssetFile } from "../../../../lib/channel-assets";
 import { STAGE3_TEMPLATE_ID, getTemplateById } from "../../../../lib/stage3-template";
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
 import { summarizeUserFacingError } from "../../../../lib/ui-error";
+import {
+  ensureStage3SourceCached,
+  pruneStage3SourceCache,
+  runHostedStage3HeavyJob
+} from "../../../../lib/stage3-server-control";
 
 export const runtime = "nodejs";
 
 const PREVIEW_CACHE_ROOT = path.join(os.tmpdir(), "clip-stage3-cache");
-const SOURCE_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "sources");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
 const DEFAULT_TEXT_SCALE = 1.25;
-const sourceInflight = new Map<
-  string,
-  Promise<{ sourcePath: string; sourceDurationSec: number | null; sourceKey: string }>
->();
 const previewInflight = new Map<string, Promise<void>>();
 
 type PreviewBody = {
@@ -99,62 +97,6 @@ async function createVideoFileResponse(
       ...headers
     }
   });
-}
-
-async function ensureSourceCached(
-  rawSource: string
-): Promise<{ sourcePath: string; sourceDurationSec: number | null; sourceKey: string }> {
-  const sourceKey = hashKey(rawSource);
-  const sourcePath = path.join(SOURCE_CACHE_DIR, `${sourceKey}.mp4`);
-  const metaPath = path.join(SOURCE_CACHE_DIR, `${sourceKey}.json`);
-
-  if (await pathExists(sourcePath)) {
-    const rawMeta = await fs.readFile(metaPath, "utf-8").catch(() => "");
-    let fromMeta: { sourceDurationSec?: number } | null = null;
-    if (rawMeta) {
-      try {
-        fromMeta = JSON.parse(rawMeta) as { sourceDurationSec?: number };
-      } catch {
-        fromMeta = null;
-      }
-    }
-    const sourceDurationSec =
-      typeof fromMeta?.sourceDurationSec === "number" && Number.isFinite(fromMeta.sourceDurationSec)
-        ? fromMeta.sourceDurationSec
-        : await probeVideoDurationSeconds(sourcePath);
-    if (!rawMeta && sourceDurationSec !== null) {
-      await fs.writeFile(metaPath, JSON.stringify({ sourceDurationSec }), "utf-8").catch(() => undefined);
-    }
-    return { sourcePath, sourceDurationSec, sourceKey };
-  }
-
-  const pending = sourceInflight.get(sourceKey);
-  if (pending) {
-    return pending;
-  }
-
-  const task = (async () => {
-    await fs.mkdir(SOURCE_CACHE_DIR, { recursive: true });
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-source-cache-"));
-    try {
-      const downloaded = await downloadSourceVideo(rawSource, tmpDir);
-      await fs.copyFile(downloaded.filePath, sourcePath);
-      const sourceDurationSec = await probeVideoDurationSeconds(sourcePath);
-      await fs
-        .writeFile(metaPath, JSON.stringify({ sourceDurationSec }), "utf-8")
-        .catch(() => undefined);
-      return { sourcePath, sourceDurationSec, sourceKey };
-    } finally {
-      await fs.rm(tmpDir, { recursive: true, force: true });
-    }
-  })();
-
-  sourceInflight.set(sourceKey, task);
-  try {
-    return await task;
-  } finally {
-    sourceInflight.delete(sourceKey);
-  }
 }
 
 function normalizeRenderPlan(
@@ -295,7 +237,7 @@ export async function POST(request: Request): Promise<Response> {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
     await fs.mkdir(PREVIEW_CACHE_DIR, { recursive: true });
-    const source = await ensureSourceCached(rawSource);
+    const source = await ensureStage3SourceCached(rawSource);
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
     const snapshot = body?.snapshot;
 
@@ -345,16 +287,24 @@ export async function POST(request: Request): Promise<Response> {
       const task = (async () => {
         const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-"));
         try {
-          const prepared = await prepareStage3SourceClip({
-            sourcePath: source.sourcePath,
-            tmpDir: localTmpDir,
-            sourceDurationSec: source.sourceDurationSec,
-            clipStartSec,
-            clipDurationSec: renderPlan.targetDurationSec,
-            renderPlan,
-            musicFilePath,
-            profile: "preview"
-          });
+          if (request.signal.aborted) {
+            return;
+          }
+          const prepared = await runHostedStage3HeavyJob(() =>
+            prepareStage3SourceClip({
+              sourcePath: source.sourcePath,
+              tmpDir: localTmpDir,
+              sourceDurationSec: source.sourceDurationSec,
+              clipStartSec,
+              clipDurationSec: renderPlan.targetDurationSec,
+              renderPlan,
+              musicFilePath,
+              profile: "preview"
+            })
+          );
+          if (request.signal.aborted) {
+            return;
+          }
           await fs.copyFile(prepared.preparedPath, previewPath);
         } finally {
           await fs.rm(localTmpDir, { recursive: true, force: true });
@@ -369,7 +319,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     await pruneCacheDirectory(PREVIEW_CACHE_DIR, 48).catch(() => undefined);
-    await pruneCacheDirectory(SOURCE_CACHE_DIR, 24).catch(() => undefined);
+    await pruneStage3SourceCache(24).catch(() => undefined);
 
     return createVideoFileResponse(previewPath, {
       "Cache-Control": "public, max-age=600",

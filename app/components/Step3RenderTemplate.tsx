@@ -493,13 +493,17 @@ export function Step3RenderTemplate({
   const cardTop = templateConfig.card.y;
   const cardWidth = templateConfig.card.width;
   const cardHeight = templateConfig.card.height;
-  const topHeight = templateConfig.slot.topHeight;
-  const bottomHeight = templateConfig.slot.bottomHeight;
   const bottomMetaHeight = templateConfig.slot.bottomMetaHeight;
+  const topPaddingTop = templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY;
+  const topPaddingBottom = templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY;
   const bottomTextPaddingTop =
     templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY;
   const bottomTextPaddingBottom =
     templateConfig.slot.bottomTextPaddingBottom ?? templateConfig.slot.bottomTextPaddingY;
+  const bottomTextPaddingLeft =
+    templateConfig.slot.bottomTextPaddingLeft ?? templateConfig.slot.bottomTextPaddingX;
+  const bottomTextPaddingRight =
+    templateConfig.slot.bottomTextPaddingRight ?? templateConfig.slot.bottomTextPaddingX;
   const videoHeight = previewComputed.videoHeight;
 
   const timelinePercent = clamp((timelineSec / Math.max(0.01, clipDurationSec)) * 100, 0, 100);
@@ -1900,8 +1904,8 @@ export function Step3RenderTemplate({
                         <div
                           className="preview-top"
                           style={{
-                            height: topHeight,
-                            padding: `${templateConfig.slot.topPaddingY}px ${templateConfig.slot.topPaddingX}px`
+                            height: previewComputed.topBlockHeight,
+                            padding: `${topPaddingTop}px ${templateConfig.slot.topPaddingX}px ${topPaddingBottom}px`
                           }}
                         >
                           <p
@@ -1946,7 +1950,7 @@ export function Step3RenderTemplate({
                         <div
                           className="preview-bottom"
                           style={{
-                            height: bottomHeight
+                            height: previewComputed.bottomBlockHeight
                           }}
                         >
                           <div
@@ -2008,7 +2012,7 @@ export function Step3RenderTemplate({
                             className="preview-bottom-body"
                             style={{
                               height: previewComputed.bottomBodyHeight,
-                              padding: `${bottomTextPaddingTop}px ${templateConfig.slot.bottomTextPaddingX}px ${bottomTextPaddingBottom}px`
+                              padding: `${bottomTextPaddingTop}px ${bottomTextPaddingRight}px ${bottomTextPaddingBottom}px ${bottomTextPaddingLeft}px`
                             }}
                           >
                             <p

@@ -24,9 +24,7 @@ import {
   analyzeStage3FramedPreview,
   analyzeBestClipAndFocus,
   clampClipStart,
-  downloadSourceVideo,
   type Stage3FramingMetrics,
-  probeVideoDurationSeconds,
   sanitizeFocusY
 } from "./stage3-media-agent";
 import { planStage3OperationsWithCodex } from "./stage3-agent-llm";
@@ -58,6 +56,7 @@ import {
   updateSession,
   buildGoalHash
 } from "./stage3-session-store";
+import { ensureStage3SourceCached } from "./stage3-server-control";
 
 const PREVIEW_FPS = 3;
 const DEFAULT_TARGET_SCORE = 0.9;
@@ -1700,11 +1699,10 @@ export async function judgeIteration(input: JudgeInputs): Promise<JudgeResult> {
 
 async function resolveSourceContext(sourceUrl: string): Promise<SourceContext> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip3-autosrc-"));
-  const downloaded = await downloadSourceVideo(sourceUrl, tmpDir);
-  const sourceDurationSec = await probeVideoDurationSeconds(downloaded.filePath);
+  const source = await ensureStage3SourceCached(sourceUrl);
   return {
-    sourcePath: downloaded.filePath,
-    sourceDurationSec,
+    sourcePath: source.sourcePath,
+    sourceDurationSec: source.sourceDurationSec,
     tmpDir
   };
 }

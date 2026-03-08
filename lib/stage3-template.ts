@@ -15,51 +15,55 @@ export const SCIENCE_CARD = {
     fill: "#f9fafc"
   },
   slot: {
-    topHeight: 414,
-    bottomHeight: 300,
-    topPaddingX: 2,
-    topPaddingY: 1,
-    bottomMetaHeight: 130,
-    bottomMetaPaddingX: 18,
-    bottomMetaPaddingY: 6,
-    bottomTextPaddingX: 18,
-    bottomTextPaddingY: 5,
-    bottomTextPaddingTop: 2,
-    bottomTextPaddingBottom: 5
+    topHeight: 392,
+    bottomHeight: 322,
+    topPaddingX: 8,
+    topPaddingY: 5,
+    topPaddingTop: 3,
+    topPaddingBottom: 8,
+    bottomMetaHeight: 118,
+    bottomMetaPaddingX: 22,
+    bottomMetaPaddingY: 8,
+    bottomTextPaddingX: 14,
+    bottomTextPaddingY: 0,
+    bottomTextPaddingTop: 7,
+    bottomTextPaddingBottom: 1,
+    bottomTextPaddingLeft: 18,
+    bottomTextPaddingRight: 12
   },
   author: {
     name: "Science Snack",
     handle: "@Science_Snack_1",
-    avatarSize: 114,
+    avatarSize: 96,
     avatarBorder: 3,
-    checkSize: 35
+    checkSize: 30
   },
   typography: {
     top: {
-      min: 42,
-      max: 74,
+      min: 38,
+      max: 68,
       softLimit: 128,
       penalty: 0.22,
-      lineHeight: 1.1,
+      lineHeight: 1.05,
       maxLines: 7,
       maxChars: 460
     },
     bottom: {
       min: 24,
-      max: 40,
+      max: 38,
       softLimit: 110,
       penalty: 0.24,
-      lineHeight: 1.16,
+      lineHeight: 1.12,
       maxLines: 4,
       maxChars: 390
     },
     authorName: {
-      font: 46,
-      lineHeight: 1.06
+      font: 40,
+      lineHeight: 1.04
     },
     authorHandle: {
-      font: 41,
-      lineHeight: 1.04
+      font: 36,
+      lineHeight: 1.02
     }
   }
 } as const;
@@ -175,6 +179,8 @@ export type Stage3TemplateConfig = {
     bottomHeight: number;
     topPaddingX: number;
     topPaddingY: number;
+    topPaddingTop?: number;
+    topPaddingBottom?: number;
     bottomMetaHeight: number;
     bottomMetaPaddingX: number;
     bottomMetaPaddingY: number;
@@ -182,6 +188,8 @@ export type Stage3TemplateConfig = {
     bottomTextPaddingY: number;
     bottomTextPaddingTop?: number;
     bottomTextPaddingBottom?: number;
+    bottomTextPaddingLeft?: number;
+    bottomTextPaddingRight?: number;
   };
   author: {
     name: string;
@@ -244,6 +252,22 @@ function getBottomTextPaddingTop(template: Stage3TemplateConfig): number {
 
 function getBottomTextPaddingBottom(template: Stage3TemplateConfig): number {
   return template.slot.bottomTextPaddingBottom ?? template.slot.bottomTextPaddingY;
+}
+
+function getTopPaddingTop(template: Stage3TemplateConfig): number {
+  return template.slot.topPaddingTop ?? template.slot.topPaddingY;
+}
+
+function getTopPaddingBottom(template: Stage3TemplateConfig): number {
+  return template.slot.topPaddingBottom ?? template.slot.topPaddingY;
+}
+
+function getBottomTextPaddingLeft(template: Stage3TemplateConfig): number {
+  return template.slot.bottomTextPaddingLeft ?? template.slot.bottomTextPaddingX;
+}
+
+function getBottomTextPaddingRight(template: Stage3TemplateConfig): number {
+  return template.slot.bottomTextPaddingRight ?? template.slot.bottomTextPaddingX;
 }
 
 const AVERAGE_GLYPH_FACTOR = 0.56;
@@ -504,20 +528,24 @@ export function getScienceCardComputed(
 } {
   const topScale = normalizeFontScale(fontOverrides?.topFontScale);
   const bottomScale = normalizeFontScale(fontOverrides?.bottomFontScale);
+  const topPaddingTop = getTopPaddingTop(SCIENCE_CARD);
+  const topPaddingBottom = getTopPaddingBottom(SCIENCE_CARD);
 
   const topSlot: SlotSize = {
     width: SCIENCE_CARD.card.width - SCIENCE_CARD.slot.topPaddingX * 2,
-    height: SCIENCE_CARD.slot.topHeight - SCIENCE_CARD.slot.topPaddingY * 2
+    height: SCIENCE_CARD.slot.topHeight - topPaddingTop - topPaddingBottom
   };
-  const bottomBodyHeight = Math.max(
+  const bottomBodyHeightLimit = Math.max(
     80,
     SCIENCE_CARD.slot.bottomHeight - SCIENCE_CARD.slot.bottomMetaHeight
   );
   const bottomTextPaddingTop = getBottomTextPaddingTop(SCIENCE_CARD);
   const bottomTextPaddingBottom = getBottomTextPaddingBottom(SCIENCE_CARD);
+  const bottomTextPaddingLeft = getBottomTextPaddingLeft(SCIENCE_CARD);
+  const bottomTextPaddingRight = getBottomTextPaddingRight(SCIENCE_CARD);
   const bottomSlot: SlotSize = {
-    width: SCIENCE_CARD.card.width - SCIENCE_CARD.slot.bottomTextPaddingX * 2,
-    height: bottomBodyHeight - bottomTextPaddingTop - bottomTextPaddingBottom
+    width: SCIENCE_CARD.card.width - bottomTextPaddingLeft - bottomTextPaddingRight,
+    height: bottomBodyHeightLimit - bottomTextPaddingTop - bottomTextPaddingBottom
   };
 
   const topFit = optimizeTextForSlot(topText, topSlot, SCIENCE_CARD.typography.top, "Top text");
@@ -528,6 +556,12 @@ export function getScienceCardComputed(
     config: SCIENCE_CARD.typography.top,
     scale: topScale
   });
+  const topContentHeight = Math.ceil(topSized.lines * topSized.font * topSized.lineHeight);
+  const topBlockHeight = clampNumber(
+    topContentHeight + topPaddingTop + topPaddingBottom + 4,
+    160,
+    SCIENCE_CARD.slot.topHeight
+  );
   const bottomFit = optimizeTextForSlot(
     bottomText,
     bottomSlot,
@@ -541,9 +575,17 @@ export function getScienceCardComputed(
     config: SCIENCE_CARD.typography.bottom,
     scale: bottomScale
   });
+  const bottomContentHeight = Math.ceil(
+    bottomSized.lines * bottomSized.font * bottomSized.lineHeight
+  );
+  const bottomBodyHeight = clampNumber(
+    bottomContentHeight + bottomTextPaddingTop + bottomTextPaddingBottom + 3,
+    66,
+    bottomBodyHeightLimit
+  );
+  const bottomBlockHeight = SCIENCE_CARD.slot.bottomMetaHeight + bottomBodyHeight;
 
-  const videoHeight =
-    SCIENCE_CARD.card.height - SCIENCE_CARD.slot.topHeight - SCIENCE_CARD.slot.bottomHeight;
+  const videoHeight = SCIENCE_CARD.card.height - topBlockHeight - bottomBlockHeight;
 
   return {
     top: topFit.text,
@@ -558,9 +600,9 @@ export function getScienceCardComputed(
     bottomCompacted: bottomFit.compacted,
     videoHeight,
     bottomBodyHeight,
-    topBlockHeight: SCIENCE_CARD.slot.topHeight,
-    bottomBlockHeight: SCIENCE_CARD.slot.bottomHeight,
-    videoY: SCIENCE_CARD.card.y + SCIENCE_CARD.slot.topHeight,
+    topBlockHeight,
+    bottomBlockHeight,
+    videoY: SCIENCE_CARD.card.y + topBlockHeight,
     videoX: SCIENCE_CARD.card.x,
     videoWidth: SCIENCE_CARD.card.width
   };

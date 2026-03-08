@@ -34,9 +34,12 @@ function OverlayText({
   paddingY,
   paddingTop,
   paddingBottom,
+  paddingLeft,
+  paddingRight,
   lineHeight,
   fontWeight,
-  textAlign = "center"
+  textAlign = "center",
+  verticalAlign = "center"
 }: {
   text: string;
   fontSize: number;
@@ -45,23 +48,28 @@ function OverlayText({
   paddingY: number;
   paddingTop?: number;
   paddingBottom?: number;
+  paddingLeft?: number;
+  paddingRight?: number;
   lineHeight: number;
   fontWeight: number;
   textAlign?: "left" | "center";
+  verticalAlign?: "start" | "center";
 }) {
   const resolvedPaddingTop = paddingTop ?? paddingY;
   const resolvedPaddingBottom = paddingBottom ?? paddingY;
+  const resolvedPaddingLeft = paddingLeft ?? paddingX;
+  const resolvedPaddingRight = paddingRight ?? paddingX;
   return (
     <div
       style={{
         width: "100%",
         height: "100%",
         display: "flex",
-        alignItems: "center",
+        alignItems: verticalAlign === "start" ? "flex-start" : "center",
         justifyContent: "center",
         boxSizing: "border-box",
         overflow: "hidden",
-        padding: `${resolvedPaddingTop}px ${paddingX}px ${resolvedPaddingBottom}px`
+        padding: `${resolvedPaddingTop}px ${resolvedPaddingRight}px ${resolvedPaddingBottom}px ${resolvedPaddingLeft}px`
       }}
     >
       <p
@@ -75,6 +83,8 @@ function OverlayText({
           textAlign,
           fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
           letterSpacing: textAlign === "center" ? "-0.015em" : "-0.005em",
+          textWrap: textAlign === "center" ? "pretty" : "pretty",
+          overflowWrap: "break-word",
           display: "-webkit-box",
           WebkitBoxOrient: "vertical",
           WebkitLineClamp: maxLines,
@@ -123,7 +133,7 @@ function AuthorBlock({
         boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: 11,
         backgroundColor: "#ffffff"
       }}
     >
@@ -162,8 +172,8 @@ function AuthorBlock({
           {initials}
         </div>
       )}
-      <div style={{ minWidth: 0, display: "grid", gap: 3 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ minWidth: 0, display: "grid", gap: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
             style={{
               color: "#0c1018",
@@ -482,7 +492,7 @@ export function ScienceCardV1({
             left: 0,
             top: 0,
             width: SCIENCE_CARD.card.width,
-            height: SCIENCE_CARD.slot.topHeight,
+            height: computed.topBlockHeight,
             backgroundColor: SCIENCE_CARD.card.fill,
             zIndex: 2
           }}
@@ -493,6 +503,8 @@ export function ScienceCardV1({
             maxLines={SCIENCE_CARD.typography.top.maxLines}
             paddingX={SCIENCE_CARD.slot.topPaddingX}
             paddingY={SCIENCE_CARD.slot.topPaddingY}
+            paddingTop={SCIENCE_CARD.slot.topPaddingTop}
+            paddingBottom={SCIENCE_CARD.slot.topPaddingBottom}
             lineHeight={computed.topLineHeight}
             fontWeight={800}
             textAlign="center"
@@ -503,7 +515,7 @@ export function ScienceCardV1({
           style={{
             position: "absolute",
             left: 0,
-            top: SCIENCE_CARD.slot.topHeight,
+            top: computed.topBlockHeight,
             width: SCIENCE_CARD.card.width,
             height: computed.videoHeight,
             zIndex: 1
@@ -529,9 +541,9 @@ export function ScienceCardV1({
           style={{
             position: "absolute",
             left: 0,
-            top: SCIENCE_CARD.card.height - SCIENCE_CARD.slot.bottomHeight,
+            top: SCIENCE_CARD.card.height - computed.bottomBlockHeight,
             width: SCIENCE_CARD.card.width,
-            height: SCIENCE_CARD.slot.bottomHeight,
+            height: computed.bottomBlockHeight,
             backgroundColor: SCIENCE_CARD.card.fill,
             zIndex: 2,
             display: "grid",
@@ -553,9 +565,12 @@ export function ScienceCardV1({
             paddingY={SCIENCE_CARD.slot.bottomTextPaddingY}
             paddingTop={SCIENCE_CARD.slot.bottomTextPaddingTop}
             paddingBottom={SCIENCE_CARD.slot.bottomTextPaddingBottom}
+            paddingLeft={SCIENCE_CARD.slot.bottomTextPaddingLeft}
+            paddingRight={SCIENCE_CARD.slot.bottomTextPaddingRight}
             lineHeight={computed.bottomLineHeight}
             fontWeight={500}
             textAlign="left"
+            verticalAlign="start"
           />
         </div>
       </AbsoluteFill>
