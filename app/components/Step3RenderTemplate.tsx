@@ -463,17 +463,7 @@ export function Step3RenderTemplate({
     () => sumSegmentsDuration(normalizedSegments, sourceDurationSec),
     [normalizedSegments, sourceDurationSec]
   );
-  const effectiveSelectionDurationSec =
-    normalizedSegments.length > 0
-      ? explicitSegmentsDurationSec
-      : compressionEnabled
-        ? sourceDurationSec ?? 0
-        : Math.min(sourceDurationSec ?? clipDurationSec, clipDurationSec);
   const remainingSegmentsDurationSec = Math.max(0, clipDurationSec - explicitSegmentsDurationSec);
-  const compressionRatio =
-    compressionEnabled && clipDurationSec > 0
-      ? effectiveSelectionDurationSec / clipDurationSec
-      : null;
   const focusPercent = Math.round(localFocusY * 100);
   const objectPosition = `50% ${focusPercent}%`;
 
@@ -907,40 +897,43 @@ export function Step3RenderTemplate({
     [clipDurationSec, compressionEnabled, onFragmentStateChange, sourceDurationSec]
   );
 
-  const addFragmentAtCursor = useCallback(
-    (durationSec: number) => {
-      const safeDuration = roundToTenth(Math.max(0.1, durationSec));
-      if (!compressionEnabled && remainingSegmentsDurationSec < 0.1) {
-        return;
+  const createFragment = useCallback(() => {
+    if (!compressionEnabled && remainingSegmentsDurationSec < 0.1) {
+      return;
+    }
+
+    const defaultDuration = compressionEnabled
+      ? 1
+      : Math.min(1, Math.max(0.1, remainingSegmentsDurationSec));
+    const lastSegment = normalizedSegments[normalizedSegments.length - 1] ?? null;
+    const suggestedStart = lastSegment?.endSec ?? localClipStartSec;
+    const sourceMaxStart =
+      sourceDurationSec !== null ? Math.max(0, sourceDurationSec - 0.1) : suggestedStart;
+    const startSec = roundToTenth(clamp(suggestedStart, 0, sourceMaxStart));
+    const endSec = roundToTenth(
+      clamp(
+        startSec + defaultDuration,
+        startSec + 0.1,
+        sourceDurationSec ?? startSec + defaultDuration
+      )
+    );
+
+    commitFragments([
+      ...normalizedSegments,
+      {
+        startSec,
+        endSec,
+        label: `Фрагмент ${normalizedSegments.length + 1}`
       }
-      const startSec = roundToTenth(clamp(localClipStartSec, 0, sourceDurationSec ?? localClipStartSec));
-      const capDuration = compressionEnabled
-        ? safeDuration
-        : Math.min(safeDuration, Math.max(0.1, remainingSegmentsDurationSec));
-      const rawEnd = startSec + capDuration;
-      const maxEnd = sourceDurationSec ?? rawEnd;
-      const endSec = roundToTenth(clamp(rawEnd, startSec + 0.1, maxEnd));
-      if (endSec <= startSec) {
-        return;
-      }
-      commitFragments([
-        ...normalizedSegments,
-        {
-          startSec,
-          endSec,
-          label: `Фрагмент ${normalizedSegments.length + 1}`
-        }
-      ]);
-    },
-    [
-      commitFragments,
-      compressionEnabled,
-      localClipStartSec,
-      normalizedSegments,
-      remainingSegmentsDurationSec,
-      sourceDurationSec
-    ]
-  );
+    ]);
+  }, [
+    commitFragments,
+    compressionEnabled,
+    localClipStartSec,
+    normalizedSegments,
+    remainingSegmentsDurationSec,
+    sourceDurationSec
+  ]);
 
   const removeFragment = useCallback(
     (index: number) => {
@@ -1012,15 +1005,6 @@ export function Step3RenderTemplate({
 
     commitFragments(nextSegments);
   };
-
-  const fragmentsSummaryText =
-    normalizedSegments.length === 0
-      ? compressionEnabled
-        ? "Фрагменты не заданы: будет сжат весь исходник."
-        : "Фрагменты не заданы: используется обычное 6s окно от курсора."
-      : compressionEnabled
-        ? "Выберите любые отрезки, итог автоматически ужмется до 6 секунд."
-        : "Сумма всех фрагментов ограничена 6 секундами.";
 
   const leftFooter = (
     <div className="sticky-action-bar">
@@ -1113,84 +1097,26 @@ export function Step3RenderTemplate({
             <div className="quick-edit-grid">
               <div className="quick-edit-card quick-edit-span-2 fragment-card">
                 <div className="fragment-toolbar">
-                  <div>
-                    <div className="quick-edit-label-row">
-                      <label className="field-label fragment-toggle">
-                        <input
-                          type="checkbox"
-                          checked={compressionEnabled}
-                          onChange={(event) => commitFragments(normalizedSegments, event.target.checked)}
-                        />
-                        <span>Сжать до 6с</span>
-                      </label>
-                      <span className="quick-edit-value">
-                        {compressionEnabled ? "Сжатие включено" : "Жесткий лимит 6с"}
-                      </span>
-                    </div>
-                    <p className="subtle-text fragment-summary-text">{fragmentsSummaryText}</p>
-                  </div>
-                  <div className="fragment-summary-row">
-                    <span className="meta-pill">{normalizedSegments.length} фрагм.</span>
-                    <span className="meta-pill">
-                      {normalizedSegments.length > 0
-                        ? `Выбрано ${formatTimeSec(explicitSegmentsDurationSec)}`
-                        : compressionEnabled
-                          ? sourceDurationSec !== null
-                            ? `Источник ${formatTimeSec(sourceDurationSec)}`
-                            : "Источник н/д"
-                          : `Окно ${formatTimeSec(Math.min(sourceDurationSec ?? clipDurationSec, clipDurationSec))}`}
-                    </span>
-                    {compressionEnabled ? (
-                      <span className="meta-pill">
-                        {effectiveSelectionDurationSec > clipDurationSec + 0.05
-                          ? `Сжатие x${(compressionRatio ?? 1).toFixed(2)}`
-                          : normalizedSegments.length > 0
-                            ? "Без ускорения"
-                            : "Весь исходник в 6с"}
-                      </span>
-                    ) : (
-                      <span className="meta-pill">Осталось {formatTimeSec(remainingSegmentsDurationSec)}</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="fragment-builder-row">
-                  <div className="fragment-cursor-card">
-                    <span className="field-label">Курсор для добавления</span>
-                    <strong>{formatTimeSec(localClipStartSec)}</strong>
-                    <span className="subtle-text">
-                      {normalizedSegments.length > 0
-                        ? "Текущий курсор используется для быстрого добавления следующего куска."
-                        : compressionEnabled
-                          ? "Без фрагментов будет взят весь исходник, но курсор можно использовать для ручной нарезки."
-                          : "Если ничего не добавлять, рендер возьмет 6s окно от этого курсора."}
-                    </span>
-                  </div>
-                  <div className="fragment-duration-grid">
-                    {[0.5, 1, 1.5, 2, 3].map((duration) => {
-                      const disabled =
-                        !sourceUrl ||
-                        (!compressionEnabled && duration - remainingSegmentsDurationSec > 0.02) ||
-                        (sourceDurationSec !== null && localClipStartSec >= sourceDurationSec - 0.05);
-                      return (
-                        <button
-                          key={`fragment-duration-${duration}`}
-                          type="button"
-                          className="preset-chip"
-                          disabled={disabled}
-                          onClick={() => addFragmentAtCursor(duration)}
-                        >
-                          +{duration.toFixed(duration % 1 === 0 ? 0 : 1)}s
-                        </button>
-                      );
-                    })}
+                  <label className="field-label fragment-toggle">
+                    <input
+                      type="checkbox"
+                      checked={compressionEnabled}
+                      onChange={(event) => commitFragments(normalizedSegments, event.target.checked)}
+                    />
+                    <span>Сжать до 6с</span>
+                  </label>
+                  <div className="fragment-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={!sourceUrl || (!compressionEnabled && remainingSegmentsDurationSec < 0.1)}
+                      onClick={createFragment}
+                    >
+                      + Фрагмент
+                    </button>
                     {normalizedSegments.length > 0 ? (
-                      <button
-                        type="button"
-                        className="preset-chip"
-                        onClick={() => commitFragments([])}
-                      >
-                        Очистить фрагменты
+                      <button type="button" className="btn btn-ghost" onClick={() => commitFragments([])}>
+                        Очистить
                       </button>
                     ) : null}
                   </div>
@@ -1208,24 +1134,23 @@ export function Step3RenderTemplate({
                       return (
                         <article key={rowKey} className="fragment-row">
                           <div className="fragment-row-head">
-                            <div>
-                              <strong>{segment.label}</strong>
-                              <p className="subtle-text">
-                                {formatTimeSec(segment.startSec)} → {formatTimeSec(endValue)} ·{" "}
+                            <div className="fragment-row-meta">
+                              <span className="meta-pill mono">{index + 1}</span>
+                              <span className="quick-edit-value">
                                 {formatTimeSec(Math.max(0, endValue - segment.startSec))}
-                              </p>
+                              </span>
                             </div>
                             <button
                               type="button"
                               className="btn btn-ghost btn-danger-soft"
                               onClick={() => removeFragment(index)}
                             >
-                              Удалить
+                              ×
                             </button>
                           </div>
                           <div className="fragment-input-grid">
                             <label className="field-stack">
-                              <span className="field-label">Начало</span>
+                              <span className="field-label">От</span>
                               <input
                                 type="number"
                                 min={0}
@@ -1240,7 +1165,7 @@ export function Step3RenderTemplate({
                               />
                             </label>
                             <label className="field-stack">
-                              <span className="field-label">Конец</span>
+                              <span className="field-label">До</span>
                               <input
                                 type="number"
                                 min={0.1}
@@ -1260,20 +1185,14 @@ export function Step3RenderTemplate({
                     })}
                   </div>
                 ) : (
-                  <div className="fragment-empty">
-                    <strong>Фрагменты пока не добавлены.</strong>
-                    <p>
-                      Используйте курсор и быстрые кнопки `+0.5s / +1s / +1.5s / +2s / +3s`, если
-                      хотите собрать ролик из нескольких кусков.
-                    </p>
-                  </div>
+                  <div className="fragment-empty subtle-text">Нет фрагментов</div>
                 )}
               </div>
 
               <div className="quick-edit-card slider-field">
                 <div className="quick-edit-label-row">
                   <label className="field-label" htmlFor="clipStartRange">
-                    {normalizedSegments.length > 0 ? "Курсор фрагментов" : "Начало клипа"}
+                    Начало клипа
                   </label>
                   <span className="quick-edit-value">
                     {normalizedSegments.length > 0
@@ -1294,11 +1213,6 @@ export function Step3RenderTemplate({
                   onTouchEnd={() => flushClipCommit(localClipStartSec)}
                   onBlur={() => flushClipCommit(localClipStartSec)}
                 />
-                <p className="subtle-text">
-                  {normalizedSegments.length > 0
-                    ? "Фрагменты переопределяют обычное 6s окно. Этот slider двигает только курсор для быстрого добавления."
-                    : "Если список фрагментов пуст, именно это окно идет в рендер."}
-                </p>
                 <div className="preset-row">
                   <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 1)}>
                     -1.0s

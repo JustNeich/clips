@@ -1205,16 +1205,15 @@ select.text-input:focus {
 }
 
 .fragment-card {
-  gap: 12px;
+  gap: 10px;
 }
 
 .fragment-toolbar,
-.fragment-builder-row,
 .fragment-row-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -1232,40 +1231,12 @@ select.text-input:focus {
   accent-color: var(--accent);
 }
 
-.fragment-summary-text {
-  margin: 6px 0 0;
-  max-width: 72ch;
-}
-
-.fragment-summary-row {
+.fragment-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
-}
-
-.fragment-cursor-card {
-  display: grid;
-  gap: 4px;
-  min-width: 210px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.fragment-cursor-card strong {
-  font-size: 22px;
-  letter-spacing: -0.03em;
-}
-
-.fragment-duration-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
   align-items: center;
   justify-content: flex-end;
-  flex: 1 1 340px;
 }
 
 .fragment-list {
@@ -1275,20 +1246,18 @@ select.text-input:focus {
 
 .fragment-row {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
 }
 
-.fragment-row-head strong {
-  display: block;
-  margin-bottom: 4px;
-}
-
-.fragment-row-head .subtle-text {
-  margin: 0;
+.fragment-row-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .fragment-input-grid {
@@ -1303,17 +1272,8 @@ select.text-input:focus {
 }
 
 .fragment-empty {
-  border: 1px dashed color-mix(in srgb, var(--border) 88%, transparent);
-  border-radius: 12px;
-  padding: 14px;
-  display: grid;
-  gap: 6px;
+  padding: 4px 0;
   color: var(--text-muted);
-}
-
-.fragment-empty strong,
-.fragment-empty p {
-  margin: 0;
 }
 
 .asset-grid {
@@ -2764,13 +2724,11 @@ select.text-input:focus {
   .quick-edit-label-row,
   .control-section-head,
   .fragment-toolbar,
-  .fragment-builder-row,
   .fragment-row-head {
     align-items: flex-start;
   }
 
-  .fragment-summary-row,
-  .fragment-duration-grid {
+  .fragment-actions {
     justify-content: flex-start;
   }
 
