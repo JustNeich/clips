@@ -1,4 +1,4 @@
-import { createOrGetChatByUrl, listChats } from "../../../lib/chat-history";
+import { createOrGetChatByUrl, listChatListItems } from "../../../lib/chat-history";
 import { requireAuth, requireChannelOperate, requireChannelVisibility } from "../../../lib/auth/guards";
 
 export const runtime = "nodejs";
@@ -11,11 +11,11 @@ export async function GET(request: Request): Promise<Response> {
 
     if (channelId) {
       await requireChannelVisibility(auth, channelId);
-      const chats = await listChats(channelId, auth.workspace.id);
+      const chats = await listChatListItems(auth.user.id, channelId, auth.workspace.id);
       return Response.json({ chats }, { status: 200 });
     }
 
-    const chats = await listChats(undefined, auth.workspace.id);
+    const chats = await listChatListItems(auth.user.id, undefined, auth.workspace.id);
     const visibleChats = [];
     for (const chat of chats) {
       try {

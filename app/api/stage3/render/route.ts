@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
-import { promises as fs } from "node:fs";
+import { createReadStream, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { promisify } from "node:util";
 import {
   STAGE3_TEMPLATE_ID,
@@ -30,6 +31,7 @@ export const runtime = "nodejs";
 const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 const DEFAULT_TEXT_SCALE = 1.25;
 const execFileAsync = promisify(execFile);
+const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
 
 type RenderBody = {
   sourceUrl?: string;
@@ -114,6 +116,36 @@ function parseRenderError(error: unknown): string {
     return message;
   }
   return message || "Не удалось отрендерить видео.";
+}
+
+function isMemoryConstrainedRuntime(): boolean {
+  return process.env.RENDER === "true" || process.env.RENDER === "1";
+}
+
+function scheduleDirectoryCleanup(dirPath: string): void {
+  const cleanup = () => {
+    void fs.rm(dirPath, { recursive: true, force: true }).catch(() => undefined);
+  };
+  const timer = setTimeout(cleanup, 120_000);
+  timer.unref?.();
+}
+
+async function createVideoAttachmentResponse(
+  filePath: string,
+  attachmentName: string,
+  extraHeaders?: Record<string, string>
+): Promise<Response> {
+  const stat = await fs.stat(filePath);
+  const stream = createReadStream(filePath);
+  return new Response(Readable.toWeb(stream) as ReadableStream, {
+    status: 200,
+    headers: {
+      "Content-Type": "video/mp4",
+      "Content-Length": String(stat.size),
+      "Content-Disposition": `attachment; filename="${attachmentName}"`,
+      ...extraHeaders
+    }
+  });
 }
 
 function buildRenderMetadataTitle(rawTitle: string | null | undefined): string | null {
@@ -272,7 +304,18 @@ async function runRemotionRender(params: {
     codec: "h264",
     crf: 18,
     logLevel: "warn",
-    timeoutInMilliseconds: params.timeoutMs
+    timeoutInMilliseconds: params.timeoutMs,
+    concurrency: isMemoryConstrainedRuntime() ? MEMORY_CONSTRAINED_REMOTION_CONCURRENCY : null,
+    disallowParallelEncoding: isMemoryConstrainedRuntime(),
+    chromiumOptions: isMemoryConstrainedRuntime()
+      ? {
+          enableMultiProcessOnLinux: false,
+          gl: null
+        }
+      : undefined,
+    offthreadVideoThreads: isMemoryConstrainedRuntime() ? 1 : undefined,
+    offthreadVideoCacheSizeInBytes: isMemoryConstrainedRuntime() ? 32 * 1024 * 1024 : undefined,
+    mediaCacheSizeInBytes: isMemoryConstrainedRuntime() ? 32 * 1024 * 1024 : undefined
   };
 
   try {
@@ -307,6 +350,7 @@ export async function POST(request: Request): Promise<Response> {
       : REMOTION_RENDER_TIMEOUT_MS;
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-"));
+  let cleanupScheduled = false;
 
   try {
     const auth = await requireAuth();
@@ -562,18 +606,14 @@ export async function POST(request: Request): Promise<Response> {
       metadataTitle
     });
 
-    const rendered = await fs.readFile(outputPath);
     const attachmentName = `${outputStem}.mp4`;
-
-    return new Response(rendered, {
-      status: 200,
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Disposition": `attachment; filename="${attachmentName}"`,
-        "x-stage3-top-compacted": computed.topCompacted ? "1" : "0",
-        "x-stage3-bottom-compacted": computed.bottomCompacted ? "1" : "0"
-      }
+    const response = await createVideoAttachmentResponse(outputPath, attachmentName, {
+      "x-stage3-top-compacted": computed.topCompacted ? "1" : "0",
+      "x-stage3-bottom-compacted": computed.bottomCompacted ? "1" : "0"
     });
+    scheduleDirectoryCleanup(tmpDir);
+    cleanupScheduled = true;
+    return response;
   } catch (error) {
     if (error instanceof Response) {
       return error;
@@ -584,6 +624,8 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json({ error: parseRenderError(error) }, { status: 500 });
   } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    if (!cleanupScheduled) {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   }
 }

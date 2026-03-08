@@ -13,7 +13,10 @@ import {
   Channel,
   ChannelAccessGrant,
   ChannelAsset,
+  ChatDraft,
   ChatEvent,
+  ChatListItem,
+  ChatRenderExportRef,
   ChatThread,
   Stage3AgentConversationItem,
   CodexAuthResponse,
@@ -22,6 +25,7 @@ import {
   Stage3AgentRunResponse,
   Stage3IterationStopReason,
   Stage3RenderPlan,
+  Stage3Segment,
   Stage3SessionStatus,
   Stage3StateSnapshot,
   Stage3TimelineResponse,
@@ -35,6 +39,16 @@ import {
   findLatestStage3AgentSessionRef,
   normalizeStage3SessionStatus
 } from "../lib/stage3-legacy-bridge";
+import {
+  buildChatListItem,
+  extractCommentsPayload,
+  extractStage1FetchState,
+  extractStage2Payload,
+  getDefaultDraftState,
+  getMaxStepForChat,
+  getPreferredStepForChat,
+  normalizeChatDraft
+} from "../lib/chat-workflow";
 import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 
 const CLIP_DURATION_SEC = 6;
@@ -95,98 +109,6 @@ function isAbortError(error: unknown): boolean {
   return false;
 }
 
-function extractCommentsPayload(data: unknown): CommentsPayload | null {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-  const candidate = data as Partial<CommentsPayload>;
-  if (!Array.isArray(candidate.topComments) || !Array.isArray(candidate.allComments)) {
-    return null;
-  }
-  return {
-    title: String(candidate.title ?? "video"),
-    totalComments: Number(candidate.totalComments ?? candidate.allComments.length ?? 0),
-    topComments: candidate.topComments,
-    allComments: candidate.allComments
-  };
-}
-
-function normalizeStage2TitleOptions(
-  value: unknown
-): Stage2Response["output"]["titleOptions"] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const normalized = value
-    .map((item, index) => {
-      if (typeof item === "string") {
-        const title = item.trim();
-        if (!title) {
-          return null;
-        }
-        return {
-          option: index + 1,
-          title,
-          titleRu: title
-        };
-      }
-
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-
-      const record = item as Record<string, unknown>;
-      const title = String(record.title ?? "").trim();
-      if (!title) {
-        return null;
-      }
-      return {
-        option:
-          typeof record.option === "number" && Number.isFinite(record.option)
-            ? Math.max(1, Math.floor(record.option))
-            : index + 1,
-        title,
-        titleRu: String(record.titleRu ?? "").trim() || title
-      };
-    })
-    .filter(
-      (
-        item
-      ): item is {
-        option: number;
-        title: string;
-        titleRu: string;
-      } => Boolean(item)
-    );
-
-  return normalized.length === value.length ? normalized : null;
-}
-
-function extractStage2Payload(data: unknown): Stage2Response | null {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-  const candidate = data as Record<string, unknown>;
-  if (!("output" in candidate) || !candidate.output || typeof candidate.output !== "object") {
-    return null;
-  }
-
-  const output = candidate.output as Record<string, unknown>;
-  const titleOptions = normalizeStage2TitleOptions(output.titleOptions);
-  if (!titleOptions) {
-    return null;
-  }
-
-  return {
-    ...(data as Stage2Response),
-    output: {
-      ...((data as Stage2Response).output ?? {}),
-      titleOptions
-    }
-  };
-}
-
 function fallbackRenderPlan(): Stage3RenderPlan {
   return {
     targetDurationSec: 6,
@@ -199,7 +121,7 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     musicGain: 0.65,
     textPolicy: "strict_fit",
     segments: [],
-    policy: "full_source_normalize",
+    policy: "fixed_segments",
     backgroundAssetId: null,
     backgroundAssetMimeType: null,
     musicAssetId: null,
@@ -211,6 +133,94 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     templateId: STAGE3_TEMPLATE_ID,
     prompt: ""
   };
+}
+
+function roundStage3Tenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function normalizeClientSegments(
+  segments: Stage3Segment[],
+  sourceDurationSec: number | null
+): Stage3Segment[] {
+  return segments
+    .map((segment, index) => {
+      const startSec =
+        typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
+          ? Math.max(0, segment.startSec)
+          : null;
+      if (startSec === null) {
+        return null;
+      }
+      const rawEnd =
+        segment.endSec === null
+          ? sourceDurationSec ?? startSec + 0.5
+          : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
+            ? segment.endSec
+            : startSec + 0.5;
+      const cappedEnd =
+        sourceDurationSec === null ? rawEnd : Math.min(Math.max(startSec + 0.1, rawEnd), sourceDurationSec);
+      return {
+        startSec: roundStage3Tenth(startSec),
+        endSec: roundStage3Tenth(Math.max(startSec + 0.1, cappedEnd)),
+        label:
+          typeof segment.label === "string" && segment.label.trim()
+            ? segment.label.trim()
+            : `Фрагмент ${index + 1}`
+      };
+    })
+    .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
+    .sort((left, right) => left.startSec - right.startSec)
+    .slice(0, 12)
+    .map((segment, index) => ({
+      ...segment,
+      label: segment.label || `Фрагмент ${index + 1}`
+    }));
+}
+
+function sumClientSegmentsDuration(
+  segments: Stage3Segment[],
+  sourceDurationSec: number | null
+): number {
+  return segments.reduce((total, segment) => {
+    const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
+    return total + Math.max(0, endSec - segment.startSec);
+  }, 0);
+}
+
+function trimClientSegmentsToDuration(
+  segments: Stage3Segment[],
+  targetDurationSec: number,
+  sourceDurationSec: number | null
+): Stage3Segment[] {
+  let remaining = targetDurationSec;
+  const trimmed: Stage3Segment[] = [];
+
+  for (const segment of normalizeClientSegments(segments, sourceDurationSec)) {
+    if (remaining <= 0.05) {
+      break;
+    }
+    const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
+    const duration = Math.max(0.1, endSec - segment.startSec);
+    const keepDuration = Math.min(duration, remaining);
+    trimmed.push({
+      ...segment,
+      endSec: roundStage3Tenth(segment.startSec + keepDuration)
+    });
+    remaining -= keepDuration;
+  }
+
+  return normalizeClientSegments(trimmed, sourceDurationSec);
+}
+
+function getEditingPolicy(
+  segments: Stage3Segment[],
+  compressionEnabled: boolean
+): Stage3RenderPlan["policy"] {
+  if (segments.length > 0) {
+    return "fixed_segments";
+  }
+  return compressionEnabled ? "full_source_normalize" : "fixed_segments";
 }
 
 function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
@@ -352,15 +362,6 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
   };
 }
 
-function formatShortDate(value: string): string {
-  return new Date(value).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
 function shorten(value: string, max = 54): string {
   if (value.length <= max) {
     return value;
@@ -451,57 +452,6 @@ function formatSourceProviderLabel(provider: "visolix" | "ytDlp" | null | undefi
     return "локальный fallback-загрузчик";
   }
   return null;
-}
-
-type Stage1FetchState = {
-  ready: boolean;
-  commentsAvailable: boolean;
-  commentsError: string | null;
-};
-
-function extractStage1FetchState(chat: Pick<ChatThread, "events"> | null): Stage1FetchState {
-  if (!chat) {
-    return { ready: false, commentsAvailable: false, commentsError: null };
-  }
-
-  let ready = false;
-  let commentsAvailable = false;
-  let commentsError: string | null = null;
-
-  for (const event of chat.events) {
-    if (event.role === "assistant" && event.type === "comments" && extractCommentsPayload(event.data)) {
-      ready = true;
-      commentsAvailable = true;
-      commentsError = null;
-      continue;
-    }
-
-    if (
-      event.role === "assistant" &&
-      event.type === "note" &&
-      event.data &&
-      typeof event.data === "object" &&
-      (event.data as Record<string, unknown>).stage1Ready === true
-    ) {
-      ready = true;
-      commentsAvailable = Boolean((event.data as Record<string, unknown>).commentsAvailable);
-      commentsError =
-        typeof (event.data as Record<string, unknown>).commentsError === "string"
-          ? summarizeUserFacingError(String((event.data as Record<string, unknown>).commentsError))
-          : null;
-    }
-  }
-
-  return { ready, commentsAvailable, commentsError };
-}
-
-function getCurrentStepForChat(chat: Pick<ChatThread, "events"> | null): 1 | 2 | 3 {
-  if (!chat) {
-    return 1;
-  }
-  const hasStage2 = chat.events.some((event) => event.type === "stage2" && event.role === "assistant");
-  const stage1 = extractStage1FetchState(chat);
-  return hasStage2 ? 3 : stage1.ready ? 2 : 1;
 }
 
 function mergeStage3Versions(groups: Stage3Version[][]): Stage3Version[] {
@@ -650,8 +600,9 @@ export default function HomePage() {
   const [channelAccessGrants, setChannelAccessGrants] = useState<ChannelAccessGrant[]>([]);
   const [workspaceMembers, setWorkspaceMembers] = useState<Array<{ user: UserRecord; role: AppRole }>>([]);
   const [isChannelManagerOpen, setIsChannelManagerOpen] = useState(false);
-  const [chats, setChats] = useState<ChatThread[]>([]);
+  const [chatList, setChatList] = useState<ChatListItem[]>([]);
   const [activeChat, setActiveChat] = useState<ChatThread | null>(null);
+  const [activeDraft, setActiveDraft] = useState<ChatDraft | null>(null);
 
   const [codexAuth, setCodexAuth] = useState<CodexAuthResponse | null>(null);
   const [isCodexAuthLoading, setIsCodexAuthLoading] = useState(false);
@@ -681,6 +632,9 @@ export default function HomePage() {
   const previousChannelIdRef = useRef<string | null>(null);
   const stage3PreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
   const stage3PreviewRequestKeyRef = useRef<string>("");
+  const draftSaveTimerRef = useRef<number | null>(null);
+  const draftInFlightRef = useRef<Promise<void> | null>(null);
+  const draftPayloadJsonRef = useRef<string>("");
 
   const codexLoggedIn = Boolean(codexAuth?.loggedIn);
   const codexRunning = codexAuth?.deviceAuth.status === "running";
@@ -775,6 +729,54 @@ export default function HomePage() {
     []
   );
 
+  const getDraftStorageKey = useCallback(
+    (chatId: string): string | null => {
+      const workspaceId = authState?.workspace.id;
+      const userId = authState?.user.id;
+      if (!workspaceId || !userId || !chatId) {
+        return null;
+      }
+      return `clips-chat-draft:${workspaceId}:${userId}:${chatId}`;
+    },
+    [authState?.user.id, authState?.workspace.id]
+  );
+
+  const readLocalDraftCache = useCallback(
+    (chatId: string): ChatDraft | null => {
+      const key = getDraftStorageKey(chatId);
+      if (!key || typeof window === "undefined") {
+        return null;
+      }
+      try {
+        return normalizeChatDraft(JSON.parse(window.localStorage.getItem(key) ?? "null"));
+      } catch {
+        return null;
+      }
+    },
+    [getDraftStorageKey]
+  );
+
+  const writeLocalDraftCache = useCallback(
+    (draft: ChatDraft | null): void => {
+      if (!draft || typeof window === "undefined") {
+        return;
+      }
+      const key = getDraftStorageKey(draft.threadId);
+      if (!key) {
+        return;
+      }
+      window.localStorage.setItem(key, JSON.stringify(draft));
+    },
+    [getDraftStorageKey]
+  );
+
+  const patchChatListItem = useCallback((nextItem: ChatListItem): void => {
+    setChatList((prev) => {
+      const without = prev.filter((item) => item.id !== nextItem.id);
+      return [nextItem, ...without];
+    });
+  }, []);
+
   const refreshAuthState = useCallback(async (): Promise<AuthMeResponse> => {
     const response = await fetch("/api/auth/me");
     if (!response.ok) {
@@ -826,6 +828,104 @@ export default function HomePage() {
       );
     },
     []
+  );
+
+  const hydrateChatEditorState = useCallback(
+    (chat: ChatThread | null, draft: ChatDraft | null): void => {
+      if (!chat) {
+        initializedStage3ChatRef.current = null;
+        setCurrentStep(1);
+        setStage2Instruction("");
+        setSelectedOption(null);
+        setSelectedTitleOption(null);
+        setStage3TopText("");
+        setStage3BottomText("");
+        setStage3ClipStartSec(0);
+        setStage3FocusY(0.5);
+        setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
+        setSourceDurationSec(null);
+        setStage3AgentPrompt("");
+        setStage3AgentSessionId(null);
+        setStage3AgentTimeline(null);
+        setIgnoreStage3ChatSessionRef(false);
+        setStage3SelectedVersionId(null);
+        setStage3PassSelectionByVersion({});
+        appliedCaptionKeyRef.current = "";
+        stage3PreviewRequestKeyRef.current = "";
+        setStage3PreviewVideoUrl(null);
+        setStage3PreviewNotice(null);
+        return;
+      }
+
+      const stage2Event = extractStage2Payload(
+        [...chat.events].reverse().find((event) => event.type === "stage2" && event.role === "assistant")?.data
+      );
+      const preferredCaptionOption =
+        draft?.stage2.selectedCaptionOption ?? stage2Event?.output.finalPick.option ?? null;
+      const preferredTitleOption =
+        draft?.stage2.selectedTitleOption ?? stage2Event?.output.titleOptions[0]?.option ?? null;
+      const selectedCaptionForHydration = stage2Event
+        ? stage2Event.output.captionOptions.find((item) => item.option === preferredCaptionOption) ??
+          stage2Event.output.captionOptions[0] ??
+          null
+        : null;
+      const legacyVersions = buildLegacyTimelineEntries(
+        chat.events
+          .filter((event) => event.type === "note" && event.role === "assistant")
+          .map((event) => ({
+            id: event.id,
+            createdAt: event.createdAt,
+            data: event.data
+          }))
+      );
+      const latestVersion = legacyVersions[legacyVersions.length - 1] ?? null;
+      const defaults = getDefaultDraftState(chat);
+      const baseRenderPlan = latestVersion
+        ? normalizeRenderPlan(latestVersion.final.renderPlan, fallbackRenderPlan())
+        : applyChannelToRenderPlan(activeChannel, channelAssets);
+      const nextRenderPlan = draft?.stage3.renderPlan
+        ? normalizeRenderPlan(draft.stage3.renderPlan, baseRenderPlan)
+        : baseRenderPlan;
+
+      initializedStage3ChatRef.current = chat.id;
+      setCurrentStep(getPreferredStepForChat(chat, draft));
+      setStage2Instruction(draft?.stage2.instruction ?? "");
+      setSelectedOption(preferredCaptionOption);
+      setSelectedTitleOption(preferredTitleOption);
+      setStage3TopText(draft?.stage3.topText ?? latestVersion?.final.topText ?? selectedCaptionForHydration?.top ?? "");
+      setStage3BottomText(
+        draft?.stage3.bottomText ?? latestVersion?.final.bottomText ?? selectedCaptionForHydration?.bottom ?? ""
+      );
+      setStage3ClipStartSec(draft?.stage3.clipStartSec ?? latestVersion?.final.clipStartSec ?? 0);
+      setStage3FocusY(draft?.stage3.focusY ?? latestVersion?.final.focusY ?? 0.5);
+      setStage3RenderPlan(nextRenderPlan);
+      setSourceDurationSec(latestVersion?.final.sourceDurationSec ?? null);
+      setStage3AgentPrompt(
+        draft?.stage3.agentPrompt.trim() ||
+          latestVersion?.prompt.trim() ||
+          defaults.agentPrompt.trim() ||
+          ""
+      );
+      setStage3AgentSessionId(findLatestStage3AgentSessionRef(chat.events)?.sessionId ?? null);
+      setStage3AgentTimeline(null);
+      setIgnoreStage3ChatSessionRef(false);
+      setStage3SelectedVersionId(draft?.stage3.selectedVersionId ?? defaults.selectedVersionId ?? null);
+      setStage3PassSelectionByVersion(
+        Object.keys(draft?.stage3.passSelectionByVersion ?? {}).length > 0
+          ? draft?.stage3.passSelectionByVersion ?? {}
+          : defaults.passSelectionByVersion
+      );
+      appliedCaptionKeyRef.current = [
+        chat.id,
+        selectedCaptionForHydration?.option ?? "",
+        selectedCaptionForHydration?.top ?? "",
+        selectedCaptionForHydration?.bottom ?? ""
+      ].join("|");
+      stage3PreviewRequestKeyRef.current = "";
+      setStage3PreviewVideoUrl(null);
+      setStage3PreviewNotice(null);
+    },
+    [activeChannel, applyChannelToRenderPlan, channelAssets]
   );
 
   const refreshChannels = useCallback(async (): Promise<Channel[]> => {
@@ -884,36 +984,57 @@ export default function HomePage() {
     setChannelAccessGrants(body.grants ?? []);
   }, [authState?.effectivePermissions.canManageAnyChannelAccess, parseError]);
 
-  const refreshChats = async (): Promise<void> => {
+  const refreshChats = async (): Promise<ChatListItem[]> => {
     const query = activeChannelId ? `?channelId=${encodeURIComponent(activeChannelId)}` : "";
     const response = await fetch(`/api/chats${query}`);
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось загрузить историю."));
     }
-    const body = (await response.json()) as { chats: ChatThread[] };
+    const body = (await response.json()) as { chats: ChatListItem[] };
     const nextChats = body.chats ?? [];
-    setChats(nextChats);
+    setChatList(nextChats);
     setActiveChat((prev) => {
       if (!prev) {
-        return nextChats[0] ?? null;
+        return prev;
       }
-      const match = nextChats.find((chat) => chat.id === prev.id);
-      return match ?? nextChats[0] ?? null;
+      return nextChats.some((chat) => chat.id === prev.id) ? prev : null;
     });
+    setActiveDraft((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return nextChats.some((chat) => chat.id === prev.threadId) ? prev : null;
+    });
+    return nextChats;
   };
 
-  const refreshActiveChat = async (chatId: string): Promise<ChatThread> => {
+  const refreshActiveChat = async (chatId: string): Promise<{ chat: ChatThread; draft: ChatDraft | null }> => {
     const response = await fetch(`/api/chats/${chatId}`);
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось загрузить элемент."));
     }
-    const body = (await response.json()) as { chat: ChatThread };
+    const body = (await response.json()) as { chat: ChatThread; draft: ChatDraft | null };
+    const localDraft = readLocalDraftCache(chatId);
+    const serverDraft = body.draft ? normalizeChatDraft(body.draft) : null;
+    const resolvedDraft =
+      localDraft &&
+      (!serverDraft ||
+        new Date(localDraft.updatedAt).getTime() > new Date(serverDraft.updatedAt).getTime())
+        ? localDraft
+        : serverDraft;
+
     setActiveChat(body.chat);
-    setChats((prev) => {
-      const without = prev.filter((item) => item.id !== body.chat.id);
-      return [body.chat, ...without];
-    });
-    return body.chat;
+    setActiveDraft(resolvedDraft);
+    draftPayloadJsonRef.current = resolvedDraft
+      ? JSON.stringify({
+          lastOpenStep: resolvedDraft.lastOpenStep,
+          stage2: resolvedDraft.stage2,
+          stage3: resolvedDraft.stage3
+        })
+      : "";
+    patchChatListItem(buildChatListItem(body.chat, resolvedDraft));
+    hydrateChatEditorState(body.chat, resolvedDraft);
+    return { chat: body.chat, draft: resolvedDraft };
   };
 
   const appendEvent = useCallback(async (
@@ -930,11 +1051,10 @@ export default function HomePage() {
     }
     const body = (await response.json()) as { chat: ChatThread };
     setActiveChat(body.chat);
-    setChats((prev) => {
-      const without = prev.filter((item) => item.id !== body.chat.id);
-      return [body.chat, ...without];
-    });
-  }, [parseError]);
+    patchChatListItem(
+      buildChatListItem(body.chat, activeChat?.id === body.chat.id ? activeDraft : null)
+    );
+  }, [activeChat?.id, activeDraft, parseError, patchChatListItem]);
 
   const loadStage3AgentTimeline = useCallback(
     async (sessionId: string): Promise<Stage3TimelineResponse> => {
@@ -1103,8 +1223,9 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!activeChannelId) {
-      setChats([]);
+      setChatList([]);
       setActiveChat(null);
+      setActiveDraft(null);
       setChannelAccessGrants([]);
       return;
     }
@@ -1210,7 +1331,7 @@ export default function HomePage() {
     return activeChat;
   };
 
-  const applyStage3Snapshot = (snapshot: Stage3StateSnapshot): void => {
+  const applyStage3Snapshot = useCallback((snapshot: Stage3StateSnapshot): void => {
     setStage3TopText(snapshot.topText);
     setStage3BottomText(snapshot.bottomText);
     setStage3ClipStartSec(snapshot.clipStartSec);
@@ -1219,7 +1340,7 @@ export default function HomePage() {
     if (snapshot.renderPlan?.prompt?.trim()) {
       setStage3AgentPrompt(snapshot.renderPlan.prompt);
     }
-  };
+  }, []);
 
   const makeLiveSnapshot = (): Stage3StateSnapshot => {
     const fit = getTemplateComputed(
@@ -1391,6 +1512,7 @@ export default function HomePage() {
       return;
     }
 
+    await flushActiveDraftSave();
     setBusyAction("fetch");
     setIsBusy(true);
     setStatus("");
@@ -1679,6 +1801,7 @@ export default function HomePage() {
       return;
     }
 
+    await flushActiveDraftSave();
     setBusyAction("render");
     setIsBusy(true);
     setStatus("");
@@ -1752,7 +1875,17 @@ export default function HomePage() {
         type: "note",
         text: `Stage 3 export finished: ${outputName} (title ${selectedTitle?.title ?? "n/a"}, clip ${renderSnapshot.clipStartSec.toFixed(1)}-${(
           renderSnapshot.clipStartSec + CLIP_DURATION_SEC
-        ).toFixed(1)}s, focus ${Math.round(renderSnapshot.focusY * 100)}%)`
+        ).toFixed(1)}s, focus ${Math.round(renderSnapshot.focusY * 100)}%)`,
+        data: {
+          kind: "stage3-render-export",
+          fileName: outputName,
+          renderTitle: selectedTitle?.title ?? null,
+          clipStartSec: renderSnapshot.clipStartSec,
+          clipEndSec: renderSnapshot.clipStartSec + CLIP_DURATION_SEC,
+          focusY: renderSnapshot.focusY,
+          templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
+          createdAt: new Date().toISOString()
+        } satisfies ChatRenderExportRef
       });
 
       setStatusType("ok");
@@ -1785,6 +1918,7 @@ export default function HomePage() {
       return;
     }
 
+    await flushActiveDraftSave();
     setBusyAction("stage3-optimize");
     setIsBusy(true);
     setStatus("");
@@ -1875,6 +2009,7 @@ export default function HomePage() {
       return;
     }
 
+    await flushActiveDraftSave();
     setBusyAction("stage3-optimize");
     setIsBusy(true);
     setStatus("");
@@ -1943,6 +2078,7 @@ export default function HomePage() {
       return;
     }
 
+    await flushActiveDraftSave();
     setBusyAction("stage3-optimize");
     setIsBusy(true);
     setStatus("");
@@ -2304,9 +2440,9 @@ export default function HomePage() {
       ) {
         return prev;
       }
-      return latestStage2Event.payload.output.finalPick.option;
+      return activeDraft?.stage2.selectedCaptionOption ?? latestStage2Event.payload.output.finalPick.option;
     });
-  }, [latestStage2Event]);
+  }, [activeDraft?.stage2.selectedCaptionOption, latestStage2Event]);
 
   useEffect(() => {
     if (!latestStage2Event) {
@@ -2320,9 +2456,9 @@ export default function HomePage() {
       ) {
         return prev;
       }
-      return latestStage2Event.payload.output.titleOptions[0]?.option ?? 1;
+      return activeDraft?.stage2.selectedTitleOption ?? latestStage2Event.payload.output.titleOptions[0]?.option ?? 1;
     });
-  }, [latestStage2Event]);
+  }, [activeDraft?.stage2.selectedTitleOption, latestStage2Event]);
 
   const selectedCaption = useMemo(() => {
     if (!latestStage2Event) {
@@ -2348,7 +2484,242 @@ export default function HomePage() {
     );
   }, [latestStage2Event, selectedTitleOption]);
 
+  const hasActiveStage3Draft = useMemo(() => {
+    if (!activeDraft) {
+      return false;
+    }
+    return (
+      activeDraft.stage3.topText !== null ||
+      activeDraft.stage3.bottomText !== null ||
+      activeDraft.stage3.clipStartSec !== null ||
+      activeDraft.stage3.focusY !== null ||
+      activeDraft.stage3.renderPlan !== null ||
+      Boolean(activeDraft.stage3.agentPrompt.trim()) ||
+      activeDraft.stage3.selectedVersionId !== null ||
+      Object.keys(activeDraft.stage3.passSelectionByVersion).length > 0
+    );
+  }, [activeDraft]);
+
+  const currentDraftPayload = useMemo(() => {
+    if (!activeChat) {
+      return null;
+    }
+
+    const defaults = getDefaultDraftState(activeChat);
+    const latestVersion = stage3Versions[stage3Versions.length - 1] ?? null;
+    const baseRenderPlan = latestVersion
+      ? normalizeRenderPlan(latestVersion.final.renderPlan, fallbackRenderPlan())
+      : applyChannelToRenderPlan(activeChannel, channelAssets);
+    const normalizedCurrentRenderPlan = normalizeRenderPlan(stage3RenderPlan, fallbackRenderPlan());
+    const renderPlanChanged =
+      JSON.stringify(normalizedCurrentRenderPlan) !== JSON.stringify(baseRenderPlan);
+    const baseTopText = latestVersion?.final.topText ?? selectedCaption?.top ?? "";
+    const baseBottomText = latestVersion?.final.bottomText ?? selectedCaption?.bottom ?? "";
+    const baseClipStart = latestVersion?.final.clipStartSec ?? 0;
+    const baseFocusY = latestVersion?.final.focusY ?? 0.5;
+    const baseAgentPrompt = latestVersion?.prompt ?? defaults.agentPrompt ?? "";
+    const titleDefault = latestStage2Event?.payload.output.titleOptions[0]?.option ?? null;
+    const captionDefault = latestStage2Event?.payload.output.finalPick.option ?? null;
+    const passSelectionChanged =
+      JSON.stringify(stage3PassSelectionByVersion) !== JSON.stringify(defaults.passSelectionByVersion);
+
+    return {
+      lastOpenStep: currentStep,
+      stage2: {
+        instruction: stage2Instruction,
+        selectedCaptionOption:
+          selectedOption !== null && selectedOption !== captionDefault ? selectedOption : null,
+        selectedTitleOption:
+          selectedTitleOption !== null && selectedTitleOption !== titleDefault ? selectedTitleOption : null
+      },
+      stage3: {
+        topText: stage3TopText !== baseTopText ? stage3TopText : null,
+        bottomText: stage3BottomText !== baseBottomText ? stage3BottomText : null,
+        clipStartSec: stage3ClipStartSec !== baseClipStart ? stage3ClipStartSec : null,
+        focusY: stage3FocusY !== baseFocusY ? stage3FocusY : null,
+        renderPlan: renderPlanChanged ? normalizedCurrentRenderPlan : null,
+        agentPrompt:
+          stage3AgentPrompt.trim() && stage3AgentPrompt !== baseAgentPrompt ? stage3AgentPrompt : "",
+        selectedVersionId:
+          stage3SelectedVersionId && stage3SelectedVersionId !== defaults.selectedVersionId
+            ? stage3SelectedVersionId
+            : null,
+        passSelectionByVersion: passSelectionChanged ? stage3PassSelectionByVersion : {}
+      }
+    };
+  }, [
+    activeChannel,
+    activeChat,
+    applyChannelToRenderPlan,
+    channelAssets,
+    currentStep,
+    latestStage2Event,
+    selectedCaption,
+    selectedOption,
+    selectedTitleOption,
+    stage2Instruction,
+    stage3AgentPrompt,
+    stage3ClipStartSec,
+    stage3FocusY,
+    stage3PassSelectionByVersion,
+    stage3RenderPlan,
+    stage3SelectedVersionId,
+    stage3TopText,
+    stage3BottomText,
+    stage3Versions
+  ]);
+
+  const saveActiveDraftPayload = useCallback(
+    async (
+      payload: NonNullable<typeof currentDraftPayload>,
+      options?: { silent?: boolean }
+    ): Promise<void> => {
+      if (!activeChat || !authState?.user.id) {
+        return;
+      }
+
+      const stamp = new Date().toISOString();
+      const optimisticDraft = normalizeChatDraft({
+        id: activeDraft?.id ?? "",
+        threadId: activeChat.id,
+        userId: authState.user.id,
+        createdAt: activeDraft?.createdAt ?? stamp,
+        updatedAt: stamp,
+        ...payload
+      });
+
+      if (optimisticDraft) {
+        writeLocalDraftCache(optimisticDraft);
+      }
+
+      const request = (async () => {
+        const response = await fetch(`/api/chats/${activeChat.id}/draft`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+          throw new Error(await parseError(response, "Не удалось сохранить draft."));
+        }
+
+        const body = (await response.json()) as { draft: ChatDraft; summary: ChatListItem };
+        setActiveDraft(body.draft);
+        writeLocalDraftCache(body.draft);
+        patchChatListItem(body.summary);
+        draftPayloadJsonRef.current = JSON.stringify(payload);
+      })();
+
+      draftInFlightRef.current = request;
+      try {
+        await request;
+      } catch (error) {
+        if (!options?.silent) {
+          setStatusType("error");
+          setStatus(getUiErrorMessage(error, "Не удалось сохранить draft."));
+        }
+      } finally {
+        if (draftInFlightRef.current === request) {
+          draftInFlightRef.current = null;
+        }
+      }
+    },
+    [
+      activeChat,
+      activeDraft?.createdAt,
+      activeDraft?.id,
+      authState?.user.id,
+      getUiErrorMessage,
+      parseError,
+      patchChatListItem,
+      writeLocalDraftCache
+    ]
+  );
+
+  const flushActiveDraftSave = useCallback(async (): Promise<void> => {
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+      if (currentDraftPayload) {
+        await saveActiveDraftPayload(currentDraftPayload, { silent: true });
+      }
+      return;
+    }
+
+    if (draftInFlightRef.current) {
+      await draftInFlightRef.current.catch(() => undefined);
+    }
+  }, [currentDraftPayload, saveActiveDraftPayload]);
+
+  const hasWorkingStage3Draft = useMemo(() => {
+    if (hasActiveStage3Draft) {
+      return true;
+    }
+    return Boolean(
+      currentDraftPayload &&
+        (
+          currentDraftPayload.stage3.topText !== null ||
+          currentDraftPayload.stage3.bottomText !== null ||
+          currentDraftPayload.stage3.clipStartSec !== null ||
+          currentDraftPayload.stage3.focusY !== null ||
+          currentDraftPayload.stage3.renderPlan !== null ||
+          Boolean(currentDraftPayload.stage3.agentPrompt.trim()) ||
+          currentDraftPayload.stage3.selectedVersionId !== null ||
+          Object.keys(currentDraftPayload.stage3.passSelectionByVersion).length > 0
+        )
+    );
+  }, [currentDraftPayload, hasActiveStage3Draft]);
+
   useEffect(() => {
+    if (!activeChat || !currentDraftPayload) {
+      return;
+    }
+
+    const nextPayloadJson = JSON.stringify(currentDraftPayload);
+    if (nextPayloadJson === draftPayloadJsonRef.current) {
+      return;
+    }
+
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+    }
+
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      draftSaveTimerRef.current = null;
+      void saveActiveDraftPayload(currentDraftPayload, { silent: true });
+    }, 400);
+
+    return () => {
+      if (draftSaveTimerRef.current !== null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+    };
+  }, [activeChat, currentDraftPayload, saveActiveDraftPayload]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        void flushActiveDraftSave();
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      void flushActiveDraftSave();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [flushActiveDraftSave]);
+
+  useEffect(() => {
+    if (hasWorkingStage3Draft) {
+      return;
+    }
+
     const key = [
       activeChat?.id ?? "",
       selectedCaption?.option ?? "",
@@ -2363,15 +2734,7 @@ export default function HomePage() {
     appliedCaptionKeyRef.current = key;
     setStage3TopText(selectedCaption?.top ?? "");
     setStage3BottomText(selectedCaption?.bottom ?? "");
-    setStage3RenderPlan((prev) =>
-      normalizeRenderPlan(
-        {
-          ...applyChannelToRenderPlan(activeChannel, channelAssets),
-          policy: prev.policy
-        },
-        fallbackRenderPlan()
-      )
-    );
+    setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
     setStage3SelectedVersionId(null);
     setStage3PassSelectionByVersion({});
     setStage3AgentSessionId(null);
@@ -2385,41 +2748,21 @@ export default function HomePage() {
     selectedCaption?.bottom,
     activeChannel,
     channelAssets,
-    applyChannelToRenderPlan
+    applyChannelToRenderPlan,
+    hasWorkingStage3Draft
   ]);
 
   useEffect(() => {
-    const chatId = activeChat?.id ?? null;
-    if (!chatId) {
-      initializedStage3ChatRef.current = null;
-      setStage3AgentSessionId(null);
-      setStage3AgentTimeline(null);
-      setIgnoreStage3ChatSessionRef(false);
-      setStage3SelectedVersionId(null);
-      setStage3PassSelectionByVersion({});
-      setStage3AgentPrompt("");
-      setStage3TopText("");
-      setStage3BottomText("");
-      setStage3ClipStartSec(0);
-      setStage3FocusY(0.5);
-      setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
-      stage3PreviewRequestKeyRef.current = "";
-      setStage3PreviewVideoUrl(null);
-      setStage3PreviewNotice(null);
+    if (!activeChat?.id) {
       return;
     }
-    const isNewChat = initializedStage3ChatRef.current !== chatId;
-    if (isNewChat) {
-      initializedStage3ChatRef.current = chatId;
-      setStage3AgentSessionId(stage3AgentSessionRef?.sessionId ?? null);
-      setStage3AgentTimeline(null);
-      setIgnoreStage3ChatSessionRef(false);
+
+    if (hasWorkingStage3Draft || stage3Versions.length === 0) {
+      return;
     }
+
     const latestVersion = stage3Versions[stage3Versions.length - 1] ?? null;
     if (!latestVersion) {
-      setStage3SelectedVersionId(null);
-      setStage3PassSelectionByVersion({});
-      setStage3AgentPrompt(activeStage3AgentTimeline?.session.goalText ?? "");
       return;
     }
 
@@ -2437,12 +2780,10 @@ export default function HomePage() {
     applyStage3Snapshot(latestVersion.final);
   }, [
     activeChat?.id,
-    stage3AgentSessionRef?.sessionId,
     activeStage3AgentTimeline,
+    hasWorkingStage3Draft,
     stage3Versions,
-    activeChannel,
-    channelAssets,
-    applyChannelToRenderPlan
+    applyStage3Snapshot
   ]);
 
   useEffect(() => {
@@ -2468,11 +2809,21 @@ export default function HomePage() {
         const duration = body.durationSec;
         setSourceDurationSec(duration);
         setStage3RenderPlan((prev) => {
-          if (prev.segments.length > 0 || prev.prompt.trim()) {
+          if (prev.prompt.trim()) {
             return prev;
           }
-          const policy = duration !== null && duration > 12 ? "adaptive_window" : "full_source_normalize";
-          return { ...prev, policy };
+          const compressionEnabled = prev.timingMode === "compress";
+          const policy = getEditingPolicy(prev.segments, compressionEnabled);
+          if (prev.policy === policy) {
+            return prev;
+          }
+          return normalizeRenderPlan(
+            {
+              ...prev,
+              policy
+            },
+            fallbackRenderPlan()
+          );
         });
         setStage3ClipStartSec((prev) => {
           if (!duration || duration <= CLIP_DURATION_SEC) {
@@ -2592,29 +2943,80 @@ export default function HomePage() {
     [activeChat, latestStage2Event, stage1FetchState.ready]
   );
 
+  const activeLiveAction = useMemo<ChatListItem["liveAction"]>(() => {
+    if (!activeChat) {
+      return null;
+    }
+    switch (busyAction) {
+      case "fetch":
+        return "Fetching";
+      case "comments":
+        return "Comments";
+      case "stage2":
+        return "Stage 2";
+      case "render":
+        return "Rendering";
+      default:
+        return null;
+    }
+  }, [activeChat, busyAction]);
+
+  const currentSummaryDraft = useMemo(() => {
+    if (!activeChat || !authState?.user.id || !currentDraftPayload) {
+      return activeDraft;
+    }
+
+    return (
+      normalizeChatDraft({
+        id: activeDraft?.id ?? "",
+        threadId: activeChat.id,
+        userId: authState.user.id,
+        createdAt: activeDraft?.createdAt ?? activeChat.updatedAt,
+        updatedAt: activeDraft?.updatedAt ?? activeChat.updatedAt,
+        ...currentDraftPayload
+      }) ?? activeDraft
+    );
+  }, [
+    activeChat,
+    activeDraft,
+    authState?.user.id,
+    currentDraftPayload
+  ]);
+
   const historyItems = useMemo(
     () =>
-      chats.map((chat) => ({
-        id: chat.id,
-        title: shorten(chat.title || chat.url),
-        subtitle: formatShortDate(chat.updatedAt)
-      })),
-    [chats]
+      chatList.map((item) => {
+        if (!activeChat || item.id !== activeChat.id) {
+          return item;
+        }
+
+        return {
+          ...buildChatListItem(activeChat, currentSummaryDraft),
+          liveAction: activeLiveAction
+        };
+      }),
+    [activeChat, activeLiveAction, chatList, currentSummaryDraft]
   );
 
-  const handleHistoryChange = async (id: string): Promise<void> => {
+  const handleHistoryOpen = async (id: string, step?: 1 | 2 | 3): Promise<void> => {
     setStatus("");
     setStatusType("");
 
     if (!id) {
       setActiveChat(null);
+      setActiveDraft(null);
       setCurrentStep(1);
       return;
     }
 
     try {
-      const chat = await refreshActiveChat(id);
-      setCurrentStep(getCurrentStepForChat(chat));
+      await flushActiveDraftSave();
+      const { chat, draft } = await refreshActiveChat(id);
+      if (step) {
+        setCurrentStep(Math.min(step, getMaxStepForChat(chat)) as 1 | 2 | 3);
+      } else {
+        setCurrentStep(getPreferredStepForChat(chat, draft));
+      }
     } catch (error) {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось открыть элемент истории."));
@@ -2622,11 +3024,15 @@ export default function HomePage() {
   };
 
   const handleResetFlow = (): void => {
+    void flushActiveDraftSave();
     setActiveChat(null);
+    setActiveDraft(null);
+    draftPayloadJsonRef.current = "";
     setDraftUrl("");
     setCurrentStep(1);
     setStage2Instruction("");
     setSelectedOption(null);
+    setSelectedTitleOption(null);
     setStage3TopText("");
     setStage3BottomText("");
     setStage3ClipStartSec(0);
@@ -2654,14 +3060,18 @@ export default function HomePage() {
       if (!channelId || channelId === activeChannelId) {
         return;
       }
+      void flushActiveDraftSave();
       const nextChannel = channels.find((channel) => channel.id === channelId) ?? null;
       setActiveChannelId(channelId);
-      setChats([]);
+      setChatList([]);
       setActiveChat(null);
+      setActiveDraft(null);
+      draftPayloadJsonRef.current = "";
       setDraftUrl("");
       setCurrentStep(1);
       setStage2Instruction("");
       setSelectedOption(null);
+      setSelectedTitleOption(null);
       setStage3TopText("");
       setStage3BottomText("");
       setStage3ClipStartSec(0);
@@ -2683,7 +3093,7 @@ export default function HomePage() {
       setStatus("");
       setStatusType("");
     },
-    [activeChannelId, channels, channelAssets, applyChannelToRenderPlan]
+    [activeChannelId, channels, channelAssets, applyChannelToRenderPlan, flushActiveDraftSave]
   );
 
   const handleDeleteHistory = async (chatId: string): Promise<void> => {
@@ -2700,8 +3110,16 @@ export default function HomePage() {
         throw new Error(await parseError(response, "Не удалось удалить элемент истории."));
       }
 
+      const draftStorageKey = getDraftStorageKey(chatId);
+      if (draftStorageKey && typeof window !== "undefined") {
+        window.localStorage.removeItem(draftStorageKey);
+      }
+
       await refreshChats();
       if (activeChat?.id === chatId) {
+        setActiveChat(null);
+        setActiveDraft(null);
+        draftPayloadJsonRef.current = "";
         setCurrentStep(1);
       }
 
@@ -2986,11 +3404,9 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!activeChat) {
-      setCurrentStep(1);
-      return;
+      hydrateChatEditorState(null, null);
     }
-    setCurrentStep(getCurrentStepForChat(activeChat));
-  }, [activeChat]);
+  }, [activeChat, hydrateChatEditorState]);
 
   const handleExportTemplate = (): void => {
     const chat = activeChat;
@@ -3054,8 +3470,8 @@ export default function HomePage() {
       onStepChange={(step) => setCurrentStep(step)}
       historyItems={historyItems}
       activeHistoryId={activeChat?.id ?? null}
-      onHistoryChange={(id) => {
-        void handleHistoryChange(id);
+      onHistoryOpen={(id, step) => {
+        void handleHistoryOpen(id, step);
       }}
       onDeleteHistory={(id) => {
         void handleDeleteHistory(id);
@@ -3213,6 +3629,8 @@ export default function HomePage() {
           canRollbackSelectedVersion={canRollbackStage3Version}
           topText={stage3TopText}
           bottomText={stage3BottomText}
+          segments={stage3RenderPlan.segments}
+          compressionEnabled={stage3RenderPlan.timingMode === "compress"}
           clipStartSec={stage3ClipStartSec}
           clipDurationSec={CLIP_DURATION_SEC}
           sourceDurationSec={sourceDurationSec}
@@ -3269,6 +3687,29 @@ export default function HomePage() {
             );
           }}
           onAgentPromptChange={setStage3AgentPrompt}
+          onFragmentStateChange={({ segments, compressionEnabled }) => {
+            const normalizedSegments = normalizeClientSegments(segments, sourceDurationSec);
+            const boundedSegments = compressionEnabled
+              ? normalizedSegments
+              : trimClientSegmentsToDuration(normalizedSegments, CLIP_DURATION_SEC, sourceDurationSec);
+            const policy = getEditingPolicy(boundedSegments, compressionEnabled);
+
+            if (boundedSegments.length > 0) {
+              setStage3ClipStartSec(boundedSegments[0]?.startSec ?? 0);
+            }
+
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  segments: boundedSegments,
+                  timingMode: compressionEnabled ? "compress" : "auto",
+                  policy
+                },
+                fallbackRenderPlan()
+              )
+            );
+          }}
           onSelectVersionId={(runId) => {
             const version = stage3Versions.find((item) => item.runId === runId);
             if (!version) {
@@ -3306,7 +3747,26 @@ export default function HomePage() {
             setStatusType("ok");
             setStatus(`Выбран ${pass.label} (только для просмотра изменений).`);
           }}
-          onClipStartChange={(value) => setStage3ClipStartSec(value)}
+          onClipStartChange={(value) => {
+            setStage3ClipStartSec(value);
+            setStage3RenderPlan((prev) => {
+              if (prev.segments.length > 0) {
+                return prev;
+              }
+              const compressionEnabled = prev.timingMode === "compress";
+              const policy = getEditingPolicy(prev.segments, compressionEnabled);
+              if (prev.policy === policy) {
+                return prev;
+              }
+              return normalizeRenderPlan(
+                {
+                  ...prev,
+                  policy
+                },
+                fallbackRenderPlan()
+              );
+            });
+          }}
           onFocusYChange={(value) => setStage3FocusY(value)}
           onVideoZoomChange={(value) =>
             setStage3RenderPlan((prev) =>

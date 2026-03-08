@@ -371,6 +371,66 @@ export type Stage3OptimizationRun = {
   sourceDurationSec: number | null;
 };
 
+export type ChatWorkflowStatus =
+  | "new"
+  | "sourceReady"
+  | "stage2Ready"
+  | "editing"
+  | "agentRunning"
+  | "exported"
+  | "error";
+
+export type ChatRenderExportRef = {
+  kind: "stage3-render-export";
+  fileName: string;
+  renderTitle: string | null;
+  clipStartSec: number | null;
+  clipEndSec: number | null;
+  focusY: number | null;
+  templateId: string | null;
+  createdAt: string | null;
+};
+
+export type ChatDraft = {
+  id: string;
+  threadId: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  lastOpenStep: 1 | 2 | 3;
+  stage2: {
+    instruction: string;
+    selectedCaptionOption: number | null;
+    selectedTitleOption: number | null;
+  };
+  stage3: {
+    topText: string | null;
+    bottomText: string | null;
+    clipStartSec: number | null;
+    focusY: number | null;
+    renderPlan: Stage3RenderPlan | null;
+    agentPrompt: string;
+    selectedVersionId: string | null;
+    passSelectionByVersion: Record<string, number>;
+  };
+};
+
+export type ChatListItemAction = "open" | "step2" | "step3" | "delete";
+
+export type ChatListItem = {
+  id: string;
+  channelId: string;
+  url: string;
+  title: string;
+  updatedAt: string;
+  status: ChatWorkflowStatus;
+  maxStep: 1 | 2 | 3;
+  preferredStep: 1 | 2 | 3;
+  hasDraft: boolean;
+  exportTitle: string | null;
+  liveAction?: "Fetching" | "Comments" | "Stage 2" | "Rendering" | null;
+};
+
 export type ChatEvent = {
   id: string;
   role: "user" | "assistant" | "system";

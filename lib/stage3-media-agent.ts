@@ -55,19 +55,24 @@ export type Stage3FramedPreviewAnalysis = {
   metrics: Stage3FramingMetrics;
 };
 
+function isMemoryConstrainedRuntime(): boolean {
+  return process.env.RENDER === "true" || process.env.RENDER === "1";
+}
+
 function getEncodeProfile(profile: Stage3MediaProfile): EncodeProfile {
+  const constrained = isMemoryConstrainedRuntime();
   if (profile === "preview") {
     return {
       preset: "ultrafast",
       crf: "30",
-      threads: "2",
+      threads: constrained ? "1" : "2",
       fitScalePrefix: "scale=540:-2:force_original_aspect_ratio=decrease,setsar=1,"
     };
   }
   return {
     preset: "veryfast",
     crf: "20",
-    threads: "0",
+    threads: constrained ? "1" : "0",
     fitScalePrefix: ""
   };
 }

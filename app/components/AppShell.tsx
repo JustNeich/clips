@@ -1,19 +1,13 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { sanitizeDisplayText } from "../../lib/ui-error";
-import type { CodexDeviceAuth } from "./types";
+import type { ChatListItem, ChatWorkflowStatus, CodexDeviceAuth } from "./types";
 
 export type FlowStep = {
   id: 1 | 2 | 3;
   label: string;
   enabled: boolean;
-};
-
-export type HistoryItem = {
-  id: string;
-  title: string;
-  subtitle: string;
 };
 
 export type ChannelSelectorItem = {
@@ -22,15 +16,23 @@ export type ChannelSelectorItem = {
   username: string;
 };
 
+type HistoryFilter = "all" | "working" | "exported" | "error";
+
+type HistorySection = {
+  id: string;
+  title: string;
+  items: ChatListItem[];
+};
+
 type AppShellProps = {
   title: string;
   subtitle: string;
   steps: FlowStep[];
   currentStep: 1 | 2 | 3;
   onStepChange: (step: 1 | 2 | 3) => void;
-  historyItems: HistoryItem[];
+  historyItems: ChatListItem[];
   activeHistoryId: string | null;
-  onHistoryChange: (id: string) => void;
+  onHistoryOpen: (id: string, step?: 1 | 2 | 3) => void;
   onDeleteHistory: (id: string) => void;
   onCreateNew: () => void;
   channels: ChannelSelectorItem[];
@@ -109,6 +111,206 @@ function formatRoleLabel(role: string | null): string | null {
   }
 }
 
+function formatHistoryStatusLabel(status: ChatWorkflowStatus): string {
+  switch (status) {
+    case "new":
+      return "Новый";
+    case "sourceReady":
+      return "Source ready";
+    case "stage2Ready":
+      return "Stage 2 ready";
+    case "editing":
+      return "Editing";
+    case "agentRunning":
+      return "Agent running";
+    case "exported":
+      return "Экспорт";
+    case "error":
+      return "Ошибка";
+    default:
+      return status;
+  }
+}
+
+function formatHistoryTime(value: string): string {
+  return new Date(value).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function matchesHistoryFilter(item: ChatListItem, filter: HistoryFilter): boolean {
+  if (filter === "all") {
+    return true;
+  }
+  if (filter === "exported") {
+    return item.status === "exported";
+  }
+  if (filter === "error") {
+    return item.status === "error";
+  }
+  return (
+    item.status === "new" ||
+    item.status === "sourceReady" ||
+    item.status === "stage2Ready" ||
+    item.status === "editing" ||
+    item.status === "agentRunning"
+  );
+}
+
+function buildHistorySections(items: ChatListItem[], activeHistoryId: string | null): HistorySection[] {
+  const sections: HistorySection[] = [];
+  const activeItem = activeHistoryId ? items.find((item) => item.id === activeHistoryId) ?? null : null;
+  const remainder = activeItem ? items.filter((item) => item.id !== activeItem.id) : items;
+
+  if (activeItem) {
+    sections.push({ id: "active", title: "Активный", items: [activeItem] });
+  }
+
+  const working = remainder.filter((item) =>
+    item.status === "new" ||
+    item.status === "sourceReady" ||
+    item.status === "stage2Ready" ||
+    item.status === "editing" ||
+    item.status === "agentRunning"
+  );
+  const exported = remainder.filter((item) => item.status === "exported");
+  const errors = remainder.filter((item) => item.status === "error");
+
+  if (working.length > 0) {
+    sections.push({ id: "working", title: "В работе", items: working });
+  }
+  if (exported.length > 0) {
+    sections.push({ id: "exported", title: "Экспорт", items: exported });
+  }
+  if (errors.length > 0) {
+    sections.push({ id: "error", title: "Ошибка", items: errors });
+  }
+
+  return sections;
+}
+
+function HistoryCard({
+  item,
+  active,
+  compact = false,
+  onOpen,
+  onDelete
+}: {
+  item: ChatListItem;
+  active: boolean;
+  compact?: boolean;
+  onOpen: (step?: 1 | 2 | 3) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <article
+      className={`history-card ${active ? "active" : ""} ${compact ? "compact" : ""} status-${item.status}`}
+    >
+      <div className="history-card-head">
+        <div className="history-badge-row">
+          <span className={`history-status-chip status-${item.status}`}>
+            {formatHistoryStatusLabel(item.status)}
+          </span>
+          {item.liveAction ? <span className="history-live-chip">{item.liveAction}</span> : null}
+          {active ? <span className="history-current-pill">Current</span> : null}
+        </div>
+        <button
+          type="button"
+          className="history-remove"
+          aria-label={`Удалить ${item.title}`}
+          onClick={onDelete}
+        >
+          ✕
+        </button>
+      </div>
+
+      <button
+        type="button"
+        className="history-open"
+        onClick={() => onOpen()}
+        aria-current={active ? "true" : undefined}
+        title={item.url}
+      >
+        <span className="history-title clamp-2">{item.title}</span>
+        <span className="history-meta-line">
+          <span>Шаг {item.preferredStep}</span>
+          <span>Обновлён {formatHistoryTime(item.updatedAt)}</span>
+          {item.hasDraft ? <span className="history-draft-pill">draft</span> : null}
+        </span>
+        {item.exportTitle ? <span className="history-export-line">Export: {item.exportTitle}</span> : null}
+      </button>
+
+      <div className="history-actions">
+        <button type="button" className="btn btn-secondary" onClick={() => onOpen()}>
+          Open
+        </button>
+        {item.maxStep >= 2 ? (
+          <button type="button" className="btn btn-ghost" onClick={() => onOpen(2)}>
+            Step 2
+          </button>
+        ) : null}
+        {item.maxStep >= 3 ? (
+          <button type="button" className="btn btn-ghost" onClick={() => onOpen(3)}>
+            Step 3
+          </button>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function HistoryPanel({
+  items,
+  activeHistoryId,
+  compact = false,
+  emptyText,
+  onOpen,
+  onDelete
+}: {
+  items: ChatListItem[];
+  activeHistoryId: string | null;
+  compact?: boolean;
+  emptyText: string;
+  onOpen: (id: string, step?: 1 | 2 | 3) => void;
+  onDelete: (id: string) => void;
+}) {
+  const sections = useMemo(() => buildHistorySections(items, activeHistoryId), [activeHistoryId, items]);
+
+  if (sections.length === 0) {
+    return <p className="empty-box">{emptyText}</p>;
+  }
+
+  return (
+    <div className={`history-panel ${compact ? "compact" : ""}`}>
+      {sections.map((section) => (
+        <section key={section.id} className="history-section">
+          <div className="history-section-head">
+            <h3>{section.title}</h3>
+            <span>{section.items.length}</span>
+          </div>
+          <ul className="history-list">
+            {section.items.map((item) => {
+              const active = item.id === activeHistoryId;
+              return (
+                <li key={item.id} className="history-row">
+                  <HistoryCard
+                    item={item}
+                    active={active}
+                    compact={compact}
+                    onOpen={(step) => onOpen(item.id, step)}
+                    onDelete={() => onDelete(item.id)}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function AppShell({
   title,
   subtitle,
@@ -117,7 +319,7 @@ export function AppShell({
   onStepChange,
   historyItems,
   activeHistoryId,
-  onHistoryChange,
+  onHistoryOpen,
   onDeleteHistory,
   onCreateNew,
   channels,
@@ -153,46 +355,29 @@ export function AppShell({
 }: AppShellProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [codexPanelOpen, setCodexPanelOpen] = useState(false);
-  const historyCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearHistoryCloseTimer = useCallback(() => {
-    if (historyCloseTimerRef.current) {
-      clearTimeout(historyCloseTimerRef.current);
-      historyCloseTimerRef.current = null;
-    }
-  }, []);
-
-  const openHistory = useCallback(() => {
-    clearHistoryCloseTimer();
-    setHistoryOpen(true);
-  }, [clearHistoryCloseTimer]);
-
-  const scheduleCloseHistory = useCallback(() => {
-    clearHistoryCloseTimer();
-    historyCloseTimerRef.current = setTimeout(() => {
-      setHistoryOpen(false);
-      historyCloseTimerRef.current = null;
-    }, 140);
-  }, [clearHistoryCloseTimer]);
-
-  useEffect(() => {
-    return () => {
-      clearHistoryCloseTimer();
-    };
-  }, [clearHistoryCloseTimer]);
 
   const filteredHistory = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
-    if (!query) {
-      return historyItems;
-    }
     return historyItems.filter((item) => {
+      if (!matchesHistoryFilter(item, historyFilter)) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
       const title = item.title.toLowerCase();
-      const subtitle = item.subtitle.toLowerCase();
-      return title.includes(query) || subtitle.includes(query);
+      const exportTitle = item.exportTitle?.toLowerCase() ?? "";
+      const status = formatHistoryStatusLabel(item.status).toLowerCase();
+      return (
+        title.includes(query) ||
+        exportTitle.includes(query) ||
+        item.url.toLowerCase().includes(query) ||
+        status.includes(query)
+      );
     });
-  }, [historyItems, historyQuery]);
+  }, [historyFilter, historyItems, historyQuery]);
 
   const hasCodexDeviceAuthDetails = Boolean(
     canManageCodex &&
@@ -221,6 +406,11 @@ export function AppShell({
   const showCodexPanel = Boolean(
     canManageCodex && (showDeviceAuthDetails || (codexPanelOpen && !codexConnected))
   );
+  const closeHistoryOnCompactViewport = useCallback(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1000px)").matches) {
+      setHistoryOpen(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (
@@ -239,102 +429,52 @@ export function AppShell({
     }
   }, [codexConnected, codexDeviceAuth?.status]);
 
+  useEffect(() => {
+    if (!historyOpen || typeof window === "undefined") {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setHistoryOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [historyOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const isCompactViewport = window.matchMedia("(max-width: 1000px)").matches;
+    if (!historyOpen || !isCompactViewport) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [historyOpen]);
+
   return (
     <main className="app-layout">
       <section className="app-main">
         <header className="app-topbar">
           <div className="topbar-primary">
             <div className="topbar-brand-row">
-              <div
-                className="history-flyout"
-                onMouseEnter={openHistory}
-                onMouseLeave={scheduleCloseHistory}
+              <button
+                type="button"
+                className={`history-trigger ${historyOpen ? "active" : ""}`}
+                aria-label={historyOpen ? "Скрыть историю" : "Открыть историю"}
+                aria-expanded={historyOpen}
+                aria-controls="history-navigation"
+                onClick={() => setHistoryOpen((prev) => !prev)}
               >
-                <button
-                  type="button"
-                  className="history-trigger"
-                  aria-label="Открыть историю"
-                  aria-expanded={historyOpen}
-                  onFocus={openHistory}
-                  onClick={() => setHistoryOpen((prev) => !prev)}
-                >
-                  <span aria-hidden="true">🕘</span>
-                  <span>История</span>
-                  <span className="history-count">{historyItems.length}</span>
-                </button>
-
-                {historyOpen ? (
-                  <div
-                    className="history-popover"
-                    onMouseEnter={openHistory}
-                    onMouseLeave={scheduleCloseHistory}
-                    onFocusCapture={openHistory}
-                    onBlur={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                        scheduleCloseHistory();
-                      }
-                    }}
-                  >
-                    <div className="history-popover-head">
-                      <h2>Недавнее</h2>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          onCreateNew();
-                          setHistoryOpen(false);
-                        }}
-                      >
-                        + Новый
-                      </button>
-                    </div>
-
-                    <input
-                      className="text-input"
-                      value={historyQuery}
-                      onChange={(event) => setHistoryQuery(event.target.value)}
-                      placeholder="Поиск..."
-                      aria-label="Поиск по истории"
-                    />
-
-                    <div className="history-popover-scroll">
-                      {filteredHistory.length === 0 ? (
-                        <p className="empty-box">Ничего не найдено.</p>
-                      ) : (
-                        <ul className="history-list">
-                          {filteredHistory.map((item) => {
-                            const active = item.id === activeHistoryId;
-                            return (
-                              <li key={item.id} className={`history-row ${active ? "active" : ""}`}>
-                                <button
-                                  type="button"
-                                  className="history-open"
-                                  onClick={() => {
-                                    onHistoryChange(item.id);
-                                    setHistoryOpen(false);
-                                  }}
-                                  aria-current={active ? "true" : undefined}
-                                >
-                                  <span className="history-title">{item.title}</span>
-                                  <span className="history-subtitle">{item.subtitle}</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="history-remove"
-                                  aria-label={`Удалить ${item.title}`}
-                                  onClick={() => onDeleteHistory(item.id)}
-                                >
-                                  ✕
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                <span aria-hidden="true">🕘</span>
+                <span>История</span>
+                <span className="history-count">{historyItems.length}</span>
+              </button>
 
               <div className="topbar-brand">
                 <h1>{title}</h1>
@@ -492,41 +632,125 @@ export function AppShell({
           </aside>
         </header>
 
-        <nav className="wizard-stepper" aria-label="Шаги процесса">
-          {steps.map((step) => {
-            const stepState = getStepState(step.id, currentStep);
-            const statusLabel =
-              stepState === "completed" ? "Завершено" : stepState === "current" ? "Текущий" : "Далее";
-            return (
-              <button
-                key={step.id}
-                type="button"
-                className={`wizard-step ${stepState}`}
-                onClick={() => onStepChange(step.id)}
-                disabled={!step.enabled}
-                aria-current={stepState === "current" ? "step" : undefined}
-              >
-                <span className="wizard-step-num">Шаг {step.id}</span>
-                <span className="wizard-step-label">{step.label}</span>
-                <span className="wizard-step-state">{statusLabel}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <section className="shell-content">{children}</section>
-
-        {statusText ? (
-          <p
-            className={`status-line ${statusTone === "error" ? "error" : "ok"}`}
-            role="status"
-            aria-live={statusTone === "error" ? "assertive" : "polite"}
-          >
-            {sanitizeDisplayText(statusText)}
-          </p>
+        {historyOpen ? (
+          <button
+            type="button"
+            className="history-backdrop"
+            aria-label="Скрыть историю"
+            onClick={() => setHistoryOpen(false)}
+          />
         ) : null}
 
-        {details}
+        <section className={`shell-body ${historyOpen ? "history-open" : "history-closed"}`}>
+          {historyOpen ? (
+            <aside id="history-navigation" className="history-rail">
+              <div className="history-rail-head">
+                <div>
+                  <p className="sidebar-kicker">Навигация</p>
+                  <h2>Ролики</h2>
+                </div>
+                <div className="history-rail-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      onCreateNew();
+                      closeHistoryOnCompactViewport();
+                    }}
+                  >
+                    + Новый
+                  </button>
+                  <button
+                    type="button"
+                    className="history-rail-close"
+                    aria-label="Скрыть историю"
+                    onClick={() => setHistoryOpen(false)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <input
+                className="text-input history-rail-search"
+                value={historyQuery}
+                onChange={(event) => setHistoryQuery(event.target.value)}
+                placeholder="Поиск по роликам..."
+                aria-label="Поиск по истории"
+              />
+
+              <div className="history-filter-row">
+                {(["all", "working", "exported", "error"] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    className={`history-filter-chip ${historyFilter === filter ? "active" : ""}`}
+                    onClick={() => setHistoryFilter(filter)}
+                  >
+                    {filter === "all"
+                      ? "Все"
+                      : filter === "working"
+                        ? "В работе"
+                        : filter === "exported"
+                          ? "Экспорт"
+                          : "Ошибка"}
+                  </button>
+                ))}
+              </div>
+
+              <div className="history-rail-scroll">
+                <HistoryPanel
+                  items={filteredHistory}
+                  activeHistoryId={activeHistoryId}
+                  emptyText={historyItems.length > 0 ? "Ничего не найдено." : "Чатов пока нет."}
+                  onOpen={(id, step) => {
+                    onHistoryOpen(id, step);
+                    closeHistoryOnCompactViewport();
+                  }}
+                  onDelete={onDeleteHistory}
+                />
+              </div>
+            </aside>
+          ) : null}
+
+          <div className="shell-workspace">
+            <nav className="wizard-stepper" aria-label="Шаги процесса">
+              {steps.map((step) => {
+                const stepState = getStepState(step.id, currentStep);
+                const statusLabel =
+                  stepState === "completed" ? "Завершено" : stepState === "current" ? "Текущий" : "Далее";
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    className={`wizard-step ${stepState}`}
+                    onClick={() => onStepChange(step.id)}
+                    disabled={!step.enabled}
+                    aria-current={stepState === "current" ? "step" : undefined}
+                  >
+                    <span className="wizard-step-num">Шаг {step.id}</span>
+                    <span className="wizard-step-label">{step.label}</span>
+                    <span className="wizard-step-state">{statusLabel}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <section className="shell-content">{children}</section>
+
+            {statusText ? (
+              <p
+                className={`status-line ${statusTone === "error" ? "error" : "ok"}`}
+                role="status"
+                aria-live={statusTone === "error" ? "assertive" : "polite"}
+              >
+                {sanitizeDisplayText(statusText)}
+              </p>
+            ) : null}
+
+            {details}
+          </div>
+        </section>
       </section>
     </main>
   );

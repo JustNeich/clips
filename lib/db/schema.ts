@@ -150,6 +150,19 @@ CREATE TABLE IF NOT EXISTS chat_events (
   FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS chat_drafts (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  draft_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -174,6 +187,12 @@ CREATE INDEX IF NOT EXISTS idx_channel_access_channel
 
 CREATE INDEX IF NOT EXISTS idx_channel_access_user
   ON channel_access(user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_drafts_thread_user
+  ON chat_drafts(thread_id, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_chat_drafts_user
+  ON chat_drafts(user_id);
 
 CREATE INDEX IF NOT EXISTS idx_channels_workspace
   ON channels(workspace_id, updated_at DESC);

@@ -1,0 +1,73 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e21] [cursor=pointer]:
+    - img [ref=e22]
+  - alert [ref=e25]
+  - main [ref=e40]:
+    - generic [ref=e41]:
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - button "Открыть историю" [ref=e45] [cursor=pointer]:
+              - generic [ref=e46]: 🕘
+              - generic [ref=e47]: История
+              - generic [ref=e48]: "0"
+            - generic [ref=e49]:
+              - heading "Автоматизация клипов" [level=1] [ref=e50]
+              - paragraph [ref=e51]: "Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
+          - generic [ref=e52]:
+            - generic [ref=e53]: Канал
+            - generic [ref=e54]:
+              - combobox "Канал" [ref=e55]
+              - button "Каналы" [ref=e56] [cursor=pointer]
+        - complementary [ref=e57]:
+          - generic [ref=e58]:
+            - generic [ref=e59]:
+              - generic [ref=e60]: CLIPS
+              - generic [ref=e61]:
+                - strong [ref=e62]: Layout QA
+                - generic [ref=e63]: Редактор
+                - generic [ref=e64]: Shared Codex подключен
+            - button "Выйти" [ref=e66] [cursor=pointer]
+      - generic [ref=e68]:
+        - navigation "Шаги процесса" [ref=e69]:
+          - button "Шаг 1 Вставить ссылку Текущий" [ref=e70] [cursor=pointer]:
+            - generic [ref=e71]: Шаг 1
+            - generic [ref=e72]: Вставить ссылку
+            - generic [ref=e73]: Текущий
+          - button "Шаг 2 Проверить и выбрать Далее" [disabled] [ref=e74]:
+            - generic [ref=e75]: Шаг 2
+            - generic [ref=e76]: Проверить и выбрать
+            - generic [ref=e77]: Далее
+          - button "Шаг 3 Рендер видео Далее" [disabled] [ref=e78]:
+            - generic [ref=e79]: Шаг 3
+            - generic [ref=e80]: Рендер видео
+            - generic [ref=e81]: Далее
+        - region "Рабочая область шага" [ref=e83]:
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - paragraph [ref=e88]: Шаг 1
+              - heading "Источник" [level=2] [ref=e89]
+              - paragraph [ref=e90]: Вставьте ссылку на Shorts или Reels, чтобы получить исходник. Комментарии необязательны и не блокируют процесс.
+            - generic [ref=e92]:
+              - generic [ref=e93]: Ссылка на видео
+              - generic [ref=e94]:
+                - textbox "Ссылка на видео" [ref=e95]:
+                  - /placeholder: https://www.youtube.com/shorts/...
+                - button "Вставить" [ref=e96] [cursor=pointer]
+              - paragraph [ref=e97]: "Примеры: YouTube Shorts, Instagram Reels, Facebook Reels."
+              - button "Получить источник" [ref=e99] [cursor=pointer]
+            - group [ref=e100]:
+              - generic "Дополнительно" [ref=e101] [cursor=pointer]
+          - complementary [ref=e102]:
+            - generic [ref=e104]:
+              - generic [ref=e105]:
+                - heading "Текущий контекст" [level=3] [ref=e106]
+                - generic [ref=e107]: Шаг 1 из 3
+              - generic [ref=e109]:
+                - paragraph [ref=e110]: Ссылка на источник
+                - paragraph [ref=e111]: Источник не выбран
+                - paragraph [ref=e112]: После завершения загрузки второй этап покажет варианты подписей, сгенерированные по видео, и комментарии, если они доступны.
+        - group [ref=e113]:
+          - generic "Подробности Логи, комментарии, диагностика" [ref=e114] [cursor=pointer]:
+            - generic [ref=e115]: Подробности
+            - generic [ref=e116]: Логи, комментарии, диагностика

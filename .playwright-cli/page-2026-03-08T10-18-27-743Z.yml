@@ -1,0 +1,4 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - paragraph [ref=e4]: Загрузка рабочего пространства...
+  - alert [ref=e5]

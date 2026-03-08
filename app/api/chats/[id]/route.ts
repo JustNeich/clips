@@ -1,4 +1,4 @@
-import { deleteChatById, getChatById } from "../../../../lib/chat-history";
+import { deleteChatById, getChatById, getChatDraft } from "../../../../lib/chat-history";
 import { requireAuth, requireChannelOperate, requireChannelVisibility } from "../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
@@ -15,8 +15,9 @@ export async function GET(
       return Response.json({ error: "Chat not found." }, { status: 404 });
     }
     await requireChannelVisibility(auth, chat.channelId);
+    const draft = await getChatDraft(id, auth.user.id);
 
-    return Response.json({ chat }, { status: 200 });
+    return Response.json({ chat, draft }, { status: 200 });
   } catch (error) {
     return error instanceof Response
       ? error

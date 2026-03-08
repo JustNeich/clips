@@ -1,5 +1,6 @@
 import { buildLegacyTimelineEntries } from "./stage3-legacy-bridge";
-import { Stage3Version } from "../app/components/types";
+import { ChatDraft, ChatListItem, Stage3Version } from "../app/components/types";
+import { buildChatListItem, normalizeChatDraft } from "./chat-workflow";
 import { STAGE2_DESCRIPTION_SYSTEM_PROMPT, STAGE2_SYSTEM_PROMPT } from "./stage2";
 import { getDb, newId, nowIso } from "./db/client";
 import { getWorkspace } from "./team-store";
@@ -200,6 +201,20 @@ function mapThread(row: Record<string, unknown>, events: ChatEvent[]): ChatThrea
   };
 }
 
+function mapDraft(row: Record<string, unknown>): ChatDraft | null {
+  const parsed = row.draft_json ? JSON.parse(String(row.draft_json)) : null;
+  const draft = normalizeChatDraft(parsed);
+  if (!draft) {
+    return null;
+  }
+  return {
+    ...draft,
+    id: String(row.id),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at)
+  };
+}
+
 function getAnyWorkspaceId(): string {
   const workspace = getWorkspace();
   if (!workspace) {
@@ -214,6 +229,13 @@ function getThreadEvents(threadId: string): ChatEvent[] {
     .prepare("SELECT * FROM chat_events WHERE thread_id = ? ORDER BY created_at ASC")
     .all(threadId) as Record<string, unknown>[];
   return rows.map(mapEvent);
+}
+
+function getDraftRow(threadId: string, userId: string): Record<string, unknown> | undefined {
+  const db = getDb();
+  return db
+    .prepare("SELECT * FROM chat_drafts WHERE thread_id = ? AND user_id = ?")
+    .get(threadId, userId) as Record<string, unknown> | undefined;
 }
 
 export async function listChannels(workspaceId?: string): Promise<Channel[]> {
@@ -568,12 +590,85 @@ export async function listChats(channelId?: string, workspaceId?: string): Promi
   return rows.map((row) => mapThread(row, getThreadEvents(String(row.id))));
 }
 
+export async function listChatListItems(
+  userId: string,
+  channelId?: string,
+  workspaceId?: string
+): Promise<ChatListItem[]> {
+  const chats = await listChats(channelId, workspaceId);
+  return chats.map((chat) => buildChatListItem(chat, getChatDraftSync(chat.id, userId)));
+}
+
 export async function getChatById(chatId: string): Promise<ChatThread | null> {
   const db = getDb();
   const row = db.prepare("SELECT * FROM chat_threads WHERE id = ?").get(chatId) as
     | Record<string, unknown>
     | undefined;
   return row ? mapThread(row, getThreadEvents(chatId)) : null;
+}
+
+function getChatDraftSync(threadId: string, userId: string): ChatDraft | null {
+  const row = getDraftRow(threadId, userId);
+  return row ? mapDraft(row) : null;
+}
+
+export async function getChatDraft(threadId: string, userId: string): Promise<ChatDraft | null> {
+  return getChatDraftSync(threadId, userId);
+}
+
+export async function upsertChatDraft(
+  threadId: string,
+  userId: string,
+  draftInput: Omit<ChatDraft, "id" | "threadId" | "userId" | "createdAt" | "updatedAt">
+): Promise<ChatDraft> {
+  const thread = await getChatById(threadId);
+  if (!thread) {
+    throw new Error("Chat not found.");
+  }
+
+  const db = getDb();
+  const existing = getDraftRow(threadId, userId);
+  const now = nowIso();
+  const payload = normalizeChatDraft({
+    id: existing ? String(existing.id) : "",
+    threadId,
+    userId,
+    createdAt: existing ? String(existing.created_at) : now,
+    updatedAt: now,
+    ...draftInput
+  });
+
+  if (!payload) {
+    throw new Error("Draft payload is invalid.");
+  }
+
+  if (existing) {
+    db.prepare(
+      `UPDATE chat_drafts
+       SET draft_json = ?, updated_at = ?
+       WHERE thread_id = ? AND user_id = ?`
+    ).run(JSON.stringify(payload), now, threadId, userId);
+  } else {
+    db.prepare(
+      `INSERT INTO chat_drafts
+        (id, workspace_id, thread_id, user_id, draft_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(newId(), thread.workspaceId, threadId, userId, JSON.stringify(payload), now, now);
+  }
+
+  db.prepare("UPDATE chat_threads SET updated_at = ? WHERE id = ?").run(now, threadId);
+
+  const next = getChatDraftSync(threadId, userId);
+  if (!next) {
+    throw new Error("Draft could not be loaded after save.");
+  }
+  return next;
+}
+
+export async function deleteChatDraft(threadId: string, userId: string): Promise<boolean> {
+  const db = getDb();
+  const result = db.prepare("DELETE FROM chat_drafts WHERE thread_id = ? AND user_id = ?").run(threadId, userId);
+  return Number(result.changes ?? 0) > 0;
 }
 
 export async function createOrGetChatByUrl(rawUrl: string, channelIdRaw?: string): Promise<ChatThread> {

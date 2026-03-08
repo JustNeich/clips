@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { createReadStream, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import {
   clampClipStart,
   downloadSourceVideo,
@@ -39,10 +40,6 @@ type PreviewBody = {
   renderPlan?: Partial<Stage3RenderPlan>;
   snapshot?: Partial<Stage3StateSnapshot>;
 };
-
-function isRenderRuntime(): boolean {
-  return process.env.RENDER === "true" || process.env.RENDER === "1";
-}
 
 function hashKey(value: string): string {
   return createHash("sha1").update(value).digest("hex");
@@ -86,6 +83,22 @@ async function pruneCacheDirectory(dirPath: string, maxFiles: number): Promise<v
 
   const stale = ordered.slice(maxFiles);
   await Promise.all(stale.map((item) => fs.rm(item.filePath, { force: true }).catch(() => undefined)));
+}
+
+async function createVideoFileResponse(
+  filePath: string,
+  headers: Record<string, string>
+): Promise<Response> {
+  const stat = await fs.stat(filePath);
+  const stream = createReadStream(filePath);
+  return new Response(Readable.toWeb(stream) as ReadableStream, {
+    status: 200,
+    headers: {
+      "Content-Type": "video/mp4",
+      "Content-Length": String(stat.size),
+      ...headers
+    }
+  });
 }
 
 async function ensureSourceCached(
@@ -281,15 +294,6 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
-    if (isRenderRuntime()) {
-      return Response.json(
-        {
-          error:
-            "Live Stage 3 preview is temporarily unavailable on this hosted deployment. Continue with the agent and retry later."
-        },
-        { status: 503 }
-      );
-    }
     await fs.mkdir(PREVIEW_CACHE_DIR, { recursive: true });
     const source = await ensureSourceCached(rawSource);
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
@@ -327,15 +331,10 @@ export async function POST(request: Request): Promise<Response> {
     const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);
 
     if (await pathExists(previewPath)) {
-      const rendered = await fs.readFile(previewPath);
-      return new Response(rendered, {
-        status: 200,
-        headers: {
-          "Content-Type": "video/mp4",
-          "Cache-Control": "public, max-age=600",
-          "x-stage3-preview": "1",
-          "x-stage3-cache": "hit"
-        }
+      return createVideoFileResponse(previewPath, {
+        "Cache-Control": "public, max-age=600",
+        "x-stage3-preview": "1",
+        "x-stage3-cache": "hit"
       });
     }
 
@@ -372,15 +371,10 @@ export async function POST(request: Request): Promise<Response> {
     await pruneCacheDirectory(PREVIEW_CACHE_DIR, 48).catch(() => undefined);
     await pruneCacheDirectory(SOURCE_CACHE_DIR, 24).catch(() => undefined);
 
-    const rendered = await fs.readFile(previewPath);
-    return new Response(rendered, {
-      status: 200,
-      headers: {
-        "Content-Type": "video/mp4",
-        "Cache-Control": "public, max-age=600",
-        "x-stage3-preview": "1",
-        "x-stage3-cache": "miss"
-      }
+    return createVideoFileResponse(previewPath, {
+      "Cache-Control": "public, max-age=600",
+      "x-stage3-preview": "1",
+      "x-stage3-cache": "miss"
     });
   } catch (error) {
     if (error instanceof Response) {

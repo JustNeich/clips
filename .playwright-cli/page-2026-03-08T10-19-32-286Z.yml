@@ -1,0 +1,129 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e11] [cursor=pointer]:
+    - img [ref=e12]
+  - alert [ref=e5]
+  - main [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - button "Скрыть историю" [expanded] [active] [ref=e96] [cursor=pointer]:
+              - generic [ref=e21]: 🕘
+              - generic [ref=e22]: История
+              - generic [ref=e23]: "2"
+            - generic [ref=e24]:
+              - heading "Автоматизация клипов" [level=1] [ref=e25]
+              - paragraph [ref=e26]: "Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
+          - generic [ref=e27]:
+            - generic [ref=e28]: Канал
+            - generic [ref=e29]:
+              - combobox "Канал" [ref=e30]:
+                - option "Stone Face Turbo @StoneFaceTurbo" [selected]
+                - option "Default @science_snack"
+              - button "Каналы" [ref=e31] [cursor=pointer]
+              - button "Команда" [ref=e32] [cursor=pointer]
+        - complementary [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - generic [ref=e36]: CLIPS
+              - generic [ref=e37]:
+                - strong [ref=e38]: Neich
+                - generic [ref=e39]: Владелец
+                - generic [ref=e40]: Shared Codex подключен
+            - generic [ref=e41]:
+              - button "Переподключить" [ref=e42] [cursor=pointer]
+              - button "Отключить" [ref=e43] [cursor=pointer]
+              - button "Обновить" [ref=e44] [cursor=pointer]
+              - button "Выйти" [ref=e45] [cursor=pointer]
+      - generic [ref=e46] [cursor=pointer]:
+        - complementary [ref=e97]:
+          - generic [ref=e98]:
+            - generic [ref=e99]:
+              - paragraph [ref=e100]: Навигация
+              - heading "Ролики" [level=2] [ref=e101]
+            - button "+ Новый" [ref=e103]
+          - textbox "Поиск по истории" [ref=e104]:
+            - /placeholder: Поиск по роликам...
+          - generic [ref=e105]:
+            - button "Все" [ref=e106]
+            - button "В работе" [ref=e107]
+            - button "Экспорт" [ref=e108]
+            - button "Ошибка" [ref=e109]
+          - generic [ref=e112]:
+            - generic [ref=e113]:
+              - heading "В работе" [level=3] [ref=e114]
+              - generic [ref=e115]: "2"
+            - list [ref=e116]:
+              - listitem [ref=e117]:
+                - article [ref=e118]:
+                  - generic [ref=e119]:
+                    - generic [ref=e121]: Editing
+                    - 'button "Удалить 2 КОРНЯ — 1 КУСТ #китай #новости #агротехнологии #инновации #бизнесснуля #овощи" [ref=e122]': ✕
+                  - 'button "2 КОРНЯ — 1 КУСТ #китай #новости #агротехнологии #инновации #бизнесснуля #овощи Шаг 3 Обновлён 12:31 draft" [ref=e123]':
+                    - generic [ref=e124]: "2 КОРНЯ — 1 КУСТ #китай #новости #агротехнологии #инновации #бизнесснуля #овощи"
+                    - generic [ref=e125]:
+                      - generic [ref=e126]: Шаг 3
+                      - generic [ref=e127]: Обновлён 12:31
+                      - generic [ref=e128]: draft
+                  - generic [ref=e129]:
+                    - button "Open" [ref=e130]
+                    - button "Step 2" [ref=e131]
+                    - button "Step 3" [ref=e132]
+              - listitem [ref=e133]:
+                - article [ref=e134]:
+                  - generic [ref=e135]:
+                    - generic [ref=e137]: Editing
+                    - button "Удалить When you drop the oil pan and it looks like somebody filled it with peanut butter" [ref=e138]: ✕
+                  - button "When you drop the oil pan and it looks like somebody filled it with peanut butter Шаг 3 Обновлён 12:29 draft" [ref=e139]:
+                    - generic [ref=e140]: When you drop the oil pan and it looks like somebody filled it with peanut butter
+                    - generic [ref=e141]:
+                      - generic [ref=e142]: Шаг 3
+                      - generic [ref=e143]: Обновлён 12:29
+                      - generic [ref=e144]: draft
+                  - generic [ref=e145]:
+                    - button "Open" [ref=e146]
+                    - button "Step 2" [ref=e147]
+                    - button "Step 3" [ref=e148]
+        - generic [ref=e47]:
+          - navigation "Шаги процесса" [ref=e48]:
+            - button "Шаг 1 Вставить ссылку Текущий" [ref=e49]:
+              - generic [ref=e50]: Шаг 1
+              - generic [ref=e51]: Вставить ссылку
+              - generic [ref=e52]: Текущий
+            - button "Шаг 2 Проверить и выбрать Далее" [disabled] [ref=e53]:
+              - generic [ref=e54]: Шаг 2
+              - generic [ref=e55]: Проверить и выбрать
+              - generic [ref=e56]: Далее
+            - button "Шаг 3 Рендер видео Далее" [disabled] [ref=e57]:
+              - generic [ref=e58]: Шаг 3
+              - generic [ref=e59]: Рендер видео
+              - generic [ref=e60]: Далее
+          - region "Рабочая область шага" [ref=e62]:
+            - generic [ref=e65]:
+              - generic [ref=e66]:
+                - paragraph [ref=e67]: Шаг 1
+                - heading "Источник" [level=2] [ref=e68]
+                - paragraph [ref=e69]: Вставьте ссылку на Shorts или Reels, чтобы получить исходник. Комментарии необязательны и не блокируют процесс.
+              - generic [ref=e71]:
+                - generic [ref=e72]: Ссылка на видео
+                - generic [ref=e73]:
+                  - textbox "Ссылка на видео" [ref=e74]:
+                    - /placeholder: https://www.youtube.com/shorts/...
+                  - button "Вставить" [ref=e75]
+                - paragraph [ref=e76]: "Примеры: YouTube Shorts, Instagram Reels, Facebook Reels."
+                - button "Получить источник" [ref=e78]
+              - group [ref=e79]:
+                - generic "Дополнительно" [ref=e80]
+            - complementary [ref=e81]:
+              - generic [ref=e83]:
+                - generic [ref=e84]:
+                  - heading "Текущий контекст" [level=3] [ref=e85]
+                  - generic [ref=e86]: Шаг 1 из 3
+                - generic [ref=e88]:
+                  - paragraph [ref=e89]: Ссылка на источник
+                  - paragraph [ref=e90]: Источник не выбран
+                  - paragraph [ref=e91]: После завершения загрузки второй этап покажет варианты подписей, сгенерированные по видео, и комментарии, если они доступны.
+          - group [ref=e92]:
+            - generic "Подробности Логи, комментарии, диагностика" [ref=e93]:
+              - generic [ref=e94]: Подробности
+              - generic [ref=e95]: Логи, комментарии, диагностика

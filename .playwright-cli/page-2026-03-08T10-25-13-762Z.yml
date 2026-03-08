@@ -1,0 +1,273 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e10] [cursor=pointer]:
+    - img [ref=e11]
+  - alert [ref=e14]
+  - main [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - button "Скрыть историю" [expanded] [ref=e96] [cursor=pointer]:
+              - generic [ref=e21]: 🕘
+              - generic [ref=e22]: История
+              - generic [ref=e23]: "2"
+            - generic [ref=e24]:
+              - heading "Автоматизация клипов" [level=1] [ref=e25]
+              - paragraph [ref=e26]: "Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
+          - generic [ref=e27]:
+            - generic [ref=e28]: Канал
+            - generic [ref=e29]:
+              - combobox "Канал" [ref=e30]:
+                - option "Stone Face Turbo @StoneFaceTurbo" [selected]
+                - option "Default @science_snack"
+              - button "Каналы" [ref=e31] [cursor=pointer]
+              - button "Команда" [ref=e32] [cursor=pointer]
+        - complementary [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - generic [ref=e36]: CLIPS
+              - generic [ref=e37]:
+                - strong [ref=e38]: Neich
+                - generic [ref=e39]: Владелец
+                - generic [ref=e40]: Shared Codex подключен
+            - generic [ref=e41]:
+              - button "Переподключить" [ref=e42] [cursor=pointer]
+              - button "Отключить" [ref=e43] [cursor=pointer]
+              - button "Обновить" [ref=e44] [cursor=pointer]
+              - button "Выйти" [ref=e45] [cursor=pointer]
+      - generic [ref=e46] [cursor=pointer]:
+        - complementary [ref=e97]:
+          - generic [ref=e98]:
+            - generic [ref=e99]:
+              - paragraph [ref=e100]: Навигация
+              - heading "Ролики" [level=2] [ref=e101]
+            - button "+ Новый" [ref=e103]
+          - textbox "Поиск по истории" [ref=e104]:
+            - /placeholder: Поиск по роликам...
+          - generic [ref=e105]:
+            - button "Все" [ref=e106]
+            - button "В работе" [ref=e107]
+            - button "Экспорт" [ref=e108]
+            - button "Ошибка" [ref=e109]
+          - generic [ref=e111]:
+            - generic [ref=e149]:
+              - generic [ref=e150]:
+                - heading "Активный" [level=3] [ref=e151]
+                - generic [ref=e152]: "1"
+              - list [ref=e153]:
+                - listitem [ref=e154]:
+                  - article [ref=e155]:
+                    - generic [ref=e156]:
+                      - generic [ref=e157]:
+                        - generic [ref=e158]: Editing
+                        - generic [ref=e159]: Current
+                      - button "Удалить When you drop the oil pan and it looks like somebody filled it with peanut butter" [ref=e160]: ✕
+                    - button "When you drop the oil pan and it looks like somebody filled it with peanut butter Шаг 3 Обновлён 13:21 draft" [ref=e161]:
+                      - generic [ref=e162]: When you drop the oil pan and it looks like somebody filled it with peanut butter
+                      - generic [ref=e163]:
+                        - generic [ref=e164]: Шаг 3
+                        - generic [ref=e165]: Обновлён 13:21
+                        - generic [ref=e166]: draft
+                    - generic [ref=e167]:
+                      - button "Open" [ref=e168]
+                      - button "Step 2" [ref=e169]
+                      - button "Step 3" [ref=e170]
+            - generic [ref=e112]:
+              - generic [ref=e113]:
+                - heading "В работе" [level=3] [ref=e114]
+                - generic [ref=e115]: "1"
+              - list [ref=e116]:
+                - listitem [ref=e133]:
+                  - article [ref=e134]:
+                    - generic [ref=e135]:
+                      - generic [ref=e137]: Editing
+                      - 'button "Удалить 2 КОРНЯ — 1 КУСТ #китай #новости #агротехнологии #инновации #бизнесснуля #овощи" [ref=e138]': ✕
+                    - 'button "2 КОРНЯ — 1 КУСТ #китай #новости #агротехнологии #инновации #бизнесснуля #овощи Шаг 3 Обновлён 13:19 draft" [ref=e139]':
+                      - generic [ref=e140]: "2 КОРНЯ — 1 КУСТ #китай #новости #агротехнологии #инновации #бизнесснуля #овощи"
+                      - generic [ref=e141]:
+                        - generic [ref=e142]: Шаг 3
+                        - generic [ref=e143]: Обновлён 13:19
+                        - generic [ref=e144]: draft
+                    - generic [ref=e145]:
+                      - button "Open" [ref=e146]
+                      - button "Step 2" [ref=e147]
+                      - button "Step 3" [ref=e148]
+        - generic [ref=e47]:
+          - navigation "Шаги процесса" [ref=e48]:
+            - button "Шаг 1 Вставить ссылку Завершено" [ref=e171]:
+              - generic [ref=e50]: Шаг 1
+              - generic [ref=e51]: Вставить ссылку
+              - generic [ref=e52]: Завершено
+            - button "Шаг 2 Проверить и выбрать Завершено" [ref=e172]:
+              - generic [ref=e54]: Шаг 2
+              - generic [ref=e55]: Проверить и выбрать
+              - generic [ref=e56]: Завершено
+            - button "Шаг 3 Рендер видео Текущий" [ref=e173]:
+              - generic [ref=e58]: Шаг 3
+              - generic [ref=e59]: Рендер видео
+              - generic [ref=e60]: Текущий
+          - region "Рабочая область шага" [ref=e174]:
+            - generic [ref=e175]:
+              - generic [ref=e177]:
+                - generic [ref=e178]:
+                  - paragraph [ref=e179]: Шаг 3
+                  - heading "Рендер" [level=2] [ref=e180]
+                  - paragraph [ref=e181]: Финализируйте тайминг и кадрирование, затем отрендерите mp4 из выбранной версии.
+                  - generic [ref=e182]:
+                    - generic [ref=e183]: Science Card v1
+                    - generic [ref=e184]: science-card-v1
+                    - generic [ref=e185]: Stone Face Turbo (@StoneFaceTurbo)
+                    - generic [ref=e186]: Исходник 00:16.0
+                    - generic [ref=e187]: Версий 1
+                - generic [ref=e188]:
+                  - generic [ref=e189]:
+                    - generic [ref=e190]:
+                      - heading "Editing" [level=3] [ref=e191]
+                      - paragraph [ref=e192]: "Частые действия вынесены сюда: тайминг, фокус, зум и размеры текста."
+                    - generic [ref=e193]:
+                      - generic [ref=e194]: Старт 00:00.0
+                      - generic [ref=e195]: Фокус 50%
+                      - generic [ref=e196]: Зум x1.00
+                  - generic [ref=e197]:
+                    - generic [ref=e198]:
+                      - generic [ref=e199]:
+                        - generic [ref=e200]: Начало клипа
+                        - generic [ref=e201]: 00:00.0 → 00:06.0
+                      - slider "Начало клипа" [ref=e202]: "0"
+                      - generic [ref=e203]:
+                        - button "-1.0s" [ref=e204]
+                        - button "-0.25s" [ref=e205]
+                        - button "+0.25s" [ref=e206]
+                        - button "+1.0s" [ref=e207]
+                    - generic [ref=e208]:
+                      - generic [ref=e209]:
+                        - generic [ref=e210]: Вертикальный фокус
+                        - generic [ref=e211]: 50%
+                      - slider "Вертикальный фокус" [ref=e212]: "0.5"
+                      - generic [ref=e213]:
+                        - button "Верх" [ref=e214]
+                        - button "Центр" [ref=e215]
+                        - button "Низ" [ref=e216]
+                    - generic [ref=e217]:
+                      - generic [ref=e218]:
+                        - generic [ref=e219]: Масштаб видео
+                        - generic [ref=e220]: x1.00
+                      - slider "Масштаб видео" [ref=e221]: "1"
+                      - generic [ref=e222]:
+                        - button "x1.00" [ref=e223]
+                        - button "x1.10" [ref=e224]
+                        - button "x1.25" [ref=e225]
+                        - button "x1.40" [ref=e226]
+                    - generic [ref=e227]:
+                      - generic [ref=e228]:
+                        - generic [ref=e229]: Размер верхнего текста
+                        - generic [ref=e230]: 125%
+                      - slider "Размер верхнего текста" [ref=e231]: "1.25"
+                      - generic [ref=e232]:
+                        - button "90%" [ref=e233]
+                        - button "100%" [ref=e234]
+                        - button "115%" [ref=e235]
+                        - button "130%" [ref=e236]
+                    - generic [ref=e237]:
+                      - generic [ref=e238]:
+                        - generic [ref=e239]: Размер нижнего текста
+                        - generic [ref=e240]: 125%
+                      - slider "Размер нижнего текста" [ref=e241]: "1.25"
+                      - generic [ref=e242]:
+                        - button "90%" [ref=e243]
+                        - button "100%" [ref=e244]
+                        - button "115%" [ref=e245]
+                        - button "130%" [ref=e246]
+                - generic [ref=e247]:
+                  - generic [ref=e249]:
+                    - heading "Музыка и фон" [level=3] [ref=e250]
+                    - paragraph [ref=e251]: Меняются реже, поэтому вынесены после editing.
+                  - generic [ref=e252]:
+                    - generic [ref=e253]:
+                      - generic [ref=e254]:
+                        - generic [ref=e255]: Фон
+                        - generic [ref=e256]: Custom
+                      - generic [ref=e257]:
+                        - generic [ref=e258]:
+                          - button "Upload" [ref=e259]
+                          - text: Upload
+                        - combobox [ref=e260]:
+                          - option "Размытый фон из исходника"
+                          - option "From_KlickPin_CF_Pin_by_محمد_زايد_on_ألبوم_صور_Pretty_nature_pictures.mp4" [selected]
+                        - button "Clear" [ref=e261]
+                      - paragraph [ref=e262]: "Кастомный фон: video/mp4"
+                    - generic [ref=e263]:
+                      - generic [ref=e264]:
+                        - generic [ref=e265]: Музыка
+                        - generic [ref=e266]: "Off"
+                      - generic [ref=e267]:
+                        - generic [ref=e268]:
+                          - button "Upload" [ref=e269]
+                          - text: Upload
+                        - combobox [ref=e270]:
+                          - option "Без музыки" [selected]
+                      - generic [ref=e271]:
+                        - generic [ref=e272]:
+                          - generic [ref=e273]: Громкость музыки
+                          - generic [ref=e274]: 65%
+                        - slider "Громкость музыки" [ref=e275]: "0.65"
+                        - generic [ref=e276]:
+                          - button "0%" [ref=e277]
+                          - button "20%" [ref=e278]
+                          - button "35%" [ref=e279]
+                          - button "50%" [ref=e280]
+                - group [ref=e281]:
+                  - 'generic "Advanced: AI redactor, versions, редкие действия" [ref=e282]'
+              - generic [ref=e284]:
+                - button "Сбросить" [ref=e285]
+                - button "Оптимизировать" [ref=e286]
+                - button "Экспорт JSON" [ref=e287]
+                - button "Рендер" [ref=e288]
+            - complementary [ref=e289]:
+              - generic [ref=e291]:
+                - generic [ref=e292]:
+                  - generic [ref=e293]:
+                    - heading "Живой предпросмотр" [level=3] [ref=e294]
+                    - paragraph [ref=e295]: Черновой живой предпросмотр
+                    - paragraph [ref=e296]: Используется текущий live draft без сохраненной версии.
+                  - generic [ref=e297]:
+                    - button "Пауза" [ref=e298]
+                    - button "Звук выключен" [ref=e299]
+                    - button "Цикл" [ref=e300]
+                    - button "Предыдущий кадр" [ref=e301]: −1f
+                    - button "Следующий кадр" [ref=e302]: +1f
+                    - group "Масштаб предпросмотра" [ref=e303]:
+                      - button "Вписать" [ref=e304]
+                      - button "75%" [ref=e305]
+                      - button "100%" [ref=e306]
+                    - button "Версии (1)" [ref=e307]
+                - generic [ref=e308]:
+                  - generic [ref=e312]:
+                    - generic:
+                      - generic: БЕЗОПАСНАЯ ОБЛАСТЬ
+                    - generic [ref=e314]:
+                      - paragraph [ref=e316]: He drops the oil pan and it strings out beige goo like warm mayo, hanging off the pickup tube. You can tell it’s been churned inside the engine, not poured in by a prankster.
+                      - generic [ref=e319]:
+                        - generic [ref=e322]:
+                          - generic [ref=e323]:
+                            - generic [ref=e324]: Stone Face Turbo
+                            - generic [ref=e325]: ✓
+                          - generic [ref=e326]: "@StoneFaceTurbo"
+                        - paragraph [ref=e328]: Water and oil don’t mix, they make engine mayonnaise. Now you’re pricing gaskets and praying the bearings didn’t eat it.
+                  - generic "Предпросмотр timeline" [ref=e330]:
+                    - generic [ref=e331]:
+                      - generic [ref=e332]: 0s
+                      - generic [ref=e333]: 1s
+                      - generic [ref=e334]: 2s
+                      - generic [ref=e335]: 3s
+                      - generic [ref=e336]: 4s
+                      - generic [ref=e337]: 5s
+                      - generic [ref=e338]: 6s
+                    - slider "Позиция воспроизведения" [ref=e339]
+                    - generic [ref=e341]:
+                      - generic [ref=e342]: 00:03.1
+                      - generic [ref=e343]: 00:06.0
+          - group [ref=e92]:
+            - generic "Подробности Логи, комментарии, диагностика" [ref=e93]:
+              - generic [ref=e94]: Подробности
+              - generic [ref=e95]: Логи, комментарии, диагностика

@@ -1,0 +1,80 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e10] [cursor=pointer]:
+    - img [ref=e11]
+  - alert [ref=e14]
+  - main [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - button "Открыть историю" [ref=e20] [cursor=pointer]:
+              - generic [ref=e21]: 🕘
+              - generic [ref=e22]: История
+              - generic [ref=e23]: "2"
+            - generic [ref=e24]:
+              - heading "Автоматизация клипов" [level=1] [ref=e25]
+              - paragraph [ref=e26]: "Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
+          - generic [ref=e27]:
+            - generic [ref=e28]: Канал
+            - generic [ref=e29]:
+              - combobox "Канал" [ref=e30]:
+                - option "Stone Face Turbo @StoneFaceTurbo" [selected]
+                - option "Default @science_snack"
+              - button "Каналы" [ref=e31] [cursor=pointer]
+              - button "Команда" [ref=e32] [cursor=pointer]
+        - complementary [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - generic [ref=e36]: CLIPS
+              - generic [ref=e37]:
+                - strong [ref=e38]: Neich
+                - generic [ref=e39]: Владелец
+                - generic [ref=e40]: Shared Codex подключен
+            - generic [ref=e41]:
+              - button "Переподключить" [ref=e42] [cursor=pointer]
+              - button "Отключить" [ref=e43] [cursor=pointer]
+              - button "Обновить" [ref=e44] [cursor=pointer]
+              - button "Выйти" [ref=e45] [cursor=pointer]
+      - generic [ref=e47]:
+        - navigation "Шаги процесса" [ref=e48]:
+          - button "Шаг 1 Вставить ссылку Текущий" [ref=e49] [cursor=pointer]:
+            - generic [ref=e50]: Шаг 1
+            - generic [ref=e51]: Вставить ссылку
+            - generic [ref=e52]: Текущий
+          - button "Шаг 2 Проверить и выбрать Далее" [disabled] [ref=e53]:
+            - generic [ref=e54]: Шаг 2
+            - generic [ref=e55]: Проверить и выбрать
+            - generic [ref=e56]: Далее
+          - button "Шаг 3 Рендер видео Далее" [disabled] [ref=e57]:
+            - generic [ref=e58]: Шаг 3
+            - generic [ref=e59]: Рендер видео
+            - generic [ref=e60]: Далее
+        - region "Рабочая область шага" [ref=e62]:
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - paragraph [ref=e67]: Шаг 1
+              - heading "Источник" [level=2] [ref=e68]
+              - paragraph [ref=e69]: Вставьте ссылку на Shorts или Reels, чтобы получить исходник. Комментарии необязательны и не блокируют процесс.
+            - generic [ref=e71]:
+              - generic [ref=e72]: Ссылка на видео
+              - generic [ref=e73]:
+                - textbox "Ссылка на видео" [ref=e74]:
+                  - /placeholder: https://www.youtube.com/shorts/...
+                - button "Вставить" [ref=e75] [cursor=pointer]
+              - paragraph [ref=e76]: "Примеры: YouTube Shorts, Instagram Reels, Facebook Reels."
+              - button "Получить источник" [ref=e78] [cursor=pointer]
+            - group [ref=e79]:
+              - generic "Дополнительно" [ref=e80] [cursor=pointer]
+          - complementary [ref=e81]:
+            - generic [ref=e83]:
+              - generic [ref=e84]:
+                - heading "Текущий контекст" [level=3] [ref=e85]
+                - generic [ref=e86]: Шаг 1 из 3
+              - generic [ref=e88]:
+                - paragraph [ref=e89]: Ссылка на источник
+                - paragraph [ref=e90]: Источник не выбран
+                - paragraph [ref=e91]: После завершения загрузки второй этап покажет варианты подписей, сгенерированные по видео, и комментарии, если они доступны.
+        - group [ref=e92]:
+          - generic "Подробности Логи, комментарии, диагностика" [ref=e93] [cursor=pointer]:
+            - generic [ref=e94]: Подробности
+            - generic [ref=e95]: Логи, комментарии, диагностика
