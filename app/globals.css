@@ -503,6 +503,13 @@ select.text-input:focus {
   gap: 12px;
 }
 
+.history-popover-anchor {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: flex-start;
+}
+
 .history-trigger {
   height: 38px;
   border: 1px solid var(--border);
@@ -526,6 +533,67 @@ select.text-input:focus {
 .history-trigger.active {
   border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
   background: color-mix(in srgb, var(--accent-soft) 44%, var(--surface-2));
+}
+
+.history-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: min(388px, calc(100vw - 44px));
+  max-height: min(72dvh, 760px);
+  border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 96%, black), color-mix(in srgb, var(--surface) 98%, black)),
+    var(--surface);
+  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.42);
+  padding: 12px;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  z-index: 48;
+}
+
+.history-popover.pinned {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.history-popover-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-popover-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.history-popover-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-popover-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.history-popover-search {
+  min-width: 0;
+}
+
+.history-popover-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .history-count {
@@ -868,80 +936,11 @@ select.text-input:focus {
   display: grid;
   gap: 12px;
   align-items: start;
-}
-
-.shell-body.history-closed {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.shell-body.history-open {
-  grid-template-columns: minmax(300px, 336px) minmax(0, 1fr);
-}
-
-.history-rail,
 .shell-workspace {
   min-height: 0;
-}
-
-.history-backdrop {
-  display: none;
-}
-
-.history-rail {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface) 92%, black);
-  box-shadow: var(--shadow);
-  position: sticky;
-  top: 0;
-  align-self: start;
-  max-height: calc(100dvh - 24px);
-  padding: 12px;
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  gap: 10px;
-}
-
-.history-rail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.history-rail-head h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.history-rail-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.history-rail-close {
-  display: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text-soft);
-  cursor: pointer;
-}
-
-.history-rail-search {
-  min-width: 0;
-}
-
-.history-rail-scroll {
-  min-height: 0;
-  overflow: auto;
-  padding-right: 2px;
-}
-
-.shell-workspace {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 12px;
@@ -2583,36 +2582,13 @@ select.text-input:focus {
     flex-wrap: wrap;
   }
 
-  .shell-body,
-  .shell-body.history-open {
+  .shell-body {
     grid-template-columns: 1fr;
   }
 
-  .history-backdrop {
-    position: fixed;
-    inset: 0;
-    display: block;
-    border: 0;
-    padding: 0;
-    background: rgba(5, 8, 12, 0.72);
-    z-index: 34;
-    cursor: pointer;
-  }
-
-  .history-rail {
-    position: fixed;
-    inset: 12px auto 12px 12px;
-    width: min(420px, calc(100vw - 24px));
-    max-width: calc(100vw - 24px);
-    max-height: calc(100dvh - 24px);
-    z-index: 40;
-    grid-template-rows: auto auto auto minmax(0, 1fr);
-  }
-
-  .history-rail-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+  .history-popover {
+    width: min(420px, calc(100vw - 28px));
+    max-height: min(70dvh, 700px);
   }
 
   .channel-switcher {
@@ -2815,6 +2791,14 @@ select.text-input:focus {
   .history-trigger {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .history-popover-anchor {
+    width: 100%;
+  }
+
+  .history-popover {
+    width: min(420px, calc(100vw - 28px));
   }
 
   .history-actions .btn {
