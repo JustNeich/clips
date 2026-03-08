@@ -58,7 +58,7 @@ Option 5
 TOP — [Text]
 BOTTOM — [Text]
 3. Five Title Options
-Create 5 short, click-worthy titles (2-6 words, All Caps allowed). Ignore examples.json for this specific task.
+Create 5 short, click-worthy titles (2-6 words, All Caps allowed) and include a Russian translation for each title. Ignore examples.json for this specific task.
 4. Final Pick
 Which option best captures the "examples.json" energy?`;
 
@@ -109,7 +109,11 @@ export type Stage2Output = {
     topRu: string;
     bottomRu: string;
   }>;
-  titleOptions: string[];
+  titleOptions: Array<{
+    option: number;
+    title: string;
+    titleRu: string;
+  }>;
   finalPick: {
     option: number;
     reason: string;
@@ -162,7 +166,16 @@ export const STAGE2_OUTPUT_SCHEMA = {
       type: "array",
       minItems: 5,
       maxItems: 5,
-      items: { type: "string", minLength: 1 }
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["option", "title", "titleRu"],
+        properties: {
+          option: { type: "integer", minimum: 1, maximum: 5 },
+          title: { type: "string", minLength: 1 },
+          titleRu: { type: "string", minLength: 1 }
+        }
+      }
     },
     finalPick: {
       type: "object",
@@ -254,6 +267,7 @@ export function buildStage2Prompt(input: BuildStage2PromptInput): string {
     "- Return valid JSON only.",
     "- Obey the JSON schema exactly (no extra keys).",
     "- Each caption option must include Russian translation fields: topRu and bottomRu.",
+    "- Each title option must include Russian translation field titleRu.",
     "- Keep TOP to 140-210 chars, BOTTOM to 80-160 chars.",
     "- Do not use banned words or banned openers from the system prompt."
   ].join("\n");
@@ -340,6 +354,50 @@ function ensureStringArray(value: unknown, exactLength?: number): string[] {
   return array;
 }
 
+function parseTitleOptions(
+  value: unknown
+): Array<{ option: number; title: string; titleRu: string }> {
+  if (!Array.isArray(value) || value.length !== 5) {
+    throw new Error("LLM output must contain exactly 5 title options.");
+  }
+
+  return value.map((item, index) => {
+    if (typeof item === "string") {
+      const title = item.trim();
+      if (!title) {
+        throw new Error("LLM output contains empty title option.");
+      }
+      return {
+        option: index + 1,
+        title,
+        titleRu: title
+      };
+    }
+
+    if (!item || typeof item !== "object") {
+      throw new Error("LLM output contains invalid title option.");
+    }
+
+    const titleObj = item as Record<string, unknown>;
+    const title = String(titleObj.title ?? "").trim();
+    const titleRu = String(titleObj.titleRu ?? "").trim() || title;
+    const option =
+      typeof titleObj.option === "number" && Number.isFinite(titleObj.option)
+        ? Math.floor(titleObj.option)
+        : index + 1;
+
+    if (!title) {
+      throw new Error("LLM output contains empty title option.");
+    }
+
+    return {
+      option,
+      title,
+      titleRu
+    };
+  });
+}
+
 export function parseStage2Output(raw: string): Stage2Output {
   const candidate = parseJsonBlock(raw);
   if (!candidate || typeof candidate !== "object") {
@@ -386,7 +444,7 @@ export function parseStage2Output(raw: string): Stage2Output {
       keyPhraseToAdapt: String(inputAnalysis.keyPhraseToAdapt ?? "").trim()
     },
     captionOptions,
-    titleOptions: ensureStringArray(obj.titleOptions, 5),
+    titleOptions: parseTitleOptions(obj.titleOptions),
     finalPick: {
       option:
         typeof finalPick.option === "number" && Number.isFinite(finalPick.option)
@@ -433,7 +491,7 @@ function parseJsonBlock(raw: string): unknown {
     return JSON.parse(fenced[1]);
   }
 
-  throw new Error("Unable to parse JSON from LLM output.");
+  throw new Error("Не удалось разобрать JSON из ответа LLM.");
 }
 
 export type Stage2ValidationWarning = {

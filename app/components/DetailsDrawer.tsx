@@ -11,6 +11,31 @@ type DetailsDrawerProps = {
   onDownloadCommentsJson: (payload: CommentsPayload) => void;
 };
 
+function getRoleLabel(role: ChatEvent["role"]): string {
+  if (role === "user") {
+    return "Вы";
+  }
+  if (role === "assistant") {
+    return "Ассистент";
+  }
+  return "Система";
+}
+
+function getEventTypeLabel(type: ChatEvent["type"]): string {
+  switch (type) {
+    case "note":
+      return "Заметка";
+    case "error":
+      return "Ошибка";
+    case "comments":
+      return "Комментарии";
+    case "stage2":
+      return "Этап 2";
+    default:
+      return type;
+  }
+}
+
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("ru-RU", {
     day: "2-digit",
@@ -36,8 +61,8 @@ export function DetailsDrawer({
   return (
     <details className="details-drawer">
       <summary>
-        <span>Details</span>
-        <small>Logs, comments, diagnostics</small>
+        <span>Подробности</span>
+        <small>Логи, комментарии, диагностика</small>
       </summary>
 
       <div className="details-content">
@@ -49,7 +74,7 @@ export function DetailsDrawer({
             disabled={isBusyComments}
             aria-busy={isBusyComments}
           >
-            {isBusyComments ? "Loading comments..." : "Fetch comments"}
+            {isBusyComments ? "Загрузка комментариев..." : "Загрузить комментарии"}
           </button>
 
           <button
@@ -62,17 +87,17 @@ export function DetailsDrawer({
               }
             }}
           >
-            Download comments JSON
+            Скачать JSON комментариев
           </button>
         </div>
 
-        <section className="details-section" aria-label="Comments summary">
-          <h3>Comments</h3>
+        <section className="details-section" aria-label="Сводка по комментариям">
+          <h3>Комментарии</h3>
           {!comments ? (
-            <p className="subtle-text">No comments fetched yet.</p>
+            <p className="subtle-text">Комментарии еще не загружены.</p>
           ) : (
             <>
-              <p className="subtle-text">Total: {comments.totalComments}</p>
+              <p className="subtle-text">Всего: {comments.totalComments}</p>
               <ol className="comments-preview">
                 {comments.topComments.slice(0, 5).map((item) => (
                   <li key={item.id}>
@@ -85,17 +110,17 @@ export function DetailsDrawer({
           )}
         </section>
 
-        <section className="details-section" aria-label="Event logs">
-          <h3>Event log</h3>
+        <section className="details-section" aria-label="Логи событий">
+          <h3>Журнал событий</h3>
           {ordered.length === 0 ? (
-            <p className="subtle-text">No events yet.</p>
+            <p className="subtle-text">Событий пока нет.</p>
           ) : (
             <ul className="details-log-list">
               {ordered.map((event) => (
                 <li key={event.id} className={`log-item tone-${event.type === "error" ? "error" : "default"}`}>
                   <div className="log-meta">
-                    <span>{event.role}</span>
-                    <span>{event.type}</span>
+                    <span>{getRoleLabel(event.role)}</span>
+                    <span>{getEventTypeLabel(event.type)}</span>
                     <time dateTime={event.createdAt}>{formatDate(event.createdAt)}</time>
                   </div>
                   <p>{formatEventText(event)}</p>

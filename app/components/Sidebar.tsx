@@ -55,30 +55,30 @@ export function Sidebar({
         aria-hidden={!isOpenMobile}
       />
 
-      <aside className={`app-sidebar ${isOpenMobile ? "open" : ""}`} aria-label="Chat threads sidebar">
+      <aside className={`app-sidebar ${isOpenMobile ? "open" : ""}`} aria-label="Боковая панель чатов">
         <div className="sidebar-top">
           <div>
-            <p className="sidebar-kicker">Workspace</p>
+            <p className="sidebar-kicker">Рабочее пространство</p>
             <h1>Clips Automations</h1>
           </div>
           <button
             type="button"
             className="icon-btn mobile-only"
             onClick={onCloseMobile}
-            aria-label="Close sidebar"
+            aria-label="Закрыть боковую панель"
           >
             <span aria-hidden="true">✕</span>
           </button>
         </div>
 
-        <form onSubmit={onCreateChat} className="sidebar-link-form" aria-label="Create thread from URL">
+        <form onSubmit={onCreateChat} className="sidebar-link-form" aria-label="Создать чат по ссылке">
           <label htmlFor="sidebar-url" className="sr-only">
-            Shorts/Reels URL
+            Ссылка на Shorts или Reels
           </label>
           <input
             id="sidebar-url"
             className="text-input"
-            placeholder="Paste Shorts/Reels link"
+            placeholder="Вставьте ссылку на Shorts или Reels"
             value={draftUrl}
             onChange={(event) => onDraftUrlChange(event.target.value)}
             autoComplete="off"
@@ -90,18 +90,18 @@ export function Sidebar({
             disabled={isBusy}
             aria-busy={isCreatingChat}
           >
-            {isCreatingChat ? "Creating..." : "New chat"}
+            {isCreatingChat ? "Создаём..." : "Новый чат"}
           </button>
         </form>
 
         <div className="sidebar-search">
           <label htmlFor="thread-search" className="sr-only">
-            Search chats
+            Поиск по чатам
           </label>
           <input
             id="thread-search"
             className="text-input"
-            placeholder="Search"
+            placeholder="Поиск"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             autoComplete="off"
@@ -109,9 +109,9 @@ export function Sidebar({
           />
         </div>
 
-        <nav className="thread-list" aria-label="Chat history">
+        <nav className="thread-list" aria-label="История чатов">
           {filteredChats.length === 0 ? (
-            <p className="empty-state small">No chats yet. Add a link to start.</p>
+            <p className="empty-state small">Чатов пока нет. Добавьте ссылку, чтобы начать.</p>
           ) : (
             filteredChats.map((chat) => {
               const isActive = activeChatId === chat.id;

@@ -18,7 +18,7 @@ export async function GET(): Promise<Response> {
       {
         sessionId: integration?.codexSessionId ?? null,
         loggedIn: integration?.status === "connected",
-        loginStatusText: integration?.loginStatusText ?? "Disconnected",
+        loginStatusText: integration?.loginStatusText ?? "Отключен",
         deviceAuth: ownerView
           ? {
               status: integration?.deviceAuthStatus ?? "idle",
@@ -36,7 +36,7 @@ export async function GET(): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
-    return asErrorResponse(error, "Unable to read shared Codex auth status.");
+    return asErrorResponse(error, "Не удалось получить статус авторизации Shared Codex.");
   }
 }
 
@@ -44,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Body | null;
   const action = body?.action;
   if (action !== "start" && action !== "cancel" && action !== "refresh" && action !== "disconnect") {
-    return Response.json({ error: "Unsupported action." }, { status: 400 });
+    return Response.json({ error: "Неподдерживаемое действие." }, { status: 400 });
   }
 
   try {
@@ -54,7 +54,7 @@ export async function POST(request: Request): Promise<Response> {
       {
         sessionId: integration?.codexSessionId ?? null,
         loggedIn: integration?.status === "connected",
-        loginStatusText: integration?.loginStatusText ?? "Disconnected",
+        loginStatusText: integration?.loginStatusText ?? "Отключен",
         deviceAuth: {
           status: integration?.deviceAuthStatus ?? "idle",
           output: auth.membership.role === "owner" ? integration?.deviceAuthOutput ?? "" : "",
@@ -67,6 +67,6 @@ export async function POST(request: Request): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
-    return asErrorResponse(error, "Unable to update shared Codex auth.", 403);
+    return asErrorResponse(error, "Не удалось обновить авторизацию Shared Codex.", 403);
   }
 }

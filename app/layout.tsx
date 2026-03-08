@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Reels / Shorts Downloader",
-  description: "Download public reels and shorts to mp4"
+  title: "Загрузчик Reels / Shorts",
+  description: "Загрузка публичных reels и shorts в mp4"
 };
 
 type RootLayoutProps = Readonly<{

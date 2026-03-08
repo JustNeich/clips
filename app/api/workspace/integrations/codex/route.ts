@@ -28,14 +28,14 @@ export async function GET(): Promise<Response> {
               }
           : {
               status: "disconnected",
-              loginStatusText: "Disconnected",
+              loginStatusText: "Отключен",
               connectedAt: null
             }
       },
       { status: 200 }
     );
   } catch (error) {
-    return asErrorResponse(error, "Unable to load shared Codex status.");
+    return asErrorResponse(error, "Не удалось загрузить статус Shared Codex.");
   }
 }
 
@@ -43,7 +43,7 @@ export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Body | null;
   const action = body?.action;
   if (action !== "start" && action !== "cancel" && action !== "refresh" && action !== "disconnect") {
-    return Response.json({ error: "Unsupported action." }, { status: 400 });
+    return Response.json({ error: "Неподдерживаемое действие." }, { status: 400 });
   }
 
   try {
@@ -51,6 +51,6 @@ export async function POST(request: Request): Promise<Response> {
     const integration = await mutateWorkspaceCodexIntegration({ auth, action });
     return Response.json({ integration }, { status: 200 });
   } catch (error) {
-    return asErrorResponse(error, "Unable to update shared Codex integration.", 403);
+    return asErrorResponse(error, "Не удалось обновить интеграцию Shared Codex.", 403);
   }
 }

@@ -35,6 +35,6 @@ export async function POST(request: Request): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
-    return asErrorResponse(error, "Unable to accept invite.", 400);
+    return asErrorResponse(error, "Не удалось принять приглашение.", 400);
   }
 }

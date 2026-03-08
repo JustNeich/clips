@@ -24,12 +24,12 @@ export default function AcceptInvitePage() {
       });
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
-        throw new Error(body?.error ?? "Unable to accept invite.");
+        throw new Error(body?.error ?? "Не удалось принять приглашение.");
       }
       router.push("/");
       router.refresh();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to accept invite.");
+      setStatus(error instanceof Error ? error.message : "Не удалось принять приглашение.");
     } finally {
       setBusy(false);
     }
@@ -38,23 +38,23 @@ export default function AcceptInvitePage() {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <h1>Accept invite</h1>
-        <p className="subtle-text">Paste the invite token and set your password.</p>
+        <h1>Принять приглашение</h1>
+        <p className="subtle-text">Вставьте токен приглашения и задайте пароль.</p>
         <form className="field-stack" onSubmit={onSubmit}>
-          <label className="field-label">Invite token</label>
+          <label className="field-label">Токен приглашения</label>
           <input
             className="text-input"
             value={token}
             onChange={(event) => setToken(event.target.value)}
             required
           />
-          <label className="field-label">Display name</label>
+          <label className="field-label">Имя</label>
           <input
             className="text-input"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
           />
-          <label className="field-label">Password</label>
+          <label className="field-label">Пароль</label>
           <input
             className="text-input"
             type="password"
@@ -63,12 +63,12 @@ export default function AcceptInvitePage() {
             required
           />
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? "Accepting..." : "Accept invite"}
+            {busy ? "Принимаем..." : "Принять приглашение"}
           </button>
         </form>
         {status ? <p className="status-line error">{status}</p> : null}
         <div className="auth-links">
-          <Link href="/login">Back to login</Link>
+          <Link href="/login">Назад ко входу</Link>
         </div>
       </section>
     </main>

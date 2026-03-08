@@ -125,12 +125,29 @@ export function ChannelManager({
   const activeGrantUserIds = new Set(accessGrants.map((grant) => grant.userId));
   const accessCandidates = workspaceMembers.filter((member) => member.role !== "owner");
 
+  const formatTabLabel = (value: "brand" | "stage2" | "render" | "assets" | "access") => {
+    switch (value) {
+      case "brand":
+        return "Бренд";
+      case "stage2":
+        return "Stage 2";
+      case "render":
+        return "Рендер";
+      case "assets":
+        return "Ассеты";
+      case "access":
+        return "Доступ";
+      default:
+        return value;
+    }
+  };
+
   return createPortal(
     <div
       className="channel-manager-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Manage channels"
+      aria-label="Управление каналами"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -139,9 +156,9 @@ export function ChannelManager({
     >
       <div className="channel-manager">
         <header className="channel-manager-head">
-          <h2>Manage channels</h2>
+          <h2>Управление каналами</h2>
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Close
+            Закрыть
           </button>
         </header>
 
@@ -165,7 +182,7 @@ export function ChannelManager({
           </select>
           {canCreateChannel ? (
             <button type="button" className="btn btn-secondary" onClick={onCreateChannel}>
-              + New channel
+              + Новый канал
             </button>
           ) : null}
           {activeChannel ? (
@@ -175,7 +192,7 @@ export function ChannelManager({
               onClick={() => onDeleteChannel(activeChannel.id)}
               disabled={channels.length <= 1 || !activeChannel.currentUserCanEditSetup}
             >
-              Delete channel
+              Удалить канал
             </button>
           ) : null}
         </section>
@@ -192,21 +209,21 @@ export function ChannelManager({
               className={`channel-tab ${tab === item ? "active" : ""}`}
               onClick={() => setTab(item)}
             >
-              {item.toUpperCase()}
+              {formatTabLabel(item)}
             </button>
             );
           })}
         </div>
 
         {!activeChannel ? (
-          <p className="subtle-text">Select channel.</p>
+          <p className="subtle-text">Выберите канал.</p>
         ) : (
           <div className="channel-tab-content">
             {tab === "brand" ? (
               <div className="field-stack">
-                <label className="field-label">Channel name</label>
+                <label className="field-label">Название канала</label>
                 <input className="text-input" value={name} onChange={(event) => setName(event.target.value)} />
-                <label className="field-label">Channel username</label>
+                <label className="field-label">Username канала</label>
                 <input
                   className="text-input"
                   value={username}
@@ -228,16 +245,16 @@ export function ChannelManager({
                         event.currentTarget.value = "";
                       }}
                     />
-                    Upload avatar
+                    Загрузить аватар
                   </label>
                   <select
                     className="text-input"
                     value={activeChannel.avatarAssetId ?? ""}
                     onChange={(event) =>
-                      onSaveChannel(activeChannel.id, { avatarAssetId: event.target.value || null })
+                        onSaveChannel(activeChannel.id, { avatarAssetId: event.target.value || null })
                     }
                   >
-                    <option value="">No avatar</option>
+                    <option value="">Без аватара</option>
                     {avatars.map((asset) => (
                       <option key={asset.id} value={asset.id}>
                         {asset.originalName}
@@ -256,21 +273,21 @@ export function ChannelManager({
                     })
                   }
                 >
-                  Save brand
+                  Сохранить бренд
                 </button>
               </div>
             ) : null}
 
             {tab === "stage2" ? (
               <div className="field-stack">
-                <label className="field-label">System prompt</label>
+                <label className="field-label">Системный промпт</label>
                 <textarea
                   className="text-area"
                   rows={9}
                   value={systemPrompt}
                   onChange={(event) => setSystemPrompt(event.target.value)}
                 />
-                <label className="field-label">Description prompt (auto SEO)</label>
+                <label className="field-label">Промпт описания (авто SEO)</label>
                 <textarea
                   className="text-area"
                   rows={9}
@@ -319,14 +336,14 @@ export function ChannelManager({
                     })
                   }
                 >
-                  Save Stage2 config
+                  Сохранить конфиг Stage 2
                 </button>
               </div>
             ) : null}
 
             {tab === "render" ? (
               <div className="field-stack">
-                <label className="field-label">Template</label>
+                <label className="field-label">Шаблон</label>
                 <select
                   className="text-input"
                   value={templateId}
@@ -337,7 +354,7 @@ export function ChannelManager({
                 </select>
                 <div className="compact-grid">
                   <div className="compact-field">
-                    <label className="field-label">Default background</label>
+                    <label className="field-label">Фон по умолчанию</label>
                     <select
                       className="text-input"
                       value={activeChannel.defaultBackgroundAssetId ?? ""}
@@ -356,7 +373,7 @@ export function ChannelManager({
                     </select>
                   </div>
                   <div className="compact-field">
-                    <label className="field-label">Default music</label>
+                    <label className="field-label">Музыка по умолчанию</label>
                     <select
                       className="text-input"
                       value={activeChannel.defaultMusicAssetId ?? ""}
@@ -381,7 +398,7 @@ export function ChannelManager({
                   disabled={!activeChannel.currentUserCanEditSetup}
                   onClick={() => onSaveChannel(activeChannel.id, { templateId })}
                 >
-                  Save render defaults
+                  Сохранить настройки рендера
                 </button>
               </div>
             ) : null}
@@ -403,7 +420,7 @@ export function ChannelManager({
                         event.currentTarget.value = "";
                       }}
                     />
-                    Upload background
+                    Загрузить фон
                   </label>
                   <label className="btn btn-ghost background-upload-btn">
                     <input
@@ -419,11 +436,11 @@ export function ChannelManager({
                         event.currentTarget.value = "";
                       }}
                     />
-                    Upload music
+                    Загрузить музыку
                   </label>
                 </div>
                 <section className="details-section">
-                  <h3>Backgrounds ({backgrounds.length})</h3>
+                  <h3>Фоны ({backgrounds.length})</h3>
                   <ul className="details-log-list">
                     {backgrounds.map((asset) => (
                       <li key={asset.id} className="log-item">
@@ -433,13 +450,13 @@ export function ChannelManager({
                             type="button"
                             className="btn btn-ghost"
                             onClick={() =>
-                              onSaveChannel(activeChannel.id, { defaultBackgroundAssetId: asset.id })
-                            }
-                          >
-                            Set default
+                            onSaveChannel(activeChannel.id, { defaultBackgroundAssetId: asset.id })
+                          }
+                        >
+                            Сделать по умолчанию
                           </button>
                           <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
-                            Delete
+                            Удалить
                           </button>
                         </div>
                       </li>
@@ -447,7 +464,7 @@ export function ChannelManager({
                   </ul>
                 </section>
                 <section className="details-section">
-                  <h3>Music ({music.length})</h3>
+                  <h3>Музыка ({music.length})</h3>
                   <ul className="details-log-list">
                     {music.map((asset) => (
                       <li key={asset.id} className="log-item">
@@ -458,10 +475,10 @@ export function ChannelManager({
                             className="btn btn-ghost"
                             onClick={() => onSaveChannel(activeChannel.id, { defaultMusicAssetId: asset.id })}
                           >
-                            Set default
+                            Сделать по умолчанию
                           </button>
                           <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
-                            Delete
+                            Удалить
                           </button>
                         </div>
                       </li>
@@ -469,7 +486,7 @@ export function ChannelManager({
                   </ul>
                 </section>
                 <section className="details-section">
-                  <h3>Avatars ({avatars.length})</h3>
+                  <h3>Аватары ({avatars.length})</h3>
                   <ul className="details-log-list">
                     {avatars.map((asset) => (
                       <li key={asset.id} className="log-item">
@@ -480,10 +497,10 @@ export function ChannelManager({
                             className="btn btn-ghost"
                             onClick={() => onSaveChannel(activeChannel.id, { avatarAssetId: asset.id })}
                           >
-                            Set avatar
+                            Сделать аватаром
                           </button>
                           <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
-                            Delete
+                            Удалить
                           </button>
                         </div>
                       </li>
@@ -496,14 +513,14 @@ export function ChannelManager({
             {tab === "access" && canManageAccess ? (
               <div className="field-stack">
                 <p className="subtle-text">
-                  Managers and owner can grant operational access to channels.
+                  Менеджеры и владелец могут выдавать рабочий доступ к каналам.
                 </p>
                 <section className="details-section">
-                  <h3>Current access ({accessGrants.length})</h3>
+                  <h3>Текущий доступ ({accessGrants.length})</h3>
                   <ul className="details-log-list">
                     {accessGrants.length === 0 ? (
                       <li className="log-item">
-                        <p>No explicit grants.</p>
+                        <p>Явных выдач доступа нет.</p>
                       </li>
                     ) : (
                       accessGrants.map((grant) => (
@@ -523,7 +540,7 @@ export function ChannelManager({
                                 })
                               }
                             >
-                              Revoke
+                              Отозвать
                             </button>
                           </div>
                         </li>
@@ -532,7 +549,7 @@ export function ChannelManager({
                   </ul>
                 </section>
                 <section className="details-section">
-                  <h3>Grant access</h3>
+                  <h3>Выдать доступ</h3>
                   <ul className="details-log-list">
                     {accessCandidates.map((member) => (
                       <li key={member.user.id} className="log-item">
@@ -554,7 +571,7 @@ export function ChannelManager({
                                 })
                               }
                             >
-                              Revoke
+                              Отозвать
                             </button>
                           ) : (
                             <button
@@ -567,7 +584,7 @@ export function ChannelManager({
                                 })
                               }
                             >
-                              Grant operate
+                              Выдать рабочий доступ
                             </button>
                           )}
                         </div>

@@ -47,16 +47,16 @@ export function summarizeUserFacingError(message: string): string {
     rawLower.includes("powered by render") ||
     rawLower.includes("this service is currently unavailable")
   ) {
-    return "The hosted service is temporarily unavailable (502). Try again in a few minutes.";
+    return "Хостинг-сервис временно недоступен (502). Попробуйте снова через несколько минут.";
   }
 
   if (rawLower.includes("<!doctype html") || (rawLower.includes("<html") && rawLower.includes("<body"))) {
-    return "The server returned an unexpected HTML error page. Try again in a few minutes.";
+    return "Сервер вернул неожиданную HTML-страницу ошибки. Попробуйте снова через несколько минут.";
   }
 
   const normalized = message.replace(/\s+/g, " ").trim();
   if (!normalized) {
-    return "The request failed. Try again.";
+    return "Запрос не выполнен. Попробуйте еще раз.";
   }
 
   const lower = normalized.toLowerCase();
@@ -66,28 +66,28 @@ export function summarizeUserFacingError(message: string): string {
     lower.includes("sign in to confirm you're not a bot") ||
     lower.includes("youtube отклонил запрос")
   ) {
-    return "YouTube blocked this action on the server.";
+    return "YouTube заблокировал это действие на сервере.";
   }
   if (lower.includes("platform mismatch")) {
-    return "The hosted downloader could not recognize this link as a supported video.";
+    return "Хостинговый загрузчик не распознал ссылку как поддерживаемое видео.";
   }
   if (lower.includes("visolix api отклонил запрос") || lower.includes("visolix rejected the request")) {
-    return "Visolix rejected the request. Check the provider key and account access.";
+    return "Visolix отклонил запрос. Проверьте ключ провайдера и доступ аккаунта.";
   }
   if (lower.includes("codex cli не найден") || lower.includes("codex cli not found")) {
-    return "Shared Codex runtime is not installed on this deployment.";
+    return "Среда выполнения Shared Codex не установлена на этом деплое.";
   }
   if (lower.includes("ffmpeg") || lower.includes("ffprobe")) {
-    return "The media runtime is missing ffmpeg/ffprobe on this deployment.";
+    return "В среде выполнения отсутствуют ffmpeg/ffprobe на этом деплое.";
   }
   if (lower.startsWith("command failed:")) {
     if (lower.includes("yt-dlp")) {
-      return "YouTube blocked this action on the server.";
+      return "YouTube заблокировал это действие на сервере.";
     }
-    return "A server command failed while processing the source.";
+    return "Серверная команда завершилась ошибкой при обработке источника.";
   }
   if (lower.includes("shared codex unavailable")) {
-    return "Shared Codex is not connected yet.";
+    return "Shared Codex еще не подключен.";
   }
 
   if (normalized.length > 280) {

@@ -10,6 +10,13 @@ type MemberRow = {
   user: UserRecord;
 };
 
+const ROLE_LABELS: Record<AppRole, string> = {
+  owner: "владелец",
+  manager: "менеджер",
+  redactor: "редактор",
+  redactor_limited: "редактор с ограничениями"
+};
+
 export default function TeamPage() {
   const [auth, setAuth] = useState<AuthMeResponse | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
@@ -24,20 +31,20 @@ export default function TeamPage() {
     const authBody = (await authResponse.json()) as AuthMeResponse;
     setAuth(authBody);
     if (!authBody.effectivePermissions.canManageMembers) {
-      setStatus("Forbidden.");
+      setStatus("Доступ запрещён.");
       return;
     }
     const membersResponse = await fetch("/api/workspace/members");
     const membersBody = (await membersResponse.json()) as { members: MemberRow[]; error?: string };
     if (!membersResponse.ok) {
-      throw new Error(membersBody.error ?? "Unable to load members.");
+      throw new Error(membersBody.error ?? "Не удалось загрузить участников.");
     }
     setMembers(membersBody.members ?? []);
   };
 
   useEffect(() => {
     void load().catch((error) => {
-      setStatus(error instanceof Error ? error.message : "Unable to load team.");
+      setStatus(error instanceof Error ? error.message : "Не удалось загрузить команду.");
     });
   }, []);
 
@@ -52,12 +59,12 @@ export default function TeamPage() {
       });
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
-        throw new Error(body?.error ?? "Unable to update role.");
+        throw new Error(body?.error ?? "Не удалось обновить роль.");
       }
       await load();
-      setStatus("Role updated.");
+      setStatus("Роль обновлена.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to update role.");
+      setStatus(error instanceof Error ? error.message : "Не удалось обновить роль.");
     } finally {
       setBusy(false);
     }
@@ -77,13 +84,13 @@ export default function TeamPage() {
         | { error?: string; invite?: { token: string } }
         | null;
       if (!response.ok) {
-        throw new Error(body?.error ?? "Unable to create invite.");
+        throw new Error(body?.error ?? "Не удалось создать приглашение.");
       }
       setInviteToken(body?.invite?.token ?? null);
-      setStatus("Invite created.");
+      setStatus("Приглашение создано.");
       setInviteEmail("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to create invite.");
+      setStatus(error instanceof Error ? error.message : "Не удалось создать приглашение.");
     } finally {
       setBusy(false);
     }
@@ -114,9 +121,9 @@ export default function TeamPage() {
     return (
       <main className="auth-page">
         <section className="auth-card">
-          <h1>Team</h1>
-          <p className="status-line error">Forbidden.</p>
-          <Link href="/">Back to app</Link>
+          <h1>Команда</h1>
+          <p className="status-line error">Доступ запрещён.</p>
+          <Link href="/">Назад в приложение</Link>
         </section>
       </main>
     );
@@ -126,17 +133,17 @@ export default function TeamPage() {
     <main className="auth-page">
       <section className="auth-card" style={{ width: "min(880px, 100%)" }}>
         <div className="control-actions">
-          <h1>Team</h1>
+          <h1>Команда</h1>
           <Link href="/" className="btn btn-ghost">
-            Back
+            Назад
           </Link>
         </div>
         <p className="subtle-text">
-          Manage roles and create invites. Invite token is returned directly because email delivery is
-          not implemented in v1.
+          Управляйте ролями и создавайте приглашения. Токен приглашения показывается сразу, потому
+          что отправка писем в v1 ещё не реализована.
         </p>
         <section className="details-section">
-          <h3>Members</h3>
+          <h3>Участники</h3>
           <ul className="details-log-list">
             {members.map((member) => (
               <li key={member.id} className="log-item">
@@ -159,7 +166,7 @@ export default function TeamPage() {
                   >
                     {getAssignableRoles(member.role).map((role) => (
                       <option key={role} value={role}>
-                        {role}
+                        {ROLE_LABELS[role]}
                       </option>
                     ))}
                   </select>
@@ -169,7 +176,7 @@ export default function TeamPage() {
           </ul>
         </section>
         <section className="details-section">
-          <h3>Create invite</h3>
+          <h3>Создать приглашение</h3>
           <div className="field-stack">
             <input
               className="text-input"
@@ -185,17 +192,17 @@ export default function TeamPage() {
             >
               {inviteOptions.map((role) => (
                 <option key={role} value={role}>
-                  {role}
+                  {ROLE_LABELS[role]}
                 </option>
               ))}
             </select>
             <button type="button" className="btn btn-primary" onClick={() => void createInvite()}>
-              Create invite
+              Создать приглашение
             </button>
           </div>
           {inviteToken ? (
             <p className="subtle-text">
-              Invite token: <strong>{inviteToken}</strong>
+              Токен приглашения: <strong>{inviteToken}</strong>
             </p>
           ) : null}
         </section>

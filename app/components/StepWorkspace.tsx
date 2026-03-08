@@ -17,8 +17,8 @@ export function StepWorkspace({
   left,
   right,
   leftFooter,
-  editLabel = "Edit",
-  previewLabel = "Preview",
+  editLabel = "Редактирование",
+  previewLabel = "Предпросмотр",
   previewViewportHeight = false
 }: StepWorkspaceProps) {
   const [mobileTab, setMobileTab] = useState<WorkspaceTab>("edit");
@@ -29,10 +29,10 @@ export function StepWorkspace({
       className={`step-workspace ${previewViewportHeight ? "preview-vh" : ""} ${
         hasPreview ? "" : "single-pane"
       }`}
-      aria-label="Step workspace"
+      aria-label="Рабочая область шага"
     >
       {hasPreview ? (
-        <div className="workspace-tabs" role="tablist" aria-label="Workspace tabs">
+        <div className="workspace-tabs" role="tablist" aria-label="Вкладки рабочей области">
           <button
             type="button"
             role="tab"

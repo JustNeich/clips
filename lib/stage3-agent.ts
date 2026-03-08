@@ -256,6 +256,43 @@ function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function formatTimingModeLabel(value: Stage3TimingMode): string {
+  switch (value) {
+    case "auto":
+      return "авто";
+    case "compress":
+      return "сжатие";
+    case "stretch":
+      return "растягивание";
+    default:
+      return value;
+  }
+}
+
+function formatAudioModeLabel(value: Stage3AudioMode): string {
+  switch (value) {
+    case "source_only":
+      return "только исходный звук";
+    case "source_plus_music":
+      return "исходный звук + музыка";
+    default:
+      return value;
+  }
+}
+
+function formatTextPolicyLabel(value: Stage3TextPolicy): string {
+  switch (value) {
+    case "strict_fit":
+      return "строгое вмещение";
+    case "preserve_words":
+      return "сохранение слов";
+    case "aggressive_compact":
+      return "агрессивное уплотнение";
+    default:
+      return value;
+  }
+}
+
 function parseTimecode(value: string): number | null {
   const match = value.trim().match(/^(\d{1,2}):(\d{2})(?:\.(\d))?$/);
   if (!match) {
@@ -1151,20 +1188,24 @@ export function applyOperations(
         break;
       case "set_timing_mode":
         if (nextPlan.timingMode !== operation.timingMode) {
-          changes.push(`Timing mode: ${nextPlan.timingMode} -> ${operation.timingMode}.`);
+          changes.push(
+            `Режим тайминга: ${formatTimingModeLabel(nextPlan.timingMode)} -> ${formatTimingModeLabel(operation.timingMode)}.`
+          );
           nextPlan.timingMode = operation.timingMode;
         }
         break;
       case "set_audio_mode":
         if (nextPlan.audioMode !== operation.audioMode) {
-          changes.push(`Audio mode: ${nextPlan.audioMode} -> ${operation.audioMode}.`);
+          changes.push(
+            `Режим аудио: ${formatAudioModeLabel(nextPlan.audioMode)} -> ${formatAudioModeLabel(operation.audioMode)}.`
+          );
           nextPlan.audioMode = operation.audioMode;
         }
         break;
       case "set_slowmo":
         if (nextPlan.smoothSlowMo !== operation.smoothSlowMo) {
           nextPlan.smoothSlowMo = operation.smoothSlowMo;
-          changes.push(`Slow-mo: ${operation.smoothSlowMo ? "on" : "off"}.`);
+          changes.push(`Слоумо: ${operation.smoothSlowMo ? "включен" : "выключен"}.`);
         }
         break;
       case "set_clip_start":
@@ -1177,7 +1218,7 @@ export function applyOperations(
         break;
       case "set_video_zoom":
         nextPlan.videoZoom = clamp(operation.videoZoom, 1, 1.6);
-        changes.push(`Zoom video slot: x${nextPlan.videoZoom.toFixed(2)}.`);
+        changes.push(`Масштаб видео: x${nextPlan.videoZoom.toFixed(2)}.`);
         break;
       case "set_top_font_scale":
         nextPlan.topFontScale = clamp(operation.topFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX);
@@ -1189,11 +1230,11 @@ export function applyOperations(
         break;
       case "set_music_gain":
         nextPlan.musicGain = clamp(operation.musicGain, 0, 1);
-        changes.push(`Music gain: ${(nextPlan.musicGain * 100).toFixed(0)}%.`);
+        changes.push(`Громкость музыки: ${(nextPlan.musicGain * 100).toFixed(0)}%.`);
         break;
       case "set_text_policy":
         nextPlan.textPolicy = operation.textPolicy;
-        changes.push(`Text policy: ${operation.textPolicy}.`);
+        changes.push(`Политика текста: ${formatTextPolicyLabel(operation.textPolicy)}.`);
         break;
       case "rewrite_top_text":
         nextTop = normalizeText(operation.topText);

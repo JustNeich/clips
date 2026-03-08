@@ -70,14 +70,14 @@ export async function ensureCodexLoggedIn(codexHome: string): Promise<void> {
     const status = await getCodexLoginStatus(codexHome);
     if (!status.loggedIn) {
       throw new Error(
-        "Codex не авторизован для этой сессии. Нажмите «Connect Codex» и завершите вход."
+        "Codex не авторизован для этой сессии. Нажмите «Подключить Codex» и завершите вход."
       );
     }
   } catch (error) {
     if (error instanceof Error) {
       throw error;
     }
-    throw new Error("Codex login required for this session.");
+    throw new Error("Для этой сессии требуется вход в Codex.");
   }
 }
 

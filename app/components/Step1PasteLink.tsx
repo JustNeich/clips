@@ -39,20 +39,20 @@ export function Step1PasteLink({
 
   return (
     <StepWorkspace
-      editLabel="Edit"
-      previewLabel="Preview"
+      editLabel="Редактирование"
+      previewLabel="Предпросмотр"
       left={
         <div className="step-panel-stack">
           <header className="step-head">
-            <p className="kicker">Step 1</p>
-            <h2>Source</h2>
-            <p>Paste a Shorts or Reels link to fetch the source. Comments are optional and never block the flow.</p>
+            <p className="kicker">Шаг 1</p>
+            <h2>Источник</h2>
+            <p>Вставьте ссылку на Shorts или Reels, чтобы получить исходник. Комментарии необязательны и не блокируют процесс.</p>
           </header>
 
           <section className="control-card">
             <form className="step-form" onSubmit={handleSubmit}>
               <label htmlFor="source-url" className="field-label">
-                Video URL
+                Ссылка на видео
               </label>
               <div className="input-with-action">
                 <input
@@ -64,11 +64,11 @@ export function Step1PasteLink({
                   autoComplete="off"
                 />
                 <button type="button" className="btn btn-ghost" onClick={onPaste} disabled={isBusy}>
-                  Paste
+                  Вставить
                 </button>
               </div>
 
-              <p className="subtle-text">Examples: YouTube Shorts, Instagram Reels, Facebook Reels.</p>
+              <p className="subtle-text">Примеры: YouTube Shorts, Instagram Reels, Facebook Reels.</p>
 
               <div className="control-actions">
                 <button
@@ -78,7 +78,7 @@ export function Step1PasteLink({
                   aria-busy={isBusy}
                   title={!fetchAvailable ? fetchBlockedReason ?? undefined : undefined}
                 >
-                  {isBusy ? "Fetching..." : "Fetch source"}
+                  {isBusy ? "Получаем..." : "Получить источник"}
                 </button>
               </div>
               {!fetchAvailable && fetchBlockedReason ? (
@@ -86,16 +86,16 @@ export function Step1PasteLink({
               ) : null}
               {commentsFallbackActive ? (
                 <p className="subtle-text">
-                  Comments were skipped on this server. Step 2 will continue with video-only context.
+                  Комментарии пропущены на этом сервере. Второй этап продолжит работу только с видеоконтекстом.
                 </p>
               ) : null}
             </form>
           </section>
 
           <details className="advanced-block">
-            <summary>Advanced</summary>
+            <summary>Дополнительно</summary>
             <div className="advanced-content">
-              <p className="subtle-text">Download original source mp4 for local backup.</p>
+              <p className="subtle-text">Скачайте исходный mp4 для локального бэкапа.</p>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -103,7 +103,7 @@ export function Step1PasteLink({
                 disabled={isBusy || !downloadAvailable}
                 title={!downloadAvailable ? downloadBlockedReason ?? undefined : undefined}
               >
-                Download source mp4
+                Скачать исходный mp4
               </button>
               {!downloadAvailable && downloadBlockedReason ? (
                 <p className="subtle-text danger-text">{downloadBlockedReason}</p>
@@ -115,16 +115,16 @@ export function Step1PasteLink({
       right={
         <div className="preview-shell">
           <header className="preview-header">
-            <h3>Live context</h3>
-            <span className="preview-meta">Step 1 of 3</span>
+            <h3>Текущий контекст</h3>
+            <span className="preview-meta">Шаг 1 из 3</span>
           </header>
 
           <div className="preview-stage static">
             <div className="source-placeholder">
-              <p className="placeholder-title">Source link</p>
-              <p className="mono source-link-text">{activeUrl ?? "No source selected"}</p>
+              <p className="placeholder-title">Ссылка на источник</p>
+              <p className="mono source-link-text">{activeUrl ?? "Источник не выбран"}</p>
               <p className="subtle-text">
-                After fetch completes, Step 2 will show caption options generated from the video, with comments if available.
+                После завершения загрузки второй этап покажет варианты подписей, сгенерированные по видео, и комментарии, если они доступны.
               </p>
             </div>
           </div>

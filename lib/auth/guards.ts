@@ -6,7 +6,7 @@ import { resolveChannelPermissions } from "../acl";
 export async function requireAuth() {
   const auth = await getCurrentAuthContext();
   if (!auth) {
-    throw new Response(JSON.stringify({ error: "Authentication required." }), {
+    throw new Response(JSON.stringify({ error: "Требуется авторизация." }), {
       status: 401,
       headers: { "Content-Type": "application/json" }
     });
@@ -16,7 +16,7 @@ export async function requireAuth() {
 
 export function requireRole(role: AppRole, currentRole: AppRole): void {
   if (currentRole !== role) {
-    throw new Response(JSON.stringify({ error: "Forbidden." }), {
+    throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {
       status: 403,
       headers: { "Content-Type": "application/json" }
     });
@@ -25,7 +25,7 @@ export function requireRole(role: AppRole, currentRole: AppRole): void {
 
 export function requireOneOfRoles(roles: AppRole[], currentRole: AppRole): void {
   if (!roles.includes(currentRole)) {
-    throw new Response(JSON.stringify({ error: "Forbidden." }), {
+    throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {
       status: 403,
       headers: { "Content-Type": "application/json" }
     });
@@ -35,7 +35,7 @@ export function requireOneOfRoles(roles: AppRole[], currentRole: AppRole): void 
 export async function requireChannelVisibility(auth: Awaited<ReturnType<typeof requireAuth>>, channelId: string) {
   const channel = await getChannelById(channelId);
   if (!channel || channel.workspaceId !== auth.workspace.id) {
-    throw new Response(JSON.stringify({ error: "Channel not found." }), {
+    throw new Response(JSON.stringify({ error: "Канал не найден." }), {
       status: 404,
       headers: { "Content-Type": "application/json" }
     });
@@ -47,7 +47,7 @@ export async function requireChannelVisibility(auth: Awaited<ReturnType<typeof r
     explicitAccess: grant
   });
   if (!permissions.isVisible) {
-    throw new Response(JSON.stringify({ error: "Forbidden." }), {
+    throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {
       status: 403,
       headers: { "Content-Type": "application/json" }
     });
@@ -58,7 +58,7 @@ export async function requireChannelVisibility(auth: Awaited<ReturnType<typeof r
 export async function requireChannelOperate(auth: Awaited<ReturnType<typeof requireAuth>>, channelId: string) {
   const { channel, permissions } = await requireChannelVisibility(auth, channelId);
   if (!permissions.canOperate) {
-    throw new Response(JSON.stringify({ error: "Forbidden." }), {
+    throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {
       status: 403,
       headers: { "Content-Type": "application/json" }
     });
@@ -69,7 +69,7 @@ export async function requireChannelOperate(auth: Awaited<ReturnType<typeof requ
 export async function requireChannelSetupEdit(auth: Awaited<ReturnType<typeof requireAuth>>, channelId: string) {
   const { channel, permissions } = await requireChannelVisibility(auth, channelId);
   if (!permissions.canEditSetup) {
-    throw new Response(JSON.stringify({ error: "Forbidden." }), {
+    throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {
       status: 403,
       headers: { "Content-Type": "application/json" }
     });
@@ -80,7 +80,7 @@ export async function requireChannelSetupEdit(auth: Awaited<ReturnType<typeof re
 export async function requireChannelAccessManage(auth: Awaited<ReturnType<typeof requireAuth>>, channelId: string) {
   const { channel, permissions } = await requireChannelVisibility(auth, channelId);
   if (!permissions.canManageAccess) {
-    throw new Response(JSON.stringify({ error: "Forbidden." }), {
+    throw new Response(JSON.stringify({ error: "Доступ запрещен." }), {
       status: 403,
       headers: { "Content-Type": "application/json" }
     });

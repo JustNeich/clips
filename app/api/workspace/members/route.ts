@@ -13,6 +13,6 @@ export async function GET(): Promise<Response> {
     const members = listWorkspaceMembers(auth.workspace.id);
     return Response.json({ members }, { status: 200 });
   } catch (error) {
-    return asErrorResponse(error, "Unable to list members.");
+    return asErrorResponse(error, "Не удалось получить список участников.");
   }
 }

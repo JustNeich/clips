@@ -41,7 +41,7 @@ export async function GET(_request: Request, context: Context): Promise<Response
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to read asset." },
+      { error: error instanceof Error ? error.message : "Не удалось прочитать ассет." },
       { status: 500 }
     );
   }
@@ -73,7 +73,7 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to delete asset." },
+      { error: error instanceof Error ? error.message : "Не удалось удалить ассет." },
       { status: 500 }
     );
   }

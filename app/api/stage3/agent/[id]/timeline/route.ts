@@ -55,7 +55,7 @@ export async function GET(
       return Response.json({ error: error.message }, { status: 404 });
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to load timeline." },
+      { error: error instanceof Error ? error.message : "Не удалось загрузить таймлайн." },
       { status: 500 }
     );
   }

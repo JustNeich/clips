@@ -30,7 +30,7 @@ export async function GET(request: Request): Promise<Response> {
     return error instanceof Response
       ? error
       : Response.json(
-          { error: error instanceof Error ? error.message : "Unable to load chats." },
+          { error: error instanceof Error ? error.message : "Не удалось загрузить чаты." },
           { status: 500 }
         );
   }
@@ -64,7 +64,7 @@ export async function POST(request: Request): Promise<Response> {
     return error instanceof Response
       ? error
       : Response.json(
-          { error: error instanceof Error ? error.message : "Unable to create chat." },
+          { error: error instanceof Error ? error.message : "Не удалось создать чат." },
           { status: 500 }
         );
   }

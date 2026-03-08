@@ -111,14 +111,80 @@ function extractCommentsPayload(data: unknown): CommentsPayload | null {
   };
 }
 
+function normalizeStage2TitleOptions(
+  value: unknown
+): Stage2Response["output"]["titleOptions"] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized = value
+    .map((item, index) => {
+      if (typeof item === "string") {
+        const title = item.trim();
+        if (!title) {
+          return null;
+        }
+        return {
+          option: index + 1,
+          title,
+          titleRu: title
+        };
+      }
+
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const record = item as Record<string, unknown>;
+      const title = String(record.title ?? "").trim();
+      if (!title) {
+        return null;
+      }
+      return {
+        option:
+          typeof record.option === "number" && Number.isFinite(record.option)
+            ? Math.max(1, Math.floor(record.option))
+            : index + 1,
+        title,
+        titleRu: String(record.titleRu ?? "").trim() || title
+      };
+    })
+    .filter(
+      (
+        item
+      ): item is {
+        option: number;
+        title: string;
+        titleRu: string;
+      } => Boolean(item)
+    );
+
+  return normalized.length === value.length ? normalized : null;
+}
+
 function extractStage2Payload(data: unknown): Stage2Response | null {
   if (!data || typeof data !== "object") {
     return null;
   }
-  if (!("output" in (data as Record<string, unknown>))) {
+  const candidate = data as Record<string, unknown>;
+  if (!("output" in candidate) || !candidate.output || typeof candidate.output !== "object") {
     return null;
   }
-  return data as Stage2Response;
+
+  const output = candidate.output as Record<string, unknown>;
+  const titleOptions = normalizeStage2TitleOptions(output.titleOptions);
+  if (!titleOptions) {
+    return null;
+  }
+
+  return {
+    ...(data as Stage2Response),
+    output: {
+      ...((data as Stage2Response).output ?? {}),
+      titleOptions
+    }
+  };
 }
 
 function fallbackRenderPlan(): Stage3RenderPlan {
@@ -351,27 +417,27 @@ function formatStage3Operation(op: string): string {
     case "set_segments":
       return "segments";
     case "append_segment":
-      return "append segment";
+      return "добавить сегмент";
     case "clear_segments":
-      return "clear segments";
+      return "очистить сегменты";
     case "set_audio_mode":
-      return "audio";
+      return "аудио";
     case "set_slowmo":
-      return "slow-mo";
+      return "слоу-мо";
     case "set_top_font_scale":
-      return "top size";
+      return "размер верхнего текста";
     case "set_bottom_font_scale":
-      return "bottom size";
+      return "размер нижнего текста";
     case "rewrite_top_text":
-      return "rewrite top";
+      return "переписать верх";
     case "rewrite_bottom_text":
-      return "rewrite bottom";
+      return "переписать низ";
     case "set_timing_mode":
-      return "timing";
+      return "тайминг";
     case "set_text_policy":
-      return "text policy";
+      return "политика текста";
     case "set_music_gain":
-      return "music";
+      return "музыка";
     default:
       return op.replace(/^set_/, "").replace(/_/g, " ");
   }
@@ -382,7 +448,7 @@ function formatSourceProviderLabel(provider: "visolix" | "ytDlp" | null | undefi
     return "Visolix";
   }
   if (provider === "ytDlp") {
-    return "local downloader fallback";
+    return "локальный fallback-загрузчик";
   }
   return null;
 }
@@ -480,8 +546,8 @@ function buildStage3AgentConversation(
         title: "Задача",
         text: sanitizeDisplayText(goal),
         meta: [
-          `goalType: ${timeline.session.goalType}`,
-          `target score ${timeline.session.targetScore.toFixed(2)}`
+          `тип цели: ${timeline.session.goalType}`,
+          `целевая оценка ${timeline.session.targetScore.toFixed(2)}`
         ],
         createdAt: message.createdAt
       });
@@ -526,9 +592,12 @@ function buildStage3AgentConversation(
       items.push({
         id: message.id,
         role: "assistant",
-        title: "Rollback",
+        title: "Откат",
         text: "Создана новая версия-откат от выбранной точки timeline.",
-        meta: [targetVersionId ? `target ${shorten(targetVersionId, 18)}` : "target unknown", reason],
+        meta: [
+          targetVersionId ? `цель ${shorten(targetVersionId, 18)}` : "целевая версия неизвестна",
+          reason
+        ],
         createdAt: message.createdAt,
         tone: "warning"
       });
@@ -543,8 +612,8 @@ function buildStage3AgentConversation(
       title: `Итерация ${iteration.iterationIndex}`,
       text: sanitizeDisplayText(iteration.judgeNotes || iteration.plan.rationale),
       meta: [
-        `score ${iteration.scores.total.toFixed(2)}`,
-        `gain ${iteration.scores.stepGain >= 0 ? "+" : ""}${iteration.scores.stepGain.toFixed(2)}`,
+        `оценка ${iteration.scores.total.toFixed(2)}`,
+        `прирост ${iteration.scores.stepGain >= 0 ? "+" : ""}${iteration.scores.stepGain.toFixed(2)}`,
         operations.length ? operations.join(", ") : "без операций",
         formatStage3StopReason(iteration.stoppedReason)
       ],
@@ -591,6 +660,7 @@ export default function HomePage() {
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [stage2Instruction, setStage2Instruction] = useState("");
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [selectedTitleOption, setSelectedTitleOption] = useState<number | null>(null);
   const [stage3TopText, setStage3TopText] = useState("");
   const [stage3BottomText, setStage3BottomText] = useState("");
   const [stage3ClipStartSec, setStage3ClipStartSec] = useState(0);
@@ -633,32 +703,32 @@ export default function HomePage() {
   const fetchSourceBlockedReason = sourceAcquisitionBlockedReason;
   const downloadSourceBlockedReason = sourceAcquisitionBlockedReason;
   const effectiveCodexBlockedReason = codexRunning
-    ? "Device auth already started. Complete it or cancel it first."
+    ? "Device auth уже запущен. Завершите его или сначала отмените."
     : codexBlockedReason;
   const stage2BlockedReason =
     !sharedCodexAvailable
       ? codexBlockedReason
       : !codexLoggedIn
         ? codexRunning
-          ? "Shared Codex device auth is in progress. Complete the browser login, then press Refresh."
+          ? "Идет device auth Shared Codex. Завершите вход в браузере и затем нажмите «Обновить»."
           : canManageCodex
-            ? "Shared Codex is not connected yet. Press Connect, complete device auth, then Refresh."
-            : "Shared Codex unavailable — contact owner."
+            ? "Shared Codex еще не подключен. Нажмите «Подключить», завершите device auth и затем нажмите «Обновить»."
+            : "Shared Codex недоступен — обратитесь к владельцу."
       : !stage2RuntimeAvailable
         ? sourceAcquisitionBlockedReason ??
           runtimeCapabilities?.tools.ffmpeg.message ??
           runtimeCapabilities?.tools.ffprobe.message ??
-          "Stage 2 runtime is unavailable on this deployment."
+          "Среда выполнения Stage 2 недоступна на этом деплое."
         : null;
   const codexStatusLabel = codexLoggedIn
-    ? "Shared Codex connected"
+    ? "Shared Codex подключен"
     : codexAuth?.deviceAuth.status === "running"
-      ? "Shared Codex awaiting sign-in"
+      ? "Shared Codex ожидает вход"
       : codexAuth?.deviceAuth.status === "error"
-        ? "Shared Codex sign-in failed"
+        ? "Ошибка входа Shared Codex"
         : sharedCodexAvailable
-          ? "Shared Codex not connected"
-          : "Codex runtime unavailable";
+          ? "Shared Codex не подключен"
+          : "Среда выполнения Codex недоступна";
   const activeChannel = useMemo(
     () => channels.find((channel) => channel.id === activeChannelId) ?? null,
     [channels, activeChannelId]
@@ -711,7 +781,7 @@ export default function HomePage() {
       if (response.status === 401) {
         window.location.href = "/login";
       }
-      throw new Error(await parseError(response, "Failed to load auth state."));
+      throw new Error(await parseError(response, "Не удалось загрузить состояние авторизации."));
     }
     const body = (await response.json()) as AuthMeResponse;
     setAuthState(body);
@@ -721,7 +791,7 @@ export default function HomePage() {
   const refreshRuntimeCapabilities = useCallback(async (): Promise<RuntimeCapabilitiesResponse> => {
     const response = await fetch("/api/runtime/capabilities");
     if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to inspect runtime capabilities."));
+      throw new Error(await parseError(response, "Не удалось проверить возможности среды выполнения."));
     }
     const body = (await response.json()) as RuntimeCapabilitiesResponse;
     setRuntimeCapabilities(body);
@@ -761,7 +831,7 @@ export default function HomePage() {
   const refreshChannels = useCallback(async (): Promise<Channel[]> => {
     const response = await fetch("/api/channels");
     if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to load channels."));
+      throw new Error(await parseError(response, "Не удалось загрузить каналы."));
     }
     const body = (await response.json()) as { channels: Channel[] };
     const nextChannels = body.channels ?? [];
@@ -778,7 +848,7 @@ export default function HomePage() {
   const refreshChannelAssets = useCallback(async (channelId: string): Promise<ChannelAsset[]> => {
     const response = await fetch(`/api/channels/${channelId}/assets`);
     if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to load channel assets."));
+      throw new Error(await parseError(response, "Не удалось загрузить ассеты канала."));
     }
     const body = (await response.json()) as { assets: ChannelAsset[] };
     const nextAssets = body.assets ?? [];
@@ -793,7 +863,7 @@ export default function HomePage() {
     }
     const response = await fetch("/api/workspace/members");
     if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to load workspace members."));
+      throw new Error(await parseError(response, "Не удалось загрузить участников рабочего пространства."));
     }
     const body = (await response.json()) as {
       members: Array<{ role: AppRole; user: UserRecord }>;
@@ -808,7 +878,7 @@ export default function HomePage() {
     }
     const response = await fetch(`/api/channels/${channelId}/access`);
     if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to load channel access."));
+      throw new Error(await parseError(response, "Не удалось загрузить доступ к каналу."));
     }
     const body = (await response.json()) as { grants: ChannelAccessGrant[] };
     setChannelAccessGrants(body.grants ?? []);
@@ -818,7 +888,7 @@ export default function HomePage() {
     const query = activeChannelId ? `?channelId=${encodeURIComponent(activeChannelId)}` : "";
     const response = await fetch(`/api/chats${query}`);
     if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to load history."));
+      throw new Error(await parseError(response, "Не удалось загрузить историю."));
     }
     const body = (await response.json()) as { chats: ChatThread[] };
     const nextChats = body.chats ?? [];
@@ -835,7 +905,7 @@ export default function HomePage() {
   const refreshActiveChat = async (chatId: string): Promise<ChatThread> => {
     const response = await fetch(`/api/chats/${chatId}`);
     if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to load item."));
+      throw new Error(await parseError(response, "Не удалось загрузить элемент."));
     }
     const body = (await response.json()) as { chat: ChatThread };
     setActiveChat(body.chat);
@@ -856,7 +926,7 @@ export default function HomePage() {
       body: JSON.stringify(event)
     });
     if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to save event."));
+      throw new Error(await parseError(response, "Не удалось сохранить событие."));
     }
     const body = (await response.json()) as { chat: ChatThread };
     setActiveChat(body.chat);
@@ -872,7 +942,7 @@ export default function HomePage() {
       try {
         const response = await fetch(`/api/stage3/agent/${sessionId}/timeline`);
         if (!response.ok) {
-          throw new Error(await parseError(response, "Failed to load Stage 3 agent timeline."));
+          throw new Error(await parseError(response, "Не удалось загрузить timeline агента Stage 3."));
         }
         const body = (await response.json()) as Stage3TimelineResponse;
         setStage3AgentSessionId(body.session.id);
@@ -919,7 +989,7 @@ export default function HomePage() {
     try {
       const response = await fetch("/api/codex/auth");
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to load Codex status."));
+        throw new Error(await parseError(response, "Не удалось загрузить статус Codex."));
       }
       const body = (await response.json()) as CodexAuthResponse;
       setCodexAuth(body);
@@ -949,12 +1019,12 @@ export default function HomePage() {
   const startCodexDeviceAuth = async (): Promise<void> => {
     if (!canManageCodex) {
       setStatusType("error");
-      setStatus("Shared Codex integration can be managed only by owner.");
+      setStatus("Интеграцией Shared Codex может управлять только владелец.");
       return;
     }
     if (!sharedCodexAvailable) {
       setStatusType("error");
-      setStatus(codexBlockedReason ?? "Codex runtime is unavailable on this deployment.");
+      setStatus(codexBlockedReason ?? "Среда выполнения Codex недоступна на этом деплое.");
       return;
     }
     setBusyAction("connect-codex");
@@ -968,15 +1038,15 @@ export default function HomePage() {
         body: JSON.stringify({ action: "start" })
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Unable to start Connect Codex."));
+        throw new Error(await parseError(response, "Не удалось запустить подключение Codex."));
       }
       const body = (await response.json()) as CodexAuthResponse;
       setCodexAuth(body);
       setStatusType("ok");
-      setStatus("Shared Codex connect started. Complete device auth and refresh status.");
+      setStatus("Подключение Shared Codex запущено. Завершите device auth и обновите статус.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Connect Codex failed."));
+      setStatus(getUiErrorMessage(error, "Не удалось подключить Codex."));
     } finally {
       setIsCodexAuthLoading(false);
       setBusyAction("");
@@ -999,16 +1069,16 @@ export default function HomePage() {
         body: JSON.stringify({ action })
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Unable to update shared Codex."));
+        throw new Error(await parseError(response, "Не удалось обновить Shared Codex."));
       }
       const body = (await response.json()) as CodexAuthResponse;
       setCodexAuth(body);
       await refreshAuthState().catch(() => undefined);
       setStatusType("ok");
-      setStatus(action === "cancel" ? "Device auth canceled." : "Shared Codex disconnected.");
+      setStatus(action === "cancel" ? "Device auth отменен." : "Shared Codex отключен.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Unable to update shared Codex."));
+      setStatus(getUiErrorMessage(error, "Не удалось обновить Shared Codex."));
     } finally {
       setBusyAction("");
     }
@@ -1023,7 +1093,7 @@ export default function HomePage() {
         await refreshChannels();
       } catch (error) {
         setStatusType("error");
-        setStatus(getUiErrorMessage(error, "Failed to initialize app."));
+        setStatus(getUiErrorMessage(error, "Не удалось инициализировать приложение."));
       } finally {
         setIsAuthLoading(false);
       }
@@ -1230,7 +1300,7 @@ export default function HomePage() {
       setStatus(successMessage);
     } catch {
       setStatusType("error");
-      setStatus("Copy to clipboard failed.");
+      setStatus("Не удалось скопировать в буфер обмена.");
     }
   };
 
@@ -1239,15 +1309,15 @@ export default function HomePage() {
       const text = await navigator.clipboard.readText();
       if (!text.trim()) {
         setStatusType("error");
-        setStatus("Clipboard is empty.");
+        setStatus("Буфер обмена пуст.");
         return;
       }
       setDraftUrl(text.trim());
       setStatusType("ok");
-      setStatus("Link pasted from clipboard.");
+      setStatus("Ссылка вставлена из буфера обмена.");
     } catch {
       setStatusType("error");
-      setStatus("Clipboard read failed. Paste manually.");
+      setStatus("Не удалось прочитать буфер обмена. Вставьте ссылку вручную.");
     }
   };
 
@@ -1257,7 +1327,7 @@ export default function HomePage() {
     mode: "manual" | "auto"
   ): Promise<Stage2Response> => {
     if (!codexLoggedIn) {
-      throw new Error("Shared Codex unavailable. Contact owner.");
+      throw new Error("Shared Codex недоступен. Обратитесь к владельцу.");
     }
 
     const trimmedInstruction = instruction.trim();
@@ -1266,10 +1336,10 @@ export default function HomePage() {
       type: "stage2",
       text:
         mode === "auto"
-          ? "Auto Stage 2 started right after Step 1 fetch."
+          ? "Auto Stage 2 запущен сразу после Step 1."
           : trimmedInstruction
-            ? `User ran Stage 2 with instruction: ${trimmedInstruction}`
-            : "User ran Stage 2."
+            ? `Пользователь запустил Stage 2 с инструкцией: ${trimmedInstruction}`
+            : "Пользователь запустил Stage 2."
     });
 
     const response = await fetch("/api/pipeline/stage2", {
@@ -1285,7 +1355,7 @@ export default function HomePage() {
     });
 
     if (!response.ok) {
-      throw new Error(await parseError(response, "Stage 2 failed."));
+      throw new Error(await parseError(response, "Stage 2 завершился ошибкой."));
     }
 
     const stage2 = (await response.json()) as Stage2Response;
@@ -1293,11 +1363,12 @@ export default function HomePage() {
     await appendEvent(chat.id, {
       role: "assistant",
       type: "stage2",
-      text: providerLabel ? `Stage 2 completed. Source: ${providerLabel}.` : "Stage 2 completed.",
+      text: providerLabel ? `Stage 2 завершен. Источник: ${providerLabel}.` : "Stage 2 завершен.",
       data: stage2
     });
 
     setSelectedOption(stage2.output.finalPick.option);
+    setSelectedTitleOption(stage2.output.titleOptions[0]?.option ?? 1);
     setCurrentStep(3);
     return stage2;
   };
@@ -1306,7 +1377,7 @@ export default function HomePage() {
     const url = draftUrl.trim();
     if (!url) {
       setStatusType("error");
-      setStatus("Paste a Shorts/Reels link first.");
+      setStatus("Сначала вставьте ссылку на Shorts/Reels.");
       return;
     }
     if (!activeChannelId) {
@@ -1338,7 +1409,7 @@ export default function HomePage() {
         body: JSON.stringify({ url, channelId: activeChannelId })
       });
       if (!createResponse.ok) {
-        throw new Error(await parseError(createResponse, "Failed to create item."));
+        throw new Error(await parseError(createResponse, "Не удалось создать элемент."));
       }
 
       const createBody = (await createResponse.json()) as { chat: ChatThread };
@@ -1349,7 +1420,7 @@ export default function HomePage() {
       await appendEvent(chatId, {
         role: "user",
         type: "comments",
-        text: "User ran Stage 1 fetch (link + comments)."
+        text: "Пользователь запустил Step 1: загрузку ссылки и комментариев."
       });
 
       const commentsResponse = await fetch("/api/comments", {
@@ -1365,15 +1436,15 @@ export default function HomePage() {
         await appendEvent(chatId, {
           role: "assistant",
           type: "comments",
-          text: `Comments loaded: ${comments.totalComments}`,
+          text: `Комментарии загружены: ${comments.totalComments}`,
           data: comments
         });
       } else {
-        commentsError = await parseError(commentsResponse, "Comments could not be loaded.");
+        commentsError = await parseError(commentsResponse, "Не удалось загрузить комментарии.");
         await appendEvent(chatId, {
           role: "assistant",
           type: "note",
-          text: "Source fetched. Comments unavailable on this server.",
+          text: "Исходник получен. Комментарии недоступны на этом сервере.",
           data: {
             stage1Ready: true,
             commentsAvailable: false,
@@ -1390,11 +1461,11 @@ export default function HomePage() {
         setStatus(
           commentsAvailable
             ? canManageCodex
-              ? "Source ready. Comments loaded. Connect Shared Codex to continue."
-              : "Source ready. Comments loaded. Shared Codex is not connected yet."
+              ? "Источник готов. Комментарии загружены. Подключите Shared Codex, чтобы продолжить."
+              : "Источник готов. Комментарии загружены. Shared Codex еще не подключен."
             : canManageCodex
-              ? "Source ready without comments. Connect Shared Codex to continue."
-              : "Source ready without comments. Shared Codex is not connected yet."
+              ? "Источник готов без комментариев. Подключите Shared Codex, чтобы продолжить."
+              : "Источник готов без комментариев. Shared Codex еще не подключен."
         );
         return;
       }
@@ -1404,11 +1475,11 @@ export default function HomePage() {
       setStatusType("ok");
       setStatus(
         commentsAvailable
-          ? "Source ready. Stage 2 completed."
-          : "Source fetched without comments. Stage 2 completed."
+          ? "Источник готов. Stage 2 завершен."
+          : "Источник загружен без комментариев. Stage 2 завершен."
       );
     } catch (error) {
-      const message = getUiErrorMessage(error, "Failed to fetch source.");
+      const message = getUiErrorMessage(error, "Не удалось загрузить источник.");
       if (chatId) {
         await appendEvent(chatId, {
           role: "assistant",
@@ -1429,14 +1500,14 @@ export default function HomePage() {
     const sourceUrl = activeChat?.url ?? draftUrl.trim();
     if (!sourceUrl) {
       setStatusType("error");
-      setStatus("Provide a source URL first.");
+      setStatus("Сначала укажите URL источника.");
       return;
     }
 
     const chatId = activeChat?.id ?? null;
     if (!downloadSourceAvailable) {
       setStatusType("error");
-      setStatus(downloadSourceBlockedReason ?? "Source download is unavailable on this deployment.");
+      setStatus(downloadSourceBlockedReason ?? "Скачивание источника недоступно на этом деплое.");
       return;
     }
 
@@ -1450,7 +1521,7 @@ export default function HomePage() {
         await appendEvent(chatId, {
           role: "user",
           type: "download",
-          text: "User started mp4 download."
+          text: "Пользователь запустил скачивание mp4."
         });
       }
 
@@ -1460,7 +1531,7 @@ export default function HomePage() {
         body: JSON.stringify({ url: sourceUrl })
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Unable to download video."));
+        throw new Error(await parseError(response, "Не удалось скачать видео."));
       }
 
       const provider = response.headers.get("X-Source-Provider") as "visolix" | "ytDlp" | null;
@@ -1481,14 +1552,14 @@ export default function HomePage() {
         await appendEvent(chatId, {
           role: "assistant",
           type: "download",
-          text: providerLabel ? `Video downloaded via ${providerLabel}: ${fileName}` : `Video downloaded: ${fileName}`
+          text: providerLabel ? `Видео скачано через ${providerLabel}: ${fileName}` : `Видео скачано: ${fileName}`
         });
       }
 
       setStatusType("ok");
-      setStatus(providerLabel ? `Video downloaded via ${providerLabel}.` : "Video downloaded.");
+      setStatus(providerLabel ? `Видео скачано через ${providerLabel}.` : "Видео скачано.");
     } catch (error) {
-      const message = getUiErrorMessage(error, "Video download failed.");
+      const message = getUiErrorMessage(error, "Не удалось скачать видео.");
       if (chatId) {
         await appendEvent(chatId, {
           role: "assistant",
@@ -1528,21 +1599,21 @@ export default function HomePage() {
         body: JSON.stringify({ url: chat.url })
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Unable to load comments."));
+        throw new Error(await parseError(response, "Не удалось загрузить комментарии."));
       }
 
       const comments = (await response.json()) as CommentsPayload;
       await appendEvent(chat.id, {
         role: "assistant",
         type: "comments",
-        text: `Comments loaded: ${comments.totalComments}`,
+        text: `Комментарии загружены: ${comments.totalComments}`,
         data: comments
       });
 
       setStatusType("ok");
-      setStatus("Comments loaded.");
+      setStatus("Комментарии загружены.");
     } catch (error) {
-      const message = getUiErrorMessage(error, "Comments loading failed.");
+      const message = getUiErrorMessage(error, "Не удалось загрузить комментарии.");
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
@@ -1563,12 +1634,12 @@ export default function HomePage() {
     }
     if (!stage2RuntimeAvailable) {
       setStatusType("error");
-      setStatus(stage2BlockedReason ?? "Stage 2 runtime is unavailable on this deployment.");
+      setStatus(stage2BlockedReason ?? "Среда выполнения Stage 2 недоступна на этом деплое.");
       return;
     }
     if (!codexLoggedIn) {
       setStatusType("error");
-      setStatus("Shared Codex unavailable — contact owner.");
+      setStatus("Shared Codex недоступен — обратитесь к владельцу.");
       return;
     }
 
@@ -1581,9 +1652,9 @@ export default function HomePage() {
       const stage2 = await runStage2ForChat(chat, stage2Instruction, "manual");
       const providerLabel = formatSourceProviderLabel(stage2.source.downloadProvider);
       setStatusType("ok");
-      setStatus(providerLabel ? `Stage 2 completed. Source: ${providerLabel}.` : "Stage 2 completed.");
+      setStatus(providerLabel ? `Stage 2 завершен. Источник: ${providerLabel}.` : "Stage 2 завершен.");
     } catch (error) {
-      const message = getUiErrorMessage(error, "Stage 2 failed.");
+      const message = getUiErrorMessage(error, "Stage 2 завершился ошибкой.");
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
@@ -1647,6 +1718,7 @@ export default function HomePage() {
         body: JSON.stringify({
           sourceUrl: chat.url,
           channelId: activeChannelId,
+          renderTitle: selectedTitle?.title ?? undefined,
           templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
           topText: renderSnapshot.topText,
           bottomText: renderSnapshot.bottomText,
@@ -1664,11 +1736,8 @@ export default function HomePage() {
 
       const blob = await response.blob();
       const downloadUrl = URL.createObjectURL(blob);
-      const sourceName =
+      const outputName =
         response.headers.get("Content-Disposition")?.match(/filename="(.+)"/)?.[1] ?? "video.mp4";
-      const outputName = sourceName.endsWith(".mp4")
-        ? sourceName
-        : `${sourceName.replace(/\.mp4$/i, "")}_${STAGE3_TEMPLATE_ID}.mp4`;
 
       const a = document.createElement("a");
       a.href = downloadUrl;
@@ -1681,7 +1750,7 @@ export default function HomePage() {
       await appendEvent(chat.id, {
         role: "assistant",
         type: "note",
-        text: `Stage 3 export finished: ${outputName} (clip ${renderSnapshot.clipStartSec.toFixed(1)}-${(
+        text: `Stage 3 export finished: ${outputName} (title ${selectedTitle?.title ?? "n/a"}, clip ${renderSnapshot.clipStartSec.toFixed(1)}-${(
           renderSnapshot.clipStartSec + CLIP_DURATION_SEC
         ).toFixed(1)}s, focus ${Math.round(renderSnapshot.focusY * 100)}%)`
       });
@@ -1831,7 +1900,7 @@ export default function HomePage() {
         })
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Unable to resume Stage 3 agent session."));
+        throw new Error(await parseError(response, "Не удалось продолжить сессию агента Stage 3."));
       }
 
       const body = (await response.json()) as Stage3AgentRunResponse;
@@ -1854,7 +1923,7 @@ export default function HomePage() {
         )}.`
       );
     } catch (error) {
-      const message = getUiErrorMessage(error, "Unable to resume Stage 3 agent session.");
+      const message = getUiErrorMessage(error, "Не удалось продолжить сессию агента Stage 3.");
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -1870,7 +1939,7 @@ export default function HomePage() {
 
     if (!chat || !sessionId || !targetVersionId) {
       setStatusType("error");
-      setStatus("Выберите версию из history drawer для rollback.");
+      setStatus("Выберите версию в drawer истории для отката.");
       return;
     }
 
@@ -1889,7 +1958,7 @@ export default function HomePage() {
         })
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Stage 3 rollback failed."));
+        throw new Error(await parseError(response, "Не удалось выполнить откат Stage 3."));
       }
 
       const body = (await response.json()) as {
@@ -1914,10 +1983,10 @@ export default function HomePage() {
 
       setStatusType("ok");
       setStatus(
-        `Rollback выполнен${selectedVersion ? ` к v${selectedVersion.versionNo}` : ""}. Причина: ${body.reason}.`
+        `Откат выполнен${selectedVersion ? ` к v${selectedVersion.versionNo}` : ""}. Причина: ${body.reason}.`
       );
     } catch (error) {
-      const message = getUiErrorMessage(error, "Stage 3 rollback failed.");
+      const message = getUiErrorMessage(error, "Не удалось выполнить откат Stage 3.");
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -1946,13 +2015,13 @@ export default function HomePage() {
         body: formData
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Background upload failed."));
+        throw new Error(await parseError(response, "Не удалось загрузить фон."));
       }
 
       const body = (await response.json()) as { asset?: ChannelAsset };
       const asset = body.asset;
       if (!asset?.id) {
-        throw new Error("Background upload returned empty asset id.");
+        throw new Error("Загрузка фона вернула пустой идентификатор ассета.");
       }
 
       setStage3RenderPlan((prev) =>
@@ -1972,7 +2041,7 @@ export default function HomePage() {
       setStatus("Фон загружен и применен к шаблону.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Background upload failed."));
+      setStatus(getUiErrorMessage(error, "Не удалось загрузить фон."));
     } finally {
       setBusyAction("");
     }
@@ -1998,12 +2067,12 @@ export default function HomePage() {
         body: formData
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Music upload failed."));
+        throw new Error(await parseError(response, "Не удалось загрузить музыку."));
       }
       const body = (await response.json()) as { asset?: ChannelAsset };
       const asset = body.asset;
       if (!asset?.id) {
-        throw new Error("Music upload returned empty asset id.");
+        throw new Error("Загрузка музыки вернула пустой идентификатор ассета.");
       }
 
       setStage3RenderPlan((prev) =>
@@ -2023,7 +2092,7 @@ export default function HomePage() {
       setStatus("Музыка загружена.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Music upload failed."));
+      setStatus(getUiErrorMessage(error, "Не удалось загрузить музыку."));
     } finally {
       setBusyAction("");
     }
@@ -2239,6 +2308,22 @@ export default function HomePage() {
     });
   }, [latestStage2Event]);
 
+  useEffect(() => {
+    if (!latestStage2Event) {
+      setSelectedTitleOption(null);
+      return;
+    }
+    setSelectedTitleOption((prev) => {
+      if (
+        prev &&
+        latestStage2Event.payload.output.titleOptions.some((titleOption) => titleOption.option === prev)
+      ) {
+        return prev;
+      }
+      return latestStage2Event.payload.output.titleOptions[0]?.option ?? 1;
+    });
+  }, [latestStage2Event]);
+
   const selectedCaption = useMemo(() => {
     if (!latestStage2Event) {
       return null;
@@ -2250,6 +2335,18 @@ export default function HomePage() {
       null
     );
   }, [latestStage2Event, selectedOption]);
+
+  const selectedTitle = useMemo(() => {
+    if (!latestStage2Event) {
+      return null;
+    }
+    const preferredOption = selectedTitleOption ?? latestStage2Event.payload.output.titleOptions[0]?.option ?? 1;
+    return (
+      latestStage2Event.payload.output.titleOptions.find((item) => item.option === preferredOption) ??
+      latestStage2Event.payload.output.titleOptions[0] ??
+      null
+    );
+  }, [latestStage2Event, selectedTitleOption]);
 
   useEffect(() => {
     const key = [
@@ -2365,7 +2462,7 @@ export default function HomePage() {
           signal: controller.signal
         });
         if (!response.ok) {
-          throw new Error(await parseError(response, "Failed to fetch source duration."));
+          throw new Error(await parseError(response, "Не удалось получить длительность исходника."));
         }
         const body = (await response.json()) as { durationSec: number | null };
         const duration = body.durationSec;
@@ -2439,7 +2536,7 @@ export default function HomePage() {
             signal: controller.signal
           });
           if (!response.ok) {
-            throw new Error(await parseError(response, "Failed to load Stage 3 preview."));
+            throw new Error(await parseError(response, "Не удалось загрузить предпросмотр Stage 3."));
           }
 
           const blob = await response.blob();
@@ -2488,9 +2585,9 @@ export default function HomePage() {
 
   const steps: FlowStep[] = useMemo(
     () => [
-      { id: 1, label: "Paste link", enabled: true },
-      { id: 2, label: "Review & pick", enabled: Boolean(activeChat && stage1FetchState.ready) },
-      { id: 3, label: "Render video", enabled: Boolean(latestStage2Event) }
+      { id: 1, label: "Вставить ссылку", enabled: true },
+      { id: 2, label: "Проверить и выбрать", enabled: Boolean(activeChat && stage1FetchState.ready) },
+      { id: 3, label: "Рендер видео", enabled: Boolean(latestStage2Event) }
     ],
     [activeChat, latestStage2Event, stage1FetchState.ready]
   );
@@ -2520,7 +2617,7 @@ export default function HomePage() {
       setCurrentStep(getCurrentStepForChat(chat));
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Failed to open history item."));
+      setStatus(getUiErrorMessage(error, "Не удалось открыть элемент истории."));
     }
   };
 
@@ -2590,7 +2687,7 @@ export default function HomePage() {
   );
 
   const handleDeleteHistory = async (chatId: string): Promise<void> => {
-    if (!window.confirm("Delete this item from history?")) {
+    if (!window.confirm("Удалить этот элемент из истории?")) {
       return;
     }
 
@@ -2600,7 +2697,7 @@ export default function HomePage() {
     try {
       const response = await fetch(`/api/chats/${chatId}`, { method: "DELETE" });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to delete history item."));
+        throw new Error(await parseError(response, "Не удалось удалить элемент истории."));
       }
 
       await refreshChats();
@@ -2609,10 +2706,10 @@ export default function HomePage() {
       }
 
       setStatusType("ok");
-      setStatus("History item deleted.");
+      setStatus("Элемент истории удален.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Failed to delete history item."));
+      setStatus(getUiErrorMessage(error, "Не удалось удалить элемент истории."));
     }
   };
 
@@ -2625,7 +2722,7 @@ export default function HomePage() {
         body: JSON.stringify({ name: "New channel", username: "channel" })
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to create channel."));
+        throw new Error(await parseError(response, "Не удалось создать канал."));
       }
       const body = (await response.json()) as { channel: Channel };
       await refreshChannels();
@@ -2634,7 +2731,7 @@ export default function HomePage() {
       setStatus("Канал создан.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Failed to create channel."));
+      setStatus(getUiErrorMessage(error, "Не удалось создать канал."));
     } finally {
       setBusyAction("");
     }
@@ -2662,7 +2759,7 @@ export default function HomePage() {
         body: JSON.stringify(patch)
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to save channel."));
+        throw new Error(await parseError(response, "Не удалось сохранить канал."));
       }
       const body = (await response.json()) as { channel: Channel };
       await refreshChannels();
@@ -2716,7 +2813,7 @@ export default function HomePage() {
       setStatus("Канал сохранен.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Failed to save channel."));
+      setStatus(getUiErrorMessage(error, "Не удалось сохранить канал."));
     } finally {
       setBusyAction("");
     }
@@ -2732,7 +2829,7 @@ export default function HomePage() {
         method: "DELETE"
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to delete channel."));
+        throw new Error(await parseError(response, "Не удалось удалить канал."));
       }
       const channelsNext = await refreshChannels();
       const nextActive = channelsNext[0]?.id ?? null;
@@ -2743,7 +2840,7 @@ export default function HomePage() {
       setStatus("Канал удален.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Failed to delete channel."));
+      setStatus(getUiErrorMessage(error, "Не удалось удалить канал."));
     } finally {
       setBusyAction("");
     }
@@ -2759,7 +2856,7 @@ export default function HomePage() {
         method: "DELETE"
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to delete asset."));
+        throw new Error(await parseError(response, "Не удалось удалить ассет."));
       }
       await refreshChannelAssets(activeChannelId);
       await refreshChannels();
@@ -2783,7 +2880,7 @@ export default function HomePage() {
       setStatus("Ассет удален.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Failed to delete asset."));
+      setStatus(getUiErrorMessage(error, "Не удалось удалить ассет."));
     } finally {
       setBusyAction("");
     }
@@ -2807,7 +2904,7 @@ export default function HomePage() {
         body: formData
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to upload asset."));
+        throw new Error(await parseError(response, "Не удалось загрузить ассет."));
       }
       const body = (await response.json()) as { asset?: ChannelAsset };
       await refreshChannelAssets(activeChannelId);
@@ -2855,7 +2952,7 @@ export default function HomePage() {
       setStatus("Ассет загружен.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Failed to upload asset."));
+      setStatus(getUiErrorMessage(error, "Не удалось загрузить ассет."));
     } finally {
       setBusyAction("");
     }
@@ -2873,7 +2970,7 @@ export default function HomePage() {
         body: JSON.stringify(input)
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to update channel access."));
+        throw new Error(await parseError(response, "Не удалось обновить доступ к каналу."));
       }
       const body = (await response.json()) as { grants: ChannelAccessGrant[] };
       setChannelAccessGrants(body.grants ?? []);
@@ -2881,7 +2978,7 @@ export default function HomePage() {
       setStatus("Доступ к каналу обновлен.");
     } catch (error) {
       setStatusType("error");
-      setStatus(getUiErrorMessage(error, "Failed to update channel access."));
+      setStatus(getUiErrorMessage(error, "Не удалось обновить доступ к каналу."));
     } finally {
       setBusyAction("");
     }
@@ -2899,7 +2996,7 @@ export default function HomePage() {
     const chat = activeChat;
     if (!chat) {
       setStatusType("error");
-      setStatus("Create or select an item first.");
+      setStatus("Сначала создайте или выберите элемент.");
       return;
     }
 
@@ -2925,7 +3022,7 @@ export default function HomePage() {
 
     toJsonDownload(`template_${chat.id}.json`, payload);
     setStatusType("ok");
-    setStatus("Template config exported.");
+    setStatus("Конфиг шаблона экспортирован.");
   };
 
   const handleLogout = async (): Promise<void> => {
@@ -2942,7 +3039,7 @@ export default function HomePage() {
     return (
       <main className="app-layout">
         <section className="app-main">
-          <p className="status-line ok">Loading workspace...</p>
+          <p className="status-line ok">Загрузка рабочего пространства...</p>
         </section>
       </main>
     );
@@ -2950,8 +3047,8 @@ export default function HomePage() {
 
   return (
     <AppShell
-      title="Clips Automations"
-      subtitle="Minimal 3-step flow: fetch source, pick caption, render output."
+      title="Автоматизация клипов"
+      subtitle="Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
       steps={steps}
       currentStep={currentStep}
       onStepChange={(step) => setCurrentStep(step)}
@@ -2984,14 +3081,14 @@ export default function HomePage() {
       canConnectCodex={sharedCodexAvailable && !codexRunning}
       codexConnectBlockedReason={effectiveCodexBlockedReason}
       codexStatusLabel={codexStatusLabel}
-      codexActionLabel={codexLoggedIn ? "Reconnect" : "Connect"}
+      codexActionLabel={codexLoggedIn ? "Переподключить" : "Подключить"}
       codexDeviceAuth={canManageCodex ? codexAuth?.deviceAuth ?? null : null}
       codexSecondaryActionLabel={
         canManageCodex
           ? codexAuth?.deviceAuth.status === "running"
-            ? "Cancel"
+            ? "Отменить"
             : codexLoggedIn
-              ? "Disconnect"
+              ? "Отключить"
               : null
           : null
       }
@@ -3005,10 +3102,10 @@ export default function HomePage() {
         void handleCodexSecondaryAction();
       }}
       onCopyCodexLoginUrl={() => {
-        void copyToClipboard(codexAuth?.deviceAuth.loginUrl ?? "", "Login URL copied.");
+        void copyToClipboard(codexAuth?.deviceAuth.loginUrl ?? "", "Ссылка для входа скопирована.");
       }}
       onCopyCodexUserCode={() => {
-        void copyToClipboard(codexAuth?.deviceAuth.userCode ?? "", "Device code copied.");
+        void copyToClipboard(codexAuth?.deviceAuth.userCode ?? "", "Код устройства скопирован.");
       }}
       currentUserName={authState?.user.displayName ?? null}
       currentUserRole={currentRole}
@@ -3032,7 +3129,7 @@ export default function HomePage() {
               payload
             );
             setStatusType("ok");
-            setStatus("Comments JSON downloaded.");
+            setStatus("JSON комментариев скачан.");
           }}
         />
       }
@@ -3072,11 +3169,13 @@ export default function HomePage() {
           runBlockedReason={stage2BlockedReason}
           isRunning={busyAction === "stage2"}
           selectedOption={selectedOption}
+          selectedTitleOption={selectedTitleOption}
           onInstructionChange={setStage2Instruction}
           onRunStage2={() => {
             void handleRunStage2();
           }}
           onSelectOption={setSelectedOption}
+          onSelectTitleOption={setSelectedTitleOption}
           onCopy={(value, successMessage) => {
             void copyToClipboard(value, successMessage);
           }}

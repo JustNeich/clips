@@ -63,7 +63,7 @@ export async function POST(
       iterationIndex: maxIteration + 1,
       source: "rollback",
       transformConfig: targetVersion.transformConfig,
-      diffSummary: [`Rollback to version ${targetVersion.id} by reason: ${reason}`],
+      diffSummary: [`Откат к версии ${targetVersion.id}. Причина: ${reason}`],
       rationale: "rollback_guard"
     });
 
@@ -99,7 +99,7 @@ export async function POST(
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Rollback failed." },
+      { error: error instanceof Error ? error.message : "Не удалось выполнить откат." },
       { status: 500 }
     );
   }

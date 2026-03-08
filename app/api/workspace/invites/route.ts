@@ -32,6 +32,6 @@ export async function POST(request: Request): Promise<Response> {
     });
     return Response.json({ invite }, { status: 200 });
   } catch (error) {
-    return asErrorResponse(error, "Unable to create invite.", 400);
+    return asErrorResponse(error, "Не удалось создать приглашение.", 400);
   }
 }

@@ -42,12 +42,12 @@ function formatDate(value: string): string {
 
 function getRoleLabel(role: "user" | "assistant" | "system"): string {
   if (role === "user") {
-    return "You";
+    return "Вы";
   }
   if (role === "assistant") {
-    return "Assistant";
+    return "Ассистент";
   }
-  return "System";
+  return "Система";
 }
 
 function extractCommentsPayload(data: unknown): CommentsPayload | null {
@@ -76,6 +76,21 @@ function extractStage2(data: unknown): Stage2Response | null {
     return null;
   }
   return data as Stage2Response;
+}
+
+function getEventTypeLabel(type: ChatThread["events"][number]["type"]): string {
+  switch (type) {
+    case "note":
+      return "Заметка";
+    case "error":
+      return "Ошибка";
+    case "comments":
+      return "Комментарии";
+    case "stage2":
+      return "Этап 2";
+    default:
+      return type;
+  }
 }
 
 function formatTimelineText(event: ChatThread["events"][number]): string {
@@ -112,12 +127,12 @@ export function ThreadView({
 
   const placeholder = useMemo(() => {
     if (!activeChat) {
-      return "Create or select a chat in the sidebar first.";
+      return "Сначала создайте чат или выберите существующий в боковой панели.";
     }
     if (!codexLoggedIn) {
-      return "Connect Codex first, then describe how to regenerate Stage 2 output.";
+      return "Сначала нажмите «Подключить», затем опишите, как нужно перегенерировать результат второго этапа.";
     }
-    return "Refine output instructions. Example: make it punchier, add one dry joke, keep safer tone.";
+    return "Уточните инструкцию для результата. Например: сделай короче, добавь одну сухую шутку, сохрани более безопасный тон.";
   }, [activeChat, codexLoggedIn]);
 
   const canRunStage2 = Boolean(activeChat) && codexLoggedIn;
@@ -132,26 +147,26 @@ export function ThreadView({
   const showDeviceAuthHelp = !codexLoggedIn;
 
   return (
-    <section className="thread-column" aria-label="Timeline and controls">
+    <section className="thread-column" aria-label="Таймлайн и управление">
       <div className="timeline-scroll" ref={timelineRef}>
         {!activeChat ? (
           <div className="empty-state large">
-            <h3>Start from a video link</h3>
+            <h3>Начните со ссылки на видео</h3>
             <p>
-              Add a Shorts/Reels URL in the left panel. Then connect Codex and run Stage 2.
+              Добавьте ссылку на Shorts или Reels в левой панели. Затем подключите Codex и запустите второй этап.
             </p>
           </div>
         ) : (
           <>
             {showDeviceAuthHelp ? (
               <section className="system-hint" aria-live="polite">
-                <h3>Connect Codex to continue</h3>
+                <h3>Подключите Codex, чтобы продолжить</h3>
                 <p>
-                  Use the top-right <strong>Connect</strong> button. Sign in with your OpenAI/ChatGPT account and then refresh status.
+                  Используйте кнопку <strong>Подключить</strong> справа сверху. Войдите через свой аккаунт OpenAI/ChatGPT и затем обновите статус.
                 </p>
                 {codexAuth?.deviceAuth.loginUrl ? (
                   <p>
-                    Login URL:{" "}
+                    Ссылка для входа:{" "}
                     <a href={codexAuth.deviceAuth.loginUrl} target="_blank" rel="noreferrer">
                       {codexAuth.deviceAuth.loginUrl}
                     </a>
@@ -159,12 +174,12 @@ export function ThreadView({
                 ) : null}
                 {codexAuth?.deviceAuth.userCode ? (
                   <p>
-                    Device code: <strong>{codexAuth.deviceAuth.userCode}</strong>
+                    Код устройства: <strong>{codexAuth.deviceAuth.userCode}</strong>
                   </p>
                 ) : null}
                 {codexAuth?.deviceAuth.output ? (
                   <details>
-                    <summary>Verbose auth log</summary>
+                    <summary>Подробный лог авторизации</summary>
                     <pre>{codexAuth.deviceAuth.output}</pre>
                   </details>
                 ) : null}
@@ -173,8 +188,8 @@ export function ThreadView({
 
             {activeChat.events.length === 0 ? (
               <div className="empty-state large">
-                <h3>No events yet</h3>
-                <p>Use actions below to download video, fetch comments, and run Stage 2.</p>
+                <h3>Событий пока нет</h3>
+                <p>Используйте действия ниже, чтобы скачать видео, получить комментарии и запустить второй этап.</p>
               </div>
             ) : (
               <div className="timeline-list">
@@ -193,12 +208,12 @@ export function ThreadView({
                     <article
                       key={event.id}
                       className={`timeline-item ${isUser ? "is-user" : "is-assistant"}`}
-                      aria-label={`${event.type} event`}
+                      aria-label={`Событие: ${getEventTypeLabel(event.type)}`}
                     >
                       <header className="timeline-meta">
                         <span className="meta-role">{getRoleLabel(event.role)}</span>
                         <span className="meta-dot">·</span>
-                        <span className="meta-type">{event.type}</span>
+                        <span className="meta-type">{getEventTypeLabel(event.type)}</span>
                         <span className="meta-dot">·</span>
                         <time dateTime={event.createdAt}>{formatDate(event.createdAt)}</time>
                       </header>
@@ -207,7 +222,7 @@ export function ThreadView({
                       {commentsPayload ? (
                         <details className="event-details">
                           <summary>
-                            Top comments ({Math.min(10, commentsPayload.topComments.length)})
+                            Лучшие комментарии ({Math.min(10, commentsPayload.topComments.length)})
                           </summary>
                           <ol className="comments-list">
                             {commentsPayload.topComments.slice(0, 10).map((comment, index) => (
@@ -229,10 +244,10 @@ export function ThreadView({
                             className={`btn btn-ghost ${selectedStageEventId === event.id ? "active" : ""}`}
                             onClick={() => onSelectStageEvent(event.id)}
                           >
-                            {selectedStageEventId === event.id ? "Output opened" : "Open output"}
+                            {selectedStageEventId === event.id ? "Результат открыт" : "Открыть результат"}
                           </button>
                           <span className="subtle-text">
-                            {stage2Payload.source.totalComments} comments · model {stage2Payload.model ?? "default"}
+                            {stage2Payload.source.totalComments} комментариев · модель {stage2Payload.model ?? "по умолчанию"}
                           </span>
                         </div>
                       ) : null}
@@ -245,7 +260,7 @@ export function ThreadView({
         )}
       </div>
 
-      <div className="composer" role="group" aria-label="Stage 2 composer">
+      <div className="composer" role="group" aria-label="Панель второго этапа">
         <div className="composer-toolbar">
           <button
             type="button"
@@ -254,7 +269,7 @@ export function ThreadView({
             disabled={isBusy || !activeChat}
             aria-busy={busyAction === "download"}
           >
-            Download mp4
+            Скачать mp4
           </button>
           <button
             type="button"
@@ -263,7 +278,7 @@ export function ThreadView({
             disabled={isBusy || !activeChat}
             aria-busy={busyAction === "comments"}
           >
-            Fetch comments
+            Получить комментарии
           </button>
           {latestComments ? (
             <button
@@ -272,13 +287,13 @@ export function ThreadView({
               onClick={() => onDownloadCommentsJson(latestComments)}
               disabled={isBusy}
             >
-              Comments JSON
+              Комментарии JSON
             </button>
           ) : null}
         </div>
 
         <label htmlFor="stage2-instruction" className="sr-only">
-          Regeneration instruction
+          Инструкция для перегенерации
         </label>
         <textarea
           id="stage2-instruction"
@@ -300,7 +315,7 @@ export function ThreadView({
             disabled={isBusy || !canRunStage2}
             aria-busy={busyAction === "stage2"}
           >
-            {busyAction === "stage2" ? "Running Stage 2..." : "Run Stage 2"}
+            {busyAction === "stage2" ? "Запускаем второй этап..." : "Запустить второй этап"}
           </button>
         </div>
       </div>

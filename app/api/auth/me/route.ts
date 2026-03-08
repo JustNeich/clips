@@ -33,7 +33,7 @@ export async function GET(): Promise<Response> {
           : {
               status: "disconnected",
               connected: false,
-              loginStatusText: "Disconnected",
+              loginStatusText: "Отключен",
               deviceAuth: ownerView
                 ? { status: "idle", output: "", loginUrl: null, userCode: null }
                 : null
@@ -43,6 +43,6 @@ export async function GET(): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
-    return asErrorResponse(error, "Unable to resolve session.");
+    return asErrorResponse(error, "Не удалось определить сессию.");
   }
 }

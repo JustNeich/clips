@@ -15,9 +15,11 @@ type Step2PickCaptionProps = {
   runBlockedReason?: string | null;
   isRunning: boolean;
   selectedOption: number | null;
+  selectedTitleOption: number | null;
   onInstructionChange: (value: string) => void;
   onRunStage2: () => void;
   onSelectOption: (option: number) => void;
+  onSelectTitleOption: (option: number) => void;
   onCopy: (value: string, successMessage: string) => void;
 };
 
@@ -36,7 +38,7 @@ function formatSourceProviderLabel(provider: Stage2Response["source"]["downloadP
     return "Visolix";
   }
   if (provider === "ytDlp") {
-    return "Local downloader fallback";
+    return "Локальный резервный загрузчик";
   }
   return null;
 }
@@ -52,9 +54,11 @@ export function Step2PickCaption({
   runBlockedReason,
   isRunning,
   selectedOption,
+  selectedTitleOption,
   onInstructionChange,
   onRunStage2,
   onSelectOption,
+  onSelectTitleOption,
   onCopy
 }: Step2PickCaptionProps) {
   const [jsonOpen, setJsonOpen] = useState(false);
@@ -79,40 +83,51 @@ export function Step2PickCaption({
       null
     );
   }, [selectedOption, stage2]);
+  const activeTitleOption = useMemo(() => {
+    if (!stage2) {
+      return null;
+    }
+    const preferred = selectedTitleOption ?? stage2.output.titleOptions[0]?.option ?? 1;
+    return (
+      stage2.output.titleOptions.find((item) => item.option === preferred) ??
+      stage2.output.titleOptions[0] ??
+      null
+    );
+  }, [selectedTitleOption, stage2]);
   const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
 
   return (
     <StepWorkspace
-      editLabel="Edit"
-      previewLabel="Preview"
+      editLabel="Редактирование"
+      previewLabel="Предпросмотр"
       left={
         <div className="step-panel-stack">
           <header className="step-head">
-            <p className="kicker">Step 2</p>
-            <h2>Pick</h2>
-            <p>Generate caption options, compare them side by side, then choose one for render.</p>
+            <p className="kicker">Шаг 2</p>
+            <h2>Выбор</h2>
+            <p>Сгенерируйте варианты подписей, сравните их рядом и затем выберите один для рендера.</p>
             {channelName ? (
               <p className="subtle-text">
-                Channel: <strong>{channelName}</strong>
+                Канал: <strong>{channelName}</strong>
                 {channelUsername ? ` (@${channelUsername})` : ""}
               </p>
             ) : null}
             {stageCreatedAt ? (
-              <p className="subtle-text">Updated: {formatDate(stageCreatedAt)}</p>
+              <p className="subtle-text">Обновлено: {formatDate(stageCreatedAt)}</p>
             ) : null}
             {sourceProviderLabel ? (
-              <p className="subtle-text">Source media: {sourceProviderLabel}</p>
+              <p className="subtle-text">Источник медиа: {sourceProviderLabel}</p>
             ) : null}
             {!commentsAvailable ? (
               <p className="subtle-text">
-                Comments are unavailable on this server. Stage 2 is using video-only context.
+                Комментарии недоступны на этом сервере. Второй этап использует только видеоконтекст.
               </p>
             ) : null}
           </header>
 
           <section className="control-card">
             <label className="field-label" htmlFor="instruction">
-              Regeneration instruction (optional)
+              Инструкция для перегенерации (необязательно)
             </label>
             <textarea
               id="instruction"
@@ -120,9 +135,9 @@ export function Step2PickCaption({
               rows={3}
               value={instruction}
               onChange={(event) => onInstructionChange(event.target.value.slice(0, 2000))}
-              placeholder="Example: make it shorter, add one dry joke, avoid slang."
+              placeholder="Например: сделай короче, добавь одну сухую шутку, избегай сленга."
             />
-            <p className="subtle-text">Use this if the model misunderstood context or tone.</p>
+            <p className="subtle-text">Используйте это, если модель неверно поняла контекст или тон.</p>
             <div className="control-actions">
               <button
                 type="button"
@@ -132,7 +147,7 @@ export function Step2PickCaption({
                 aria-busy={isRunning}
                 title={!canRunStage2 ? runBlockedReason ?? undefined : undefined}
               >
-                {isRunning ? "Generating..." : "Generate options"}
+                {isRunning ? "Генерируем..." : "Сгенерировать варианты"}
               </button>
             </div>
             {!canRunStage2 && runBlockedReason ? (
@@ -142,8 +157,8 @@ export function Step2PickCaption({
 
           {!stage2 ? (
             <div className="empty-box">
-              Stage 2 output is empty. Run Stage 2 first.
-              {!commentsAvailable ? " Comments are optional for this run." : ""}
+              Результат второго этапа пуст. Сначала запустите второй этап.
+              {!commentsAvailable ? " Комментарии необязательны для этого запуска." : ""}
             </div>
           ) : (
             <>
@@ -162,9 +177,9 @@ export function Step2PickCaption({
                     >
                       <div className="option-card-head">
                         <div className="option-title-row">
-                          <h3>Option {option.option}</h3>
-                          {finalPick ? <span className="badge">Final pick</span> : null}
-                          {selected ? <span className="badge muted">Selected</span> : null}
+                          <h3>Вариант {option.option}</h3>
+                          {finalPick ? <span className="badge">Финальный выбор</span> : null}
+                          {selected ? <span className="badge muted">Выбран</span> : null}
                         </div>
                         <div className="option-actions">
                           <button
@@ -172,7 +187,7 @@ export function Step2PickCaption({
                             className="btn btn-secondary"
                             onClick={() => onSelectOption(option.option)}
                           >
-                            Use
+                            Выбрать
                           </button>
                           <button
                             type="button"
@@ -185,11 +200,11 @@ export function Step2PickCaption({
                                   `BOTTOM EN: ${option.bottom}`,
                                   `BOTTOM RU: ${bottomRu}`
                                 ].join("\n"),
-                                `Option ${option.option} copied.`
+                                `Вариант ${option.option} скопирован.`
                               )
                             }
                           >
-                            Copy
+                            Копировать
                           </button>
                         </div>
                       </div>
@@ -225,6 +240,73 @@ export function Step2PickCaption({
                 })}
               </section>
 
+              <section className="control-card">
+                <div className="option-card-head">
+                  <div>
+                    <h3>Title options</h3>
+                    <p className="subtle-text">
+                      Выбранный title используется в имени экспортируемого файла.
+                    </p>
+                  </div>
+                </div>
+                <div className="options-grid options-grid-stage2">
+                  {stage2.output.titleOptions.map((titleOption) => {
+                    const selected = activeTitleOption?.option === titleOption.option;
+                    const titleRu = titleOption.titleRu?.trim() || titleOption.title;
+
+                    return (
+                      <article
+                        key={titleOption.option}
+                        className={`option-card ${selected ? "selected" : ""}`}
+                        aria-label={`Title option ${titleOption.option}`}
+                      >
+                        <div className="option-card-head">
+                          <div className="option-title-row">
+                            <h3>Title {titleOption.option}</h3>
+                            {selected ? <span className="badge muted">Выбран для файла</span> : null}
+                          </div>
+                          <div className="option-actions">
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => onSelectTitleOption(titleOption.option)}
+                            >
+                              Pick
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() =>
+                                onCopy(
+                                  [`TITLE EN: ${titleOption.title}`, `TITLE RU: ${titleRu}`].join("\n"),
+                                  `Title ${titleOption.option} скопирован.`
+                                )
+                              }
+                            >
+                              Копировать
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="translation-row">
+                          <span className="field-label">TITLE</span>
+                          <div className="translation-grid">
+                            <div className="translation-col">
+                              <span className="translation-label">EN</span>
+                              <p className="text-block">{titleOption.title}</p>
+                            </div>
+                            <div className="translation-col">
+                              <span className="translation-label">RU</span>
+                              <p className="text-block">{titleRu}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+
               {stage2.seo?.description ? (
                 <section className="control-card seo-card">
                   <div className="option-card-head">
@@ -238,7 +320,7 @@ export function Step2PickCaption({
                         className="btn btn-ghost"
                         onClick={() => onCopy(stage2.seo?.description ?? "", "Описание скопировано.")}
                       >
-                        Copy description
+                        Копировать описание
                       </button>
                       {stage2.seo?.tags ? (
                         <button
@@ -246,7 +328,7 @@ export function Step2PickCaption({
                           className="btn btn-ghost"
                           onClick={() => onCopy(stage2.seo?.tags ?? "", "Tags скопированы.")}
                         >
-                          Copy tags
+                          Копировать теги
                         </button>
                       ) : null}
                     </div>
@@ -254,7 +336,7 @@ export function Step2PickCaption({
                   <pre className="seo-description-view">{stage2.seo.description}</pre>
                   {stage2.seo.tags ? (
                     <div className="translation-row">
-                      <span className="field-label">Tags</span>
+                      <span className="field-label">Теги</span>
                       <p className="text-block seo-tags-view">{stage2.seo.tags}</p>
                     </div>
                   ) : null}
@@ -265,7 +347,7 @@ export function Step2PickCaption({
 
           {stage2 ? (
             <details className="advanced-block" open={jsonOpen} onToggle={(event) => setJsonOpen(event.currentTarget.open)}>
-              <summary>Advanced</summary>
+              <summary>Дополнительно</summary>
               <div className="advanced-content">
                 <pre className="json-view">{JSON.stringify(stage2, null, 2)}</pre>
               </div>

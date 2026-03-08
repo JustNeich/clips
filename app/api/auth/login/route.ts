@@ -32,6 +32,6 @@ export async function POST(request: Request): Promise<Response> {
       { status: 200 }
     );
   } catch (error) {
-    return asErrorResponse(error, "Unable to login.", 400);
+    return asErrorResponse(error, "Не удалось войти.", 400);
   }
 }

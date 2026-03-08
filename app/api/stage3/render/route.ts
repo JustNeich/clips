@@ -1,7 +1,9 @@
+import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   STAGE3_TEMPLATE_ID,
   getTemplateById,
@@ -16,7 +18,7 @@ import {
   sanitizeClipDuration,
   sanitizeFocusY
 } from "../../../../lib/stage3-media-agent";
-import { extractYtDlpErrorFromUnknown, getYtDlpError, isSupportedUrl } from "../../../../lib/ytdlp";
+import { extractYtDlpErrorFromUnknown, isSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChannelAssetById } from "../../../../lib/chat-history";
@@ -27,10 +29,12 @@ export const runtime = "nodejs";
 
 const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 const DEFAULT_TEXT_SCALE = 1.25;
+const execFileAsync = promisify(execFile);
 
 type RenderBody = {
   sourceUrl?: string;
   channelId?: string;
+  renderTitle?: string;
   topText?: string;
   bottomText?: string;
   templateId?: string;
@@ -110,6 +114,97 @@ function parseRenderError(error: unknown): string {
     return message;
   }
   return message || "Не удалось отрендерить видео.";
+}
+
+function buildRenderMetadataTitle(rawTitle: string | null | undefined): string | null {
+  const trimmed = rawTitle?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.slice(0, 120);
+}
+
+function buildRenderFileStem(rawTitle: string | null | undefined, fallback: string): string {
+  const normalize = (value: string): string =>
+    value
+      .trim()
+      .toUpperCase()
+      .replace(/['"`]/g, "")
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_")
+      .slice(0, 120);
+
+  const preferred = rawTitle ? normalize(rawTitle) : "";
+  if (preferred) {
+    return preferred;
+  }
+
+  const fallbackStem = normalize(fallback);
+  return fallbackStem || "RENDER";
+}
+
+async function rewriteRenderedMetadata(params: {
+  inputPath: string;
+  outputPath: string;
+  metadataTitle: string | null;
+}): Promise<void> {
+  const args = [
+    "-y",
+    "-i",
+    params.inputPath,
+    "-map",
+    "0",
+    "-map_metadata",
+    "-1",
+    "-map_metadata:s:v",
+    "-1",
+    "-map_metadata:s:a",
+    "-1",
+    "-map_chapters",
+    "-1",
+    "-fflags",
+    "+bitexact",
+    "-flags:v",
+    "+bitexact",
+    "-flags:a",
+    "+bitexact",
+    "-c",
+    "copy",
+    "-movflags",
+    "+faststart",
+    "-empty_hdlr_name",
+    "1",
+    "-write_tmcd",
+    "false",
+    "-metadata",
+    "comment=",
+    "-metadata",
+    "description=",
+    "-metadata",
+    "synopsis=",
+    "-metadata",
+    "artist=",
+    "-metadata",
+    "album=",
+    "-metadata",
+    "copyright=",
+    "-metadata",
+    "creation_time=",
+    "-metadata",
+    "encoder="
+  ];
+
+  if (params.metadataTitle) {
+    args.push("-metadata", `title=${params.metadataTitle}`);
+  }
+
+  args.push(params.outputPath);
+
+  await execFileAsync("ffmpeg", args, {
+    timeout: 90_000,
+    maxBuffer: 1024 * 1024 * 8
+  });
 }
 
 async function runRemotionRender(params: {
@@ -436,11 +531,14 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    const outputPath = path.join(tmpDir, `${downloaded.fileName}_${templateId}.mp4`);
+    const metadataTitle = buildRenderMetadataTitle(body?.renderTitle);
+    const outputStem = buildRenderFileStem(body?.renderTitle, downloaded.fileName);
+    const remotionOutputPath = path.join(tmpDir, "render.raw.mp4");
+    const outputPath = path.join(tmpDir, `${outputStem}.mp4`);
     await runRemotionRender({
       templateId,
       publicDir: path.dirname(prepared.preparedPath),
-      outputPath,
+      outputPath: remotionOutputPath,
       topText: computed.top,
       bottomText: computed.bottom,
       clipStartSec: prepared.clipStartSec,
@@ -458,8 +556,14 @@ export async function POST(request: Request): Promise<Response> {
       timeoutMs
     });
 
+    await rewriteRenderedMetadata({
+      inputPath: remotionOutputPath,
+      outputPath,
+      metadataTitle
+    });
+
     const rendered = await fs.readFile(outputPath);
-    const attachmentName = `${downloaded.fileName}_${templateId}.mp4`;
+    const attachmentName = `${outputStem}.mp4`;
 
     return new Response(rendered, {
       status: 200,

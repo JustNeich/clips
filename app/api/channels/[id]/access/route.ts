@@ -28,7 +28,7 @@ export async function GET(
     }));
     return Response.json({ grants }, { status: 200 });
   } catch (error) {
-    return asErrorResponse(error, "Unable to load channel access.");
+    return asErrorResponse(error, "Не удалось загрузить доступы канала.");
   }
 }
 
@@ -68,6 +68,6 @@ export async function PUT(
     }));
     return Response.json({ grants: updated }, { status: 200 });
   } catch (error) {
-    return asErrorResponse(error, "Unable to update channel access.");
+    return asErrorResponse(error, "Не удалось обновить доступы канала.");
   }
 }

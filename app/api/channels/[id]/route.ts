@@ -54,7 +54,7 @@ export async function GET(_request: Request, context: Context): Promise<Response
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to load channel." },
+      { error: error instanceof Error ? error.message : "Не удалось загрузить канал." },
       { status: 500 }
     );
   }
@@ -77,7 +77,7 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to update channel." },
+      { error: error instanceof Error ? error.message : "Не удалось обновить канал." },
       { status: 400 }
     );
   }
@@ -102,7 +102,7 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to delete channel." },
+      { error: error instanceof Error ? error.message : "Не удалось удалить канал." },
       { status: 400 }
     );
   }

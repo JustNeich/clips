@@ -24,12 +24,12 @@ export default function RegisterPage() {
       });
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
-        throw new Error(body?.error ?? "Unable to register.");
+        throw new Error(body?.error ?? "Не удалось зарегистрироваться.");
       }
       router.push("/");
       router.refresh();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to register.");
+      setStatus(error instanceof Error ? error.message : "Не удалось зарегистрироваться.");
     } finally {
       setBusy(false);
     }
@@ -38,16 +38,16 @@ export default function RegisterPage() {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <h1>Register</h1>
-        <p className="subtle-text">Public signup creates an active redactor account.</p>
+        <h1>Регистрация</h1>
+        <p className="subtle-text">Публичная регистрация создаёт активный аккаунт редактора.</p>
         <form className="field-stack" onSubmit={onSubmit}>
-          <label className="field-label">Display name</label>
+          <label className="field-label">Имя</label>
           <input
             className="text-input"
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
           />
-          <label className="field-label">Email</label>
+          <label className="field-label">Почта</label>
           <input
             className="text-input"
             type="email"
@@ -55,7 +55,7 @@ export default function RegisterPage() {
             onChange={(event) => setEmail(event.target.value)}
             required
           />
-          <label className="field-label">Password</label>
+          <label className="field-label">Пароль</label>
           <input
             className="text-input"
             type="password"
@@ -64,12 +64,12 @@ export default function RegisterPage() {
             required
           />
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? "Creating..." : "Create account"}
+            {busy ? "Создаём..." : "Создать аккаунт"}
           </button>
         </form>
         {status ? <p className="status-line error">{status}</p> : null}
         <div className="auth-links">
-          <Link href="/login">Back to login</Link>
+          <Link href="/login">Назад ко входу</Link>
         </div>
       </section>
     </main>

@@ -21,7 +21,7 @@ export async function GET(
     return error instanceof Response
       ? error
       : Response.json(
-          { error: error instanceof Error ? error.message : "Unable to load chat." },
+          { error: error instanceof Error ? error.message : "Не удалось загрузить чат." },
           { status: 500 }
         );
   }
@@ -48,7 +48,7 @@ export async function DELETE(
     return error instanceof Response
       ? error
       : Response.json(
-          { error: error instanceof Error ? error.message : "Unable to delete chat." },
+          { error: error instanceof Error ? error.message : "Не удалось удалить чат." },
           { status: 500 }
         );
   }

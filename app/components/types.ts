@@ -26,7 +26,11 @@ export type Stage2Output = {
     topRu?: string;
     bottomRu?: string;
   }>;
-  titleOptions: string[];
+  titleOptions: Array<{
+    option: number;
+    title: string;
+    titleRu?: string;
+  }>;
   finalPick: {
     option: number;
     reason: string;

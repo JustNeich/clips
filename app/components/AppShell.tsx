@@ -78,15 +78,15 @@ function getStepState(stepId: number, currentStep: number): "completed" | "curre
 function formatDeviceAuthStatus(status: CodexDeviceAuth["status"]): string {
   switch (status) {
     case "running":
-      return "Awaiting sign-in";
+      return "Ожидает входа";
     case "done":
-      return "Sign-in completed";
+      return "Вход завершен";
     case "error":
-      return "Sign-in failed";
+      return "Ошибка входа";
     case "canceled":
-      return "Sign-in canceled";
+      return "Вход отменен";
     default:
-      return "Idle";
+      return "Нет активности";
   }
 }
 
@@ -95,7 +95,18 @@ function formatRoleLabel(role: string | null): string | null {
     return null;
   }
 
-  return role.replace(/_/g, " ");
+  switch (role) {
+    case "owner":
+      return "Владелец";
+    case "manager":
+      return "Менеджер";
+    case "redactor":
+      return "Редактор";
+    case "redactor_limited":
+      return "Редактор (ограниченный доступ)";
+    default:
+      return role.replace(/_/g, " ");
+  }
 }
 
 export function AppShell({
@@ -204,7 +215,7 @@ export function AppShell({
   );
   const codexPanelStatus =
     codexConnected && (codexDeviceAuth?.status ?? "idle") === "idle"
-      ? "Connected"
+      ? "Подключен"
       : formatDeviceAuthStatus(codexDeviceAuth?.status ?? "idle");
   const showCodexDetailsToggle = Boolean(!codexConnected && hasCodexDeviceAuthDetails);
   const showCodexPanel = Boolean(
@@ -242,13 +253,13 @@ export function AppShell({
                 <button
                   type="button"
                   className="history-trigger"
-                  aria-label="Open history"
+                  aria-label="Открыть историю"
                   aria-expanded={historyOpen}
                   onFocus={openHistory}
                   onClick={() => setHistoryOpen((prev) => !prev)}
                 >
                   <span aria-hidden="true">🕘</span>
-                  <span>History</span>
+                  <span>История</span>
                   <span className="history-count">{historyItems.length}</span>
                 </button>
 
@@ -265,7 +276,7 @@ export function AppShell({
                     }}
                   >
                     <div className="history-popover-head">
-                      <h2>Recent</h2>
+                      <h2>Недавнее</h2>
                       <button
                         type="button"
                         className="btn btn-secondary"
@@ -274,7 +285,7 @@ export function AppShell({
                           setHistoryOpen(false);
                         }}
                       >
-                        + New
+                        + Новый
                       </button>
                     </div>
 
@@ -282,13 +293,13 @@ export function AppShell({
                       className="text-input"
                       value={historyQuery}
                       onChange={(event) => setHistoryQuery(event.target.value)}
-                      placeholder="Search..."
-                      aria-label="Search history"
+                      placeholder="Поиск..."
+                      aria-label="Поиск по истории"
                     />
 
                     <div className="history-popover-scroll">
                       {filteredHistory.length === 0 ? (
-                        <p className="empty-box">No items found.</p>
+                        <p className="empty-box">Ничего не найдено.</p>
                       ) : (
                         <ul className="history-list">
                           {filteredHistory.map((item) => {
@@ -310,7 +321,7 @@ export function AppShell({
                                 <button
                                   type="button"
                                   className="history-remove"
-                                  aria-label={`Delete ${item.title}`}
+                                  aria-label={`Удалить ${item.title}`}
                                   onClick={() => onDeleteHistory(item.id)}
                                 >
                                   ✕
@@ -333,7 +344,7 @@ export function AppShell({
 
             <div className="channel-switcher">
               <label className="field-label" htmlFor="channelSelect">
-                Channel
+                Канал
               </label>
               <div className="channel-switcher-row">
                 <select
@@ -350,12 +361,12 @@ export function AppShell({
                 </select>
                 {canManageChannels ? (
                   <button type="button" className="btn btn-secondary" onClick={onManageChannels}>
-                    Channels
+                    Каналы
                   </button>
                 ) : null}
                 {canManageTeam ? (
                   <button type="button" className="btn btn-ghost" onClick={onOpenTeam}>
-                    Team
+                    Команда
                   </button>
                 ) : null}
               </div>
@@ -365,12 +376,12 @@ export function AppShell({
           <aside className="topbar-utility">
             <section className="workspace-card">
               <div className="workspace-card-copy">
-                <span className="workspace-kicker">{workspaceName ?? "Workspace"}</span>
+                <span className="workspace-kicker">{workspaceName ?? "Рабочее пространство"}</span>
                 <div className="workspace-card-title-row">
-                  <strong>{currentUserName ?? "Workspace user"}</strong>
+                  <strong>{currentUserName ?? "Пользователь рабочего пространства"}</strong>
                   {currentUserRole ? <span className="workspace-role">{formatRoleLabel(currentUserRole)}</span> : null}
                   <span className={`status-chip ${codexConnected ? "online" : "offline"}`}>
-                    {codexStatusLabel ?? (codexConnected ? "Shared Codex connected" : "Shared Codex unavailable")}
+                    {codexStatusLabel ?? (codexConnected ? "Shared Codex подключен" : "Shared Codex недоступен")}
                   </span>
                 </div>
               </div>
@@ -386,7 +397,7 @@ export function AppShell({
                       disabled={codexBusyConnect || !canConnectCodex}
                       title={!canConnectCodex ? codexConnectBlockedReason ?? undefined : undefined}
                     >
-                      {codexBusyConnect ? "Connecting..." : codexActionLabel ?? "Connect"}
+                      {codexBusyConnect ? "Подключение..." : codexActionLabel ?? "Подключить"}
                     </button>
                     {codexSecondaryActionLabel && onSecondaryCodexAction ? (
                       <button type="button" className="btn btn-ghost" onClick={onSecondaryCodexAction}>
@@ -400,7 +411,7 @@ export function AppShell({
                       aria-busy={codexBusyRefresh}
                       disabled={codexBusyRefresh}
                     >
-                      {codexBusyRefresh ? "Refreshing..." : "Refresh"}
+                      {codexBusyRefresh ? "Обновление..." : "Обновить"}
                     </button>
                     {showCodexDetailsToggle && (
                       <button
@@ -408,13 +419,13 @@ export function AppShell({
                         className="btn btn-ghost"
                         onClick={() => setCodexPanelOpen((prev) => !prev)}
                       >
-                        {codexPanelOpen ? "Hide details" : "Show details"}
+                        {codexPanelOpen ? "Скрыть детали" : "Показать детали"}
                       </button>
                     )}
                   </>
                 ) : null}
                 <button type="button" className="btn btn-ghost" onClick={onLogout}>
-                  Logout
+                  Выйти
                 </button>
               </div>
             </section>
@@ -423,9 +434,9 @@ export function AppShell({
               <section className="codex-control-panel">
                 <div className="codex-device-head">
                   <div>
-                    <strong>Shared Codex sign-in</strong>
+                    <strong>Вход в Shared Codex</strong>
                     <p className="subtle-text">
-                      Connect once, complete browser sign-in, then refresh the status.
+                      Подключите один раз, завершите вход в браузере и затем обновите статус.
                     </p>
                   </div>
                   <span className={`status-chip ${codexConnected ? "online" : "offline"}`}>{codexPanelStatus}</span>
@@ -437,7 +448,7 @@ export function AppShell({
 
                 {showDeviceAuthDetails && codexDeviceAuth?.loginUrl ? (
                   <div className="codex-device-row">
-                    <span className="field-label">Login URL</span>
+                    <span className="field-label">Ссылка для входа</span>
                     <div className="codex-device-actions">
                       <a
                         className="btn btn-secondary codex-device-link"
@@ -445,11 +456,11 @@ export function AppShell({
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Open login page
+                        Открыть страницу входа
                       </a>
                       {onCopyCodexLoginUrl ? (
                         <button type="button" className="btn btn-ghost" onClick={onCopyCodexLoginUrl}>
-                          Copy URL
+                          Копировать ссылку
                         </button>
                       ) : null}
                     </div>
@@ -458,12 +469,12 @@ export function AppShell({
 
                 {showDeviceAuthDetails && codexDeviceAuth?.userCode ? (
                   <div className="codex-device-row">
-                    <span className="field-label">Device code</span>
+                    <span className="field-label">Код устройства</span>
                     <div className="codex-device-actions">
                       <code className="codex-device-code">{codexDeviceAuth.userCode}</code>
                       {onCopyCodexUserCode ? (
                         <button type="button" className="btn btn-ghost" onClick={onCopyCodexUserCode}>
-                          Copy code
+                          Копировать код
                         </button>
                       ) : null}
                     </div>
@@ -472,7 +483,7 @@ export function AppShell({
 
                 {showDeviceAuthDetails && codexDeviceAuth?.output.trim() ? (
                   <details className="codex-device-log">
-                    <summary>CLI output</summary>
+                    <summary>Вывод CLI</summary>
                     <pre>{codexDeviceAuth.output}</pre>
                   </details>
                 ) : null}
@@ -481,11 +492,11 @@ export function AppShell({
           </aside>
         </header>
 
-        <nav className="wizard-stepper" aria-label="Workflow steps">
+        <nav className="wizard-stepper" aria-label="Шаги процесса">
           {steps.map((step) => {
             const stepState = getStepState(step.id, currentStep);
             const statusLabel =
-              stepState === "completed" ? "Completed" : stepState === "current" ? "Current" : "Next";
+              stepState === "completed" ? "Завершено" : stepState === "current" ? "Текущий" : "Далее";
             return (
               <button
                 key={step.id}
@@ -495,7 +506,7 @@ export function AppShell({
                 disabled={!step.enabled}
                 aria-current={stepState === "current" ? "step" : undefined}
               >
-                <span className="wizard-step-num">Step {step.id}</span>
+                <span className="wizard-step-num">Шаг {step.id}</span>
                 <span className="wizard-step-label">{step.label}</span>
                 <span className="wizard-step-state">{statusLabel}</span>
               </button>

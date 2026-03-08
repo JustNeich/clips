@@ -128,7 +128,7 @@ function parseJsonBlock(raw: string): unknown {
   if (fenced?.[1]) {
     return JSON.parse(fenced[1]);
   }
-  throw new Error("Unable to parse planner JSON.");
+  throw new Error("Не удалось разобрать JSON планировщика.");
 }
 
 function normalizeSegment(value: unknown): { startSec: number; endSec: number | null; label: string } | null {

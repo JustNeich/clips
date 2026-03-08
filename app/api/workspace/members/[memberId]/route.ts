@@ -40,6 +40,6 @@ export async function PATCH(
     const member = updateWorkspaceMemberRole(auth.workspace.id, memberId, role);
     return Response.json({ member }, { status: 200 });
   } catch (error) {
-    return asErrorResponse(error, "Unable to update member role.", 400);
+    return asErrorResponse(error, "Не удалось обновить роль участника.", 400);
   }
 }

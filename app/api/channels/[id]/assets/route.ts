@@ -66,7 +66,7 @@ export async function GET(request: Request, context: Context): Promise<Response>
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to load channel assets." },
+      { error: error instanceof Error ? error.message : "Не удалось загрузить ассеты канала." },
       { status: 500 }
     );
   }

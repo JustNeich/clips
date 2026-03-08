@@ -23,12 +23,12 @@ export default function LoginPage() {
       });
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
-        throw new Error(body?.error ?? "Unable to login.");
+        throw new Error(body?.error ?? "Не удалось войти.");
       }
       router.push("/");
       router.refresh();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to login.");
+      setStatus(error instanceof Error ? error.message : "Не удалось войти.");
     } finally {
       setBusy(false);
     }
@@ -37,10 +37,12 @@ export default function LoginPage() {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <h1>Login</h1>
-        <p className="subtle-text">Use your service account. Shared Codex is resolved server-side.</p>
+        <h1>Вход</h1>
+        <p className="subtle-text">
+          Используйте служебный аккаунт. Shared Codex определяется на сервере.
+        </p>
         <form className="field-stack" onSubmit={onSubmit}>
-          <label className="field-label">Email</label>
+          <label className="field-label">Почта</label>
           <input
             className="text-input"
             type="email"
@@ -48,7 +50,7 @@ export default function LoginPage() {
             onChange={(event) => setEmail(event.target.value)}
             required
           />
-          <label className="field-label">Password</label>
+          <label className="field-label">Пароль</label>
           <input
             className="text-input"
             type="password"
@@ -57,14 +59,14 @@ export default function LoginPage() {
             required
           />
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? "Signing in..." : "Sign in"}
+            {busy ? "Входим..." : "Войти"}
           </button>
         </form>
         {status ? <p className="status-line error">{status}</p> : null}
         <div className="auth-links">
-          <Link href="/register">Create redactor account</Link>
-          <Link href="/accept-invite">Accept invite</Link>
-          <Link href="/setup/bootstrap-owner">Bootstrap owner</Link>
+          <Link href="/register">Создать аккаунт редактора</Link>
+          <Link href="/accept-invite">Принять приглашение</Link>
+          <Link href="/setup/bootstrap-owner">Создать владельца</Link>
         </div>
       </section>
     </main>

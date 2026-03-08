@@ -48,7 +48,7 @@ export async function GET(): Promise<Response> {
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to load channels." },
+      { error: error instanceof Error ? error.message : "Не удалось загрузить каналы." },
       { status: 500 }
     );
   }
@@ -74,7 +74,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ channel }, { status: 200 });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to create channel." },
+      { error: error instanceof Error ? error.message : "Не удалось создать канал." },
       { status: 400 }
     );
   }

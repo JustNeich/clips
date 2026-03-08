@@ -119,7 +119,7 @@ function clamp(value: number, min: number, max: number): number {
 
 function formatScore(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "n/a";
+    return "н/д";
   }
   return value.toFixed(2);
 }
@@ -131,9 +131,9 @@ function formatSessionStatus(value: Stage3SessionRecord["status"]): string {
     case "completed":
       return "Готово";
     case "partiallyApplied":
-      return "Best attempt";
+      return "Лучший результат";
     case "failed":
-      return "Stopped";
+      return "Остановлено";
     default:
       return value;
   }
@@ -741,10 +741,46 @@ export function Step3RenderTemplate({
     flushMusicGainCommit(localMusicGain);
   };
 
+  const applyClipStartImmediate = (value: number) => {
+    const next = clamp(value, 0, maxStartSec);
+    setLocalClipStartSec(next);
+    flushClipCommit(next);
+  };
+
+  const applyFocusImmediate = (value: number) => {
+    const next = clamp(value, 0.12, 0.88);
+    setLocalFocusY(next);
+    flushFocusCommit(next);
+  };
+
+  const applyVideoZoomImmediate = (value: number) => {
+    const next = clamp(value, 1, 1.6);
+    setLocalVideoZoom(next);
+    flushVideoZoomCommit(next);
+  };
+
+  const applyTopFontScaleImmediate = (value: number) => {
+    const next = clamp(value, 0.7, 1.9);
+    setLocalTopFontScale(next);
+    flushTopFontScaleCommit(next);
+  };
+
+  const applyBottomFontScaleImmediate = (value: number) => {
+    const next = clamp(value, 0.7, 1.9);
+    setLocalBottomFontScale(next);
+    flushBottomFontScaleCommit(next);
+  };
+
+  const applyMusicGainImmediate = (value: number) => {
+    const next = clamp(value, 0, 1);
+    setLocalMusicGain(next);
+    flushMusicGainCommit(next);
+  };
+
   const leftFooter = (
     <div className="sticky-action-bar">
       <button type="button" className="btn btn-ghost" onClick={onReset}>
-        Reset
+        Сбросить
       </button>
       <button
         type="button"
@@ -756,10 +792,10 @@ export function Step3RenderTemplate({
         disabled={!sourceUrl || isOptimizing || isRendering}
         aria-busy={isOptimizing}
       >
-        {isOptimizing ? "Optimizing..." : "Optimize"}
+        {isOptimizing ? "Оптимизация..." : "Оптимизировать"}
       </button>
       <button type="button" className="btn btn-secondary" onClick={onExport} disabled={!sourceUrl}>
-        Export JSON
+        Экспорт JSON
       </button>
       <button
         type="button"
@@ -771,240 +807,67 @@ export function Step3RenderTemplate({
         disabled={!sourceUrl || isRendering}
         aria-busy={isRendering}
       >
-        {isRendering ? "Rendering..." : "Render"}
+        {isRendering ? "Рендер..." : "Рендер"}
       </button>
     </div>
   );
 
   return (
     <StepWorkspace
-      editLabel="Edit"
-      previewLabel="Preview"
+      editLabel="Редактирование"
+      previewLabel="Предпросмотр"
       previewViewportHeight
       leftFooter={leftFooter}
       left={
         <div className="step-panel-stack">
           <header className="step-head">
-            <p className="kicker">Step 3</p>
-            <h2>Render</h2>
-            <p>Finalize clip timing and framing, then render mp4 from the chosen version.</p>
-          </header>
-
-          <section className="control-card">
-            <div className="template-inline">
-              <span className="badge">Template</span>
-              <strong>
+            <p className="kicker">Шаг 3</p>
+            <h2>Рендер</h2>
+            <p>Финализируйте тайминг и кадрирование, затем отрендерите mp4 из выбранной версии.</p>
+            <div className="render-meta-strip">
+              <span className="meta-pill">
                 {templateId === STAGE3_TEMPLATE_ID
                   ? "Science Card v1"
                   : templateId === TURBO_FACE_TEMPLATE_ID
                     ? "Turbo Face v1"
                     : templateId}
-              </strong>
-              <span className="subtle-text mono">{templateId}</span>
+              </span>
+              <span className="meta-pill mono">{templateId}</span>
+              <span className="meta-pill">
+                {channelName} (@{channelUsername})
+              </span>
+              <span className="meta-pill">
+                Исходник {sourceDurationSec ? formatTimeSec(sourceDurationSec) : "н/д"}
+              </span>
+              <span className="meta-pill">Версий {displayVersions.length}</span>
             </div>
-            <p className="subtle-text">
-              Channel brand: <strong>{channelName}</strong> (@{channelUsername})
-            </p>
-            <div className="background-upload-row">
-              <label className="btn btn-ghost background-upload-btn">
-                <input
-                  type="file"
-                  accept="image/*,video/*"
-                  className="background-upload-input"
-                  disabled={isUploadingBackground}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) {
-                      return;
-                    }
-                    void onUploadBackground(file);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                {isUploadingBackground ? "Uploading..." : "Upload background"}
-              </label>
-              <select
-                className="text-input"
-                value={selectedBackgroundAssetId ?? ""}
-                onChange={(event) => onSelectBackgroundAssetId(event.target.value || null)}
-              >
-                <option value="">Blur source background</option>
-                {backgroundOptions.map((asset) => (
-                  <option key={asset.id} value={asset.id}>
-                    {asset.originalName}
-                  </option>
-                ))}
-              </select>
-              {backgroundAssetUrl ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={onClearBackground}
-                  disabled={isUploadingBackground}
-                >
-                  Clear background
-                </button>
-              ) : null}
-            </div>
-            <p className="subtle-text">
-              {backgroundAssetUrl
-                ? `Кастомный фон: ${(backgroundAssetMimeType ?? "asset").toLowerCase()}`
-                : "Фон по умолчанию: blur исходного видео."}
-            </p>
-            <div className="background-upload-row">
-              <label className="btn btn-ghost background-upload-btn">
-                <input
-                  type="file"
-                  accept="audio/*"
-                  className="background-upload-input"
-                  disabled={isUploadingBackground}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) {
-                      return;
-                    }
-                    void onUploadMusic(file);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                Upload music
-              </label>
-              <select
-                className="text-input"
-                value={selectedMusicAssetId ?? ""}
-                onChange={(event) => onSelectMusicAssetId(event.target.value || null)}
-              >
-                <option value="">No music</option>
-                {musicOptions.map((asset) => (
-                  <option key={asset.id} value={asset.id}>
-                    {asset.originalName}
-                  </option>
-                ))}
-              </select>
-              {selectedMusicAssetId ? (
-                <button type="button" className="btn btn-ghost" onClick={onClearMusic}>
-                  Clear music
-                </button>
-              ) : null}
-            </div>
-          </section>
+          </header>
 
-          <section className="control-card">
-            <div className="agent-chat-header">
+          <section className="control-card control-card-priority">
+            <div className="control-section-head">
               <div>
-                <label className="field-label" htmlFor="agentPrompt">
-                  Redactor agent
-                </label>
+                <h3>Editing</h3>
                 <p className="subtle-text">
-                  Агент сам итерирует изменения, сверяет результат и сохраняет timeline версий.
+                  Частые действия вынесены сюда: тайминг, фокус, зум и размеры текста.
                 </p>
               </div>
-              {agentSession ? (
-                <div className="agent-session-badges">
-                  <span className="agent-badge">{formatSessionStatus(agentSession.status)}</span>
-                  <span className="agent-badge">score {formatScore(agentCurrentScore)}</span>
-                </div>
-              ) : null}
-            </div>
-
-            {agentSession ? (
-              <div className="agent-session-summary">
-                <span>goal: {agentSession.goalType}</span>
-                <span>target {agentSession.targetScore.toFixed(2)}</span>
-                <span>{agentSession.maxIterations} iter max</span>
-                <span>budget {agentSession.operationBudget} ops</span>
-                <span>
-                  current {currentSessionVersion ? `v${currentSessionVersion.versionNo}` : "n/a"}
-                </span>
-                <span>best {bestSessionVersion ? `v${bestSessionVersion.versionNo}` : "n/a"}</span>
+              <div className="editing-status-row">
+                <span className="meta-pill">Старт {formatTimeSec(localClipStartSec)}</span>
+                <span className="meta-pill">Фокус {focusPercent}%</span>
+                <span className="meta-pill">Зум x{localVideoZoom.toFixed(2)}</span>
               </div>
-            ) : null}
+            </div>
 
-            <div className="agent-chat-shell" aria-live="polite">
-              {isAgentTimelineLoading ? (
-                <p className="subtle-text">Загружаю timeline сессии...</p>
-              ) : null}
-
-              {!agentMessages.length && !isAgentTimelineLoading ? (
-                <div className="agent-empty-state">
-                  <strong>Чат появится после первого запуска.</strong>
-                  <p>
-                    Напишите общую цель вроде "собери так, чтобы было видно только модель", затем агент
-                    сам применит несколько итераций и опишет фактические изменения.
-                  </p>
+            <div className="quick-edit-grid">
+              <div className="quick-edit-card slider-field">
+                <div className="quick-edit-label-row">
+                  <label className="field-label" htmlFor="clipStartRange">
+                    Начало клипа
+                  </label>
+                  <span className="quick-edit-value">
+                    {formatTimeSec(localClipStartSec)} → {formatTimeSec(clipEndSec)}
+                  </span>
                 </div>
-              ) : (
-                agentMessages.map((message) => (
-                  <article
-                    key={message.id}
-                    className={`agent-message agent-message-${message.role} agent-tone-${message.tone ?? "neutral"}`}
-                  >
-                    <div className="agent-message-head">
-                      <strong>{message.title}</strong>
-                      <span>{formatDateShort(message.createdAt)}</span>
-                    </div>
-                    <p>{sanitizeDisplayText(message.text)}</p>
-                    {message.meta.length ? (
-                      <div className="agent-message-meta">
-                        {message.meta.map((meta, index) => (
-                          <span key={`${message.id}-meta-${index}`}>{meta}</span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                ))
-              )}
-            </div>
-
-            <textarea
-              id="agentPrompt"
-              className="text-area"
-              rows={5}
-              value={agentPrompt}
-              onChange={(event) => onAgentPromptChange(event.target.value)}
-              placeholder={`Примеры:\nСожми исходное видео до 6с.\nРастяни исходное видео до 6с без резких jump cut.\nФрагменты: 1. 3-6с 2. 9-12с.\nСмонтируй так, чтобы было видно только модель.`}
-            />
-            <p className="subtle-text">
-              Можно писать общую цель. Агент сам выберет шаги, оценит результат и продолжит цикл без
-              ручной паузы. Поддерживаются запросы на сжатие/растягивание до 6с, нарезку по фрагментам,
-              зум, позиционирование, audio mode и смешанные инструкции.
-            </p>
-            <div className="control-actions agent-chat-actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={onOptimize}
-                disabled={!sourceUrl || isOptimizing || isRendering}
-                aria-busy={isOptimizing}
-              >
-                {isOptimizing ? "Agent is iterating..." : "Send to redactor agent"}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={onResumeAgent}
-                disabled={!canResumeAgent}
-              >
-                Continue current session
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={onRollbackSelectedVersion}
-                disabled={!canRollbackSelectedVersion}
-              >
-                Rollback to selected version
-              </button>
-            </div>
-          </section>
-
-          <details className="advanced-block">
-            <summary>Advanced</summary>
-            <div className="advanced-content advanced-grid">
-              <div className="slider-field advanced-span-2">
-                <label className="field-label" htmlFor="clipStartRange">
-                  Clip start ({formatTimeSec(localClipStartSec)} → {formatTimeSec(clipEndSec)})
-                </label>
                 <input
                   id="clipStartRange"
                   type="range"
@@ -1018,11 +881,29 @@ export function Step3RenderTemplate({
                   onTouchEnd={() => flushClipCommit(localClipStartSec)}
                   onBlur={() => flushClipCommit(localClipStartSec)}
                 />
+                <div className="preset-row">
+                  <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 1)}>
+                    -1.0s
+                  </button>
+                  <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 0.25)}>
+                    -0.25s
+                  </button>
+                  <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 0.25)}>
+                    +0.25s
+                  </button>
+                  <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 1)}>
+                    +1.0s
+                  </button>
+                </div>
               </div>
-              <div className="slider-field advanced-span-2">
-                <label className="field-label" htmlFor="focusRange">
-                  Vertical focus ({focusPercent}%)
-                </label>
+
+              <div className="quick-edit-card slider-field">
+                <div className="quick-edit-label-row">
+                  <label className="field-label" htmlFor="focusRange">
+                    Вертикальный фокус
+                  </label>
+                  <span className="quick-edit-value">{focusPercent}%</span>
+                </div>
                 <input
                   id="focusRange"
                   type="range"
@@ -1035,13 +916,26 @@ export function Step3RenderTemplate({
                   onTouchEnd={() => flushFocusCommit(localFocusY)}
                   onBlur={() => flushFocusCommit(localFocusY)}
                 />
-                <p className="subtle-text">12% = top, 50% = center, 88% = bottom</p>
+                <div className="preset-row">
+                  <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.18)}>
+                    Верх
+                  </button>
+                  <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.5)}>
+                    Центр
+                  </button>
+                  <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.82)}>
+                    Низ
+                  </button>
+                </div>
               </div>
 
-              <div className="slider-field advanced-span-2">
-                <label className="field-label" htmlFor="videoZoomRange">
-                  Video zoom (x{localVideoZoom.toFixed(2)})
-                </label>
+              <div className="quick-edit-card slider-field">
+                <div className="quick-edit-label-row">
+                  <label className="field-label" htmlFor="videoZoomRange">
+                    Масштаб видео
+                  </label>
+                  <span className="quick-edit-value">x{localVideoZoom.toFixed(2)}</span>
+                </div>
                 <input
                   id="videoZoomRange"
                   type="range"
@@ -1054,12 +948,27 @@ export function Step3RenderTemplate({
                   onTouchEnd={() => flushVideoZoomCommit(localVideoZoom)}
                   onBlur={() => flushVideoZoomCommit(localVideoZoom)}
                 />
+                <div className="preset-row">
+                  {[1, 1.1, 1.25, 1.4].map((value) => (
+                    <button
+                      key={`zoom-${value}`}
+                      type="button"
+                      className="preset-chip"
+                      onClick={() => applyVideoZoomImmediate(value)}
+                    >
+                      x{value.toFixed(2)}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="slider-field advanced-span-2">
-                <label className="field-label" htmlFor="topFontScaleRange">
-                  Top text size ({Math.round(localTopFontScale * 100)}%)
-                </label>
+              <div className="quick-edit-card slider-field">
+                <div className="quick-edit-label-row">
+                  <label className="field-label" htmlFor="topFontScaleRange">
+                    Размер верхнего текста
+                  </label>
+                  <span className="quick-edit-value">{Math.round(localTopFontScale * 100)}%</span>
+                </div>
                 <input
                   id="topFontScaleRange"
                   type="range"
@@ -1072,12 +981,27 @@ export function Step3RenderTemplate({
                   onTouchEnd={() => flushTopFontScaleCommit(localTopFontScale)}
                   onBlur={() => flushTopFontScaleCommit(localTopFontScale)}
                 />
+                <div className="preset-row">
+                  {[0.9, 1, 1.15, 1.3].map((value) => (
+                    <button
+                      key={`top-font-${value}`}
+                      type="button"
+                      className="preset-chip"
+                      onClick={() => applyTopFontScaleImmediate(value)}
+                    >
+                      {Math.round(value * 100)}%
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="slider-field advanced-span-2">
-                <label className="field-label" htmlFor="bottomFontScaleRange">
-                  Bottom text size ({Math.round(localBottomFontScale * 100)}%)
-                </label>
+              <div className="quick-edit-card slider-field">
+                <div className="quick-edit-label-row">
+                  <label className="field-label" htmlFor="bottomFontScaleRange">
+                    Размер нижнего текста
+                  </label>
+                  <span className="quick-edit-value">{Math.round(localBottomFontScale * 100)}%</span>
+                </div>
                 <input
                   id="bottomFontScaleRange"
                   type="range"
@@ -1090,30 +1014,273 @@ export function Step3RenderTemplate({
                   onTouchEnd={() => flushBottomFontScaleCommit(localBottomFontScale)}
                   onBlur={() => flushBottomFontScaleCommit(localBottomFontScale)}
                 />
+                <div className="preset-row">
+                  {[0.9, 1, 1.15, 1.3].map((value) => (
+                    <button
+                      key={`bottom-font-${value}`}
+                      type="button"
+                      className="preset-chip"
+                      onClick={() => applyBottomFontScaleImmediate(value)}
+                    >
+                      {Math.round(value * 100)}%
+                    </button>
+                  ))}
+                </div>
               </div>
+            </div>
+          </section>
 
-              <div className="slider-field advanced-span-2">
-                <label className="field-label" htmlFor="musicGainRange">
-                  Music gain ({Math.round(localMusicGain * 100)}%)
-                </label>
-                <input
-                  id="musicGainRange"
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={localMusicGain}
-                  onChange={(event) => scheduleMusicGainCommit(Number.parseFloat(event.target.value))}
-                  onMouseUp={() => flushMusicGainCommit(localMusicGain)}
-                  onTouchEnd={() => flushMusicGainCommit(localMusicGain)}
-                  onBlur={() => flushMusicGainCommit(localMusicGain)}
-                />
-              </div>
-              <div className="advanced-span-2">
+          <section className="control-card">
+            <div className="control-section-head">
+              <div>
+                <h3>Музыка и фон</h3>
                 <p className="subtle-text">
-                  Source duration: {sourceDurationSec ? formatTimeSec(sourceDurationSec) : "unknown"}
+                  Меняются реже, поэтому вынесены после editing.
                 </p>
               </div>
+            </div>
+
+            <div className="asset-grid">
+              <div className="asset-card">
+                <div className="quick-edit-label-row">
+                  <span className="field-label">Фон</span>
+                  <span className="quick-edit-value">
+                    {backgroundAssetUrl ? "Custom" : "Blur source"}
+                  </span>
+                </div>
+                <div className="background-upload-row">
+                  <label className="btn btn-ghost background-upload-btn">
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      className="background-upload-input"
+                      disabled={isUploadingBackground}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) {
+                          return;
+                        }
+                        void onUploadBackground(file);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                    {isUploadingBackground ? "Загрузка..." : "Upload"}
+                  </label>
+                  <select
+                    className="text-input"
+                    value={selectedBackgroundAssetId ?? ""}
+                    onChange={(event) => onSelectBackgroundAssetId(event.target.value || null)}
+                  >
+                    <option value="">Размытый фон из исходника</option>
+                    {backgroundOptions.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.originalName}
+                      </option>
+                    ))}
+                  </select>
+                  {backgroundAssetUrl ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={onClearBackground}
+                      disabled={isUploadingBackground}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+                <p className="subtle-text">
+                  {backgroundAssetUrl
+                    ? `Кастомный фон: ${(backgroundAssetMimeType ?? "asset").toLowerCase()}`
+                    : "Фон по умолчанию: blur исходного видео."}
+                </p>
+              </div>
+
+              <div className="asset-card">
+                <div className="quick-edit-label-row">
+                  <span className="field-label">Музыка</span>
+                  <span className="quick-edit-value">
+                    {selectedMusicAssetId ? "Enabled" : "Off"}
+                  </span>
+                </div>
+                <div className="background-upload-row">
+                  <label className="btn btn-ghost background-upload-btn">
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="background-upload-input"
+                      disabled={isUploadingBackground}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) {
+                          return;
+                        }
+                        void onUploadMusic(file);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                    Upload
+                  </label>
+                  <select
+                    className="text-input"
+                    value={selectedMusicAssetId ?? ""}
+                    onChange={(event) => onSelectMusicAssetId(event.target.value || null)}
+                  >
+                    <option value="">Без музыки</option>
+                    {musicOptions.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.originalName}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedMusicAssetId ? (
+                    <button type="button" className="btn btn-ghost" onClick={onClearMusic}>
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+                <div className="slider-field">
+                  <div className="quick-edit-label-row">
+                    <label className="field-label" htmlFor="musicGainRange">
+                      Громкость музыки
+                    </label>
+                    <span className="quick-edit-value">{Math.round(localMusicGain * 100)}%</span>
+                  </div>
+                  <input
+                    id="musicGainRange"
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={localMusicGain}
+                    onChange={(event) => scheduleMusicGainCommit(Number.parseFloat(event.target.value))}
+                    onMouseUp={() => flushMusicGainCommit(localMusicGain)}
+                    onTouchEnd={() => flushMusicGainCommit(localMusicGain)}
+                    onBlur={() => flushMusicGainCommit(localMusicGain)}
+                  />
+                  <div className="preset-row">
+                    {[0, 0.2, 0.35, 0.5].map((value) => (
+                      <button
+                        key={`music-${value}`}
+                        type="button"
+                        className="preset-chip"
+                        onClick={() => applyMusicGainImmediate(value)}
+                      >
+                        {Math.round(value * 100)}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <details className="advanced-block">
+            <summary>Advanced: AI redactor, versions, редкие действия</summary>
+            <div className="advanced-content">
+              <section className="control-card control-card-subtle">
+                <div className="agent-chat-header">
+                  <div>
+                    <label className="field-label" htmlFor="agentPrompt">
+                      AI redactor
+                    </label>
+                    <p className="subtle-text">
+                      Автономные итерации и timeline версий. Убрано ниже, чтобы не тормозить ручной цикл.
+                    </p>
+                  </div>
+                  {agentSession ? (
+                    <div className="agent-session-badges">
+                      <span className="agent-badge">{formatSessionStatus(agentSession.status)}</span>
+                      <span className="agent-badge">оценка {formatScore(agentCurrentScore)}</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {agentSession ? (
+                  <div className="agent-session-summary">
+                    <span>цель: {agentSession.goalType}</span>
+                    <span>цель {agentSession.targetScore.toFixed(2)}</span>
+                    <span>макс. итераций: {agentSession.maxIterations}</span>
+                    <span>бюджет: {agentSession.operationBudget} оп.</span>
+                    <span>
+                      текущая {currentSessionVersion ? `v${currentSessionVersion.versionNo}` : "н/д"}
+                    </span>
+                    <span>лучшая {bestSessionVersion ? `v${bestSessionVersion.versionNo}` : "н/д"}</span>
+                  </div>
+                ) : null}
+
+                <div className="agent-chat-shell" aria-live="polite">
+                  {isAgentTimelineLoading ? (
+                    <p className="subtle-text">Загружаю timeline сессии...</p>
+                  ) : null}
+
+                  {!agentMessages.length && !isAgentTimelineLoading ? (
+                    <div className="agent-empty-state">
+                      <strong>Чат появится после первого запуска.</strong>
+                      <p>
+                        Напишите общую цель вроде "собери так, чтобы было видно только модель", затем агент
+                        сам применит несколько итераций и опишет фактические изменения.
+                      </p>
+                    </div>
+                  ) : (
+                    agentMessages.map((message) => (
+                      <article
+                        key={message.id}
+                        className={`agent-message agent-message-${message.role} agent-tone-${message.tone ?? "neutral"}`}
+                      >
+                        <div className="agent-message-head">
+                          <strong>{message.title}</strong>
+                          <span>{formatDateShort(message.createdAt)}</span>
+                        </div>
+                        <p>{sanitizeDisplayText(message.text)}</p>
+                        {message.meta.length ? (
+                          <div className="agent-message-meta">
+                            {message.meta.map((meta, index) => (
+                              <span key={`${message.id}-meta-${index}`}>{meta}</span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </article>
+                    ))
+                  )}
+                </div>
+
+                <textarea
+                  id="agentPrompt"
+                  className="text-area"
+                  rows={5}
+                  value={agentPrompt}
+                  onChange={(event) => onAgentPromptChange(event.target.value)}
+                  placeholder={`Примеры:\nСожми исходное видео до 6с.\nРастяни исходное видео до 6с без резких jump cut.\nФрагменты: 1. 3-6с 2. 9-12с.\nСмонтируй так, чтобы было видно только модель.`}
+                />
+                <div className="control-actions agent-chat-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={onOptimize}
+                    disabled={!sourceUrl || isOptimizing || isRendering}
+                    aria-busy={isOptimizing}
+                  >
+                    {isOptimizing ? "Агент выполняет итерации..." : "Отправить в AI redactor"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={onResumeAgent}
+                    disabled={!canResumeAgent}
+                  >
+                    Продолжить сессию
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={onRollbackSelectedVersion}
+                    disabled={!canRollbackSelectedVersion}
+                  >
+                    Откат к версии
+                  </button>
+                </div>
+              </section>
             </div>
           </details>
         </div>
@@ -1122,35 +1289,35 @@ export function Step3RenderTemplate({
         <div className="preview-shell preview-shell-stage3">
           <header className="preview-header preview-header-wrap">
             <div>
-              <h3>Live preview</h3>
+              <h3>Живой предпросмотр</h3>
               <p className="subtle-text">
-                {previewVersion ? `Version v${previewVersion.versionNo}` : "Live draft preview"}
+                {previewVersion ? `Версия v${previewVersion.versionNo}` : "Черновой живой предпросмотр"}
               </p>
               <p className="subtle-text preview-summary-inline">{summaryLines[0]}</p>
             </div>
 
             <div className="preview-toolbar">
               <button type="button" className="btn btn-ghost" onClick={handleTogglePlay}>
-                {isPlaying ? "Pause" : "Play"}
+                {isPlaying ? "Пауза" : "Пуск"}
               </button>
               <button
                 type="button"
                 className={`btn btn-ghost ${!isMuted ? "is-active" : ""}`}
                 onClick={() => setIsMuted((prev) => !prev)}
               >
-                {!isMuted ? "Sound on" : "Sound off"}
+                {!isMuted ? "Звук включен" : "Звук выключен"}
               </button>
               <button type="button" className={`btn btn-ghost ${loopEnabled ? "is-active" : ""}`} onClick={() => setLoopEnabled((prev) => !prev)}>
-                Loop
+                Цикл
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => handleFrameStep(-1)} aria-label="Previous frame">
+              <button type="button" className="btn btn-ghost" onClick={() => handleFrameStep(-1)} aria-label="Предыдущий кадр">
                 −1f
               </button>
-              <button type="button" className="btn btn-ghost" onClick={() => handleFrameStep(1)} aria-label="Next frame">
+              <button type="button" className="btn btn-ghost" onClick={() => handleFrameStep(1)} aria-label="Следующий кадр">
                 +1f
               </button>
 
-              <div className="zoom-group" role="group" aria-label="Preview zoom">
+              <div className="zoom-group" role="group" aria-label="Масштаб предпросмотра">
                 {(["fit", 75, 100] as const).map((value) => (
                   <button
                     key={String(value)}
@@ -1158,13 +1325,13 @@ export function Step3RenderTemplate({
                     className={`zoom-btn ${zoomMode === value ? "active" : ""}`}
                     onClick={() => setZoomMode(value)}
                   >
-                    {value === "fit" ? "Fit" : `${value}%`}
+                    {value === "fit" ? "Вписать" : `${value}%`}
                   </button>
                 ))}
               </div>
 
               <button type="button" className="btn btn-secondary" onClick={() => setVersionsDrawerOpen((prev) => !prev)}>
-                Versions ({displayVersions.length})
+                Версии ({displayVersions.length})
               </button>
             </div>
           </header>
@@ -1225,7 +1392,7 @@ export function Step3RenderTemplate({
                     )}
 
                     <div className="safe-area-guide" aria-hidden="true">
-                      <span>SAFE AREA</span>
+                      <span>БЕЗОПАСНАЯ ОБЛАСТЬ</span>
                     </div>
 
                     {isTurboTemplate ? (
@@ -1253,7 +1420,7 @@ export function Step3RenderTemplate({
                                 lineHeight: previewComputed.topLineHeight
                               }}
                           >
-                            {previewComputed.top || "TOP text from Step 2 will appear here."}
+                            {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
                           </p>
                         </div>
 
@@ -1289,7 +1456,7 @@ export function Step3RenderTemplate({
                               }}
                             />
                           ) : (
-                            <span>VIDEO SLOT</span>
+                            <span>ВИДЕО</span>
                           )}
                         </div>
 
@@ -1380,7 +1547,7 @@ export function Step3RenderTemplate({
                                 lineHeight: previewComputed.bottomLineHeight
                               }}
                             >
-                              {previewComputed.bottom || "BOTTOM text from Step 2 will appear here."}
+                              {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}
                             </p>
                           </div>
                         </div>
@@ -1413,7 +1580,7 @@ export function Step3RenderTemplate({
                               lineHeight: previewComputed.topLineHeight
                             }}
                           >
-                            {previewComputed.top || "TOP text from Step 2 will appear here."}
+                            {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
                           </p>
                         </div>
 
@@ -1440,7 +1607,7 @@ export function Step3RenderTemplate({
                               }}
                             />
                           ) : (
-                            <span>VIDEO SLOT</span>
+                            <span>ВИДЕО</span>
                           )}
                         </div>
 
@@ -1520,7 +1687,7 @@ export function Step3RenderTemplate({
                               lineHeight: previewComputed.bottomLineHeight
                             }}
                             >
-                              {previewComputed.bottom || "BOTTOM text from Step 2 will appear here."}
+                              {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}
                             </p>
                           </div>
                         </div>
@@ -1532,7 +1699,7 @@ export function Step3RenderTemplate({
             </div>
 
             <div className="timeline-dock">
-              <div className="timeline-shell" aria-label="Timeline preview">
+              <div className="timeline-shell" aria-label="Предпросмотр timeline">
                 <div className="timeline-ruler">
                   {Array.from({ length: 7 }).map((_, index) => {
                     const ratio = index / 6;
@@ -1551,7 +1718,7 @@ export function Step3RenderTemplate({
                   ref={timelineTrackRef}
                   className="timeline-track"
                   role="slider"
-                  aria-label="Playback position"
+                  aria-label="Позиция воспроизведения"
                   aria-valuemin={0}
                   aria-valuemax={clipDurationSec}
                   aria-valuenow={Number(timelineSec.toFixed(2))}
@@ -1579,24 +1746,24 @@ export function Step3RenderTemplate({
                 </div>
               </div>
               <div className="timeline-notice">
-                {isPreviewLoading ? <p className="subtle-text">Updating preview...</p> : null}
+                {isPreviewLoading ? <p className="subtle-text">Обновляю предпросмотр...</p> : null}
                 {previewNotice ? <p className="subtle-text">{sanitizeDisplayText(previewNotice)}</p> : null}
               </div>
             </div>
           </div>
 
           {versionsDrawerOpen ? (
-            <aside className="versions-drawer" aria-label="Version history drawer">
+            <aside className="versions-drawer" aria-label="Панель истории версий">
               <header className="versions-drawer-head">
-                <h4>Version history</h4>
+                <h4>История версий</h4>
                 <button type="button" className="btn btn-ghost" onClick={() => setVersionsDrawerOpen(false)}>
-                  Close
+                  Закрыть
                 </button>
               </header>
 
               <div className="versions-drawer-list">
                 {displayVersions.length === 0 ? (
-                  <p className="subtle-text">No versions yet.</p>
+                  <p className="subtle-text">Версий пока нет.</p>
                 ) : (
                   displayVersions.map((version) => {
                     const active = version.runId === selectedVersionId;
