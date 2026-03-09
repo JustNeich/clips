@@ -1,0 +1,85 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e22] [cursor=pointer]:
+    - img [ref=e23]
+  - alert [ref=e16]
+  - main [ref=e59]:
+    - generic [ref=e60]:
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - generic [ref=e63]:
+            - button "Открыть историю" [ref=e65] [cursor=pointer]:
+              - generic [ref=e66]: 🕘
+              - generic [ref=e67]: История
+              - generic [ref=e68]: "1"
+            - generic [ref=e69]:
+              - heading "Автоматизация клипов" [level=1] [ref=e70]
+              - paragraph [ref=e71]: "Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
+          - generic [ref=e72]:
+            - generic [ref=e73]: Канал
+            - generic [ref=e74]:
+              - combobox "Канал" [ref=e75]:
+                - option "Default @science_snack" [selected]
+              - button "Каналы" [ref=e76] [cursor=pointer]
+              - button "Команда" [ref=e77] [cursor=pointer]
+        - complementary [ref=e78]:
+          - generic [ref=e79]:
+            - generic [ref=e80]:
+              - generic [ref=e81]: Stage3 QA Workspace
+              - generic [ref=e82]:
+                - strong [ref=e83]: QA Owner
+                - generic [ref=e84]: Владелец
+                - generic [ref=e85]: Shared Codex не подключен
+            - generic [ref=e86]:
+              - button "Подключить" [ref=e87] [cursor=pointer]
+              - button "Обновить" [ref=e88] [cursor=pointer]
+              - button "Показать детали" [ref=e89] [cursor=pointer]
+              - button "Выйти" [ref=e90] [cursor=pointer]
+          - generic [ref=e91]:
+            - generic [ref=e92]:
+              - generic [ref=e93]:
+                - strong [ref=e94]: Вход в Shared Codex
+                - paragraph [ref=e95]: Подключите один раз, завершите вход в браузере и затем обновите статус.
+              - generic [ref=e96]: Нет активности
+            - generic [ref=e97]:
+              - generic [ref=e98]: Ссылка для входа
+              - generic [ref=e99]:
+                - link "Открыть страницу входа" [ref=e100] [cursor=pointer]:
+                  - /url: https://auth.openai.com/codex/device
+                - button "Копировать ссылку" [ref=e101] [cursor=pointer]
+      - generic [ref=e103]:
+        - navigation "Шаги процесса" [ref=e104]:
+          - button "Шаг 1 Вставить ссылку Завершено" [ref=e152] [cursor=pointer]:
+            - generic [ref=e106]: Шаг 1
+            - generic [ref=e107]: Вставить ссылку
+            - generic [ref=e108]: Завершено
+          - button "Шаг 2 Проверить и выбрать Текущий" [ref=e153] [cursor=pointer]:
+            - generic [ref=e110]: Шаг 2
+            - generic [ref=e111]: Проверить и выбрать
+            - generic [ref=e112]: Текущий
+          - button "Шаг 3 Рендер видео Далее" [disabled] [ref=e113]:
+            - generic [ref=e114]: Шаг 3
+            - generic [ref=e115]: Рендер видео
+            - generic [ref=e116]: Далее
+        - region "Рабочая область шага" [ref=e154]:
+          - generic [ref=e157]:
+            - generic [ref=e158]:
+              - paragraph [ref=e159]: Шаг 2
+              - heading "Выбор" [level=2] [ref=e160]
+              - paragraph [ref=e161]: Сгенерируйте варианты подписей, сравните их рядом и затем выберите один для рендера.
+              - paragraph [ref=e162]:
+                - text: "Канал:"
+                - strong [ref=e163]: Default
+                - text: (@science_snack)
+              - paragraph [ref=e164]: Комментарии недоступны на этом сервере. Второй этап использует только видеоконтекст.
+            - generic [ref=e165]:
+              - generic [ref=e166]: Инструкция для перегенерации (необязательно)
+              - textbox "Инструкция для перегенерации (необязательно)" [ref=e167]:
+                - /placeholder: "Например: сделай короче, добавь одну сухую шутку, избегай сленга."
+              - paragraph [ref=e168]: Используйте это, если модель неверно поняла контекст или тон.
+              - button "Сгенерировать варианты" [disabled] [ref=e170]
+              - paragraph [ref=e171]: Shared Codex еще не подключен. Нажмите «Подключить», завершите device auth и затем нажмите «Обновить».
+            - generic [ref=e172]: Результат второго этапа пуст. Сначала запустите второй этап. Комментарии необязательны для этого запуска.
+        - group [ref=e148]:
+          - generic "Подробности Логи, комментарии, диагностика" [ref=e149] [cursor=pointer]:
+            - generic [ref=e150]: Подробности
+            - generic [ref=e151]: Логи, комментарии, диагностика

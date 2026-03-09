@@ -1,0 +1,21 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e22] [cursor=pointer]:
+    - img [ref=e23]
+  - alert [ref=e16]
+  - main [ref=e45]:
+    - generic [ref=e46]:
+      - heading "Вход" [level=1] [ref=e47]
+      - paragraph [ref=e48]: Используйте служебный аккаунт. Shared Codex определяется на сервере.
+      - generic [ref=e49]:
+        - generic [ref=e50]: Почта
+        - textbox [ref=e51]
+        - generic [ref=e52]: Пароль
+        - textbox [ref=e53]
+        - button "Войти" [ref=e54] [cursor=pointer]
+      - generic [ref=e55]:
+        - link "Создать аккаунт редактора" [ref=e56] [cursor=pointer]:
+          - /url: /register
+        - link "Принять приглашение" [ref=e57] [cursor=pointer]:
+          - /url: /accept-invite
+        - link "Создать владельца" [ref=e58] [cursor=pointer]:
+          - /url: /setup/bootstrap-owner

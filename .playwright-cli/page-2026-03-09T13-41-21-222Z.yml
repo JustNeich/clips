@@ -1,0 +1,78 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e22] [cursor=pointer]:
+    - img [ref=e23]
+  - alert [ref=e16]
+  - main [ref=e44]:
+    - generic [ref=e45]:
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - button "Открыть историю" [ref=e50] [cursor=pointer]:
+              - generic [ref=e51]: 🕘
+              - generic [ref=e52]: История
+              - generic [ref=e53]: "0"
+            - generic [ref=e54]:
+              - heading "Автоматизация клипов" [level=1] [ref=e55]
+              - paragraph [ref=e56]: "Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
+          - generic [ref=e57]:
+            - generic [ref=e58]: Канал
+            - generic [ref=e59]:
+              - combobox "Канал" [ref=e60]:
+                - option "Default @science_snack" [selected]
+              - button "Каналы" [ref=e61] [cursor=pointer]
+              - button "Команда" [ref=e62] [cursor=pointer]
+        - complementary [ref=e63]:
+          - generic [ref=e64]:
+            - generic [ref=e65]:
+              - generic [ref=e66]: Stage3 QA Workspace
+              - generic [ref=e67]:
+                - strong [ref=e68]: QA Owner
+                - generic [ref=e69]: Владелец
+                - generic [ref=e70]: Shared Codex не подключен
+            - generic [ref=e71]:
+              - button "Подключить" [ref=e72] [cursor=pointer]
+              - button "Обновить" [ref=e73] [cursor=pointer]
+              - button "Выйти" [ref=e74] [cursor=pointer]
+      - generic [ref=e76]:
+        - navigation "Шаги процесса" [ref=e77]:
+          - button "Шаг 1 Вставить ссылку Текущий" [ref=e78] [cursor=pointer]:
+            - generic [ref=e79]: Шаг 1
+            - generic [ref=e80]: Вставить ссылку
+            - generic [ref=e81]: Текущий
+          - button "Шаг 2 Проверить и выбрать Далее" [disabled] [ref=e82]:
+            - generic [ref=e83]: Шаг 2
+            - generic [ref=e84]: Проверить и выбрать
+            - generic [ref=e85]: Далее
+          - button "Шаг 3 Рендер видео Далее" [disabled] [ref=e86]:
+            - generic [ref=e87]: Шаг 3
+            - generic [ref=e88]: Рендер видео
+            - generic [ref=e89]: Далее
+        - region "Рабочая область шага" [ref=e91]:
+          - generic [ref=e94]:
+            - generic [ref=e95]:
+              - paragraph [ref=e96]: Шаг 1
+              - heading "Источник" [level=2] [ref=e97]
+              - paragraph [ref=e98]: Вставьте ссылку на Shorts или Reels, чтобы получить исходник. Комментарии необязательны и не блокируют процесс.
+            - generic [ref=e100]:
+              - generic [ref=e101]: Ссылка на видео
+              - generic [ref=e102]:
+                - textbox "Ссылка на видео" [ref=e103]:
+                  - /placeholder: https://www.instagram.com/reel/... или https://www.youtube.com/shorts/...
+                - button "Вставить" [ref=e104] [cursor=pointer]
+              - paragraph [ref=e105]: "Примеры: `instagram.com/reel/...`, `instagram.com/share/reel/...`, `youtube.com/shorts/...`, `facebook.com/reel/...`"
+              - button "Получить источник" [ref=e107] [cursor=pointer]
+            - group [ref=e108]:
+              - generic "Дополнительно" [ref=e109] [cursor=pointer]
+          - complementary [ref=e110]:
+            - generic [ref=e112]:
+              - generic [ref=e113]:
+                - heading "Текущий контекст" [level=3] [ref=e114]
+                - generic [ref=e115]: Шаг 1 из 3
+              - generic [ref=e117]:
+                - paragraph [ref=e118]: Ссылка на источник
+                - paragraph [ref=e119]: Источник не выбран
+                - paragraph [ref=e120]: После завершения загрузки второй этап покажет варианты подписей, сгенерированные по видео, и комментарии, если они доступны.
+        - group [ref=e121]:
+          - generic "Подробности Логи, комментарии, диагностика" [ref=e122] [cursor=pointer]:
+            - generic [ref=e123]: Подробности
+            - generic [ref=e124]: Логи, комментарии, диагностика

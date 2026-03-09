@@ -1,13 +1,14 @@
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
 import { runAutonomousOptimization } from "../../../../../lib/stage3-agent-autonomous";
 import { applyHostedStage3Limits } from "../../../../../lib/stage3-hosted-limits";
-import { runHostedStage3HeavyJob } from "../../../../../lib/stage3-server-control";
+import { isStage3HostedBusyError } from "../../../../../lib/stage3-server-control";
 import { summarizeUserFacingError } from "../../../../../lib/ui-error";
 import { Stage3StateSnapshot } from "../../../../../app/components/types";
 import { getChatById } from "../../../../../lib/chat-history";
 import { requireAuth, requireChannelOperate, requireSharedCodexAvailable } from "../../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
+const STAGE3_BUSY_RETRY_AFTER_SEC = "8";
 
 type Stage3RunOptions = {
   maxIterations?: number;
@@ -118,30 +119,42 @@ export async function POST(request: Request): Promise<Response> {
     }
     await requireChannelOperate(auth, chat.channelId);
     const integration = requireSharedCodexAvailable(auth.workspace.id);
-    const result = await runHostedStage3HeavyJob(() =>
-      runAutonomousOptimization({
-        sessionId: body.sessionId?.trim() || undefined,
-        projectId: payload.projectId,
-        mediaId: payload.mediaId,
-        sourceUrl: payload.sourceUrl,
-        sourceDurationSec: payload.sourceDurationSec,
-        goalText: payload.goalText,
-        currentSnapshot: payload.currentSnapshot,
-        autoClipStartSec: payload.autoClipStartSec,
-        autoFocusY: payload.autoFocusY,
-        options: payload.options,
-        idempotencyKey: payload.idempotencyKey,
-        codexSessionId: integration.codexSessionId ?? undefined,
-        plannerModel: payload.plannerModel,
-        plannerReasoningEffort: payload.plannerReasoningEffort,
-        plannerTimeoutMs: payload.plannerTimeoutMs
-      })
-    );
+    const result = await runAutonomousOptimization({
+      sessionId: body.sessionId?.trim() || undefined,
+      projectId: payload.projectId,
+      mediaId: payload.mediaId,
+      sourceUrl: payload.sourceUrl,
+      sourceDurationSec: payload.sourceDurationSec,
+      goalText: payload.goalText,
+      currentSnapshot: payload.currentSnapshot,
+      autoClipStartSec: payload.autoClipStartSec,
+      autoFocusY: payload.autoFocusY,
+      options: payload.options,
+      idempotencyKey: payload.idempotencyKey,
+      codexSessionId: integration.codexSessionId ?? undefined,
+      plannerModel: payload.plannerModel,
+      plannerReasoningEffort: payload.plannerReasoningEffort,
+      plannerTimeoutMs: payload.plannerTimeoutMs
+    });
 
     return Response.json(result, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
       return error;
+    }
+    if (isStage3HostedBusyError(error)) {
+      return Response.json(
+        {
+          error: "Хостинг занят другой тяжёлой задачей Stage 3. Повторите через минуту."
+        },
+        {
+          status: 503,
+          headers: {
+            "Retry-After": STAGE3_BUSY_RETRY_AFTER_SEC,
+            "x-stage3-busy": "1"
+          }
+        }
+      );
     }
     return Response.json(
       {

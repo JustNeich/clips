@@ -1,0 +1,22 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e22] [cursor=pointer]:
+    - img [ref=e23]
+  - alert [ref=e16]
+  - main [ref=e26]:
+    - generic [ref=e27]:
+      - heading "Создание владельца" [level=1] [ref=e28]
+      - paragraph [ref=e29]: "Одноразовая настройка первого владельца рабочего пространства. Требуется `APP_BOOTSTRAP_SECRET`."
+      - generic [ref=e30]:
+        - generic [ref=e31]: Название рабочего пространства
+        - textbox [ref=e32]
+        - generic [ref=e33]: Имя
+        - textbox [ref=e34]
+        - generic [ref=e35]: Почта
+        - textbox [ref=e36]
+        - generic [ref=e37]: Пароль
+        - textbox [ref=e38]
+        - generic [ref=e39]: Секрет инициализации
+        - textbox [ref=e40]
+        - button "Создать владельца" [ref=e41] [cursor=pointer]
+      - link "Назад ко входу" [ref=e43] [cursor=pointer]:
+        - /url: /login

@@ -1,0 +1,91 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - button "Открыть историю" [ref=e18] [cursor=pointer]:
+              - generic [ref=e19]: 🕘
+              - generic [ref=e20]: История
+              - generic [ref=e21]: "1"
+            - generic [ref=e22]:
+              - heading "Автоматизация клипов" [level=1] [ref=e23]
+              - paragraph [ref=e24]: "Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
+          - generic [ref=e25]:
+            - generic [ref=e26]: Канал
+            - generic [ref=e27]:
+              - combobox "Канал" [ref=e28]:
+                - option "Default @science_snack" [selected]
+              - button "Каналы" [ref=e29] [cursor=pointer]
+              - button "Команда" [ref=e30] [cursor=pointer]
+        - complementary [ref=e31]:
+          - generic [ref=e32]:
+            - generic [ref=e33]:
+              - generic [ref=e34]: Stage3 QA Workspace
+              - generic [ref=e35]:
+                - strong [ref=e36]: QA Owner
+                - generic [ref=e37]: Владелец
+                - generic [ref=e38]: Shared Codex не подключен
+            - generic [ref=e39]:
+              - button "Подключить" [ref=e40] [cursor=pointer]
+              - button "Обновить" [ref=e41] [cursor=pointer]
+              - button "Показать детали" [ref=e42] [cursor=pointer]
+              - button "Выйти" [ref=e43] [cursor=pointer]
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e46]:
+                - strong [ref=e47]: Вход в Shared Codex
+                - paragraph [ref=e48]: Подключите один раз, завершите вход в браузере и затем обновите статус.
+              - generic [ref=e49]: Нет активности
+            - generic [ref=e50]:
+              - generic [ref=e51]: Ссылка для входа
+              - generic [ref=e52]:
+                - link "Открыть страницу входа" [ref=e53] [cursor=pointer]:
+                  - /url: https://auth.openai.com/codex/device
+                - button "Копировать ссылку" [ref=e54] [cursor=pointer]
+      - generic [ref=e56]:
+        - navigation "Шаги процесса" [ref=e57]:
+          - button "Шаг 1 Вставить ссылку Текущий" [ref=e58] [cursor=pointer]:
+            - generic [ref=e59]: Шаг 1
+            - generic [ref=e60]: Вставить ссылку
+            - generic [ref=e61]: Текущий
+          - button "Шаг 2 Проверить и выбрать Далее" [disabled] [ref=e62]:
+            - generic [ref=e63]: Шаг 2
+            - generic [ref=e64]: Проверить и выбрать
+            - generic [ref=e65]: Далее
+          - button "Шаг 3 Рендер видео Далее" [disabled] [ref=e66]:
+            - generic [ref=e67]: Шаг 3
+            - generic [ref=e68]: Рендер видео
+            - generic [ref=e69]: Далее
+        - region "Рабочая область шага" [ref=e71]:
+          - generic [ref=e74]:
+            - generic [ref=e75]:
+              - paragraph [ref=e76]: Шаг 1
+              - heading "Источник" [level=2] [ref=e77]
+              - paragraph [ref=e78]: Вставьте ссылку на Shorts или Reels, чтобы получить исходник. Комментарии необязательны и не блокируют процесс.
+            - generic [ref=e80]:
+              - generic [ref=e81]: Ссылка на видео
+              - generic [ref=e82]:
+                - textbox "Ссылка на видео" [ref=e83]:
+                  - /placeholder: https://www.instagram.com/reel/... или https://www.youtube.com/shorts/...
+                - button "Вставить" [ref=e84] [cursor=pointer]
+              - paragraph [ref=e85]: "Примеры: `instagram.com/reel/...`, `instagram.com/share/reel/...`, `youtube.com/shorts/...`, `facebook.com/reel/...`"
+              - button "Получить источник" [ref=e87] [cursor=pointer]
+            - group [ref=e88]:
+              - generic "Дополнительно" [ref=e89] [cursor=pointer]
+          - complementary [ref=e90]:
+            - generic [ref=e92]:
+              - generic [ref=e93]:
+                - heading "Текущий контекст" [level=3] [ref=e94]
+                - generic [ref=e95]: Шаг 1 из 3
+              - generic [ref=e97]:
+                - paragraph [ref=e98]: Ссылка на источник
+                - paragraph [ref=e99]: Источник не выбран
+                - paragraph [ref=e100]: После завершения загрузки второй этап покажет варианты подписей, сгенерированные по видео, и комментарии, если они доступны.
+        - group [ref=e101]:
+          - generic "Подробности Логи, комментарии, диагностика" [ref=e102] [cursor=pointer]:
+            - generic [ref=e103]: Подробности
+            - generic [ref=e104]: Логи, комментарии, диагностика

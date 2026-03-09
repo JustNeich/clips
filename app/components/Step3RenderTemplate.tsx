@@ -311,6 +311,12 @@ function PreviewClipVideo({
     const seekToStart = () => {
       lastPublishedTimeRef.current = 0;
       video.currentTime = 0;
+      onPositionChange?.(0);
+      if (isPlaying) {
+        void video.play().catch(() => undefined);
+      } else {
+        video.pause();
+      }
     };
 
     if (video.readyState >= 1) {
@@ -322,7 +328,7 @@ function PreviewClipVideo({
     return () => {
       video.removeEventListener("loadedmetadata", seekToStart);
     };
-  }, [sourceUrl, videoRef]);
+  }, [isPlaying, onPositionChange, sourceUrl, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -339,7 +345,7 @@ function PreviewClipVideo({
     } else {
       video.pause();
     }
-  }, [clipDurationSec, isPlaying, onPositionChange, videoRef]);
+  }, [clipDurationSec, isPlaying, onPositionChange, sourceUrl, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -441,7 +447,7 @@ function PreviewClipVideo({
       cancelled = true;
       cleanupScheduled();
     };
-  }, [isPlaying, publishPosition, videoRef]);
+  }, [isPlaying, publishPosition, sourceUrl, videoRef]);
 
   return (
     <video

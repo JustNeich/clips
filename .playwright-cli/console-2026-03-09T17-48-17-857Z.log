@@ -1,0 +1,210 @@
+[     860ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3030/favicon.ico:0
+[  669451ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [blob:http://localhost:3030/af935cd0-2b37-48b0-9869-cde726ed782d, [object Object]] [(sec)=>{
+            if (!isTimelineScrubbingRef.current) {
+                setTimelineSec({
+                    "Stage3LivePreviewPanel.useCallback[handlePreviewPositionChange]": (prev)=>Math.abs(prev - sec) >= 1 / 240 ? sec : prev
+                }["Stage3LivePreviewPanel.useCallback[handlePreviewPositionChange]"]);
+            }
+            syncBackgroundTo(sec);
+        }, blob:http://localhost:3030/af935cd0-2b37-48b0-9869-cde726ed782d, [object Object]] @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56
+[  669451ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [6, true, (sec)=>{
+            if (!isTimelineScrubbingRef.current) {
+                setTimelineSec({
+                    "Stage3LivePreviewPanel.useCallback[handlePreviewPositionChange]": (prev)=>Math.abs(prev - sec) >= 1 / 240 ? sec : prev
+                }["Stage3LivePreviewPanel.useCallback[handlePreviewPositionChange]"]);
+            }
+            syncBackgroundTo(sec);
+        }, [object Object]] [6, true, (sec)=>{
+            if (!isTimelineScrubbingRef.current) {
+                setTimelineSec({
+                    "Stage3LivePreviewPanel.useCallback[handlePreviewPositionChange]": (prev)=>Math.abs(prev - sec) >= 1 / 240 ? sec : prev
+                }["Stage3LivePreviewPanel.useCallback[handlePreviewPositionChange]"]);
+            }
+            syncBackgroundTo(sec);
+        }, blob:http://localhost:3030/af935cd0-2b37-48b0-9869-cde726ed782d, [object Object]] @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56
+[  669452ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [true, ()=>{
+            const video = videoRef.current;
+            if (!video) {
+                return false;
+            }
+            const currentTime = video.currentTime;
+            const previousTime = lastPublishedTimeRef.current;
+            lastPublishedTimeRef.current = currentTime;
+            if (loopEnabled && currentTime + 1 / 60 < previousTime) {
+                onPositionChange === null || onPositionChange === void 0 ? void 0 : onPositionChange(0);
+            }
+            onPositionChange === null || onPositionChange === void 0 ? void 0 : onPositionChange(currentTime);
+            if (!loopEnabled && currentTime >= clipDurationSec - 0.02) {
+                video.pause();
+                lastPublishedTimeRef.current = 0;
+                onClipEnd === null || onClipEnd === void 0 ? void 0 : onClipEnd();
+                return false;
+            }
+            return true;
+        }, [object Object]] [true, ()=>{
+            const video = videoRef.current;
+            if (!video) {
+                return false;
+            }
+            const currentTime = video.currentTime;
+            const previousTime = lastPublishedTimeRef.current;
+            lastPublishedTimeRef.current = currentTime;
+            if (loopEnabled && currentTime + 1 / 60 < previousTime) {
+                onPositionChange === null || onPositionChange === void 0 ? void 0 : onPositionChange(0);
+            }
+            onPositionChange === null || onPositionChange === void 0 ? void 0 : onPositionChange(currentTime);
+            if (!loopEnabled && currentTime >= clipDurationSec - 0.02) {
+                video.pause();
+                lastPublishedTimeRef.current = 0;
+                onClipEnd === null || onClipEnd === void 0 ? void 0 : onClipEnd();
+                return false;
+            }
+            return true;
+        }, blob:http://localhost:3030/af935cd0-2b37-48b0-9869-cde726ed782d, [object Object]] @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56
+[  669469ms] ReferenceError: isPlayingRef is not defined
+    at PreviewClipVideo.useEffect.seekToStart (webpack-internal:///(app-pages-browser)/./app/components/Step3RenderTemplate.tsx:168:21)
+    at PreviewClipVideo.useEffect (webpack-internal:///(app-pages-browser)/./app/components/Step3RenderTemplate.tsx:178:17)
+    at Object.react_stack_bottom_frame (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:23669:20)
+    at runWithFiberInDEV (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:872:30)
+    at commitHookEffectListMount (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:12345:29)
+    at commitHookPassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:12466:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14387:13)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14380:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14380:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14380:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14514:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14380:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+    at commitPassiveMountOnFiber (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14380:11)
+    at recursivelyTraversePassiveMountEffects (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:14360:11)
+[  669469ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/hot-reloader/app/hot-reloader-app.js:113
+[  669537ms] [ERROR] Failed to load resource: net::ERR_FILE_NOT_FOUND @ blob:http://localhost:3030/af935cd0-2b37-48b0-9869-cde726ed782d:0
+[  731788ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3030/_next/static/webpack/a6636de9a6ef4c1c.webpack.hot-update.json:0
+[ 1955879ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [3, https://www.youtube.com/watch?v=dQw4w9WgXcQ, 9433dbbdb5ce4a8faa8feb4722126748, {"sourceUrl":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","clipStartSec":0,"clipDurationSec":6,"renderPlan":{"targetDurationSec":6,"timingMode":"auto","audioMode":"source_only","sourceAudioEnabled":false,"smoothSlowMo":false,"mirrorEnabled":true,"cameraMotion":"disabled","videoZoom":1,"topFontScale":1.25,"bottomFontScale":1.25,"musicGain":0.2,"textPolicy":"strict_fit","segments":[{"startSec":0,"endSec":1,"speed":1,"label":"Фрагмент 1"},{"startSec":1,"endSec":2,"speed":1,"label":"Фрагмент 2"}],"policy":"fixed_segments","backgroundAssetId":null,"backgroundAssetMimeType":null,"musicAssetId":null,"musicAssetMimeType":null,"avatarAssetId":null,"avatarAssetMimeType":null,"authorName":"Science Snack","authorHandle":"@Science_Snack_1","templateId":"science-card-v1","prompt":""}}, 0] [, 3, https://www.youtube.com/watch?v=dQw4w9WgXcQ, 9433dbbdb5ce4a8faa8feb4722126748, {"sourceUrl":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","clipStartSec":0,"clipDurationSec":6,"renderPlan":{"targetDurationSec":6,"timingMode":"auto","audioMode":"source_only","sourceAudioEnabled":false,"smoothSlowMo":false,"mirrorEnabled":true,"cameraMotion":"disabled","videoZoom":1,"topFontScale":1.25,"bottomFontScale":1.25,"musicGain":0.2,"textPolicy":"strict_fit","segments":[{"startSec":0,"endSec":1,"speed":1,"label":"Фрагмент 1"},{"startSec":1,"endSec":2,"speed":1,"label":"Фрагмент 2"}],"policy":"fixed_segments","backgroundAssetId":null,"backgroundAssetMimeType":null,"musicAssetId":null,"musicAssetMimeType":null,"avatarAssetId":null,"avatarAssetMimeType":null,"authorName":"Science Snack","authorHandle":"@Science_Snack_1","templateId":"science-card-v1","prompt":""}}, 0] @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56
+[ 1957021ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3030/_next/static/css/app/layout.css?v=1773080454860:0
+[ 1957054ms] Event
+[ 1957197ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3030/api/auth/me:0
+[ 2070324ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3030/api/stage3/render:0
+[ 2113185ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3030/?_rsc=fsnpp:0
+[ 2113291ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3030/:0
+[ 2113535ms] Error: Cannot find module './5611.js'
+Require stack:
+- /Users/neich/dev/clips automations/.next/server/webpack-runtime.js
+- /Users/neich/dev/clips automations/.next/server/pages/_document.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/server/require.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/server/load-components.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/build/utils.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/build/swc/options.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/build/swc/index.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/build/analysis/parse-module.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/build/analysis/get-page-static-info.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/server/lib/router-server.js
+- /Users/neich/dev/clips automations/node_modules/next/dist/server/lib/start-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1447:15)
+    at <unknown> (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/require-hook.js:57:36)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1058:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1063:22)
+    at Module._load (node:internal/modules/cjs/loader:1233:25)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.require (node:internal/modules/cjs/loader:1547:12)
+    at mod.require (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/require-hook.js:68:28)
+    at require (node:internal/modules/helpers:152:16)
+    at __webpack_require__.f.require (file:///Users/neich/dev/clips automations/.next/server/webpack-runtime.js:190:28)
+    at <unknown> (file:///Users/neich/dev/clips automations/.next/server/webpack-runtime.js:103:40)
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (file:///Users/neich/dev/clips automations/.next/server/webpack-runtime.js:102:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (file:///Users/neich/dev/clips automations/.next/server/webpack-runtime.js:154:22)
+    at <unknown> (file:///Users/neich/dev/clips automations/.next/server/pages/_document.js:1:327)
+    at Object.<anonymous> (file:///Users/neich/dev/clips automations/.next/server/pages/_document.js:1:374)
+    at Module._compile (node:internal/modules/cjs/loader:1803:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1934:10)
+    at Module.load (node:internal/modules/cjs/loader:1524:32)
+    at Module._load (node:internal/modules/cjs/loader:1326:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.require (node:internal/modules/cjs/loader:1547:12)
+    at mod.require (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/require-hook.js:68:28)
+    at require (node:internal/modules/helpers:152:16)
+    at requirePage (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/require.js:99:80)
+    at loadComponentsImpl (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/load-components.js:86:38)
+    at DevServer.findPageComponentsImpl (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/next-server.js:899:77)
+    at <unknown> (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/next-server.js:877:21)
+    at <unknown> (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/lib/trace/tracer.js:170:36)
+    at NoopContextManager.with (file:///Users/neich/dev/clips automations/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (file:///Users/neich/dev/clips automations/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (file:///Users/neich/dev/clips automations/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (file:///Users/neich/dev/clips automations/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at <unknown> (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/lib/trace/tracer.js:152:103)
+    at NoopContextManager.with (file:///Users/neich/dev/clips automations/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (file:///Users/neich/dev/clips automations/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NextTracerImpl.trace (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/lib/trace/tracer.js:152:28)
+    at DevServer.findPageComponents (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/next-server.js:872:41)
+    at DevServer.findPageComponents (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/dev/next-dev-server.js:705:28)
+    at async DevServer.renderErrorToResponseImpl (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/base-server.js:1687:26)
+    at async pipe.req.req (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/base-server.js:1610:30)
+    at async DevServer.pipeImpl (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/base-server.js:1025:25)
+    at async NextNodeServer.handleCatchallRenderRequest (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/next-server.js:408:21)
+    at async DevServer.handleRequestImpl (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/base-server.js:916:17)
+    at async (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/dev/next-dev-server.js:399:20)
+    at async Span.traceAsyncFn (file:///Users/neich/dev/clips automations/node_modules/next/dist/trace/trace.js:157:20)
+    at async DevServer.handleRequest (file:///Users/neich/dev/clips automations/node_modules/next/dist/server/dev/next-dev-server.js:395:24)
+[ 2430587ms] [ERROR] WebSocket connection to 'ws://localhost:3030/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[ 2431589ms] [ERROR] WebSocket connection to 'ws://localhost:3030/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[ 2432591ms] [ERROR] WebSocket connection to 'ws://localhost:3030/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[ 2433595ms] [ERROR] WebSocket connection to 'ws://localhost:3030/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[ 2434597ms] [ERROR] WebSocket connection to 'ws://localhost:3030/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[ 2439601ms] [ERROR] WebSocket connection to 'ws://localhost:3030/_next/webpack-hmr' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:88
+[ 2444632ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3030/_next/static/webpack/d91ba52943531912.webpack.hot-update.json:0
+[ 2444632ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/hot-reloader-pages.js:347
+[ 2445671ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3030/_next/static/webpack/d91ba52943531912.webpack.hot-update.json:0
+[ 2445671ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/hot-reloader-pages.js:347

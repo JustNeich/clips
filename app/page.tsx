@@ -113,6 +113,14 @@ function isAbortError(error: unknown): boolean {
   return false;
 }
 
+function parseRetryAfterMs(value: string | null | undefined, fallbackMs: number): number {
+  const seconds = Number.parseFloat(value ?? "");
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return fallbackMs;
+  }
+  return Math.max(250, Math.round(seconds * 1000));
+}
+
 function equalCodexDeviceAuth(
   left: CodexDeviceAuth | null | undefined,
   right: CodexDeviceAuth | null | undefined
@@ -710,6 +718,7 @@ export default function HomePage() {
   const [sourceDurationSec, setSourceDurationSec] = useState<number | null>(null);
   const [stage3PreviewVideoUrl, setStage3PreviewVideoUrl] = useState<string | null>(null);
   const [stage3PreviewNotice, setStage3PreviewNotice] = useState<string | null>(null);
+  const [stage3PreviewRetryNonce, setStage3PreviewRetryNonce] = useState(0);
   const [stage3AgentPrompt, setStage3AgentPrompt] = useState("");
   const [stage3AgentSessionId, setStage3AgentSessionId] = useState<string | null>(null);
   const [stage3AgentTimeline, setStage3AgentTimeline] = useState<Stage3TimelineResponse | null>(null);
@@ -2956,7 +2965,7 @@ export default function HomePage() {
   ]);
 
   useEffect(() => {
-    if (currentStep !== 3 || !activeChat?.url) {
+    if (currentStep !== 3 || !activeChat?.url || busyAction === "render") {
       return;
     }
 
@@ -3012,7 +3021,7 @@ export default function HomePage() {
   }, [currentStep, activeChat?.url]);
 
   useEffect(() => {
-    if (currentStep !== 3 || !activeChat?.url) {
+    if (currentStep !== 3 || !activeChat?.url || busyAction === "render") {
       return;
     }
 
@@ -3032,6 +3041,7 @@ export default function HomePage() {
     }
 
     const controller = new AbortController();
+    let retryTimer: number | null = null;
     const timer = window.setTimeout(() => {
       stage3PreviewPendingKeyRef.current = previewKey;
       setBusyAction((prev) => (prev ? prev : "video-preview"));
@@ -3055,7 +3065,22 @@ export default function HomePage() {
             signal: controller.signal
           });
           if (!response.ok) {
-            throw new Error(await parseError(response, "Не удалось загрузить предпросмотр Stage 3."));
+            const message = await parseError(response, "Не удалось загрузить предпросмотр Stage 3.");
+            const isBusyPreview = response.status === 503 && response.headers.get("x-stage3-busy") === "1";
+            if (isBusyPreview) {
+              const retryDelayMs = parseRetryAfterMs(response.headers.get("retry-after"), 6000);
+              if (!controller.signal.aborted && stage3PreviewRequestKeyRef.current === previewKey) {
+                setStage3PreviewNotice("Хостинг занят Stage 3. Повторяю предпросмотр...");
+                retryTimer = window.setTimeout(() => {
+                  if (controller.signal.aborted || stage3PreviewRequestKeyRef.current !== previewKey) {
+                    return;
+                  }
+                  setStage3PreviewRetryNonce((prev) => prev + 1);
+                }, retryDelayMs);
+              }
+              return;
+            }
+            throw new Error(message);
           }
 
           const blob = await response.blob();
@@ -3102,8 +3127,11 @@ export default function HomePage() {
     return () => {
       controller.abort();
       window.clearTimeout(timer);
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
     };
-  }, [currentStep, activeChat?.url, activeChannelId, stage3LivePreviewKey]);
+  }, [busyAction, currentStep, activeChat?.url, activeChannelId, stage3LivePreviewKey, stage3PreviewRetryNonce]);
 
   const steps: FlowStep[] = useMemo(
     () => [

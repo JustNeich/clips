@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { createReadStream, promises as fs } from "node:fs";
 import os from "node:os";
@@ -38,6 +39,8 @@ const execFileAsync = promisify(execFile);
 const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
+const RENDER_BUSY_RETRY_AFTER_SEC = "10";
+const RENDER_WAIT_TIMEOUT_MS = 60_000;
 
 type RenderBody = {
   sourceUrl?: string;
@@ -275,7 +278,6 @@ async function rewriteRenderedMetadata(params: {
 
 async function runRemotionRender(params: {
   templateId: string;
-  publicDir: string;
   outputPath: string;
   sourceVideoFileName: string;
   topText: string;
@@ -296,14 +298,8 @@ async function runRemotionRender(params: {
   backgroundAssetMimeType: string | null;
   timeoutMs: number;
 }) {
-  const { bundle, getCompositions, renderMedia, selectComposition } = ensureRemotionRuntime();
-  const entryPoint = path.join(process.cwd(), "remotion", "index.tsx");
-
-  const serveUrl = await bundle({
-    entryPoint,
-    publicDir: params.publicDir,
-    ignoreRegisterRootWarning: true
-  });
+  const { getCompositions, renderMedia, selectComposition } = ensureRemotionRuntime();
+  const serveUrl = await getRemotionServeUrl();
 
   const inputProps = {
     templateId: params.templateId,
@@ -407,7 +403,10 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
-    const source = await ensureStage3SourceCached(sourceUrl);
+    const source = await ensureStage3SourceCached(sourceUrl, {
+      signal: request.signal,
+      waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS
+    });
     const sourceDurationSec = source.sourceDurationSec;
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
 
@@ -429,7 +428,10 @@ export async function POST(request: Request): Promise<Response> {
       requestedClipStart === null || requestedFocus === null
         ? await runHostedStage3HeavyJob(() =>
             analyzeBestClipAndFocus(source.sourcePath, tmpDir, sourceDurationSec, clipDurationSec)
-          )
+          , {
+            signal: request.signal,
+            waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS
+          })
         : { clipStartSec: 0, focusY: 0.5 };
 
     const clipStartSec = clampClipStart(
@@ -587,6 +589,12 @@ export async function POST(request: Request): Promise<Response> {
     const remotionOutputPath = path.join(tmpDir, "render.raw.mp4");
     const outputPath = path.join(tmpDir, `${outputStem}.mp4`);
     await runHostedStage3HeavyJob(async () => {
+      const serveUrl = await getRemotionServeUrl();
+      const assetToken = randomUUID().replace(/-/g, "");
+      const remotionAssetDir = path.join(serveUrl, "public", "stage3-assets", assetToken);
+      const remotionAssetBase = path.posix.join("stage3-assets", assetToken);
+      await fs.mkdir(remotionAssetDir, { recursive: true });
+
       const prepared = await prepareStage3SourceClip({
         sourcePath: source.sourcePath,
         tmpDir,
@@ -598,70 +606,76 @@ export async function POST(request: Request): Promise<Response> {
         profile: "render"
       });
 
+      const sourceVideoFileName = path.posix.join(remotionAssetBase, "source.mp4");
+      await fs.copyFile(prepared.preparedPath, path.join(remotionAssetDir, "source.mp4"));
+
       let backgroundAssetFileName: string | null = null;
       let backgroundAssetMimeType: string | null = null;
       let avatarAssetFileName: string | null = null;
       let avatarAssetMimeType: string | null = null;
-      if (body?.channelId && renderPlan.backgroundAssetId) {
-        const asset = await getChannelAssetById(body.channelId, renderPlan.backgroundAssetId);
-        if (asset) {
-          const bgFile = await readChannelAssetFile({ channelId: body.channelId, fileName: asset.fileName });
-          if (bgFile) {
-            const ext = path.extname(asset.fileName) || ".jpg";
-            backgroundAssetFileName = `background${ext.toLowerCase()}`;
-            await fs.copyFile(
-              bgFile.filePath,
-              path.join(path.dirname(prepared.preparedPath), backgroundAssetFileName)
-            );
-            backgroundAssetMimeType = asset.mimeType;
+      try {
+        if (body?.channelId && renderPlan.backgroundAssetId) {
+          const asset = await getChannelAssetById(body.channelId, renderPlan.backgroundAssetId);
+          if (asset) {
+            const bgFile = await readChannelAssetFile({ channelId: body.channelId, fileName: asset.fileName });
+            if (bgFile) {
+              const ext = path.extname(asset.fileName) || ".jpg";
+              const localFileName = `background${ext.toLowerCase()}`;
+              backgroundAssetFileName = path.posix.join(remotionAssetBase, localFileName);
+              await fs.copyFile(bgFile.filePath, path.join(remotionAssetDir, localFileName));
+              backgroundAssetMimeType = asset.mimeType;
+            }
           }
         }
-      }
-      if (body?.channelId && renderPlan.avatarAssetId) {
-        const asset = await getChannelAssetById(body.channelId, renderPlan.avatarAssetId);
-        if (asset) {
-          const avatarFile = await readChannelAssetFile({ channelId: body.channelId, fileName: asset.fileName });
-          if (avatarFile) {
-            const ext = path.extname(asset.fileName) || ".jpg";
-            avatarAssetFileName = `avatar${ext.toLowerCase()}`;
-            await fs.copyFile(
-              avatarFile.filePath,
-              path.join(path.dirname(prepared.preparedPath), avatarAssetFileName)
-            );
-            avatarAssetMimeType = asset.mimeType;
+
+        if (body?.channelId && renderPlan.avatarAssetId) {
+          const asset = await getChannelAssetById(body.channelId, renderPlan.avatarAssetId);
+          if (asset) {
+            const avatarFile = await readChannelAssetFile({ channelId: body.channelId, fileName: asset.fileName });
+            if (avatarFile) {
+              const ext = path.extname(asset.fileName) || ".jpg";
+              const localFileName = `avatar${ext.toLowerCase()}`;
+              avatarAssetFileName = path.posix.join(remotionAssetBase, localFileName);
+              await fs.copyFile(avatarFile.filePath, path.join(remotionAssetDir, localFileName));
+              avatarAssetMimeType = asset.mimeType;
+            }
           }
         }
+
+        await runRemotionRender({
+          templateId,
+          outputPath: remotionOutputPath,
+          sourceVideoFileName,
+          topText: computed.top,
+          bottomText: computed.bottom,
+          clipStartSec: prepared.clipStartSec,
+          clipDurationSec: prepared.clipDurationSec,
+          focusY,
+          mirrorEnabled: renderPlan.mirrorEnabled,
+          cameraMotion: renderPlan.cameraMotion,
+          videoZoom: renderPlan.videoZoom,
+          topFontScale: renderPlan.topFontScale,
+          bottomFontScale: renderPlan.bottomFontScale,
+          authorName: renderPlan.authorName,
+          authorHandle: renderPlan.authorHandle,
+          avatarAssetFileName,
+          avatarAssetMimeType,
+          backgroundAssetFileName,
+          backgroundAssetMimeType,
+          timeoutMs
+        });
+
+        await rewriteRenderedMetadata({
+          inputPath: remotionOutputPath,
+          outputPath,
+          metadataTitle
+        });
+      } finally {
+        await fs.rm(remotionAssetDir, { recursive: true, force: true }).catch(() => undefined);
       }
-
-      await runRemotionRender({
-        templateId,
-        publicDir: path.dirname(prepared.preparedPath),
-        outputPath: remotionOutputPath,
-        sourceVideoFileName: path.basename(prepared.preparedPath),
-        topText: computed.top,
-        bottomText: computed.bottom,
-        clipStartSec: prepared.clipStartSec,
-        clipDurationSec: prepared.clipDurationSec,
-        focusY,
-        mirrorEnabled: renderPlan.mirrorEnabled,
-        cameraMotion: renderPlan.cameraMotion,
-        videoZoom: renderPlan.videoZoom,
-        topFontScale: renderPlan.topFontScale,
-        bottomFontScale: renderPlan.bottomFontScale,
-        authorName: renderPlan.authorName,
-        authorHandle: renderPlan.authorHandle,
-        avatarAssetFileName,
-        avatarAssetMimeType,
-        backgroundAssetFileName,
-        backgroundAssetMimeType,
-        timeoutMs
-      });
-
-      await rewriteRenderedMetadata({
-        inputPath: remotionOutputPath,
-        outputPath,
-        metadataTitle
-      });
+    }, {
+      signal: request.signal,
+      waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS
     });
     const attachmentName = `${outputStem}.mp4`;
     const response = await createVideoAttachmentResponse(outputPath, attachmentName, {
@@ -674,6 +688,20 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     if (error instanceof Response) {
       return error;
+    }
+    if (isStage3HostedBusyError(error)) {
+      return Response.json(
+        {
+          error: "Хостинг занят другой тяжёлой задачей Stage 3. Повторите через минуту."
+        },
+        {
+          status: 503,
+          headers: {
+            "Retry-After": RENDER_BUSY_RETRY_AFTER_SEC,
+            "x-stage3-busy": "1"
+          }
+        }
+      );
     }
     const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
     if (ytdlpMessage) {

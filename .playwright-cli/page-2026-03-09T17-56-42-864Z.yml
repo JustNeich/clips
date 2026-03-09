@@ -1,0 +1,282 @@
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e11] [cursor=pointer]:
+    - img [ref=e12]
+  - alert [ref=e5]
+  - main [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - button "Открыть историю" [ref=e146] [cursor=pointer]:
+              - generic [ref=e22]: 🕘
+              - generic [ref=e23]: История
+              - generic [ref=e24]: "1"
+            - generic [ref=e25]:
+              - heading "Автоматизация клипов" [level=1] [ref=e26]
+              - paragraph [ref=e27]: "Минимальный 3-шаговый поток: получить источник, выбрать подпись, отрендерить результат."
+          - generic [ref=e28]:
+            - generic [ref=e29]: Канал
+            - generic [ref=e30]:
+              - combobox "Канал" [ref=e31]:
+                - option "Default @science_snack" [selected]
+              - button "Каналы" [ref=e32] [cursor=pointer]
+              - button "Команда" [ref=e33] [cursor=pointer]
+        - complementary [ref=e34]:
+          - generic [ref=e35]:
+            - generic [ref=e36]:
+              - generic [ref=e37]: Stage3 QA Workspace
+              - generic [ref=e38]:
+                - strong [ref=e39]: QA Owner
+                - generic [ref=e40]: Владелец
+                - generic [ref=e41]: Shared Codex не подключен
+            - generic [ref=e42]:
+              - button "Подключить" [ref=e43] [cursor=pointer]
+              - button "Обновить" [ref=e44] [cursor=pointer]
+              - button "Показать детали" [ref=e45] [cursor=pointer]
+              - button "Выйти" [ref=e46] [cursor=pointer]
+          - generic [ref=e47]:
+            - generic [ref=e48]:
+              - generic [ref=e49]:
+                - strong [ref=e50]: Вход в Shared Codex
+                - paragraph [ref=e51]: Подключите один раз, завершите вход в браузере и затем обновите статус.
+              - generic [ref=e52]: Нет активности
+            - generic [ref=e53]:
+              - generic [ref=e54]: Ссылка для входа
+              - generic [ref=e55]:
+                - link "Открыть страницу входа" [ref=e56] [cursor=pointer]:
+                  - /url: https://auth.openai.com/codex/device
+                - button "Копировать ссылку" [ref=e57] [cursor=pointer]
+      - generic [ref=e59]:
+        - navigation "Шаги процесса" [ref=e60]:
+          - button "Шаг 1 Вставить ссылку Завершено" [ref=e147] [cursor=pointer]:
+            - generic [ref=e62]: Шаг 1
+            - generic [ref=e63]: Вставить ссылку
+            - generic [ref=e64]: Завершено
+          - button "Шаг 2 Проверить и выбрать Завершено" [ref=e148] [cursor=pointer]:
+            - generic [ref=e66]: Шаг 2
+            - generic [ref=e67]: Проверить и выбрать
+            - generic [ref=e68]: Завершено
+          - button "Шаг 3 Рендер видео Текущий" [ref=e149] [cursor=pointer]:
+            - generic [ref=e70]: Шаг 3
+            - generic [ref=e71]: Рендер видео
+            - generic [ref=e72]: Текущий
+        - region "Рабочая область шага" [ref=e150]:
+          - generic [ref=e151]:
+            - generic [ref=e153]:
+              - generic [ref=e154]:
+                - paragraph [ref=e155]: Шаг 3
+                - heading "Рендер" [level=2] [ref=e156]
+                - paragraph [ref=e157]: Финализируйте тайминг и кадрирование, затем отрендерите mp4 из выбранной версии.
+                - generic [ref=e158]:
+                  - generic [ref=e159]: Science Card v1
+                  - generic [ref=e160]: science-card-v1
+                  - generic [ref=e161]: Default (@science_snack)
+                  - generic [ref=e162]: Исходник н/д
+                  - generic [ref=e163]: Версий 0
+              - generic [ref=e164]:
+                - generic [ref=e165]:
+                  - generic [ref=e166]:
+                    - heading "Editing" [level=3] [ref=e167]
+                    - paragraph [ref=e168]: "Частые действия вынесены сюда: тайминг, фокус, зум и размеры текста."
+                  - generic [ref=e169]:
+                    - generic [ref=e170]: Курсор 00:00.0
+                    - generic [ref=e171]: Фрагменты 1 · 00:01.0
+                    - generic [ref=e172]: Фокус 50%
+                    - generic [ref=e173]: Камера Отключено
+                    - generic [ref=e174]: Зум x1.00
+                - generic [ref=e175]:
+                  - generic [ref=e176]:
+                    - generic [ref=e177]:
+                      - generic [ref=e178] [cursor=pointer]:
+                        - checkbox "Сжать до 6с" [ref=e179]
+                        - generic [ref=e180]: Сжать до 6с
+                      - generic [ref=e181]:
+                        - button "+ Фрагмент" [active] [ref=e182] [cursor=pointer]
+                        - button "Очистить" [ref=e352] [cursor=pointer]
+                    - article [ref=e353]:
+                      - generic [ref=e354]:
+                        - generic [ref=e355]:
+                          - generic [ref=e356]: "1"
+                          - generic [ref=e357]: x1
+                          - generic [ref=e358]: 00:01.0
+                        - button "×" [ref=e359] [cursor=pointer]
+                      - generic [ref=e360]:
+                        - generic [ref=e361]:
+                          - generic [ref=e362]: От
+                          - spinbutton "От" [ref=e363]: "0.0"
+                        - generic [ref=e364]:
+                          - generic [ref=e365]: До
+                          - spinbutton "До" [ref=e366]: "1.0"
+                        - generic [ref=e367]:
+                          - generic [ref=e368]: Сжатие
+                          - combobox "Сжатие" [ref=e369]:
+                            - option "x1" [selected]
+                            - option "x1.5"
+                            - option "x2"
+                            - option "x2.5"
+                            - option "x3"
+                            - option "x4"
+                            - option "x5"
+                  - generic [ref=e184]:
+                    - generic [ref=e185]:
+                      - generic [ref=e186]: Начало клипа
+                      - generic [ref=e187]: 00:00.0
+                    - slider "Начало клипа" [disabled] [ref=e188]: "0"
+                    - generic [ref=e189]:
+                      - button "-1.0s" [ref=e190] [cursor=pointer]
+                      - button "-0.25s" [ref=e191] [cursor=pointer]
+                      - button "+0.25s" [ref=e192] [cursor=pointer]
+                      - button "+1.0s" [ref=e193] [cursor=pointer]
+                  - generic [ref=e194]:
+                    - generic [ref=e195]:
+                      - generic [ref=e196]: Вертикальный фокус
+                      - generic [ref=e197]: 50%
+                    - slider "Вертикальный фокус" [ref=e198]: "0.5"
+                    - generic [ref=e199]:
+                      - button "Верх" [ref=e200] [cursor=pointer]
+                      - button "Центр" [ref=e201] [cursor=pointer]
+                      - button "Низ" [ref=e202] [cursor=pointer]
+                  - generic [ref=e203]:
+                    - generic [ref=e204]:
+                      - generic [ref=e205]: Отзеркаливание
+                      - generic [ref=e206]: Включено
+                    - generic [ref=e207] [cursor=pointer]:
+                      - checkbox "Горизонтально" [checked] [ref=e208]
+                      - generic [ref=e209]: Горизонтально
+                    - paragraph [ref=e210]: По умолчанию включено для слота с исходным видео.
+                  - generic [ref=e211]:
+                    - generic [ref=e212]:
+                      - generic [ref=e213]: Движение камеры
+                      - generic [ref=e214]: Отключено
+                    - combobox "Движение камеры" [ref=e215]:
+                      - option "Отключено" [selected]
+                      - option "Сверху вниз"
+                      - option "Снизу вверх"
+                    - paragraph [ref=e216]: Движение использует текущий вертикальный фокус как центр траектории.
+                  - generic [ref=e217]:
+                    - generic [ref=e218]:
+                      - generic [ref=e219]: Масштаб видео
+                      - generic [ref=e220]: x1.00
+                    - slider "Масштаб видео" [ref=e221]: "1"
+                    - generic [ref=e222]:
+                      - button "x1.00" [ref=e223] [cursor=pointer]
+                      - button "x1.10" [ref=e224] [cursor=pointer]
+                      - button "x1.25" [ref=e225] [cursor=pointer]
+                      - button "x1.40" [ref=e226] [cursor=pointer]
+                  - generic [ref=e227]:
+                    - generic [ref=e228]:
+                      - generic [ref=e229]: Размер верхнего текста
+                      - generic [ref=e230]: 125%
+                    - slider "Размер верхнего текста" [ref=e231]: "1.25"
+                    - generic [ref=e232]:
+                      - button "90%" [ref=e233] [cursor=pointer]
+                      - button "100%" [ref=e234] [cursor=pointer]
+                      - button "115%" [ref=e235] [cursor=pointer]
+                      - button "130%" [ref=e236] [cursor=pointer]
+                  - generic [ref=e237]:
+                    - generic [ref=e238]:
+                      - generic [ref=e239]: Размер нижнего текста
+                      - generic [ref=e240]: 125%
+                    - slider "Размер нижнего текста" [ref=e241]: "1.25"
+                    - generic [ref=e242]:
+                      - button "90%" [ref=e243] [cursor=pointer]
+                      - button "100%" [ref=e244] [cursor=pointer]
+                      - button "115%" [ref=e245] [cursor=pointer]
+                      - button "130%" [ref=e246] [cursor=pointer]
+              - generic [ref=e247]:
+                - generic [ref=e249]:
+                  - heading "Музыка и фон" [level=3] [ref=e250]
+                  - paragraph [ref=e251]: Меняются реже, поэтому вынесены после editing.
+                - generic [ref=e252]:
+                  - generic [ref=e253]:
+                    - generic [ref=e254]:
+                      - generic [ref=e255]: Фон
+                      - generic [ref=e256]: Blur source
+                    - generic [ref=e257]:
+                      - generic [ref=e258] [cursor=pointer]:
+                        - button "Upload" [ref=e259]
+                        - text: Upload
+                      - combobox [ref=e260]:
+                        - option "Размытый фон из исходника" [selected]
+                    - paragraph [ref=e261]: "Фон по умолчанию: blur исходного видео."
+                  - generic [ref=e262]:
+                    - generic [ref=e263]:
+                      - generic [ref=e264]: Музыка
+                      - generic [ref=e265]: Только исходник
+                    - generic [ref=e266]:
+                      - generic [ref=e267] [cursor=pointer]:
+                        - button "Upload" [ref=e268]
+                        - text: Upload
+                      - combobox [ref=e269]:
+                        - option "Без музыки" [selected]
+                    - generic [ref=e270] [cursor=pointer]:
+                      - checkbox "Оставить звук исходника" [checked] [ref=e271]
+                      - generic [ref=e272]: Оставить звук исходника
+                    - paragraph [ref=e273]: Если отключить, из preview и финального render убирается звук исходника. Без музыки клип будет беззвучным.
+                    - generic [ref=e274]:
+                      - generic [ref=e275]:
+                        - generic [ref=e276]: Громкость музыки
+                        - generic [ref=e277]: 65%
+                      - slider "Громкость музыки" [ref=e278]: "0.65"
+                      - generic [ref=e279]:
+                        - button "0%" [ref=e280] [cursor=pointer]
+                        - button "20%" [ref=e281] [cursor=pointer]
+                        - button "35%" [ref=e282] [cursor=pointer]
+                        - button "50%" [ref=e283] [cursor=pointer]
+              - group [ref=e284]:
+                - 'generic "Advanced: AI redactor, versions, редкие действия" [ref=e285] [cursor=pointer]'
+            - generic [ref=e287]:
+              - button "Сбросить" [ref=e288] [cursor=pointer]
+              - button "Оптимизировать" [ref=e289] [cursor=pointer]
+              - button "Экспорт JSON" [ref=e290] [cursor=pointer]
+              - button "Рендер" [ref=e291] [cursor=pointer]
+          - complementary [ref=e292]:
+            - generic [ref=e294]:
+              - generic [ref=e295]:
+                - generic [ref=e296]:
+                  - heading "Живой предпросмотр" [level=3] [ref=e297]
+                  - paragraph [ref=e298]: Черновой живой предпросмотр
+                  - paragraph [ref=e299]: Используется текущий live draft без сохраненной версии.
+                - generic [ref=e300]:
+                  - button "Пауза" [ref=e301] [cursor=pointer]
+                  - button "Звук выключен" [ref=e302] [cursor=pointer]
+                  - button "Цикл" [ref=e303] [cursor=pointer]
+                  - button "Предыдущий кадр" [ref=e304] [cursor=pointer]: −1f
+                  - button "Следующий кадр" [ref=e305] [cursor=pointer]: +1f
+                  - group "Масштаб предпросмотра" [ref=e306]:
+                    - button "Вписать" [ref=e307] [cursor=pointer]
+                    - button "75%" [ref=e308] [cursor=pointer]
+                    - button "100%" [ref=e309] [cursor=pointer]
+                  - button "Версии (0)" [ref=e310] [cursor=pointer]
+              - generic [ref=e311]:
+                - generic [ref=e315]:
+                  - generic:
+                    - generic: БЕЗОПАСНАЯ ОБЛАСТЬ
+                  - generic [ref=e317]:
+                    - paragraph [ref=e319]: TOP TEST TEXT
+                    - generic [ref=e322]:
+                      - generic [ref=e323]:
+                        - generic [ref=e324]: DE
+                        - generic [ref=e325]:
+                          - generic [ref=e326]:
+                            - generic [ref=e327]: Default
+                            - generic [ref=e328]: ✓
+                          - generic [ref=e329]: "@science_snack"
+                      - paragraph [ref=e331]: BOTTOM TEST TEXT
+                - generic "Предпросмотр timeline" [ref=e333]:
+                  - generic [ref=e334]:
+                    - generic [ref=e335]: 0s
+                    - generic [ref=e336]: 1s
+                    - generic [ref=e337]: 2s
+                    - generic [ref=e338]: 3s
+                    - generic [ref=e339]: 4s
+                    - generic [ref=e340]: 5s
+                    - generic [ref=e341]: 6s
+                  - slider "Позиция воспроизведения" [ref=e342]
+                  - generic [ref=e344]:
+                    - generic [ref=e345]: 00:00.0
+                    - generic [ref=e346]: 00:06.0
+        - group [ref=e104]:
+          - generic "Подробности Логи, комментарии, диагностика" [ref=e105] [cursor=pointer]:
+            - generic [ref=e106]: Подробности
+            - generic [ref=e107]: Логи, комментарии, диагностика

@@ -1,7 +1,7 @@
 import { getSession } from "../../../../../../../lib/stage3-session-store";
 import { resumeAutonomousSession } from "../../../../../../../lib/stage3-agent-autonomous";
 import { applyHostedStage3Limits } from "../../../../../../../lib/stage3-hosted-limits";
-import { runHostedStage3HeavyJob } from "../../../../../../../lib/stage3-server-control";
+import { isStage3HostedBusyError } from "../../../../../../../lib/stage3-server-control";
 import { summarizeUserFacingError } from "../../../../../../../lib/ui-error";
 import { getChatById } from "../../../../../../../lib/chat-history";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../../../../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
+const STAGE3_BUSY_RETRY_AFTER_SEC = "8";
 
 type Stage3ResumeBody = {
   mediaId?: string;
@@ -71,23 +72,35 @@ export async function POST(
       plannerTimeoutMs: Number.isFinite(body?.plannerTimeoutMs) ? body?.plannerTimeoutMs : undefined
     });
 
-    const result = await runHostedStage3HeavyJob(() =>
-      resumeAutonomousSession(
-        id,
-        mediaId,
-        tuning.options,
-        body?.sourceUrl,
-        requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
-        body?.plannerModel,
-        tuning.plannerReasoningEffort,
-        tuning.plannerTimeoutMs
-      )
+    const result = await resumeAutonomousSession(
+      id,
+      mediaId,
+      tuning.options,
+      body?.sourceUrl,
+      requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
+      body?.plannerModel,
+      tuning.plannerReasoningEffort,
+      tuning.plannerTimeoutMs
     );
 
     return Response.json(result, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
       return error;
+    }
+    if (isStage3HostedBusyError(error)) {
+      return Response.json(
+        {
+          error: "Хостинг занят другой тяжёлой задачей Stage 3. Повторите через минуту."
+        },
+        {
+          status: 503,
+          headers: {
+            "Retry-After": STAGE3_BUSY_RETRY_AFTER_SEC,
+            "x-stage3-busy": "1"
+          }
+        }
+      );
     }
     const rawMessage = error instanceof Error ? error.message : "Resume run failed.";
     const message = summarizeUserFacingError(rawMessage);

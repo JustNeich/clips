@@ -30,6 +30,8 @@ const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
 const DEFAULT_TEXT_SCALE = 1.25;
 const previewInflight = new Map<string, Promise<void>>();
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
+const PREVIEW_BUSY_RETRY_AFTER_SEC = "6";
+const PREVIEW_WAIT_TIMEOUT_MS = 20_000;
 
 type PreviewBody = {
   sourceUrl?: string;
@@ -110,6 +112,28 @@ async function createVideoFileResponse(
       ...headers
     }
   });
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    String((error as NodeJS.ErrnoException).code ?? "") === "ENOENT"
+  );
+}
+
+async function tryCreateVideoFileResponse(
+  filePath: string,
+  headers: Record<string, string>
+): Promise<Response | null> {
+  try {
+    return await createVideoFileResponse(filePath, headers);
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function normalizeRenderPlan(
@@ -256,7 +280,10 @@ export async function POST(request: Request): Promise<Response> {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
     await fs.mkdir(PREVIEW_CACHE_DIR, { recursive: true });
-    const source = await ensureStage3SourceCached(sourceUrl);
+    const source = await ensureStage3SourceCached(sourceUrl, {
+      signal: request.signal,
+      waitTimeoutMs: PREVIEW_WAIT_TIMEOUT_MS
+    });
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
     const snapshot = body?.snapshot;
 
@@ -291,60 +318,89 @@ export async function POST(request: Request): Promise<Response> {
     );
     const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);
 
-    if (await pathExists(previewPath)) {
-      return createVideoFileResponse(previewPath, {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const cachedResponse = await tryCreateVideoFileResponse(previewPath, {
         "Cache-Control": "public, max-age=600",
         "x-stage3-preview": "1",
         "x-stage3-cache": "hit"
       });
-    }
+      if (cachedResponse) {
+        return cachedResponse;
+      }
 
-    const running = previewInflight.get(previewKey);
-    if (running) {
-      await running;
-    } else {
-      const task = (async () => {
-        const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-"));
+      const running = previewInflight.get(previewKey);
+      const waitedForExistingTask = Boolean(running);
+      if (running) {
+        await running;
+      } else {
+        const task = (async () => {
+          const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-"));
+          try {
+            if (request.signal.aborted) {
+              return;
+            }
+            const prepared = await runHostedStage3HeavyJob(() =>
+              prepareStage3SourceClip({
+                sourcePath: source.sourcePath,
+                tmpDir: localTmpDir,
+                sourceDurationSec: source.sourceDurationSec,
+                clipStartSec,
+                clipDurationSec: renderPlan.targetDurationSec,
+                renderPlan,
+                musicFilePath,
+                profile: "preview"
+              }),
+              {
+                signal: request.signal,
+                waitTimeoutMs: PREVIEW_WAIT_TIMEOUT_MS
+              }
+            );
+            if (request.signal.aborted) {
+              return;
+            }
+            await fs.copyFile(prepared.preparedPath, previewPath);
+          } finally {
+            await fs.rm(localTmpDir, { recursive: true, force: true });
+          }
+        })();
+        previewInflight.set(previewKey, task);
         try {
-          if (request.signal.aborted) {
-            return;
-          }
-          const prepared = await runHostedStage3HeavyJob(() =>
-            prepareStage3SourceClip({
-              sourcePath: source.sourcePath,
-              tmpDir: localTmpDir,
-              sourceDurationSec: source.sourceDurationSec,
-              clipStartSec,
-              clipDurationSec: renderPlan.targetDurationSec,
-              renderPlan,
-              musicFilePath,
-              profile: "preview"
-            })
-          );
-          if (request.signal.aborted) {
-            return;
-          }
-          await fs.copyFile(prepared.preparedPath, previewPath);
+          await task;
         } finally {
-          await fs.rm(localTmpDir, { recursive: true, force: true });
+          previewInflight.delete(previewKey);
         }
-      })();
-      previewInflight.set(previewKey, task);
-      try {
-        await task;
-      } finally {
-        previewInflight.delete(previewKey);
+      }
+
+      if (request.signal.aborted) {
+        return new Response(null, { status: 204 });
+      }
+
+      const readyResponse = await tryCreateVideoFileResponse(previewPath, {
+        "Cache-Control": "public, max-age=600",
+        "x-stage3-preview": "1",
+        "x-stage3-cache": waitedForExistingTask ? "wait" : "miss"
+      });
+      if (readyResponse) {
+        await pruneCacheDirectory(PREVIEW_CACHE_DIR, 48).catch(() => undefined);
+        await pruneStage3SourceCache(24).catch(() => undefined);
+        return readyResponse;
+      }
+
+      if (!waitedForExistingTask) {
+        break;
       }
     }
 
-    await pruneCacheDirectory(PREVIEW_CACHE_DIR, 48).catch(() => undefined);
-    await pruneStage3SourceCache(24).catch(() => undefined);
+    if (request.signal.aborted) {
+      return new Response(null, { status: 204 });
+    }
 
-    return createVideoFileResponse(previewPath, {
-      "Cache-Control": "public, max-age=600",
-      "x-stage3-preview": "1",
-      "x-stage3-cache": "miss"
-    });
+    return Response.json(
+      {
+        error: "Черновой предпросмотр не удалось подготовить. Повторите ещё раз."
+      },
+      { status: 503 }
+    );
   } catch (error) {
     if (error instanceof Response) {
       return error;
@@ -354,7 +410,13 @@ export async function POST(request: Request): Promise<Response> {
         {
           error: "Хостинг занят другой тяжёлой задачей Stage 3. Повторите через минуту."
         },
-        { status: 503 }
+        {
+          status: 503,
+          headers: {
+            "Retry-After": PREVIEW_BUSY_RETRY_AFTER_SEC,
+            "x-stage3-busy": "1"
+          }
+        }
       );
     }
     const ytdlpMessage = extractYtDlpErrorFromUnknown(error);

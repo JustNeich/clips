@@ -56,7 +56,7 @@ import {
   updateSession,
   buildGoalHash
 } from "./stage3-session-store";
-import { ensureStage3SourceCached } from "./stage3-server-control";
+import { ensureStage3SourceCached, runHostedStage3HeavyJob } from "./stage3-server-control";
 
 const PREVIEW_FPS = 3;
 const DEFAULT_TARGET_SCORE = 0.9;
@@ -68,6 +68,7 @@ const DEFAULT_SAFETY_THRESHOLD = 0.3;
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
 const AUTONOMOUS_ENGINE_VERSION = "stage3-autonomous-2026-03-06-directive-composite-v5";
+const HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS = 45_000;
 
 const execFileAsync = promisify(execFile);
 
@@ -1561,14 +1562,20 @@ async function runRealityPreview(args: {
 }): Promise<Stage3RealityMetrics> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-autonomous-preview-"));
   try {
-    const analysis = await analyzeStage3FramedPreview({
-      sourcePath: args.sourcePath,
-      tmpDir,
-      sourceDurationSec: args.sourceDurationSec,
-      snapshot: args.snapshot,
-      profile: "preview"
-    });
-    const motion = await extractMotionMetrics(analysis.previewPath, tmpDir);
+    const { analysis, motion } = await runHostedStage3HeavyJob(
+      async () => {
+        const analysis = await analyzeStage3FramedPreview({
+          sourcePath: args.sourcePath,
+          tmpDir,
+          sourceDurationSec: args.sourceDurationSec,
+          snapshot: args.snapshot,
+          profile: "preview"
+        });
+        const motion = await extractMotionMetrics(analysis.previewPath, tmpDir);
+        return { analysis, motion };
+      },
+      { waitTimeoutMs: HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS }
+    );
     return {
       ...analysis.metrics,
       stability: motion.stability,
@@ -1914,11 +1921,15 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
           }
         }
 
-        const autoInfo = await analyzeBestClipAndFocus(
-          sourceContext.sourcePath,
-          sourceContext.tmpDir,
-          sourceContext.sourceDurationSec ?? input.sourceDurationSec ?? null,
-          CLIP_DURATION_SEC
+        const autoInfo = await runHostedStage3HeavyJob(
+          () =>
+            analyzeBestClipAndFocus(
+              sourceContext.sourcePath,
+              sourceContext.tmpDir,
+              sourceContext.sourceDurationSec ?? input.sourceDurationSec ?? null,
+              CLIP_DURATION_SEC
+            ),
+          { waitTimeoutMs: HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS }
         );
 
         const autoClipStartSec = clampClipStart(
