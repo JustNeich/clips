@@ -6,6 +6,7 @@ import {
   Stage3RenderPlan,
   Stage3RenderPolicy,
   Stage3Segment,
+  STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3StateSnapshot,
   Stage3TextPolicy,
   Stage3TimingMode,
@@ -37,6 +38,7 @@ const DEFAULT_ZOOM = 1.2;
 const DEFAULT_TEXT_SCALE = 1.25;
 const FONT_SCALE_MIN = 0.7;
 const FONT_SCALE_MAX = 1.9;
+const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
 function hasAnyCue(promptLower: string, cues: string[]): boolean {
   return cues.some((cue) => promptLower.includes(cue));
@@ -252,6 +254,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function normalizeSegmentSpeed(value: unknown): Stage3Segment["speed"] {
+  if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
+    return value as Stage3Segment["speed"];
+  }
+  return 1;
+}
+
+function normalizeCameraMotion(value: unknown): Stage3RenderPlan["cameraMotion"] {
+  return value === "top_to_bottom" || value === "bottom_to_top" ? value : "disabled";
+}
+
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -341,6 +354,7 @@ function normalizeSegment(
   return {
     startSec: start,
     endSec: end,
+    speed: normalizeSegmentSpeed(segment.speed),
     label:
       typeof segment.label === "string" && segment.label.trim()
         ? segment.label.trim()
@@ -362,7 +376,8 @@ function parseSegmentsFromPrompt(prompt: string, sourceDurationSec: number | nul
       segments.push({
         startSec,
         endSec: endSec ?? null,
-        label: `${match[1]}-${match[2]}`
+        label: `${match[1]}-${match[2]}`,
+        speed: 1
       });
     }
     match = pattern.exec(normalized);
@@ -378,7 +393,8 @@ function parseSegmentsFromPrompt(prompt: string, sourceDurationSec: number | nul
       segments.push({
         startSec,
         endSec,
-        label: `${secMatch[1]}-${secMatch[2]}`
+        label: `${secMatch[1]}-${secMatch[2]}`,
+        speed: 1
       });
     }
     secMatch = secondsPattern.exec(normalized);
@@ -408,7 +424,7 @@ export function approxSegmentsDuration(
     const start = Math.max(0, segment.startSec);
     const endRaw = segment.endSec ?? sourceDurationSec ?? start + fallbackDuration;
     const end = Math.max(start + 0.03, endRaw);
-    return acc + (end - start);
+    return acc + (end - start) / normalizeSegmentSpeed(segment.speed);
   }, 0);
   return Math.max(0.05, raw);
 }
@@ -631,7 +647,10 @@ function createDefaultRenderPlan(sourceDurationSec: number | null): Stage3Render
     targetDurationSec: TARGET_DURATION_SEC,
     timingMode: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC ? "stretch" : "auto",
     audioMode: "source_only",
+    sourceAudioEnabled: true,
     smoothSlowMo: false,
+    mirrorEnabled: true,
+    cameraMotion: "disabled",
     videoZoom: 1,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
@@ -674,7 +693,10 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       audioMode === "source_only" || audioMode === "source_plus_music"
         ? audioMode
         : defaultPlan.audioMode,
+    sourceAudioEnabled: Boolean(input?.sourceAudioEnabled ?? defaultPlan.sourceAudioEnabled),
     smoothSlowMo: Boolean(input?.smoothSlowMo),
+    mirrorEnabled: Boolean(input?.mirrorEnabled ?? defaultPlan.mirrorEnabled),
+    cameraMotion: normalizeCameraMotion(input?.cameraMotion),
     videoZoom:
       typeof input?.videoZoom === "number" && Number.isFinite(input.videoZoom)
         ? clamp(input.videoZoom, 1, 1.6)
@@ -1030,7 +1052,16 @@ export function hasMeaningfulMediaChange(before: Stage3StateSnapshot, after: Sta
   if (before.renderPlan.audioMode !== after.renderPlan.audioMode) {
     return true;
   }
+  if (before.renderPlan.sourceAudioEnabled !== after.renderPlan.sourceAudioEnabled) {
+    return true;
+  }
   if (before.renderPlan.smoothSlowMo !== after.renderPlan.smoothSlowMo) {
+    return true;
+  }
+  if (before.renderPlan.mirrorEnabled !== after.renderPlan.mirrorEnabled) {
+    return true;
+  }
+  if (before.renderPlan.cameraMotion !== after.renderPlan.cameraMotion) {
     return true;
   }
   if (before.renderPlan.policy !== after.renderPlan.policy) {
@@ -1093,14 +1124,18 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
   const framingChanged =
     Math.abs(baseline.clipStartSec - final.clipStartSec) >= 0.01 ||
     Math.abs(baseline.focusY - final.focusY) >= 0.005 ||
-    Math.abs(baseline.renderPlan.videoZoom - final.renderPlan.videoZoom) >= 0.01;
+    Math.abs(baseline.renderPlan.videoZoom - final.renderPlan.videoZoom) >= 0.01 ||
+    baseline.renderPlan.mirrorEnabled !== final.renderPlan.mirrorEnabled ||
+    baseline.renderPlan.cameraMotion !== final.renderPlan.cameraMotion;
   const timingChanged =
     baseline.renderPlan.timingMode !== final.renderPlan.timingMode ||
     baseline.renderPlan.policy !== final.renderPlan.policy ||
     baseline.renderPlan.smoothSlowMo !== final.renderPlan.smoothSlowMo;
   const segmentsChanged =
     JSON.stringify(baseline.renderPlan.segments) !== JSON.stringify(final.renderPlan.segments);
-  const audioChanged = baseline.renderPlan.audioMode !== final.renderPlan.audioMode;
+  const audioChanged =
+    baseline.renderPlan.audioMode !== final.renderPlan.audioMode ||
+    baseline.renderPlan.sourceAudioEnabled !== final.renderPlan.sourceAudioEnabled;
   const summary: string[] = [];
   if (textChanged) {
     summary.push("Обновлены TOP/BOTTOM для стабильной читаемости.");
@@ -1118,7 +1153,7 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
     summary.push("Обновлен режим длительности/темпа до ровно 6 секунд.");
   }
   if (audioChanged) {
-    summary.push("Изменен режим аудио (source/source+music).");
+    summary.push("Изменен аудиомикс исходника и музыки.");
   }
   if (!summary.length) {
     summary.push("Существенных изменений не потребовалось, подтверждена стабильность рендера.");
@@ -1334,7 +1369,8 @@ export function inferHeuristicOperations(input: {
           {
             startSec: 0,
             endSec: input.sourceDurationSec,
-            label: `0-${input.sourceDurationSec.toFixed(2)}`
+            label: `0-${input.sourceDurationSec.toFixed(2)}`,
+            speed: 1
           }
         ],
         input.sourceDurationSec
@@ -1362,7 +1398,8 @@ export function inferHeuristicOperations(input: {
             {
               startSec: implicitStart,
               endSec: Math.min(input.sourceDurationSec ?? implicitStart + implicitDuration, implicitStart + implicitDuration),
-              label: `${implicitStart.toFixed(2)}-${Math.min(input.sourceDurationSec ?? implicitStart + implicitDuration, implicitStart + implicitDuration).toFixed(2)}`
+              label: `${implicitStart.toFixed(2)}-${Math.min(input.sourceDurationSec ?? implicitStart + implicitDuration, implicitStart + implicitDuration).toFixed(2)}`,
+              speed: 1
             }
           ],
           input.sourceDurationSec

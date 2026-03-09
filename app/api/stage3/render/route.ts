@@ -17,7 +17,7 @@ import {
   sanitizeClipDuration,
   sanitizeFocusY
 } from "../../../../lib/stage3-media-agent";
-import { extractYtDlpErrorFromUnknown, isSupportedUrl } from "../../../../lib/ytdlp";
+import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChannelAssetById } from "../../../../lib/chat-history";
@@ -25,6 +25,7 @@ import { readChannelAssetFile } from "../../../../lib/channel-assets";
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
 import {
   ensureStage3SourceCached,
+  isStage3HostedBusyError,
   isStage3HostedRuntime,
   runHostedStage3HeavyJob
 } from "../../../../lib/stage3-server-control";
@@ -35,6 +36,8 @@ const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 const DEFAULT_TEXT_SCALE = 1.25;
 const execFileAsync = promisify(execFile);
 const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
+const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
+let remotionServeUrlPromise: Promise<string> | null = null;
 
 type RenderBody = {
   sourceUrl?: string;
@@ -60,6 +63,17 @@ type RemotionModule = {
   selectComposition: AsyncFn | null;
 };
 
+function normalizeSegmentSpeed(value: unknown): Stage3RenderPlan["segments"][number]["speed"] {
+  if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
+    return value as Stage3RenderPlan["segments"][number]["speed"];
+  }
+  return 1;
+}
+
+function normalizeCameraMotion(value: unknown): Stage3RenderPlan["cameraMotion"] {
+  return value === "top_to_bottom" || value === "bottom_to_top" ? value : "disabled";
+}
+
 function ensureRemotionRuntime(): RemotionModule {
   const runtimeRequire = createRequire(import.meta.url);
   const rendererModule = runtimeRequire("@remotion/renderer");
@@ -77,6 +91,23 @@ function ensureRemotionRuntime(): RemotionModule {
   );
 
   return { bundle, getCompositions, renderMedia, selectComposition };
+}
+
+async function getRemotionServeUrl(): Promise<string> {
+  if (!remotionServeUrlPromise) {
+    const { bundle } = ensureRemotionRuntime();
+    const entryPoint = path.join(process.cwd(), "remotion", "index.tsx");
+    const publicDir = path.join(process.cwd(), "public");
+    remotionServeUrlPromise = bundle({
+      entryPoint,
+      publicDir,
+      ignoreRegisterRootWarning: true
+    }).catch((error) => {
+      remotionServeUrlPromise = null;
+      throw error;
+    });
+  }
+  return remotionServeUrlPromise;
 }
 
 function unwrapDefaultExport(value: unknown): unknown {
@@ -246,11 +277,14 @@ async function runRemotionRender(params: {
   templateId: string;
   publicDir: string;
   outputPath: string;
+  sourceVideoFileName: string;
   topText: string;
   bottomText: string;
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  mirrorEnabled: boolean;
+  cameraMotion: Stage3RenderPlan["cameraMotion"];
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
@@ -273,11 +307,14 @@ async function runRemotionRender(params: {
 
   const inputProps = {
     templateId: params.templateId,
+    sourceVideoFileName: params.sourceVideoFileName,
     topText: params.topText,
     bottomText: params.bottomText,
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
     focusY: params.focusY,
+    mirrorEnabled: params.mirrorEnabled,
+    cameraMotion: params.cameraMotion,
     videoZoom: params.videoZoom,
     topFontScale: params.topFontScale,
     bottomFontScale: params.bottomFontScale,
@@ -346,9 +383,12 @@ export async function POST(request: Request): Promise<Response> {
   if (!rawSource) {
     return Response.json({ error: "Передайте sourceUrl в теле запроса." }, { status: 400 });
   }
-  if (!isSupportedUrl(rawSource)) {
+  const sourceUrl = normalizeSupportedUrl(rawSource);
+  if (!isSupportedUrl(sourceUrl)) {
     return Response.json(
-      { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
+      {
+        error: "Не удалось подготовить исходное видео для рендера. Проверьте ссылку на ролик из Шага 1."
+      },
       { status: 400 }
     );
   }
@@ -367,7 +407,7 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
-    const source = await ensureStage3SourceCached(rawSource);
+    const source = await ensureStage3SourceCached(sourceUrl);
     const sourceDurationSec = source.sourceDurationSec;
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
 
@@ -419,7 +459,10 @@ export async function POST(request: Request): Promise<Response> {
         rawPlan?.audioMode === "source_only" || rawPlan?.audioMode === "source_plus_music"
           ? rawPlan.audioMode
           : "source_only",
+      sourceAudioEnabled: Boolean(rawPlan?.sourceAudioEnabled ?? true),
       smoothSlowMo: Boolean(rawPlan?.smoothSlowMo),
+      mirrorEnabled: Boolean(rawPlan?.mirrorEnabled ?? true),
+      cameraMotion: normalizeCameraMotion(rawPlan?.cameraMotion),
       videoZoom:
         typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
           ? Math.min(1.6, Math.max(1, rawPlan.videoZoom))
@@ -464,13 +507,11 @@ export async function POST(request: Request): Promise<Response> {
               return {
                 startSec: start,
                 endSec: end,
+                speed: normalizeSegmentSpeed((segment as { speed?: unknown }).speed),
                 label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`
               };
             })
-            .filter(
-              (segment): segment is { startSec: number; endSec: number | null; label: string } =>
-                Boolean(segment)
-            )
+            .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
         : [],
       policy:
         rawPlan?.policy === "adaptive_window" ||
@@ -596,11 +637,14 @@ export async function POST(request: Request): Promise<Response> {
         templateId,
         publicDir: path.dirname(prepared.preparedPath),
         outputPath: remotionOutputPath,
+        sourceVideoFileName: path.basename(prepared.preparedPath),
         topText: computed.top,
         bottomText: computed.bottom,
         clipStartSec: prepared.clipStartSec,
         clipDurationSec: prepared.clipDurationSec,
         focusY,
+        mirrorEnabled: renderPlan.mirrorEnabled,
+        cameraMotion: renderPlan.cameraMotion,
         videoZoom: renderPlan.videoZoom,
         topFontScale: renderPlan.topFontScale,
         bottomFontScale: renderPlan.bottomFontScale,

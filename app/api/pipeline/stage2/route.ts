@@ -24,7 +24,12 @@ import {
   fetchOptionalYtDlpInfo,
   downloadSourceMedia
 } from "../../../../lib/source-acquisition";
-import { extractYtDlpErrorFromUnknown, isSupportedUrl, sanitizeFileName } from "../../../../lib/ytdlp";
+import {
+  extractYtDlpErrorFromUnknown,
+  isSupportedUrl,
+  normalizeSupportedUrl,
+  sanitizeFileName
+} from "../../../../lib/ytdlp";
 import { getChannelById, getChatById, getDefaultChannel } from "../../../../lib/chat-history";
 import {
   requireAuth,
@@ -164,7 +169,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Передайте URL в теле запроса." }, { status: 400 });
   }
 
-  if (!isSupportedUrl(rawUrl)) {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
+
+  if (!isSupportedUrl(sourceUrl)) {
     return Response.json(
       {
         error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
@@ -186,7 +193,7 @@ export async function POST(request: Request): Promise<Response> {
     const codexHome = integration.codexHomePath as string;
     await ensureCodexLoggedIn(codexHome);
 
-    const downloaded = await downloadVideoAndMetadata(rawUrl, tmpDir);
+    const downloaded = await downloadVideoAndMetadata(sourceUrl, tmpDir);
     const allComments = sortCommentsByPopularity(normalizeComments(downloaded.infoJson.comments));
     const promptComments = prepareCommentsForPrompt(allComments, {
       maxComments: 250,
@@ -208,7 +215,7 @@ export async function POST(request: Request): Promise<Response> {
     const descriptionPrompt =
       channel.descriptionPrompt?.trim() || STAGE2_DESCRIPTION_SYSTEM_PROMPT;
     const prompt = buildStage2Prompt({
-      sourceUrl: rawUrl,
+      sourceUrl,
       title: downloaded.title,
       comments: promptComments.included,
       omittedCommentsCount: promptComments.omittedCount,
@@ -247,7 +254,7 @@ export async function POST(request: Request): Promise<Response> {
     let seo: { description: string; tags: string } | null = null;
     try {
       const seoPrompt = buildStage2SeoPrompt({
-        sourceUrl: rawUrl,
+        sourceUrl,
         title: downloaded.title,
         comments: promptComments.included,
         omittedCommentsCount: promptComments.omittedCount,
@@ -298,7 +305,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(
       {
         source: {
-          url: rawUrl,
+          url: sourceUrl,
           title: downloaded.title,
           videoFileName: downloaded.videoFileName,
           videoSizeBytes: downloaded.videoSizeBytes,

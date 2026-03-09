@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { STAGE3_SEGMENT_SPEED_OPTIONS } from "../app/components/types";
 import { downloadSourceMedia } from "./source-acquisition";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { getTemplateComputed } from "./stage3-template";
@@ -11,6 +12,7 @@ const execFileAsync = promisify(execFile);
 
 const MOTION_SAMPLE_FPS = 8;
 const DEFAULT_CLIP_DURATION_SEC = 6;
+const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 type Stage3MediaProfile = "preview" | "render";
 
 type EncodeProfile = {
@@ -90,6 +92,13 @@ function parseNumeric(value: unknown): number | null {
 
 export function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeSegmentSpeed(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
+    return value;
+  }
+  return 1;
 }
 
 function makeEven(value: number, min = 2): number {
@@ -692,25 +701,29 @@ function normalizeSegments(params: {
   sourceDurationSec: number | null;
   clipStartSec: number;
   clipDurationSec: number;
-}): Array<{ startSec: number; endSec: number }> {
+}): Array<{ startSec: number; endSec: number; speed: number }> {
   const sourceDuration = params.sourceDurationSec ?? null;
   const raw = params.renderPlan.segments ?? [];
 
-  const fallbackWindow = (): Array<{ startSec: number; endSec: number }> => {
+  const fallbackWindow = (): Array<{ startSec: number; endSec: number; speed: number }> => {
     const start = clampClipStart(params.clipStartSec, sourceDuration, params.clipDurationSec);
     const end = sourceDuration
       ? Math.min(sourceDuration, start + params.clipDurationSec)
       : start + params.clipDurationSec;
-    return [{ startSec: start, endSec: Math.max(start + 0.05, end) }];
+    return [{ startSec: start, endSec: Math.max(start + 0.05, end), speed: 1 }];
   };
 
-  const normalized: Array<{ startSec: number; endSec: number }> = [];
+  const normalized: Array<{ startSec: number; endSec: number; speed: number }> = [];
   for (const segment of raw) {
     const start = clampNumber(segment.startSec, 0, sourceDuration ?? Number.POSITIVE_INFINITY);
     const endRaw = segment.endSec ?? sourceDuration ?? start + params.clipDurationSec;
     const end = clampNumber(endRaw, start + 0.05, sourceDuration ?? endRaw);
     if (end > start + 0.03) {
-      normalized.push({ startSec: start, endSec: end });
+      normalized.push({
+        startSec: start,
+        endSec: end,
+        speed: normalizeSegmentSpeed(segment.speed)
+      });
     }
   }
 
@@ -720,7 +733,7 @@ function normalizeSegments(params: {
 
   if (params.renderPlan.policy === "full_source_normalize") {
     if (sourceDuration && sourceDuration > 0.05) {
-      return [{ startSec: 0, endSec: sourceDuration }];
+      return [{ startSec: 0, endSec: sourceDuration, speed: 1 }];
     }
     return fallbackWindow();
   }
@@ -742,7 +755,7 @@ function normalizeSegments(params: {
 
     const start = clampNumber(params.clipStartSec, 0, Math.max(0, sourceDuration - windowDuration));
     const end = start + windowDuration;
-    return [{ startSec: start, endSec: end }];
+    return [{ startSec: start, endSec: end, speed: 1 }];
   }
 
   return fallbackWindow();
@@ -751,46 +764,76 @@ function normalizeSegments(params: {
 async function extractSegmentsToFiles(
   sourcePath: string,
   tmpDir: string,
-  segments: Array<{ startSec: number; endSec: number }>,
+  segments: Array<{ startSec: number; endSec: number; speed: number }>,
   profile: Stage3MediaProfile
 ): Promise<string[]> {
   const encode = getEncodeProfile(profile);
   const previewScaleFilter =
     profile === "preview" ? "scale=540:-2:force_original_aspect_ratio=decrease,setsar=1" : null;
   const outputs: string[] = [];
+  const sourceHasAudio = await probeHasAudio(sourcePath);
 
   for (let i = 0; i < segments.length; i += 1) {
     const segment = segments[i];
     const output = path.join(tmpDir, `seg-${i + 1}.mp4`);
-    await execFileAsync(
-      "ffmpeg",
-      [
-        "-y",
-        "-ss",
-        segment.startSec.toFixed(3),
-        "-to",
-        segment.endSec.toFixed(3),
-        "-i",
-        sourcePath,
-        ...(previewScaleFilter ? ["-vf", previewScaleFilter] : []),
-        "-c:v",
-        "libx264",
-        "-preset",
-        encode.preset,
-        "-crf",
-        encode.crf,
-        "-threads",
-        encode.threads,
-        "-c:a",
-        "aac",
-        "-ar",
-        "48000",
-        "-ac",
-        "2",
-        output
-      ],
-      { timeout: 2 * 60_000, maxBuffer: 1024 * 1024 * 16 }
+    const speed = normalizeSegmentSpeed(segment.speed);
+    const videoFilters: string[] = [];
+    if (previewScaleFilter) {
+      videoFilters.push(previewScaleFilter);
+    }
+    if (Math.abs(speed - 1) > 0.001) {
+      videoFilters.push(`setpts=PTS/${speed.toFixed(6)}`);
+    }
+
+    const args = [
+      "-y",
+      "-ss",
+      segment.startSec.toFixed(3),
+      "-to",
+      segment.endSec.toFixed(3),
+      "-i",
+      sourcePath
+    ];
+
+    if (Math.abs(speed - 1) > 0.001 && sourceHasAudio) {
+      args.push(
+        "-filter_complex",
+        `[0:v]${videoFilters.join(",")}[v];[0:a]${buildAtempoChain(speed)}[a]`,
+        "-map",
+        "[v]",
+        "-map",
+        "[a]"
+      );
+    } else if (videoFilters.length > 0) {
+      args.push("-vf", videoFilters.join(","));
+      if (!sourceHasAudio) {
+        args.push("-an");
+      }
+    } else if (!sourceHasAudio) {
+      args.push("-an");
+    }
+
+    args.push(
+      "-c:v",
+      "libx264",
+      "-preset",
+      encode.preset,
+      "-crf",
+      encode.crf,
+      "-threads",
+      encode.threads
     );
+
+    if (sourceHasAudio) {
+      args.push("-c:a", "aac", "-ar", "48000", "-ac", "2");
+    }
+
+    args.push(output);
+
+    await execFileAsync("ffmpeg", args, {
+      timeout: 2 * 60_000,
+      maxBuffer: 1024 * 1024 * 16
+    });
     outputs.push(output);
   }
 
@@ -963,19 +1006,57 @@ async function ensureAudioTrack(inputPath: string, tmpDir: string, durationSec?:
   return output;
 }
 
+async function replaceAudioWithSilence(
+  inputPath: string,
+  tmpDir: string,
+  durationSec: number
+): Promise<string> {
+  const output = path.join(tmpDir, "clip-silent.mp4");
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      inputPath,
+      "-f",
+      "lavfi",
+      "-t",
+      durationSec.toFixed(3),
+      "-i",
+      "anullsrc=channel_layout=stereo:sample_rate=48000",
+      "-map",
+      "0:v:0",
+      "-map",
+      "1:a:0",
+      "-c:v",
+      "copy",
+      "-c:a",
+      "aac",
+      "-shortest",
+      output
+    ],
+    { timeout: 60_000, maxBuffer: 1024 * 1024 * 8 }
+  );
+  return output;
+}
+
 async function mixMusicIfNeeded(params: {
   inputPath: string;
   tmpDir: string;
   durationSec: number;
   audioMode: "source_only" | "source_plus_music";
+  sourceAudioEnabled: boolean;
   musicGain?: number;
   musicFilePath?: string | null;
 }): Promise<string> {
+  const withAudio = params.sourceAudioEnabled
+    ? await ensureAudioTrack(params.inputPath, params.tmpDir, params.durationSec)
+    : await replaceAudioWithSilence(params.inputPath, params.tmpDir, params.durationSec);
+
   if (params.audioMode !== "source_plus_music") {
-    return params.inputPath;
+    return withAudio;
   }
 
-  const withAudio = await ensureAudioTrack(params.inputPath, params.tmpDir, params.durationSec);
   const generatedMusicPath = path.join(params.tmpDir, "music-bed.wav");
   const output = path.join(params.tmpDir, "clip-music.mp4");
   const musicGain = clampNumber(params.musicGain ?? 0.65, 0, 1);
@@ -1079,6 +1160,7 @@ export async function prepareStage3SourceClip(params: {
     tmpDir: params.tmpDir,
     durationSec: params.renderPlan.targetDurationSec,
     audioMode: params.renderPlan.audioMode,
+    sourceAudioEnabled: params.renderPlan.sourceAudioEnabled,
     musicGain: params.renderPlan.musicGain,
     musicFilePath: params.musicFilePath
   });

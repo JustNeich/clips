@@ -8,7 +8,8 @@ import {
   createYtDlpAuthContext,
   extractYtDlpErrorFromUnknown,
   getYtDlpError,
-  isSupportedUrl
+  isSupportedUrl,
+  normalizeSupportedUrl
 } from "../../../lib/ytdlp";
 import { requireRuntimeTool } from "../../../lib/runtime-capabilities";
 
@@ -24,7 +25,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Передайте URL в теле запроса." }, { status: 400 });
   }
 
-  if (!isSupportedUrl(rawUrl)) {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
+
+  if (!isSupportedUrl(sourceUrl)) {
     return Response.json(
       {
         error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
@@ -48,7 +51,7 @@ export async function POST(request: Request): Promise<Response> {
       "--write-comments",
       "-o",
       outputTemplate,
-      rawUrl
+      sourceUrl
     ];
 
     await execFileAsync(ytDlpPath, args, {

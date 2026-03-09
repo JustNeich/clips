@@ -1,9 +1,14 @@
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import {
   deleteChannelAssetById,
   getChannelAssetById,
   updateChannelById
 } from "../../../../../../lib/chat-history";
-import { deleteChannelAssetFile, readChannelAssetFile } from "../../../../../../lib/channel-assets";
+import {
+  deleteChannelAssetFile,
+  resolveChannelAssetFile
+} from "../../../../../../lib/channel-assets";
 import {
   requireAuth,
   requireChannelSetupEdit,
@@ -24,15 +29,16 @@ export async function GET(_request: Request, context: Context): Promise<Response
     if (!asset) {
       return Response.json({ error: "Asset not found." }, { status: 404 });
     }
-    const file = await readChannelAssetFile({ channelId: id, fileName: asset.fileName });
+    const file = await resolveChannelAssetFile({ channelId: id, fileName: asset.fileName });
     if (!file) {
       return Response.json({ error: "Asset file unavailable." }, { status: 404 });
     }
 
-    return new Response(file.buffer, {
+    return new Response(Readable.toWeb(createReadStream(file.filePath)) as ReadableStream, {
       status: 200,
       headers: {
         "Content-Type": asset.mimeType,
+        "Content-Length": String(file.size),
         "Cache-Control": "public, max-age=86400, immutable"
       }
     });

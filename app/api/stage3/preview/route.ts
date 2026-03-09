@@ -8,7 +8,7 @@ import {
   prepareStage3SourceClip,
   sanitizeClipDuration
 } from "../../../../lib/stage3-media-agent";
-import { extractYtDlpErrorFromUnknown, isSupportedUrl } from "../../../../lib/ytdlp";
+import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 import { Stage3RenderPlan } from "../../../../lib/stage3-agent";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChannelAssetById } from "../../../../lib/chat-history";
@@ -18,6 +18,8 @@ import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guar
 import { summarizeUserFacingError } from "../../../../lib/ui-error";
 import {
   ensureStage3SourceCached,
+  isStage3HostedBusyError,
+  isStage3HostedRuntime,
   pruneStage3SourceCache,
   runHostedStage3HeavyJob
 } from "../../../../lib/stage3-server-control";
@@ -28,6 +30,7 @@ const PREVIEW_CACHE_ROOT = path.join(os.tmpdir(), "clip-stage3-cache");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
 const DEFAULT_TEXT_SCALE = 1.25;
 const previewInflight = new Map<string, Promise<void>>();
+const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 
 type PreviewBody = {
   sourceUrl?: string;
@@ -48,6 +51,17 @@ function parseFiniteNumber(value: unknown): number | null {
     return value;
   }
   return null;
+}
+
+function normalizeSegmentSpeed(value: unknown): Stage3RenderPlan["segments"][number]["speed"] {
+  if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
+    return value as Stage3RenderPlan["segments"][number]["speed"];
+  }
+  return 1;
+}
+
+function normalizeCameraMotion(value: unknown): Stage3RenderPlan["cameraMotion"] {
+  return value === "top_to_bottom" || value === "bottom_to_top" ? value : "disabled";
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -121,7 +135,10 @@ function normalizeRenderPlan(
       rawPlan?.audioMode === "source_only" || rawPlan?.audioMode === "source_plus_music"
         ? rawPlan.audioMode
         : "source_only",
+    sourceAudioEnabled: Boolean(rawPlan?.sourceAudioEnabled ?? true),
     smoothSlowMo: Boolean(rawPlan?.smoothSlowMo),
+    mirrorEnabled: Boolean(rawPlan?.mirrorEnabled ?? true),
+    cameraMotion: normalizeCameraMotion(rawPlan?.cameraMotion),
     videoZoom:
       typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
         ? Math.min(1.6, Math.max(1, rawPlan.videoZoom))
@@ -166,12 +183,11 @@ function normalizeRenderPlan(
             return {
               startSec: start,
               endSec: end,
+              speed: normalizeSegmentSpeed((segment as { speed?: unknown }).speed),
               label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`
             };
           })
-          .filter(
-            (segment): segment is { startSec: number; endSec: number | null; label: string } => Boolean(segment)
-          )
+          .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
       : [],
     policy:
       rawPlan?.policy === "adaptive_window" ||
@@ -224,9 +240,13 @@ export async function POST(request: Request): Promise<Response> {
   if (!rawSource) {
     return Response.json({ error: "Передайте sourceUrl в теле запроса." }, { status: 400 });
   }
-  if (!isSupportedUrl(rawSource)) {
+  const sourceUrl = normalizeSupportedUrl(rawSource);
+  if (!isSupportedUrl(sourceUrl)) {
     return Response.json(
-      { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
+      {
+        error:
+          "Не удалось подготовить исходное видео для предпросмотра. Проверьте ссылку на ролик из Шага 1."
+      },
       { status: 400 }
     );
   }
@@ -237,7 +257,7 @@ export async function POST(request: Request): Promise<Response> {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
     await fs.mkdir(PREVIEW_CACHE_DIR, { recursive: true });
-    const source = await ensureStage3SourceCached(rawSource);
+    const source = await ensureStage3SourceCached(sourceUrl);
     const clipDurationSec = sanitizeClipDuration(body?.clipDurationSec);
     const snapshot = body?.snapshot;
 
@@ -284,6 +304,16 @@ export async function POST(request: Request): Promise<Response> {
     if (running) {
       await running;
     } else {
+      if (isStage3HostedRuntime()) {
+        return Response.json(
+          {
+            error:
+              "Черновой предпросмотр временно недоступен на хостинге во время подготовки видео. Повторите через минуту."
+          },
+          { status: 503 }
+        );
+      }
+
       const task = (async () => {
         const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-"));
         try {
@@ -329,6 +359,14 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     if (error instanceof Response) {
       return error;
+    }
+    if (isStage3HostedBusyError(error)) {
+      return Response.json(
+        {
+          error: "Хостинг занят другой тяжёлой задачей Stage 3. Повторите через минуту."
+        },
+        { status: 503 }
+      );
     }
     const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
     if (ytdlpMessage) {

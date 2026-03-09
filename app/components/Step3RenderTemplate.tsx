@@ -11,7 +11,9 @@ import {
 import {
   ChannelAsset,
   Stage3AgentConversationItem,
+  Stage3CameraMotion,
   Stage3Segment,
+  STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionRecord,
   Stage3Version
 } from "./types";
@@ -61,9 +63,12 @@ type Step3RenderTemplateProps = {
   clipDurationSec: number;
   sourceDurationSec: number | null;
   focusY: number;
+  cameraMotion: Stage3CameraMotion;
+  mirrorEnabled: boolean;
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
+  sourceAudioEnabled: boolean;
   musicGain: number;
   onRender: () => void;
   onExport: () => void;
@@ -83,11 +88,16 @@ type Step3RenderTemplateProps = {
   onFragmentStateChange: (value: { segments: Stage3Segment[]; compressionEnabled: boolean }) => void;
   onClipStartChange: (value: number) => void;
   onFocusYChange: (value: number) => void;
+  onCameraMotionChange: (value: Stage3CameraMotion) => void;
+  onMirrorEnabledChange: (value: boolean) => void;
   onVideoZoomChange: (value: number) => void;
   onTopFontScaleChange: (value: number) => void;
   onBottomFontScaleChange: (value: number) => void;
+  onSourceAudioEnabledChange: (value: boolean) => void;
   onMusicGainChange: (value: number) => void;
 };
+
+const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
 function formatTimeSec(value: number): string {
   const total = Math.max(0, value);
@@ -125,6 +135,51 @@ function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function normalizeSegmentSpeed(value: unknown): Stage3Segment["speed"] {
+  if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
+    return value as Stage3Segment["speed"];
+  }
+  return 1;
+}
+
+function formatSegmentSpeed(speed: Stage3Segment["speed"]): string {
+  return Number.isInteger(speed) ? `x${speed}` : `x${speed.toFixed(1)}`;
+}
+
+function resolveAnimatedFocusY(
+  baseFocusY: number,
+  cameraMotion: Stage3CameraMotion,
+  progress: number
+): number {
+  const focus = clamp(baseFocusY, 0.12, 0.88);
+  if (cameraMotion === "disabled") {
+    return focus;
+  }
+
+  const sweep = 0.28;
+  const start = clamp(focus - sweep / 2, 0.12, 0.88 - sweep);
+  const end = clamp(start + sweep, 0.12, 0.88);
+  const t = clamp(progress, 0, 1);
+  const easedT = 0.5 - Math.cos(t * Math.PI) / 2;
+  // Blend eased motion with linear drift so the camera starts moving immediately
+  // and does not visually "stall" at loop boundaries.
+  const motionT = t * 0.72 + easedT * 0.28;
+  return cameraMotion === "top_to_bottom"
+    ? start + (end - start) * motionT
+    : end - (end - start) * motionT;
+}
+
+function formatCameraMotion(value: Stage3CameraMotion): string {
+  switch (value) {
+    case "top_to_bottom":
+      return "Сверху вниз";
+    case "bottom_to_top":
+      return "Снизу вверх";
+    default:
+      return "Отключено";
+  }
+}
+
 function normalizeEditorSegments(
   segments: Stage3Segment[],
   sourceDurationSec: number | null
@@ -146,6 +201,7 @@ function normalizeEditorSegments(
       return {
         startSec: roundToTenth(startSec),
         endSec: roundToTenth(endSec),
+        speed: normalizeSegmentSpeed(segment.speed),
         label:
           typeof segment.label === "string" && segment.label.trim()
             ? segment.label.trim()
@@ -165,7 +221,7 @@ function normalizeEditorSegments(
 function sumSegmentsDuration(segments: Stage3Segment[], sourceDurationSec: number | null): number {
   return segments.reduce((total, segment) => {
     const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
-    return total + Math.max(0, endSec - segment.startSec);
+    return total + Math.max(0, endSec - segment.startSec) / normalizeSegmentSpeed(segment.speed);
   }, 0);
 }
 
@@ -183,12 +239,12 @@ function trimSegmentsToDuration(
     }
     const segmentEnd = segment.endSec ?? sourceDurationSec ?? segment.startSec;
     const segmentDuration = Math.max(0.1, segmentEnd - segment.startSec);
-    const keepDuration = Math.min(segmentDuration, remaining);
+    const keepDuration = Math.min(segmentDuration, remaining * segment.speed);
     trimmed.push({
       ...segment,
       endSec: roundToTenth(segment.startSec + keepDuration)
     });
-    remaining -= keepDuration;
+    remaining -= keepDuration / segment.speed;
   }
 
   return normalizeEditorSegments(trimmed, sourceDurationSec);
@@ -222,6 +278,7 @@ function PreviewClipVideo({
   className,
   objectPosition,
   videoZoom,
+  mirrorEnabled,
   muted,
   videoRef,
   isPlaying,
@@ -234,6 +291,7 @@ function PreviewClipVideo({
   className: string;
   objectPosition?: string;
   videoZoom?: number;
+  mirrorEnabled: boolean;
   muted: boolean;
   videoRef: MutableRefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
@@ -241,6 +299,9 @@ function PreviewClipVideo({
   onPositionChange?: (sec: number) => void;
   onClipEnd?: () => void;
 }) {
+  const frameLoopTokenRef = useRef<number | null>(null);
+  const lastPublishedTimeRef = useRef(0);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) {
@@ -248,12 +309,8 @@ function PreviewClipVideo({
     }
 
     const seekToStart = () => {
+      lastPublishedTimeRef.current = 0;
       video.currentTime = 0;
-      if (isPlaying) {
-        void video.play().catch(() => undefined);
-      } else {
-        video.pause();
-      }
     };
 
     if (video.readyState >= 1) {
@@ -265,7 +322,7 @@ function PreviewClipVideo({
     return () => {
       video.removeEventListener("loadedmetadata", seekToStart);
     };
-  }, [sourceUrl, isPlaying, videoRef]);
+  }, [sourceUrl, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -273,32 +330,118 @@ function PreviewClipVideo({
       return;
     }
     if (isPlaying) {
+      if (video.ended || video.currentTime >= Math.max(0, clipDurationSec - 0.02)) {
+        lastPublishedTimeRef.current = 0;
+        video.currentTime = 0;
+        onPositionChange?.(0);
+      }
       void video.play().catch(() => undefined);
     } else {
       video.pause();
     }
-  }, [isPlaying, videoRef]);
+  }, [clipDurationSec, isPlaying, onPositionChange, videoRef]);
 
-  const handleTimeUpdate = () => {
+  useEffect(() => {
     const video = videoRef.current;
     if (!video) {
       return;
     }
-    onPositionChange?.(video.currentTime);
 
-    if (video.currentTime >= clipDurationSec - 0.02) {
-      if (loopEnabled) {
+    const handleEnded = () => {
+      lastPublishedTimeRef.current = 0;
+      if (loopEnabled && isPlaying) {
         video.currentTime = 0;
         onPositionChange?.(0);
-        if (isPlaying) {
-          void video.play().catch(() => undefined);
-        }
-      } else {
-        video.pause();
-        onClipEnd?.();
+        void video.play().catch(() => undefined);
+        return;
       }
+      onClipEnd?.();
+    };
+
+    video.addEventListener("ended", handleEnded);
+    return () => {
+      video.removeEventListener("ended", handleEnded);
+    };
+  }, [isPlaying, loopEnabled, onClipEnd, onPositionChange, videoRef]);
+
+  const publishPosition = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return false;
     }
-  };
+    const currentTime = video.currentTime;
+    const previousTime = lastPublishedTimeRef.current;
+    lastPublishedTimeRef.current = currentTime;
+
+    if (loopEnabled && currentTime + 1 / 60 < previousTime) {
+      onPositionChange?.(0);
+    }
+    onPositionChange?.(currentTime);
+
+    if (!loopEnabled && currentTime >= clipDurationSec - 0.02) {
+      video.pause();
+      lastPublishedTimeRef.current = 0;
+      onClipEnd?.();
+      return false;
+    }
+    return true;
+  }, [clipDurationSec, loopEnabled, onClipEnd, onPositionChange, videoRef]);
+
+  useEffect(() => {
+    const video = videoRef.current as
+      | (HTMLVideoElement & {
+          requestVideoFrameCallback?: (callback: () => void) => number;
+          cancelVideoFrameCallback?: (handle: number) => void;
+        })
+      | null;
+    if (!video || !isPlaying) {
+      return;
+    }
+
+    let rafId: number | null = null;
+    let cancelled = false;
+
+    const cleanupScheduled = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (frameLoopTokenRef.current !== null && video.cancelVideoFrameCallback) {
+        video.cancelVideoFrameCallback(frameLoopTokenRef.current);
+        frameLoopTokenRef.current = null;
+      }
+    };
+
+    const schedule = () => {
+      if (cancelled || video.paused) {
+        return;
+      }
+      if (video.requestVideoFrameCallback) {
+        frameLoopTokenRef.current = video.requestVideoFrameCallback(() => {
+          frameLoopTokenRef.current = null;
+          if (!publishPosition()) {
+            return;
+          }
+          schedule();
+        });
+        return;
+      }
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        if (!publishPosition()) {
+          return;
+        }
+        schedule();
+      });
+    };
+
+    schedule();
+
+    return () => {
+      cancelled = true;
+      cleanupScheduled();
+    };
+  }, [isPlaying, publishPosition, videoRef]);
 
   return (
     <video
@@ -306,15 +449,879 @@ function PreviewClipVideo({
       className={className}
       src={sourceUrl}
       muted={muted}
+      loop={loopEnabled}
       playsInline
       preload="metadata"
-      onTimeUpdate={handleTimeUpdate}
       style={{
         ...(objectPosition ? { objectPosition } : {}),
-        transform: `scale(${Math.min(1.6, Math.max(1, videoZoom ?? 1)).toFixed(3)})`,
+        transform: `scale(${(
+          Math.min(1.6, Math.max(1, videoZoom ?? 1)) * (mirrorEnabled ? -1 : 1)
+        ).toFixed(3)}, ${Math.min(1.6, Math.max(1, videoZoom ?? 1)).toFixed(3)})`,
         transformOrigin: "center center"
       }}
     />
+  );
+}
+
+type Stage3InternalPass = Stage3Version["internalPasses"][number];
+
+type Stage3LivePreviewPanelProps = {
+  templateId: string;
+  channelName: string;
+  channelUsername: string;
+  avatarUrl: string | null;
+  previewVideoUrl: string | null;
+  backgroundAssetUrl: string | null;
+  backgroundAssetMimeType: string | null;
+  previewVersion: Stage3Version | null;
+  selectedVersion: Stage3Version | null;
+  selectedVersionId: string | null;
+  selectedPass: Stage3InternalPass | null;
+  selectedPassIndex: number;
+  displayVersions: Stage3Version[];
+  summaryLines: string[];
+  isPreviewLoading: boolean;
+  previewNotice: string | null;
+  clipDurationSec: number;
+  focusY: number;
+  cameraMotion: Stage3CameraMotion;
+  mirrorEnabled: boolean;
+  videoZoom: number;
+  templateConfig: ReturnType<typeof getTemplateById>;
+  previewComputed: ReturnType<typeof getTemplateComputed>;
+  onSelectVersionId: (runId: string) => void;
+  onSelectPassIndex: (index: number) => void;
+};
+
+function Stage3LivePreviewPanel({
+  templateId,
+  channelName,
+  channelUsername,
+  avatarUrl,
+  previewVideoUrl,
+  backgroundAssetUrl,
+  backgroundAssetMimeType,
+  previewVersion,
+  selectedVersion,
+  selectedVersionId,
+  selectedPass,
+  selectedPassIndex,
+  displayVersions,
+  summaryLines,
+  isPreviewLoading,
+  previewNotice,
+  clipDurationSec,
+  focusY,
+  cameraMotion,
+  mirrorEnabled,
+  videoZoom,
+  templateConfig,
+  previewComputed,
+  onSelectVersionId,
+  onSelectPassIndex
+}: Stage3LivePreviewPanelProps) {
+  const slotPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const backgroundPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const previewCanvasRef = useRef<HTMLDivElement | null>(null);
+  const timelineTrackRef = useRef<HTMLDivElement | null>(null);
+  const isPlayingRef = useRef(true);
+  const isTimelineScrubbingRef = useRef(false);
+
+  const [isTimelineScrubbing, setIsTimelineScrubbing] = useState(false);
+  const [timelineSec, setTimelineSec] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
+  const [loopEnabled, setLoopEnabled] = useState(true);
+  const [zoomMode, setZoomMode] = useState<"fit" | 75 | 100>("fit");
+  const [versionsDrawerOpen, setVersionsDrawerOpen] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 720, height: 1280 });
+
+  const isTurboTemplate = templateId === TURBO_FACE_TEMPLATE_ID;
+  const frameWidth = templateConfig.frame.width;
+  const frameHeight = templateConfig.frame.height;
+  const cardLeft = templateConfig.card.x;
+  const cardTop = templateConfig.card.y;
+  const cardWidth = templateConfig.card.width;
+  const cardHeight = templateConfig.card.height;
+  const bottomMetaHeight = templateConfig.slot.bottomMetaHeight;
+  const topPaddingTop = templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY;
+  const topPaddingBottom = templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY;
+  const bottomTextPaddingTop =
+    templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY;
+  const bottomTextPaddingBottom =
+    templateConfig.slot.bottomTextPaddingBottom ?? templateConfig.slot.bottomTextPaddingY;
+  const bottomTextPaddingLeft =
+    templateConfig.slot.bottomTextPaddingLeft ?? templateConfig.slot.bottomTextPaddingX;
+  const bottomTextPaddingRight =
+    templateConfig.slot.bottomTextPaddingRight ?? templateConfig.slot.bottomTextPaddingX;
+  const videoHeight = previewComputed.videoHeight;
+
+  const fitScale = useMemo(() => {
+    const width = canvasSize.width;
+    const height = canvasSize.height;
+    if (!width || !height) {
+      return 0.01;
+    }
+    const usableWidth = Math.max(1, width - 20);
+    const usableHeight = Math.max(1, height - 20);
+    return clamp(Math.min(usableWidth / frameWidth, usableHeight / frameHeight), 0.01, 1);
+  }, [canvasSize.height, canvasSize.width, frameHeight, frameWidth]);
+
+  const previewScaleMultiplier = useMemo(() => {
+    if (zoomMode === "fit") {
+      return 1;
+    }
+    return zoomMode / 100;
+  }, [zoomMode]);
+
+  const layoutScale = fitScale * previewScaleMultiplier;
+  const previewProgress = clipDurationSec > 0 ? clamp(timelineSec / clipDurationSec, 0, 1) : 0;
+  const animatedFocusY = resolveAnimatedFocusY(focusY, cameraMotion, previewProgress);
+  const objectPosition = `50% ${(animatedFocusY * 100).toFixed(3)}%`;
+  const timelinePercent = clamp((timelineSec / Math.max(0.01, clipDurationSec)) * 100, 0, 100);
+  const backgroundIsVideo =
+    Boolean(backgroundAssetUrl) &&
+    ((backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/") ||
+      /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(backgroundAssetUrl ?? ""));
+  const summaryLine = summaryLines[0] ?? "Используется текущий live draft без сохраненной версии.";
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    isTimelineScrubbingRef.current = isTimelineScrubbing;
+  }, [isTimelineScrubbing]);
+
+  useEffect(() => {
+    const element = previewCanvasRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateSize = () => {
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 120 || rect.height < 120) {
+        return;
+      }
+      setCanvasSize((prev) => {
+        if (Math.abs(prev.width - rect.width) < 1 && Math.abs(prev.height - rect.height) < 1) {
+          return prev;
+        }
+        return {
+          width: rect.width,
+          height: rect.height
+        };
+      });
+    };
+
+    updateSize();
+
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    setTimelineSec(0);
+  }, [previewVideoUrl]);
+
+  const syncBackgroundTo = useCallback((sec: number) => {
+    const bg = backgroundPreviewRef.current;
+    if (!bg || bg.readyState < 1) {
+      return;
+    }
+    const duration = Number.isFinite(bg.duration) && bg.duration > 0 ? bg.duration : null;
+    const next = duration ? sec % duration : sec;
+    if (Math.abs(bg.currentTime - next) > 0.08) {
+      bg.currentTime = next;
+    }
+    if (isPlayingRef.current && bg.paused) {
+      void bg.play().catch(() => undefined);
+    }
+  }, []);
+
+  const handlePreviewPositionChange = useCallback(
+    (sec: number) => {
+      if (!isTimelineScrubbingRef.current) {
+        setTimelineSec((prev) => (Math.abs(prev - sec) >= 1 / 240 ? sec : prev));
+      }
+      syncBackgroundTo(sec);
+    },
+    [syncBackgroundTo]
+  );
+
+  const handlePreviewClipEnd = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    const bg = backgroundPreviewRef.current;
+    if (!bg) {
+      return;
+    }
+    if (isPlaying) {
+      void bg.play().catch(() => undefined);
+    } else {
+      bg.pause();
+    }
+  }, [isPlaying, backgroundAssetUrl, previewVideoUrl]);
+
+  const seekTimeline = useCallback(
+    (value: number) => {
+      const clamped = clamp(value, 0, clipDurationSec);
+      setTimelineSec(clamped);
+      const video = slotPreviewRef.current;
+      if (video) {
+        video.currentTime = clamped;
+      }
+      syncBackgroundTo(clamped);
+    },
+    [clipDurationSec, syncBackgroundTo]
+  );
+
+  const seekTimelineAtClientX = useCallback(
+    (clientX: number) => {
+      const track = timelineTrackRef.current;
+      if (!track) {
+        return;
+      }
+      const rect = track.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+      const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
+      seekTimeline(ratio * clipDurationSec);
+    },
+    [clipDurationSec, seekTimeline]
+  );
+
+  useEffect(() => {
+    if (!isTimelineScrubbing) {
+      return;
+    }
+
+    const handleMove = (event: PointerEvent) => {
+      seekTimelineAtClientX(event.clientX);
+    };
+    const handleEnd = (event: PointerEvent) => {
+      seekTimelineAtClientX(event.clientX);
+      setIsTimelineScrubbing(false);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+    };
+  }, [isTimelineScrubbing, seekTimelineAtClientX]);
+
+  const handleTogglePlay = useCallback(() => {
+    const video = slotPreviewRef.current;
+    if (!video) {
+      setIsPlaying((prev) => !prev);
+      return;
+    }
+
+    if (video.paused) {
+      setIsPlaying(true);
+      void video.play().catch(() => undefined);
+      return;
+    }
+
+    video.pause();
+    setIsPlaying(false);
+  }, []);
+
+  const handleFrameStep = useCallback(
+    (direction: -1 | 1) => {
+      const frame = 1 / 30;
+      setIsPlaying(false);
+      const video = slotPreviewRef.current;
+      if (video) {
+        video.pause();
+      }
+      seekTimeline(timelineSec + frame * direction);
+    },
+    [seekTimeline, timelineSec]
+  );
+
+  const versionsDrawer = useMemo(() => {
+    if (!versionsDrawerOpen) {
+      return null;
+    }
+
+    return (
+      <aside className="versions-drawer" aria-label="Панель истории версий">
+        <header className="versions-drawer-head">
+          <h4>История версий</h4>
+          <button type="button" className="btn btn-ghost" onClick={() => setVersionsDrawerOpen(false)}>
+            Закрыть
+          </button>
+        </header>
+
+        <div className="versions-drawer-list">
+          {displayVersions.length === 0 ? (
+            <p className="subtle-text">Версий пока нет.</p>
+          ) : (
+            displayVersions.map((version) => {
+              const active = version.runId === selectedVersionId;
+              return (
+                <button
+                  key={version.runId}
+                  type="button"
+                  className={`version-item ${active ? "active" : ""}`}
+                  onClick={() => onSelectVersionId(version.runId)}
+                >
+                  <div className="version-item-head">
+                    <strong>v{version.versionNo}</strong>
+                    <small>{formatDateShort(version.createdAt)}</small>
+                  </div>
+                  <p>{shortPrompt(version.prompt)}</p>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {selectedVersion ? (
+          <details className="advanced-block internal-passes-inline">
+            <summary>Internal passes ({selectedVersion.internalPasses.length})</summary>
+            <div className="advanced-content">
+              <div className="pass-tabs-scroll">
+                <div className="passes-tabs">
+                  {selectedVersion.internalPasses.map((pass, index) => (
+                    <button
+                      key={`${selectedVersion.runId}-${pass.pass}`}
+                      type="button"
+                      className={`pass-tab ${index === selectedPassIndex ? "active" : ""}`}
+                      onClick={() => onSelectPassIndex(index)}
+                    >
+                      {pass.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedPass ? (
+                <div className="pass-details">
+                  <p className="run-summary">
+                    <strong>{selectedPass.summary}</strong>
+                  </p>
+                  <ul className="pass-changes">
+                    {selectedPass.changes.map((change, index) => (
+                      <li key={`${selectedVersion.runId}-${selectedPass.pass}-${index}`}>{change}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
+      </aside>
+    );
+  }, [
+    displayVersions,
+    onSelectPassIndex,
+    onSelectVersionId,
+    selectedPass,
+    selectedPassIndex,
+    selectedVersion,
+    selectedVersionId,
+    versionsDrawerOpen
+  ]);
+
+  return (
+    <div className="preview-shell preview-shell-stage3">
+      <header className="preview-header preview-header-wrap">
+        <div>
+          <h3>Живой предпросмотр</h3>
+          <p className="subtle-text">
+            {previewVersion ? `Версия v${previewVersion.versionNo}` : "Черновой живой предпросмотр"}
+          </p>
+          <p className="subtle-text preview-summary-inline">{summaryLine}</p>
+        </div>
+
+        <div className="preview-toolbar">
+          <button type="button" className="btn btn-ghost" onClick={handleTogglePlay}>
+            {isPlaying ? "Пауза" : "Пуск"}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-ghost ${!isMuted ? "is-active" : ""}`}
+            onClick={() => setIsMuted((prev) => !prev)}
+          >
+            {!isMuted ? "Звук включен" : "Звук выключен"}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-ghost ${loopEnabled ? "is-active" : ""}`}
+            onClick={() => setLoopEnabled((prev) => !prev)}
+          >
+            Цикл
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => handleFrameStep(-1)}
+            aria-label="Предыдущий кадр"
+          >
+            −1f
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => handleFrameStep(1)}
+            aria-label="Следующий кадр"
+          >
+            +1f
+          </button>
+
+          <div className="zoom-group" role="group" aria-label="Масштаб предпросмотра">
+            {(["fit", 75, 100] as const).map((value) => (
+              <button
+                key={String(value)}
+                type="button"
+                className={`zoom-btn ${zoomMode === value ? "active" : ""}`}
+                onClick={() => setZoomMode(value)}
+              >
+                {value === "fit" ? "Вписать" : `${value}%`}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setVersionsDrawerOpen((prev) => !prev)}
+          >
+            Версии ({displayVersions.length})
+          </button>
+        </div>
+      </header>
+
+      <div className="stage3-main">
+        <div className="preview-stage stage3-preview-stage">
+          <div ref={previewCanvasRef} className="stage3-canvas">
+            <div
+              className="stage3-zoom-wrap"
+              style={{ width: frameWidth, height: frameHeight, transform: `scale(${layoutScale})` }}
+            >
+              <div className="phone-preview" style={{ width: frameWidth, height: frameHeight }}>
+                {backgroundAssetUrl ? (
+                  backgroundIsVideo ? (
+                    <video
+                      ref={backgroundPreviewRef}
+                      className="preview-bg-video preview-bg-custom"
+                      src={backgroundAssetUrl}
+                      muted
+                      loop
+                      playsInline
+                      preload="metadata"
+                      onLoadedMetadata={() => {
+                        syncBackgroundTo(timelineSec);
+                        if (isPlaying) {
+                          const bg = backgroundPreviewRef.current;
+                          if (bg) {
+                            void bg.play().catch(() => undefined);
+                          }
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="preview-bg-video preview-bg-custom-image"
+                      style={{ backgroundImage: `url(${backgroundAssetUrl})` }}
+                    />
+                  )
+                ) : previewVideoUrl ? (
+                  <video
+                    ref={backgroundPreviewRef}
+                    className="preview-bg-video"
+                    src={previewVideoUrl}
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    style={{
+                      objectPosition,
+                      transform: mirrorEnabled ? "scaleX(-1)" : undefined,
+                      transformOrigin: "center center"
+                    }}
+                    onLoadedMetadata={() => {
+                      syncBackgroundTo(timelineSec);
+                      if (isPlaying) {
+                        const bg = backgroundPreviewRef.current;
+                        if (bg) {
+                          void bg.play().catch(() => undefined);
+                        }
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="preview-bg-video preview-bg-fallback" />
+                )}
+
+                <div className="safe-area-guide" aria-hidden="true">
+                  <span>БЕЗОПАСНАЯ ОБЛАСТЬ</span>
+                </div>
+
+                {isTurboTemplate ? (
+                  <>
+                    <div
+                      className="preview-top"
+                      style={{
+                        position: "absolute",
+                        left: TURBO_FACE.top.x,
+                        top: TURBO_FACE.top.y,
+                        width: TURBO_FACE.top.width,
+                        height: previewComputed.topBlockHeight,
+                        borderRadius: TURBO_FACE.top.radius,
+                        backgroundColor: "#ffffff",
+                        boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
+                        border: "2px solid rgba(0,0,0,0.18)",
+                        padding: `${TURBO_FACE.top.paddingY}px ${TURBO_FACE.top.paddingX}px`
+                      }}
+                    >
+                      <p
+                        className="preview-text preview-text-top"
+                        style={{
+                          fontSize: previewComputed.topFont,
+                          WebkitLineClamp: TURBO_FACE.typography.top.maxLines,
+                          lineHeight: previewComputed.topLineHeight
+                        }}
+                      >
+                        {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
+                      </p>
+                    </div>
+
+                    <div
+                      className="preview-video"
+                      style={{
+                        position: "absolute",
+                        left: previewComputed.videoX,
+                        top: previewComputed.videoY,
+                        width: previewComputed.videoWidth,
+                        height: previewComputed.videoHeight
+                      }}
+                    >
+                      {previewVideoUrl ? (
+                        <PreviewClipVideo
+                          sourceUrl={previewVideoUrl}
+                          clipDurationSec={clipDurationSec}
+                          className="preview-slot-video"
+                          objectPosition={objectPosition}
+                          videoZoom={videoZoom}
+                          mirrorEnabled={mirrorEnabled}
+                          muted={isMuted}
+                          videoRef={slotPreviewRef}
+                          isPlaying={isPlaying}
+                          loopEnabled={loopEnabled}
+                          onPositionChange={handlePreviewPositionChange}
+                          onClipEnd={handlePreviewClipEnd}
+                        />
+                      ) : (
+                        <span>ВИДЕО</span>
+                      )}
+                    </div>
+
+                    <div
+                      className="preview-bottom"
+                      style={{
+                        position: "absolute",
+                        left: TURBO_FACE.bottom.x,
+                        top: TURBO_FACE.frame.height - TURBO_FACE.bottom.bottom - previewComputed.bottomBlockHeight,
+                        width: TURBO_FACE.bottom.width,
+                        height: previewComputed.bottomBlockHeight,
+                        borderRadius: TURBO_FACE.bottom.radius,
+                        backgroundColor: "#ffffff",
+                        boxShadow: "0 16px 36px rgba(0,0,0,0.26)",
+                        border: "2px solid rgba(0,0,0,0.18)"
+                      }}
+                    >
+                      <div
+                        className="preview-author"
+                        style={{
+                          height: TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2,
+                          padding: `${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
+                        }}
+                      >
+                        <div
+                          className="preview-author-avatar"
+                          style={{
+                            width: TURBO_FACE.author.avatarSize,
+                            height: TURBO_FACE.author.avatarSize,
+                            borderWidth: TURBO_FACE.author.avatarBorder,
+                            fontSize: Math.round(TURBO_FACE.author.avatarSize * 0.32),
+                            backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
+                            backgroundSize: avatarUrl ? "cover" : undefined,
+                            backgroundPosition: avatarUrl ? "center" : undefined
+                          }}
+                        >
+                          {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="preview-author-copy">
+                          <div className="preview-author-name-row">
+                            <span
+                              className="preview-author-name"
+                              style={{
+                                fontSize: TURBO_FACE.typography.authorName.font,
+                                lineHeight: TURBO_FACE.typography.authorName.lineHeight
+                              }}
+                            >
+                              {channelName}
+                            </span>
+                            <span
+                              className="preview-author-check"
+                              style={{
+                                width: TURBO_FACE.author.checkSize,
+                                height: TURBO_FACE.author.checkSize,
+                                fontSize: Math.round(TURBO_FACE.author.checkSize * 0.56)
+                              }}
+                            >
+                              ✓
+                            </span>
+                          </div>
+                          <span
+                            className="preview-author-handle"
+                            style={{
+                              fontSize: TURBO_FACE.typography.authorHandle.font,
+                              lineHeight: TURBO_FACE.typography.authorHandle.lineHeight,
+                              color: "#666666"
+                            }}
+                          >
+                            @{channelUsername}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        className="preview-bottom-body"
+                        style={{
+                          height:
+                            previewComputed.bottomBlockHeight -
+                            (TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2),
+                          padding: `0 ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
+                        }}
+                      >
+                        <p
+                          className="preview-text preview-text-bottom"
+                          style={{
+                            fontSize: previewComputed.bottomFont,
+                            WebkitLineClamp: TURBO_FACE.typography.bottom.maxLines,
+                            lineHeight: previewComputed.bottomLineHeight
+                          }}
+                        >
+                          {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div
+                    className="preview-card"
+                    style={{
+                      left: cardLeft,
+                      top: cardTop,
+                      width: cardWidth,
+                      height: cardHeight,
+                      borderRadius: templateConfig.card.radius,
+                      borderWidth: templateConfig.card.borderWidth,
+                      borderColor: templateConfig.card.borderColor
+                    }}
+                  >
+                    <div
+                      className="preview-top"
+                      style={{
+                        height: previewComputed.topBlockHeight,
+                        padding: `${topPaddingTop}px ${templateConfig.slot.topPaddingX}px ${topPaddingBottom}px`
+                      }}
+                    >
+                      <p
+                        className="preview-text preview-text-top"
+                        style={{
+                          fontSize: previewComputed.topFont,
+                          WebkitLineClamp: templateConfig.typography.top.maxLines,
+                          lineHeight: previewComputed.topLineHeight
+                        }}
+                      >
+                        {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
+                      </p>
+                    </div>
+
+                    <div className="preview-video" style={{ height: videoHeight }}>
+                      {previewVideoUrl ? (
+                        <PreviewClipVideo
+                          sourceUrl={previewVideoUrl}
+                          clipDurationSec={clipDurationSec}
+                          className="preview-slot-video"
+                          objectPosition={objectPosition}
+                          videoZoom={videoZoom}
+                          mirrorEnabled={mirrorEnabled}
+                          muted={isMuted}
+                          videoRef={slotPreviewRef}
+                          isPlaying={isPlaying}
+                          loopEnabled={loopEnabled}
+                          onPositionChange={handlePreviewPositionChange}
+                          onClipEnd={handlePreviewClipEnd}
+                        />
+                      ) : (
+                        <span>ВИДЕО</span>
+                      )}
+                    </div>
+
+                    <div
+                      className="preview-bottom"
+                      style={{
+                        height: previewComputed.bottomBlockHeight
+                      }}
+                    >
+                      <div
+                        className="preview-author"
+                        style={{
+                          height: bottomMetaHeight,
+                          padding: `${templateConfig.slot.bottomMetaPaddingY}px ${templateConfig.slot.bottomMetaPaddingX}px`
+                        }}
+                      >
+                        <div
+                          className="preview-author-avatar"
+                          style={{
+                            width: templateConfig.author.avatarSize,
+                            height: templateConfig.author.avatarSize,
+                            borderWidth: templateConfig.author.avatarBorder,
+                            fontSize: Math.round(templateConfig.author.avatarSize * 0.32),
+                            backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
+                            backgroundSize: avatarUrl ? "cover" : undefined,
+                            backgroundPosition: avatarUrl ? "center" : undefined
+                          }}
+                        >
+                          {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="preview-author-copy">
+                          <div className="preview-author-name-row">
+                            <span
+                              className="preview-author-name"
+                              style={{
+                                fontSize: templateConfig.typography.authorName.font,
+                                lineHeight: templateConfig.typography.authorName.lineHeight
+                              }}
+                            >
+                              {channelName}
+                            </span>
+                            <span
+                              className="preview-author-check"
+                              style={{
+                                width: templateConfig.author.checkSize,
+                                height: templateConfig.author.checkSize,
+                                fontSize: Math.round(templateConfig.author.checkSize * 0.56)
+                              }}
+                            >
+                              ✓
+                            </span>
+                          </div>
+                          <span
+                            className="preview-author-handle"
+                            style={{
+                              fontSize: templateConfig.typography.authorHandle.font,
+                              lineHeight: templateConfig.typography.authorHandle.lineHeight
+                            }}
+                          >
+                            @{channelUsername}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        className="preview-bottom-body"
+                        style={{
+                          height: previewComputed.bottomBodyHeight,
+                          padding: `${bottomTextPaddingTop}px ${bottomTextPaddingRight}px ${bottomTextPaddingBottom}px ${bottomTextPaddingLeft}px`
+                        }}
+                      >
+                        <p
+                          className="preview-text preview-text-bottom"
+                          style={{
+                            fontSize: previewComputed.bottomFont,
+                            WebkitLineClamp: templateConfig.typography.bottom.maxLines,
+                            lineHeight: previewComputed.bottomLineHeight
+                          }}
+                        >
+                          {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="timeline-dock">
+          <div className="timeline-shell" aria-label="Предпросмотр timeline">
+            <div className="timeline-ruler">
+              {Array.from({ length: 7 }).map((_, index) => {
+                const ratio = index / 6;
+                return (
+                  <span
+                    key={`tick-${index}`}
+                    className="timeline-ruler-mark"
+                    style={{ left: `${ratio * 100}%` }}
+                  >
+                    {index}s
+                  </span>
+                );
+              })}
+            </div>
+            <div
+              ref={timelineTrackRef}
+              className="timeline-track"
+              role="slider"
+              aria-label="Позиция воспроизведения"
+              aria-valuemin={0}
+              aria-valuemax={clipDurationSec}
+              aria-valuenow={Number(timelineSec.toFixed(2))}
+              tabIndex={0}
+              onPointerDown={(event) => {
+                setIsTimelineScrubbing(true);
+                seekTimelineAtClientX(event.clientX);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  seekTimeline(timelineSec - 1 / 30);
+                }
+                if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  seekTimeline(timelineSec + 1 / 30);
+                }
+              }}
+            >
+              <div className="timeline-playhead" style={{ left: `${timelinePercent}%` }} />
+            </div>
+            <div className="timeline-time">
+              <span>{formatTimeSec(timelineSec)}</span>
+              <span>{formatTimeSec(clipDurationSec)}</span>
+            </div>
+          </div>
+          <div className="timeline-notice">
+            {isPreviewLoading ? <p className="subtle-text">Обновляю предпросмотр...</p> : null}
+            {previewNotice ? <p className="subtle-text">{sanitizeDisplayText(previewNotice)}</p> : null}
+          </div>
+        </div>
+      </div>
+
+      {versionsDrawer}
+    </div>
   );
 }
 
@@ -354,9 +1361,12 @@ export function Step3RenderTemplate({
   clipDurationSec,
   sourceDurationSec,
   focusY,
+  cameraMotion,
+  mirrorEnabled,
   videoZoom,
   topFontScale,
   bottomFontScale,
+  sourceAudioEnabled,
   musicGain,
   onRender,
   onExport,
@@ -376,15 +1386,14 @@ export function Step3RenderTemplate({
   onFragmentStateChange,
   onClipStartChange,
   onFocusYChange,
+  onCameraMotionChange,
+  onMirrorEnabledChange,
   onVideoZoomChange,
   onTopFontScaleChange,
   onBottomFontScaleChange,
+  onSourceAudioEnabledChange,
   onMusicGainChange
 }: Step3RenderTemplateProps) {
-  const slotPreviewRef = useRef<HTMLVideoElement | null>(null);
-  const backgroundPreviewRef = useRef<HTMLVideoElement | null>(null);
-  const previewCanvasRef = useRef<HTMLDivElement | null>(null);
-  const timelineTrackRef = useRef<HTMLDivElement | null>(null);
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
   const videoZoomCommitTimerRef = useRef<number | null>(null);
@@ -398,20 +1407,11 @@ export function Step3RenderTemplate({
   const [localTopFontScale, setLocalTopFontScale] = useState(topFontScale);
   const [localBottomFontScale, setLocalBottomFontScale] = useState(bottomFontScale);
   const [localMusicGain, setLocalMusicGain] = useState(musicGain);
-  const [isTimelineScrubbing, setIsTimelineScrubbing] = useState(false);
-  const [timelineSec, setTimelineSec] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [isMuted, setIsMuted] = useState(true);
-  const [loopEnabled, setLoopEnabled] = useState(true);
-  const [zoomMode, setZoomMode] = useState<"fit" | 75 | 100>("fit");
-  const [versionsDrawerOpen, setVersionsDrawerOpen] = useState(false);
-  const [canvasSize, setCanvasSize] = useState({ width: 720, height: 1280 });
   const [segmentDraftInputs, setSegmentDraftInputs] = useState<
     Record<string, { startSec: string; endSec: string }>
   >({});
 
   const templateConfig = getTemplateById(templateId);
-  const isTurboTemplate = templateId === TURBO_FACE_TEMPLATE_ID;
   const computed = getTemplateComputed(templateId, topText, bottomText, {
     topFontScale: localTopFontScale,
     bottomFontScale: localBottomFontScale
@@ -465,52 +1465,13 @@ export function Step3RenderTemplate({
   );
   const remainingSegmentsDurationSec = Math.max(0, clipDurationSec - explicitSegmentsDurationSec);
   const focusPercent = Math.round(localFocusY * 100);
-  const objectPosition = `50% ${focusPercent}%`;
-
-  const frameWidth = templateConfig.frame.width;
-  const frameHeight = templateConfig.frame.height;
-
-  const fitScale = useMemo(() => {
-    const width = canvasSize.width;
-    const height = canvasSize.height;
-    if (!width || !height) {
-      return 0.01;
-    }
-    const usableWidth = Math.max(1, width - 20);
-    const usableHeight = Math.max(1, height - 20);
-    return clamp(Math.min(usableWidth / frameWidth, usableHeight / frameHeight), 0.01, 1);
-  }, [canvasSize.height, canvasSize.width, frameHeight, frameWidth]);
-
-  const previewScaleMultiplier = useMemo(() => {
-    if (zoomMode === "fit") {
-      return 1;
-    }
-    return zoomMode / 100;
-  }, [zoomMode]);
-
-  const layoutScale = fitScale * previewScaleMultiplier;
-  const cardLeft = templateConfig.card.x;
-  const cardTop = templateConfig.card.y;
-  const cardWidth = templateConfig.card.width;
-  const cardHeight = templateConfig.card.height;
-  const bottomMetaHeight = templateConfig.slot.bottomMetaHeight;
-  const topPaddingTop = templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY;
-  const topPaddingBottom = templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY;
-  const bottomTextPaddingTop =
-    templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY;
-  const bottomTextPaddingBottom =
-    templateConfig.slot.bottomTextPaddingBottom ?? templateConfig.slot.bottomTextPaddingY;
-  const bottomTextPaddingLeft =
-    templateConfig.slot.bottomTextPaddingLeft ?? templateConfig.slot.bottomTextPaddingX;
-  const bottomTextPaddingRight =
-    templateConfig.slot.bottomTextPaddingRight ?? templateConfig.slot.bottomTextPaddingX;
-  const videoHeight = previewComputed.videoHeight;
-
-  const timelinePercent = clamp((timelineSec / Math.max(0.01, clipDurationSec)) * 100, 0, 100);
-  const backgroundIsVideo =
-    Boolean(backgroundAssetUrl) &&
-    ((backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/") ||
-      /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(backgroundAssetUrl ?? ""));
+  const audioModeLabel = selectedMusicAssetId
+    ? sourceAudioEnabled
+      ? "Музыка + исходник"
+      : "Только музыка"
+    : sourceAudioEnabled
+      ? "Только исходник"
+      : "Без звука";
 
   useEffect(() => {
     setLocalClipStartSec(clamp(clipStartSec, 0, maxStartSec));
@@ -539,79 +1500,28 @@ export function Step3RenderTemplate({
   useEffect(() => {
     setSegmentDraftInputs((prev) => {
       const next: Record<string, { startSec: string; endSec: string }> = {};
+      let changed = false;
       normalizedSegments.forEach((segment, index) => {
-        const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}`;
-        next[key] = prev[key] ?? {
+        const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
+        const fallbackDraft = {
           startSec: segment.startSec.toFixed(1),
           endSec: (segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
         };
+        next[key] = prev[key] ?? fallbackDraft;
+        if (
+          !prev[key] ||
+          prev[key].startSec !== next[key]?.startSec ||
+          prev[key].endSec !== next[key]?.endSec
+        ) {
+          changed = true;
+        }
       });
+      if (!changed && Object.keys(prev).length === Object.keys(next).length) {
+        return prev;
+      }
       return next;
     });
   }, [normalizedSegments, sourceDurationSec]);
-
-  useEffect(() => {
-    const element = previewCanvasRef.current;
-    if (!element) {
-      return;
-    }
-
-    const updateSize = () => {
-      const rect = element.getBoundingClientRect();
-      if (rect.width < 120 || rect.height < 120) {
-        return;
-      }
-      setCanvasSize({
-        width: rect.width,
-        height: rect.height
-      });
-    };
-
-    updateSize();
-
-    const observer = new ResizeObserver(() => {
-      updateSize();
-    });
-    observer.observe(element);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    setTimelineSec(0);
-  }, [previewVideoUrl]);
-
-  const syncBackgroundTo = useCallback((sec: number) => {
-    const bg = backgroundPreviewRef.current;
-    if (!bg) {
-      return;
-    }
-    if (bg.readyState < 1) {
-      return;
-    }
-    const duration = Number.isFinite(bg.duration) && bg.duration > 0 ? bg.duration : null;
-    const next = duration ? sec % duration : sec;
-    if (Math.abs(bg.currentTime - next) > 0.08) {
-      bg.currentTime = next;
-    }
-    if (isPlaying && bg.paused) {
-      void bg.play().catch(() => undefined);
-    }
-  }, [isPlaying]);
-
-  useEffect(() => {
-    const bg = backgroundPreviewRef.current;
-    if (!bg) {
-      return;
-    }
-    if (isPlaying) {
-      void bg.play().catch(() => undefined);
-    } else {
-      bg.pause();
-    }
-  }, [isPlaying, backgroundAssetUrl, previewVideoUrl]);
 
   useEffect(() => {
     return () => {
@@ -756,90 +1666,6 @@ export function Step3RenderTemplate({
     }, 320);
   };
 
-  const seekTimeline = useCallback(
-    (value: number) => {
-      const clamped = clamp(value, 0, clipDurationSec);
-      setTimelineSec(clamped);
-      const video = slotPreviewRef.current;
-      if (video) {
-        video.currentTime = clamped;
-      }
-      syncBackgroundTo(clamped);
-    },
-    [clipDurationSec, syncBackgroundTo]
-  );
-
-  const seekTimelineAtClientX = useCallback(
-    (clientX: number) => {
-      const track = timelineTrackRef.current;
-      if (!track) {
-        return;
-      }
-      const rect = track.getBoundingClientRect();
-      if (rect.width <= 0) {
-        return;
-      }
-      const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
-      seekTimeline(ratio * clipDurationSec);
-    },
-    [clipDurationSec, seekTimeline]
-  );
-
-  useEffect(() => {
-    if (!isTimelineScrubbing) {
-      return;
-    }
-
-    const handleMove = (event: PointerEvent) => {
-      seekTimelineAtClientX(event.clientX);
-    };
-    const handleEnd = (event: PointerEvent) => {
-      seekTimelineAtClientX(event.clientX);
-      setIsTimelineScrubbing(false);
-    };
-
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleEnd);
-    window.addEventListener("pointercancel", handleEnd);
-
-    return () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleEnd);
-      window.removeEventListener("pointercancel", handleEnd);
-    };
-  }, [isTimelineScrubbing, seekTimelineAtClientX]);
-
-  const handleTogglePlay = () => {
-    const video = slotPreviewRef.current;
-    if (!video) {
-      setIsPlaying((prev) => !prev);
-      return;
-    }
-
-    if (video.paused) {
-      setIsPlaying(true);
-      void video.play().catch(() => undefined);
-      return;
-    }
-
-    video.pause();
-    setIsPlaying(false);
-  };
-
-  const handleFrameStep = (direction: -1 | 1) => {
-    const frame = 1 / 30;
-    setIsPlaying(false);
-    const video = slotPreviewRef.current;
-    if (video) {
-      video.pause();
-    }
-    seekTimeline(timelineSec + frame * direction);
-  };
-
-  const handleSelectVersion = (runId: string) => {
-    onSelectVersionId(runId);
-  };
-
   const summaryLines = previewVersion?.diff.summary ?? ["Используется текущий live draft без сохраненной версии."];
 
   const commitAdvancedControls = () => {
@@ -927,7 +1753,8 @@ export function Step3RenderTemplate({
       {
         startSec,
         endSec,
-        label: `Фрагмент ${normalizedSegments.length + 1}`
+        label: `Фрагмент ${normalizedSegments.length + 1}`,
+        speed: 1
       }
     ]);
   }, [
@@ -946,13 +1773,29 @@ export function Step3RenderTemplate({
     [commitFragments, normalizedSegments]
   );
 
+  const updateFragmentSpeed = useCallback(
+    (index: number, speed: Stage3Segment["speed"]) => {
+      commitFragments(
+        normalizedSegments.map((segment, itemIndex) =>
+          itemIndex === index
+            ? {
+                ...segment,
+                speed
+              }
+            : segment
+        )
+      );
+    },
+    [commitFragments, normalizedSegments]
+  );
+
   const setFragmentDraftField = (
     index: number,
     segment: Stage3Segment,
     field: "startSec" | "endSec",
     value: string
   ) => {
-    const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}`;
+    const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
     setSegmentDraftInputs((prev) => ({
       ...prev,
       [key]: {
@@ -966,7 +1809,7 @@ export function Step3RenderTemplate({
   };
 
   const commitFragmentDraft = (index: number, segment: Stage3Segment) => {
-    const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}`;
+    const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
     const draft = segmentDraftInputs[key];
     if (!draft) {
       return;
@@ -991,7 +1834,7 @@ export function Step3RenderTemplate({
     const otherDuration = sumSegmentsDuration(otherSegments, sourceDurationSec);
     const maxOwnDuration = compressionEnabled
       ? Number.POSITIVE_INFINITY
-      : Math.max(0.1, clipDurationSec - otherDuration);
+      : Math.max(0.1, (clipDurationSec - otherDuration) * segment.speed);
     const requestedEnd = clamp(parsedEnd, nextStart + 0.1, sourceMaxEnd);
     const nextEnd = roundToTenth(
       clamp(requestedEnd, nextStart + 0.1, Math.min(sourceMaxEnd, nextStart + maxOwnDuration))
@@ -1094,6 +1937,7 @@ export function Step3RenderTemplate({
                     : `Окно ${formatTimeSec(clipDurationSec)}`}
                 </span>
                 <span className="meta-pill">Фокус {focusPercent}%</span>
+                <span className="meta-pill">Камера {formatCameraMotion(cameraMotion)}</span>
                 <span className="meta-pill">Зум x{localVideoZoom.toFixed(2)}</span>
               </div>
             </div>
@@ -1129,20 +1973,26 @@ export function Step3RenderTemplate({
                 {normalizedSegments.length > 0 ? (
                   <div className="fragment-list">
                     {normalizedSegments.map((segment, index) => {
-                      const rowKey = `${index}:${segment.startSec}:${segment.endSec ?? "end"}`;
+                      const rowKey = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
                       const draft = segmentDraftInputs[rowKey] ?? {
                         startSec: segment.startSec.toFixed(1),
                         endSec: (segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
                       };
                       const endValue = segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5;
+                      const rawDuration = Math.max(0, endValue - segment.startSec);
+                      const outputDuration = rawDuration / segment.speed;
                       return (
                         <article key={rowKey} className="fragment-row">
                           <div className="fragment-row-head">
                             <div className="fragment-row-meta">
                               <span className="meta-pill mono">{index + 1}</span>
-                              <span className="quick-edit-value">
-                                {formatTimeSec(Math.max(0, endValue - segment.startSec))}
-                              </span>
+                              <span className="meta-pill">{formatSegmentSpeed(segment.speed)}</span>
+                              <span className="quick-edit-value">{formatTimeSec(outputDuration)}</span>
+                              {segment.speed > 1 ? (
+                                <span className="subtle-text">
+                                  {formatTimeSec(rawDuration)} → {formatTimeSec(outputDuration)}
+                                </span>
+                              ) : null}
                             </div>
                             <button
                               type="button"
@@ -1182,6 +2032,25 @@ export function Step3RenderTemplate({
                                 }
                                 onBlur={() => commitFragmentDraft(index, segment)}
                               />
+                            </label>
+                            <label className="field-stack">
+                              <span className="field-label">Сжатие</span>
+                              <select
+                                className="text-input segment-input"
+                                value={segment.speed}
+                                onChange={(event) =>
+                                  updateFragmentSpeed(
+                                    index,
+                                    normalizeSegmentSpeed(Number.parseFloat(event.target.value))
+                                  )
+                                }
+                              >
+                                {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
+                                  <option key={`segment-speed-${speed}`} value={speed}>
+                                    {formatSegmentSpeed(speed)}
+                                  </option>
+                                ))}
+                              </select>
                             </label>
                           </div>
                         </article>
@@ -1263,6 +2132,42 @@ export function Step3RenderTemplate({
                     Низ
                   </button>
                 </div>
+              </div>
+
+              <div className="quick-edit-card">
+                <div className="quick-edit-label-row">
+                  <span className="field-label">Отзеркаливание</span>
+                  <span className="quick-edit-value">{mirrorEnabled ? "Включено" : "Выключено"}</span>
+                </div>
+                <label className="field-label fragment-toggle">
+                  <input
+                    type="checkbox"
+                    checked={mirrorEnabled}
+                    onChange={(event) => onMirrorEnabledChange(event.target.checked)}
+                  />
+                  <span>Горизонтально</span>
+                </label>
+                <p className="subtle-text">По умолчанию включено для слота с исходным видео.</p>
+              </div>
+
+              <div className="quick-edit-card">
+                <div className="quick-edit-label-row">
+                  <label className="field-label" htmlFor="cameraMotionSelect">
+                    Движение камеры
+                  </label>
+                  <span className="quick-edit-value">{formatCameraMotion(cameraMotion)}</span>
+                </div>
+                <select
+                  id="cameraMotionSelect"
+                  className="text-input"
+                  value={cameraMotion}
+                  onChange={(event) => onCameraMotionChange(event.target.value as Stage3CameraMotion)}
+                >
+                  <option value="disabled">Отключено</option>
+                  <option value="top_to_bottom">Сверху вниз</option>
+                  <option value="bottom_to_top">Снизу вверх</option>
+                </select>
+                <p className="subtle-text">Движение использует текущий вертикальный фокус как центр траектории.</p>
               </div>
 
               <div className="quick-edit-card slider-field">
@@ -1435,9 +2340,7 @@ export function Step3RenderTemplate({
               <div className="asset-card">
                 <div className="quick-edit-label-row">
                   <span className="field-label">Музыка</span>
-                  <span className="quick-edit-value">
-                    {selectedMusicAssetId ? "Enabled" : "Off"}
-                  </span>
+                  <span className="quick-edit-value">{audioModeLabel}</span>
                 </div>
                 <div className="background-upload-row">
                   <label className="btn btn-ghost background-upload-btn">
@@ -1475,6 +2378,17 @@ export function Step3RenderTemplate({
                     </button>
                   ) : null}
                 </div>
+                <label className="field-label fragment-toggle">
+                  <input
+                    type="checkbox"
+                    checked={sourceAudioEnabled}
+                    onChange={(event) => onSourceAudioEnabledChange(event.target.checked)}
+                  />
+                  <span>Оставить звук исходника</span>
+                </label>
+                <p className="subtle-text">
+                  Если отключить, из preview и финального render убирается звук исходника. Без музыки клип будет беззвучным.
+                </p>
                 <div className="slider-field">
                   <div className="quick-edit-label-row">
                     <label className="field-label" htmlFor="musicGainRange">
@@ -1622,542 +2536,33 @@ export function Step3RenderTemplate({
         </div>
       }
       right={
-        <div className="preview-shell preview-shell-stage3">
-          <header className="preview-header preview-header-wrap">
-            <div>
-              <h3>Живой предпросмотр</h3>
-              <p className="subtle-text">
-                {previewVersion ? `Версия v${previewVersion.versionNo}` : "Черновой живой предпросмотр"}
-              </p>
-              <p className="subtle-text preview-summary-inline">{summaryLines[0]}</p>
-            </div>
-
-            <div className="preview-toolbar">
-              <button type="button" className="btn btn-ghost" onClick={handleTogglePlay}>
-                {isPlaying ? "Пауза" : "Пуск"}
-              </button>
-              <button
-                type="button"
-                className={`btn btn-ghost ${!isMuted ? "is-active" : ""}`}
-                onClick={() => setIsMuted((prev) => !prev)}
-              >
-                {!isMuted ? "Звук включен" : "Звук выключен"}
-              </button>
-              <button type="button" className={`btn btn-ghost ${loopEnabled ? "is-active" : ""}`} onClick={() => setLoopEnabled((prev) => !prev)}>
-                Цикл
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => handleFrameStep(-1)} aria-label="Предыдущий кадр">
-                −1f
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => handleFrameStep(1)} aria-label="Следующий кадр">
-                +1f
-              </button>
-
-              <div className="zoom-group" role="group" aria-label="Масштаб предпросмотра">
-                {(["fit", 75, 100] as const).map((value) => (
-                  <button
-                    key={String(value)}
-                    type="button"
-                    className={`zoom-btn ${zoomMode === value ? "active" : ""}`}
-                    onClick={() => setZoomMode(value)}
-                  >
-                    {value === "fit" ? "Вписать" : `${value}%`}
-                  </button>
-                ))}
-              </div>
-
-              <button type="button" className="btn btn-secondary" onClick={() => setVersionsDrawerOpen((prev) => !prev)}>
-                Версии ({displayVersions.length})
-              </button>
-            </div>
-          </header>
-
-          <div className="stage3-main">
-            <div className="preview-stage stage3-preview-stage">
-              <div ref={previewCanvasRef} className="stage3-canvas">
-                <div
-                  className="stage3-zoom-wrap"
-                  style={{ width: frameWidth, height: frameHeight, transform: `scale(${layoutScale})` }}
-                >
-                  <div className="phone-preview" style={{ width: frameWidth, height: frameHeight }}>
-                    {backgroundAssetUrl ? (
-                      backgroundIsVideo ? (
-                        <video
-                          ref={backgroundPreviewRef}
-                          className="preview-bg-video preview-bg-custom"
-                          src={backgroundAssetUrl}
-                          muted
-                          playsInline
-                          preload="metadata"
-                          onLoadedMetadata={() => {
-                            syncBackgroundTo(timelineSec);
-                            if (isPlaying) {
-                              const bg = backgroundPreviewRef.current;
-                              if (bg) {
-                                void bg.play().catch(() => undefined);
-                              }
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div
-                          className="preview-bg-video preview-bg-custom-image"
-                          style={{ backgroundImage: `url(${backgroundAssetUrl})` }}
-                        />
-                      )
-                    ) : previewVideoUrl ? (
-                      <video
-                        ref={backgroundPreviewRef}
-                        className="preview-bg-video"
-                        src={previewVideoUrl}
-                        muted
-                        playsInline
-                        preload="metadata"
-                        onLoadedMetadata={() => {
-                          syncBackgroundTo(timelineSec);
-                          if (isPlaying) {
-                            const bg = backgroundPreviewRef.current;
-                            if (bg) {
-                              void bg.play().catch(() => undefined);
-                            }
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div className="preview-bg-video preview-bg-fallback" />
-                    )}
-
-                    <div className="safe-area-guide" aria-hidden="true">
-                      <span>БЕЗОПАСНАЯ ОБЛАСТЬ</span>
-                    </div>
-
-                    {isTurboTemplate ? (
-                      <>
-                        <div
-                          className="preview-top"
-                          style={{
-                            position: "absolute",
-                            left: TURBO_FACE.top.x,
-                            top: TURBO_FACE.top.y,
-                            width: TURBO_FACE.top.width,
-                            height: previewComputed.topBlockHeight,
-                            borderRadius: TURBO_FACE.top.radius,
-                            backgroundColor: "#ffffff",
-                            boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
-                            border: "2px solid rgba(0,0,0,0.18)",
-                            padding: `${TURBO_FACE.top.paddingY}px ${TURBO_FACE.top.paddingX}px`
-                          }}
-                        >
-                          <p
-                            className="preview-text preview-text-top"
-                              style={{
-                                fontSize: previewComputed.topFont,
-                                WebkitLineClamp: TURBO_FACE.typography.top.maxLines,
-                                lineHeight: previewComputed.topLineHeight
-                              }}
-                          >
-                            {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
-                          </p>
-                        </div>
-
-                        <div
-                          className="preview-video"
-                          style={{
-                            position: "absolute",
-                            left: previewComputed.videoX,
-                            top: previewComputed.videoY,
-                            width: previewComputed.videoWidth,
-                            height: previewComputed.videoHeight
-                          }}
-                        >
-                          {previewVideoUrl ? (
-                            <PreviewClipVideo
-                              sourceUrl={previewVideoUrl}
-                              clipDurationSec={clipDurationSec}
-                              className="preview-slot-video"
-                              objectPosition={objectPosition}
-                              videoZoom={previewVideoZoom}
-                              muted={isMuted}
-                              videoRef={slotPreviewRef}
-                              isPlaying={isPlaying}
-                              loopEnabled={loopEnabled}
-                              onPositionChange={(sec) => {
-                                if (!isTimelineScrubbing) {
-                                  setTimelineSec(sec);
-                                }
-                                syncBackgroundTo(sec);
-                              }}
-                              onClipEnd={() => {
-                                setIsPlaying(false);
-                              }}
-                            />
-                          ) : (
-                            <span>ВИДЕО</span>
-                          )}
-                        </div>
-
-                        <div
-                          className="preview-bottom"
-                          style={{
-                            position: "absolute",
-                            left: TURBO_FACE.bottom.x,
-                            top: TURBO_FACE.frame.height - TURBO_FACE.bottom.bottom - previewComputed.bottomBlockHeight,
-                            width: TURBO_FACE.bottom.width,
-                            height: previewComputed.bottomBlockHeight,
-                            borderRadius: TURBO_FACE.bottom.radius,
-                            backgroundColor: "#ffffff",
-                            boxShadow: "0 16px 36px rgba(0,0,0,0.26)",
-                            border: "2px solid rgba(0,0,0,0.18)"
-                          }}
-                        >
-                          <div
-                            className="preview-author"
-                            style={{
-                              height: TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2,
-                              padding: `${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
-                            }}
-                          >
-                            <div
-                              className="preview-author-avatar"
-                              style={{
-                                width: TURBO_FACE.author.avatarSize,
-                                height: TURBO_FACE.author.avatarSize,
-                                borderWidth: TURBO_FACE.author.avatarBorder,
-                                fontSize: Math.round(TURBO_FACE.author.avatarSize * 0.32),
-                                backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
-                                backgroundSize: avatarUrl ? "cover" : undefined,
-                                backgroundPosition: avatarUrl ? "center" : undefined
-                              }}
-                            >
-                              {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
-                            </div>
-                            <div className="preview-author-copy">
-                              <div className="preview-author-name-row">
-                                <span
-                                  className="preview-author-name"
-                                  style={{
-                                    fontSize: TURBO_FACE.typography.authorName.font,
-                                    lineHeight: TURBO_FACE.typography.authorName.lineHeight
-                                  }}
-                                >
-                                  {channelName}
-                                </span>
-                                <span
-                                  className="preview-author-check"
-                                  style={{
-                                    width: TURBO_FACE.author.checkSize,
-                                    height: TURBO_FACE.author.checkSize,
-                                    fontSize: Math.round(TURBO_FACE.author.checkSize * 0.56)
-                                  }}
-                                >
-                                  ✓
-                                </span>
-                              </div>
-                              <span
-                                className="preview-author-handle"
-                                style={{
-                                  fontSize: TURBO_FACE.typography.authorHandle.font,
-                                  lineHeight: TURBO_FACE.typography.authorHandle.lineHeight,
-                                  color: "#666666"
-                                }}
-                              >
-                                @{channelUsername}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div
-                            className="preview-bottom-body"
-                            style={{
-                              height:
-                                previewComputed.bottomBlockHeight -
-                                (TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2),
-                              padding: `0 ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
-                            }}
-                          >
-                            <p
-                              className="preview-text preview-text-bottom"
-                              style={{
-                                fontSize: previewComputed.bottomFont,
-                                WebkitLineClamp: TURBO_FACE.typography.bottom.maxLines,
-                                lineHeight: previewComputed.bottomLineHeight
-                              }}
-                            >
-                              {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}
-                            </p>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <div
-                        className="preview-card"
-                        style={{
-                          left: cardLeft,
-                          top: cardTop,
-                          width: cardWidth,
-                          height: cardHeight,
-                          borderRadius: templateConfig.card.radius,
-                          borderWidth: templateConfig.card.borderWidth,
-                          borderColor: templateConfig.card.borderColor
-                        }}
-                      >
-                        <div
-                          className="preview-top"
-                          style={{
-                            height: previewComputed.topBlockHeight,
-                            padding: `${topPaddingTop}px ${templateConfig.slot.topPaddingX}px ${topPaddingBottom}px`
-                          }}
-                        >
-                          <p
-                            className="preview-text preview-text-top"
-                            style={{
-                              fontSize: previewComputed.topFont,
-                              WebkitLineClamp: templateConfig.typography.top.maxLines,
-                              lineHeight: previewComputed.topLineHeight
-                            }}
-                          >
-                            {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
-                          </p>
-                        </div>
-
-                        <div className="preview-video" style={{ height: videoHeight }}>
-                          {previewVideoUrl ? (
-                            <PreviewClipVideo
-                              sourceUrl={previewVideoUrl}
-                              clipDurationSec={clipDurationSec}
-                              className="preview-slot-video"
-                              objectPosition={objectPosition}
-                              videoZoom={previewVideoZoom}
-                              muted={isMuted}
-                              videoRef={slotPreviewRef}
-                              isPlaying={isPlaying}
-                              loopEnabled={loopEnabled}
-                              onPositionChange={(sec) => {
-                                if (!isTimelineScrubbing) {
-                                  setTimelineSec(sec);
-                                }
-                                syncBackgroundTo(sec);
-                              }}
-                              onClipEnd={() => {
-                                setIsPlaying(false);
-                              }}
-                            />
-                          ) : (
-                            <span>ВИДЕО</span>
-                          )}
-                        </div>
-
-                        <div
-                          className="preview-bottom"
-                          style={{
-                            height: previewComputed.bottomBlockHeight
-                          }}
-                        >
-                          <div
-                            className="preview-author"
-                            style={{
-                              height: bottomMetaHeight,
-                              padding: `${templateConfig.slot.bottomMetaPaddingY}px ${templateConfig.slot.bottomMetaPaddingX}px`
-                            }}
-                          >
-                            <div
-                              className="preview-author-avatar"
-                              style={{
-                                width: templateConfig.author.avatarSize,
-                                height: templateConfig.author.avatarSize,
-                                borderWidth: templateConfig.author.avatarBorder,
-                                fontSize: Math.round(templateConfig.author.avatarSize * 0.32),
-                                backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
-                                backgroundSize: avatarUrl ? "cover" : undefined,
-                                backgroundPosition: avatarUrl ? "center" : undefined
-                              }}
-                            >
-                              {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
-                            </div>
-                            <div className="preview-author-copy">
-                              <div className="preview-author-name-row">
-                                <span
-                                  className="preview-author-name"
-                                  style={{
-                                    fontSize: templateConfig.typography.authorName.font,
-                                    lineHeight: templateConfig.typography.authorName.lineHeight
-                                  }}
-                                >
-                                  {channelName}
-                                </span>
-                                <span
-                                  className="preview-author-check"
-                                  style={{
-                                    width: templateConfig.author.checkSize,
-                                    height: templateConfig.author.checkSize,
-                                    fontSize: Math.round(templateConfig.author.checkSize * 0.56)
-                                  }}
-                                >
-                                  ✓
-                                </span>
-                              </div>
-                              <span
-                                className="preview-author-handle"
-                                style={{
-                                  fontSize: templateConfig.typography.authorHandle.font,
-                                  lineHeight: templateConfig.typography.authorHandle.lineHeight
-                                }}
-                              >
-                                @{channelUsername}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div
-                            className="preview-bottom-body"
-                            style={{
-                              height: previewComputed.bottomBodyHeight,
-                              padding: `${bottomTextPaddingTop}px ${bottomTextPaddingRight}px ${bottomTextPaddingBottom}px ${bottomTextPaddingLeft}px`
-                            }}
-                          >
-                            <p
-                              className="preview-text preview-text-bottom"
-                            style={{
-                              fontSize: previewComputed.bottomFont,
-                              WebkitLineClamp: templateConfig.typography.bottom.maxLines,
-                              lineHeight: previewComputed.bottomLineHeight
-                            }}
-                            >
-                              {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="timeline-dock">
-              <div className="timeline-shell" aria-label="Предпросмотр timeline">
-                <div className="timeline-ruler">
-                  {Array.from({ length: 7 }).map((_, index) => {
-                    const ratio = index / 6;
-                    return (
-                      <span
-                        key={`tick-${index}`}
-                        className="timeline-ruler-mark"
-                        style={{ left: `${ratio * 100}%` }}
-                      >
-                        {index}s
-                      </span>
-                    );
-                  })}
-                </div>
-                <div
-                  ref={timelineTrackRef}
-                  className="timeline-track"
-                  role="slider"
-                  aria-label="Позиция воспроизведения"
-                  aria-valuemin={0}
-                  aria-valuemax={clipDurationSec}
-                  aria-valuenow={Number(timelineSec.toFixed(2))}
-                  tabIndex={0}
-                  onPointerDown={(event) => {
-                    setIsTimelineScrubbing(true);
-                    seekTimelineAtClientX(event.clientX);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowLeft") {
-                      event.preventDefault();
-                      seekTimeline(timelineSec - 1 / 30);
-                    }
-                    if (event.key === "ArrowRight") {
-                      event.preventDefault();
-                      seekTimeline(timelineSec + 1 / 30);
-                    }
-                  }}
-                >
-                  <div className="timeline-playhead" style={{ left: `${timelinePercent}%` }} />
-                </div>
-                <div className="timeline-time">
-                  <span>{formatTimeSec(timelineSec)}</span>
-                  <span>{formatTimeSec(clipDurationSec)}</span>
-                </div>
-              </div>
-              <div className="timeline-notice">
-                {isPreviewLoading ? <p className="subtle-text">Обновляю предпросмотр...</p> : null}
-                {previewNotice ? <p className="subtle-text">{sanitizeDisplayText(previewNotice)}</p> : null}
-              </div>
-            </div>
-          </div>
-
-          {versionsDrawerOpen ? (
-            <aside className="versions-drawer" aria-label="Панель истории версий">
-              <header className="versions-drawer-head">
-                <h4>История версий</h4>
-                <button type="button" className="btn btn-ghost" onClick={() => setVersionsDrawerOpen(false)}>
-                  Закрыть
-                </button>
-              </header>
-
-              <div className="versions-drawer-list">
-                {displayVersions.length === 0 ? (
-                  <p className="subtle-text">Версий пока нет.</p>
-                ) : (
-                  displayVersions.map((version) => {
-                    const active = version.runId === selectedVersionId;
-                    return (
-                      <button
-                        key={version.runId}
-                        type="button"
-                        className={`version-item ${active ? "active" : ""}`}
-                        onClick={() => handleSelectVersion(version.runId)}
-                      >
-                        <div className="version-item-head">
-                          <strong>v{version.versionNo}</strong>
-                          <small>{formatDateShort(version.createdAt)}</small>
-                        </div>
-                        <p>{shortPrompt(version.prompt)}</p>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-
-              {selectedVersion ? (
-                <details className="advanced-block internal-passes-inline">
-                  <summary>Internal passes ({selectedVersion.internalPasses.length})</summary>
-                  <div className="advanced-content">
-                    <div className="pass-tabs-scroll">
-                      <div className="passes-tabs">
-                        {selectedVersion.internalPasses.map((pass, index) => (
-                          <button
-                            key={`${selectedVersion.runId}-${pass.pass}`}
-                            type="button"
-                            className={`pass-tab ${index === selectedPassIndex ? "active" : ""}`}
-                            onClick={() => onSelectPassIndex(index)}
-                          >
-                            {pass.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {selectedPass ? (
-                      <div className="pass-details">
-                        <p className="run-summary">
-                          <strong>{selectedPass.summary}</strong>
-                        </p>
-                        <ul className="pass-changes">
-                          {selectedPass.changes.map((change, index) => (
-                            <li key={`${selectedVersion.runId}-${selectedPass.pass}-${index}`}>{change}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                  </div>
-                </details>
-              ) : null}
-            </aside>
-          ) : null}
-        </div>
+        <Stage3LivePreviewPanel
+          templateId={templateId}
+          channelName={channelName}
+          channelUsername={channelUsername}
+          avatarUrl={avatarUrl}
+          previewVideoUrl={previewVideoUrl}
+          backgroundAssetUrl={backgroundAssetUrl}
+          backgroundAssetMimeType={backgroundAssetMimeType}
+          previewVersion={previewVersion}
+          selectedVersion={selectedVersion}
+          selectedVersionId={selectedVersionId}
+          selectedPass={selectedPass}
+          selectedPassIndex={selectedPassIndex}
+          displayVersions={displayVersions}
+          summaryLines={summaryLines}
+          isPreviewLoading={isPreviewLoading}
+          previewNotice={previewNotice}
+          clipDurationSec={clipDurationSec}
+          focusY={localFocusY}
+          cameraMotion={cameraMotion}
+          mirrorEnabled={mirrorEnabled}
+          videoZoom={previewVideoZoom}
+          templateConfig={templateConfig}
+          previewComputed={previewComputed}
+          onSelectVersionId={onSelectVersionId}
+          onSelectPassIndex={onSelectPassIndex}
+        />
       }
     />
   );

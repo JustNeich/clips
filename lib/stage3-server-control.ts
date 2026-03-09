@@ -4,6 +4,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { downloadSourceVideo, probeVideoDurationSeconds } from "./stage3-media-agent";
+import { normalizeSupportedUrl } from "./ytdlp";
 
 export type Stage3CachedSource = {
   sourcePath: string;
@@ -15,8 +16,15 @@ export type Stage3CachedSource = {
 const STAGE3_CACHE_ROOT = path.join(os.tmpdir(), "clip-stage3-cache");
 const SOURCE_CACHE_DIR = path.join(STAGE3_CACHE_ROOT, "sources");
 const sourceInflight = new Map<string, Promise<Stage3CachedSource>>();
-let hostedHeavyJobTail: Promise<void> = Promise.resolve();
+let hostedHeavyJobActive = 0;
 const hostedHeavyJobContext = new AsyncLocalStorage<boolean>();
+
+export class Stage3HostedBusyError extends Error {
+  constructor(message = "Hosted Stage 3 worker is busy") {
+    super(message);
+    this.name = "Stage3HostedBusyError";
+  }
+}
 
 function hashKey(value: string): string {
   return createHash("sha1").update(value).digest("hex");
@@ -91,6 +99,10 @@ export function isStage3HostedRuntime(): boolean {
   return process.env.RENDER === "true" || process.env.RENDER === "1";
 }
 
+export function isStage3HostedBusyError(error: unknown): error is Stage3HostedBusyError {
+  return error instanceof Stage3HostedBusyError;
+}
+
 export async function runHostedStage3HeavyJob<T>(task: () => Promise<T>): Promise<T> {
   if (!isStage3HostedRuntime()) {
     return task();
@@ -98,23 +110,21 @@ export async function runHostedStage3HeavyJob<T>(task: () => Promise<T>): Promis
   if (hostedHeavyJobContext.getStore()) {
     return task();
   }
+  if (hostedHeavyJobActive > 0) {
+    throw new Stage3HostedBusyError();
+  }
 
-  let releaseCurrent!: () => void;
-  const previous = hostedHeavyJobTail.catch(() => undefined);
-  hostedHeavyJobTail = new Promise<void>((resolve) => {
-    releaseCurrent = resolve;
-  });
-
-  await previous;
+  hostedHeavyJobActive += 1;
   try {
     return await hostedHeavyJobContext.run(true, task);
   } finally {
-    releaseCurrent();
+    hostedHeavyJobActive = Math.max(0, hostedHeavyJobActive - 1);
   }
 }
 
 export async function ensureStage3SourceCached(rawSource: string): Promise<Stage3CachedSource> {
-  const sourceKey = hashKey(rawSource);
+  const sourceUrl = normalizeSupportedUrl(rawSource);
+  const sourceKey = hashKey(sourceUrl);
   const sourcePath = path.join(SOURCE_CACHE_DIR, `${sourceKey}.mp4`);
   const metaPath = path.join(SOURCE_CACHE_DIR, `${sourceKey}.json`);
 
@@ -153,7 +163,7 @@ export async function ensureStage3SourceCached(rawSource: string): Promise<Stage
     await fs.mkdir(SOURCE_CACHE_DIR, { recursive: true });
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-source-cache-"));
     try {
-      const downloaded = await runHostedStage3HeavyJob(() => downloadSourceVideo(rawSource, tmpDir));
+      const downloaded = await runHostedStage3HeavyJob(() => downloadSourceVideo(sourceUrl, tmpDir));
       await fs.copyFile(downloaded.filePath, sourcePath);
       const sourceDurationSec = await probeVideoDurationSeconds(sourcePath);
       await fs

@@ -9,6 +9,7 @@ import { resolveExecutableFromCandidates } from "./command-path";
 import {
   createYtDlpAuthContext,
   extractYtDlpErrorFromUnknown,
+  normalizeSupportedUrl,
   sanitizeFileName
 } from "./ytdlp";
 
@@ -181,7 +182,8 @@ function normalizeYouTubeUrl(rawUrl: string): string {
 }
 
 function normalizeUrlForVisolix(rawUrl: string): string {
-  return isYouTubeUrl(rawUrl) ? normalizeYouTubeUrl(rawUrl) : rawUrl;
+  const normalizedUrl = normalizeSupportedUrl(rawUrl);
+  return isYouTubeUrl(normalizedUrl) ? normalizeYouTubeUrl(normalizedUrl) : normalizedUrl;
 }
 
 function encodeVisolixHeaderUrl(rawUrl: string): string {
@@ -205,7 +207,7 @@ function buildVisolixUrlCandidates(rawUrl: string): string[] {
 
 function deriveVisolixPlatform(rawUrl: string): string | null {
   try {
-    const parsed = new URL(rawUrl);
+    const parsed = new URL(normalizeSupportedUrl(rawUrl));
     const hostname = parsed.hostname.toLowerCase();
 
     if (hostname === "youtu.be" || hostname.includes("youtube.com")) {
@@ -255,8 +257,9 @@ async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse>
     throw new Error("Visolix API key не задан. Добавьте VISOLIX_API_KEY на сервере.");
   }
 
-  const candidateUrls = buildVisolixUrlCandidates(rawUrl);
-  const platform = deriveVisolixPlatform(rawUrl) ?? deriveVisolixPlatform(normalizeUrlForVisolix(rawUrl));
+  const normalizedUrl = normalizeSupportedUrl(rawUrl);
+  const candidateUrls = buildVisolixUrlCandidates(normalizedUrl);
+  const platform = deriveVisolixPlatform(normalizedUrl);
   if (!platform) {
     throw new Error("Visolix не поддерживает этот URL.");
   }
@@ -490,18 +493,19 @@ export async function downloadSourceMedia(
   rawUrl: string,
   tmpDir: string
 ): Promise<SourceDownloadResult> {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
   const errors: string[] = [];
 
   if (isVisolixConfigured()) {
     try {
-      return await tryVisolixDownload(rawUrl, tmpDir);
+      return await tryVisolixDownload(sourceUrl, tmpDir);
     } catch (error) {
       errors.push(error instanceof Error ? `Visolix: ${error.message}` : "Visolix: source fetch failed.");
     }
   }
 
   try {
-    return await tryYtDlpDownload(rawUrl, tmpDir);
+    return await tryYtDlpDownload(sourceUrl, tmpDir);
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "yt-dlp: source fetch failed.");
   }
@@ -549,6 +553,7 @@ async function tryYtDlpMetadata(rawUrl: string): Promise<SourceMetadataResult> {
 }
 
 export async function fetchSourceMetadata(rawUrl: string): Promise<SourceMetadataResult> {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
   if (isVisolixConfigured()) {
     return {
       provider: "visolix",
@@ -557,13 +562,14 @@ export async function fetchSourceMetadata(rawUrl: string): Promise<SourceMetadat
     };
   }
 
-  return tryYtDlpMetadata(rawUrl);
+  return tryYtDlpMetadata(sourceUrl);
 }
 
 export async function fetchOptionalYtDlpInfo(
   rawUrl: string,
   tmpDir: string
 ): Promise<OptionalYtDlpInfoResult> {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
   const ytDlpPath = await resolveYtDlpExecutable();
   if (!ytDlpPath) {
     return {
@@ -585,7 +591,7 @@ export async function fetchOptionalYtDlpInfo(
       ...(withComments ? ["--write-comments"] : []),
       "-o",
       outputTemplate,
-      rawUrl
+      sourceUrl
     ];
 
     await execFileAsync(ytDlpPath, args, {

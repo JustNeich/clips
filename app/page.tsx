@@ -23,9 +23,11 @@ import {
   CommentsPayload,
   RuntimeCapabilitiesResponse,
   Stage3AgentRunResponse,
+  Stage3CameraMotion,
   Stage3IterationStopReason,
   Stage3RenderPlan,
   Stage3Segment,
+  STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionStatus,
   Stage3StateSnapshot,
   Stage3TimelineResponse,
@@ -53,6 +55,7 @@ import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
+const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
 type BusyAction =
   | ""
@@ -114,7 +117,10 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     targetDurationSec: 6,
     timingMode: "auto",
     audioMode: "source_only",
+    sourceAudioEnabled: true,
     smoothSlowMo: false,
+    mirrorEnabled: true,
+    cameraMotion: "disabled",
     videoZoom: 1,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
@@ -137,6 +143,20 @@ function fallbackRenderPlan(): Stage3RenderPlan {
 
 function roundStage3Tenth(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function normalizeStage3SegmentSpeed(value: unknown): Stage3Segment["speed"] {
+  if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
+    return value as Stage3Segment["speed"];
+  }
+  return 1;
+}
+
+function normalizeStage3CameraMotion(value: unknown): Stage3CameraMotion {
+  if (value === "top_to_bottom" || value === "bottom_to_top" || value === "disabled") {
+    return value;
+  }
+  return "disabled";
 }
 
 function normalizeClientSegments(
@@ -163,6 +183,7 @@ function normalizeClientSegments(
       return {
         startSec: roundStage3Tenth(startSec),
         endSec: roundStage3Tenth(Math.max(startSec + 0.1, cappedEnd)),
+        speed: normalizeStage3SegmentSpeed(segment.speed),
         label:
           typeof segment.label === "string" && segment.label.trim()
             ? segment.label.trim()
@@ -184,7 +205,7 @@ function sumClientSegmentsDuration(
 ): number {
   return segments.reduce((total, segment) => {
     const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
-    return total + Math.max(0, endSec - segment.startSec);
+    return total + Math.max(0, endSec - segment.startSec) / normalizeStage3SegmentSpeed(segment.speed);
   }, 0);
 }
 
@@ -202,12 +223,12 @@ function trimClientSegmentsToDuration(
     }
     const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
     const duration = Math.max(0.1, endSec - segment.startSec);
-    const keepDuration = Math.min(duration, remaining);
+    const keepDuration = Math.min(duration, remaining * segment.speed);
     trimmed.push({
       ...segment,
       endSec: roundStage3Tenth(segment.startSec + keepDuration)
     });
-    remaining -= keepDuration;
+    remaining -= keepDuration / segment.speed;
   }
 
   return normalizeClientSegments(trimmed, sourceDurationSec);
@@ -229,15 +250,16 @@ function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
     ...fallback,
     targetDurationSec: plan.targetDurationSec,
     timingMode: plan.timingMode,
+    audioMode: plan.audioMode,
+    sourceAudioEnabled: plan.sourceAudioEnabled,
     smoothSlowMo: plan.smoothSlowMo,
     segments: plan.segments,
     policy: plan.policy,
     // Keep preview lightweight and stable: only transport fields that affect the server preview file.
     prompt: "",
-    audioMode: "source_only",
-    musicGain: 0,
-    musicAssetId: null,
-    musicAssetMimeType: null
+    musicGain: plan.musicGain,
+    musicAssetId: plan.musicAssetId,
+    musicAssetMimeType: plan.musicAssetMimeType
   };
 }
 
@@ -266,6 +288,7 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
           return {
             startSec,
             endSec,
+            speed: normalizeStage3SegmentSpeed(segment.speed),
             label:
               typeof segment.label === "string" && segment.label.trim()
                 ? segment.label
@@ -273,7 +296,7 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
           };
         })
         .filter(
-          (segment): segment is { startSec: number; endSec: number | null; label: string } =>
+          (segment): segment is { startSec: number; endSec: number | null; speed: Stage3Segment["speed"]; label: string } =>
             Boolean(segment)
         )
     : base.segments;
@@ -290,7 +313,10 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
       candidate?.audioMode === "source_only" || candidate?.audioMode === "source_plus_music"
         ? candidate.audioMode
         : base.audioMode,
+    sourceAudioEnabled: Boolean(candidate?.sourceAudioEnabled ?? base.sourceAudioEnabled),
     smoothSlowMo: Boolean(candidate?.smoothSlowMo ?? base.smoothSlowMo),
+    mirrorEnabled: Boolean(candidate?.mirrorEnabled ?? base.mirrorEnabled),
+    cameraMotion: normalizeStage3CameraMotion(candidate?.cameraMotion ?? base.cameraMotion),
     videoZoom:
       typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
         ? Math.min(1.6, Math.max(1, candidate.videoZoom))
@@ -626,7 +652,12 @@ export default function HomePage() {
   const [ignoreStage3ChatSessionRef, setIgnoreStage3ChatSessionRef] = useState(false);
   const [stage3SelectedVersionId, setStage3SelectedVersionId] = useState<string | null>(null);
   const [stage3PassSelectionByVersion, setStage3PassSelectionByVersion] = useState<Record<string, number>>({});
-  const appliedCaptionKeyRef = useRef("");
+  const autoAppliedCaptionRef = useRef<{
+    chatId: string;
+    option: number | null;
+    top: string;
+    bottom: string;
+  } | null>(null);
   const initializedStage3ChatRef = useRef<string | null>(null);
   const previousChannelIdRef = useRef<string | null>(null);
   const stage3PreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
@@ -822,7 +853,8 @@ export default function HomePage() {
           backgroundAssetId: channel.defaultBackgroundAssetId,
           backgroundAssetMimeType: background?.mimeType ?? null,
           musicAssetId: channel.defaultMusicAssetId,
-          musicAssetMimeType: music?.mimeType ?? null
+          musicAssetMimeType: music?.mimeType ?? null,
+          audioMode: channel.defaultMusicAssetId ? "source_plus_music" : base.audioMode
         },
         base
       );
@@ -850,7 +882,7 @@ export default function HomePage() {
         setIgnoreStage3ChatSessionRef(false);
         setStage3SelectedVersionId(null);
         setStage3PassSelectionByVersion({});
-        appliedCaptionKeyRef.current = "";
+        autoAppliedCaptionRef.current = null;
         stage3PreviewRequestKeyRef.current = "";
         stage3PreviewPendingKeyRef.current = "";
         setStage3PreviewVideoUrl(null);
@@ -888,15 +920,21 @@ export default function HomePage() {
         ? normalizeRenderPlan(draft.stage3.renderPlan, baseRenderPlan)
         : baseRenderPlan;
 
+      const nextTopText = draft?.stage3.topText ?? latestVersion?.final.topText ?? selectedCaptionForHydration?.top ?? "";
+      const nextBottomText =
+        draft?.stage3.bottomText ?? latestVersion?.final.bottomText ?? selectedCaptionForHydration?.bottom ?? "";
+      const hydratedFromSelectedCaption =
+        Boolean(selectedCaptionForHydration) &&
+        nextTopText === (selectedCaptionForHydration?.top ?? "") &&
+        nextBottomText === (selectedCaptionForHydration?.bottom ?? "");
+
       initializedStage3ChatRef.current = chat.id;
       setCurrentStep(getPreferredStepForChat(chat, draft));
       setStage2Instruction(draft?.stage2.instruction ?? "");
       setSelectedOption(preferredCaptionOption);
       setSelectedTitleOption(preferredTitleOption);
-      setStage3TopText(draft?.stage3.topText ?? latestVersion?.final.topText ?? selectedCaptionForHydration?.top ?? "");
-      setStage3BottomText(
-        draft?.stage3.bottomText ?? latestVersion?.final.bottomText ?? selectedCaptionForHydration?.bottom ?? ""
-      );
+      setStage3TopText(nextTopText);
+      setStage3BottomText(nextBottomText);
       setStage3ClipStartSec(draft?.stage3.clipStartSec ?? latestVersion?.final.clipStartSec ?? 0);
       setStage3FocusY(draft?.stage3.focusY ?? latestVersion?.final.focusY ?? 0.5);
       setStage3RenderPlan(nextRenderPlan);
@@ -916,12 +954,14 @@ export default function HomePage() {
           ? draft?.stage3.passSelectionByVersion ?? {}
           : defaults.passSelectionByVersion
       );
-      appliedCaptionKeyRef.current = [
-        chat.id,
-        selectedCaptionForHydration?.option ?? "",
-        selectedCaptionForHydration?.top ?? "",
-        selectedCaptionForHydration?.bottom ?? ""
-      ].join("|");
+      autoAppliedCaptionRef.current = hydratedFromSelectedCaption
+        ? {
+            chatId: chat.id,
+            option: selectedCaptionForHydration?.option ?? null,
+            top: nextTopText,
+            bottom: nextBottomText
+          }
+        : null;
       stage3PreviewRequestKeyRef.current = "";
       stage3PreviewPendingKeyRef.current = "";
       setStage3PreviewVideoUrl(null);
@@ -2422,20 +2462,47 @@ export default function HomePage() {
     return Math.max(0, Math.min(selectedStage3Version.internalPasses.length - 1, stored));
   }, [selectedStage3Version, stage3PassSelectionByVersion]);
 
+  const normalizedStage3RenderPlan = useMemo(
+    () => normalizeRenderPlan(stage3RenderPlan, fallbackRenderPlan()),
+    [stage3RenderPlan]
+  );
+
   const stage3LivePreviewState = useMemo(
     () => ({
       clipStartSec: stage3ClipStartSec,
       clipDurationSec: CLIP_DURATION_SEC,
-      renderPlan: stripRenderPlanForPreview(normalizeRenderPlan(stage3RenderPlan, fallbackRenderPlan()))
+      renderPlan: stripRenderPlanForPreview(normalizedStage3RenderPlan)
     }),
     [
       stage3ClipStartSec,
-      stage3RenderPlan.targetDurationSec,
-      stage3RenderPlan.timingMode,
-      stage3RenderPlan.smoothSlowMo,
-      stage3RenderPlan.segments,
-      stage3RenderPlan.policy
+      normalizedStage3RenderPlan
     ]
+  );
+  const stage3LivePreviewStateRef = useRef(stage3LivePreviewState);
+
+  const stage3LivePreviewKey = useMemo(() => {
+    if (!activeChat?.url) {
+      return "";
+    }
+    return JSON.stringify({
+      sourceUrl: activeChat.url,
+      clipStartSec: Number(stage3LivePreviewState.clipStartSec.toFixed(3)),
+      clipDurationSec: stage3LivePreviewState.clipDurationSec,
+      renderPlan: stage3LivePreviewState.renderPlan
+    });
+  }, [activeChat?.url, stage3LivePreviewState]);
+
+  useEffect(() => {
+    stage3LivePreviewStateRef.current = stage3LivePreviewState;
+  }, [stage3LivePreviewState]);
+
+  const normalizedStage3RenderPlanJson = useMemo(
+    () => JSON.stringify(normalizedStage3RenderPlan),
+    [normalizedStage3RenderPlan]
+  );
+  const stage3PassSelectionJson = useMemo(
+    () => JSON.stringify(stage3PassSelectionByVersion),
+    [stage3PassSelectionByVersion]
   );
 
   useEffect(() => {
@@ -2520,9 +2587,9 @@ export default function HomePage() {
     const baseRenderPlan = latestVersion
       ? normalizeRenderPlan(latestVersion.final.renderPlan, fallbackRenderPlan())
       : applyChannelToRenderPlan(activeChannel, channelAssets);
-    const normalizedCurrentRenderPlan = normalizeRenderPlan(stage3RenderPlan, fallbackRenderPlan());
-    const renderPlanChanged =
-      JSON.stringify(normalizedCurrentRenderPlan) !== JSON.stringify(baseRenderPlan);
+    const baseRenderPlanJson = JSON.stringify(baseRenderPlan);
+    const normalizedCurrentRenderPlan = normalizedStage3RenderPlan;
+    const renderPlanChanged = normalizedStage3RenderPlanJson !== baseRenderPlanJson;
     const baseTopText = latestVersion?.final.topText ?? selectedCaption?.top ?? "";
     const baseBottomText = latestVersion?.final.bottomText ?? selectedCaption?.bottom ?? "";
     const baseClipStart = latestVersion?.final.clipStartSec ?? 0;
@@ -2531,7 +2598,7 @@ export default function HomePage() {
     const titleDefault = latestStage2Event?.payload.output.titleOptions[0]?.option ?? null;
     const captionDefault = latestStage2Event?.payload.output.finalPick.option ?? null;
     const passSelectionChanged =
-      JSON.stringify(stage3PassSelectionByVersion) !== JSON.stringify(defaults.passSelectionByVersion);
+      stage3PassSelectionJson !== JSON.stringify(defaults.passSelectionByVersion);
 
     return {
       lastOpenStep: currentStep,
@@ -2571,8 +2638,10 @@ export default function HomePage() {
     stage3AgentPrompt,
     stage3ClipStartSec,
     stage3FocusY,
+    stage3PassSelectionJson,
     stage3PassSelectionByVersion,
-    stage3RenderPlan,
+    normalizedStage3RenderPlan,
+    normalizedStage3RenderPlanJson,
     stage3SelectedVersionId,
     stage3TopText,
     stage3BottomText,
@@ -2679,13 +2748,17 @@ export default function HomePage() {
     );
   }, [currentDraftPayload, hasActiveStage3Draft]);
 
+  const currentDraftPayloadJson = useMemo(
+    () => (currentDraftPayload ? JSON.stringify(currentDraftPayload) : null),
+    [currentDraftPayload]
+  );
+
   useEffect(() => {
-    if (!activeChat || !currentDraftPayload) {
+    if (!activeChat || !currentDraftPayload || !currentDraftPayloadJson) {
       return;
     }
 
-    const nextPayloadJson = JSON.stringify(currentDraftPayload);
-    if (nextPayloadJson === draftPayloadJsonRef.current) {
+    if (currentDraftPayloadJson === draftPayloadJsonRef.current) {
       return;
     }
 
@@ -2704,7 +2777,7 @@ export default function HomePage() {
         draftSaveTimerRef.current = null;
       }
     };
-  }, [activeChat, currentDraftPayload, saveActiveDraftPayload]);
+  }, [activeChat, currentDraftPayload, currentDraftPayloadJson, saveActiveDraftPayload]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -2726,40 +2799,55 @@ export default function HomePage() {
   }, [flushActiveDraftSave]);
 
   useEffect(() => {
-    if (hasWorkingStage3Draft) {
+    if (!activeChat?.id) {
       return;
     }
 
-    const key = [
-      activeChat?.id ?? "",
-      selectedCaption?.option ?? "",
-      selectedCaption?.top ?? "",
-      selectedCaption?.bottom ?? ""
-    ].join("|");
+    const nextTopText = selectedCaption?.top ?? "";
+    const nextBottomText = selectedCaption?.bottom ?? "";
+    const currentAutoApplied = autoAppliedCaptionRef.current;
+    const alreadyAppliedCurrentSelection =
+      currentAutoApplied?.chatId === activeChat.id &&
+      currentAutoApplied.option === (selectedCaption?.option ?? null) &&
+      currentAutoApplied.top === nextTopText &&
+      currentAutoApplied.bottom === nextBottomText &&
+      stage3TopText === nextTopText &&
+      stage3BottomText === nextBottomText;
 
-    if (appliedCaptionKeyRef.current === key) {
+    if (alreadyAppliedCurrentSelection) {
       return;
     }
 
-    appliedCaptionKeyRef.current = key;
-    setStage3TopText(selectedCaption?.top ?? "");
-    setStage3BottomText(selectedCaption?.bottom ?? "");
-    setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
+    const currentMatchesLastAutoApplied =
+      currentAutoApplied?.chatId === activeChat.id &&
+      stage3TopText === currentAutoApplied.top &&
+      stage3BottomText === currentAutoApplied.bottom;
+    const currentTextEmpty = !stage3TopText && !stage3BottomText;
+
+    if (!currentTextEmpty && !currentMatchesLastAutoApplied) {
+      return;
+    }
+
+    autoAppliedCaptionRef.current = {
+      chatId: activeChat.id,
+      option: selectedCaption?.option ?? null,
+      top: nextTopText,
+      bottom: nextBottomText
+    };
+    setStage3TopText(nextTopText);
+    setStage3BottomText(nextBottomText);
     setStage3SelectedVersionId(null);
     setStage3PassSelectionByVersion({});
     setStage3AgentSessionId(null);
     setStage3AgentTimeline(null);
     setIgnoreStage3ChatSessionRef(true);
-    setStage3PreviewNotice(null);
   }, [
     activeChat?.id,
     selectedCaption?.option,
     selectedCaption?.top,
     selectedCaption?.bottom,
-    activeChannel,
-    channelAssets,
-    applyChannelToRenderPlan,
-    hasWorkingStage3Draft
+    stage3TopText,
+    stage3BottomText
   ]);
 
   useEffect(() => {
@@ -2857,14 +2945,8 @@ export default function HomePage() {
       return;
     }
 
-    const previewState = stage3LivePreviewState;
-
-    const previewKey = JSON.stringify({
-      sourceUrl: activeChat.url,
-      clipStartSec: Number(previewState.clipStartSec.toFixed(3)),
-      clipDurationSec: previewState.clipDurationSec,
-      renderPlan: previewState.renderPlan
-    });
+    const previewState = stage3LivePreviewStateRef.current;
+    const previewKey = stage3LivePreviewKey;
     stage3PreviewRequestKeyRef.current = previewKey;
 
     const cached = stage3PreviewCacheRef.current.get(previewKey);
@@ -2950,7 +3032,7 @@ export default function HomePage() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [currentStep, activeChat?.url, activeChannelId, stage3LivePreviewState]);
+  }, [currentStep, activeChat?.url, activeChannelId, stage3LivePreviewKey]);
 
   const steps: FlowStep[] = useMemo(
     () => [
@@ -3064,7 +3146,7 @@ export default function HomePage() {
     setStage3SelectedVersionId(null);
     setStage3PassSelectionByVersion({});
     initializedStage3ChatRef.current = null;
-    appliedCaptionKeyRef.current = "";
+    autoAppliedCaptionRef.current = null;
     stage3PreviewRequestKeyRef.current = "";
     stage3PreviewPendingKeyRef.current = "";
     clearStage3PreviewCache();
@@ -3104,7 +3186,7 @@ export default function HomePage() {
       setStage3SelectedVersionId(null);
       setStage3PassSelectionByVersion({});
       initializedStage3ChatRef.current = null;
-      appliedCaptionKeyRef.current = "";
+      autoAppliedCaptionRef.current = null;
       stage3PreviewRequestKeyRef.current = "";
       stage3PreviewPendingKeyRef.current = "";
       clearStage3PreviewCache();
@@ -3655,9 +3737,12 @@ export default function HomePage() {
           clipDurationSec={CLIP_DURATION_SEC}
           sourceDurationSec={sourceDurationSec}
           focusY={stage3FocusY}
+          cameraMotion={stage3RenderPlan.cameraMotion}
+          mirrorEnabled={stage3RenderPlan.mirrorEnabled}
           videoZoom={stage3RenderPlan.videoZoom}
           topFontScale={stage3RenderPlan.topFontScale}
           bottomFontScale={stage3RenderPlan.bottomFontScale}
+          sourceAudioEnabled={stage3RenderPlan.sourceAudioEnabled}
           musicGain={stage3RenderPlan.musicGain}
           isRendering={busyAction === "render"}
           isOptimizing={busyAction === "stage3-optimize"}
@@ -3788,6 +3873,28 @@ export default function HomePage() {
             });
           }}
           onFocusYChange={(value) => setStage3FocusY(value)}
+          onCameraMotionChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  cameraMotion: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onMirrorEnabledChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  mirrorEnabled: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
           onVideoZoomChange={(value) =>
             setStage3RenderPlan((prev) =>
               normalizeRenderPlan(
@@ -3805,6 +3912,17 @@ export default function HomePage() {
                 {
                   ...prev,
                   musicGain: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onSourceAudioEnabledChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  sourceAudioEnabled: value
                 },
                 fallbackRenderPlan()
               )

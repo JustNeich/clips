@@ -66,7 +66,8 @@ const PLANNER_SCHEMA = {
               properties: {
                 startSec: { type: "number" },
                 endSec: { type: ["number", "null"] },
-                label: { type: "string" }
+                label: { type: "string" },
+                speed: { type: "number" }
               }
             }
           },
@@ -77,7 +78,8 @@ const PLANNER_SCHEMA = {
             properties: {
               startSec: { type: "number" },
               endSec: { type: ["number", "null"] },
-              label: { type: "string" }
+              label: { type: "string" },
+              speed: { type: "number" }
             }
           },
           timingMode: { type: "string", enum: ["auto", "compress", "stretch"] },
@@ -131,11 +133,18 @@ function parseJsonBlock(raw: string): unknown {
   throw new Error("Не удалось разобрать JSON планировщика.");
 }
 
-function normalizeSegment(value: unknown): { startSec: number; endSec: number | null; label: string } | null {
+function normalizeSegment(
+  value: unknown
+): {
+  startSec: number;
+  endSec: number | null;
+  label: string;
+  speed: Stage3RenderPlan["segments"][number]["speed"];
+} | null {
   if (!value || typeof value !== "object") {
     return null;
   }
-  const candidate = value as { startSec?: unknown; endSec?: unknown; label?: unknown };
+  const candidate = value as { startSec?: unknown; endSec?: unknown; label?: unknown; speed?: unknown };
   const startSec = typeof candidate.startSec === "number" && Number.isFinite(candidate.startSec) ? candidate.startSec : null;
   if (startSec === null) {
     return null;
@@ -150,7 +159,11 @@ function normalizeSegment(value: unknown): { startSec: number; endSec: number | 
     typeof candidate.label === "string" && candidate.label.trim()
       ? candidate.label.trim()
       : `${startSec.toFixed(2)}-${endSec === null ? "end" : endSec.toFixed(2)}`;
-  return { startSec, endSec, label };
+  const speed =
+    typeof candidate.speed === "number" && [1, 1.5, 2, 2.5, 3, 4, 5].includes(candidate.speed)
+      ? (candidate.speed as Stage3RenderPlan["segments"][number]["speed"])
+      : 1;
+  return { startSec, endSec, label, speed };
 }
 
 function normalizeOperations(value: unknown): Stage3Operation[] {

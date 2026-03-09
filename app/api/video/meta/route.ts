@@ -1,5 +1,5 @@
 import { fetchSourceMetadata } from "../../../../lib/source-acquisition";
-import { isSupportedUrl } from "../../../../lib/ytdlp";
+import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!rawUrl) {
     return Response.json({ error: "Передайте url." }, { status: 400 });
   }
-  if (!isSupportedUrl(rawUrl)) {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
+
+  if (!isSupportedUrl(sourceUrl)) {
     return Response.json(
       { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
       { status: 400 }
@@ -22,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const meta = await fetchSourceMetadata(rawUrl);
+    const meta = await fetchSourceMetadata(sourceUrl);
 
     return Response.json({ durationSec: meta.durationSec }, { status: 200 });
   } catch (error) {

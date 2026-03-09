@@ -4,6 +4,7 @@ import { buildChatListItem, normalizeChatDraft } from "./chat-workflow";
 import { STAGE2_DESCRIPTION_SYSTEM_PROMPT, STAGE2_SYSTEM_PROMPT } from "./stage2";
 import { getDb, newId, nowIso } from "./db/client";
 import { getWorkspace } from "./team-store";
+import { normalizeSupportedUrl } from "./ytdlp";
 
 export type ChatEventRole = "user" | "assistant" | "system";
 
@@ -672,7 +673,7 @@ export async function deleteChatDraft(threadId: string, userId: string): Promise
 }
 
 export async function createOrGetChatByUrl(rawUrl: string, channelIdRaw?: string): Promise<ChatThread> {
-  const url = rawUrl.trim();
+  const url = normalizeSupportedUrl(rawUrl.trim());
   if (!url) {
     throw new Error("URL is required.");
   }

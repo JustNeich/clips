@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, Img, OffthreadVideo, staticFile } from "remotion";
+import { AbsoluteFill, Img, OffthreadVideo, staticFile, useCurrentFrame } from "remotion";
 import {
   SCIENCE_CARD,
   SCIENCE_CARD_TEMPLATE_ID,
@@ -10,11 +10,14 @@ import {
 
 type ScienceCardV1Props = {
   templateId?: string;
+  sourceVideoFileName?: string | null;
   topText: string;
   bottomText: string;
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  mirrorEnabled: boolean;
+  cameraMotion: "disabled" | "top_to_bottom" | "bottom_to_top";
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
@@ -107,6 +110,17 @@ function avatarInitials(name: string): string {
     return "SS";
   }
   return parts.map((item) => item[0]?.toUpperCase() ?? "").join("") || "SS";
+}
+
+function easeInOutSine(value: number): number {
+  const clamped = Math.min(1, Math.max(0, value));
+  return 0.5 - Math.cos(clamped * Math.PI) / 2;
+}
+
+function resolveLoopFriendlyMotionProgress(value: number): number {
+  const clamped = Math.min(1, Math.max(0, value));
+  const eased = easeInOutSine(clamped);
+  return clamped * 0.72 + eased * 0.28;
 }
 
 function AuthorBlock({
@@ -232,16 +246,20 @@ export function ScienceCardV1({
   bottomFontScale,
   authorName,
   authorHandle,
+  sourceVideoFileName,
+  mirrorEnabled,
+  cameraMotion,
   avatarAssetFileName,
   avatarAssetMimeType,
   backgroundAssetFileName,
   backgroundAssetMimeType
 }: ScienceCardV1Props): React.JSX.Element {
-  const sourceUrl = staticFile("source.mp4");
+  const frameNumber = useCurrentFrame();
+  const sourceUrl = sourceVideoFileName ? staticFile(sourceVideoFileName) : "";
   const isTurbo = templateId === TURBO_FACE_TEMPLATE_ID;
   const frame = isTurbo ? TURBO_FACE.frame : SCIENCE_CARD.frame;
-  const hasCustomBackground = Boolean(backgroundAssetFileName);
-  const customBackgroundSrc = hasCustomBackground ? staticFile(backgroundAssetFileName as string) : null;
+  const customBackgroundSrc = backgroundAssetFileName ? staticFile(backgroundAssetFileName) : null;
+  const hasCustomBackground = Boolean(customBackgroundSrc);
   const customBackgroundIsVideo =
     hasCustomBackground && (backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/");
   const computed = getTemplateComputed(templateId ?? SCIENCE_CARD_TEMPLATE_ID, topText, bottomText, {
@@ -252,8 +270,22 @@ export function ScienceCardV1({
   const startFrom = Math.max(0, Math.round(clipStartSec * fps));
   const clipFrames = Math.max(1, Math.round(clipDurationSec * fps));
   const endAt = startFrom + clipFrames;
-  const objectPosition = `50% ${Math.round(Math.min(88, Math.max(12, focusY * 100)))}%`;
+  const progress = clipFrames <= 1 ? 0 : Math.min(1, Math.max(0, frameNumber / Math.max(1, clipFrames - 1)));
+  const baseFocus = Math.min(0.88, Math.max(0.12, focusY));
+  const sweepStart = Math.min(0.88 - 0.28, Math.max(0.12, baseFocus - 0.14));
+  const sweepEnd = Math.min(0.88, Math.max(0.12, sweepStart + 0.28));
+  const easedProgress = resolveLoopFriendlyMotionProgress(progress);
+  const animatedFocus =
+    cameraMotion === "top_to_bottom"
+      ? sweepStart + (sweepEnd - sweepStart) * easedProgress
+      : cameraMotion === "bottom_to_top"
+        ? sweepEnd - (sweepEnd - sweepStart) * easedProgress
+        : baseFocus;
+  const objectPosition = `50% ${(Math.min(88, Math.max(12, animatedFocus * 100))).toFixed(3)}%`;
   const normalizedZoom = Math.min(1.6, Math.max(1, Number.isFinite(videoZoom) ? videoZoom : 1));
+  const mirroredScale = mirrorEnabled ? -normalizedZoom : normalizedZoom;
+  const slotTransform = `scale(${mirroredScale.toFixed(3)}, ${normalizedZoom.toFixed(3)})`;
+  const bgTransform = mirrorEnabled ? "scaleX(-1)" : undefined;
 
   return (
     <AbsoluteFill
@@ -297,7 +329,9 @@ export function ScienceCardV1({
               height: frame.height,
               objectFit: "cover",
               objectPosition,
-              filter: "blur(16px) brightness(0.82) saturate(1.05)"
+              filter: "blur(16px) brightness(0.82) saturate(1.05)",
+              transform: bgTransform,
+              transformOrigin: "center center"
             }}
             volume={0}
           />
@@ -348,7 +382,7 @@ export function ScienceCardV1({
                 height: computed.videoHeight,
                 objectFit: "cover",
                 objectPosition,
-                transform: `scale(${normalizedZoom})`,
+                transform: slotTransform,
                 transformOrigin: "center center"
               }}
               volume={1}
@@ -530,7 +564,7 @@ export function ScienceCardV1({
               height: computed.videoHeight,
               objectFit: "cover",
               objectPosition,
-              transform: `scale(${normalizedZoom})`,
+              transform: slotTransform,
               transformOrigin: "center center"
             }}
             volume={1}
@@ -550,12 +584,12 @@ export function ScienceCardV1({
             gridTemplateRows: `${SCIENCE_CARD.slot.bottomMetaHeight}px minmax(0, 1fr)`
           }}
         >
-          <AuthorBlock
-            authorName={authorName}
-            authorHandle={authorHandle}
-            avatarAssetFileName={avatarAssetFileName}
-            avatarAssetMimeType={avatarAssetMimeType}
-          />
+        <AuthorBlock
+          authorName={authorName}
+          authorHandle={authorHandle}
+          avatarAssetFileName={avatarAssetFileName}
+          avatarAssetMimeType={avatarAssetMimeType}
+        />
 
           <OverlayText
             text={computed.bottom}

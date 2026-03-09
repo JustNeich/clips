@@ -1,5 +1,6 @@
 import { createOrGetChatByUrl, listChatListItems } from "../../../lib/chat-history";
 import { requireAuth, requireChannelOperate, requireChannelVisibility } from "../../../lib/auth/guards";
+import { normalizeSupportedUrl } from "../../../lib/ytdlp";
 
 export const runtime = "nodejs";
 
@@ -43,10 +44,12 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Передайте url." }, { status: 400 });
   }
 
+  let normalizedUrl = "";
   try {
+    normalizedUrl = normalizeSupportedUrl(url);
     // Validate URL format before creating chat.
     // eslint-disable-next-line no-new
-    new URL(url);
+    new URL(normalizedUrl);
   } catch {
     return Response.json({ error: "Некорректный URL." }, { status: 400 });
   }
@@ -58,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Передайте channelId." }, { status: 400 });
     }
     await requireChannelOperate(auth, channelId);
-    const chat = await createOrGetChatByUrl(url, channelId);
+    const chat = await createOrGetChatByUrl(normalizedUrl, channelId);
     return Response.json({ chat }, { status: 200 });
   } catch (error) {
     return error instanceof Response

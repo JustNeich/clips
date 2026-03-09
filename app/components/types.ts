@@ -100,10 +100,17 @@ export type Stage3RenderPolicy = "full_source_normalize" | "adaptive_window" | "
 
 export type Stage3TextPolicy = "strict_fit" | "preserve_words" | "aggressive_compact";
 
+export const STAGE3_SEGMENT_SPEED_OPTIONS = [1, 1.5, 2, 2.5, 3, 4, 5] as const;
+
+export type Stage3SegmentSpeed = (typeof STAGE3_SEGMENT_SPEED_OPTIONS)[number];
+
+export type Stage3CameraMotion = "disabled" | "top_to_bottom" | "bottom_to_top";
+
 export type Stage3Segment = {
   startSec: number;
   endSec: number | null;
   label: string;
+  speed: Stage3SegmentSpeed;
 };
 
 export type Stage3Operation =
@@ -127,7 +134,10 @@ export type Stage3RenderPlan = {
   targetDurationSec: 6;
   timingMode: Stage3TimingMode;
   audioMode: Stage3AudioMode;
+  sourceAudioEnabled: boolean;
   smoothSlowMo: boolean;
+  mirrorEnabled: boolean;
+  cameraMotion: Stage3CameraMotion;
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;

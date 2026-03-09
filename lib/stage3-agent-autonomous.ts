@@ -486,7 +486,8 @@ function buildImplicitTimingSegments(params: {
       {
         startSec,
         endSec,
-        label: `${startSec.toFixed(2)}-${endSec.toFixed(2)}`
+        label: `${startSec.toFixed(2)}-${endSec.toFixed(2)}`,
+        speed: 1
       }
     ]
   };
@@ -516,7 +517,8 @@ function buildRequiredDirectiveOps(
         {
           startSec: 0,
           endSec: snapshot.sourceDurationSec,
-          label: `0-${snapshot.sourceDurationSec.toFixed(2)}`
+          label: `0-${snapshot.sourceDurationSec.toFixed(2)}`,
+          speed: 1
         }
       ]
     });
@@ -925,7 +927,8 @@ function guardAndNormalizePlan(
         {
           startSec: 0,
           endSec: snapshot.sourceDurationSec,
-          label: `0-${snapshot.sourceDurationSec.toFixed(2)}`
+          label: `0-${snapshot.sourceDurationSec.toFixed(2)}`,
+          speed: 1
         }
       ]
     });
@@ -1140,7 +1143,8 @@ function buildFallbackPlan(args: {
           {
             startSec: 0,
             endSec: args.sourceDurationSec,
-            label: `0-${args.sourceDurationSec.toFixed(2)}`
+            label: `0-${args.sourceDurationSec.toFixed(2)}`,
+            speed: 1
           }
         ]
       });

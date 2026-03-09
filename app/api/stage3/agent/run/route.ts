@@ -1,4 +1,4 @@
-import { isSupportedUrl } from "../../../../../lib/ytdlp";
+import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
 import { runAutonomousOptimization } from "../../../../../lib/stage3-agent-autonomous";
 import { applyHostedStage3Limits } from "../../../../../lib/stage3-hosted-limits";
 import { runHostedStage3HeavyJob } from "../../../../../lib/stage3-server-control";
@@ -45,7 +45,12 @@ function buildRunAutonomousInput(body: Stage3RunBody, request: Request) {
   const trimmedProjectId = body.projectId?.trim();
   const trimmedMediaId = body.mediaId?.trim();
   const trimmedGoal = body.goalText?.trim();
-  const sourceUrl = (body.sourceUrl ?? trimmedMediaId ?? "").trim();
+  const rawSourceUrl = (body.sourceUrl ?? trimmedMediaId ?? "").trim();
+  const sourceUrl = rawSourceUrl ? normalizeSupportedUrl(rawSourceUrl) : "";
+  const mediaIdCandidate = trimmedMediaId || sourceUrl;
+  const mediaId = mediaIdCandidate && isSupportedUrl(mediaIdCandidate)
+    ? normalizeSupportedUrl(mediaIdCandidate)
+    : mediaIdCandidate;
   const option = body.options ?? {};
   const idempotencyKey =
     request.headers.get("idempotency-key")?.trim() ||
@@ -55,7 +60,7 @@ function buildRunAutonomousInput(body: Stage3RunBody, request: Request) {
 
   return applyHostedStage3Limits({
     projectId: trimmedProjectId,
-    mediaId: trimmedMediaId,
+    mediaId,
     goalText: trimmedGoal,
     sourceUrl,
     sourceDurationSec: parseFiniteNumber(body.sourceDurationSec),
@@ -97,7 +102,10 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (!isSupportedUrl(payload.sourceUrl)) {
     return Response.json(
-      { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
+      {
+        error:
+          "Не удалось подготовить исходное видео для Stage 3 агента. Проверьте ссылку на ролик из Шага 1."
+      },
       { status: 400 }
     );
   }

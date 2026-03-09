@@ -8,11 +8,14 @@ import {
 
 export type ScienceCardV1Props = {
   templateId?: string;
+  sourceVideoFileName?: string | null;
   topText: string;
   bottomText: string;
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
+  mirrorEnabled: boolean;
+  cameraMotion: "disabled" | "top_to_bottom" | "bottom_to_top";
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
@@ -40,11 +43,14 @@ export const RemotionRoot = () => {
         durationInFrames={6 * 30}
         defaultProps={{
           templateId: SCIENCE_CARD_TEMPLATE_ID,
+          sourceVideoFileName: "source.mp4",
           topText: "",
           bottomText: "",
           clipStartSec: 0,
           clipDurationSec: 6,
           focusY: 0.5,
+          mirrorEnabled: true,
+          cameraMotion: "disabled",
           videoZoom: 1,
           topFontScale: DEFAULT_TEXT_SCALE,
           bottomFontScale: DEFAULT_TEXT_SCALE,
@@ -65,11 +71,14 @@ export const RemotionRoot = () => {
         durationInFrames={6 * 30}
         defaultProps={{
           templateId: TURBO_FACE_TEMPLATE_ID,
+          sourceVideoFileName: "source.mp4",
           topText: "",
           bottomText: "",
           clipStartSec: 0,
           clipDurationSec: 6,
           focusY: 0.5,
+          mirrorEnabled: true,
+          cameraMotion: "disabled",
           videoZoom: 1,
           topFontScale: DEFAULT_TEXT_SCALE,
           bottomFontScale: DEFAULT_TEXT_SCALE,

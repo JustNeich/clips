@@ -4,7 +4,7 @@ import {
   listVersions
 } from "../../../../lib/stage3-session-store";
 import { parseUserIntent } from "../../../../lib/stage3-agent";
-import { isSupportedUrl } from "../../../../lib/ytdlp";
+import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 import { runAutonomousOptimization } from "../../../../lib/stage3-agent-autonomous";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChatById } from "../../../../lib/chat-history";
@@ -117,14 +117,17 @@ async function buildLegacyVersion(
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as OptimizeBody | null;
-  const sourceUrl = body?.sourceUrl?.trim();
+  const sourceUrl = body?.sourceUrl?.trim() ? normalizeSupportedUrl(body.sourceUrl.trim()) : "";
 
   if (!sourceUrl) {
     return Response.json({ error: "Передайте sourceUrl в теле запроса." }, { status: 400 });
   }
   if (!isSupportedUrl(sourceUrl)) {
     return Response.json(
-      { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
+      {
+        error:
+          "Не удалось подготовить исходное видео для оптимизации Stage 3. Проверьте ссылку на ролик из Шага 1."
+      },
       { status: 400 }
     );
   }

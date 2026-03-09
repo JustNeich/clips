@@ -23,7 +23,10 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     targetDurationSec: 6,
     timingMode: "auto",
     audioMode: "source_only",
+    sourceAudioEnabled: true,
     smoothSlowMo: false,
+    mirrorEnabled: true,
+    cameraMotion: "disabled",
     videoZoom: 1,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
@@ -68,16 +71,18 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
           return {
             startSec,
             endSec,
+            speed:
+              typeof (segment as { speed?: unknown }).speed === "number" &&
+              [1, 1.5, 2, 2.5, 3, 4, 5].includes((segment as { speed?: number }).speed ?? 0)
+                ? ((segment as { speed?: number }).speed as Stage3RenderPlan["segments"][number]["speed"])
+                : 1,
             label:
               typeof segment.label === "string" && segment.label.trim()
                 ? segment.label
                 : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`
           };
         })
-        .filter(
-          (segment): segment is { startSec: number; endSec: number | null; label: string } =>
-            Boolean(segment)
-        )
+        .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
     : fallback.segments;
 
   return {
@@ -92,7 +97,13 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
       candidate?.audioMode === "source_only" || candidate?.audioMode === "source_plus_music"
         ? candidate.audioMode
         : fallback.audioMode,
+    sourceAudioEnabled: Boolean(candidate?.sourceAudioEnabled ?? fallback.sourceAudioEnabled),
     smoothSlowMo: Boolean(candidate?.smoothSlowMo ?? fallback.smoothSlowMo),
+    mirrorEnabled: Boolean(candidate?.mirrorEnabled ?? fallback.mirrorEnabled),
+    cameraMotion:
+      candidate?.cameraMotion === "top_to_bottom" || candidate?.cameraMotion === "bottom_to_top"
+        ? candidate.cameraMotion
+        : fallback.cameraMotion,
     videoZoom:
       typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
         ? Math.min(1.6, Math.max(1, candidate.videoZoom))

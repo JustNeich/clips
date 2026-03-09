@@ -60,7 +60,7 @@ export function Step1PasteLink({
                   className="text-input"
                   value={draftUrl}
                   onChange={(event) => onDraftUrlChange(event.target.value)}
-                  placeholder="https://www.youtube.com/shorts/..."
+                  placeholder="https://www.instagram.com/reel/... или https://www.youtube.com/shorts/..."
                   autoComplete="off"
                 />
                 <button type="button" className="btn btn-ghost" onClick={onPaste} disabled={isBusy}>
@@ -68,7 +68,10 @@ export function Step1PasteLink({
                 </button>
               </div>
 
-              <p className="subtle-text">Примеры: YouTube Shorts, Instagram Reels, Facebook Reels.</p>
+              <p className="subtle-text">
+                Примеры: `instagram.com/reel/...`, `instagram.com/share/reel/...`, `youtube.com/shorts/...`,
+                `facebook.com/reel/...`
+              </p>
 
               <div className="control-actions">
                 <button

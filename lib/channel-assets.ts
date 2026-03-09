@@ -99,6 +99,20 @@ export async function readChannelAssetFile(params: {
   return { filePath, buffer };
 }
 
+export async function resolveChannelAssetFile(params: {
+  channelId: string;
+  fileName: string;
+}): Promise<{ filePath: string; size: number } | null> {
+  const channelRoot = safeJoinChannelRoot(params.channelId);
+  const fileName = safeFileName(params.fileName);
+  const filePath = path.join(channelRoot, fileName);
+  const stat = await fs.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) {
+    return null;
+  }
+  return { filePath, size: stat.size };
+}
+
 export async function deleteChannelAssetFile(params: {
   channelId: string;
   fileName: string;
