@@ -19,7 +19,6 @@ import { summarizeUserFacingError } from "../../../../lib/ui-error";
 import {
   ensureStage3SourceCached,
   isStage3HostedBusyError,
-  isStage3HostedRuntime,
   pruneStage3SourceCache,
   runHostedStage3HeavyJob
 } from "../../../../lib/stage3-server-control";
@@ -304,16 +303,6 @@ export async function POST(request: Request): Promise<Response> {
     if (running) {
       await running;
     } else {
-      if (isStage3HostedRuntime()) {
-        return Response.json(
-          {
-            error:
-              "Черновой предпросмотр временно недоступен на хостинге во время подготовки видео. Повторите через минуту."
-          },
-          { status: 503 }
-        );
-      }
-
       const task = (async () => {
         const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-"));
         try {

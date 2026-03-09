@@ -20,6 +20,7 @@ import {
   ChatThread,
   Stage3AgentConversationItem,
   CodexAuthResponse,
+  CodexDeviceAuth,
   CommentsPayload,
   RuntimeCapabilitiesResponse,
   Stage3AgentRunResponse,
@@ -110,6 +111,70 @@ function isAbortError(error: unknown): boolean {
     return error.name === "AbortError";
   }
   return false;
+}
+
+function equalCodexDeviceAuth(
+  left: CodexDeviceAuth | null | undefined,
+  right: CodexDeviceAuth | null | undefined
+): boolean {
+  if (!left && !right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.status === right.status &&
+    left.output === right.output &&
+    left.loginUrl === right.loginUrl &&
+    left.userCode === right.userCode
+  );
+}
+
+function equalCodexAuthResponse(
+  left: CodexAuthResponse | null | undefined,
+  right: CodexAuthResponse | null | undefined
+): boolean {
+  if (!left && !right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.sessionId === right.sessionId &&
+    left.loggedIn === right.loggedIn &&
+    left.loginStatusText === right.loginStatusText &&
+    equalCodexDeviceAuth(left.deviceAuth, right.deviceAuth)
+  );
+}
+
+function buildSharedCodexStatus(
+  auth: CodexAuthResponse,
+  canManageCodex: boolean
+): AuthMeResponse["sharedCodexStatus"] {
+  return {
+    status: auth.loggedIn
+      ? "connected"
+      : auth.deviceAuth.status === "running"
+        ? "connecting"
+        : "disconnected",
+    connected: auth.loggedIn,
+    loginStatusText: auth.loginStatusText,
+    deviceAuth: canManageCodex ? auth.deviceAuth : null
+  };
+}
+
+function equalSharedCodexStatus(
+  left: AuthMeResponse["sharedCodexStatus"],
+  right: AuthMeResponse["sharedCodexStatus"]
+): boolean {
+  return (
+    left.status === right.status &&
+    left.connected === right.connected &&
+    left.loginStatusText === right.loginStatusText &&
+    equalCodexDeviceAuth(left.deviceAuth, right.deviceAuth)
+  );
 }
 
 function fallbackRenderPlan(): Stage3RenderPlan {
@@ -1145,38 +1210,45 @@ export default function HomePage() {
     [appendEvent]
   );
 
-  const refreshCodexAuth = async (): Promise<void> => {
-    setBusyAction("refresh-codex");
-    setIsCodexAuthLoading(true);
-    try {
-      const response = await fetch("/api/codex/auth");
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Не удалось загрузить статус Codex."));
+  const refreshCodexAuth = useCallback(
+    async (options?: { background?: boolean }): Promise<void> => {
+      const background = options?.background ?? false;
+      if (!background) {
+        setBusyAction("refresh-codex");
+        setIsCodexAuthLoading(true);
       }
-      const body = (await response.json()) as CodexAuthResponse;
-      setCodexAuth(body);
-      setAuthState((prev) =>
-        prev
-          ? {
-              ...prev,
-              sharedCodexStatus: {
-                status: body.loggedIn
-                  ? "connected"
-                  : body.deviceAuth.status === "running"
-                    ? "connecting"
-                    : "disconnected",
-                connected: body.loggedIn,
-                loginStatusText: body.loginStatusText,
-                deviceAuth: prev.effectivePermissions.canManageCodex ? body.deviceAuth : null
-              }
-            }
-          : prev
-      );
-    } finally {
-      setIsCodexAuthLoading(false);
-      setBusyAction((prev) => (prev === "refresh-codex" ? "" : prev));
-    }
-  };
+      try {
+        const response = await fetch("/api/codex/auth");
+        if (!response.ok) {
+          throw new Error(await parseError(response, "Не удалось загрузить статус Codex."));
+        }
+        const body = (await response.json()) as CodexAuthResponse;
+        setCodexAuth((prev) => (equalCodexAuthResponse(prev, body) ? prev : body));
+        setAuthState((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          const nextSharedCodexStatus = buildSharedCodexStatus(
+            body,
+            prev.effectivePermissions.canManageCodex
+          );
+          if (equalSharedCodexStatus(prev.sharedCodexStatus, nextSharedCodexStatus)) {
+            return prev;
+          }
+          return {
+            ...prev,
+            sharedCodexStatus: nextSharedCodexStatus
+          };
+        });
+      } finally {
+        if (!background) {
+          setIsCodexAuthLoading(false);
+          setBusyAction((prev) => (prev === "refresh-codex" ? "" : prev));
+        }
+      }
+    },
+    [parseError]
+  );
 
   const startCodexDeviceAuth = async (): Promise<void> => {
     if (!canManageCodex) {
@@ -1251,7 +1323,7 @@ export default function HomePage() {
       try {
         await refreshAuthState();
         await refreshRuntimeCapabilities();
-        await refreshCodexAuth();
+        await refreshCodexAuth({ background: true });
         await refreshChannels();
       } catch (error) {
         setStatusType("error");
@@ -1260,8 +1332,7 @@ export default function HomePage() {
         setIsAuthLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [getUiErrorMessage, refreshAuthState, refreshChannels, refreshCodexAuth, refreshRuntimeCapabilities]);
 
   useEffect(() => {
     if (!activeChannelId) {
@@ -1360,10 +1431,10 @@ export default function HomePage() {
       return;
     }
     const timer = window.setInterval(() => {
-      void refreshCodexAuth().catch(() => undefined);
+      void refreshCodexAuth({ background: true }).catch(() => undefined);
     }, 1800);
     return () => window.clearInterval(timer);
-  }, [codexRunning]);
+  }, [codexRunning, refreshCodexAuth]);
 
   const requireActiveChat = (): ChatThread | null => {
     if (!activeChat) {
@@ -3061,44 +3132,22 @@ export default function HomePage() {
     }
   }, [activeChat, busyAction]);
 
-  const currentSummaryDraft = useMemo(() => {
-    if (!activeChat || !authState?.user.id || !currentDraftPayload) {
-      return activeDraft;
+  const historyItems = useMemo(() => {
+    if (!activeChat) {
+      return chatList;
     }
+    return chatList.map((item) => {
+      if (item.id !== activeChat.id || item.liveAction === activeLiveAction) {
+        return item;
+      }
+      return {
+        ...item,
+        liveAction: activeLiveAction
+      };
+    });
+  }, [activeChat?.id, activeLiveAction, chatList]);
 
-    return (
-      normalizeChatDraft({
-        id: activeDraft?.id ?? "",
-        threadId: activeChat.id,
-        userId: authState.user.id,
-        createdAt: activeDraft?.createdAt ?? activeChat.updatedAt,
-        updatedAt: activeDraft?.updatedAt ?? activeChat.updatedAt,
-        ...currentDraftPayload
-      }) ?? activeDraft
-    );
-  }, [
-    activeChat,
-    activeDraft,
-    authState?.user.id,
-    currentDraftPayload
-  ]);
-
-  const historyItems = useMemo(
-    () =>
-      chatList.map((item) => {
-        if (!activeChat || item.id !== activeChat.id) {
-          return item;
-        }
-
-        return {
-          ...buildChatListItem(activeChat, currentSummaryDraft),
-          liveAction: activeLiveAction
-        };
-      }),
-    [activeChat, activeLiveAction, chatList, currentSummaryDraft]
-  );
-
-  const handleHistoryOpen = async (id: string, step?: 1 | 2 | 3): Promise<void> => {
+  const handleHistoryOpen = useCallback(async (id: string, step?: 1 | 2 | 3): Promise<void> => {
     setStatus("");
     setStatusType("");
 
@@ -3121,7 +3170,7 @@ export default function HomePage() {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось открыть элемент истории."));
     }
-  };
+  }, [flushActiveDraftSave, getUiErrorMessage, refreshActiveChat]);
 
   const handleResetFlow = (): void => {
     void flushActiveDraftSave();
@@ -3198,7 +3247,7 @@ export default function HomePage() {
     [activeChannelId, channels, channelAssets, applyChannelToRenderPlan, flushActiveDraftSave]
   );
 
-  const handleDeleteHistory = async (chatId: string): Promise<void> => {
+  const handleDeleteHistory = useCallback(async (chatId: string): Promise<void> => {
     if (!window.confirm("Удалить этот элемент из истории?")) {
       return;
     }
@@ -3231,7 +3280,7 @@ export default function HomePage() {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось удалить элемент истории."));
     }
-  };
+  }, [activeChat?.id, getDraftStorageKey, getUiErrorMessage, parseError, refreshChats]);
 
   const handleCreateChannel = async (): Promise<void> => {
     setBusyAction("channel-create");
@@ -3572,12 +3621,8 @@ export default function HomePage() {
       onStepChange={(step) => setCurrentStep(step)}
       historyItems={historyItems}
       activeHistoryId={activeChat?.id ?? null}
-      onHistoryOpen={(id, step) => {
-        void handleHistoryOpen(id, step);
-      }}
-      onDeleteHistory={(id) => {
-        void handleDeleteHistory(id);
-      }}
+      onHistoryOpen={handleHistoryOpen}
+      onDeleteHistory={handleDeleteHistory}
       onCreateNew={handleResetFlow}
       channels={channels.map((channel) => ({
         id: channel.id,

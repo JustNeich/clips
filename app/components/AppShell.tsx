@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sanitizeDisplayText } from "../../lib/ui-error";
 import type { ChatListItem, ChatWorkflowStatus, CodexDeviceAuth } from "./types";
 
@@ -190,7 +190,7 @@ function buildHistorySections(items: ChatListItem[], activeHistoryId: string | n
   return sections;
 }
 
-function HistoryCard({
+const HistoryCard = memo(function HistoryCard({
   item,
   active,
   compact = false,
@@ -200,9 +200,22 @@ function HistoryCard({
   item: ChatListItem;
   active: boolean;
   compact?: boolean;
-  onOpen: (step?: 1 | 2 | 3) => void;
-  onDelete: () => void;
+  onOpen: (id: string, step?: 1 | 2 | 3) => void;
+  onDelete: (id: string) => void;
 }) {
+  const handleOpen = useCallback(() => {
+    onOpen(item.id);
+  }, [item.id, onOpen]);
+  const handleDelete = useCallback(() => {
+    onDelete(item.id);
+  }, [item.id, onDelete]);
+  const handleOpenStep2 = useCallback(() => {
+    onOpen(item.id, 2);
+  }, [item.id, onOpen]);
+  const handleOpenStep3 = useCallback(() => {
+    onOpen(item.id, 3);
+  }, [item.id, onOpen]);
+
   return (
     <article
       className={`history-card ${active ? "active" : ""} ${compact ? "compact" : ""} status-${item.status}`}
@@ -219,7 +232,7 @@ function HistoryCard({
           type="button"
           className="history-remove"
           aria-label={`Удалить ${item.title}`}
-          onClick={onDelete}
+          onClick={handleDelete}
         >
           ✕
         </button>
@@ -228,7 +241,7 @@ function HistoryCard({
       <button
         type="button"
         className="history-open"
-        onClick={() => onOpen()}
+        onClick={handleOpen}
         aria-current={active ? "true" : undefined}
         title={item.url}
       >
@@ -242,25 +255,25 @@ function HistoryCard({
       </button>
 
       <div className="history-actions">
-        <button type="button" className="btn btn-secondary" onClick={() => onOpen()}>
+        <button type="button" className="btn btn-secondary" onClick={handleOpen}>
           Open
         </button>
         {item.maxStep >= 2 ? (
-          <button type="button" className="btn btn-ghost" onClick={() => onOpen(2)}>
+          <button type="button" className="btn btn-ghost" onClick={handleOpenStep2}>
             Step 2
           </button>
         ) : null}
         {item.maxStep >= 3 ? (
-          <button type="button" className="btn btn-ghost" onClick={() => onOpen(3)}>
+          <button type="button" className="btn btn-ghost" onClick={handleOpenStep3}>
             Step 3
           </button>
         ) : null}
       </div>
     </article>
   );
-}
+});
 
-function HistoryPanel({
+const HistoryPanel = memo(function HistoryPanel({
   items,
   activeHistoryId,
   compact = false,
@@ -298,8 +311,8 @@ function HistoryPanel({
                     item={item}
                     active={active}
                     compact={compact}
-                    onOpen={(step) => onOpen(item.id, step)}
-                    onDelete={() => onDelete(item.id)}
+                    onOpen={onOpen}
+                    onDelete={onDelete}
                   />
                 </li>
               );
@@ -309,7 +322,7 @@ function HistoryPanel({
       ))}
     </div>
   );
-}
+});
 
 export function AppShell({
   title,
@@ -445,6 +458,17 @@ export function AppShell({
     setHistoryOpen(false);
     setHistoryPinned(false);
   }, [clearHistoryCloseTimer]);
+  const handleCreateNewAndClose = useCallback(() => {
+    onCreateNew();
+    closeHistoryPopover();
+  }, [closeHistoryPopover, onCreateNew]);
+  const handleHistoryOpenAndClose = useCallback(
+    (id: string, step?: 1 | 2 | 3) => {
+      onHistoryOpen(id, step);
+      closeHistoryPopover();
+    },
+    [closeHistoryPopover, onHistoryOpen]
+  );
 
   useEffect(() => {
     if (
@@ -558,10 +582,7 @@ export function AppShell({
                         <button
                           type="button"
                           className="btn btn-secondary"
-                          onClick={() => {
-                            onCreateNew();
-                            closeHistoryPopover();
-                          }}
+                          onClick={handleCreateNewAndClose}
                         >
                           + Новый
                         </button>
@@ -609,10 +630,7 @@ export function AppShell({
                         activeHistoryId={activeHistoryId}
                         compact
                         emptyText={historyItems.length > 0 ? "Ничего не найдено." : "Чатов пока нет."}
-                        onOpen={(id, step) => {
-                          onHistoryOpen(id, step);
-                          closeHistoryPopover();
-                        }}
+                        onOpen={handleHistoryOpenAndClose}
                         onDelete={onDeleteHistory}
                       />
                     </div>
