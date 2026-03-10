@@ -32,6 +32,7 @@ function Install-ClipsStage3Worker {
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/index.tsx" -OutFile (Join-Path $remotionDir "index.tsx")
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/science-card-v1.tsx" -OutFile (Join-Path $remotionDir "science-card-v1.tsx")
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/lib/stage3-template.ts" -OutFile (Join-Path $libDir "stage3-template.ts")
+  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/lib/stage3-constants.ts" -OutFile (Join-Path $libDir "stage3-constants.ts")
   Push-Location $installRoot
   try {
     npm install --omit=dev --no-fund --no-audit

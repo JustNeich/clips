@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { STAGE3_SEGMENT_SPEED_OPTIONS } from "../app/components/types";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { downloadSourceMedia } from "./source-acquisition";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { getTemplateComputed } from "./stage3-template";
@@ -226,7 +227,7 @@ function computeViewportBox(
     baseHeight = Math.min(sourceDimensions.height, baseWidth / slotAspect);
   }
 
-  const zoom = clampNumber(snapshot.renderPlan.videoZoom, 1, 1.6);
+  const zoom = clampNumber(snapshot.renderPlan.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
   const viewportWidth = Math.min(sourceDimensions.width, makeEven(clampNumber(baseWidth / zoom, 16, sourceDimensions.width)));
   const viewportHeight = Math.min(sourceDimensions.height, makeEven(clampNumber(baseHeight / zoom, 16, sourceDimensions.height)));
   const x = makeEven(

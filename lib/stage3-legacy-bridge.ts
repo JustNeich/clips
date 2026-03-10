@@ -6,6 +6,7 @@ import {
   Stage3StateSnapshot,
   Stage3Version
 } from "../app/components/types";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEMPLATE_ID = "science-card-v1";
@@ -106,7 +107,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
         : fallback.cameraMotion,
     videoZoom:
       typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
-        ? Math.min(1.6, Math.max(1, candidate.videoZoom))
+        ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
         : fallback.videoZoom,
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)

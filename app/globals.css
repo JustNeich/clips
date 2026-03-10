@@ -663,9 +663,145 @@ select.text-input:focus {
   flex-wrap: wrap;
 }
 
-.channel-switcher-row .text-input {
+.channel-switcher-row .text-input,
+.channel-picker {
   min-width: min(260px, 100%);
   flex: 1 1 260px;
+}
+
+.channel-picker {
+  position: relative;
+}
+
+.channel-picker-trigger {
+  width: 100%;
+  min-height: 70px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 11%, var(--surface-2)), color-mix(in srgb, var(--surface-2) 96%, black)),
+    var(--surface-2);
+  color: var(--text-main);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.channel-picker.open .channel-picker-trigger {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.channel-picker-trigger:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.channel-picker-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, white 8%);
+  background:
+    radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--accent-soft) 72%, white), color-mix(in srgb, var(--accent) 55%, #121a27));
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.channel-picker-avatar.has-image {
+  color: transparent;
+  background-color: color-mix(in srgb, var(--surface-2) 75%, black);
+}
+
+.channel-picker-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.channel-picker-copy strong {
+  min-width: 0;
+  font-size: 19px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.channel-picker-copy span {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.channel-picker-chevron {
+  color: var(--text-soft);
+  font-size: 16px;
+}
+
+.channel-picker-menu {
+  position: absolute;
+  z-index: 40;
+  inset: calc(100% + 8px) 0 auto 0;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--surface-2) 96%, black);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  backdrop-filter: blur(14px);
+}
+
+.channel-picker-option {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  background: transparent;
+  color: var(--text-main);
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+}
+
+.channel-picker-option:last-child {
+  border-bottom: 0;
+}
+
+.channel-picker-option:hover,
+.channel-picker-option:focus-visible {
+  background: color-mix(in srgb, var(--accent-soft) 18%, var(--surface-2));
+  outline: none;
+}
+
+.channel-picker-option.active {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 24%, var(--surface-2)), color-mix(in srgb, var(--surface-2) 96%, black)),
+    var(--surface-2);
+}
+
+.channel-picker-check {
+  color: color-mix(in srgb, var(--accent) 82%, white);
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .topbar-utility {
@@ -1082,6 +1218,42 @@ select.text-input:focus {
 
 .control-card-subtle {
   background: color-mix(in srgb, var(--surface-2) 92%, black);
+}
+
+.stage2-timing-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 14%, var(--surface-2)), var(--surface-2)),
+    var(--surface-2);
+}
+
+.stage2-timing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stage2-progress {
+  position: relative;
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-3) 82%, black);
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+}
+
+.stage2-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 82%, white), color-mix(in srgb, var(--accent-soft) 78%, white));
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 30%, transparent);
+  transition: width 80ms linear;
 }
 
 .executor-guide-card {

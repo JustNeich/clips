@@ -14,6 +14,7 @@ export type ChannelSelectorItem = {
   id: string;
   name: string;
   username: string;
+  avatarUrl?: string | null;
 };
 
 type HistoryFilter = "all" | "working" | "exported" | "error";
@@ -137,6 +138,18 @@ function formatHistoryTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function getChannelInitials(name: string): string {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (parts.length === 0) {
+    return "CH";
+  }
+  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "CH";
 }
 
 function matchesHistoryFilter(item: ChatListItem, filter: HistoryFilter): boolean {
@@ -371,8 +384,14 @@ export function AppShell({
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [codexPanelOpen, setCodexPanelOpen] = useState(false);
+  const [channelMenuOpen, setChannelMenuOpen] = useState(false);
   const historyPopoverRef = useRef<HTMLDivElement | null>(null);
+  const channelMenuRef = useRef<HTMLDivElement | null>(null);
   const historyCloseTimerRef = useRef<number | null>(null);
+  const selectedChannel = useMemo(
+    () => channels.find((channel) => channel.id === activeChannelId) ?? channels[0] ?? null,
+    [activeChannelId, channels]
+  );
 
   const filteredHistory = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
@@ -526,6 +545,33 @@ export function AppShell({
     };
   }, [clearHistoryCloseTimer]);
 
+  useEffect(() => {
+    if (!channelMenuOpen || typeof window === "undefined") {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (channelMenuRef.current?.contains(target)) {
+        return;
+      }
+      setChannelMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setChannelMenuOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [channelMenuOpen]);
+
   return (
     <main className="app-layout">
       <section className="app-main">
@@ -645,22 +691,86 @@ export function AppShell({
             </div>
 
             <div className="channel-switcher">
-              <label className="field-label" htmlFor="channelSelect">
+              <label className="field-label" htmlFor="channelPickerButton">
                 Канал
               </label>
               <div className="channel-switcher-row">
-                <select
-                  id="channelSelect"
-                  className="text-input"
-                  value={activeChannelId ?? ""}
-                  onChange={(event) => onSelectChannel(event.target.value)}
-                >
-                  {channels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      {channel.name} @{channel.username}
-                    </option>
-                  ))}
-                </select>
+                <div ref={channelMenuRef} className={`channel-picker ${channelMenuOpen ? "open" : ""}`}>
+                  <button
+                    id="channelPickerButton"
+                    type="button"
+                    className="channel-picker-trigger"
+                    aria-haspopup="listbox"
+                    aria-expanded={channelMenuOpen}
+                    onClick={() => setChannelMenuOpen((prev) => !prev)}
+                    disabled={channels.length === 0}
+                  >
+                    <span
+                      className={`channel-picker-avatar ${selectedChannel?.avatarUrl ? "has-image" : ""}`}
+                      style={
+                        selectedChannel?.avatarUrl
+                          ? {
+                              backgroundImage: `url(${selectedChannel.avatarUrl})`,
+                              backgroundSize: "cover",
+                              backgroundPosition: "center"
+                            }
+                          : undefined
+                      }
+                      aria-hidden="true"
+                    >
+                      {selectedChannel?.avatarUrl ? "" : getChannelInitials(selectedChannel?.name ?? "Channel")}
+                    </span>
+                    <span className="channel-picker-copy">
+                      <strong>{selectedChannel?.name ?? "Выберите канал"}</strong>
+                      <span>@{selectedChannel?.username ?? "channel"}</span>
+                    </span>
+                    <span className="channel-picker-chevron" aria-hidden="true">
+                      {channelMenuOpen ? "▴" : "▾"}
+                    </span>
+                  </button>
+
+                  {channelMenuOpen ? (
+                    <div className="channel-picker-menu" role="listbox" aria-label="Каналы">
+                      {channels.map((channel) => {
+                        const active = channel.id === selectedChannel?.id;
+                        return (
+                          <button
+                            key={channel.id}
+                            type="button"
+                            className={`channel-picker-option ${active ? "active" : ""}`}
+                            role="option"
+                            aria-selected={active}
+                            onClick={() => {
+                              onSelectChannel(channel.id);
+                              setChannelMenuOpen(false);
+                            }}
+                          >
+                            <span
+                              className={`channel-picker-avatar ${channel.avatarUrl ? "has-image" : ""}`}
+                              style={
+                                channel.avatarUrl
+                                  ? {
+                                      backgroundImage: `url(${channel.avatarUrl})`,
+                                      backgroundSize: "cover",
+                                      backgroundPosition: "center"
+                                    }
+                                  : undefined
+                              }
+                              aria-hidden="true"
+                            >
+                              {channel.avatarUrl ? "" : getChannelInitials(channel.name)}
+                            </span>
+                            <span className="channel-picker-copy">
+                              <strong>{channel.name}</strong>
+                              <span>@{channel.username}</span>
+                            </span>
+                            {active ? <span className="channel-picker-check">✓</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
                 {canManageChannels ? (
                   <button type="button" className="btn btn-secondary" onClick={onManageChannels}>
                     Каналы

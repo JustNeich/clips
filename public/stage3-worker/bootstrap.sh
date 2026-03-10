@@ -61,6 +61,7 @@ curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/remotion/index.tsx" -o "${REMOTION_DIR}/index.tsx"
 curl -fsSL "${SERVER%/}/stage3-worker/remotion/science-card-v1.tsx" -o "${REMOTION_DIR}/science-card-v1.tsx"
 curl -fsSL "${SERVER%/}/stage3-worker/lib/stage3-template.ts" -o "${LIB_DIR}/stage3-template.ts"
+curl -fsSL "${SERVER%/}/stage3-worker/lib/stage3-constants.ts" -o "${LIB_DIR}/stage3-constants.ts"
 chmod +x "$BUNDLE_PATH"
 
 (cd "$INSTALL_ROOT" && npm install --omit=dev --no-fund --no-audit)

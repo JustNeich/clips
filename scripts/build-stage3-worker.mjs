@@ -16,6 +16,7 @@ const libPublicDir = path.join(publicDir, "lib");
 const packageJsonPath = path.join(repoRoot, "package.json");
 const remotionSourceDir = path.join(repoRoot, "remotion");
 const stage3TemplateSourcePath = path.join(repoRoot, "lib", "stage3-template.ts");
+const stage3ConstantsSourcePath = path.join(repoRoot, "lib", "stage3-constants.ts");
 
 const WORKER_RUNTIME_DEPENDENCIES = [
   "@remotion/bundler",
@@ -55,6 +56,7 @@ async function main() {
   await fs.mkdir(libPublicDir, { recursive: true });
   await fs.cp(remotionSourceDir, remotionPublicDir, { recursive: true });
   await fs.copyFile(stage3TemplateSourcePath, path.join(libPublicDir, "stage3-template.ts"));
+  await fs.copyFile(stage3ConstantsSourcePath, path.join(libPublicDir, "stage3-constants.ts"));
 
   await build({
     entryPoints: [workerEntry],

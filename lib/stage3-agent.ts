@@ -18,6 +18,7 @@ import {
   TURBO_FACE_TEMPLATE_ID,
   getTemplateComputed
 } from "./stage3-template";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 
 export type {
   Stage3RenderPlan,
@@ -538,7 +539,11 @@ function parseZoomValue(promptLower: string): { requested: boolean; value: numbe
   if (mulMatch?.[1]) {
     const parsed = Number.parseFloat(mulMatch[1]);
     if (Number.isFinite(parsed)) {
-      return { requested: true, value: clamp(parsed, 1, 1.6), noZoom: false };
+      return {
+        requested: true,
+        value: clamp(parsed, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM),
+        noZoom: false
+      };
     }
   }
 
@@ -546,7 +551,11 @@ function parseZoomValue(promptLower: string): { requested: boolean; value: numbe
   if (percentMatch?.[1]) {
     const parsed = Number.parseInt(percentMatch[1], 10);
     if (Number.isFinite(parsed)) {
-      return { requested: true, value: clamp(parsed / 100, 1, 1.6), noZoom: false };
+      return {
+        requested: true,
+        value: clamp(parsed / 100, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM),
+        noZoom: false
+      };
     }
   }
 
@@ -699,7 +708,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
     cameraMotion: normalizeCameraMotion(input?.cameraMotion),
     videoZoom:
       typeof input?.videoZoom === "number" && Number.isFinite(input.videoZoom)
-        ? clamp(input.videoZoom, 1, 1.6)
+        ? clamp(input.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM)
         : defaultPlan.videoZoom,
     topFontScale:
       typeof input?.topFontScale === "number" && Number.isFinite(input.topFontScale)
@@ -1252,7 +1261,7 @@ export function applyOperations(
         changes.push(`Фокус Y: ${Math.round(nextFocus * 100)}%.`);
         break;
       case "set_video_zoom":
-        nextPlan.videoZoom = clamp(operation.videoZoom, 1, 1.6);
+        nextPlan.videoZoom = clamp(operation.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
         changes.push(`Масштаб видео: x${nextPlan.videoZoom.toFixed(2)}.`);
         break;
       case "set_top_font_scale":

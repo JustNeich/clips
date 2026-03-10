@@ -20,6 +20,7 @@ import {
   sanitizeFocusY
 } from "./stage3-media-agent";
 import { planStage3OperationsWithCodex } from "./stage3-agent-llm";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import {
   Stage3ExecutionTarget,
   Stage3Operation,
@@ -74,6 +75,7 @@ const DEFAULT_TEXT_SCALE = 1.25;
 const AUTONOMOUS_ENGINE_VERSION = "stage3-autonomous-2026-03-06-directive-composite-v5";
 const HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS = 45_000;
 const LOCAL_AGENT_MEDIA_WAIT_TIMEOUT_MS = 120_000;
+const VIDEO_ZOOM_SPAN = STAGE3_MAX_VIDEO_ZOOM - STAGE3_MIN_VIDEO_ZOOM;
 
 export type Stage3IterationResult = {
   iterationIndex: number;
@@ -902,8 +904,20 @@ function clampRenderOp(op: Stage3Operation, snapshot: Stage3StateSnapshot, itera
 
   switch (op.op) {
     case "set_video_zoom": {
-      const requested = clamp(op.videoZoom, 1, 1.6);
-      const bounded = clamp(requested, clamp(snapshot.renderPlan.videoZoom - maxZoomStep, 1, 1.6), clamp(snapshot.renderPlan.videoZoom + maxZoomStep, 1, 1.6));
+      const requested = clamp(op.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
+      const bounded = clamp(
+        requested,
+        clamp(
+          snapshot.renderPlan.videoZoom - maxZoomStep,
+          STAGE3_MIN_VIDEO_ZOOM,
+          STAGE3_MAX_VIDEO_ZOOM
+        ),
+        clamp(
+          snapshot.renderPlan.videoZoom + maxZoomStep,
+          STAGE3_MIN_VIDEO_ZOOM,
+          STAGE3_MAX_VIDEO_ZOOM
+        )
+      );
       return { ...op, videoZoom: bounded };
     }
     case "set_focus_y": {
@@ -1278,10 +1292,14 @@ function buildFallbackPlan(args: {
             ? 0.1
             : 0.07
       );
-      const nextZoom = clamp(zoomBase + direction * step, 1, 1.6);
+      const nextZoom = clamp(
+        zoomBase + direction * step,
+        STAGE3_MIN_VIDEO_ZOOM,
+        STAGE3_MAX_VIDEO_ZOOM
+      );
       tuned.push({
         op: "set_video_zoom",
-        videoZoom: clamp(nextZoom, 1, 1.6)
+        videoZoom: clamp(nextZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM)
       });
     }
 
@@ -1474,9 +1492,17 @@ function computeGoalFit(
     }
   } else if (goalSignal.goalType === "zoom") {
     if (goalSignal.constraints.targetZoom != null) {
-      primaryGoalFit = clamp(1 - Math.abs(snapshot.renderPlan.videoZoom - goalSignal.constraints.targetZoom) / 0.6, 0, 1);
+      primaryGoalFit = clamp(
+        1 - Math.abs(snapshot.renderPlan.videoZoom - goalSignal.constraints.targetZoom) / VIDEO_ZOOM_SPAN,
+        0,
+        1
+      );
     } else {
-      primaryGoalFit = clamp((snapshot.renderPlan.videoZoom - 1) / 0.6, 0, 1);
+      primaryGoalFit = clamp(
+        (snapshot.renderPlan.videoZoom - STAGE3_MIN_VIDEO_ZOOM) / VIDEO_ZOOM_SPAN,
+        0,
+        1
+      );
     }
   } else if (goalSignal.goalType === "timing") {
     const requestedTiming = parseUserIntent(goalSignal.rawGoal, context.sourceDurationSec).timingMode;
@@ -1495,7 +1521,11 @@ function computeGoalFit(
   } else if (goalSignal.goalType === "crop") {
     const segmentScore = snapshot.renderPlan.segments.length > 0 ? 0.7 : 0.25;
     const clipScore = clamp(1 - Math.abs(snapshot.clipStartSec - autoClipStartSec) / Math.max(1, CLIP_DURATION_SEC), 0, 1);
-    const zoomScore = clamp((snapshot.renderPlan.videoZoom - 1) / 0.6, 0, 1);
+    const zoomScore = clamp(
+      (snapshot.renderPlan.videoZoom - STAGE3_MIN_VIDEO_ZOOM) / VIDEO_ZOOM_SPAN,
+      0,
+      1
+    );
     const visualFit = realityMetrics ? computeVisualGoalFit(goalSignal, realityMetrics) : 0.55;
     primaryGoalFit = clamp(0.2 * segmentScore + 0.25 * clipScore + 0.22 * zoomScore + 0.33 * visualFit, 0, 1);
   } else {

@@ -12,6 +12,7 @@ import { maybeDownloadStage3WorkerAsset } from "./stage3-worker-asset-client";
 import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } from "./ytdlp";
 import { Stage3RenderPlan } from "./stage3-agent";
 import { Stage3StateSnapshot } from "../app/components/types";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { STAGE3_TEMPLATE_ID, getTemplateById } from "./stage3-template";
 import { getAppDataDir } from "./app-paths";
 import {
@@ -203,7 +204,7 @@ function normalizeRenderPlan(
     cameraMotion: normalizeCameraMotion(rawPlan?.cameraMotion),
     videoZoom:
       typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
-        ? Math.min(1.6, Math.max(1, rawPlan.videoZoom))
+        ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
         : 1,
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)

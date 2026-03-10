@@ -14,6 +14,8 @@ type Step2PickCaptionProps = {
   canRunStage2: boolean;
   runBlockedReason?: string | null;
   isRunning: boolean;
+  expectedDurationMs: number;
+  elapsedMs: number;
   selectedOption: number | null;
   selectedTitleOption: number | null;
   onInstructionChange: (value: string) => void;
@@ -43,6 +45,28 @@ function formatSourceProviderLabel(provider: Stage2Response["source"]["downloadP
   return null;
 }
 
+function formatDurationMs(value: number): string {
+  const safe = Math.max(0, value);
+  if (safe < 60_000) {
+    return `${(safe / 1000).toFixed(2)}с`;
+  }
+  const minutes = Math.floor(safe / 60_000);
+  const seconds = ((safe % 60_000) / 1000).toFixed(2).padStart(5, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function getStage2ProgressRatio(elapsedMs: number, expectedDurationMs: number): number {
+  if (expectedDurationMs <= 0) {
+    return 0;
+  }
+  const ratio = elapsedMs / expectedDurationMs;
+  if (ratio <= 1) {
+    return Math.min(0.96, ratio * 0.96);
+  }
+  const overflow = ratio - 1;
+  return Math.min(0.995, 0.96 + (1 - Math.exp(-overflow * 1.6)) * 0.035);
+}
+
 export function Step2PickCaption({
   channelName,
   channelUsername,
@@ -53,6 +77,8 @@ export function Step2PickCaption({
   canRunStage2,
   runBlockedReason,
   isRunning,
+  expectedDurationMs,
+  elapsedMs,
   selectedOption,
   selectedTitleOption,
   onInstructionChange,
@@ -95,6 +121,10 @@ export function Step2PickCaption({
     );
   }, [selectedTitleOption, stage2]);
   const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
+  const progressRatio = useMemo(
+    () => getStage2ProgressRatio(elapsedMs, expectedDurationMs),
+    [elapsedMs, expectedDurationMs]
+  );
 
   return (
     <StepWorkspace
@@ -150,6 +180,26 @@ export function Step2PickCaption({
                 {isRunning ? "Генерируем..." : "Сгенерировать варианты"}
               </button>
             </div>
+            <section className="stage2-timing-card" aria-live="polite">
+              <div className="stage2-timing-row">
+                <span className="field-label">Обычно занимает</span>
+                <strong>{formatDurationMs(expectedDurationMs)}</strong>
+              </div>
+              <div className="stage2-timing-row">
+                <span className="field-label">{isRunning ? "Прошло" : "Последний ориентир"}</span>
+                <strong>{formatDurationMs(isRunning ? elapsedMs : expectedDurationMs)}</strong>
+              </div>
+              <div className="stage2-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressRatio * 100)}>
+                <div className="stage2-progress-fill" style={{ width: `${(progressRatio * 100).toFixed(1)}%` }} />
+              </div>
+              <p className="subtle-text">
+                {isRunning
+                  ? elapsedMs > expectedDurationMs
+                    ? "Уже дольше обычного, но процесс продолжается."
+                    : "Идет генерация. Оценка основана на предыдущем успешном запуске."
+                  : "Оценка обновляется после каждого успешного запуска второго этапа."}
+              </p>
+            </section>
             {!canRunStage2 && runBlockedReason ? (
               <p className="subtle-text danger-text">{runBlockedReason}</p>
             ) : null}

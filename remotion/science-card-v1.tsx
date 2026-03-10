@@ -7,6 +7,7 @@ import {
   TURBO_FACE_TEMPLATE_ID,
   getTemplateComputed
 } from "../lib/stage3-template";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
 
 type ScienceCardV1Props = {
   templateId?: string;
@@ -282,7 +283,10 @@ export function ScienceCardV1({
         ? sweepEnd - (sweepEnd - sweepStart) * easedProgress
         : baseFocus;
   const objectPosition = `50% ${(Math.min(88, Math.max(12, animatedFocus * 100))).toFixed(3)}%`;
-  const normalizedZoom = Math.min(1.6, Math.max(1, Number.isFinite(videoZoom) ? videoZoom : 1));
+  const normalizedZoom = Math.min(
+    STAGE3_MAX_VIDEO_ZOOM,
+    Math.max(STAGE3_MIN_VIDEO_ZOOM, Number.isFinite(videoZoom) ? videoZoom : 1)
+  );
   const mirroredScale = mirrorEnabled ? -normalizedZoom : normalizedZoom;
   const slotTransform = `scale(${mirroredScale.toFixed(3)}, ${normalizedZoom.toFixed(3)})`;
   const bgTransform = mirrorEnabled ? "scaleX(-1)" : undefined;

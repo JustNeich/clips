@@ -49,6 +49,7 @@ import {
   normalizeStage3SessionStatus
 } from "../lib/stage3-legacy-bridge";
 import { buildStage3WorkerCommands } from "../lib/stage3-worker-commands";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
 import {
   buildChatListItem,
   extractCommentsPayload,
@@ -63,6 +64,7 @@ import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
+const DEFAULT_STAGE2_EXPECTED_DURATION_MS = 40_000;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
 type BusyAction =
@@ -84,6 +86,54 @@ type BusyAction =
   | "channel-asset-delete"
   | "connect-codex"
   | "refresh-codex";
+
+type PersistedFlowShellState = {
+  channelId: string | null;
+  chatId: string | null;
+  step: 1 | 2 | 3;
+};
+
+function buildScopedStorageKey(
+  prefix: string,
+  workspaceId: string | null | undefined,
+  userId: string | null | undefined
+): string | null {
+  if (!workspaceId || !userId) {
+    return null;
+  }
+  return `${prefix}:${workspaceId}:${userId}`;
+}
+
+function clampWorkflowStep(value: unknown): 1 | 2 | 3 {
+  return value === 2 || value === 3 ? value : 1;
+}
+
+function normalizePersistedFlowShellState(value: unknown): PersistedFlowShellState | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  return {
+    channelId: typeof candidate.channelId === "string" && candidate.channelId.trim() ? candidate.channelId : null,
+    chatId: typeof candidate.chatId === "string" && candidate.chatId.trim() ? candidate.chatId : null,
+    step: clampWorkflowStep(candidate.step)
+  };
+}
+
+function normalizeStage2DurationMetric(value: unknown): number | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const parsed =
+    typeof candidate.lastDurationMs === "number" && Number.isFinite(candidate.lastDurationMs)
+      ? candidate.lastDurationMs
+      : null;
+  if (parsed === null) {
+    return null;
+  }
+  return Math.min(5 * 60_000, Math.max(1_000, Math.round(parsed)));
+}
 
 function buildChannelAssetUrl(channelId: string, assetId: string): string {
   return `/api/channels/${channelId}/assets/${assetId}`;
@@ -444,7 +494,7 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
     cameraMotion: normalizeStage3CameraMotion(candidate?.cameraMotion ?? base.cameraMotion),
     videoZoom:
       typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
-        ? Math.min(1.6, Math.max(1, candidate.videoZoom))
+        ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
         : base.videoZoom,
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
@@ -784,6 +834,10 @@ export default function HomePage() {
   const [stage3PassSelectionByVersion, setStage3PassSelectionByVersion] = useState<Record<string, number>>({});
   const [stage3RenderState, setStage3RenderState] = useState<Stage3RenderState>("idle");
   const [stage3RenderJobId, setStage3RenderJobId] = useState<string | null>(null);
+  const [stage2ExpectedDurationMs, setStage2ExpectedDurationMs] = useState(
+    DEFAULT_STAGE2_EXPECTED_DURATION_MS
+  );
+  const [stage2ElapsedMs, setStage2ElapsedMs] = useState(0);
   const autoAppliedCaptionRef = useRef<{
     chatId: string;
     option: number | null;
@@ -796,6 +850,8 @@ export default function HomePage() {
   const stage3PreviewRequestKeyRef = useRef<string>("");
   const stage3PreviewRequestIdRef = useRef(0);
   const stage3LastGoodPreviewAtRef = useRef<number | null>(null);
+  const restoringFlowShellStateRef = useRef<PersistedFlowShellState | null>(null);
+  const stage2StartedAtRef = useRef<number | null>(null);
   const stage3RenderContextRef = useRef<{
     chatId: string;
     snapshot: Stage3StateSnapshot;
@@ -915,6 +971,83 @@ export default function HomePage() {
       return `clips-chat-draft:${workspaceId}:${userId}:${chatId}`;
     },
     [authState?.user.id, authState?.workspace.id]
+  );
+
+  const getFlowShellStorageKey = useCallback((): string | null => {
+    return buildScopedStorageKey("clips-flow-shell", authState?.workspace.id, authState?.user.id);
+  }, [authState?.user.id, authState?.workspace.id]);
+
+  const readFlowShellState = useCallback(
+    (workspaceId?: string, userId?: string): PersistedFlowShellState | null => {
+      const key = buildScopedStorageKey(
+        "clips-flow-shell",
+        workspaceId ?? authState?.workspace.id,
+        userId ?? authState?.user.id
+      );
+      if (!key || typeof window === "undefined") {
+        return null;
+      }
+      try {
+        return normalizePersistedFlowShellState(JSON.parse(window.localStorage.getItem(key) ?? "null"));
+      } catch {
+        return null;
+      }
+    },
+    [authState?.user.id, authState?.workspace.id]
+  );
+
+  const writeFlowShellState = useCallback(
+    (state: PersistedFlowShellState): void => {
+      const key = getFlowShellStorageKey();
+      if (!key || typeof window === "undefined") {
+        return;
+      }
+      window.localStorage.setItem(key, JSON.stringify(state));
+    },
+    [getFlowShellStorageKey]
+  );
+
+  const getStage2DurationStorageKey = useCallback((): string | null => {
+    return buildScopedStorageKey("clips-stage2-duration", authState?.workspace.id, authState?.user.id);
+  }, [authState?.user.id, authState?.workspace.id]);
+
+  const readStage2DurationMetric = useCallback(
+    (workspaceId?: string, userId?: string): number => {
+      const key = buildScopedStorageKey(
+        "clips-stage2-duration",
+        workspaceId ?? authState?.workspace.id,
+        userId ?? authState?.user.id
+      );
+      if (!key || typeof window === "undefined") {
+        return DEFAULT_STAGE2_EXPECTED_DURATION_MS;
+      }
+      try {
+        return (
+          normalizeStage2DurationMetric(JSON.parse(window.localStorage.getItem(key) ?? "null")) ??
+          DEFAULT_STAGE2_EXPECTED_DURATION_MS
+        );
+      } catch {
+        return DEFAULT_STAGE2_EXPECTED_DURATION_MS;
+      }
+    },
+    [authState?.user.id, authState?.workspace.id]
+  );
+
+  const writeStage2DurationMetric = useCallback(
+    (durationMs: number): void => {
+      const key = getStage2DurationStorageKey();
+      if (!key || typeof window === "undefined") {
+        return;
+      }
+      window.localStorage.setItem(
+        key,
+        JSON.stringify({
+          lastDurationMs: Math.min(5 * 60_000, Math.max(1_000, Math.round(durationMs))),
+          updatedAt: new Date().toISOString()
+        })
+      );
+    },
+    [getStage2DurationStorageKey]
   );
 
   const readLocalDraftCache = useCallback(
@@ -1165,7 +1298,7 @@ export default function HomePage() {
     [activeChannel, applyChannelToRenderPlan, channelAssets]
   );
 
-  const refreshChannels = useCallback(async (): Promise<Channel[]> => {
+  const refreshChannels = useCallback(async (preferredChannelId?: string | null): Promise<Channel[]> => {
     const response = await fetch("/api/channels");
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось загрузить каналы."));
@@ -1177,10 +1310,13 @@ export default function HomePage() {
       if (prev && nextChannels.some((channel) => channel.id === prev)) {
         return prev;
       }
+      if (preferredChannelId && nextChannels.some((channel) => channel.id === preferredChannelId)) {
+        return preferredChannelId;
+      }
       return nextChannels[0]?.id ?? null;
     });
     return nextChannels;
-  }, []);
+  }, [parseError]);
 
   const refreshChannelAssets = useCallback(async (channelId: string): Promise<ChannelAsset[]> => {
     const response = await fetch(`/api/channels/${channelId}/assets`);
@@ -1451,10 +1587,13 @@ export default function HomePage() {
   useEffect(() => {
     void (async () => {
       try {
-        await refreshAuthState();
+        const auth = await refreshAuthState();
+        const restoredFlowShellState = readFlowShellState(auth.workspace.id, auth.user.id);
+        restoringFlowShellStateRef.current = restoredFlowShellState;
+        setStage2ExpectedDurationMs(readStage2DurationMetric(auth.workspace.id, auth.user.id));
         await refreshRuntimeCapabilities();
         await refreshCodexAuth({ background: true });
-        await refreshChannels();
+        await refreshChannels(restoredFlowShellState?.channelId ?? null);
       } catch (error) {
         setStatusType("error");
         setStatus(getUiErrorMessage(error, "Не удалось инициализировать приложение."));
@@ -1462,7 +1601,22 @@ export default function HomePage() {
         setIsAuthLoading(false);
       }
     })();
-  }, [getUiErrorMessage, refreshAuthState, refreshChannels, refreshCodexAuth, refreshRuntimeCapabilities]);
+  }, [
+    getUiErrorMessage,
+    readFlowShellState,
+    readStage2DurationMetric,
+    refreshAuthState,
+    refreshChannels,
+    refreshCodexAuth,
+    refreshRuntimeCapabilities
+  ]);
+
+  useEffect(() => {
+    if (!authState?.workspace.id || !authState?.user.id) {
+      return;
+    }
+    setStage2ExpectedDurationMs(readStage2DurationMetric());
+  }, [authState?.user.id, authState?.workspace.id, readStage2DurationMetric]);
 
   useEffect(() => {
     if (!activeChannelId) {
@@ -1476,6 +1630,91 @@ export default function HomePage() {
     void refreshChannelAssets(activeChannelId).catch(() => undefined);
     void refreshChannelAccess(activeChannelId).catch(() => undefined);
   }, [activeChannelId]);
+
+  useEffect(() => {
+    const shell = restoringFlowShellStateRef.current;
+    if (!shell || !activeChannelId) {
+      return;
+    }
+    if (shell.channelId && shell.channelId !== activeChannelId) {
+      return;
+    }
+    if (!shell.chatId) {
+      restoringFlowShellStateRef.current = null;
+      return;
+    }
+    if (activeChat?.id === shell.chatId) {
+      restoringFlowShellStateRef.current = null;
+      setCurrentStep(Math.min(shell.step, getMaxStepForChat(activeChat)) as 1 | 2 | 3);
+      return;
+    }
+    if (!chatList.some((chat) => chat.id === shell.chatId)) {
+      if (chatList.length > 0) {
+        restoringFlowShellStateRef.current = null;
+      }
+      return;
+    }
+    restoringFlowShellStateRef.current = null;
+    void (async () => {
+      try {
+        const { chat } = await refreshActiveChat(shell.chatId!);
+        setCurrentStep(Math.min(shell.step, getMaxStepForChat(chat)) as 1 | 2 | 3);
+      } catch {
+        // Ignore restore failures and leave current selection untouched.
+      }
+    })();
+  }, [activeChannelId, activeChat, chatList, refreshActiveChat]);
+
+  useEffect(() => {
+    if (isAuthLoading || !authState?.workspace.id || !authState?.user.id) {
+      return;
+    }
+    const restoring = restoringFlowShellStateRef.current;
+    if (
+      restoring &&
+      restoring.channelId === activeChannelId &&
+      restoring.chatId &&
+      !activeChat?.id
+    ) {
+      return;
+    }
+    writeFlowShellState({
+      channelId: activeChannelId ?? null,
+      chatId: activeChat?.id ?? null,
+      step: currentStep
+    });
+  }, [
+    activeChannelId,
+    activeChat?.id,
+    isAuthLoading,
+    authState?.user.id,
+    authState?.workspace.id,
+    currentStep,
+    writeFlowShellState
+  ]);
+
+  useEffect(() => {
+    if (busyAction !== "stage2") {
+      stage2StartedAtRef.current = null;
+      setStage2ElapsedMs(0);
+      return;
+    }
+
+    const startedAt = stage2StartedAtRef.current ?? performance.now();
+    stage2StartedAtRef.current = startedAt;
+    let timer = 0;
+
+    const tick = () => {
+      setStage2ElapsedMs(Math.max(0, performance.now() - startedAt));
+      timer = window.setTimeout(tick, 50);
+    };
+
+    tick();
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [busyAction]);
 
   useEffect(() => {
     void refreshWorkspaceMembers().catch(() => undefined);
@@ -1710,6 +1949,7 @@ export default function HomePage() {
     instruction: string,
     mode: "manual" | "auto"
   ): Promise<Stage2Response> => {
+    const startedAt = performance.now();
     if (!codexLoggedIn) {
       throw new Error("Shared Codex недоступен. Обратитесь к владельцу.");
     }
@@ -1754,6 +1994,9 @@ export default function HomePage() {
     setSelectedOption(stage2.output.finalPick.option);
     setSelectedTitleOption(stage2.output.titleOptions[0]?.option ?? 1);
     setCurrentStep(3);
+    const durationMs = Math.max(1_000, Math.round(performance.now() - startedAt));
+    setStage2ExpectedDurationMs(durationMs);
+    writeStage2DurationMetric(durationMs);
     return stage2;
   };
 
@@ -4051,7 +4294,8 @@ export default function HomePage() {
       channels={channels.map((channel) => ({
         id: channel.id,
         name: channel.name,
-        username: channel.username
+        username: channel.username,
+        avatarUrl: channel.avatarAssetId ? buildChannelAssetUrl(channel.id, channel.avatarAssetId) : null
       }))}
       activeChannelId={activeChannelId}
       onSelectChannel={handleSwitchChannel}
@@ -4155,6 +4399,8 @@ export default function HomePage() {
           canRunStage2={Boolean(activeChat && codexLoggedIn && stage2RuntimeAvailable) && !isBusy}
           runBlockedReason={stage2BlockedReason}
           isRunning={busyAction === "stage2"}
+          expectedDurationMs={stage2ExpectedDurationMs}
+          elapsedMs={stage2ElapsedMs}
           selectedOption={selectedOption}
           selectedTitleOption={selectedTitleOption}
           onInstructionChange={setStage2Instruction}

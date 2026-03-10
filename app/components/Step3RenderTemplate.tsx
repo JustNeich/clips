@@ -29,6 +29,7 @@ import {
   STAGE3_TEMPLATE_ID,
   getTemplateById
 } from "../../lib/stage3-template";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../../lib/stage3-constants";
 import { sanitizeDisplayText } from "../../lib/ui-error";
 
 type Step3RenderTemplateProps = {
@@ -535,8 +536,9 @@ function PreviewClipVideo({
       style={{
         ...(objectPosition ? { objectPosition } : {}),
         transform: `scale(${(
-          Math.min(1.6, Math.max(1, videoZoom ?? 1)) * (mirrorEnabled ? -1 : 1)
-        ).toFixed(3)}, ${Math.min(1.6, Math.max(1, videoZoom ?? 1)).toFixed(3)})`,
+          Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, videoZoom ?? 1)) *
+            (mirrorEnabled ? -1 : 1)
+        ).toFixed(3)}, ${Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, videoZoom ?? 1)).toFixed(3)})`,
         transformOrigin: "center center"
       }}
     />
@@ -1536,7 +1538,7 @@ export function Step3RenderTemplate({
   const previewVersion = selectedVersion;
   const previewTopText = previewVersion?.final.topText ?? computed.top;
   const previewBottomText = previewVersion?.final.bottomText ?? computed.bottom;
-  const previewVideoZoom = clamp(localVideoZoom ?? 1, 1, 1.6);
+  const previewVideoZoom = clamp(localVideoZoom ?? 1, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
 
   const previewComputed = getTemplateComputed(templateId, previewTopText, previewBottomText, {
     topFontScale: localTopFontScale,
@@ -1575,7 +1577,7 @@ export function Step3RenderTemplate({
   }, [focusY]);
 
   useEffect(() => {
-    setLocalVideoZoom(clamp(videoZoom, 1, 1.6));
+    setLocalVideoZoom(clamp(videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM));
   }, [videoZoom]);
 
   useEffect(() => {
@@ -1684,11 +1686,11 @@ export function Step3RenderTemplate({
       window.clearTimeout(videoZoomCommitTimerRef.current);
       videoZoomCommitTimerRef.current = null;
     }
-    onVideoZoomChange(clamp(value, 1, 1.6));
+    onVideoZoomChange(clamp(value, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM));
   };
 
   const scheduleVideoZoomCommit = (value: number) => {
-    const next = clamp(value, 1, 1.6);
+    const next = clamp(value, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
     setLocalVideoZoom(next);
     if (videoZoomCommitTimerRef.current !== null) {
       window.clearTimeout(videoZoomCommitTimerRef.current);
@@ -1855,7 +1857,7 @@ export function Step3RenderTemplate({
   };
 
   const applyVideoZoomImmediate = (value: number) => {
-    const next = clamp(value, 1, 1.6);
+    const next = clamp(value, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
     setLocalVideoZoom(next);
     flushVideoZoomCommit(next);
   };
@@ -2538,7 +2540,7 @@ export function Step3RenderTemplate({
                   id="videoZoomRange"
                   type="range"
                   min={1}
-                  max={1.6}
+                  max={STAGE3_MAX_VIDEO_ZOOM}
                   step={0.01}
                   value={localVideoZoom}
                   onChange={(event) => scheduleVideoZoomCommit(Number.parseFloat(event.target.value))}

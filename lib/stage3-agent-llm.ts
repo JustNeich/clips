@@ -9,6 +9,7 @@ import {
   Stage3TimingMode
 } from "../app/components/types";
 import { runCodexExec } from "./codex-runner";
+import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 
 const PLANNER_SCHEMA = {
   type: "object",
@@ -230,7 +231,10 @@ function normalizeOperations(value: unknown): Stage3Operation[] {
         break;
       case "set_video_zoom":
         if (typeof raw.videoZoom === "number" && Number.isFinite(raw.videoZoom)) {
-          operations.push({ op: "set_video_zoom", videoZoom: clamp(raw.videoZoom, 1, 1.6) });
+          operations.push({
+            op: "set_video_zoom",
+            videoZoom: clamp(raw.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM)
+          });
         }
         break;
       case "set_top_font_scale":
@@ -293,7 +297,10 @@ function normalizeIntent(value: unknown): PlannerIntent {
     typeof intent.zoomValue === "number" && Number.isFinite(intent.zoomValue) ? intent.zoomValue : null;
   return {
     zoomRequested: Boolean(intent.zoomRequested),
-    zoomValue: zoomValueRaw === null ? null : clamp(zoomValueRaw, 1, 1.6),
+    zoomValue:
+      zoomValueRaw === null
+        ? null
+        : clamp(zoomValueRaw, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM),
     actionOnly: Boolean(intent.actionOnly),
     segmentsRequested:
       typeof intent.segmentsRequested === "number" && Number.isFinite(intent.segmentsRequested)
@@ -340,7 +347,7 @@ export async function planStage3OperationsWithCodex(input: {
       "Hard constraints:",
       "- Target duration remains exactly 6.0s.",
       "- focusY must stay within 0.12..0.88.",
-      "- videoZoom must stay within 1.0..1.6.",
+      `- videoZoom must stay within ${STAGE3_MIN_VIDEO_ZOOM.toFixed(1)}..${STAGE3_MAX_VIDEO_ZOOM.toFixed(1)}.`,
       "- topFontScale and bottomFontScale must stay within 0.7..1.9.",
       "- Keep text readable; avoid overflow.",
       "- Prefer minimal operations with high impact.",
