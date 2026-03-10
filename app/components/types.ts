@@ -106,6 +106,47 @@ export type Stage3SegmentSpeed = (typeof STAGE3_SEGMENT_SPEED_OPTIONS)[number];
 
 export type Stage3CameraMotion = "disabled" | "top_to_bottom" | "bottom_to_top";
 
+export type Stage3PreviewState = "idle" | "debouncing" | "loading" | "retrying" | "ready" | "error";
+
+export type Stage3RenderState = "idle" | "queued" | "rendering" | "ready" | "error";
+
+export type Stage3JobKind = "preview" | "render" | "source-download" | "agent-media-step";
+
+export type Stage3JobStatus = "queued" | "running" | "completed" | "failed" | "interrupted";
+
+export type Stage3JobArtifactKind = "video";
+
+export type Stage3JobArtifact = {
+  id: string;
+  jobId: string;
+  kind: Stage3JobArtifactKind;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  downloadUrl: string | null;
+};
+
+export type Stage3JobSummary = {
+  id: string;
+  kind: Stage3JobKind;
+  status: Stage3JobStatus;
+  dedupeKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  attempts: number;
+  recoverable: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  artifact: Stage3JobArtifact | null;
+};
+
+export type Stage3JobEnvelope = {
+  job: Stage3JobSummary;
+};
+
 export type Stage3Segment = {
   startSec: number;
   endSec: number | null;

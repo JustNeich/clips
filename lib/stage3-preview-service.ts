@@ -1,0 +1,432 @@
+import { createHash } from "node:crypto";
+import { createReadStream, promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { Readable } from "node:stream";
+import {
+  clampClipStart,
+  prepareStage3SourceClip,
+  sanitizeClipDuration
+} from "./stage3-media-agent";
+import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } from "./ytdlp";
+import { Stage3RenderPlan } from "./stage3-agent";
+import { Stage3StateSnapshot } from "../app/components/types";
+import { getChannelAssetById } from "./chat-history";
+import { readChannelAssetFile } from "./channel-assets";
+import { STAGE3_TEMPLATE_ID, getTemplateById } from "./stage3-template";
+import { getAppDataDir } from "./app-paths";
+import {
+  ensureStage3SourceCached,
+  runHostedStage3HeavyJob
+} from "./stage3-server-control";
+
+const PREVIEW_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
+const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
+const DEFAULT_TEXT_SCALE = 1.25;
+const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
+const previewInflight = new Map<string, Promise<void>>();
+
+export const PREVIEW_WAIT_TIMEOUT_MS = 20_000;
+
+export type Stage3PreviewRequestBody = {
+  sourceUrl?: string;
+  channelId?: string;
+  clipStartSec?: number;
+  clipDurationSec?: number;
+  agentPrompt?: string;
+  renderPlan?: Partial<Stage3RenderPlan>;
+  snapshot?: Partial<Stage3StateSnapshot>;
+};
+
+export type Stage3PreparedPreview = {
+  filePath: string;
+  cacheKey: string;
+  cacheState: "hit" | "miss" | "wait";
+};
+
+function hashKey(value: string): string {
+  return createHash("sha1").update(value).digest("hex");
+}
+
+function parseFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeSegmentSpeed(value: unknown): Stage3RenderPlan["segments"][number]["speed"] {
+  if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
+    return value as Stage3RenderPlan["segments"][number]["speed"];
+  }
+  return 1;
+}
+
+function normalizeCameraMotion(value: unknown): Stage3RenderPlan["cameraMotion"] {
+  return value === "top_to_bottom" || value === "bottom_to_top" ? value : "disabled";
+}
+
+function pathExists(filePath: string): Promise<boolean> {
+  return fs
+    .access(filePath)
+    .then(() => true)
+    .catch(() => false);
+}
+
+async function pruneCacheDirectory(dirPath: string, options: { maxFiles: number; maxBytes: number; maxAgeMs: number }) {
+  const now = Date.now();
+  const entries = await fs.readdir(dirPath).catch(() => []);
+  const files = (
+    await Promise.all(
+      entries.map(async (name) => {
+        const filePath = path.join(dirPath, name);
+        const stat = await fs.stat(filePath).catch(() => null);
+        if (!stat?.isFile()) {
+          return null;
+        }
+        return {
+          filePath,
+          sizeBytes: stat.size,
+          mtimeMs: stat.mtimeMs
+        };
+      })
+    )
+  ).filter((item): item is { filePath: string; sizeBytes: number; mtimeMs: number } => Boolean(item));
+
+  const expired = files.filter((file) => now - file.mtimeMs > options.maxAgeMs);
+  await Promise.all(expired.map((file) => fs.rm(file.filePath, { force: true }).catch(() => undefined)));
+
+  const fresh = files
+    .filter((file) => now - file.mtimeMs <= options.maxAgeMs)
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+  let totalBytes = fresh.reduce((sum, file) => sum + file.sizeBytes, 0);
+  for (let index = options.maxFiles; index < fresh.length; index += 1) {
+    const file = fresh[index];
+    totalBytes -= file.sizeBytes;
+    await fs.rm(file.filePath, { force: true }).catch(() => undefined);
+  }
+
+  const sized = fresh.slice(0, options.maxFiles);
+  for (let index = sized.length - 1; index >= 0 && totalBytes > options.maxBytes; index -= 1) {
+    totalBytes -= sized[index].sizeBytes;
+    await fs.rm(sized[index].filePath, { force: true }).catch(() => undefined);
+  }
+}
+
+async function createVideoFileResponse(
+  filePath: string,
+  headers: Record<string, string>
+): Promise<Response> {
+  const stat = await fs.stat(filePath);
+  const stream = createReadStream(filePath);
+  return new Response(Readable.toWeb(stream) as ReadableStream, {
+    status: 200,
+    headers: {
+      "Content-Type": "video/mp4",
+      "Content-Length": String(stat.size),
+      ...headers
+    }
+  });
+}
+
+export async function tryCreateStage3PreviewResponse(
+  filePath: string,
+  headers: Record<string, string>
+): Promise<Response | null> {
+  try {
+    return await createVideoFileResponse(filePath, headers);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && String((error as NodeJS.ErrnoException).code ?? "") === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function normalizeRenderPlan(
+  rawPlan: Partial<Stage3RenderPlan> | undefined,
+  sourceDurationSec: number | null
+): Stage3RenderPlan {
+  const policyFallback =
+    sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
+  const templateId =
+    typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
+      ? rawPlan.templateId.trim()
+      : STAGE3_TEMPLATE_ID;
+  const template = getTemplateById(templateId);
+
+  return {
+    targetDurationSec: 6,
+    timingMode:
+      rawPlan?.timingMode === "compress" || rawPlan?.timingMode === "stretch" || rawPlan?.timingMode === "auto"
+        ? rawPlan.timingMode
+        : "auto",
+    audioMode:
+      rawPlan?.audioMode === "source_only" || rawPlan?.audioMode === "source_plus_music"
+        ? rawPlan.audioMode
+        : "source_only",
+    sourceAudioEnabled: Boolean(rawPlan?.sourceAudioEnabled ?? true),
+    smoothSlowMo: Boolean(rawPlan?.smoothSlowMo),
+    mirrorEnabled: Boolean(rawPlan?.mirrorEnabled ?? true),
+    cameraMotion: normalizeCameraMotion(rawPlan?.cameraMotion),
+    videoZoom:
+      typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
+        ? Math.min(1.6, Math.max(1, rawPlan.videoZoom))
+        : 1,
+    topFontScale:
+      typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
+        ? Math.min(1.9, Math.max(0.7, rawPlan.topFontScale))
+        : DEFAULT_TEXT_SCALE,
+    bottomFontScale:
+      typeof rawPlan?.bottomFontScale === "number" && Number.isFinite(rawPlan.bottomFontScale)
+        ? Math.min(1.9, Math.max(0.7, rawPlan.bottomFontScale))
+        : DEFAULT_TEXT_SCALE,
+    musicGain:
+      typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)
+        ? Math.min(1, Math.max(0, rawPlan.musicGain))
+        : 0.65,
+    textPolicy:
+      rawPlan?.textPolicy === "strict_fit" ||
+      rawPlan?.textPolicy === "preserve_words" ||
+      rawPlan?.textPolicy === "aggressive_compact"
+        ? rawPlan.textPolicy
+        : "strict_fit",
+    segments: Array.isArray(rawPlan?.segments)
+      ? rawPlan.segments
+          .map((segment) => {
+            if (!segment || typeof segment !== "object") {
+              return null;
+            }
+            const start =
+              typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
+                ? segment.startSec
+                : null;
+            const end =
+              segment.endSec === null
+                ? null
+                : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
+                  ? segment.endSec
+                  : null;
+            if (start === null) {
+              return null;
+            }
+            return {
+              startSec: start,
+              endSec: end,
+              speed: normalizeSegmentSpeed((segment as { speed?: unknown }).speed),
+              label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`
+            };
+          })
+          .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
+      : [],
+    policy:
+      rawPlan?.policy === "adaptive_window" ||
+      rawPlan?.policy === "full_source_normalize" ||
+      rawPlan?.policy === "fixed_segments"
+        ? rawPlan.policy
+        : policyFallback,
+    backgroundAssetId:
+      typeof rawPlan?.backgroundAssetId === "string" && rawPlan.backgroundAssetId.trim()
+        ? rawPlan.backgroundAssetId.trim()
+        : null,
+    backgroundAssetMimeType:
+      typeof rawPlan?.backgroundAssetMimeType === "string" && rawPlan.backgroundAssetMimeType.trim()
+        ? rawPlan.backgroundAssetMimeType.trim()
+        : null,
+    musicAssetId:
+      typeof rawPlan?.musicAssetId === "string" && rawPlan.musicAssetId.trim()
+        ? rawPlan.musicAssetId.trim()
+        : null,
+    musicAssetMimeType:
+      typeof rawPlan?.musicAssetMimeType === "string" && rawPlan.musicAssetMimeType.trim()
+        ? rawPlan.musicAssetMimeType.trim()
+        : null,
+    avatarAssetId:
+      typeof rawPlan?.avatarAssetId === "string" && rawPlan.avatarAssetId.trim()
+        ? rawPlan.avatarAssetId.trim()
+        : null,
+    avatarAssetMimeType:
+      typeof rawPlan?.avatarAssetMimeType === "string" && rawPlan.avatarAssetMimeType.trim()
+        ? rawPlan.avatarAssetMimeType.trim()
+        : null,
+    authorName:
+      typeof rawPlan?.authorName === "string" && rawPlan.authorName.trim()
+        ? rawPlan.authorName.trim()
+        : template.author.name,
+    authorHandle:
+      typeof rawPlan?.authorHandle === "string" && rawPlan.authorHandle.trim()
+        ? rawPlan.authorHandle.trim()
+        : template.author.handle,
+    templateId,
+    prompt: ""
+  };
+}
+
+function resolveSourceUrl(rawSource: string | undefined): string {
+  const sourceUrl = normalizeSupportedUrl(rawSource?.trim() ?? "");
+  if (!sourceUrl) {
+    throw new Error("Передайте sourceUrl в теле запроса.");
+  }
+  if (!isSupportedUrl(sourceUrl)) {
+    throw new Error("Не удалось подготовить исходное видео для предпросмотра. Проверьте ссылку на ролик из Шага 1.");
+  }
+  return sourceUrl;
+}
+
+function buildPreviewCacheKey(params: {
+  sourceKey: string;
+  clipStartSec: number;
+  renderPlan: Stage3RenderPlan;
+}): string {
+  return hashKey(
+    JSON.stringify({
+      sourceKey: params.sourceKey,
+      clipStartSec: Number(params.clipStartSec.toFixed(3)),
+      clipDurationSec: params.renderPlan.targetDurationSec,
+      renderPlan: params.renderPlan,
+      musicAssetId: params.renderPlan.musicAssetId,
+      musicGain: Number(params.renderPlan.musicGain.toFixed(3))
+    })
+  );
+}
+
+export async function buildStage3PreviewDedupeKey(body: Stage3PreviewRequestBody): Promise<string> {
+  const sourceUrl = resolveSourceUrl(body.sourceUrl);
+  const snapshot = body.snapshot;
+  const clipStartSec = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
+  const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, null);
+  return buildPreviewCacheKey({
+    sourceKey: hashKey(sourceUrl),
+    clipStartSec,
+    renderPlan
+  });
+}
+
+export async function prepareStage3Preview(
+  body: Stage3PreviewRequestBody,
+  options?: { signal?: AbortSignal; waitTimeoutMs?: number | null }
+): Promise<Stage3PreparedPreview> {
+  const sourceUrl = resolveSourceUrl(body.sourceUrl);
+  const waitTimeoutMs =
+    typeof options?.waitTimeoutMs === "number" && Number.isFinite(options.waitTimeoutMs) && options.waitTimeoutMs > 0
+      ? options.waitTimeoutMs
+      : PREVIEW_WAIT_TIMEOUT_MS;
+
+  await fs.mkdir(PREVIEW_CACHE_DIR, { recursive: true });
+  const source = await ensureStage3SourceCached(sourceUrl, {
+    signal: options?.signal,
+    waitTimeoutMs
+  });
+  const clipDurationSec = sanitizeClipDuration(body.clipDurationSec);
+  const snapshot = body.snapshot;
+
+  const clipStartCandidate = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
+  const clipStartSec = clampClipStart(clipStartCandidate, source.sourceDurationSec, clipDurationSec);
+  const rawPlan = snapshot?.renderPlan ?? body.renderPlan;
+  const renderPlan = normalizeRenderPlan(rawPlan, source.sourceDurationSec);
+  let musicFilePath: string | null = null;
+  if (body.channelId && renderPlan.musicAssetId) {
+    const musicAsset = await getChannelAssetById(body.channelId, renderPlan.musicAssetId);
+    if (musicAsset) {
+      const musicFile = await readChannelAssetFile({
+        channelId: body.channelId,
+        fileName: musicAsset.fileName
+      });
+      if (musicFile) {
+        musicFilePath = musicFile.filePath;
+      }
+    }
+  }
+
+  const previewKey = buildPreviewCacheKey({
+    sourceKey: source.sourceKey,
+    clipStartSec,
+    renderPlan
+  });
+  const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);
+
+  if (await pathExists(previewPath)) {
+    return {
+      filePath: previewPath,
+      cacheKey: previewKey,
+      cacheState: "hit"
+    };
+  }
+
+  const running = previewInflight.get(previewKey);
+  const waitedForExistingTask = Boolean(running);
+  if (running) {
+    await running;
+  } else {
+    const task = (async () => {
+      const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-"));
+      try {
+        if (options?.signal?.aborted) {
+          return;
+        }
+        const prepared = await runHostedStage3HeavyJob(
+          () =>
+            prepareStage3SourceClip({
+              sourcePath: source.sourcePath,
+              tmpDir: localTmpDir,
+              sourceDurationSec: source.sourceDurationSec,
+              clipStartSec,
+              clipDurationSec: renderPlan.targetDurationSec,
+              renderPlan,
+              musicFilePath,
+              profile: "preview"
+            }),
+          {
+            signal: options?.signal,
+            waitTimeoutMs
+          }
+        );
+        if (options?.signal?.aborted) {
+          return;
+        }
+        const publishPath = `${previewPath}.part-${hashKey(`${Date.now()}-${Math.random()}`)}`;
+        await fs.copyFile(prepared.preparedPath, publishPath);
+        await fs.rename(publishPath, previewPath);
+      } finally {
+        await fs.rm(localTmpDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    })();
+    previewInflight.set(previewKey, task);
+    try {
+      await task;
+    } finally {
+      previewInflight.delete(previewKey);
+    }
+  }
+
+  if (options?.signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
+  if (!(await pathExists(previewPath))) {
+    throw new Error("Черновой предпросмотр не удалось подготовить. Повторите ещё раз.");
+  }
+
+  await pruneCacheDirectory(PREVIEW_CACHE_DIR, {
+    maxFiles: 32,
+    maxBytes: 512 * 1024 * 1024,
+    maxAgeMs: 45 * 60_000
+  }).catch(() => undefined);
+
+  return {
+    filePath: previewPath,
+    cacheKey: previewKey,
+    cacheState: waitedForExistingTask ? "wait" : "miss"
+  };
+}
+
+export function summarizeStage3PreviewError(error: unknown): string {
+  const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
+  if (ytdlpMessage) {
+    return ytdlpMessage;
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Stage 3 preview failed.";
+}

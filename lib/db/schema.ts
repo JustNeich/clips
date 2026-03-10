@@ -176,6 +176,49 @@ CREATE TABLE IF NOT EXISTS audit_log (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS stage3_jobs (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  dedupe_key TEXT,
+  payload_json TEXT NOT NULL,
+  result_json TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  recoverable INTEGER NOT NULL DEFAULT 1,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS stage3_job_events (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  level TEXT NOT NULL,
+  message TEXT NOT NULL,
+  payload_json TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (job_id) REFERENCES stage3_jobs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS stage3_job_artifacts (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (job_id) REFERENCES stage3_jobs(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace
   ON workspace_members(workspace_id);
 
@@ -202,4 +245,20 @@ CREATE INDEX IF NOT EXISTS idx_chat_threads_channel
 
 CREATE INDEX IF NOT EXISTS idx_chat_events_thread
   ON chat_events(thread_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_stage3_jobs_status
+  ON stage3_jobs(status, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_stage3_jobs_workspace
+  ON stage3_jobs(workspace_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stage3_jobs_kind_dedupe
+  ON stage3_jobs(kind, dedupe_key)
+  WHERE dedupe_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_stage3_job_events_job
+  ON stage3_job_events(job_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_stage3_job_artifacts_job
+  ON stage3_job_artifacts(job_id, created_at DESC);
 `;

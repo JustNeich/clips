@@ -12,6 +12,8 @@ import {
   ChannelAsset,
   Stage3AgentConversationItem,
   Stage3CameraMotion,
+  Stage3PreviewState,
+  Stage3RenderState,
   Stage3Segment,
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionRecord,
@@ -43,7 +45,7 @@ type Step3RenderTemplateProps = {
   versions: Stage3Version[];
   selectedVersionId: string | null;
   selectedPassIndex: number;
-  isPreviewLoading: boolean;
+  previewState: Stage3PreviewState;
   previewNotice: string | null;
   agentPrompt: string;
   agentSession: Stage3SessionRecord | null;
@@ -56,7 +58,7 @@ type Step3RenderTemplateProps = {
   bottomText: string;
   segments: Stage3Segment[];
   compressionEnabled: boolean;
-  isRendering: boolean;
+  renderState: Stage3RenderState;
   isOptimizing: boolean;
   isUploadingBackground: boolean;
   clipStartSec: number;
@@ -486,7 +488,7 @@ type Stage3LivePreviewPanelProps = {
   selectedPassIndex: number;
   displayVersions: Stage3Version[];
   summaryLines: string[];
-  isPreviewLoading: boolean;
+  previewState: Stage3PreviewState;
   previewNotice: string | null;
   clipDurationSec: number;
   focusY: number;
@@ -514,7 +516,7 @@ function Stage3LivePreviewPanel({
   selectedPassIndex,
   displayVersions,
   summaryLines,
-  isPreviewLoading,
+  previewState,
   previewNotice,
   clipDurationSec,
   focusY,
@@ -1320,7 +1322,6 @@ function Stage3LivePreviewPanel({
             </div>
           </div>
           <div className="timeline-notice">
-            {isPreviewLoading ? <p className="subtle-text">Обновляю предпросмотр...</p> : null}
             {previewNotice ? <p className="subtle-text">{sanitizeDisplayText(previewNotice)}</p> : null}
           </div>
         </div>
@@ -1347,7 +1348,7 @@ export function Step3RenderTemplate({
   versions,
   selectedVersionId,
   selectedPassIndex,
-  isPreviewLoading,
+  previewState,
   previewNotice,
   agentPrompt,
   agentSession,
@@ -1360,7 +1361,7 @@ export function Step3RenderTemplate({
   bottomText,
   segments,
   compressionEnabled,
-  isRendering,
+  renderState,
   isOptimizing,
   isUploadingBackground,
   clipStartSec,
@@ -1469,6 +1470,9 @@ export function Step3RenderTemplate({
     () => sumSegmentsDuration(normalizedSegments, sourceDurationSec),
     [normalizedSegments, sourceDurationSec]
   );
+  const isPreviewBusy =
+    previewState === "debouncing" || previewState === "loading" || previewState === "retrying";
+  const isRendering = renderState === "queued" || renderState === "rendering";
   const remainingSegmentsDurationSec = Math.max(0, clipDurationSec - explicitSegmentsDurationSec);
   const focusPercent = Math.round(localFocusY * 100);
   const audioModeLabel = selectedMusicAssetId
@@ -1889,7 +1893,7 @@ export function Step3RenderTemplate({
         disabled={!sourceUrl || isRendering}
         aria-busy={isRendering}
       >
-        {isRendering ? "Рендер..." : "Рендер"}
+        {renderState === "queued" ? "В очереди..." : isRendering ? "Рендер..." : "Рендер"}
       </button>
     </div>
   );
@@ -2557,8 +2561,8 @@ export function Step3RenderTemplate({
           selectedPassIndex={selectedPassIndex}
           displayVersions={displayVersions}
           summaryLines={summaryLines}
-          isPreviewLoading={isPreviewLoading}
-          previewNotice={previewNotice}
+          previewState={previewState}
+          previewNotice={previewNotice ?? (isPreviewBusy ? "Обновляю предпросмотр..." : null)}
           clipDurationSec={clipDurationSec}
           focusY={localFocusY}
           cameraMotion={cameraMotion}

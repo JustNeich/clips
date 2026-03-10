@@ -25,6 +25,9 @@ import {
   RuntimeCapabilitiesResponse,
   Stage3AgentRunResponse,
   Stage3CameraMotion,
+  Stage3JobEnvelope,
+  Stage3PreviewState,
+  Stage3RenderState,
   Stage3IterationStopReason,
   Stage3RenderPlan,
   Stage3Segment,
@@ -103,6 +106,17 @@ function toJsonDownload(fileName: string, data: unknown): void {
   URL.revokeObjectURL(url);
 }
 
+function triggerUrlDownload(url: string, fileName?: string | null): void {
+  const a = document.createElement("a");
+  a.href = url;
+  if (fileName) {
+    a.download = fileName;
+  }
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function isAbortError(error: unknown): boolean {
   if (error instanceof DOMException) {
     return error.name === "AbortError";
@@ -119,6 +133,40 @@ function parseRetryAfterMs(value: string | null | undefined, fallbackMs: number)
     return fallbackMs;
   }
   return Math.max(250, Math.round(seconds * 1000));
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const externalSignal = init.signal;
+  const abortFromExternal = () => {
+    controller.abort();
+  };
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener("abort", abortFromExternal, { once: true });
+    }
+  }
+  const timeout = window.setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeout);
+    if (externalSignal) {
+      externalSignal.removeEventListener("abort", abortFromExternal);
+    }
+  }
 }
 
 function equalCodexDeviceAuth(
@@ -717,8 +765,9 @@ export default function HomePage() {
   const [stage3RenderPlan, setStage3RenderPlan] = useState<Stage3RenderPlan>(fallbackRenderPlan());
   const [sourceDurationSec, setSourceDurationSec] = useState<number | null>(null);
   const [stage3PreviewVideoUrl, setStage3PreviewVideoUrl] = useState<string | null>(null);
+  const [stage3PreviewState, setStage3PreviewState] = useState<Stage3PreviewState>("idle");
   const [stage3PreviewNotice, setStage3PreviewNotice] = useState<string | null>(null);
-  const [stage3PreviewRetryNonce, setStage3PreviewRetryNonce] = useState(0);
+  const [stage3PreviewJobId, setStage3PreviewJobId] = useState<string | null>(null);
   const [stage3AgentPrompt, setStage3AgentPrompt] = useState("");
   const [stage3AgentSessionId, setStage3AgentSessionId] = useState<string | null>(null);
   const [stage3AgentTimeline, setStage3AgentTimeline] = useState<Stage3TimelineResponse | null>(null);
@@ -726,6 +775,8 @@ export default function HomePage() {
   const [ignoreStage3ChatSessionRef, setIgnoreStage3ChatSessionRef] = useState(false);
   const [stage3SelectedVersionId, setStage3SelectedVersionId] = useState<string | null>(null);
   const [stage3PassSelectionByVersion, setStage3PassSelectionByVersion] = useState<Record<string, number>>({});
+  const [stage3RenderState, setStage3RenderState] = useState<Stage3RenderState>("idle");
+  const [stage3RenderJobId, setStage3RenderJobId] = useState<string | null>(null);
   const autoAppliedCaptionRef = useRef<{
     chatId: string;
     option: number | null;
@@ -736,7 +787,8 @@ export default function HomePage() {
   const previousChannelIdRef = useRef<string | null>(null);
   const stage3PreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
   const stage3PreviewRequestKeyRef = useRef<string>("");
-  const stage3PreviewPendingKeyRef = useRef<string>("");
+  const stage3PreviewRequestIdRef = useRef(0);
+  const stage3LastGoodPreviewAtRef = useRef<number | null>(null);
   const draftSaveTimerRef = useRef<number | null>(null);
   const draftInFlightRef = useRef<Promise<void> | null>(null);
   const draftPayloadJsonRef = useRef<string>("");
@@ -808,6 +860,7 @@ export default function HomePage() {
     () => channelAssets.filter((asset) => asset.kind === "music"),
     [channelAssets]
   );
+  const stage3RenderInProgress = stage3RenderState === "queued" || stage3RenderState === "rendering";
 
   const parseError = useCallback(async (response: Response, fallback: string): Promise<string> => {
     const contentType = response.headers.get("content-type") ?? "";
@@ -958,9 +1011,13 @@ export default function HomePage() {
         setStage3PassSelectionByVersion({});
         autoAppliedCaptionRef.current = null;
         stage3PreviewRequestKeyRef.current = "";
-        stage3PreviewPendingKeyRef.current = "";
+        stage3PreviewRequestIdRef.current += 1;
         setStage3PreviewVideoUrl(null);
+        setStage3PreviewState("idle");
         setStage3PreviewNotice(null);
+        setStage3PreviewJobId(null);
+        setStage3RenderState("idle");
+        setStage3RenderJobId(null);
         return;
       }
 
@@ -1037,9 +1094,13 @@ export default function HomePage() {
           }
         : null;
       stage3PreviewRequestKeyRef.current = "";
-      stage3PreviewPendingKeyRef.current = "";
+      stage3PreviewRequestIdRef.current += 1;
       setStage3PreviewVideoUrl(null);
+      setStage3PreviewState("idle");
       setStage3PreviewNotice(null);
+      setStage3PreviewJobId(null);
+      setStage3RenderState("idle");
+      setStage3RenderJobId(null);
     },
     [activeChannel, applyChannelToRenderPlan, channelAssets]
   );
@@ -1428,10 +1489,14 @@ export default function HomePage() {
 
   useEffect(() => {
     stage3PreviewRequestKeyRef.current = "";
-    stage3PreviewPendingKeyRef.current = "";
+    stage3PreviewRequestIdRef.current += 1;
     clearStage3PreviewCache();
     setStage3PreviewVideoUrl(null);
+    setStage3PreviewState("idle");
     setStage3PreviewNotice(null);
+    setStage3PreviewJobId(null);
+    setStage3RenderState("idle");
+    setStage3RenderJobId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChat?.id]);
 
@@ -1529,7 +1594,9 @@ export default function HomePage() {
   const clearStage3PreviewCache = (): void => {
     const cache = stage3PreviewCacheRef.current;
     for (const { url } of cache.values()) {
-      URL.revokeObjectURL(url);
+      if (url.startsWith("blob:")) {
+        URL.revokeObjectURL(url);
+      }
     }
     cache.clear();
   };
@@ -1927,6 +1994,8 @@ export default function HomePage() {
     await flushActiveDraftSave();
     setBusyAction("render");
     setIsBusy(true);
+    setStage3RenderState("queued");
+    setStage3RenderJobId(null);
     setStatus("");
     setStatusType("");
 
@@ -1958,7 +2027,7 @@ export default function HomePage() {
         text: `User started Step 3 render with template: ${STAGE3_TEMPLATE_ID}`
       });
 
-      const response = await fetch("/api/stage3/render", {
+      const response = await fetchWithTimeout("/api/stage3/render/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1975,23 +2044,32 @@ export default function HomePage() {
           renderPlan: renderSnapshot.renderPlan,
           snapshot: renderSnapshot
         })
-      });
+      }, 15_000);
       if (!response.ok) {
         throw new Error(await parseError(response, "Render export failed."));
       }
+      let job = ((await response.json()) as Stage3JobEnvelope).job;
+      setStage3RenderJobId(job.id);
 
-      const blob = await response.blob();
-      const downloadUrl = URL.createObjectURL(blob);
-      const outputName =
-        response.headers.get("Content-Disposition")?.match(/filename="(.+)"/)?.[1] ?? "video.mp4";
+      while (job.status === "queued" || job.status === "running") {
+        setStage3RenderState(job.status === "queued" ? "queued" : "rendering");
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 750);
+        });
+        const statusResponse = await fetchWithTimeout(`/api/stage3/render/jobs/${job.id}`, {}, 15_000);
+        if (!statusResponse.ok) {
+          throw new Error(await parseError(statusResponse, "Render export failed."));
+        }
+        job = ((await statusResponse.json()) as Stage3JobEnvelope).job;
+      }
 
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = outputName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(downloadUrl);
+      if (job.status !== "completed" || !job.artifact?.downloadUrl) {
+        throw new Error(job.errorMessage ?? "Render export failed.");
+      }
+
+      setStage3RenderState("ready");
+      const outputName = job.artifact.fileName;
+      triggerUrlDownload(job.artifact.downloadUrl, outputName);
 
       await appendEvent(chat.id, {
         role: "assistant",
@@ -2014,6 +2092,7 @@ export default function HomePage() {
       setStatusType("ok");
       setStatus("Render export complete.");
     } catch (error) {
+      setStage3RenderState("error");
       const message = getUiErrorMessage(error, "Render export failed.");
       await appendEvent(chat.id, {
         role: "assistant",
@@ -2965,7 +3044,7 @@ export default function HomePage() {
   ]);
 
   useEffect(() => {
-    if (currentStep !== 3 || !activeChat?.url || busyAction === "render") {
+    if (currentStep !== 3 || !activeChat?.url || stage3RenderInProgress) {
       return;
     }
 
@@ -3018,120 +3097,240 @@ export default function HomePage() {
     })();
 
     return () => controller.abort();
-  }, [currentStep, activeChat?.url]);
+  }, [currentStep, activeChat?.url, stage3RenderInProgress]);
 
   useEffect(() => {
-    if (currentStep !== 3 || !activeChat?.url || busyAction === "render") {
+    if (currentStep !== 3 || !activeChat?.url) {
       return;
     }
 
     const previewState = stage3LivePreviewStateRef.current;
     const previewKey = stage3LivePreviewKey;
     stage3PreviewRequestKeyRef.current = previewKey;
+    const requestId = stage3PreviewRequestIdRef.current + 1;
+    stage3PreviewRequestIdRef.current = requestId;
 
     const cached = stage3PreviewCacheRef.current.get(previewKey);
     if (cached) {
       setStage3PreviewVideoUrl(cached.url);
+      setStage3PreviewState("ready");
       setStage3PreviewNotice(null);
       return;
     }
-    setStage3PreviewNotice("Обновляю предпросмотр...");
-    if (stage3PreviewPendingKeyRef.current === previewKey) {
+
+    if (stage3RenderInProgress) {
+      setStage3PreviewState("retrying");
+      setStage3PreviewNotice("Предпросмотр обновится после рендера...");
       return;
     }
 
     const controller = new AbortController();
+    let debounceTimer: number | null = null;
     let retryTimer: number | null = null;
-    const timer = window.setTimeout(() => {
-      stage3PreviewPendingKeyRef.current = previewKey;
-      setBusyAction((prev) => (prev ? prev : "video-preview"));
 
-      void (async () => {
-        try {
-          const response = await fetch("/api/stage3/preview", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sourceUrl: activeChat.url,
-              channelId: activeChannelId,
-              clipDurationSec: CLIP_DURATION_SEC,
-              renderPlan: previewState.renderPlan,
-              snapshot: {
-                clipStartSec: previewState.clipStartSec,
-                clipDurationSec: previewState.clipDurationSec,
-                renderPlan: previewState.renderPlan
-              }
-            }),
-            signal: controller.signal
-          });
-          if (!response.ok) {
-            const message = await parseError(response, "Не удалось загрузить предпросмотр Stage 3.");
-            const isBusyPreview = response.status === 503 && response.headers.get("x-stage3-busy") === "1";
-            if (isBusyPreview) {
-              const retryDelayMs = parseRetryAfterMs(response.headers.get("retry-after"), 6000);
-              if (!controller.signal.aborted && stage3PreviewRequestKeyRef.current === previewKey) {
-                setStage3PreviewNotice("Хостинг занят Stage 3. Повторяю предпросмотр...");
-                retryTimer = window.setTimeout(() => {
-                  if (controller.signal.aborted || stage3PreviewRequestKeyRef.current !== previewKey) {
-                    return;
-                  }
-                  setStage3PreviewRetryNonce((prev) => prev + 1);
-                }, retryDelayMs);
-              }
-              return;
-            }
-            throw new Error(message);
-          }
+    const isStale = (): boolean =>
+      controller.signal.aborted ||
+      stage3PreviewRequestIdRef.current !== requestId ||
+      stage3PreviewRequestKeyRef.current !== previewKey;
 
-          const blob = await response.blob();
-          if (controller.signal.aborted || stage3PreviewRequestKeyRef.current !== previewKey) {
-            return;
-          }
-
-          const objectUrl = URL.createObjectURL(blob);
-          const cache = stage3PreviewCacheRef.current;
-          const existing = cache.get(previewKey);
-          if (existing) {
-            URL.revokeObjectURL(objectUrl);
-            setStage3PreviewVideoUrl(existing.url);
-          } else {
-            cache.set(previewKey, { url: objectUrl, createdAt: Date.now() });
-            while (cache.size > 14) {
-              const oldestEntry = [...cache.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt)[0];
-              if (!oldestEntry) {
-                break;
-              }
-              URL.revokeObjectURL(oldestEntry[1].url);
-              cache.delete(oldestEntry[0]);
-            }
-            setStage3PreviewVideoUrl(objectUrl);
-          }
-          setStage3PreviewNotice(null);
-        } catch (error) {
-          if (controller.signal.aborted || isAbortError(error)) {
-            return;
-          }
-          const message = getUiErrorMessage(error, "Не удалось загрузить предпросмотр.");
-          setStage3PreviewNotice(message);
-        } finally {
-          if (stage3PreviewPendingKeyRef.current === previewKey) {
-            stage3PreviewPendingKeyRef.current = "";
-          }
-          if (!controller.signal.aborted) {
-            setBusyAction((prev) => (prev === "video-preview" ? "" : prev));
-          }
+    const rememberPreviewUrl = (url: string) => {
+      const cache = stage3PreviewCacheRef.current;
+      cache.set(previewKey, { url, createdAt: Date.now() });
+      while (cache.size > 14) {
+        const oldestEntry = [...cache.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt)[0];
+        if (!oldestEntry) {
+          break;
         }
-      })();
+        if (oldestEntry[1].url.startsWith("blob:")) {
+          URL.revokeObjectURL(oldestEntry[1].url);
+        }
+        cache.delete(oldestEntry[0]);
+      }
+      stage3LastGoodPreviewAtRef.current = Date.now();
+      setStage3PreviewVideoUrl(url);
+      setStage3PreviewState("ready");
+      setStage3PreviewNotice(null);
+    };
+
+    const scheduleRetry = (message: string, delayMs: number) => {
+      if (isStale()) {
+        return;
+      }
+      setStage3PreviewState("retrying");
+      setStage3PreviewNotice(message);
+      retryTimer = window.setTimeout(() => {
+        if (isStale()) {
+          return;
+        }
+        void startPreviewRequest();
+      }, delayMs);
+    };
+
+    const pollPreviewJob = async (
+      initialJob: Stage3JobEnvelope["job"]
+    ): Promise<void> => {
+      let job = initialJob;
+
+      while (!isStale()) {
+        setStage3PreviewJobId(job.id);
+        if (job.status === "completed" && job.artifact?.downloadUrl) {
+          rememberPreviewUrl(job.artifact.downloadUrl);
+          return;
+        }
+        if (job.status === "failed" || job.status === "interrupted") {
+          const message = job.errorMessage ?? "Не удалось загрузить предпросмотр.";
+          if (job.recoverable) {
+            scheduleRetry(message, 4000);
+            return;
+          }
+          setStage3PreviewState("error");
+          setStage3PreviewNotice(message);
+          return;
+        }
+
+        setStage3PreviewState(job.status === "queued" ? "retrying" : "loading");
+        setStage3PreviewNotice(job.status === "queued" ? "Предпросмотр в очереди..." : "Обновляю предпросмотр...");
+
+        await new Promise<void>((resolve) => {
+          const timer = window.setTimeout(() => resolve(), 500);
+          controller.signal.addEventListener(
+            "abort",
+            () => {
+              window.clearTimeout(timer);
+              resolve();
+            },
+            { once: true }
+          );
+        });
+        if (isStale()) {
+          return;
+        }
+
+        try {
+          const response = await fetchWithTimeout(`/api/stage3/preview/jobs/${job.id}`, {
+            signal: controller.signal
+          }, 12_000);
+          if (!response.ok) {
+            const message = await parseError(response, "Не удалось обновить статус предпросмотра.");
+            const retryDelayMs = parseRetryAfterMs(response.headers.get("retry-after"), 4000);
+            scheduleRetry(message, retryDelayMs);
+            return;
+          }
+          const body = (await response.json()) as Stage3JobEnvelope;
+          job = body.job;
+        } catch (error) {
+          if (isStale()) {
+            return;
+          }
+          if (isAbortError(error)) {
+            scheduleRetry("Предпросмотр обновляется дольше обычного. Повторяю...", 4000);
+            return;
+          }
+          scheduleRetry(getUiErrorMessage(error, "Не удалось обновить статус предпросмотра."), 4000);
+          return;
+        }
+      }
+    };
+
+    const startPreviewRequest = async (): Promise<void> => {
+      if (isStale()) {
+        return;
+      }
+      setStage3PreviewState("loading");
+      setStage3PreviewNotice("Обновляю предпросмотр...");
+
+      try {
+        const response = await fetchWithTimeout("/api/stage3/preview/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceUrl: activeChat.url,
+            channelId: activeChannelId,
+            clipDurationSec: CLIP_DURATION_SEC,
+            renderPlan: previewState.renderPlan,
+            snapshot: {
+              clipStartSec: previewState.clipStartSec,
+              clipDurationSec: previewState.clipDurationSec,
+              renderPlan: previewState.renderPlan
+            }
+          }),
+          signal: controller.signal
+        }, 12_000);
+        if (!response.ok) {
+          const message = await parseError(response, "Не удалось поставить предпросмотр в очередь.");
+          const retryDelayMs = parseRetryAfterMs(response.headers.get("retry-after"), 4000);
+          if (response.status >= 500) {
+            scheduleRetry(message, retryDelayMs);
+            return;
+          }
+          setStage3PreviewState("error");
+          setStage3PreviewNotice(message);
+          return;
+        }
+
+        const body = (await response.json()) as Stage3JobEnvelope;
+        await pollPreviewJob(body.job);
+      } catch (error) {
+        if (isStale()) {
+          return;
+        }
+        if (isAbortError(error)) {
+          scheduleRetry("Предпросмотр обновляется дольше обычного. Повторяю...", 4000);
+          return;
+        }
+        scheduleRetry(getUiErrorMessage(error, "Не удалось загрузить предпросмотр."), 4000);
+      }
+    };
+
+    setStage3PreviewState("debouncing");
+    setStage3PreviewNotice("Обновляю предпросмотр...");
+    debounceTimer = window.setTimeout(() => {
+      void startPreviewRequest();
     }, 650);
 
     return () => {
       controller.abort();
-      window.clearTimeout(timer);
+      if (debounceTimer !== null) {
+        window.clearTimeout(debounceTimer);
+      }
       if (retryTimer !== null) {
         window.clearTimeout(retryTimer);
       }
     };
-  }, [busyAction, currentStep, activeChat?.url, activeChannelId, stage3LivePreviewKey, stage3PreviewRetryNonce]);
+  }, [
+    activeChannelId,
+    activeChat?.url,
+    currentStep,
+    getUiErrorMessage,
+    parseError,
+    stage3LivePreviewKey,
+    stage3RenderInProgress
+  ]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development" || typeof window === "undefined") {
+      return;
+    }
+    const scope = window as typeof window & {
+      __STAGE3_PREVIEW_DEBUG__?: Record<string, unknown>;
+    };
+    scope.__STAGE3_PREVIEW_DEBUG__ = {
+      previewKey: stage3LivePreviewKey,
+      previewState: stage3PreviewState,
+      previewNotice: stage3PreviewNotice,
+      previewJobId: stage3PreviewJobId,
+      lastGoodPreviewAgeMs:
+        stage3LastGoodPreviewAtRef.current === null ? null : Date.now() - stage3LastGoodPreviewAtRef.current
+    };
+    return () => {
+      delete scope.__STAGE3_PREVIEW_DEBUG__;
+    };
+  }, [
+    stage3LivePreviewKey,
+    stage3PreviewJobId,
+    stage3PreviewNotice,
+    stage3PreviewState
+  ]);
 
   const steps: FlowStep[] = useMemo(
     () => [
@@ -3225,10 +3424,14 @@ export default function HomePage() {
     initializedStage3ChatRef.current = null;
     autoAppliedCaptionRef.current = null;
     stage3PreviewRequestKeyRef.current = "";
-    stage3PreviewPendingKeyRef.current = "";
+    stage3PreviewRequestIdRef.current += 1;
     clearStage3PreviewCache();
     setStage3PreviewVideoUrl(null);
+    setStage3PreviewState("idle");
     setStage3PreviewNotice(null);
+    setStage3PreviewJobId(null);
+    setStage3RenderState("idle");
+    setStage3RenderJobId(null);
     setStatus("");
     setStatusType("");
   };
@@ -3265,10 +3468,14 @@ export default function HomePage() {
       initializedStage3ChatRef.current = null;
       autoAppliedCaptionRef.current = null;
       stage3PreviewRequestKeyRef.current = "";
-      stage3PreviewPendingKeyRef.current = "";
+      stage3PreviewRequestIdRef.current += 1;
       clearStage3PreviewCache();
       setStage3PreviewVideoUrl(null);
+      setStage3PreviewState("idle");
       setStage3PreviewNotice(null);
+      setStage3PreviewJobId(null);
+      setStage3RenderState("idle");
+      setStage3RenderJobId(null);
       setStatus("");
       setStatusType("");
     },
@@ -3793,7 +4000,7 @@ export default function HomePage() {
           versions={stage3Versions}
           selectedVersionId={stage3SelectedVersionId}
           selectedPassIndex={selectedStage3PassIndex}
-          isPreviewLoading={busyAction === "video-preview"}
+          previewState={stage3PreviewState}
           previewNotice={stage3PreviewNotice}
           agentPrompt={stage3AgentPrompt}
           agentSession={activeStage3AgentTimeline?.session ?? null}
@@ -3817,7 +4024,7 @@ export default function HomePage() {
           bottomFontScale={stage3RenderPlan.bottomFontScale}
           sourceAudioEnabled={stage3RenderPlan.sourceAudioEnabled}
           musicGain={stage3RenderPlan.musicGain}
-          isRendering={busyAction === "render"}
+          renderState={stage3RenderState}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
           onRender={() => {
