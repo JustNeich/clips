@@ -48,6 +48,7 @@ import {
   findLatestStage3AgentSessionRef,
   normalizeStage3SessionStatus
 } from "../lib/stage3-legacy-bridge";
+import { buildStage3WorkerCommands } from "../lib/stage3-worker-commands";
 import {
   buildChatListItem,
   extractCommentsPayload,
@@ -995,7 +996,18 @@ export default function HomePage() {
         throw new Error(await parseError(response, "Не удалось создать pairing token локального executor."));
       }
       const body = (await response.json()) as Stage3WorkerPairingResponse;
-      setStage3WorkerPairing(body);
+      const browserOrigin =
+        typeof window !== "undefined" && window.location.origin
+          ? window.location.origin.replace(/\/+$/, "")
+          : body.serverOrigin;
+      setStage3WorkerPairing({
+        ...body,
+        serverOrigin: browserOrigin,
+        commands: buildStage3WorkerCommands({
+          origin: browserOrigin,
+          pairingToken: body.pairingToken
+        })
+      });
       setStatusType("ok");
       setStatus("Pairing token создан. Запустите локальный Stage 3 worker на своей машине.");
     } catch (error) {

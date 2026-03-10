@@ -29,6 +29,9 @@
 - `STAGE3_ALLOW_HOST_EXECUTION=0`
 - `STAGE3_WORKER_PAIRING_TTL_SEC=600`
 - `STAGE3_WORKER_SESSION_TTL_SEC=2592000`
+- `PUBLIC_APP_ORIGIN=https://ваш-домен` при необходимости
+
+`PUBLIC_APP_ORIGIN` нужен только если прокси/рантайм подставляет во внутренние запросы адрес вида `0.0.0.0` вместо публичного домена.
 
 Эти значения уже добавлены в [render.yaml](/Users/neich/dev/clips automations/render.yaml), но их нужно реально задеплоить.
 
