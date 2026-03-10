@@ -19,6 +19,7 @@ function isApiPublic(pathname: string): boolean {
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
+  const isDevDesignRoute = pathname.startsWith("/design/") && process.env.NODE_ENV !== "production";
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
@@ -31,7 +32,7 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
 
-  if (PUBLIC_PATHS.has(pathname)) {
+  if (PUBLIC_PATHS.has(pathname) || isDevDesignRoute) {
     return NextResponse.next();
   }
 

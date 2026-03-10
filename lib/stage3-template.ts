@@ -71,64 +71,64 @@ export const SCIENCE_CARD = {
 export const TURBO_FACE = {
   frame: { width: 1080, height: 1920 },
   top: {
-    x: 32,
-    y: 64,
-    width: 1016,
-    radius: 18,
-    paddingX: 32,
-    paddingY: 32,
-    minHeight: 220,
-    maxHeight: 520
+    x: 84,
+    y: 152,
+    width: 912,
+    radius: 30,
+    paddingX: 38,
+    paddingY: 26,
+    minHeight: 240,
+    maxHeight: 500
   },
   video: {
-    x: 36,
-    minHeight: 860
+    x: 84,
+    minHeight: 760
   },
   bottom: {
-    x: 36,
-    bottom: 64,
-    width: 1008,
-    radius: 24,
-    paddingX: 24,
-    paddingY: 24,
-    metaHeight: 80,
-    metaGap: 16,
-    minHeight: 250,
-    maxHeight: 360
+    x: 84,
+    bottom: 168,
+    width: 912,
+    radius: 30,
+    paddingX: 28,
+    paddingY: 20,
+    metaHeight: 100,
+    metaGap: 14,
+    minHeight: 248,
+    maxHeight: 392
   },
   author: {
     name: "Stone Face Turbo",
     handle: "@StoneFaceTurbo",
-    avatarSize: 80,
+    avatarSize: 74,
     avatarBorder: 2,
-    checkSize: 36
+    checkSize: 24
   },
   typography: {
     top: {
       min: 44,
-      max: 52,
-      softLimit: 190,
-      penalty: 0.2,
-      lineHeight: 1.2,
+      max: 66,
+      softLimit: 220,
+      penalty: 0.17,
+      lineHeight: 1.03,
       maxLines: 7,
-      maxChars: 420
+      maxChars: 500
     },
     bottom: {
-      min: 28,
-      max: 36,
-      softLimit: 180,
-      penalty: 0.22,
-      lineHeight: 1.4,
+      min: 22,
+      max: 32,
+      softLimit: 165,
+      penalty: 0.18,
+      lineHeight: 1.18,
       maxLines: 5,
-      maxChars: 360
+      maxChars: 340
     },
     authorName: {
-      font: 36,
-      lineHeight: 1.2
+      font: 33,
+      lineHeight: 1.05
     },
     authorHandle: {
-      font: 28,
-      lineHeight: 1.2
+      font: 23,
+      lineHeight: 1.05
     }
   }
 } as const;
@@ -136,26 +136,26 @@ export const TURBO_FACE = {
 const TURBO_FACE_COMPAT = {
   frame: TURBO_FACE.frame,
   card: {
-    x: 36,
-    y: 64,
-    width: 1008,
-    height: 1792,
-    radius: 26,
-    borderWidth: 3,
+    x: 84,
+    y: 152,
+    width: 912,
+    height: 1600,
+    radius: 30,
+    borderWidth: 2,
     borderColor: "#0a1119",
-    fill: "#f9fafc"
+    fill: "#fbfbf8"
   },
   slot: {
-    topHeight: 460,
-    bottomHeight: 330,
-    topPaddingX: 34,
-    topPaddingY: 28,
-    bottomMetaHeight: 120,
-    bottomMetaPaddingX: 24,
-    bottomMetaPaddingY: 16,
-    bottomTextPaddingX: 24,
-    bottomTextPaddingY: 14,
-    bottomTextPaddingTop: 14,
+    topHeight: 420,
+    bottomHeight: 312,
+    topPaddingX: 38,
+    topPaddingY: 26,
+    bottomMetaHeight: 110,
+    bottomMetaPaddingX: 28,
+    bottomMetaPaddingY: 18,
+    bottomTextPaddingX: 28,
+    bottomTextPaddingY: 12,
+    bottomTextPaddingTop: 10,
     bottomTextPaddingBottom: 14
   },
   author: TURBO_FACE.author,

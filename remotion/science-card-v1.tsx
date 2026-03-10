@@ -43,7 +43,10 @@ function OverlayText({
   lineHeight,
   fontWeight,
   textAlign = "center",
-  verticalAlign = "center"
+  verticalAlign = "center",
+  fontFamily = '"Arial","Helvetica Neue",Helvetica,sans-serif',
+  color = "#0b1018",
+  letterSpacing
 }: {
   text: string;
   fontSize: number;
@@ -58,6 +61,9 @@ function OverlayText({
   fontWeight: number;
   textAlign?: "left" | "center";
   verticalAlign?: "start" | "center";
+  fontFamily?: string;
+  color?: string;
+  letterSpacing?: string;
 }) {
   const resolvedPaddingTop = paddingTop ?? paddingY;
   const resolvedPaddingBottom = paddingBottom ?? paddingY;
@@ -80,13 +86,13 @@ function OverlayText({
         style={{
           margin: 0,
           width: "100%",
-          color: "#0b1018",
+          color,
           fontSize,
           lineHeight,
           fontWeight,
           textAlign,
-          fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
-          letterSpacing: textAlign === "center" ? "-0.015em" : "-0.005em",
+          fontFamily,
+          letterSpacing: letterSpacing ?? (textAlign === "center" ? "-0.015em" : "-0.005em"),
           textWrap: textAlign === "center" ? "pretty" : "pretty",
           overflowWrap: "break-word",
           display: "-webkit-box",
@@ -290,6 +296,21 @@ export function ScienceCardV1({
   const mirroredScale = mirrorEnabled ? -normalizedZoom : normalizedZoom;
   const slotTransform = `scale(${mirroredScale.toFixed(3)}, ${normalizedZoom.toFixed(3)})`;
   const bgTransform = mirrorEnabled ? "scaleX(-1)" : undefined;
+  const turboBottomTop = frame.height - TURBO_FACE.bottom.bottom - computed.bottomBlockHeight;
+  const turboShellHeight = turboBottomTop + computed.bottomBlockHeight - TURBO_FACE.top.y;
+  const turboShellStyle = {
+    left: TURBO_FACE.top.x,
+    top: TURBO_FACE.top.y,
+    width: TURBO_FACE.top.width,
+    height: turboShellHeight,
+    borderRadius: 34,
+    background: "rgba(252, 252, 249, 0.035)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    boxShadow:
+      "0 30px 80px rgba(4, 10, 20, 0.36), 0 12px 28px rgba(4, 10, 20, 0.18), inset 0 1px 0 rgba(255,255,255,0.12)",
+    overflow: "hidden",
+    backdropFilter: "blur(10px)"
+  } as const;
 
   return (
     <AbsoluteFill
@@ -343,16 +364,27 @@ export function ScienceCardV1({
       </AbsoluteFill>
 
       {isTurbo ? (
+        <AbsoluteFill
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(9, 20, 44, 0.08) 0%, rgba(9, 20, 44, 0.18) 26%, rgba(7, 12, 20, 0.12) 60%, rgba(7, 12, 20, 0.26) 100%)"
+          }}
+        />
+      ) : null}
+
+      {isTurbo ? (
         <>
+          <AbsoluteFill style={turboShellStyle} />
+
           <AbsoluteFill
             style={{
               left: TURBO_FACE.top.x,
               top: TURBO_FACE.top.y,
               width: TURBO_FACE.top.width,
               height: computed.topBlockHeight,
-              borderRadius: TURBO_FACE.top.radius,
-              backgroundColor: "#ffffff",
-              boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
+              borderRadius: `${TURBO_FACE.top.radius}px ${TURBO_FACE.top.radius}px 0 0`,
+              backgroundColor: "rgba(255,255,255,0.975)",
+              borderBottom: "1px solid rgba(6, 13, 22, 0.08)",
               overflow: "hidden"
             }}
           >
@@ -360,12 +392,14 @@ export function ScienceCardV1({
               text={computed.top}
               fontSize={computed.topFont}
               maxLines={TURBO_FACE.typography.top.maxLines}
-            paddingX={TURBO_FACE.top.paddingX}
-            paddingY={TURBO_FACE.top.paddingY}
-            lineHeight={computed.topLineHeight}
-            fontWeight={900}
-            textAlign="center"
-          />
+              paddingX={TURBO_FACE.top.paddingX}
+              paddingY={TURBO_FACE.top.paddingY}
+              lineHeight={computed.topLineHeight}
+              fontWeight={900}
+              textAlign="center"
+              fontFamily={'"Trebuchet MS","Arial",sans-serif'}
+              letterSpacing="-0.03em"
+            />
           </AbsoluteFill>
 
           <AbsoluteFill
@@ -374,7 +408,8 @@ export function ScienceCardV1({
               top: computed.videoY,
               width: computed.videoWidth,
               height: computed.videoHeight,
-              overflow: "hidden"
+              overflow: "hidden",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(7,12,20,0.12)"
             }}
           >
             <OffthreadVideo
@@ -396,12 +431,12 @@ export function ScienceCardV1({
           <AbsoluteFill
             style={{
               left: TURBO_FACE.bottom.x,
-              top: frame.height - TURBO_FACE.bottom.bottom - computed.bottomBlockHeight,
+              top: turboBottomTop,
               width: TURBO_FACE.bottom.width,
               height: computed.bottomBlockHeight,
-              borderRadius: TURBO_FACE.bottom.radius,
-              backgroundColor: "#ffffff",
-              boxShadow: "0 16px 36px rgba(0,0,0,0.26)",
+              borderRadius: `0 0 ${TURBO_FACE.bottom.radius}px ${TURBO_FACE.bottom.radius}px`,
+              backgroundColor: "rgba(250,249,246,0.985)",
+              borderTop: "1px solid rgba(6, 13, 22, 0.09)",
               overflow: "hidden",
               display: "grid",
               gridTemplateRows: `${TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2}px minmax(0, 1fr)`
@@ -415,7 +450,7 @@ export function ScienceCardV1({
                 padding: `${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 {avatarAssetFileName && (avatarAssetMimeType ?? "").toLowerCase().startsWith("image/") ? (
                   <Img
                     src={staticFile(avatarAssetFileName)}
@@ -423,7 +458,7 @@ export function ScienceCardV1({
                       width: TURBO_FACE.author.avatarSize,
                       height: TURBO_FACE.author.avatarSize,
                       borderRadius: 999,
-                      border: `${TURBO_FACE.author.avatarBorder}px solid rgba(0,0,0,0.18)`,
+                      border: `${TURBO_FACE.author.avatarBorder}px solid rgba(8,12,18,0.12)`,
                       objectFit: "cover",
                       boxSizing: "border-box",
                       flex: "0 0 auto"
@@ -435,7 +470,7 @@ export function ScienceCardV1({
                       width: TURBO_FACE.author.avatarSize,
                       height: TURBO_FACE.author.avatarSize,
                       borderRadius: 999,
-                      border: `${TURBO_FACE.author.avatarBorder}px solid rgba(0,0,0,0.18)`,
+                      border: `${TURBO_FACE.author.avatarBorder}px solid rgba(8,12,18,0.12)`,
                       background: "radial-gradient(circle at 30% 30%, #f6db98, #2f86bb 70%, #20506f)",
                       color: "#fff",
                       display: "grid",
@@ -452,12 +487,12 @@ export function ScienceCardV1({
                   </div>
                 )}
                 <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <span
                       style={{
-                        color: "#0c1018",
+                        color: "#11161f",
                         fontWeight: 700,
-                        fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
+                        fontFamily: '"Trebuchet MS","Arial",sans-serif',
                         fontSize: TURBO_FACE.typography.authorName.font,
                         lineHeight: TURBO_FACE.typography.authorName.lineHeight,
                         whiteSpace: "nowrap"
@@ -470,7 +505,7 @@ export function ScienceCardV1({
                         width: TURBO_FACE.author.checkSize,
                         height: TURBO_FACE.author.checkSize,
                         borderRadius: 999,
-                        background: "#bf5cf4",
+                        background: "#72b6e6",
                         color: "#ffffff",
                         display: "grid",
                         placeItems: "center",
@@ -485,8 +520,8 @@ export function ScienceCardV1({
                   </div>
                   <span
                     style={{
-                      color: "#666666",
-                      fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
+                      color: "#8b919a",
+                      fontFamily: '"Trebuchet MS","Arial",sans-serif',
                       fontSize: TURBO_FACE.typography.authorHandle.font,
                       lineHeight: TURBO_FACE.typography.authorHandle.lineHeight
                     }}
@@ -503,9 +538,17 @@ export function ScienceCardV1({
               maxLines={TURBO_FACE.typography.bottom.maxLines}
               paddingX={TURBO_FACE.bottom.paddingX}
               paddingY={0}
+              paddingTop={8}
+              paddingBottom={TURBO_FACE.bottom.paddingY}
+              paddingLeft={TURBO_FACE.bottom.paddingX}
+              paddingRight={TURBO_FACE.bottom.paddingX}
               lineHeight={computed.bottomLineHeight}
-              fontWeight={400}
+              fontWeight={500}
               textAlign="left"
+              verticalAlign="start"
+              fontFamily={'"Trebuchet MS","Arial",sans-serif'}
+              color="#181b22"
+              letterSpacing="-0.015em"
             />
           </AbsoluteFill>
         </>

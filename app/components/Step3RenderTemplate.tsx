@@ -637,6 +637,8 @@ function Stage3LivePreviewPanel({
   const bottomTextPaddingRight =
     templateConfig.slot.bottomTextPaddingRight ?? templateConfig.slot.bottomTextPaddingX;
   const videoHeight = previewComputed.videoHeight;
+  const turboBottomTop = frameHeight - TURBO_FACE.bottom.bottom - previewComputed.bottomBlockHeight;
+  const turboShellHeight = turboBottomTop + previewComputed.bottomBlockHeight - TURBO_FACE.top.y;
 
   const fitScale = useMemo(() => {
     const width = canvasSize.width;
@@ -1060,6 +1062,33 @@ function Stage3LivePreviewPanel({
                 {isTurboTemplate ? (
                   <>
                     <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        background:
+                          "linear-gradient(180deg, rgba(9,20,44,0.08) 0%, rgba(9,20,44,0.18) 26%, rgba(7,12,20,0.12) 60%, rgba(7,12,20,0.26) 100%)",
+                        pointerEvents: "none"
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: TURBO_FACE.top.x,
+                        top: TURBO_FACE.top.y,
+                        width: TURBO_FACE.top.width,
+                        height: turboShellHeight,
+                        borderRadius: 34,
+                        background: "rgba(252, 252, 249, 0.035)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        boxShadow:
+                          "0 30px 80px rgba(4,10,20,0.36), 0 12px 28px rgba(4,10,20,0.18), inset 0 1px 0 rgba(255,255,255,0.12)",
+                        overflow: "hidden",
+                        backdropFilter: "blur(10px)"
+                      }}
+                    />
+
+                    <div
                       className="preview-top"
                       style={{
                         position: "absolute",
@@ -1067,10 +1096,9 @@ function Stage3LivePreviewPanel({
                         top: TURBO_FACE.top.y,
                         width: TURBO_FACE.top.width,
                         height: previewComputed.topBlockHeight,
-                        borderRadius: TURBO_FACE.top.radius,
-                        backgroundColor: "#ffffff",
-                        boxShadow: "0 14px 32px rgba(0,0,0,0.22)",
-                        border: "2px solid rgba(0,0,0,0.18)",
+                        borderRadius: `${TURBO_FACE.top.radius}px ${TURBO_FACE.top.radius}px 0 0`,
+                        backgroundColor: "rgba(255,255,255,0.975)",
+                        borderBottom: "1px solid rgba(6,13,22,0.08)",
                         padding: `${TURBO_FACE.top.paddingY}px ${TURBO_FACE.top.paddingX}px`
                       }}
                     >
@@ -1079,7 +1107,9 @@ function Stage3LivePreviewPanel({
                         style={{
                           fontSize: previewComputed.topFont,
                           WebkitLineClamp: TURBO_FACE.typography.top.maxLines,
-                          lineHeight: previewComputed.topLineHeight
+                          lineHeight: previewComputed.topLineHeight,
+                          fontFamily: '"Trebuchet MS","Arial",sans-serif',
+                          letterSpacing: "-0.03em"
                         }}
                       >
                         {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
@@ -1093,7 +1123,8 @@ function Stage3LivePreviewPanel({
                         left: previewComputed.videoX,
                         top: previewComputed.videoY,
                         width: previewComputed.videoWidth,
-                        height: previewComputed.videoHeight
+                        height: previewComputed.videoHeight,
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(7,12,20,0.12)"
                       }}
                     >
                       {previewVideoUrl ? (
@@ -1121,13 +1152,12 @@ function Stage3LivePreviewPanel({
                       style={{
                         position: "absolute",
                         left: TURBO_FACE.bottom.x,
-                        top: TURBO_FACE.frame.height - TURBO_FACE.bottom.bottom - previewComputed.bottomBlockHeight,
+                        top: turboBottomTop,
                         width: TURBO_FACE.bottom.width,
                         height: previewComputed.bottomBlockHeight,
-                        borderRadius: TURBO_FACE.bottom.radius,
-                        backgroundColor: "#ffffff",
-                        boxShadow: "0 16px 36px rgba(0,0,0,0.26)",
-                        border: "2px solid rgba(0,0,0,0.18)"
+                        borderRadius: `0 0 ${TURBO_FACE.bottom.radius}px ${TURBO_FACE.bottom.radius}px`,
+                        backgroundColor: "rgba(250,249,246,0.985)",
+                        borderTop: "1px solid rgba(6,13,22,0.09)"
                       }}
                     >
                       <div
@@ -1144,6 +1174,7 @@ function Stage3LivePreviewPanel({
                             height: TURBO_FACE.author.avatarSize,
                             borderWidth: TURBO_FACE.author.avatarBorder,
                             fontSize: Math.round(TURBO_FACE.author.avatarSize * 0.32),
+                            borderColor: "rgba(8,12,18,0.12)",
                             backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
                             backgroundSize: avatarUrl ? "cover" : undefined,
                             backgroundPosition: avatarUrl ? "center" : undefined
@@ -1157,7 +1188,9 @@ function Stage3LivePreviewPanel({
                               className="preview-author-name"
                               style={{
                                 fontSize: TURBO_FACE.typography.authorName.font,
-                                lineHeight: TURBO_FACE.typography.authorName.lineHeight
+                                lineHeight: TURBO_FACE.typography.authorName.lineHeight,
+                                fontFamily: '"Trebuchet MS","Arial",sans-serif',
+                                color: "#11161f"
                               }}
                             >
                               {channelName}
@@ -1167,7 +1200,8 @@ function Stage3LivePreviewPanel({
                               style={{
                                 width: TURBO_FACE.author.checkSize,
                                 height: TURBO_FACE.author.checkSize,
-                                fontSize: Math.round(TURBO_FACE.author.checkSize * 0.56)
+                                fontSize: Math.round(TURBO_FACE.author.checkSize * 0.56),
+                                background: "#72b6e6"
                               }}
                             >
                               ✓
@@ -1178,7 +1212,8 @@ function Stage3LivePreviewPanel({
                             style={{
                               fontSize: TURBO_FACE.typography.authorHandle.font,
                               lineHeight: TURBO_FACE.typography.authorHandle.lineHeight,
-                              color: "#666666"
+                              color: "#8b919a",
+                              fontFamily: '"Trebuchet MS","Arial",sans-serif'
                             }}
                           >
                             @{channelUsername}
@@ -1192,7 +1227,7 @@ function Stage3LivePreviewPanel({
                           height:
                             previewComputed.bottomBlockHeight -
                             (TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2),
-                          padding: `0 ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
+                          padding: `8px ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
                         }}
                       >
                         <p
@@ -1200,7 +1235,10 @@ function Stage3LivePreviewPanel({
                           style={{
                             fontSize: previewComputed.bottomFont,
                             WebkitLineClamp: TURBO_FACE.typography.bottom.maxLines,
-                            lineHeight: previewComputed.bottomLineHeight
+                            lineHeight: previewComputed.bottomLineHeight,
+                            fontFamily: '"Trebuchet MS","Arial",sans-serif',
+                            letterSpacing: "-0.015em",
+                            color: "#181b22"
                           }}
                         >
                           {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}

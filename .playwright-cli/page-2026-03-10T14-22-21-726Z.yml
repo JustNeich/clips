@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e9]:
+      - paragraph [ref=e12]: This is what happens when you have more money for toys than you have actual snow to plow.
+      - generic [ref=e14]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - generic [ref=e19]: Stone Face Turbo
+            - generic [ref=e20]: ✓
+          - generic [ref=e21]: "@StoneFaceTurbo"
+        - paragraph [ref=e23]: "\"Tell me your coffee is overpriced without telling me.\" It's a hell of a snow machine, but it'll take three days and ten gallons of fuel just to turn around."
+  - alert [ref=e24]
