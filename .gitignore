@@ -27,6 +27,7 @@ pnpm-debug.log*
 
 # local build/cache outputs
 /output
+/.playwright-cli
 *.tsbuildinfo
 /public/stage3-worker/clips-stage3-worker.cjs
 /public/stage3-worker/manifest.json

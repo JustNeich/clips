@@ -622,6 +622,7 @@ export type RuntimeCapabilitiesResponse = {
     sharedCodex: boolean;
     stage2: boolean;
     stage3: boolean;
+    stage3LocalExecutor: boolean;
   };
 };
 

@@ -68,6 +68,7 @@ type Step3RenderTemplateProps = {
   workerLastSeenAt: string | null;
   workerPairing: Stage3WorkerPairingResponse | null;
   isWorkerPairing: boolean;
+  showWorkerControls: boolean;
   isOptimizing: boolean;
   isUploadingBackground: boolean;
   clipStartSec: number;
@@ -1065,8 +1066,7 @@ function Stage3LivePreviewPanel({
                       style={{
                         position: "absolute",
                         inset: 0,
-                        background:
-                          "linear-gradient(180deg, rgba(9,20,44,0.08) 0%, rgba(9,20,44,0.18) 26%, rgba(7,12,20,0.12) 60%, rgba(7,12,20,0.26) 100%)",
+                        background: "rgba(0, 0, 0, 0.08)",
                         pointerEvents: "none"
                       }}
                     />
@@ -1078,13 +1078,13 @@ function Stage3LivePreviewPanel({
                         top: TURBO_FACE.top.y,
                         width: TURBO_FACE.top.width,
                         height: turboShellHeight,
-                        borderRadius: 34,
-                        background: "rgba(252, 252, 249, 0.035)",
-                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 4,
+                        background: "rgba(255, 255, 255, 0.08)",
+                        border: "2px solid rgba(11,17,28,0.48)",
                         boxShadow:
-                          "0 30px 80px rgba(4,10,20,0.36), 0 12px 28px rgba(4,10,20,0.18), inset 0 1px 0 rgba(255,255,255,0.12)",
+                          "0 16px 34px rgba(4,10,20,0.32), 0 5px 18px rgba(4,10,20,0.18)",
                         overflow: "hidden",
-                        backdropFilter: "blur(10px)"
+                        backdropFilter: "blur(2px)"
                       }}
                     />
 
@@ -1097,8 +1097,8 @@ function Stage3LivePreviewPanel({
                         width: TURBO_FACE.top.width,
                         height: previewComputed.topBlockHeight,
                         borderRadius: `${TURBO_FACE.top.radius}px ${TURBO_FACE.top.radius}px 0 0`,
-                        backgroundColor: "rgba(255,255,255,0.975)",
-                        borderBottom: "1px solid rgba(6,13,22,0.08)",
+                        backgroundColor: "#ffffff",
+                        borderBottom: "1px solid rgba(6,13,22,0.14)",
                         padding: `${TURBO_FACE.top.paddingY}px ${TURBO_FACE.top.paddingX}px`
                       }}
                     >
@@ -1108,8 +1108,8 @@ function Stage3LivePreviewPanel({
                           fontSize: previewComputed.topFont,
                           WebkitLineClamp: TURBO_FACE.typography.top.maxLines,
                           lineHeight: previewComputed.topLineHeight,
-                          fontFamily: '"Trebuchet MS","Arial",sans-serif',
-                          letterSpacing: "-0.03em"
+                          fontFamily: '"Arial Black","Arial Bold","Trebuchet MS",sans-serif',
+                          letterSpacing: "-0.055em"
                         }}
                       >
                         {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
@@ -1124,7 +1124,7 @@ function Stage3LivePreviewPanel({
                         top: previewComputed.videoY,
                         width: previewComputed.videoWidth,
                         height: previewComputed.videoHeight,
-                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(7,12,20,0.12)"
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(7,12,20,0.08)"
                       }}
                     >
                       {previewVideoUrl ? (
@@ -1156,8 +1156,8 @@ function Stage3LivePreviewPanel({
                         width: TURBO_FACE.bottom.width,
                         height: previewComputed.bottomBlockHeight,
                         borderRadius: `0 0 ${TURBO_FACE.bottom.radius}px ${TURBO_FACE.bottom.radius}px`,
-                        backgroundColor: "rgba(250,249,246,0.985)",
-                        borderTop: "1px solid rgba(6,13,22,0.09)"
+                        backgroundColor: "#ffffff",
+                        borderTop: "1px solid rgba(6,13,22,0.14)"
                       }}
                     >
                       <div
@@ -1174,7 +1174,7 @@ function Stage3LivePreviewPanel({
                             height: TURBO_FACE.author.avatarSize,
                             borderWidth: TURBO_FACE.author.avatarBorder,
                             fontSize: Math.round(TURBO_FACE.author.avatarSize * 0.32),
-                            borderColor: "rgba(8,12,18,0.12)",
+                            borderColor: "rgba(8,12,18,0.16)",
                             backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
                             backgroundSize: avatarUrl ? "cover" : undefined,
                             backgroundPosition: avatarUrl ? "center" : undefined
@@ -1189,7 +1189,7 @@ function Stage3LivePreviewPanel({
                               style={{
                                 fontSize: TURBO_FACE.typography.authorName.font,
                                 lineHeight: TURBO_FACE.typography.authorName.lineHeight,
-                                fontFamily: '"Trebuchet MS","Arial",sans-serif',
+                                fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
                                 color: "#11161f"
                               }}
                             >
@@ -1201,7 +1201,7 @@ function Stage3LivePreviewPanel({
                                 width: TURBO_FACE.author.checkSize,
                                 height: TURBO_FACE.author.checkSize,
                                 fontSize: Math.round(TURBO_FACE.author.checkSize * 0.56),
-                                background: "#72b6e6"
+                                background: "#6caee4"
                               }}
                             >
                               ✓
@@ -1212,8 +1212,8 @@ function Stage3LivePreviewPanel({
                             style={{
                               fontSize: TURBO_FACE.typography.authorHandle.font,
                               lineHeight: TURBO_FACE.typography.authorHandle.lineHeight,
-                              color: "#8b919a",
-                              fontFamily: '"Trebuchet MS","Arial",sans-serif'
+                              color: "#8f9398",
+                              fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif'
                             }}
                           >
                             @{channelUsername}
@@ -1227,7 +1227,8 @@ function Stage3LivePreviewPanel({
                           height:
                             previewComputed.bottomBlockHeight -
                             (TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2),
-                          padding: `8px ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
+                          padding: `4px ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`,
+                          backgroundColor: "#ffffff"
                         }}
                       >
                         <p
@@ -1236,8 +1237,8 @@ function Stage3LivePreviewPanel({
                             fontSize: previewComputed.bottomFont,
                             WebkitLineClamp: TURBO_FACE.typography.bottom.maxLines,
                             lineHeight: previewComputed.bottomLineHeight,
-                            fontFamily: '"Trebuchet MS","Arial",sans-serif',
-                            letterSpacing: "-0.015em",
+                            fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
+                            letterSpacing: "0.005em",
                             color: "#181b22"
                           }}
                         >
@@ -1480,6 +1481,7 @@ export function Step3RenderTemplate({
   workerLastSeenAt,
   workerPairing,
   isWorkerPairing,
+  showWorkerControls,
   isOptimizing,
   isUploadingBackground,
   clipStartSec,
@@ -1918,7 +1920,7 @@ export function Step3RenderTemplate({
           }`
         : "Локальный executor зарегистрирован.";
 
-  const workerSetupModal = workerSetupOpen ? (
+  const workerSetupModal = showWorkerControls && workerSetupOpen ? (
     <div
       className="worker-setup-overlay"
       role="dialog"
@@ -2295,25 +2297,27 @@ export function Step3RenderTemplate({
               </span>
               <span className="meta-pill">Версий {displayVersions.length}</span>
             </div>
-            <div className="executor-summary-row">
-              <div className="executor-summary-copy">
-                <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
-                  Executor: {workerStatusLabel}
-                </span>
-                <span className="subtle-text">
-                  {workerState === "not_paired"
-                    ? "Подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
-                    : workerStatusDescription}
-                </span>
+            {showWorkerControls ? (
+              <div className="executor-summary-row">
+                <div className="executor-summary-copy">
+                  <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
+                    Executor: {workerStatusLabel}
+                  </span>
+                  <span className="subtle-text">
+                    {workerState === "not_paired"
+                      ? "Подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
+                      : workerStatusDescription}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`btn ${workerState === "not_paired" ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => setWorkerSetupOpen(true)}
+                >
+                  {workerState === "not_paired" ? "Подключить executor" : "Executor"}
+                </button>
               </div>
-              <button
-                type="button"
-                className={`btn ${workerState === "not_paired" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setWorkerSetupOpen(true)}
-              >
-                {workerState === "not_paired" ? "Подключить executor" : "Executor"}
-              </button>
-            </div>
+            ) : null}
           </header>
 
           <section className="control-card control-card-priority">

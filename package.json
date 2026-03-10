@@ -6,7 +6,7 @@
     "node": ">=22 <23"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --no-warnings ./node_modules/next/dist/bin/next dev",
     "prebuild": "npm run build:stage3-worker",
     "build:stage3-worker": "node scripts/build-stage3-worker.mjs",
     "build": "next build",

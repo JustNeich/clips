@@ -298,7 +298,4 @@ CREATE INDEX IF NOT EXISTS idx_stage3_job_artifacts_job
 
 CREATE INDEX IF NOT EXISTS idx_stage3_workers_user
   ON stage3_workers(workspace_id, user_id, updated_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_stage3_worker_tokens_worker
-  ON stage3_worker_tokens(worker_id, token_kind, expires_at DESC);
 `;

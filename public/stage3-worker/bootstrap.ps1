@@ -53,6 +53,9 @@ node "%~dp0clips-stage3-worker.cjs" %*
   }
 
   & $wrapperPath @pairArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "Stage 3 worker pairing failed. Open Step 3, copy a fresh command and run it again."
+  }
   try {
     & $wrapperPath doctor
   } catch {

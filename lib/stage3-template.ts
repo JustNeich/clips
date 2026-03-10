@@ -12,7 +12,7 @@ export const SCIENCE_CARD = {
     radius: 30,
     borderWidth: 8,
     borderColor: "#0a1119",
-    fill: "#f9fafc"
+    fill: "#ffffff"
   },
   slot: {
     topHeight: 392,
@@ -68,67 +68,78 @@ export const SCIENCE_CARD = {
   }
 } as const;
 
+export const STAGE3_TEMPLATE_SHELL = {
+  x: SCIENCE_CARD.card.x,
+  y: SCIENCE_CARD.card.y,
+  width: SCIENCE_CARD.card.width,
+  height: SCIENCE_CARD.card.height,
+  radius: SCIENCE_CARD.card.radius
+} as const;
+
+const STAGE3_TEMPLATE_SHELL_BOTTOM =
+  SCIENCE_CARD.frame.height - STAGE3_TEMPLATE_SHELL.y - STAGE3_TEMPLATE_SHELL.height;
+
 export const TURBO_FACE = {
   frame: { width: 1080, height: 1920 },
   top: {
-    x: 84,
-    y: 152,
-    width: 912,
-    radius: 30,
-    paddingX: 38,
-    paddingY: 26,
-    minHeight: 240,
-    maxHeight: 500
+    x: STAGE3_TEMPLATE_SHELL.x,
+    y: STAGE3_TEMPLATE_SHELL.y,
+    width: STAGE3_TEMPLATE_SHELL.width,
+    radius: 4,
+    paddingX: 18,
+    paddingY: 14,
+    minHeight: 316,
+    maxHeight: 450
   },
   video: {
-    x: 84,
+    x: STAGE3_TEMPLATE_SHELL.x,
     minHeight: 760
   },
   bottom: {
-    x: 84,
-    bottom: 168,
-    width: 912,
-    radius: 30,
-    paddingX: 28,
-    paddingY: 20,
-    metaHeight: 100,
-    metaGap: 14,
-    minHeight: 248,
-    maxHeight: 392
+    x: STAGE3_TEMPLATE_SHELL.x,
+    bottom: STAGE3_TEMPLATE_SHELL_BOTTOM,
+    width: STAGE3_TEMPLATE_SHELL.width,
+    radius: 4,
+    paddingX: 18,
+    paddingY: 16,
+    metaHeight: 104,
+    metaGap: 10,
+    minHeight: 250,
+    maxHeight: 364
   },
   author: {
     name: "Stone Face Turbo",
     handle: "@StoneFaceTurbo",
     avatarSize: 74,
-    avatarBorder: 2,
+    avatarBorder: 1,
     checkSize: 24
   },
   typography: {
     top: {
-      min: 44,
-      max: 66,
+      min: 54,
+      max: 82,
       softLimit: 220,
-      penalty: 0.17,
-      lineHeight: 1.03,
+      penalty: 0.15,
+      lineHeight: 0.94,
       maxLines: 7,
       maxChars: 500
     },
     bottom: {
       min: 22,
-      max: 32,
-      softLimit: 165,
-      penalty: 0.18,
-      lineHeight: 1.18,
+      max: 30,
+      softLimit: 180,
+      penalty: 0.16,
+      lineHeight: 1.3,
       maxLines: 5,
       maxChars: 340
     },
     authorName: {
-      font: 33,
-      lineHeight: 1.05
+      font: 36,
+      lineHeight: 1.02
     },
     authorHandle: {
-      font: 23,
-      lineHeight: 1.05
+      font: 24,
+      lineHeight: 1.02
     }
   }
 } as const;
@@ -136,11 +147,11 @@ export const TURBO_FACE = {
 const TURBO_FACE_COMPAT = {
   frame: TURBO_FACE.frame,
   card: {
-    x: 84,
-    y: 152,
-    width: 912,
-    height: 1600,
-    radius: 30,
+    x: STAGE3_TEMPLATE_SHELL.x,
+    y: STAGE3_TEMPLATE_SHELL.y,
+    width: STAGE3_TEMPLATE_SHELL.width,
+    height: STAGE3_TEMPLATE_SHELL.height,
+    radius: STAGE3_TEMPLATE_SHELL.radius,
     borderWidth: 2,
     borderColor: "#0a1119",
     fill: "#fbfbf8"
@@ -674,11 +685,10 @@ export function getTurboFaceComputed(
   );
 
   const videoY = TURBO_FACE.top.y + topBlockHeight;
-  const availableVideoHeight =
-    TURBO_FACE.frame.height - videoY - TURBO_FACE.bottom.bottom - bottomBlockHeight;
+  const availableVideoHeight = STAGE3_TEMPLATE_SHELL.height - topBlockHeight - bottomBlockHeight;
   const videoHeight = Math.max(260, availableVideoHeight);
   const videoX = TURBO_FACE.video.x;
-  const videoWidth = TURBO_FACE.frame.width - TURBO_FACE.video.x * 2;
+  const videoWidth = STAGE3_TEMPLATE_SHELL.width;
 
   return {
     top: topFit.text,

@@ -1,5 +1,6 @@
 import { resolveExecutableFromCandidates } from "./command-path";
 import { isVisolixConfigured } from "./source-acquisition";
+import { isStage3LocalExecutorEnabled } from "./stage3-execution";
 
 export type RuntimeToolCapability = {
   available: boolean;
@@ -26,6 +27,7 @@ export type RuntimeCapabilities = {
     sharedCodex: boolean;
     stage2: boolean;
     stage3: boolean;
+    stage3LocalExecutor: boolean;
   };
 };
 
@@ -56,6 +58,9 @@ function codexUnavailableMessage(): string {
 }
 
 function ytDlpUnavailableMessage(): string {
+  if (process.env.STAGE3_WORKER_SERVER_ORIGIN?.trim()) {
+    return "yt-dlp не найден на локальном executor.";
+  }
   if (process.env.VERCEL === "1") {
     return "yt-dlp недоступен на этом Vercel deployment. Step 1 fetch/download/comments не сможет обработать исходное видео.";
   }
@@ -70,6 +75,9 @@ function visolixUnavailableMessage(): string {
 }
 
 function ffmpegUnavailableMessage(tool: "ffmpeg" | "ffprobe"): string {
+  if (process.env.STAGE3_WORKER_SERVER_ORIGIN?.trim()) {
+    return `${tool} не найден на локальном executor.`;
+  }
   if (process.env.VERCEL === "1") {
     return `${tool} недоступен на этом Vercel deployment. Media pipeline Step 2/Step 3 не сможет обработать видео.`;
   }
@@ -145,7 +153,8 @@ export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
       loadComments: ytDlp.available,
       sharedCodex: codex.available,
       stage2,
-      stage3
+      stage3,
+      stage3LocalExecutor: isStage3LocalExecutorEnabled()
     }
   };
 }

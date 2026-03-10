@@ -424,7 +424,11 @@ async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<Sourc
 async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadResult> {
   const ytDlpPath = await resolveYtDlpExecutable();
   if (!ytDlpPath) {
-    throw new Error("yt-dlp не найден на сервере.");
+    throw new Error(
+      process.env.STAGE3_WORKER_SERVER_ORIGIN?.trim()
+        ? "yt-dlp не найден на локальном executor."
+        : "yt-dlp не найден в среде выполнения."
+    );
   }
 
   const outputTemplate = path.join(tmpDir, "source.%(ext)s");
@@ -516,7 +520,11 @@ export async function downloadSourceMedia(
 async function tryYtDlpMetadata(rawUrl: string): Promise<SourceMetadataResult> {
   const ytDlpPath = await resolveYtDlpExecutable();
   if (!ytDlpPath) {
-    throw new Error("yt-dlp не найден на сервере.");
+    throw new Error(
+      process.env.STAGE3_WORKER_SERVER_ORIGIN?.trim()
+        ? "yt-dlp не найден на локальном executor."
+        : "yt-dlp не найден в среде выполнения."
+    );
   }
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-meta-"));

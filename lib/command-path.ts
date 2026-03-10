@@ -15,6 +15,29 @@ async function resolveAbsoluteOrRelative(candidate: string): Promise<string | nu
   return (await isExecutable(filePath)) ? filePath : null;
 }
 
+function getWindowsPathExts(): string[] {
+  const raw = process.env.PATHEXT?.trim();
+  const values = (raw || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return Array.from(new Set(values.map((item) => item.toLowerCase())));
+}
+
+function expandWindowsPathCandidates(command: string): string[] {
+  if (process.platform !== "win32") {
+    return [command];
+  }
+
+  const lower = command.toLowerCase();
+  const pathExts = getWindowsPathExts();
+  if (pathExts.some((ext) => lower.endsWith(ext))) {
+    return [command];
+  }
+
+  return [command, ...pathExts.map((ext) => `${command}${ext}`)];
+}
+
 async function resolveFromPath(command: string): Promise<string | null> {
   const pathEnv = process.env.PATH?.trim();
   if (!pathEnv) {
@@ -26,9 +49,11 @@ async function resolveFromPath(command: string): Promise<string | null> {
     if (!trimmed) {
       continue;
     }
-    const candidate = path.join(trimmed, command);
-    if (await isExecutable(candidate)) {
-      return candidate;
+    for (const commandCandidate of expandWindowsPathCandidates(command)) {
+      const candidate = path.join(trimmed, commandCandidate);
+      if (await isExecutable(candidate)) {
+        return candidate;
+      }
     }
   }
 
@@ -41,7 +66,13 @@ export async function resolveExecutableCandidate(candidateRaw: string | null | u
     return null;
   }
 
-  if (candidate.includes("/") || candidate.startsWith(".")) {
+  const looksLikePath =
+    path.isAbsolute(candidate) ||
+    candidate.startsWith(".") ||
+    candidate.includes("/") ||
+    candidate.includes("\\");
+
+  if (looksLikePath) {
     return resolveAbsoluteOrRelative(candidate);
   }
 

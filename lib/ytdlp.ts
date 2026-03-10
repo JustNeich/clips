@@ -230,12 +230,13 @@ export async function createYtDlpAuthContext(tmpDir?: string): Promise<YtDlpAuth
 
 export function getYtDlpError(stderr: string): string {
   const normalized = stderr.toLowerCase();
+  const workerRuntime = Boolean(process.env.STAGE3_WORKER_SERVER_ORIGIN);
 
   if (!normalized.trim()) {
     if (process.env.VERCEL === "1") {
       return "yt-dlp недоступен на этом Vercel deployment. Step 1 fetch/download/comments не сможет обработать исходное видео.";
     }
-    return "yt-dlp не найден на сервере.";
+    return workerRuntime ? "yt-dlp не найден на локальном executor." : "yt-dlp не найден в среде выполнения.";
   }
   if (normalized.includes("unsupported url")) {
     return "Ссылка не поддерживается.";
@@ -255,7 +256,9 @@ export function getYtDlpError(stderr: string): string {
     return "Источник требует авторизацию. Публичные ссылки работают лучше.";
   }
   if (normalized.includes("ffmpeg is not installed")) {
-    return "На сервере не установлен ffmpeg. Установите ffmpeg и повторите.";
+    return workerRuntime
+      ? "На локальном executor не установлен ffmpeg. Установите ffmpeg и повторите."
+      : "В среде выполнения не установлен ffmpeg. Установите ffmpeg и повторите.";
   }
   if (normalized.includes("not found")) {
     return "Видео не найдено.";

@@ -871,6 +871,8 @@ export default function HomePage() {
   const downloadSourceAvailable = runtimeCapabilities?.features.downloadSource ?? true;
   const sharedCodexAvailable = runtimeCapabilities?.features.sharedCodex ?? true;
   const stage2RuntimeAvailable = runtimeCapabilities?.features.stage2 ?? true;
+  const stage3LocalExecutorAvailable =
+    runtimeCapabilities?.features.stage3LocalExecutor ?? process.env.NODE_ENV === "production";
   const codexBlockedReason = runtimeCapabilities?.tools.codex.message ?? null;
   const sourceAcquisitionBlockedReason = runtimeCapabilities
     ? [
@@ -1110,6 +1112,10 @@ export default function HomePage() {
   }, [parseError]);
 
   const refreshStage3Workers = useCallback(async (): Promise<Stage3WorkerSummary[]> => {
+    if (!stage3LocalExecutorAvailable) {
+      setStage3Workers([]);
+      return [];
+    }
     const response = await fetch("/api/stage3/workers");
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось загрузить локальные Stage 3 executors."));
@@ -1117,9 +1123,16 @@ export default function HomePage() {
     const body = (await response.json()) as Stage3WorkerListResponse;
     setStage3Workers(body.workers ?? []);
     return body.workers ?? [];
-  }, [parseError]);
+  }, [parseError, stage3LocalExecutorAvailable]);
 
   const createStage3WorkerPairing = useCallback(async (): Promise<void> => {
+    if (!stage3LocalExecutorAvailable) {
+      setStage3WorkerPairing(null);
+      setStage3Workers([]);
+      setStatusType("ok");
+      setStatus("На localhost локальный executor отключен. Stage 3 выполняется прямо на хосте.");
+      return;
+    }
     setIsStage3WorkerPairing(true);
     try {
       const response = await fetch("/api/stage3/workers/pairing", {
@@ -1149,7 +1162,7 @@ export default function HomePage() {
     } finally {
       setIsStage3WorkerPairing(false);
     }
-  }, [getUiErrorMessage, parseError]);
+  }, [getUiErrorMessage, parseError, stage3LocalExecutorAvailable]);
 
   const applyChannelToRenderPlan = useCallback(
     (channel: Channel | null, assets: ChannelAsset[] = []): Stage3RenderPlan => {
@@ -1721,7 +1734,9 @@ export default function HomePage() {
   }, [refreshWorkspaceMembers]);
 
   useEffect(() => {
-    if (isAuthLoading || currentStep !== 3) {
+    if (isAuthLoading || currentStep !== 3 || !stage3LocalExecutorAvailable) {
+      setStage3Workers([]);
+      setStage3WorkerPairing(null);
       return;
     }
     void refreshStage3Workers().catch(() => undefined);
@@ -1731,7 +1746,7 @@ export default function HomePage() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [currentStep, isAuthLoading, refreshStage3Workers]);
+  }, [currentStep, isAuthLoading, refreshStage3Workers, stage3LocalExecutorAvailable]);
 
   useEffect(() => {
     if (!activeChannel) {
@@ -3624,7 +3639,7 @@ export default function HomePage() {
         }
 
         await new Promise<void>((resolve) => {
-          const timer = window.setTimeout(() => resolve(), 500);
+          const timer = window.setTimeout(() => resolve(), 1000);
           controller.signal.addEventListener(
             "abort",
             () => {
@@ -4454,6 +4469,7 @@ export default function HomePage() {
           workerLastSeenAt={activeStage3Worker?.lastSeenAt ?? null}
           workerPairing={stage3WorkerPairing}
           isWorkerPairing={isStage3WorkerPairing}
+          showWorkerControls={stage3LocalExecutorAvailable}
           clipStartSec={stage3ClipStartSec}
           clipDurationSec={CLIP_DURATION_SEC}
           sourceDurationSec={sourceDurationSec}

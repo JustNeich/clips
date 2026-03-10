@@ -283,7 +283,10 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
           .get(input.kind, dedupeKey) as JobRow | undefined) ?? null;
       const existing = mapJobRow(existingRow);
       if (existing) {
-        if (existing.status === "queued" || existing.status === "running") {
+        if (
+          (existing.status === "queued" || existing.status === "running") &&
+          existing.executionTarget === executionTarget
+        ) {
           appendStage3JobEvent(existing.id, "info", "Reused in-flight job.", {
             kind: existing.kind,
             dedupeKey
