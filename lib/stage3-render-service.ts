@@ -36,6 +36,14 @@ const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
 let remotionRuntimePromise: Promise<RemotionModule> | null = null;
 
+function resolveStage3ExecutionRoot(): string {
+  const workerRoot = process.env.STAGE3_WORKER_INSTALL_ROOT?.trim();
+  if (workerRoot) {
+    return workerRoot;
+  }
+  return process.cwd();
+}
+
 export type Stage3RenderRequestBody = {
   sourceUrl?: string;
   channelId?: string;
@@ -148,8 +156,9 @@ async function resolveStage3AssetFile(params: {
 async function getRemotionServeUrl(): Promise<string> {
   if (!remotionServeUrlPromise) {
     remotionServeUrlPromise = ensureRemotionRuntime().then(({ bundle }) => {
-      const entryPoint = path.join(process.cwd(), "remotion", "index.tsx");
-      const publicDir = path.join(process.cwd(), "public");
+      const executionRoot = resolveStage3ExecutionRoot();
+      const entryPoint = path.join(executionRoot, "remotion", "index.tsx");
+      const publicDir = path.join(executionRoot, "public");
       return bundle({
         entryPoint,
         publicDir,

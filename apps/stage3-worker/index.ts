@@ -351,6 +351,7 @@ async function startCommand(): Promise<void> {
   process.env.APP_DATA_DIR = paths().root;
   process.env.STAGE3_WORKER_SERVER_ORIGIN = config.serverOrigin;
   process.env.STAGE3_WORKER_SESSION_TOKEN = config.sessionToken;
+  process.env.STAGE3_WORKER_INSTALL_ROOT = paths().root;
 
   const { executeStage3HeavyJobPayload } = await import("../../lib/stage3-job-executor");
 

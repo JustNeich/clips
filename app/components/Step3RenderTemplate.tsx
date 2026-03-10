@@ -110,6 +110,11 @@ type Step3RenderTemplateProps = {
 
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 type WorkerGuidePlatform = "darwin" | "windows";
+type WorkerInstallLink = {
+  label: string;
+  href: string;
+  description: string;
+};
 
 function formatTimeSec(value: number): string {
   const total = Math.max(0, value);
@@ -124,6 +129,56 @@ function detectWorkerGuidePlatform(): WorkerGuidePlatform {
     return "windows";
   }
   return "darwin";
+}
+
+function getWorkerInstallLinks(platform: WorkerGuidePlatform): WorkerInstallLink[] {
+  if (platform === "windows") {
+    return [
+      {
+        label: "Скачать Node.js",
+        href: "https://nodejs.org/en/download",
+        description: "Откройте страницу и скачайте версию LTS."
+      },
+      {
+        label: "Скачать FFmpeg",
+        href: "https://ffmpeg.org/download.html#build-windows",
+        description: "Официальная страница со сборками FFmpeg для Windows."
+      },
+      {
+        label: "Скачать yt-dlp",
+        href: "https://github.com/yt-dlp/yt-dlp/releases/latest",
+        description: "Страница последнего релиза yt-dlp."
+      },
+      {
+        label: "Справка по winget",
+        href: "https://learn.microsoft.com/en-us/windows/package-manager/winget/",
+        description: "Откройте, если команда winget не запускается."
+      }
+    ];
+  }
+
+  return [
+    {
+      label: "Скачать Node.js",
+      href: "https://nodejs.org/en/download",
+      description: "Откройте страницу и скачайте версию LTS."
+    },
+    {
+      label: "Установить Homebrew",
+      href: "https://brew.sh/",
+      description: "Самый простой способ поставить ffmpeg и yt-dlp на Mac."
+    },
+    {
+      label: "FFmpeg для Mac",
+      href: "https://ffmpeg.org/download.html#build-mac",
+      description: "Официальная страница загрузок FFmpeg для macOS."
+    },
+    {
+      label: "Установка yt-dlp",
+      href: "https://github.com/yt-dlp/yt-dlp/wiki/Installation",
+      description: "Официальная инструкция по установке yt-dlp."
+    }
+  ];
 }
 
 function formatDateShort(value: string): string {
@@ -1438,8 +1493,10 @@ export function Step3RenderTemplate({
   const [localTopFontScale, setLocalTopFontScale] = useState(topFontScale);
   const [localBottomFontScale, setLocalBottomFontScale] = useState(bottomFontScale);
   const [localMusicGain, setLocalMusicGain] = useState(musicGain);
+  const [workerSetupOpen, setWorkerSetupOpen] = useState(false);
   const [workerGuidePlatform, setWorkerGuidePlatform] = useState<WorkerGuidePlatform>(() => detectWorkerGuidePlatform());
   const [workerCopyState, setWorkerCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [workerInstallCopyState, setWorkerInstallCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [segmentDraftInputs, setSegmentDraftInputs] = useState<
     Record<string, { startSec: string; endSec: string }>
   >({});
@@ -1709,6 +1766,11 @@ export function Step3RenderTemplate({
         ? workerPairing.commands.powershell
         : workerPairing.commands.shell
       : null;
+  const workerInstallLinks = getWorkerInstallLinks(workerGuidePlatform);
+  const workerInstallCommand =
+    workerGuidePlatform === "windows"
+      ? "winget install OpenJS.NodeJS.LTS Gyan.FFmpeg yt-dlp.yt-dlp"
+      : "brew install ffmpeg yt-dlp";
   const workerGuideSteps =
     workerGuidePlatform === "windows"
       ? [
@@ -1739,6 +1801,23 @@ export function Step3RenderTemplate({
     setWorkerCopyState("idle");
   }, [pairCommand]);
 
+  useEffect(() => {
+    setWorkerInstallCopyState("idle");
+  }, [workerGuidePlatform]);
+
+  useEffect(() => {
+    if (!workerSetupOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setWorkerSetupOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [workerSetupOpen]);
+
   const handleCopyWorkerCommand = async () => {
     if (!pairCommand) {
       return;
@@ -1748,6 +1827,18 @@ export function Step3RenderTemplate({
       setWorkerCopyState("copied");
     } catch {
       setWorkerCopyState("error");
+    }
+  };
+
+  const handleCopyWorkerInstallCommand = async () => {
+    if (!workerInstallCommand) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(workerInstallCommand);
+      setWorkerInstallCopyState("copied");
+    } catch {
+      setWorkerInstallCopyState("error");
     }
   };
 
@@ -1768,6 +1859,178 @@ export function Step3RenderTemplate({
     setLocalVideoZoom(next);
     flushVideoZoomCommit(next);
   };
+
+  const workerStatusLabel =
+    workerState === "not_paired"
+      ? "Не подключен"
+      : workerState === "online"
+        ? "Online"
+        : workerState === "busy"
+          ? "Busy"
+          : "Offline";
+
+  const workerStatusDescription =
+    workerState === "not_paired"
+      ? "Локальный помощник еще не подключен."
+      : workerLabel
+        ? `${workerLabel}${workerPlatform ? ` · ${workerPlatform}` : ""}${
+            workerLastSeenAt ? ` · последний heartbeat ${formatDateShort(workerLastSeenAt)}` : ""
+          }`
+        : "Локальный executor зарегистрирован.";
+
+  const workerSetupModal = workerSetupOpen ? (
+    <div
+      className="worker-setup-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Подключение локального executor"
+      onClick={() => setWorkerSetupOpen(false)}
+    >
+      <div className="worker-setup-modal" onClick={(event) => event.stopPropagation()}>
+        <header className="worker-setup-head">
+          <div>
+            <p className="kicker">Local Executor</p>
+            <h3>Подключение локального помощника</h3>
+            <p className="subtle-text">
+              Это делается один раз. После подключения предпросмотр и рендер будут выполняться на компьютере пользователя.
+            </p>
+          </div>
+          <button type="button" className="btn btn-ghost" onClick={() => setWorkerSetupOpen(false)}>
+            Закрыть
+          </button>
+        </header>
+
+        <section className="control-card executor-guide-card">
+          <div className="control-section-head">
+            <div>
+              <h3>Статус</h3>
+              <p className="subtle-text">{workerStatusDescription}</p>
+            </div>
+            <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
+              {workerStatusLabel}
+            </span>
+          </div>
+        </section>
+
+        <section className="control-card executor-guide-card">
+          <div className="control-section-head">
+            <div>
+              <h3>Шаг 1. Выберите свой компьютер</h3>
+              <p className="subtle-text">Выберите систему, на которой будет работать предпросмотр и рендер.</p>
+            </div>
+            <div className="executor-guide-platforms" role="tablist" aria-label="Операционная система">
+              <button
+                type="button"
+                className={`btn ${workerGuidePlatform === "darwin" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setWorkerGuidePlatform("darwin")}
+              >
+                Mac
+              </button>
+              <button
+                type="button"
+                className={`btn ${workerGuidePlatform === "windows" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setWorkerGuidePlatform("windows")}
+              >
+                Windows
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="control-card executor-guide-card">
+          <div className="control-section-head">
+            <div>
+              <h3>Шаг 2. Подготовьте команду</h3>
+              <p className="subtle-text">Нажмите кнопку ниже. Мы подготовим для вас готовую команду запуска.</p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                void onCreateWorkerPairing();
+              }}
+              disabled={isWorkerPairing}
+              aria-busy={isWorkerPairing}
+            >
+              {isWorkerPairing ? "Готовлю команду..." : pairCommand ? "Обновить команду" : "Подготовить команду"}
+            </button>
+          </div>
+          {pairCommand ? (
+            <>
+              <ol className="executor-guide-list">
+                {workerGuideSteps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              <div className="executor-guide-actions">
+                <button type="button" className="btn btn-primary" onClick={() => void handleCopyWorkerCommand()}>
+                  Скопировать команду
+                </button>
+                <span className="subtle-text">
+                  {workerCopyState === "copied"
+                    ? "Команда скопирована."
+                    : workerCopyState === "error"
+                      ? "Не удалось скопировать. Скопируйте текст вручную."
+                      : workerGuidePlatform === "windows"
+                        ? "После копирования откройте PowerShell."
+                        : "После копирования откройте Terminal."}
+                </span>
+              </div>
+              <code className="executor-guide-command">{pairCommand}</code>
+              <div className="executor-guide-note">
+                <strong>Ожидаемый результат:</strong> через несколько секунд статус в браузере должен стать <strong>Online</strong>.
+              </div>
+            </>
+          ) : (
+            <div className="executor-guide-note">
+              Нажмите <strong>Подготовить команду</strong>, затем скопируйте и запустите ее на своем компьютере.
+            </div>
+          )}
+        </section>
+
+        <section className="control-card executor-guide-card">
+          <div className="control-section-head">
+            <div>
+              <h3>Если компьютер пишет, что чего-то не хватает</h3>
+              <p className="subtle-text">Откройте нужные страницы по кнопкам ниже. Они ведут на официальные страницы загрузки или установки.</p>
+            </div>
+          </div>
+          <div className="executor-link-grid">
+            {workerInstallLinks.map((link) => (
+              <a
+                key={link.href}
+                className="executor-link-card"
+                href={link.href}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <strong>{link.label}</strong>
+                <span>{link.description}</span>
+              </a>
+            ))}
+          </div>
+          <div className="executor-guide-note">
+            <strong>Быстрый способ:</strong> если у вас уже есть {workerGuidePlatform === "windows" ? "PowerShell" : "Terminal"}, можно сначала попробовать эту команду установки.
+          </div>
+          <div className="executor-guide-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => void handleCopyWorkerInstallCommand()}>
+              Скопировать команду установки
+            </button>
+            <span className="subtle-text">
+              {workerInstallCopyState === "copied"
+                ? "Команда установки скопирована."
+                : workerInstallCopyState === "error"
+                  ? "Не удалось скопировать. Скопируйте текст вручную."
+                  : workerGuidePlatform === "windows"
+                    ? "Она установит Node.js LTS, FFmpeg и yt-dlp через winget."
+                    : "Она установит ffmpeg и yt-dlp через Homebrew."}
+            </span>
+          </div>
+          <code className="executor-guide-command">{workerInstallCommand}</code>
+        </section>
+      </div>
+    </div>
+  ) : null;
 
   const applyTopFontScaleImmediate = (value: number) => {
     const next = clamp(value, 0.7, 1.9);
@@ -1963,13 +2226,14 @@ export function Step3RenderTemplate({
   );
 
   return (
-    <StepWorkspace
-      editLabel="Редактирование"
-      previewLabel="Предпросмотр"
-      previewViewportHeight
-      leftFooter={leftFooter}
-      left={
-        <div className="step-panel-stack">
+    <>
+      <StepWorkspace
+        editLabel="Редактирование"
+        previewLabel="Предпросмотр"
+        previewViewportHeight
+        leftFooter={leftFooter}
+        left={
+          <div className="step-panel-stack">
           <header className="step-head">
             <p className="kicker">Шаг 3</p>
             <h2>Рендер</h2>
@@ -1991,111 +2255,26 @@ export function Step3RenderTemplate({
               </span>
               <span className="meta-pill">Версий {displayVersions.length}</span>
             </div>
-          </header>
-
-          <section className="control-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Local Executor</h3>
-                <p className="subtle-text">
-                  Тяжёлые preview/render задачи выполняются на локальной машине пользователя, а не на хосте.
-                </p>
+            <div className="executor-summary-row">
+              <div className="executor-summary-copy">
+                <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
+                  Executor: {workerStatusLabel}
+                </span>
+                <span className="subtle-text">
+                  {workerState === "not_paired"
+                    ? "Подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
+                    : workerStatusDescription}
+                </span>
               </div>
-              <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
-                {workerState === "not_paired"
-                  ? "Не подключен"
-                  : workerState === "online"
-                    ? "Online"
-                    : workerState === "busy"
-                      ? "Busy"
-                      : "Offline"}
-              </span>
-            </div>
-            <p className="subtle-text">
-              {workerState === "not_paired"
-                ? "Без локального помощника предпросмотр и рендер не запустятся."
-                : workerLabel
-                  ? `${workerLabel}${workerPlatform ? ` · ${workerPlatform}` : ""}${
-                      workerLastSeenAt ? ` · последний heartbeat ${formatDateShort(workerLastSeenAt)}` : ""
-                    }`
-                  : "Локальный executor зарегистрирован."}
-            </p>
-            <div className="sticky-action-bar">
               <button
                 type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  void onCreateWorkerPairing();
-                }}
-                disabled={isWorkerPairing}
-                aria-busy={isWorkerPairing}
+                className={`btn ${workerState === "not_paired" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setWorkerSetupOpen(true)}
               >
-                {isWorkerPairing ? "Готовлю инструкцию..." : "Подключить executor"}
+                {workerState === "not_paired" ? "Подключить executor" : "Executor"}
               </button>
             </div>
-            {workerPairing ? (
-              <div className="control-card executor-guide-card" style={{ marginTop: 12 }}>
-                <div className="control-section-head">
-                  <div>
-                    <h3>Как запустить</h3>
-                    <p className="subtle-text">
-                      Ничего вручную скачивать по ссылкам не нужно. Просто скопируйте команду ниже и вставьте ее в окно на своем компьютере.
-                    </p>
-                  </div>
-                  <div className="executor-guide-platforms" role="tablist" aria-label="Операционная система">
-                    <button
-                      type="button"
-                      className={`btn ${workerGuidePlatform === "darwin" ? "btn-primary" : "btn-secondary"}`}
-                      onClick={() => setWorkerGuidePlatform("darwin")}
-                    >
-                      Mac
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${workerGuidePlatform === "windows" ? "btn-primary" : "btn-secondary"}`}
-                      onClick={() => setWorkerGuidePlatform("windows")}
-                    >
-                      Windows
-                    </button>
-                  </div>
-                </div>
-                <ol className="executor-guide-list">
-                  {workerGuideSteps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-                <div className="executor-guide-actions">
-                  <button type="button" className="btn btn-primary" onClick={() => void handleCopyWorkerCommand()}>
-                    Скопировать команду
-                  </button>
-                  <span className="subtle-text">
-                    {workerCopyState === "copied"
-                      ? "Команда скопирована."
-                      : workerCopyState === "error"
-                        ? "Не удалось скопировать. Скопируйте текст вручную ниже."
-                        : workerGuidePlatform === "windows"
-                          ? "После копирования откройте PowerShell."
-                          : "После копирования откройте Terminal."}
-                  </span>
-                </div>
-                {pairCommand ? (
-                  <code className="executor-guide-command">{pairCommand}</code>
-                ) : null}
-                <div className="executor-guide-note">
-                  <strong>Что должно произойти:</strong> в браузере статус сменится на <strong>Online</strong>. Если статус не изменился в течение минуты или вы видите ошибку про Node, ffmpeg или yt-dlp, отправьте нам скриншот окна.
-                </div>
-              </div>
-            ) : (
-              <div className="control-card executor-guide-card" style={{ marginTop: 12 }}>
-                <ol className="executor-guide-list">
-                  <li>Нажмите кнопку «Подключить executor».</li>
-                  <li>Выберите Mac или Windows.</li>
-                  <li>Скопируйте готовую команду и запустите ее на своем компьютере.</li>
-                  <li>Оставьте открытым окно Terminal или PowerShell.</li>
-                </ol>
-              </div>
-            )}
-          </section>
+          </header>
 
           <section className="control-card control-card-priority">
             <div className="control-section-head">
@@ -2712,36 +2891,38 @@ export function Step3RenderTemplate({
             </div>
           </details>
         </div>
-      }
-      right={
-        <Stage3LivePreviewPanel
-          templateId={templateId}
-          channelName={channelName}
-          channelUsername={channelUsername}
-          avatarUrl={avatarUrl}
-          previewVideoUrl={previewVideoUrl}
-          backgroundAssetUrl={backgroundAssetUrl}
-          backgroundAssetMimeType={backgroundAssetMimeType}
-          previewVersion={previewVersion}
-          selectedVersion={selectedVersion}
-          selectedVersionId={selectedVersionId}
-          selectedPass={selectedPass}
-          selectedPassIndex={selectedPassIndex}
-          displayVersions={displayVersions}
-          summaryLines={summaryLines}
-          previewState={previewState}
-          previewNotice={previewNotice ?? (isPreviewBusy ? "Обновляю предпросмотр..." : null)}
-          clipDurationSec={clipDurationSec}
-          focusY={localFocusY}
-          cameraMotion={cameraMotion}
-          mirrorEnabled={mirrorEnabled}
-          videoZoom={previewVideoZoom}
-          templateConfig={templateConfig}
-          previewComputed={previewComputed}
-          onSelectVersionId={onSelectVersionId}
-          onSelectPassIndex={onSelectPassIndex}
-        />
-      }
-    />
+        }
+        right={
+          <Stage3LivePreviewPanel
+            templateId={templateId}
+            channelName={channelName}
+            channelUsername={channelUsername}
+            avatarUrl={avatarUrl}
+            previewVideoUrl={previewVideoUrl}
+            backgroundAssetUrl={backgroundAssetUrl}
+            backgroundAssetMimeType={backgroundAssetMimeType}
+            previewVersion={previewVersion}
+            selectedVersion={selectedVersion}
+            selectedVersionId={selectedVersionId}
+            selectedPass={selectedPass}
+            selectedPassIndex={selectedPassIndex}
+            displayVersions={displayVersions}
+            summaryLines={summaryLines}
+            previewState={previewState}
+            previewNotice={previewNotice ?? (isPreviewBusy ? "Обновляю предпросмотр..." : null)}
+            clipDurationSec={clipDurationSec}
+            focusY={localFocusY}
+            cameraMotion={cameraMotion}
+            mirrorEnabled={mirrorEnabled}
+            videoZoom={previewVideoZoom}
+            templateConfig={templateConfig}
+            previewComputed={previewComputed}
+            onSelectVersionId={onSelectVersionId}
+            onSelectPassIndex={onSelectPassIndex}
+          />
+        }
+      />
+      {workerSetupModal}
+    </>
   );
 }

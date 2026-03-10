@@ -31,3 +31,5 @@ pnpm-debug.log*
 /public/stage3-worker/clips-stage3-worker.cjs
 /public/stage3-worker/manifest.json
 /public/stage3-worker/package.json
+/public/stage3-worker/remotion
+/public/stage3-worker/lib

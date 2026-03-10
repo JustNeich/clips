@@ -16,13 +16,22 @@ function Install-ClipsStage3Worker {
 
   $installRoot = Join-Path $env:LOCALAPPDATA "Clips Stage3 Worker"
   $binDir = Join-Path $installRoot "bin"
+  $remotionDir = Join-Path $installRoot "remotion"
+  $libDir = Join-Path $installRoot "lib"
+  $publicDir = Join-Path $installRoot "public"
   $bundlePath = Join-Path $binDir "clips-stage3-worker.cjs"
   $wrapperPath = Join-Path $binDir "clips-stage3-worker.cmd"
   $packagePath = Join-Path $installRoot "package.json"
 
   New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+  New-Item -ItemType Directory -Path $remotionDir -Force | Out-Null
+  New-Item -ItemType Directory -Path $libDir -Force | Out-Null
+  New-Item -ItemType Directory -Path $publicDir -Force | Out-Null
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/clips-stage3-worker.cjs" -OutFile $bundlePath
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/package.json" -OutFile $packagePath
+  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/index.tsx" -OutFile (Join-Path $remotionDir "index.tsx")
+  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/science-card-v1.tsx" -OutFile (Join-Path $remotionDir "science-card-v1.tsx")
+  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/lib/stage3-template.ts" -OutFile (Join-Path $libDir "stage3-template.ts")
   Push-Location $installRoot
   try {
     npm install --omit=dev --no-fund --no-audit
@@ -32,6 +41,8 @@ function Install-ClipsStage3Worker {
 
   @"
 @echo off
+set STAGE3_WORKER_INSTALL_ROOT=%~dp0..
+cd /d "%~dp0.."
 node "%~dp0clips-stage3-worker.cjs" %*
 "@ | Set-Content -Path $wrapperPath -Encoding Ascii
 

@@ -39,6 +39,9 @@ fi
 
 INSTALL_ROOT="${HOME}/Library/Application Support/Clips Stage3 Worker"
 BIN_DIR="${INSTALL_ROOT}/bin"
+REMOTION_DIR="${INSTALL_ROOT}/remotion"
+LIB_DIR="${INSTALL_ROOT}/lib"
+PUBLIC_DIR="${INSTALL_ROOT}/public"
 BUNDLE_PATH="${BIN_DIR}/clips-stage3-worker.cjs"
 WRAPPER_PATH="${BIN_DIR}/clips-stage3-worker"
 PACKAGE_PATH="${INSTALL_ROOT}/package.json"
@@ -50,8 +53,14 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 mkdir -p "$BIN_DIR"
+mkdir -p "$REMOTION_DIR"
+mkdir -p "$LIB_DIR"
+mkdir -p "$PUBLIC_DIR"
 curl -fsSL "${SERVER%/}/stage3-worker/clips-stage3-worker.cjs" -o "$BUNDLE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
+curl -fsSL "${SERVER%/}/stage3-worker/remotion/index.tsx" -o "${REMOTION_DIR}/index.tsx"
+curl -fsSL "${SERVER%/}/stage3-worker/remotion/science-card-v1.tsx" -o "${REMOTION_DIR}/science-card-v1.tsx"
+curl -fsSL "${SERVER%/}/stage3-worker/lib/stage3-template.ts" -o "${LIB_DIR}/stage3-template.ts"
 chmod +x "$BUNDLE_PATH"
 
 (cd "$INSTALL_ROOT" && npm install --omit=dev --no-fund --no-audit)
@@ -60,6 +69,9 @@ cat > "$WRAPPER_PATH" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
+cd "$ROOT"
+export STAGE3_WORKER_INSTALL_ROOT="$ROOT"
 exec node "$DIR/clips-stage3-worker.cjs" "$@"
 EOF
 chmod +x "$WRAPPER_PATH"

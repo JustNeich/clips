@@ -11,7 +11,11 @@ const publicDir = path.join(repoRoot, "public", "stage3-worker");
 const bundlePath = path.join(publicDir, "clips-stage3-worker.cjs");
 const manifestPath = path.join(publicDir, "manifest.json");
 const workerPackagePath = path.join(publicDir, "package.json");
+const remotionPublicDir = path.join(publicDir, "remotion");
+const libPublicDir = path.join(publicDir, "lib");
 const packageJsonPath = path.join(repoRoot, "package.json");
+const remotionSourceDir = path.join(repoRoot, "remotion");
+const stage3TemplateSourcePath = path.join(repoRoot, "lib", "stage3-template.ts");
 
 const WORKER_RUNTIME_DEPENDENCIES = [
   "@remotion/bundler",
@@ -46,6 +50,11 @@ async function main() {
       ? rootPackageJson.version.trim()
       : "0.0.0";
   await fs.mkdir(publicDir, { recursive: true });
+  await fs.rm(remotionPublicDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.mkdir(remotionPublicDir, { recursive: true });
+  await fs.mkdir(libPublicDir, { recursive: true });
+  await fs.cp(remotionSourceDir, remotionPublicDir, { recursive: true });
+  await fs.copyFile(stage3TemplateSourcePath, path.join(libPublicDir, "stage3-template.ts"));
 
   await build({
     entryPoints: [workerEntry],
@@ -98,7 +107,7 @@ async function main() {
         private: true,
         type: "commonjs",
         engines: {
-          node: ">=22 <23"
+          node: ">=22"
         },
         dependencies: pickWorkerDependencies(rootPackageJson)
       },
