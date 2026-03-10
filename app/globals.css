@@ -1084,6 +1084,50 @@ select.text-input:focus {
   background: color-mix(in srgb, var(--surface-2) 92%, black);
 }
 
+.executor-guide-card {
+  gap: 12px;
+}
+
+.executor-guide-platforms {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.executor-guide-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  color: var(--text-soft);
+}
+
+.executor-guide-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.executor-guide-command {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 84%, black);
+}
+
+.executor-guide-note {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 14%, var(--surface-2));
+  padding: 10px 12px;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
 .render-meta-strip {
   display: flex;
   flex-wrap: wrap;

@@ -109,6 +109,7 @@ type Step3RenderTemplateProps = {
 };
 
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
+type WorkerGuidePlatform = "darwin" | "windows";
 
 function formatTimeSec(value: number): string {
   const total = Math.max(0, value);
@@ -116,6 +117,13 @@ function formatTimeSec(value: number): string {
   const sec = Math.floor(total % 60);
   const ms = Math.floor((total - Math.floor(total)) * 10);
   return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}.${ms}`;
+}
+
+function detectWorkerGuidePlatform(): WorkerGuidePlatform {
+  if (typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent)) {
+    return "windows";
+  }
+  return "darwin";
 }
 
 function formatDateShort(value: string): string {
@@ -1430,6 +1438,8 @@ export function Step3RenderTemplate({
   const [localTopFontScale, setLocalTopFontScale] = useState(topFontScale);
   const [localBottomFontScale, setLocalBottomFontScale] = useState(bottomFontScale);
   const [localMusicGain, setLocalMusicGain] = useState(musicGain);
+  const [workerGuidePlatform, setWorkerGuidePlatform] = useState<WorkerGuidePlatform>(() => detectWorkerGuidePlatform());
+  const [workerCopyState, setWorkerCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [segmentDraftInputs, setSegmentDraftInputs] = useState<
     Record<string, { startSec: string; endSec: string }>
   >({});
@@ -1695,10 +1705,26 @@ export function Step3RenderTemplate({
   const summaryLines = previewVersion?.diff.summary ?? ["Используется текущий live draft без сохраненной версии."];
   const pairCommand =
     workerPairing
-      ? typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent)
+      ? workerGuidePlatform === "windows"
         ? workerPairing.commands.powershell
         : workerPairing.commands.shell
       : null;
+  const workerGuideSteps =
+    workerGuidePlatform === "windows"
+      ? [
+          "Нажмите «Скопировать команду».",
+          "Откройте PowerShell. Быстрый способ: откройте «Пуск», напишите PowerShell и нажмите Enter.",
+          "Вставьте команду в окно PowerShell и нажмите Enter.",
+          "Дождитесь текста Starting Clips Stage 3 worker.",
+          "Не закрывайте окно PowerShell, пока делаете предпросмотр или рендер."
+        ]
+      : [
+          "Нажмите «Скопировать команду».",
+          "Откройте Terminal. Быстрый способ: нажмите Command + Space, напишите Terminal и нажмите Enter.",
+          "Вставьте команду в окно Terminal и нажмите Enter.",
+          "Дождитесь текста Starting Clips Stage 3 worker.",
+          "Не закрывайте окно Terminal, пока делаете предпросмотр или рендер."
+        ];
 
   const commitAdvancedControls = () => {
     flushClipCommit(localClipStartSec);
@@ -1707,6 +1733,22 @@ export function Step3RenderTemplate({
     flushTopFontScaleCommit(localTopFontScale);
     flushBottomFontScaleCommit(localBottomFontScale);
     flushMusicGainCommit(localMusicGain);
+  };
+
+  useEffect(() => {
+    setWorkerCopyState("idle");
+  }, [pairCommand]);
+
+  const handleCopyWorkerCommand = async () => {
+    if (!pairCommand) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(pairCommand);
+      setWorkerCopyState("copied");
+    } catch {
+      setWorkerCopyState("error");
+    }
   };
 
   const applyClipStartImmediate = (value: number) => {
@@ -1971,7 +2013,7 @@ export function Step3RenderTemplate({
             </div>
             <p className="subtle-text">
               {workerState === "not_paired"
-                ? "Подключите локальный executor, иначе Stage 3 jobs останутся в очереди."
+                ? "Без локального помощника предпросмотр и рендер не запустятся."
                 : workerLabel
                   ? `${workerLabel}${workerPlatform ? ` · ${workerPlatform}` : ""}${
                       workerLastSeenAt ? ` · последний heartbeat ${formatDateShort(workerLastSeenAt)}` : ""
@@ -1988,15 +2030,71 @@ export function Step3RenderTemplate({
                 disabled={isWorkerPairing}
                 aria-busy={isWorkerPairing}
               >
-                {isWorkerPairing ? "Создаю token..." : "Подключить executor"}
+                {isWorkerPairing ? "Готовлю инструкцию..." : "Подключить executor"}
               </button>
             </div>
-            {pairCommand ? (
-              <div className="control-card" style={{ marginTop: 12 }}>
-                <p className="subtle-text">Команда для этой ОС:</p>
-                <code style={{ display: "block", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{pairCommand}</code>
+            {workerPairing ? (
+              <div className="control-card executor-guide-card" style={{ marginTop: 12 }}>
+                <div className="control-section-head">
+                  <div>
+                    <h3>Как запустить</h3>
+                    <p className="subtle-text">
+                      Ничего вручную скачивать по ссылкам не нужно. Просто скопируйте команду ниже и вставьте ее в окно на своем компьютере.
+                    </p>
+                  </div>
+                  <div className="executor-guide-platforms" role="tablist" aria-label="Операционная система">
+                    <button
+                      type="button"
+                      className={`btn ${workerGuidePlatform === "darwin" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setWorkerGuidePlatform("darwin")}
+                    >
+                      Mac
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${workerGuidePlatform === "windows" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setWorkerGuidePlatform("windows")}
+                    >
+                      Windows
+                    </button>
+                  </div>
+                </div>
+                <ol className="executor-guide-list">
+                  {workerGuideSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+                <div className="executor-guide-actions">
+                  <button type="button" className="btn btn-primary" onClick={() => void handleCopyWorkerCommand()}>
+                    Скопировать команду
+                  </button>
+                  <span className="subtle-text">
+                    {workerCopyState === "copied"
+                      ? "Команда скопирована."
+                      : workerCopyState === "error"
+                        ? "Не удалось скопировать. Скопируйте текст вручную ниже."
+                        : workerGuidePlatform === "windows"
+                          ? "После копирования откройте PowerShell."
+                          : "После копирования откройте Terminal."}
+                  </span>
+                </div>
+                {pairCommand ? (
+                  <code className="executor-guide-command">{pairCommand}</code>
+                ) : null}
+                <div className="executor-guide-note">
+                  <strong>Что должно произойти:</strong> в браузере статус сменится на <strong>Online</strong>. Если статус не изменился в течение минуты или вы видите ошибку про Node, ffmpeg или yt-dlp, отправьте нам скриншот окна.
+                </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="control-card executor-guide-card" style={{ marginTop: 12 }}>
+                <ol className="executor-guide-list">
+                  <li>Нажмите кнопку «Подключить executor».</li>
+                  <li>Выберите Mac или Windows.</li>
+                  <li>Скопируйте готовую команду и запустите ее на своем компьютере.</li>
+                  <li>Оставьте открытым окно Terminal или PowerShell.</li>
+                </ol>
+              </div>
+            )}
           </section>
 
           <section className="control-card control-card-priority">
