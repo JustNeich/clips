@@ -219,6 +219,40 @@ CREATE TABLE IF NOT EXISTS stage3_job_artifacts (
   FOREIGN KEY (job_id) REFERENCES stage3_jobs(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS stage3_workers (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  hostname TEXT,
+  app_version TEXT,
+  capabilities_json TEXT,
+  last_seen_at TEXT,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS stage3_worker_tokens (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  worker_id TEXT,
+  token_hash TEXT NOT NULL UNIQUE,
+  token_kind TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (worker_id) REFERENCES stage3_workers(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace
   ON workspace_members(workspace_id);
 
@@ -261,4 +295,10 @@ CREATE INDEX IF NOT EXISTS idx_stage3_job_events_job
 
 CREATE INDEX IF NOT EXISTS idx_stage3_job_artifacts_job
   ON stage3_job_artifacts(job_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_stage3_workers_user
+  ON stage3_workers(workspace_id, user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_stage3_worker_tokens_worker
+  ON stage3_worker_tokens(worker_id, token_kind, expires_at DESC);
 `;

@@ -1,9 +1,4 @@
 import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import os from "node:os";
-import path from "node:path";
 
 import {
   approxSegmentsDuration,
@@ -21,14 +16,15 @@ import {
   Stage3EvaluationContext
 } from "./stage3-agent";
 import {
-  analyzeStage3FramedPreview,
-  analyzeBestClipAndFocus,
   clampClipStart,
-  type Stage3FramingMetrics,
   sanitizeFocusY
 } from "./stage3-media-agent";
 import { planStage3OperationsWithCodex } from "./stage3-agent-llm";
-import { Stage3Operation, Stage3StateSnapshot } from "../app/components/types";
+import {
+  Stage3ExecutionTarget,
+  Stage3Operation,
+  Stage3StateSnapshot
+} from "../app/components/types";
 import { ensureCodexHomeForSession, normalizeCodexSessionId } from "./codex-session";
 import { ensureCodexLoggedIn } from "./codex-runner";
 import {
@@ -56,9 +52,17 @@ import {
   updateSession,
   buildGoalHash
 } from "./stage3-session-store";
-import { ensureStage3SourceCached, runHostedStage3HeavyJob } from "./stage3-server-control";
+import { runHostedStage3HeavyJob } from "./stage3-server-control";
+import {
+  type Stage3AgentMediaStepPayload,
+  type Stage3AgentMediaStepResult,
+  type Stage3AgentRealityMetrics,
+  executeStage3AgentMediaStep
+} from "./stage3-agent-media-step";
+import { enqueueAndScheduleStage3Job, waitForStage3Job } from "./stage3-job-runtime";
+import { isHostStage3ExecutionAllowed, resolveStage3ExecutionTarget } from "./stage3-execution";
+import { listStage3Workers } from "./stage3-worker-store";
 
-const PREVIEW_FPS = 3;
 const DEFAULT_TARGET_SCORE = 0.9;
 const DEFAULT_MIN_GAIN = 0.02;
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -69,8 +73,7 @@ const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
 const AUTONOMOUS_ENGINE_VERSION = "stage3-autonomous-2026-03-06-directive-composite-v5";
 const HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS = 45_000;
-
-const execFileAsync = promisify(execFile);
+const LOCAL_AGENT_MEDIA_WAIT_TIMEOUT_MS = 120_000;
 
 export type Stage3IterationResult = {
   iterationIndex: number;
@@ -116,6 +119,9 @@ type RunAutonomousInput = {
   sessionId?: string;
   projectId: string;
   mediaId: string;
+  workspaceId?: string;
+  userId?: string;
+  executionTarget?: Stage3ExecutionTarget | null;
   sourceUrl?: string;
   goalText: string;
   options?: AutonomyOptions;
@@ -154,17 +160,11 @@ type Stage3GoalSignal = {
   rawGoal: string;
 };
 
-type Stage3RealityMetrics = Stage3FramingMetrics & {
-  stability: number;
-  motionMean: number;
-  previewPath: string;
-  keyframePaths: string[];
-};
+type Stage3RealityMetrics = Stage3AgentRealityMetrics;
 
 type Stage3RuntimeContext = {
   goalText: string;
   sourceUrl: string;
-  sourcePath: string;
   sourceDurationSec: number | null;
   mediaId: string;
   session: Stage3SessionRecord;
@@ -196,7 +196,6 @@ type JudgeInputs = {
   appliedOps: Stage3Operation[];
   iterationIndex: number;
   goalSignal: Stage3GoalSignal;
-  sourcePath: string;
   sourceDurationSec: number | null;
   autoClipStartSec: number;
   autoFocusY: number;
@@ -230,12 +229,6 @@ type PlannerInput = {
   };
 };
 
-type SourceContext = {
-  sourcePath: string;
-  sourceDurationSec: number | null;
-  tmpDir: string;
-};
-
 type SnapshotFingerprintInput = {
   clipStartSec?: number | null;
   focusY?: number | null;
@@ -256,6 +249,83 @@ type SnapshotFingerprintInput = {
 };
 
 const runLocks = new Map<string, Promise<unknown>>();
+
+async function executeAgentMediaStep(
+  input: RunAutonomousInput,
+  payload: Stage3AgentMediaStepPayload
+): Promise<Stage3AgentMediaStepResult> {
+  const executionTarget = resolveStage3ExecutionTarget(input.executionTarget);
+  if (executionTarget === "host") {
+    return runHostedStage3HeavyJob(() => executeStage3AgentMediaStep(payload), {
+      waitTimeoutMs: HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS
+    });
+  }
+
+  if (!input.workspaceId || !input.userId) {
+    throw new Error("Stage 3 local media execution requires workspace and user context.");
+  }
+
+  const workers = listStage3Workers({
+    workspaceId: input.workspaceId,
+    userId: input.userId
+  });
+  if (!workers.some((worker) => worker.status !== "offline")) {
+    throw new Error("Локальный executor Stage 3 не подключен. Подключите worker и повторите попытку.");
+  }
+
+  const payloadJson = JSON.stringify(payload);
+  const job = enqueueAndScheduleStage3Job({
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    kind: "agent-media-step",
+    executionTarget: "local",
+    payloadJson,
+    dedupeKey: `agent-media:${createHash("sha1").update(payloadJson).digest("hex")}`,
+    attemptGroup: payload.operation
+  });
+  const completed = await waitForStage3Job(job.id, {
+    timeoutMs: LOCAL_AGENT_MEDIA_WAIT_TIMEOUT_MS
+  });
+  if (completed.status !== "completed" || !completed.resultJson) {
+    throw new Error(completed.errorMessage || "Stage 3 agent media step failed.");
+  }
+  return JSON.parse(completed.resultJson) as Stage3AgentMediaStepResult;
+}
+
+async function requestAutoClipAndFocus(
+  input: RunAutonomousInput,
+  sourceUrl: string,
+  sourceDurationSec: number | null
+): Promise<{ clipStartSec: number; focusY: number; sourceDurationSec: number | null }> {
+  const result = await executeAgentMediaStep(input, {
+    operation: "analyze-best-clip-focus",
+    sourceUrl,
+    sourceDurationSec,
+    clipDurationSec: CLIP_DURATION_SEC
+  });
+  if (result.operation !== "analyze-best-clip-focus") {
+    throw new Error("Stage 3 agent media step returned unexpected auto-clip response.");
+  }
+  return result;
+}
+
+async function requestRealityPreviewMetrics(
+  input: RunAutonomousInput,
+  sourceUrl: string,
+  sourceDurationSec: number | null,
+  snapshot: Stage3StateSnapshot
+): Promise<Stage3AgentRealityMetrics> {
+  const result = await executeAgentMediaStep(input, {
+    operation: "reality-preview",
+    sourceUrl,
+    sourceDurationSec,
+    snapshot
+  });
+  if (result.operation !== "reality-preview") {
+    throw new Error("Stage 3 agent media step returned unexpected reality-preview response.");
+  }
+  return result.metrics;
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -1509,80 +1579,19 @@ function computeSafety(
   return clamp(safety, 0, 1);
 }
 
-async function extractMotionMetrics(previewPath: string, tmpDir: string): Promise<{ stability: number; motionMean: number }> {
-  const statsPath = path.join(tmpDir, `stage3-motion-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
-  await execFileAsync(
-    "ffmpeg",
-    [
-      "-v",
-      "error",
-      "-i",
-      previewPath,
-      "-vf",
-      `fps=${PREVIEW_FPS},signalstats,metadata=mode=print:file=${statsPath}`,
-      "-f",
-      "null",
-      "-"
-    ],
-    { timeout: 90_000, maxBuffer: 1024 * 1024 * 8 }
-  );
-
-  const raw = await fs.readFile(statsPath, "utf-8").catch(() => "");
-  if (!raw) {
-    return { stability: 0.6, motionMean: 0.4 };
-  }
-
-  const values = raw
-    .match(/YDIF=([0-9.]+)/g)
-    ?.map((entry) => Number.parseFloat(entry.split("=").at(-1) ?? "0"))
-    .filter((entry) => Number.isFinite(entry) && entry >= 0) ?? [];
-
-  if (!values.length) {
-    return { stability: 0.6, motionMean: 0.4 };
-  }
-
-  const mean = values.reduce((acc, value) => acc + value, 0) / values.length;
-  const variance =
-    values.reduce((acc, value) => {
-      const d = value - mean;
-      return acc + d * d;
-    }, 0) / values.length;
-
-  const stability = clamp(1 - Math.min(1, Math.sqrt(variance) / (mean + 0.001)), 0, 1);
-  return {
-    stability: clamp(stability, 0, 1),
-    motionMean: clamp(mean / 60, 0, 1)
-  };
-}
-
 async function runRealityPreview(args: {
-  sourcePath: string;
+  input: RunAutonomousInput;
+  sourceUrl: string;
   snapshot: Stage3StateSnapshot;
   sourceDurationSec: number | null;
 }): Promise<Stage3RealityMetrics> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-autonomous-preview-"));
   try {
-    const { analysis, motion } = await runHostedStage3HeavyJob(
-      async () => {
-        const analysis = await analyzeStage3FramedPreview({
-          sourcePath: args.sourcePath,
-          tmpDir,
-          sourceDurationSec: args.sourceDurationSec,
-          snapshot: args.snapshot,
-          profile: "preview"
-        });
-        const motion = await extractMotionMetrics(analysis.previewPath, tmpDir);
-        return { analysis, motion };
-      },
-      { waitTimeoutMs: HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS }
+    return await requestRealityPreviewMetrics(
+      args.input,
+      args.sourceUrl,
+      args.sourceDurationSec,
+      args.snapshot
     );
-    return {
-      ...analysis.metrics,
-      stability: motion.stability,
-      motionMean: motion.motionMean,
-      previewPath: "",
-      keyframePaths: []
-    };
   } catch {
     return {
       activeCenterY: 0.5,
@@ -1600,8 +1609,6 @@ async function runRealityPreview(args: {
       previewPath: "",
       keyframePaths: []
     };
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -1705,16 +1712,6 @@ export async function judgeIteration(input: JudgeInputs): Promise<JudgeResult> {
     },
     notes: notes.join("; "),
     safetyFailReason
-  };
-}
-
-async function resolveSourceContext(sourceUrl: string): Promise<SourceContext> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip3-autosrc-"));
-  const source = await ensureStage3SourceCached(sourceUrl);
-  return {
-    sourcePath: source.sourcePath,
-    sourceDurationSec: source.sourceDurationSec,
-    tmpDir
   };
 }
 
@@ -1895,81 +1892,73 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
         }
       }
 
-      const sourceContext = await resolveSourceContext(sourceUrl);
-      try {
-        const goalSignal = ingestGoal(trimmedGoal);
+      const goalSignal = ingestGoal(trimmedGoal);
 
-        let plannerModel = input.plannerModel || process.env.CODEX_STAGE3_MODEL || "gpt-5.2";
-        let plannerReasoning =
-          input.plannerReasoningEffort || process.env.CODEX_STAGE3_REASONING_EFFORT || "extra-high";
-        const plannerTimeout = Number.parseInt(process.env.CODEX_STAGE3_TIMEOUT_MS ?? "120000", 10);
-        const configuredTimeout = Number.isFinite(input.plannerTimeoutMs ?? plannerTimeout)
-          ? input.plannerTimeoutMs ?? plannerTimeout
-          : plannerTimeout;
-        let codexHome: string | undefined;
+      let plannerModel = input.plannerModel || process.env.CODEX_STAGE3_MODEL || "gpt-5.2";
+      let plannerReasoning =
+        input.plannerReasoningEffort || process.env.CODEX_STAGE3_REASONING_EFFORT || "extra-high";
+      const plannerTimeout = Number.parseInt(process.env.CODEX_STAGE3_TIMEOUT_MS ?? "120000", 10);
+      const configuredTimeout = Number.isFinite(input.plannerTimeoutMs ?? plannerTimeout)
+        ? input.plannerTimeoutMs ?? plannerTimeout
+        : plannerTimeout;
+      let codexHome: string | undefined;
 
-        if (input.codexSessionId) {
-          try {
-            const codexSessionId = normalizeCodexSessionId(input.codexSessionId);
-            if (!codexSessionId) {
-              throw new Error("Invalid codexSessionId");
-            }
-            codexHome = await ensureCodexHomeForSession(codexSessionId);
-            await ensureCodexLoggedIn(codexHome);
-          } catch {
-            codexHome = undefined;
+      if (input.codexSessionId) {
+        try {
+          const codexSessionId = normalizeCodexSessionId(input.codexSessionId);
+          if (!codexSessionId) {
+            throw new Error("Invalid codexSessionId");
           }
+          codexHome = await ensureCodexHomeForSession(codexSessionId);
+          await ensureCodexLoggedIn(codexHome);
+        } catch {
+          codexHome = undefined;
         }
+      }
 
-        const autoInfo = await runHostedStage3HeavyJob(
-          () =>
-            analyzeBestClipAndFocus(
-              sourceContext.sourcePath,
-              sourceContext.tmpDir,
-              sourceContext.sourceDurationSec ?? input.sourceDurationSec ?? null,
-              CLIP_DURATION_SEC
-            ),
-          { waitTimeoutMs: HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS }
+      const autoInfo = await requestAutoClipAndFocus(
+        input,
+        sourceUrl,
+        input.sourceDurationSec ?? null
+      );
+
+      const sourceDurationSec = autoInfo.sourceDurationSec ?? input.sourceDurationSec ?? null;
+      const autoClipStartSec = clampClipStart(
+        parseFiniteNumber(input.autoClipStartSec) ?? autoInfo.clipStartSec,
+        sourceDurationSec,
+        CLIP_DURATION_SEC
+      );
+      const autoFocusY = sanitizeFocusY(parseFiniteNumber(input.autoFocusY) ?? autoInfo.focusY);
+
+      let session: Stage3SessionRecord;
+      if (input.sessionId) {
+        const found = await getSession(input.sessionId);
+        if (!found) {
+          throw new Error("Session not found.");
+        }
+        if (found.mediaId !== mediaId) {
+          throw new Error("mediaId does not match session mediaId.");
+        }
+        session = found;
+      } else {
+        const existing = (await getSessionsByProjectId(input.projectId)).find(
+          (item) => item.mediaId === mediaId && item.goalText.trim() === trimmedGoal && item.status === "running"
         );
-
-        const autoClipStartSec = clampClipStart(
-          parseFiniteNumber(input.autoClipStartSec) ?? autoInfo.clipStartSec,
-          sourceContext.sourceDurationSec ?? input.sourceDurationSec ?? null,
-          CLIP_DURATION_SEC
-        );
-        const autoFocusY = sanitizeFocusY(parseFiniteNumber(input.autoFocusY) ?? autoInfo.focusY);
-
-        const sourceDurationSec = sourceContext.sourceDurationSec ?? input.sourceDurationSec ?? null;
-
-        let session: Stage3SessionRecord;
-        if (input.sessionId) {
-          const found = await getSession(input.sessionId);
-          if (!found) {
-            throw new Error("Session not found.");
-          }
-          if (found.mediaId !== mediaId) {
-            throw new Error("mediaId does not match session mediaId.");
-          }
-          session = found;
+        if (existing) {
+          session = existing;
         } else {
-          const existing = (await getSessionsByProjectId(input.projectId)).find(
-            (item) => item.mediaId === mediaId && item.goalText.trim() === trimmedGoal && item.status === "running"
-          );
-          if (existing) {
-            session = existing;
-          } else {
-            session = await createSession({
-              projectId: input.projectId,
-              mediaId,
-              goalText: trimmedGoal,
-              goalType: goalSignal.goalType,
-              targetScore: options.targetScore,
-              minGain: options.minGain,
-              maxIterations: options.maxIterations,
-              operationBudget: options.operationBudget
-            });
-          }
+          session = await createSession({
+            projectId: input.projectId,
+            mediaId,
+            goalText: trimmedGoal,
+            goalType: goalSignal.goalType,
+            targetScore: options.targetScore,
+            minGain: options.minGain,
+            maxIterations: options.maxIterations,
+            operationBudget: options.operationBudget
+          });
         }
+      }
 
         await updateSession(session.id, {
           status: "running",
@@ -2028,28 +2017,27 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
         const beforeVersionId = baselineVersion?.id ?? session.currentVersionId!;
         const existingVersions = await listVersions(session.id);
         const iterationOffset = existingVersions.reduce((max, item) => Math.max(max, item.iterationIndex), 0);
-        const runtime: Stage3RuntimeContext = {
-          goalText: trimmedGoal,
-          sourceUrl,
-          sourcePath: sourceContext.sourcePath,
-          sourceDurationSec,
-          mediaId,
-          session,
-          options,
-          autoClipStartSec,
-          autoFocusY,
-          sessionState: {
-            initialVersionId: beforeVersionId,
-            currentSnapshot,
-            currentVersionId: beforeVersionId,
-            bestVersionId: session.bestVersionId ?? beforeVersionId,
-            iterationOffset,
-            bestScore: 0,
-            stagnation: 0,
-            lastIterationScore: 0,
-            currentRealityMetrics: null
-          }
-        };
+      const runtime: Stage3RuntimeContext = {
+        goalText: trimmedGoal,
+        sourceUrl,
+        sourceDurationSec,
+        mediaId,
+        session,
+        options,
+        autoClipStartSec,
+        autoFocusY,
+        sessionState: {
+          initialVersionId: beforeVersionId,
+          currentSnapshot,
+          currentVersionId: beforeVersionId,
+          bestVersionId: session.bestVersionId ?? beforeVersionId,
+          iterationOffset,
+          bestScore: 0,
+          stagnation: 0,
+          lastIterationScore: 0,
+          currentRealityMetrics: null
+        }
+      };
 
         const intent = parseUserIntent(trimmedGoal, sourceDurationSec);
         const context: Stage3EvaluationContext = {
@@ -2066,16 +2054,17 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
         const scoreHistory: number[] = [];
         const maxIterationIndex = runtime.sessionState.iterationOffset + runtime.options.maxIterations;
 
-        const baselineReality = await runRealityPreview({
-          sourcePath: sourceContext.sourcePath,
-          snapshot: runtime.sessionState.currentSnapshot,
-          sourceDurationSec
-        });
-        runtime.sessionState.currentRealityMetrics = baselineReality;
+      const baselineReality = await runRealityPreview({
+        input,
+        sourceUrl,
+        snapshot: runtime.sessionState.currentSnapshot,
+        sourceDurationSec
+      });
+      runtime.sessionState.currentRealityMetrics = baselineReality;
 
-        const baselineQuality = normalizeScore(
-          evaluateScore(runtime.sessionState.currentSnapshot, context).total / 100
-        );
+      const baselineQuality = normalizeScore(
+        evaluateScore(runtime.sessionState.currentSnapshot, context).total / 100
+      );
         const baselineGoalFit = normalizeScore(
           computeGoalFit(
             runtime.sessionState.currentSnapshot,
@@ -2301,7 +2290,8 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
 
           const judgeStart = Date.now();
           const metrics = await runRealityPreview({
-            sourcePath: sourceContext.sourcePath,
+            input,
+            sourceUrl,
             snapshot: applied.next,
             sourceDurationSec
           });
@@ -2314,7 +2304,6 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
             appliedOps: guardedPlan.operations,
             iterationIndex,
             goalSignal,
-            sourcePath: sourceContext.sourcePath,
             sourceDurationSec,
             autoClipStartSec,
             autoFocusY,
@@ -2539,9 +2528,6 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
           stabilityNote,
           summary
         };
-      } finally {
-        await fs.rm(sourceContext.tmpDir, { recursive: true, force: true }).catch(() => undefined);
-      }
     });
 
     
@@ -2550,12 +2536,15 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
 export async function resumeAutonomousSession(
   sessionId: string,
   mediaId: string,
+  workspaceId: string,
+  userId: string,
   options?: AutonomyOptions,
   sourceUrl?: string,
   idempotencyKey?: string,
   plannerModel?: string,
   plannerReasoningEffort?: string,
-  plannerTimeoutMs?: number
+  plannerTimeoutMs?: number,
+  executionTarget?: Stage3ExecutionTarget | null
 ): Promise<RunAutonomousResponse> {
   const session = await getSession(sessionId);
   if (!session) {
@@ -2571,6 +2560,9 @@ export async function resumeAutonomousSession(
     sessionId,
     projectId: session.projectId,
     mediaId,
+    workspaceId,
+    userId,
+    executionTarget,
     sourceUrl: sourceUrl ?? mediaId,
     goalText: session.goalText,
     currentSnapshot: currentVersion?.transformConfig,

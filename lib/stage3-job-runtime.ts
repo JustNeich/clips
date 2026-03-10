@@ -1,11 +1,10 @@
 import { promises as fs } from "node:fs";
-import path from "node:path";
 import {
+  Stage3ExecutionTarget,
   Stage3JobKind,
   Stage3JobStatus,
   Stage3JobSummary
 } from "../app/components/types";
-import { getAppDataDir } from "./app-paths";
 import {
   appendStage3JobEvent,
   claimNextQueuedStage3Job,
@@ -17,21 +16,11 @@ import {
   interruptPendingStage3Jobs,
   Stage3JobRecord
 } from "./stage3-job-store";
-import {
-  prepareStage3Preview,
-  PREVIEW_WAIT_TIMEOUT_MS,
-  Stage3PreviewRequestBody,
-  summarizeStage3PreviewError
-} from "./stage3-preview-service";
-import {
-  renderStage3Video,
-  RENDER_WAIT_TIMEOUT_MS,
-  Stage3RenderRequestBody,
-  summarizeStage3RenderError
-} from "./stage3-render-service";
+import { publishStage3VideoArtifact } from "./stage3-job-artifacts";
+import { executeStage3HeavyJobPayload, summarizeStage3HeavyJobError } from "./stage3-job-executor";
+import { isHostStage3ExecutionAllowed } from "./stage3-execution";
 import { isStage3HostedBusyError } from "./stage3-server-control";
 
-const JOB_ARTIFACT_ROOT = path.join(getAppDataDir(), "stage3-job-artifacts");
 const JOB_POLL_INTERVAL_MS = 350;
 
 type Stage3RuntimeState = {
@@ -48,7 +37,10 @@ type EnqueueJobInput = {
   userId: string;
   kind: Stage3JobKind;
   payloadJson: string;
+  executionTarget?: Stage3ExecutionTarget | null;
   dedupeKey?: string | null;
+  attemptLimit?: number | null;
+  attemptGroup?: string | null;
 };
 
 function getStage3RuntimeState(): Stage3RuntimeState {
@@ -94,125 +86,6 @@ function isTerminalStatus(status: Stage3JobStatus): boolean {
   return status === "completed" || status === "failed" || status === "interrupted";
 }
 
-async function pruneArtifactDirectory(
-  dirPath: string,
-  options: { maxFiles: number; maxBytes: number; maxAgeMs: number }
-): Promise<void> {
-  const now = Date.now();
-  const entries = await fs.readdir(dirPath).catch(() => []);
-  const files = (
-    await Promise.all(
-      entries.map(async (name) => {
-        const filePath = path.join(dirPath, name);
-        const stat = await fs.stat(filePath).catch(() => null);
-        if (!stat?.isFile()) {
-          return null;
-        }
-        return {
-          filePath,
-          sizeBytes: stat.size,
-          mtimeMs: stat.mtimeMs
-        };
-      })
-    )
-  ).filter((item): item is { filePath: string; sizeBytes: number; mtimeMs: number } => Boolean(item));
-
-  const expired = files.filter((file) => now - file.mtimeMs > options.maxAgeMs);
-  await Promise.all(expired.map((file) => fs.rm(file.filePath, { force: true }).catch(() => undefined)));
-
-  const fresh = files
-    .filter((file) => now - file.mtimeMs <= options.maxAgeMs)
-    .sort((left, right) => right.mtimeMs - left.mtimeMs);
-  let totalBytes = fresh.reduce((sum, file) => sum + file.sizeBytes, 0);
-
-  for (let index = options.maxFiles; index < fresh.length; index += 1) {
-    totalBytes -= fresh[index].sizeBytes;
-    await fs.rm(fresh[index].filePath, { force: true }).catch(() => undefined);
-  }
-
-  const capped = fresh.slice(0, options.maxFiles);
-  for (let index = capped.length - 1; index >= 0 && totalBytes > options.maxBytes; index -= 1) {
-    totalBytes -= capped[index].sizeBytes;
-    await fs.rm(capped[index].filePath, { force: true }).catch(() => undefined);
-  }
-}
-
-async function publishVideoArtifact(
-  kind: Extract<Stage3JobKind, "preview" | "render">,
-  jobId: string,
-  sourcePath: string,
-  fileName: string
-): Promise<{ filePath: string; sizeBytes: number }> {
-  const dirPath = path.join(JOB_ARTIFACT_ROOT, kind);
-  await fs.mkdir(dirPath, { recursive: true });
-  const finalPath = path.join(dirPath, `${jobId}.mp4`);
-  const tempPath = path.join(dirPath, `${jobId}.part-${Date.now()}.mp4`);
-  await fs.copyFile(sourcePath, tempPath);
-  await fs.rename(tempPath, finalPath);
-  const stat = await fs.stat(finalPath);
-  await pruneArtifactDirectory(dirPath, {
-    maxFiles: kind === "preview" ? 40 : 16,
-    maxBytes: kind === "preview" ? 768 * 1024 * 1024 : 1024 * 1024 * 1024,
-    maxAgeMs: kind === "preview" ? 60 * 60_000 : 6 * 60 * 60_000
-  }).catch(() => undefined);
-  appendStage3JobEvent(jobId, "info", "Published artifact.", {
-    kind,
-    fileName,
-    sizeBytes: stat.size
-  });
-  return {
-    filePath: finalPath,
-    sizeBytes: stat.size
-  };
-}
-
-async function executePreviewJob(job: Stage3JobRecord): Promise<void> {
-  const payload = JSON.parse(job.payloadJson) as Stage3PreviewRequestBody;
-  const prepared = await prepareStage3Preview(payload, {
-    waitTimeoutMs: PREVIEW_WAIT_TIMEOUT_MS
-  });
-  const published = await publishVideoArtifact("preview", job.id, prepared.filePath, `${prepared.cacheKey}.mp4`);
-  completeStage3Job(job.id, {
-    resultJson: JSON.stringify({
-      cacheKey: prepared.cacheKey,
-      cacheState: prepared.cacheState
-    }),
-    artifact: {
-      kind: "video",
-      fileName: `${prepared.cacheKey}.mp4`,
-      mimeType: "video/mp4",
-      filePath: published.filePath,
-      sizeBytes: published.sizeBytes
-    }
-  });
-}
-
-async function executeRenderJob(job: Stage3JobRecord): Promise<void> {
-  const payload = JSON.parse(job.payloadJson) as Stage3RenderRequestBody;
-  const rendered = await renderStage3Video(payload, {
-    waitTimeoutMs: RENDER_WAIT_TIMEOUT_MS
-  });
-  try {
-    const published = await publishVideoArtifact("render", job.id, rendered.filePath, rendered.outputName);
-    completeStage3Job(job.id, {
-      resultJson: JSON.stringify({
-        outputName: rendered.outputName,
-        topCompacted: rendered.topCompacted,
-        bottomCompacted: rendered.bottomCompacted
-      }),
-      artifact: {
-        kind: "video",
-        fileName: rendered.outputName,
-        mimeType: "video/mp4",
-        filePath: published.filePath,
-        sizeBytes: published.sizeBytes
-      }
-    });
-  } finally {
-    await fs.rm(rendered.cleanupDir, { recursive: true, force: true }).catch(() => undefined);
-  }
-}
-
 function normalizeJobFailure(job: Stage3JobRecord, error: unknown): {
   status: Extract<Stage3JobStatus, "failed" | "interrupted">;
   code: string;
@@ -235,26 +108,17 @@ function normalizeJobFailure(job: Stage3JobRecord, error: unknown): {
       recoverable: true
     };
   }
-  if (job.kind === "preview") {
-    return {
-      status: "failed",
-      code: "preview_failed",
-      message: summarizeStage3PreviewError(error),
-      recoverable: true
-    };
-  }
-  if (job.kind === "render") {
-    return {
-      status: "failed",
-      code: "render_failed",
-      message: summarizeStage3RenderError(error),
-      recoverable: true
-    };
-  }
   return {
     status: "failed",
-    code: "job_failed",
-    message: error instanceof Error ? error.message : "Stage 3 job failed.",
+    code:
+      job.kind === "preview"
+        ? "preview_failed"
+        : job.kind === "render"
+          ? "render_failed"
+          : job.kind === "source-download"
+            ? "source_download_failed"
+            : "job_failed",
+    message: summarizeStage3HeavyJobError(job.kind, error),
     recoverable: true
   };
 }
@@ -276,13 +140,36 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
   });
 
   try {
-    if (job.kind === "preview") {
-      await executePreviewJob(job);
-    } else if (job.kind === "render") {
-      await executeRenderJob(job);
-    } else {
-      throw new Error(`Unsupported Stage 3 job kind: ${job.kind}`);
+    const executed = await executeStage3HeavyJobPayload(job.kind, job.payloadJson);
+    try {
+      const published =
+        executed.artifact && (job.kind === "preview" || job.kind === "render")
+          ? await publishStage3VideoArtifact(job.kind, job.id, executed.artifact.filePath)
+          : null;
+      completeStage3Job(job.id, {
+        resultJson: executed.resultJson,
+        artifact:
+          executed.artifact && published
+            ? {
+                kind: "video",
+                fileName: executed.artifact.fileName,
+                mimeType: executed.artifact.mimeType,
+                filePath: published.filePath,
+                sizeBytes: published.sizeBytes
+              }
+            : null
+      });
+      if (published && executed.artifact) {
+        appendStage3JobEvent(job.id, "info", "Published artifact.", {
+          kind: job.kind,
+          fileName: executed.artifact.fileName,
+          sizeBytes: published.sizeBytes
+        });
+      }
+    } finally {
+      await executed.cleanup?.();
     }
+
     const execMs = Date.now() - startedAt;
     const afterMemory = memorySnapshotMb();
     logStage3Runtime("job_complete", {
@@ -339,6 +226,9 @@ async function runStage3JobLoop(): Promise<void> {
 }
 
 export function scheduleStage3JobProcessing(): void {
+  if (!isHostStage3ExecutionAllowed()) {
+    return;
+  }
   ensureStage3JobRuntime();
   const state = getStage3RuntimeState();
   if (state.runnerPromise) {
@@ -347,7 +237,7 @@ export function scheduleStage3JobProcessing(): void {
   state.runnerPromise = runStage3JobLoop().finally(() => {
     const latestState = getStage3RuntimeState();
     latestState.runnerPromise = null;
-    if (hasQueuedStage3Jobs()) {
+    if (hasQueuedStage3Jobs("host")) {
       scheduleStage3JobProcessing();
     }
   });
@@ -359,10 +249,13 @@ export function enqueueAndScheduleStage3Job(input: EnqueueJobInput): Stage3JobRe
     jobId: job.id,
     jobType: job.kind,
     status: job.status,
+    executionTarget: job.executionTarget,
     dedupeKey: job.dedupeKey,
     memoryMb: memorySnapshotMb()
   });
-  scheduleStage3JobProcessing();
+  if (job.executionTarget === "host") {
+    scheduleStage3JobProcessing();
+  }
   return job;
 }
 
@@ -372,7 +265,7 @@ export function getStage3JobOrThrow(jobId: string): Stage3JobRecord {
   if (!job) {
     throw new Error("Stage 3 job not found.");
   }
-  if (job.status === "queued") {
+  if (job.status === "queued" && job.executionTarget === "host") {
     scheduleStage3JobProcessing();
   }
   return job;
@@ -383,7 +276,10 @@ export async function waitForStage3Job(
   options?: { timeoutMs?: number; signal?: AbortSignal | null }
 ): Promise<Stage3JobRecord> {
   ensureStage3JobRuntime();
-  scheduleStage3JobProcessing();
+  const initial = getStage3Job(jobId);
+  if (initial?.executionTarget === "host") {
+    scheduleStage3JobProcessing();
+  }
   const timeoutMs =
     typeof options?.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
       ? options.timeoutMs

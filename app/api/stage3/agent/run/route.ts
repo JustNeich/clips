@@ -1,6 +1,7 @@
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
 import { runAutonomousOptimization } from "../../../../../lib/stage3-agent-autonomous";
 import { applyHostedStage3Limits } from "../../../../../lib/stage3-hosted-limits";
+import { resolveStage3ExecutionTarget } from "../../../../../lib/stage3-execution";
 import { isStage3HostedBusyError } from "../../../../../lib/stage3-server-control";
 import { summarizeUserFacingError } from "../../../../../lib/ui-error";
 import { Stage3StateSnapshot } from "../../../../../app/components/types";
@@ -123,6 +124,9 @@ export async function POST(request: Request): Promise<Response> {
       sessionId: body.sessionId?.trim() || undefined,
       projectId: payload.projectId,
       mediaId: payload.mediaId,
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id,
+      executionTarget: resolveStage3ExecutionTarget(),
       sourceUrl: payload.sourceUrl,
       sourceDurationSec: payload.sourceDurationSec,
       goalText: payload.goalText,

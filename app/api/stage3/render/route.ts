@@ -1,6 +1,7 @@
 import { createReadStream, promises as fs } from "node:fs";
 import { Readable } from "node:stream";
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
+import { resolveStage3ExecutionTarget } from "../../../../lib/stage3-execution";
 import {
   enqueueAndScheduleStage3Job,
   waitForStage3Job
@@ -27,6 +28,7 @@ export async function POST(request: Request): Promise<Response> {
       workspaceId: auth.workspace.id,
       userId: auth.user.id,
       kind: "render",
+      executionTarget: resolveStage3ExecutionTarget(),
       payloadJson: JSON.stringify(body ?? {})
     });
     const resolved =

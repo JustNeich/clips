@@ -44,6 +44,14 @@ services:
         value: extra-high
       - key: CODEX_STAGE3_TIMEOUT_MS
         value: "120000"
+      - key: STAGE3_DEFAULT_EXECUTION_TARGET
+        value: local
+      - key: STAGE3_ALLOW_HOST_EXECUTION
+        value: "0"
+      - key: STAGE3_WORKER_PAIRING_TTL_SEC
+        value: "600"
+      - key: STAGE3_WORKER_SESSION_TTL_SEC
+        value: "2592000"
       - key: REMOTION_RENDER_TIMEOUT_MS
         value: "180000"
     disk:

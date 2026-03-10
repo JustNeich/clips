@@ -8,11 +8,10 @@ import {
   prepareStage3SourceClip,
   sanitizeClipDuration
 } from "./stage3-media-agent";
+import { maybeDownloadStage3WorkerAsset } from "./stage3-worker-asset-client";
 import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } from "./ytdlp";
 import { Stage3RenderPlan } from "./stage3-agent";
 import { Stage3StateSnapshot } from "../app/components/types";
-import { getChannelAssetById } from "./chat-history";
-import { readChannelAssetFile } from "./channel-assets";
 import { STAGE3_TEMPLATE_ID, getTemplateById } from "./stage3-template";
 import { getAppDataDir } from "./app-paths";
 import {
@@ -43,6 +42,38 @@ export type Stage3PreparedPreview = {
   cacheKey: string;
   cacheState: "hit" | "miss" | "wait";
 };
+
+async function resolveStage3AssetFile(params: {
+  channelId: string;
+  assetId: string;
+  tmpDir: string;
+}): Promise<{ filePath: string } | null> {
+  const remoteAsset = await maybeDownloadStage3WorkerAsset({
+    channelId: params.channelId,
+    assetId: params.assetId,
+    tmpDir: params.tmpDir
+  });
+  if (remoteAsset?.filePath) {
+    return { filePath: remoteAsset.filePath };
+  }
+
+  const [{ getChannelAssetById }, { readChannelAssetFile }] = await Promise.all([
+    import("./chat-history"),
+    import("./channel-assets")
+  ]);
+  const asset = await getChannelAssetById(params.channelId, params.assetId);
+  if (!asset) {
+    return null;
+  }
+  const file = await readChannelAssetFile({
+    channelId: params.channelId,
+    fileName: asset.fileName
+  });
+  if (!file) {
+    return null;
+  }
+  return { filePath: file.filePath };
+}
 
 function hashKey(value: string): string {
   return createHash("sha1").update(value).digest("hex");
@@ -325,99 +356,102 @@ export async function prepareStage3Preview(
   const clipStartSec = clampClipStart(clipStartCandidate, source.sourceDurationSec, clipDurationSec);
   const rawPlan = snapshot?.renderPlan ?? body.renderPlan;
   const renderPlan = normalizeRenderPlan(rawPlan, source.sourceDurationSec);
+  const assetTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-assets-"));
   let musicFilePath: string | null = null;
-  if (body.channelId && renderPlan.musicAssetId) {
-    const musicAsset = await getChannelAssetById(body.channelId, renderPlan.musicAssetId);
-    if (musicAsset) {
-      const musicFile = await readChannelAssetFile({
+  try {
+    if (body.channelId && renderPlan.musicAssetId) {
+      const musicFile = await resolveStage3AssetFile({
         channelId: body.channelId,
-        fileName: musicAsset.fileName
+        assetId: renderPlan.musicAssetId,
+        tmpDir: assetTmpDir
       });
       if (musicFile) {
         musicFilePath = musicFile.filePath;
       }
     }
-  }
 
-  const previewKey = buildPreviewCacheKey({
-    sourceKey: source.sourceKey,
-    clipStartSec,
-    renderPlan
-  });
-  const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);
+    const previewKey = buildPreviewCacheKey({
+      sourceKey: source.sourceKey,
+      clipStartSec,
+      renderPlan
+    });
+    const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);
 
-  if (await pathExists(previewPath)) {
+    if (await pathExists(previewPath)) {
+      return {
+        filePath: previewPath,
+        cacheKey: previewKey,
+        cacheState: "hit"
+      };
+    }
+
+    const running = previewInflight.get(previewKey);
+    const waitedForExistingTask = Boolean(running);
+    if (running) {
+      await running;
+    } else {
+      const task = (async () => {
+        const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-"));
+        try {
+          if (options?.signal?.aborted) {
+            return;
+          }
+          const prepared = await runHostedStage3HeavyJob(
+            () =>
+              prepareStage3SourceClip({
+                sourcePath: source.sourcePath,
+                tmpDir: localTmpDir,
+                sourceDurationSec: source.sourceDurationSec,
+                clipStartSec,
+                clipDurationSec: renderPlan.targetDurationSec,
+                renderPlan,
+                musicFilePath,
+                profile: "preview"
+              }),
+            {
+              signal: options?.signal,
+              waitTimeoutMs
+            }
+          );
+          if (options?.signal?.aborted) {
+            return;
+          }
+          const publishPath = `${previewPath}.part-${hashKey(`${Date.now()}-${Math.random()}`)}`;
+          await fs.copyFile(prepared.preparedPath, publishPath);
+          await fs.rename(publishPath, previewPath);
+        } finally {
+          await fs.rm(localTmpDir, { recursive: true, force: true }).catch(() => undefined);
+        }
+      })();
+      previewInflight.set(previewKey, task);
+      try {
+        await task;
+      } finally {
+        previewInflight.delete(previewKey);
+      }
+    }
+
+    if (options?.signal?.aborted) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+    if (!(await pathExists(previewPath))) {
+      throw new Error("Черновой предпросмотр не удалось подготовить. Повторите ещё раз.");
+    }
+
+    await pruneCacheDirectory(PREVIEW_CACHE_DIR, {
+      maxFiles: 32,
+      maxBytes: 512 * 1024 * 1024,
+      maxAgeMs: 45 * 60_000
+    }).catch(() => undefined);
+
     return {
       filePath: previewPath,
       cacheKey: previewKey,
-      cacheState: "hit"
+      cacheState: waitedForExistingTask ? "wait" : "miss"
     };
+  } finally {
+    await fs.rm(assetTmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
-
-  const running = previewInflight.get(previewKey);
-  const waitedForExistingTask = Boolean(running);
-  if (running) {
-    await running;
-  } else {
-    const task = (async () => {
-      const localTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-"));
-      try {
-        if (options?.signal?.aborted) {
-          return;
-        }
-        const prepared = await runHostedStage3HeavyJob(
-          () =>
-            prepareStage3SourceClip({
-              sourcePath: source.sourcePath,
-              tmpDir: localTmpDir,
-              sourceDurationSec: source.sourceDurationSec,
-              clipStartSec,
-              clipDurationSec: renderPlan.targetDurationSec,
-              renderPlan,
-              musicFilePath,
-              profile: "preview"
-            }),
-          {
-            signal: options?.signal,
-            waitTimeoutMs
-          }
-        );
-        if (options?.signal?.aborted) {
-          return;
-        }
-        const publishPath = `${previewPath}.part-${hashKey(`${Date.now()}-${Math.random()}`)}`;
-        await fs.copyFile(prepared.preparedPath, publishPath);
-        await fs.rename(publishPath, previewPath);
-      } finally {
-        await fs.rm(localTmpDir, { recursive: true, force: true }).catch(() => undefined);
-      }
-    })();
-    previewInflight.set(previewKey, task);
-    try {
-      await task;
-    } finally {
-      previewInflight.delete(previewKey);
-    }
-  }
-
-  if (options?.signal?.aborted) {
-    throw new DOMException("The operation was aborted.", "AbortError");
-  }
-  if (!(await pathExists(previewPath))) {
-    throw new Error("Черновой предпросмотр не удалось подготовить. Повторите ещё раз.");
-  }
-
-  await pruneCacheDirectory(PREVIEW_CACHE_DIR, {
-    maxFiles: 32,
-    maxBytes: 512 * 1024 * 1024,
-    maxAgeMs: 45 * 60_000
-  }).catch(() => undefined);
-
-  return {
-    filePath: previewPath,
-    cacheKey: previewKey,
-    cacheState: waitedForExistingTask ? "wait" : "miss"
-  };
 }
 
 export function summarizeStage3PreviewError(error: unknown): string {

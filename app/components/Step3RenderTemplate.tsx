@@ -17,7 +17,9 @@ import {
   Stage3Segment,
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionRecord,
-  Stage3Version
+  Stage3Version,
+  Stage3WorkerPairingResponse,
+  Stage3WorkerStatus
 } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 import {
@@ -59,6 +61,12 @@ type Step3RenderTemplateProps = {
   segments: Stage3Segment[];
   compressionEnabled: boolean;
   renderState: Stage3RenderState;
+  workerState: Stage3WorkerStatus | "not_paired";
+  workerLabel: string | null;
+  workerPlatform: string | null;
+  workerLastSeenAt: string | null;
+  workerPairing: Stage3WorkerPairingResponse | null;
+  isWorkerPairing: boolean;
   isOptimizing: boolean;
   isUploadingBackground: boolean;
   clipStartSec: number;
@@ -97,6 +105,7 @@ type Step3RenderTemplateProps = {
   onBottomFontScaleChange: (value: number) => void;
   onSourceAudioEnabledChange: (value: boolean) => void;
   onMusicGainChange: (value: number) => void;
+  onCreateWorkerPairing: () => void;
 };
 
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -1362,6 +1371,12 @@ export function Step3RenderTemplate({
   segments,
   compressionEnabled,
   renderState,
+  workerState,
+  workerLabel,
+  workerPlatform,
+  workerLastSeenAt,
+  workerPairing,
+  isWorkerPairing,
   isOptimizing,
   isUploadingBackground,
   clipStartSec,
@@ -1399,7 +1414,8 @@ export function Step3RenderTemplate({
   onTopFontScaleChange,
   onBottomFontScaleChange,
   onSourceAudioEnabledChange,
-  onMusicGainChange
+  onMusicGainChange,
+  onCreateWorkerPairing
 }: Step3RenderTemplateProps) {
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
@@ -1677,6 +1693,12 @@ export function Step3RenderTemplate({
   };
 
   const summaryLines = previewVersion?.diff.summary ?? ["Используется текущий live draft без сохраненной версии."];
+  const pairCommand =
+    workerPairing
+      ? typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent)
+        ? workerPairing.commands.powershell
+        : workerPairing.commands.shell
+      : null;
 
   const commitAdvancedControls = () => {
     flushClipCommit(localClipStartSec);
@@ -1928,6 +1950,54 @@ export function Step3RenderTemplate({
               <span className="meta-pill">Версий {displayVersions.length}</span>
             </div>
           </header>
+
+          <section className="control-card">
+            <div className="control-section-head">
+              <div>
+                <h3>Local Executor</h3>
+                <p className="subtle-text">
+                  Тяжёлые preview/render задачи выполняются на локальной машине пользователя, а не на хосте.
+                </p>
+              </div>
+              <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
+                {workerState === "not_paired"
+                  ? "Не подключен"
+                  : workerState === "online"
+                    ? "Online"
+                    : workerState === "busy"
+                      ? "Busy"
+                      : "Offline"}
+              </span>
+            </div>
+            <p className="subtle-text">
+              {workerState === "not_paired"
+                ? "Подключите локальный executor, иначе Stage 3 jobs останутся в очереди."
+                : workerLabel
+                  ? `${workerLabel}${workerPlatform ? ` · ${workerPlatform}` : ""}${
+                      workerLastSeenAt ? ` · последний heartbeat ${formatDateShort(workerLastSeenAt)}` : ""
+                    }`
+                  : "Локальный executor зарегистрирован."}
+            </p>
+            <div className="sticky-action-bar">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  void onCreateWorkerPairing();
+                }}
+                disabled={isWorkerPairing}
+                aria-busy={isWorkerPairing}
+              >
+                {isWorkerPairing ? "Создаю token..." : "Подключить executor"}
+              </button>
+            </div>
+            {pairCommand ? (
+              <div className="control-card" style={{ marginTop: 12 }}>
+                <p className="subtle-text">Команда для этой ОС:</p>
+                <code style={{ display: "block", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{pairCommand}</code>
+              </div>
+            ) : null}
+          </section>
 
           <section className="control-card control-card-priority">
             <div className="control-section-head">

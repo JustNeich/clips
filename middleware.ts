@@ -12,7 +12,8 @@ function isApiPublic(pathname: string): boolean {
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/register") ||
     pathname.startsWith("/api/auth/bootstrap-owner") ||
-    pathname.startsWith("/api/auth/accept-invite")
+    pathname.startsWith("/api/auth/accept-invite") ||
+    pathname.startsWith("/api/stage3/worker/")
   );
 }
 
@@ -21,6 +22,7 @@ export function middleware(request: NextRequest): NextResponse {
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
+    pathname.startsWith("/stage3-worker/") ||
     pathname.startsWith("/api/")
   ) {
     if (pathname.startsWith("/api/") && !isApiPublic(pathname) && !request.cookies.get("clips_session")) {

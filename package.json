@@ -7,10 +7,13 @@
   },
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm run build:stage3-worker",
+    "build:stage3-worker": "node scripts/build-stage3-worker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "stage3-worker": "tsx apps/stage3-worker/index.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
@@ -26,6 +29,8 @@
     "@types/node": "22.10.2",
     "@types/react": "19.0.2",
     "@types/react-dom": "19.0.2",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.6",
     "typescript": "5.7.2"
   }
 }

@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,11 +16,10 @@ import {
   sanitizeClipDuration,
   sanitizeFocusY
 } from "./stage3-media-agent";
+import { maybeDownloadStage3WorkerAsset } from "./stage3-worker-asset-client";
 import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } from "./ytdlp";
 import { Stage3RenderPlan } from "./stage3-agent";
 import { Stage3StateSnapshot } from "../app/components/types";
-import { getChannelAssetById } from "./chat-history";
-import { readChannelAssetFile } from "./channel-assets";
 import {
   ensureStage3SourceCached,
   isStage3HostedRuntime,
@@ -36,6 +34,7 @@ const execFileAsync = promisify(execFile);
 const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
+let remotionRuntimePromise: Promise<RemotionModule> | null = null;
 
 export type Stage3RenderRequestBody = {
   sourceUrl?: string;
@@ -80,30 +79,82 @@ function normalizeCameraMotion(value: unknown): Stage3RenderPlan["cameraMotion"]
   return value === "top_to_bottom" || value === "bottom_to_top" ? value : "disabled";
 }
 
-function ensureRemotionRuntime(): RemotionModule {
-  const runtimeRequire = createRequire(import.meta.url);
-  const rendererModule = runtimeRequire("@remotion/renderer");
-  const bundlerModule = runtimeRequire("@remotion/bundler");
-  const rendererDefault = unwrapDefaultExport(rendererModule);
-  const bundlerDefault = unwrapDefaultExport(bundlerModule);
+async function ensureRemotionRuntime(): Promise<RemotionModule> {
+  if (!remotionRuntimePromise) {
+    remotionRuntimePromise = Promise.all([import("@remotion/renderer"), import("@remotion/bundler")])
+      .then(([rendererModule, bundlerModule]) => {
+        const rendererDefault = unwrapDefaultExport(rendererModule);
+        const bundlerDefault = unwrapDefaultExport(bundlerModule);
 
-  const bundle = resolveFunction([rendererModule, rendererDefault, bundlerDefault], "bundle");
-  const getCompositions = resolveFunction([rendererModule, rendererDefault], "getCompositions");
-  const renderMedia = resolveFunction([rendererModule, rendererDefault], "renderMedia");
-  const selectComposition = resolveFunction([rendererModule, rendererDefault], "selectComposition", true);
+        const bundle = resolveFunction([rendererModule, rendererDefault, bundlerDefault], "bundle");
+        const getCompositions = resolveFunction([rendererModule, rendererDefault], "getCompositions");
+        const renderMedia = resolveFunction([rendererModule, rendererDefault], "renderMedia");
+        const selectComposition = resolveFunction(
+          [rendererModule, rendererDefault],
+          "selectComposition",
+          true
+        );
 
-  return { bundle, getCompositions, renderMedia, selectComposition };
+        return { bundle, getCompositions, renderMedia, selectComposition };
+      })
+      .catch((error) => {
+        remotionRuntimePromise = null;
+        throw error;
+      });
+  }
+  return remotionRuntimePromise;
+}
+
+async function resolveStage3AssetFile(params: {
+  channelId: string;
+  assetId: string;
+  tmpDir: string;
+}): Promise<{ filePath: string; fileName: string; mimeType: string | null } | null> {
+  const remoteAsset = await maybeDownloadStage3WorkerAsset({
+    channelId: params.channelId,
+    assetId: params.assetId,
+    tmpDir: params.tmpDir
+  });
+  if (remoteAsset?.filePath && remoteAsset.fileName) {
+    return {
+      filePath: remoteAsset.filePath,
+      fileName: remoteAsset.fileName,
+      mimeType: remoteAsset.mimeType
+    };
+  }
+
+  const [{ getChannelAssetById }, { readChannelAssetFile }] = await Promise.all([
+    import("./chat-history"),
+    import("./channel-assets")
+  ]);
+  const asset = await getChannelAssetById(params.channelId, params.assetId);
+  if (!asset) {
+    return null;
+  }
+  const file = await readChannelAssetFile({
+    channelId: params.channelId,
+    fileName: asset.fileName
+  });
+  if (!file) {
+    return null;
+  }
+  return {
+    filePath: file.filePath,
+    fileName: asset.fileName,
+    mimeType: asset.mimeType
+  };
 }
 
 async function getRemotionServeUrl(): Promise<string> {
   if (!remotionServeUrlPromise) {
-    const { bundle } = ensureRemotionRuntime();
-    const entryPoint = path.join(process.cwd(), "remotion", "index.tsx");
-    const publicDir = path.join(process.cwd(), "public");
-    remotionServeUrlPromise = bundle({
-      entryPoint,
-      publicDir,
-      ignoreRegisterRootWarning: true
+    remotionServeUrlPromise = ensureRemotionRuntime().then(({ bundle }) => {
+      const entryPoint = path.join(process.cwd(), "remotion", "index.tsx");
+      const publicDir = path.join(process.cwd(), "public");
+      return bundle({
+        entryPoint,
+        publicDir,
+        ignoreRegisterRootWarning: true
+      });
     }).catch((error) => {
       remotionServeUrlPromise = null;
       throw error;
@@ -255,7 +306,7 @@ async function runRemotionRender(params: {
   backgroundAssetMimeType: string | null;
   timeoutMs: number;
 }) {
-  const { getCompositions, renderMedia, selectComposition } = ensureRemotionRuntime();
+  const { getCompositions, renderMedia, selectComposition } = await ensureRemotionRuntime();
   const serveUrl = await getRemotionServeUrl();
 
   const inputProps = {
@@ -545,15 +596,13 @@ export async function renderStage3Video(
 
     let musicFilePath: string | null = null;
     if (body.channelId && renderPlan.musicAssetId) {
-      const musicAsset = await getChannelAssetById(body.channelId, renderPlan.musicAssetId);
-      if (musicAsset) {
-        const musicFile = await readChannelAssetFile({
-          channelId: body.channelId,
-          fileName: musicAsset.fileName
-        });
-        if (musicFile) {
-          musicFilePath = musicFile.filePath;
-        }
+      const musicFile = await resolveStage3AssetFile({
+        channelId: body.channelId,
+        assetId: renderPlan.musicAssetId,
+        tmpDir
+      });
+      if (musicFile) {
+        musicFilePath = musicFile.filePath;
       }
     }
 
@@ -589,30 +638,32 @@ export async function renderStage3Video(
       let avatarAssetMimeType: string | null = null;
       try {
         if (body.channelId && renderPlan.backgroundAssetId) {
-          const asset = await getChannelAssetById(body.channelId, renderPlan.backgroundAssetId);
+          const asset = await resolveStage3AssetFile({
+            channelId: body.channelId,
+            assetId: renderPlan.backgroundAssetId,
+            tmpDir
+          });
           if (asset) {
-            const bgFile = await readChannelAssetFile({ channelId: body.channelId, fileName: asset.fileName });
-            if (bgFile) {
-              const ext = path.extname(asset.fileName) || ".jpg";
-              const localFileName = `background${ext.toLowerCase()}`;
-              backgroundAssetFileName = path.posix.join(remotionAssetBase, localFileName);
-              await fs.copyFile(bgFile.filePath, path.join(remotionAssetDir, localFileName));
-              backgroundAssetMimeType = asset.mimeType;
-            }
+            const ext = path.extname(asset.fileName) || ".jpg";
+            const localFileName = `background${ext.toLowerCase()}`;
+            backgroundAssetFileName = path.posix.join(remotionAssetBase, localFileName);
+            await fs.copyFile(asset.filePath, path.join(remotionAssetDir, localFileName));
+            backgroundAssetMimeType = asset.mimeType;
           }
         }
 
         if (body.channelId && renderPlan.avatarAssetId) {
-          const asset = await getChannelAssetById(body.channelId, renderPlan.avatarAssetId);
+          const asset = await resolveStage3AssetFile({
+            channelId: body.channelId,
+            assetId: renderPlan.avatarAssetId,
+            tmpDir
+          });
           if (asset) {
-            const avatarFile = await readChannelAssetFile({ channelId: body.channelId, fileName: asset.fileName });
-            if (avatarFile) {
-              const ext = path.extname(asset.fileName) || ".jpg";
-              const localFileName = `avatar${ext.toLowerCase()}`;
-              avatarAssetFileName = path.posix.join(remotionAssetBase, localFileName);
-              await fs.copyFile(avatarFile.filePath, path.join(remotionAssetDir, localFileName));
-              avatarAssetMimeType = asset.mimeType;
-            }
+            const ext = path.extname(asset.fileName) || ".jpg";
+            const localFileName = `avatar${ext.toLowerCase()}`;
+            avatarAssetFileName = path.posix.join(remotionAssetBase, localFileName);
+            await fs.copyFile(asset.filePath, path.join(remotionAssetDir, localFileName));
+            avatarAssetMimeType = asset.mimeType;
           }
         }
 

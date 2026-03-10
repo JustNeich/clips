@@ -1,6 +1,7 @@
 import { getSession } from "../../../../../../../lib/stage3-session-store";
 import { resumeAutonomousSession } from "../../../../../../../lib/stage3-agent-autonomous";
 import { applyHostedStage3Limits } from "../../../../../../../lib/stage3-hosted-limits";
+import { resolveStage3ExecutionTarget } from "../../../../../../../lib/stage3-execution";
 import { isStage3HostedBusyError } from "../../../../../../../lib/stage3-server-control";
 import { summarizeUserFacingError } from "../../../../../../../lib/ui-error";
 import { getChatById } from "../../../../../../../lib/chat-history";
@@ -75,12 +76,15 @@ export async function POST(
     const result = await resumeAutonomousSession(
       id,
       mediaId,
+      auth.workspace.id,
+      auth.user.id,
       tuning.options,
       body?.sourceUrl,
       requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
       body?.plannerModel,
       tuning.plannerReasoningEffort,
-      tuning.plannerTimeoutMs
+      tuning.plannerTimeoutMs,
+      resolveStage3ExecutionTarget()
     );
 
     return Response.json(result, { status: 200 });

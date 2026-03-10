@@ -1,4 +1,5 @@
 import { requireAuth, requireChannelVisibility } from "../../../../../lib/auth/guards";
+import { resolveStage3ExecutionTarget } from "../../../../../lib/stage3-execution";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../lib/stage3-job-http";
 import { enqueueAndScheduleStage3Job } from "../../../../../lib/stage3-job-runtime";
 import {
@@ -31,6 +32,7 @@ export async function POST(request: Request): Promise<Response> {
       workspaceId: auth.workspace.id,
       userId: auth.user.id,
       kind: "preview",
+      executionTarget: resolveStage3ExecutionTarget(),
       payloadJson: JSON.stringify({
         ...(body ?? {}),
         sourceUrl: normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "")

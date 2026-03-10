@@ -6,6 +6,7 @@ import {
 import { parseUserIntent } from "../../../../lib/stage3-agent";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 import { runAutonomousOptimization } from "../../../../lib/stage3-agent-autonomous";
+import { resolveStage3ExecutionTarget } from "../../../../lib/stage3-execution";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChatById } from "../../../../lib/chat-history";
 import { requireAuth, requireChannelOperate, requireSharedCodexAvailable } from "../../../../lib/auth/guards";
@@ -150,6 +151,9 @@ export async function POST(request: Request): Promise<Response> {
     const result = await runAutonomousOptimization({
       projectId,
       mediaId: sourceUrl,
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id,
+      executionTarget: resolveStage3ExecutionTarget(),
       sourceUrl,
       goalText,
       options: {

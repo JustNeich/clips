@@ -80,14 +80,46 @@ npm run dev
 
 ## Stage 3 рендер
 
-- Финальный рендер теперь делает Remotion (через `POST /api/stage3/render`).
-- На сервере выполняется:
-  - повторное скачивание исходного видео;
-  - рендер композиции `science-card-v1`;
-  - возврат готового `mp4` в ответе.
+- Финальный рендер и live preview для Stage 3 больше не должны нагружать production web service напрямую.
+- В production тяжелые задачи Stage 3 выполняет локальный worker пользователя:
+  - `preview`
+  - `render`
+  - `source-download`
+  - `agent-media-step`
+- Хост остается control plane:
+  - auth
+  - queue/jobs
+  - artifacts
+  - Codex orchestration
 - Добавлен агент монтажер:
-  - `POST /api/stage3/optimize` подбирает фокус (top/center/bottom), старт 6-секундного клипа и оптимизирует TOP/BOTTOM текст под слоты без выезда.
+  - `POST /api/stage3/optimize` и `POST /api/stage3/agent/run` используют local media subjobs для тяжелого анализа.
   - `POST /api/video/meta` возвращает длительность источника для UI-слайдера.
+
+Подробный rollout-гайд: [docs/stage3-local-worker.md](/Users/neich/dev/clips automations/docs/stage3-local-worker.md)
+
+## Stage 3 local worker
+
+- Поддерживаемые платформы v1:
+  - `macOS arm64/x64`
+  - `Windows x64`
+- Worker pairing доступен прямо из Stage 3 UI через блок `Local Executor`.
+- Для localhost используется repo-local CLI:
+
+```bash
+npm run stage3-worker -- pair --server http://localhost:3000 --token <PAIRING_TOKEN>
+npm run stage3-worker -- start
+```
+
+- Для production UI выдает bootstrap one-liner:
+  - macOS shell command
+  - Windows PowerShell command
+
+Требования на машине пользователя:
+- `Node.js 22+`
+- `npm`
+- `ffmpeg`
+- `ffprobe`
+- `yt-dlp`
 
 ## Connect Codex (device auth)
 
@@ -120,6 +152,10 @@ npm run dev
 - `CODEX_BIN` — путь к бинарнику codex, если Next.js не видит его в PATH.
   Пример для macOS app: `/Applications/Codex.app/Contents/Resources/codex`
 - `REMOTION_RENDER_TIMEOUT_MS` — таймаут Stage 3 рендера в миллисекундах.
+- `STAGE3_DEFAULT_EXECUTION_TARGET` — `local|host`, по умолчанию должен быть `local`.
+- `STAGE3_ALLOW_HOST_EXECUTION` — аварийный fallback на host-heavy execution. Для production должен быть `0`.
+- `STAGE3_WORKER_PAIRING_TTL_SEC` — TTL pairing token в секундах.
+- `STAGE3_WORKER_SESSION_TTL_SEC` — TTL worker session token в секундах.
 - `APP_BOOTSTRAP_SECRET` — обязателен в production и на Vercel для one-time owner bootstrap.
 
 Шаблон:
@@ -164,7 +200,7 @@ cp .env.example .env.local
 
 ## Render deployment (recommended)
 
-Для полного пайплайна на Render используйте не native `Node` runtime, а `Docker`:
+Для полного пайплайна на Render используйте `Docker` runtime:
 
 1. Подключите репозиторий к Render.
 2. Создайте `Web Service` с `Docker` runtime
@@ -177,14 +213,14 @@ cp .env.example .env.local
 
 В репозитории уже есть:
 - `Dockerfile` с установкой `yt-dlp`, `ffmpeg`, `ffprobe` и `codex`
-- `render.yaml` с рекомендованным регионом `Frankfurt`, `Starter` plan и mount path `/var/data`
+- `render.yaml` с рекомендованным регионом `Frankfurt`, `Starter` plan, mount path `/var/data` и local-worker defaults для Stage 3
 
 Если сервис создан как native `Node` web service, он не увидит системные бинарники. В этом случае создайте новый Docker-based service или переведите сервис на `runtime: docker` через Render Blueprint.
 
 ## Ограничения
 
 - Работают только публичные ссылки.
-- Если на сервере нет `yt-dlp`/`ffmpeg`/`ffprobe`, скачивание и Stage 2 не заработают.
+- Если у пользователя нет `yt-dlp`/`ffmpeg`/`ffprobe`, Stage 3 local worker не сможет выполнять preview/render/source-download.
 - Для Stage 2 нужен успешный `Connect Codex` в текущей browser-session.
 - Количество комментариев зависит от того, что реально отдаёт источник/экстрактор `yt-dlp`.
 - Используйте только контент, на который у вас есть права.

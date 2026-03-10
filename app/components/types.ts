@@ -114,6 +114,12 @@ export type Stage3JobKind = "preview" | "render" | "source-download" | "agent-me
 
 export type Stage3JobStatus = "queued" | "running" | "completed" | "failed" | "interrupted";
 
+export type Stage3ExecutionTarget = "host" | "local";
+
+export type Stage3WorkerPlatform = "darwin-arm64" | "darwin-x64" | "win32-x64" | "unknown";
+
+export type Stage3WorkerStatus = "online" | "offline" | "busy";
+
 export type Stage3JobArtifactKind = "video";
 
 export type Stage3JobArtifact = {
@@ -131,6 +137,11 @@ export type Stage3JobSummary = {
   id: string;
   kind: Stage3JobKind;
   status: Stage3JobStatus;
+  executionTarget: Stage3ExecutionTarget;
+  assignedWorkerId: string | null;
+  workerLabel: string | null;
+  leaseUntil: string | null;
+  lastHeartbeatAt: string | null;
   dedupeKey: string | null;
   createdAt: string;
   updatedAt: string;
@@ -145,6 +156,36 @@ export type Stage3JobSummary = {
 
 export type Stage3JobEnvelope = {
   job: Stage3JobSummary;
+};
+
+export type Stage3WorkerSummary = {
+  id: string;
+  label: string;
+  platform: Stage3WorkerPlatform;
+  hostname: string | null;
+  appVersion: string | null;
+  status: Stage3WorkerStatus;
+  lastSeenAt: string | null;
+  currentJobId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Stage3WorkerListResponse = {
+  workers: Stage3WorkerSummary[];
+};
+
+export type Stage3WorkerPairingResponse = {
+  pairingToken: string;
+  expiresAt: string;
+  serverOrigin: string;
+  suggestedLabel: string;
+  commands: {
+    shell: string;
+    powershell: string;
+    direct: string;
+    localDev?: string;
+  };
 };
 
 export type Stage3Segment = {

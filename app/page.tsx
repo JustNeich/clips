@@ -30,6 +30,9 @@ import {
   Stage3RenderState,
   Stage3IterationStopReason,
   Stage3RenderPlan,
+  Stage3WorkerListResponse,
+  Stage3WorkerPairingResponse,
+  Stage3WorkerSummary,
   Stage3Segment,
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionStatus,
@@ -768,6 +771,9 @@ export default function HomePage() {
   const [stage3PreviewState, setStage3PreviewState] = useState<Stage3PreviewState>("idle");
   const [stage3PreviewNotice, setStage3PreviewNotice] = useState<string | null>(null);
   const [stage3PreviewJobId, setStage3PreviewJobId] = useState<string | null>(null);
+  const [stage3Workers, setStage3Workers] = useState<Stage3WorkerSummary[]>([]);
+  const [stage3WorkerPairing, setStage3WorkerPairing] = useState<Stage3WorkerPairingResponse | null>(null);
+  const [isStage3WorkerPairing, setIsStage3WorkerPairing] = useState(false);
   const [stage3AgentPrompt, setStage3AgentPrompt] = useState("");
   const [stage3AgentSessionId, setStage3AgentSessionId] = useState<string | null>(null);
   const [stage3AgentTimeline, setStage3AgentTimeline] = useState<Stage3TimelineResponse | null>(null);
@@ -789,6 +795,12 @@ export default function HomePage() {
   const stage3PreviewRequestKeyRef = useRef<string>("");
   const stage3PreviewRequestIdRef = useRef(0);
   const stage3LastGoodPreviewAtRef = useRef<number | null>(null);
+  const stage3RenderContextRef = useRef<{
+    chatId: string;
+    snapshot: Stage3StateSnapshot;
+    renderTitle: string | null;
+  } | null>(null);
+  const stage3RenderPollIdRef = useRef(0);
   const draftSaveTimerRef = useRef<number | null>(null);
   const draftInFlightRef = useRef<Promise<void> | null>(null);
   const draftPayloadJsonRef = useRef<string>("");
@@ -861,6 +873,11 @@ export default function HomePage() {
     [channelAssets]
   );
   const stage3RenderInProgress = stage3RenderState === "queued" || stage3RenderState === "rendering";
+  const activeStage3Worker = useMemo(
+    () => stage3Workers.find((worker) => worker.status !== "offline") ?? stage3Workers[0] ?? null,
+    [stage3Workers]
+  );
+  const stage3WorkerPanelState = activeStage3Worker?.status ?? (stage3Workers.length > 0 ? "offline" : "not_paired");
 
   const parseError = useCallback(async (response: Response, fallback: string): Promise<string> => {
     const contentType = response.headers.get("content-type") ?? "";
@@ -957,6 +974,37 @@ export default function HomePage() {
     setRuntimeCapabilities(body);
     return body;
   }, [parseError]);
+
+  const refreshStage3Workers = useCallback(async (): Promise<Stage3WorkerSummary[]> => {
+    const response = await fetch("/api/stage3/workers");
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось загрузить локальные Stage 3 executors."));
+    }
+    const body = (await response.json()) as Stage3WorkerListResponse;
+    setStage3Workers(body.workers ?? []);
+    return body.workers ?? [];
+  }, [parseError]);
+
+  const createStage3WorkerPairing = useCallback(async (): Promise<void> => {
+    setIsStage3WorkerPairing(true);
+    try {
+      const response = await fetch("/api/stage3/workers/pairing", {
+        method: "POST"
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Не удалось создать pairing token локального executor."));
+      }
+      const body = (await response.json()) as Stage3WorkerPairingResponse;
+      setStage3WorkerPairing(body);
+      setStatusType("ok");
+      setStatus("Pairing token создан. Запустите локальный Stage 3 worker на своей машине.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(getUiErrorMessage(error, "Не удалось подготовить локальный executor."));
+    } finally {
+      setIsStage3WorkerPairing(false);
+    }
+  }, [getUiErrorMessage, parseError]);
 
   const applyChannelToRenderPlan = useCallback(
     (channel: Channel | null, assets: ChannelAsset[] = []): Stage3RenderPlan => {
@@ -1420,6 +1468,19 @@ export default function HomePage() {
   useEffect(() => {
     void refreshWorkspaceMembers().catch(() => undefined);
   }, [refreshWorkspaceMembers]);
+
+  useEffect(() => {
+    if (isAuthLoading || currentStep !== 3) {
+      return;
+    }
+    void refreshStage3Workers().catch(() => undefined);
+    const timer = window.setInterval(() => {
+      void refreshStage3Workers().catch(() => undefined);
+    }, 10_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [currentStep, isAuthLoading, refreshStage3Workers]);
 
   useEffect(() => {
     if (!activeChannel) {
@@ -2020,6 +2081,11 @@ export default function HomePage() {
           fallbackRenderPlan()
         )
       };
+      stage3RenderContextRef.current = {
+        chatId: chat.id,
+        snapshot: renderSnapshot,
+        renderTitle: selectedTitle?.title ?? null
+      };
 
       await appendEvent(chat.id, {
         role: "user",
@@ -2048,49 +2114,28 @@ export default function HomePage() {
       if (!response.ok) {
         throw new Error(await parseError(response, "Render export failed."));
       }
-      let job = ((await response.json()) as Stage3JobEnvelope).job;
+      const job = ((await response.json()) as Stage3JobEnvelope).job;
       setStage3RenderJobId(job.id);
-
-      while (job.status === "queued" || job.status === "running") {
-        setStage3RenderState(job.status === "queued" ? "queued" : "rendering");
-        await new Promise<void>((resolve) => {
-          window.setTimeout(resolve, 750);
-        });
-        const statusResponse = await fetchWithTimeout(`/api/stage3/render/jobs/${job.id}`, {}, 15_000);
-        if (!statusResponse.ok) {
-          throw new Error(await parseError(statusResponse, "Render export failed."));
-        }
-        job = ((await statusResponse.json()) as Stage3JobEnvelope).job;
+      if (job.status === "completed" && job.artifact?.downloadUrl) {
+        triggerUrlDownload(job.artifact.downloadUrl, job.artifact.fileName);
+        setStage3RenderState("ready");
+        setStage3RenderJobId(null);
+        setStatusType("ok");
+        setStatus("Render export complete.");
+        return;
       }
-
-      if (job.status !== "completed" || !job.artifact?.downloadUrl) {
+      if (job.status === "failed" || job.status === "interrupted") {
         throw new Error(job.errorMessage ?? "Render export failed.");
       }
-
-      setStage3RenderState("ready");
-      const outputName = job.artifact.fileName;
-      triggerUrlDownload(job.artifact.downloadUrl, outputName);
-
-      await appendEvent(chat.id, {
-        role: "assistant",
-        type: "note",
-        text: `Stage 3 export finished: ${outputName} (title ${selectedTitle?.title ?? "n/a"}, clip ${renderSnapshot.clipStartSec.toFixed(1)}-${(
-          renderSnapshot.clipStartSec + CLIP_DURATION_SEC
-        ).toFixed(1)}s, focus ${Math.round(renderSnapshot.focusY * 100)}%)`,
-        data: {
-          kind: "stage3-render-export",
-          fileName: outputName,
-          renderTitle: selectedTitle?.title ?? null,
-          clipStartSec: renderSnapshot.clipStartSec,
-          clipEndSec: renderSnapshot.clipStartSec + CLIP_DURATION_SEC,
-          focusY: renderSnapshot.focusY,
-          templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
-          createdAt: new Date().toISOString()
-        } satisfies ChatRenderExportRef
-      });
-
+      setStage3RenderState(job.status === "queued" ? "queued" : job.status === "running" ? "rendering" : "ready");
       setStatusType("ok");
-      setStatus("Render export complete.");
+      setStatus(
+        job.executionTarget === "local"
+          ? job.workerLabel
+            ? `Рендер выполняется на ${job.workerLabel}.`
+            : "Рендер поставлен в очередь локального executor."
+          : "Рендер запущен."
+      );
     } catch (error) {
       setStage3RenderState("error");
       const message = getUiErrorMessage(error, "Render export failed.");
@@ -2106,6 +2151,128 @@ export default function HomePage() {
       setBusyAction("");
     }
   };
+
+  useEffect(() => {
+    if (!stage3RenderJobId || (stage3RenderState !== "queued" && stage3RenderState !== "rendering")) {
+      return;
+    }
+
+    const pollId = stage3RenderPollIdRef.current + 1;
+    stage3RenderPollIdRef.current = pollId;
+    const controller = new AbortController();
+
+    const isStale = () => controller.signal.aborted || stage3RenderPollIdRef.current !== pollId;
+
+    const run = async (): Promise<void> => {
+      let jobId = stage3RenderJobId;
+
+      while (!isStale()) {
+        const response = await fetchWithTimeout(`/api/stage3/render/jobs/${jobId}`, {
+          signal: controller.signal
+        }, 15_000);
+        if (!response.ok) {
+          throw new Error(await parseError(response, "Render export failed."));
+        }
+        const job = ((await response.json()) as Stage3JobEnvelope).job;
+        jobId = job.id;
+        setStage3RenderJobId(job.id);
+
+        if (job.status === "queued") {
+          setStage3RenderState("queued");
+          setStatusType("ok");
+          setStatus(
+            job.executionTarget === "local"
+              ? job.workerLabel
+                ? `Рендер ожидает ${job.workerLabel}.`
+                : "Ожидает локальный executor."
+              : "Рендер в очереди."
+          );
+        } else if (job.status === "running") {
+          setStage3RenderState("rendering");
+          setStatusType("ok");
+          setStatus(
+            job.executionTarget === "local"
+              ? job.workerLabel
+                ? `Рендер выполняется на ${job.workerLabel}.`
+                : "Локальный executor выполняет рендер."
+              : "Рендер выполняется."
+          );
+        } else if (job.status === "completed" && job.artifact?.downloadUrl) {
+          const renderContext = stage3RenderContextRef.current;
+          triggerUrlDownload(job.artifact.downloadUrl, job.artifact.fileName);
+          if (renderContext?.chatId) {
+            await appendEvent(renderContext.chatId, {
+              role: "assistant",
+              type: "note",
+              text: `Stage 3 export finished: ${job.artifact.fileName} (title ${renderContext.renderTitle ?? "n/a"}, clip ${renderContext.snapshot.clipStartSec.toFixed(1)}-${(
+                renderContext.snapshot.clipStartSec + CLIP_DURATION_SEC
+              ).toFixed(1)}s, focus ${Math.round(renderContext.snapshot.focusY * 100)}%)`,
+              data: {
+                kind: "stage3-render-export",
+                fileName: job.artifact.fileName,
+                renderTitle: renderContext.renderTitle,
+                clipStartSec: renderContext.snapshot.clipStartSec,
+                clipEndSec: renderContext.snapshot.clipStartSec + CLIP_DURATION_SEC,
+                focusY: renderContext.snapshot.focusY,
+                templateId: renderContext.snapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
+                createdAt: new Date().toISOString()
+              } satisfies ChatRenderExportRef
+            });
+          }
+          setStage3RenderState("ready");
+          setStage3RenderJobId(null);
+          setStatusType("ok");
+          setStatus("Render export complete.");
+          void refreshStage3Workers().catch(() => undefined);
+          return;
+        } else {
+          throw new Error(job.errorMessage ?? "Render export failed.");
+        }
+
+        await new Promise<void>((resolve) => {
+          const timer = window.setTimeout(() => resolve(), 1000);
+          controller.signal.addEventListener(
+            "abort",
+            () => {
+              window.clearTimeout(timer);
+              resolve();
+            },
+            { once: true }
+          );
+        });
+      }
+    };
+
+    void run().catch(async (error) => {
+      if (isAbortError(error) || isStale()) {
+        return;
+      }
+      setStage3RenderState("error");
+      const chatId = stage3RenderContextRef.current?.chatId ?? activeChat?.id ?? null;
+      const message = getUiErrorMessage(error, "Render export failed.");
+      if (chatId) {
+        await appendEvent(chatId, {
+          role: "assistant",
+          type: "error",
+          text: message
+        }).catch(() => undefined);
+      }
+      setStatusType("error");
+      setStatus(message);
+    });
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    activeChat?.id,
+    appendEvent,
+    getUiErrorMessage,
+    parseError,
+    refreshStage3Workers,
+    stage3RenderJobId,
+    stage3RenderState
+  ]);
 
   const handleOptimizeStage3 = async (): Promise<void> => {
     const chat = requireActiveChat();
@@ -3189,7 +3356,17 @@ export default function HomePage() {
         }
 
         setStage3PreviewState(job.status === "queued" ? "retrying" : "loading");
-        setStage3PreviewNotice(job.status === "queued" ? "Предпросмотр в очереди..." : "Обновляю предпросмотр...");
+        if (job.executionTarget === "local") {
+          setStage3PreviewNotice(
+            job.status === "queued"
+              ? "Ожидает локальный executor..."
+              : job.workerLabel
+                ? `Предпросмотр выполняется на ${job.workerLabel}...`
+                : "Локальный executor обновляет предпросмотр..."
+          );
+        } else {
+          setStage3PreviewNotice(job.status === "queued" ? "Предпросмотр в очереди..." : "Обновляю предпросмотр...");
+        }
 
         await new Promise<void>((resolve) => {
           const timer = window.setTimeout(() => resolve(), 500);
@@ -4013,6 +4190,12 @@ export default function HomePage() {
           bottomText={stage3BottomText}
           segments={stage3RenderPlan.segments}
           compressionEnabled={stage3RenderPlan.timingMode === "compress"}
+          workerState={stage3WorkerPanelState}
+          workerLabel={activeStage3Worker?.label ?? null}
+          workerPlatform={activeStage3Worker?.platform ?? null}
+          workerLastSeenAt={activeStage3Worker?.lastSeenAt ?? null}
+          workerPairing={stage3WorkerPairing}
+          isWorkerPairing={isStage3WorkerPairing}
           clipStartSec={stage3ClipStartSec}
           clipDurationSec={CLIP_DURATION_SEC}
           sourceDurationSec={sourceDurationSec}
@@ -4230,6 +4413,9 @@ export default function HomePage() {
               )
             )
           }
+          onCreateWorkerPairing={() => {
+            void createStage3WorkerPairing();
+          }}
           onExport={handleExportTemplate}
         />
       ) : null}
