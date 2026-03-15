@@ -60,20 +60,37 @@ mkdir -p "$PUBLIC_DIR"
 curl -fsSL "${SERVER%/}/stage3-worker/clips-stage3-worker.cjs" -o "$BUNDLE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/manifest.json" -o "$MANIFEST_PATH"
-REMOTION_FILES=(
-  "index.tsx"
-  "science-card-v1.tsx"
+mapfile -t REMOTION_FILES < <(
+  node -e '
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const files = Array.isArray(manifest.remotionFiles) ? manifest.remotionFiles : ["index.tsx", "science-card-v1.tsx"];
+for (const file of files) {
+  if (typeof file === "string" && file.trim()) console.log(file.trim());
+}
+' "$MANIFEST_PATH"
 )
-LIB_FILES=(
-  "stage3-template.ts"
-  "stage3-constants.ts"
-  "template-scene.tsx"
-  "template-calibration-types.ts"
-  "auto-fit-template-scene.tsx"
-  "stage3-template-core.ts"
-  "stage3-template-renderer.tsx"
-  "stage3-template-runtime.tsx"
+mapfile -t LIB_FILES < <(
+  node -e '
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const files = Array.isArray(manifest.libFiles) ? manifest.libFiles : [
+  "stage3-template.ts",
+  "stage3-constants.ts",
+  "template-scene.tsx",
+  "template-calibration-types.ts",
+  "auto-fit-template-scene.tsx",
+  "stage3-template-core.ts",
+  "stage3-render-variation.ts",
+  "stage3-template-spec.ts",
+  "stage3-template-renderer.tsx",
+  "stage3-template-runtime.tsx",
   "stage3-template-registry.ts"
+];
+for (const file of files) {
+  if (typeof file === "string" && file.trim()) console.log(file.trim());
+}
+' "$MANIFEST_PATH"
 )
 for FILE in "${REMOTION_FILES[@]}"; do
   curl -fsSL "${SERVER%/}/stage3-worker/remotion/${FILE}" -o "${REMOTION_DIR}/${FILE}"

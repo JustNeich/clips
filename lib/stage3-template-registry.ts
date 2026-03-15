@@ -4,6 +4,7 @@ import {
   SCIENCE_CARD_V3_TEMPLATE_ID,
   SCIENCE_CARD_V4_TEMPLATE_ID,
   SCIENCE_CARD_V5_TEMPLATE_ID,
+  SCIENCE_CARD_V6_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   TURBO_FACE_TEMPLATE_ID,
   getTemplateById,
@@ -86,6 +87,15 @@ const TEMPLATE_VARIANTS: TemplateVariant[] = [
       usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_V5_TEMPLATE_ID),
       overlayTint: "linear-gradient(180deg, rgba(112, 58, 27, 0.08), rgba(112, 58, 27, 0.02))",
       avatarBorderColor: "rgba(122, 58, 25, 0.26)",
+      previewFrameMode: "full-frame"
+    }
+  },
+  {
+    id: SCIENCE_CARD_V6_TEMPLATE_ID,
+    label: "Science Card Arcade",
+    runtime: {
+      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_V6_TEMPLATE_ID),
+      avatarBorderColor: "rgba(79, 217, 42, 0.34)",
       previewFrameMode: "full-frame"
     }
   }

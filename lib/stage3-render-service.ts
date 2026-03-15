@@ -26,6 +26,13 @@ import {
   isStage3HostedRuntime,
   runHostedStage3HeavyJob
 } from "./stage3-server-control";
+import {
+  buildStage3VariationManifest,
+  createStage3SignalFallbackProfile,
+  createStage3VariationProfile,
+  Stage3VariationManifest,
+  Stage3VariationProfile
+} from "./stage3-render-variation";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -69,6 +76,7 @@ export type Stage3RenderRequestBody = {
   agentPrompt?: string;
   renderPlan?: Partial<Stage3RenderPlan>;
   snapshot?: Partial<Stage3StateSnapshot>;
+  variationSeed?: string;
 };
 
 export type Stage3RenderedVideo = {
@@ -77,6 +85,8 @@ export type Stage3RenderedVideo = {
   topCompacted: boolean;
   bottomCompacted: boolean;
   cleanupDir: string;
+  variationManifest: Stage3VariationManifest;
+  variationManifestPath: string;
 };
 
 type AsyncFn = (...args: any[]) => Promise<any>;
@@ -254,11 +264,15 @@ function buildRenderFileStem(rawTitle: string | null | undefined, fallback: stri
   return fallbackStem || "RENDER";
 }
 
-async function rewriteRenderedMetadata(params: {
+async function finalizeRenderedOutput(params: {
   inputPath: string;
   outputPath: string;
   metadataTitle: string | null;
+  variationProfile: Stage3VariationProfile;
+  variationManifest: Stage3VariationManifest;
+  variationManifestPath: string;
 }): Promise<void> {
+  const variationEnabled = params.variationProfile.appliedMode !== "off";
   const args = [
     "-y",
     "-i",
@@ -272,17 +286,25 @@ async function rewriteRenderedMetadata(params: {
     "-map_metadata:s:a",
     "-1",
     "-map_chapters",
-    "-1",
-    "-fflags",
-    "+bitexact",
-    "-flags:v",
-    "+bitexact",
-    "-flags:a",
-    "+bitexact",
+    "-1"
+  ];
+
+  if (!variationEnabled) {
+    args.push(
+      "-fflags",
+      "+bitexact",
+      "-flags:v",
+      "+bitexact",
+      "-flags:a",
+      "+bitexact"
+    );
+  }
+
+  args.push(
     "-c",
     "copy",
     "-movflags",
-    "+faststart",
+    variationEnabled ? "+faststart+use_metadata_tags" : "+faststart",
     "-empty_hdlr_name",
     "1",
     "-write_tmcd",
@@ -303,10 +325,23 @@ async function rewriteRenderedMetadata(params: {
     "creation_time=",
     "-metadata",
     "encoder="
-  ];
+  );
 
   if (params.metadataTitle) {
     args.push("-metadata", `title=${params.metadataTitle}`);
+  }
+
+  if (variationEnabled) {
+    args.push(
+      "-metadata",
+      `${params.variationProfile.container.metadataTagKey}=${params.variationProfile.seed}`,
+      "-metadata",
+      `variation_profile_version=${params.variationProfile.profileVersion}`,
+      "-metadata",
+      `variation_mode=${params.variationProfile.appliedMode}`,
+      "-metadata",
+      `variation_nonce=${params.variationProfile.container.metadataNonce}`
+    );
   }
 
   args.push(params.outputPath);
@@ -315,6 +350,8 @@ async function rewriteRenderedMetadata(params: {
     timeout: 90_000,
     maxBuffer: 1024 * 1024 * 8
   });
+
+  await fs.writeFile(params.variationManifestPath, JSON.stringify(params.variationManifest, null, 2), "utf-8");
 }
 
 async function runRemotionRender(params: {
@@ -348,12 +385,13 @@ async function runRemotionRender(params: {
     topCompacted: boolean;
     bottomCompacted: boolean;
   };
+  variationProfile: Stage3VariationProfile;
   timeoutMs: number;
-}) {
+}): Promise<Stage3VariationProfile> {
   const { getCompositions, renderMedia, selectComposition } = await ensureRemotionRuntime();
   const serveUrl = params.serveUrl;
 
-  const inputProps = {
+  const buildInputProps = (variationProfile: Stage3VariationProfile) => ({
     templateId: params.templateId,
     sourceVideoFileName: params.sourceVideoFileName,
     topText: params.topText,
@@ -372,8 +410,11 @@ async function runRemotionRender(params: {
     avatarAssetMimeType: params.avatarAssetMimeType,
     backgroundAssetFileName: params.backgroundAssetFileName,
     backgroundAssetMimeType: params.backgroundAssetMimeType,
-    textFit: params.textFit
-  };
+    textFit: params.textFit,
+    variationProfile
+  });
+
+  const inputProps = buildInputProps(params.variationProfile);
 
   const composition =
     (selectComposition
@@ -390,8 +431,10 @@ async function runRemotionRender(params: {
     serveUrl,
     outputLocation: params.outputPath,
     inputProps,
-    codec: "h264",
-    crf: 18,
+    codec: params.variationProfile.encode.codec,
+    crf: params.variationProfile.encode.crf,
+    pixelFormat: params.variationProfile.encode.pixelFormat,
+    x264Preset: params.variationProfile.encode.x264Preset,
     logLevel: "warn",
     timeoutInMilliseconds: params.timeoutMs,
     concurrency: isMemoryConstrainedRuntime() ? MEMORY_CONSTRAINED_REMOTION_CONCURRENCY : null,
@@ -404,24 +447,59 @@ async function runRemotionRender(params: {
       : undefined,
     offthreadVideoThreads: isMemoryConstrainedRuntime() ? 1 : undefined,
     offthreadVideoCacheSizeInBytes: isMemoryConstrainedRuntime() ? 32 * 1024 * 1024 : undefined,
-    mediaCacheSizeInBytes: isMemoryConstrainedRuntime() ? 32 * 1024 * 1024 : undefined
+    mediaCacheSizeInBytes: isMemoryConstrainedRuntime() ? 32 * 1024 * 1024 : undefined,
+    ffmpegOverride: ({ type, args }: { type: "pre-stitcher" | "stitcher"; args: string[] }) => {
+      if (type !== "stitcher" || args.length === 0) {
+        return args;
+      }
+      const outputLocation = args.at(-1);
+      if (!outputLocation) {
+        return args;
+      }
+      return [
+        ...args.slice(0, -1),
+        "-g",
+        String(params.variationProfile.encode.keyintFrames),
+        "-keyint_min",
+        String(params.variationProfile.encode.keyintMinFrames),
+        outputLocation
+      ];
+    }
+  };
+
+  const renderOnce = async (props: typeof inputProps) => {
+    try {
+      await renderMedia({
+        ...renderArgs,
+        inputProps: props
+      });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+      const shouldRetryWithLegacyProps =
+        message.includes("inputprops") ||
+        (message.includes("props") && (message.includes("missing") || message.includes("unexpected")));
+      if (!shouldRetryWithLegacyProps) {
+        throw error;
+      }
+      await renderMedia({
+        ...renderArgs,
+        props,
+        inputProps: undefined
+      });
+    }
   };
 
   try {
-    await renderMedia(renderArgs);
+    await renderOnce(inputProps);
+    return params.variationProfile;
   } catch (error) {
-    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-    const shouldRetryWithLegacyProps =
-      message.includes("inputprops") ||
-      (message.includes("props") && (message.includes("missing") || message.includes("unexpected")));
-    if (!shouldRetryWithLegacyProps) {
+    if (!params.variationProfile.signal.enabled || params.variationProfile.appliedMode !== "hybrid") {
       throw error;
     }
-    await renderMedia({
-      ...renderArgs,
-      props: inputProps,
-      inputProps: undefined
-    });
+    const fallbackProfile = createStage3SignalFallbackProfile(params.variationProfile);
+    await renderOnce(buildInputProps(fallbackProfile));
+    return fallbackProfile;
   }
 }
 
@@ -692,6 +770,18 @@ export async function renderStage3Video(
     const outputStem = buildRenderFileStem(body.renderTitle, source.fileName);
     const remotionOutputPath = path.join(tmpDir, "render.raw.mp4");
     const outputPath = path.join(tmpDir, `${outputStem}.mp4`);
+    const variationManifestPath = path.join(tmpDir, `${outputStem}.variation.json`);
+    const variationProfile = createStage3VariationProfile({
+      requestedSeed: body.variationSeed
+    });
+    let appliedVariationManifest = buildStage3VariationManifest({
+      profile: variationProfile,
+      templateId: renderPlan.templateId || STAGE3_TEMPLATE_ID,
+      snapshotHash: templateSnapshot.snapshotHash,
+      specRevision: templateSnapshot.specRevision,
+      fitRevision: templateSnapshot.fitRevision,
+      outputName: `${outputStem}.mp4`
+    });
 
     await runHostedStage3HeavyJob(async () => {
       const serveUrl = await getRemotionServeUrl();
@@ -749,7 +839,7 @@ export async function renderStage3Video(
           }
         }
 
-        await runRemotionRender({
+        const appliedVariationProfile = await runRemotionRender({
           serveUrl,
           templateId: renderPlan.templateId || STAGE3_TEMPLATE_ID,
           outputPath: remotionOutputPath,
@@ -780,13 +870,26 @@ export async function renderStage3Video(
             topCompacted: templateSnapshot.fit.topCompacted,
             bottomCompacted: templateSnapshot.fit.bottomCompacted
           },
+          variationProfile,
           timeoutMs
         });
 
-        await rewriteRenderedMetadata({
+        appliedVariationManifest = buildStage3VariationManifest({
+          profile: appliedVariationProfile,
+          templateId: renderPlan.templateId || STAGE3_TEMPLATE_ID,
+          snapshotHash: templateSnapshot.snapshotHash,
+          specRevision: templateSnapshot.specRevision,
+          fitRevision: templateSnapshot.fitRevision,
+          outputName: `${outputStem}.mp4`
+        });
+
+        await finalizeRenderedOutput({
           inputPath: remotionOutputPath,
           outputPath,
-          metadataTitle
+          metadataTitle,
+          variationProfile: appliedVariationProfile,
+          variationManifest: appliedVariationManifest,
+          variationManifestPath
         });
       } finally {
         await fs.rm(remotionAssetDir, { recursive: true, force: true }).catch(() => undefined);
@@ -801,7 +904,9 @@ export async function renderStage3Video(
       outputName: `${outputStem}.mp4`,
       topCompacted: templateSnapshot.fit.topCompacted,
       bottomCompacted: templateSnapshot.fit.bottomCompacted,
-      cleanupDir: tmpDir
+      cleanupDir: tmpDir,
+      variationManifest: appliedVariationManifest,
+      variationManifestPath
     };
   } catch (error) {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);

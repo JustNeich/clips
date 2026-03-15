@@ -10,6 +10,7 @@ import {
   SCIENCE_CARD_V3_TEMPLATE_ID,
   SCIENCE_CARD_V4_TEMPLATE_ID,
   SCIENCE_CARD_V5_TEMPLATE_ID,
+  SCIENCE_CARD_V6_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   TURBO_FACE_TEMPLATE_ID,
   Stage3TemplateConfig,
@@ -229,7 +230,8 @@ function resolveTopHighlightPhrases(templateId: string, content: TemplateContent
   if (
     templateId === SCIENCE_CARD_V2_TEMPLATE_ID ||
     templateId === SCIENCE_CARD_V4_TEMPLATE_ID ||
-    templateId === SCIENCE_CARD_V5_TEMPLATE_ID
+    templateId === SCIENCE_CARD_V5_TEMPLATE_ID ||
+    templateId === SCIENCE_CARD_V6_TEMPLATE_ID
   ) {
     const inferred = inferScienceCardV2HighlightPhrases(topText);
     return inferred.length > 0 ? inferred : undefined;
@@ -560,6 +562,139 @@ function resolveScienceShellVisuals(
     };
   }
 
+  if (templateId === SCIENCE_CARD_V6_TEMPLATE_ID) {
+    return {
+      shellBackdropNode: (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              left: regions.shell.x + 14,
+              top: regions.shell.y + 16,
+              width: regions.shell.width,
+              height: regions.shell.height,
+              borderRadius: templateConfig.card.radius,
+              background: "rgba(18, 20, 23, 0.08)",
+              pointerEvents: "none"
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: regions.shell.x - 18,
+              top: regions.shell.y + 60,
+              width: 74,
+              height: 154,
+              borderRadius: 28,
+              background: "#8df33d",
+              pointerEvents: "none"
+            }}
+          />
+        </>
+      ),
+      shellFrameNode: (
+        <div
+          style={{
+            position: "absolute",
+            left: regions.shell.x + 12,
+            top: regions.shell.y + 12,
+            width: regions.shell.width - 24,
+            height: regions.shell.height - 24,
+            borderRadius: Math.max(12, templateConfig.card.radius - 8),
+            border: "2px solid rgba(18, 20, 23, 0.08)",
+            boxSizing: "border-box",
+            pointerEvents: "none"
+          }}
+        />
+      ),
+      topStyle: {
+        background: palette.topSectionFill,
+        borderBottom: "4px solid #121417"
+      },
+      mediaStyle: {
+        background: "#1a1c20"
+      },
+      mediaNode: (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              inset: 16,
+              borderRadius: 18,
+              border: "3px solid #121417",
+              boxSizing: "border-box",
+              pointerEvents: "none"
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              right: 16,
+              bottom: 16,
+              width: 20,
+              height: 20,
+              borderRadius: 6,
+              background: "#8df33d",
+              pointerEvents: "none"
+            }}
+          />
+        </>
+      ),
+      bottomStyle: {
+        background: palette.bottomSectionFill,
+        borderTop: "4px solid #121417"
+      },
+      authorStyle: {
+        background: "#fffdf8",
+        borderBottom: "2px solid rgba(18, 20, 23, 0.12)"
+      },
+      bottomTextWrapStyle: {
+        background: "#f7f4ea",
+        paddingLeft: 52
+      },
+      bottomTextNode: (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              left: 20,
+              top: 18,
+              width: 10,
+              height: 10,
+              borderRadius: 3,
+              background: "#121417",
+              pointerEvents: "none"
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 36,
+              top: 18,
+              width: 10,
+              height: 10,
+              borderRadius: 3,
+              background: "#8df33d",
+              pointerEvents: "none"
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 20,
+              top: 38,
+              bottom: 18,
+              width: 10,
+              borderRadius: 999,
+              background: "#121417",
+              pointerEvents: "none"
+            }}
+          />
+        </>
+      )
+    };
+  }
+
   return {};
 }
 
@@ -690,6 +825,54 @@ export function TemplateBackdrop({
     );
   }
 
+  if (templateId === SCIENCE_CARD_V6_TEMPLATE_ID) {
+    return (
+      <>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "#ebe5da"
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: 76,
+            top: 118,
+            width: 126,
+            height: 126,
+            borderRadius: 36,
+            background: "rgba(141, 243, 61, 0.16)"
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            right: 88,
+            top: 242,
+            width: 82,
+            height: 82,
+            borderRadius: 22,
+            border: "3px solid rgba(18, 20, 23, 0.08)",
+            boxSizing: "border-box"
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: 88,
+            bottom: 224,
+            width: 136,
+            height: 18,
+            borderRadius: 999,
+            background: "rgba(18, 20, 23, 0.1)"
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div
       style={{
@@ -777,6 +960,7 @@ function renderDefaultAvatar(
   const isScienceCardV3 = templateId === SCIENCE_CARD_V3_TEMPLATE_ID;
   const isScienceCardV4 = templateId === SCIENCE_CARD_V4_TEMPLATE_ID;
   const isScienceCardV5 = templateId === SCIENCE_CARD_V5_TEMPLATE_ID;
+  const isScienceCardV6 = templateId === SCIENCE_CARD_V6_TEMPLATE_ID;
   const templateConfig = getTemplateById(templateId || STAGE3_TEMPLATE_ID);
   const author = templateConfig.author;
   const avatarSize = sizeOverride ?? author.avatarSize;
@@ -792,6 +976,8 @@ function renderDefaultAvatar(
     borderColor = "rgba(101, 224, 255, 0.3)";
   } else if (isScienceCardV5) {
     borderColor = "rgba(122, 58, 25, 0.26)";
+  } else if (isScienceCardV6) {
+    borderColor = "rgba(79, 217, 42, 0.34)";
   }
 
   let background = `radial-gradient(circle at 30% 30%, ${palette.topSectionFill}, ${palette.cardFill} 70%, #20506f)`;
@@ -809,6 +995,8 @@ function renderDefaultAvatar(
   } else if (isScienceCardV5) {
     background =
       "radial-gradient(circle at 30% 30%, rgba(255, 224, 193, 0.98), rgba(204, 106, 54, 0.94) 62%, rgba(78, 29, 14, 0.98) 100%)";
+  } else if (isScienceCardV6) {
+    background = "#121417";
   }
   return (
     <div
@@ -818,7 +1006,7 @@ function renderDefaultAvatar(
         borderRadius: 999,
         border: `${author.avatarBorder}px solid ${borderColor}`,
         background: isScienceCardV1 ? "#d9d9d9" : background,
-        color: "rgba(255,255,255,0.95)",
+        color: isScienceCardV6 ? "#8df33d" : "rgba(255,255,255,0.95)",
         display: "grid",
         placeItems: "center",
         fontFamily: '"Inter","Helvetica Neue",Helvetica,sans-serif',

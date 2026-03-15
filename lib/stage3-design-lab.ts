@@ -4,7 +4,8 @@ import {
   SCIENCE_CARD_V2_TEMPLATE_ID,
   SCIENCE_CARD_V3_TEMPLATE_ID,
   SCIENCE_CARD_V4_TEMPLATE_ID,
-  SCIENCE_CARD_V5_TEMPLATE_ID
+  SCIENCE_CARD_V5_TEMPLATE_ID,
+  SCIENCE_CARD_V6_TEMPLATE_ID
 } from "./stage3-template";
 import { getTemplateVariant } from "./stage3-template-registry";
 
@@ -142,6 +143,25 @@ export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
       "Тёплый тон должен ощущаться intentional и print-like, а не грязно-коричневым.",
       "Обводка и тень должны собирать poster energy без визуальной тяжести Facebook-meme card.",
       "Italic bottom quote должен добавлять характера, но не ломать читаемость."
+    ]
+  },
+  {
+    templateId: SCIENCE_CARD_V6_TEMPLATE_ID,
+    label: getTemplateVariant(SCIENCE_CARD_V6_TEMPLATE_ID).label,
+    channelName: "Science Snack",
+    channelHandle: "@Science_Snack_1",
+    topText:
+      "This raccoon looks like he clocked into a side quest, stole the main-character loot, and still has enough confidence left to stare directly into the camera.",
+    bottomText:
+      "The best meme templates feel instant and effortless. This one stays simple on purpose, then sneaks in just enough punch through the outline, accent hits and chunky hierarchy.",
+    note:
+      "Flat arcade-style meme card with no gradients, stronger silhouette and a small dopamine hit from lime accents, offset shadow and sticker-like framing.",
+    defaultPreviewScale: 0.31,
+    initialStatus: "queued",
+    checklist: [
+      "Карточка должна выглядеть современной и мемной, но не как noisy gamer overlay.",
+      "Никаких градиентов: интерес собирается плоскими формами, контрастом и акцентными блоками.",
+      "Top/video/meta/bottom остаются максимально простыми и мгновенно читаемыми в shorts/reels контексте."
     ]
   }
 ];

@@ -31,21 +31,30 @@ function Install-ClipsStage3Worker {
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/clips-stage3-worker.cjs" -OutFile $bundlePath
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/package.json" -OutFile $packagePath
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/manifest.json" -OutFile $manifestPath
-  $remotionFiles = @(
-    "index.tsx",
-    "science-card-v1.tsx"
-  )
-  $libFiles = @(
-    "stage3-template.ts",
-    "stage3-constants.ts",
-    "template-scene.tsx",
-    "template-calibration-types.ts",
-    "auto-fit-template-scene.tsx",
-    "stage3-template-core.ts",
-    "stage3-template-renderer.tsx",
-    "stage3-template-runtime.tsx",
-    "stage3-template-registry.ts"
-  )
+  $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+  $remotionFiles = @($manifest.remotionFiles)
+  if ($remotionFiles.Count -eq 0) {
+    $remotionFiles = @(
+      "index.tsx",
+      "science-card-v1.tsx"
+    )
+  }
+  $libFiles = @($manifest.libFiles)
+  if ($libFiles.Count -eq 0) {
+    $libFiles = @(
+      "stage3-template.ts",
+      "stage3-constants.ts",
+      "template-scene.tsx",
+      "template-calibration-types.ts",
+      "auto-fit-template-scene.tsx",
+      "stage3-template-core.ts",
+      "stage3-render-variation.ts",
+      "stage3-template-spec.ts",
+      "stage3-template-renderer.tsx",
+      "stage3-template-runtime.tsx",
+      "stage3-template-registry.ts"
+    )
+  }
   foreach ($file in $remotionFiles) {
     Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/$file" -OutFile (Join-Path $remotionDir $file)
   }

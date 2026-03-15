@@ -61,7 +61,13 @@ export async function executeStage3HeavyJobPayload(
       resultJson: JSON.stringify({
         outputName: rendered.outputName,
         topCompacted: rendered.topCompacted,
-        bottomCompacted: rendered.bottomCompacted
+        bottomCompacted: rendered.bottomCompacted,
+        variation: {
+          seed: rendered.variationManifest.seed,
+          requestedMode: rendered.variationManifest.requestedMode,
+          appliedMode: rendered.variationManifest.appliedMode,
+          profileVersion: rendered.variationManifest.profileVersion
+        }
       }),
       artifact: {
         filePath: rendered.filePath,

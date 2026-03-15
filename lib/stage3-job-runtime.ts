@@ -17,7 +17,6 @@ import {
   Stage3JobRecord
 } from "./stage3-job-store";
 import { publishStage3VideoArtifact } from "./stage3-job-artifacts";
-import { executeStage3HeavyJobPayload, summarizeStage3HeavyJobError } from "./stage3-job-executor";
 import { isHostStage3ExecutionAllowed } from "./stage3-execution";
 import { isStage3HostedBusyError } from "./stage3-server-control";
 
@@ -86,12 +85,21 @@ function isTerminalStatus(status: Stage3JobStatus): boolean {
   return status === "completed" || status === "failed" || status === "interrupted";
 }
 
-function normalizeJobFailure(job: Stage3JobRecord, error: unknown): {
+async function summarizeJobFailure(job: Stage3JobRecord, error: unknown): Promise<string> {
+  try {
+    const executor = await import("./stage3-job-executor");
+    return executor.summarizeStage3HeavyJobError(job.kind, error);
+  } catch {
+    return error instanceof Error ? error.message : "Stage 3 job failed.";
+  }
+}
+
+async function normalizeJobFailure(job: Stage3JobRecord, error: unknown): Promise<{
   status: Extract<Stage3JobStatus, "failed" | "interrupted">;
   code: string;
   message: string;
   recoverable: boolean;
-} {
+}> {
   if (error instanceof DOMException && error.name === "AbortError") {
     return {
       status: "interrupted",
@@ -114,11 +122,11 @@ function normalizeJobFailure(job: Stage3JobRecord, error: unknown): {
       job.kind === "preview"
         ? "preview_failed"
         : job.kind === "render"
-          ? "render_failed"
-          : job.kind === "source-download"
+        ? "render_failed"
+        : job.kind === "source-download"
             ? "source_download_failed"
             : "job_failed",
-    message: summarizeStage3HeavyJobError(job.kind, error),
+    message: await summarizeJobFailure(job, error),
     recoverable: true
   };
 }
@@ -140,7 +148,8 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
   });
 
   try {
-    const executed = await executeStage3HeavyJobPayload(job.kind, job.payloadJson);
+    const executor = await import("./stage3-job-executor");
+    const executed = await executor.executeStage3HeavyJobPayload(job.kind, job.payloadJson);
     try {
       const published =
         executed.artifact && (job.kind === "preview" || job.kind === "render")
@@ -185,7 +194,7 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
     });
   } catch (error) {
     const execMs = Date.now() - startedAt;
-    const failure = normalizeJobFailure(job, error);
+    const failure = await normalizeJobFailure(job, error);
     finishStage3Job(job.id, {
       status: failure.status,
       errorCode: failure.code,

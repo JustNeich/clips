@@ -2,6 +2,7 @@ import React from "react";
 import { AbsoluteFill, Img, OffthreadVideo, staticFile, useCurrentFrame } from "remotion";
 import { Stage3TemplateRenderer } from "../lib/stage3-template-renderer";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
+import type { Stage3VariationProfile } from "../lib/stage3-render-variation";
 import {
   SCIENCE_CARD_TEMPLATE_ID,
   getTemplateById
@@ -13,6 +14,7 @@ import {
 } from "../lib/stage3-template-registry";
 import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
+import { RenderVariationOverlay } from "./render-variation-overlay";
 
 type ScienceCardV1Props = {
   templateId?: string;
@@ -43,6 +45,7 @@ type ScienceCardV1Props = {
     topCompacted: boolean;
     bottomCompacted: boolean;
   } | null;
+  variationProfile?: Stage3VariationProfile | null;
 };
 
 function easeInOutSine(value: number): number {
@@ -75,7 +78,8 @@ export function ScienceCardV1({
   avatarAssetMimeType,
   backgroundAssetFileName,
   backgroundAssetMimeType,
-  textFit
+  textFit,
+  variationProfile
 }: ScienceCardV1Props): React.JSX.Element {
   const resolvedTemplateId = templateId ?? SCIENCE_CARD_TEMPLATE_ID;
   const templateConfig = getTemplateById(resolvedTemplateId);
@@ -252,6 +256,7 @@ export function ScienceCardV1({
           verificationBadgeNode
         }}
       />
+      <RenderVariationOverlay profile={variationProfile} />
     </AbsoluteFill>
   );
 }

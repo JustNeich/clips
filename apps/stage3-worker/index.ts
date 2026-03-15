@@ -53,6 +53,8 @@ const DEFAULT_LIB_FILES = [
   "template-calibration-types.ts",
   "auto-fit-template-scene.tsx",
   "stage3-template-core.ts",
+  "stage3-render-variation.ts",
+  "stage3-template-spec.ts",
   "stage3-template-renderer.tsx",
   "stage3-template-runtime.tsx",
   "stage3-template-registry.ts"
@@ -218,11 +220,6 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
     normalizeRuntimeVersion(localManifest?.runtimeVersion) ??
     normalizeRuntimeVersion(localManifest?.version) ??
     normalizeRuntimeVersion(process.env.CLIPS_STAGE3_WORKER_VERSION);
-  if (localRuntimeVersion === remoteRuntimeVersion) {
-    process.env.CLIPS_STAGE3_WORKER_VERSION = remoteRuntimeVersion;
-    return { updated: false, runtimeVersion: remoteRuntimeVersion };
-  }
-
   const workerPaths = paths();
   const remotionDir = path.join(workerPaths.root, "remotion");
   const libDir = path.join(workerPaths.root, "lib");
@@ -230,6 +227,17 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   const bundleFile = remoteManifest.bundleFile?.trim() || DEFAULT_BUNDLE_FILE;
   const remotionFiles = sanitizeRelativeFileList(remoteManifest.remotionFiles, DEFAULT_REMOTION_FILES);
   const libFiles = sanitizeRelativeFileList(remoteManifest.libFiles, DEFAULT_LIB_FILES);
+  const runtimeFilesMissing = (
+    await Promise.all([
+      ...remotionFiles.map(async (fileName) => !(await fileExists(path.join(remotionDir, fileName)))),
+      ...libFiles.map(async (fileName) => !(await fileExists(path.join(libDir, fileName))))
+    ])
+  ).some(Boolean);
+
+  if (localRuntimeVersion === remoteRuntimeVersion && !runtimeFilesMissing) {
+    process.env.CLIPS_STAGE3_WORKER_VERSION = remoteRuntimeVersion;
+    return { updated: false, runtimeVersion: remoteRuntimeVersion };
+  }
 
   await fs.mkdir(remotionDir, { recursive: true });
   await fs.mkdir(libDir, { recursive: true });

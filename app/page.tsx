@@ -195,6 +195,19 @@ function parseRetryAfterMs(value: string | null | undefined, fallbackMs: number)
   return Math.max(250, Math.round(seconds * 1000));
 }
 
+function responseContentType(response: Response): string {
+  return (response.headers.get("content-type") ?? "").toLowerCase();
+}
+
+function responseLooksLikeHtml(response: Response): boolean {
+  const contentType = responseContentType(response);
+  return contentType.includes("text/html") || contentType.includes("application/xhtml+xml");
+}
+
+function responseLooksLikeJson(response: Response): boolean {
+  return responseContentType(response).includes("application/json");
+}
+
 async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -945,7 +958,7 @@ export default function HomePage() {
   const stage3WorkerPanelState = activeStage3Worker?.status ?? (stage3Workers.length > 0 ? "offline" : "not_paired");
 
   const parseError = useCallback(async (response: Response, fallback: string): Promise<string> => {
-    const contentType = response.headers.get("content-type") ?? "";
+    const contentType = responseContentType(response);
     let raw = fallback;
 
     if (contentType.includes("application/json")) {
@@ -2428,26 +2441,41 @@ export default function HomePage() {
         text: `User started Step 3 render with template: ${STAGE3_TEMPLATE_ID}`
       });
 
-      const response = await fetchWithTimeout("/api/stage3/render/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourceUrl: chat.url,
-          channelId: activeChannelId,
-          renderTitle: selectedTitle?.title ?? undefined,
-          templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
-          topText: renderSnapshot.topText,
-          bottomText: renderSnapshot.bottomText,
-          clipStartSec: renderSnapshot.clipStartSec,
-          clipDurationSec: CLIP_DURATION_SEC,
-          focusY: renderSnapshot.focusY,
-          agentPrompt: stage3AgentPrompt.trim() || undefined,
-          renderPlan: renderSnapshot.renderPlan,
-          snapshot: renderSnapshot
-        })
-      }, 15_000);
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Render export failed."));
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        response = await fetchWithTimeout("/api/stage3/render/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceUrl: chat.url,
+            channelId: activeChannelId,
+            renderTitle: selectedTitle?.title ?? undefined,
+            templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
+            topText: renderSnapshot.topText,
+            bottomText: renderSnapshot.bottomText,
+            clipStartSec: renderSnapshot.clipStartSec,
+            clipDurationSec: CLIP_DURATION_SEC,
+            focusY: renderSnapshot.focusY,
+            agentPrompt: stage3AgentPrompt.trim() || undefined,
+            renderPlan: renderSnapshot.renderPlan,
+            snapshot: renderSnapshot
+          })
+        }, 15_000);
+        const shouldRetry = response.status >= 500 || responseLooksLikeHtml(response);
+        if (response.ok && responseLooksLikeJson(response)) {
+          break;
+        }
+        const message = await parseError(response, "Render export failed.");
+        if (!shouldRetry || attempt === 2) {
+          throw new Error(message);
+        }
+        const retryAfterValue = response.headers.get("retry-after");
+        setStatusType("ok");
+        setStatus("Рендер-сервис отвечает нестабильно. Повторяю запуск...");
+        await new Promise<void>((resolve) => window.setTimeout(resolve, parseRetryAfterMs(retryAfterValue, 1200)));
+      }
+      if (!response) {
+        throw new Error("Render export failed.");
       }
       const job = ((await response.json()) as Stage3JobEnvelope).job;
       setStage3RenderJobId(job.id);
@@ -2500,15 +2528,39 @@ export default function HomePage() {
 
     const run = async (): Promise<void> => {
       let jobId = stage3RenderJobId;
+      let transientFailures = 0;
 
       while (!isStale()) {
         const response = await fetchWithTimeout(`/api/stage3/render/jobs/${jobId}`, {
           signal: controller.signal
         }, 15_000);
-        if (!response.ok) {
-          throw new Error(await parseError(response, "Render export failed."));
+        const shouldRetry = response.status >= 500 || responseLooksLikeHtml(response);
+        if (!response.ok || !responseLooksLikeJson(response)) {
+          const message = await parseError(response, "Render export failed.");
+          if (shouldRetry && transientFailures < 4) {
+            transientFailures += 1;
+            setStatusType("ok");
+            setStatus("Статус рендера временно недоступен. Повторяю...");
+            await new Promise<void>((resolve) => {
+              const timer = window.setTimeout(
+                () => resolve(),
+                parseRetryAfterMs(response.headers.get("retry-after"), 1000 + transientFailures * 500)
+              );
+              controller.signal.addEventListener(
+                "abort",
+                () => {
+                  window.clearTimeout(timer);
+                  resolve();
+                },
+                { once: true }
+              );
+            });
+            continue;
+          }
+          throw new Error(message);
         }
         const job = ((await response.json()) as Stage3JobEnvelope).job;
+        transientFailures = 0;
         jobId = job.id;
         setStage3RenderJobId(job.id);
 
