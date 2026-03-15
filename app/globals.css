@@ -3616,12 +3616,332 @@ select.text-input:focus {
   line-height: 1.55;
 }
 
+.template-road-page {
+  min-height: 100vh;
+  padding: 28px;
+  display: grid;
+  gap: 18px;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(67, 125, 244, 0.18), transparent 22%),
+    radial-gradient(circle at 84% 14%, rgba(173, 214, 255, 0.14), transparent 20%),
+    linear-gradient(180deg, #06101d 0%, #081625 48%, #07101b 100%);
+}
+
+.template-road-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.template-road-header-pills {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.template-road-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr) minmax(320px, 380px);
+  gap: 18px;
+  align-items: start;
+}
+
+.template-road-sidebar,
+.template-road-reference-column {
+  display: grid;
+  gap: 16px;
+}
+
+.template-road-preview-column {
+  min-width: 0;
+}
+
+.template-road-card {
+  display: grid;
+  gap: 14px;
+}
+
+.template-road-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.template-road-template-list {
+  display: grid;
+  gap: 10px;
+}
+
+.template-road-template-item {
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(20, 33, 52, 0.92), rgba(12, 20, 34, 0.96));
+  color: var(--text);
+  border-radius: 16px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.template-road-template-item:hover {
+  border-color: rgba(102, 162, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.template-road-template-item.active {
+  border-color: rgba(90, 153, 255, 0.78);
+  box-shadow: 0 0 0 1px rgba(90, 153, 255, 0.25), 0 14px 34px rgba(4, 12, 26, 0.35);
+  background: linear-gradient(180deg, rgba(24, 44, 72, 0.98), rgba(13, 22, 36, 0.98));
+}
+
+.template-road-template-item strong {
+  display: block;
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+
+.template-road-template-item p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.template-road-template-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.template-road-template-score {
+  font-size: 12px;
+  color: #d8e2f2;
+}
+
+.template-road-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-road-status-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.template-road-textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.template-road-notes {
+  min-height: 190px;
+}
+
+.template-road-preview-card {
+  min-height: min(90vh, 1180px);
+}
+
+.template-road-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.template-road-toolbar-secondary {
+  align-items: stretch;
+}
+
+.template-road-toolbar-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.template-road-inline-control {
+  display: grid;
+  gap: 6px;
+  min-width: 120px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.template-road-inline-control.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: auto;
+  padding-top: 18px;
+}
+
+.template-road-health-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.template-road-preview-shell {
+  min-height: min(78vh, 980px);
+  border-radius: 22px;
+  border: 1px solid rgba(79, 119, 175, 0.26);
+  background: linear-gradient(180deg, rgba(13, 24, 39, 0.88), rgba(8, 15, 24, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 26px 60px rgba(3, 10, 22, 0.34);
+  overflow: hidden;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+}
+
+.calibration-single-panel,
+.calibration-panel {
+  position: relative;
+  min-height: min(72vh, 860px);
+  width: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(8, 13, 22, 0.72);
+  border: 1px solid rgba(88, 122, 174, 0.22);
+  display: grid;
+  place-items: center;
+}
+
+.calibration-side-by-side {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.calibration-scene-shell,
+.calibration-reference-shell {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1080px;
+  height: 1920px;
+  transform-origin: center center;
+  margin-left: -540px;
+  margin-top: -960px;
+}
+
+.calibration-scene-root {
+  position: relative;
+  width: 1080px;
+  height: 1920px;
+}
+
+.calibration-reference-image,
+.calibration-diff-image {
+  display: block;
+  width: 1080px;
+  height: 1920px;
+  object-fit: fill;
+}
+
+.calibration-reference-clip {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.calibration-split-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 0 0 1px rgba(21, 40, 74, 0.3);
+  transform: translateX(-1px);
+}
+
+.calibration-empty-state {
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.55;
+  padding: 24px;
+}
+
+.template-road-upload-list {
+  display: grid;
+  gap: 12px;
+}
+
+.template-road-upload-item {
+  display: grid;
+  gap: 8px;
+}
+
+.template-road-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-road-report-grid div {
+  border-radius: 14px;
+  border: 1px solid rgba(88, 128, 188, 0.24);
+  background: linear-gradient(180deg, rgba(18, 29, 46, 0.96), rgba(10, 18, 29, 0.96));
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.template-road-report-grid strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.template-road-artifacts {
+  display: grid;
+  gap: 12px;
+}
+
+.template-road-artifact-image {
+  display: block;
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(88, 128, 188, 0.24);
+  background: rgba(8, 14, 22, 0.9);
+}
+
+.calibration-capture-root {
+  position: fixed;
+  left: -20000px;
+  top: 0;
+  width: 1080px;
+  height: 1920px;
+  pointer-events: none;
+  opacity: 1;
+  z-index: -1;
+}
+
 @media (max-width: 1320px) {
   .template-lab-grid {
     grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
   }
 
   .template-lab-reference-column {
+    grid-column: 1 / -1;
+  }
+
+  .template-road-grid {
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  }
+
+  .template-road-reference-column {
     grid-column: 1 / -1;
   }
 }
@@ -3642,6 +3962,19 @@ select.text-input:focus {
   }
 
   .template-lab-summary-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .template-road-page {
+    padding: 18px;
+  }
+
+  .template-road-header,
+  .template-road-grid,
+  .template-road-field-grid,
+  .calibration-side-by-side,
+  .template-road-report-grid {
+    display: grid;
     grid-template-columns: 1fr;
   }
 }

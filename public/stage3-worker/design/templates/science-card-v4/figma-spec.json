@@ -1,0 +1,64 @@
+{
+  "templateId": "science-card-v4",
+  "source": "generated",
+  "frame": {
+    "width": 1080,
+    "height": 1920
+  },
+  "shell": {
+    "x": 159,
+    "y": 320,
+    "width": 757,
+    "height": 1217,
+    "radius": 28
+  },
+  "card": {
+    "x": 159,
+    "y": 320,
+    "width": 757,
+    "height": 1217,
+    "radius": 28,
+    "borderWidth": 3,
+    "borderColor": "rgba(112, 228, 255, 0.58)",
+    "fill": "#071019",
+    "shadow": "0 38px 90px rgba(0, 0, 0, 0.42), 0 18px 50px rgba(14, 120, 158, 0.22)"
+  },
+  "sections": {
+    "top": {
+      "x": 159,
+      "y": 320,
+      "width": 757,
+      "height": 349
+    },
+    "media": {
+      "x": 159,
+      "y": 669,
+      "width": 757,
+      "height": 625
+    },
+    "bottom": {
+      "x": 159,
+      "y": 1294,
+      "width": 757,
+      "height": 243
+    },
+    "author": {
+      "x": 159,
+      "y": 1294,
+      "width": 757,
+      "height": 110
+    },
+    "avatar": {
+      "x": 183,
+      "y": 1307,
+      "width": 84,
+      "height": 84
+    },
+    "bottomText": {
+      "x": 183,
+      "y": 1408,
+      "width": 705,
+      "height": 121
+    }
+  }
+}

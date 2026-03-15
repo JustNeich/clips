@@ -25,6 +25,7 @@ import {
   RuntimeCapabilitiesResponse,
   Stage3AgentRunResponse,
   Stage3CameraMotion,
+  Stage3EditorDraftOverrides,
   Stage3JobEnvelope,
   Stage3PreviewState,
   Stage3RenderState,
@@ -37,12 +38,17 @@ import {
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionStatus,
   Stage3StateSnapshot,
+  Stage3TextFitSnapshot,
   Stage3TimelineResponse,
   Stage3Version,
   Stage2Response,
   UserRecord
 } from "./components/types";
-import { getTemplateComputed, STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
+import {
+  STAGE3_TEMPLATE_ID
+} from "../lib/stage3-template";
+import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
+import { templateUsesBuiltInBackdropFromRegistry } from "../lib/stage3-template-registry";
 import {
   buildLegacyTimelineEntries,
   findLatestStage3AgentSessionRef,
@@ -1170,20 +1176,24 @@ export default function HomePage() {
       if (!channel) {
         return base;
       }
+      const resolvedTemplateId = channel.templateId || STAGE3_TEMPLATE_ID;
+      const useBuiltInBackdrop = templateUsesBuiltInBackdropFromRegistry(resolvedTemplateId);
       const avatar = findAssetById(assets, channel.avatarAssetId);
-      const background = findAssetById(assets, channel.defaultBackgroundAssetId);
+      const background = useBuiltInBackdrop
+        ? null
+        : findAssetById(assets, channel.defaultBackgroundAssetId);
       const music = findAssetById(assets, channel.defaultMusicAssetId);
       return normalizeRenderPlan(
         {
           ...base,
-          templateId: channel.templateId || STAGE3_TEMPLATE_ID,
+          templateId: resolvedTemplateId,
           authorName: channel.name || base.authorName,
           authorHandle: channel.username.startsWith("@")
             ? channel.username
             : `@${channel.username || "channel"}`,
           avatarAssetId: channel.avatarAssetId,
           avatarAssetMimeType: avatar?.mimeType ?? null,
-          backgroundAssetId: channel.defaultBackgroundAssetId,
+          backgroundAssetId: useBuiltInBackdrop ? null : channel.defaultBackgroundAssetId,
           backgroundAssetMimeType: background?.mimeType ?? null,
           musicAssetId: channel.defaultMusicAssetId,
           musicAssetMimeType: music?.mimeType ?? null,
@@ -1758,20 +1768,24 @@ export default function HomePage() {
     }
     previousChannelIdRef.current = activeChannel.id;
 
+    const resolvedTemplateId = activeChannel.templateId || STAGE3_TEMPLATE_ID;
+    const useBuiltInBackdrop = templateUsesBuiltInBackdropFromRegistry(resolvedTemplateId);
     setStage3RenderPlan((prev) =>
       normalizeRenderPlan(
         {
           ...prev,
-          templateId: activeChannel.templateId || STAGE3_TEMPLATE_ID,
+          templateId: resolvedTemplateId,
           authorName: activeChannel.name || prev.authorName,
           authorHandle: activeChannel.username.startsWith("@")
             ? activeChannel.username
             : `@${activeChannel.username || "channel"}`,
           avatarAssetId: activeChannel.avatarAssetId,
           avatarAssetMimeType: findAssetById(channelAssets, activeChannel.avatarAssetId)?.mimeType ?? null,
-          backgroundAssetId: activeChannel.defaultBackgroundAssetId,
+          backgroundAssetId: useBuiltInBackdrop ? null : activeChannel.defaultBackgroundAssetId,
           backgroundAssetMimeType:
-            findAssetById(channelAssets, activeChannel.defaultBackgroundAssetId)?.mimeType ?? null,
+            useBuiltInBackdrop
+              ? null
+              : findAssetById(channelAssets, activeChannel.defaultBackgroundAssetId)?.mimeType ?? null,
           musicAssetId: activeChannel.defaultMusicAssetId,
           musicAssetMimeType:
             findAssetById(channelAssets, activeChannel.defaultMusicAssetId)?.mimeType ?? null
@@ -1857,32 +1871,80 @@ export default function HomePage() {
     }
   }, []);
 
-  const makeLiveSnapshot = (): Stage3StateSnapshot => {
-    const fit = getTemplateComputed(
-      stage3RenderPlan.templateId || STAGE3_TEMPLATE_ID,
-      stage3TopText,
-      stage3BottomText,
+  const makeLiveSnapshot = (
+    draftOverrides?: Partial<Stage3EditorDraftOverrides>,
+    textFitOverride?: Stage3TextFitSnapshot | null
+  ): Stage3StateSnapshot => {
+    const effectiveRenderPlan = normalizeRenderPlan(
       {
-        topFontScale: stage3RenderPlan.topFontScale,
-        bottomFontScale: stage3RenderPlan.bottomFontScale
-      }
+        ...stage3RenderPlan,
+        videoZoom:
+          typeof draftOverrides?.videoZoom === "number" && Number.isFinite(draftOverrides.videoZoom)
+            ? draftOverrides.videoZoom
+            : stage3RenderPlan.videoZoom,
+        topFontScale:
+          typeof draftOverrides?.topFontScale === "number" && Number.isFinite(draftOverrides.topFontScale)
+            ? draftOverrides.topFontScale
+            : stage3RenderPlan.topFontScale,
+        bottomFontScale:
+          typeof draftOverrides?.bottomFontScale === "number" && Number.isFinite(draftOverrides.bottomFontScale)
+            ? draftOverrides.bottomFontScale
+            : stage3RenderPlan.bottomFontScale,
+        musicGain:
+          typeof draftOverrides?.musicGain === "number" && Number.isFinite(draftOverrides.musicGain)
+            ? draftOverrides.musicGain
+            : stage3RenderPlan.musicGain,
+        prompt: stage3AgentPrompt.trim() || stage3RenderPlan.prompt
+      },
+      fallbackRenderPlan()
     );
+    const templateSnapshot = buildTemplateRenderSnapshot({
+      templateId: effectiveRenderPlan.templateId || STAGE3_TEMPLATE_ID,
+      content: {
+        topText: stage3TopText,
+        bottomText: stage3BottomText,
+        channelName: effectiveRenderPlan.authorName,
+        channelHandle: effectiveRenderPlan.authorHandle,
+        topFontScale: effectiveRenderPlan.topFontScale,
+        bottomFontScale: effectiveRenderPlan.bottomFontScale,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      },
+      fitOverride: textFitOverride ?? undefined
+    });
+    const snapshotClipStart =
+      typeof draftOverrides?.clipStartSec === "number" && Number.isFinite(draftOverrides.clipStartSec)
+        ? Math.max(0, draftOverrides.clipStartSec)
+        : stage3ClipStartSec;
+    const snapshotFocusY =
+      typeof draftOverrides?.focusY === "number" && Number.isFinite(draftOverrides.focusY)
+        ? Math.min(0.88, Math.max(0.12, draftOverrides.focusY))
+        : stage3FocusY;
     return {
-      topText: fit.top,
-      bottomText: fit.bottom,
-      clipStartSec: stage3ClipStartSec,
+      topText: templateSnapshot.content.topText,
+      bottomText: templateSnapshot.content.bottomText,
+      clipStartSec: snapshotClipStart,
       clipDurationSec: CLIP_DURATION_SEC,
-      focusY: stage3FocusY,
-      renderPlan: normalizeRenderPlan(
-        { ...stage3RenderPlan, prompt: stage3AgentPrompt.trim() || stage3RenderPlan.prompt },
-        fallbackRenderPlan()
-      ),
+      focusY: snapshotFocusY,
+      renderPlan: effectiveRenderPlan,
       sourceDurationSec,
+      templateSnapshot: {
+        templateId: templateSnapshot.templateId,
+        specRevision: templateSnapshot.specRevision,
+        snapshotHash: templateSnapshot.snapshotHash,
+        fitRevision: templateSnapshot.fitRevision
+      },
       textFit: {
-        topFontPx: fit.topFont,
-        bottomFontPx: fit.bottomFont,
-        topCompacted: fit.topCompacted,
-        bottomCompacted: fit.bottomCompacted
+        topFontPx: templateSnapshot.fit.topFontPx,
+        bottomFontPx: templateSnapshot.fit.bottomFontPx,
+        topLineHeight: templateSnapshot.fit.topLineHeight,
+        bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
+        topLines: templateSnapshot.fit.topLines,
+        bottomLines: templateSnapshot.fit.bottomLines,
+        topCompacted: templateSnapshot.fit.topCompacted,
+        bottomCompacted: templateSnapshot.fit.bottomCompacted
       }
     };
   };
@@ -2311,7 +2373,10 @@ export default function HomePage() {
     }
   };
 
-  const handleRenderVideo = async (): Promise<void> => {
+  const handleRenderVideo = async (
+    draftOverrides?: Partial<Stage3EditorDraftOverrides>,
+    textFitOverride?: Stage3TextFitSnapshot | null
+  ): Promise<void> => {
     const chat = requireActiveChat();
     if (!chat) {
       return;
@@ -2331,7 +2396,7 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const baseSnapshot = makeLiveSnapshot();
+      const baseSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride);
       const renderSnapshot: Stage3StateSnapshot = {
         ...baseSnapshot,
         renderPlan: normalizeRenderPlan(
@@ -2544,7 +2609,10 @@ export default function HomePage() {
     stage3RenderState
   ]);
 
-  const handleOptimizeStage3 = async (): Promise<void> => {
+  const handleOptimizeStage3 = async (
+    draftOverrides?: Partial<Stage3EditorDraftOverrides>,
+    textFitOverride?: Stage3TextFitSnapshot | null
+  ): Promise<void> => {
     const chat = requireActiveChat();
     if (!chat) {
       return;
@@ -2564,7 +2632,7 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const currentSnapshot = makeLiveSnapshot();
+      const currentSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride);
       const response = await fetch("/api/stage3/agent/run", {
         method: "POST",
         headers: {
@@ -4019,14 +4087,18 @@ export default function HomePage() {
         refreshedAssets = await refreshChannelAssets(activeChannelId).catch(() => []);
       }
       if (body.channel.id === activeChannelId) {
+        const resolvedTemplateId = body.channel.templateId || STAGE3_TEMPLATE_ID;
+        const useBuiltInBackdrop = templateUsesBuiltInBackdropFromRegistry(resolvedTemplateId);
         const resolvedAvatar = refreshedAssets.find((item) => item.id === body.channel.avatarAssetId);
-        const resolvedBg = refreshedAssets.find((item) => item.id === body.channel.defaultBackgroundAssetId);
+        const resolvedBg = useBuiltInBackdrop
+          ? null
+          : refreshedAssets.find((item) => item.id === body.channel.defaultBackgroundAssetId);
         const resolvedMusic = refreshedAssets.find((item) => item.id === body.channel.defaultMusicAssetId);
         setStage3RenderPlan((prev) =>
           normalizeRenderPlan(
             {
               ...prev,
-              templateId: body.channel.templateId || prev.templateId,
+              templateId: resolvedTemplateId,
               authorName: body.channel.name || prev.authorName,
               authorHandle: body.channel.username.startsWith("@")
                 ? body.channel.username
@@ -4041,7 +4113,9 @@ export default function HomePage() {
                   : prev.avatarAssetMimeType,
               backgroundAssetId:
                 patch.defaultBackgroundAssetId !== undefined
-                  ? body.channel.defaultBackgroundAssetId
+                  ? useBuiltInBackdrop
+                    ? null
+                    : body.channel.defaultBackgroundAssetId
                   : prev.backgroundAssetId,
               backgroundAssetMimeType:
                 patch.defaultBackgroundAssetId !== undefined
@@ -4484,11 +4558,11 @@ export default function HomePage() {
           renderState={stage3RenderState}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
-          onRender={() => {
-            void handleRenderVideo();
+          onRender={(overrides, textFitOverride) => {
+            void handleRenderVideo(overrides, textFitOverride);
           }}
-          onOptimize={() => {
-            void handleOptimizeStage3();
+          onOptimize={(overrides, textFitOverride) => {
+            void handleOptimizeStage3(overrides, textFitOverride);
           }}
           onResumeAgent={() => {
             void handleResumeStage3Agent();

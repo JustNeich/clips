@@ -1,783 +1,1437 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toCanvas } from "html-to-image";
 import {
-  SCIENCE_CARD,
-  TURBO_FACE,
-  TURBO_FACE_TEMPLATE_ID,
-  getTemplateComputed
-} from "../../lib/stage3-template";
+  TemplateCalibrationBundle,
+  TemplateCalibrationSession,
+  TemplateCalibrationStatus,
+  TemplateCompareMode,
+  TemplateCompareScope,
+  TemplateContentFixture,
+  TemplateDiffReport
+} from "./types";
+import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
+import {
+  Stage3TemplateViewport,
+  getTemplatePreviewViewportMetrics
+} from "../../lib/stage3-template-viewport";
+import {
+  TEMPLATE_COMPARE_MODE_OPTIONS,
+  TEMPLATE_COMPARE_SCOPE_OPTIONS,
+  computeTemplateDiff
+} from "../../lib/template-calibration-diff";
 import {
   STAGE3_DESIGN_LAB_STATUS_LABELS,
-  Stage3DesignLabPreset,
-  Stage3DesignLabStatus,
   getStage3DesignLabPreset,
   listStage3DesignLabPresets
 } from "../../lib/stage3-design-lab";
-
-const STORAGE_KEY = "clips-stage3-template-lab";
-
-type Stage3TemplateLabDraft = {
-  topText: string;
-  bottomText: string;
-  channelName: string;
-  channelHandle: string;
-  topFontScale: number;
-  bottomFontScale: number;
-  previewScale: number;
-  referenceUrl: string;
-  iterationNotes: string;
-  status: Stage3DesignLabStatus;
-};
-
-type Stage3TemplateLabState = {
-  activeTemplateId: string;
-  drafts: Record<string, Stage3TemplateLabDraft>;
-};
+import { getTemplateById } from "../../lib/stage3-template";
+import {
+  resolveTemplateAvatarBorderColor
+} from "../../lib/stage3-template-registry";
+import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
+import { buildTemplateRenderSnapshot } from "../../lib/stage3-template-core";
 
 type Stage3TemplateLabProps = {
   initialTemplateId?: string | null;
+  initialMode?: TemplateCompareMode | null;
+  initialBundles: TemplateCalibrationBundle[];
 };
+
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+type LiveDiffState = {
+  status: "idle" | "computing" | "ready" | "error";
+  currentPngUrl: string | null;
+  diffPngUrl: string | null;
+  heatmapPngUrl: string | null;
+  report: TemplateDiffReport | null;
+  message: string | null;
+};
+
+type ReferenceRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+const STATUS_OPTIONS: TemplateCalibrationStatus[] = ["queued", "in-progress", "review", "approved"];
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function buildDraftFromPreset(preset: Stage3DesignLabPreset): Stage3TemplateLabDraft {
+function getReferenceRect(session: TemplateCalibrationSession): ReferenceRect {
+  const width = clamp(session.referenceCropWidth, 0.05, 1);
+  const height = clamp(session.referenceCropHeight, 0.05, 1);
   return {
-    topText: preset.topText,
-    bottomText: preset.bottomText,
-    channelName: preset.channelName,
-    channelHandle: preset.channelHandle,
-    topFontScale: 1,
-    bottomFontScale: 1,
-    previewScale: preset.defaultPreviewScale,
-    referenceUrl: "",
-    iterationNotes: "",
-    status: preset.initialStatus
+    x: clamp(session.referenceCropX, 0, Math.max(0, 1 - width)),
+    y: clamp(session.referenceCropY, 0, Math.max(0, 1 - height)),
+    width,
+    height
   };
 }
 
-function normalizeDraft(
-  value: unknown,
-  preset: Stage3DesignLabPreset
-): Stage3TemplateLabDraft | null {
-  if (!value || typeof value !== "object") {
-    return null;
+function suggestReferenceRectForFrame(
+  sourceWidth: number,
+  sourceHeight: number,
+  frameWidth: number,
+  frameHeight: number
+): ReferenceRect {
+  const sourceAspect = sourceWidth / Math.max(1, sourceHeight);
+  const frameAspect = frameWidth / Math.max(1, frameHeight);
+  if (Math.abs(sourceAspect - frameAspect) <= 0.0015) {
+    return { x: 0, y: 0, width: 1, height: 1 };
   }
-
-  const candidate = value as Record<string, unknown>;
-
+  if (sourceAspect > frameAspect) {
+    const width = clamp(frameAspect / sourceAspect, 0.05, 1);
+    return {
+      x: (1 - width) / 2,
+      y: 0,
+      width,
+      height: 1
+    };
+  }
+  const height = clamp(sourceAspect / frameAspect, 0.05, 1);
   return {
-    ...buildDraftFromPreset(preset),
-    topText: typeof candidate.topText === "string" ? candidate.topText : preset.topText,
-    bottomText: typeof candidate.bottomText === "string" ? candidate.bottomText : preset.bottomText,
-    channelName: typeof candidate.channelName === "string" ? candidate.channelName : preset.channelName,
-    channelHandle: typeof candidate.channelHandle === "string" ? candidate.channelHandle : preset.channelHandle,
-    topFontScale:
-      typeof candidate.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
-        ? clamp(candidate.topFontScale, 0.7, 1.6)
-        : 1,
-    bottomFontScale:
-      typeof candidate.bottomFontScale === "number" && Number.isFinite(candidate.bottomFontScale)
-        ? clamp(candidate.bottomFontScale, 0.7, 1.6)
-        : 1,
-    previewScale:
-      typeof candidate.previewScale === "number" && Number.isFinite(candidate.previewScale)
-        ? clamp(candidate.previewScale, 0.18, 0.62)
-        : preset.defaultPreviewScale,
-    referenceUrl: typeof candidate.referenceUrl === "string" ? candidate.referenceUrl : "",
-    iterationNotes: typeof candidate.iterationNotes === "string" ? candidate.iterationNotes : "",
-    status:
-      candidate.status === "queued" ||
-      candidate.status === "in-progress" ||
-      candidate.status === "review" ||
-      candidate.status === "approved"
-        ? candidate.status
-        : preset.initialStatus
+    x: 0,
+    y: (1 - height) / 2,
+    width: 1,
+    height
   };
 }
 
-function normalizeStoredState(
-  value: unknown,
-  presets: Stage3DesignLabPreset[],
+function buildInitialBundleMap(
+  bundles: TemplateCalibrationBundle[],
+  initialMode: TemplateCompareMode | null | undefined,
   initialTemplateId: string
-): Stage3TemplateLabState | null {
-  if (!value || typeof value !== "object") {
-    return null;
+): Record<string, TemplateCalibrationBundle> {
+  const entries = bundles.map((bundle) => {
+    if (bundle.templateId === initialTemplateId && initialMode) {
+      return [
+        bundle.templateId,
+        {
+          ...bundle,
+          session: {
+            ...bundle.session,
+            compareMode: initialMode
+          }
+        }
+      ] as const;
+    }
+    return [bundle.templateId, bundle] as const;
+  });
+  return Object.fromEntries(entries);
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "n/a";
+  }
+  return `${value.toFixed(2)}%`;
+}
+
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) {
+    return "еще не сохранено";
+  }
+  return new Date(value).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  return fetch(dataUrl).then((response) => response.blob());
+}
+
+function imageDataToDataUrl(imageData: ImageData): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("2D canvas context is unavailable.");
+  }
+  context.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    image.src = src;
+  });
+}
+
+async function renderReferenceCanvas(params: {
+  src: string;
+  width: number;
+  height: number;
+  session: TemplateCalibrationSession;
+}): Promise<HTMLCanvasElement> {
+  const image = await loadImage(params.src);
+  const canvas = document.createElement("canvas");
+  canvas.width = params.width;
+  canvas.height = params.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("2D canvas context is unavailable.");
+  }
+  const referenceRect = getReferenceRect(params.session);
+  const sourceX = Math.min(image.naturalWidth - 1, Math.max(0, Math.round(referenceRect.x * image.naturalWidth)));
+  const sourceY = Math.min(
+    image.naturalHeight - 1,
+    Math.max(0, Math.round(referenceRect.y * image.naturalHeight))
+  );
+  const sourceWidth = Math.max(
+    1,
+    Math.min(image.naturalWidth - sourceX, Math.round(referenceRect.width * image.naturalWidth))
+  );
+  const sourceHeight = Math.max(
+    1,
+    Math.min(image.naturalHeight - sourceY, Math.round(referenceRect.height * image.naturalHeight))
+  );
+
+  context.save();
+  context.translate(
+    params.width / 2 + params.session.referenceOffsetX,
+    params.height / 2 + params.session.referenceOffsetY
+  );
+  context.scale(params.session.referenceScale, params.session.referenceScale);
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    -params.width / 2,
+    -params.height / 2,
+    params.width,
+    params.height
+  );
+  context.restore();
+  return canvas;
+}
+
+async function renderMaskCanvas(src: string, width: number, height: number): Promise<HTMLCanvasElement> {
+  const image = await loadImage(src);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("2D canvas context is unavailable.");
+  }
+  context.drawImage(image, 0, 0, width, height);
+  return canvas;
+}
+
+function StageBackground({
+  templateId,
+  backgroundAssetUrl
+}: {
+  templateId: string;
+  backgroundAssetUrl: string | null;
+}): React.JSX.Element {
+  if (backgroundAssetUrl) {
+    return (
+      <img
+        src={backgroundAssetUrl}
+        alt=""
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+      />
+    );
+  }
+  return resolveTemplateBackdropNode(templateId);
+}
+
+function StageMedia({
+  mediaAssetUrl,
+  label
+}: {
+  mediaAssetUrl: string | null;
+  label: string;
+}): React.JSX.Element {
+  if (mediaAssetUrl) {
+    return (
+      <img
+        src={mediaAssetUrl}
+        alt=""
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+      />
+    );
   }
 
-  const candidate = value as Record<string, unknown>;
-  const rawDrafts =
-    candidate.drafts && typeof candidate.drafts === "object"
-      ? (candidate.drafts as Record<string, unknown>)
-      : {};
-
-  const drafts = Object.fromEntries(
-    presets.map((preset) => {
-      const normalized = normalizeDraft(rawDrafts[preset.templateId], preset);
-      return [preset.templateId, normalized ?? buildDraftFromPreset(preset)];
-    })
-  ) as Record<string, Stage3TemplateLabDraft>;
-
-  const activeTemplateId =
-    typeof candidate.activeTemplateId === "string" && drafts[candidate.activeTemplateId]
-      ? candidate.activeTemplateId
-      : initialTemplateId;
-
-  return {
-    activeTemplateId,
-    drafts
-  };
-}
-
-function renderScienceCanvas(draft: Stage3TemplateLabDraft, templateId: string) {
-  const computed = getTemplateComputed(templateId, draft.topText, draft.bottomText, {
-    topFontScale: draft.topFontScale,
-    bottomFontScale: draft.bottomFontScale
-  });
-  const scaledWidth = SCIENCE_CARD.frame.width * draft.previewScale;
-  const scaledHeight = SCIENCE_CARD.frame.height * draft.previewScale;
-
   return (
-    <div className="template-lab-frame">
-      <div className="template-lab-bg template-lab-bg-science" />
-      <div className="template-lab-bg-glow template-lab-bg-glow-science" />
-      <div
-        className="template-lab-canvas-shell"
-        style={{
-          width: scaledWidth,
-          height: scaledHeight
-        }}
-      >
-        <div
-          className="template-lab-canvas"
-          style={{
-            width: SCIENCE_CARD.frame.width,
-            height: SCIENCE_CARD.frame.height,
-            transform: `scale(${draft.previewScale})`
-          }}
-        >
-          <section
-            className="template-lab-science-card"
-            style={{
-              left: SCIENCE_CARD.card.x,
-              top: SCIENCE_CARD.card.y,
-              width: SCIENCE_CARD.card.width,
-              height: SCIENCE_CARD.card.height,
-              borderRadius: SCIENCE_CARD.card.radius
-            }}
-          >
-            <div
-              className="template-lab-science-top"
-              style={{
-                height: computed.topBlockHeight,
-                padding: `${SCIENCE_CARD.slot.topPaddingTop ?? SCIENCE_CARD.slot.topPaddingY}px ${SCIENCE_CARD.slot.topPaddingX}px ${
-                  SCIENCE_CARD.slot.topPaddingBottom ?? SCIENCE_CARD.slot.topPaddingY
-                }px`
-              }}
-            >
-              <p
-                style={{
-                  fontSize: computed.topFont,
-                  lineHeight: computed.topLineHeight
-                }}
-              >
-                {computed.top}
-              </p>
-            </div>
-
-            <div
-              className="template-lab-science-media"
-              style={{
-                top: computed.topBlockHeight,
-                height: computed.videoHeight
-              }}
-            >
-              <div className="template-lab-science-media-bg" />
-              <div className="template-lab-science-media-core" />
-            </div>
-
-            <div
-              className="template-lab-science-bottom"
-              style={{
-                top: SCIENCE_CARD.card.height - computed.bottomBlockHeight,
-                height: computed.bottomBlockHeight
-              }}
-            >
-              <div className="template-lab-science-author">
-                <div className="template-lab-avatar template-lab-avatar-science">{draft.channelName.slice(0, 2)}</div>
-                <div className="template-lab-author-copy">
-                  <div className="template-lab-author-row">
-                    <strong>{draft.channelName}</strong>
-                    <span className="template-lab-check template-lab-check-science">✓</span>
-                  </div>
-                  <span>{draft.channelHandle}</span>
-                </div>
-              </div>
-              <div
-                className="template-lab-science-quote"
-                style={{
-                  paddingTop: SCIENCE_CARD.slot.bottomTextPaddingTop ?? SCIENCE_CARD.slot.bottomTextPaddingY,
-                  paddingBottom: SCIENCE_CARD.slot.bottomTextPaddingBottom ?? SCIENCE_CARD.slot.bottomTextPaddingY,
-                  paddingLeft: SCIENCE_CARD.slot.bottomTextPaddingLeft ?? SCIENCE_CARD.slot.bottomTextPaddingX,
-                  paddingRight: SCIENCE_CARD.slot.bottomTextPaddingRight ?? SCIENCE_CARD.slot.bottomTextPaddingX
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: computed.bottomFont,
-                    lineHeight: computed.bottomLineHeight
-                  }}
-                >
-                  {computed.bottom}
-                </p>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "grid",
+        placeItems: "center",
+        background:
+          "radial-gradient(circle at 65% 22%, rgba(255,255,255,0.28), rgba(255,255,255,0) 16%), linear-gradient(180deg, rgba(219, 230, 249, 0.92), rgba(168, 184, 216, 0.96))",
+        color: "rgba(13, 21, 34, 0.5)",
+        fontSize: 24,
+        fontWeight: 700,
+        letterSpacing: "0.14em",
+        textTransform: "uppercase"
+      }}
+    >
+      {label}
     </div>
   );
 }
 
-function renderTurboCanvas(draft: Stage3TemplateLabDraft, templateId: string) {
-  const computed = getTemplateComputed(templateId, draft.topText, draft.bottomText, {
-    topFontScale: draft.topFontScale,
-    bottomFontScale: draft.bottomFontScale
-  });
-  const shellHeight = TURBO_FACE.frame.height - TURBO_FACE.top.y - TURBO_FACE.bottom.bottom;
-  const scaledWidth = TURBO_FACE.frame.width * draft.previewScale;
-  const scaledHeight = TURBO_FACE.frame.height * draft.previewScale;
-
+function ReferenceLayer({
+  src,
+  session
+}: {
+  src: string;
+  session: TemplateCalibrationSession;
+}): React.JSX.Element {
+  const referenceRect = getReferenceRect(session);
   return (
-    <div className="template-lab-frame">
-      <div className="template-lab-bg template-lab-bg-turbo" />
-      <div className="template-lab-bg-glow template-lab-bg-glow-turbo" />
-      <div className="template-lab-stage-floor" />
-      <div
-        className="template-lab-canvas-shell"
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        opacity: session.overlayOpacity,
+        mixBlendMode: session.overlayBlendMode === "difference" ? "difference" : "normal",
+        transform: `translate(${session.referenceOffsetX}px, ${session.referenceOffsetY}px) scale(${session.referenceScale})`,
+        transformOrigin: "center center",
+        pointerEvents: "none",
+        userSelect: "none",
+        background: "transparent"
+      }}
+    >
+      <img
+        src={src}
+        alt="Reference"
+        draggable={false}
         style={{
-          width: scaledWidth,
-          height: scaledHeight
+          position: "absolute",
+          left: `${(-referenceRect.x / referenceRect.width) * 100}%`,
+          top: `${(-referenceRect.y / referenceRect.height) * 100}%`,
+          width: `${100 / referenceRect.width}%`,
+          height: `${100 / referenceRect.height}%`,
+          maxWidth: "none",
+          maxHeight: "none",
+          pointerEvents: "none",
+          userSelect: "none",
+          objectFit: "fill"
         }}
-      >
-        <div
-          className="template-lab-canvas"
-          style={{
-            width: TURBO_FACE.frame.width,
-            height: TURBO_FACE.frame.height,
-            transform: `scale(${draft.previewScale})`
-          }}
-        >
-          <div
-            className="template-lab-turbo-shell"
-            style={{
-              left: TURBO_FACE.top.x,
-              top: TURBO_FACE.top.y,
-              width: TURBO_FACE.top.width,
-              height: shellHeight
-            }}
-          />
-
-          <section
-            className="template-lab-turbo-top"
-            style={{
-              left: TURBO_FACE.top.x,
-              top: TURBO_FACE.top.y,
-              width: TURBO_FACE.top.width,
-              height: computed.topBlockHeight,
-              padding: `${TURBO_FACE.top.paddingY}px ${TURBO_FACE.top.paddingX}px`
-            }}
-          >
-            <p
-              style={{
-                fontSize: computed.topFont,
-                lineHeight: computed.topLineHeight
-              }}
-            >
-              {computed.top}
-            </p>
-          </section>
-
-          <section
-            className="template-lab-turbo-media"
-            style={{
-              left: computed.videoX,
-              top: computed.videoY,
-              width: computed.videoWidth,
-              height: computed.videoHeight
-            }}
-          >
-            <div className="template-lab-turbo-media-bg" />
-            <div className="template-lab-turbo-media-core" />
-          </section>
-
-          <section
-            className="template-lab-turbo-bottom"
-            style={{
-              left: TURBO_FACE.bottom.x,
-              top: TURBO_FACE.frame.height - TURBO_FACE.bottom.bottom - computed.bottomBlockHeight,
-              width: TURBO_FACE.bottom.width,
-              height: computed.bottomBlockHeight
-            }}
-          >
-            <div
-              className="template-lab-turbo-author"
-              style={{
-                padding: `${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
-              }}
-            >
-              <div className="template-lab-avatar template-lab-avatar-turbo">{draft.channelName.slice(0, 2)}</div>
-              <div className="template-lab-author-copy">
-                <div className="template-lab-author-row">
-                  <strong>{draft.channelName}</strong>
-                  <span className="template-lab-check template-lab-check-turbo">✓</span>
-                </div>
-                <span>{draft.channelHandle}</span>
-              </div>
-            </div>
-            <div
-              className="template-lab-turbo-quote"
-              style={{
-                padding: `8px ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px`
-              }}
-            >
-              <p
-                style={{
-                  fontSize: computed.bottomFont,
-                  lineHeight: computed.bottomLineHeight
-                }}
-              >
-                {computed.bottom}
-              </p>
-            </div>
-          </section>
-        </div>
-      </div>
+      />
     </div>
   );
 }
 
-export function Stage3TemplateLab({ initialTemplateId }: Stage3TemplateLabProps) {
+function CompareScene({
+  templateId,
+  content,
+  avatarAssetUrl,
+  backgroundAssetUrl,
+  mediaAssetUrl,
+  showGuides,
+  compareScope,
+  showSafeArea,
+  sceneRef
+}: {
+  templateId: string;
+  content: TemplateContentFixture;
+  avatarAssetUrl: string | null;
+  backgroundAssetUrl: string | null;
+  mediaAssetUrl: string | null;
+  showGuides: boolean;
+  compareScope: TemplateCompareScope;
+  showSafeArea: boolean;
+  sceneRef?: React.RefObject<HTMLDivElement | null>;
+}): React.JSX.Element {
+  const templateConfig = getTemplateById(templateId);
+  const effectiveBackgroundAssetUrl = content.backgroundAsset ? backgroundAssetUrl : null;
+  const effectiveMediaAssetUrl = content.mediaAsset ? mediaAssetUrl : null;
+  const effectiveAvatarAssetUrl = content.avatarAsset ? avatarAssetUrl : null;
+  const renderSnapshot = buildTemplateRenderSnapshot({ templateId, content });
+  return (
+    <Stage3TemplateViewport templateId={templateId} sceneRef={sceneRef} className="calibration-scene-root">
+      <Stage3TemplateRenderer
+        templateId={templateId}
+        content={renderSnapshot.content}
+        snapshot={renderSnapshot}
+        runtime={{
+          showGuides,
+          showSafeArea,
+          compareScope,
+          backgroundNode: <StageBackground templateId={templateId} backgroundAssetUrl={effectiveBackgroundAssetUrl} />,
+          mediaNode: <StageMedia mediaAssetUrl={effectiveMediaAssetUrl} label="Media" />,
+          avatarNode: effectiveAvatarAssetUrl ? (
+            <div
+              style={{
+                width: renderSnapshot.layout.avatar.width,
+                height: renderSnapshot.layout.avatar.height,
+                flex: "0 0 auto"
+              }}
+            >
+              <img
+                src={effectiveAvatarAssetUrl}
+                alt=""
+                style={{
+                  width: renderSnapshot.layout.avatar.width,
+                  height: renderSnapshot.layout.avatar.height,
+                  borderRadius: 999,
+                  border: `${templateConfig.author.avatarBorder}px solid ${resolveTemplateAvatarBorderColor(templateId)}`,
+                  objectFit: "cover",
+                  display: "block",
+                  boxSizing: "border-box"
+                }}
+              />
+            </div>
+          ) : undefined,
+          sceneDataId: templateId
+        }}
+      />
+    </Stage3TemplateViewport>
+  );
+}
+
+export function Stage3TemplateLab({
+  initialTemplateId,
+  initialMode,
+  initialBundles
+}: Stage3TemplateLabProps): React.JSX.Element {
   const presets = useMemo(() => listStage3DesignLabPresets(), []);
   const initialPreset = useMemo(() => getStage3DesignLabPreset(initialTemplateId), [initialTemplateId]);
-  const [labState, setLabState] = useState<Stage3TemplateLabState>(() => ({
-    activeTemplateId: initialPreset.templateId,
-    drafts: {
-      [initialPreset.templateId]: buildDraftFromPreset(initialPreset)
-    }
-  }));
-  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [activeTemplateId, setActiveTemplateId] = useState(initialPreset.templateId);
+  const [bundleMap, setBundleMap] = useState<Record<string, TemplateCalibrationBundle>>(() =>
+    buildInitialBundleMap(initialBundles, initialMode, initialPreset.templateId)
+  );
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [showGuides, setShowGuides] = useState(true);
+  const [showSafeArea, setShowSafeArea] = useState(true);
+  const [liveDiff, setLiveDiff] = useState<LiveDiffState>({
+    status: "idle",
+    currentPngUrl: null,
+    diffPngUrl: null,
+    heatmapPngUrl: null,
+    report: null,
+    message: null
+  });
+
+  const persistTimerRef = useRef<number | null>(null);
+  const saveResetTimerRef = useRef<number | null>(null);
+  const captureSceneRef = useRef<HTMLDivElement | null>(null);
+  const bundleMapRef = useRef(bundleMap);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
+    bundleMapRef.current = bundleMap;
+  }, [bundleMap]);
+
+  const activeBundle = bundleMap[activeTemplateId] ?? initialBundles[0];
+  const activePreset = useMemo(() => getStage3DesignLabPreset(activeTemplateId), [activeTemplateId]);
+  const activeReferenceRect = useMemo(() => getReferenceRect(activeBundle.session), [activeBundle.session]);
+  const frame = getTemplateById(activeTemplateId).frame;
+  const previewViewport = useMemo(() => getTemplatePreviewViewportMetrics(activeTemplateId), [activeTemplateId]);
+  const displayScale = activeBundle.content.previewScale * activeBundle.session.zoom;
+  const compareReady = Boolean(activeBundle.referenceImageUrl);
+  const captureReady =
+    liveDiff.status === "ready" &&
+    Boolean(liveDiff.currentPngUrl) &&
+    Boolean(liveDiff.diffPngUrl) &&
+    Boolean(liveDiff.report);
+  const compareValidityMessage =
+    !activeBundle.referenceImageUrl
+      ? "Загрузите reference.png, иначе diff не валиден."
+      : activeBundle.session.compareScope === "full" && !activeBundle.mediaAssetUrl
+        ? "Для full diff загрузите media fixture, иначе сравнение будет шумным."
+        : null;
+
+  const schedulePersist = useCallback((templateId: string, bundle: TemplateCalibrationBundle) => {
+    if (persistTimerRef.current !== null) {
+      window.clearTimeout(persistTimerRef.current);
     }
-    try {
-      const stored = normalizeStoredState(
-        JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"),
-        presets,
-        initialPreset.templateId
-      );
-      if (!stored) {
-        setLabState({
-          activeTemplateId: initialPreset.templateId,
-          drafts: Object.fromEntries(
-            presets.map((preset) => [preset.templateId, buildDraftFromPreset(preset)])
-          ) as Record<string, Stage3TemplateLabDraft>
+    setSaveState("saving");
+    setSaveMessage("Сохраняю calibration session...");
+    persistTimerRef.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/design/template-sessions/${templateId}`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            content: bundle.content,
+            session: bundle.session,
+            notes: bundle.notes
+          })
         });
-        return;
+        if (!response.ok) {
+          throw new Error("Failed to persist calibration session.");
+        }
+        const saved = (await response.json()) as TemplateCalibrationBundle;
+        setBundleMap((prev) => ({ ...prev, [templateId]: saved }));
+        setSaveState("saved");
+        setSaveMessage(`Сохранено в repo-backed session · ${formatTimestamp(saved.report?.timestamp ?? null)}`);
+        if (saveResetTimerRef.current !== null) {
+          window.clearTimeout(saveResetTimerRef.current);
+        }
+        saveResetTimerRef.current = window.setTimeout(() => {
+          setSaveState("idle");
+          setSaveMessage(null);
+        }, 1800);
+      } catch (error) {
+        setSaveState("error");
+        setSaveMessage(error instanceof Error ? error.message : "Не удалось сохранить calibration session.");
       }
-      setLabState(stored);
-    } catch {
-      setLabState({
-        activeTemplateId: initialPreset.templateId,
-        drafts: Object.fromEntries(
-          presets.map((preset) => [preset.templateId, buildDraftFromPreset(preset)])
-        ) as Record<string, Stage3TemplateLabDraft>
-      });
-    }
-  }, [initialPreset, presets]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(labState));
-    const url = new URL(window.location.href);
-    url.searchParams.set("template", labState.activeTemplateId);
-    window.history.replaceState({}, "", url.toString());
-  }, [labState]);
+    }, 260);
+  }, []);
 
   useEffect(() => {
     return () => {
-      if (referenceImageUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(referenceImageUrl);
+      if (persistTimerRef.current !== null) {
+        window.clearTimeout(persistTimerRef.current);
+      }
+      if (saveResetTimerRef.current !== null) {
+        window.clearTimeout(saveResetTimerRef.current);
       }
     };
-  }, [referenceImageUrl]);
+  }, []);
+
+  const updateActiveBundle = useCallback(
+    (updater: (bundle: TemplateCalibrationBundle) => TemplateCalibrationBundle) => {
+      const current = bundleMapRef.current[activeTemplateId];
+      if (!current) {
+        return;
+      }
+      const next = updater(current);
+      bundleMapRef.current = {
+        ...bundleMapRef.current,
+        [activeTemplateId]: next
+      };
+      setBundleMap(bundleMapRef.current);
+      schedulePersist(activeTemplateId, next);
+    },
+    [activeTemplateId, schedulePersist]
+  );
+
+  const updateContent = useCallback(
+    (patch: Partial<TemplateContentFixture>) => {
+      updateActiveBundle((bundle) => ({
+        ...bundle,
+        content: {
+          ...bundle.content,
+          ...patch
+        }
+      }));
+    },
+    [updateActiveBundle]
+  );
+
+  const updateSession = useCallback(
+    (patch: Partial<TemplateCalibrationSession>) => {
+      updateActiveBundle((bundle) => ({
+        ...bundle,
+        session: {
+          ...bundle.session,
+          ...patch
+        }
+      }));
+    },
+    [updateActiveBundle]
+  );
+
+  const updateReferenceCrop = useCallback(
+    (patch: Partial<ReferenceRect>) => {
+      updateActiveBundle((bundle) => {
+        const currentRect = getReferenceRect(bundle.session);
+        const width = clamp(patch.width ?? currentRect.width, 0.05, 1);
+        const height = clamp(patch.height ?? currentRect.height, 0.05, 1);
+        const x = clamp(patch.x ?? currentRect.x, 0, Math.max(0, 1 - width));
+        const y = clamp(patch.y ?? currentRect.y, 0, Math.max(0, 1 - height));
+        return {
+          ...bundle,
+          session: {
+            ...bundle.session,
+            referenceCropX: x,
+            referenceCropY: y,
+            referenceCropWidth: width,
+            referenceCropHeight: height
+          }
+        };
+      });
+    },
+    [updateActiveBundle]
+  );
+
+  const autoNormalizeReference = useCallback(
+    async (source?: File | string | null) => {
+      const sourceUrl =
+        source instanceof File ? URL.createObjectURL(source) : typeof source === "string" ? source : activeBundle.referenceImageUrl;
+      if (!sourceUrl) {
+        return;
+      }
+      try {
+        const image = await loadImage(sourceUrl);
+        updateReferenceCrop(
+          suggestReferenceRectForFrame(image.naturalWidth, image.naturalHeight, frame.width, frame.height)
+        );
+      } finally {
+        if (source instanceof File) {
+          URL.revokeObjectURL(sourceUrl);
+        }
+      }
+    },
+    [activeBundle.referenceImageUrl, frame.height, frame.width, updateReferenceCrop]
+  );
+
+  const updateNotes = useCallback(
+    (notes: string) => {
+      updateActiveBundle((bundle) => ({
+        ...bundle,
+        notes
+      }));
+    },
+    [updateActiveBundle]
+  );
 
   useEffect(() => {
-    if (!copiedLink) {
+    if (typeof window === "undefined") {
       return;
     }
-    const timeout = window.setTimeout(() => setCopiedLink(false), 1800);
-    return () => window.clearTimeout(timeout);
-  }, [copiedLink]);
+    const url = new URL(window.location.href);
+    url.searchParams.set("template", activeTemplateId);
+    url.searchParams.set("mode", activeBundle.session.compareMode);
+    window.history.replaceState(null, "", url.toString());
+  }, [activeBundle.session.compareMode, activeTemplateId]);
 
-  const activePreset = useMemo(
-    () => getStage3DesignLabPreset(labState.activeTemplateId),
-    [labState.activeTemplateId]
+  const uploadAsset = useCallback(
+    async (kind: "reference" | "mask" | "media" | "background" | "avatar", file: File) => {
+      const formData = new FormData();
+      formData.set("kind", kind);
+      formData.set("file", file);
+      setSaveState("saving");
+      setSaveMessage(`Загружаю ${kind}...`);
+      const response = await fetch(`/api/design/template-sessions/${activeTemplateId}/asset`, {
+        method: "POST",
+        body: formData
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `Не удалось загрузить ${kind}.`);
+      }
+      const saved = (await response.json()) as TemplateCalibrationBundle;
+      bundleMapRef.current = {
+        ...bundleMapRef.current,
+        [activeTemplateId]: saved
+      };
+      setBundleMap(bundleMapRef.current);
+      setSaveState("saved");
+      setSaveMessage(`${kind} сохранен в repo-backed session.`);
+    },
+    [activeTemplateId]
   );
-  const activeDraft = labState.drafts[activePreset.templateId] ?? buildDraftFromPreset(activePreset);
-  const referenceSrc = referenceImageUrl || activeDraft.referenceUrl.trim() || null;
-  const isTurbo = activePreset.templateId === TURBO_FACE_TEMPLATE_ID;
 
-  const progress = useMemo(() => {
-    const counts: Record<Stage3DesignLabStatus, number> = {
-      queued: 0,
-      "in-progress": 0,
-      review: 0,
-      approved: 0
+  const handleAssetChange = useCallback(
+    async (
+      kind: "reference" | "mask" | "media" | "background" | "avatar",
+      event: ChangeEvent<HTMLInputElement>
+    ) => {
+      const file = event.target.files?.[0];
+      if (!file) {
+        return;
+      }
+      try {
+        await uploadAsset(kind, file);
+        if (kind === "reference") {
+          await autoNormalizeReference(file);
+        }
+      } catch (error) {
+        setSaveState("error");
+        setSaveMessage(error instanceof Error ? error.message : "Не удалось загрузить asset.");
+      } finally {
+        event.target.value = "";
+      }
+    },
+    [autoNormalizeReference, uploadAsset]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!compareReady) {
+        setLiveDiff({
+          status: "idle",
+          currentPngUrl: null,
+          diffPngUrl: null,
+          heatmapPngUrl: null,
+          report: null,
+          message: compareValidityMessage
+        });
+        return;
+      }
+      if (compareValidityMessage) {
+        setLiveDiff({
+          status: "idle",
+          currentPngUrl: null,
+          diffPngUrl: null,
+          heatmapPngUrl: null,
+          report: null,
+          message: compareValidityMessage
+        });
+        return;
+      }
+      const node = captureSceneRef.current;
+      if (!node || !activeBundle.referenceImageUrl) {
+        return;
+      }
+      setLiveDiff((prev) => ({ ...prev, status: "computing", message: null }));
+      try {
+        const currentCanvas = await toCanvas(node, {
+          cacheBust: true,
+          pixelRatio: 1,
+          width: frame.width,
+          height: frame.height,
+          canvasWidth: frame.width,
+          canvasHeight: frame.height,
+          backgroundColor: "transparent"
+        });
+        const referenceCanvas = await renderReferenceCanvas({
+          src: activeBundle.referenceImageUrl,
+          width: frame.width,
+          height: frame.height,
+          session: activeBundle.session
+        });
+        const maskCanvas = activeBundle.maskImageUrl
+          ? await renderMaskCanvas(activeBundle.maskImageUrl, frame.width, frame.height)
+          : null;
+        const currentContext = currentCanvas.getContext("2d");
+        const referenceContext = referenceCanvas.getContext("2d");
+        if (!currentContext || !referenceContext) {
+          throw new Error("Canvas context is unavailable.");
+        }
+        const computation = computeTemplateDiff({
+          templateId: activeTemplateId,
+          content: activeBundle.content,
+          scope: activeBundle.session.compareScope,
+          threshold: activeBundle.session.acceptedMismatchThreshold,
+          images: {
+            current: currentContext.getImageData(0, 0, frame.width, frame.height),
+            reference: referenceContext.getImageData(0, 0, frame.width, frame.height),
+            mask: maskCanvas?.getContext("2d")?.getImageData(0, 0, frame.width, frame.height) ?? null
+          }
+        });
+        if (cancelled) {
+          return;
+        }
+        setLiveDiff({
+          status: "ready",
+          currentPngUrl: currentCanvas.toDataURL("image/png"),
+          diffPngUrl: imageDataToDataUrl(computation.diffImageData),
+          heatmapPngUrl: imageDataToDataUrl(computation.heatmapImageData),
+          report: computation.report,
+          message: null
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setLiveDiff({
+            status: "error",
+            currentPngUrl: null,
+            diffPngUrl: null,
+            heatmapPngUrl: null,
+            report: null,
+            message: error instanceof Error ? error.message : "Не удалось посчитать diff."
+          });
+        }
+      }
     };
 
-    for (const preset of presets) {
-      const status = labState.drafts[preset.templateId]?.status ?? preset.initialStatus;
-      counts[status] += 1;
-    }
+    const timer = window.setTimeout(() => {
+      void run();
+    }, 220);
 
-    return counts;
-  }, [labState.drafts, presets]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeBundle, activeTemplateId, compareReady, compareValidityMessage, frame.height, frame.width]);
 
-  const updateActiveDraft = (updater: (draft: Stage3TemplateLabDraft) => Stage3TemplateLabDraft) => {
-    setLabState((current) => ({
-      ...current,
-      drafts: {
-        ...current.drafts,
-        [current.activeTemplateId]: updater(current.drafts[current.activeTemplateId] ?? buildDraftFromPreset(activePreset))
-      }
-    }));
-  };
-
-  const onSelectPreset = (templateId: string) => {
-    const preset = getStage3DesignLabPreset(templateId);
-    setLabState((current) => ({
-      activeTemplateId: preset.templateId,
-      drafts: current.drafts[preset.templateId]
-        ? current.drafts
-        : {
-            ...current.drafts,
-            [preset.templateId]: buildDraftFromPreset(preset)
-          }
-    }));
-  };
-
-  const onResetTemplate = () => {
-    const preset = getStage3DesignLabPreset(labState.activeTemplateId);
-    updateActiveDraft(() => buildDraftFromPreset(preset));
-    setReferenceImageUrl((current) => {
-      if (current?.startsWith("blob:")) {
-        URL.revokeObjectURL(current);
-      }
-      return null;
-    });
-  };
-
-  const onCopyDirectLink = async () => {
-    if (typeof window === "undefined" || !navigator.clipboard) {
+  const captureSnapshot = useCallback(async () => {
+    const currentPngUrl = liveDiff.currentPngUrl;
+    const diffPngUrl = liveDiff.diffPngUrl;
+    const report = liveDiff.report;
+    if (!captureReady || !currentPngUrl || !diffPngUrl || !report) {
       return;
     }
-    await navigator.clipboard.writeText(window.location.href);
-    setCopiedLink(true);
-  };
-
-  const onReferenceFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    if (!file) {
-      return;
-    }
-    setReferenceImageUrl((current) => {
-      if (current?.startsWith("blob:")) {
-        URL.revokeObjectURL(current);
+    setSaveState("saving");
+    setSaveMessage("Сохраняю current/diff/report...");
+    try {
+      const formData = new FormData();
+      formData.set("current", new File([await dataUrlToBlob(currentPngUrl)], "current.png", { type: "image/png" }));
+      formData.set("diff", new File([await dataUrlToBlob(diffPngUrl)], "diff.png", { type: "image/png" }));
+      if (liveDiff.heatmapPngUrl) {
+        formData.set(
+          "heatmap",
+          new File([await dataUrlToBlob(liveDiff.heatmapPngUrl)], "heatmap.png", { type: "image/png" })
+        );
       }
-      return URL.createObjectURL(file);
-    });
+      formData.set("report", JSON.stringify(report));
+      const response = await fetch(`/api/design/template-sessions/${activeTemplateId}/artifacts`, {
+        method: "POST",
+        body: formData
+      });
+      if (!response.ok) {
+        throw new Error("Не удалось сохранить artifacts.");
+      }
+      const saved = (await response.json()) as TemplateCalibrationBundle;
+      bundleMapRef.current = {
+        ...bundleMapRef.current,
+        [activeTemplateId]: saved
+      };
+      setBundleMap(bundleMapRef.current);
+      setSaveState("saved");
+      setSaveMessage(`Artifacts сохранены · mismatch ${formatPercent(saved.report?.mismatchPercent)}`);
+    } catch (error) {
+      setSaveState("error");
+      setSaveMessage(error instanceof Error ? error.message : "Не удалось сохранить artifacts.");
+    }
+  }, [activeTemplateId, captureReady, liveDiff]);
+
+  const renderCompareViewport = () => {
+    const transform = `translate(${activeBundle.session.panX}px, ${activeBundle.session.panY}px) scale(${displayScale})`;
+    const centeredViewportStyle = {
+      transform,
+      width: previewViewport.width,
+      height: previewViewport.height,
+      marginLeft: -(previewViewport.width / 2),
+      marginTop: -(previewViewport.height / 2)
+    } as const;
+    const scene = (
+      <div className="calibration-scene-shell" style={centeredViewportStyle}>
+        <CompareScene
+          templateId={activeTemplateId}
+          content={activeBundle.content}
+          avatarAssetUrl={activeBundle.avatarAssetUrl}
+          backgroundAssetUrl={activeBundle.backgroundAssetUrl}
+          mediaAssetUrl={activeBundle.mediaAssetUrl}
+          showGuides={showGuides}
+          compareScope={activeBundle.session.compareScope}
+          showSafeArea={showSafeArea}
+        />
+      </div>
+    );
+
+    if (activeBundle.session.compareMode === "side-by-side") {
+      return (
+        <div className="calibration-side-by-side">
+          <div className="calibration-panel">{scene}</div>
+          <div className="calibration-panel">
+            {activeBundle.referenceImageUrl ? (
+              <div className="calibration-reference-shell" style={centeredViewportStyle}>
+                <div
+                  style={{
+                    position: "relative",
+                    width: previewViewport.width,
+                    height: previewViewport.height,
+                    borderRadius: previewViewport.borderRadius,
+                    overflow: "hidden"
+                  }}
+                >
+                  <ReferenceLayer src={activeBundle.referenceImageUrl} session={activeBundle.session} />
+                </div>
+              </div>
+            ) : (
+              <div className="calibration-empty-state">Загрузите reference.png для side-by-side.</div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (activeBundle.session.compareMode === "difference" || activeBundle.session.compareMode === "heatmap") {
+      const compareImage =
+        activeBundle.session.compareMode === "difference" ? liveDiff.diffPngUrl : liveDiff.heatmapPngUrl;
+      return (
+        <div className="calibration-single-panel">
+          {compareImage ? (
+            <Stage3TemplateViewport templateId={activeTemplateId}>
+              <img src={compareImage} alt="Diff" className="calibration-diff-image" />
+            </Stage3TemplateViewport>
+          ) : (
+            <div className="calibration-empty-state">{liveDiff.message ?? "Нет diff для отображения."}</div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="calibration-single-panel">
+        {scene}
+        {activeBundle.referenceImageUrl ? (
+          activeBundle.session.compareMode === "split-swipe" ? (
+            <>
+              <div
+                className="calibration-reference-clip"
+                style={{
+                  clipPath: `inset(0 ${100 - activeBundle.session.splitPosition * 100}% 0 0)`
+                }}
+              >
+                <div className="calibration-scene-shell" style={centeredViewportStyle}>
+                  <div
+                    style={{
+                      position: "relative",
+                      width: previewViewport.width,
+                      height: previewViewport.height,
+                      borderRadius: previewViewport.borderRadius,
+                      overflow: "hidden"
+                    }}
+                  >
+                    <ReferenceLayer src={activeBundle.referenceImageUrl} session={activeBundle.session} />
+                  </div>
+                </div>
+              </div>
+              <div
+                className="calibration-split-handle"
+                style={{ left: `${activeBundle.session.splitPosition * 100}%` }}
+              />
+            </>
+          ) : (
+            <div className="calibration-scene-shell" style={centeredViewportStyle}>
+              <div
+                style={{
+                  position: "relative",
+                  width: previewViewport.width,
+                  height: previewViewport.height,
+                  borderRadius: previewViewport.borderRadius,
+                  overflow: "hidden"
+                }}
+              >
+                <ReferenceLayer src={activeBundle.referenceImageUrl} session={activeBundle.session} />
+              </div>
+            </div>
+          )
+        ) : null}
+      </div>
+    );
   };
 
   return (
-    <main className="template-lab-page">
-      <header className="template-lab-header">
+    <main className="template-road-page" data-template-road-root={activeTemplateId}>
+      <header className="template-road-header">
         <div>
-          <p className="kicker">Stage 3 Template Lab</p>
-          <h1>Итерационная лаборатория шаблонов</h1>
+          <p className="kicker">Stage 3 Template Calibration</p>
+          <h1>Pixel-Perfect Workbench</h1>
           <p className="subtle-text">
-            Оставь эту страницу открытой. Я могу параллельно работать через Playwright, а ты сразу видеть live-изменения
-            после каждого сохранения.
+            Один канонический renderer для lab, editor preview и Remotion. Overlay, diff и artifacts
+            теперь строятся поверх одной и той же сцены.
           </p>
         </div>
-        <div className="template-lab-status">
-          <span className="meta-pill ok">Live Preview</span>
-          <span className={`meta-pill ${activeDraft.status === "approved" ? "ok" : activeDraft.status === "review" ? "warn" : ""}`}>
-            {STAGE3_DESIGN_LAB_STATUS_LABELS[activeDraft.status]}
+        <div className="template-road-header-pills">
+          <span className="meta-pill">Repo-backed session</span>
+          <span className="meta-pill">{activeTemplateId}</span>
+          <span className={`meta-pill ${saveState === "saved" ? "ok" : saveState === "error" ? "warn" : ""}`}>
+            {saveState === "saving"
+              ? "Saving..."
+              : saveState === "saved"
+                ? "Saved"
+                : saveState === "error"
+                  ? "Error"
+                  : "Idle"}
           </span>
-          <span className="meta-pill mono">{labState.activeTemplateId}</span>
         </div>
       </header>
 
-      <section className="template-lab-grid">
-        <aside className="template-lab-sidebar">
-          <section className="control-card template-lab-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Процесс</h3>
-                <p className="subtle-text">Один route для всей библиотеки. Подходит для поэтапной сборки 10+ шаблонов.</p>
-              </div>
-            </div>
-            <div className="template-lab-summary-strip">
-              <div className="template-lab-summary-item">
-                <strong>{presets.length}</strong>
-                <span>всего шаблонов в lab</span>
-              </div>
-              <div className="template-lab-summary-item">
-                <strong>{progress["in-progress"]}</strong>
-                <span>в активной доработке</span>
-              </div>
-              <div className="template-lab-summary-item">
-                <strong>{progress.approved}</strong>
-                <span>уже прошли pass</span>
-              </div>
-            </div>
-            <ol className="executor-guide-list">
-              <li>Выберите нужный шаблон.</li>
-              <li>Подгрузите референс или вставьте ссылку на изображение.</li>
-              <li>Оставьте route открытым, пока я делаю проход через Playwright.</li>
-              <li>После каждого сохранения live preview обновится автоматически.</li>
+      <section className="template-road-grid">
+        <aside className="template-road-sidebar">
+          <section className="control-card template-road-card">
+            <h3>Процесс</h3>
+            <ol className="template-road-steps">
+              <li>Выберите шаблон слева.</li>
+              <li>Загрузите reference и exact content fixtures.</li>
+              <li>Крутите overlay/diff до тех пор, пока mismatch не станет приемлемым.</li>
+              <li>Нажмите Capture Snapshot, чтобы записать current/diff/report в репозиторий.</li>
             </ol>
+            {saveMessage ? <p className="subtle-text">{saveMessage}</p> : null}
           </section>
 
-          <section className="control-card template-lab-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Шаблоны</h3>
-                <p className="subtle-text">У каждого шаблона свой draft, статус и заметки. Переключение их больше не сбрасывает.</p>
-              </div>
-            </div>
-            <div className="template-lab-template-list">
+          <section className="control-card template-road-card">
+            <h3>Шаблоны</h3>
+            <div className="template-road-template-list">
               {presets.map((preset) => {
-                const draft = labState.drafts[preset.templateId] ?? buildDraftFromPreset(preset);
+                const bundle = bundleMap[preset.templateId];
+                const isActive = activeTemplateId === preset.templateId;
                 return (
                   <button
                     key={preset.templateId}
                     type="button"
-                    className={`template-lab-template-item ${labState.activeTemplateId === preset.templateId ? "active" : ""}`}
-                    onClick={() => onSelectPreset(preset.templateId)}
+                    className={`template-road-template-item ${isActive ? "active" : ""}`}
+                    onClick={() => setActiveTemplateId(preset.templateId)}
+                    data-template-road-template={preset.templateId}
                   >
-                    <div className="template-lab-template-meta">
+                    <div>
                       <strong>{preset.label}</strong>
-                      <span className={`template-lab-template-status status-${draft.status}`}>
-                        {STAGE3_DESIGN_LAB_STATUS_LABELS[draft.status]}
+                      <p>{preset.note}</p>
+                    </div>
+                    <div className="template-road-template-meta">
+                      <span className={`template-lab-template-status status-${bundle.session.status}`}>
+                        {STAGE3_DESIGN_LAB_STATUS_LABELS[bundle.session.status]}
+                      </span>
+                      <span className="template-road-template-score">
+                        {formatPercent(bundle.report?.mismatchPercent)}
                       </span>
                     </div>
-                    <span>{preset.note}</span>
                   </button>
                 );
               })}
             </div>
           </section>
 
-          <section className="control-card template-lab-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Контент</h3>
-                <p className="subtle-text">Можно быстро менять copy, автора и масштабы, не заходя в основной editor.</p>
+          <section className="control-card template-road-card">
+            <h3>Контент</h3>
+            <label className="field-label">
+              Верхний текст
+              <textarea
+                className="text-input template-road-textarea"
+                rows={6}
+                value={activeBundle.content.topText}
+                onChange={(event) => updateContent({ topText: event.target.value })}
+              />
+            </label>
+            <label className="field-label">
+              Нижний текст
+              <textarea
+                className="text-input template-road-textarea"
+                rows={4}
+                value={activeBundle.content.bottomText}
+                onChange={(event) => updateContent({ bottomText: event.target.value })}
+              />
+            </label>
+            <div className="template-road-field-grid">
+              <label className="field-label">
+                Канал
+                <input
+                  className="text-input"
+                  value={activeBundle.content.channelName}
+                  onChange={(event) => updateContent({ channelName: event.target.value })}
+                />
+              </label>
+              <label className="field-label">
+                Handle
+                <input
+                  className="text-input"
+                  value={activeBundle.content.channelHandle}
+                  onChange={(event) => updateContent({ channelHandle: event.target.value })}
+                />
+              </label>
+            </div>
+            <div className="template-road-field-grid">
+              <label className="field-label">
+                Top scale
+                <input
+                  type="range"
+                  min="0.7"
+                  max="1.9"
+                  step="0.01"
+                  value={activeBundle.content.topFontScale}
+                  onChange={(event) => updateContent({ topFontScale: Number(event.target.value) })}
+                />
+              </label>
+              <label className="field-label">
+                Bottom scale
+                <input
+                  type="range"
+                  min="0.7"
+                  max="1.9"
+                  step="0.01"
+                  value={activeBundle.content.bottomFontScale}
+                  onChange={(event) => updateContent({ bottomFontScale: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <label className="field-label">
+              Статус
+              <div className="template-road-status-row">
+                {STATUS_OPTIONS.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`template-lab-status-button ${activeBundle.session.status === status ? "active" : ""}`}
+                    onClick={() => updateSession({ status })}
+                  >
+                    {STAGE3_DESIGN_LAB_STATUS_LABELS[status]}
+                  </button>
+                ))}
               </div>
-            </div>
-            <label className="field-label">Название канала</label>
-            <input
-              className="text-input"
-              value={activeDraft.channelName}
-              onChange={(event) => updateActiveDraft((current) => ({ ...current, channelName: event.target.value }))}
-            />
-            <label className="field-label">Handle</label>
-            <input
-              className="text-input"
-              value={activeDraft.channelHandle}
-              onChange={(event) => updateActiveDraft((current) => ({ ...current, channelHandle: event.target.value }))}
-            />
-            <label className="field-label">Верхний текст</label>
-            <textarea
-              className="text-input template-lab-textarea"
-              value={activeDraft.topText}
-              onChange={(event) => updateActiveDraft((current) => ({ ...current, topText: event.target.value }))}
-            />
-            <label className="field-label">Нижний текст</label>
-            <textarea
-              className="text-input template-lab-textarea template-lab-textarea-compact"
-              value={activeDraft.bottomText}
-              onChange={(event) => updateActiveDraft((current) => ({ ...current, bottomText: event.target.value }))}
-            />
-          </section>
-
-          <section className="control-card template-lab-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Тонкая настройка</h3>
-                <p className="subtle-text">Подкручивается прямо в lab, чтобы быстрее проводить визуальные проходы.</p>
-              </div>
-            </div>
-            <label className="field-label">Масштаб preview {Math.round(activeDraft.previewScale * 100)}%</label>
-            <input
-              className="range-input"
-              type="range"
-              min={0.18}
-              max={0.62}
-              step={0.01}
-              value={activeDraft.previewScale}
-              onChange={(event) =>
-                updateActiveDraft((current) => ({
-                  ...current,
-                  previewScale: clamp(Number.parseFloat(event.target.value), 0.18, 0.62)
-                }))
-              }
-            />
-            <label className="field-label">Верхний текст {activeDraft.topFontScale.toFixed(2)}x</label>
-            <input
-              className="range-input"
-              type="range"
-              min={0.7}
-              max={1.6}
-              step={0.01}
-              value={activeDraft.topFontScale}
-              onChange={(event) =>
-                updateActiveDraft((current) => ({
-                  ...current,
-                  topFontScale: clamp(Number.parseFloat(event.target.value), 0.7, 1.6)
-                }))
-              }
-            />
-            <label className="field-label">Нижний текст {activeDraft.bottomFontScale.toFixed(2)}x</label>
-            <input
-              className="range-input"
-              type="range"
-              min={0.7}
-              max={1.6}
-              step={0.01}
-              value={activeDraft.bottomFontScale}
-              onChange={(event) =>
-                updateActiveDraft((current) => ({
-                  ...current,
-                  bottomFontScale: clamp(Number.parseFloat(event.target.value), 0.7, 1.6)
-                }))
-              }
-            />
-            <div className="template-lab-status-picker">
-              {(["queued", "in-progress", "review", "approved"] as Stage3DesignLabStatus[]).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  className={`template-lab-status-button ${activeDraft.status === status ? "active" : ""}`}
-                  onClick={() => updateActiveDraft((current) => ({ ...current, status }))}
-                >
-                  {STAGE3_DESIGN_LAB_STATUS_LABELS[status]}
-                </button>
-              ))}
-            </div>
+            </label>
           </section>
         </aside>
 
-        <section className="template-lab-preview-column">
-          <section className="control-card template-lab-card template-lab-preview-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Live Preview</h3>
-                <p className="subtle-text">{activePreset.note}</p>
+        <section className="template-road-preview-column">
+          <section className="control-card template-road-card template-road-preview-card">
+            <div className="template-road-toolbar">
+              <div className="template-road-toolbar-group">
+                {TEMPLATE_COMPARE_MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`btn btn-ghost ${activeBundle.session.compareMode === option.value ? "is-active" : ""}`}
+                    onClick={() => updateSession({ compareMode: option.value })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
-              <span className={`meta-pill ${isTurbo ? "warn" : "ok"}`}>{activePreset.label}</span>
-            </div>
-            <div className="template-lab-preview-toolbar">
-              <span className="meta-pill mono">{labState.activeTemplateId}</span>
-              <div className="template-lab-actions">
-                <button type="button" className="secondary-button" onClick={onResetTemplate}>
-                  Сбросить шаблон
-                </button>
-                <button type="button" className="secondary-button" onClick={onCopyDirectLink}>
-                  {copiedLink ? "Ссылка скопирована" : "Скопировать ссылку"}
+              <div className="template-road-toolbar-group">
+                <select
+                  className="text-input"
+                  value={activeBundle.session.compareScope}
+                  onChange={(event) =>
+                    updateSession({ compareScope: event.target.value as TemplateCompareScope })
+                  }
+                >
+                  {TEMPLATE_COMPARE_SCOPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={captureSnapshot}
+                  data-template-road-capture
+                  data-template-road-capture-state={captureReady ? "ready" : liveDiff.status}
+                  disabled={!captureReady}
+                  title={!captureReady ? compareValidityMessage ?? "Diff еще не готов." : undefined}
+                >
+                  Capture Snapshot
                 </button>
               </div>
             </div>
-            <div className="template-lab-preview-shell">
-              {isTurbo
-                ? renderTurboCanvas(activeDraft, activePreset.templateId)
-                : renderScienceCanvas(activeDraft, activePreset.templateId)}
+
+            <div className="template-road-toolbar template-road-toolbar-secondary">
+              <label className="template-road-inline-control">
+                Overlay
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={activeBundle.session.overlayOpacity}
+                  onChange={(event) =>
+                    updateSession({ overlayOpacity: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="template-road-inline-control">
+                Ref scale
+                <input
+                  type="range"
+                  min="0.85"
+                  max="1.15"
+                  step="0.001"
+                  value={activeBundle.session.referenceScale}
+                  onChange={(event) =>
+                    updateSession({ referenceScale: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="template-road-inline-control">
+                Zoom
+                <input
+                  type="range"
+                  min="0.6"
+                  max="1.8"
+                  step="0.01"
+                  value={activeBundle.session.zoom}
+                  onChange={(event) => updateSession({ zoom: Number(event.target.value) })}
+                />
+              </label>
+              <label className="template-road-inline-control checkbox">
+                <input type="checkbox" checked={showGuides} onChange={() => setShowGuides((prev) => !prev)} />
+                Guides
+              </label>
+              <label className="template-road-inline-control checkbox">
+                <input
+                  type="checkbox"
+                  checked={showSafeArea}
+                  onChange={() => setShowSafeArea((prev) => !prev)}
+                />
+                Safe area
+              </label>
+            </div>
+
+            <div className="template-road-toolbar template-road-toolbar-secondary">
+              <label className="template-road-inline-control">
+                X
+                <input
+                  type="range"
+                  min="-120"
+                  max="120"
+                  step="1"
+                  value={activeBundle.session.referenceOffsetX}
+                  onChange={(event) =>
+                    updateSession({ referenceOffsetX: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="template-road-inline-control">
+                Y
+                <input
+                  type="range"
+                  min="-120"
+                  max="120"
+                  step="1"
+                  value={activeBundle.session.referenceOffsetY}
+                  onChange={(event) =>
+                    updateSession({ referenceOffsetY: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="template-road-inline-control">
+                Crop X
+                <input
+                  type="range"
+                  min="0"
+                  max={Math.max(0, 1 - activeReferenceRect.width)}
+                  step="0.001"
+                  value={activeReferenceRect.x}
+                  disabled={!activeBundle.referenceImageUrl}
+                  onChange={(event) =>
+                    updateReferenceCrop({ x: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="template-road-inline-control">
+                Crop Y
+                <input
+                  type="range"
+                  min="0"
+                  max={Math.max(0, 1 - activeReferenceRect.height)}
+                  step="0.001"
+                  value={activeReferenceRect.y}
+                  disabled={!activeBundle.referenceImageUrl}
+                  onChange={(event) =>
+                    updateReferenceCrop({ y: Number(event.target.value) })
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="template-road-toolbar template-road-toolbar-secondary">
+              <label className="template-road-inline-control">
+                Crop W
+                <input
+                  type="range"
+                  min="0.2"
+                  max="1"
+                  step="0.001"
+                  value={activeReferenceRect.width}
+                  disabled={!activeBundle.referenceImageUrl}
+                  onChange={(event) =>
+                    updateReferenceCrop({ width: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="template-road-inline-control">
+                Crop H
+                <input
+                  type="range"
+                  min="0.2"
+                  max="1"
+                  step="0.001"
+                  value={activeReferenceRect.height}
+                  disabled={!activeBundle.referenceImageUrl}
+                  onChange={(event) =>
+                    updateReferenceCrop({ height: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label className="template-road-inline-control">
+                Split
+                <input
+                  type="range"
+                  min="0.05"
+                  max="0.95"
+                  step="0.01"
+                  value={activeBundle.session.splitPosition}
+                  onChange={(event) =>
+                    updateSession({ splitPosition: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => void autoNormalizeReference()}
+                disabled={!activeBundle.referenceImageUrl}
+              >
+                Auto 9:16 crop
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() =>
+                  updateSession({
+                    referenceOffsetX: 0,
+                    referenceOffsetY: 0,
+                    referenceScale: 1,
+                    panX: 0,
+                    panY: 0,
+                    zoom: 1,
+                    splitPosition: 0.5
+                  })
+                }
+              >
+                Reset alignment
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() =>
+                  updateReferenceCrop({
+                    x: 0,
+                    y: 0,
+                    width: 1,
+                    height: 1
+                  })
+                }
+                disabled={!activeBundle.referenceImageUrl}
+              >
+                Reset bounds
+              </button>
+            </div>
+
+            <div className="template-road-health-row">
+              <span className={`meta-pill ${compareReady ? "ok" : "warn"}`}>
+                {compareReady ? "Reference locked" : "Reference missing"}
+              </span>
+              <span className={`meta-pill ${compareReady ? "ok" : ""}`}>
+                Crop {Math.round(activeReferenceRect.width * 100)}x{Math.round(activeReferenceRect.height * 100)}%
+              </span>
+              <span className={`meta-pill ${compareValidityMessage ? "warn" : "ok"}`}>
+                {compareValidityMessage ? "Diff invalid" : "Diff valid"}
+              </span>
+              <span className="meta-pill" data-template-road-live-mismatch>
+                Live mismatch {formatPercent(liveDiff.report?.mismatchPercent)}
+              </span>
+              <span className="meta-pill">
+                Chrome mismatch {formatPercent(liveDiff.report?.chromeMismatchPercent)}
+              </span>
+            </div>
+
+            {compareValidityMessage ? <p className="subtle-text">{compareValidityMessage}</p> : null}
+            {activeBundle.referenceImageUrl ? (
+              <p className="subtle-text">
+                Reference bounds определяют, какая область загруженного файла становится каноническим кадром 1080x1920.
+              </p>
+            ) : null}
+
+            <div className="template-road-preview-shell" data-template-road-preview>
+              {renderCompareViewport()}
             </div>
           </section>
 
-          <section className="control-card template-lab-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Заметки по проходу</h3>
-                <p className="subtle-text">Здесь можно фиксировать, что уже добили и что нужно дожать в следующем pass.</p>
-              </div>
-            </div>
+          <section className="control-card template-road-card">
+            <h3>Notes</h3>
             <textarea
-              className="text-input template-lab-textarea template-lab-notes"
-              placeholder="Например: сделать верхний блок тяжелее, уменьшить gap между media и bottom card, усилить branded feel..."
-              value={activeDraft.iterationNotes}
-              onChange={(event) => updateActiveDraft((current) => ({ ...current, iterationNotes: event.target.value }))}
+              className="text-input template-road-textarea template-road-notes"
+              rows={7}
+              value={activeBundle.notes}
+              onChange={(event) => updateNotes(event.target.value)}
             />
           </section>
         </section>
 
-        <aside className="template-lab-reference-column">
-          <section className="control-card template-lab-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Reference</h3>
-                <p className="subtle-text">
-                  Загрузи изображение сюда или вставь URL. Так мы получим side-by-side режим для точной доводки.
-                </p>
-              </div>
+        <aside className="template-road-reference-column">
+          <section className="control-card template-road-card">
+            <h3>Reference Session</h3>
+            <p className="subtle-text">
+              Эти assets пишутся прямо в <code>design/templates/{activeTemplateId}</code>.
+            </p>
+            <div className="template-road-upload-list">
+              {([
+                ["reference", "reference.png"],
+                ["media", "media.png"],
+                ["background", "background.png"],
+                ["avatar", "avatar.png"],
+                ["mask", "mask.png"]
+              ] as const).map(([kind, label]) => (
+                <label key={kind} className="field-label template-road-upload-item">
+                  <span>{label}</span>
+                  <input type="file" accept="image/*" onChange={(event) => void handleAssetChange(kind, event)} />
+                </label>
+              ))}
             </div>
-            <label className="field-label">URL изображения</label>
-            <input
-              className="text-input"
-              placeholder="https://..."
-              value={activeDraft.referenceUrl}
-              onChange={(event) => {
-                setReferenceImageUrl((current) => {
-                  if (current?.startsWith("blob:")) {
-                    URL.revokeObjectURL(current);
-                  }
-                  return null;
-                });
-                updateActiveDraft((current) => ({ ...current, referenceUrl: event.target.value }));
-              }}
-            />
-            <label className="field-label">Или загрузить файл</label>
-            <input className="text-input" type="file" accept="image/*" onChange={onReferenceFileChange} />
-
-            {referenceSrc ? (
-              <div className="template-lab-reference-frame">
-                <img src={referenceSrc} alt="Reference" className="template-lab-reference-image" />
-              </div>
-            ) : (
-              <div className="template-lab-reference-empty">
-                Сюда можно положить референс.
-                <br />
-                Пока его нет, route все равно уже полезен как постоянная live-лаборатория.
-              </div>
-            )}
           </section>
 
-          <section className="control-card template-lab-card">
-            <div className="control-section-head">
+          <section className="control-card template-road-card">
+            <h3>Последний report</h3>
+            <div className="template-road-report-grid">
               <div>
-                <h3>Design targets</h3>
-                <p className="subtle-text">Короткий чеклист, чтобы проходы шли по одним и тем же критериям, а не “на глаз”.</p>
+                <span className="subtle-text">Статус</span>
+                <strong>{activeBundle.report?.pass ? "PASS" : "REVIEW"}</strong>
+              </div>
+              <div>
+                <span className="subtle-text">Mismatch</span>
+                <strong>{formatPercent(activeBundle.report?.mismatchPercent)}</strong>
+              </div>
+              <div>
+                <span className="subtle-text">Chrome</span>
+                <strong>{formatPercent(activeBundle.report?.chromeMismatchPercent)}</strong>
+              </div>
+              <div>
+                <span className="subtle-text">Снимок</span>
+                <strong>{formatTimestamp(activeBundle.report?.timestamp ?? null)}</strong>
               </div>
             </div>
+          </section>
+
+          <section className="control-card template-road-card">
+            <h3>Live Artifacts</h3>
+            <div className="template-road-artifacts">
+              {liveDiff.diffPngUrl ? (
+                <img src={liveDiff.diffPngUrl} alt="Live diff" className="template-road-artifact-image" />
+              ) : (
+                <div className="calibration-empty-state">{liveDiff.message ?? "Diff появится здесь."}</div>
+              )}
+              {liveDiff.heatmapPngUrl ? (
+                <img src={liveDiff.heatmapPngUrl} alt="Heatmap" className="template-road-artifact-image" />
+              ) : null}
+            </div>
+          </section>
+
+          <section className="control-card template-road-card">
+            <h3>Saved Artifacts</h3>
+            <div className="template-road-artifacts">
+              {activeBundle.artifacts.diffPngUrl ? (
+                <img
+                  src={activeBundle.artifacts.diffPngUrl}
+                  alt="Saved diff"
+                  className="template-road-artifact-image"
+                />
+              ) : (
+                <div className="calibration-empty-state">Capture Snapshot создаст diff.png и report.json.</div>
+              )}
+              {activeBundle.artifacts.heatmapPngUrl ? (
+                <img
+                  src={activeBundle.artifacts.heatmapPngUrl}
+                  alt="Saved heatmap"
+                  className="template-road-artifact-image"
+                />
+              ) : null}
+            </div>
+          </section>
+
+          <section className="control-card template-road-card">
+            <h3>Checklist</h3>
             <ul className="template-lab-checklist">
               {activePreset.checklist.map((item) => (
                 <li key={item}>{item}</li>
@@ -786,6 +1440,20 @@ export function Stage3TemplateLab({ initialTemplateId }: Stage3TemplateLabProps)
           </section>
         </aside>
       </section>
+
+      <div className="calibration-capture-root" aria-hidden="true">
+        <CompareScene
+          templateId={activeTemplateId}
+          content={activeBundle.content}
+          avatarAssetUrl={activeBundle.avatarAssetUrl}
+          backgroundAssetUrl={activeBundle.backgroundAssetUrl}
+          mediaAssetUrl={activeBundle.mediaAssetUrl}
+          showGuides={false}
+          compareScope={activeBundle.session.compareScope}
+          showSafeArea={false}
+          sceneRef={captureSceneRef}
+        />
+      </div>
     </main>
   );
 }

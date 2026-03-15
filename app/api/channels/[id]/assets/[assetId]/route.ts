@@ -1,5 +1,4 @@
 import { createReadStream } from "node:fs";
-import { Readable } from "node:stream";
 import {
   deleteChannelAssetById,
   getChannelAssetById,
@@ -14,12 +13,13 @@ import {
   requireChannelSetupEdit,
   requireChannelVisibility
 } from "../../../../../../lib/auth/guards";
+import { createNodeStreamResponse } from "../../../../../../lib/node-stream-response";
 
 export const runtime = "nodejs";
 
 type Context = { params: Promise<{ id: string; assetId: string }> };
 
-export async function GET(_request: Request, context: Context): Promise<Response> {
+export async function GET(request: Request, context: Context): Promise<Response> {
   const { id, assetId } = await context.params;
   try {
     const auth = await requireAuth();
@@ -34,8 +34,9 @@ export async function GET(_request: Request, context: Context): Promise<Response
       return Response.json({ error: "Asset file unavailable." }, { status: 404 });
     }
 
-    return new Response(Readable.toWeb(createReadStream(file.filePath)) as ReadableStream, {
-      status: 200,
+    return createNodeStreamResponse({
+      stream: createReadStream(file.filePath),
+      signal: request.signal,
       headers: {
         "Content-Type": asset.mimeType,
         "Content-Length": String(file.size),

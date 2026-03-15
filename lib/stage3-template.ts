@@ -1,79 +1,535 @@
 export const SCIENCE_CARD_TEMPLATE_ID = "science-card-v1";
 export const TURBO_FACE_TEMPLATE_ID = "turbo-face-v1";
+export const SCIENCE_CARD_V2_TEMPLATE_ID = "science-card-v2";
+export const SCIENCE_CARD_V3_TEMPLATE_ID = "science-card-v3";
+export const SCIENCE_CARD_V4_TEMPLATE_ID = "science-card-v4";
+export const SCIENCE_CARD_V5_TEMPLATE_ID = "science-card-v5";
 export const STAGE3_TEMPLATE_ID = SCIENCE_CARD_TEMPLATE_ID;
+
+const SHARED_STAGE3_CARD_METRICS = {
+  x: 90,
+  y: 160,
+  width: 901,
+  height: 1600
+} as const;
+
+const SCIENCE_CARD_SECTION_METRICS = {
+  topHeight: 349,
+  bottomHeight: 243
+} as const;
+
+const SCIENCE_CARD_V2_SECTION_METRICS = {
+  topHeight: 390,
+  bottomHeight: 270
+} as const;
+
+const TURBO_FACE_SECTION_METRICS = {
+  topHeight: 360,
+  bottomHeight: 300
+} as const;
+
+const TURBO_FACE_BASE_AUTHOR_METRICS = {
+  avatarSize: 88,
+  checkSize: 20,
+  authorNameFont: 38,
+  authorHandleFont: 24
+} as const;
+
+const SHARED_STAGE3_AUTHOR_METRICS = {
+  bottomMetaHeight: 118,
+  bottomMetaPaddingX: 20,
+  bottomMetaPaddingY: 4,
+  avatarSize: Math.round(TURBO_FACE_BASE_AUTHOR_METRICS.avatarSize * 1.2),
+  checkSize: Math.round(TURBO_FACE_BASE_AUTHOR_METRICS.checkSize * 2),
+  authorNameFont: Math.round(TURBO_FACE_BASE_AUTHOR_METRICS.authorNameFont * 1.1),
+  authorHandleFont: Math.round(TURBO_FACE_BASE_AUTHOR_METRICS.authorHandleFont * 1.5),
+  copyGap: 2,
+  nameCheckGap: 4
+} as const;
+
+const SCIENCE_CARD_AUTHOR_METRICS = {
+  bottomMetaHeight: 110,
+  bottomMetaPaddingX: 19,
+  bottomMetaPaddingY: 0,
+  avatarSize: 84,
+  checkSize: 45,
+  authorNameFont: 33,
+  authorHandleFont: 28,
+  gap: 8,
+  copyGap: 0,
+  nameCheckGap: 2
+} as const;
 
 export const SCIENCE_CARD = {
   frame: { width: 1080, height: 1920 },
   card: {
-    x: 78,
-    y: 198,
-    width: 924,
-    height: 1458,
-    radius: 30,
+    x: 159,
+    y: 320,
+    width: 757,
+    height: 1217,
+    radius: 12,
     borderWidth: 8,
-    borderColor: "#0a1119",
-    fill: "#ffffff"
+    borderColor: "#000000",
+    fill: "#ffffff",
+    shadow: "0 4px 4px rgba(0,0,0,0.25)"
   },
   slot: {
-    topHeight: 392,
-    bottomHeight: 322,
-    topPaddingX: 8,
-    topPaddingY: 5,
-    topPaddingTop: 3,
-    topPaddingBottom: 8,
-    bottomMetaHeight: 118,
-    bottomMetaPaddingX: 22,
-    bottomMetaPaddingY: 8,
-    bottomTextPaddingX: 14,
+    topHeight: 349,
+    bottomHeight: 243,
+    topPaddingX: 6,
+    topPaddingY: 15,
+    topPaddingTop: 15,
+    topPaddingBottom: 15,
+    bottomMetaHeight: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaHeight,
+    bottomMetaPaddingX: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaPaddingX,
+    bottomMetaPaddingY: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaPaddingY,
+    bottomTextPaddingX: 19,
     bottomTextPaddingY: 0,
-    bottomTextPaddingTop: 7,
-    bottomTextPaddingBottom: 1,
-    bottomTextPaddingLeft: 18,
-    bottomTextPaddingRight: 12
+    bottomTextPaddingTop: 0,
+    bottomTextPaddingBottom: 0,
+    bottomTextPaddingLeft: 19,
+    bottomTextPaddingRight: 39
+  },
+  palette: {
+    cardFill: "#ffffff",
+    topSectionFill: "#ffffff",
+    bottomSectionFill: "#ffffff",
+    topTextColor: "#000000",
+    bottomTextColor: "#0b0d10",
+    authorNameColor: "#000000",
+    authorHandleColor: "#acacac",
+    checkBadgeColor: "#e985d6",
+    borderColor: "#000000"
   },
   author: {
     name: "Science Snack",
     handle: "@Science_Snack_1",
-    avatarSize: 96,
-    avatarBorder: 3,
-    checkSize: 30
+    avatarSize: SCIENCE_CARD_AUTHOR_METRICS.avatarSize,
+    avatarBorder: 0,
+    checkSize: SCIENCE_CARD_AUTHOR_METRICS.checkSize,
+    gap: SCIENCE_CARD_AUTHOR_METRICS.gap,
+    copyGap: SCIENCE_CARD_AUTHOR_METRICS.copyGap,
+    nameCheckGap: SCIENCE_CARD_AUTHOR_METRICS.nameCheckGap,
+    checkAssetPath: "/stage3-template-badges/science-card-v1-check.png"
   },
   typography: {
     top: {
-      min: 38,
-      max: 68,
-      softLimit: 128,
-      penalty: 0.22,
-      lineHeight: 1.05,
+      min: 40,
+      max: 56,
+      softLimit: 220,
+      penalty: 0.14,
+      lineHeight: 0.938,
       maxLines: 7,
-      maxChars: 460
+      maxChars: 420,
+      horizontalSafety: 0.975,
+      glyphFactor: 0.53,
+      fillTargetMin: 0.9,
+      fillTargetMax: 0.95,
+      weight: 900,
+      letterSpacing: "-0.04em"
     },
     bottom: {
       min: 24,
-      max: 38,
-      softLimit: 110,
-      penalty: 0.24,
-      lineHeight: 1.12,
+      max: 34,
+      softLimit: 190,
+      penalty: 0.16,
+      lineHeight: 1.08,
       maxLines: 4,
-      maxChars: 390
+      maxChars: 320,
+      fillTargetMin: 0.8,
+      fillTargetMax: 0.88,
+      weight: 500,
+      letterSpacing: "-0.01em",
+      fontStyle: "normal"
     },
     authorName: {
-      font: 40,
-      lineHeight: 1.04
+      font: SCIENCE_CARD_AUTHOR_METRICS.authorNameFont,
+      lineHeight: 1,
+      weight: 800,
+      letterSpacing: "-0.03em"
     },
     authorHandle: {
-      font: 36,
-      lineHeight: 1.02
+      font: SCIENCE_CARD_AUTHOR_METRICS.authorHandleFont,
+      lineHeight: 1,
+      weight: 300,
+      letterSpacing: "-0.022em"
     }
   }
 } as const;
 
+export const SCIENCE_CARD_V2 = {
+  ...SCIENCE_CARD,
+  card: {
+    ...SCIENCE_CARD.card,
+    ...SHARED_STAGE3_CARD_METRICS,
+    radius: 0,
+    borderWidth: 6,
+    borderColor: "#22a65a",
+    fill: "#1b222a"
+  },
+  slot: {
+    ...SCIENCE_CARD.slot,
+    topHeight: SCIENCE_CARD_V2_SECTION_METRICS.topHeight,
+    topPaddingX: 58,
+    topPaddingY: 10,
+    topPaddingTop: 10,
+    topPaddingBottom: 12,
+    bottomHeight: SCIENCE_CARD_V2_SECTION_METRICS.bottomHeight,
+    bottomMetaHeight: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaHeight,
+    bottomMetaPaddingX: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaPaddingX,
+    bottomMetaPaddingY: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaPaddingY,
+    bottomTextPaddingX: 18,
+    bottomTextPaddingY: 0,
+    bottomTextPaddingTop: 6,
+    bottomTextPaddingBottom: 13,
+    bottomTextPaddingLeft: 18,
+    bottomTextPaddingRight: 18
+  },
+  author: {
+    ...SCIENCE_CARD.author,
+    name: "Zack The Bison",
+    handle: "@zackthebison",
+    avatarSize: SHARED_STAGE3_AUTHOR_METRICS.avatarSize,
+    avatarBorder: 1,
+    checkSize: SHARED_STAGE3_AUTHOR_METRICS.checkSize,
+    gap: 10,
+    copyGap: SHARED_STAGE3_AUTHOR_METRICS.copyGap,
+    nameCheckGap: SHARED_STAGE3_AUTHOR_METRICS.nameCheckGap
+  },
+  typography: {
+    ...SCIENCE_CARD.typography,
+    top: {
+      ...SCIENCE_CARD.typography.top,
+      min: 42,
+      max: 58,
+      softLimit: 190,
+      penalty: 0.18,
+      lineHeight: 0.93,
+      maxLines: 5,
+      maxChars: 240,
+      horizontalSafety: 0.95,
+      glyphFactor: 0.53,
+      fillTargetMin: 0.88,
+      fillTargetMax: 0.94,
+      weight: 800,
+      letterSpacing: "-0.03em"
+    },
+    bottom: {
+      ...SCIENCE_CARD.typography.bottom,
+      min: 18,
+      max: 24,
+      softLimit: 165,
+      penalty: 0.2,
+      lineHeight: 0.97,
+      maxLines: 4,
+      maxChars: 220,
+      fillTargetMin: 0.84,
+      fillTargetMax: 0.9,
+      weight: 700,
+      letterSpacing: "-0.015em",
+      fontStyle: "italic"
+    },
+    authorName: {
+      ...SCIENCE_CARD.typography.authorName,
+      font: SHARED_STAGE3_AUTHOR_METRICS.authorNameFont,
+      lineHeight: 1,
+      weight: 700,
+      letterSpacing: "-0.012em"
+    },
+    authorHandle: {
+      ...SCIENCE_CARD.typography.authorHandle,
+      font: SHARED_STAGE3_AUTHOR_METRICS.authorHandleFont,
+      lineHeight: 1,
+      weight: 600,
+      letterSpacing: "-0.02em"
+    }
+  },
+  palette: {
+    cardFill: "#1b222a",
+    topSectionFill: "#232a32",
+    bottomSectionFill: "#21272f",
+    topTextColor: "#f5f7f7",
+    bottomTextColor: "#edf0f2",
+    authorNameColor: "#f0e7d4",
+    authorHandleColor: "#9da3ab",
+    checkBadgeColor: "#d4aa24",
+    borderColor: "#22a65a",
+    accentColor: "#77c15e"
+  }
+} as const;
+
+export const SCIENCE_CARD_V3 = {
+  ...SCIENCE_CARD,
+  card: {
+    ...SCIENCE_CARD.card,
+    radius: 22,
+    borderWidth: 4,
+    borderColor: "#10243c",
+    fill: "#f8fbff",
+    shadow: "0 30px 80px rgba(10, 26, 48, 0.28), 0 12px 30px rgba(45, 108, 189, 0.18)"
+  },
+  slot: {
+    ...SCIENCE_CARD.slot,
+    topPaddingX: 30,
+    topPaddingY: 18,
+    topPaddingTop: 18,
+    topPaddingBottom: 16,
+    bottomMetaPaddingX: 22,
+    bottomMetaPaddingY: 2,
+    bottomTextPaddingX: 22,
+    bottomTextPaddingY: 0,
+    bottomTextPaddingTop: 2,
+    bottomTextPaddingBottom: 4,
+    bottomTextPaddingLeft: 22,
+    bottomTextPaddingRight: 30
+  },
+  author: {
+    ...SCIENCE_CARD.author,
+    avatarBorder: 2,
+    gap: 10,
+    nameCheckGap: 5
+  },
+  typography: {
+    ...SCIENCE_CARD.typography,
+    top: {
+      ...SCIENCE_CARD.typography.top,
+      min: 38,
+      max: 54,
+      softLimit: 210,
+      penalty: 0.14,
+      lineHeight: 0.94,
+      maxLines: 6,
+      horizontalSafety: 0.96,
+      glyphFactor: 0.52,
+      fillTargetMin: 0.89,
+      fillTargetMax: 0.95,
+      weight: 830,
+      letterSpacing: "-0.036em"
+    },
+    bottom: {
+      ...SCIENCE_CARD.typography.bottom,
+      min: 23,
+      max: 32,
+      softLimit: 180,
+      penalty: 0.15,
+      lineHeight: 1.04,
+      maxChars: 300,
+      fillTargetMin: 0.82,
+      fillTargetMax: 0.9,
+      weight: 550,
+      letterSpacing: "-0.012em"
+    },
+    authorName: {
+      ...SCIENCE_CARD.typography.authorName,
+      font: 34,
+      weight: 800,
+      letterSpacing: "-0.026em"
+    },
+    authorHandle: {
+      ...SCIENCE_CARD.typography.authorHandle,
+      font: 26,
+      weight: 450,
+      letterSpacing: "-0.018em"
+    }
+  },
+  palette: {
+    cardFill: "linear-gradient(180deg, #ffffff 0%, #edf5ff 100%)",
+    topSectionFill: "linear-gradient(180deg, #ffffff 0%, #f1f7ff 100%)",
+    bottomSectionFill: "linear-gradient(180deg, #ffffff 0%, #f6faff 100%)",
+    topTextColor: "#08121e",
+    bottomTextColor: "#0f1826",
+    authorNameColor: "#071320",
+    authorHandleColor: "rgba(12, 25, 38, 0.46)",
+    checkBadgeColor: "#4fbef7",
+    borderColor: "#10243c",
+    accentColor: "#178de8"
+  }
+} as const;
+
+export const SCIENCE_CARD_V4 = {
+  ...SCIENCE_CARD,
+  card: {
+    ...SCIENCE_CARD.card,
+    radius: 28,
+    borderWidth: 3,
+    borderColor: "rgba(112, 228, 255, 0.58)",
+    fill: "#071019",
+    shadow: "0 38px 90px rgba(0, 0, 0, 0.42), 0 18px 50px rgba(14, 120, 158, 0.22)"
+  },
+  slot: {
+    ...SCIENCE_CARD.slot,
+    topPaddingX: 34,
+    topPaddingY: 20,
+    topPaddingTop: 20,
+    topPaddingBottom: 16,
+    bottomMetaPaddingX: 24,
+    bottomMetaPaddingY: 3,
+    bottomTextPaddingX: 24,
+    bottomTextPaddingY: 0,
+    bottomTextPaddingTop: 4,
+    bottomTextPaddingBottom: 8,
+    bottomTextPaddingLeft: 24,
+    bottomTextPaddingRight: 28
+  },
+  author: {
+    ...SCIENCE_CARD.author,
+    avatarBorder: 2,
+    gap: 10,
+    nameCheckGap: 5
+  },
+  typography: {
+    ...SCIENCE_CARD.typography,
+    top: {
+      ...SCIENCE_CARD.typography.top,
+      min: 40,
+      max: 56,
+      softLimit: 210,
+      penalty: 0.17,
+      lineHeight: 0.93,
+      maxLines: 6,
+      horizontalSafety: 0.95,
+      glyphFactor: 0.52,
+      fillTargetMin: 0.88,
+      fillTargetMax: 0.94,
+      weight: 820,
+      letterSpacing: "-0.03em"
+    },
+    bottom: {
+      ...SCIENCE_CARD.typography.bottom,
+      min: 22,
+      max: 30,
+      softLimit: 175,
+      penalty: 0.16,
+      lineHeight: 1.05,
+      maxChars: 280,
+      fillTargetMin: 0.82,
+      fillTargetMax: 0.9,
+      weight: 560,
+      letterSpacing: "-0.01em"
+    },
+    authorName: {
+      ...SCIENCE_CARD.typography.authorName,
+      font: 34,
+      weight: 700,
+      letterSpacing: "-0.018em"
+    },
+    authorHandle: {
+      ...SCIENCE_CARD.typography.authorHandle,
+      font: 25,
+      weight: 500,
+      letterSpacing: "-0.014em"
+    }
+  },
+  palette: {
+    cardFill: "linear-gradient(180deg, rgba(10, 20, 31, 0.98) 0%, rgba(4, 9, 16, 0.98) 100%)",
+    topSectionFill: "linear-gradient(180deg, rgba(13, 25, 38, 0.98) 0%, rgba(9, 17, 28, 0.98) 100%)",
+    bottomSectionFill: "linear-gradient(180deg, rgba(8, 16, 26, 0.98) 0%, rgba(6, 12, 20, 0.98) 100%)",
+    topTextColor: "#f3fbff",
+    bottomTextColor: "#dfe9ef",
+    authorNameColor: "#f4fdff",
+    authorHandleColor: "rgba(194, 214, 229, 0.66)",
+    checkBadgeColor: "#64d9ff",
+    borderColor: "rgba(112, 228, 255, 0.58)",
+    accentColor: "#5af0cf"
+  }
+} as const;
+
+export const SCIENCE_CARD_V5 = {
+  ...SCIENCE_CARD,
+  card: {
+    ...SCIENCE_CARD.card,
+    radius: 18,
+    borderWidth: 5,
+    borderColor: "#6a3216",
+    fill: "#fff7ef",
+    shadow: "0 26px 60px rgba(79, 33, 16, 0.22), 0 10px 22px rgba(145, 74, 31, 0.14)"
+  },
+  slot: {
+    ...SCIENCE_CARD.slot,
+    topPaddingX: 28,
+    topPaddingY: 16,
+    topPaddingTop: 16,
+    topPaddingBottom: 14,
+    bottomMetaPaddingX: 21,
+    bottomMetaPaddingY: 1,
+    bottomTextPaddingX: 21,
+    bottomTextPaddingY: 0,
+    bottomTextPaddingTop: 3,
+    bottomTextPaddingBottom: 5,
+    bottomTextPaddingLeft: 21,
+    bottomTextPaddingRight: 28
+  },
+  author: {
+    ...SCIENCE_CARD.author,
+    avatarBorder: 1,
+    gap: 10,
+    nameCheckGap: 6
+  },
+  typography: {
+    ...SCIENCE_CARD.typography,
+    top: {
+      ...SCIENCE_CARD.typography.top,
+      min: 39,
+      max: 55,
+      softLimit: 210,
+      penalty: 0.15,
+      lineHeight: 0.95,
+      maxLines: 6,
+      horizontalSafety: 0.96,
+      glyphFactor: 0.52,
+      fillTargetMin: 0.89,
+      fillTargetMax: 0.95,
+      weight: 820,
+      letterSpacing: "-0.03em"
+    },
+    bottom: {
+      ...SCIENCE_CARD.typography.bottom,
+      min: 23,
+      max: 31,
+      softLimit: 185,
+      penalty: 0.16,
+      lineHeight: 1.06,
+      maxChars: 290,
+      fillTargetMin: 0.82,
+      fillTargetMax: 0.9,
+      weight: 600,
+      letterSpacing: "-0.012em",
+      fontStyle: "italic"
+    },
+    authorName: {
+      ...SCIENCE_CARD.typography.authorName,
+      font: 34,
+      weight: 800,
+      letterSpacing: "-0.03em"
+    },
+    authorHandle: {
+      ...SCIENCE_CARD.typography.authorHandle,
+      font: 26,
+      weight: 500,
+      letterSpacing: "-0.016em"
+    }
+  },
+  palette: {
+    cardFill: "linear-gradient(180deg, #fffaf4 0%, #f8eadb 100%)",
+    topSectionFill:
+      "radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.96), rgba(255, 245, 230, 0.95) 38%, rgba(245, 220, 194, 0.96) 100%)",
+    bottomSectionFill: "linear-gradient(180deg, rgba(255, 253, 250, 0.98) 0%, rgba(246, 236, 223, 0.98) 100%)",
+    topTextColor: "#351308",
+    bottomTextColor: "#3a190d",
+    authorNameColor: "#281107",
+    authorHandleColor: "rgba(67, 29, 13, 0.48)",
+    checkBadgeColor: "#f28f5a",
+    borderColor: "#6a3216",
+    accentColor: "#d36e34"
+  }
+} as const;
+
 export const STAGE3_TEMPLATE_SHELL = {
-  x: SCIENCE_CARD.card.x,
-  y: SCIENCE_CARD.card.y,
-  width: SCIENCE_CARD.card.width,
-  height: SCIENCE_CARD.card.height,
-  radius: SCIENCE_CARD.card.radius
+  x: SHARED_STAGE3_CARD_METRICS.x,
+  y: SHARED_STAGE3_CARD_METRICS.y,
+  width: SHARED_STAGE3_CARD_METRICS.width,
+  height: SHARED_STAGE3_CARD_METRICS.height,
+  radius: 30
 } as const;
 
 const STAGE3_TEMPLATE_SHELL_BOTTOM =
@@ -85,11 +541,11 @@ export const TURBO_FACE = {
     x: STAGE3_TEMPLATE_SHELL.x,
     y: STAGE3_TEMPLATE_SHELL.y,
     width: STAGE3_TEMPLATE_SHELL.width,
-    radius: 4,
-    paddingX: 18,
-    paddingY: 14,
-    minHeight: 316,
-    maxHeight: 450
+    radius: 0,
+    paddingX: 20,
+    paddingY: 10,
+    minHeight: TURBO_FACE_SECTION_METRICS.topHeight,
+    maxHeight: TURBO_FACE_SECTION_METRICS.topHeight
   },
   video: {
     x: STAGE3_TEMPLATE_SHELL.x,
@@ -99,49 +555,79 @@ export const TURBO_FACE = {
     x: STAGE3_TEMPLATE_SHELL.x,
     bottom: STAGE3_TEMPLATE_SHELL_BOTTOM,
     width: STAGE3_TEMPLATE_SHELL.width,
-    radius: 4,
+    radius: 0,
     paddingX: 18,
-    paddingY: 16,
-    metaHeight: 104,
-    metaGap: 10,
-    minHeight: 250,
-    maxHeight: 364
+    paddingY: 8,
+    metaHeight: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaHeight,
+    metaGap: 6,
+    minHeight: TURBO_FACE_SECTION_METRICS.bottomHeight,
+    maxHeight: TURBO_FACE_SECTION_METRICS.bottomHeight
   },
   author: {
     name: "Stone Face Turbo",
     handle: "@StoneFaceTurbo",
-    avatarSize: 74,
+    avatarSize: SHARED_STAGE3_AUTHOR_METRICS.avatarSize,
     avatarBorder: 1,
-    checkSize: 24
+    checkSize: SHARED_STAGE3_AUTHOR_METRICS.checkSize,
+    gap: 10,
+    copyGap: SHARED_STAGE3_AUTHOR_METRICS.copyGap,
+    nameCheckGap: SHARED_STAGE3_AUTHOR_METRICS.nameCheckGap
   },
   typography: {
     top: {
-      min: 54,
-      max: 82,
-      softLimit: 220,
+      min: 50,
+      max: 76,
+      softLimit: 280,
       penalty: 0.15,
-      lineHeight: 0.94,
-      maxLines: 7,
-      maxChars: 500
+      lineHeight: 0.9,
+      maxLines: 6,
+      maxChars: 500,
+      horizontalSafety: 0.96,
+      glyphFactor: 0.52,
+      fillTargetMin: 0.9,
+      fillTargetMax: 0.95,
+      weight: 850,
+      letterSpacing: "-0.038em"
     },
     bottom: {
-      min: 22,
-      max: 30,
-      softLimit: 180,
+      min: 26,
+      max: 46,
+      softLimit: 220,
       penalty: 0.16,
-      lineHeight: 1.3,
-      maxLines: 5,
-      maxChars: 340
+      lineHeight: 1.06,
+      maxLines: 4,
+      maxChars: 340,
+      fillTargetMin: 0.88,
+      fillTargetMax: 0.94,
+      weight: 400,
+      letterSpacing: "0",
+      fontStyle: "normal"
     },
     authorName: {
-      font: 36,
-      lineHeight: 1.02
+      font: SHARED_STAGE3_AUTHOR_METRICS.authorNameFont,
+      lineHeight: 1.01,
+      weight: 700,
+      letterSpacing: "-0.012em"
     },
     authorHandle: {
-      font: 24,
-      lineHeight: 1.02
+      font: SHARED_STAGE3_AUTHOR_METRICS.authorHandleFont,
+      lineHeight: 1.02,
+      weight: 400,
+      letterSpacing: "-0.006em"
     }
   }
+} as const;
+
+export const TURBO_FACE_PALETTE = {
+  cardFill: "#f6f3eb",
+  topSectionFill: "#fbf7ef",
+  bottomSectionFill: "#fbf7ef",
+  topTextColor: "#05070b",
+  bottomTextColor: "#171b21",
+  authorNameColor: "#0c1018",
+  authorHandleColor: "rgba(16, 19, 26, 0.46)",
+  checkBadgeColor: "#73b2dd",
+  borderColor: "rgba(10, 17, 25, 0.88)"
 } as const;
 
 const TURBO_FACE_COMPAT = {
@@ -151,24 +637,28 @@ const TURBO_FACE_COMPAT = {
     y: STAGE3_TEMPLATE_SHELL.y,
     width: STAGE3_TEMPLATE_SHELL.width,
     height: STAGE3_TEMPLATE_SHELL.height,
-    radius: STAGE3_TEMPLATE_SHELL.radius,
+    radius: 18,
     borderWidth: 2,
     borderColor: "#0a1119",
-    fill: "#fbfbf8"
+    fill: "#fbfbf8",
+    shadow: "0 24px 48px rgba(4, 10, 20, 0.38), 0 8px 22px rgba(4, 10, 20, 0.2)"
   },
   slot: {
-    topHeight: 420,
-    bottomHeight: 312,
+    topHeight: TURBO_FACE_SECTION_METRICS.topHeight,
+    bottomHeight: TURBO_FACE_SECTION_METRICS.bottomHeight,
     topPaddingX: 38,
-    topPaddingY: 26,
-    bottomMetaHeight: 110,
-    bottomMetaPaddingX: 28,
-    bottomMetaPaddingY: 18,
-    bottomTextPaddingX: 28,
-    bottomTextPaddingY: 12,
-    bottomTextPaddingTop: 10,
-    bottomTextPaddingBottom: 14
+    topPaddingY: 10,
+    topPaddingTop: 10,
+    topPaddingBottom: 12,
+    bottomMetaHeight: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaHeight,
+    bottomMetaPaddingX: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaPaddingX,
+    bottomMetaPaddingY: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaPaddingY,
+    bottomTextPaddingX: 18,
+    bottomTextPaddingY: 0,
+    bottomTextPaddingTop: 4,
+    bottomTextPaddingBottom: 8
   },
+  palette: TURBO_FACE_PALETTE,
   author: TURBO_FACE.author,
   typography: TURBO_FACE.typography
 } as const;
@@ -184,6 +674,7 @@ export type Stage3TemplateConfig = {
     borderWidth: number;
     borderColor: string;
     fill: string;
+    shadow?: string;
   };
   slot: {
     topHeight: number;
@@ -208,6 +699,10 @@ export type Stage3TemplateConfig = {
     avatarSize: number;
     avatarBorder: number;
     checkSize: number;
+    gap?: number;
+    copyGap?: number;
+    nameCheckGap?: number;
+    checkAssetPath?: string;
   };
   typography: {
     top: {
@@ -218,6 +713,13 @@ export type Stage3TemplateConfig = {
       lineHeight: number;
       maxLines: number;
       maxChars: number;
+      horizontalSafety?: number;
+      glyphFactor?: number;
+      fillTargetMin?: number;
+      fillTargetMax?: number;
+      weight?: number;
+      letterSpacing?: string;
+      fontStyle?: "normal" | "italic";
     };
     bottom: {
       min: number;
@@ -227,15 +729,38 @@ export type Stage3TemplateConfig = {
       lineHeight: number;
       maxLines: number;
       maxChars: number;
+      horizontalSafety?: number;
+      glyphFactor?: number;
+      fillTargetMin?: number;
+      fillTargetMax?: number;
+      weight?: number;
+      letterSpacing?: string;
+      fontStyle?: "normal" | "italic";
     };
     authorName: {
       font: number;
       lineHeight: number;
+      weight?: number;
+      letterSpacing?: string;
     };
     authorHandle: {
       font: number;
       lineHeight: number;
+      weight?: number;
+      letterSpacing?: string;
     };
+  };
+  palette: {
+    cardFill: string;
+    topSectionFill: string;
+    bottomSectionFill: string;
+    topTextColor: string;
+    bottomTextColor: string;
+    authorNameColor: string;
+    authorHandleColor: string;
+    checkBadgeColor: string;
+    borderColor: string;
+    accentColor?: string;
   };
 };
 
@@ -245,6 +770,10 @@ type TypographyConfig = {
   lineHeight: number;
   maxLines: number;
   maxChars: number;
+  horizontalSafety?: number;
+  glyphFactor?: number;
+  fillTargetMin?: number;
+  fillTargetMax?: number;
 };
 
 type SlotSize = {
@@ -281,11 +810,34 @@ function getBottomTextPaddingRight(template: Stage3TemplateConfig): number {
   return template.slot.bottomTextPaddingRight ?? template.slot.bottomTextPaddingX;
 }
 
-const AVERAGE_GLYPH_FACTOR = 0.56;
-const HORIZONTAL_SAFETY = 0.96;
+function getSectionBorderLosses(template: Stage3TemplateConfig): {
+  topWidth: number;
+  topHeight: number;
+  bottomWidth: number;
+  bottomHeight: number;
+} {
+  if (template === SCIENCE_CARD) {
+    return {
+      topWidth: template.card.borderWidth * 2,
+      topHeight: template.card.borderWidth,
+      bottomWidth: template.card.borderWidth * 2,
+      bottomHeight: template.card.borderWidth
+    };
+  }
+  return {
+    topWidth: 0,
+    topHeight: 0,
+    bottomWidth: 0,
+    bottomHeight: 0
+  };
+}
+
+const DEFAULT_AVERAGE_GLYPH_FACTOR = 0.56;
+const DEFAULT_HORIZONTAL_SAFETY = 0.92;
 const VERTICAL_SAFETY = 0.995;
 const FONT_SCALE_MIN = 0.7;
 const FONT_SCALE_MAX = 1.9;
+const MIN_FONT_FALLBACK_RATIO = 0.58;
 const FILLER_WORDS = new Set([
   "really",
   "very",
@@ -295,6 +847,21 @@ const FILLER_WORDS = new Set([
   "just",
   "literally"
 ]);
+
+export function resolveScaledMaxLines(baseMaxLines: number, scale: number, slot: "top" | "bottom"): number {
+  if (!Number.isFinite(scale) || scale <= 1.05) {
+    return baseMaxLines;
+  }
+  if (slot === "bottom") {
+    if (scale >= 1.6) {
+      return baseMaxLines + 2;
+    }
+    if (scale >= 1.22) {
+      return baseMaxLines + 1;
+    }
+  }
+  return baseMaxLines;
+}
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -311,15 +878,34 @@ function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").replace(/\s([,.:;!?])/g, "$1").trim();
 }
 
-function estimateLineCount(text: string, fontPx: number, widthPx: number): number {
+function getSafeMinimumFont(config: TypographyConfig): number {
+  return Math.max(14, Math.floor(config.min * MIN_FONT_FALLBACK_RATIO));
+}
+
+function resolveGlyphFactor(config: TypographyConfig): number {
+  return clampNumber(config.glyphFactor ?? DEFAULT_AVERAGE_GLYPH_FACTOR, 0.45, 0.7);
+}
+
+function resolveHorizontalSafety(config: TypographyConfig): number {
+  return clampNumber(config.horizontalSafety ?? DEFAULT_HORIZONTAL_SAFETY, 0.86, 1);
+}
+
+function estimateLineCount(
+  text: string,
+  fontPx: number,
+  widthPx: number,
+  config: TypographyConfig
+): number {
   const normalized = normalizeText(text);
   if (!normalized) {
     return 1;
   }
+  const horizontalSafety = resolveHorizontalSafety(config);
+  const glyphFactor = resolveGlyphFactor(config);
 
   const maxCharsPerLine = Math.max(
     3,
-    Math.floor((widthPx * HORIZONTAL_SAFETY) / Math.max(1, fontPx * AVERAGE_GLYPH_FACTOR))
+    Math.floor((widthPx * horizontalSafety) / Math.max(1, fontPx * glyphFactor))
   );
   const words = normalized.split(" ");
   let lines = 1;
@@ -356,11 +942,12 @@ function findBestFontForSlot(
   slot: SlotSize,
   config: TypographyConfig
 ): { font: number; lines: number; fits: boolean } {
-  let fallbackFont = config.min;
-  let fallbackLines = estimateLineCount(text, fallbackFont, slot.width);
+  const minFont = getSafeMinimumFont(config);
+  let fallbackFont = minFont;
+  let fallbackLines = estimateLineCount(text, fallbackFont, slot.width, config);
 
-  for (let font = config.max; font >= config.min; font -= 1) {
-    const lines = estimateLineCount(text, font, slot.width);
+  for (let font = config.max; font >= minFont; font -= 1) {
+    const lines = estimateLineCount(text, font, slot.width, config);
     const contentHeight = lines * font * config.lineHeight;
     if (lines <= config.maxLines && contentHeight <= slot.height * VERTICAL_SAFETY) {
       return { font, lines, fits: true };
@@ -383,7 +970,7 @@ function applyFontScaleWithSafety(params: {
   scale: number;
 }): { font: number; lines: number; lineHeight: number } {
   const normalizedScale = normalizeFontScale(params.scale);
-  const minFont = Math.max(16, Math.floor(params.config.min * 0.7));
+  const minFont = getSafeMinimumFont(params.config);
   const maxFont = Math.max(
     params.config.max,
     Math.round(params.config.max * Math.max(1, normalizedScale))
@@ -392,7 +979,7 @@ function applyFontScaleWithSafety(params: {
   const maxHeight = params.slot.height * VERTICAL_SAFETY;
   let font = clampNumber(Math.round(params.baseFont * normalizedScale), minFont, maxFont);
   let effectiveLineHeight = params.config.lineHeight;
-  let lines = estimateLineCount(params.text, font, params.slot.width);
+  let lines = estimateLineCount(params.text, font, params.slot.width, params.config);
   let contentHeight = lines * font * effectiveLineHeight;
 
   while (
@@ -410,8 +997,46 @@ function applyFontScaleWithSafety(params: {
 
     font -= 1;
     effectiveLineHeight = params.config.lineHeight;
-    lines = estimateLineCount(params.text, font, params.slot.width);
+    lines = estimateLineCount(params.text, font, params.slot.width, params.config);
     contentHeight = lines * font * effectiveLineHeight;
+  }
+
+  const fillTargetMin = clampNumber(params.config.fillTargetMin ?? 0, 0, VERTICAL_SAFETY);
+  if (fillTargetMin > 0) {
+    const targetContentHeight = params.slot.height * fillTargetMin;
+    const maxLineHeight = Math.min(1.35, Math.max(params.config.lineHeight, params.config.lineHeight + 0.18));
+    let growIterations = 0;
+
+    while (contentHeight < targetContentHeight && growIterations < 64) {
+      growIterations += 1;
+      let expanded = false;
+
+      if (font < maxFont) {
+        const candidateFont = font + 1;
+        const candidateLines = estimateLineCount(params.text, candidateFont, params.slot.width, params.config);
+        const candidateHeight = candidateLines * candidateFont * effectiveLineHeight;
+        if (candidateLines <= params.config.maxLines && candidateHeight <= maxHeight) {
+          font = candidateFont;
+          lines = candidateLines;
+          contentHeight = candidateHeight;
+          expanded = true;
+        }
+      }
+
+      if (!expanded && effectiveLineHeight < maxLineHeight) {
+        const candidateLineHeight = Number(Math.min(maxLineHeight, effectiveLineHeight + 0.01).toFixed(3));
+        const candidateHeight = lines * font * candidateLineHeight;
+        if (candidateHeight <= maxHeight) {
+          effectiveLineHeight = candidateLineHeight;
+          contentHeight = candidateHeight;
+          expanded = true;
+        }
+      }
+
+      if (!expanded) {
+        break;
+      }
+    }
   }
 
   return { font, lines, lineHeight: Number(effectiveLineHeight.toFixed(3)) };
@@ -475,17 +1100,25 @@ function optimizeTextForSlot(
   }
 
   let compacted = false;
-  if (candidate.length > config.maxChars) {
-    candidate = compactText(candidate, config.maxChars);
-    compacted = true;
-  }
-
+  const horizontalSafety = resolveHorizontalSafety(config);
+  const glyphFactor = resolveGlyphFactor(config);
   const minCapacity = Math.max(
     24,
-    Math.floor((slot.width / Math.max(1, config.min * AVERAGE_GLYPH_FACTOR)) * config.maxLines * 0.92)
+    Math.floor((slot.width * horizontalSafety) / Math.max(1, config.min * glyphFactor) * config.maxLines * 0.92)
   );
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  const directFit = findBestFontForSlot(candidate, slot, config);
+  if (directFit.fits) {
+    return { text: candidate, font: directFit.font, lines: directFit.lines, compacted };
+  }
+
+  const shouldCompactAsLastResort = candidate.length > Math.max(config.maxChars * 2, minCapacity * 1.6);
+  if (!shouldCompactAsLastResort) {
+    const fallback = findBestFontForSlot(candidate, slot, config);
+    return { text: candidate, font: fallback.font, lines: fallback.lines, compacted };
+  }
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     const fit = findBestFontForSlot(candidate, slot, config);
     if (fit.fits) {
       return { text: candidate, font: fit.font, lines: fit.lines, compacted };
@@ -517,7 +1150,8 @@ export function clampText(value: string, maxChars: number): string {
 export function getScienceCardComputed(
   topText: string,
   bottomText: string,
-  fontOverrides?: FontScaleOverrides
+  fontOverrides?: FontScaleOverrides,
+  templateConfig: Stage3TemplateConfig = SCIENCE_CARD
 ): {
   top: string;
   bottom: string;
@@ -530,6 +1164,7 @@ export function getScienceCardComputed(
   topCompacted: boolean;
   bottomCompacted: boolean;
   videoHeight: number;
+  bottomMetaHeight: number;
   bottomBodyHeight: number;
   topBlockHeight: number;
   bottomBlockHeight: number;
@@ -539,51 +1174,57 @@ export function getScienceCardComputed(
 } {
   const topScale = normalizeFontScale(fontOverrides?.topFontScale);
   const bottomScale = normalizeFontScale(fontOverrides?.bottomFontScale);
-  const topPaddingTop = getTopPaddingTop(SCIENCE_CARD);
-  const topPaddingBottom = getTopPaddingBottom(SCIENCE_CARD);
+  const topTypography = {
+    ...templateConfig.typography.top,
+    maxLines: resolveScaledMaxLines(templateConfig.typography.top.maxLines, topScale, "top")
+  };
+  const bottomTypography = {
+    ...templateConfig.typography.bottom,
+    maxLines: resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom")
+  };
+  const topPaddingTop = getTopPaddingTop(templateConfig);
+  const topPaddingBottom = getTopPaddingBottom(templateConfig);
+  const topBlockHeight = templateConfig.slot.topHeight;
+  const bottomBlockHeight = templateConfig.slot.bottomHeight;
+  const bottomMetaHeight = templateConfig.slot.bottomMetaHeight;
+  const sectionBorderLosses = getSectionBorderLosses(templateConfig);
+  const bottomBodyHeight = Math.max(80, bottomBlockHeight - sectionBorderLosses.bottomHeight - bottomMetaHeight);
 
   const topSlot: SlotSize = {
-    width: SCIENCE_CARD.card.width - SCIENCE_CARD.slot.topPaddingX * 2,
-    height: SCIENCE_CARD.slot.topHeight - topPaddingTop - topPaddingBottom
+    width: templateConfig.card.width - sectionBorderLosses.topWidth - templateConfig.slot.topPaddingX * 2,
+    height: topBlockHeight - sectionBorderLosses.topHeight - topPaddingTop - topPaddingBottom
   };
-  const bottomBodyHeightLimit = Math.max(
-    80,
-    SCIENCE_CARD.slot.bottomHeight - SCIENCE_CARD.slot.bottomMetaHeight
-  );
-  const bottomTextPaddingTop = getBottomTextPaddingTop(SCIENCE_CARD);
-  const bottomTextPaddingBottom = getBottomTextPaddingBottom(SCIENCE_CARD);
-  const bottomTextPaddingLeft = getBottomTextPaddingLeft(SCIENCE_CARD);
-  const bottomTextPaddingRight = getBottomTextPaddingRight(SCIENCE_CARD);
+  const bottomTextPaddingTop = getBottomTextPaddingTop(templateConfig);
+  const bottomTextPaddingBottom = getBottomTextPaddingBottom(templateConfig);
+  const bottomTextPaddingLeft = getBottomTextPaddingLeft(templateConfig);
+  const bottomTextPaddingRight = getBottomTextPaddingRight(templateConfig);
   const bottomSlot: SlotSize = {
-    width: SCIENCE_CARD.card.width - bottomTextPaddingLeft - bottomTextPaddingRight,
-    height: bottomBodyHeightLimit - bottomTextPaddingTop - bottomTextPaddingBottom
+    width: templateConfig.card.width - sectionBorderLosses.bottomWidth - bottomTextPaddingLeft - bottomTextPaddingRight,
+    height: bottomBodyHeight - bottomTextPaddingTop - bottomTextPaddingBottom
   };
 
-  const topFit = optimizeTextForSlot(topText, topSlot, SCIENCE_CARD.typography.top, "Top text");
+  const topFit = optimizeTextForSlot(topText, topSlot, topTypography, "Top text");
   const topSized = applyFontScaleWithSafety({
     text: topFit.text,
     baseFont: topFit.font,
     slot: topSlot,
-    config: SCIENCE_CARD.typography.top,
+    config: topTypography,
     scale: topScale
   });
   const bottomFit = optimizeTextForSlot(
     bottomText,
     bottomSlot,
-    SCIENCE_CARD.typography.bottom,
+    bottomTypography,
     "Bottom text"
   );
   const bottomSized = applyFontScaleWithSafety({
     text: bottomFit.text,
     baseFont: bottomFit.font,
     slot: bottomSlot,
-    config: SCIENCE_CARD.typography.bottom,
+    config: bottomTypography,
     scale: bottomScale
   });
-  const bottomBodyHeight = bottomBodyHeightLimit;
-  const topBlockHeight = SCIENCE_CARD.slot.topHeight;
-  const bottomBlockHeight = SCIENCE_CARD.slot.bottomHeight;
-  const videoHeight = SCIENCE_CARD.card.height - topBlockHeight - bottomBlockHeight;
+  const videoHeight = templateConfig.card.height - topBlockHeight - bottomBlockHeight;
 
   return {
     top: topFit.text,
@@ -597,12 +1238,13 @@ export function getScienceCardComputed(
     topCompacted: topFit.compacted,
     bottomCompacted: bottomFit.compacted,
     videoHeight,
+    bottomMetaHeight,
     bottomBodyHeight,
     topBlockHeight,
     bottomBlockHeight,
-    videoY: SCIENCE_CARD.card.y + topBlockHeight,
-    videoX: SCIENCE_CARD.card.x,
-    videoWidth: SCIENCE_CARD.card.width
+    videoY: templateConfig.card.y + topBlockHeight,
+    videoX: templateConfig.card.x,
+    videoWidth: templateConfig.card.width
   };
 }
 
@@ -622,6 +1264,7 @@ export function getTurboFaceComputed(
   topCompacted: boolean;
   bottomCompacted: boolean;
   videoHeight: number;
+  bottomMetaHeight: number;
   bottomBodyHeight: number;
   topBlockHeight: number;
   bottomBlockHeight: number;
@@ -629,86 +1272,7 @@ export function getTurboFaceComputed(
   videoX: number;
   videoWidth: number;
 } {
-  const topScale = normalizeFontScale(fontOverrides?.topFontScale);
-  const bottomScale = normalizeFontScale(fontOverrides?.bottomFontScale);
-
-  const topSlot: SlotSize = {
-    width: TURBO_FACE.top.width - TURBO_FACE.top.paddingX * 2,
-    height: TURBO_FACE.top.maxHeight - TURBO_FACE.top.paddingY * 2
-  };
-  const topFit = optimizeTextForSlot(topText, topSlot, TURBO_FACE.typography.top, "Top text");
-  const topSized = applyFontScaleWithSafety({
-    text: topFit.text,
-    baseFont: topFit.font,
-    slot: topSlot,
-    config: TURBO_FACE.typography.top,
-    scale: topScale
-  });
-  const topContentHeight = Math.ceil(
-    topSized.lines * topSized.font * topSized.lineHeight
-  );
-  const topBlockHeight = clampNumber(
-    topContentHeight + TURBO_FACE.top.paddingY * 2,
-    TURBO_FACE.top.minHeight,
-    TURBO_FACE.top.maxHeight
-  );
-
-  const bottomQuoteSlot: SlotSize = {
-    width: TURBO_FACE.bottom.width - TURBO_FACE.bottom.paddingX * 2,
-    height:
-      TURBO_FACE.bottom.maxHeight -
-      TURBO_FACE.bottom.paddingY * 2 -
-      TURBO_FACE.bottom.metaHeight -
-      TURBO_FACE.bottom.metaGap
-  };
-  const bottomFit = optimizeTextForSlot(
-    bottomText,
-    bottomQuoteSlot,
-    TURBO_FACE.typography.bottom,
-    "Bottom text"
-  );
-  const bottomSized = applyFontScaleWithSafety({
-    text: bottomFit.text,
-    baseFont: bottomFit.font,
-    slot: bottomQuoteSlot,
-    config: TURBO_FACE.typography.bottom,
-    scale: bottomScale
-  });
-  const bottomQuoteHeight = Math.ceil(
-    bottomSized.lines * bottomSized.font * bottomSized.lineHeight
-  );
-  const bottomBodyHeight = Math.max(56, bottomQuoteHeight + TURBO_FACE.bottom.metaGap);
-  const bottomBlockHeight = clampNumber(
-    TURBO_FACE.bottom.paddingY * 2 + TURBO_FACE.bottom.metaHeight + bottomBodyHeight,
-    TURBO_FACE.bottom.minHeight,
-    TURBO_FACE.bottom.maxHeight
-  );
-
-  const videoY = TURBO_FACE.top.y + topBlockHeight;
-  const availableVideoHeight = STAGE3_TEMPLATE_SHELL.height - topBlockHeight - bottomBlockHeight;
-  const videoHeight = Math.max(260, availableVideoHeight);
-  const videoX = TURBO_FACE.video.x;
-  const videoWidth = STAGE3_TEMPLATE_SHELL.width;
-
-  return {
-    top: topFit.text,
-    bottom: bottomFit.text,
-    topFont: topSized.font,
-    bottomFont: bottomSized.font,
-    topLineHeight: topSized.lineHeight,
-    bottomLineHeight: bottomSized.lineHeight,
-    topLines: topSized.lines,
-    bottomLines: bottomSized.lines,
-    topCompacted: topFit.compacted,
-    bottomCompacted: bottomFit.compacted,
-    videoHeight,
-    bottomBodyHeight,
-    topBlockHeight,
-    bottomBlockHeight,
-    videoY,
-    videoX,
-    videoWidth
-  };
+  return getScienceCardComputed(topText, bottomText, fontOverrides, TURBO_FACE_COMPAT);
 }
 
 export function getTemplateComputed(
@@ -717,15 +1281,43 @@ export function getTemplateComputed(
   bottomText: string,
   fontOverrides?: FontScaleOverrides
 ): ReturnType<typeof getScienceCardComputed> {
+  if (templateId === SCIENCE_CARD_V2_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V2);
+  }
+  if (templateId === SCIENCE_CARD_V3_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V3);
+  }
+  if (templateId === SCIENCE_CARD_V4_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V4);
+  }
+  if (templateId === SCIENCE_CARD_V5_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V5);
+  }
   if (templateId === TURBO_FACE_TEMPLATE_ID) {
     return getTurboFaceComputed(topText, bottomText, fontOverrides);
   }
-  return getScienceCardComputed(topText, bottomText, fontOverrides);
+  return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD);
 }
 
 export function getTemplateById(templateId: string): Stage3TemplateConfig {
+  if (templateId === SCIENCE_CARD_V2_TEMPLATE_ID) {
+    return SCIENCE_CARD_V2;
+  }
+  if (templateId === SCIENCE_CARD_V3_TEMPLATE_ID) {
+    return SCIENCE_CARD_V3;
+  }
+  if (templateId === SCIENCE_CARD_V4_TEMPLATE_ID) {
+    return SCIENCE_CARD_V4;
+  }
+  if (templateId === SCIENCE_CARD_V5_TEMPLATE_ID) {
+    return SCIENCE_CARD_V5;
+  }
   if (templateId === TURBO_FACE_TEMPLATE_ID) {
     return TURBO_FACE_COMPAT;
   }
   return SCIENCE_CARD;
+}
+
+export function templateUsesBuiltInBackdrop(templateId: string | null | undefined): boolean {
+  return templateId === SCIENCE_CARD_V2_TEMPLATE_ID;
 }

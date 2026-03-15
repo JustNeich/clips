@@ -13,7 +13,11 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "stage3-worker": "tsx apps/stage3-worker/index.ts"
+    "stage3-worker": "tsx apps/stage3-worker/index.ts",
+    "design:template:import": "tsx scripts/template-import-figma.ts",
+    "design:template:capture": "tsx scripts/template-calibration-capture.ts",
+    "design:template:batch": "tsx scripts/template-calibration-batch.ts",
+    "design:template:percy": "percy exec -- tsx scripts/template-calibration-percy.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
@@ -25,11 +29,17 @@
     "remotion": "^4.0.432"
   },
   "devDependencies": {
+    "@percy/cli": "^1.31.9",
+    "@percy/playwright": "^1.0.10",
+    "@playwright/test": "^1.58.2",
     "@remotion/cli": "^4.0.432",
     "@types/node": "22.10.2",
     "@types/react": "19.0.2",
     "@types/react-dom": "19.0.2",
     "esbuild": "^0.25.0",
+    "html-to-image": "^1.11.13",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
     "tsx": "^4.20.6",
     "typescript": "5.7.2"
   }

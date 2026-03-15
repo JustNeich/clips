@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stage 3 Calibration"
+  short_description: "Match Stage 3 templates to image references"
+  default_prompt: "Use $stage3-template-calibration to align a Stage 3 template to its reference and persist the calibration session."

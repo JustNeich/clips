@@ -2,6 +2,8 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { promises as fs } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 type WorkerPlatform = "darwin-arm64" | "darwin-x64" | "win32-x64" | "unknown";
 
@@ -31,6 +33,30 @@ type Stage3JobEnvelope = {
 type ClaimedJobResponse = Stage3JobEnvelope & {
   payloadJson: string;
 };
+
+type WorkerRuntimeManifest = {
+  version?: string;
+  runtimeVersion?: string;
+  builtAt?: string;
+  bundleFile?: string;
+  remotionFiles?: string[];
+  libFiles?: string[];
+};
+
+const execFileAsync = promisify(execFile);
+const DEFAULT_BUNDLE_FILE = "clips-stage3-worker.cjs";
+const DEFAULT_REMOTION_FILES = ["index.tsx", "science-card-v1.tsx"];
+const DEFAULT_LIB_FILES = [
+  "stage3-template.ts",
+  "stage3-constants.ts",
+  "template-scene.tsx",
+  "template-calibration-types.ts",
+  "auto-fit-template-scene.tsx",
+  "stage3-template-core.ts",
+  "stage3-template-renderer.tsx",
+  "stage3-template-runtime.tsx",
+  "stage3-template-registry.ts"
+];
 
 function workerHomeDir(): string {
   if (process.platform === "darwin") {
@@ -133,6 +159,114 @@ async function ensureWorkerDirs(): Promise<void> {
   await fs.mkdir(p.root, { recursive: true });
   await fs.mkdir(p.cacheRoot, { recursive: true });
   await fs.mkdir(p.toolsRoot, { recursive: true });
+}
+
+function normalizeRuntimeVersion(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function sanitizeRelativeFileList(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+  const safe = value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => Boolean(item) && !item.includes("..") && !path.isAbsolute(item))
+    .map((item) => item.replace(/^\/+/, ""));
+  return safe.length > 0 ? safe : fallback;
+}
+
+async function readLocalRuntimeManifest(): Promise<WorkerRuntimeManifest | null> {
+  const manifestPath = path.join(paths().root, "manifest.json");
+  try {
+    const raw = await fs.readFile(manifestPath, "utf-8");
+    return JSON.parse(raw) as WorkerRuntimeManifest;
+  } catch {
+    return null;
+  }
+}
+
+async function downloadBinaryFile(url: string, destination: string): Promise<void> {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Failed to download ${url}: ${response.status}`);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await fs.writeFile(destination, bytes);
+}
+
+async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boolean; runtimeVersion: string | null }> {
+  const origin = serverOrigin.replace(/\/+$/, "");
+  const remoteManifestResponse = await fetch(`${origin}/stage3-worker/manifest.json`, { cache: "no-store" });
+  if (!remoteManifestResponse.ok) {
+    throw new Error(
+      `Failed to read worker manifest from server (${remoteManifestResponse.status}).`
+    );
+  }
+  const remoteManifest = (await remoteManifestResponse.json()) as WorkerRuntimeManifest;
+  const remoteRuntimeVersion =
+    normalizeRuntimeVersion(remoteManifest.runtimeVersion) ??
+    normalizeRuntimeVersion(remoteManifest.version);
+  if (!remoteRuntimeVersion) {
+    throw new Error("Worker manifest does not contain runtime version.");
+  }
+
+  const localManifest = await readLocalRuntimeManifest();
+  const localRuntimeVersion =
+    normalizeRuntimeVersion(localManifest?.runtimeVersion) ??
+    normalizeRuntimeVersion(localManifest?.version) ??
+    normalizeRuntimeVersion(process.env.CLIPS_STAGE3_WORKER_VERSION);
+  if (localRuntimeVersion === remoteRuntimeVersion) {
+    process.env.CLIPS_STAGE3_WORKER_VERSION = remoteRuntimeVersion;
+    return { updated: false, runtimeVersion: remoteRuntimeVersion };
+  }
+
+  const workerPaths = paths();
+  const remotionDir = path.join(workerPaths.root, "remotion");
+  const libDir = path.join(workerPaths.root, "lib");
+  const binDir = path.join(workerPaths.root, "bin");
+  const bundleFile = remoteManifest.bundleFile?.trim() || DEFAULT_BUNDLE_FILE;
+  const remotionFiles = sanitizeRelativeFileList(remoteManifest.remotionFiles, DEFAULT_REMOTION_FILES);
+  const libFiles = sanitizeRelativeFileList(remoteManifest.libFiles, DEFAULT_LIB_FILES);
+
+  await fs.mkdir(remotionDir, { recursive: true });
+  await fs.mkdir(libDir, { recursive: true });
+  await fs.mkdir(binDir, { recursive: true });
+
+  await downloadBinaryFile(`${origin}/stage3-worker/${bundleFile}`, path.join(binDir, DEFAULT_BUNDLE_FILE));
+  await downloadBinaryFile(`${origin}/stage3-worker/package.json`, path.join(workerPaths.root, "package.json"));
+  await downloadBinaryFile(`${origin}/stage3-worker/manifest.json`, path.join(workerPaths.root, "manifest.json"));
+
+  for (const fileName of remotionFiles) {
+    await downloadBinaryFile(
+      `${origin}/stage3-worker/remotion/${fileName}`,
+      path.join(remotionDir, fileName)
+    );
+  }
+  for (const fileName of libFiles) {
+    await downloadBinaryFile(
+      `${origin}/stage3-worker/lib/${fileName}`,
+      path.join(libDir, fileName)
+    );
+  }
+
+  await fs.chmod(path.join(binDir, DEFAULT_BUNDLE_FILE), 0o755).catch(() => undefined);
+  await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", [
+    "install",
+    "--omit=dev",
+    "--no-fund",
+    "--no-audit"
+  ], {
+    cwd: workerPaths.root
+  });
+  process.env.CLIPS_STAGE3_WORKER_VERSION = remoteRuntimeVersion;
+
+  return {
+    updated: true,
+    runtimeVersion: remoteRuntimeVersion
+  };
 }
 
 async function readConfig(): Promise<WorkerConfig | null> {
@@ -342,6 +476,19 @@ async function startCommand(): Promise<void> {
   }
 
   await ensureWorkerDirs();
+  try {
+    const syncResult = await syncWorkerRuntime(config.serverOrigin);
+    if (syncResult.updated) {
+      console.log(
+        `Updated local Stage 3 worker runtime to ${syncResult.runtimeVersion ?? "latest"}.`
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `Worker runtime sync skipped: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
   const capabilities = await detectCapabilities();
   if (!capabilities.ffmpeg.available || !capabilities.ffprobe.available || !capabilities.ytDlp.available) {
     printDoctorResult(capabilities);

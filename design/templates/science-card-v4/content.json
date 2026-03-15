@@ -1,0 +1,12 @@
+{
+  "topText": "Researchers built a soft robotic fin that learns how a damaged fish tail would compensate, then adapts its stroke pattern on the fly instead of repeating a fixed loop.",
+  "bottomText": "The impressive part is not the hardware but the behavior. It stops acting like a demo rig and starts feeling like something alive is improvising its way back into rhythm.",
+  "channelName": "Science Snack",
+  "channelHandle": "@Science_Snack_1",
+  "topFontScale": 1,
+  "bottomFontScale": 1,
+  "previewScale": 0.31,
+  "mediaAsset": "media.png",
+  "backgroundAsset": "background.png",
+  "avatarAsset": "avatar.png"
+}

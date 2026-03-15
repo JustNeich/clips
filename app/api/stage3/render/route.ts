@@ -1,7 +1,8 @@
 import { createReadStream, promises as fs } from "node:fs";
-import { Readable } from "node:stream";
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
 import { resolveStage3ExecutionTarget } from "../../../../lib/stage3-execution";
+import { createNodeStreamResponse } from "../../../../lib/node-stream-response";
+import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
 import {
   enqueueAndScheduleStage3Job,
   waitForStage3Job
@@ -23,12 +24,38 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
+    const executionTarget = resolveStage3ExecutionTarget();
+    if (executionTarget === "local") {
+      const readiness = await resolveStage3LocalWorkerReadiness({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      });
+      if (!readiness.ready) {
+        return Response.json(
+          {
+            error:
+              "Локальный executor устарел или недоступен. Обновите worker через bootstrap и повторите попытку."
+          },
+          {
+            status: 503,
+            headers: {
+              "Retry-After": RENDER_BUSY_RETRY_AFTER_SEC,
+              "x-stage3-busy": "1",
+              "x-stage3-worker-update-required": "1",
+              ...(readiness.expectedRuntimeVersion
+                ? { "x-stage3-worker-required-version": readiness.expectedRuntimeVersion }
+                : {})
+            }
+          }
+        );
+      }
+    }
 
     const job = enqueueAndScheduleStage3Job({
       workspaceId: auth.workspace.id,
       userId: auth.user.id,
       kind: "render",
-      executionTarget: resolveStage3ExecutionTarget(),
+      executionTarget,
       payloadJson: JSON.stringify(body ?? {})
     });
     const resolved =
@@ -45,8 +72,9 @@ export async function POST(request: Request): Promise<Response> {
     if (resolved.status === "completed" && resolved.artifactFilePath && resolved.artifact) {
       const stat = await fs.stat(resolved.artifactFilePath);
       const stream = createReadStream(resolved.artifactFilePath);
-      return new Response(Readable.toWeb(stream) as ReadableStream, {
-        status: 200,
+      return createNodeStreamResponse({
+        stream,
+        signal: request.signal,
         headers: {
           "Content-Type": resolved.artifact.mimeType,
           "Content-Length": String(stat.size),

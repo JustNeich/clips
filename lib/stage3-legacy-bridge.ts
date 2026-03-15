@@ -227,6 +227,10 @@ function passToSnapshot(pass: Stage3AgentPass, sourceDurationSec: number | null)
     textFit: {
       topFontPx: pass.topFontPx,
       bottomFontPx: pass.bottomFontPx,
+      topLineHeight: undefined,
+      bottomLineHeight: undefined,
+      topLines: undefined,
+      bottomLines: undefined,
       topCompacted: pass.topCompacted,
       bottomCompacted: pass.bottomCompacted
     }
@@ -261,6 +265,22 @@ function normalizeSnapshot(
         typeof candidate.textFit?.bottomFontPx === "number"
           ? candidate.textFit.bottomFontPx
           : fallback.textFit.bottomFontPx,
+      topLineHeight:
+        typeof candidate.textFit?.topLineHeight === "number"
+          ? candidate.textFit.topLineHeight
+          : fallback.textFit.topLineHeight,
+      bottomLineHeight:
+        typeof candidate.textFit?.bottomLineHeight === "number"
+          ? candidate.textFit.bottomLineHeight
+          : fallback.textFit.bottomLineHeight,
+      topLines:
+        typeof candidate.textFit?.topLines === "number"
+          ? candidate.textFit.topLines
+          : fallback.textFit.topLines,
+      bottomLines:
+        typeof candidate.textFit?.bottomLines === "number"
+          ? candidate.textFit.bottomLines
+          : fallback.textFit.bottomLines,
       topCompacted:
         typeof candidate.textFit?.topCompacted === "boolean"
           ? candidate.textFit.topCompacted

@@ -13,9 +13,11 @@ import {
   Stage3Version
 } from "../app/components/types";
 import {
+  SCIENCE_CARD_TEMPLATE_ID,
   SCIENCE_CARD,
   TURBO_FACE,
   TURBO_FACE_TEMPLATE_ID,
+  getTemplateById,
   getTemplateComputed
 } from "./stage3-template";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
@@ -651,7 +653,12 @@ function inferPolicyFromSourceDuration(sourceDurationSec: number | null): Stage3
   return "adaptive_window";
 }
 
-function createDefaultRenderPlan(sourceDurationSec: number | null): Stage3RenderPlan {
+function createDefaultRenderPlan(
+  sourceDurationSec: number | null,
+  templateId?: string
+): Stage3RenderPlan {
+  const resolvedTemplateId = templateId?.trim() || SCIENCE_CARD_TEMPLATE_ID;
+  const templateConfig = getTemplateById(resolvedTemplateId);
   return {
     targetDurationSec: TARGET_DURATION_SEC,
     timingMode: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC ? "stretch" : "auto",
@@ -673,15 +680,17 @@ function createDefaultRenderPlan(sourceDurationSec: number | null): Stage3Render
     musicAssetMimeType: null,
     avatarAssetId: null,
     avatarAssetMimeType: null,
-    authorName: SCIENCE_CARD.author.name,
-    authorHandle: SCIENCE_CARD.author.handle,
-    templateId: "science-card-v1",
+    authorName: templateConfig.author.name,
+    authorHandle: templateConfig.author.handle,
+    templateId: resolvedTemplateId,
     prompt: ""
   };
 }
 
 function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurationSec: number | null): Stage3RenderPlan {
-  const defaultPlan = createDefaultRenderPlan(sourceDurationSec);
+  const incomingTemplateId =
+    typeof input?.templateId === "string" && input.templateId.trim() ? input.templateId.trim() : undefined;
+  const defaultPlan = createDefaultRenderPlan(sourceDurationSec, incomingTemplateId);
   const timingMode = input?.timingMode;
   const audioMode = input?.audioMode;
   const policy = input?.policy;
@@ -789,6 +798,10 @@ function computeTextFit(
     bottomText: computed.bottom,
     topFontPx: computed.topFont,
     bottomFontPx: computed.bottomFont,
+    topLineHeight: computed.topLineHeight,
+    bottomLineHeight: computed.bottomLineHeight,
+    topLines: computed.topLines,
+    bottomLines: computed.bottomLines,
     topCompacted: computed.topCompacted,
     bottomCompacted: computed.bottomCompacted
   };
@@ -977,10 +990,7 @@ export function evaluateScore(snapshot: Stage3StateSnapshot, context: Stage3Eval
       bottomFontScale: snapshot.renderPlan.bottomFontScale
     }
   );
-  const typography =
-    snapshot.renderPlan.templateId === TURBO_FACE_TEMPLATE_ID
-      ? TURBO_FACE.typography
-      : SCIENCE_CARD.typography;
+  const typography = getTemplateById(snapshot.renderPlan.templateId).typography;
   if (snapshot.textFit.topCompacted) {
     textReadability += 7;
   }
@@ -1327,10 +1337,7 @@ export function inferHeuristicOperations(input: {
       bottomFontScale: input.snapshot.renderPlan.bottomFontScale
     }
   );
-  const typography =
-    input.snapshot.renderPlan.templateId === TURBO_FACE_TEMPLATE_ID
-      ? TURBO_FACE.typography
-      : SCIENCE_CARD.typography;
+  const typography = getTemplateById(input.snapshot.renderPlan.templateId).typography;
   const topFillRatio = clamp(
     (computed.topLines * computed.topFont * computed.topLineHeight) /
       Math.max(1, computed.topBlockHeight),

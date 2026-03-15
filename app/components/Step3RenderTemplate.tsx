@@ -12,24 +12,37 @@ import {
   ChannelAsset,
   Stage3AgentConversationItem,
   Stage3CameraMotion,
+  Stage3EditorDraftOverrides,
   Stage3PreviewState,
   Stage3RenderState,
   Stage3Segment,
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionRecord,
+  Stage3TextFitSnapshot,
+  TemplateContentFixture,
   Stage3Version,
   Stage3WorkerPairingResponse,
   Stage3WorkerStatus
 } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
+import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
+import { getTemplateById } from "../../lib/stage3-template";
 import {
-  TURBO_FACE,
-  TURBO_FACE_TEMPLATE_ID,
-  getTemplateComputed,
-  STAGE3_TEMPLATE_ID,
-  getTemplateById
-} from "../../lib/stage3-template";
+  TemplateRenderSnapshot,
+  buildTemplateRenderSnapshot
+} from "../../lib/stage3-template-core";
+import {
+  Stage3TemplateViewport,
+  getTemplatePreviewViewportMetrics
+} from "../../lib/stage3-template-viewport";
+import {
+  resolveTemplateAvatarBorderColor,
+  resolveTemplateOverlayTint,
+  templateUsesBuiltInBackdropFromRegistry
+} from "../../lib/stage3-template-registry";
+import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../../lib/stage3-constants";
+import { getStage3DesignLabLabel } from "../../lib/stage3-design-lab";
 import { sanitizeDisplayText } from "../../lib/ui-error";
 
 type Step3RenderTemplateProps = {
@@ -82,9 +95,9 @@ type Step3RenderTemplateProps = {
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
   musicGain: number;
-  onRender: () => void;
+  onRender: (overrides?: Stage3EditorDraftOverrides, textFitOverride?: Stage3TextFitSnapshot | null) => void;
   onExport: () => void;
-  onOptimize: () => void;
+  onOptimize: (overrides?: Stage3EditorDraftOverrides, textFitOverride?: Stage3TextFitSnapshot | null) => void;
   onResumeAgent: () => void;
   onRollbackSelectedVersion: () => void;
   onReset: () => void;
@@ -205,6 +218,48 @@ function shortPrompt(value: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function toTextFitSnapshot(
+  computed: {
+    topFont: number;
+    bottomFont: number;
+    topLineHeight: number;
+    bottomLineHeight: number;
+    topLines: number;
+    bottomLines: number;
+  },
+  templateSnapshot: TemplateRenderSnapshot
+): Stage3TextFitSnapshot {
+  return {
+    topFontPx: computed.topFont,
+    bottomFontPx: computed.bottomFont,
+    topLineHeight: computed.topLineHeight,
+    bottomLineHeight: computed.bottomLineHeight,
+    topLines: computed.topLines,
+    bottomLines: computed.bottomLines,
+    topCompacted: templateSnapshot.fit.topCompacted,
+    bottomCompacted: templateSnapshot.fit.bottomCompacted
+  };
+}
+
+function areTextFitSnapshotsEqual(
+  left: Stage3TextFitSnapshot | null | undefined,
+  right: Stage3TextFitSnapshot | null | undefined
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    left.topFontPx === right.topFontPx &&
+    left.bottomFontPx === right.bottomFontPx &&
+    left.topLineHeight === right.topLineHeight &&
+    left.bottomLineHeight === right.bottomLineHeight &&
+    left.topLines === right.topLines &&
+    left.bottomLines === right.bottomLines &&
+    left.topCompacted === right.topCompacted &&
+    left.bottomCompacted === right.bottomCompacted
+  );
 }
 
 function roundToTenth(value: number): number {
@@ -565,13 +620,18 @@ type Stage3LivePreviewPanelProps = {
   summaryLines: string[];
   previewState: Stage3PreviewState;
   previewNotice: string | null;
+  previewTemplateSnapshot: TemplateRenderSnapshot;
+  previewTopText: string;
+  previewBottomText: string;
   clipDurationSec: number;
   focusY: number;
   cameraMotion: Stage3CameraMotion;
   mirrorEnabled: boolean;
   videoZoom: number;
+  topFontScale: number;
+  bottomFontScale: number;
   templateConfig: ReturnType<typeof getTemplateById>;
-  previewComputed: ReturnType<typeof getTemplateComputed>;
+  onMeasuredTextFitChange?: (fit: Stage3TextFitSnapshot) => void;
   onSelectVersionId: (runId: string) => void;
   onSelectPassIndex: (index: number) => void;
 };
@@ -593,13 +653,18 @@ function Stage3LivePreviewPanel({
   summaryLines,
   previewState,
   previewNotice,
+  previewTemplateSnapshot,
+  previewTopText,
+  previewBottomText,
   clipDurationSec,
   focusY,
   cameraMotion,
   mirrorEnabled,
   videoZoom,
+  topFontScale,
+  bottomFontScale,
   templateConfig,
-  previewComputed,
+  onMeasuredTextFitChange,
   onSelectVersionId,
   onSelectPassIndex
 }: Stage3LivePreviewPanelProps) {
@@ -619,27 +684,12 @@ function Stage3LivePreviewPanel({
   const [versionsDrawerOpen, setVersionsDrawerOpen] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 720, height: 1280 });
 
-  const isTurboTemplate = templateId === TURBO_FACE_TEMPLATE_ID;
-  const frameWidth = templateConfig.frame.width;
-  const frameHeight = templateConfig.frame.height;
-  const cardLeft = templateConfig.card.x;
-  const cardTop = templateConfig.card.y;
-  const cardWidth = templateConfig.card.width;
-  const cardHeight = templateConfig.card.height;
-  const bottomMetaHeight = templateConfig.slot.bottomMetaHeight;
-  const topPaddingTop = templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY;
-  const topPaddingBottom = templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY;
-  const bottomTextPaddingTop =
-    templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY;
-  const bottomTextPaddingBottom =
-    templateConfig.slot.bottomTextPaddingBottom ?? templateConfig.slot.bottomTextPaddingY;
-  const bottomTextPaddingLeft =
-    templateConfig.slot.bottomTextPaddingLeft ?? templateConfig.slot.bottomTextPaddingX;
-  const bottomTextPaddingRight =
-    templateConfig.slot.bottomTextPaddingRight ?? templateConfig.slot.bottomTextPaddingX;
-  const videoHeight = previewComputed.videoHeight;
-  const turboBottomTop = frameHeight - TURBO_FACE.bottom.bottom - previewComputed.bottomBlockHeight;
-  const turboShellHeight = turboBottomTop + previewComputed.bottomBlockHeight - TURBO_FACE.top.y;
+  const previewViewport = useMemo(
+    () => getTemplatePreviewViewportMetrics(templateId, "full-frame"),
+    [templateId]
+  );
+  const previewViewportWidth = previewViewport.width;
+  const previewViewportHeight = previewViewport.height;
 
   const fitScale = useMemo(() => {
     const width = canvasSize.width;
@@ -649,8 +699,8 @@ function Stage3LivePreviewPanel({
     }
     const usableWidth = Math.max(1, width - 20);
     const usableHeight = Math.max(1, height - 20);
-    return clamp(Math.min(usableWidth / frameWidth, usableHeight / frameHeight), 0.01, 1);
-  }, [canvasSize.height, canvasSize.width, frameHeight, frameWidth]);
+    return clamp(Math.min(usableWidth / previewViewportWidth, usableHeight / previewViewportHeight), 0.01, 1);
+  }, [canvasSize.height, canvasSize.width, previewViewportHeight, previewViewportWidth]);
 
   const previewScaleMultiplier = useMemo(() => {
     if (zoomMode === "fit") {
@@ -668,7 +718,18 @@ function Stage3LivePreviewPanel({
     Boolean(backgroundAssetUrl) &&
     ((backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/") ||
       /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(backgroundAssetUrl ?? ""));
+  const overlayTint = useMemo(() => resolveTemplateOverlayTint(templateId), [templateId]);
   const summaryLine = summaryLines[0] ?? "Используется текущий live draft без сохраненной версии.";
+  const sceneContent = useMemo<TemplateContentFixture>(
+    () => previewTemplateSnapshot.content,
+    [previewTemplateSnapshot]
+  );
+  const handleMeasuredTextFitChange = useCallback(
+    (nextFit: Stage3TextFitSnapshot) => {
+      onMeasuredTextFitChange?.(nextFit);
+    },
+    [onMeasuredTextFitChange]
+  );
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -999,390 +1060,141 @@ function Stage3LivePreviewPanel({
           <div ref={previewCanvasRef} className="stage3-canvas">
             <div
               className="stage3-zoom-wrap"
-              style={{ width: frameWidth, height: frameHeight, transform: `scale(${layoutScale})` }}
+              style={{
+                width: previewViewportWidth,
+                height: previewViewportHeight,
+                transform: `scale(${layoutScale})`
+              }}
             >
-              <div className="phone-preview" style={{ width: frameWidth, height: frameHeight }}>
-                {backgroundAssetUrl ? (
-                  backgroundIsVideo ? (
-                    <video
-                      ref={backgroundPreviewRef}
-                      className="preview-bg-video preview-bg-custom"
-                      src={backgroundAssetUrl}
-                      muted
-                      loop
-                      playsInline
-                      preload="metadata"
-                      onLoadedMetadata={() => {
-                        syncBackgroundTo(timelineSec);
-                        if (isPlaying) {
-                          const bg = backgroundPreviewRef.current;
-                          if (bg) {
-                            void bg.play().catch(() => undefined);
-                          }
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div
-                      className="preview-bg-video preview-bg-custom-image"
-                      style={{ backgroundImage: `url(${backgroundAssetUrl})` }}
-                    />
-                  )
-                ) : previewVideoUrl ? (
-                  <video
-                    ref={backgroundPreviewRef}
-                    className="preview-bg-video"
-                    src={previewVideoUrl}
-                    muted
-                    loop
-                    playsInline
-                    preload="metadata"
-                    style={{
-                      objectPosition,
-                      transform: mirrorEnabled ? "scaleX(-1)" : undefined,
-                      transformOrigin: "center center"
-                    }}
-                    onLoadedMetadata={() => {
-                      syncBackgroundTo(timelineSec);
-                      if (isPlaying) {
-                        const bg = backgroundPreviewRef.current;
-                        if (bg) {
-                          void bg.play().catch(() => undefined);
-                        }
-                      }
-                    }}
-                  />
-                ) : (
-                  <div className="preview-bg-video preview-bg-fallback" />
-                )}
-
-                <div className="safe-area-guide" aria-hidden="true">
-                  <span>БЕЗОПАСНАЯ ОБЛАСТЬ</span>
-                </div>
-
-                {isTurboTemplate ? (
-                  <>
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        background: "rgba(0, 0, 0, 0.08)",
-                        pointerEvents: "none"
-                      }}
-                    />
-
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: TURBO_FACE.top.x,
-                        top: TURBO_FACE.top.y,
-                        width: TURBO_FACE.top.width,
-                        height: turboShellHeight,
-                        borderRadius: 4,
-                        background: "rgba(255, 255, 255, 0.08)",
-                        border: "2px solid rgba(11,17,28,0.48)",
-                        boxShadow:
-                          "0 16px 34px rgba(4,10,20,0.32), 0 5px 18px rgba(4,10,20,0.18)",
-                        overflow: "hidden",
-                        backdropFilter: "blur(2px)"
-                      }}
-                    />
-
-                    <div
-                      className="preview-top"
-                      style={{
-                        position: "absolute",
-                        left: TURBO_FACE.top.x,
-                        top: TURBO_FACE.top.y,
-                        width: TURBO_FACE.top.width,
-                        height: previewComputed.topBlockHeight,
-                        borderRadius: `${TURBO_FACE.top.radius}px ${TURBO_FACE.top.radius}px 0 0`,
-                        backgroundColor: "#ffffff",
-                        borderBottom: "1px solid rgba(6,13,22,0.14)",
-                        padding: `${TURBO_FACE.top.paddingY}px ${TURBO_FACE.top.paddingX}px`
-                      }}
-                    >
-                      <p
-                        className="preview-text preview-text-top"
-                        style={{
-                          fontSize: previewComputed.topFont,
-                          WebkitLineClamp: TURBO_FACE.typography.top.maxLines,
-                          lineHeight: previewComputed.topLineHeight,
-                          fontFamily: '"Arial Black","Arial Bold","Trebuchet MS",sans-serif',
-                          letterSpacing: "-0.055em"
-                        }}
-                      >
-                        {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
-                      </p>
-                    </div>
-
-                    <div
-                      className="preview-video"
-                      style={{
-                        position: "absolute",
-                        left: previewComputed.videoX,
-                        top: previewComputed.videoY,
-                        width: previewComputed.videoWidth,
-                        height: previewComputed.videoHeight,
-                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(7,12,20,0.08)"
-                      }}
-                    >
-                      {previewVideoUrl ? (
-                        <PreviewClipVideo
-                          sourceUrl={previewVideoUrl}
-                          clipDurationSec={clipDurationSec}
-                          className="preview-slot-video"
-                          objectPosition={objectPosition}
-                          videoZoom={videoZoom}
-                          mirrorEnabled={mirrorEnabled}
-                          muted={isMuted}
-                          videoRef={slotPreviewRef}
-                          isPlaying={isPlaying}
-                          loopEnabled={loopEnabled}
-                          onPositionChange={handlePreviewPositionChange}
-                          onClipEnd={handlePreviewClipEnd}
-                        />
-                      ) : (
-                        <span>ВИДЕО</span>
-                      )}
-                    </div>
-
-                    <div
-                      className="preview-bottom"
-                      style={{
-                        position: "absolute",
-                        left: TURBO_FACE.bottom.x,
-                        top: turboBottomTop,
-                        width: TURBO_FACE.bottom.width,
-                        height: previewComputed.bottomBlockHeight,
-                        borderRadius: `0 0 ${TURBO_FACE.bottom.radius}px ${TURBO_FACE.bottom.radius}px`,
-                        backgroundColor: "#ffffff",
-                        borderTop: "1px solid rgba(6,13,22,0.14)"
-                      }}
-                    >
-                      <div
-                        className="preview-author"
-                        style={{
-                          height: TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2,
-                          padding: `${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`
-                        }}
-                      >
-                        <div
-                          className="preview-author-avatar"
-                          style={{
-                            width: TURBO_FACE.author.avatarSize,
-                            height: TURBO_FACE.author.avatarSize,
-                            borderWidth: TURBO_FACE.author.avatarBorder,
-                            fontSize: Math.round(TURBO_FACE.author.avatarSize * 0.32),
-                            borderColor: "rgba(8,12,18,0.16)",
-                            backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
-                            backgroundSize: avatarUrl ? "cover" : undefined,
-                            backgroundPosition: avatarUrl ? "center" : undefined
-                          }}
-                        >
-                          {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="preview-author-copy">
-                          <div className="preview-author-name-row">
-                            <span
-                              className="preview-author-name"
-                              style={{
-                                fontSize: TURBO_FACE.typography.authorName.font,
-                                lineHeight: TURBO_FACE.typography.authorName.lineHeight,
-                                fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
-                                color: "#11161f"
+              <Stage3TemplateViewport
+                templateId={templateId}
+                modeOverride="full-frame"
+                className={previewViewport.mode === "full-frame" ? "phone-preview" : undefined}
+              >
+                <Stage3TemplateRenderer
+                  templateId={templateId}
+                  content={sceneContent}
+                  snapshot={previewTemplateSnapshot}
+                  onComputedChange={(nextComputed) => {
+                    handleMeasuredTextFitChange(toTextFitSnapshot(nextComputed, previewTemplateSnapshot));
+                  }}
+                  runtime={{
+                    showSafeArea: false,
+                    backgroundNode: templateUsesBuiltInBackdropFromRegistry(templateId)
+                      ? resolveTemplateBackdropNode(templateId)
+                      : backgroundAssetUrl
+                        ? backgroundIsVideo
+                          ? (
+                            <video
+                              ref={backgroundPreviewRef}
+                              className="preview-bg-video preview-bg-custom"
+                              src={backgroundAssetUrl}
+                              muted
+                              loop
+                              playsInline
+                              preload="metadata"
+                              onLoadedMetadata={() => {
+                                syncBackgroundTo(timelineSec);
+                                if (isPlaying) {
+                                  const bg = backgroundPreviewRef.current;
+                                  if (bg) {
+                                    void bg.play().catch(() => undefined);
+                                  }
+                                }
                               }}
-                            >
-                              {channelName}
-                            </span>
-                            <span
-                              className="preview-author-check"
+                            />
+                          )
+                          : (
+                            <div
+                              className="preview-bg-video preview-bg-custom-image"
+                              style={{ backgroundImage: `url(${backgroundAssetUrl})` }}
+                            />
+                          )
+                        : previewVideoUrl
+                          ? (
+                            <video
+                              ref={backgroundPreviewRef}
+                              className="preview-bg-video"
+                              src={previewVideoUrl}
+                              muted
+                              loop
+                              playsInline
+                              preload="metadata"
                               style={{
-                                width: TURBO_FACE.author.checkSize,
-                                height: TURBO_FACE.author.checkSize,
-                                fontSize: Math.round(TURBO_FACE.author.checkSize * 0.56),
-                                background: "#6caee4"
+                                objectPosition,
+                                transform: mirrorEnabled ? "scaleX(-1)" : undefined,
+                                transformOrigin: "center center"
                               }}
-                            >
-                              ✓
-                            </span>
-                          </div>
-                          <span
-                            className="preview-author-handle"
-                            style={{
-                              fontSize: TURBO_FACE.typography.authorHandle.font,
-                              lineHeight: TURBO_FACE.typography.authorHandle.lineHeight,
-                              color: "#8f9398",
-                              fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif'
-                            }}
-                          >
-                            @{channelUsername}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div
-                        className="preview-bottom-body"
-                        style={{
-                          height:
-                            previewComputed.bottomBlockHeight -
-                            (TURBO_FACE.bottom.metaHeight + TURBO_FACE.bottom.paddingY * 2),
-                          padding: `4px ${TURBO_FACE.bottom.paddingX}px ${TURBO_FACE.bottom.paddingY}px ${TURBO_FACE.bottom.paddingX}px`,
-                          backgroundColor: "#ffffff"
-                        }}
-                      >
-                        <p
-                          className="preview-text preview-text-bottom"
-                          style={{
-                            fontSize: previewComputed.bottomFont,
-                            WebkitLineClamp: TURBO_FACE.typography.bottom.maxLines,
-                            lineHeight: previewComputed.bottomLineHeight,
-                            fontFamily: '"Arial","Helvetica Neue",Helvetica,sans-serif',
-                            letterSpacing: "0.005em",
-                            color: "#181b22"
-                          }}
-                        >
-                          {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    className="preview-card"
-                    style={{
-                      left: cardLeft,
-                      top: cardTop,
-                      width: cardWidth,
-                      height: cardHeight,
-                      borderRadius: templateConfig.card.radius,
-                      borderWidth: templateConfig.card.borderWidth,
-                      borderColor: templateConfig.card.borderColor
-                    }}
-                  >
-                    <div
-                      className="preview-top"
-                      style={{
-                        height: previewComputed.topBlockHeight,
-                        padding: `${topPaddingTop}px ${templateConfig.slot.topPaddingX}px ${topPaddingBottom}px`
-                      }}
-                    >
-                      <p
-                        className="preview-text preview-text-top"
-                        style={{
-                          fontSize: previewComputed.topFont,
-                          WebkitLineClamp: templateConfig.typography.top.maxLines,
-                          lineHeight: previewComputed.topLineHeight
-                        }}
-                      >
-                        {previewComputed.top || "Верхний текст из Stage 2 появится здесь."}
-                      </p>
-                    </div>
-
-                    <div className="preview-video" style={{ height: videoHeight }}>
-                      {previewVideoUrl ? (
-                        <PreviewClipVideo
-                          sourceUrl={previewVideoUrl}
-                          clipDurationSec={clipDurationSec}
-                          className="preview-slot-video"
-                          objectPosition={objectPosition}
-                          videoZoom={videoZoom}
-                          mirrorEnabled={mirrorEnabled}
-                          muted={isMuted}
-                          videoRef={slotPreviewRef}
-                          isPlaying={isPlaying}
-                          loopEnabled={loopEnabled}
-                          onPositionChange={handlePreviewPositionChange}
-                          onClipEnd={handlePreviewClipEnd}
-                        />
-                      ) : (
-                        <span>ВИДЕО</span>
-                      )}
-                    </div>
-
-                    <div
-                      className="preview-bottom"
-                      style={{
-                        height: previewComputed.bottomBlockHeight
-                      }}
-                    >
-                      <div
-                        className="preview-author"
-                        style={{
-                          height: bottomMetaHeight,
-                          padding: `${templateConfig.slot.bottomMetaPaddingY}px ${templateConfig.slot.bottomMetaPaddingX}px`
-                        }}
-                      >
-                        <div
-                          className="preview-author-avatar"
-                          style={{
-                            width: templateConfig.author.avatarSize,
-                            height: templateConfig.author.avatarSize,
-                            borderWidth: templateConfig.author.avatarBorder,
-                            fontSize: Math.round(templateConfig.author.avatarSize * 0.32),
-                            backgroundImage: avatarUrl ? `url(${avatarUrl})` : undefined,
-                            backgroundSize: avatarUrl ? "cover" : undefined,
-                            backgroundPosition: avatarUrl ? "center" : undefined
-                          }}
-                        >
-                          {avatarUrl ? "" : channelName.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="preview-author-copy">
-                          <div className="preview-author-name-row">
-                            <span
-                              className="preview-author-name"
-                              style={{
-                                fontSize: templateConfig.typography.authorName.font,
-                                lineHeight: templateConfig.typography.authorName.lineHeight
+                              onLoadedMetadata={() => {
+                                syncBackgroundTo(timelineSec);
+                                if (isPlaying) {
+                                  const bg = backgroundPreviewRef.current;
+                                  if (bg) {
+                                    void bg.play().catch(() => undefined);
+                                  }
+                                }
                               }}
-                            >
-                              {channelName}
-                            </span>
-                            <span
-                              className="preview-author-check"
-                              style={{
-                                width: templateConfig.author.checkSize,
-                                height: templateConfig.author.checkSize,
-                                fontSize: Math.round(templateConfig.author.checkSize * 0.56)
-                              }}
-                            >
-                              ✓
-                            </span>
-                          </div>
-                          <span
-                            className="preview-author-handle"
-                            style={{
-                              fontSize: templateConfig.typography.authorHandle.font,
-                              lineHeight: templateConfig.typography.authorHandle.lineHeight
-                            }}
-                          >
-                            @{channelUsername}
-                          </span>
-                        </div>
-                      </div>
-
+                            />
+                          )
+                          : <div className="preview-bg-video preview-bg-fallback" />,
+                    overlayNode: overlayTint ? (
                       <div
-                        className="preview-bottom-body"
                         style={{
-                          height: previewComputed.bottomBodyHeight,
-                          padding: `${bottomTextPaddingTop}px ${bottomTextPaddingRight}px ${bottomTextPaddingBottom}px ${bottomTextPaddingLeft}px`
+                          position: "absolute",
+                          inset: 0,
+                          background: overlayTint,
+                          pointerEvents: "none"
+                        }}
+                      />
+                    ) : undefined,
+                    mediaNode: previewVideoUrl ? (
+                      <PreviewClipVideo
+                        sourceUrl={previewVideoUrl}
+                        clipDurationSec={clipDurationSec}
+                        className="preview-slot-video"
+                        objectPosition={objectPosition}
+                        videoZoom={videoZoom}
+                        mirrorEnabled={mirrorEnabled}
+                        muted={isMuted}
+                        videoRef={slotPreviewRef}
+                        isPlaying={isPlaying}
+                        loopEnabled={loopEnabled}
+                        onPositionChange={handlePreviewPositionChange}
+                        onClipEnd={handlePreviewClipEnd}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "grid",
+                          placeItems: "center",
+                          background: "#dfe5ef",
+                          color: "rgba(17, 23, 33, 0.55)",
+                          fontWeight: 700,
+                          letterSpacing: "0.12em"
                         }}
                       >
-                        <p
-                          className="preview-text preview-text-bottom"
-                          style={{
-                            fontSize: previewComputed.bottomFont,
-                            WebkitLineClamp: templateConfig.typography.bottom.maxLines,
-                            lineHeight: previewComputed.bottomLineHeight
-                          }}
-                        >
-                          {previewComputed.bottom || "Нижний текст из Stage 2 появится здесь."}
-                        </p>
+                        ВИДЕО
                       </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+                    ),
+                    avatarNode: avatarUrl ? (
+                      <div
+                        className="preview-author-avatar"
+                        style={{
+                          width: previewTemplateSnapshot.layout.avatar.width,
+                          height: previewTemplateSnapshot.layout.avatar.height,
+                          borderWidth: templateConfig.author.avatarBorder,
+                          borderColor: resolveTemplateAvatarBorderColor(templateId),
+                          backgroundImage: `url(${avatarUrl})`,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center"
+                        }}
+                      />
+                    ) : undefined
+                  }}
+                />
+              </Stage3TemplateViewport>
             </div>
           </div>
         </div>
@@ -1542,12 +1354,44 @@ export function Step3RenderTemplate({
   const [segmentDraftInputs, setSegmentDraftInputs] = useState<
     Record<string, { startSec: string; endSec: string }>
   >({});
+  const [previewMeasuredFitState, setPreviewMeasuredFitState] = useState<{
+    snapshotHash: string;
+    fit: Stage3TextFitSnapshot;
+    measured: boolean;
+  } | null>(null);
 
   const templateConfig = getTemplateById(templateId);
-  const computed = getTemplateComputed(templateId, topText, bottomText, {
-    topFontScale: localTopFontScale,
-    bottomFontScale: localBottomFontScale
-  });
+  const previewTemplateSnapshot = useMemo(
+    () =>
+      buildTemplateRenderSnapshot({
+        templateId,
+        content: {
+          topText,
+          bottomText,
+          channelName,
+          channelHandle: `@${channelUsername}`,
+          topFontScale: localTopFontScale,
+          bottomFontScale: localBottomFontScale,
+          previewScale: 1,
+          mediaAsset: previewVideoUrl,
+          backgroundAsset: backgroundAssetUrl,
+          avatarAsset: avatarUrl
+        }
+      }),
+    [
+      avatarUrl,
+      backgroundAssetUrl,
+      bottomText,
+      channelName,
+      channelUsername,
+      localBottomFontScale,
+      localTopFontScale,
+      previewVideoUrl,
+      templateId,
+      topText
+    ]
+  );
+  const computed = previewTemplateSnapshot.computed;
 
   const displayVersions = useMemo(
     () => [...versions].sort((a, b) => (a.versionNo < b.versionNo ? 1 : -1)),
@@ -1576,14 +1420,18 @@ export function Step3RenderTemplate({
   );
 
   const previewVersion = selectedVersion;
-  const previewTopText = previewVersion?.final.topText ?? computed.top;
-  const previewBottomText = previewVersion?.final.bottomText ?? computed.bottom;
+  const previewTopText = previewTemplateSnapshot.content.topText;
+  const previewBottomText = previewTemplateSnapshot.content.bottomText;
   const previewVideoZoom = clamp(localVideoZoom ?? 1, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
-
-  const previewComputed = getTemplateComputed(templateId, previewTopText, previewBottomText, {
-    topFontScale: localTopFontScale,
-    bottomFontScale: localBottomFontScale
-  });
+  const activePreviewTextFit = useMemo(() => {
+    if (previewMeasuredFitState?.snapshotHash === previewTemplateSnapshot.snapshotHash) {
+      return previewMeasuredFitState.fit;
+    }
+    return toTextFitSnapshot(previewTemplateSnapshot.computed, previewTemplateSnapshot);
+  }, [previewMeasuredFitState, previewTemplateSnapshot]);
+  const isPreviewTextFitReady =
+    previewMeasuredFitState?.snapshotHash === previewTemplateSnapshot.snapshotHash &&
+    previewMeasuredFitState.measured;
 
   const maxStartSec = Math.max(0, (sourceDurationSec ?? clipDurationSec) - clipDurationSec);
   const clipEndSec = localClipStartSec + clipDurationSec;
@@ -1607,10 +1455,38 @@ export function Step3RenderTemplate({
     : sourceAudioEnabled
       ? "Только исходник"
       : "Без звука";
+  const handlePreviewMeasuredTextFitChange = useCallback(
+    (nextFit: Stage3TextFitSnapshot) => {
+      setPreviewMeasuredFitState((current) => {
+        const nextState = {
+          snapshotHash: previewTemplateSnapshot.snapshotHash,
+          fit: nextFit,
+          measured: true
+        };
+        if (
+          current?.snapshotHash === nextState.snapshotHash &&
+          current.measured === nextState.measured &&
+          areTextFitSnapshotsEqual(current.fit, nextState.fit)
+        ) {
+          return current;
+        }
+        return nextState;
+      });
+    },
+    [previewTemplateSnapshot.snapshotHash]
+  );
 
   useEffect(() => {
     setLocalClipStartSec(clamp(clipStartSec, 0, maxStartSec));
   }, [clipStartSec, maxStartSec]);
+
+  useEffect(() => {
+    setPreviewMeasuredFitState({
+      snapshotHash: previewTemplateSnapshot.snapshotHash,
+      fit: toTextFitSnapshot(previewTemplateSnapshot.computed, previewTemplateSnapshot),
+      measured: false
+    });
+  }, [previewTemplateSnapshot.snapshotHash]);
 
   useEffect(() => {
     setLocalFocusY(clamp(focusY, 0.12, 0.88));
@@ -1830,13 +1706,22 @@ export function Step3RenderTemplate({
           "Не закрывайте окно Terminal, пока делаете предпросмотр или рендер."
         ];
 
-  const commitAdvancedControls = () => {
-    flushClipCommit(localClipStartSec);
-    flushFocusCommit(localFocusY);
-    flushVideoZoomCommit(localVideoZoom);
-    flushTopFontScaleCommit(localTopFontScale);
-    flushBottomFontScaleCommit(localBottomFontScale);
-    flushMusicGainCommit(localMusicGain);
+  const commitAdvancedControls = (): Stage3EditorDraftOverrides => {
+    const overrides: Stage3EditorDraftOverrides = {
+      clipStartSec: clamp(localClipStartSec, 0, maxStartSec),
+      focusY: clamp(localFocusY, 0.12, 0.88),
+      videoZoom: clamp(localVideoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM),
+      topFontScale: clamp(localTopFontScale, 0.7, 1.9),
+      bottomFontScale: clamp(localBottomFontScale, 0.7, 1.9),
+      musicGain: clamp(localMusicGain, 0, 1)
+    };
+    flushClipCommit(overrides.clipStartSec);
+    flushFocusCommit(overrides.focusY);
+    flushVideoZoomCommit(overrides.videoZoom);
+    flushTopFontScaleCommit(overrides.topFontScale);
+    flushBottomFontScaleCommit(overrides.bottomFontScale);
+    flushMusicGainCommit(overrides.musicGain);
+    return overrides;
   };
 
   useEffect(() => {
@@ -2241,10 +2126,12 @@ export function Step3RenderTemplate({
         type="button"
         className="btn btn-secondary"
         onClick={() => {
-          commitAdvancedControls();
-          onOptimize();
+          const overrides = commitAdvancedControls();
+          window.setTimeout(() => {
+            onOptimize(overrides, activePreviewTextFit);
+          }, 0);
         }}
-        disabled={!sourceUrl || isOptimizing || isRendering}
+        disabled={!sourceUrl || isOptimizing || isRendering || !isPreviewTextFitReady}
         aria-busy={isOptimizing}
       >
         {isOptimizing ? "Оптимизация..." : "Оптимизировать"}
@@ -2256,10 +2143,12 @@ export function Step3RenderTemplate({
         type="button"
         className="btn btn-primary"
         onClick={() => {
-          commitAdvancedControls();
-          onRender();
+          const overrides = commitAdvancedControls();
+          window.setTimeout(() => {
+            onRender(overrides, activePreviewTextFit);
+          }, 0);
         }}
-        disabled={!sourceUrl || isRendering}
+        disabled={!sourceUrl || isRendering || !isPreviewTextFitReady}
         aria-busy={isRendering}
       >
         {renderState === "queued" ? "В очереди..." : isRendering ? "Рендер..." : "Рендер"}
@@ -2281,13 +2170,7 @@ export function Step3RenderTemplate({
             <h2>Рендер</h2>
             <p>Финализируйте тайминг и кадрирование, затем отрендерите mp4 из выбранной версии.</p>
             <div className="render-meta-strip">
-              <span className="meta-pill">
-                {templateId === STAGE3_TEMPLATE_ID
-                  ? "Science Card v1"
-                  : templateId === TURBO_FACE_TEMPLATE_ID
-                    ? "Turbo Face v1"
-                    : templateId}
-              </span>
+              <span className="meta-pill">{getStage3DesignLabLabel(templateId)}</span>
               <span className="meta-pill mono">{templateId}</span>
               <span className="meta-pill">
                 {channelName} (@{channelUsername})
@@ -2908,8 +2791,13 @@ export function Step3RenderTemplate({
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={onOptimize}
-                    disabled={!sourceUrl || isOptimizing || isRendering}
+                    onClick={() => {
+                      const overrides = commitAdvancedControls();
+                      window.setTimeout(() => {
+                        onOptimize(overrides, activePreviewTextFit);
+                      }, 0);
+                    }}
+                    disabled={!sourceUrl || isOptimizing || isRendering || !isPreviewTextFitReady}
                     aria-busy={isOptimizing}
                   >
                     {isOptimizing ? "Агент выполняет итерации..." : "Отправить в AI redactor"}
@@ -2954,13 +2842,18 @@ export function Step3RenderTemplate({
             summaryLines={summaryLines}
             previewState={previewState}
             previewNotice={previewNotice ?? (isPreviewBusy ? "Обновляю предпросмотр..." : null)}
+            previewTemplateSnapshot={previewTemplateSnapshot}
+            onMeasuredTextFitChange={handlePreviewMeasuredTextFitChange}
+            previewTopText={previewTopText}
+            previewBottomText={previewBottomText}
             clipDurationSec={clipDurationSec}
             focusY={localFocusY}
             cameraMotion={cameraMotion}
             mirrorEnabled={mirrorEnabled}
             videoZoom={previewVideoZoom}
+            topFontScale={localTopFontScale}
+            bottomFontScale={localBottomFontScale}
             templateConfig={templateConfig}
-            previewComputed={previewComputed}
             onSelectVersionId={onSelectVersionId}
             onSelectPassIndex={onSelectPassIndex}
           />

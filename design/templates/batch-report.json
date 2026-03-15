@@ -1,0 +1,14 @@
+[
+  {
+    "templateId": "science-card-v1",
+    "status": "queued",
+    "lastMismatchPercent": null,
+    "lastChromeMismatchPercent": null
+  },
+  {
+    "templateId": "turbo-face-v1",
+    "status": "in-progress",
+    "lastMismatchPercent": null,
+    "lastChromeMismatchPercent": null
+  }
+]

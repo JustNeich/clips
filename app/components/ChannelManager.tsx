@@ -10,6 +10,8 @@ import {
   WorkspaceMemberRecord,
   UserRecord
 } from "./types";
+import { STAGE3_TEMPLATE_ID } from "../../lib/stage3-template";
+import { listStage3DesignLabPresets } from "../../lib/stage3-design-lab";
 
 type ChannelManagerProps = {
   open: boolean;
@@ -79,7 +81,15 @@ export function ChannelManager({
   const [systemPrompt, setSystemPrompt] = useState("");
   const [descriptionPrompt, setDescriptionPrompt] = useState("");
   const [examplesJson, setExamplesJson] = useState("[]");
-  const [templateId, setTemplateId] = useState("science-card-v1");
+  const [templateId, setTemplateId] = useState(STAGE3_TEMPLATE_ID);
+  const renderTemplateOptions = useMemo(
+    () =>
+      listStage3DesignLabPresets().map((preset) => ({
+        value: preset.templateId,
+        label: preset.label
+      })),
+    []
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -349,8 +359,11 @@ export function ChannelManager({
                   value={templateId}
                   onChange={(event) => setTemplateId(event.target.value)}
                 >
-                  <option value="science-card-v1">Science Card v1</option>
-                  <option value="turbo-face-v1">Turbo Face v1</option>
+                  {renderTemplateOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 <div className="compact-grid">
                   <div className="compact-field">

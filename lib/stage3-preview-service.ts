@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
 import {
   clampClipStart,
   prepareStage3SourceClip,
@@ -15,6 +14,7 @@ import { Stage3StateSnapshot } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { STAGE3_TEMPLATE_ID, getTemplateById } from "./stage3-template";
 import { getAppDataDir } from "./app-paths";
+import { createNodeStreamResponse } from "./node-stream-response";
 import {
   ensureStage3SourceCached,
   runHostedStage3HeavyJob
@@ -152,8 +152,8 @@ async function createVideoFileResponse(
 ): Promise<Response> {
   const stat = await fs.stat(filePath);
   const stream = createReadStream(filePath);
-  return new Response(Readable.toWeb(stream) as ReadableStream, {
-    status: 200,
+  return createNodeStreamResponse({
+    stream,
     headers: {
       "Content-Type": "video/mp4",
       "Content-Length": String(stat.size),

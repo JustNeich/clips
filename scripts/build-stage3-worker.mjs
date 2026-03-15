@@ -13,10 +13,11 @@ const manifestPath = path.join(publicDir, "manifest.json");
 const workerPackagePath = path.join(publicDir, "package.json");
 const remotionPublicDir = path.join(publicDir, "remotion");
 const libPublicDir = path.join(publicDir, "lib");
+const designPublicDir = path.join(publicDir, "design");
 const packageJsonPath = path.join(repoRoot, "package.json");
 const remotionSourceDir = path.join(repoRoot, "remotion");
-const stage3TemplateSourcePath = path.join(repoRoot, "lib", "stage3-template.ts");
-const stage3ConstantsSourcePath = path.join(repoRoot, "lib", "stage3-constants.ts");
+const libSourceDir = path.join(repoRoot, "lib");
+const designSourceDir = path.join(repoRoot, "design");
 
 const WORKER_RUNTIME_DEPENDENCIES = [
   "@remotion/bundler",
@@ -25,6 +26,53 @@ const WORKER_RUNTIME_DEPENDENCIES = [
   "react-dom",
   "remotion"
 ];
+
+const WORKER_LIB_RUNTIME_FILES = [
+  "stage3-template.ts",
+  "stage3-constants.ts",
+  "template-scene.tsx",
+  "template-calibration-types.ts",
+  "auto-fit-template-scene.tsx",
+  "stage3-template-core.ts",
+  "stage3-template-spec.ts",
+  "stage3-template-renderer.tsx",
+  "stage3-template-runtime.tsx",
+  "stage3-template-registry.ts"
+];
+
+async function listWorkerRemotionRuntimeFiles() {
+  const entries = await fs.readdir(remotionSourceDir, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .sort();
+}
+
+async function copyWorkerTemplateSpecs() {
+  const templatesSourceDir = path.join(designSourceDir, "templates");
+  const templatesPublicDir = path.join(designPublicDir, "templates");
+  await fs.mkdir(templatesPublicDir, { recursive: true });
+  const entries = await fs.readdir(templatesSourceDir, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const sourcePath = path.join(templatesSourceDir, entry.name, "figma-spec.json");
+    try {
+      await fs.access(sourcePath);
+    } catch {
+      continue;
+    }
+    const targetDir = path.join(templatesPublicDir, entry.name);
+    await fs.mkdir(targetDir, { recursive: true });
+    await fs.copyFile(sourcePath, path.join(targetDir, "figma-spec.json"));
+  }
+}
+
+function buildRuntimeVersion(baseVersion) {
+  const stamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
+  return `${baseVersion}+${stamp}`;
+}
 
 async function readPackageJson() {
   const raw = await fs.readFile(packageJsonPath, "utf-8");
@@ -44,19 +92,43 @@ function pickWorkerDependencies(rootPackageJson) {
   );
 }
 
+async function syncWorkerRuntimeSources() {
+  await fs.rm(remotionPublicDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.rm(libPublicDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.rm(designPublicDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.mkdir(remotionPublicDir, { recursive: true });
+  await fs.mkdir(libPublicDir, { recursive: true });
+  await fs.mkdir(designPublicDir, { recursive: true });
+
+  await fs.cp(remotionSourceDir, remotionPublicDir, { recursive: true });
+  await copyWorkerTemplateSpecs();
+  for (const fileName of WORKER_LIB_RUNTIME_FILES) {
+    const sourcePath = path.join(libSourceDir, fileName);
+    const destinationPath = path.join(libPublicDir, fileName);
+    await fs.copyFile(sourcePath, destinationPath);
+  }
+
+  const copiedFiles = await fs.readdir(libPublicDir);
+  const expected = new Set(WORKER_LIB_RUNTIME_FILES);
+  const unexpected = copiedFiles.filter((fileName) => !expected.has(fileName));
+  if (unexpected.length > 0) {
+    throw new Error(
+      `Worker runtime contains unexpected lib files: ${unexpected.join(", ")}. ` +
+        "Do not maintain manual template source mirrors in public/stage3-worker/lib."
+    );
+  }
+}
+
 async function main() {
   const rootPackageJson = await readPackageJson();
   const version =
     typeof rootPackageJson.version === "string" && rootPackageJson.version.trim()
       ? rootPackageJson.version.trim()
       : "0.0.0";
+  const runtimeVersion = buildRuntimeVersion(version);
+  const remotionFiles = await listWorkerRemotionRuntimeFiles();
   await fs.mkdir(publicDir, { recursive: true });
-  await fs.rm(remotionPublicDir, { recursive: true, force: true }).catch(() => undefined);
-  await fs.mkdir(remotionPublicDir, { recursive: true });
-  await fs.mkdir(libPublicDir, { recursive: true });
-  await fs.cp(remotionSourceDir, remotionPublicDir, { recursive: true });
-  await fs.copyFile(stage3TemplateSourcePath, path.join(libPublicDir, "stage3-template.ts"));
-  await fs.copyFile(stage3ConstantsSourcePath, path.join(libPublicDir, "stage3-constants.ts"));
+  await syncWorkerRuntimeSources();
 
   await build({
     entryPoints: [workerEntry],
@@ -82,7 +154,7 @@ async function main() {
       "./channel-assets"
     ],
     define: {
-      "process.env.CLIPS_STAGE3_WORKER_VERSION": JSON.stringify(version)
+      "process.env.CLIPS_STAGE3_WORKER_VERSION": JSON.stringify(runtimeVersion)
     }
   });
 
@@ -92,8 +164,11 @@ async function main() {
     JSON.stringify(
       {
         version,
+        runtimeVersion,
         builtAt: new Date().toISOString(),
-        bundleFile: path.basename(bundlePath)
+        bundleFile: path.basename(bundlePath),
+        remotionFiles,
+        libFiles: WORKER_LIB_RUNTIME_FILES
       },
       null,
       2

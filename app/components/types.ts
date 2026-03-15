@@ -110,6 +110,26 @@ export type Stage3PreviewState = "idle" | "debouncing" | "loading" | "retrying" 
 
 export type Stage3RenderState = "idle" | "queued" | "rendering" | "ready" | "error";
 
+export type Stage3EditorDraftOverrides = {
+  clipStartSec: number;
+  focusY: number;
+  videoZoom: number;
+  topFontScale: number;
+  bottomFontScale: number;
+  musicGain: number;
+};
+
+export type Stage3TextFitSnapshot = {
+  topFontPx: number;
+  bottomFontPx: number;
+  topLineHeight?: number;
+  bottomLineHeight?: number;
+  topLines?: number;
+  bottomLines?: number;
+  topCompacted: boolean;
+  bottomCompacted: boolean;
+};
+
 export type Stage3JobKind = "preview" | "render" | "source-download" | "agent-media-step";
 
 export type Stage3JobStatus = "queued" | "running" | "completed" | "failed" | "interrupted";
@@ -188,6 +208,18 @@ export type Stage3WorkerPairingResponse = {
   };
 };
 
+export type {
+  TemplateCalibrationArtifacts,
+  TemplateCalibrationBundle,
+  TemplateCalibrationSession,
+  TemplateCalibrationStatus,
+  TemplateCompareMode,
+  TemplateCompareScope,
+  TemplateContentFixture,
+  TemplateDiffReport,
+  TemplateOverlayBlendMode
+} from "../../lib/template-calibration-types";
+
 export type Stage3Segment = {
   startSec: number;
   endSec: number | null;
@@ -247,12 +279,13 @@ export type Stage3StateSnapshot = {
   focusY: number;
   renderPlan: Stage3RenderPlan;
   sourceDurationSec: number | null;
-  textFit: {
-    topFontPx: number;
-    bottomFontPx: number;
-    topCompacted: boolean;
-    bottomCompacted: boolean;
+  templateSnapshot?: {
+    templateId: string;
+    specRevision: string;
+    snapshotHash: string;
+    fitRevision: string;
   };
+  textFit: Stage3TextFitSnapshot;
 };
 
 export type Stage3Version = {

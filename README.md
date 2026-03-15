@@ -95,6 +95,13 @@ npm run dev
   - `POST /api/stage3/optimize` и `POST /api/stage3/agent/run` используют local media subjobs для тяжелого анализа.
   - `POST /api/video/meta` возвращает длительность источника для UI-слайдера.
 
+### Stage 3 template layout contract (обязательные правила)
+
+- Высоты секций карточки фиксированы и одинаково интерпретируются в editor preview, template-lab и final render.
+- Текст в `top` и `bottom` секциях обязан автоматически подстраиваться под доступный слот, чтобы визуально заполнять секцию и не оставлять крупных пустых зон.
+- Любые изменения typography/padding допустимы только если не нарушают предыдущее правило на коротком, среднем и длинном тексте.
+- Запрещено менять поведение так, чтобы текст “выпадал” за границы секции или появлялись несоразмерные вертикальные gaps.
+
 Подробный rollout-гайд: [docs/stage3-local-worker.md](/Users/neich/dev/clips automations/docs/stage3-local-worker.md)
 
 ## Stage 3 local worker

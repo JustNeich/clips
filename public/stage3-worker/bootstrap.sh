@@ -45,6 +45,7 @@ PUBLIC_DIR="${INSTALL_ROOT}/public"
 BUNDLE_PATH="${BIN_DIR}/clips-stage3-worker.cjs"
 WRAPPER_PATH="${BIN_DIR}/clips-stage3-worker"
 PACKAGE_PATH="${INSTALL_ROOT}/package.json"
+MANIFEST_PATH="${INSTALL_ROOT}/manifest.json"
 
 if ! command -v npm >/dev/null 2>&1; then
   echo "npm is required to install the Clips Stage 3 worker runtime." >&2
@@ -58,10 +59,28 @@ mkdir -p "$LIB_DIR"
 mkdir -p "$PUBLIC_DIR"
 curl -fsSL "${SERVER%/}/stage3-worker/clips-stage3-worker.cjs" -o "$BUNDLE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
-curl -fsSL "${SERVER%/}/stage3-worker/remotion/index.tsx" -o "${REMOTION_DIR}/index.tsx"
-curl -fsSL "${SERVER%/}/stage3-worker/remotion/science-card-v1.tsx" -o "${REMOTION_DIR}/science-card-v1.tsx"
-curl -fsSL "${SERVER%/}/stage3-worker/lib/stage3-template.ts" -o "${LIB_DIR}/stage3-template.ts"
-curl -fsSL "${SERVER%/}/stage3-worker/lib/stage3-constants.ts" -o "${LIB_DIR}/stage3-constants.ts"
+curl -fsSL "${SERVER%/}/stage3-worker/manifest.json" -o "$MANIFEST_PATH"
+REMOTION_FILES=(
+  "index.tsx"
+  "science-card-v1.tsx"
+)
+LIB_FILES=(
+  "stage3-template.ts"
+  "stage3-constants.ts"
+  "template-scene.tsx"
+  "template-calibration-types.ts"
+  "auto-fit-template-scene.tsx"
+  "stage3-template-core.ts"
+  "stage3-template-renderer.tsx"
+  "stage3-template-runtime.tsx"
+  "stage3-template-registry.ts"
+)
+for FILE in "${REMOTION_FILES[@]}"; do
+  curl -fsSL "${SERVER%/}/stage3-worker/remotion/${FILE}" -o "${REMOTION_DIR}/${FILE}"
+done
+for FILE in "${LIB_FILES[@]}"; do
+  curl -fsSL "${SERVER%/}/stage3-worker/lib/${FILE}" -o "${LIB_DIR}/${FILE}"
+done
 chmod +x "$BUNDLE_PATH"
 
 (cd "$INSTALL_ROOT" && npm install --omit=dev --no-fund --no-audit)

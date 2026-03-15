@@ -6,9 +6,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   STAGE3_TEMPLATE_ID,
-  getTemplateById,
-  getTemplateComputed
+  getTemplateById
 } from "./stage3-template";
+import { buildTemplateRenderSnapshot } from "./stage3-template-core";
 import {
   analyzeBestClipAndFocus,
   clampClipStart,
@@ -36,6 +36,17 @@ const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
 let remotionRuntimePromise: Promise<RemotionModule> | null = null;
+
+function shouldReuseRemotionBundle(): boolean {
+  const override = process.env.STAGE3_REUSE_REMOTION_BUNDLE?.trim();
+  if (override === "1") {
+    return true;
+  }
+  if (override === "0") {
+    return false;
+  }
+  return process.env.NODE_ENV === "production";
+}
 
 function resolveStage3ExecutionRoot(): string {
   const workerRoot = process.env.STAGE3_WORKER_INSTALL_ROOT?.trim();
@@ -155,6 +166,18 @@ async function resolveStage3AssetFile(params: {
 }
 
 async function getRemotionServeUrl(): Promise<string> {
+  if (!shouldReuseRemotionBundle()) {
+    const { bundle } = await ensureRemotionRuntime();
+    const executionRoot = resolveStage3ExecutionRoot();
+    const entryPoint = path.join(executionRoot, "remotion", "index.tsx");
+    const publicDir = path.join(executionRoot, "public");
+    return bundle({
+      entryPoint,
+      publicDir,
+      ignoreRegisterRootWarning: true
+    });
+  }
+
   if (!remotionServeUrlPromise) {
     remotionServeUrlPromise = ensureRemotionRuntime().then(({ bundle }) => {
       const executionRoot = resolveStage3ExecutionRoot();
@@ -295,6 +318,7 @@ async function rewriteRenderedMetadata(params: {
 }
 
 async function runRemotionRender(params: {
+  serveUrl: string;
   templateId: string;
   outputPath: string;
   sourceVideoFileName: string;
@@ -314,10 +338,20 @@ async function runRemotionRender(params: {
   avatarAssetMimeType: string | null;
   backgroundAssetFileName: string | null;
   backgroundAssetMimeType: string | null;
+  textFit: {
+    topFontPx: number;
+    bottomFontPx: number;
+    topLineHeight: number;
+    bottomLineHeight: number;
+    topLines: number;
+    bottomLines: number;
+    topCompacted: boolean;
+    bottomCompacted: boolean;
+  };
   timeoutMs: number;
 }) {
   const { getCompositions, renderMedia, selectComposition } = await ensureRemotionRuntime();
-  const serveUrl = await getRemotionServeUrl();
+  const serveUrl = params.serveUrl;
 
   const inputProps = {
     templateId: params.templateId,
@@ -337,7 +371,8 @@ async function runRemotionRender(params: {
     avatarAssetFileName: params.avatarAssetFileName,
     avatarAssetMimeType: params.avatarAssetMimeType,
     backgroundAssetFileName: params.backgroundAssetFileName,
-    backgroundAssetMimeType: params.backgroundAssetMimeType
+    backgroundAssetMimeType: params.backgroundAssetMimeType,
+    textFit: params.textFit
   };
 
   const composition =
@@ -594,15 +629,52 @@ export async function renderStage3Video(
           ? body.renderPlan.templateId.trim()
           : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
     const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, sourceDurationSec, templateIdFromInput, body.agentPrompt);
-    const computed = getTemplateComputed(
-      renderPlan.templateId,
-      snapshot?.topText ?? body.topText ?? "",
-      snapshot?.bottomText ?? body.bottomText ?? "",
-      {
+    const templateSnapshot = buildTemplateRenderSnapshot({
+      templateId: renderPlan.templateId,
+      content: {
+        topText: snapshot?.topText ?? body.topText ?? "",
+        bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
+        channelName: renderPlan.authorName,
+        channelHandle: renderPlan.authorHandle,
         topFontScale: renderPlan.topFontScale,
-        bottomFontScale: renderPlan.bottomFontScale
-      }
-    );
+        bottomFontScale: renderPlan.bottomFontScale,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      },
+      fitOverride: snapshot?.textFit
+        ? {
+            topFontPx: snapshot.textFit.topFontPx,
+            bottomFontPx: snapshot.textFit.bottomFontPx,
+            topLineHeight: snapshot.textFit.topLineHeight,
+            bottomLineHeight: snapshot.textFit.bottomLineHeight,
+            topLines: snapshot.textFit.topLines,
+            bottomLines: snapshot.textFit.bottomLines,
+            topCompacted: snapshot.textFit.topCompacted,
+            bottomCompacted: snapshot.textFit.bottomCompacted
+          }
+        : undefined
+    });
+
+    if (
+      snapshot?.templateSnapshot?.snapshotHash &&
+      snapshot.templateSnapshot.snapshotHash !== templateSnapshot.snapshotHash
+    ) {
+      throw new Error("Template snapshot drift detected. Обновите preview и повторите render.");
+    }
+    if (
+      snapshot?.templateSnapshot?.specRevision &&
+      snapshot.templateSnapshot.specRevision !== templateSnapshot.specRevision
+    ) {
+      throw new Error("Template spec revision changed. Обновите preview и повторите render.");
+    }
+    if (
+      snapshot?.templateSnapshot?.fitRevision &&
+      snapshot.templateSnapshot.fitRevision !== templateSnapshot.fitRevision
+    ) {
+      throw new Error("Template fit revision changed. Обновите preview и повторите render.");
+    }
 
     let musicFilePath: string | null = null;
     if (body.channelId && renderPlan.musicAssetId) {
@@ -678,11 +750,12 @@ export async function renderStage3Video(
         }
 
         await runRemotionRender({
+          serveUrl,
           templateId: renderPlan.templateId || STAGE3_TEMPLATE_ID,
           outputPath: remotionOutputPath,
           sourceVideoFileName,
-          topText: computed.top,
-          bottomText: computed.bottom,
+          topText: templateSnapshot.content.topText,
+          bottomText: templateSnapshot.content.bottomText,
           clipStartSec: prepared.clipStartSec,
           clipDurationSec: prepared.clipDurationSec,
           focusY,
@@ -697,6 +770,16 @@ export async function renderStage3Video(
           avatarAssetMimeType,
           backgroundAssetFileName,
           backgroundAssetMimeType,
+          textFit: {
+            topFontPx: templateSnapshot.fit.topFontPx,
+            bottomFontPx: templateSnapshot.fit.bottomFontPx,
+            topLineHeight: templateSnapshot.fit.topLineHeight,
+            bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
+            topLines: templateSnapshot.fit.topLines,
+            bottomLines: templateSnapshot.fit.bottomLines,
+            topCompacted: templateSnapshot.fit.topCompacted,
+            bottomCompacted: templateSnapshot.fit.bottomCompacted
+          },
           timeoutMs
         });
 
@@ -716,8 +799,8 @@ export async function renderStage3Video(
     return {
       filePath: outputPath,
       outputName: `${outputStem}.mp4`,
-      topCompacted: computed.topCompacted,
-      bottomCompacted: computed.bottomCompacted,
+      topCompacted: templateSnapshot.fit.topCompacted,
+      bottomCompacted: templateSnapshot.fit.bottomCompacted,
       cleanupDir: tmpDir
     };
   } catch (error) {

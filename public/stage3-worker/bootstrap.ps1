@@ -22,6 +22,7 @@ function Install-ClipsStage3Worker {
   $bundlePath = Join-Path $binDir "clips-stage3-worker.cjs"
   $wrapperPath = Join-Path $binDir "clips-stage3-worker.cmd"
   $packagePath = Join-Path $installRoot "package.json"
+  $manifestPath = Join-Path $installRoot "manifest.json"
 
   New-Item -ItemType Directory -Path $binDir -Force | Out-Null
   New-Item -ItemType Directory -Path $remotionDir -Force | Out-Null
@@ -29,10 +30,28 @@ function Install-ClipsStage3Worker {
   New-Item -ItemType Directory -Path $publicDir -Force | Out-Null
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/clips-stage3-worker.cjs" -OutFile $bundlePath
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/package.json" -OutFile $packagePath
-  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/index.tsx" -OutFile (Join-Path $remotionDir "index.tsx")
-  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/science-card-v1.tsx" -OutFile (Join-Path $remotionDir "science-card-v1.tsx")
-  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/lib/stage3-template.ts" -OutFile (Join-Path $libDir "stage3-template.ts")
-  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/lib/stage3-constants.ts" -OutFile (Join-Path $libDir "stage3-constants.ts")
+  Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/manifest.json" -OutFile $manifestPath
+  $remotionFiles = @(
+    "index.tsx",
+    "science-card-v1.tsx"
+  )
+  $libFiles = @(
+    "stage3-template.ts",
+    "stage3-constants.ts",
+    "template-scene.tsx",
+    "template-calibration-types.ts",
+    "auto-fit-template-scene.tsx",
+    "stage3-template-core.ts",
+    "stage3-template-renderer.tsx",
+    "stage3-template-runtime.tsx",
+    "stage3-template-registry.ts"
+  )
+  foreach ($file in $remotionFiles) {
+    Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/$file" -OutFile (Join-Path $remotionDir $file)
+  }
+  foreach ($file in $libFiles) {
+    Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/lib/$file" -OutFile (Join-Path $libDir $file)
+  }
   Push-Location $installRoot
   try {
     npm install --omit=dev --no-fund --no-audit

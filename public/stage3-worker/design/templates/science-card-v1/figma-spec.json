@@ -1,0 +1,92 @@
+{
+  "templateId": "science-card-v1",
+  "source": "figma-locked",
+  "figma": {
+    "fileKey": "TQ1vFmnTIenyAO0AwpHCNu",
+    "nodeId": "18:2",
+    "nodeName": "Group"
+  },
+  "frame": {
+    "width": 1080,
+    "height": 1920
+  },
+  "shell": {
+    "x": 0,
+    "y": 0,
+    "width": 1080,
+    "height": 1920,
+    "radius": 0,
+    "background": "#d9d9d9"
+  },
+  "card": {
+    "x": 83,
+    "y": 192,
+    "width": 907,
+    "height": 1461,
+    "radius": 12,
+    "borderWidth": 8,
+    "borderColor": "#000000",
+    "fill": "#ffffff",
+    "shadow": "0 4px 4px rgba(0,0,0,0.25)"
+  },
+  "sections": {
+    "top": {
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 419
+    },
+    "media": {
+      "x": 83,
+      "y": 611,
+      "width": 907,
+      "height": 750
+    },
+    "bottom": {
+      "x": 83,
+      "y": 1361,
+      "width": 907,
+      "height": 292
+    },
+    "author": {
+      "x": 83,
+      "y": 1361,
+      "width": 907,
+      "height": 132
+    },
+    "avatar": {
+      "x": 106,
+      "y": 1379,
+      "width": 101,
+      "height": 101
+    },
+    "bottomText": {
+      "x": 106,
+      "y": 1493,
+      "width": 838,
+      "height": 160
+    }
+  },
+  "typography": {
+    "topText": {
+      "fontSize": 58,
+      "lineHeightPx": 54,
+      "fontWeight": 900
+    },
+    "bottomText": {
+      "fontSize": 36,
+      "fontWeight": 500
+    },
+    "authorName": {
+      "fontSize": 40,
+      "fontWeight": 800
+    },
+    "authorHandle": {
+      "fontSize": 34,
+      "fontWeight": 300
+    },
+    "badge": {
+      "size": 54
+    }
+  }
+}

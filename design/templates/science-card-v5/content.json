@@ -1,0 +1,12 @@
+{
+  "topText": "Geologists cut open a volcanic bomb and found concentric mineral bands so precise that the rock reads almost like a pressure logbook from the instant it was thrown out of the crater.",
+  "bottomText": "The colors make it look decorative until you realize each ring marks a real shift in heat, gas and cooling speed. It is a disaster souvenir with perfect memory.",
+  "channelName": "Science Snack",
+  "channelHandle": "@Science_Snack_1",
+  "topFontScale": 1,
+  "bottomFontScale": 1,
+  "previewScale": 0.31,
+  "mediaAsset": "media.png",
+  "backgroundAsset": "background.png",
+  "avatarAsset": "avatar.png"
+}

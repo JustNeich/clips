@@ -1,0 +1,12 @@
+{
+  "topText": "Scientists found a way to splice two living plant stems, and the joined tissue starts acting like a single working system almost immediately.",
+  "bottomText": "You can watch the wound knit together, the fluids reroute, and the whole graft behave like the plant decided the surgery was always part of the plan.",
+  "channelName": "Science Snack",
+  "channelHandle": "@Science_Snack_1",
+  "topFontScale": 1,
+  "bottomFontScale": 1.85,
+  "previewScale": 0.34,
+  "mediaAsset": "media.png",
+  "backgroundAsset": "background.png",
+  "avatarAsset": "avatar.png"
+}

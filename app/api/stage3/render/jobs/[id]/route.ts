@@ -1,8 +1,8 @@
 import { createReadStream, promises as fs } from "node:fs";
-import { Readable } from "node:stream";
 import { requireAuth } from "../../../../../../lib/auth/guards";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../../lib/stage3-job-http";
 import { getStage3JobOrThrow } from "../../../../../../lib/stage3-job-runtime";
+import { createNodeStreamResponse } from "../../../../../../lib/node-stream-response";
 
 export const runtime = "nodejs";
 
@@ -33,8 +33,9 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
       }
       const stat = await fs.stat(job.artifactFilePath);
       const stream = createReadStream(job.artifactFilePath);
-      return new Response(Readable.toWeb(stream) as ReadableStream, {
-        status: 200,
+      return createNodeStreamResponse({
+        stream,
+        signal: request.signal,
         headers: {
           "Content-Type": job.artifact.mimeType,
           "Content-Length": String(stat.size),

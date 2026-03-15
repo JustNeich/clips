@@ -1,8 +1,8 @@
 import { createReadStream, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
 import { downloadSourceMedia } from "../../../lib/source-acquisition";
+import { createNodeStreamResponse } from "../../../lib/node-stream-response";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../lib/ytdlp";
 
 export const runtime = "nodejs";
@@ -45,8 +45,9 @@ export async function POST(request: Request): Promise<Response> {
     scheduleDirectoryCleanup(tmpDir);
     cleanupScheduled = true;
 
-    return new Response(Readable.toWeb(stream) as ReadableStream, {
-      status: 200,
+    return createNodeStreamResponse({
+      stream,
+      signal: request.signal,
       headers: {
         "Content-Type": "video/mp4",
         "Content-Length": String(fileStat.size),
