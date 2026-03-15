@@ -60,7 +60,10 @@ mkdir -p "$PUBLIC_DIR"
 curl -fsSL "${SERVER%/}/stage3-worker/clips-stage3-worker.cjs" -o "$BUNDLE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/manifest.json" -o "$MANIFEST_PATH"
-mapfile -t REMOTION_FILES < <(
+while IFS= read -r FILE; do
+  [[ -n "$FILE" ]] || continue
+  curl -fsSL "${SERVER%/}/stage3-worker/remotion/${FILE}" -o "${REMOTION_DIR}/${FILE}"
+done < <(
   node -e '
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -70,7 +73,10 @@ for (const file of files) {
 }
 ' "$MANIFEST_PATH"
 )
-mapfile -t LIB_FILES < <(
+while IFS= read -r FILE; do
+  [[ -n "$FILE" ]] || continue
+  curl -fsSL "${SERVER%/}/stage3-worker/lib/${FILE}" -o "${LIB_DIR}/${FILE}"
+done < <(
   node -e '
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -92,12 +98,6 @@ for (const file of files) {
 }
 ' "$MANIFEST_PATH"
 )
-for FILE in "${REMOTION_FILES[@]}"; do
-  curl -fsSL "${SERVER%/}/stage3-worker/remotion/${FILE}" -o "${REMOTION_DIR}/${FILE}"
-done
-for FILE in "${LIB_FILES[@]}"; do
-  curl -fsSL "${SERVER%/}/stage3-worker/lib/${FILE}" -o "${LIB_DIR}/${FILE}"
-done
 chmod +x "$BUNDLE_PATH"
 
 (cd "$INSTALL_ROOT" && npm install --omit=dev --no-fund --no-audit)
