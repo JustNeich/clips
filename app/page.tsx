@@ -962,10 +962,24 @@ export default function HomePage() {
     let raw = fallback;
 
     if (contentType.includes("application/json")) {
-      const body = (await response.json().catch(() => null)) as { error?: string } | null;
-      raw = body?.error ?? fallback;
+      const body = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            message?: string;
+            recoverable?: boolean;
+            retryAfterSec?: number | null;
+          }
+        | null;
+      raw = body?.message ?? body?.error ?? fallback;
     } else {
       raw = (await response.text().catch(() => fallback)) || fallback;
+    }
+
+    if (raw === fallback && response.headers.get("x-stage3-worker-update-required") === "1") {
+      const requiredVersion = response.headers.get("x-stage3-worker-required-version");
+      raw = requiredVersion
+        ? `Текущий локальный executor устарел. Требуется runtime ${requiredVersion}. Обновите worker через bootstrap и повторите попытку.`
+        : "Текущий локальный executor устарел. Обновите worker через bootstrap и повторите попытку.";
     }
 
     return summarizeUserFacingError(raw);

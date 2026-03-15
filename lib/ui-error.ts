@@ -89,6 +89,19 @@ export function summarizeUserFacingError(message: string): string {
   if (lower.includes("shared codex unavailable")) {
     return "Shared Codex еще не подключен.";
   }
+  if (
+    lower.includes("local stage 3 worker is outdated") ||
+    lower.includes("текущий локальный executor устарел") ||
+    lower.includes("обновите worker через bootstrap")
+  ) {
+    return "Локальный executor Stage 3 устарел. Перезапустите bootstrap-команду и затем снова запустите worker.";
+  }
+  if (lower.includes("failed to claim stage 3 job")) {
+    return "Локальный executor не смог забрать задачу Stage 3. Обычно это происходит после обновления сервера, когда worker нужно обновить через bootstrap.";
+  }
+  if (lower === "fetch failed" || lower.endsWith(": fetch failed")) {
+    return "Не удалось связаться с сервером или локальным executor. Проверьте, что worker запущен и обновлен через bootstrap.";
+  }
 
   if (normalized.length > 280) {
     return `${normalized.slice(0, 277).trimEnd()}...`;
