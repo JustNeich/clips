@@ -54,6 +54,7 @@ async function copyWorkerTemplateSpecs() {
   const templatesPublicDir = path.join(designPublicDir, "templates");
   await fs.mkdir(templatesPublicDir, { recursive: true });
   const entries = await fs.readdir(templatesSourceDir, { withFileTypes: true }).catch(() => []);
+  const copiedFiles = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) {
       continue;
@@ -66,8 +67,11 @@ async function copyWorkerTemplateSpecs() {
     }
     const targetDir = path.join(templatesPublicDir, entry.name);
     await fs.mkdir(targetDir, { recursive: true });
+    const relativeFilePath = path.join("templates", entry.name, "figma-spec.json");
     await fs.copyFile(sourcePath, path.join(targetDir, "figma-spec.json"));
+    copiedFiles.push(relativeFilePath);
   }
+  return copiedFiles.sort();
 }
 
 function buildRuntimeVersion(baseVersion) {
@@ -102,7 +106,7 @@ async function syncWorkerRuntimeSources() {
   await fs.mkdir(designPublicDir, { recursive: true });
 
   await fs.cp(remotionSourceDir, remotionPublicDir, { recursive: true });
-  await copyWorkerTemplateSpecs();
+  const designFiles = await copyWorkerTemplateSpecs();
   for (const fileName of WORKER_LIB_RUNTIME_FILES) {
     const sourcePath = path.join(libSourceDir, fileName);
     const destinationPath = path.join(libPublicDir, fileName);
@@ -118,6 +122,10 @@ async function syncWorkerRuntimeSources() {
         "Do not maintain manual template source mirrors in public/stage3-worker/lib."
     );
   }
+
+  return {
+    designFiles
+  };
 }
 
 async function main() {
@@ -129,7 +137,7 @@ async function main() {
   const runtimeVersion = buildRuntimeVersion(version);
   const remotionFiles = await listWorkerRemotionRuntimeFiles();
   await fs.mkdir(publicDir, { recursive: true });
-  await syncWorkerRuntimeSources();
+  const runtimeSources = await syncWorkerRuntimeSources();
 
   await build({
     entryPoints: [workerEntry],
@@ -169,7 +177,8 @@ async function main() {
         builtAt: new Date().toISOString(),
         bundleFile: path.basename(bundlePath),
         remotionFiles,
-        libFiles: WORKER_LIB_RUNTIME_FILES
+        libFiles: WORKER_LIB_RUNTIME_FILES,
+        designFiles: runtimeSources.designFiles
       },
       null,
       2

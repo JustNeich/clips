@@ -41,7 +41,7 @@ INSTALL_ROOT="${HOME}/Library/Application Support/Clips Stage3 Worker"
 BIN_DIR="${INSTALL_ROOT}/bin"
 REMOTION_DIR="${INSTALL_ROOT}/remotion"
 LIB_DIR="${INSTALL_ROOT}/lib"
-PUBLIC_DIR="${INSTALL_ROOT}/public"
+DESIGN_DIR="${INSTALL_ROOT}/design"
 BUNDLE_PATH="${BIN_DIR}/clips-stage3-worker.cjs"
 WRAPPER_PATH="${BIN_DIR}/clips-stage3-worker"
 PACKAGE_PATH="${INSTALL_ROOT}/package.json"
@@ -56,12 +56,13 @@ fi
 mkdir -p "$BIN_DIR"
 mkdir -p "$REMOTION_DIR"
 mkdir -p "$LIB_DIR"
-mkdir -p "$PUBLIC_DIR"
+mkdir -p "$DESIGN_DIR"
 curl -fsSL "${SERVER%/}/stage3-worker/clips-stage3-worker.cjs" -o "$BUNDLE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/manifest.json" -o "$MANIFEST_PATH"
 while IFS= read -r FILE; do
   [[ -n "$FILE" ]] || continue
+  mkdir -p "$(dirname "${REMOTION_DIR}/${FILE}")"
   curl -fsSL "${SERVER%/}/stage3-worker/remotion/${FILE}" -o "${REMOTION_DIR}/${FILE}"
 done < <(
   node -e '
@@ -75,6 +76,7 @@ for (const file of files) {
 )
 while IFS= read -r FILE; do
   [[ -n "$FILE" ]] || continue
+  mkdir -p "$(dirname "${LIB_DIR}/${FILE}")"
   curl -fsSL "${SERVER%/}/stage3-worker/lib/${FILE}" -o "${LIB_DIR}/${FILE}"
 done < <(
   node -e '
@@ -92,6 +94,22 @@ const files = Array.isArray(manifest.libFiles) ? manifest.libFiles : [
   "stage3-template-renderer.tsx",
   "stage3-template-runtime.tsx",
   "stage3-template-registry.ts"
+];
+for (const file of files) {
+  if (typeof file === "string" && file.trim()) console.log(file.trim());
+}
+' "$MANIFEST_PATH"
+)
+while IFS= read -r FILE; do
+  [[ -n "$FILE" ]] || continue
+  mkdir -p "$(dirname "${DESIGN_DIR}/${FILE}")"
+  curl -fsSL "${SERVER%/}/stage3-worker/design/${FILE}" -o "${DESIGN_DIR}/${FILE}"
+done < <(
+  node -e '
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const files = Array.isArray(manifest.designFiles) ? manifest.designFiles : [
+  "templates/science-card-v1/figma-spec.json"
 ];
 for (const file of files) {
   if (typeof file === "string" && file.trim()) console.log(file.trim());

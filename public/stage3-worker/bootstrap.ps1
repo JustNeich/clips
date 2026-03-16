@@ -18,7 +18,7 @@ function Install-ClipsStage3Worker {
   $binDir = Join-Path $installRoot "bin"
   $remotionDir = Join-Path $installRoot "remotion"
   $libDir = Join-Path $installRoot "lib"
-  $publicDir = Join-Path $installRoot "public"
+  $designDir = Join-Path $installRoot "design"
   $bundlePath = Join-Path $binDir "clips-stage3-worker.cjs"
   $wrapperPath = Join-Path $binDir "clips-stage3-worker.cmd"
   $packagePath = Join-Path $installRoot "package.json"
@@ -27,7 +27,7 @@ function Install-ClipsStage3Worker {
   New-Item -ItemType Directory -Path $binDir -Force | Out-Null
   New-Item -ItemType Directory -Path $remotionDir -Force | Out-Null
   New-Item -ItemType Directory -Path $libDir -Force | Out-Null
-  New-Item -ItemType Directory -Path $publicDir -Force | Out-Null
+  New-Item -ItemType Directory -Path $designDir -Force | Out-Null
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/clips-stage3-worker.cjs" -OutFile $bundlePath
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/package.json" -OutFile $packagePath
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/manifest.json" -OutFile $manifestPath
@@ -55,11 +55,26 @@ function Install-ClipsStage3Worker {
       "stage3-template-registry.ts"
     )
   }
+  $designFiles = @($manifest.designFiles)
+  if ($designFiles.Count -eq 0) {
+    $designFiles = @(
+      "templates/science-card-v1/figma-spec.json"
+    )
+  }
   foreach ($file in $remotionFiles) {
-    Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/$file" -OutFile (Join-Path $remotionDir $file)
+    $destination = Join-Path $remotionDir $file
+    New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+    Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/remotion/$file" -OutFile $destination
   }
   foreach ($file in $libFiles) {
-    Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/lib/$file" -OutFile (Join-Path $libDir $file)
+    $destination = Join-Path $libDir $file
+    New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+    Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/lib/$file" -OutFile $destination
+  }
+  foreach ($file in $designFiles) {
+    $destination = Join-Path $designDir $file
+    New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+    Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/design/$file" -OutFile $destination
   }
   Push-Location $installRoot
   try {
