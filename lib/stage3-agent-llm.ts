@@ -10,6 +10,7 @@ import {
 } from "../app/components/types";
 import { runCodexExec } from "./codex-runner";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
+import { STAGE3_TEXT_SCALE_UI_MAX, STAGE3_TEXT_SCALE_UI_MIN, clampStage3TextScaleUi } from "./stage3-text-fit";
 
 const PLANNER_SCHEMA = {
   type: "object",
@@ -239,14 +240,14 @@ function normalizeOperations(value: unknown): Stage3Operation[] {
         break;
       case "set_top_font_scale":
         if (typeof raw.topFontScale === "number" && Number.isFinite(raw.topFontScale)) {
-          operations.push({ op: "set_top_font_scale", topFontScale: clamp(raw.topFontScale, 0.7, 1.9) });
+          operations.push({ op: "set_top_font_scale", topFontScale: clampStage3TextScaleUi(raw.topFontScale) });
         }
         break;
       case "set_bottom_font_scale":
         if (typeof raw.bottomFontScale === "number" && Number.isFinite(raw.bottomFontScale)) {
           operations.push({
             op: "set_bottom_font_scale",
-            bottomFontScale: clamp(raw.bottomFontScale, 0.7, 1.9)
+            bottomFontScale: clampStage3TextScaleUi(raw.bottomFontScale)
           });
         }
         break;
@@ -348,7 +349,7 @@ export async function planStage3OperationsWithCodex(input: {
       "- Target duration remains exactly 6.0s.",
       "- focusY must stay within 0.12..0.88.",
       `- videoZoom must stay within ${STAGE3_MIN_VIDEO_ZOOM.toFixed(1)}..${STAGE3_MAX_VIDEO_ZOOM.toFixed(1)}.`,
-      "- topFontScale and bottomFontScale must stay within 0.7..1.9.",
+      `- topFontScale and bottomFontScale must stay within ${STAGE3_TEXT_SCALE_UI_MIN.toFixed(2)}..${STAGE3_TEXT_SCALE_UI_MAX.toFixed(2)}.`,
       "- Keep text readable; avoid overflow.",
       "- Prefer minimal operations with high impact.",
       "",

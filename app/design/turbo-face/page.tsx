@@ -2,6 +2,7 @@ import { Stage3TemplateRenderer } from "../../../lib/stage3-template-renderer";
 import { TURBO_FACE_TEMPLATE_ID } from "../../../lib/stage3-template";
 import { buildTemplateRenderSnapshot } from "../../../lib/stage3-template-core";
 import { resolveTemplateBackdropNode } from "../../../lib/stage3-template-runtime";
+import { clampStage3TextScaleUi } from "../../../lib/stage3-text-fit";
 
 const DEFAULT_TOP_TEXT =
   "This is what happens when you have more money for toys than you have actual snow to plow. Those tracks are massive enough to crush a minivan, yet it's just creeping along in reverse.";
@@ -25,7 +26,7 @@ function normalizeFontScale(value: string | undefined): number {
   if (!Number.isFinite(parsed)) {
     return 1;
   }
-  return Math.max(0.7, Math.min(1.9, parsed));
+  return clampStage3TextScaleUi(parsed);
 }
 
 export default async function TurboFaceDesignPage({ searchParams }: TurboFaceDesignPageProps) {

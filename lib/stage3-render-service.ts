@@ -9,6 +9,7 @@ import {
   getTemplateById
 } from "./stage3-template";
 import { buildTemplateRenderSnapshot } from "./stage3-template-core";
+import { buildStage3TextFitHash, clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
   analyzeBestClipAndFocus,
   clampClipStart,
@@ -543,11 +544,11 @@ function normalizeRenderPlan(
         : 1,
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
-        ? Math.min(1.9, Math.max(0.7, rawPlan.topFontScale))
+        ? clampStage3TextScaleUi(rawPlan.topFontScale)
         : DEFAULT_TEXT_SCALE,
     bottomFontScale:
       typeof rawPlan?.bottomFontScale === "number" && Number.isFinite(rawPlan.bottomFontScale)
-        ? Math.min(1.9, Math.max(0.7, rawPlan.bottomFontScale))
+        ? clampStage3TextScaleUi(rawPlan.bottomFontScale)
         : DEFAULT_TEXT_SCALE,
     musicGain:
       typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)
@@ -752,6 +753,25 @@ export async function renderStage3Video(
       snapshot.templateSnapshot.fitRevision !== templateSnapshot.fitRevision
     ) {
       throw new Error("Template fit revision changed. Обновите preview и повторите render.");
+    }
+    if (
+      snapshot?.textFit?.snapshotHash &&
+      snapshot.textFit.snapshotHash !== templateSnapshot.snapshotHash
+    ) {
+      throw new Error("Template text fit drift detected. Обновите preview и повторите render.");
+    }
+    if (snapshot?.textFit?.fitHash) {
+      const expectedFitHash = buildStage3TextFitHash({
+        templateId: templateSnapshot.templateId,
+        snapshotHash: templateSnapshot.snapshotHash,
+        topText: templateSnapshot.content.topText,
+        bottomText: templateSnapshot.content.bottomText,
+        topFontScale: renderPlan.topFontScale,
+        bottomFontScale: renderPlan.bottomFontScale
+      });
+      if (snapshot.textFit.fitHash !== expectedFitHash) {
+        throw new Error("Template text fit changed. Обновите preview и повторите render.");
+      }
     }
 
     let musicFilePath: string | null = null;

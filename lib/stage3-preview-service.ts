@@ -13,6 +13,7 @@ import { Stage3RenderPlan } from "./stage3-agent";
 import { Stage3StateSnapshot } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { STAGE3_TEMPLATE_ID, getTemplateById } from "./stage3-template";
+import { clampStage3TextScaleUi } from "./stage3-text-fit";
 import { getAppDataDir } from "./app-paths";
 import { createNodeStreamResponse } from "./node-stream-response";
 import {
@@ -208,11 +209,11 @@ function normalizeRenderPlan(
         : 1,
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
-        ? Math.min(1.9, Math.max(0.7, rawPlan.topFontScale))
+        ? clampStage3TextScaleUi(rawPlan.topFontScale)
         : DEFAULT_TEXT_SCALE,
     bottomFontScale:
       typeof rawPlan?.bottomFontScale === "number" && Number.isFinite(rawPlan.bottomFontScale)
-        ? Math.min(1.9, Math.max(0.7, rawPlan.bottomFontScale))
+        ? clampStage3TextScaleUi(rawPlan.bottomFontScale)
         : DEFAULT_TEXT_SCALE,
     musicGain:
       typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)

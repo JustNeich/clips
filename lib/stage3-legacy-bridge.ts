@@ -7,6 +7,7 @@ import {
   Stage3Version
 } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
+import { clampStage3TextScaleUi } from "./stage3-text-fit";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEMPLATE_ID = "science-card-v1";
@@ -111,11 +112,11 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
         : fallback.videoZoom,
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
-        ? Math.min(1.9, Math.max(0.7, candidate.topFontScale))
+        ? clampStage3TextScaleUi(candidate.topFontScale)
         : fallback.topFontScale,
     bottomFontScale:
       typeof candidate?.bottomFontScale === "number" && Number.isFinite(candidate.bottomFontScale)
-        ? Math.min(1.9, Math.max(0.7, candidate.bottomFontScale))
+        ? clampStage3TextScaleUi(candidate.bottomFontScale)
         : fallback.bottomFontScale,
     musicGain:
       typeof candidate?.musicGain === "number" && Number.isFinite(candidate.musicGain)

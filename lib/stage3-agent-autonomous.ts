@@ -21,6 +21,7 @@ import {
 } from "./stage3-media-agent";
 import { planStage3OperationsWithCodex } from "./stage3-agent-llm";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
+import { STAGE3_TEXT_SCALE_UI_MAX, STAGE3_TEXT_SCALE_UI_MIN, clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
   Stage3ExecutionTarget,
   Stage3Operation,
@@ -931,9 +932,9 @@ function clampRenderOp(op: Stage3Operation, snapshot: Stage3StateSnapshot, itera
       };
     }
     case "set_top_font_scale":
-      return { ...op, topFontScale: clamp(op.topFontScale, 0.7, 1.9) };
+      return { ...op, topFontScale: clampStage3TextScaleUi(op.topFontScale) };
     case "set_bottom_font_scale":
-      return { ...op, bottomFontScale: clamp(op.bottomFontScale, 0.7, 1.9) };
+      return { ...op, bottomFontScale: clampStage3TextScaleUi(op.bottomFontScale) };
     case "set_music_gain":
       return { ...op, musicGain: clamp(op.musicGain, 0, 1) };
     default:
@@ -1599,10 +1600,10 @@ function computeSafety(
     }
   }
 
-  if (after.renderPlan.topFontScale < 0.7 || after.renderPlan.topFontScale > 1.9) {
+  if (after.renderPlan.topFontScale < STAGE3_TEXT_SCALE_UI_MIN || after.renderPlan.topFontScale > STAGE3_TEXT_SCALE_UI_MAX) {
     safety -= 0.15;
   }
-  if (after.renderPlan.bottomFontScale < 0.7 || after.renderPlan.bottomFontScale > 1.9) {
+  if (after.renderPlan.bottomFontScale < STAGE3_TEXT_SCALE_UI_MIN || after.renderPlan.bottomFontScale > STAGE3_TEXT_SCALE_UI_MAX) {
     safety -= 0.15;
   }
 

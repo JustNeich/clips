@@ -11,6 +11,7 @@ import {
 } from "../../../lib/stage3-template";
 import { buildTemplateRenderSnapshot } from "../../../lib/stage3-template-core";
 import { resolveTemplateBackdropNode } from "../../../lib/stage3-template-runtime";
+import { clampStage3TextScaleUi } from "../../../lib/stage3-text-fit";
 import {
   Stage3TemplateViewport,
   getTemplatePreviewViewportMetrics
@@ -55,7 +56,7 @@ function normalizeFontScale(value: string | undefined): number {
   if (!Number.isFinite(parsed)) {
     return 1;
   }
-  return Math.max(0.7, Math.min(1.9, parsed));
+  return clampStage3TextScaleUi(parsed);
 }
 
 function normalizeExportScale(value: string | undefined): number {

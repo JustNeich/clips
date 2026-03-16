@@ -48,6 +48,10 @@ import {
   STAGE3_TEMPLATE_ID
 } from "../lib/stage3-template";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
+import {
+  clampStage3TextScaleUi,
+  createStage3TextFitSnapshot
+} from "../lib/stage3-text-fit";
 import { templateUsesBuiltInBackdropFromRegistry } from "../lib/stage3-template-registry";
 import {
   buildLegacyTimelineEntries,
@@ -517,11 +521,11 @@ function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage
         : base.videoZoom,
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
-        ? Math.min(1.9, Math.max(0.7, candidate.topFontScale))
+        ? clampStage3TextScaleUi(candidate.topFontScale)
         : base.topFontScale,
     bottomFontScale:
       typeof candidate?.bottomFontScale === "number" && Number.isFinite(candidate.bottomFontScale)
-        ? Math.min(1.9, Math.max(0.7, candidate.bottomFontScale))
+        ? clampStage3TextScaleUi(candidate.bottomFontScale)
         : base.bottomFontScale,
     musicGain:
       typeof candidate?.musicGain === "number" && Number.isFinite(candidate.musicGain)
@@ -1963,16 +1967,26 @@ export default function HomePage() {
         snapshotHash: templateSnapshot.snapshotHash,
         fitRevision: templateSnapshot.fitRevision
       },
-      textFit: {
-        topFontPx: templateSnapshot.fit.topFontPx,
-        bottomFontPx: templateSnapshot.fit.bottomFontPx,
-        topLineHeight: templateSnapshot.fit.topLineHeight,
-        bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
-        topLines: templateSnapshot.fit.topLines,
-        bottomLines: templateSnapshot.fit.bottomLines,
-        topCompacted: templateSnapshot.fit.topCompacted,
-        bottomCompacted: templateSnapshot.fit.bottomCompacted
-      }
+      textFit: createStage3TextFitSnapshot(
+        {
+          templateId: templateSnapshot.templateId,
+          snapshotHash: templateSnapshot.snapshotHash,
+          topText: templateSnapshot.content.topText,
+          bottomText: templateSnapshot.content.bottomText,
+          topFontScale: effectiveRenderPlan.topFontScale,
+          bottomFontScale: effectiveRenderPlan.bottomFontScale
+        },
+        {
+          topFontPx: templateSnapshot.fit.topFontPx,
+          bottomFontPx: templateSnapshot.fit.bottomFontPx,
+          topLineHeight: templateSnapshot.fit.topLineHeight,
+          bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
+          topLines: templateSnapshot.fit.topLines,
+          bottomLines: templateSnapshot.fit.bottomLines,
+          topCompacted: templateSnapshot.fit.topCompacted,
+          bottomCompacted: templateSnapshot.fit.bottomCompacted
+        }
+      )
     };
   };
 

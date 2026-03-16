@@ -41,6 +41,14 @@ import {
   templateUsesBuiltInBackdropFromRegistry
 } from "../../lib/stage3-template-registry";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
+import {
+  STAGE3_TEXT_SCALE_UI_MAX,
+  STAGE3_TEXT_SCALE_UI_MIN,
+  STAGE3_TEXT_SCALE_UI_PRESETS,
+  buildStage3TextFitHash,
+  clampStage3TextScaleUi,
+  createStage3TextFitSnapshot
+} from "../../lib/stage3-text-fit";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../../lib/stage3-constants";
 import { getStage3DesignLabLabel } from "../../lib/stage3-design-lab";
 import { sanitizeDisplayText } from "../../lib/ui-error";
@@ -129,6 +137,13 @@ type WorkerInstallLink = {
   label: string;
   href: string;
   description: string;
+};
+
+type PendingTextFitAction = {
+  kind: "render" | "optimize";
+  overrides: Stage3EditorDraftOverrides;
+  snapshotHash: string;
+  fitHash: string;
 };
 
 function formatTimeSec(value: number): string {
@@ -220,6 +235,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function getTextFitHashForSnapshot(templateSnapshot: TemplateRenderSnapshot): string {
+  return buildStage3TextFitHash({
+    templateId: templateSnapshot.templateId,
+    snapshotHash: templateSnapshot.snapshotHash,
+    topText: templateSnapshot.content.topText,
+    bottomText: templateSnapshot.content.bottomText,
+    topFontScale: templateSnapshot.content.topFontScale,
+    bottomFontScale: templateSnapshot.content.bottomFontScale
+  });
+}
+
 function toTextFitSnapshot(
   computed: {
     topFont: number;
@@ -231,16 +257,26 @@ function toTextFitSnapshot(
   },
   templateSnapshot: TemplateRenderSnapshot
 ): Stage3TextFitSnapshot {
-  return {
-    topFontPx: computed.topFont,
-    bottomFontPx: computed.bottomFont,
-    topLineHeight: computed.topLineHeight,
-    bottomLineHeight: computed.bottomLineHeight,
-    topLines: computed.topLines,
-    bottomLines: computed.bottomLines,
-    topCompacted: templateSnapshot.fit.topCompacted,
-    bottomCompacted: templateSnapshot.fit.bottomCompacted
-  };
+  return createStage3TextFitSnapshot(
+    {
+      templateId: templateSnapshot.templateId,
+      snapshotHash: templateSnapshot.snapshotHash,
+      topText: templateSnapshot.content.topText,
+      bottomText: templateSnapshot.content.bottomText,
+      topFontScale: templateSnapshot.content.topFontScale,
+      bottomFontScale: templateSnapshot.content.bottomFontScale
+    },
+    {
+      topFontPx: computed.topFont,
+      bottomFontPx: computed.bottomFont,
+      topLineHeight: computed.topLineHeight,
+      bottomLineHeight: computed.bottomLineHeight,
+      topLines: computed.topLines,
+      bottomLines: computed.bottomLines,
+      topCompacted: templateSnapshot.fit.topCompacted,
+      bottomCompacted: templateSnapshot.fit.bottomCompacted
+    }
+  );
 }
 
 function areTextFitSnapshotsEqual(
@@ -258,7 +294,9 @@ function areTextFitSnapshotsEqual(
     left.topLines === right.topLines &&
     left.bottomLines === right.bottomLines &&
     left.topCompacted === right.topCompacted &&
-    left.bottomCompacted === right.bottomCompacted
+    left.bottomCompacted === right.bottomCompacted &&
+    left.snapshotHash === right.snapshotHash &&
+    left.fitHash === right.fitHash
   );
 }
 
@@ -1356,9 +1394,11 @@ export function Step3RenderTemplate({
   >({});
   const [previewMeasuredFitState, setPreviewMeasuredFitState] = useState<{
     snapshotHash: string;
+    fitHash: string;
     fit: Stage3TextFitSnapshot;
     measured: boolean;
   } | null>(null);
+  const [pendingTextFitAction, setPendingTextFitAction] = useState<PendingTextFitAction | null>(null);
 
   const templateConfig = getTemplateById(templateId);
   const previewTemplateSnapshot = useMemo(
@@ -1423,14 +1463,22 @@ export function Step3RenderTemplate({
   const previewTopText = previewTemplateSnapshot.content.topText;
   const previewBottomText = previewTemplateSnapshot.content.bottomText;
   const previewVideoZoom = clamp(localVideoZoom ?? 1, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
+  const previewFitHash = useMemo(
+    () => getTextFitHashForSnapshot(previewTemplateSnapshot),
+    [previewTemplateSnapshot]
+  );
   const activePreviewTextFit = useMemo(() => {
-    if (previewMeasuredFitState?.snapshotHash === previewTemplateSnapshot.snapshotHash) {
+    if (
+      previewMeasuredFitState?.snapshotHash === previewTemplateSnapshot.snapshotHash &&
+      previewMeasuredFitState.fitHash === previewFitHash
+    ) {
       return previewMeasuredFitState.fit;
     }
     return toTextFitSnapshot(previewTemplateSnapshot.computed, previewTemplateSnapshot);
-  }, [previewMeasuredFitState, previewTemplateSnapshot]);
+  }, [previewFitHash, previewMeasuredFitState, previewTemplateSnapshot]);
   const isPreviewTextFitReady =
     previewMeasuredFitState?.snapshotHash === previewTemplateSnapshot.snapshotHash &&
+    previewMeasuredFitState.fitHash === previewFitHash &&
     previewMeasuredFitState.measured;
 
   const maxStartSec = Math.max(0, (sourceDurationSec ?? clipDurationSec) - clipDurationSec);
@@ -1460,11 +1508,13 @@ export function Step3RenderTemplate({
       setPreviewMeasuredFitState((current) => {
         const nextState = {
           snapshotHash: previewTemplateSnapshot.snapshotHash,
+          fitHash: previewFitHash,
           fit: nextFit,
           measured: true
         };
         if (
           current?.snapshotHash === nextState.snapshotHash &&
+          current.fitHash === nextState.fitHash &&
           current.measured === nextState.measured &&
           areTextFitSnapshotsEqual(current.fit, nextState.fit)
         ) {
@@ -1473,7 +1523,7 @@ export function Step3RenderTemplate({
         return nextState;
       });
     },
-    [previewTemplateSnapshot.snapshotHash]
+    [previewFitHash, previewTemplateSnapshot.snapshotHash]
   );
 
   useEffect(() => {
@@ -1483,10 +1533,48 @@ export function Step3RenderTemplate({
   useEffect(() => {
     setPreviewMeasuredFitState({
       snapshotHash: previewTemplateSnapshot.snapshotHash,
+      fitHash: previewFitHash,
       fit: toTextFitSnapshot(previewTemplateSnapshot.computed, previewTemplateSnapshot),
       measured: false
     });
-  }, [previewTemplateSnapshot.snapshotHash]);
+  }, [previewFitHash, previewTemplateSnapshot]);
+
+  useEffect(() => {
+    if (!pendingTextFitAction) {
+      return;
+    }
+    if (
+      pendingTextFitAction.snapshotHash !== previewTemplateSnapshot.snapshotHash ||
+      pendingTextFitAction.fitHash !== previewFitHash
+    ) {
+      setPendingTextFitAction(null);
+      return;
+    }
+    if (!isPreviewTextFitReady) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (pendingTextFitAction.kind === "optimize") {
+        onOptimize(pendingTextFitAction.overrides, activePreviewTextFit);
+      } else {
+        onRender(pendingTextFitAction.overrides, activePreviewTextFit);
+      }
+      setPendingTextFitAction(null);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    activePreviewTextFit,
+    isPreviewTextFitReady,
+    onOptimize,
+    onRender,
+    pendingTextFitAction,
+    previewFitHash,
+    previewTemplateSnapshot.snapshotHash
+  ]);
 
   useEffect(() => {
     setLocalFocusY(clamp(focusY, 0.12, 0.88));
@@ -1497,11 +1585,11 @@ export function Step3RenderTemplate({
   }, [videoZoom]);
 
   useEffect(() => {
-    setLocalTopFontScale(clamp(topFontScale, 0.7, 1.9));
+    setLocalTopFontScale(clampStage3TextScaleUi(topFontScale));
   }, [topFontScale]);
 
   useEffect(() => {
-    setLocalBottomFontScale(clamp(bottomFontScale, 0.7, 1.9));
+    setLocalBottomFontScale(clampStage3TextScaleUi(bottomFontScale));
   }, [bottomFontScale]);
 
   useEffect(() => {
@@ -1622,11 +1710,11 @@ export function Step3RenderTemplate({
       window.clearTimeout(topFontScaleCommitTimerRef.current);
       topFontScaleCommitTimerRef.current = null;
     }
-    onTopFontScaleChange(clamp(value, 0.7, 1.9));
+    onTopFontScaleChange(clampStage3TextScaleUi(value));
   };
 
   const scheduleTopFontScaleCommit = (value: number) => {
-    const next = clamp(value, 0.7, 1.9);
+    const next = clampStage3TextScaleUi(value);
     setLocalTopFontScale(next);
     if (topFontScaleCommitTimerRef.current !== null) {
       window.clearTimeout(topFontScaleCommitTimerRef.current);
@@ -1642,11 +1730,11 @@ export function Step3RenderTemplate({
       window.clearTimeout(bottomFontScaleCommitTimerRef.current);
       bottomFontScaleCommitTimerRef.current = null;
     }
-    onBottomFontScaleChange(clamp(value, 0.7, 1.9));
+    onBottomFontScaleChange(clampStage3TextScaleUi(value));
   };
 
   const scheduleBottomFontScaleCommit = (value: number) => {
-    const next = clamp(value, 0.7, 1.9);
+    const next = clampStage3TextScaleUi(value);
     setLocalBottomFontScale(next);
     if (bottomFontScaleCommitTimerRef.current !== null) {
       window.clearTimeout(bottomFontScaleCommitTimerRef.current);
@@ -1711,8 +1799,8 @@ export function Step3RenderTemplate({
       clipStartSec: clamp(localClipStartSec, 0, maxStartSec),
       focusY: clamp(localFocusY, 0.12, 0.88),
       videoZoom: clamp(localVideoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM),
-      topFontScale: clamp(localTopFontScale, 0.7, 1.9),
-      bottomFontScale: clamp(localBottomFontScale, 0.7, 1.9),
+      topFontScale: clampStage3TextScaleUi(localTopFontScale),
+      bottomFontScale: clampStage3TextScaleUi(localBottomFontScale),
       musicGain: clamp(localMusicGain, 0, 1)
     };
     flushClipCommit(overrides.clipStartSec);
@@ -1960,13 +2048,13 @@ export function Step3RenderTemplate({
   ) : null;
 
   const applyTopFontScaleImmediate = (value: number) => {
-    const next = clamp(value, 0.7, 1.9);
+    const next = clampStage3TextScaleUi(value);
     setLocalTopFontScale(next);
     flushTopFontScaleCommit(next);
   };
 
   const applyBottomFontScaleImmediate = (value: number) => {
-    const next = clamp(value, 0.7, 1.9);
+    const next = clampStage3TextScaleUi(value);
     setLocalBottomFontScale(next);
     flushBottomFontScaleCommit(next);
   };
@@ -2104,7 +2192,7 @@ export function Step3RenderTemplate({
       clamp(requestedEnd, nextStart + 0.1, Math.min(sourceMaxEnd, nextStart + maxOwnDuration))
     );
 
-    const nextSegments = normalizedSegments.map((item, itemIndex) =>
+  const nextSegments = normalizedSegments.map((item, itemIndex) =>
       itemIndex === index
         ? {
             ...item,
@@ -2117,6 +2205,31 @@ export function Step3RenderTemplate({
     commitFragments(nextSegments);
   };
 
+  const startTextFitAction = (kind: PendingTextFitAction["kind"]) => {
+    const overrides = commitAdvancedControls();
+    const request: PendingTextFitAction = {
+      kind,
+      overrides,
+      snapshotHash: previewTemplateSnapshot.snapshotHash,
+      fitHash: previewFitHash
+    };
+
+    if (isPreviewTextFitReady) {
+      window.setTimeout(() => {
+        if (kind === "optimize") {
+          onOptimize(overrides, activePreviewTextFit);
+        } else {
+          onRender(overrides, activePreviewTextFit);
+        }
+      }, 0);
+      return;
+    }
+
+    setPendingTextFitAction(request);
+  };
+
+  const isPreparingRenderText = Boolean(pendingTextFitAction);
+
   const leftFooter = (
     <div className="sticky-action-bar">
       <button type="button" className="btn btn-ghost" onClick={onReset}>
@@ -2125,16 +2238,15 @@ export function Step3RenderTemplate({
       <button
         type="button"
         className="btn btn-secondary"
-        onClick={() => {
-          const overrides = commitAdvancedControls();
-          window.setTimeout(() => {
-            onOptimize(overrides, activePreviewTextFit);
-          }, 0);
-        }}
-        disabled={!sourceUrl || isOptimizing || isRendering || !isPreviewTextFitReady}
+        onClick={() => startTextFitAction("optimize")}
+        disabled={!sourceUrl || isOptimizing || isRendering || isPreparingRenderText}
         aria-busy={isOptimizing}
       >
-        {isOptimizing ? "Оптимизация..." : "Оптимизировать"}
+        {isOptimizing
+          ? "Оптимизация..."
+          : pendingTextFitAction?.kind === "optimize"
+            ? "Подготавливаю текст..."
+            : "Оптимизировать"}
       </button>
       <button type="button" className="btn btn-secondary" onClick={onExport} disabled={!sourceUrl}>
         Экспорт JSON
@@ -2142,16 +2254,17 @@ export function Step3RenderTemplate({
       <button
         type="button"
         className="btn btn-primary"
-        onClick={() => {
-          const overrides = commitAdvancedControls();
-          window.setTimeout(() => {
-            onRender(overrides, activePreviewTextFit);
-          }, 0);
-        }}
-        disabled={!sourceUrl || isRendering || !isPreviewTextFitReady}
-        aria-busy={isRendering}
+        onClick={() => startTextFitAction("render")}
+        disabled={!sourceUrl || isRendering || isPreparingRenderText}
+        aria-busy={isRendering || isPreparingRenderText}
       >
-        {renderState === "queued" ? "В очереди..." : isRendering ? "Рендер..." : "Рендер"}
+        {pendingTextFitAction?.kind === "render"
+          ? "Подготавливаю текст..."
+          : renderState === "queued"
+            ? "В очереди..."
+            : isRendering
+              ? "Рендер..."
+              : "Рендер"}
       </button>
     </div>
   );
@@ -2497,8 +2610,8 @@ export function Step3RenderTemplate({
                 <input
                   id="topFontScaleRange"
                   type="range"
-                  min={0.7}
-                  max={1.9}
+                  min={STAGE3_TEXT_SCALE_UI_MIN}
+                  max={STAGE3_TEXT_SCALE_UI_MAX}
                   step={0.01}
                   value={localTopFontScale}
                   onChange={(event) => scheduleTopFontScaleCommit(Number.parseFloat(event.target.value))}
@@ -2507,7 +2620,7 @@ export function Step3RenderTemplate({
                   onBlur={() => flushTopFontScaleCommit(localTopFontScale)}
                 />
                 <div className="preset-row">
-                  {[0.9, 1, 1.15, 1.3].map((value) => (
+                  {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
                     <button
                       key={`top-font-${value}`}
                       type="button"
@@ -2530,8 +2643,8 @@ export function Step3RenderTemplate({
                 <input
                   id="bottomFontScaleRange"
                   type="range"
-                  min={0.7}
-                  max={1.9}
+                  min={STAGE3_TEXT_SCALE_UI_MIN}
+                  max={STAGE3_TEXT_SCALE_UI_MAX}
                   step={0.01}
                   value={localBottomFontScale}
                   onChange={(event) => scheduleBottomFontScaleCommit(Number.parseFloat(event.target.value))}
@@ -2540,7 +2653,7 @@ export function Step3RenderTemplate({
                   onBlur={() => flushBottomFontScaleCommit(localBottomFontScale)}
                 />
                 <div className="preset-row">
-                  {[0.9, 1, 1.15, 1.3].map((value) => (
+                  {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
                     <button
                       key={`bottom-font-${value}`}
                       type="button"
@@ -2791,16 +2904,15 @@ export function Step3RenderTemplate({
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => {
-                      const overrides = commitAdvancedControls();
-                      window.setTimeout(() => {
-                        onOptimize(overrides, activePreviewTextFit);
-                      }, 0);
-                    }}
-                    disabled={!sourceUrl || isOptimizing || isRendering || !isPreviewTextFitReady}
+                    onClick={() => startTextFitAction("optimize")}
+                    disabled={!sourceUrl || isOptimizing || isRendering || isPreparingRenderText}
                     aria-busy={isOptimizing}
                   >
-                    {isOptimizing ? "Агент выполняет итерации..." : "Отправить в AI redactor"}
+                    {isOptimizing
+                      ? "Агент выполняет итерации..."
+                      : pendingTextFitAction?.kind === "optimize"
+                        ? "Подготавливаю текст..."
+                        : "Отправить в AI redactor"}
                   </button>
                   <button
                     type="button"

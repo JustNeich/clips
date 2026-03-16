@@ -18,6 +18,7 @@ import {
   listStage3DesignLabPresets
 } from "./stage3-design-lab";
 import { getTemplateFigmaSpec } from "./stage3-template-spec";
+import { clampStage3TextScaleUi } from "./stage3-text-fit";
 
 const DESIGN_TEMPLATES_ROOT = path.join(process.cwd(), "design", "templates");
 const ARTIFACTS_DIR_NAME = "artifacts";
@@ -163,11 +164,11 @@ function normalizeContentFixture(raw: unknown, preset: Stage3DesignLabPreset): T
       : defaults.topHighlightPhrases,
     topFontScale:
       typeof candidate.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
-        ? clamp(candidate.topFontScale, 0.7, 1.9)
+        ? clampStage3TextScaleUi(candidate.topFontScale)
         : defaults.topFontScale,
     bottomFontScale:
       typeof candidate.bottomFontScale === "number" && Number.isFinite(candidate.bottomFontScale)
-        ? clamp(candidate.bottomFontScale, 0.7, 1.9)
+        ? clampStage3TextScaleUi(candidate.bottomFontScale)
         : defaults.bottomFontScale,
     previewScale:
       typeof candidate.previewScale === "number" && Number.isFinite(candidate.previewScale)

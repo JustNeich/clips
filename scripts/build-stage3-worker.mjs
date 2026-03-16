@@ -37,6 +37,7 @@ const WORKER_LIB_RUNTIME_FILES = [
   "auto-fit-template-scene.tsx",
   "stage3-template-core.ts",
   "stage3-render-variation.ts",
+  "stage3-text-fit.ts",
   "stage3-template-spec.ts",
   "stage3-template-renderer.tsx",
   "stage3-template-runtime.tsx",

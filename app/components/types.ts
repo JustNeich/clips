@@ -128,6 +128,8 @@ export type Stage3TextFitSnapshot = {
   bottomLines?: number;
   topCompacted: boolean;
   bottomCompacted: boolean;
+  snapshotHash?: string;
+  fitHash?: string;
 };
 
 export type Stage3JobKind = "preview" | "render" | "source-download" | "agent-media-step";

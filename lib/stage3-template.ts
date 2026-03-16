@@ -1,3 +1,5 @@
+import { clampStage3TextScaleUi } from "./stage3-text-fit";
+
 export const SCIENCE_CARD_TEMPLATE_ID = "science-card-v1";
 export const TURBO_FACE_TEMPLATE_ID = "turbo-face-v1";
 export const SCIENCE_CARD_V2_TEMPLATE_ID = "science-card-v2";
@@ -926,8 +928,6 @@ function getSectionBorderLosses(template: Stage3TemplateConfig): {
 const DEFAULT_AVERAGE_GLYPH_FACTOR = 0.56;
 const DEFAULT_HORIZONTAL_SAFETY = 0.92;
 const VERTICAL_SAFETY = 0.995;
-const FONT_SCALE_MIN = 0.7;
-const FONT_SCALE_MAX = 1.9;
 const MIN_FONT_FALLBACK_RATIO = 0.58;
 const FILLER_WORDS = new Set([
   "really",
@@ -962,7 +962,7 @@ function normalizeFontScale(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 1;
   }
-  return clampNumber(value, FONT_SCALE_MIN, FONT_SCALE_MAX);
+  return clampStage3TextScaleUi(value);
 }
 
 function normalizeText(value: string): string {
