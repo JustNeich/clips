@@ -19,6 +19,7 @@ function Install-ClipsStage3Worker {
   $remotionDir = Join-Path $installRoot "remotion"
   $libDir = Join-Path $installRoot "lib"
   $designDir = Join-Path $installRoot "design"
+  $publicDir = Join-Path $installRoot "public"
   $bundlePath = Join-Path $binDir "clips-stage3-worker.cjs"
   $wrapperPath = Join-Path $binDir "clips-stage3-worker.cmd"
   $packagePath = Join-Path $installRoot "package.json"
@@ -28,6 +29,7 @@ function Install-ClipsStage3Worker {
   New-Item -ItemType Directory -Path $remotionDir -Force | Out-Null
   New-Item -ItemType Directory -Path $libDir -Force | Out-Null
   New-Item -ItemType Directory -Path $designDir -Force | Out-Null
+  New-Item -ItemType Directory -Path $publicDir -Force | Out-Null
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/clips-stage3-worker.cjs" -OutFile $bundlePath
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/package.json" -OutFile $packagePath
   Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/manifest.json" -OutFile $manifestPath
@@ -61,6 +63,13 @@ function Install-ClipsStage3Worker {
       "templates/science-card-v1/figma-spec.json"
     )
   }
+  $publicFiles = @($manifest.publicFiles)
+  if ($publicFiles.Count -eq 0) {
+    $publicFiles = @(
+      "stage3-template-badges/science-card-v1-check.png",
+      "stage3-template-backdrops/science-card-v2.png"
+    )
+  }
   foreach ($file in $remotionFiles) {
     $destination = Join-Path $remotionDir $file
     New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
@@ -75,6 +84,11 @@ function Install-ClipsStage3Worker {
     $destination = Join-Path $designDir $file
     New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
     Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/design/$file" -OutFile $destination
+  }
+  foreach ($file in $publicFiles) {
+    $destination = Join-Path $publicDir $file
+    New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+    Invoke-WebRequest "$($Server.TrimEnd('/'))/stage3-worker/public/$file" -OutFile $destination
   }
   Push-Location $installRoot
   try {

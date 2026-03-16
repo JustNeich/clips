@@ -42,6 +42,7 @@ type WorkerRuntimeManifest = {
   remotionFiles?: string[];
   libFiles?: string[];
   designFiles?: string[];
+  publicFiles?: string[];
 };
 
 const execFileAsync = promisify(execFile);
@@ -61,6 +62,10 @@ const DEFAULT_LIB_FILES = [
   "stage3-template-registry.ts"
 ];
 const DEFAULT_DESIGN_FILES = ["templates/science-card-v1/figma-spec.json"];
+const DEFAULT_PUBLIC_FILES = [
+  "stage3-template-badges/science-card-v1-check.png",
+  "stage3-template-backdrops/science-card-v2.png"
+];
 
 function workerHomeDir(): string {
   if (process.platform === "darwin") {
@@ -226,16 +231,19 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   const remotionDir = path.join(workerPaths.root, "remotion");
   const libDir = path.join(workerPaths.root, "lib");
   const designDir = path.join(workerPaths.root, "design");
+  const publicDir = path.join(workerPaths.root, "public");
   const binDir = path.join(workerPaths.root, "bin");
   const bundleFile = remoteManifest.bundleFile?.trim() || DEFAULT_BUNDLE_FILE;
   const remotionFiles = sanitizeRelativeFileList(remoteManifest.remotionFiles, DEFAULT_REMOTION_FILES);
   const libFiles = sanitizeRelativeFileList(remoteManifest.libFiles, DEFAULT_LIB_FILES);
   const designFiles = sanitizeRelativeFileList(remoteManifest.designFiles, DEFAULT_DESIGN_FILES);
+  const publicFiles = sanitizeRelativeFileList(remoteManifest.publicFiles, DEFAULT_PUBLIC_FILES);
   const runtimeFilesMissing = (
     await Promise.all([
       ...remotionFiles.map(async (fileName) => !(await fileExists(path.join(remotionDir, fileName)))),
       ...libFiles.map(async (fileName) => !(await fileExists(path.join(libDir, fileName)))),
-      ...designFiles.map(async (fileName) => !(await fileExists(path.join(designDir, fileName))))
+      ...designFiles.map(async (fileName) => !(await fileExists(path.join(designDir, fileName)))),
+      ...publicFiles.map(async (fileName) => !(await fileExists(path.join(publicDir, fileName))))
     ])
   ).some(Boolean);
 
@@ -247,6 +255,7 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   await fs.mkdir(remotionDir, { recursive: true });
   await fs.mkdir(libDir, { recursive: true });
   await fs.mkdir(designDir, { recursive: true });
+  await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(binDir, { recursive: true });
 
   await downloadBinaryFile(`${origin}/stage3-worker/${bundleFile}`, path.join(binDir, DEFAULT_BUNDLE_FILE));
@@ -269,6 +278,12 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
     await downloadBinaryFile(
       `${origin}/stage3-worker/design/${fileName}`,
       path.join(designDir, fileName)
+    );
+  }
+  for (const fileName of publicFiles) {
+    await downloadBinaryFile(
+      `${origin}/stage3-worker/public/${fileName}`,
+      path.join(publicDir, fileName)
     );
   }
 

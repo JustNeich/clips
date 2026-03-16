@@ -14,10 +14,12 @@ const workerPackagePath = path.join(publicDir, "package.json");
 const remotionPublicDir = path.join(publicDir, "remotion");
 const libPublicDir = path.join(publicDir, "lib");
 const designPublicDir = path.join(publicDir, "design");
+const workerPublicAssetsDir = path.join(publicDir, "public");
 const packageJsonPath = path.join(repoRoot, "package.json");
 const remotionSourceDir = path.join(repoRoot, "remotion");
 const libSourceDir = path.join(repoRoot, "lib");
 const designSourceDir = path.join(repoRoot, "design");
+const publicSourceDir = path.join(repoRoot, "public");
 
 const WORKER_RUNTIME_DEPENDENCIES = [
   "@remotion/bundler",
@@ -74,6 +76,28 @@ async function copyWorkerTemplateSpecs() {
   return copiedFiles.sort();
 }
 
+async function copyWorkerPublicAssets() {
+  const copiedFiles = [];
+  const relativeDirs = ["stage3-template-badges", "stage3-template-backdrops"];
+  for (const relativeDir of relativeDirs) {
+    const sourceDir = path.join(publicSourceDir, relativeDir);
+    const targetDir = path.join(workerPublicAssetsDir, relativeDir);
+    const entries = await fs.readdir(sourceDir, { withFileTypes: true }).catch(() => []);
+    if (entries.length === 0) {
+      continue;
+    }
+    await fs.mkdir(targetDir, { recursive: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) {
+        continue;
+      }
+      await fs.copyFile(path.join(sourceDir, entry.name), path.join(targetDir, entry.name));
+      copiedFiles.push(path.join(relativeDir, entry.name));
+    }
+  }
+  return copiedFiles.sort();
+}
+
 function buildRuntimeVersion(baseVersion) {
   const stamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
   return `${baseVersion}+${stamp}`;
@@ -101,12 +125,15 @@ async function syncWorkerRuntimeSources() {
   await fs.rm(remotionPublicDir, { recursive: true, force: true }).catch(() => undefined);
   await fs.rm(libPublicDir, { recursive: true, force: true }).catch(() => undefined);
   await fs.rm(designPublicDir, { recursive: true, force: true }).catch(() => undefined);
+  await fs.rm(workerPublicAssetsDir, { recursive: true, force: true }).catch(() => undefined);
   await fs.mkdir(remotionPublicDir, { recursive: true });
   await fs.mkdir(libPublicDir, { recursive: true });
   await fs.mkdir(designPublicDir, { recursive: true });
+  await fs.mkdir(workerPublicAssetsDir, { recursive: true });
 
   await fs.cp(remotionSourceDir, remotionPublicDir, { recursive: true });
   const designFiles = await copyWorkerTemplateSpecs();
+  const publicFiles = await copyWorkerPublicAssets();
   for (const fileName of WORKER_LIB_RUNTIME_FILES) {
     const sourcePath = path.join(libSourceDir, fileName);
     const destinationPath = path.join(libPublicDir, fileName);
@@ -124,7 +151,8 @@ async function syncWorkerRuntimeSources() {
   }
 
   return {
-    designFiles
+    designFiles,
+    publicFiles
   };
 }
 
@@ -178,7 +206,8 @@ async function main() {
         bundleFile: path.basename(bundlePath),
         remotionFiles,
         libFiles: WORKER_LIB_RUNTIME_FILES,
-        designFiles: runtimeSources.designFiles
+        designFiles: runtimeSources.designFiles,
+        publicFiles: runtimeSources.publicFiles
       },
       null,
       2

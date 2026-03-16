@@ -42,6 +42,7 @@ BIN_DIR="${INSTALL_ROOT}/bin"
 REMOTION_DIR="${INSTALL_ROOT}/remotion"
 LIB_DIR="${INSTALL_ROOT}/lib"
 DESIGN_DIR="${INSTALL_ROOT}/design"
+PUBLIC_DIR="${INSTALL_ROOT}/public"
 BUNDLE_PATH="${BIN_DIR}/clips-stage3-worker.cjs"
 WRAPPER_PATH="${BIN_DIR}/clips-stage3-worker"
 PACKAGE_PATH="${INSTALL_ROOT}/package.json"
@@ -57,6 +58,7 @@ mkdir -p "$BIN_DIR"
 mkdir -p "$REMOTION_DIR"
 mkdir -p "$LIB_DIR"
 mkdir -p "$DESIGN_DIR"
+mkdir -p "$PUBLIC_DIR"
 curl -fsSL "${SERVER%/}/stage3-worker/clips-stage3-worker.cjs" -o "$BUNDLE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
 curl -fsSL "${SERVER%/}/stage3-worker/manifest.json" -o "$MANIFEST_PATH"
@@ -110,6 +112,23 @@ const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 const files = Array.isArray(manifest.designFiles) ? manifest.designFiles : [
   "templates/science-card-v1/figma-spec.json"
+];
+for (const file of files) {
+  if (typeof file === "string" && file.trim()) console.log(file.trim());
+}
+' "$MANIFEST_PATH"
+)
+while IFS= read -r FILE; do
+  [[ -n "$FILE" ]] || continue
+  mkdir -p "$(dirname "${PUBLIC_DIR}/${FILE}")"
+  curl -fsSL "${SERVER%/}/stage3-worker/public/${FILE}" -o "${PUBLIC_DIR}/${FILE}"
+done < <(
+  node -e '
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const files = Array.isArray(manifest.publicFiles) ? manifest.publicFiles : [
+  "stage3-template-badges/science-card-v1-check.png",
+  "stage3-template-backdrops/science-card-v2.png"
 ];
 for (const file of files) {
   if (typeof file === "string" && file.trim()) console.log(file.trim());
