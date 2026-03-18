@@ -9,6 +9,8 @@ import {
   requireChannelSetupEdit,
   requireChannelVisibility
 } from "../../../../lib/auth/guards";
+import { Stage2PromptConfig } from "../../../../lib/stage2-pipeline";
+import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../../lib/stage2-channel-config";
 
 export const runtime = "nodejs";
 
@@ -20,6 +22,10 @@ type PatchBody = Partial<{
   systemPrompt: string;
   descriptionPrompt: string;
   examplesJson: string;
+  stage2WorkerProfileId: string | null;
+  stage2ExamplesConfig: Stage2ExamplesConfig;
+  stage2HardConstraints: Stage2HardConstraints;
+  stage2PromptConfig: Stage2PromptConfig;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;

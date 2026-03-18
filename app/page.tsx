@@ -41,9 +41,20 @@ import {
   Stage3TextFitSnapshot,
   Stage3TimelineResponse,
   Stage3Version,
+  Stage2RunDetail,
+  Stage2RunSummary,
   Stage2Response,
   UserRecord
 } from "./components/types";
+import type { Stage2ProgressSnapshot, Stage2PromptConfig } from "../lib/stage2-pipeline";
+import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../lib/stage2-channel-config";
+import {
+  issueScopedRequestVersion,
+  getStage2ElapsedMs,
+  isStage2RunActive,
+  matchesScopedRequestVersion,
+  pickPreferredStage2RunId
+} from "../lib/stage2-run-client";
 import {
   STAGE3_TEMPLATE_ID
 } from "../lib/stage3-template";
@@ -75,6 +86,14 @@ import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
 const DEFAULT_STAGE2_EXPECTED_DURATION_MS = 40_000;
+const STAGE2_DETAIL_POLL_VISIBLE_MS = 900;
+const STAGE2_DETAIL_POLL_HIDDEN_MS = 2_500;
+const STAGE2_RUNS_POLL_VISIBLE_MS = 1_800;
+const STAGE2_RUNS_POLL_HIDDEN_MS = 5_000;
+const STAGE2_ELAPSED_TICK_MS = 250;
+const STAGE2_ELAPSED_TICK_HIDDEN_MS = 1_000;
+const STAGE2_POLL_RETRY_VISIBLE_MS = 1_500;
+const STAGE2_POLL_RETRY_HIDDEN_MS = 4_000;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
 type BusyAction =
@@ -308,6 +327,145 @@ function equalSharedCodexStatus(
     left.loginStatusText === right.loginStatusText &&
     equalCodexDeviceAuth(left.deviceAuth, right.deviceAuth)
   );
+}
+
+function equalChatListItem(left: ChatListItem, right: ChatListItem): boolean {
+  return (
+    left.id === right.id &&
+    left.channelId === right.channelId &&
+    left.url === right.url &&
+    left.title === right.title &&
+    left.updatedAt === right.updatedAt &&
+    left.status === right.status &&
+    left.maxStep === right.maxStep &&
+    left.preferredStep === right.preferredStep &&
+    left.hasDraft === right.hasDraft &&
+    left.exportTitle === right.exportTitle &&
+    (left.liveAction ?? null) === (right.liveAction ?? null)
+  );
+}
+
+function equalChatList(left: ChatListItem[], right: ChatListItem[]): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (!equalChatListItem(left[index]!, right[index]!)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function equalChatThread(
+  left: ChatThread | null | undefined,
+  right: ChatThread | null | undefined
+): boolean {
+  if (!left && !right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  const leftLastEvent = left.events[left.events.length - 1] ?? null;
+  const rightLastEvent = right.events[right.events.length - 1] ?? null;
+  return (
+    left.id === right.id &&
+    left.channelId === right.channelId &&
+    left.url === right.url &&
+    left.title === right.title &&
+    left.updatedAt === right.updatedAt &&
+    left.events.length === right.events.length &&
+    leftLastEvent?.id === rightLastEvent?.id &&
+    leftLastEvent?.createdAt === rightLastEvent?.createdAt
+  );
+}
+
+function equalChatDraft(left: ChatDraft | null | undefined, right: ChatDraft | null | undefined): boolean {
+  if (!left && !right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.id === right.id &&
+    left.threadId === right.threadId &&
+    left.updatedAt === right.updatedAt
+  );
+}
+
+function equalStage2RunSummary(
+  left: Stage2RunSummary,
+  right: Stage2RunSummary
+): boolean {
+  return (
+    left.runId === right.runId &&
+    left.chatId === right.chatId &&
+    left.channelId === right.channelId &&
+    left.sourceUrl === right.sourceUrl &&
+    left.userInstruction === right.userInstruction &&
+    left.mode === right.mode &&
+    left.status === right.status &&
+    left.errorMessage === right.errorMessage &&
+    left.hasResult === right.hasResult &&
+    left.createdAt === right.createdAt &&
+    left.startedAt === right.startedAt &&
+    left.updatedAt === right.updatedAt &&
+    left.finishedAt === right.finishedAt &&
+    left.progress.status === right.progress.status &&
+    left.progress.updatedAt === right.progress.updatedAt &&
+    left.progress.activeStageId === right.progress.activeStageId &&
+    left.progress.error === right.progress.error
+  );
+}
+
+function equalStage2RunSummaries(left: Stage2RunSummary[], right: Stage2RunSummary[]): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (!equalStage2RunSummary(left[index]!, right[index]!)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function equalStage2RunDetail(
+  left: Stage2RunDetail | null | undefined,
+  right: Stage2RunDetail | null | undefined
+): boolean {
+  if (!left && !right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    equalStage2RunSummary(left, right) &&
+    Boolean(left.result) === Boolean(right.result)
+  );
+}
+
+function currentPollDelay(visibleMs: number, hiddenMs: number): number {
+  if (typeof document === "undefined") {
+    return visibleMs;
+  }
+  return document.visibilityState === "visible" ? visibleMs : hiddenMs;
+}
+
+function mergeSavedChannelIntoList(channels: Channel[], savedChannel: Channel): Channel[] {
+  const existing = channels.find((channel) => channel.id === savedChannel.id);
+  const merged = existing ? { ...existing, ...savedChannel } : savedChannel;
+  const rest = channels.filter((channel) => channel.id !== savedChannel.id);
+  return [merged, ...rest];
 }
 
 function fallbackRenderPlan(): Stage3RenderPlan {
@@ -818,6 +976,7 @@ export default function HomePage() {
 
   const [draftUrl, setDraftUrl] = useState("");
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState("[]");
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelAssets, setChannelAssets] = useState<ChannelAsset[]>([]);
   const [channelAccessGrants, setChannelAccessGrants] = useState<ChannelAccessGrant[]>([]);
@@ -860,7 +1019,11 @@ export default function HomePage() {
   const [stage2ExpectedDurationMs, setStage2ExpectedDurationMs] = useState(
     DEFAULT_STAGE2_EXPECTED_DURATION_MS
   );
+  const [stage2Runs, setStage2Runs] = useState<Stage2RunSummary[]>([]);
+  const [stage2RunDetail, setStage2RunDetail] = useState<Stage2RunDetail | null>(null);
   const [stage2ElapsedMs, setStage2ElapsedMs] = useState(0);
+  const [stage2RunId, setStage2RunId] = useState<string | null>(null);
+  const [isStage2Enqueueing, setIsStage2Enqueueing] = useState(false);
   const autoAppliedCaptionRef = useRef<{
     chatId: string;
     option: number | null;
@@ -874,7 +1037,12 @@ export default function HomePage() {
   const stage3PreviewRequestIdRef = useRef(0);
   const stage3LastGoodPreviewAtRef = useRef<number | null>(null);
   const restoringFlowShellStateRef = useRef<PersistedFlowShellState | null>(null);
-  const stage2StartedAtRef = useRef<number | null>(null);
+  const stage2ProgressPollIdRef = useRef(0);
+  const stage2RunsRequestVersionsRef = useRef<Record<string, number>>({});
+  const stage2SelectionSourceRef = useRef<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
+  const activeChatRef = useRef<ChatThread | null>(null);
+  const activeDraftRef = useRef<ChatDraft | null>(null);
   const stage3RenderContextRef = useRef<{
     chatId: string;
     snapshot: Stage3StateSnapshot;
@@ -960,6 +1128,18 @@ export default function HomePage() {
     [stage3Workers]
   );
   const stage3WorkerPanelState = activeStage3Worker?.status ?? (stage3Workers.length > 0 ? "offline" : "not_paired");
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChat?.id ?? null;
+  }, [activeChat?.id]);
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
+  useEffect(() => {
+    activeDraftRef.current = activeDraft;
+  }, [activeDraft]);
 
   const parseError = useCallback(async (response: Response, fallback: string): Promise<string> => {
     const contentType = responseContentType(response);
@@ -1120,8 +1300,13 @@ export default function HomePage() {
 
   const patchChatListItem = useCallback((nextItem: ChatListItem): void => {
     setChatList((prev) => {
+      const currentIndex = prev.findIndex((item) => item.id === nextItem.id);
+      if (currentIndex === 0 && equalChatListItem(prev[0]!, nextItem)) {
+        return prev;
+      }
       const without = prev.filter((item) => item.id !== nextItem.id);
-      return [nextItem, ...without];
+      const nextList = [nextItem, ...without];
+      return equalChatList(prev, nextList) ? prev : nextList;
     });
   }, []);
 
@@ -1357,8 +1542,12 @@ export default function HomePage() {
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось загрузить каналы."));
     }
-    const body = (await response.json()) as { channels: Channel[] };
+    const body = (await response.json()) as {
+      channels: Channel[];
+      workspaceStage2ExamplesCorpusJson?: string;
+    };
     const nextChannels = body.channels ?? [];
+    setWorkspaceStage2ExamplesCorpusJson(body.workspaceStage2ExamplesCorpusJson ?? "[]");
     setChannels(nextChannels);
     setActiveChannelId((prev) => {
       if (prev && nextChannels.some((channel) => channel.id === prev)) {
@@ -1411,7 +1600,7 @@ export default function HomePage() {
     setChannelAccessGrants(body.grants ?? []);
   }, [authState?.effectivePermissions.canManageAnyChannelAccess, parseError]);
 
-  const refreshChats = async (): Promise<ChatListItem[]> => {
+  const refreshChats = useCallback(async (): Promise<ChatListItem[]> => {
     const query = activeChannelId ? `?channelId=${encodeURIComponent(activeChannelId)}` : "";
     const response = await fetch(`/api/chats${query}`);
     if (!response.ok) {
@@ -1419,7 +1608,7 @@ export default function HomePage() {
     }
     const body = (await response.json()) as { chats: ChatListItem[] };
     const nextChats = body.chats ?? [];
-    setChatList(nextChats);
+    setChatList((prev) => (equalChatList(prev, nextChats) ? prev : nextChats));
     setActiveChat((prev) => {
       if (!prev) {
         return prev;
@@ -1433,9 +1622,9 @@ export default function HomePage() {
       return nextChats.some((chat) => chat.id === prev.threadId) ? prev : null;
     });
     return nextChats;
-  };
+  }, [activeChannelId, parseError]);
 
-  const refreshActiveChat = async (chatId: string): Promise<{ chat: ChatThread; draft: ChatDraft | null }> => {
+  const refreshActiveChat = useCallback(async (chatId: string): Promise<{ chat: ChatThread; draft: ChatDraft | null }> => {
     const response = await fetch(`/api/chats/${chatId}`);
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось загрузить элемент."));
@@ -1449,9 +1638,15 @@ export default function HomePage() {
         new Date(localDraft.updatedAt).getTime() > new Date(serverDraft.updatedAt).getTime())
         ? localDraft
         : serverDraft;
+    const shouldHydrate =
+      !equalChatThread(activeChatRef.current, body.chat) ||
+      !equalChatDraft(activeDraftRef.current, resolvedDraft);
 
-    setActiveChat(body.chat);
-    setActiveDraft(resolvedDraft);
+    activeChatIdRef.current = body.chat.id;
+    activeChatRef.current = body.chat;
+    activeDraftRef.current = resolvedDraft;
+    setActiveChat((prev) => (equalChatThread(prev, body.chat) ? prev : body.chat));
+    setActiveDraft((prev) => (equalChatDraft(prev, resolvedDraft) ? prev : resolvedDraft));
     draftPayloadJsonRef.current = resolvedDraft
       ? JSON.stringify({
           lastOpenStep: resolvedDraft.lastOpenStep,
@@ -1460,9 +1655,51 @@ export default function HomePage() {
         })
       : "";
     patchChatListItem(buildChatListItem(body.chat, resolvedDraft));
-    hydrateChatEditorState(body.chat, resolvedDraft);
+    if (shouldHydrate) {
+      hydrateChatEditorState(body.chat, resolvedDraft);
+    }
     return { chat: body.chat, draft: resolvedDraft };
-  };
+  }, [hydrateChatEditorState, parseError, patchChatListItem, readLocalDraftCache]);
+
+  const refreshStage2RunsForChat = useCallback(async (
+    chatId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<Stage2RunSummary[]> => {
+    const issued = issueScopedRequestVersion(stage2RunsRequestVersionsRef.current, chatId);
+    stage2RunsRequestVersionsRef.current = issued.nextVersions;
+    const response = await fetch(`/api/pipeline/stage2?chatId=${encodeURIComponent(chatId)}`, {
+      cache: "no-store",
+      signal: options?.signal
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось загрузить Stage 2 runs."));
+    }
+    const body = (await response.json()) as { runs?: Stage2RunSummary[] };
+    const nextRuns = body.runs ?? [];
+    if (
+      !matchesScopedRequestVersion(stage2RunsRequestVersionsRef.current, chatId, issued.version) ||
+      activeChatIdRef.current !== chatId
+    ) {
+      return nextRuns;
+    }
+    setStage2Runs((prev) => (equalStage2RunSummaries(prev, nextRuns) ? prev : nextRuns));
+    return nextRuns;
+  }, [parseError]);
+
+  const refreshStage2RunDetail = useCallback(async (
+    runId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<Stage2RunDetail | null> => {
+    const response = await fetch(`/api/pipeline/stage2?runId=${encodeURIComponent(runId)}`, {
+      cache: "no-store",
+      signal: options?.signal
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось загрузить Stage 2 run."));
+    }
+    const body = (await response.json()) as { run?: Stage2RunDetail | null };
+    return body.run ?? null;
+  }, [parseError]);
 
   const appendEvent = useCallback(async (
     chatId: string,
@@ -1748,27 +1985,176 @@ export default function HomePage() {
   ]);
 
   useEffect(() => {
-    if (busyAction !== "stage2") {
-      stage2StartedAtRef.current = null;
+    if (!activeChat?.id) {
+      stage2RunsRequestVersionsRef.current = {};
+      setStage2Runs([]);
+      setStage2RunDetail(null);
+      setStage2RunId(null);
       setStage2ElapsedMs(0);
+      stage2SelectionSourceRef.current = null;
       return;
     }
 
-    const startedAt = stage2StartedAtRef.current ?? performance.now();
-    stage2StartedAtRef.current = startedAt;
-    let timer = 0;
+    stage2RunsRequestVersionsRef.current = {};
+    setStage2Runs([]);
+    setStage2RunDetail(null);
+    setStage2RunId(null);
+    setStage2ElapsedMs(0);
+    void refreshStage2RunsForChat(activeChat.id).catch(() => undefined);
+  }, [activeChat?.id, refreshStage2RunsForChat]);
 
-    const tick = () => {
-      setStage2ElapsedMs(Math.max(0, performance.now() - startedAt));
-      timer = window.setTimeout(tick, 50);
+  useEffect(() => {
+    setStage2RunId((current) => pickPreferredStage2RunId(stage2Runs, current));
+  }, [stage2Runs]);
+
+  useEffect(() => {
+    if (!stage2RunId) {
+      setStage2RunDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+    let timer = 0;
+    let controller: AbortController | null = null;
+    const pollId = stage2ProgressPollIdRef.current + 1;
+    stage2ProgressPollIdRef.current = pollId;
+    const scheduleNextPoll = (delayMs: number) => {
+      if (cancelled || stage2ProgressPollIdRef.current !== pollId) {
+        return;
+      }
+      timer = window.setTimeout(() => {
+        void poll();
+      }, delayMs);
     };
 
-    tick();
+    const poll = async (): Promise<void> => {
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        const nextRun = await refreshStage2RunDetail(stage2RunId, { signal: controller.signal });
+        if (cancelled || stage2ProgressPollIdRef.current !== pollId) {
+          return;
+        }
+        setStage2RunDetail((prev) => (equalStage2RunDetail(prev, nextRun) ? prev : nextRun));
+        if (!nextRun) {
+          return;
+        }
 
+        if (!isStage2RunActive(nextRun)) {
+          const durationMs = getStage2ElapsedMs(nextRun.progress);
+          if (nextRun.status === "completed" && durationMs >= 1_000) {
+            setStage2ExpectedDurationMs(durationMs);
+            writeStage2DurationMetric(durationMs);
+          }
+          if (activeChat?.id === nextRun.chatId) {
+            await Promise.allSettled([
+              refreshActiveChat(activeChat.id),
+              refreshStage2RunsForChat(activeChat.id),
+              refreshChats()
+            ]);
+          } else {
+            void refreshChats().catch(() => undefined);
+          }
+          return;
+        }
+      } catch (error) {
+        if (isAbortError(error)) {
+          return;
+        }
+        scheduleNextPoll(currentPollDelay(STAGE2_POLL_RETRY_VISIBLE_MS, STAGE2_POLL_RETRY_HIDDEN_MS));
+        return;
+      }
+
+      scheduleNextPoll(currentPollDelay(STAGE2_DETAIL_POLL_VISIBLE_MS, STAGE2_DETAIL_POLL_HIDDEN_MS));
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeChat?.id,
+    refreshActiveChat,
+    refreshChats,
+    refreshStage2RunDetail,
+    refreshStage2RunsForChat,
+    stage2RunId,
+    writeStage2DurationMetric
+  ]);
+
+  useEffect(() => {
+    const progress = stage2RunDetail?.progress ?? null;
+    if (!progress || !isStage2RunActive(stage2RunDetail) || currentStep !== 2) {
+      setStage2ElapsedMs(getStage2ElapsedMs(progress));
+      return;
+    }
+
+    let timer = 0;
+    const tick = () => {
+      setStage2ElapsedMs(getStage2ElapsedMs(progress));
+      timer = window.setTimeout(
+        tick,
+        currentPollDelay(STAGE2_ELAPSED_TICK_MS, STAGE2_ELAPSED_TICK_HIDDEN_MS)
+      );
+    };
+    tick();
     return () => {
       window.clearTimeout(timer);
     };
-  }, [busyAction]);
+  }, [currentStep, stage2RunDetail]);
+
+  const hasActiveStage2Runs = useMemo(
+    () => stage2Runs.some((run) => isStage2RunActive(run)),
+    [stage2Runs]
+  );
+
+  useEffect(() => {
+    if (!activeChat?.id) {
+      return;
+    }
+    if (!hasActiveStage2Runs) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer = 0;
+    let controller: AbortController | null = null;
+    const scheduleNextPoll = (delayMs: number) => {
+      if (cancelled) {
+        return;
+      }
+      timer = window.setTimeout(() => {
+        void poll();
+      }, delayMs);
+    };
+
+    const poll = async (): Promise<void> => {
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        await refreshStage2RunsForChat(activeChat.id, { signal: controller.signal });
+      } catch (error) {
+        if (isAbortError(error)) {
+          return;
+        }
+        scheduleNextPoll(currentPollDelay(STAGE2_POLL_RETRY_VISIBLE_MS, STAGE2_POLL_RETRY_HIDDEN_MS));
+        return;
+      }
+
+      scheduleNextPoll(currentPollDelay(STAGE2_RUNS_POLL_VISIBLE_MS, STAGE2_RUNS_POLL_HIDDEN_MS));
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      window.clearTimeout(timer);
+    };
+  }, [activeChat?.id, hasActiveStage2Runs, refreshStage2RunsForChat]);
 
   useEffect(() => {
     void refreshWorkspaceMembers().catch(() => undefined);
@@ -2066,8 +2452,7 @@ export default function HomePage() {
     chat: Pick<ChatThread, "id" | "url">,
     instruction: string,
     mode: "manual" | "auto"
-  ): Promise<Stage2Response> => {
-    const startedAt = performance.now();
+  ): Promise<Stage2RunDetail> => {
     if (!codexLoggedIn) {
       throw new Error("Shared Codex недоступен. Обратитесь к владельцу.");
     }
@@ -2092,7 +2477,8 @@ export default function HomePage() {
       body: JSON.stringify({
         chatId: chat.id,
         url: chat.url,
-        userInstruction: trimmedInstruction || undefined
+        userInstruction: trimmedInstruction || undefined,
+        mode
       })
     });
 
@@ -2100,22 +2486,27 @@ export default function HomePage() {
       throw new Error(await parseError(response, "Stage 2 завершился ошибкой."));
     }
 
-    const stage2 = (await response.json()) as Stage2Response;
-    const providerLabel = formatSourceProviderLabel(stage2.source.downloadProvider);
-    await appendEvent(chat.id, {
-      role: "assistant",
-      type: "stage2",
-      text: providerLabel ? `Stage 2 завершен. Источник: ${providerLabel}.` : "Stage 2 завершен.",
-      data: stage2
+    const body = (await response.json()) as { run: Stage2RunDetail };
+    const run = body.run;
+    setStage2RunId(run.runId);
+    setStage2RunDetail(run);
+    setStage2Runs((current) => {
+      const deduped = current.filter((item) => item.runId !== run.runId);
+      return [run, ...deduped].slice(0, 20);
     });
 
-    setSelectedOption(stage2.output.finalPick.option);
-    setSelectedTitleOption(stage2.output.titleOptions[0]?.option ?? 1);
-    setCurrentStep(3);
-    const durationMs = Math.max(1_000, Math.round(performance.now() - startedAt));
-    setStage2ExpectedDurationMs(durationMs);
-    writeStage2DurationMetric(durationMs);
-    return stage2;
+    await Promise.allSettled([
+      refreshStage2RunsForChat(chat.id),
+      refreshChats()
+    ]);
+
+    const nextRun = await refreshStage2RunDetail(run.runId);
+    if (nextRun) {
+      setStage2RunDetail(nextRun);
+      return nextRun;
+    }
+
+    return run;
   };
 
   const handleFetchSource = async (): Promise<void> => {
@@ -2145,7 +2536,6 @@ export default function HomePage() {
     let chatId: string | null = null;
     let stage1Ready = false;
     let commentsAvailable = false;
-    let commentsCount = 0;
     let commentsError: string | null = null;
 
     try {
@@ -2178,7 +2568,6 @@ export default function HomePage() {
       if (commentsResponse.ok) {
         const comments = (await commentsResponse.json()) as CommentsPayload;
         commentsAvailable = true;
-        commentsCount = comments.totalComments;
         await appendEvent(chatId, {
           role: "assistant",
           type: "comments",
@@ -2216,14 +2605,29 @@ export default function HomePage() {
         return;
       }
 
-      setBusyAction("stage2");
-      await runStage2ForChat({ id: chatId, url }, "", "auto");
-      setStatusType("ok");
-      setStatus(
-        commentsAvailable
-          ? "Источник готов. Stage 2 завершен."
-          : "Источник загружен без комментариев. Stage 2 завершен."
-      );
+      setIsStage2Enqueueing(true);
+      try {
+        const run = await runStage2ForChat({ id: chatId, url }, "", "auto");
+        setStage2RunId(run.runId);
+        setStatusType("ok");
+        setStatus(
+          commentsAvailable
+            ? "Источник готов. Stage 2 запущен в фоне. Можно обновлять страницу или вернуться позже."
+            : "Источник загружен без комментариев. Stage 2 запущен в фоне и переживет refresh."
+        );
+      } catch (stage2Error) {
+        const message = getUiErrorMessage(stage2Error, "Источник готов, но Stage 2 не удалось запустить.");
+        await appendEvent(chatId, {
+          role: "assistant",
+          type: "error",
+          text: message
+        }).catch(() => undefined);
+        setStatusType("error");
+        setStatus(message);
+      } finally {
+        setIsStage2Enqueueing(false);
+      }
+      return;
     } catch (error) {
       const message = getUiErrorMessage(error, "Не удалось загрузить источник.");
       if (chatId) {
@@ -2389,18 +2793,20 @@ export default function HomePage() {
       return;
     }
 
+    setIsStage2Enqueueing(true);
     setBusyAction("stage2");
     setIsBusy(true);
     setStatus("");
     setStatusType("");
 
     try {
-      const stage2 = await runStage2ForChat(chat, stage2Instruction, "manual");
-      const providerLabel = formatSourceProviderLabel(stage2.source.downloadProvider);
+      const run = await runStage2ForChat(chat, stage2Instruction, "manual");
+      setStage2RunId(run.runId);
+      setCurrentStep(2);
       setStatusType("ok");
-      setStatus(providerLabel ? `Stage 2 завершен. Источник: ${providerLabel}.` : "Stage 2 завершен.");
+      setStatus("Stage 2 запущен в фоне. Прогресс и результат сохраняются и переживут refresh.");
     } catch (error) {
-      const message = getUiErrorMessage(error, "Stage 2 завершился ошибкой.");
+      const message = getUiErrorMessage(error, "Stage 2 не удалось запустить.");
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
@@ -2409,6 +2815,7 @@ export default function HomePage() {
       setStatusType("error");
       setStatus(message);
     } finally {
+      setIsStage2Enqueueing(false);
       setIsBusy(false);
       setBusyAction("");
     }
@@ -3093,6 +3500,82 @@ export default function HomePage() {
   const latestStage2Event = useMemo(() => {
     return stage2Events[stage2Events.length - 1] ?? null;
   }, [stage2Events]);
+  const selectedStage2RunSummary = useMemo(
+    () => stage2Runs.find((run) => run.runId === stage2RunId) ?? null,
+    [stage2RunId, stage2Runs]
+  );
+  const selectedStage2RunDetail = useMemo(
+    () => (stage2RunDetail?.runId === stage2RunId ? stage2RunDetail : null),
+    [stage2RunDetail, stage2RunId]
+  );
+  const visibleStage2Progress = useMemo<Stage2ProgressSnapshot | null>(
+    () =>
+      selectedStage2RunDetail?.progress ??
+      selectedStage2RunSummary?.progress ??
+      latestStage2Event?.payload.progress ??
+      null,
+    [latestStage2Event, selectedStage2RunDetail?.progress, selectedStage2RunSummary?.progress]
+  );
+  const visibleStage2Result = useMemo<Stage2Response | null>(() => {
+    if (selectedStage2RunDetail) {
+      return selectedStage2RunDetail.result;
+    }
+    if (selectedStage2RunSummary) {
+      if (!selectedStage2RunSummary.hasResult) {
+        return null;
+      }
+      if (latestStage2Event?.payload.stage2Run?.runId === selectedStage2RunSummary.runId) {
+        return latestStage2Event.payload;
+      }
+      return null;
+    }
+    return latestStage2Event?.payload ?? null;
+  }, [latestStage2Event, selectedStage2RunDetail, selectedStage2RunSummary]);
+  const visibleStage2CreatedAt = useMemo(() => {
+    if (selectedStage2RunDetail) {
+      return selectedStage2RunDetail.finishedAt ?? selectedStage2RunDetail.updatedAt;
+    }
+    if (selectedStage2RunSummary) {
+      if (latestStage2Event?.payload.stage2Run?.runId === selectedStage2RunSummary.runId) {
+        return latestStage2Event.createdAt;
+      }
+      return selectedStage2RunSummary.finishedAt ?? selectedStage2RunSummary.updatedAt;
+    }
+    return latestStage2Event?.createdAt ?? null;
+  }, [latestStage2Event, selectedStage2RunDetail, selectedStage2RunSummary]);
+  const visibleStage2SourceKey = useMemo(() => {
+    if (selectedStage2RunDetail) {
+      return selectedStage2RunDetail.runId;
+    }
+    if (selectedStage2RunSummary) {
+      return selectedStage2RunSummary.runId;
+    }
+    return latestStage2Event?.payload.stage2Run?.runId ?? latestStage2Event?.id ?? null;
+  }, [latestStage2Event, selectedStage2RunDetail, selectedStage2RunSummary]);
+  const visibleStage2EventId = useMemo(() => {
+    if (!latestStage2Event) {
+      return null;
+    }
+    if (!visibleStage2SourceKey) {
+      return latestStage2Event.id;
+    }
+    return latestStage2Event.payload.stage2Run?.runId === visibleStage2SourceKey
+      ? latestStage2Event.id
+      : null;
+  }, [latestStage2Event, visibleStage2SourceKey]);
+  const visibleStage2SelectionDefaults = useMemo(() => {
+    if (!visibleStage2Result) {
+      return { captionOption: null, titleOption: null };
+    }
+    return {
+      captionOption: visibleStage2Result.output.finalPick.option,
+      titleOption: visibleStage2Result.output.titleOptions[0]?.option ?? 1
+    };
+  }, [visibleStage2Result]);
+  const isStage2RunVisibleRunning = useMemo(
+    () => isStage2RunActive(selectedStage2RunDetail ?? selectedStage2RunSummary),
+    [selectedStage2RunDetail, selectedStage2RunSummary]
+  );
 
   const stage3AgentSessionRef = useMemo(() => {
     if (!activeChat) {
@@ -3250,60 +3733,77 @@ export default function HomePage() {
   );
 
   useEffect(() => {
-    if (!latestStage2Event) {
+    if (!visibleStage2Result) {
+      stage2SelectionSourceRef.current = null;
       setSelectedOption(null);
-      return;
-    }
-    setSelectedOption((prev) => {
-      if (
-        prev &&
-        latestStage2Event.payload.output.captionOptions.some((option) => option.option === prev)
-      ) {
-        return prev;
-      }
-      return activeDraft?.stage2.selectedCaptionOption ?? latestStage2Event.payload.output.finalPick.option;
-    });
-  }, [activeDraft?.stage2.selectedCaptionOption, latestStage2Event]);
-
-  useEffect(() => {
-    if (!latestStage2Event) {
       setSelectedTitleOption(null);
       return;
     }
-    setSelectedTitleOption((prev) => {
+
+    const previousSourceKey = stage2SelectionSourceRef.current;
+    const sourceChanged =
+      previousSourceKey !== null &&
+      visibleStage2SourceKey !== null &&
+      previousSourceKey !== visibleStage2SourceKey;
+    stage2SelectionSourceRef.current = visibleStage2SourceKey;
+
+    setSelectedOption((prev) => {
       if (
+        !sourceChanged &&
         prev &&
-        latestStage2Event.payload.output.titleOptions.some((titleOption) => titleOption.option === prev)
+        visibleStage2Result.output.captionOptions.some((option) => option.option === prev)
       ) {
         return prev;
       }
-      return activeDraft?.stage2.selectedTitleOption ?? latestStage2Event.payload.output.titleOptions[0]?.option ?? 1;
+      return sourceChanged
+        ? visibleStage2SelectionDefaults.captionOption
+        : activeDraft?.stage2.selectedCaptionOption ?? visibleStage2SelectionDefaults.captionOption;
     });
-  }, [activeDraft?.stage2.selectedTitleOption, latestStage2Event]);
+
+    setSelectedTitleOption((prev) => {
+      if (
+        !sourceChanged &&
+        prev &&
+        visibleStage2Result.output.titleOptions.some((titleOption) => titleOption.option === prev)
+      ) {
+        return prev;
+      }
+      return sourceChanged
+        ? visibleStage2SelectionDefaults.titleOption
+        : activeDraft?.stage2.selectedTitleOption ?? visibleStage2SelectionDefaults.titleOption;
+    });
+  }, [
+    activeDraft?.stage2.selectedCaptionOption,
+    activeDraft?.stage2.selectedTitleOption,
+    visibleStage2Result,
+    visibleStage2SelectionDefaults.captionOption,
+    visibleStage2SelectionDefaults.titleOption,
+    visibleStage2SourceKey
+  ]);
 
   const selectedCaption = useMemo(() => {
-    if (!latestStage2Event) {
+    if (!visibleStage2Result) {
       return null;
     }
-    const preferredOption = selectedOption ?? latestStage2Event.payload.output.finalPick.option;
+    const preferredOption = selectedOption ?? visibleStage2Result.output.finalPick.option;
     return (
-      latestStage2Event.payload.output.captionOptions.find((item) => item.option === preferredOption) ??
-      latestStage2Event.payload.output.captionOptions[0] ??
+      visibleStage2Result.output.captionOptions.find((item) => item.option === preferredOption) ??
+      visibleStage2Result.output.captionOptions[0] ??
       null
     );
-  }, [latestStage2Event, selectedOption]);
+  }, [selectedOption, visibleStage2Result]);
 
   const selectedTitle = useMemo(() => {
-    if (!latestStage2Event) {
+    if (!visibleStage2Result) {
       return null;
     }
-    const preferredOption = selectedTitleOption ?? latestStage2Event.payload.output.titleOptions[0]?.option ?? 1;
+    const preferredOption = selectedTitleOption ?? visibleStage2Result.output.titleOptions[0]?.option ?? 1;
     return (
-      latestStage2Event.payload.output.titleOptions.find((item) => item.option === preferredOption) ??
-      latestStage2Event.payload.output.titleOptions[0] ??
+      visibleStage2Result.output.titleOptions.find((item) => item.option === preferredOption) ??
+      visibleStage2Result.output.titleOptions[0] ??
       null
     );
-  }, [latestStage2Event, selectedTitleOption]);
+  }, [selectedTitleOption, visibleStage2Result]);
 
   const hasActiveStage3Draft = useMemo(() => {
     if (!activeDraft) {
@@ -3339,8 +3839,8 @@ export default function HomePage() {
     const baseClipStart = latestVersion?.final.clipStartSec ?? 0;
     const baseFocusY = latestVersion?.final.focusY ?? 0.5;
     const baseAgentPrompt = latestVersion?.prompt ?? defaults.agentPrompt ?? "";
-    const titleDefault = latestStage2Event?.payload.output.titleOptions[0]?.option ?? null;
-    const captionDefault = latestStage2Event?.payload.output.finalPick.option ?? null;
+    const titleDefault = visibleStage2SelectionDefaults.titleOption;
+    const captionDefault = visibleStage2SelectionDefaults.captionOption;
     const passSelectionChanged =
       stage3PassSelectionJson !== JSON.stringify(defaults.passSelectionByVersion);
 
@@ -3374,7 +3874,6 @@ export default function HomePage() {
     applyChannelToRenderPlan,
     channelAssets,
     currentStep,
-    latestStage2Event,
     selectedCaption,
     selectedOption,
     selectedTitleOption,
@@ -3389,7 +3888,9 @@ export default function HomePage() {
     stage3SelectedVersionId,
     stage3TopText,
     stage3BottomText,
-    stage3Versions
+    stage3Versions,
+    visibleStage2SelectionDefaults.captionOption,
+    visibleStage2SelectionDefaults.titleOption
   ]);
 
   const saveActiveDraftPayload = useCallback(
@@ -3931,40 +4432,45 @@ export default function HomePage() {
     () => [
       { id: 1, label: "Вставить ссылку", enabled: true },
       { id: 2, label: "Проверить и выбрать", enabled: Boolean(activeChat && stage1FetchState.ready) },
-      { id: 3, label: "Рендер видео", enabled: Boolean(latestStage2Event) }
+      { id: 3, label: "Рендер видео", enabled: Boolean(visibleStage2Result) }
     ],
-    [activeChat, latestStage2Event, stage1FetchState.ready]
+    [activeChat, stage1FetchState.ready, visibleStage2Result]
   );
 
   const activeLiveAction = useMemo<ChatListItem["liveAction"]>(() => {
     if (!activeChat) {
       return null;
     }
+    if (isStage2RunVisibleRunning) {
+      return "Stage 2";
+    }
     switch (busyAction) {
       case "fetch":
         return "Fetching";
       case "comments":
         return "Comments";
-      case "stage2":
-        return "Stage 2";
       case "render":
         return "Rendering";
       default:
         return null;
     }
-  }, [activeChat, busyAction]);
+  }, [activeChat, busyAction, isStage2RunVisibleRunning]);
 
   const historyItems = useMemo(() => {
     if (!activeChat) {
       return chatList;
     }
     return chatList.map((item) => {
-      if (item.id !== activeChat.id || item.liveAction === activeLiveAction) {
+      if (item.id !== activeChat.id) {
+        return item;
+      }
+      const nextLiveAction = activeLiveAction ?? item.liveAction ?? null;
+      if (item.liveAction === nextLiveAction) {
         return item;
       }
       return {
         ...item,
-        liveAction: activeLiveAction
+        liveAction: nextLiveAction
       };
     });
   }, [activeChat?.id, activeLiveAction, chatList]);
@@ -4141,9 +4647,9 @@ export default function HomePage() {
     patch: Partial<{
       name: string;
       username: string;
-      systemPrompt: string;
-      descriptionPrompt: string;
-      examplesJson: string;
+      stage2ExamplesConfig: Stage2ExamplesConfig;
+      stage2HardConstraints: Stage2HardConstraints;
+      stage2PromptConfig: Stage2PromptConfig;
       templateId: string;
       avatarAssetId: string | null;
       defaultBackgroundAssetId: string | null;
@@ -4161,19 +4667,15 @@ export default function HomePage() {
         throw new Error(await parseError(response, "Не удалось сохранить канал."));
       }
       const body = (await response.json()) as { channel: Channel };
-      await refreshChannels();
-      let refreshedAssets: ChannelAsset[] = [];
-      if (activeChannelId) {
-        refreshedAssets = await refreshChannelAssets(activeChannelId).catch(() => []);
-      }
+      setChannels((prev) => mergeSavedChannelIntoList(prev, body.channel));
       if (body.channel.id === activeChannelId) {
         const resolvedTemplateId = body.channel.templateId || STAGE3_TEMPLATE_ID;
         const useBuiltInBackdrop = templateUsesBuiltInBackdropFromRegistry(resolvedTemplateId);
-        const resolvedAvatar = refreshedAssets.find((item) => item.id === body.channel.avatarAssetId);
+        const resolvedAvatar = channelAssets.find((item) => item.id === body.channel.avatarAssetId);
         const resolvedBg = useBuiltInBackdrop
           ? null
-          : refreshedAssets.find((item) => item.id === body.channel.defaultBackgroundAssetId);
-        const resolvedMusic = refreshedAssets.find((item) => item.id === body.channel.defaultMusicAssetId);
+          : channelAssets.find((item) => item.id === body.channel.defaultBackgroundAssetId);
+        const resolvedMusic = channelAssets.find((item) => item.id === body.channel.defaultMusicAssetId);
         setStage3RenderPlan((prev) =>
           normalizeRenderPlan(
             {
@@ -4219,6 +4721,24 @@ export default function HomePage() {
     } catch (error) {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось сохранить канал."));
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const handleSaveWorkspaceStage2ExamplesCorpus = async (value: string): Promise<void> => {
+    setBusyAction("channel-save");
+    try {
+      const response = await fetch("/api/workspace", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage2ExamplesCorpusJson: value })
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Не удалось сохранить corpus workspace."));
+      }
+      const body = (await response.json()) as { stage2ExamplesCorpusJson: string };
+      setWorkspaceStage2ExamplesCorpusJson(body.stage2ExamplesCorpusJson ?? "[]");
     } finally {
       setBusyAction("");
     }
@@ -4407,7 +4927,7 @@ export default function HomePage() {
       exportedAt: new Date().toISOString(),
       sourceUrl: chat.url,
       templateId: stage3RenderPlan.templateId,
-      stage2EventId: latestStage2Event?.id ?? null,
+      stage2EventId: visibleStage2EventId,
       selectedOption: selectedCaption?.option ?? null,
       top: stage3TopText,
       bottom: stage3BottomText,
@@ -4420,7 +4940,7 @@ export default function HomePage() {
       selectedVersionId: stage3SelectedVersionId,
       selectedPassIndex: selectedStage3PassIndex,
       versions: stage3Versions,
-      stage2: latestStage2Event?.payload ?? null
+      stage2: visibleStage2Result
     };
 
     toJsonDownload(`template_${chat.id}.json`, payload);
@@ -4561,13 +5081,25 @@ export default function HomePage() {
         <Step2PickCaption
           channelName={activeChannel?.name ?? null}
           channelUsername={activeChannel?.username ?? null}
-          stage2={latestStage2Event?.payload ?? null}
-          stageCreatedAt={latestStage2Event?.createdAt ?? null}
+          stage2={visibleStage2Result}
+          progress={visibleStage2Progress}
+          stageCreatedAt={visibleStage2CreatedAt}
           commentsAvailable={stage1FetchState.commentsAvailable}
           instruction={stage2Instruction}
-          canRunStage2={Boolean(activeChat && codexLoggedIn && stage2RuntimeAvailable) && !isBusy}
+          runs={stage2Runs}
+          selectedRunId={stage2RunId}
+          currentRunStatus={selectedStage2RunDetail?.status ?? selectedStage2RunSummary?.status ?? null}
+          currentRunError={
+            selectedStage2RunDetail?.errorMessage ?? selectedStage2RunSummary?.errorMessage ?? null
+          }
+          canRunStage2={
+            Boolean(activeChat && codexLoggedIn && stage2RuntimeAvailable) &&
+            (!isBusy || busyAction === "stage2") &&
+            !isStage2Enqueueing
+          }
           runBlockedReason={stage2BlockedReason}
-          isRunning={busyAction === "stage2"}
+          isLaunching={isStage2Enqueueing}
+          isRunning={isStage2RunVisibleRunning}
           expectedDurationMs={stage2ExpectedDurationMs}
           elapsedMs={stage2ElapsedMs}
           selectedOption={selectedOption}
@@ -4576,6 +5108,7 @@ export default function HomePage() {
           onRunStage2={() => {
             void handleRunStage2();
           }}
+          onSelectRun={setStage2RunId}
           onSelectOption={setSelectedOption}
           onSelectTitleOption={setSelectedTitleOption}
           onCopy={(value, successMessage) => {
@@ -4851,6 +5384,7 @@ export default function HomePage() {
       <ChannelManager
         open={isChannelManagerOpen}
         channels={channels}
+        workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
         activeChannelId={activeChannelId}
         assets={channelAssets}
         onClose={() => setIsChannelManagerOpen(false)}
@@ -4862,9 +5396,8 @@ export default function HomePage() {
         onDeleteChannel={(channelId) => {
           void handleDeleteChannel(channelId);
         }}
-        onSaveChannel={(channelId, patch) => {
-          void handleSaveChannel(channelId, patch);
-        }}
+        onSaveChannel={handleSaveChannel}
+        onSaveWorkspaceStage2ExamplesCorpus={handleSaveWorkspaceStage2ExamplesCorpus}
         onUploadAsset={(kind, file) => {
           void handleUploadChannelAsset(kind, file);
         }}

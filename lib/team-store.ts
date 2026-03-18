@@ -1,11 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { getAppDataDir } from "./app-paths";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { hashPassword, verifyPassword } from "./auth/password";
-import { STAGE2_DESCRIPTION_SYSTEM_PROMPT, STAGE2_SYSTEM_PROMPT } from "./stage2";
+import {
+  getBundledStage2ExamplesSeedJson,
+  parseStage2ExamplesJson
+} from "./stage2-channel-config";
 
 export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
 export type WorkspaceCodexStatus = "connected" | "disconnected" | "connecting" | "error";
@@ -15,6 +17,7 @@ export type WorkspaceRecord = {
   id: string;
   name: string;
   slug: string;
+  stage2ExamplesCorpusJson: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -142,7 +145,6 @@ type LegacyStore = {
 };
 
 const STORE_PATH = path.join(getAppDataDir(), "chat-history.json");
-const EXAMPLES_PATH = path.join(process.cwd(), "data", "examples.json");
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 const DEFAULT_TEMPLATE_ID = "science-card-v1";
 
@@ -162,22 +164,37 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function readExamplesJsonSyncFallback(): string {
-  try {
-    return readFileSync(EXAMPLES_PATH, "utf-8");
-  } catch {
-    return "[]";
-  }
-}
-
 function mapWorkspace(row: Record<string, unknown>): WorkspaceRecord {
   return {
     id: String(row.id),
     name: String(row.name),
     slug: String(row.slug),
+    stage2ExamplesCorpusJson: normalizeWorkspaceStage2ExamplesCorpusJson(
+      row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null
+    ),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
+}
+
+function normalizeWorkspaceStage2ExamplesCorpusJson(value: string | null | undefined): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) {
+    return getBundledStage2ExamplesSeedJson();
+  }
+  try {
+    JSON.parse(trimmed);
+    return JSON.stringify(
+      parseStage2ExamplesJson(trimmed, {
+        channelId: "workspace-default",
+        channelName: "Workspace default"
+      }),
+      null,
+      2
+    );
+  } catch {
+    return getBundledStage2ExamplesSeedJson();
+  }
 }
 
 function mapUser(row: Record<string, unknown>): UserRecord {
@@ -259,7 +276,72 @@ export function getWorkspace(): WorkspaceRecord | null {
   const row = db.prepare("SELECT * FROM workspaces ORDER BY created_at ASC LIMIT 1").get() as
     | Record<string, unknown>
     | undefined;
-  return row ? mapWorkspace(row) : null;
+  if (!row) {
+    return null;
+  }
+  const stage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(String(row.id));
+  return {
+    ...mapWorkspace({
+      ...row,
+      stage2_examples_corpus_json: stage2ExamplesCorpusJson
+    })
+  };
+}
+
+export function getWorkspaceStage2ExamplesCorpusJson(workspaceId: string): string {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT stage2_examples_corpus_json FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  const normalized = normalizeWorkspaceStage2ExamplesCorpusJson(
+    row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null
+  );
+  if ((row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null) !== normalized) {
+    db.prepare("UPDATE workspaces SET stage2_examples_corpus_json = ? WHERE id = ?").run(
+      normalized,
+      workspaceId
+    );
+  }
+  return normalized;
+}
+
+export function updateWorkspaceStage2ExamplesCorpusJson(
+  workspaceId: string,
+  rawJson: string
+): WorkspaceRecord {
+  const trimmed = rawJson.trim();
+  if (!trimmed) {
+    throw new Error("Workspace examples corpus JSON не должен быть пустым.");
+  }
+  try {
+    JSON.parse(trimmed);
+  } catch {
+    throw new Error("Workspace examples corpus JSON должен быть валидным JSON.");
+  }
+
+  const normalized = JSON.stringify(
+    parseStage2ExamplesJson(trimmed, {
+      channelId: "workspace-default",
+      channelName: "Workspace default"
+    }),
+    null,
+    2
+  );
+  const updatedAt = nowIso();
+  const db = getDb();
+  db.prepare(
+    "UPDATE workspaces SET stage2_examples_corpus_json = ?, updated_at = ? WHERE id = ?"
+  ).run(normalized, updatedAt, workspaceId);
+  const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  return mapWorkspace(row);
 }
 
 export function getUserById(userId: string): UserRecord | null {
@@ -384,6 +466,7 @@ export async function bootstrapOwner(input: {
     id: workspaceId,
     name: input.workspaceName.trim() || "Workspace",
     slug: sanitizeSlug(input.workspaceName),
+    stage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
     createdAt: now,
     updatedAt: now
   };
@@ -408,8 +491,15 @@ export async function bootstrapOwner(input: {
 
   runInTransaction((db) => {
     db.prepare(
-      "INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
-    ).run(workspace.id, workspace.name, workspace.slug, workspace.createdAt, workspace.updatedAt);
+      "INSERT INTO workspaces (id, name, slug, stage2_examples_corpus_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(
+      workspace.id,
+      workspace.name,
+      workspace.slug,
+      workspace.stage2ExamplesCorpusJson,
+      workspace.createdAt,
+      workspace.updatedAt
+    );
     db.prepare(
       "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ).run(
@@ -705,6 +795,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
         wm.updated_at as membership_updated_at,
         w.name as workspace_name,
         w.slug as workspace_slug,
+        w.stage2_examples_corpus_json as workspace_stage2_examples_corpus_json,
         w.created_at as workspace_created_at,
         w.updated_at as workspace_updated_at
       FROM auth_sessions s
@@ -735,6 +826,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
       id: String(row.workspace_id),
       name: String(row.workspace_name),
       slug: String(row.workspace_slug),
+      stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(String(row.workspace_id)),
       createdAt: String(row.workspace_created_at),
       updatedAt: String(row.workspace_updated_at)
     },
@@ -1187,17 +1279,18 @@ export async function ensureWorkspaceSeeded(workspaceId: string, ownerUserId: st
     const now = nowIso();
     db.prepare(
       `INSERT INTO channels
-      (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)`
+      (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_prompt_config_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, NULL)`
     ).run(
       newId(),
       workspaceId,
       ownerUserId,
       "Default",
       "science_snack",
-      STAGE2_SYSTEM_PROMPT,
-      STAGE2_DESCRIPTION_SYSTEM_PROMPT,
-      readExamplesJsonSyncFallback(),
+      "",
+      "",
+      "[]",
+      null,
       DEFAULT_TEMPLATE_ID,
       now,
       now
@@ -1223,8 +1316,8 @@ export async function ensureWorkspaceSeeded(workspaceId: string, ownerUserId: st
       importedChannelIds.add(channel.id);
       tx.prepare(
         `INSERT INTO channels
-        (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+        (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_prompt_config_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL)`
       ).run(
         channel.id,
         workspaceId,
@@ -1234,6 +1327,7 @@ export async function ensureWorkspaceSeeded(workspaceId: string, ownerUserId: st
         channel.systemPrompt,
         channel.descriptionPrompt,
         channel.examplesJson,
+        null,
         channel.templateId || DEFAULT_TEMPLATE_ID,
         channel.avatarAssetId,
         channel.defaultBackgroundAssetId,
@@ -1249,17 +1343,18 @@ export async function ensureWorkspaceSeeded(workspaceId: string, ownerUserId: st
       importedChannelIds.add(channelId);
       tx.prepare(
         `INSERT INTO channels
-        (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)`
+        (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_prompt_config_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, NULL)`
       ).run(
         channelId,
         workspaceId,
         ownerUserId,
         "Default",
         "science_snack",
-        STAGE2_SYSTEM_PROMPT,
-        STAGE2_DESCRIPTION_SYSTEM_PROMPT,
-        readExamplesJsonSyncFallback(),
+        "",
+        "",
+        "[]",
+        null,
         DEFAULT_TEMPLATE_ID,
         now,
         now

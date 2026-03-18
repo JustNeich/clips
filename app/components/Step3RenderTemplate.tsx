@@ -1124,6 +1124,7 @@ function Stage3LivePreviewPanel({
                         ? backgroundIsVideo
                           ? (
                             <video
+                              key={backgroundAssetUrl}
                               ref={backgroundPreviewRef}
                               className="preview-bg-video preview-bg-custom"
                               src={backgroundAssetUrl}
@@ -1151,6 +1152,7 @@ function Stage3LivePreviewPanel({
                         : previewVideoUrl
                           ? (
                             <video
+                              key={previewVideoUrl}
                               ref={backgroundPreviewRef}
                               className="preview-bg-video"
                               src={previewVideoUrl}
@@ -1187,6 +1189,7 @@ function Stage3LivePreviewPanel({
                     ) : undefined,
                     mediaNode: previewVideoUrl ? (
                       <PreviewClipVideo
+                        key={previewVideoUrl}
                         sourceUrl={previewVideoUrl}
                         clipDurationSec={clipDurationSec}
                         className="preview-slot-video"
@@ -1531,13 +1534,21 @@ export function Step3RenderTemplate({
   }, [clipStartSec, maxStartSec]);
 
   useEffect(() => {
-    setPreviewMeasuredFitState({
-      snapshotHash: previewTemplateSnapshot.snapshotHash,
-      fitHash: previewFitHash,
-      fit: toTextFitSnapshot(previewTemplateSnapshot.computed, previewTemplateSnapshot),
-      measured: false
+    setPreviewMeasuredFitState((current) => {
+      if (
+        current?.snapshotHash === previewTemplateSnapshot.snapshotHash &&
+        current.fitHash === previewFitHash
+      ) {
+        return current;
+      }
+      return {
+        snapshotHash: previewTemplateSnapshot.snapshotHash,
+        fitHash: previewFitHash,
+        fit: toTextFitSnapshot(previewTemplateSnapshot.computed, previewTemplateSnapshot),
+        measured: false
+      };
     });
-  }, [previewFitHash, previewTemplateSnapshot]);
+  }, [previewFitHash, previewTemplateSnapshot.computed, previewTemplateSnapshot.snapshotHash]);
 
   useEffect(() => {
     if (!pendingTextFitAction) {

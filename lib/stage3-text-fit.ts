@@ -50,7 +50,7 @@ const SCIENCE_CARD_V1_TEXT_FIT_POLICY: Stage3TemplateTextFitPolicy = {
   revision: "science-card-v1-fit-v2",
   topFillTargetMin: 0.94,
   topFillTargetMax: 0.99,
-  topLineHeightFloor: 0.94,
+  topLineHeightFloor: 0.99,
   topLineHeightCeil: 1.04,
   bottomFillTargetMin: 0.8,
   bottomFillTargetMax: 0.9,

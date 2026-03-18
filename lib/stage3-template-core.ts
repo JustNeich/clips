@@ -144,7 +144,7 @@ export function resolveTemplateChromeMetrics(
   const scaledTopPaddingTop = Math.max(baseTopPaddingTop, Math.round(baseTopPaddingTop * chromeScale));
   const scaledTopPaddingBottom = Math.max(baseTopPaddingBottom, Math.round(baseTopPaddingBottom * chromeScale));
   const proportionalTopPaddingX = Math.max(
-    Math.round(Math.max(scaledTopPaddingTop, scaledTopPaddingBottom) * 2),
+    Math.round(Math.max(scaledTopPaddingTop, scaledTopPaddingBottom) * 1.45),
     Math.round(templateConfig.slot.topPaddingX * chromeScale)
   );
 

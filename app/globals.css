@@ -1256,6 +1256,335 @@ select.text-input:focus {
   transition: width 80ms linear;
 }
 
+.stage2-stage-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.stage2-run-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.stage2-run-picker-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stage2-run-pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stage2-run-pill {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  background: color-mix(in srgb, var(--surface) 94%, black);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    transform 120ms ease;
+}
+
+.stage2-run-pill:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+}
+
+.stage2-run-pill.is-active {
+  border-color: color-mix(in srgb, var(--accent) 56%, white 12%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 16%, var(--surface)), var(--surface)),
+    var(--surface);
+}
+
+.stage2-run-pill.status-running,
+.stage2-run-pill.status-queued {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.stage2-run-pill.status-failed {
+  border-color: color-mix(in srgb, #ff6b6b 42%, var(--border));
+}
+
+.stage2-stage-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  background: color-mix(in srgb, var(--surface) 94%, black);
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.stage2-stage-item.is-active {
+  border-color: color-mix(in srgb, var(--accent) 48%, white 10%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 14%, var(--surface)), var(--surface)),
+    var(--surface);
+  transform: translateY(-1px);
+}
+
+.stage2-stage-item.state-completed {
+  border-color: color-mix(in srgb, #4fd18b 22%, var(--border));
+}
+
+.stage2-stage-item.state-failed {
+  border-color: color-mix(in srgb, #ff6b6b 44%, var(--border));
+  background: color-mix(in srgb, #ff6b6b 8%, var(--surface));
+}
+
+.stage2-stage-index {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-3) 86%, black);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.stage2-stage-item.is-active .stage2-stage-index {
+  background: color-mix(in srgb, var(--accent) 72%, white 10%);
+  border-color: color-mix(in srgb, var(--accent) 80%, white 10%);
+}
+
+.stage2-stage-item.state-completed .stage2-stage-index {
+  background: color-mix(in srgb, #4fd18b 70%, black 10%);
+  border-color: color-mix(in srgb, #4fd18b 84%, transparent);
+}
+
+.stage2-stage-item.state-failed .stage2-stage-index {
+  background: color-mix(in srgb, #ff6b6b 72%, black 8%);
+  border-color: color-mix(in srgb, #ff6b6b 84%, transparent);
+}
+
+.stage2-stage-body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.stage2-stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stage2-stage-detail-toggle {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-2) 90%, black);
+  overflow: hidden;
+}
+
+.stage2-stage-detail-toggle summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+}
+
+.stage2-stage-detail-toggle summary::-webkit-details-marker {
+  display: none;
+}
+
+.stage2-stage-detail-toggle summary span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stage2-stage-detail-toggle summary small {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage2-stage-detail-panel {
+  border-top: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  max-height: min(30vh, 320px);
+  overflow: auto;
+}
+
+.stage2-stage-detail-log {
+  margin: 0;
+  padding: 10px;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: var(--text-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.stage2-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.stage2-insight-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  background: color-mix(in srgb, var(--surface) 92%, black);
+}
+
+.stage2-prompt-stage-list {
+  display: grid;
+  gap: 12px;
+}
+
+.stage2-prompt-stage-card,
+.stage2-example-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  background: color-mix(in srgb, var(--surface) 94%, black);
+}
+
+.stage2-prompt-stage-head,
+.stage2-example-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stage2-prompt-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.stage2-prompt-meta-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stage2-config-stage-list {
+  display: grid;
+  gap: 18px;
+}
+
+.stage2-config-stage-card {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0)),
+    color-mix(in srgb, var(--surface) 95%, black);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.stage2-config-stage-card + .stage2-config-stage-card {
+  position: relative;
+}
+
+.stage2-config-stage-card + .stage2-config-stage-card::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 18px;
+  right: 18px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--border-strong) 90%, transparent),
+    transparent
+  );
+}
+
+.stage2-config-stage-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.stage2-config-stage-index {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 70%, rgba(255, 255, 255, 0.04));
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.stage2-config-stage-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stage2-config-stage-body {
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+}
+
+.stage2-config-stage-controls {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.stage2-config-stage-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stage2-example-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
 .executor-guide-card {
   gap: 12px;
 }
@@ -3011,6 +3340,15 @@ select.text-input:focus {
   .fragment-toolbar,
   .fragment-row-head {
     align-items: flex-start;
+  }
+
+  .stage2-prompt-meta-row,
+  .stage2-config-stage-head {
+    grid-template-columns: 1fr;
+  }
+
+  .stage2-config-stage-controls {
+    justify-content: flex-start;
   }
 
   .fragment-actions {

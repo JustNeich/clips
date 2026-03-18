@@ -56,6 +56,7 @@ type YtDlpInfoJson = {
   title?: unknown;
   duration?: unknown;
   comments?: unknown;
+  description?: unknown;
 };
 
 export type SourceAcquisitionProvider = "visolix" | "ytDlp";
@@ -76,7 +77,7 @@ export type SourceMetadataResult = {
 };
 
 export type OptionalYtDlpInfoResult = {
-  infoJson: { title?: string; comments?: unknown } | null;
+  infoJson: { title?: string; description?: string; comments?: unknown } | null;
   commentsExtractionFallbackUsed: boolean;
 };
 
@@ -637,6 +638,7 @@ export async function fetchOptionalYtDlpInfo(
   return {
     infoJson: {
       title: asTrimmedString(infoJson.title) ?? undefined,
+      description: asTrimmedString(infoJson.description) ?? undefined,
       comments: infoJson.comments
     },
     commentsExtractionFallbackUsed

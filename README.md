@@ -10,7 +10,7 @@
 - Stage 2 пайплайн генерации контента через LLM (Codex auth):
   - скачивание видео + комментариев;
   - анализ кадров видео + комментариев;
-  - генерация 5 вариантов caption + 5 title + final pick по системному промпту.
+  - генерация 5 вариантов caption + 5 title + final pick через multi-stage viral worker pipeline.
 
 ## 1. Установка зависимостей проекта
 
@@ -70,13 +70,30 @@ npm run dev
   - скачивает видео и комментарии;
   - если `--write-comments` недоступен для источника, делает fallback (видео + доступные метаданные);
   - извлекает 3 кадра из видео;
-  - использует системный промпт + `data/examples.json`;
-  - вызывает `codex exec` с авторизацией пользователя через кнопку `Connect Codex` (device auth);
+  - ставит durable background run в очередь и продолжает его независимо от открытой вкладки;
+  - использует pipeline `analyzer -> selector -> writer -> critic -> rewriter -> final selector -> titles`;
+  - использует один effective examples corpus на run: либо `workspace default corpus`, либо `channel custom corpus`;
+  - `data/examples.json` используется только один раз как seed для нового workspace, а не как live runtime source;
+  - вызывает `codex exec` по stage-этапам с авторизацией пользователя через кнопку `Connect Codex` (device auth);
+  - отдает live progress snapshot по шагам pipeline (`GET /api/pipeline/stage2?runId=...`);
   - возвращает структурированный JSON:
     - `inputAnalysis`
     - `captionOptions` (5)
     - `titleOptions` (5)
     - `finalPick`
+    - `progress`
+
+### Stage 2 runtime state
+
+- Durable run state хранится в основной app DB и переживает refresh/navigation:
+  - queued/running/completed/failed status;
+  - per-stage progress snapshot;
+  - result payload и error payload.
+- Старый Stage 2 refresh CLI оставлен только как compatibility stub и больше не обновляет examples corpus:
+
+```bash
+npm run stage2-worker
+```
 
 ## Stage 3 рендер
 
@@ -136,26 +153,44 @@ npm run stage3-worker -- start
 - После статуса `Logged in` можно запускать Stage 2.
 - Каждая browser-session использует отдельный `CODEX_HOME` в `.codex-user-sessions/<session-id>`.
 
-## Stage 2 спецификация (из системного промпта)
+## Stage 2 спецификация
 
-Этап 2 реализован как строго-структурированный JSON-ответ (через JSON schema в `codex exec`):
+Этап 2 реализован как multi-stage viral worker с строго-структурированными JSON stage-ответами:
+- `analyzer` -> visual anchors / vibe / reusable phrasing
+- `selector` -> clip type / top 3 angles / chosen examples from the active corpus
+- `writer` -> 20 candidate overlays
+- `critic` -> rescoring / keep set
+- `rewriter` -> sharpened shortlist candidates
+- `final selector` -> 5 final options for human pick
+- `titles` -> 5 title options for the shortlist
+
+Финальный API-ответ по-прежнему содержит:
 - `inputAnalysis`: 3 visual anchors + comment vibe + key phrase;
 - `captionOptions`: ровно 5 опций, каждая с `TOP` и `BOTTOM`;
 - `titleOptions`: ровно 5 заголовков;
 - `finalPick`: выбор лучшей опции + причина.
 
 Дополнительная валидация:
-- `TOP`: 140–210 символов;
-- `BOTTOM`: 80–160 символов.
+- `TOP`: диапазон задается channel hard constraints;
+- `BOTTOM`: диапазон задается channel hard constraints;
+- `BOTTOM`: требуется quoted phrase;
+- сохраняются banned words / banned openers / anti-AI ограничения из worker config.
 
-Источник стиля:
-- `data/examples.json` (копия вашего `examples.json`).
+Channel-specific mapping теперь задается через `Stage 2` в Channel Manager.
+Primary Stage 2 control surface:
+- `examples corpus` определяет, использует ли канал `workspace default corpus` или свой `channel custom corpus`;
+- `per-stage prompts` хранятся отдельно по стадиям `analyzer, selector, writer, critic, rewriter, final selector, titles`;
+- у каждой стадии есть один прямой editable prompt и один selectable reasoning mode;
+- `selector` является реальным LLM stage и сам выбирает angle и релевантные examples из доступного corpus;
+- UI во время генерации показывает активный pipeline step в реальном времени.
 
 ## Переменные окружения (опционально)
 
 - `CODEX_STAGE2_MODEL` — принудительно выбрать модель для `codex exec`.
-- `CODEX_STAGE2_REASONING_EFFORT` — reasoning effort для модели (`low|medium|high|xhigh`, можно передать `extra-high`).
+- `CODEX_STAGE2_REASONING_EFFORT` — reasoning effort для Stage 2 worker (`low|medium|high|xhigh`, можно передать `extra-high`).
+  В `next dev` по умолчанию используется `low`, чтобы тяжелые writer stages реже упирались в timeout.
 - `CODEX_STAGE2_TIMEOUT_MS` — таймаут Stage 2 в миллисекундах.
+- `CODEX_STAGE2_DESCRIPTION_REASONING_EFFORT` — отдельный reasoning effort для SEO-генерации.
 - `CODEX_BIN` — путь к бинарнику codex, если Next.js не видит его в PATH.
   Пример для macOS app: `/Applications/Codex.app/Contents/Resources/codex`
 - `REMOTION_RENDER_TIMEOUT_MS` — таймаут Stage 3 рендера в миллисекундах.

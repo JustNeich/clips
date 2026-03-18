@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Clips Automations</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10243f" />
+      <stop offset="100%" stop-color="#1f7a5a" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)" />
+  <path
+    d="M18 22c0-2.2 1.8-4 4-4h6c2.2 0 4 1.8 4 4v20c0 2.2-1.8 4-4 4h-6c-2.2 0-4-1.8-4-4V22Zm18 0c0-2.2 1.8-4 4-4h2c2.2 0 4 1.8 4 4v4h-4v-3h-2v18h2v-3h4v4c0 2.2-1.8 4-4 4h-2c-2.2 0-4-1.8-4-4V22Z"
+    fill="#f5f2e8"
+  />
+  <circle cx="49" cy="17" r="6" fill="#ffb347" />
+</svg>

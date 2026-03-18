@@ -4,9 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { APP_DB_SCHEMA } from "./schema";
 import { getAppDataDir } from "../app-paths";
-
-const DATA_DIR = getAppDataDir();
-const DB_PATH = path.join(DATA_DIR, "app.db");
+import { getBundledStage2ExamplesSeedJson } from "../stage2-channel-config";
 
 type GlobalDbScope = typeof globalThis & {
   __clipsAppDb?: DatabaseSync;
@@ -135,13 +133,42 @@ function migrateLegacyStage3WorkerTokens(db: DatabaseSync): void {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
+  addColumnIfMissing(db, "workspaces", "stage2_examples_corpus_json", "TEXT");
+  addColumnIfMissing(db, "channels", "stage2_worker_profile_id", "TEXT");
+  addColumnIfMissing(db, "channels", "stage2_examples_config_json", "TEXT");
+  addColumnIfMissing(db, "channels", "stage2_hard_constraints_json", "TEXT");
+  addColumnIfMissing(db, "channels", "stage2_prompt_config_json", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "creator_user_id", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "channel_id", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "source_url", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "user_instruction", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "mode", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "request_json", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "result_json", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "error_message", "TEXT");
+  addColumnIfMissing(db, "stage2_runs", "started_at", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "execution_target", "TEXT NOT NULL DEFAULT 'local'");
   addColumnIfMissing(db, "stage3_jobs", "assigned_worker_id", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "lease_expires_at", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "heartbeat_at", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "attempt_limit", "INTEGER NOT NULL DEFAULT 3");
   addColumnIfMissing(db, "stage3_jobs", "attempt_group", "TEXT");
+  db.prepare(
+    `UPDATE workspaces
+        SET stage2_examples_corpus_json = ?
+      WHERE stage2_examples_corpus_json IS NULL
+         OR trim(stage2_examples_corpus_json) = ''`
+  ).run(getBundledStage2ExamplesSeedJson());
   migrateLegacyStage3WorkerTokens(db);
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_stage2_runs_workspace_updated ON stage2_runs(workspace_id, updated_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_stage2_runs_chat_created ON stage2_runs(chat_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_stage2_runs_status_created ON stage2_runs(status, created_at ASC)"
+  );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage3_jobs_execution ON stage3_jobs(execution_target, status, created_at ASC)"
   );
@@ -151,25 +178,26 @@ function applyDbMigrations(db: DatabaseSync): void {
 }
 
 function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
+  const dataDir = getAppDataDir();
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true });
   }
+}
+
+function getDbPath(): string {
+  return path.join(getAppDataDir(), "app.db");
 }
 
 function createDb(): DatabaseSync {
   ensureDataDir();
-  const db = new DatabaseSync(DB_PATH);
+  const db = new DatabaseSync(getDbPath());
   db.exec(APP_DB_SCHEMA);
   applyDbMigrations(db);
   return db;
 }
 
-export function getDb(): DatabaseSync {
-  const scope = globalThis as GlobalDbScope;
-  if (!scope.__clipsAppDb) {
-    scope.__clipsAppDb = createDb();
-  }
-  return scope.__clipsAppDb;
+export function getDbFilePath(): string {
+  return getDbPath();
 }
 
 export function nowIso(): string {
@@ -191,4 +219,12 @@ export function runInTransaction<T>(fn: (db: DatabaseSync) => T): T {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+export function getDb(): DatabaseSync {
+  const scope = globalThis as GlobalDbScope;
+  if (!scope.__clipsAppDb) {
+    scope.__clipsAppDb = createDb();
+  }
+  return scope.__clipsAppDb;
 }

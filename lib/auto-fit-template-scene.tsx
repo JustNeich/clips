@@ -202,19 +202,18 @@ function normalizeScalePreference(scale: number): number {
   if (STAGE3_TEXT_SCALE_UI_MAX <= STAGE3_TEXT_SCALE_UI_MIN) {
     return 0.5;
   }
-  return clamp(
-    (clampStage3TextScaleUi(scale) - STAGE3_TEXT_SCALE_UI_MIN) /
-      (STAGE3_TEXT_SCALE_UI_MAX - STAGE3_TEXT_SCALE_UI_MIN),
-    0,
-    1
-  );
+  const clamped = clampStage3TextScaleUi(scale);
+  if (clamped <= 1) {
+    return clamp((clamped - STAGE3_TEXT_SCALE_UI_MIN) / Math.max(0.0001, 1 - STAGE3_TEXT_SCALE_UI_MIN), 0, 1) * 0.5;
+  }
+  return 0.5 + clamp((clamped - 1) / Math.max(0.0001, STAGE3_TEXT_SCALE_UI_MAX - 1), 0, 1) * 0.5;
 }
 
 function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): MeasuredSlotResult {
   const scalePreference = normalizeScalePreference(spec.scale);
   const targetFill =
     spec.fillTargetMin + (spec.fillTargetMax - spec.fillTargetMin) * scalePreference;
-  const safeHeight = spec.height * 0.995;
+  const safeHeight = spec.height * 0.98;
   const candidates: Array<{
     font: number;
     lineHeight: number;

@@ -13,8 +13,8 @@ type MemberRow = {
 const ROLE_LABELS: Record<AppRole, string> = {
   owner: "владелец",
   manager: "менеджер",
-  redactor: "редактор",
-  redactor_limited: "редактор с ограничениями"
+  redactor: "редактор (обычный)",
+  redactor_limited: "редактор (ограниченный, по умолчанию)"
 };
 
 export default function TeamPage() {
@@ -140,7 +140,8 @@ export default function TeamPage() {
         </div>
         <p className="subtle-text">
           Управляйте ролями и создавайте приглашения. Токен приглашения показывается сразу, потому
-          что отправка писем в v1 ещё не реализована.
+          что отправка писем в v1 ещё не реализована. Новые редакторы по умолчанию заходят в
+          ограниченном режиме, после чего их можно явно перевести в обычный редакторский режим.
         </p>
         <section className="details-section">
           <h3>Участники</h3>

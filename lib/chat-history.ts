@@ -1,8 +1,24 @@
 import { buildLegacyTimelineEntries } from "./stage3-legacy-bridge";
 import { ChatDraft, ChatListItem, Stage3Version } from "../app/components/types";
 import { buildChatListItem, normalizeChatDraft } from "./chat-workflow";
-import { STAGE2_DESCRIPTION_SYSTEM_PROMPT, STAGE2_SYSTEM_PROMPT } from "./stage2";
 import { getDb, newId, nowIso } from "./db/client";
+import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
+  parseStage2PromptConfigJson,
+  Stage2PromptConfig,
+  stringifyStage2PromptConfig
+} from "./stage2-pipeline";
+import {
+  DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  DEFAULT_STAGE2_EXAMPLES_CONFIG,
+  parseStage2ExamplesConfigJson,
+  parseStage2HardConstraintsJson,
+  Stage2ExamplesConfig,
+  Stage2HardConstraints,
+  stringifyStage2ExamplesConfig,
+  stringifyStage2HardConstraints
+} from "./stage2-channel-config";
+import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { getWorkspace } from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
 
@@ -59,6 +75,10 @@ export type Channel = {
   systemPrompt: string;
   descriptionPrompt: string;
   examplesJson: string;
+  stage2WorkerProfileId: string | null;
+  stage2ExamplesConfig: Stage2ExamplesConfig;
+  stage2HardConstraints: Stage2HardConstraints;
+  stage2PromptConfig: Stage2PromptConfig;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
@@ -138,18 +158,30 @@ function ensureValidJsonString(value: string): string {
 }
 
 function mapChannel(row: Record<string, unknown>): Channel {
+  const username = sanitizeUsername(String(row.username ?? ""));
+  const channelId = String(row.id);
+  const channelName = sanitizeName(String(row.name ?? ""), "Channel");
+  const examplesJson = safeJsonString(String(row.examples_json ?? "[]"), "[]");
   return {
-    id: String(row.id),
+    id: channelId,
     workspaceId: String(row.workspace_id),
     creatorUserId: String(row.creator_user_id),
-    name: sanitizeName(String(row.name ?? ""), "Channel"),
-    username: sanitizeUsername(String(row.username ?? "")),
-    systemPrompt: sanitizeTextBlock(String(row.system_prompt ?? ""), STAGE2_SYSTEM_PROMPT),
-    descriptionPrompt: sanitizeTextBlock(
-      String(row.description_prompt ?? ""),
-      STAGE2_DESCRIPTION_SYSTEM_PROMPT
+    name: channelName,
+    username,
+    systemPrompt: sanitizeTextBlock(String(row.system_prompt ?? ""), ""),
+    descriptionPrompt: sanitizeTextBlock(String(row.description_prompt ?? ""), ""),
+    examplesJson,
+    stage2WorkerProfileId: null,
+    stage2ExamplesConfig: parseStage2ExamplesConfigJson(
+      row.stage2_examples_config_json ? String(row.stage2_examples_config_json) : null,
+      { channelId, channelName }
     ),
-    examplesJson: safeJsonString(String(row.examples_json ?? "[]"), "[]"),
+    stage2HardConstraints: row.stage2_hard_constraints_json
+      ? parseStage2HardConstraintsJson(String(row.stage2_hard_constraints_json))
+      : DEFAULT_STAGE2_HARD_CONSTRAINTS,
+    stage2PromptConfig: parseStage2PromptConfigJson(
+      row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null
+    ),
     templateId: sanitizeName(String(row.template_id ?? ""), DEFAULT_TEMPLATE_ID),
     avatarAssetId: row.avatar_asset_id ? String(row.avatar_asset_id) : null,
     defaultBackgroundAssetId: row.default_background_asset_id
@@ -303,28 +335,42 @@ export async function createChannel(input: {
   name?: string;
   username?: string;
   systemPrompt?: string;
-  descriptionPrompt?: string;
-  examplesJson?: string;
+    descriptionPrompt?: string;
+    examplesJson?: string;
+    stage2WorkerProfileId?: string | null;
+  stage2ExamplesConfig?: Stage2ExamplesConfig;
+  stage2HardConstraints?: Stage2HardConstraints;
+  stage2PromptConfig?: Stage2PromptConfig;
   templateId?: string;
 }): Promise<Channel> {
   const now = nowIso();
-  const baseline = await getDefaultChannel(input.workspaceId).catch(() => null);
+  const username = sanitizeUsername(input.username ?? "channel");
   const channel: Channel = {
     id: newId(),
     workspaceId: input.workspaceId,
     creatorUserId: input.creatorUserId,
     name: sanitizeName(input.name, "New channel"),
-    username: sanitizeUsername(input.username ?? "channel"),
-    systemPrompt: sanitizeTextBlock(input.systemPrompt, baseline?.systemPrompt ?? STAGE2_SYSTEM_PROMPT),
-    descriptionPrompt: sanitizeTextBlock(
-      input.descriptionPrompt,
-      baseline?.descriptionPrompt ?? STAGE2_DESCRIPTION_SYSTEM_PROMPT
-    ),
-    examplesJson:
-      typeof input.examplesJson === "string"
-        ? ensureValidJsonString(input.examplesJson)
-        : safeJsonString(baseline?.examplesJson ?? "[]", "[]"),
-    templateId: sanitizeName(input.templateId, baseline?.templateId ?? DEFAULT_TEMPLATE_ID),
+    username,
+    systemPrompt: sanitizeTextBlock(input.systemPrompt, ""),
+    descriptionPrompt: sanitizeTextBlock(input.descriptionPrompt, ""),
+    examplesJson: typeof input.examplesJson === "string" ? ensureValidJsonString(input.examplesJson) : "[]",
+    stage2WorkerProfileId: null,
+    stage2ExamplesConfig: input.stage2ExamplesConfig
+      ? parseStage2ExamplesConfigJson(
+          stringifyStage2ExamplesConfig(input.stage2ExamplesConfig, {
+            channelId: "",
+            channelName: ""
+          }),
+          { channelId: "", channelName: "" }
+        )
+      : DEFAULT_STAGE2_EXAMPLES_CONFIG,
+    stage2HardConstraints: input.stage2HardConstraints
+      ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(input.stage2HardConstraints))
+      : DEFAULT_STAGE2_HARD_CONSTRAINTS,
+    stage2PromptConfig: input.stage2PromptConfig
+      ? parseStage2PromptConfigJson(stringifyStage2PromptConfig(input.stage2PromptConfig))
+      : DEFAULT_STAGE2_PROMPT_CONFIG,
+    templateId: sanitizeName(input.templateId, DEFAULT_TEMPLATE_ID),
     avatarAssetId: null,
     defaultBackgroundAssetId: null,
     defaultMusicAssetId: null,
@@ -333,11 +379,19 @@ export async function createChannel(input: {
     archivedAt: null
   };
 
+  channel.stage2ExamplesConfig = parseStage2ExamplesConfigJson(
+    stringifyStage2ExamplesConfig(channel.stage2ExamplesConfig, {
+      channelId: channel.id,
+      channelName: channel.name
+    }),
+    { channelId: channel.id, channelName: channel.name }
+  );
+
   const db = getDb();
   db.prepare(
     `INSERT INTO channels
-    (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)`
+    (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_examples_config_json, stage2_hard_constraints_json, stage2_prompt_config_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)`
   ).run(
     channel.id,
     channel.workspaceId,
@@ -347,6 +401,13 @@ export async function createChannel(input: {
     channel.systemPrompt,
     channel.descriptionPrompt,
     channel.examplesJson,
+    channel.stage2WorkerProfileId,
+    stringifyStage2ExamplesConfig(channel.stage2ExamplesConfig, {
+      channelId: channel.id,
+      channelName: channel.name
+    }),
+    stringifyStage2HardConstraints(channel.stage2HardConstraints),
+    stringifyStage2PromptConfig(channel.stage2PromptConfig),
     channel.templateId,
     channel.createdAt,
     channel.updatedAt
@@ -362,6 +423,10 @@ export async function updateChannelById(
     systemPrompt: string;
     descriptionPrompt: string;
     examplesJson: string;
+    stage2WorkerProfileId: string | null;
+    stage2ExamplesConfig: Stage2ExamplesConfig;
+    stage2HardConstraints: Stage2HardConstraints;
+    stage2PromptConfig: Stage2PromptConfig;
     templateId: string;
     avatarAssetId: string | null;
     defaultBackgroundAssetId: string | null;
@@ -391,6 +456,28 @@ export async function updateChannelById(
       typeof patch.examplesJson === "string"
         ? ensureValidJsonString(patch.examplesJson)
         : channel.examplesJson,
+    stage2WorkerProfileId: null,
+    stage2ExamplesConfig:
+      "stage2ExamplesConfig" in patch && patch.stage2ExamplesConfig
+        ? parseStage2ExamplesConfigJson(
+            stringifyStage2ExamplesConfig(patch.stage2ExamplesConfig, {
+              channelId,
+              channelName: patch.name ?? channel.name
+            }),
+            {
+              channelId,
+              channelName: patch.name ?? channel.name
+            }
+          )
+        : channel.stage2ExamplesConfig,
+    stage2HardConstraints:
+      "stage2HardConstraints" in patch && patch.stage2HardConstraints
+        ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(patch.stage2HardConstraints))
+        : channel.stage2HardConstraints,
+    stage2PromptConfig:
+      "stage2PromptConfig" in patch && patch.stage2PromptConfig
+        ? parseStage2PromptConfigJson(stringifyStage2PromptConfig(patch.stage2PromptConfig))
+        : channel.stage2PromptConfig,
     templateId:
       typeof patch.templateId === "string"
         ? sanitizeName(patch.templateId, channel.templateId)
@@ -424,6 +511,10 @@ export async function updateChannelById(
       system_prompt = ?,
       description_prompt = ?,
       examples_json = ?,
+      stage2_worker_profile_id = ?,
+      stage2_examples_config_json = ?,
+      stage2_hard_constraints_json = ?,
+      stage2_prompt_config_json = ?,
       template_id = ?,
       avatar_asset_id = ?,
       default_background_asset_id = ?,
@@ -436,6 +527,13 @@ export async function updateChannelById(
     next.systemPrompt,
     next.descriptionPrompt,
     next.examplesJson,
+    next.stage2WorkerProfileId,
+    stringifyStage2ExamplesConfig(next.stage2ExamplesConfig, {
+      channelId: next.id,
+      channelName: next.name
+    }),
+    stringifyStage2HardConstraints(next.stage2HardConstraints),
+    stringifyStage2PromptConfig(next.stage2PromptConfig),
     next.templateId,
     next.avatarAssetId,
     next.defaultBackgroundAssetId,
@@ -597,7 +695,31 @@ export async function listChatListItems(
   workspaceId?: string
 ): Promise<ChatListItem[]> {
   const chats = await listChats(channelId, workspaceId);
-  return chats.map((chat) => buildChatListItem(chat, getChatDraftSync(chat.id, userId)));
+  const resolvedWorkspaceId = workspaceId ?? getAnyWorkspaceId();
+  const activeRunsByChatId = listLatestActiveStage2RunsForChats(
+    chats.map((chat) => chat.id),
+    resolvedWorkspaceId
+  );
+
+  return chats.map((chat) => {
+    const item = buildChatListItem(chat, getChatDraftSync(chat.id, userId));
+    const activeRun = activeRunsByChatId.get(chat.id);
+    if (!activeRun) {
+      return item;
+    }
+
+    const workingStatus = item.maxStep >= 3 || item.hasDraft
+      ? "editing"
+      : item.maxStep >= 2
+        ? "sourceReady"
+        : "new";
+
+    return {
+      ...item,
+      status: item.status === "error" || item.status === "exported" ? workingStatus : item.status,
+      liveAction: "Stage 2"
+    };
+  });
 }
 
 export async function getChatById(chatId: string): Promise<ChatThread | null> {

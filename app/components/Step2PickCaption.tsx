@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Stage2Response } from "./types";
+import React, { useEffect, useMemo, useState } from "react";
+import { Stage2Response, Stage2RunStatus, Stage2RunSummary } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 
 type Step2PickCaptionProps = {
   channelName?: string | null;
   channelUsername?: string | null;
   stage2: Stage2Response | null;
+  progress: Stage2Response["progress"] | null;
   stageCreatedAt: string | null;
   commentsAvailable?: boolean;
   instruction: string;
+  runs: Stage2RunSummary[];
+  selectedRunId: string | null;
+  currentRunStatus: Stage2RunStatus | null;
+  currentRunError: string | null;
   canRunStage2: boolean;
   runBlockedReason?: string | null;
+  isLaunching: boolean;
   isRunning: boolean;
   expectedDurationMs: number;
   elapsedMs: number;
@@ -20,10 +26,15 @@ type Step2PickCaptionProps = {
   selectedTitleOption: number | null;
   onInstructionChange: (value: string) => void;
   onRunStage2: () => void;
+  onSelectRun: (runId: string) => void;
   onSelectOption: (option: number) => void;
   onSelectTitleOption: (option: number) => void;
   onCopy: (value: string, successMessage: string) => void;
 };
+
+type DiagnosticsView = NonNullable<Stage2Response["diagnostics"]>;
+type DiagnosticsPromptStage = DiagnosticsView["effectivePrompting"]["promptStages"][number];
+type DiagnosticsExample = DiagnosticsView["examples"]["availableExamples"][number];
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("ru-RU", {
@@ -67,15 +78,295 @@ function getStage2ProgressRatio(elapsedMs: number, expectedDurationMs: number): 
   return Math.min(0.995, 0.96 + (1 - Math.exp(-overflow * 1.6)) * 0.035);
 }
 
+function formatReasoningEffort(value: string | null | undefined): string {
+  if (!value) {
+    return "Not set";
+  }
+  if (value === "x-high" || value === "xhigh") {
+    return "X-High";
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatRunStatusLabel(status: Stage2RunStatus): string {
+  switch (status) {
+    case "queued":
+      return "В очереди";
+    case "running":
+      return "Идёт";
+    case "completed":
+      return "Готов";
+    case "failed":
+      return "Ошибка";
+    default:
+      return status;
+  }
+}
+
+function formatExamplesSourceLabel(value: "workspace_default" | "channel_custom"): string {
+  return value === "channel_custom" ? "channel custom" : "workspace default";
+}
+
+function truncateText(value: string, maxLength = 140): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function isVerboseStageDetail(value: string | null | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 220 || trimmed.includes("\n");
+}
+
+function summarizeStageDetail(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const firstMeaningfulLine =
+    value
+      .split("\n")
+      .map((item) => item.trim())
+      .find(Boolean) ?? value.trim();
+  return firstMeaningfulLine ? truncateText(firstMeaningfulLine, 120) : null;
+}
+
+function formatNullableNumber(value: number | null | undefined, digits = 2): string | null {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : null;
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function asOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)
+    : [];
+}
+
+function normalizeDiagnosticsExample(input: unknown, bucket: DiagnosticsExample["bucket"]): DiagnosticsExample {
+  const candidate = asObject(input);
+  return {
+    bucket,
+    sourceChannelId:
+      asString(candidate?.sourceChannelId) ||
+      asString(candidate?.ownerChannelId) ||
+      asString(candidate?.videoId) ||
+      "unknown-source",
+    sourceChannelName:
+      asString(candidate?.sourceChannelName) ||
+      asString(candidate?.ownerChannelName) ||
+      "Unknown source",
+    videoId: asOptionalString(candidate?.videoId),
+    title:
+      asString(candidate?.title) ||
+      asString(candidate?.overlayTop) ||
+      asString(candidate?.overlayBottom) ||
+      "Untitled example",
+    clipType: asString(candidate?.clipType, "unknown"),
+    overlayTop: asString(candidate?.overlayTop),
+    overlayBottom: asString(candidate?.overlayBottom),
+    whyItWorks: Array.isArray(candidate?.whyItWorks)
+      ? candidate!.whyItWorks
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
+          .filter(Boolean)
+      : typeof candidate?.whyItWorks === "string" && candidate.whyItWorks.trim()
+        ? [candidate.whyItWorks.trim()]
+        : [],
+    qualityScore: asNumber(candidate?.qualityScore),
+    retrievalScore: asNumber(candidate?.retrievalScore),
+    retrievalReasons: asStringArray(candidate?.retrievalReasons),
+    sampleKind: asOptionalString(candidate?.sampleKind),
+    isOwnedAnchor: Boolean(candidate?.isOwnedAnchor),
+    isAntiExample: Boolean(candidate?.isAntiExample),
+    publishedAt: asOptionalString(candidate?.publishedAt),
+    views: asNumber(candidate?.views),
+    ageHours: asNumber(candidate?.ageHours),
+    anomalyScore: asNumber(candidate?.anomalyScore)
+  };
+}
+
+function normalizePromptStage(input: unknown, index: number): DiagnosticsPromptStage | null {
+  const candidate = asObject(input);
+  if (!candidate) {
+    return null;
+  }
+
+  const stageId = asString(candidate.stageId) || `stage_${index + 1}`;
+  const defaultPrompt =
+    asString(candidate.defaultPrompt) || asString(candidate.defaultTemplate);
+  const configuredPrompt =
+    asString(candidate.configuredPrompt) ||
+    asString(candidate.effectiveTemplate) ||
+    asString(candidate.channelOverride) ||
+    defaultPrompt;
+  return {
+    stageId,
+    label: asString(candidate.label) || stageId,
+    stageType: "llm_prompt",
+    defaultPrompt,
+    configuredPrompt,
+    reasoningEffort: asOptionalString(candidate.reasoningEffort),
+    isCustomPrompt:
+      typeof candidate.isCustomPrompt === "boolean"
+        ? candidate.isCustomPrompt
+        : configuredPrompt !== defaultPrompt,
+    promptText: asOptionalString(candidate.promptText),
+    promptChars: asNumber(candidate.promptChars),
+    usesImages: Boolean(candidate.usesImages),
+    summary: asString(candidate.summary)
+  };
+}
+
+function normalizeStage2DiagnosticsForView(
+  input: Stage2Response["diagnostics"] | null | undefined,
+  fallback: {
+    channelName?: string | null;
+    channelUsername?: string | null;
+  }
+): DiagnosticsView | null {
+  const candidate = asObject(input);
+  if (!candidate) {
+    return null;
+  }
+
+  const currentChannel = asObject(candidate.channel);
+  const legacyProfile = asObject(candidate.profile);
+  const selectionCandidate = asObject(candidate.selection);
+  const promptingCandidate = asObject(candidate.effectivePrompting);
+  const examplesCandidate = asObject(candidate.examples);
+  const legacyRetrieval = asObject(candidate.retrieval);
+
+  const promptStages = Array.isArray(promptingCandidate?.promptStages)
+    ? promptingCandidate.promptStages
+        .map((stage, index) => normalizePromptStage(stage, index))
+        .filter((stage): stage is DiagnosticsPromptStage => stage !== null)
+    : [];
+
+  const availableExamples =
+    Array.isArray(examplesCandidate?.availableExamples) && examplesCandidate.availableExamples.length > 0
+      ? examplesCandidate.availableExamples.map((item) => normalizeDiagnosticsExample(item, "available"))
+      : [
+          ...(Array.isArray(legacyRetrieval?.stableExamples) ? legacyRetrieval.stableExamples : []),
+          ...(Array.isArray(legacyRetrieval?.hotExamples) ? legacyRetrieval.hotExamples : []),
+          ...(Array.isArray(legacyRetrieval?.antiExamples) ? legacyRetrieval.antiExamples : [])
+        ].map((item) => normalizeDiagnosticsExample(item, "available"));
+
+  const selectedExamples =
+    Array.isArray(examplesCandidate?.selectedExamples) && examplesCandidate.selectedExamples.length > 0
+      ? examplesCandidate.selectedExamples.map((item) => normalizeDiagnosticsExample(item, "selected"))
+      : availableExamples.slice(0, Math.min(3, availableExamples.length)).map((item) => ({
+          ...item,
+          bucket: "selected" as const
+        }));
+
+  const rankedAnglesRaw = Array.isArray(selectionCandidate?.rankedAngles)
+    ? selectionCandidate.rankedAngles
+    : [];
+  const rankedAngles = rankedAnglesRaw
+    .map((item) => {
+      const ranked = asObject(item);
+      const angle = asString(ranked?.angle);
+      const why = asString(ranked?.why);
+      const score = asNumber(ranked?.score);
+      if (!angle || !why || score === null) {
+        return null;
+      }
+      return { angle, why, score };
+    })
+    .filter(
+      (
+        item
+      ): item is DiagnosticsView["selection"]["rankedAngles"][number] => item !== null
+    );
+
+  return {
+    channel: {
+      channelId:
+        asString(currentChannel?.channelId) ||
+        asString(currentChannel?.id) ||
+        asString(legacyProfile?.profileId) ||
+        "current-channel",
+      name: asString(currentChannel?.name) || asString(legacyProfile?.name) || fallback.channelName || "Current channel",
+      username: asString(currentChannel?.username) || fallback.channelUsername || "",
+      examplesSource:
+        currentChannel?.examplesSource === "channel_custom" ? "channel_custom" : "workspace_default",
+      hardConstraints:
+        asObject(currentChannel?.hardConstraints) && currentChannel?.hardConstraints
+          ? (currentChannel.hardConstraints as DiagnosticsView["channel"]["hardConstraints"])
+          : {
+              topLengthMin: 0,
+              topLengthMax: 0,
+              bottomLengthMin: 0,
+              bottomLengthMax: 0,
+              bottomQuoteRequired: false,
+              bannedWords: [],
+              bannedOpeners: []
+            },
+      workspaceCorpusCount: asNumber(currentChannel?.workspaceCorpusCount) ?? availableExamples.length,
+      activeCorpusCount: asNumber(currentChannel?.activeCorpusCount) ?? availableExamples.length
+    },
+    selection: {
+      clipType:
+        asString(selectionCandidate?.clipType) ||
+        availableExamples[0]?.clipType ||
+        "unknown",
+      rankedAngles,
+      writerBrief: asString(selectionCandidate?.writerBrief),
+      rationale: asOptionalString(selectionCandidate?.rationale),
+      selectedExampleIds: Array.isArray(selectionCandidate?.selectedExampleIds)
+        ? selectionCandidate.selectedExampleIds
+            .map((item) => (typeof item === "string" ? item.trim() : ""))
+            .filter(Boolean)
+        : []
+    },
+    effectivePrompting: {
+      promptStages
+    },
+    examples: {
+      source:
+        examplesCandidate?.source === "channel_custom" ? "channel_custom" : "workspace_default",
+      workspaceCorpusCount:
+        asNumber(examplesCandidate?.workspaceCorpusCount) ?? availableExamples.length,
+      activeCorpusCount: asNumber(examplesCandidate?.activeCorpusCount) ?? availableExamples.length,
+      availableExamples,
+      selectedExamples
+    }
+  };
+}
+
 export function Step2PickCaption({
   channelName,
   channelUsername,
   stage2,
+  progress,
   stageCreatedAt,
   commentsAvailable = true,
   instruction,
+  runs,
+  selectedRunId,
+  currentRunStatus,
+  currentRunError,
   canRunStage2,
   runBlockedReason,
+  isLaunching,
   isRunning,
   expectedDurationMs,
   elapsedMs,
@@ -83,11 +374,16 @@ export function Step2PickCaption({
   selectedTitleOption,
   onInstructionChange,
   onRunStage2,
+  onSelectRun,
   onSelectOption,
   onSelectTitleOption,
   onCopy
 }: Step2PickCaptionProps) {
   const [jsonOpen, setJsonOpen] = useState(false);
+  const selectedRun = useMemo(
+    () => runs.find((run) => run.runId === selectedRunId) ?? null,
+    [runs, selectedRunId]
+  );
 
   useEffect(() => {
     if (!stage2) {
@@ -121,10 +417,35 @@ export function Step2PickCaption({
     );
   }, [selectedTitleOption, stage2]);
   const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
+  const visibleProgress = progress ?? stage2?.progress ?? null;
+  const diagnostics = useMemo(
+    () =>
+      normalizeStage2DiagnosticsForView(stage2?.diagnostics ?? null, {
+        channelName,
+        channelUsername
+      }),
+    [stage2?.diagnostics, channelName, channelUsername]
+  );
+  const activeProgressStep = useMemo(() => {
+    if (!visibleProgress) {
+      return null;
+    }
+    return (
+      visibleProgress.steps.find((step) => step.id === visibleProgress.activeStageId) ??
+      visibleProgress.steps.find((step) => step.state === "running") ??
+      null
+    );
+  }, [visibleProgress]);
   const progressRatio = useMemo(
     () => getStage2ProgressRatio(elapsedMs, expectedDurationMs),
     [elapsedMs, expectedDurationMs]
   );
+  const overrideCount = useMemo(() => {
+    if (!diagnostics) {
+      return 0;
+    }
+    return diagnostics.effectivePrompting.promptStages.filter((stage) => stage.isCustomPrompt).length;
+  }, [diagnostics]);
 
   return (
     <StepWorkspace
@@ -173,11 +494,15 @@ export function Step2PickCaption({
                 type="button"
                 className="btn btn-primary"
                 onClick={onRunStage2}
-                disabled={!canRunStage2 || isRunning}
-                aria-busy={isRunning}
+                disabled={!canRunStage2}
+                aria-busy={isLaunching}
                 title={!canRunStage2 ? runBlockedReason ?? undefined : undefined}
               >
-                {isRunning ? "Генерируем..." : "Сгенерировать варианты"}
+                {isLaunching
+                  ? "Запускаем..."
+                  : isRunning
+                    ? "Запустить ещё одну генерацию"
+                    : "Сгенерировать варианты"}
               </button>
             </div>
             <section className="stage2-timing-card" aria-live="polite">
@@ -196,14 +521,267 @@ export function Step2PickCaption({
                 {isRunning
                   ? elapsedMs > expectedDurationMs
                     ? "Уже дольше обычного, но процесс продолжается."
-                    : "Идет генерация. Оценка основана на предыдущем успешном запуске."
-                  : "Оценка обновляется после каждого успешного запуска второго этапа."}
+                    : activeProgressStep
+                      ? `Сейчас: ${activeProgressStep.shortLabel}.`
+                      : "Идет генерация. Оценка основана на предыдущем успешном запуске."
+                  : visibleProgress?.status === "completed"
+                    ? "Последний запуск завершился по шагам ниже."
+                    : "Оценка обновляется после каждого успешного запуска второго этапа."}
               </p>
+              {selectedRun ? (
+                <p className={`subtle-text ${currentRunStatus === "failed" ? "danger-text" : ""}`}>
+                  Run {selectedRun.runId.slice(0, 8)} · {formatRunStatusLabel(selectedRun.status)}
+                  {selectedRun.mode === "auto" ? " · auto" : ""}
+                  {currentRunError ? ` · ${currentRunError}` : ""}
+                </p>
+              ) : null}
+              {visibleProgress ? (
+                <ol className="stage2-stage-list" aria-label="Прогресс Stage 2 pipeline">
+                  {visibleProgress.steps.map((step, index) => {
+                    const isActive = visibleProgress.activeStageId === step.id || step.state === "running";
+                    return (
+                      <li
+                        key={step.id}
+                        className={`stage2-stage-item state-${step.state} ${isActive ? "is-active" : ""}`}
+                        aria-current={isActive ? "step" : undefined}
+                      >
+                        <div className="stage2-stage-index">{index + 1}</div>
+                        <div className="stage2-stage-body">
+                          <div className="stage2-stage-head">
+                            <strong>{step.shortLabel}</strong>
+                            <span className="subtle-text">{step.label}</span>
+                          </div>
+                          <p className="subtle-text">{step.description}</p>
+                          {step.detail && step.detail !== step.description ? (
+                            isVerboseStageDetail(step.detail) ? (
+                              <details className="stage2-stage-detail-toggle">
+                                <summary>
+                                  <span>
+                                    {step.state === "failed" ? "Показать лог ошибки" : "Показать детали этапа"}
+                                  </span>
+                                  {summarizeStageDetail(step.detail) ? (
+                                    <small>{summarizeStageDetail(step.detail)}</small>
+                                  ) : null}
+                                </summary>
+                                <div className="stage2-stage-detail-panel">
+                                  <pre className="stage2-stage-detail-log">{step.detail}</pre>
+                                </div>
+                              </details>
+                            ) : (
+                              <p className="subtle-text">{step.detail}</p>
+                            )
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : null}
             </section>
+            {runs.length > 0 ? (
+              <section className="stage2-run-picker" aria-label="История Stage 2 runs">
+                <div className="stage2-run-picker-head">
+                  <span className="field-label">Runs</span>
+                  <span className="subtle-text">Текущий экран привязан к durable run state, а не к открытому tab.</span>
+                </div>
+                <div className="stage2-run-pill-list">
+                  {runs.map((run) => (
+                    <button
+                      key={run.runId}
+                      type="button"
+                      className={`stage2-run-pill ${selectedRunId === run.runId ? "is-active" : ""} status-${run.status}`}
+                      onClick={() => onSelectRun(run.runId)}
+                    >
+                      <strong>{formatRunStatusLabel(run.status)}</strong>
+                      <span>{formatDate(run.createdAt)}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : null}
             {!canRunStage2 && runBlockedReason ? (
               <p className="subtle-text danger-text">{runBlockedReason}</p>
             ) : null}
           </section>
+
+          {diagnostics ? (
+            <>
+              <section className="control-card control-card-subtle">
+                <div className="option-card-head">
+                  <div>
+                    <h3>Как этот run реально устроен</h3>
+                    <p className="subtle-text">
+                      Channel config, active examples corpus и selector output ниже отражают реальную
+                      Stage 2 конфигурацию этого запуска.
+                    </p>
+                  </div>
+                </div>
+                <div className="stage2-insight-grid">
+                  <article className="stage2-insight-card">
+                    <span className="field-label">Channel</span>
+                    <strong>{diagnostics.channel.name}</strong>
+                    <p className="subtle-text">
+                      @{diagnostics.channel.username} · source{" "}
+                      {formatExamplesSourceLabel(diagnostics.channel.examplesSource)}
+                    </p>
+                  </article>
+                  <article className="stage2-insight-card">
+                    <span className="field-label">Selection</span>
+                    <strong>{diagnostics.selection.clipType}</strong>
+                    <p className="subtle-text">
+                      {diagnostics.selection.rankedAngles.map((item) => item.angle).slice(0, 3).join(", ")}
+                    </p>
+                  </article>
+                  <article className="stage2-insight-card">
+                    <span className="field-label">Examples</span>
+                    <strong>
+                      active {diagnostics.examples.activeCorpusCount} / workspace{" "}
+                      {diagnostics.examples.workspaceCorpusCount}
+                    </strong>
+                    <p className="subtle-text">
+                      selector picked {diagnostics.examples.selectedExamples.length}
+                    </p>
+                  </article>
+                  <article className="stage2-insight-card">
+                    <span className="field-label">Custom prompts</span>
+                    <strong>{overrideCount}</strong>
+                    <p className="subtle-text">stage prompts отличаются от базовых defaults</p>
+                  </article>
+                </div>
+              </section>
+
+              <details className="details-drawer">
+                <summary>
+                  <span>Effective prompts</span>
+                  <small>Что реально driving Stage 2</small>
+                </summary>
+                <div className="details-content">
+                  <p className="subtle-text">
+                    Здесь видно, какой конкретный prompt и какой reasoning реально были настроены
+                    для каждого Stage 2 этапа.
+                  </p>
+                  <div className="stage2-prompt-stage-list">
+                    {diagnostics.effectivePrompting.promptStages.map((stage) => (
+                      <article key={stage.stageId} className="stage2-prompt-stage-card">
+                        <div className="stage2-prompt-stage-head">
+                          <div>
+                            <strong>{stage.label}</strong>
+                            <p className="subtle-text">
+                              LLM stage
+                              {" · system prompt"}
+                              {stage.usesImages ? " · uses extracted frames" : ""}
+                              {stage.promptChars ? ` · ${stage.promptChars} chars` : ""}
+                            </p>
+                          </div>
+                          {stage.isCustomPrompt ? (
+                            <span className="badge">Custom prompt</span>
+                          ) : (
+                            <span className="badge muted">Default prompt</span>
+                          )}
+                        </div>
+                        <p className="subtle-text">{stage.summary}</p>
+                        <div className="stage2-prompt-meta-row">
+                          <div className="stage2-prompt-meta">
+                            <span className="field-label">Reasoning</span>
+                            <p className="text-block">{formatReasoningEffort(stage.reasoningEffort)}</p>
+                          </div>
+                          <div className="stage2-prompt-meta">
+                            <span className="field-label">Prompt source</span>
+                            <p className="text-block">
+                              {stage.isCustomPrompt ? "Channel-specific prompt" : "Default prompt"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="stage2-prompt-meta">
+                          <span className="field-label">Configured prompt</span>
+                          <p className="text-block">{stage.configuredPrompt}</p>
+                        </div>
+                        <details className="advanced-block">
+                          <summary>Показать полный prompt с контекстом</summary>
+                          <div className="advanced-content">
+                            <pre className="json-view">{stage.promptText}</pre>
+                          </div>
+                        </details>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              </details>
+
+              <details className="details-drawer">
+                <summary>
+                  <span>Examples used</span>
+                  <small>Active corpus + selector picks</small>
+                </summary>
+                <div className="details-content">
+                  <section className="details-section">
+                    <h3>Selection context</h3>
+                    <p className="subtle-text">Writer brief: {diagnostics.selection.writerBrief}</p>
+                    <p className="subtle-text">
+                      Ranked angles: {diagnostics.selection.rankedAngles.map((item) => `${item.angle} (${item.score.toFixed(1)})`).join(", ")}
+                    </p>
+                    {diagnostics.selection.rationale ? (
+                      <p className="subtle-text">Selector rationale: {diagnostics.selection.rationale}</p>
+                    ) : null}
+                    <p className="subtle-text">
+                      Corpus source: {formatExamplesSourceLabel(diagnostics.examples.source)} · active{" "}
+                      {diagnostics.examples.activeCorpusCount} / workspace{" "}
+                      {diagnostics.examples.workspaceCorpusCount}
+                    </p>
+                  </section>
+
+                  {([
+                    ["selectedExamples", "Selector picks"],
+                    ["availableExamples", "Available corpus"]
+                  ] as const).map(([key, label]) => {
+                    const items = diagnostics.examples[key];
+                    return (
+                      <section key={key} className="details-section">
+                        <h3>
+                          {label} ({items.length})
+                        </h3>
+                        {items.length === 0 ? (
+                          <p className="subtle-text">В этом запуске элементов не было.</p>
+                        ) : (
+                          <ul className="stage2-example-list">
+                            {items.map((item, index) => (
+                              <li key={`${key}-${item.sourceChannelId}-${item.title}-${index}`} className="stage2-example-card">
+                                <div className="stage2-example-head">
+                                  <strong>{item.title}</strong>
+                                  <span className="subtle-text">
+                                    {item.sourceChannelName} · {item.clipType}
+                                  </span>
+                                </div>
+                                <p className="subtle-text">
+                                  TOP: {truncateText(item.overlayTop)}
+                                </p>
+                                <p className="subtle-text">
+                                  BOTTOM: {truncateText(item.overlayBottom)}
+                                </p>
+                                <p className="subtle-text">
+                                  quality {formatNullableNumber(item.qualityScore) ?? "n/a"} · score {formatNullableNumber(item.retrievalScore) ?? "n/a"} · {item.sampleKind ?? "n/a"}
+                                </p>
+                                {item.whyItWorks.length > 0 ? (
+                                  <p className="subtle-text">
+                                    Why it works: {item.whyItWorks.join(", ")}
+                                  </p>
+                                ) : null}
+                                {item.retrievalReasons.length > 0 ? (
+                                  <p className="subtle-text">
+                                    Picked because: {item.retrievalReasons.join(", ")}
+                                  </p>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              </details>
+            </>
+          ) : null}
 
           {!stage2 ? (
             <div className="empty-box">

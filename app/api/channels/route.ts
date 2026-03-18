@@ -5,6 +5,9 @@ import {
 } from "../../../lib/chat-history";
 import { requireAuth } from "../../../lib/auth/guards";
 import { resolveChannelPermissions } from "../../../lib/acl";
+import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
+import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2-channel-config";
+import { getWorkspaceStage2ExamplesCorpusJson } from "../../../lib/team-store";
 
 export const runtime = "nodejs";
 
@@ -14,6 +17,10 @@ type CreateChannelBody = {
   systemPrompt?: string;
   descriptionPrompt?: string;
   examplesJson?: string;
+  stage2WorkerProfileId?: string | null;
+  stage2ExamplesConfig?: Stage2ExamplesConfig;
+  stage2HardConstraints?: Stage2HardConstraints;
+  stage2PromptConfig?: Stage2PromptConfig;
   templateId?: string;
 };
 
@@ -42,7 +49,13 @@ export async function GET(): Promise<Response> {
       })
     );
 
-    return Response.json({ channels: visibleChannels.filter(Boolean) }, { status: 200 });
+    return Response.json(
+      {
+        channels: visibleChannels.filter(Boolean),
+        workspaceStage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id)
+      },
+      { status: 200 }
+    );
   } catch (error) {
     if (error instanceof Response) {
       return error;
@@ -69,6 +82,10 @@ export async function POST(request: Request): Promise<Response> {
       systemPrompt: body?.systemPrompt,
       descriptionPrompt: body?.descriptionPrompt,
       examplesJson: body?.examplesJson,
+      stage2WorkerProfileId: body?.stage2WorkerProfileId,
+      stage2ExamplesConfig: body?.stage2ExamplesConfig,
+      stage2HardConstraints: body?.stage2HardConstraints,
+      stage2PromptConfig: body?.stage2PromptConfig,
       templateId: body?.templateId
     });
     return Response.json({ channel }, { status: 200 });

@@ -3,7 +3,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Загрузчик Reels / Shorts",
-  description: "Загрузка публичных reels и shorts в mp4"
+  description: "Загрузка публичных reels и shorts в mp4",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg"
+  }
 };
 
 type RootLayoutProps = Readonly<{

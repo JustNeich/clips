@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
+  stage2_examples_corpus_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -88,6 +89,10 @@ CREATE TABLE IF NOT EXISTS channels (
   system_prompt TEXT NOT NULL,
   description_prompt TEXT NOT NULL,
   examples_json TEXT NOT NULL,
+  stage2_worker_profile_id TEXT,
+  stage2_examples_config_json TEXT,
+  stage2_hard_constraints_json TEXT,
+  stage2_prompt_config_json TEXT,
   template_id TEXT NOT NULL,
   avatar_asset_id TEXT,
   default_background_asset_id TEXT,
@@ -161,6 +166,30 @@ CREATE TABLE IF NOT EXISTS chat_drafts (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
   FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS stage2_runs (
+  run_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  creator_user_id TEXT,
+  channel_id TEXT,
+  chat_id TEXT,
+  source_url TEXT,
+  user_instruction TEXT,
+  mode TEXT,
+  status TEXT NOT NULL,
+  request_json TEXT,
+  snapshot_json TEXT NOT NULL,
+  result_json TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  updated_at TEXT NOT NULL,
+  finished_at TEXT,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (creator_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE SET NULL,
+  FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -289,6 +318,12 @@ CREATE INDEX IF NOT EXISTS idx_stage3_jobs_workspace
 CREATE UNIQUE INDEX IF NOT EXISTS idx_stage3_jobs_kind_dedupe
   ON stage3_jobs(kind, dedupe_key)
   WHERE dedupe_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_stage2_runs_chat_created
+  ON stage2_runs(chat_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_stage2_runs_status_created
+  ON stage2_runs(status, created_at ASC);
 
 CREATE INDEX IF NOT EXISTS idx_stage3_job_events_job
   ON stage3_job_events(job_id, created_at ASC);

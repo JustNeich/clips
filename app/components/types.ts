@@ -1,3 +1,7 @@
+import type { Stage2ProgressSnapshot, Stage2PromptConfig } from "../../lib/stage2-pipeline";
+import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../../lib/stage2-channel-config";
+import type { Stage2Diagnostics } from "../../lib/viral-shorts-worker/types";
+
 export type CommentItem = {
   id: string;
   author: string;
@@ -58,14 +62,58 @@ export type Stage2Response = {
     tags: string;
   } | null;
   warnings: Array<{ field: string; message: string }>;
+  diagnostics?: Stage2Diagnostics;
+  progress?: Stage2ProgressSnapshot | null;
   model?: string;
   reasoningEffort?: string;
   userInstructionUsed?: string | null;
+  stage2Spec?: {
+    name: string;
+    outputSections: string[];
+    topLengthRule: string;
+    bottomLengthRule: string;
+    enforcedVia: string;
+  };
+  stage2Worker?: {
+    runId: string;
+    profileId?: string;
+    stateDir?: string;
+  };
+  stage2Run?: {
+    runId: string;
+    mode: "manual" | "auto";
+    createdAt: string;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+  };
   channel?: {
     id: string;
     name: string;
     username: string;
   };
+};
+
+export type Stage2RunStatus = "queued" | "running" | "completed" | "failed";
+
+export type Stage2RunSummary = {
+  runId: string;
+  chatId: string | null;
+  channelId: string | null;
+  sourceUrl: string;
+  userInstruction: string | null;
+  mode: "manual" | "auto";
+  status: Stage2RunStatus;
+  progress: Stage2ProgressSnapshot;
+  errorMessage: string | null;
+  hasResult: boolean;
+  createdAt: string;
+  startedAt: string | null;
+  updatedAt: string;
+  finishedAt: string | null;
+};
+
+export type Stage2RunDetail = Stage2RunSummary & {
+  result: Stage2Response | null;
 };
 
 export type Stage3AgentPass = {
@@ -600,6 +648,10 @@ export type Channel = {
   systemPrompt: string;
   descriptionPrompt: string;
   examplesJson: string;
+  stage2WorkerProfileId: string | null;
+  stage2ExamplesConfig: Stage2ExamplesConfig;
+  stage2HardConstraints: Stage2HardConstraints;
+  stage2PromptConfig: Stage2PromptConfig;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
@@ -667,6 +719,7 @@ export type WorkspaceRecord = {
   id: string;
   name: string;
   slug: string;
+  stage2ExamplesCorpusJson?: string;
   createdAt: string;
   updatedAt: string;
 };
