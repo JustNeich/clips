@@ -147,6 +147,14 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "stage2_runs", "result_json", "TEXT");
   addColumnIfMissing(db, "stage2_runs", "error_message", "TEXT");
   addColumnIfMissing(db, "stage2_runs", "started_at", "TEXT");
+  addColumnIfMissing(db, "source_jobs", "creator_user_id", "TEXT");
+  addColumnIfMissing(db, "source_jobs", "channel_id", "TEXT");
+  addColumnIfMissing(db, "source_jobs", "chat_id", "TEXT");
+  addColumnIfMissing(db, "source_jobs", "source_url", "TEXT");
+  addColumnIfMissing(db, "source_jobs", "request_json", "TEXT");
+  addColumnIfMissing(db, "source_jobs", "result_json", "TEXT");
+  addColumnIfMissing(db, "source_jobs", "error_message", "TEXT");
+  addColumnIfMissing(db, "source_jobs", "started_at", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "execution_target", "TEXT NOT NULL DEFAULT 'local'");
   addColumnIfMissing(db, "stage3_jobs", "assigned_worker_id", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "lease_expires_at", "TEXT");
@@ -168,6 +176,15 @@ function applyDbMigrations(db: DatabaseSync): void {
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage2_runs_status_created ON stage2_runs(status, created_at ASC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_source_jobs_workspace_updated ON source_jobs(workspace_id, updated_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_source_jobs_chat_created ON source_jobs(chat_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_source_jobs_status_created ON source_jobs(status, created_at ASC)"
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage3_jobs_execution ON stage3_jobs(execution_target, status, created_at ASC)"

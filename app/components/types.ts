@@ -116,6 +116,52 @@ export type Stage2RunDetail = Stage2RunSummary & {
   result: Stage2Response | null;
 };
 
+export type SourceJobStatus = "queued" | "running" | "completed" | "failed";
+
+export type SourceJobStageId = "prepare" | "comments" | "stage2";
+
+export type SourceJobProgressSnapshot = {
+  status: SourceJobStatus;
+  activeStageId: SourceJobStageId | null;
+  detail: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  updatedAt: string;
+  finishedAt: string | null;
+  error: string | null;
+};
+
+export type SourceJobResult = {
+  chatId: string;
+  channelId: string;
+  sourceUrl: string;
+  stage1Ready: boolean;
+  title: string | null;
+  commentsAvailable: boolean;
+  commentsError: string | null;
+  commentsPayload: CommentsPayload | null;
+  autoStage2RunId: string | null;
+};
+
+export type SourceJobSummary = {
+  jobId: string;
+  chatId: string;
+  channelId: string;
+  sourceUrl: string;
+  status: SourceJobStatus;
+  progress: SourceJobProgressSnapshot;
+  errorMessage: string | null;
+  hasResult: boolean;
+  createdAt: string;
+  startedAt: string | null;
+  updatedAt: string;
+  finishedAt: string | null;
+};
+
+export type SourceJobDetail = SourceJobSummary & {
+  result: SourceJobResult | null;
+};
+
 export type Stage3AgentPass = {
   pass: number;
   label: string;

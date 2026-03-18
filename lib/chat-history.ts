@@ -19,6 +19,7 @@ import {
   stringifyStage2HardConstraints
 } from "./stage2-channel-config";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
+import { listLatestActiveSourceJobsForChats } from "./source-job-store";
 import { getWorkspace } from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
 
@@ -696,6 +697,10 @@ export async function listChatListItems(
 ): Promise<ChatListItem[]> {
   const chats = await listChats(channelId, workspaceId);
   const resolvedWorkspaceId = workspaceId ?? getAnyWorkspaceId();
+  const activeSourceJobsByChatId = listLatestActiveSourceJobsForChats(
+    chats.map((chat) => chat.id),
+    resolvedWorkspaceId
+  );
   const activeRunsByChatId = listLatestActiveStage2RunsForChats(
     chats.map((chat) => chat.id),
     resolvedWorkspaceId
@@ -703,6 +708,17 @@ export async function listChatListItems(
 
   return chats.map((chat) => {
     const item = buildChatListItem(chat, getChatDraftSync(chat.id, userId));
+    const activeSourceJob = activeSourceJobsByChatId.get(chat.id);
+    if (activeSourceJob) {
+      const liveAction =
+        activeSourceJob.progress.activeStageId === "comments" ? "Comments" : "Fetching";
+      return {
+        ...item,
+        preferredStep: 1,
+        liveAction
+      };
+    }
+
     const activeRun = activeRunsByChatId.get(chat.id);
     if (!activeRun) {
       return item;
@@ -717,6 +733,7 @@ export async function listChatListItems(
     return {
       ...item,
       status: item.status === "error" || item.status === "exported" ? workingStatus : item.status,
+      preferredStep: 2,
       liveAction: "Stage 2"
     };
   });

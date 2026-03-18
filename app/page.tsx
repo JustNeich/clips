@@ -37,6 +37,8 @@ import {
   Stage3Segment,
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionStatus,
+  SourceJobDetail,
+  SourceJobSummary,
   Stage3StateSnapshot,
   Stage3TextFitSnapshot,
   Stage3TimelineResponse,
@@ -55,6 +57,11 @@ import {
   matchesScopedRequestVersion,
   pickPreferredStage2RunId
 } from "../lib/stage2-run-client";
+import {
+  getSourceJobElapsedMs,
+  isSourceJobActive,
+  pickPreferredSourceJobId
+} from "../lib/source-job-client";
 import {
   STAGE3_TEMPLATE_ID
 } from "../lib/stage3-template";
@@ -90,6 +97,10 @@ const STAGE2_DETAIL_POLL_VISIBLE_MS = 900;
 const STAGE2_DETAIL_POLL_HIDDEN_MS = 2_500;
 const STAGE2_RUNS_POLL_VISIBLE_MS = 1_800;
 const STAGE2_RUNS_POLL_HIDDEN_MS = 5_000;
+const SOURCE_DETAIL_POLL_VISIBLE_MS = 900;
+const SOURCE_DETAIL_POLL_HIDDEN_MS = 2_500;
+const SOURCE_JOBS_POLL_VISIBLE_MS = 1_800;
+const SOURCE_JOBS_POLL_HIDDEN_MS = 5_000;
 const STAGE2_ELAPSED_TICK_MS = 250;
 const STAGE2_ELAPSED_TICK_HIDDEN_MS = 1_000;
 const STAGE2_POLL_RETRY_VISIBLE_MS = 1_500;
@@ -452,6 +463,73 @@ function equalStage2RunDetail(
     equalStage2RunSummary(left, right) &&
     Boolean(left.result) === Boolean(right.result)
   );
+}
+
+function equalSourceJobSummary(
+  left: SourceJobSummary,
+  right: SourceJobSummary
+): boolean {
+  return (
+    left.jobId === right.jobId &&
+    left.chatId === right.chatId &&
+    left.channelId === right.channelId &&
+    left.sourceUrl === right.sourceUrl &&
+    left.status === right.status &&
+    left.errorMessage === right.errorMessage &&
+    left.hasResult === right.hasResult &&
+    left.createdAt === right.createdAt &&
+    left.startedAt === right.startedAt &&
+    left.updatedAt === right.updatedAt &&
+    left.finishedAt === right.finishedAt &&
+    left.progress.status === right.progress.status &&
+    left.progress.updatedAt === right.progress.updatedAt &&
+    left.progress.activeStageId === right.progress.activeStageId &&
+    left.progress.error === right.progress.error &&
+    (left.progress.detail ?? null) === (right.progress.detail ?? null)
+  );
+}
+
+function equalSourceJobSummaries(left: SourceJobSummary[], right: SourceJobSummary[]): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (!equalSourceJobSummary(left[index]!, right[index]!)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function equalSourceJobDetail(
+  left: SourceJobDetail | null | undefined,
+  right: SourceJobDetail | null | undefined
+): boolean {
+  if (!left && !right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return equalSourceJobSummary(left, right) && Boolean(left.result) === Boolean(right.result);
+}
+
+function deriveLivePreferredStep(params: {
+  chat: ChatThread | null;
+  draft: ChatDraft | null;
+  sourceJobs?: SourceJobSummary[];
+  stage2Runs?: Stage2RunSummary[];
+}): 1 | 2 | 3 {
+  if (params.sourceJobs?.some((job) => isSourceJobActive(job))) {
+    return 1;
+  }
+  if (params.stage2Runs?.some((run) => isStage2RunActive(run))) {
+    return 2;
+  }
+  return getPreferredStepForChat(params.chat, params.draft);
 }
 
 function currentPollDelay(visibleMs: number, hiddenMs: number): number {
@@ -1019,6 +1097,11 @@ export default function HomePage() {
   const [stage2ExpectedDurationMs, setStage2ExpectedDurationMs] = useState(
     DEFAULT_STAGE2_EXPECTED_DURATION_MS
   );
+  const [sourceJobs, setSourceJobs] = useState<SourceJobSummary[]>([]);
+  const [sourceJobDetail, setSourceJobDetail] = useState<SourceJobDetail | null>(null);
+  const [sourceJobElapsedMs, setSourceJobElapsedMs] = useState(0);
+  const [sourceJobId, setSourceJobId] = useState<string | null>(null);
+  const [isSourceEnqueueing, setIsSourceEnqueueing] = useState(false);
   const [stage2Runs, setStage2Runs] = useState<Stage2RunSummary[]>([]);
   const [stage2RunDetail, setStage2RunDetail] = useState<Stage2RunDetail | null>(null);
   const [stage2ElapsedMs, setStage2ElapsedMs] = useState(0);
@@ -1037,9 +1120,12 @@ export default function HomePage() {
   const stage3PreviewRequestIdRef = useRef(0);
   const stage3LastGoodPreviewAtRef = useRef<number | null>(null);
   const restoringFlowShellStateRef = useRef<PersistedFlowShellState | null>(null);
+  const sourceProgressPollIdRef = useRef(0);
+  const sourceJobsRequestVersionsRef = useRef<Record<string, number>>({});
   const stage2ProgressPollIdRef = useRef(0);
   const stage2RunsRequestVersionsRef = useRef<Record<string, number>>({});
   const stage2SelectionSourceRef = useRef<string | null>(null);
+  const desiredActiveChatIdRef = useRef<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
   const activeChatRef = useRef<ChatThread | null>(null);
   const activeDraftRef = useRef<ChatDraft | null>(null);
@@ -1638,10 +1724,15 @@ export default function HomePage() {
         new Date(localDraft.updatedAt).getTime() > new Date(serverDraft.updatedAt).getTime())
         ? localDraft
         : serverDraft;
+    patchChatListItem(buildChatListItem(body.chat, resolvedDraft));
+    if (desiredActiveChatIdRef.current && desiredActiveChatIdRef.current !== chatId) {
+      return { chat: body.chat, draft: resolvedDraft };
+    }
     const shouldHydrate =
       !equalChatThread(activeChatRef.current, body.chat) ||
       !equalChatDraft(activeDraftRef.current, resolvedDraft);
 
+    desiredActiveChatIdRef.current = body.chat.id;
     activeChatIdRef.current = body.chat.id;
     activeChatRef.current = body.chat;
     activeDraftRef.current = resolvedDraft;
@@ -1654,12 +1745,51 @@ export default function HomePage() {
           stage3: resolvedDraft.stage3
         })
       : "";
-    patchChatListItem(buildChatListItem(body.chat, resolvedDraft));
     if (shouldHydrate) {
       hydrateChatEditorState(body.chat, resolvedDraft);
     }
     return { chat: body.chat, draft: resolvedDraft };
   }, [hydrateChatEditorState, parseError, patchChatListItem, readLocalDraftCache]);
+
+  const refreshSourceJobsForChat = useCallback(async (
+    chatId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<SourceJobSummary[]> => {
+    const issued = issueScopedRequestVersion(sourceJobsRequestVersionsRef.current, chatId);
+    sourceJobsRequestVersionsRef.current = issued.nextVersions;
+    const response = await fetch(`/api/pipeline/source?chatId=${encodeURIComponent(chatId)}`, {
+      cache: "no-store",
+      signal: options?.signal
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось загрузить source jobs."));
+    }
+    const body = (await response.json()) as { jobs?: SourceJobSummary[] };
+    const nextJobs = body.jobs ?? [];
+    if (
+      !matchesScopedRequestVersion(sourceJobsRequestVersionsRef.current, chatId, issued.version) ||
+      activeChatIdRef.current !== chatId
+    ) {
+      return nextJobs;
+    }
+    setSourceJobs((prev) => (equalSourceJobSummaries(prev, nextJobs) ? prev : nextJobs));
+    return nextJobs;
+  }, [parseError]);
+
+  const refreshSourceJobDetail = useCallback(async (
+    jobId: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<SourceJobDetail | null> => {
+    const response = await fetch(`/api/pipeline/source?jobId=${encodeURIComponent(jobId)}`, {
+      cache: "no-store",
+      signal: options?.signal
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось загрузить source job."));
+    }
+    const body = (await response.json()) as { job?: SourceJobDetail | null };
+    return body.job ?? null;
+  }, [parseError]);
 
   const refreshStage2RunsForChat = useCallback(async (
     chatId: string,
@@ -1700,6 +1830,38 @@ export default function HomePage() {
     const body = (await response.json()) as { run?: Stage2RunDetail | null };
     return body.run ?? null;
   }, [parseError]);
+
+  const hydrateChatLiveState = useCallback(async (
+    chatId: string,
+    options?: { preferredStep?: 1 | 2 | 3 }
+  ): Promise<{ chat: ChatThread; draft: ChatDraft | null }> => {
+    desiredActiveChatIdRef.current = chatId;
+    activeChatIdRef.current = chatId;
+    const { chat, draft } = await refreshActiveChat(chatId);
+    const [nextSourceJobs, nextStage2Runs] = await Promise.all([
+      refreshSourceJobsForChat(chatId).catch(() => []),
+      refreshStage2RunsForChat(chatId).catch(() => [])
+    ]);
+    if (desiredActiveChatIdRef.current !== chatId) {
+      return { chat, draft };
+    }
+    const preferredStep = deriveLivePreferredStep({
+      chat,
+      draft,
+      sourceJobs: nextSourceJobs,
+      stage2Runs: nextStage2Runs
+    });
+    const cappedPreferredStep = Math.min(
+      options?.preferredStep ?? preferredStep,
+      getMaxStepForChat(chat)
+    ) as 1 | 2 | 3;
+    if (preferredStep === 1 || preferredStep === 2) {
+      setCurrentStep(preferredStep);
+      return { chat, draft };
+    }
+    setCurrentStep(cappedPreferredStep);
+    return { chat, draft };
+  }, [refreshActiveChat, refreshSourceJobsForChat, refreshStage2RunsForChat]);
 
   const appendEvent = useCallback(async (
     chatId: string,
@@ -1911,6 +2073,8 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!activeChannelId) {
+      desiredActiveChatIdRef.current = null;
+      activeChatIdRef.current = null;
       setChatList([]);
       setActiveChat(null);
       setActiveDraft(null);
@@ -1948,13 +2112,12 @@ export default function HomePage() {
     restoringFlowShellStateRef.current = null;
     void (async () => {
       try {
-        const { chat } = await refreshActiveChat(shell.chatId!);
-        setCurrentStep(Math.min(shell.step, getMaxStepForChat(chat)) as 1 | 2 | 3);
+        await hydrateChatLiveState(shell.chatId!, { preferredStep: shell.step });
       } catch {
         // Ignore restore failures and leave current selection untouched.
       }
     })();
-  }, [activeChannelId, activeChat, chatList, refreshActiveChat]);
+  }, [activeChannelId, activeChat, chatList, hydrateChatLiveState]);
 
   useEffect(() => {
     if (isAuthLoading || !authState?.workspace.id || !authState?.user.id) {
@@ -1986,6 +2149,13 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!activeChat?.id) {
+      desiredActiveChatIdRef.current = null;
+      activeChatIdRef.current = null;
+      sourceJobsRequestVersionsRef.current = {};
+      setSourceJobs([]);
+      setSourceJobDetail(null);
+      setSourceJobId(null);
+      setSourceJobElapsedMs(0);
       stage2RunsRequestVersionsRef.current = {};
       setStage2Runs([]);
       setStage2RunDetail(null);
@@ -1995,13 +2165,167 @@ export default function HomePage() {
       return;
     }
 
+    desiredActiveChatIdRef.current = activeChat.id;
+    activeChatIdRef.current = activeChat.id;
+    sourceJobsRequestVersionsRef.current = {};
+    setSourceJobs([]);
+    setSourceJobDetail(null);
+    setSourceJobId(null);
+    setSourceJobElapsedMs(0);
     stage2RunsRequestVersionsRef.current = {};
     setStage2Runs([]);
     setStage2RunDetail(null);
     setStage2RunId(null);
     setStage2ElapsedMs(0);
+    void refreshSourceJobsForChat(activeChat.id).catch(() => undefined);
     void refreshStage2RunsForChat(activeChat.id).catch(() => undefined);
-  }, [activeChat?.id, refreshStage2RunsForChat]);
+  }, [activeChat?.id, refreshSourceJobsForChat, refreshStage2RunsForChat]);
+
+  useEffect(() => {
+    setSourceJobId((current) => pickPreferredSourceJobId(sourceJobs, current));
+  }, [sourceJobs]);
+
+  useEffect(() => {
+    if (!sourceJobId) {
+      setSourceJobDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+    let timer = 0;
+    let controller: AbortController | null = null;
+    const pollId = sourceProgressPollIdRef.current + 1;
+    sourceProgressPollIdRef.current = pollId;
+
+    const scheduleNextPoll = (delayMs: number) => {
+      if (cancelled || sourceProgressPollIdRef.current !== pollId) {
+        return;
+      }
+      timer = window.setTimeout(() => {
+        void poll();
+      }, delayMs);
+    };
+
+    const poll = async (): Promise<void> => {
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        const nextJob = await refreshSourceJobDetail(sourceJobId, { signal: controller.signal });
+        if (cancelled || sourceProgressPollIdRef.current !== pollId) {
+          return;
+        }
+        setSourceJobDetail((prev) => (equalSourceJobDetail(prev, nextJob) ? prev : nextJob));
+        if (!nextJob) {
+          return;
+        }
+
+        if (!isSourceJobActive(nextJob)) {
+          if (activeChat?.id === nextJob.chatId) {
+            await Promise.allSettled([
+              hydrateChatLiveState(activeChat.id),
+              refreshChats()
+            ]);
+          } else {
+            void refreshChats().catch(() => undefined);
+          }
+          return;
+        }
+      } catch (error) {
+        if (isAbortError(error)) {
+          return;
+        }
+        scheduleNextPoll(currentPollDelay(STAGE2_POLL_RETRY_VISIBLE_MS, STAGE2_POLL_RETRY_HIDDEN_MS));
+        return;
+      }
+
+      scheduleNextPoll(currentPollDelay(SOURCE_DETAIL_POLL_VISIBLE_MS, SOURCE_DETAIL_POLL_HIDDEN_MS));
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      window.clearTimeout(timer);
+    };
+  }, [
+    activeChat?.id,
+    hydrateChatLiveState,
+    refreshActiveChat,
+    refreshChats,
+    refreshSourceJobDetail,
+    refreshSourceJobsForChat,
+    refreshStage2RunsForChat,
+    sourceJobId
+  ]);
+
+  useEffect(() => {
+    const progress = sourceJobDetail?.progress ?? null;
+    if (!progress || !isSourceJobActive(sourceJobDetail) || currentStep !== 1) {
+      setSourceJobElapsedMs(getSourceJobElapsedMs(progress));
+      return;
+    }
+
+    let timer = 0;
+    const tick = () => {
+      setSourceJobElapsedMs(getSourceJobElapsedMs(progress));
+      timer = window.setTimeout(
+        tick,
+        currentPollDelay(STAGE2_ELAPSED_TICK_MS, STAGE2_ELAPSED_TICK_HIDDEN_MS)
+      );
+    };
+    tick();
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [currentStep, sourceJobDetail]);
+
+  const hasActiveSourceJobs = useMemo(
+    () => sourceJobs.some((job) => isSourceJobActive(job)),
+    [sourceJobs]
+  );
+
+  useEffect(() => {
+    if (!activeChat?.id || !hasActiveSourceJobs) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer = 0;
+    let controller: AbortController | null = null;
+    const scheduleNextPoll = (delayMs: number) => {
+      if (cancelled) {
+        return;
+      }
+      timer = window.setTimeout(() => {
+        void poll();
+      }, delayMs);
+    };
+
+    const poll = async (): Promise<void> => {
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        await refreshSourceJobsForChat(activeChat.id, { signal: controller.signal });
+      } catch (error) {
+        if (isAbortError(error)) {
+          return;
+        }
+        scheduleNextPoll(currentPollDelay(STAGE2_POLL_RETRY_VISIBLE_MS, STAGE2_POLL_RETRY_HIDDEN_MS));
+        return;
+      }
+
+      scheduleNextPoll(currentPollDelay(SOURCE_JOBS_POLL_VISIBLE_MS, SOURCE_JOBS_POLL_HIDDEN_MS));
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      window.clearTimeout(timer);
+    };
+  }, [activeChat?.id, hasActiveSourceJobs, refreshSourceJobsForChat]);
 
   useEffect(() => {
     setStage2RunId((current) => pickPreferredStage2RunId(stage2Runs, current));
@@ -2048,8 +2372,7 @@ export default function HomePage() {
           }
           if (activeChat?.id === nextRun.chatId) {
             await Promise.allSettled([
-              refreshActiveChat(activeChat.id),
-              refreshStage2RunsForChat(activeChat.id),
+              hydrateChatLiveState(activeChat.id, { preferredStep: 2 }),
               refreshChats()
             ]);
           } else {
@@ -2077,6 +2400,7 @@ export default function HomePage() {
     };
   }, [
     activeChat?.id,
+    hydrateChatLiveState,
     refreshActiveChat,
     refreshChats,
     refreshStage2RunDetail,
@@ -2448,27 +2772,79 @@ export default function HomePage() {
     }
   };
 
+  const enqueueSourceJobForChat = async (input: {
+    chatId?: string | null;
+    channelId?: string | null;
+    url: string;
+    trigger: "fetch" | "comments";
+    autoRunStage2: boolean;
+  }): Promise<{ chat: ChatThread; job: SourceJobDetail; reused: boolean }> => {
+    const response = await fetch("/api/pipeline/source", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        chatId: input.chatId ?? undefined,
+        channelId: input.channelId ?? undefined,
+        url: input.url,
+        trigger: input.trigger,
+        autoRunStage2: input.autoRunStage2
+      })
+    });
+
+    if (response.status === 409) {
+      const body = (await response.json()) as {
+        error?: string;
+        chat?: ChatThread;
+        job?: SourceJobDetail;
+      };
+      if (body.error === "source_job_already_active" && body.chat && body.job) {
+        setSourceJobId(body.job.jobId);
+        setSourceJobDetail(body.job);
+        setSourceJobs((current) => {
+          const deduped = current.filter((item) => item.jobId !== body.job!.jobId);
+          return [body.job!, ...deduped].slice(0, 20);
+        });
+        return { chat: body.chat, job: body.job, reused: true };
+      }
+      if (body.error === "stage2_run_already_active") {
+        throw new Error("В этом чате уже идёт Stage 2. Дождитесь завершения перед новым получением источника.");
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось запустить получение источника."));
+    }
+
+    const body = (await response.json()) as {
+      chat: ChatThread;
+      job: SourceJobDetail;
+    };
+    setSourceJobId(body.job.jobId);
+    setSourceJobDetail(body.job);
+    setSourceJobs((current) => {
+      const deduped = current.filter((item) => item.jobId !== body.job.jobId);
+      return [body.job, ...deduped].slice(0, 20);
+    });
+    await Promise.allSettled([
+      refreshActiveChat(body.chat.id),
+      refreshSourceJobsForChat(body.chat.id),
+      refreshChats()
+    ]);
+    return { chat: body.chat, job: body.job, reused: false };
+  };
+
   const runStage2ForChat = async (
     chat: Pick<ChatThread, "id" | "url">,
     instruction: string,
     mode: "manual" | "auto"
-  ): Promise<Stage2RunDetail> => {
+  ): Promise<{ run: Stage2RunDetail; reused: boolean }> => {
     if (!codexLoggedIn) {
       throw new Error("Shared Codex недоступен. Обратитесь к владельцу.");
     }
 
     const trimmedInstruction = instruction.trim();
-    await appendEvent(chat.id, {
-      role: "user",
-      type: "stage2",
-      text:
-        mode === "auto"
-          ? "Auto Stage 2 запущен сразу после Step 1."
-          : trimmedInstruction
-            ? `Пользователь запустил Stage 2 с инструкцией: ${trimmedInstruction}`
-            : "Пользователь запустил Stage 2."
-    });
-
     const response = await fetch("/api/pipeline/stage2", {
       method: "POST",
       headers: {
@@ -2482,12 +2858,41 @@ export default function HomePage() {
       })
     });
 
+    if (response.status === 409) {
+      const body = (await response.json()) as {
+        error?: string;
+        run?: Stage2RunDetail;
+      };
+      if (body.error === "stage2_run_already_active" && body.run) {
+        setStage2RunId(body.run.runId);
+        setStage2RunDetail(body.run);
+        setStage2Runs((current) => {
+          const deduped = current.filter((item) => item.runId !== body.run!.runId);
+          return [body.run!, ...deduped].slice(0, 20);
+        });
+        return { run: body.run, reused: true };
+      }
+      if (body.error === "source_job_already_active") {
+        throw new Error("Сначала дождитесь окончания получения источника для этого чата.");
+      }
+    }
+
     if (!response.ok) {
       throw new Error(await parseError(response, "Stage 2 завершился ошибкой."));
     }
 
     const body = (await response.json()) as { run: Stage2RunDetail };
     const run = body.run;
+    await appendEvent(chat.id, {
+      role: "user",
+      type: "stage2",
+      text:
+        mode === "auto"
+          ? "Auto Stage 2 запущен сразу после Step 1."
+          : trimmedInstruction
+            ? `Пользователь запустил Stage 2 с инструкцией: ${trimmedInstruction}`
+            : "Пользователь запустил Stage 2."
+    }).catch(() => undefined);
     setStage2RunId(run.runId);
     setStage2RunDetail(run);
     setStage2Runs((current) => {
@@ -2503,10 +2908,10 @@ export default function HomePage() {
     const nextRun = await refreshStage2RunDetail(run.runId);
     if (nextRun) {
       setStage2RunDetail(nextRun);
-      return nextRun;
+      return { run: nextRun, reused: false };
     }
 
-    return run;
+    return { run, reused: false };
   };
 
   const handleFetchSource = async (): Promise<void> => {
@@ -2521,6 +2926,11 @@ export default function HomePage() {
       setStatus("Сначала создайте/выберите канал.");
       return;
     }
+    if (sourceJobBlockedReason) {
+      setStatusType("error");
+      setStatus(sourceJobBlockedReason);
+      return;
+    }
     if (!fetchSourceAvailable) {
       setStatusType("error");
       setStatus(fetchSourceBlockedReason ?? "Source fetch is unavailable on this deployment.");
@@ -2530,117 +2940,38 @@ export default function HomePage() {
     await flushActiveDraftSave();
     setBusyAction("fetch");
     setIsBusy(true);
+    setIsSourceEnqueueing(true);
     setStatus("");
     setStatusType("");
 
-    let chatId: string | null = null;
-    let stage1Ready = false;
-    let commentsAvailable = false;
-    let commentsError: string | null = null;
-
     try {
-      const createResponse = await fetch("/api/chats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, channelId: activeChannelId })
+      const reuseActiveChat = Boolean(activeChat?.id && activeChat.url.trim() === url);
+      const { chat, job, reused } = await enqueueSourceJobForChat({
+        chatId: reuseActiveChat ? activeChat?.id ?? null : null,
+        channelId: activeChannelId,
+        url,
+        trigger: "fetch",
+        autoRunStage2: codexLoggedIn
       });
-      if (!createResponse.ok) {
-        throw new Error(await parseError(createResponse, "Не удалось создать элемент."));
-      }
-
-      const createBody = (await createResponse.json()) as { chat: ChatThread };
-      chatId = createBody.chat.id;
       setDraftUrl("");
-      await refreshActiveChat(chatId);
-
-      await appendEvent(chatId, {
-        role: "user",
-        type: "comments",
-        text: "Пользователь запустил Step 1: загрузку ссылки и комментариев."
-      });
-
-      const commentsResponse = await fetch("/api/comments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
-      });
-
-      if (commentsResponse.ok) {
-        const comments = (await commentsResponse.json()) as CommentsPayload;
-        commentsAvailable = true;
-        await appendEvent(chatId, {
-          role: "assistant",
-          type: "comments",
-          text: `Комментарии загружены: ${comments.totalComments}`,
-          data: comments
-        });
-      } else {
-        commentsError = await parseError(commentsResponse, "Не удалось загрузить комментарии.");
-        await appendEvent(chatId, {
-          role: "assistant",
-          type: "note",
-          text: "Исходник получен. Комментарии недоступны на этом сервере.",
-          data: {
-            stage1Ready: true,
-            commentsAvailable: false,
-            commentsError
-          }
-        });
-      }
-
-      stage1Ready = true;
-      setCurrentStep(2);
-
-      if (!codexLoggedIn) {
-        setStatusType("ok");
-        setStatus(
-          commentsAvailable
-            ? canManageCodex
-              ? "Источник готов. Комментарии загружены. Подключите Shared Codex, чтобы продолжить."
-              : "Источник готов. Комментарии загружены. Shared Codex еще не подключен."
-            : canManageCodex
-              ? "Источник готов без комментариев. Подключите Shared Codex, чтобы продолжить."
-              : "Источник готов без комментариев. Shared Codex еще не подключен."
-        );
-        return;
-      }
-
-      setIsStage2Enqueueing(true);
-      try {
-        const run = await runStage2ForChat({ id: chatId, url }, "", "auto");
-        setStage2RunId(run.runId);
-        setStatusType("ok");
-        setStatus(
-          commentsAvailable
-            ? "Источник готов. Stage 2 запущен в фоне. Можно обновлять страницу или вернуться позже."
-            : "Источник загружен без комментариев. Stage 2 запущен в фоне и переживет refresh."
-        );
-      } catch (stage2Error) {
-        const message = getUiErrorMessage(stage2Error, "Источник готов, но Stage 2 не удалось запустить.");
-        await appendEvent(chatId, {
-          role: "assistant",
-          type: "error",
-          text: message
-        }).catch(() => undefined);
-        setStatusType("error");
-        setStatus(message);
-      } finally {
-        setIsStage2Enqueueing(false);
-      }
-      return;
+      await hydrateChatLiveState(chat.id);
+      setCurrentStep(1);
+      setStatusType("ok");
+      setStatus(
+        reused
+          ? "Для этого чата уже идёт получение источника. Подключился к существующему процессу."
+          : job.progress.detail ??
+            (codexLoggedIn
+              ? "Получение источника запущено. Step 2 стартует автоматически после завершения Step 1."
+              : "Получение источника запущено. Можно переключаться между чатами и вернуться позже.")
+      );
     } catch (error) {
       const message = getUiErrorMessage(error, "Не удалось загрузить источник.");
-      if (chatId) {
-        await appendEvent(chatId, {
-          role: "assistant",
-          type: "error",
-          text: message
-        }).catch(() => undefined);
-      }
-      setCurrentStep(stage1Ready ? 2 : 1);
+      setCurrentStep(1);
       setStatusType("error");
       setStatus(message);
     } finally {
+      setIsSourceEnqueueing(false);
       setIsBusy(false);
       setBusyAction("");
     }
@@ -2730,48 +3061,43 @@ export default function HomePage() {
     if (!chat) {
       return;
     }
+    if (isSourceJobVisibleRunning) {
+      setStatusType("error");
+      setStatus("Для этого чата уже идёт получение комментариев/источника.");
+      return;
+    }
+    if (isStage2RunVisibleRunning) {
+      setStatusType("error");
+      setStatus("Сначала дождитесь окончания Stage 2 для этого чата.");
+      return;
+    }
 
     setBusyAction("comments");
     setIsBusy(true);
+    setIsSourceEnqueueing(true);
     setStatus("");
     setStatusType("");
 
     try {
-      await appendEvent(chat.id, {
-        role: "user",
-        type: "comments",
-        text: "User requested comments."
+      const { reused } = await enqueueSourceJobForChat({
+        chatId: chat.id,
+        url: chat.url,
+        trigger: "comments",
+        autoRunStage2: false
       });
-
-      const response = await fetch("/api/comments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: chat.url })
-      });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Не удалось загрузить комментарии."));
-      }
-
-      const comments = (await response.json()) as CommentsPayload;
-      await appendEvent(chat.id, {
-        role: "assistant",
-        type: "comments",
-        text: `Комментарии загружены: ${comments.totalComments}`,
-        data: comments
-      });
-
+      await hydrateChatLiveState(chat.id);
       setStatusType("ok");
-      setStatus("Комментарии загружены.");
+      setStatus(
+        reused
+          ? "Для этого чата уже идёт получение комментариев. Подключился к существующему процессу."
+          : "Получение комментариев запущено в фоне."
+      );
     } catch (error) {
       const message = getUiErrorMessage(error, "Не удалось загрузить комментарии.");
-      await appendEvent(chat.id, {
-        role: "assistant",
-        type: "error",
-        text: message
-      }).catch(() => undefined);
       setStatusType("error");
       setStatus(message);
     } finally {
+      setIsSourceEnqueueing(false);
       setIsBusy(false);
       setBusyAction("");
     }
@@ -2792,6 +3118,16 @@ export default function HomePage() {
       setStatus("Shared Codex недоступен — обратитесь к владельцу.");
       return;
     }
+    if (isSourceJobVisibleRunning) {
+      setStatusType("error");
+      setStatus("Сначала дождитесь окончания получения источника для этого чата.");
+      return;
+    }
+    if (isStage2RunVisibleRunning) {
+      setStatusType("error");
+      setStatus("Для этого чата уже идёт Stage 2.");
+      return;
+    }
 
     setIsStage2Enqueueing(true);
     setBusyAction("stage2");
@@ -2800,18 +3136,17 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const run = await runStage2ForChat(chat, stage2Instruction, "manual");
+      const { run, reused } = await runStage2ForChat(chat, stage2Instruction, "manual");
       setStage2RunId(run.runId);
       setCurrentStep(2);
       setStatusType("ok");
-      setStatus("Stage 2 запущен в фоне. Прогресс и результат сохраняются и переживут refresh.");
+      setStatus(
+        reused
+          ? "Для этого чата уже идёт Stage 2. Подключился к существующему run."
+          : "Stage 2 запущен в фоне. Прогресс и результат сохраняются и переживут refresh."
+      );
     } catch (error) {
       const message = getUiErrorMessage(error, "Stage 2 не удалось запустить.");
-      await appendEvent(chat.id, {
-        role: "assistant",
-        type: "error",
-        text: message
-      }).catch(() => undefined);
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -3460,6 +3795,9 @@ export default function HomePage() {
   };
 
   const latestComments = useMemo(() => {
+    if (sourceJobDetail?.result?.commentsPayload) {
+      return sourceJobDetail.result.commentsPayload;
+    }
     if (!activeChat) {
       return null;
     }
@@ -3471,7 +3809,31 @@ export default function HomePage() {
     }
     return null;
   }, [activeChat]);
-  const stage1FetchState = useMemo(() => extractStage1FetchState(activeChat), [activeChat]);
+  const stage1FetchState = useMemo(() => {
+    const eventState = extractStage1FetchState(activeChat);
+    const sourceResult = sourceJobDetail?.result;
+    if (!sourceResult) {
+      return eventState;
+    }
+    return {
+      ready: sourceResult.stage1Ready || eventState.ready,
+      commentsAvailable: sourceResult.commentsAvailable || eventState.commentsAvailable,
+      commentsError: sourceResult.commentsError ?? eventState.commentsError
+    };
+  }, [activeChat, sourceJobDetail?.result]);
+  const selectedSourceJobSummary = useMemo(
+    () => sourceJobs.find((job) => job.jobId === sourceJobId) ?? null,
+    [sourceJobId, sourceJobs]
+  );
+  const selectedSourceJobDetail = useMemo(
+    () => (sourceJobDetail?.jobId === sourceJobId ? sourceJobDetail : null),
+    [sourceJobDetail, sourceJobId]
+  );
+  const visibleSourceJob = selectedSourceJobDetail ?? selectedSourceJobSummary;
+  const isSourceJobVisibleRunning = useMemo(
+    () => isSourceJobActive(visibleSourceJob),
+    [visibleSourceJob]
+  );
 
   const stage2Events = useMemo(() => {
     if (!activeChat) {
@@ -3576,6 +3938,65 @@ export default function HomePage() {
     () => isStage2RunActive(selectedStage2RunDetail ?? selectedStage2RunSummary),
     [selectedStage2RunDetail, selectedStage2RunSummary]
   );
+  const sourceJobBlockedReason = useMemo(() => {
+    if (!activeChannelId) {
+      return "Сначала создайте или выберите канал.";
+    }
+    if (!fetchSourceAvailable) {
+      return fetchSourceBlockedReason ?? "Source fetch is unavailable on this deployment.";
+    }
+    if (isSourceJobVisibleRunning) {
+      return "Для этого чата уже идёт получение источника.";
+    }
+    if (isStage2RunVisibleRunning) {
+      return "Для этого чата уже идёт Stage 2. Дождитесь завершения перед новым получением источника.";
+    }
+    return null;
+  }, [
+    fetchSourceAvailable,
+    fetchSourceBlockedReason,
+    activeChannelId,
+    isSourceJobVisibleRunning,
+    isStage2RunVisibleRunning
+  ]);
+  const canFetchSourceForActiveChat = useMemo(
+    () => Boolean(activeChannelId) && !sourceJobBlockedReason && !isSourceEnqueueing,
+    [activeChannelId, isSourceEnqueueing, sourceJobBlockedReason]
+  );
+  const canRunStage2ForActiveChat = useMemo(() => {
+    if (!activeChat || !codexLoggedIn || !stage2RuntimeAvailable) {
+      return false;
+    }
+    if (!stage1FetchState.ready || isStage2Enqueueing || isSourceJobVisibleRunning || isStage2RunVisibleRunning) {
+      return false;
+    }
+    return true;
+  }, [
+    activeChat,
+    codexLoggedIn,
+    stage1FetchState.ready,
+    stage2RuntimeAvailable,
+    isStage2Enqueueing,
+    isSourceJobVisibleRunning,
+    isStage2RunVisibleRunning
+  ]);
+  const effectiveStage2BlockedReason = useMemo(() => {
+    if (isSourceJobVisibleRunning) {
+      return "Сначала дождитесь окончания получения источника для этого чата.";
+    }
+    if (isStage2RunVisibleRunning) {
+      return "Для этого чата уже идёт Stage 2.";
+    }
+    if (!stage1FetchState.ready) {
+      return "Сначала получите источник.";
+    }
+    return stage2BlockedReason;
+  }, [
+    isSourceJobVisibleRunning,
+    isStage2RunVisibleRunning,
+    stage1FetchState.ready,
+    stage2BlockedReason
+  ]);
 
   const stage3AgentSessionRef = useMemo(() => {
     if (!activeChat) {
@@ -4441,20 +4862,19 @@ export default function HomePage() {
     if (!activeChat) {
       return null;
     }
+    if (isSourceJobVisibleRunning) {
+      return visibleSourceJob?.progress.activeStageId === "comments" ? "Comments" : "Fetching";
+    }
     if (isStage2RunVisibleRunning) {
       return "Stage 2";
     }
     switch (busyAction) {
-      case "fetch":
-        return "Fetching";
-      case "comments":
-        return "Comments";
       case "render":
         return "Rendering";
       default:
         return null;
     }
-  }, [activeChat, busyAction, isStage2RunVisibleRunning]);
+  }, [activeChat, busyAction, isSourceJobVisibleRunning, isStage2RunVisibleRunning, visibleSourceJob?.progress.activeStageId]);
 
   const historyItems = useMemo(() => {
     if (!activeChat) {
@@ -4465,21 +4885,29 @@ export default function HomePage() {
         return item;
       }
       const nextLiveAction = activeLiveAction ?? item.liveAction ?? null;
-      if (item.liveAction === nextLiveAction) {
+      const nextPreferredStep = isSourceJobVisibleRunning
+        ? 1
+        : isStage2RunVisibleRunning
+          ? 2
+          : item.preferredStep;
+      if (item.liveAction === nextLiveAction && item.preferredStep === nextPreferredStep) {
         return item;
       }
       return {
         ...item,
+        preferredStep: nextPreferredStep,
         liveAction: nextLiveAction
       };
     });
-  }, [activeChat?.id, activeLiveAction, chatList]);
+  }, [activeChat?.id, activeLiveAction, chatList, isSourceJobVisibleRunning, isStage2RunVisibleRunning]);
 
   const handleHistoryOpen = useCallback(async (id: string, step?: 1 | 2 | 3): Promise<void> => {
     setStatus("");
     setStatusType("");
 
     if (!id) {
+      desiredActiveChatIdRef.current = null;
+      activeChatIdRef.current = null;
       setActiveChat(null);
       setActiveDraft(null);
       setCurrentStep(1);
@@ -4488,20 +4916,17 @@ export default function HomePage() {
 
     try {
       await flushActiveDraftSave();
-      const { chat, draft } = await refreshActiveChat(id);
-      if (step) {
-        setCurrentStep(Math.min(step, getMaxStepForChat(chat)) as 1 | 2 | 3);
-      } else {
-        setCurrentStep(getPreferredStepForChat(chat, draft));
-      }
+      await hydrateChatLiveState(id, step ? { preferredStep: step } : undefined);
     } catch (error) {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось открыть элемент истории."));
     }
-  }, [flushActiveDraftSave, getUiErrorMessage, refreshActiveChat]);
+  }, [flushActiveDraftSave, getUiErrorMessage, hydrateChatLiveState]);
 
   const handleResetFlow = (): void => {
     void flushActiveDraftSave();
+    desiredActiveChatIdRef.current = null;
+    activeChatIdRef.current = null;
     setActiveChat(null);
     setActiveDraft(null);
     draftPayloadJsonRef.current = "";
@@ -4545,6 +4970,8 @@ export default function HomePage() {
       void flushActiveDraftSave();
       const nextChannel = channels.find((channel) => channel.id === channelId) ?? null;
       setActiveChannelId(channelId);
+      desiredActiveChatIdRef.current = null;
+      activeChatIdRef.current = null;
       setChatList([]);
       setActiveChat(null);
       setActiveDraft(null);
@@ -4604,6 +5031,8 @@ export default function HomePage() {
 
       await refreshChats();
       if (activeChat?.id === chatId) {
+        desiredActiveChatIdRef.current = null;
+        activeChatIdRef.current = null;
         setActiveChat(null);
         setActiveDraft(null);
         draftPayloadJsonRef.current = "";
@@ -5039,7 +5468,7 @@ export default function HomePage() {
         <DetailsDrawer
           events={activeChat?.events ?? []}
           comments={latestComments}
-          isBusyComments={busyAction === "comments"}
+          isBusyComments={isSourceJobVisibleRunning || isSourceEnqueueing || isStage2RunVisibleRunning}
           onLoadComments={() => {
             void handleLoadComments();
           }}
@@ -5058,10 +5487,13 @@ export default function HomePage() {
         <Step1PasteLink
           draftUrl={draftUrl}
           activeUrl={activeChat?.url ?? null}
+          sourceJob={selectedSourceJobDetail ?? (selectedSourceJobSummary ? { ...selectedSourceJobSummary, result: null } : null)}
+          sourceJobElapsedMs={sourceJobElapsedMs}
           commentsFallbackActive={stage1FetchState.ready && !stage1FetchState.commentsAvailable}
-          isBusy={isBusy}
-          fetchAvailable={fetchSourceAvailable}
-          fetchBlockedReason={fetchSourceBlockedReason}
+          fetchBusy={isSourceJobVisibleRunning || isSourceEnqueueing}
+          downloadBusy={busyAction === "download"}
+          fetchAvailable={Boolean(canFetchSourceForActiveChat)}
+          fetchBlockedReason={sourceJobBlockedReason}
           downloadAvailable={downloadSourceAvailable}
           downloadBlockedReason={downloadSourceBlockedReason}
           onDraftUrlChange={setDraftUrl}
@@ -5092,12 +5524,8 @@ export default function HomePage() {
           currentRunError={
             selectedStage2RunDetail?.errorMessage ?? selectedStage2RunSummary?.errorMessage ?? null
           }
-          canRunStage2={
-            Boolean(activeChat && codexLoggedIn && stage2RuntimeAvailable) &&
-            (!isBusy || busyAction === "stage2") &&
-            !isStage2Enqueueing
-          }
-          runBlockedReason={stage2BlockedReason}
+          canRunStage2={canRunStage2ForActiveChat}
+          runBlockedReason={effectiveStage2BlockedReason}
           isLaunching={isStage2Enqueueing}
           isRunning={isStage2RunVisibleRunning}
           expectedDurationMs={stage2ExpectedDurationMs}

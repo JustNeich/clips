@@ -192,6 +192,28 @@ CREATE TABLE IF NOT EXISTS stage2_runs (
   FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS source_jobs (
+  job_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  creator_user_id TEXT,
+  channel_id TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  request_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  progress_json TEXT NOT NULL,
+  result_json TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  updated_at TEXT NOT NULL,
+  finished_at TEXT,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (creator_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,

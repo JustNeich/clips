@@ -6,7 +6,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Step2PickCaption } from "../app/components/Step2PickCaption";
-import type { Stage2Response, Stage2RunSummary } from "../app/components/types";
+import type { SourceJobResult, SourceJobSummary, Stage2Response, Stage2RunSummary } from "../app/components/types";
 import {
   createStage2ProgressSnapshot,
   markStage2ProgressStageCompleted,
@@ -18,6 +18,9 @@ import {
   matchesScopedRequestVersion,
   pickPreferredStage2RunId
 } from "../lib/stage2-run-client";
+import {
+  pickPreferredSourceJobId
+} from "../lib/source-job-client";
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
@@ -136,6 +139,8 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   process.env.APP_DATA_DIR = appDataDir;
   process.env.STAGE2_MAX_CONCURRENT_RUNS = "4";
   delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+  delete (globalThis as { __clipsSourceRuntimeState__?: unknown }).__clipsSourceRuntimeState__;
+  delete (globalThis as { __clipsSourceJobProcessorOverride__?: unknown }).__clipsSourceJobProcessorOverride__;
   delete (globalThis as { __clipsStage2RuntimeState__?: unknown }).__clipsStage2RuntimeState__;
   delete (globalThis as { __clipsStage2RunProcessorOverride__?: unknown }).__clipsStage2RunProcessorOverride__;
 
@@ -143,6 +148,8 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
     return await run();
   } finally {
     delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+    delete (globalThis as { __clipsSourceRuntimeState__?: unknown }).__clipsSourceRuntimeState__;
+    delete (globalThis as { __clipsSourceJobProcessorOverride__?: unknown }).__clipsSourceJobProcessorOverride__;
     delete (globalThis as { __clipsStage2RuntimeState__?: unknown }).__clipsStage2RuntimeState__;
     delete (globalThis as { __clipsStage2RunProcessorOverride__?: unknown }).__clipsStage2RunProcessorOverride__;
     if (previousAppDataDir === undefined) {
@@ -213,6 +220,34 @@ function makeRuntimeStage2Response(runId: string, label: string): Stage2Response
       createdAt: nowIso()
     },
     userInstructionUsed: label
+  };
+}
+
+function makeSourceJobResult(input: {
+  chatId: string;
+  channelId: string;
+  sourceUrl: string;
+  label: string;
+  commentsAvailable?: boolean;
+}): SourceJobResult {
+  const commentsAvailable = input.commentsAvailable ?? true;
+  return {
+    chatId: input.chatId,
+    channelId: input.channelId,
+    sourceUrl: input.sourceUrl,
+    stage1Ready: true,
+    title: input.label,
+    commentsAvailable,
+    commentsError: commentsAvailable ? null : "comments unavailable",
+    commentsPayload: commentsAvailable
+      ? {
+          title: input.label,
+          totalComments: 3,
+          topComments: [],
+          allComments: []
+        }
+      : null,
+    autoStage2RunId: null
   };
 }
 
@@ -1099,6 +1134,269 @@ test("scoped Stage 2 request versions do not let one chat invalidate another cha
   assert.equal(matchesScopedRequestVersion(third.nextVersions, "chat_a", first.version), false);
   assert.equal(matchesScopedRequestVersion(third.nextVersions, "chat_b", second.version), true);
   assert.equal(matchesScopedRequestVersion(third.nextVersions, "chat_a", third.version), true);
+});
+
+test("pickPreferredSourceJobId reconnects the UI to the active durable source job first", () => {
+  const jobs: SourceJobSummary[] = [
+    {
+      jobId: "job_done",
+      chatId: "chat",
+      channelId: "channel",
+      sourceUrl: "https://example.com/done",
+      status: "completed",
+      progress: {
+        status: "completed",
+        activeStageId: null,
+        detail: "done",
+        createdAt: nowIso(),
+        startedAt: nowIso(),
+        updatedAt: nowIso(),
+        finishedAt: nowIso(),
+        error: null
+      },
+      errorMessage: null,
+      hasResult: true,
+      createdAt: nowIso(),
+      startedAt: nowIso(),
+      updatedAt: nowIso(),
+      finishedAt: nowIso()
+    },
+    {
+      jobId: "job_active",
+      chatId: "chat",
+      channelId: "channel",
+      sourceUrl: "https://example.com/active",
+      status: "running",
+      progress: {
+        status: "running",
+        activeStageId: "comments",
+        detail: "loading comments",
+        createdAt: nowIso(),
+        startedAt: nowIso(),
+        updatedAt: nowIso(),
+        finishedAt: null,
+        error: null
+      },
+      errorMessage: null,
+      hasResult: false,
+      createdAt: nowIso(),
+      startedAt: nowIso(),
+      updatedAt: nowIso(),
+      finishedAt: null
+    }
+  ];
+
+  assert.equal(pickPreferredSourceJobId(jobs, null), "job_active");
+  assert.equal(pickPreferredSourceJobId(jobs, "job_done"), "job_done");
+});
+
+test("chat list items surface active source jobs as live fetching state", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const sourceStore = await import("../lib/source-job-store");
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Source Sidebar",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Source Channel",
+      username: "source_channel"
+    });
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/shorts/source-live-state",
+      channel.id
+    );
+
+    sourceStore.createSourceJob({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: {
+        sourceUrl: chat.url,
+        autoRunStage2: false,
+        trigger: "fetch",
+        chat: {
+          id: chat.id,
+          channelId: channel.id
+        },
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username
+        }
+      }
+    });
+
+    const items = await chatHistory.listChatListItems(owner.user.id, channel.id, owner.workspace.id);
+    assert.equal(items[0]?.id, chat.id);
+    assert.equal(items[0]?.liveAction, "Fetching");
+    assert.equal(items[0]?.preferredStep, 1);
+  });
+});
+
+test("chat list items surface active Stage 2 runs as live Stage 2 state and step 2", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const stage2Store = await import("../lib/stage2-progress-store");
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Stage 2 Sidebar",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Stage 2 Channel",
+      username: "stage2_channel"
+    });
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/shorts/stage2-live-state",
+      channel.id
+    );
+
+    const run = stage2Store.createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: chat.id,
+      request: {
+        sourceUrl: chat.url,
+        userInstruction: null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          descriptionPrompt: "",
+          examplesJson: channel.examplesJson,
+          stage2WorkerProfileId: null,
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2PromptConfig: normalizeStage2PromptConfig({})
+        }
+      }
+    });
+    stage2Store.markStage2RunStageRunning(run.runId, "writer", {
+      detail: "Writing shortlist."
+    });
+
+    const items = await chatHistory.listChatListItems(owner.user.id, channel.id, owner.workspace.id);
+    assert.equal(items[0]?.id, chat.id);
+    assert.equal(items[0]?.liveAction, "Stage 2");
+    assert.equal(items[0]?.preferredStep, 2);
+  });
+});
+
+test("source job runtime keeps parallel jobs isolated and durable across reload-style rereads", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const runtime = await import("../lib/source-job-runtime");
+    const store = await import("../lib/source-job-store");
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+    let activeCount = 0;
+    let maxActiveCount = 0;
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Source Runtime",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Source Runtime Channel",
+      username: "source_runtime_channel"
+    });
+    const chatA = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/shorts/source-runtime-a",
+      channel.id
+    );
+    const chatB = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/shorts/source-runtime-b",
+      channel.id
+    );
+
+    runtime.setSourceJobProcessorForTests(async (job) => {
+      activeCount += 1;
+      maxActiveCount = Math.max(maxActiveCount, activeCount);
+      try {
+        store.markSourceJobStageRunning(job.jobId, "comments", `comments ${job.chatId}`);
+        await sleep(60);
+        return makeSourceJobResult({
+          chatId: job.chatId,
+          channelId: job.channelId,
+          sourceUrl: job.sourceUrl,
+          label: job.request.channel.name || job.chatId,
+          commentsAvailable: job.request.trigger !== "comments"
+        });
+      } finally {
+        activeCount -= 1;
+      }
+    });
+
+    try {
+      const jobA = runtime.enqueueAndScheduleSourceJob({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        request: {
+          sourceUrl: chatA.url,
+          autoRunStage2: false,
+          trigger: "fetch",
+          chat: {
+            id: chatA.id,
+            channelId: channel.id
+          },
+          channel: {
+            id: channel.id,
+            name: channel.name,
+            username: channel.username
+          }
+        }
+      });
+      const jobB = runtime.enqueueAndScheduleSourceJob({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        request: {
+          sourceUrl: chatB.url,
+          autoRunStage2: false,
+          trigger: "comments",
+          chat: {
+            id: chatB.id,
+            channelId: channel.id
+          },
+          channel: {
+            id: channel.id,
+            name: channel.name,
+            username: channel.username
+          }
+        }
+      });
+
+      await waitFor(() =>
+        [jobA.jobId, jobB.jobId].every((jobId) => store.getSourceJob(jobId)?.status === "completed")
+      );
+
+      assert.ok(maxActiveCount >= 2);
+
+      delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+      const reloadedA = store.listSourceJobsForChat(chatA.id, owner.workspace.id, 10);
+      const reloadedB = store.listSourceJobsForChat(chatB.id, owner.workspace.id, 10);
+      assert.equal(reloadedA[0]?.status, "completed");
+      assert.equal(reloadedB[0]?.status, "completed");
+      assert.equal(reloadedA[0]?.resultData?.chatId, chatA.id);
+      assert.equal(reloadedB[0]?.resultData?.chatId, chatB.id);
+    } finally {
+      runtime.setSourceJobProcessorForTests(null);
+    }
+  });
 });
 
 test("stage 2 runtime keeps parallel runs isolated and durable across reload-style rereads", { concurrency: false }, async () => {

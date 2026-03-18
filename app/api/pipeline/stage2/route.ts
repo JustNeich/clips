@@ -9,6 +9,7 @@ import {
 import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
 import {
   listStage2RunsForChat,
+  findActiveStage2RunForChat,
   Stage2RunMode,
   Stage2RunRecord
 } from "../../../../lib/stage2-progress-store";
@@ -17,6 +18,7 @@ import {
   getStage2RunOrThrow,
   scheduleStage2RunProcessing
 } from "../../../../lib/stage2-run-runtime";
+import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 
@@ -163,6 +165,43 @@ export async function POST(request: Request): Promise<Response> {
     ]);
     const integration = requireSharedCodexAvailable(auth.workspace.id);
     await ensureCodexLoggedIn(integration.codexHomePath as string);
+
+    if (chat?.id) {
+      const activeSourceJob = getActiveSourceJobForChat(chat.id, auth.workspace.id);
+      if (activeSourceJob) {
+        return Response.json(
+          {
+            error: "source_job_already_active",
+            job: {
+              jobId: activeSourceJob.jobId,
+              chatId: activeSourceJob.chatId,
+              channelId: activeSourceJob.channelId,
+              sourceUrl: activeSourceJob.sourceUrl,
+              status: activeSourceJob.status,
+              progress: activeSourceJob.progress,
+              errorMessage: activeSourceJob.errorMessage ?? activeSourceJob.progress.error ?? null,
+              hasResult: Boolean(activeSourceJob.resultData),
+              createdAt: activeSourceJob.createdAt,
+              startedAt: activeSourceJob.startedAt,
+              updatedAt: activeSourceJob.updatedAt,
+              finishedAt: activeSourceJob.finishedAt
+            }
+          },
+          { status: 409 }
+        );
+      }
+
+      const activeRun = findActiveStage2RunForChat(chat.id, auth.workspace.id);
+      if (activeRun) {
+        return Response.json(
+          {
+            error: "stage2_run_already_active",
+            run: serializeStage2RunDetail(activeRun)
+          },
+          { status: 409 }
+        );
+      }
+    }
 
     const run = enqueueAndScheduleStage2Run({
       workspaceId: auth.workspace.id,

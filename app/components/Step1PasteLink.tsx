@@ -1,13 +1,17 @@
 "use client";
 
 import { FormEvent } from "react";
+import type { SourceJobDetail } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 
 type Step1PasteLinkProps = {
   draftUrl: string;
   activeUrl: string | null;
+  sourceJob: SourceJobDetail | null;
+  sourceJobElapsedMs: number;
   commentsFallbackActive?: boolean;
-  isBusy: boolean;
+  fetchBusy: boolean;
+  downloadBusy: boolean;
   fetchAvailable: boolean;
   fetchBlockedReason?: string | null;
   downloadAvailable: boolean;
@@ -21,8 +25,11 @@ type Step1PasteLinkProps = {
 export function Step1PasteLink({
   draftUrl,
   activeUrl,
+  sourceJob,
+  sourceJobElapsedMs,
   commentsFallbackActive,
-  isBusy,
+  fetchBusy,
+  downloadBusy,
   fetchAvailable,
   fetchBlockedReason,
   downloadAvailable,
@@ -63,7 +70,7 @@ export function Step1PasteLink({
                   placeholder="https://www.instagram.com/reel/... или https://www.youtube.com/shorts/..."
                   autoComplete="off"
                 />
-                <button type="button" className="btn btn-ghost" onClick={onPaste} disabled={isBusy}>
+                <button type="button" className="btn btn-ghost" onClick={onPaste} disabled={fetchBusy}>
                   Вставить
                 </button>
               </div>
@@ -77,11 +84,11 @@ export function Step1PasteLink({
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={isBusy || !fetchAvailable}
-                  aria-busy={isBusy}
+                  disabled={fetchBusy || !fetchAvailable}
+                  aria-busy={fetchBusy}
                   title={!fetchAvailable ? fetchBlockedReason ?? undefined : undefined}
                 >
-                  {isBusy ? "Получаем..." : "Получить источник"}
+                  {fetchBusy ? "Получаем..." : "Получить источник"}
                 </button>
               </div>
               {!fetchAvailable && fetchBlockedReason ? (
@@ -91,6 +98,38 @@ export function Step1PasteLink({
                 <p className="subtle-text">
                   Комментарии пропущены на этом сервере. Второй этап продолжит работу только с видеоконтекстом.
                 </p>
+              ) : null}
+              {sourceJob ? (
+                <div className="step-status-card">
+                  <p className="field-label">Текущий Step 1 job</p>
+                  <p className="step-status-title">
+                    Job {sourceJob.jobId.slice(0, 8)} · {sourceJob.status === "running"
+                      ? "в работе"
+                      : sourceJob.status === "queued"
+                        ? "в очереди"
+                        : sourceJob.status === "completed"
+                          ? "завершен"
+                          : "ошибка"}
+                  </p>
+                  <p className="subtle-text">
+                    {sourceJob.progress.detail ?? "Источник обрабатывается в фоне."}
+                  </p>
+                  {sourceJob.status === "running" ? (
+                    <p className="subtle-text">Прошло: {(sourceJobElapsedMs / 1000).toFixed(1)}с</p>
+                  ) : null}
+                  {sourceJob.status === "failed" && sourceJob.errorMessage ? (
+                    <p className="subtle-text danger-text">{sourceJob.errorMessage}</p>
+                  ) : null}
+                  {sourceJob.result ? (
+                    <p className="subtle-text">
+                      {sourceJob.result.commentsAvailable
+                        ? `Комментарии готовы: ${sourceJob.result.commentsPayload?.totalComments ?? 0}`
+                        : sourceJob.result.commentsError
+                          ? `Продолжили без комментариев: ${sourceJob.result.commentsError}`
+                          : "Продолжили без комментариев."}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
             </form>
           </section>
@@ -103,10 +142,10 @@ export function Step1PasteLink({
                 type="button"
                 className="btn btn-secondary"
                 onClick={onDownloadSource}
-                disabled={isBusy || !downloadAvailable}
+                disabled={fetchBusy || downloadBusy || !downloadAvailable}
                 title={!downloadAvailable ? downloadBlockedReason ?? undefined : undefined}
               >
-                Скачать исходный mp4
+                {downloadBusy ? "Скачиваем..." : "Скачать исходный mp4"}
               </button>
               {!downloadAvailable && downloadBlockedReason ? (
                 <p className="subtle-text danger-text">{downloadBlockedReason}</p>
@@ -129,6 +168,13 @@ export function Step1PasteLink({
               <p className="subtle-text">
                 После завершения загрузки второй этап покажет варианты подписей, сгенерированные по видео, и комментарии, если они доступны.
               </p>
+              {sourceJob ? (
+                <div className="source-placeholder-meta">
+                  <p className="subtle-text">
+                    Step 1: {sourceJob.progress.detail ?? "Фоновая обработка активна."}
+                  </p>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

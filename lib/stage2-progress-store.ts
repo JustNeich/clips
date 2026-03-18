@@ -325,6 +325,24 @@ export function listLatestActiveStage2RunsForChats(
   return latestByChat;
 }
 
+export function findActiveStage2RunForChat(
+  chatId: string,
+  workspaceId: string
+): Stage2RunRecord | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT * FROM stage2_runs
+        WHERE workspace_id = ?
+          AND chat_id = ?
+          AND status IN ('queued', 'running')
+        ORDER BY updated_at DESC
+        LIMIT 1`
+    )
+    .get(workspaceId, chatId) as Stage2RunRow | undefined;
+  return row ? mapStage2Run(row) : null;
+}
+
 export function hasQueuedStage2Runs(): boolean {
   const db = getDb();
   const row = db
