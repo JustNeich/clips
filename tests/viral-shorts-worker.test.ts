@@ -845,6 +845,8 @@ test("buildPromptPacket keeps the selector stage as a real prompt stage with act
   assert.ok(packet.prompts.selector.length > 0);
   assert.match(packet.prompts.selector, /selected_example_ids/);
   assert.match(packet.prompts.selector, /primary_angle/);
+  assert.match(packet.prompts.selector, /why_old_v6_would_work_here/);
+  assert.match(packet.prompts.selector, /failure_modes/);
   assert.match(packet.prompts.selector, /availableExamples/);
   assert.equal(packet.context.availableExamples?.length, 5);
   assert.ok(packet.context.selectorOutput.selectedExampleIds?.length);
@@ -863,7 +865,9 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(analyzerResolved.defaultPrompt, /core_trigger/);
   assert.match(analyzerResolved.defaultPrompt, /best_bottom_energy/);
   assert.match(selectorResolved.defaultPrompt, /primary_angle/);
-  assert.match(selectorResolved.defaultPrompt, /selection_rationale/);
+  assert.match(selectorResolved.defaultPrompt, /top_strategy/);
+  assert.match(selectorResolved.defaultPrompt, /why_old_v6_would_work_here/);
+  assert.match(selectorResolved.defaultPrompt, /failure_modes/);
   assert.match(writerResolved.defaultPrompt, /Context Compression Rule/);
   assert.match(writerResolved.defaultPrompt, /Must explain why the viewer should care/);
   assert.match(writerResolved.defaultPrompt, /top_ru/);

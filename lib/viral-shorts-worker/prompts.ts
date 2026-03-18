@@ -96,6 +96,14 @@ function buildSelectorContext(selectorOutput: SelectorOutput): string {
     `clip_type: ${selectorOutput.clipType}`,
     `primary_angle: ${selectorOutput.primaryAngle}`,
     `secondary_angles: ${selectorOutput.secondaryAngles.join(", ")}`,
+    `core_trigger: ${selectorOutput.coreTrigger}`,
+    `human_stake: ${selectorOutput.humanStake}`,
+    `narrative_frame: ${selectorOutput.narrativeFrame}`,
+    `why_viewer_cares: ${selectorOutput.whyViewerCares}`,
+    `top_strategy: ${selectorOutput.topStrategy}`,
+    `bottom_energy: ${selectorOutput.bottomEnergy}`,
+    `why_old_v6_would_work_here: ${selectorOutput.whyOldV6WouldWorkHere}`,
+    `failure_modes: ${selectorOutput.failureModes.join("; ")}`,
     `ranked_angles: ${selectorOutput.rankedAngles
       .map((item) => `${item.angle} (${item.score.toFixed(1)}: ${item.why})`)
       .join("; ")}`,

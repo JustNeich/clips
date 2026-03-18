@@ -103,7 +103,23 @@ const ANALYZER_SCHEMA = {
 const SELECTOR_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["clip_type", "selected_example_ids", "writer_brief"],
+  required: [
+    "clip_type",
+    "primary_angle",
+    "secondary_angles",
+    "selected_example_ids",
+    "core_trigger",
+    "human_stake",
+    "narrative_frame",
+    "why_viewer_cares",
+    "top_strategy",
+    "bottom_energy",
+    "why_old_v6_would_work_here",
+    "failure_modes",
+    "selection_rationale",
+    "writer_brief",
+    "confidence"
+  ],
   properties: {
     clip_type: { type: "string", minLength: 1 },
     primary_angle: { type: "string", minLength: 1 },
@@ -139,10 +155,22 @@ const SELECTOR_SCHEMA = {
       maxItems: 5,
       items: { type: "string", minLength: 1 }
     },
+    core_trigger: { type: "string", minLength: 1 },
+    human_stake: { type: "string", minLength: 1 },
+    narrative_frame: { type: "string", minLength: 1 },
+    why_viewer_cares: { type: "string", minLength: 1 },
+    top_strategy: { type: "string", minLength: 1 },
+    bottom_energy: { type: "string", minLength: 1 },
+    why_old_v6_would_work_here: { type: "string", minLength: 1 },
+    failure_modes: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: { type: "string", minLength: 1 }
+    },
     selection_rationale: { type: "string", minLength: 1 },
     rationale: { type: "string", minLength: 1 },
-    writer_brief: { type: "string", minLength: 1 }
-    ,
+    writer_brief: { type: "string", minLength: 1 },
     confidence: { type: "number", minimum: 0, maximum: 1 }
   }
 } as const;
@@ -475,6 +503,7 @@ function fallbackSelectorOutput(
   videoContext: ViralShortsVideoContext
 ): SelectorOutput {
   const queryText = buildCorpusQueryText(videoContext, analyzerOutput);
+  const stakes = analyzerOutput.stakes.map((stake) => stake.toLowerCase());
   const chosenExamples = [...availableExamples]
     .sort((left, right) => scoreExampleMatch(queryText, right) - scoreExampleMatch(queryText, left))
     .slice(0, Math.min(6, availableExamples.length));
@@ -532,6 +561,26 @@ function fallbackSelectorOutput(
     primaryAngle: rankedAngles[0]?.angle ?? "payoff_reveal",
     secondaryAngles: rankedAngles.slice(1, 3).map((item) => item.angle),
     rankedAngles,
+    coreTrigger: analyzerOutput.coreTrigger,
+    humanStake: analyzerOutput.humanStake,
+    narrativeFrame: analyzerOutput.narrativeFrame,
+    whyViewerCares: analyzerOutput.whyViewerCares,
+    topStrategy: stakes.includes("danger")
+      ? "danger-first setup"
+      : stakes.includes("competence")
+        ? "competence-first setup"
+        : stakes.includes("absurdity")
+          ? "paradox-first setup"
+          : "contrast-first context compression",
+    bottomEnergy: analyzerOutput.bestBottomEnergy,
+    whyOldV6WouldWorkHere:
+      "Old v6 would anchor on the strongest visible trigger fast, compress why the moment matters into the TOP, and use the BOTTOM for an immediate human reaction instead of explanation.",
+    failureModes: [
+      "literal camera-log description",
+      "object inventory instead of trigger framing",
+      "bottom repeating top",
+      "overly clean AI wording"
+    ],
     selectedExampleIds: chosenExamples.map((example) => example.id),
     selectedExamples: chosenExamples,
     rejectedExampleIds: [],
@@ -634,6 +683,40 @@ function normalizeSelectorOutput(
         : synthesizedRankedAngles.length >= 1
           ? synthesizedRankedAngles
           : fallback.rankedAngles,
+    coreTrigger:
+      String(obj.core_trigger ?? obj.coreTrigger ?? fallback.coreTrigger ?? "").trim() ||
+      fallback.coreTrigger,
+    humanStake:
+      String(obj.human_stake ?? obj.humanStake ?? fallback.humanStake ?? "").trim() ||
+      fallback.humanStake,
+    narrativeFrame:
+      String(obj.narrative_frame ?? obj.narrativeFrame ?? fallback.narrativeFrame ?? "").trim() ||
+      fallback.narrativeFrame,
+    whyViewerCares:
+      String(obj.why_viewer_cares ?? obj.whyViewerCares ?? fallback.whyViewerCares ?? "").trim() ||
+      fallback.whyViewerCares,
+    topStrategy:
+      String(obj.top_strategy ?? obj.topStrategy ?? fallback.topStrategy ?? "").trim() ||
+      fallback.topStrategy,
+    bottomEnergy:
+      String(obj.bottom_energy ?? obj.bottomEnergy ?? fallback.bottomEnergy ?? "").trim() ||
+      fallback.bottomEnergy,
+    whyOldV6WouldWorkHere:
+      String(
+        obj.why_old_v6_would_work_here ??
+          obj.whyOldV6WouldWorkHere ??
+          fallback.whyOldV6WouldWorkHere ??
+          ""
+      ).trim() || fallback.whyOldV6WouldWorkHere,
+    failureModes: (Array.isArray(obj.failure_modes)
+      ? obj.failure_modes
+      : Array.isArray(obj.failureModes)
+        ? obj.failureModes
+        : fallback.failureModes
+    )
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 8),
     selectedExampleIds:
       selectedExamples.length >= 1 ? selectedExamples.map((example) => example.id) : fallback.selectedExampleIds,
     rejectedExampleIds,
@@ -984,6 +1067,14 @@ function buildRunDiagnostics(input: {
     selection: {
       clipType: input.selectorOutput.clipType,
       rankedAngles: input.selectorOutput.rankedAngles,
+      coreTrigger: input.selectorOutput.coreTrigger,
+      humanStake: input.selectorOutput.humanStake,
+      narrativeFrame: input.selectorOutput.narrativeFrame,
+      whyViewerCares: input.selectorOutput.whyViewerCares,
+      topStrategy: input.selectorOutput.topStrategy,
+      bottomEnergy: input.selectorOutput.bottomEnergy,
+      whyOldV6WouldWorkHere: input.selectorOutput.whyOldV6WouldWorkHere,
+      failureModes: input.selectorOutput.failureModes,
       writerBrief: input.selectorOutput.writerBrief,
       rationale: input.selectorOutput.rationale ?? null,
       selectedExampleIds

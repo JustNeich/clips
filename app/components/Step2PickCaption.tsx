@@ -329,6 +329,18 @@ function normalizeStage2DiagnosticsForView(
         availableExamples[0]?.clipType ||
         "unknown",
       rankedAngles,
+      coreTrigger: asString(selectionCandidate?.coreTrigger),
+      humanStake: asString(selectionCandidate?.humanStake),
+      narrativeFrame: asString(selectionCandidate?.narrativeFrame),
+      whyViewerCares: asString(selectionCandidate?.whyViewerCares),
+      topStrategy: asString(selectionCandidate?.topStrategy),
+      bottomEnergy: asString(selectionCandidate?.bottomEnergy),
+      whyOldV6WouldWorkHere: asString(selectionCandidate?.whyOldV6WouldWorkHere),
+      failureModes: Array.isArray(selectionCandidate?.failureModes)
+        ? selectionCandidate.failureModes
+            .map((item) => (typeof item === "string" ? item.trim() : ""))
+            .filter(Boolean)
+        : [],
       writerBrief: asString(selectionCandidate?.writerBrief),
       rationale: asOptionalString(selectionCandidate?.rationale),
       selectedExampleIds: Array.isArray(selectionCandidate?.selectedExampleIds)

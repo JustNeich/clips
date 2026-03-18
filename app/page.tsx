@@ -3938,6 +3938,18 @@ export default function HomePage() {
     () => isStage2RunActive(selectedStage2RunDetail ?? selectedStage2RunSummary),
     [selectedStage2RunDetail, selectedStage2RunSummary]
   );
+  useEffect(() => {
+    if (!activeChat) {
+      return;
+    }
+    if (isSourceJobVisibleRunning) {
+      setCurrentStep((prev) => (prev === 1 ? prev : 1));
+      return;
+    }
+    if (isStage2RunVisibleRunning) {
+      setCurrentStep((prev) => (prev === 2 ? prev : 2));
+    }
+  }, [activeChat, isSourceJobVisibleRunning, isStage2RunVisibleRunning]);
   const sourceJobBlockedReason = useMemo(() => {
     if (!activeChannelId) {
       return "Сначала создайте или выберите канал.";
@@ -4852,10 +4864,14 @@ export default function HomePage() {
   const steps: FlowStep[] = useMemo(
     () => [
       { id: 1, label: "Вставить ссылку", enabled: true },
-      { id: 2, label: "Проверить и выбрать", enabled: Boolean(activeChat && stage1FetchState.ready) },
+      {
+        id: 2,
+        label: "Проверить и выбрать",
+        enabled: Boolean(activeChat && (stage1FetchState.ready || isStage2RunVisibleRunning))
+      },
       { id: 3, label: "Рендер видео", enabled: Boolean(visibleStage2Result) }
     ],
-    [activeChat, stage1FetchState.ready, visibleStage2Result]
+    [activeChat, isStage2RunVisibleRunning, stage1FetchState.ready, visibleStage2Result]
   );
 
   const activeLiveAction = useMemo<ChatListItem["liveAction"]>(() => {
@@ -4875,6 +4891,31 @@ export default function HomePage() {
         return null;
     }
   }, [activeChat, busyAction, isSourceJobVisibleRunning, isStage2RunVisibleRunning, visibleSourceJob?.progress.activeStageId]);
+
+  useEffect(() => {
+    if (!activeChat || !isSourceJobVisibleRunning || !visibleSourceJob) {
+      return;
+    }
+    const liveDetail = visibleSourceJob.progress.detail?.trim();
+    if (!liveDetail) {
+      return;
+    }
+    const jobPrefix = `Job ${visibleSourceJob.jobId.slice(0, 8)}`;
+    setStatus((prev) => {
+      const normalized = prev.trim();
+      if (
+        normalized.length === 0 ||
+        normalized.startsWith(jobPrefix) ||
+        normalized.startsWith("Получение источника запущено.") ||
+        normalized.startsWith("Получение комментариев запущено в фоне.") ||
+        normalized.startsWith("Для этого чата уже идёт получение источника.") ||
+        normalized.startsWith("Для этого чата уже идёт получение комментариев.")
+      ) {
+        return liveDetail;
+      }
+      return prev;
+    });
+  }, [activeChat, isSourceJobVisibleRunning, visibleSourceJob]);
 
   const historyItems = useMemo(() => {
     if (!activeChat) {

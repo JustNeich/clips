@@ -436,6 +436,26 @@ export function selectAngles(
     secondaryAngles: rankedAngles.slice(1, 3).map((item) => item.angle),
     allowedAngles: [...allowed],
     rankedAngles,
+    coreTrigger: analyzerOutput.coreTrigger,
+    humanStake: analyzerOutput.humanStake,
+    narrativeFrame: analyzerOutput.narrativeFrame,
+    whyViewerCares: analyzerOutput.whyViewerCares,
+    topStrategy: analyzerOutput.stakes.includes("danger")
+      ? "danger-first setup"
+      : analyzerOutput.stakes.includes("competence")
+        ? "competence-first setup"
+        : analyzerOutput.stakes.includes("absurdity")
+          ? "paradox-first setup"
+          : "contrast-first context compression",
+    bottomEnergy: analyzerOutput.bestBottomEnergy,
+    whyOldV6WouldWorkHere:
+      "Old v6 would anchor on the strongest visible trigger fast, compress why the moment matters into the TOP, and use the BOTTOM for an immediate human reaction instead of explanation.",
+    failureModes: [
+      "literal camera-log description",
+      "object inventory instead of trigger framing",
+      "bottom repeating top",
+      "overly clean AI wording"
+    ],
     retrievalFilters: {
       stable: {
         archetype: channelProfile.archetype,

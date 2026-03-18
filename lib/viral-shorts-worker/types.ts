@@ -148,6 +148,14 @@ export type SelectorOutput = {
   primaryAngle: string;
   secondaryAngles: string[];
   rankedAngles: RankedAngle[];
+  coreTrigger: string;
+  humanStake: string;
+  narrativeFrame: string;
+  whyViewerCares: string;
+  topStrategy: string;
+  bottomEnergy: string;
+  whyOldV6WouldWorkHere: string;
+  failureModes: string[];
   writerBrief: string;
   rationale?: string;
   selectedExampleIds?: string[];
@@ -321,6 +329,14 @@ export type Stage2Diagnostics = {
   selection: {
     clipType: string;
     rankedAngles: RankedAngle[];
+    coreTrigger: string;
+    humanStake: string;
+    narrativeFrame: string;
+    whyViewerCares: string;
+    topStrategy: string;
+    bottomEnergy: string;
+    whyOldV6WouldWorkHere: string;
+    failureModes: string[];
     writerBrief: string;
     rationale: string | null;
     selectedExampleIds: string[];
