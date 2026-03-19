@@ -538,7 +538,9 @@ export default async function ScienceCardDesignPage({ searchParams }: ScienceCar
           style={{
             position: "relative",
             width: exportMode ? exportCanvasWidth ?? viewport.width * scale : viewport.width * scale,
-            height: exportMode ? exportCanvasHeight ?? viewport.height * scale : viewport.height * scale,
+            height: exportMode
+              ? exportCanvasHeight ?? viewport.height * scale
+              : viewport.height * scale,
             overflow: "hidden"
           }}
         >

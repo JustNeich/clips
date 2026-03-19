@@ -1,4 +1,11 @@
 import scienceCardV1SpecJson from "../design/templates/science-card-v1/figma-spec.json";
+import scienceCardV2SpecJson from "../design/templates/science-card-v2/figma-spec.json";
+import scienceCardV3SpecJson from "../design/templates/science-card-v3/figma-spec.json";
+import scienceCardV4SpecJson from "../design/templates/science-card-v4/figma-spec.json";
+import scienceCardV5SpecJson from "../design/templates/science-card-v5/figma-spec.json";
+import scienceCardV6SpecJson from "../design/templates/science-card-v6/figma-spec.json";
+import scienceCardV7SpecJson from "../design/templates/science-card-v7/figma-spec.json";
+import turboFaceV1SpecJson from "../design/templates/turbo-face-v1/figma-spec.json";
 import {
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_SHELL,
@@ -73,6 +80,16 @@ export type TemplateFigmaSpec = {
 };
 
 const SCIENCE_CARD_V1_FIGMA_SPEC = scienceCardV1SpecJson as TemplateFigmaSpec;
+const REPO_BACKED_TEMPLATE_SPECS = new Map<string, TemplateFigmaSpec>([
+  [SCIENCE_CARD_TEMPLATE_ID, SCIENCE_CARD_V1_FIGMA_SPEC],
+  ["science-card-v2", scienceCardV2SpecJson as TemplateFigmaSpec],
+  ["science-card-v3", scienceCardV3SpecJson as TemplateFigmaSpec],
+  ["science-card-v4", scienceCardV4SpecJson as TemplateFigmaSpec],
+  ["science-card-v5", scienceCardV5SpecJson as TemplateFigmaSpec],
+  ["science-card-v6", scienceCardV6SpecJson as TemplateFigmaSpec],
+  ["science-card-v7", scienceCardV7SpecJson as TemplateFigmaSpec],
+  ["turbo-face-v1", turboFaceV1SpecJson as TemplateFigmaSpec]
+]);
 
 function getBottomTextPaddingTop(template: Stage3TemplateConfig): number {
   return template.slot.bottomTextPaddingTop ?? template.slot.bottomTextPaddingY;
@@ -198,8 +215,9 @@ function stableHash(value: string): string {
 
 export function getTemplateFigmaSpec(templateId: string | null | undefined): TemplateFigmaSpec {
   const resolvedTemplateId = templateId?.trim() || STAGE3_TEMPLATE_ID;
-  if (resolvedTemplateId === SCIENCE_CARD_TEMPLATE_ID) {
-    return SCIENCE_CARD_V1_FIGMA_SPEC;
+  const repoBacked = REPO_BACKED_TEMPLATE_SPECS.get(resolvedTemplateId);
+  if (repoBacked) {
+    return repoBacked;
   }
   const next = buildGeneratedSpec(resolvedTemplateId);
   GENERATED_SPEC_CACHE.set(resolvedTemplateId, next);

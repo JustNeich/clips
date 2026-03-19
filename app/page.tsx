@@ -103,6 +103,7 @@ import {
   normalizeChatDraft
 } from "../lib/chat-workflow";
 import { buildChatTraceExportFileName } from "../lib/chat-trace-export-shared";
+import { buildStage3DraftRenderPlanOverride } from "../lib/stage3-draft-render-plan";
 import {
   applyStage2CaptionToStage3Text,
   buildStage2ToStage3HandoffSummary,
@@ -3340,10 +3341,6 @@ export default function HomePage() {
     stage3LivePreviewStateRef.current = stage3LivePreviewState;
   }, [stage3LivePreviewState]);
 
-  const normalizedStage3RenderPlanJson = useMemo(
-    () => JSON.stringify(normalizedStage3RenderPlan),
-    [normalizedStage3RenderPlan]
-  );
   const stage3PassSelectionJson = useMemo(
     () => JSON.stringify(stage3PassSelectionByVersion),
     [stage3PassSelectionByVersion]
@@ -3552,9 +3549,11 @@ export default function HomePage() {
     const baseRenderPlan = latestVersion
       ? normalizeRenderPlan(latestVersion.final.renderPlan, fallbackRenderPlan())
       : applyChannelToRenderPlan(activeChannel, channelAssets);
-    const baseRenderPlanJson = JSON.stringify(baseRenderPlan);
     const normalizedCurrentRenderPlan = normalizedStage3RenderPlan;
-    const renderPlanChanged = normalizedStage3RenderPlanJson !== baseRenderPlanJson;
+    const renderPlanOverride = buildStage3DraftRenderPlanOverride(
+      normalizedCurrentRenderPlan,
+      baseRenderPlan
+    );
     const baseTopText = latestVersion?.final.topText ?? selectedCaption?.top ?? "";
     const baseBottomText = latestVersion?.final.bottomText ?? selectedCaption?.bottom ?? "";
     const baseClipStart = latestVersion?.final.clipStartSec ?? 0;
@@ -3579,7 +3578,7 @@ export default function HomePage() {
         bottomText: stage3BottomText !== baseBottomText ? stage3BottomText : null,
         clipStartSec: stage3ClipStartSec !== baseClipStart ? stage3ClipStartSec : null,
         focusY: stage3FocusY !== baseFocusY ? stage3FocusY : null,
-        renderPlan: renderPlanChanged ? normalizedCurrentRenderPlan : null,
+        renderPlan: renderPlanOverride,
         agentPrompt:
           stage3AgentPrompt.trim() && stage3AgentPrompt !== baseAgentPrompt ? stage3AgentPrompt : "",
         selectedVersionId:
@@ -3605,7 +3604,6 @@ export default function HomePage() {
     stage3PassSelectionJson,
     stage3PassSelectionByVersion,
     normalizedStage3RenderPlan,
-    normalizedStage3RenderPlanJson,
     stage3SelectedVersionId,
     stage3TopText,
     stage3BottomText,

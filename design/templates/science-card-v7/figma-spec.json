@@ -6,59 +6,60 @@
     "height": 1920
   },
   "shell": {
-    "x": 62,
-    "y": 219,
-    "width": 956,
-    "height": 1380,
-    "radius": 18
+    "x": 0,
+    "y": 0,
+    "width": 1080,
+    "height": 1920,
+    "radius": 0,
+    "background": "#177FA6"
   },
   "card": {
-    "x": 62,
-    "y": 219,
-    "width": 956,
-    "height": 1380,
+    "x": 83,
+    "y": 192,
+    "width": 907,
+    "height": 1461,
     "radius": 0,
-    "borderWidth": 3,
+    "borderWidth": 2,
     "borderColor": "#8d9398",
     "fill": "#ffffff",
     "shadow": "20px 20px 0 rgba(35, 40, 47, 0.52)"
   },
   "sections": {
     "top": {
-      "x": 62,
-      "y": 219,
-      "width": 956,
-      "height": 490
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 419
     },
     "media": {
-      "x": 62,
-      "y": 709,
-      "width": 956,
-      "height": 570
+      "x": 83,
+      "y": 611,
+      "width": 907,
+      "height": 750
     },
     "bottom": {
-      "x": 62,
-      "y": 1279,
-      "width": 956,
-      "height": 320
+      "x": 83,
+      "y": 1361,
+      "width": 907,
+      "height": 292
     },
     "author": {
-      "x": 62,
-      "y": 1279,
-      "width": 956,
-      "height": 108
+      "x": 83,
+      "y": 1361,
+      "width": 907,
+      "height": 132
     },
     "avatar": {
-      "x": 82,
-      "y": 1296,
-      "width": 74,
-      "height": 74
+      "x": 106,
+      "y": 1379,
+      "width": 101,
+      "height": 101
     },
     "bottomText": {
-      "x": 80,
-      "y": 1393,
-      "width": 918,
-      "height": 196
+      "x": 106,
+      "y": 1493,
+      "width": 838,
+      "height": 160
     }
   }
 }

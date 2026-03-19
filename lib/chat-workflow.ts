@@ -8,6 +8,7 @@ import {
   Stage3Version
 } from "../app/components/types";
 import { normalizeStage2ProgressSnapshot } from "./stage2-pipeline";
+import { sanitizeStage3DraftRenderPlanOverride } from "./stage3-draft-render-plan";
 import { buildLegacyTimelineEntries, findLatestStage3AgentSessionRef } from "./stage3-legacy-bridge";
 
 type ChatEventLike = {
@@ -407,10 +408,7 @@ export function normalizeChatDraft(value: unknown): ChatDraft | null {
         typeof stage3Candidate.focusY === "number" && Number.isFinite(stage3Candidate.focusY)
           ? stage3Candidate.focusY
           : null,
-      renderPlan:
-        stage3Candidate.renderPlan && typeof stage3Candidate.renderPlan === "object"
-          ? (stage3Candidate.renderPlan as ChatDraft["stage3"]["renderPlan"])
-          : null,
+      renderPlan: sanitizeStage3DraftRenderPlanOverride(stage3Candidate.renderPlan),
       agentPrompt:
         typeof stage3Candidate.agentPrompt === "string" ? stage3Candidate.agentPrompt : "",
       selectedVersionId:

@@ -57,16 +57,23 @@ import {
   buildPromptPacket,
   resolveStage2PromptTemplate
 } from "../lib/viral-shorts-worker/prompts";
+import { getTemplateFigmaSpec } from "../lib/stage3-template-spec";
 import { prepareCodexSchemaTransport } from "../lib/viral-shorts-worker/executor";
 import {
   applyStage2CaptionToStage3Text,
   buildStage2ToStage3HandoffSummary
 } from "../lib/stage2-stage3-handoff";
 import {
+  buildStage3DraftRenderPlanOverride,
+  sanitizeStage3DraftRenderPlanOverride
+} from "../lib/stage3-draft-render-plan";
+import {
   buildVideoContext,
   ViralShortsWorkerService
 } from "../lib/viral-shorts-worker/service";
 import type { JsonStageExecutor } from "../lib/viral-shorts-worker/executor";
+import { normalizeChatDraft } from "../lib/chat-workflow";
+import { fallbackRenderPlan, normalizeRenderPlan } from "../app/home-page-support";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -1821,6 +1828,164 @@ test("caption apply helper supports taking all, top only, or bottom only", () =>
       bottomText: "\"Picked bottom\""
     }
   );
+});
+
+test("stage 3 draft render-plan override strips channel-managed template fields", () => {
+  const base = fallbackRenderPlan();
+  const rawOverride = {
+    ...base,
+    templateId: "turbo-face-v1",
+    authorName: "Changed channel",
+    authorHandle: "@changed",
+    avatarAssetId: "avatar_1",
+    avatarAssetMimeType: "image/png",
+    videoZoom: 1.4,
+    topFontScale: 1.6,
+    musicAssetId: "music_2",
+    musicAssetMimeType: "audio/mpeg"
+  };
+
+  assert.deepEqual(sanitizeStage3DraftRenderPlanOverride(rawOverride), {
+    timingMode: base.timingMode,
+    audioMode: base.audioMode,
+    sourceAudioEnabled: base.sourceAudioEnabled,
+    smoothSlowMo: base.smoothSlowMo,
+    mirrorEnabled: base.mirrorEnabled,
+    cameraMotion: base.cameraMotion,
+    videoZoom: 1.4,
+    topFontScale: 1.6,
+    bottomFontScale: base.bottomFontScale,
+    musicGain: base.musicGain,
+    textPolicy: base.textPolicy,
+    segments: base.segments,
+    policy: base.policy,
+    backgroundAssetId: base.backgroundAssetId,
+    backgroundAssetMimeType: base.backgroundAssetMimeType,
+    musicAssetId: "music_2",
+    musicAssetMimeType: "audio/mpeg"
+  });
+});
+
+test("stage 3 draft render-plan override persists only editable diffs and keeps new channel template", () => {
+  const originalBase = normalizeRenderPlan(
+    {
+      ...fallbackRenderPlan(),
+      templateId: "science-card-v1",
+      authorName: "Science Snack",
+      authorHandle: "@Science_Snack_1"
+    },
+    fallbackRenderPlan()
+  );
+  const current = normalizeRenderPlan(
+    {
+      ...originalBase,
+      templateId: "turbo-face-v1",
+      videoZoom: 1.35,
+      topFontScale: 1.55
+    },
+    fallbackRenderPlan()
+  );
+
+  const persistedOverride = buildStage3DraftRenderPlanOverride(current, originalBase);
+  assert.deepEqual(persistedOverride, {
+    videoZoom: 1.35,
+    topFontScale: 1.35
+  });
+
+  const updatedChannelBase = normalizeRenderPlan(
+    {
+      ...fallbackRenderPlan(),
+      templateId: "science-card-v7",
+      authorName: "Stone Face Turbo",
+      authorHandle: "@StoneFaceTurbo"
+    },
+    fallbackRenderPlan()
+  );
+
+  const hydrated = normalizeRenderPlan(persistedOverride, updatedChannelBase);
+  assert.equal(hydrated.templateId, "science-card-v7");
+  assert.equal(hydrated.authorName, "Stone Face Turbo");
+  assert.equal(hydrated.authorHandle, "@StoneFaceTurbo");
+  assert.equal(hydrated.videoZoom, 1.35);
+  assert.equal(hydrated.topFontScale, 1.35);
+});
+
+test("normalizeChatDraft removes legacy template id from stage 3 render-plan override", () => {
+  const draft = normalizeChatDraft({
+    id: "draft_1",
+    threadId: "chat_1",
+    userId: "user_1",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    lastOpenStep: 3,
+    stage2: {
+      instruction: "",
+      selectedCaptionOption: null,
+      selectedTitleOption: null
+    },
+    stage3: {
+      topText: null,
+      bottomText: null,
+      clipStartSec: null,
+      focusY: null,
+      renderPlan: {
+        ...fallbackRenderPlan(),
+        templateId: "turbo-face-v1",
+        authorName: "Legacy channel",
+        authorHandle: "@legacy",
+        videoZoom: 1.2
+      },
+      agentPrompt: "",
+      selectedVersionId: null,
+      passSelectionByVersion: {}
+    }
+  });
+
+  assert.ok(draft);
+  assert.deepEqual(draft?.stage3.renderPlan, {
+    timingMode: "auto",
+    audioMode: "source_only",
+    sourceAudioEnabled: true,
+    smoothSlowMo: false,
+    mirrorEnabled: true,
+    cameraMotion: "disabled",
+    videoZoom: 1.2,
+    topFontScale: fallbackRenderPlan().topFontScale,
+    bottomFontScale: fallbackRenderPlan().bottomFontScale,
+    musicGain: fallbackRenderPlan().musicGain,
+    textPolicy: fallbackRenderPlan().textPolicy,
+    segments: [],
+    policy: fallbackRenderPlan().policy,
+    backgroundAssetId: null,
+    backgroundAssetMimeType: null,
+    musicAssetId: null,
+    musicAssetMimeType: null
+  });
+});
+
+test("science-card-v7 uses the repo-backed spec and matches science-card geometry", () => {
+  const baseSpec = getTemplateFigmaSpec("science-card-v1");
+  const v7Spec = getTemplateFigmaSpec("science-card-v7");
+
+  assert.equal(v7Spec.source, "generated");
+  assert.deepEqual(v7Spec.shell, {
+    x: 0,
+    y: 0,
+    width: 1080,
+    height: 1920,
+    radius: 0,
+    background: "#177FA6"
+  });
+  assert.deepEqual(v7Spec.card.x, baseSpec.card.x);
+  assert.deepEqual(v7Spec.card.y, baseSpec.card.y);
+  assert.deepEqual(v7Spec.card.width, baseSpec.card.width);
+  assert.deepEqual(v7Spec.card.height, baseSpec.card.height);
+  assert.deepEqual(v7Spec.sections.top, baseSpec.sections.top);
+  assert.deepEqual(v7Spec.sections.media, baseSpec.sections.media);
+  assert.deepEqual(v7Spec.sections.bottom, baseSpec.sections.bottom);
+  assert.deepEqual(v7Spec.sections.author, baseSpec.sections.author);
+  assert.deepEqual(v7Spec.sections.avatar, baseSpec.sections.avatar);
+  assert.deepEqual(v7Spec.sections.bottomText, baseSpec.sections.bottomText);
 });
 
 test("prompt config exposes one direct per-stage prompt and reasoning mode", () => {

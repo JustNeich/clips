@@ -638,7 +638,7 @@ export type ChatDraft = {
     bottomText: string | null;
     clipStartSec: number | null;
     focusY: number | null;
-    renderPlan: Stage3RenderPlan | null;
+    renderPlan: Partial<Stage3RenderPlan> | null;
     agentPrompt: string;
     selectedVersionId: string | null;
     passSelectionByVersion: Record<string, number>;
