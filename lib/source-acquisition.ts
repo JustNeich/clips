@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { resolveExecutableFromCandidates } from "./command-path";
 import {
+  buildLimitedCommentsExtractorArgs,
   createYtDlpAuthContext,
   extractYtDlpErrorFromUnknown,
   normalizeSupportedUrl,
@@ -598,6 +599,7 @@ export async function fetchOptionalYtDlpInfo(
       "--no-warnings",
       "--write-info-json",
       ...(withComments ? ["--write-comments"] : []),
+      ...(withComments ? buildLimitedCommentsExtractorArgs(sourceUrl, 300) : []),
       "-o",
       outputTemplate,
       sourceUrl

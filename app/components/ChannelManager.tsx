@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ChannelManagerStage2Tab } from "./ChannelManagerStage2Tab";
 import {
+  AppRole,
   Channel,
   ChannelAccessGrant,
   ChannelAsset,
@@ -28,16 +30,34 @@ import {
   normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
   resolveStage2ExamplesCorpus,
+  type Stage2CorpusExample,
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../../lib/stage2-channel-config";
+import {
+  AutosaveScope,
+  AutosaveState,
+  AutosaveStatus,
+  CHANNEL_MANAGER_DEFAULT_SETTINGS_ID,
+  ChannelManagerTargetKind,
+  listByKind,
+  listChannelManagerTargets,
+  stringifyCorpusExamples,
+  areCorpusExamplesEquivalent,
+  TabId
+} from "./channel-manager-support";
+
+export { CHANNEL_MANAGER_DEFAULT_SETTINGS_ID, listChannelManagerTargets };
 
 type ChannelManagerProps = {
   open: boolean;
   channels: Channel[];
   workspaceStage2ExamplesCorpusJson: string;
+  workspaceStage2HardConstraints: Stage2HardConstraints;
+  workspaceStage2PromptConfig: Stage2PromptConfig;
   activeChannelId: string | null;
   assets: ChannelAsset[];
+  currentUserRole: AppRole | null;
   onClose: () => void;
   onSelectChannel: (channelId: string) => void;
   onCreateChannel: () => void;
@@ -57,7 +77,13 @@ type ChannelManagerProps = {
       defaultMusicAssetId: string | null;
     }>
   ) => Promise<void>;
-  onSaveWorkspaceStage2ExamplesCorpus: (value: string) => Promise<void>;
+  onSaveWorkspaceStage2Defaults: (
+    patch: Partial<{
+      stage2ExamplesCorpusJson: string;
+      stage2HardConstraints: Stage2HardConstraints;
+      stage2PromptConfig: Stage2PromptConfig;
+    }>
+  ) => Promise<void>;
   onUploadAsset: (kind: ChannelAssetKind, file: File) => void;
   onDeleteAsset: (assetId: string) => void;
   canManageAccess: boolean;
@@ -66,35 +92,22 @@ type ChannelManagerProps = {
   onUpdateAccess: (channelId: string, input: { grantUserIds: string[]; revokeUserIds: string[] }) => void;
 };
 
-type TabId = "brand" | "stage2" | "render" | "assets" | "access";
-type AutosaveScope = "brand" | "stage2" | "render";
-type AutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
-
-type AutosaveState = Record<
-  AutosaveScope,
-  {
-    status: AutosaveStatus;
-    message: string | null;
-  }
->;
-
-function listByKind(assets: ChannelAsset[], kind: ChannelAssetKind): ChannelAsset[] {
-  return assets.filter((item) => item.kind === kind);
-}
-
 export function ChannelManager({
   open,
   channels,
   workspaceStage2ExamplesCorpusJson,
+  workspaceStage2HardConstraints: workspaceStage2HardConstraintsProp,
+  workspaceStage2PromptConfig: workspaceStage2PromptConfigProp,
   activeChannelId,
   assets,
+  currentUserRole,
   onClose,
   onSelectChannel,
   onCreateChannel,
   onDeleteChannel,
   canCreateChannel,
   onSaveChannel,
-  onSaveWorkspaceStage2ExamplesCorpus,
+  onSaveWorkspaceStage2Defaults,
   onUploadAsset,
   onDeleteAsset,
   canManageAccess,
@@ -104,10 +117,20 @@ export function ChannelManager({
 }: ChannelManagerProps) {
   const [tab, setTab] = useState<TabId>("brand");
   const [mounted, setMounted] = useState(false);
-  const activeChannel = useMemo(
-    () => channels.find((item) => item.id === activeChannelId) ?? null,
-    [channels, activeChannelId]
-  );
+  const isOwner = currentUserRole === "owner";
+  const managerTargets = useMemo(() => listChannelManagerTargets(channels, isOwner), [channels, isOwner]);
+  const [managerSelectionId, setManagerSelectionId] = useState<string | null>(null);
+  const selectedTarget = useMemo(() => {
+    if (managerSelectionId) {
+      return managerTargets.find((item) => item.id === managerSelectionId) ?? null;
+    }
+    if (activeChannelId) {
+      return managerTargets.find((item) => item.id === activeChannelId) ?? null;
+    }
+    return managerTargets[0] ?? null;
+  }, [activeChannelId, managerSelectionId, managerTargets]);
+  const isWorkspaceDefaultsSelection = selectedTarget?.kind === "workspace_defaults";
+  const activeChannel = selectedTarget?.kind === "channel" ? selectedTarget.channel : null;
 
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -121,13 +144,14 @@ export function ChannelManager({
   const [workspaceExamplesError, setWorkspaceExamplesError] = useState<string | null>(null);
   const [customExamplesJson, setCustomExamplesJson] = useState("[]");
   const [customExamplesError, setCustomExamplesError] = useState<string | null>(null);
-  const [stage2PromptConfig, setStage2PromptConfig] = useState<Stage2PromptConfig>(
-    normalizeStage2PromptConfig(null)
+  const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
+    normalizeStage2PromptConfig(workspaceStage2PromptConfigProp)
   );
   const [templateId, setTemplateId] = useState(STAGE3_TEMPLATE_ID);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>({
     brand: { status: "idle", message: null },
     stage2: { status: "idle", message: null },
+    stage2Defaults: { status: "idle", message: null },
     render: { status: "idle", message: null }
   });
   const stage2PromptStages = useMemo(() => listStage2PromptConfigStages(), []);
@@ -142,21 +166,24 @@ export function ChannelManager({
   const skipAutosaveRef = useRef<Record<AutosaveScope, boolean>>({
     brand: true,
     stage2: true,
+    stage2Defaults: true,
     render: true
   });
   const persistedSnapshotRef = useRef<Record<AutosaveScope, string>>({
     brand: "",
     stage2: "",
+    stage2Defaults: "",
     render: ""
   });
   const autosaveRevisionRef = useRef<Record<AutosaveScope, number>>({
     brand: 0,
     stage2: 0,
+    stage2Defaults: 0,
     render: 0
   });
   const autosaveResetTimersRef = useRef<Partial<Record<AutosaveScope, number>>>({});
   const saveChannelRef = useRef(onSaveChannel);
-  const saveWorkspaceStage2ExamplesRef = useRef(onSaveWorkspaceStage2ExamplesCorpus);
+  const saveWorkspaceStage2DefaultsRef = useRef(onSaveWorkspaceStage2Defaults);
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -166,8 +193,8 @@ export function ChannelManager({
   }, [onSaveChannel]);
 
   useEffect(() => {
-    saveWorkspaceStage2ExamplesRef.current = onSaveWorkspaceStage2ExamplesCorpus;
-  }, [onSaveWorkspaceStage2ExamplesCorpus]);
+    saveWorkspaceStage2DefaultsRef.current = onSaveWorkspaceStage2Defaults;
+  }, [onSaveWorkspaceStage2Defaults]);
 
   useEffect(() => {
     return () => {
@@ -178,6 +205,31 @@ export function ChannelManager({
       });
     };
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setManagerSelectionId(null);
+      setTab("brand");
+      return;
+    }
+
+    if (managerSelectionId && managerTargets.some((item) => item.id === managerSelectionId)) {
+      return;
+    }
+
+    if (activeChannelId && managerTargets.some((item) => item.id === activeChannelId)) {
+      setManagerSelectionId(activeChannelId);
+      return;
+    }
+
+    setManagerSelectionId(managerTargets[0]?.id ?? null);
+  }, [open, activeChannelId, managerSelectionId, managerTargets]);
+
+  useEffect(() => {
+    if (isWorkspaceDefaultsSelection && tab !== "stage2") {
+      setTab("stage2");
+    }
+  }, [isWorkspaceDefaultsSelection, tab]);
 
   const setAutosaveFeedback = (
     scope: AutosaveScope,
@@ -215,17 +267,20 @@ export function ChannelManager({
       username: nextUsername
     });
 
-  const buildStage2Snapshot = (
+  const buildStage2Snapshot = (nextExamplesConfig: Stage2ExamplesConfig): string =>
+    JSON.stringify({
+      stage2ExamplesConfig: nextExamplesConfig
+    });
+
+  const buildStage2DefaultsSnapshot = (
     nextWorkspaceExamplesJson: string,
-    nextExamplesConfig: Stage2ExamplesConfig,
     nextHardConstraints: Stage2HardConstraints,
     nextPromptConfig: Stage2PromptConfig
   ): string =>
     JSON.stringify({
       workspaceStage2ExamplesCorpusJson: nextWorkspaceExamplesJson,
-      stage2ExamplesConfig: nextExamplesConfig,
-      stage2HardConstraints: nextHardConstraints,
-      stage2PromptConfig: nextPromptConfig
+      workspaceStage2HardConstraints: nextHardConstraints,
+      workspaceStage2PromptConfig: nextPromptConfig
     });
 
   const buildRenderSnapshot = (nextTemplateId: string): string =>
@@ -234,30 +289,47 @@ export function ChannelManager({
     });
 
   useEffect(() => {
-    if (!activeChannel) {
+    const normalizedHardConstraints = normalizeStage2HardConstraints(workspaceStage2HardConstraintsProp);
+    const normalizedPromptConfig = normalizeStage2PromptConfig(workspaceStage2PromptConfigProp);
+    setStage2HardConstraints(normalizedHardConstraints);
+    setWorkspaceExamplesJson(workspaceStage2ExamplesCorpusJson);
+    setWorkspaceExamplesError(null);
+    setWorkspaceStage2PromptConfig(normalizedPromptConfig);
+    clearAutosaveReset("stage2Defaults");
+
+    persistedSnapshotRef.current.stage2Defaults = buildStage2DefaultsSnapshot(
+      workspaceStage2ExamplesCorpusJson,
+      normalizedHardConstraints,
+      normalizedPromptConfig
+    );
+    skipAutosaveRef.current.stage2Defaults = true;
+
+    if (isWorkspaceDefaultsSelection || !activeChannel) {
+      setAutosaveState((current) => ({
+        ...current,
+        stage2Defaults: { status: "idle", message: null }
+      }));
       return;
     }
+
     const normalizedExamplesConfig = normalizeStage2ExamplesConfig(activeChannel.stage2ExamplesConfig, {
       channelId: activeChannel.id,
       channelName: activeChannel.name
     });
-    const normalizedHardConstraints = normalizeStage2HardConstraints(activeChannel.stage2HardConstraints);
-    const normalizedPromptConfig = normalizeStage2PromptConfig(activeChannel.stage2PromptConfig);
     setName(activeChannel.name);
     setUsername(activeChannel.username);
+    const initialChannelExamples = normalizedExamplesConfig.useWorkspaceDefault
+      ? collectWorkspaceStage2Examples(workspaceStage2ExamplesCorpusJson)
+      : normalizedExamplesConfig.customExamples ?? [];
     setStage2ExamplesConfig(normalizedExamplesConfig);
-    setStage2HardConstraints(normalizedHardConstraints);
-    setWorkspaceExamplesJson(workspaceStage2ExamplesCorpusJson);
-    setWorkspaceExamplesError(null);
-    setCustomExamplesJson(JSON.stringify(normalizedExamplesConfig.customExamples ?? [], null, 2));
+    setCustomExamplesJson(stringifyCorpusExamples(initialChannelExamples));
     setCustomExamplesError(null);
-    setStage2PromptConfig(normalizedPromptConfig);
     setTemplateId(activeChannel.templateId);
     persistedSnapshotRef.current = {
       brand: buildBrandSnapshot(activeChannel.name, activeChannel.username),
-      stage2: buildStage2Snapshot(
+      stage2: buildStage2Snapshot(normalizedExamplesConfig),
+      stage2Defaults: buildStage2DefaultsSnapshot(
         workspaceStage2ExamplesCorpusJson,
-        normalizedExamplesConfig,
         normalizedHardConstraints,
         normalizedPromptConfig
       ),
@@ -266,6 +338,7 @@ export function ChannelManager({
     skipAutosaveRef.current = {
       brand: true,
       stage2: true,
+      stage2Defaults: true,
       render: true
     };
     clearAutosaveReset("brand");
@@ -274,9 +347,16 @@ export function ChannelManager({
     setAutosaveState({
       brand: { status: "idle", message: null },
       stage2: { status: "idle", message: null },
+      stage2Defaults: { status: "idle", message: null },
       render: { status: "idle", message: null }
     });
-  }, [activeChannel, workspaceStage2ExamplesCorpusJson]);
+  }, [
+    activeChannel,
+    isWorkspaceDefaultsSelection,
+    workspaceStage2ExamplesCorpusJson,
+    workspaceStage2HardConstraintsProp,
+    workspaceStage2PromptConfigProp
+  ]);
 
   useEffect(() => {
     if (!open || !mounted) {
@@ -301,9 +381,16 @@ export function ChannelManager({
     [workspaceExamplesJson]
   );
   const canEditSetup = Boolean(activeChannel?.currentUserCanEditSetup);
+  const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
+  const canEditChannelExamples = canEditSetup;
+  const canEditHardConstraints = canEditWorkspaceDefaults;
   const activeExamplesPreview = useMemo(() => {
     if (!activeChannel) {
-      return { source: "workspace_default" as const, corpus: [], workspaceCorpusCount: workspaceExamplesCount };
+      return {
+        source: "workspace_default" as const,
+        corpus: collectWorkspaceStage2Examples(workspaceExamplesJson),
+        workspaceCorpusCount: workspaceExamplesCount
+      };
     }
     return resolveStage2ExamplesCorpus({
       channel: {
@@ -316,7 +403,7 @@ export function ChannelManager({
   }, [activeChannel, stage2ExamplesConfig, workspaceExamplesCount, workspaceExamplesJson]);
 
   useEffect(() => {
-    if (!activeChannel || !canEditSetup) {
+    if (!activeChannel || !canEditChannelExamples) {
       return;
     }
     if (skipAutosaveRef.current.brand) {
@@ -358,28 +445,23 @@ export function ChannelManager({
   }, [activeChannel, canEditSetup, name, username]);
 
   useEffect(() => {
-    if (!activeChannel || !canEditSetup) {
+    if (!activeChannel || !canEditChannelExamples) {
       return;
     }
     if (skipAutosaveRef.current.stage2) {
       skipAutosaveRef.current.stage2 = false;
       return;
     }
-    if (workspaceExamplesError || customExamplesError) {
+    if (customExamplesError) {
       clearAutosaveReset("stage2");
       setAutosaveFeedback(
         "stage2",
         "error",
-        "Исправьте JSON корпуса примеров, чтобы сохранить Stage 2."
+        "Исправьте JSON custom corpus, чтобы сохранить Stage 2."
       );
       return;
     }
-    const nextSnapshot = buildStage2Snapshot(
-      workspaceExamplesJson,
-      stage2ExamplesConfig,
-      stage2HardConstraints,
-      stage2PromptConfig
-    );
+    const nextSnapshot = buildStage2Snapshot(stage2ExamplesConfig);
     if (nextSnapshot === persistedSnapshotRef.current.stage2) {
       if (autosaveState.stage2.status !== "idle") {
         setAutosaveFeedback("stage2", "idle", null);
@@ -391,14 +473,9 @@ export function ChannelManager({
     const revision = ++autosaveRevisionRef.current.stage2;
     const timerId = window.setTimeout(() => {
       setAutosaveFeedback("stage2", "saving", "Сохраняем Stage 2…");
-      void Promise.all([
-        saveWorkspaceStage2ExamplesRef.current(workspaceExamplesJson),
-        saveChannelRef.current(activeChannel.id, {
-          stage2ExamplesConfig,
-          stage2HardConstraints,
-          stage2PromptConfig
-        })
-      ])
+      void saveChannelRef.current(activeChannel.id, {
+        stage2ExamplesConfig
+      })
         .then(() => {
           if (autosaveRevisionRef.current.stage2 !== revision) {
             return;
@@ -420,13 +497,75 @@ export function ChannelManager({
     };
   }, [
     activeChannel,
-    canEditSetup,
+    canEditChannelExamples,
     customExamplesError,
-    stage2ExamplesConfig,
-    stage2HardConstraints,
-    stage2PromptConfig,
+    stage2ExamplesConfig
+  ]);
+
+  useEffect(() => {
+    if (!open || !canEditWorkspaceDefaults) {
+      return;
+    }
+    if (skipAutosaveRef.current.stage2Defaults) {
+      skipAutosaveRef.current.stage2Defaults = false;
+      return;
+    }
+    if (workspaceExamplesError) {
+      clearAutosaveReset("stage2Defaults");
+      setAutosaveFeedback(
+        "stage2Defaults",
+        "error",
+        "Исправьте JSON workspace corpus, чтобы сохранить defaults."
+      );
+      return;
+    }
+    const nextSnapshot = buildStage2DefaultsSnapshot(
+      workspaceExamplesJson,
+      stage2HardConstraints,
+      workspaceStage2PromptConfig
+    );
+    if (nextSnapshot === persistedSnapshotRef.current.stage2Defaults) {
+      if (autosaveState.stage2Defaults.status !== "idle") {
+        setAutosaveFeedback("stage2Defaults", "idle", null);
+      }
+      return;
+    }
+    clearAutosaveReset("stage2Defaults");
+    setAutosaveFeedback("stage2Defaults", "pending", "Сохраним Stage 2 defaults автоматически.");
+    const revision = ++autosaveRevisionRef.current.stage2Defaults;
+    const timerId = window.setTimeout(() => {
+      setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем Stage 2 defaults…");
+      void saveWorkspaceStage2DefaultsRef.current({
+        stage2ExamplesCorpusJson: workspaceExamplesJson,
+        stage2HardConstraints,
+        stage2PromptConfig: workspaceStage2PromptConfig
+      })
+        .then(() => {
+          if (autosaveRevisionRef.current.stage2Defaults !== revision) {
+            return;
+          }
+          persistedSnapshotRef.current.stage2Defaults = nextSnapshot;
+          setAutosaveFeedback("stage2Defaults", "saved", "Stage 2 defaults сохранены.");
+          scheduleAutosaveReset("stage2Defaults");
+        })
+        .catch(() => {
+          if (autosaveRevisionRef.current.stage2Defaults !== revision) {
+            return;
+          }
+          setAutosaveFeedback("stage2Defaults", "error", "Не удалось сохранить Stage 2 defaults.");
+        });
+    }, 900);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [
+    activeChannel,
+    canEditWorkspaceDefaults,
     workspaceExamplesError,
-    workspaceExamplesJson
+    workspaceExamplesJson,
+    stage2HardConstraints,
+    workspaceStage2PromptConfig
   ]);
 
   useEffect(() => {
@@ -485,7 +624,7 @@ export function ChannelManager({
     stageId: keyof Stage2PromptConfig["stages"],
     prompt: string
   ) => {
-    setStage2PromptConfig((current) => ({
+    setWorkspaceStage2PromptConfig((current) => ({
       ...current,
       stages: {
         ...current.stages,
@@ -501,7 +640,7 @@ export function ChannelManager({
     stageId: keyof Stage2PromptConfig["stages"],
     reasoningEffort: Stage2PromptConfig["stages"][keyof Stage2PromptConfig["stages"]]["reasoningEffort"]
   ) => {
-    setStage2PromptConfig((current) => ({
+    setWorkspaceStage2PromptConfig((current) => ({
       ...current,
       stages: {
         ...current.stages,
@@ -514,19 +653,12 @@ export function ChannelManager({
   };
 
   const resetStage2PromptStage = (stageId: keyof Stage2PromptConfig["stages"]) => {
-    setStage2PromptConfig((current) => ({
+    setWorkspaceStage2PromptConfig((current) => ({
       ...current,
       stages: {
         ...current.stages,
         [stageId]: { ...DEFAULT_STAGE2_PROMPT_CONFIG.stages[stageId] }
       }
-    }));
-  };
-
-  const updateStage2ExamplesSource = (useWorkspaceDefault: boolean) => {
-    setStage2ExamplesConfig((current) => ({
-      ...current,
-      useWorkspaceDefault
     }));
   };
 
@@ -547,21 +679,35 @@ export function ChannelManager({
     setCustomExamplesJson(value);
     try {
       const parsed = JSON.parse(value) as unknown;
+      const normalizedExamplesConfig = normalizeStage2ExamplesConfig(
+        {
+          version: 1,
+          useWorkspaceDefault: false,
+          customExamples: Array.isArray(parsed) ? parsed : []
+        },
+        {
+          channelId: activeChannel?.id ?? "",
+          channelName: activeChannel?.name ?? ""
+        }
+      );
+      const workspaceExamples = collectWorkspaceStage2Examples(workspaceExamplesJson);
+      const shouldUseWorkspaceDefault = areCorpusExamplesEquivalent(
+        normalizedExamplesConfig.customExamples,
+        workspaceExamples
+      );
       setStage2ExamplesConfig((current) =>
-        normalizeStage2ExamplesConfig(
-          {
-            ...current,
-            customExamples: Array.isArray(parsed) ? parsed : []
-          },
-          {
-            channelId: activeChannel?.id ?? "",
-            channelName: activeChannel?.name ?? ""
-          }
-        )
+        normalizeStage2ExamplesConfig({
+          ...current,
+          useWorkspaceDefault: shouldUseWorkspaceDefault,
+          customExamples: shouldUseWorkspaceDefault ? [] : normalizedExamplesConfig.customExamples
+        }, {
+          channelId: activeChannel?.id ?? "",
+          channelName: activeChannel?.name ?? ""
+        })
       );
       setCustomExamplesError(null);
     } catch {
-      setCustomExamplesError("Channel custom corpus JSON должен быть валидным JSON-массивом.");
+      setCustomExamplesError("Examples corpus JSON должен быть валидным JSON-массивом.");
     }
   };
 
@@ -617,18 +763,23 @@ export function ChannelManager({
         <section className="channel-manager-toolbar">
           <select
             className="text-input"
-            value={activeChannelId ?? ""}
+            value={selectedTarget?.id ?? ""}
             onChange={(event) => {
-              const channelId = event.target.value;
-              if (!channelId) {
+              const targetId = event.target.value;
+              if (!targetId) {
                 return;
               }
-              onSelectChannel(channelId);
+              setManagerSelectionId(targetId);
+              if (targetId === CHANNEL_MANAGER_DEFAULT_SETTINGS_ID) {
+                setTab("stage2");
+                return;
+              }
+              onSelectChannel(targetId);
             }}
           >
-            {channels.map((channel) => (
-              <option key={channel.id} value={channel.id}>
-                {channel.name} @{channel.username}
+            {managerTargets.map((target) => (
+              <option key={target.id} value={target.id}>
+                {target.label}
               </option>
             ))}
           </select>
@@ -650,7 +801,10 @@ export function ChannelManager({
         </section>
 
         <div className="channel-tabs">
-          {(["brand", "stage2", "render", "assets", "access"] as const).map((item) => {
+          {(isWorkspaceDefaultsSelection
+            ? (["stage2"] as const)
+            : (["brand", "stage2", "render", "assets", "access"] as const)
+          ).map((item) => {
             if (item === "access" && !canManageAccess) {
               return null;
             }
@@ -667,7 +821,7 @@ export function ChannelManager({
           })}
         </div>
 
-        {!activeChannel ? (
+        {!activeChannel && !isWorkspaceDefaultsSelection ? (
           <p className="subtle-text">Выберите канал.</p>
         ) : (
           <div className="channel-tab-content">
@@ -710,9 +864,9 @@ export function ChannelManager({
                   </label>
                   <select
                     className="text-input"
-                    value={activeChannel.avatarAssetId ?? ""}
+                    value={activeChannel?.avatarAssetId ?? ""}
                     onChange={(event) =>
-                        onSaveChannel(activeChannel.id, { avatarAssetId: event.target.value || null })
+                        activeChannel && onSaveChannel(activeChannel.id, { avatarAssetId: event.target.value || null })
                     }
                   >
                     <option value="">Без аватара</option>
@@ -727,304 +881,28 @@ export function ChannelManager({
             ) : null}
 
             {tab === "stage2" ? (
-              <div className="field-stack">
-                <section className="control-card control-card-priority">
-                  <p className="field-label">Multi-stage Stage 2 pipeline</p>
-                  <p className="subtle-text">
-                    У каждого канала теперь один эффективный corpus примеров. По умолчанию он
-                    берётся из workspace, а при необходимости этот канал может полностью заменить
-                    его своим custom corpus. Один и тот же effective corpus используется для
-                    selector, writer и остальных Stage 2 этапов.
-                  </p>
-                </section>
-                <section className="control-card control-card-subtle">
-                  <p className="field-label">Examples corpus</p>
-                  <div className="stage2-insight-grid">
-                    <article className="stage2-insight-card">
-                      <span className="field-label">Workspace default</span>
-                      <strong>{workspaceExamplesCount}</strong>
-                      <p className="subtle-text">примеров находится в общем corpus workspace</p>
-                    </article>
-                    <article className="stage2-insight-card">
-                      <span className="field-label">Effective source</span>
-                      <strong>
-                        {stage2ExamplesConfig.useWorkspaceDefault
-                          ? "Workspace default"
-                          : "Channel custom"}
-                      </strong>
-                      <p className="subtle-text">активный corpus для этого канала и этого run</p>
-                    </article>
-                    <article className="stage2-insight-card">
-                      <span className="field-label">Effective corpus</span>
-                      <strong>{activeExamplesPreview.corpus.length}</strong>
-                      <p className="subtle-text">столько examples увидят selector и writer</p>
-                    </article>
-                    <article className="stage2-insight-card">
-                      <span className="field-label">Hard constraints</span>
-                      <strong>
-                        TOP {stage2HardConstraints.topLengthMin}-{stage2HardConstraints.topLengthMax}
-                      </strong>
-                      <p className="subtle-text">
-                        BOTTOM {stage2HardConstraints.bottomLengthMin}-{stage2HardConstraints.bottomLengthMax}
-                      </p>
-                    </article>
-                  </div>
-
-                  <p className="subtle-text">
-                    Для каждого канала выбирается только один активный corpus. Если включён
-                    workspace default, используется общий набор examples. Если включён custom
-                    corpus канала, он полностью заменяет workspace default только для этого канала.
-                  </p>
-
-                  <div className="compact-field">
-                    <label className="field-label">Workspace default corpus JSON</label>
-                    <textarea
-                      className="text-area mono"
-                      rows={10}
-                      value={workspaceExamplesJson}
-                      disabled={!canEditSetup}
-                      onChange={(event) => updateWorkspaceExamplesJson(event.target.value)}
-                    />
-                    {workspaceExamplesError ? (
-                      <p className="subtle-text danger-text">{workspaceExamplesError}</p>
-                    ) : (
-                      <p className="subtle-text">
-                        Это основной editable corpus для всего workspace. По умолчанию все каналы
-                        используют именно его.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="compact-field">
-                    <span className="field-label">Активный источник corpus</span>
-                    <label className="field-label">
-                      <input
-                        type="radio"
-                        name="stage2-examples-source"
-                        checked={stage2ExamplesConfig.useWorkspaceDefault}
-                        disabled={!canEditSetup}
-                        onChange={() => updateStage2ExamplesSource(true)}
-                      />{" "}
-                      Use workspace default corpus
-                    </label>
-                    <label className="field-label">
-                      <input
-                        type="radio"
-                        name="stage2-examples-source"
-                        checked={!stage2ExamplesConfig.useWorkspaceDefault}
-                        disabled={!canEditSetup}
-                        onChange={() => updateStage2ExamplesSource(false)}
-                      />{" "}
-                      Use custom corpus for this channel
-                    </label>
-                  </div>
-
-                  {!stage2ExamplesConfig.useWorkspaceDefault ? (
-                    <div className="compact-field">
-                      <label className="field-label">Channel custom corpus JSON</label>
-                      <textarea
-                        className="text-area mono"
-                        rows={10}
-                        value={customExamplesJson}
-                        disabled={!canEditSetup}
-                        onChange={(event) => updateCustomExamplesJson(event.target.value)}
-                      />
-                      {customExamplesError ? (
-                        <p className="subtle-text danger-text">{customExamplesError}</p>
-                      ) : (
-                        <p className="subtle-text">
-                          Этот набор полностью заменяет workspace default только для этого канала.
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
-                </section>
-
-                <section className="control-card control-card-subtle">
-                  <p className="field-label">Hard constraints</p>
-                  <div className="compact-grid">
-                    <div className="compact-field">
-                      <label className="field-label">Top min</label>
-                      <input
-                        className="text-input"
-                        type="number"
-                        value={stage2HardConstraints.topLengthMin}
-                        disabled={!canEditSetup}
-                        onChange={(event) =>
-                          updateStage2HardConstraint("topLengthMin", event.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="compact-field">
-                      <label className="field-label">Top max</label>
-                      <input
-                        className="text-input"
-                        type="number"
-                        value={stage2HardConstraints.topLengthMax}
-                        disabled={!canEditSetup}
-                        onChange={(event) =>
-                          updateStage2HardConstraint("topLengthMax", event.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="compact-field">
-                      <label className="field-label">Bottom min</label>
-                      <input
-                        className="text-input"
-                        type="number"
-                        value={stage2HardConstraints.bottomLengthMin}
-                        disabled={!canEditSetup}
-                        onChange={(event) =>
-                          updateStage2HardConstraint("bottomLengthMin", event.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="compact-field">
-                      <label className="field-label">Bottom max</label>
-                      <input
-                        className="text-input"
-                        type="number"
-                        value={stage2HardConstraints.bottomLengthMax}
-                        disabled={!canEditSetup}
-                        onChange={(event) =>
-                          updateStage2HardConstraint("bottomLengthMax", event.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                  <label className="field-label">
-                    <input
-                      type="checkbox"
-                      checked={stage2HardConstraints.bottomQuoteRequired}
-                      disabled={!canEditSetup}
-                      onChange={(event) =>
-                        updateStage2HardConstraint("bottomQuoteRequired", event.target.checked)
-                      }
-                    />{" "}
-                    Bottom quote required
-                  </label>
-                  <label className="field-label">Banned words</label>
-                  <textarea
-                    className="text-area"
-                    rows={3}
-                    value={stage2HardConstraints.bannedWords.join(", ")}
-                    disabled={!canEditSetup}
-                    onChange={(event) =>
-                      updateStage2HardConstraint(
-                        "bannedWords",
-                        event.target.value
-                          .split(",")
-                          .map((item) => item.trim())
-                          .filter(Boolean)
-                      )
-                    }
-                  />
-                  <label className="field-label">Banned openers</label>
-                  <textarea
-                    className="text-area"
-                    rows={3}
-                    value={stage2HardConstraints.bannedOpeners.join(", ")}
-                    disabled={!canEditSetup}
-                    onChange={(event) =>
-                      updateStage2HardConstraint(
-                        "bannedOpeners",
-                        event.target.value
-                          .split(",")
-                          .map((item) => item.trim())
-                          .filter(Boolean)
-                      )
-                    }
-                  />
-                  <p className={`subtle-text ${autosaveState.stage2.status === "error" ? "danger-text" : ""}`}>
-                    {autosaveState.stage2.message ?? "Поля Stage 2 сохраняются автоматически."}
-                  </p>
-                </section>
-                <section className="control-card control-card-subtle">
-                  <div className="control-section-head">
-                    <div>
-                      <h3>Stage prompts</h3>
-                      <p className="subtle-text">
-                        Каждый блок ниже соответствует одному реальному этапу пайплайна. Внутри
-                        только две настройки: фактический prompt и выбранный reasoning.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="stage2-config-stage-list">
-                    {stage2PromptStages.map((stage, index) => {
-                      const stageConfig = stage2PromptConfig.stages[stage.id];
-                      const isDefaultPrompt =
-                        stageConfig.prompt === STAGE2_DEFAULT_STAGE_PROMPTS[stage.id];
-                      const isDefaultReasoning =
-                        stageConfig.reasoningEffort ===
-                        STAGE2_DEFAULT_REASONING_EFFORTS[stage.id];
-                      return (
-                        <article key={stage.id} className="stage2-config-stage-card">
-                          <div className="stage2-config-stage-head">
-                            <div className="stage2-config-stage-index">{index + 1}</div>
-                            <div className="stage2-config-stage-copy">
-                              <div className="quick-edit-label-row">
-                                <label className="field-label">
-                                  {stage.shortLabel} <span className="badge">LLM stage</span>
-                                </label>
-                                {!isDefaultPrompt || !isDefaultReasoning ? (
-                                  <span className="badge">Custom</span>
-                                ) : (
-                                  <span className="badge muted">Default</span>
-                                )}
-                              </div>
-                              <p className="subtle-text">{stage.description}</p>
-                            </div>
-                          </div>
-                          <div className="stage2-config-stage-body">
-                            <label className="field-label">Prompt</label>
-                            <textarea
-                              className="text-area mono"
-                              rows={10}
-                              value={stageConfig.prompt}
-                              disabled={!canEditSetup}
-                              onChange={(event) =>
-                                updateStage2PromptTemplate(stage.id, event.target.value)
-                              }
-                            />
-                            <div className="stage2-config-stage-controls">
-                              <div className="compact-field">
-                                <label className="field-label">Reasoning</label>
-                                <select
-                                  className="text-input"
-                                  value={stageConfig.reasoningEffort}
-                                  disabled={!canEditSetup}
-                                  onChange={(event) =>
-                                    updateStage2PromptReasoning(
-                                      stage.id,
-                                      event.target.value as typeof stageConfig.reasoningEffort
-                                    )
-                                  }
-                                >
-                                  {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="stage2-config-stage-actions">
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  disabled={!canEditSetup}
-                                  onClick={() => resetStage2PromptStage(stage.id)}
-                                >
-                                  Reset to default
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              </div>
+              <ChannelManagerStage2Tab
+                isWorkspaceDefaultsSelection={isWorkspaceDefaultsSelection}
+                workspaceExamplesCount={workspaceExamplesCount}
+                workspaceExamplesJson={workspaceExamplesJson}
+                workspaceExamplesError={workspaceExamplesError}
+                stage2HardConstraints={stage2HardConstraints}
+                workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+                stage2PromptStages={stage2PromptStages}
+                autosaveState={autosaveState}
+                canEditWorkspaceDefaults={canEditWorkspaceDefaults}
+                canEditHardConstraints={canEditHardConstraints}
+                canEditChannelExamples={canEditChannelExamples}
+                activeExamplesPreview={activeExamplesPreview}
+                customExamplesJson={customExamplesJson}
+                customExamplesError={customExamplesError}
+                updateWorkspaceExamplesJson={updateWorkspaceExamplesJson}
+                updateCustomExamplesJson={updateCustomExamplesJson}
+                updateStage2HardConstraint={updateStage2HardConstraint}
+                updateStage2PromptTemplate={updateStage2PromptTemplate}
+                updateStage2PromptReasoning={updateStage2PromptReasoning}
+                resetStage2PromptStage={resetStage2PromptStage}
+              />
             ) : null}
 
             {tab === "render" ? (
@@ -1047,9 +925,9 @@ export function ChannelManager({
                     <label className="field-label">Фон по умолчанию</label>
                     <select
                       className="text-input"
-                      value={activeChannel.defaultBackgroundAssetId ?? ""}
+                      value={activeChannel?.defaultBackgroundAssetId ?? ""}
                       onChange={(event) =>
-                        onSaveChannel(activeChannel.id, {
+                        activeChannel && onSaveChannel(activeChannel.id, {
                           defaultBackgroundAssetId: event.target.value || null
                         })
                       }
@@ -1066,9 +944,9 @@ export function ChannelManager({
                     <label className="field-label">Музыка по умолчанию</label>
                     <select
                       className="text-input"
-                      value={activeChannel.defaultMusicAssetId ?? ""}
+                      value={activeChannel?.defaultMusicAssetId ?? ""}
                       onChange={(event) =>
-                        onSaveChannel(activeChannel.id, {
+                        activeChannel && onSaveChannel(activeChannel.id, {
                           defaultMusicAssetId: event.target.value || null
                         })
                       }
@@ -1135,7 +1013,7 @@ export function ChannelManager({
                             type="button"
                             className="btn btn-ghost"
                             onClick={() =>
-                            onSaveChannel(activeChannel.id, { defaultBackgroundAssetId: asset.id })
+                            activeChannel && onSaveChannel(activeChannel.id, { defaultBackgroundAssetId: asset.id })
                           }
                         >
                             Сделать по умолчанию
@@ -1158,7 +1036,7 @@ export function ChannelManager({
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            onClick={() => onSaveChannel(activeChannel.id, { defaultMusicAssetId: asset.id })}
+                            onClick={() => activeChannel && onSaveChannel(activeChannel.id, { defaultMusicAssetId: asset.id })}
                           >
                             Сделать по умолчанию
                           </button>
@@ -1180,7 +1058,7 @@ export function ChannelManager({
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            onClick={() => onSaveChannel(activeChannel.id, { avatarAssetId: asset.id })}
+                            onClick={() => activeChannel && onSaveChannel(activeChannel.id, { avatarAssetId: asset.id })}
                           >
                             Сделать аватаром
                           </button>
@@ -1219,7 +1097,7 @@ export function ChannelManager({
                               type="button"
                               className="btn btn-ghost"
                               onClick={() =>
-                                onUpdateAccess(activeChannel.id, {
+                                activeChannel && onUpdateAccess(activeChannel.id, {
                                   grantUserIds: [],
                                   revokeUserIds: [grant.userId]
                                 })
@@ -1250,7 +1128,7 @@ export function ChannelManager({
                               type="button"
                               className="btn btn-ghost"
                               onClick={() =>
-                                onUpdateAccess(activeChannel.id, {
+                                activeChannel && onUpdateAccess(activeChannel.id, {
                                   grantUserIds: [],
                                   revokeUserIds: [member.user.id]
                                 })
@@ -1263,7 +1141,7 @@ export function ChannelManager({
                               type="button"
                               className="btn btn-secondary"
                               onClick={() =>
-                                onUpdateAccess(activeChannel.id, {
+                                activeChannel && onUpdateAccess(activeChannel.id, {
                                   grantUserIds: [member.user.id],
                                   revokeUserIds: []
                                 })

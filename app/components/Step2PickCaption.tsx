@@ -163,17 +163,24 @@ function asStringArray(value: unknown): string[] {
 
 function normalizeDiagnosticsExample(input: unknown, bucket: DiagnosticsExample["bucket"]): DiagnosticsExample {
   const candidate = asObject(input);
+  const sourceChannelId =
+    asString(candidate?.sourceChannelId) ||
+    asString(candidate?.ownerChannelId) ||
+    asString(candidate?.videoId) ||
+    "unknown-source";
+  const sourceChannelName =
+    asString(candidate?.sourceChannelName) ||
+    asString(candidate?.ownerChannelName) ||
+    "Unknown source";
   return {
+    id:
+      asString(candidate?.id) ||
+      asString(candidate?.exampleId) ||
+      `${bucket}:${sourceChannelId}:${asString(candidate?.videoId) || asString(candidate?.title) || "example"}`,
     bucket,
-    sourceChannelId:
-      asString(candidate?.sourceChannelId) ||
-      asString(candidate?.ownerChannelId) ||
-      asString(candidate?.videoId) ||
-      "unknown-source",
-    sourceChannelName:
-      asString(candidate?.sourceChannelName) ||
-      asString(candidate?.ownerChannelName) ||
-      "Unknown source",
+    channelName: sourceChannelName,
+    sourceChannelId,
+    sourceChannelName,
     videoId: asOptionalString(candidate?.videoId),
     title:
       asString(candidate?.title) ||
@@ -235,7 +242,7 @@ function normalizePromptStage(input: unknown, index: number): DiagnosticsPromptS
   };
 }
 
-function normalizeStage2DiagnosticsForView(
+export function normalizeStage2DiagnosticsForView(
   input: Stage2Response["diagnostics"] | null | undefined,
   fallback: {
     channelName?: string | null;
@@ -328,6 +335,12 @@ function normalizeStage2DiagnosticsForView(
         asString(selectionCandidate?.clipType) ||
         availableExamples[0]?.clipType ||
         "unknown",
+      primaryAngle: asString(selectionCandidate?.primaryAngle),
+      secondaryAngles: Array.isArray(selectionCandidate?.secondaryAngles)
+        ? selectionCandidate.secondaryAngles
+            .map((item) => (typeof item === "string" ? item.trim() : ""))
+            .filter(Boolean)
+        : [],
       rankedAngles,
       coreTrigger: asString(selectionCandidate?.coreTrigger),
       humanStake: asString(selectionCandidate?.humanStake),
@@ -364,6 +377,202 @@ function normalizeStage2DiagnosticsForView(
   };
 }
 
+export function Stage2RunDiagnosticsPanels({
+  diagnostics
+}: {
+  diagnostics: DiagnosticsView | null;
+}) {
+  const overrideCount = useMemo(() => {
+    if (!diagnostics) {
+      return 0;
+    }
+    return diagnostics.effectivePrompting.promptStages.filter((stage) => stage.isCustomPrompt).length;
+  }, [diagnostics]);
+
+  if (!diagnostics) {
+    return null;
+  }
+
+  return (
+    <>
+      <section className="control-card control-card-subtle">
+        <div className="option-card-head">
+          <div>
+            <h3>Как этот run реально устроен</h3>
+            <p className="subtle-text">
+              Channel config, active examples corpus и selector output ниже отражают реальную
+              Stage 2 конфигурацию этого запуска.
+            </p>
+          </div>
+        </div>
+        <div className="stage2-insight-grid">
+          <article className="stage2-insight-card">
+            <span className="field-label">Channel</span>
+            <strong>{diagnostics.channel.name}</strong>
+            <p className="subtle-text">
+              @{diagnostics.channel.username} · source{" "}
+              {formatExamplesSourceLabel(diagnostics.channel.examplesSource)}
+            </p>
+          </article>
+          <article className="stage2-insight-card">
+            <span className="field-label">Selection</span>
+            <strong>{diagnostics.selection.clipType}</strong>
+            <p className="subtle-text">
+              {diagnostics.selection.rankedAngles.map((item) => item.angle).slice(0, 3).join(", ")}
+            </p>
+          </article>
+          <article className="stage2-insight-card">
+            <span className="field-label">Examples</span>
+            <strong>
+              active {diagnostics.examples.activeCorpusCount} / workspace{" "}
+              {diagnostics.examples.workspaceCorpusCount}
+            </strong>
+            <p className="subtle-text">
+              selector picked {diagnostics.examples.selectedExamples.length}
+            </p>
+          </article>
+          <article className="stage2-insight-card">
+            <span className="field-label">Custom prompts</span>
+            <strong>{overrideCount}</strong>
+            <p className="subtle-text">stage prompts отличаются от базовых defaults</p>
+          </article>
+        </div>
+      </section>
+
+      <details className="details-drawer">
+        <summary>
+          <span>Effective prompts</span>
+          <small>Что реально driving Stage 2</small>
+        </summary>
+        <div className="details-content">
+          <p className="subtle-text">
+            Здесь видно, какой конкретный prompt и какой reasoning реально были настроены
+            для каждого Stage 2 этапа.
+          </p>
+          <div className="stage2-prompt-stage-list">
+            {diagnostics.effectivePrompting.promptStages.map((stage) => (
+              <article key={stage.stageId} className="stage2-prompt-stage-card">
+                <div className="stage2-prompt-stage-head">
+                  <div>
+                    <strong>{stage.label}</strong>
+                    <p className="subtle-text">
+                      LLM stage
+                      {" · system prompt"}
+                      {stage.usesImages ? " · uses extracted frames" : ""}
+                      {stage.promptChars ? ` · ${stage.promptChars} chars` : ""}
+                    </p>
+                  </div>
+                  {stage.isCustomPrompt ? (
+                    <span className="badge">Custom prompt</span>
+                  ) : (
+                    <span className="badge muted">Default prompt</span>
+                  )}
+                </div>
+                <p className="subtle-text">{stage.summary}</p>
+                <div className="stage2-prompt-meta-row">
+                  <div className="stage2-prompt-meta">
+                    <span className="field-label">Reasoning</span>
+                    <p className="text-block">{formatReasoningEffort(stage.reasoningEffort)}</p>
+                  </div>
+                  <div className="stage2-prompt-meta">
+                    <span className="field-label">Prompt source</span>
+                    <p className="text-block">
+                      {stage.isCustomPrompt ? "Channel-specific prompt" : "Default prompt"}
+                    </p>
+                  </div>
+                </div>
+                <div className="stage2-prompt-meta">
+                  <span className="field-label">Configured prompt</span>
+                  <p className="text-block">{stage.configuredPrompt}</p>
+                </div>
+                <details className="advanced-block">
+                  <summary>Показать полный prompt с контекстом</summary>
+                  <div className="advanced-content">
+                    <pre className="json-view">{stage.promptText}</pre>
+                  </div>
+                </details>
+              </article>
+            ))}
+          </div>
+        </div>
+      </details>
+
+      <details className="details-drawer">
+        <summary>
+          <span>Examples used</span>
+          <small>Active corpus + selector picks</small>
+        </summary>
+        <div className="details-content">
+          <section className="details-section">
+            <h3>Selection context</h3>
+            <p className="subtle-text">Writer brief: {diagnostics.selection.writerBrief}</p>
+            <p className="subtle-text">
+              Ranked angles: {diagnostics.selection.rankedAngles.map((item) => `${item.angle} (${item.score.toFixed(1)})`).join(", ")}
+            </p>
+            {diagnostics.selection.rationale ? (
+              <p className="subtle-text">Selector rationale: {diagnostics.selection.rationale}</p>
+            ) : null}
+            <p className="subtle-text">
+              Corpus source: {formatExamplesSourceLabel(diagnostics.examples.source)} · active{" "}
+              {diagnostics.examples.activeCorpusCount} / workspace{" "}
+              {diagnostics.examples.workspaceCorpusCount}
+            </p>
+          </section>
+
+          {([
+            ["selectedExamples", "Selector picks"],
+            ["availableExamples", "Available corpus"]
+          ] as const).map(([key, label]) => {
+            const items = diagnostics.examples[key];
+            return (
+              <section key={key} className="details-section">
+                <h3>
+                  {label} ({items.length})
+                </h3>
+                {items.length === 0 ? (
+                  <p className="subtle-text">В этом запуске элементов не было.</p>
+                ) : (
+                  <ul className="stage2-example-list">
+                    {items.map((item, index) => (
+                      <li key={`${key}-${item.sourceChannelId}-${item.title}-${index}`} className="stage2-example-card">
+                        <div className="stage2-example-head">
+                          <strong>{item.title}</strong>
+                          <span className="subtle-text">
+                            {item.sourceChannelName} · {item.clipType}
+                          </span>
+                        </div>
+                        <p className="subtle-text">
+                          TOP: {truncateText(item.overlayTop)}
+                        </p>
+                        <p className="subtle-text">
+                          BOTTOM: {truncateText(item.overlayBottom)}
+                        </p>
+                        <p className="subtle-text">
+                          quality {formatNullableNumber(item.qualityScore) ?? "n/a"} · score {formatNullableNumber(item.retrievalScore) ?? "n/a"} · {item.sampleKind ?? "n/a"}
+                        </p>
+                        {item.whyItWorks.length > 0 ? (
+                          <p className="subtle-text">
+                            Why it works: {item.whyItWorks.join(", ")}
+                          </p>
+                        ) : null}
+                        {item.retrievalReasons.length > 0 ? (
+                          <p className="subtle-text">
+                            Picked because: {item.retrievalReasons.join(", ")}
+                          </p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      </details>
+    </>
+  );
+}
+
 export function Step2PickCaption({
   channelName,
   channelUsername,
@@ -396,6 +605,12 @@ export function Step2PickCaption({
     () => runs.find((run) => run.runId === selectedRunId) ?? null,
     [runs, selectedRunId]
   );
+  const hasActiveRunWithoutResult =
+    !stage2 &&
+    (currentRunStatus === "queued" ||
+      currentRunStatus === "running" ||
+      selectedRun?.status === "queued" ||
+      selectedRun?.status === "running");
 
   useEffect(() => {
     if (!stage2) {
@@ -430,14 +645,6 @@ export function Step2PickCaption({
   }, [selectedTitleOption, stage2]);
   const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
   const visibleProgress = progress ?? stage2?.progress ?? null;
-  const diagnostics = useMemo(
-    () =>
-      normalizeStage2DiagnosticsForView(stage2?.diagnostics ?? null, {
-        channelName,
-        channelUsername
-      }),
-    [stage2?.diagnostics, channelName, channelUsername]
-  );
   const activeProgressStep = useMemo(() => {
     if (!visibleProgress) {
       return null;
@@ -452,13 +659,13 @@ export function Step2PickCaption({
     () => getStage2ProgressRatio(elapsedMs, expectedDurationMs),
     [elapsedMs, expectedDurationMs]
   );
-  const overrideCount = useMemo(() => {
-    if (!diagnostics) {
-      return 0;
-    }
-    return diagnostics.effectivePrompting.promptStages.filter((stage) => stage.isCustomPrompt).length;
-  }, [diagnostics]);
-
+  const isAttachedStage2Run =
+    (isRunning || currentRunStatus === "queued" || currentRunStatus === "running") &&
+    typeof runBlockedReason === "string" &&
+    runBlockedReason.startsWith("Для этого чата уже идёт Stage 2.");
+  const inlineRunMessage = isAttachedStage2Run
+    ? "Stage 2 уже выполняется в фоне. Ниже показан текущий подключённый run."
+    : runBlockedReason ?? null;
   return (
     <StepWorkspace
       editLabel="Редактирование"
@@ -469,6 +676,9 @@ export function Step2PickCaption({
             <p className="kicker">Шаг 2</p>
             <h2>Выбор</h2>
             <p>Сгенерируйте варианты подписей, сравните их рядом и затем выберите один для рендера.</p>
+            <p className="subtle-text">
+              Итоговую ручную правку TOP/BOTTOM теперь лучше делать на шаге 3: там есть финальный editor и быстрый mix из вариантов ниже.
+            </p>
             {channelName ? (
               <p className="subtle-text">
                 Канал: <strong>{channelName}</strong>
@@ -508,7 +718,7 @@ export function Step2PickCaption({
                 onClick={onRunStage2}
                 disabled={!canRunStage2}
                 aria-busy={isLaunching}
-                title={!canRunStage2 ? runBlockedReason ?? undefined : undefined}
+                title={!canRunStage2 && !isAttachedStage2Run ? runBlockedReason ?? undefined : undefined}
               >
                 {isLaunching
                   ? "Запускаем..."
@@ -564,6 +774,11 @@ export function Step2PickCaption({
                             <span className="subtle-text">{step.label}</span>
                           </div>
                           <p className="subtle-text">{step.description}</p>
+                          {step.summary &&
+                          step.summary !== step.description &&
+                          step.summary !== step.detail ? (
+                            <p className="subtle-text">{step.summary}</p>
+                          ) : null}
                           {step.detail && step.detail !== step.description ? (
                             isVerboseStageDetail(step.detail) ? (
                               <details className="stage2-stage-detail-toggle">
@@ -611,194 +826,19 @@ export function Step2PickCaption({
                 </div>
               </section>
             ) : null}
-            {!canRunStage2 && runBlockedReason ? (
-              <p className="subtle-text danger-text">{runBlockedReason}</p>
+            {!canRunStage2 && inlineRunMessage ? (
+              <p className={`subtle-text${isAttachedStage2Run ? "" : " danger-text"}`}>{inlineRunMessage}</p>
             ) : null}
           </section>
 
-          {diagnostics ? (
-            <>
-              <section className="control-card control-card-subtle">
-                <div className="option-card-head">
-                  <div>
-                    <h3>Как этот run реально устроен</h3>
-                    <p className="subtle-text">
-                      Channel config, active examples corpus и selector output ниже отражают реальную
-                      Stage 2 конфигурацию этого запуска.
-                    </p>
-                  </div>
-                </div>
-                <div className="stage2-insight-grid">
-                  <article className="stage2-insight-card">
-                    <span className="field-label">Channel</span>
-                    <strong>{diagnostics.channel.name}</strong>
-                    <p className="subtle-text">
-                      @{diagnostics.channel.username} · source{" "}
-                      {formatExamplesSourceLabel(diagnostics.channel.examplesSource)}
-                    </p>
-                  </article>
-                  <article className="stage2-insight-card">
-                    <span className="field-label">Selection</span>
-                    <strong>{diagnostics.selection.clipType}</strong>
-                    <p className="subtle-text">
-                      {diagnostics.selection.rankedAngles.map((item) => item.angle).slice(0, 3).join(", ")}
-                    </p>
-                  </article>
-                  <article className="stage2-insight-card">
-                    <span className="field-label">Examples</span>
-                    <strong>
-                      active {diagnostics.examples.activeCorpusCount} / workspace{" "}
-                      {diagnostics.examples.workspaceCorpusCount}
-                    </strong>
-                    <p className="subtle-text">
-                      selector picked {diagnostics.examples.selectedExamples.length}
-                    </p>
-                  </article>
-                  <article className="stage2-insight-card">
-                    <span className="field-label">Custom prompts</span>
-                    <strong>{overrideCount}</strong>
-                    <p className="subtle-text">stage prompts отличаются от базовых defaults</p>
-                  </article>
-                </div>
-              </section>
-
-              <details className="details-drawer">
-                <summary>
-                  <span>Effective prompts</span>
-                  <small>Что реально driving Stage 2</small>
-                </summary>
-                <div className="details-content">
-                  <p className="subtle-text">
-                    Здесь видно, какой конкретный prompt и какой reasoning реально были настроены
-                    для каждого Stage 2 этапа.
-                  </p>
-                  <div className="stage2-prompt-stage-list">
-                    {diagnostics.effectivePrompting.promptStages.map((stage) => (
-                      <article key={stage.stageId} className="stage2-prompt-stage-card">
-                        <div className="stage2-prompt-stage-head">
-                          <div>
-                            <strong>{stage.label}</strong>
-                            <p className="subtle-text">
-                              LLM stage
-                              {" · system prompt"}
-                              {stage.usesImages ? " · uses extracted frames" : ""}
-                              {stage.promptChars ? ` · ${stage.promptChars} chars` : ""}
-                            </p>
-                          </div>
-                          {stage.isCustomPrompt ? (
-                            <span className="badge">Custom prompt</span>
-                          ) : (
-                            <span className="badge muted">Default prompt</span>
-                          )}
-                        </div>
-                        <p className="subtle-text">{stage.summary}</p>
-                        <div className="stage2-prompt-meta-row">
-                          <div className="stage2-prompt-meta">
-                            <span className="field-label">Reasoning</span>
-                            <p className="text-block">{formatReasoningEffort(stage.reasoningEffort)}</p>
-                          </div>
-                          <div className="stage2-prompt-meta">
-                            <span className="field-label">Prompt source</span>
-                            <p className="text-block">
-                              {stage.isCustomPrompt ? "Channel-specific prompt" : "Default prompt"}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="stage2-prompt-meta">
-                          <span className="field-label">Configured prompt</span>
-                          <p className="text-block">{stage.configuredPrompt}</p>
-                        </div>
-                        <details className="advanced-block">
-                          <summary>Показать полный prompt с контекстом</summary>
-                          <div className="advanced-content">
-                            <pre className="json-view">{stage.promptText}</pre>
-                          </div>
-                        </details>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              </details>
-
-              <details className="details-drawer">
-                <summary>
-                  <span>Examples used</span>
-                  <small>Active corpus + selector picks</small>
-                </summary>
-                <div className="details-content">
-                  <section className="details-section">
-                    <h3>Selection context</h3>
-                    <p className="subtle-text">Writer brief: {diagnostics.selection.writerBrief}</p>
-                    <p className="subtle-text">
-                      Ranked angles: {diagnostics.selection.rankedAngles.map((item) => `${item.angle} (${item.score.toFixed(1)})`).join(", ")}
-                    </p>
-                    {diagnostics.selection.rationale ? (
-                      <p className="subtle-text">Selector rationale: {diagnostics.selection.rationale}</p>
-                    ) : null}
-                    <p className="subtle-text">
-                      Corpus source: {formatExamplesSourceLabel(diagnostics.examples.source)} · active{" "}
-                      {diagnostics.examples.activeCorpusCount} / workspace{" "}
-                      {diagnostics.examples.workspaceCorpusCount}
-                    </p>
-                  </section>
-
-                  {([
-                    ["selectedExamples", "Selector picks"],
-                    ["availableExamples", "Available corpus"]
-                  ] as const).map(([key, label]) => {
-                    const items = diagnostics.examples[key];
-                    return (
-                      <section key={key} className="details-section">
-                        <h3>
-                          {label} ({items.length})
-                        </h3>
-                        {items.length === 0 ? (
-                          <p className="subtle-text">В этом запуске элементов не было.</p>
-                        ) : (
-                          <ul className="stage2-example-list">
-                            {items.map((item, index) => (
-                              <li key={`${key}-${item.sourceChannelId}-${item.title}-${index}`} className="stage2-example-card">
-                                <div className="stage2-example-head">
-                                  <strong>{item.title}</strong>
-                                  <span className="subtle-text">
-                                    {item.sourceChannelName} · {item.clipType}
-                                  </span>
-                                </div>
-                                <p className="subtle-text">
-                                  TOP: {truncateText(item.overlayTop)}
-                                </p>
-                                <p className="subtle-text">
-                                  BOTTOM: {truncateText(item.overlayBottom)}
-                                </p>
-                                <p className="subtle-text">
-                                  quality {formatNullableNumber(item.qualityScore) ?? "n/a"} · score {formatNullableNumber(item.retrievalScore) ?? "n/a"} · {item.sampleKind ?? "n/a"}
-                                </p>
-                                {item.whyItWorks.length > 0 ? (
-                                  <p className="subtle-text">
-                                    Why it works: {item.whyItWorks.join(", ")}
-                                  </p>
-                                ) : null}
-                                {item.retrievalReasons.length > 0 ? (
-                                  <p className="subtle-text">
-                                    Picked because: {item.retrievalReasons.join(", ")}
-                                  </p>
-                                ) : null}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </section>
-                    );
-                  })}
-                </div>
-              </details>
-            </>
-          ) : null}
-
           {!stage2 ? (
             <div className="empty-box">
-              Результат второго этапа пуст. Сначала запустите второй этап.
-              {!commentsAvailable ? " Комментарии необязательны для этого запуска." : ""}
+              {hasActiveRunWithoutResult
+                ? "Результат этого run еще не готов. Прогресс второго этапа уже идет выше и будет доступен здесь сразу после завершения."
+                : "Результат второго этапа пуст. Сначала запустите второй этап."}
+              {!commentsAvailable && !hasActiveRunWithoutResult
+                ? " Комментарии необязательны для этого запуска."
+                : ""}
             </div>
           ) : (
             <>

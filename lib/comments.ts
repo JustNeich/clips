@@ -112,7 +112,7 @@ export function prepareCommentsForPrompt(
   comments: CommentItem[],
   opts?: { maxComments?: number; maxChars?: number }
 ): { included: CommentItem[]; omittedCount: number } {
-  const maxComments = opts?.maxComments ?? 250;
+  const maxComments = opts?.maxComments ?? 300;
   const maxChars = opts?.maxChars ?? 35000;
 
   const included: CommentItem[] = [];

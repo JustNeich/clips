@@ -16,7 +16,7 @@ import {
   SourceJobRequest
 } from "./source-job-store";
 import { fetchCommentsPayloadForUrl } from "./source-comments";
-import { getWorkspaceCodexIntegration } from "./team-store";
+import { getWorkspaceCodexIntegration, getWorkspaceStage2HardConstraints } from "./team-store";
 
 type SourceRuntimeState = {
   initialized: boolean;
@@ -151,12 +151,8 @@ async function maybeEnqueueStage2(job: SourceJobRecord): Promise<string | null> 
         id: channel.id,
         name: channel.name,
         username: channel.username,
-        descriptionPrompt: channel.descriptionPrompt,
-        examplesJson: channel.examplesJson,
-        stage2WorkerProfileId: channel.stage2WorkerProfileId,
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
-        stage2HardConstraints: channel.stage2HardConstraints,
-        stage2PromptConfig: channel.stage2PromptConfig
+        stage2HardConstraints: getWorkspaceStage2HardConstraints(job.workspaceId)
       }
     }
   });

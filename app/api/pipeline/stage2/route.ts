@@ -19,6 +19,7 @@ import {
   scheduleStage2RunProcessing
 } from "../../../../lib/stage2-run-runtime";
 import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
+import { getWorkspaceStage2HardConstraints } from "../../../../lib/team-store";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 
@@ -215,12 +216,8 @@ export async function POST(request: Request): Promise<Response> {
           id: channel.id,
           name: channel.name,
           username: channel.username,
-          descriptionPrompt: channel.descriptionPrompt,
-          examplesJson: channel.examplesJson,
-          stage2WorkerProfileId: channel.stage2WorkerProfileId,
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
-          stage2HardConstraints: channel.stage2HardConstraints,
-          stage2PromptConfig: channel.stage2PromptConfig
+          stage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id)
         }
       }
     });

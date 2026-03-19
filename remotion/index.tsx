@@ -9,7 +9,8 @@ import {
   SCIENCE_CARD_V3_TEMPLATE_ID,
   SCIENCE_CARD_V4_TEMPLATE_ID,
   SCIENCE_CARD_V5_TEMPLATE_ID,
-  SCIENCE_CARD_V6_TEMPLATE_ID
+  SCIENCE_CARD_V6_TEMPLATE_ID,
+  SCIENCE_CARD_V7_TEMPLATE_ID
 } from "../lib/stage3-template";
 
 export type ScienceCardV1Props = {
@@ -51,6 +52,7 @@ export const SCIENCE_CARD_V3_SCENE_ID = SCIENCE_CARD_V3_TEMPLATE_ID;
 export const SCIENCE_CARD_V4_SCENE_ID = SCIENCE_CARD_V4_TEMPLATE_ID;
 export const SCIENCE_CARD_V5_SCENE_ID = SCIENCE_CARD_V5_TEMPLATE_ID;
 export const SCIENCE_CARD_V6_SCENE_ID = SCIENCE_CARD_V6_TEMPLATE_ID;
+export const SCIENCE_CARD_V7_SCENE_ID = SCIENCE_CARD_V7_TEMPLATE_ID;
 const DEFAULT_TEXT_SCALE = 1.25;
 
 export const RemotionRoot = () => {
@@ -258,6 +260,36 @@ export const RemotionRoot = () => {
           bottomFontScale: DEFAULT_TEXT_SCALE,
           authorName: "Science Snack",
           authorHandle: "@Science_Snack_1",
+          avatarAssetFileName: null,
+          avatarAssetMimeType: null,
+          backgroundAssetFileName: null,
+          backgroundAssetMimeType: null,
+          textFit: null,
+          variationProfile: null
+        }}
+      />
+      <Composition
+        id={SCIENCE_CARD_V7_SCENE_ID}
+        component={ScienceCardV1}
+        width={1080}
+        height={1920}
+        fps={30}
+        durationInFrames={6 * 30}
+        defaultProps={{
+          templateId: SCIENCE_CARD_V7_TEMPLATE_ID,
+          sourceVideoFileName: "source.mp4",
+          topText: "",
+          bottomText: "",
+          clipStartSec: 0,
+          clipDurationSec: 6,
+          focusY: 0.5,
+          mirrorEnabled: true,
+          cameraMotion: "disabled",
+          videoZoom: 1,
+          topFontScale: DEFAULT_TEXT_SCALE,
+          bottomFontScale: DEFAULT_TEXT_SCALE,
+          authorName: "Echoes Of Honor",
+          authorHandle: "@EchoesOfHonor50",
           avatarAssetFileName: null,
           avatarAssetMimeType: null,
           backgroundAssetFileName: null,

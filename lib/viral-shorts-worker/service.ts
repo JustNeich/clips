@@ -175,24 +175,19 @@ const SELECTOR_SCHEMA = {
   }
 } as const;
 
+const SUPPORTED_SELECTOR_ANGLES = new Set([
+  "insider_expertise",
+  "awe_scale",
+  "tension_danger",
+  "absurdity_chaos",
+  "competence_process",
+  "shared_experience",
+  "warmth_reverence",
+  "payoff_reveal"
+]);
+
 const CANDIDATES_SCHEMA = {
-  type: ["array", "object"],
-  minItems: 8,
-  maxItems: 20,
-  items: {
-    type: "object",
-    additionalProperties: false,
-    required: ["candidate_id", "angle", "top", "bottom", "top_ru", "bottom_ru", "rationale"],
-    properties: {
-      candidate_id: { type: "string", minLength: 1 },
-      angle: { type: "string", minLength: 1 },
-      top: { type: "string", minLength: 1 },
-      bottom: { type: "string", minLength: 1 },
-      top_ru: { type: "string", minLength: 1 },
-      bottom_ru: { type: "string", minLength: 1 },
-      rationale: { type: "string", minLength: 1 }
-    }
-  },
+  type: "object",
   additionalProperties: false,
   required: ["candidates"],
   properties: {
@@ -218,26 +213,25 @@ const CANDIDATES_SCHEMA = {
   }
 } as const;
 
+const CRITIC_SCORE_KEYS = [
+  "visual_anchor",
+  "hook_strength",
+  "naturalness",
+  "brand_fit",
+  "specificity",
+  "top_bottom_synergy",
+  "readability",
+  "non_ai_feel",
+  "paused_frame_accuracy",
+  "comment_vibe_authenticity",
+  "quote_first_bottom_compliance",
+  "length_compliance",
+  "narrative_trigger_strength",
+  "context_compression_quality"
+] as const;
+
 const CRITIC_SCHEMA = {
-  type: ["array", "object"],
-  items: {
-    type: "object",
-    additionalProperties: false,
-    required: ["candidate_id", "scores", "total", "issues", "keep"],
-    properties: {
-      candidate_id: { type: "string", minLength: 1 },
-      scores: {
-        type: "object",
-        additionalProperties: { type: "number" }
-      },
-      total: { type: "number" },
-      issues: {
-        type: "array",
-        items: { type: "string" }
-      },
-      keep: { type: "boolean" }
-    }
-  },
+  type: "object",
   additionalProperties: false,
   required: ["scores"],
   properties: {
@@ -252,7 +246,11 @@ const CRITIC_SCHEMA = {
           candidate_id: { type: "string", minLength: 1 },
           scores: {
             type: "object",
-            additionalProperties: { type: "number" }
+            additionalProperties: false,
+            required: [...CRITIC_SCORE_KEYS],
+            properties: Object.fromEntries(
+              CRITIC_SCORE_KEYS.map((key) => [key, { type: "number" }])
+            )
           },
           total: { type: "number" },
           issues: {
@@ -283,22 +281,7 @@ const FINAL_SELECTOR_SCHEMA = {
 } as const;
 
 const TITLE_SCHEMA = {
-  type: ["array", "object"],
-  minItems: 5,
-  maxItems: 5,
-  items: {
-    type: "object",
-    additionalProperties: false,
-    required: ["title_id", "title", "title_ru", "rationale"],
-    properties: {
-      title_id: { type: "string", minLength: 1 },
-      option: { type: "integer", minimum: 1, maximum: 5 },
-      title: { type: "string", minLength: 1 },
-      titleRu: { type: "string", minLength: 1 },
-      title_ru: { type: "string", minLength: 1 },
-      rationale: { type: "string", minLength: 1 }
-    }
-  },
+  type: "object",
   additionalProperties: false,
   required: ["titleOptions"],
   properties: {
@@ -496,6 +479,19 @@ function scoreExampleMatch(queryText: string, example: Stage2CorpusExample): num
   );
 }
 
+function isSupportedSelectorAngle(value: string): boolean {
+  return SUPPORTED_SELECTOR_ANGLES.has(value);
+}
+
+function buildFallbackRankedAngleReason(angle: string, index: number, fallback: SelectorOutput): string {
+  return (
+    fallback.rankedAngles.find((item) => item.angle === angle)?.why ??
+    (index === 0
+      ? "Primary selector angle chosen by the LLM."
+      : "Backup selector angle kept as a viable alternative.")
+  );
+}
+
 function fallbackSelectorOutput(
   channelConfig: Stage2RuntimeChannelConfig,
   analyzerOutput: AnalyzerOutput,
@@ -613,15 +609,18 @@ function normalizeSelectorOutput(
     .map((value) => String(value ?? "").trim())
     .filter(Boolean);
   const selectedExamples = availableExamples.filter((example) => selectedExampleIds.includes(example.id));
+  const requestedPrimaryAngle = String(
+    obj.primary_angle ??
+      obj.primaryAngle ??
+      (Array.isArray(rankedAnglesRaw) ? (rankedAnglesRaw[0] as Record<string, unknown> | undefined)?.angle : null) ??
+      fallback.primaryAngle ??
+      fallback.rankedAngles[0]?.angle ??
+      "payoff_reveal"
+  ).trim();
   const primaryAngle =
-    String(
-      obj.primary_angle ??
-        obj.primaryAngle ??
-        (Array.isArray(rankedAnglesRaw) ? (rankedAnglesRaw[0] as Record<string, unknown> | undefined)?.angle : null) ??
-        fallback.primaryAngle ??
-        fallback.rankedAngles[0]?.angle ??
-        "payoff_reveal"
-    ).trim() || fallback.primaryAngle;
+    (requestedPrimaryAngle && isSupportedSelectorAngle(requestedPrimaryAngle)
+      ? requestedPrimaryAngle
+      : fallback.primaryAngle) || fallback.primaryAngle;
   const secondaryAnglesRaw = Array.isArray(obj.secondary_angles)
     ? obj.secondary_angles
     : Array.isArray(obj.secondaryAngles)
@@ -629,7 +628,7 @@ function normalizeSelectorOutput(
       : fallback.secondaryAngles;
   const secondaryAngles = secondaryAnglesRaw
     .map((value) => String(value ?? "").trim())
-    .filter((value) => Boolean(value) && value !== primaryAngle)
+    .filter((value) => Boolean(value) && value !== primaryAngle && isSupportedSelectorAngle(value))
     .slice(0, 3);
   const rejectedExampleIds = (Array.isArray(obj.rejected_example_ids)
     ? obj.rejected_example_ids
@@ -650,7 +649,7 @@ function normalizeSelectorOutput(
         const angle = String(item.angle ?? "").trim();
         const why = String(item.why ?? "").trim();
         const score = Number(item.score);
-        if (!angle || !why || !Number.isFinite(score)) {
+        if (!angle || !why || !Number.isFinite(score) || !isSupportedSelectorAngle(angle)) {
           return null;
         }
         return { angle, why, score };
@@ -663,26 +662,46 @@ function normalizeSelectorOutput(
     .map((angle, index) => ({
       angle,
       score: Number((9.4 - index * 0.6).toFixed(1)),
-      why:
-        fallback.rankedAngles.find((item) => item.angle === angle)?.why ??
-        (index === 0
-          ? "Primary selector angle chosen by the LLM."
-          : "Backup selector angle kept as a viable alternative.")
+      why: buildFallbackRankedAngleReason(angle, index, fallback)
     }));
+  const rankedAngles = (() => {
+    const rankedMap = new Map<string, SelectorOutput["rankedAngles"][number]>();
+    rankedMap.set(primaryAngle, {
+      angle: primaryAngle,
+      score: Number((rankedAnglesNormalized[0]?.score ?? 9.4).toFixed(1)),
+      why: buildFallbackRankedAngleReason(primaryAngle, 0, fallback)
+    });
+    for (const item of rankedAnglesNormalized) {
+      if (!rankedMap.has(item.angle)) {
+        rankedMap.set(item.angle, item);
+      }
+    }
+    for (const item of synthesizedRankedAngles) {
+      if (!rankedMap.has(item.angle)) {
+        rankedMap.set(item.angle, item);
+      }
+    }
+    for (const item of fallback.rankedAngles.filter((entry) => isSupportedSelectorAngle(entry.angle))) {
+      if (!rankedMap.has(item.angle)) {
+        rankedMap.set(item.angle, item);
+      }
+    }
+    return Array.from(rankedMap.values()).slice(0, 3);
+  })();
+  const resolvedSecondaryAngles = secondaryAngles.length >= 1
+    ? secondaryAngles
+    : fallback.secondaryAngles.filter((angle) => angle !== primaryAngle && isSupportedSelectorAngle(angle)).slice(0, 3);
 
   return {
     clipType: String(obj.clip_type ?? obj.clipType ?? fallback.clipType).trim() || fallback.clipType,
     primaryAngle,
-    secondaryAngles:
-      secondaryAngles.length >= 1
-        ? secondaryAngles
-        : fallback.secondaryAngles.filter((angle) => angle !== primaryAngle).slice(0, 3),
-    rankedAngles:
-      rankedAnglesNormalized.length >= 1
-        ? rankedAnglesNormalized
-        : synthesizedRankedAngles.length >= 1
-          ? synthesizedRankedAngles
-          : fallback.rankedAngles,
+    secondaryAngles: rankedAngles
+      .map((item) => item.angle)
+      .filter((angle) => angle !== primaryAngle)
+      .slice(0, 3)
+      .concat(resolvedSecondaryAngles.filter((angle) => !rankedAngles.some((item) => item.angle === angle)))
+      .slice(0, 3),
+    rankedAngles,
     coreTrigger:
       String(obj.core_trigger ?? obj.coreTrigger ?? fallback.coreTrigger ?? "").trim() ||
       fallback.coreTrigger,
@@ -744,7 +763,7 @@ function normalizeCandidates(raw: unknown, selectorOutput: SelectorOutput): Cand
         return null;
       }
       const item = entry as Record<string, unknown>;
-      const fallbackAngle = selectorOutput.rankedAngles[0]?.angle ?? "visual_payoff";
+      const fallbackAngle = selectorOutput.rankedAngles[0]?.angle ?? "payoff_reveal";
       const candidateId =
         String(item.candidate_id ?? item.candidateId ?? `cand_${index + 1}`).trim() ||
         `cand_${index + 1}`;
@@ -764,6 +783,107 @@ function normalizeCandidates(raw: unknown, selectorOutput: SelectorOutput): Cand
       };
     })
     .filter((candidate): candidate is CandidateCaption => candidate !== null);
+}
+
+function buildOperatorFacingFinalReason(input: {
+  shortlist: CandidateCaption[];
+  shortlistOptionMap: Array<{ candidateId: string; option: number }>;
+  finalPickCandidateId: string;
+}): { operatorReason: string; sanitizedRationaleRaw: string } {
+  const finalPickOption =
+    input.shortlistOptionMap.find((item) => item.candidateId === input.finalPickCandidateId)?.option ?? 1;
+  const finalPickCandidate =
+    input.shortlist.find((candidate) => candidate.candidateId === input.finalPickCandidateId) ??
+    input.shortlist[0] ??
+    null;
+  const finalPickLabel = `option ${finalPickOption}`;
+  if (!finalPickCandidate) {
+    const fallback = `${finalPickLabel} is the strongest visible pick in this shortlist.`;
+    return {
+      operatorReason: fallback,
+      sanitizedRationaleRaw: fallback
+    };
+  }
+
+  const extractLeadingExcerpt = (text: string, maxWords: number): string => {
+    const firstSentence = text.split(/(?<=[.!?]["']?)\s+/)[0] ?? text;
+    const firstClause = firstSentence.split(/[,:;]/)[0] ?? firstSentence;
+    return firstClause
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, maxWords)
+      .join(" ")
+      .replace(/^"+|"+$/g, "")
+      .trim();
+  };
+
+  const extractQuotedReaction = (text: string): string => {
+    const quoted = text.match(/^"[^"]+[.!?]?"/)?.[0];
+    return quoted ?? `"${extractLeadingExcerpt(text, 8)}"`;
+  };
+
+  const describeAngle = (angle: string): string => {
+    switch (angle) {
+      case "payoff_reveal":
+        return "the clean payoff lane";
+      case "absurdity_chaos":
+        return "the absurdity read";
+      case "tension_danger":
+        return "the danger read";
+      case "shared_experience":
+        return "the crowd-reaction read";
+      case "competence_process":
+        return "the process read";
+      case "insider_expertise":
+        return "the insider read";
+      case "warmth_reverence":
+        return "the respect read";
+      case "awe_scale":
+        return "the awe read";
+      default:
+        return "a different read";
+    }
+  };
+
+  const otherVisibleOptions = input.shortlistOptionMap
+    .filter((item) => item.candidateId !== finalPickCandidate.candidateId)
+    .map((item) => ({
+      option: item.option,
+      candidate: input.shortlist.find((candidate) => candidate.candidateId === item.candidateId) ?? null
+    }))
+    .filter(
+      (
+        item
+      ): item is {
+        option: number;
+        candidate: CandidateCaption;
+      } => item.candidate !== null
+    );
+  const angleAlternatives = Array.from(
+    new Map(
+      otherVisibleOptions
+        .filter((item) => item.candidate.angle !== finalPickCandidate.angle)
+        .map((item) => [item.candidate.angle, item])
+    ).values()
+  ).slice(0, 2);
+
+  const topExcerpt = extractLeadingExcerpt(finalPickCandidate.top, 10);
+  const bottomExcerpt = extractQuotedReaction(finalPickCandidate.bottom);
+  const operatorReasonBase =
+    `${finalPickLabel} is the strongest visible pick because it opens with "${topExcerpt}" ` +
+    `and lands the reaction with ${bottomExcerpt}.`;
+  const operatorReason =
+    angleAlternatives.length > 0
+      ? `${operatorReasonBase} The rest of the visible shortlist still gives real alternates: ${angleAlternatives
+          .map((item) => `option ${item.option} keeps ${describeAngle(item.candidate.angle)}`)
+          .join(", ")}.`
+      : `${operatorReasonBase} The other visible options stay in the same lane, but this one has the cleanest hook-to-reaction path of the five.`;
+  const rewritten = operatorReason.trim();
+  return {
+    operatorReason: rewritten,
+    sanitizedRationaleRaw: rewritten
+  };
 }
 
 function normalizeCriticScores(raw: unknown, candidates: CandidateCaption[]): CriticScore[] {
@@ -849,28 +969,343 @@ function startsWithBannedOpener(text: string, constraints: Stage2HardConstraints
   return constraints.bannedOpeners.some((opener) => lower.startsWith(opener.toLowerCase()));
 }
 
-function candidateMeetsHardConstraints(
+type CandidateConstraintCheck = {
+  passed: boolean;
+  repaired: boolean;
+  topLength: number;
+  bottomLength: number;
+  issues: string[];
+};
+
+const TERMINAL_PUNCTUATION_PATTERN = /[.!?]["']?$/;
+const DANGLING_END_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "anybody",
+  "anyone",
+  "anything",
+  "as",
+  "at",
+  "because",
+  "being",
+  "but",
+  "by",
+  "do",
+  "everybody",
+  "everyone",
+  "everything",
+  "for",
+  "from",
+  "how",
+  "in",
+  "into",
+  "like",
+  "nobody",
+  "nothing",
+  "of",
+  "on",
+  "or",
+  "somebody",
+  "someone",
+  "something",
+  "stop",
+  "than",
+  "that",
+  "the",
+  "then",
+  "to",
+  "until",
+  "when",
+  "while",
+  "why",
+  "with"
+]);
+const TOP_PADDING_OPTIONS = [
+  "It is already over.",
+  "You can feel the winner coming.",
+  "The road already looks like it knows how this ends."
+];
+const BOTTOM_PADDING_OPTIONS = [
+  "Everybody watching knows who lost that exchange.",
+  "Everybody in that jeep knows exactly who lost that exchange.",
+  "Everybody in that jeep knows exactly who lost that exchange, and the whole road now has to sit with how public that drop was."
+];
+
+function truncateToWordBoundary(text: string, maxLength: number): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  const sliced = text.slice(0, maxLength + 1);
+  const sentenceBoundaryMatch = Array.from(sliced.matchAll(/[.!?]["']?(?=\s|$)/g)).at(-1);
+  if (sentenceBoundaryMatch && sentenceBoundaryMatch.index !== undefined) {
+    const boundaryEnd = sentenceBoundaryMatch.index + sentenceBoundaryMatch[0].length;
+    if (boundaryEnd >= Math.floor(maxLength * 0.6)) {
+      return sliced.slice(0, boundaryEnd).trim();
+    }
+  }
+  const clauseBoundaries = [",", ";", ":", " -", " —"]
+    .map((marker) => sliced.lastIndexOf(marker))
+    .filter((index) => index >= Math.floor(maxLength * 0.6));
+  const clauseBoundary = clauseBoundaries.length > 0 ? Math.max(...clauseBoundaries) : -1;
+  if (clauseBoundary >= 0) {
+    return sliced.slice(0, clauseBoundary).trim();
+  }
+  const boundary = sliced.lastIndexOf(" ");
+  const trimmed = (boundary >= Math.floor(maxLength * 0.7) ? sliced.slice(0, boundary) : sliced.slice(0, maxLength)).trim();
+  return trimmed.slice(0, maxLength).trim();
+}
+
+function extractLeadingCompleteSentences(text: string): string {
+  const matches = text.match(/.+?[.!?]["']?(?=\s|$)/g);
+  return matches ? matches.join(" ").trim() : "";
+}
+
+function extractNormalizedWords(text: string): string[] {
+  return text
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "").toLowerCase())
+    .filter(Boolean);
+}
+
+function looksLikeBrokenCaptionEnding(text: string): boolean {
+  const value = text.trim();
+  if (!value) {
+    return true;
+  }
+  const completePrefix = extractLeadingCompleteSentences(value);
+  if (completePrefix && completePrefix.length < value.length) {
+    return true;
+  }
+  const words = extractNormalizedWords(value);
+  if (words.length <= 4) {
+    return true;
+  }
+  const last = words.at(-1) ?? "";
+  const previous = words.at(-2) ?? "";
+  return DANGLING_END_WORDS.has(last) || DANGLING_END_WORDS.has(previous);
+}
+
+function trimTrailingBrokenEndingWords(text: string): string {
+  let value = text.trim();
+  while (value && looksLikeBrokenCaptionEnding(value)) {
+    const shortened = value.replace(/\s+[^\s]+[.!?,"']*$/u, "").trim();
+    if (!shortened || shortened === value) {
+      break;
+    }
+    value = shortened.replace(/[,:;]+$/, "").trim();
+  }
+  return value;
+}
+
+function ensureTerminalPunctuation(text: string, maxLength: number): string {
+  let value = text.trim();
+  if (!value || TERMINAL_PUNCTUATION_PATTERN.test(value)) {
+    return value;
+  }
+  value = value.replace(/[,:;]+$/, "").trim();
+  if (!value) {
+    return value;
+  }
+  if (value.length >= maxLength) {
+    value = truncateToWordBoundary(value, maxLength - 1).replace(/[,:;]+$/, "").trim();
+  }
+  return value ? `${value}.` : value;
+}
+
+function padTextToMinimum(
+  text: string,
+  minimum: number,
+  maxLength: number,
+  suffixOptions: string[]
+): string | null {
+  let value = text.trim();
+  if (value.length >= minimum) {
+    return ensureTerminalPunctuation(value, maxLength);
+  }
+  const glue = TERMINAL_PUNCTUATION_PATTERN.test(value) ? " " : ". ";
+  const candidates = suffixOptions
+    .map((suffix) => `${value}${glue}${suffix.trim()}`.trim())
+    .filter((candidate) => candidate.length >= minimum && candidate.length <= maxLength);
+  if (candidates.length === 0) {
+    return null;
+  }
+  return candidates.sort((left, right) => left.length - right.length)[0] ?? null;
+}
+
+function repairCaptionLineForHardConstraints(input: {
+  text: string;
+  minimum: number;
+  maximum: number;
+  suffixOptions: string[];
+}): { text: string; repaired: boolean; valid: boolean } {
+  let value = input.text.trim();
+  let repaired = false;
+  if (value.length > input.maximum) {
+    value = truncateToWordBoundary(value, input.maximum);
+    repaired = true;
+  }
+  if (looksLikeBrokenCaptionEnding(value)) {
+    const prefix = extractLeadingCompleteSentences(value);
+    if (prefix) {
+      value = prefix;
+      repaired = true;
+    } else {
+      const trimmed = trimTrailingBrokenEndingWords(value);
+      if (trimmed && trimmed !== value) {
+        value = trimmed;
+        repaired = true;
+      }
+    }
+    if (extractNormalizedWords(value).length <= 4 || looksLikeBrokenCaptionEnding(value)) {
+      return {
+        text: value,
+        repaired,
+        valid: false
+      };
+    }
+  }
+  if (value.length < input.minimum) {
+    const padded = padTextToMinimum(value, input.minimum, input.maximum, input.suffixOptions);
+    if (!padded) {
+      return {
+        text: value,
+        repaired,
+        valid: false
+      };
+    }
+    value = padded;
+    repaired = true;
+  }
+  value = ensureTerminalPunctuation(value, input.maximum);
+  return {
+    text: value,
+    repaired,
+    valid:
+      Boolean(value) &&
+      value.length >= input.minimum &&
+      value.length <= input.maximum &&
+      !looksLikeBrokenCaptionEnding(value)
+  };
+}
+
+function repairCandidateForHardConstraints(
   candidate: CandidateCaption,
   constraints: Stage2HardConstraints
-): boolean {
+): { candidate: CandidateCaption; repaired: boolean; valid: boolean } {
+  const repairedTop = repairCaptionLineForHardConstraints({
+    text: candidate.top,
+    minimum: constraints.topLengthMin,
+    maximum: constraints.topLengthMax,
+    suffixOptions: TOP_PADDING_OPTIONS
+  });
+  const repairedBottom = repairCaptionLineForHardConstraints({
+    text: candidate.bottom,
+    minimum: constraints.bottomLengthMin,
+    maximum: constraints.bottomLengthMax,
+    suffixOptions: BOTTOM_PADDING_OPTIONS
+  });
+
+  return {
+    candidate:
+      repairedTop.repaired || repairedBottom.repaired
+        ? {
+            ...candidate,
+            top: repairedTop.text,
+            bottom: repairedBottom.text
+          }
+        : candidate,
+    repaired: repairedTop.repaired || repairedBottom.repaired,
+    valid: repairedTop.valid && repairedBottom.valid
+  };
+}
+
+function evaluateCandidateHardConstraints(
+  candidate: CandidateCaption,
+  constraints: Stage2HardConstraints,
+  repaired = false
+): CandidateConstraintCheck {
   const topLength = candidate.top.length;
   const bottomLength = candidate.bottom.length;
+  const issues: string[] = [];
   if (topLength < constraints.topLengthMin || topLength > constraints.topLengthMax) {
-    return false;
+    issues.push(`TOP length ${topLength} вне диапазона ${constraints.topLengthMin}-${constraints.topLengthMax}.`);
   }
   if (bottomLength < constraints.bottomLengthMin || bottomLength > constraints.bottomLengthMax) {
-    return false;
+    issues.push(
+      `BOTTOM length ${bottomLength} вне диапазона ${constraints.bottomLengthMin}-${constraints.bottomLengthMax}.`
+    );
   }
   if (constraints.bottomQuoteRequired && !candidate.bottom.includes("\"")) {
-    return false;
+    issues.push("BOTTOM должен содержать quoted phrase.");
   }
   if (containsBannedContent(candidate.top, constraints) || containsBannedContent(candidate.bottom, constraints)) {
-    return false;
+    issues.push("Найдены banned words.");
   }
   if (startsWithBannedOpener(candidate.top, constraints)) {
-    return false;
+    issues.push("TOP начинается с banned opener.");
   }
-  return true;
+  return {
+    passed: issues.length === 0,
+    repaired,
+    topLength,
+    bottomLength,
+    issues
+  };
+}
+
+type ShortlistEntry = {
+  candidate: CandidateCaption;
+  constraintCheck: CandidateConstraintCheck;
+  criticTotal: number;
+};
+
+function mergeRewriterCandidates(inputCandidates: CandidateCaption[], rewrites: CandidateCaption[]): {
+  candidates: CandidateCaption[];
+  appliedRewriteCount: number;
+} {
+  const allowedIds = new Set(inputCandidates.map((candidate) => candidate.candidateId));
+  const rewriteById = new Map<string, CandidateCaption>();
+  for (const rewrite of rewrites) {
+    if (!allowedIds.has(rewrite.candidateId) || rewriteById.has(rewrite.candidateId)) {
+      continue;
+    }
+    rewriteById.set(rewrite.candidateId, rewrite);
+  }
+  return {
+    candidates: inputCandidates.map((candidate) => rewriteById.get(candidate.candidateId) ?? candidate),
+    appliedRewriteCount: rewriteById.size
+  };
+}
+
+function buildInternalFinalSelectorReason(input: {
+  evaluatedCandidates: CandidateCaption[];
+  visibleShortlist: CandidateCaption[];
+  finalPickCandidateId: string;
+}): string {
+  const evaluatedIds = Array.from(new Set(input.evaluatedCandidates.map((candidate) => candidate.candidateId)));
+  const shortlistIds = input.visibleShortlist.map((candidate) => candidate.candidateId);
+  const evaluatedIdSet = new Set(evaluatedIds);
+  const backfilledIds = shortlistIds.filter((candidateId) => !evaluatedIdSet.has(candidateId));
+  const shortlistAngles = Array.from(new Set(input.visibleShortlist.map((candidate) => candidate.angle)));
+  const pickId =
+    input.visibleShortlist.find((candidate) => candidate.candidateId === input.finalPickCandidateId)?.candidateId ??
+    shortlistIds[0] ??
+    input.finalPickCandidateId;
+
+  const base =
+    `Final selector evaluated ${evaluatedIds.length} candidate${evaluatedIds.length === 1 ? "" : "s"}: ` +
+    `${evaluatedIds.join(", ") || "none"}. ` +
+    `Final visible shortlist is ${shortlistIds.join(", ") || "empty"} with ${pickId || "no final pick"} as the final pick.`;
+  const backfillNote =
+    backfilledIds.length > 0
+      ? ` ${backfilledIds.length} shortlist candidate${backfilledIds.length === 1 ? "" : "s"} came from the validated fallback pool: ${backfilledIds.join(", ")}.`
+      : "";
+  const angleNote =
+    shortlistAngles.length > 0
+      ? ` Visible angles: ${shortlistAngles.join(", ")}.`
+      : "";
+  return `${base}${backfillNote}${angleNote}`.trim();
 }
 
 function buildShortlist(input: {
@@ -879,7 +1314,7 @@ function buildShortlist(input: {
   rewrittenCandidates: CandidateCaption[];
   fallbackCandidates: CandidateCaption[];
   criticScores: CriticScore[];
-}): CandidateCaption[] {
+}): ShortlistEntry[] {
   const scoreMap = new Map(input.criticScores.map((score) => [score.candidateId, score.total]));
   const byId = new Map(
     [...input.rewrittenCandidates, ...input.fallbackCandidates].map((candidate) => [candidate.candidateId, candidate])
@@ -898,24 +1333,86 @@ function buildShortlist(input: {
       seen.add(candidateId);
       return byId.has(candidateId);
     })
-    .map((candidateId) => byId.get(candidateId)!)
-    .sort((left, right) => (scoreMap.get(right.candidateId) ?? 0) - (scoreMap.get(left.candidateId) ?? 0));
+    .map((candidateId) => byId.get(candidateId)!);
 
-  const strict = orderedPool.filter((candidate) => candidateMeetsHardConstraints(candidate, input.constraints));
-  const shortlist = strict.slice(0, 5);
-  if (shortlist.length >= 5) {
-    return shortlist;
-  }
-  for (const candidate of orderedPool) {
-    if (shortlist.some((item) => item.candidateId === candidate.candidateId)) {
-      continue;
+  const repairedPool = orderedPool
+    .map((candidate) => {
+    const repaired = repairCandidateForHardConstraints(candidate, input.constraints);
+    const constraintCheck = evaluateCandidateHardConstraints(
+      repaired.candidate,
+      input.constraints,
+      repaired.repaired
+    );
+    return {
+      candidate: repaired.candidate,
+      constraintCheck,
+      criticTotal: scoreMap.get(candidate.candidateId) ?? 0,
+      valid: repaired.valid
+    };
+    })
+    .filter((entry) => entry.valid && entry.constraintCheck.passed);
+
+  const preferredIds = new Set(input.finalSelector.finalCandidates);
+  const protectedFinalPickId = input.finalSelector.finalPick;
+  const accepted = repairedPool.filter((entry) => preferredIds.has(entry.candidate.candidateId)).slice(0, 5);
+  const remaining = repairedPool
+    .filter((entry) => !preferredIds.has(entry.candidate.candidateId))
+    .sort((left, right) => right.criticTotal - left.criticTotal);
+
+  const diversifyAcceptedShortlist = () => {
+    const possibleAngles = new Set(repairedPool.map((entry) => entry.candidate.angle));
+    const targetUniqueAngles = Math.min(3, possibleAngles.size);
+    while (new Set(accepted.map((entry) => entry.candidate.angle)).size < targetUniqueAngles && remaining.length > 0) {
+      const acceptedAngles = new Set(accepted.map((entry) => entry.candidate.angle));
+      const alternativeIndex = remaining.findIndex((entry) => !acceptedAngles.has(entry.candidate.angle));
+      if (alternativeIndex < 0) {
+        break;
+      }
+      const [alternative] = remaining.splice(alternativeIndex, 1);
+      if (!alternative) {
+        break;
+      }
+      const replaceable = accepted
+        .map((entry, index) => ({ entry, index }))
+        .filter(
+          ({ entry }) =>
+            entry.candidate.candidateId !== protectedFinalPickId &&
+            accepted.filter((item) => item.candidate.angle === entry.candidate.angle).length > 1
+        )
+        .sort((left, right) => left.entry.criticTotal - right.entry.criticTotal)[0];
+      if (!replaceable) {
+        remaining.unshift(alternative);
+        break;
+      }
+      if (alternative.criticTotal < replaceable.entry.criticTotal - 0.75) {
+        remaining.unshift(alternative);
+        break;
+      }
+      const [removed] = accepted.splice(replaceable.index, 1, alternative);
+      if (removed) {
+        remaining.push(removed);
+        remaining.sort((left, right) => right.criticTotal - left.criticTotal);
+      }
     }
-    shortlist.push(candidate);
-    if (shortlist.length === 5) {
+  };
+
+  while (accepted.length < 5 && remaining.length > 0) {
+    const acceptedAngles = new Set(accepted.map((entry) => entry.candidate.angle));
+    const strongestRemainingScore = remaining[0]?.criticTotal ?? 0;
+    const diverseIndex = remaining.findIndex(
+      (entry) =>
+        !acceptedAngles.has(entry.candidate.angle) &&
+        entry.criticTotal >= strongestRemainingScore - 0.75
+    );
+    const [next] = remaining.splice(diverseIndex >= 0 ? diverseIndex : 0, 1);
+    if (!next) {
       break;
     }
+    accepted.push(next);
   }
-  return shortlist.slice(0, 5);
+
+  diversifyAcceptedShortlist();
+  return accepted.slice(0, 5);
 }
 
 function buildFallbackTitleOption(candidate: CandidateCaption, option: number): { option: number; title: string; titleRu: string } {
@@ -1021,7 +1518,9 @@ function buildDiagnosticsExample(
     reasons.push(`quality ${example.qualityScore.toFixed(2)}`);
   }
   return {
+    id: example.id,
     bucket,
+    channelName: example.sourceChannelName,
     sourceChannelId: example.sourceChannelId,
     sourceChannelName: example.sourceChannelName,
     videoId: null,
@@ -1066,6 +1565,8 @@ function buildRunDiagnostics(input: {
     },
     selection: {
       clipType: input.selectorOutput.clipType,
+      primaryAngle: input.selectorOutput.primaryAngle,
+      secondaryAngles: input.selectorOutput.secondaryAngles,
       rankedAngles: input.selectorOutput.rankedAngles,
       coreTrigger: input.selectorOutput.coreTrigger,
       humanStake: input.selectorOutput.humanStake,
@@ -1515,6 +2016,7 @@ export class ViralShortsWorkerService {
     );
 
     let rewrittenCandidates = topCandidates;
+    let appliedRewriteCount = 0;
     const rewriterPrompt = buildRewriterPrompt({
       channelConfig,
       analyzerOutput,
@@ -1541,7 +2043,9 @@ export class ViralShortsWorkerService {
       });
       const normalizedRewrites = normalizeCandidates(rewriterRaw, selectorOutput);
       if (normalizedRewrites.length > 0) {
-        rewrittenCandidates = normalizedRewrites;
+        const merged = mergeRewriterCandidates(topCandidates, normalizedRewrites);
+        rewrittenCandidates = merged.candidates;
+        appliedRewriteCount = merged.appliedRewriteCount;
       }
       await reportProgress({
         stageId: "rewriter",
@@ -1549,7 +2053,7 @@ export class ViralShortsWorkerService {
         durationMs: Date.now() - rewriterStartedAt,
         promptChars: rewriterPrompt.length,
         reasoningEffort: rewriterReasoningEffort,
-        detail: `${rewrittenCandidates.length} finalists polished.`
+        detail: `${topCandidates.length} finalists sent to rewrite, ${appliedRewriteCount} usable rewrites applied.`
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Rewriter fallback used.";
@@ -1623,13 +2127,14 @@ export class ViralShortsWorkerService {
       });
     }
 
-    const shortlist = buildShortlist({
+    const shortlistEntries = buildShortlist({
       constraints: channelConfig.hardConstraints,
       finalSelector,
       rewrittenCandidates,
       fallbackCandidates: candidates,
       criticScores
     });
+    const shortlist = shortlistEntries.map((entry) => entry.candidate);
 
     const titlePrompt = buildTitlePrompt({
       channelConfig,
@@ -1694,17 +2199,44 @@ export class ViralShortsWorkerService {
       queryText
     });
 
-    const captionOptions = shortlist.map((candidate, index) => ({
+    const shortlistOptionMap = shortlist.map((candidate, index) => ({
       option: index + 1,
-      top: candidate.top,
-      bottom: candidate.bottom,
-      topRu: candidate.topRu,
-      bottomRu: candidate.bottomRu
+      candidateId: candidate.candidateId
     }));
+    const captionOptions = shortlistEntries.map((entry, index) => {
+      const candidate = entry.candidate;
+      return {
+        option: index + 1,
+        candidateId: candidate.candidateId,
+        angle: candidate.angle,
+        top: candidate.top,
+        bottom: candidate.bottom,
+        topRu: candidate.topRu,
+        bottomRu: candidate.bottomRu,
+        constraintCheck: entry.constraintCheck
+      };
+    });
+    const resolvedFinalPickCandidateId =
+      shortlist.find((candidate) => candidate.candidateId === finalSelector.finalPick)?.candidateId ??
+      shortlist[0]?.candidateId ??
+      finalSelector.finalPick;
     const finalPickOption = Math.max(
       1,
-      captionOptions.findIndex((option) => shortlist[option.option - 1]?.candidateId === finalSelector.finalPick) + 1
+      captionOptions.findIndex(
+        (option) => shortlist[option.option - 1]?.candidateId === resolvedFinalPickCandidateId
+      ) + 1
     );
+    const { operatorReason: operatorFacingFinalReason, sanitizedRationaleRaw } =
+      buildOperatorFacingFinalReason({
+        shortlist,
+        shortlistOptionMap,
+        finalPickCandidateId: resolvedFinalPickCandidateId
+      });
+    const internalFinalSelectorReason = buildInternalFinalSelectorReason({
+      evaluatedCandidates: rewrittenCandidates,
+      visibleShortlist: shortlist,
+      finalPickCandidateId: resolvedFinalPickCandidateId
+    });
 
     const output: ViralShortsStage2Result = {
       inputAnalysis: {
@@ -1720,14 +2252,22 @@ export class ViralShortsWorkerService {
       titleOptions,
       finalPick: {
         option: finalPickOption,
-        reason: finalSelector.rationale
+        reason: operatorFacingFinalReason
       },
       pipeline: {
         channelId: channelConfig.channelId,
         mode: "codex_pipeline",
         selectorOutput,
         availableExamplesCount: availableExamples.length,
-        selectedExamplesCount: selectorOutput.selectedExamples?.length ?? 0
+        selectedExamplesCount: selectorOutput.selectedExamples?.length ?? 0,
+        finalSelector: {
+          candidateOptionMap: shortlistOptionMap,
+          shortlistCandidateIds: shortlist.map((candidate) => candidate.candidateId),
+          finalPickCandidateId: resolvedFinalPickCandidateId,
+          rationaleRaw: sanitizedRationaleRaw,
+          rationaleInternalRaw: internalFinalSelectorReason,
+          rationaleInternalModelRaw: finalSelector.rationale
+        }
       },
       diagnostics
     };

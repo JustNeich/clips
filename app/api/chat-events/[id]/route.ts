@@ -1,5 +1,5 @@
-import { appendChatEvent, getChatById } from "../../../../../lib/chat-history";
-import { requireAuth, requireChannelOperate } from "../../../../../lib/auth/guards";
+import { appendChatEvent, getChatById } from "../../../../lib/chat-history";
+import { requireAuth, requireChannelOperate } from "../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
 

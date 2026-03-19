@@ -5,7 +5,8 @@ import {
   SCIENCE_CARD_V3_TEMPLATE_ID,
   SCIENCE_CARD_V4_TEMPLATE_ID,
   SCIENCE_CARD_V5_TEMPLATE_ID,
-  SCIENCE_CARD_V6_TEMPLATE_ID
+  SCIENCE_CARD_V6_TEMPLATE_ID,
+  SCIENCE_CARD_V7_TEMPLATE_ID
 } from "./stage3-template";
 import { getTemplateVariant } from "./stage3-template-registry";
 
@@ -162,6 +163,25 @@ export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
       "Карточка должна выглядеть современной и мемной, но не как noisy gamer overlay.",
       "Никаких градиентов: интерес собирается плоскими формами, контрастом и акцентными блоками.",
       "Top/video/meta/bottom остаются максимально простыми и мгновенно читаемыми в shorts/reels контексте."
+    ]
+  },
+  {
+    templateId: SCIENCE_CARD_V7_TEMPLATE_ID,
+    label: getTemplateVariant(SCIENCE_CARD_V7_TEMPLATE_ID).label,
+    channelName: "Echoes Of Honor",
+    channelHandle: "@EchoesOfHonor50",
+    topText:
+      "This sailor is performing a mandatory abandon ship drill from the bow of hull to prove he can handle the height and keep his form tight before the unit heads back to sea.",
+    bottomText:
+      "You have to cover your nose and cross your arms or that water will hit you like a brick. It is a confidence builder that every new recruit has to pass to be ready.",
+    note:
+      "Reference-first maritime meme/news card with large white shell, rounded black headline, thin gray border and a hard offset shadow on top of a sky backdrop.",
+    defaultPreviewScale: 0.28,
+    initialStatus: "in-progress",
+    checklist: [
+      "Карточка должна занимать больше высоты кадра, чем базовый science card, с меньшими внешними полями.",
+      "Top headline нужен очень тяжёлый и круглый по характеру, без editorial-холодности Inter.",
+      "Тонкая серая рамка, жёсткая offset-тень и sky-background должны читаться как единая ссылка на референс."
     ]
   }
 ];

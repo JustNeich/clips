@@ -4,7 +4,12 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { APP_DB_SCHEMA } from "./schema";
 import { getAppDataDir } from "../app-paths";
-import { getBundledStage2ExamplesSeedJson } from "../stage2-channel-config";
+import {
+  DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  getBundledStage2ExamplesSeedJson,
+  stringifyStage2HardConstraints
+} from "../stage2-channel-config";
+import { stringifyStage2PromptConfig, DEFAULT_STAGE2_PROMPT_CONFIG } from "../stage2-pipeline";
 
 type GlobalDbScope = typeof globalThis & {
   __clipsAppDb?: DatabaseSync;
@@ -134,6 +139,8 @@ function migrateLegacyStage3WorkerTokens(db: DatabaseSync): void {
 
 function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "workspaces", "stage2_examples_corpus_json", "TEXT");
+  addColumnIfMissing(db, "workspaces", "stage2_hard_constraints_json", "TEXT");
+  addColumnIfMissing(db, "workspaces", "stage2_prompt_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_worker_profile_id", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_examples_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_hard_constraints_json", "TEXT");
@@ -167,6 +174,18 @@ function applyDbMigrations(db: DatabaseSync): void {
       WHERE stage2_examples_corpus_json IS NULL
          OR trim(stage2_examples_corpus_json) = ''`
   ).run(getBundledStage2ExamplesSeedJson());
+  db.prepare(
+    `UPDATE workspaces
+        SET stage2_hard_constraints_json = ?
+      WHERE stage2_hard_constraints_json IS NULL
+         OR trim(stage2_hard_constraints_json) = ''`
+  ).run(stringifyStage2HardConstraints(DEFAULT_STAGE2_HARD_CONSTRAINTS));
+  db.prepare(
+    `UPDATE workspaces
+        SET stage2_prompt_config_json = ?
+      WHERE stage2_prompt_config_json IS NULL
+         OR trim(stage2_prompt_config_json) = ''`
+  ).run(stringifyStage2PromptConfig(DEFAULT_STAGE2_PROMPT_CONFIG));
   migrateLegacyStage3WorkerTokens(db);
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage2_runs_workspace_updated ON stage2_runs(workspace_id, updated_at DESC)"

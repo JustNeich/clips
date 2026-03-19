@@ -5,7 +5,7 @@
 - история чатов: каждая ссылка = отдельный чат;
 - скачивание видео в `mp4`;
 - загрузка комментариев;
-- показ топ-10 популярных комментариев (по лайкам);
+- загрузка до 300 самых залайканных комментариев;
 - экспорт всех комментариев в `json`;
 - Stage 2 пайплайн генерации контента через LLM (Codex auth):
   - скачивание видео + комментариев;
@@ -63,8 +63,9 @@ npm run dev
 - API запускает `yt-dlp`, получает видео и возвращает клиенту `mp4` как attachment.
 - UI может отправить ссылку на `POST /api/comments`.
 - API получает комментарии через `yt-dlp`, сортирует по лайкам и возвращает:
-  - `topComments` (до 10 шт),
-  - `allComments` (полный список для экспорта JSON).
+  - до 300 самых популярных комментариев,
+  - `topComments` для preview,
+  - `allComments` для локального inspect/export в пределах cap.
 - UI может запустить Stage 2 через `POST /api/pipeline/stage2`.
 - Stage 2:
   - скачивает видео и комментарии;
@@ -177,12 +178,20 @@ npm run stage3-worker -- start
 - сохраняются banned words / banned openers / anti-AI ограничения из worker config.
 
 Channel-specific mapping теперь задается через `Stage 2` в Channel Manager.
+
 Primary Stage 2 control surface:
-- `examples corpus` определяет, использует ли канал `workspace default corpus` или свой `channel custom corpus`;
-- `per-stage prompts` хранятся отдельно по стадиям `analyzer, selector, writer, critic, rewriter, final selector, titles`;
-- у каждой стадии есть один прямой editable prompt и один selectable reasoning mode;
+- owner редактирует workspace-wide defaults через `Default settings`;
+- там же задаются:
+  - `workspace default corpus`
+  - `hard constraints`
+  - default prompt + default thinking по стадиям `analyzer, selector, writer, critic, rewriter, final selector, titles, seo`
+- у конкретного канала теперь есть **одно** editable поле `Examples corpus JSON`;
+- это поле по умолчанию заполняется workspace default corpus, но может быть полностью заменено локальной версией для канала;
 - `selector` является реальным LLM stage и сам выбирает angle и релевантные examples из доступного corpus;
 - UI во время генерации показывает активный pipeline step в реальном времени.
+
+Подробная документация по текущей Stage 2 архитектуре:
+- [docs/stage2-runtime.md](/Users/neich/dev/clips automations/docs/stage2-runtime.md)
 
 ## Переменные окружения (опционально)
 

@@ -115,6 +115,38 @@ function buildSelectorContext(selectorOutput: SelectorOutput): string {
   ].join("\n");
 }
 
+function truncatePromptValue(value: string, maxLength: number): string {
+  const normalized = value.trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function buildCompactSelectorExamples(
+  availableExamples: PreparedGenerationContext["availableExamples"]
+): Array<{
+  id: string;
+  channelName: string;
+  clipType: string;
+  title: string;
+  overlayTop: string;
+  overlayBottom: string;
+  whyItWorks: string[];
+  qualityScore: number | null;
+}> {
+  return (availableExamples ?? []).map((example) => ({
+    id: example.id,
+    channelName: example.sourceChannelName || example.ownerChannelName,
+    clipType: example.clipType,
+    title: truncatePromptValue(example.title, 120),
+    overlayTop: truncatePromptValue(example.overlayTop, 220),
+    overlayBottom: truncatePromptValue(example.overlayBottom, 180),
+    whyItWorks: example.whyItWorks.slice(0, 2).map((item) => truncatePromptValue(item, 100)),
+    qualityScore: typeof example.qualityScore === "number" ? example.qualityScore : null
+  }));
+}
+
 export function buildAnalyzerPrompt(
   channelConfig: Stage2RuntimeChannelConfig,
   videoContext: ViralShortsVideoContext,
@@ -146,7 +178,7 @@ export function buildSelectorPrompt(input: {
       comments: input.videoContext.comments
     },
     analyzerOutput: input.analyzerOutput,
-    availableExamples: input.availableExamples ?? []
+    availableExamples: buildCompactSelectorExamples(input.availableExamples)
   });
 }
 

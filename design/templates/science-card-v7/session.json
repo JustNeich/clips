@@ -1,0 +1,16 @@
+{
+  "templateId": "science-card-v7",
+  "status": "in-progress",
+  "compareMode": "overlay",
+  "compareScope": "full",
+  "overlayOpacity": 0.9,
+  "overlayBlendMode": "normal",
+  "referenceOffsetX": 0,
+  "referenceOffsetY": 0,
+  "referenceScale": 1,
+  "zoom": 1,
+  "panX": 0,
+  "panY": 0,
+  "splitPosition": 0.5,
+  "acceptedMismatchThreshold": 0.04
+}

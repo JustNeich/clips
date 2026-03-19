@@ -25,10 +25,19 @@ export type Stage2Output = {
   };
   captionOptions: Array<{
     option: number;
+    candidateId?: string;
+    angle?: string;
     top: string;
     bottom: string;
     topRu?: string;
     bottomRu?: string;
+    constraintCheck?: {
+      passed: boolean;
+      repaired: boolean;
+      topLength: number;
+      bottomLength: number;
+      issues: string[];
+    };
   }>;
   titleOptions: Array<{
     option: number;
@@ -766,6 +775,7 @@ export type WorkspaceRecord = {
   name: string;
   slug: string;
   stage2ExamplesCorpusJson?: string;
+  stage2PromptConfig?: Stage2PromptConfig;
   createdAt: string;
   updatedAt: string;
 };

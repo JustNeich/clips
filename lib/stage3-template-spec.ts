@@ -96,6 +96,12 @@ function getGeneratedTemplateShell(templateId: string, template: Stage3TemplateC
       ...STAGE3_TEMPLATE_SHELL
     };
   }
+  if (templateId === "science-card-v7") {
+    return {
+      ...STAGE3_TEMPLATE_SHELL,
+      background: "#177fa6"
+    };
+  }
   return {
     x: template.card.x,
     y: template.card.y,
@@ -194,10 +200,6 @@ export function getTemplateFigmaSpec(templateId: string | null | undefined): Tem
   const resolvedTemplateId = templateId?.trim() || STAGE3_TEMPLATE_ID;
   if (resolvedTemplateId === SCIENCE_CARD_TEMPLATE_ID) {
     return SCIENCE_CARD_V1_FIGMA_SPEC;
-  }
-  const cached = GENERATED_SPEC_CACHE.get(resolvedTemplateId);
-  if (cached) {
-    return cached;
   }
   const next = buildGeneratedSpec(resolvedTemplateId);
   GENERATED_SPEC_CACHE.set(resolvedTemplateId, next);

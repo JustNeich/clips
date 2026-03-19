@@ -11,6 +11,7 @@ import {
   SCIENCE_CARD_V4_TEMPLATE_ID,
   SCIENCE_CARD_V5_TEMPLATE_ID,
   SCIENCE_CARD_V6_TEMPLATE_ID,
+  SCIENCE_CARD_V7_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   TURBO_FACE_TEMPLATE_ID,
   Stage3TemplateConfig,
@@ -695,6 +696,27 @@ function resolveScienceShellVisuals(
     };
   }
 
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID) {
+    return {
+      shellStyle: {
+        boxShadow:
+          "20px 20px 0 rgba(35, 40, 47, 0.52), inset 0 1px 0 rgba(255,255,255,0.7), inset 0 -10px 18px rgba(17, 25, 34, 0.04)"
+      },
+      topStyle: {
+        background: palette.topSectionFill,
+        borderBottom: "1px solid rgba(141, 147, 152, 0.42)"
+      },
+      bottomStyle: {
+        background: palette.bottomSectionFill,
+        borderTop: "1px solid rgba(141, 147, 152, 0.36)"
+      },
+      authorStyle: {
+        background: "#ffffff",
+        borderBottom: "1px solid rgba(141, 147, 152, 0.22)"
+      }
+    };
+  }
+
   return {};
 }
 
@@ -873,6 +895,23 @@ export function TemplateBackdrop({
     );
   }
 
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID) {
+    return (
+      <img
+        src={assetUrl ?? "/stage3-template-backdrops/science-card-v7-shell.svg"}
+        alt=""
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: "block"
+        }}
+      />
+    );
+  }
+
   return (
     <div
       style={{
@@ -961,6 +1000,7 @@ function renderDefaultAvatar(
   const isScienceCardV4 = templateId === SCIENCE_CARD_V4_TEMPLATE_ID;
   const isScienceCardV5 = templateId === SCIENCE_CARD_V5_TEMPLATE_ID;
   const isScienceCardV6 = templateId === SCIENCE_CARD_V6_TEMPLATE_ID;
+  const isScienceCardV7 = templateId === SCIENCE_CARD_V7_TEMPLATE_ID;
   const templateConfig = getTemplateById(templateId || STAGE3_TEMPLATE_ID);
   const author = templateConfig.author;
   const avatarSize = sizeOverride ?? author.avatarSize;
@@ -978,6 +1018,8 @@ function renderDefaultAvatar(
     borderColor = "rgba(122, 58, 25, 0.26)";
   } else if (isScienceCardV6) {
     borderColor = "rgba(79, 217, 42, 0.34)";
+  } else if (isScienceCardV7) {
+    borderColor = "rgba(255,255,255,0)";
   }
 
   let background = `radial-gradient(circle at 30% 30%, ${palette.topSectionFill}, ${palette.cardFill} 70%, #20506f)`;
@@ -997,6 +1039,13 @@ function renderDefaultAvatar(
       "radial-gradient(circle at 30% 30%, rgba(255, 224, 193, 0.98), rgba(204, 106, 54, 0.94) 62%, rgba(78, 29, 14, 0.98) 100%)";
   } else if (isScienceCardV6) {
     background = "#121417";
+  } else if (isScienceCardV7) {
+    background = `
+      radial-gradient(circle at 50% 34%, rgba(241, 211, 185, 0.98) 0 18%, rgba(241, 211, 185, 0) 19%),
+      radial-gradient(circle at 49% 62%, rgba(28, 34, 46, 0.92) 0 26%, rgba(28, 34, 46, 0) 27%),
+      radial-gradient(circle at 48% 24%, rgba(56, 38, 30, 0.96) 0 28%, rgba(56, 38, 30, 0) 29%),
+      linear-gradient(180deg, rgba(44, 50, 63, 0.96), rgba(13, 16, 23, 0.99))
+    `;
   }
   return (
     <div
@@ -1017,7 +1066,7 @@ function renderDefaultAvatar(
         flex: "0 0 auto"
       }}
     >
-      {isScienceCardV1 || isScienceCardV2 ? null : avatarInitials(channelName)}
+      {isScienceCardV1 || isScienceCardV2 || isScienceCardV7 ? null : avatarInitials(channelName)}
     </div>
   );
 }
@@ -1202,10 +1251,14 @@ export function TemplateScene({
   const topTextFontFamily =
     resolvedTemplateId === TURBO_FACE_TEMPLATE_ID
       ? '"Arial Black","Arial",sans-serif'
+      : resolvedTemplateId === SCIENCE_CARD_V7_TEMPLATE_ID
+        ? '"Arial Rounded MT Bold",".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial",sans-serif'
       : '"Inter","Helvetica Neue",Helvetica,sans-serif';
   const bodyTextFontFamily = isTurbo
     ? '"Arial","Helvetica Neue",Helvetica,sans-serif'
-    : '"Inter","Helvetica Neue",Helvetica,sans-serif';
+    : resolvedTemplateId === SCIENCE_CARD_V7_TEMPLATE_ID
+      ? '".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial Rounded MT Bold","Arial",sans-serif'
+      : '"Inter","Helvetica Neue",Helvetica,sans-serif';
   const bottomTextWeight = templateConfig.typography.bottom.weight ?? (isScienceCardV2 ? 700 : isTurbo ? 400 : 500);
   const bottomTextLetterSpacing = templateConfig.typography.bottom.letterSpacing ?? (isScienceCardV2 ? "-0.015em" : isTurbo ? "0" : "-0.005em");
   const bottomTextFontStyle = templateConfig.typography.bottom.fontStyle ?? (isScienceCardV2 ? "italic" : "normal");

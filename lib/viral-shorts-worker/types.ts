@@ -295,7 +295,9 @@ export type Stage2DiagnosticsPromptStage = {
 };
 
 export type Stage2DiagnosticsExample = {
+  id: string;
   bucket: "available" | "selected";
+  channelName: string;
   sourceChannelId: string;
   sourceChannelName: string;
   videoId: string | null;
@@ -328,6 +330,8 @@ export type Stage2Diagnostics = {
   };
   selection: {
     clipType: string;
+    primaryAngle: string;
+    secondaryAngles: string[];
     rankedAngles: RankedAngle[];
     coreTrigger: string;
     humanStake: string;
@@ -361,10 +365,19 @@ export type ViralShortsStage2Result = {
   };
   captionOptions: Array<{
     option: number;
+    candidateId: string;
+    angle: string;
     top: string;
     bottom: string;
     topRu: string;
     bottomRu: string;
+    constraintCheck: {
+      passed: boolean;
+      repaired: boolean;
+      topLength: number;
+      bottomLength: number;
+      issues: string[];
+    };
   }>;
   titleOptions: Array<{
     option: number;
@@ -381,6 +394,17 @@ export type ViralShortsStage2Result = {
     selectorOutput: SelectorOutput;
     availableExamplesCount: number;
     selectedExamplesCount: number;
+    finalSelector?: {
+      candidateOptionMap: Array<{
+        option: number;
+        candidateId: string;
+      }>;
+      shortlistCandidateIds: string[];
+      finalPickCandidateId: string;
+      rationaleRaw: string;
+      rationaleInternalRaw?: string;
+      rationaleInternalModelRaw?: string;
+    };
   };
   diagnostics?: Stage2Diagnostics;
 };

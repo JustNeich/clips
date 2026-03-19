@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent } from "react";
+import React, { FormEvent } from "react";
 import type { SourceJobDetail } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 
@@ -22,6 +22,68 @@ type Step1PasteLinkProps = {
   onDownloadSource: () => void;
 };
 
+type SourcePreview =
+  | {
+      kind: "youtube";
+      href: string;
+      embedUrl: string;
+    }
+  | {
+      kind: "video";
+      href: string;
+      videoUrl: string;
+    }
+  | {
+      kind: "external";
+      href: string;
+    };
+
+function resolveSourcePreview(rawUrl: string | null): SourcePreview | null {
+  const trimmed = rawUrl?.trim() ?? "";
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname.toLowerCase();
+    if (pathname.endsWith(".mp4") || pathname.endsWith(".webm") || pathname.endsWith(".mov")) {
+      return {
+        kind: "video",
+        href: parsed.toString(),
+        videoUrl: parsed.toString()
+      };
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    const youtubeId =
+      hostname === "youtu.be"
+        ? parsed.pathname.split("/").filter(Boolean)[0] ?? ""
+        : hostname.includes("youtube.com") && parsed.pathname === "/watch"
+          ? parsed.searchParams.get("v")?.trim() ?? ""
+          : hostname.includes("youtube.com") && parsed.pathname.startsWith("/shorts/")
+            ? parsed.pathname.split("/").filter(Boolean)[1] ?? ""
+            : "";
+
+    if (youtubeId) {
+      return {
+        kind: "youtube",
+        href: parsed.toString(),
+        embedUrl: `https://www.youtube.com/embed/${encodeURIComponent(
+          youtubeId
+        )}?rel=0&modestbranding=1&playsinline=1`
+      };
+    }
+
+    return {
+      kind: "external",
+      href: parsed.toString()
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function Step1PasteLink({
   draftUrl,
   activeUrl,
@@ -39,6 +101,20 @@ export function Step1PasteLink({
   onFetch,
   onDownloadSource
 }: Step1PasteLinkProps) {
+  const sourcePreview = resolveSourcePreview(activeUrl);
+  const isAttachedSourceJob =
+    Boolean(sourceJob) &&
+    (sourceJob?.status === "queued" || sourceJob?.status === "running") &&
+    fetchBlockedReason === "Для этого чата уже идёт получение источника.";
+  const isAttachedStage2Run =
+    typeof fetchBlockedReason === "string" &&
+    fetchBlockedReason.startsWith("Для этого чата уже идёт Stage 2.");
+  const inlineFetchMessage = isAttachedSourceJob
+    ? "Источник уже обрабатывается в фоне. Ниже показан текущий Step 1 job."
+    : isAttachedStage2Run
+      ? "Второй этап уже выполняется для этого чата. Прогресс подключён на шаге 2."
+      : fetchBlockedReason ?? null;
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     onFetch();
@@ -86,13 +162,19 @@ export function Step1PasteLink({
                   className="btn btn-primary"
                   disabled={fetchBusy || !fetchAvailable}
                   aria-busy={fetchBusy}
-                  title={!fetchAvailable ? fetchBlockedReason ?? undefined : undefined}
+                  title={
+                    !fetchAvailable && !isAttachedSourceJob && !isAttachedStage2Run
+                      ? fetchBlockedReason ?? undefined
+                      : undefined
+                  }
                 >
                   {fetchBusy ? "Получаем..." : "Получить источник"}
                 </button>
               </div>
-              {!fetchAvailable && fetchBlockedReason ? (
-                <p className="subtle-text danger-text">{fetchBlockedReason}</p>
+              {!fetchAvailable && inlineFetchMessage ? (
+                <p className={`subtle-text${isAttachedSourceJob || isAttachedStage2Run ? "" : " danger-text"}`}>
+                  {inlineFetchMessage}
+                </p>
               ) : null}
               {commentsFallbackActive ? (
                 <p className="subtle-text">
@@ -163,11 +245,50 @@ export function Step1PasteLink({
 
           <div className="preview-stage static">
             <div className="source-placeholder">
+              {sourcePreview?.kind === "youtube" ? (
+                <div className="source-player-shell">
+                  <iframe
+                    className="source-embed-frame"
+                    src={sourcePreview.embedUrl}
+                    title="Source video preview"
+                    loading="lazy"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                </div>
+              ) : sourcePreview?.kind === "video" ? (
+                <div className="source-player-shell">
+                  <video
+                    className="source-video-player"
+                    controls
+                    playsInline
+                    preload="metadata"
+                    src={sourcePreview.videoUrl}
+                  />
+                </div>
+              ) : null}
+
               <p className="placeholder-title">Ссылка на источник</p>
-              <p className="mono source-link-text">{activeUrl ?? "Источник не выбран"}</p>
+              {sourcePreview ? (
+                <a
+                  className="mono source-link-text source-link-anchor"
+                  href={sourcePreview.href}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {sourcePreview.href}
+                </a>
+              ) : (
+                <p className="mono source-link-text">{activeUrl ?? "Источник не выбран"}</p>
+              )}
               <p className="subtle-text">
                 После завершения загрузки второй этап покажет варианты подписей, сгенерированные по видео, и комментарии, если они доступны.
               </p>
+              {sourcePreview?.kind === "external" ? (
+                <p className="subtle-text">
+                  Для этого источника встроенный player пока недоступен. Откройте ссылку выше в новой вкладке для просмотра исходного видео.
+                </p>
+              ) : null}
               {sourceJob ? (
                 <div className="source-placeholder-meta">
                   <p className="subtle-text">

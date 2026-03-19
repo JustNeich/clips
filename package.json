@@ -6,13 +6,15 @@
     "node": ">=22 <23"
   },
   "scripts": {
+    "clean:next": "node -e \"try{require('node:fs').rmSync('.next',{recursive:true,force:true})}catch{};try{require('node:fs').unlinkSync('tsconfig.tsbuildinfo')}catch{}\"",
+    "clean:typegen": "node -e \"try{require('node:fs').rmSync('.next/types',{recursive:true,force:true})}catch{};try{require('node:fs').unlinkSync('tsconfig.tsbuildinfo')}catch{}\"",
     "dev": "node --no-warnings ./node_modules/next/dist/bin/next dev",
-    "prebuild": "npm run build:stage3-worker",
+    "prebuild": "npm run clean:next && npm run build:stage3-worker",
     "build:stage3-worker": "node scripts/build-stage3-worker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "next typegen && tsc --noEmit",
+    "typecheck": "npm run clean:typegen && next typegen && tsc --noEmit --incremental false",
     "test:viral-worker": "node --import tsx --test --test-concurrency=1 tests/viral-shorts-worker.test.ts",
     "stage2-worker": "tsx scripts/viral-shorts-worker.ts",
     "stage3-worker": "tsx apps/stage3-worker/index.ts",

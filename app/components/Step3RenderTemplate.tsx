@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import {
   useCallback,
   useEffect,
@@ -21,6 +22,7 @@ import {
   Stage3TextFitSnapshot,
   TemplateContentFixture,
   Stage3Version,
+  Stage2Response,
   Stage3WorkerPairingResponse,
   Stage3WorkerStatus
 } from "./types";
@@ -52,6 +54,10 @@ import {
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../../lib/stage3-constants";
 import { getStage3DesignLabLabel } from "../../lib/stage3-design-lab";
 import { sanitizeDisplayText } from "../../lib/ui-error";
+import type {
+  Stage2ToStage3HandoffSummary,
+  Stage3CaptionApplyMode
+} from "../../lib/stage2-stage3-handoff";
 
 type Step3RenderTemplateProps = {
   sourceUrl: string | null;
@@ -80,6 +86,9 @@ type Step3RenderTemplateProps = {
   canRollbackSelectedVersion: boolean;
   topText: string;
   bottomText: string;
+  captionSources: Stage2Response["output"]["captionOptions"];
+  selectedCaptionOption: number | null;
+  handoffSummary: Stage2ToStage3HandoffSummary | null;
   segments: Stage3Segment[];
   compressionEnabled: boolean;
   renderState: Stage3RenderState;
@@ -109,6 +118,10 @@ type Step3RenderTemplateProps = {
   onResumeAgent: () => void;
   onRollbackSelectedVersion: () => void;
   onReset: () => void;
+  onTopTextChange: (value: string) => void;
+  onBottomTextChange: (value: string) => void;
+  onApplyCaptionSource: (option: number, mode: Stage3CaptionApplyMode) => void;
+  onResetCaptionText: (mode: Stage3CaptionApplyMode) => void;
   onUploadBackground: (file: File) => Promise<void>;
   onUploadMusic: (file: File) => Promise<void>;
   onClearBackground: () => void;
@@ -233,6 +246,27 @@ function shortPrompt(value: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function formatCaptionSourceLabel(value: Stage2ToStage3HandoffSummary["topTextSource"]): string {
+  switch (value) {
+    case "selected_caption":
+      return "из выбранного option";
+    case "latest_version":
+      return "из последней версии";
+    case "draft_override":
+      return "ручная правка";
+    default:
+      return "пусто";
+  }
+}
+
+function truncateCaptionPreview(value: string, maxLength = 110): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function getTextFitHashForSnapshot(templateSnapshot: TemplateRenderSnapshot): string {
@@ -1325,6 +1359,9 @@ export function Step3RenderTemplate({
   canRollbackSelectedVersion,
   topText,
   bottomText,
+  captionSources,
+  selectedCaptionOption,
+  handoffSummary,
   segments,
   compressionEnabled,
   renderState,
@@ -1354,6 +1391,10 @@ export function Step3RenderTemplate({
   onResumeAgent,
   onRollbackSelectedVersion,
   onReset,
+  onTopTextChange,
+  onBottomTextChange,
+  onApplyCaptionSource,
+  onResetCaptionText,
   onUploadBackground,
   onUploadMusic,
   onClearBackground,
@@ -1465,6 +1506,11 @@ export function Step3RenderTemplate({
   const previewVersion = selectedVersion;
   const previewTopText = previewTemplateSnapshot.content.topText;
   const previewBottomText = previewTemplateSnapshot.content.bottomText;
+  const selectedCaptionSource =
+    captionSources.find((item) => item.option === selectedCaptionOption) ?? null;
+  const topTextSourceLabel = formatCaptionSourceLabel(handoffSummary?.topTextSource ?? "empty");
+  const bottomTextSourceLabel = formatCaptionSourceLabel(handoffSummary?.bottomTextSource ?? "empty");
+  const hasManualCaptionOverride = Boolean(handoffSummary?.hasManualTextOverride);
   const previewVideoZoom = clamp(localVideoZoom ?? 1, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
   const previewFitHash = useMemo(
     () => getTextFitHashForSnapshot(previewTemplateSnapshot),
@@ -2678,6 +2724,149 @@ export function Step3RenderTemplate({
               </div>
             </div>
           </section>
+
+          <details className="details-drawer stage3-caption-editor-drawer">
+            <summary>
+              <span>Финальный текст</span>
+              <small>
+                {hasManualCaptionOverride
+                  ? "Используется manual draft"
+                  : selectedCaptionOption
+                    ? `База: option ${selectedCaptionOption}`
+                    : "TOP / BOTTOM для рендера"}
+              </small>
+            </summary>
+            <div className="details-content">
+              <section className="control-card control-card-priority stage3-caption-editor-card">
+                <div className="control-section-head">
+                  <div>
+                    <h3>Финальный текст</h3>
+                    <p className="subtle-text">
+                      Здесь редактируется итоговый TOP/BOTTOM, который реально уйдет в preview и render.
+                    </p>
+                  </div>
+                  <div className="editing-status-row">
+                    {selectedCaptionOption ? (
+                      <span className="meta-pill">Stage 2 option {selectedCaptionOption}</span>
+                    ) : null}
+                    <span className={`meta-pill ${hasManualCaptionOverride ? "warn" : ""}`}>
+                      {hasManualCaptionOverride ? "Используется manual draft" : "Без ручных переопределений"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="stage3-caption-origin-row">
+                  <span className="meta-pill">TOP: {topTextSourceLabel}</span>
+                  <span className="meta-pill">BOTTOM: {bottomTextSourceLabel}</span>
+                  {selectedCaptionSource ? (
+                    <span className="subtle-text">
+                      База сейчас: option {selectedCaptionSource.option}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="stage3-caption-editor-grid">
+                  <label className="field-stack">
+                    <span className="field-label">TOP</span>
+                    <textarea
+                      className="text-area stage3-caption-textarea"
+                      rows={4}
+                      value={topText}
+                      onChange={(event) => onTopTextChange(event.target.value)}
+                      placeholder="Финальный TOP для рендера"
+                    />
+                  </label>
+                  <label className="field-stack">
+                    <span className="field-label">BOTTOM</span>
+                    <textarea
+                      className="text-area stage3-caption-textarea"
+                      rows={4}
+                      value={bottomText}
+                      onChange={(event) => onBottomTextChange(event.target.value)}
+                      placeholder="Финальный BOTTOM для рендера"
+                    />
+                  </label>
+                </div>
+
+                <div className="control-actions stage3-caption-editor-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => onResetCaptionText("all")}
+                    disabled={!handoffSummary?.canResetToSelectedCaption}
+                  >
+                    Сбросить к выбранному варианту
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => onResetCaptionText("top")}
+                    disabled={!selectedCaptionSource || handoffSummary?.topText === selectedCaptionSource.top}
+                  >
+                    Сбросить TOP
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => onResetCaptionText("bottom")}
+                    disabled={!selectedCaptionSource || handoffSummary?.bottomText === selectedCaptionSource.bottom}
+                  >
+                    Сбросить BOTTOM
+                  </button>
+                </div>
+
+                {captionSources.length > 0 ? (
+                  <div className="stage3-caption-source-list">
+                    {captionSources.map((option) => {
+                      const isSelectedSource = option.option === selectedCaptionOption;
+                      return (
+                        <article
+                          key={`stage3-caption-source-${option.option}`}
+                          className={`stage3-caption-source-card ${isSelectedSource ? "selected" : ""}`}
+                        >
+                          <div className="stage3-caption-source-head">
+                            <div className="option-title-row">
+                              <strong>Option {option.option}</strong>
+                              {isSelectedSource ? <span className="badge muted">Выбран</span> : null}
+                            </div>
+                            <div className="stage3-caption-source-actions">
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => onApplyCaptionSource(option.option, "all")}
+                              >
+                                Взять всё
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => onApplyCaptionSource(option.option, "top")}
+                              >
+                                Взять TOP
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => onApplyCaptionSource(option.option, "bottom")}
+                              >
+                                Взять BOTTOM
+                              </button>
+                            </div>
+                          </div>
+                          <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
+                          <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="subtle-text">
+                    Источник вариантов Stage 2 пока недоступен. Редактор всё равно работает по текущему draft.
+                  </p>
+                )}
+              </section>
+            </div>
+          </details>
 
           <section className="control-card">
             <div className="control-section-head">

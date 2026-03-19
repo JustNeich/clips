@@ -13,9 +13,9 @@ import {
 import {
   buildStage2SeoPrompt,
   parseStage2SeoOutput,
-  STAGE2_SEO_OUTPUT_SCHEMA,
-  validateStage2Output
-} from "./stage2";
+  STAGE2_SEO_OUTPUT_SCHEMA
+} from "./stage2-seo";
+import { validateStage2Output } from "./stage2-output-validation";
 import {
   getStage2Run,
   markStage2RunStageCompleted,
@@ -23,7 +23,10 @@ import {
   markStage2RunStageRunning,
   Stage2RunRecord
 } from "./stage2-progress-store";
-import { getWorkspaceStage2ExamplesCorpusJson } from "./team-store";
+import {
+  getWorkspaceStage2ExamplesCorpusJson,
+  getWorkspaceStage2PromptConfig
+} from "./team-store";
 import {
   fetchOptionalYtDlpInfo,
   downloadSourceMedia
@@ -178,9 +181,9 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     });
 
     const downloaded = await downloadVideoAndMetadata(run.sourceUrl, tmpDir);
-    const allComments = sortCommentsByPopularity(normalizeComments(downloaded.infoJson.comments));
+    const allComments = sortCommentsByPopularity(normalizeComments(downloaded.infoJson.comments)).slice(0, 300);
     const promptComments = prepareCommentsForPrompt(allComments, {
-      maxComments: 250,
+      maxComments: 300,
       maxChars: 35_000
     });
     const frames = await extractFrameImages(downloaded.videoPath, tmpDir);
@@ -195,6 +198,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
 
     const workerService = new ViralShortsWorkerService();
     const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
+    const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
     const executor = new CodexJsonStageExecutor({
       cwd: process.cwd(),
       codexHome,
@@ -222,7 +226,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       videoContext,
       imagePaths: frames.framePaths,
       executor,
-      promptConfig: channel.stage2PromptConfig,
+      promptConfig: workspaceStage2PromptConfig,
       onProgress: async (event) => {
         if (event.state === "running") {
           markStage2RunStageRunning(run.runId, event.stageId, {
@@ -249,10 +253,13 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       }
     });
     const parsedOutput = pipelineResult.output;
-    const warnings = [...pipelineResult.warnings, ...validateStage2Output(parsedOutput)];
+    const warnings = [
+      ...pipelineResult.warnings,
+      ...validateStage2Output(parsedOutput, channel.stage2HardConstraints)
+    ];
 
     let seo: { description: string; tags: string } | null = null;
-    const seoTemplate = resolveStage2PromptTemplate("seo", channel.stage2PromptConfig);
+    const seoTemplate = resolveStage2PromptTemplate("seo", workspaceStage2PromptConfig);
     let seoPromptText: string | null = null;
     try {
       const seoPrompt = buildStage2SeoPrompt({

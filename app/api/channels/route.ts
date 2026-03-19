@@ -7,7 +7,10 @@ import { requireAuth } from "../../../lib/auth/guards";
 import { resolveChannelPermissions } from "../../../lib/acl";
 import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2-channel-config";
-import { getWorkspaceStage2ExamplesCorpusJson } from "../../../lib/team-store";
+import {
+  getWorkspaceStage2ExamplesCorpusJson,
+  getWorkspaceStage2HardConstraints
+} from "../../../lib/team-store";
 
 export const runtime = "nodejs";
 
@@ -52,7 +55,9 @@ export async function GET(): Promise<Response> {
     return Response.json(
       {
         channels: visibleChannels.filter(Boolean),
-        workspaceStage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id)
+        workspaceStage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
+        workspaceStage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
+        workspaceStage2PromptConfig: auth.workspace.stage2PromptConfig
       },
       { status: 200 }
     );

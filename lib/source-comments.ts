@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { CommentsPayload } from "../app/components/types";
 import { normalizeComments, sortCommentsByPopularity } from "./comments";
 import {
+  buildLimitedCommentsExtractorArgs,
   createYtDlpAuthContext,
   extractYtDlpErrorFromUnknown,
   isSupportedUrl,
@@ -39,6 +40,7 @@ export async function fetchCommentsPayloadForUrl(rawUrl: string): Promise<Commen
       "--no-warnings",
       "--write-info-json",
       "--write-comments",
+      ...buildLimitedCommentsExtractorArgs(sourceUrl, 300),
       "-o",
       outputTemplate,
       sourceUrl
@@ -57,7 +59,8 @@ export async function fetchCommentsPayloadForUrl(rawUrl: string): Promise<Commen
 
     const infoJsonPath = path.join(tmpDir, infoJsonFile);
     const infoJson = JSON.parse(await fs.readFile(infoJsonPath, "utf-8")) as YtDlpCommentsInfo;
-    const allComments = sortCommentsByPopularity(normalizeComments(infoJson.comments));
+    const sortedComments = sortCommentsByPopularity(normalizeComments(infoJson.comments));
+    const allComments = sortedComments.slice(0, 300);
 
     return {
       title: infoJson.title ?? "video",

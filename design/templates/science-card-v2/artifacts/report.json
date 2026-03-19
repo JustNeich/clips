@@ -1,11 +1,11 @@
 {
   "templateId": "science-card-v2",
-  "timestamp": "2026-03-11T11:38:06.404Z",
+  "timestamp": "2026-03-19T15:41:31.648Z",
   "compareScope": "chrome-only",
-  "mismatchPercent": 31.26924677486475,
-  "mismatchPixels": 180336,
-  "totalPixels": 576720,
+  "mismatchPercent": 31.626741443615618,
+  "mismatchPixels": 184518,
+  "totalPixels": 583424,
   "threshold": 0.085,
   "pass": false,
-  "chromeMismatchPercent": 31.26924677486475
+  "chromeMismatchPercent": 31.626741443615618
 }

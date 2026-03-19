@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   stage2_examples_corpus_json TEXT,
+  stage2_hard_constraints_json TEXT,
+  stage2_prompt_config_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

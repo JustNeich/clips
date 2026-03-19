@@ -177,6 +177,26 @@ export function isSupportedUrl(rawUrl: string): boolean {
   }
 }
 
+export function buildLimitedCommentsExtractorArgs(rawUrl: string, maxComments = 300): string[] {
+  const safeMaxComments = Math.max(1, Math.floor(maxComments));
+
+  try {
+    const parsed = new URL(normalizeSupportedUrl(rawUrl));
+    const hostname = normalizeHostname(parsed.hostname);
+    const isYoutube = hostname === "youtu.be" || hostname.includes("youtube.com");
+    if (!isYoutube) {
+      return [];
+    }
+
+    return [
+      "--extractor-args",
+      `youtube:comment_sort=top;max_comments=${safeMaxComments},${safeMaxComments},0,0`
+    ];
+  } catch {
+    return [];
+  }
+}
+
 export function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "video";
 }

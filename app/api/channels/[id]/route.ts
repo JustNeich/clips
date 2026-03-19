@@ -76,6 +76,12 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
   try {
     const auth = await requireAuth();
     await requireChannelSetupEdit(auth, id);
+    if ("stage2HardConstraints" in body && body.stage2HardConstraints && auth.membership.role !== "owner") {
+      return Response.json({ error: "Только owner может менять Stage 2 hard constraints defaults." }, { status: 403 });
+    }
+    if ("stage2PromptConfig" in body && body.stage2PromptConfig && auth.membership.role !== "owner") {
+      return Response.json({ error: "Только owner может менять Stage 2 prompt defaults." }, { status: 403 });
+    }
     const channel = await updateChannelById(id, body);
     return Response.json({ channel }, { status: 200 });
   } catch (error) {

@@ -104,9 +104,12 @@ export type Stage2ProgressStep = {
   label: string;
   shortLabel: string;
   description: string;
+  status: Stage2ProgressStepState;
   state: Stage2ProgressStepState;
+  summary: string | null;
   detail: string | null;
   startedAt: string | null;
+  finishedAt: string | null;
   completedAt: string | null;
   durationMs: number | null;
   promptChars: number | null;
@@ -123,6 +126,10 @@ export type Stage2ProgressSnapshot = {
   error: string | null;
   steps: Stage2ProgressStep[];
 };
+
+type Stage2ProgressStepPatch = Partial<
+  Pick<Stage2ProgressStep, "summary" | "detail" | "promptChars" | "reasoningEffort" | "durationMs">
+>;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -286,9 +293,12 @@ export function createStage2ProgressSnapshot(runId: string): Stage2ProgressSnaps
       label: stage.label,
       shortLabel: stage.shortLabel,
       description: stage.description,
+      status: "pending" as const,
       state: "pending" as const,
+      summary: null,
       detail: null,
       startedAt: null,
+      finishedAt: null,
       completedAt: null,
       durationMs: null,
       promptChars: null,
@@ -297,17 +307,49 @@ export function createStage2ProgressSnapshot(runId: string): Stage2ProgressSnaps
   };
 }
 
-type Stage2ProgressPatch = Partial<
-  Pick<Stage2ProgressStep, "detail" | "promptChars" | "reasoningEffort" | "durationMs">
->;
+function normalizeProgressTimestamp(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
-function patchStep(step: Stage2ProgressStep, patch?: Stage2ProgressPatch): Stage2ProgressStep {
+function normalizeProgressNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeProgressState(value: unknown): Stage2ProgressStepState | null {
+  return value === "pending" || value === "running" || value === "completed" || value === "failed"
+    ? value
+    : null;
+}
+
+function summarizeProgressDetail(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const firstMeaningfulLine =
+    value
+      .split("\n")
+      .map((item) => item.trim())
+      .find(Boolean) ?? value.trim();
+  if (!firstMeaningfulLine) {
+    return null;
+  }
+  if (firstMeaningfulLine.length <= 140) {
+    return firstMeaningfulLine;
+  }
+  return `${firstMeaningfulLine.slice(0, 139).trimEnd()}…`;
+}
+
+function patchStep(step: Stage2ProgressStep, patch?: Stage2ProgressStepPatch): Stage2ProgressStep {
   if (!patch) {
     return step;
   }
+  const nextDetail = patch.detail !== undefined ? patch.detail : step.detail;
+  const nextSummary =
+    patch.summary !== undefined ? patch.summary : summarizeProgressDetail(nextDetail) ?? step.summary;
   return {
     ...step,
-    detail: patch.detail !== undefined ? patch.detail : step.detail,
+    detail: nextDetail,
+    summary: nextSummary,
     promptChars: patch.promptChars !== undefined ? patch.promptChars : step.promptChars,
     reasoningEffort:
       patch.reasoningEffort !== undefined ? patch.reasoningEffort : step.reasoningEffort,
@@ -318,7 +360,7 @@ function patchStep(step: Stage2ProgressStep, patch?: Stage2ProgressPatch): Stage
 export function markStage2ProgressStageRunning(
   snapshot: Stage2ProgressSnapshot,
   stageId: Stage2PipelineStageId,
-  patch?: Stage2ProgressPatch
+  patch?: Stage2ProgressStepPatch
 ): Stage2ProgressSnapshot {
   const timestamp = nowIso();
   return {
@@ -332,8 +374,11 @@ export function markStage2ProgressStageRunning(
         ? patchStep(
             {
               ...step,
+              status: "running",
               state: "running",
-              startedAt: step.startedAt ?? timestamp
+              startedAt: step.startedAt ?? timestamp,
+              finishedAt: null,
+              completedAt: null
             },
             patch
           )
@@ -345,7 +390,7 @@ export function markStage2ProgressStageRunning(
 export function markStage2ProgressStageCompleted(
   snapshot: Stage2ProgressSnapshot,
   stageId: Stage2PipelineStageId,
-  patch?: Stage2ProgressPatch
+  patch?: Stage2ProgressStepPatch
 ): Stage2ProgressSnapshot {
   const timestamp = nowIso();
   return {
@@ -358,8 +403,10 @@ export function markStage2ProgressStageCompleted(
         ? patchStep(
             {
               ...step,
+              status: "completed",
               state: "completed",
               startedAt: step.startedAt ?? timestamp,
+              finishedAt: timestamp,
               completedAt: timestamp
             },
             patch
@@ -373,7 +420,7 @@ export function markStage2ProgressStageFailed(
   snapshot: Stage2ProgressSnapshot,
   stageId: Stage2PipelineStageId,
   error: string,
-  patch?: Stage2ProgressPatch
+  patch?: Stage2ProgressStepPatch
 ): Stage2ProgressSnapshot {
   const timestamp = nowIso();
   return {
@@ -388,9 +435,12 @@ export function markStage2ProgressStageFailed(
         ? patchStep(
             {
               ...step,
+              status: "failed",
               state: "failed",
+              summary: summarizeProgressDetail(error),
               detail: error,
               startedAt: step.startedAt ?? timestamp,
+              finishedAt: timestamp,
               completedAt: timestamp
             },
             patch
@@ -408,7 +458,18 @@ export function finalizeStage2ProgressSuccess(snapshot: Stage2ProgressSnapshot):
     activeStageId: null,
     updatedAt: timestamp,
     finishedAt: timestamp,
-    error: null
+    error: null,
+    steps: snapshot.steps.map((step) =>
+      step.state === "completed"
+        ? {
+            ...step,
+            status: "completed",
+            summary: step.summary ?? summarizeProgressDetail(step.detail),
+            finishedAt: step.finishedAt ?? step.completedAt ?? timestamp,
+            completedAt: step.completedAt ?? step.finishedAt ?? timestamp
+          }
+        : step
+    )
   };
 }
 
@@ -427,9 +488,99 @@ export function resetStage2ProgressForRetry(
       step.id === "analyzer"
         ? {
             ...step,
+            summary: summarizeProgressDetail(detail),
             detail
           }
         : step
     )
+  };
+}
+
+export function normalizeStage2ProgressSnapshot(
+  input: unknown,
+  runId: string
+): Stage2ProgressSnapshot {
+  const candidate =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  const rootStatus =
+    candidate?.status === "queued" ||
+    candidate?.status === "running" ||
+    candidate?.status === "completed" ||
+    candidate?.status === "failed"
+      ? candidate.status
+      : "queued";
+  const snapshotStartedAt = normalizeProgressTimestamp(candidate?.startedAt) ?? nowIso();
+  const snapshotUpdatedAt =
+    normalizeProgressTimestamp(candidate?.updatedAt) ?? snapshotStartedAt;
+  const snapshotFinishedAt =
+    normalizeProgressTimestamp(candidate?.finishedAt) ??
+    ((rootStatus === "completed" || rootStatus === "failed") ? snapshotUpdatedAt : null);
+  const stepCandidates = Array.isArray(candidate?.steps)
+    ? candidate.steps.filter((step): step is Record<string, unknown> => Boolean(step) && typeof step === "object")
+    : [];
+  const stepMap = new Map(
+    stepCandidates
+      .map((step) => {
+        const id = typeof step.id === "string" ? step.id.trim() : "";
+        return id ? [id, step] : null;
+      })
+      .filter((entry): entry is [string, Record<string, unknown>] => Boolean(entry))
+  );
+
+  return {
+    runId: normalizeProgressTimestamp(candidate?.runId) ?? runId,
+    status: rootStatus,
+    activeStageId:
+      typeof candidate?.activeStageId === "string" &&
+      STAGE2_PIPELINE_STAGES.some((stage) => stage.id === candidate.activeStageId)
+        ? (candidate.activeStageId as Stage2PipelineStageId)
+        : null,
+    startedAt: snapshotStartedAt,
+    updatedAt: snapshotUpdatedAt,
+    finishedAt: snapshotFinishedAt,
+    error: typeof candidate?.error === "string" && candidate.error.trim() ? candidate.error.trim() : null,
+    steps: STAGE2_PIPELINE_STAGES.map((stage) => {
+      const raw = stepMap.get(stage.id);
+      const normalizedStatus =
+        normalizeProgressState(raw?.status) ??
+        normalizeProgressState(raw?.state) ??
+        (normalizeProgressTimestamp(raw?.finishedAt) || normalizeProgressTimestamp(raw?.completedAt)
+          ? rootStatus === "failed" && (candidate?.activeStageId as string | undefined) === stage.id
+            ? "failed"
+            : "completed"
+          : normalizeProgressTimestamp(raw?.startedAt) && (candidate?.activeStageId as string | undefined) === stage.id
+            ? "running"
+            : "pending");
+      const finishedAt =
+        normalizeProgressTimestamp(raw?.finishedAt) ??
+        normalizeProgressTimestamp(raw?.completedAt) ??
+        (normalizedStatus === "completed" || normalizedStatus === "failed" ? snapshotFinishedAt : null);
+      const completedAt = normalizeProgressTimestamp(raw?.completedAt) ?? finishedAt;
+      const detail = typeof raw?.detail === "string" && raw.detail.trim() ? raw.detail.trim() : null;
+      const summary =
+        typeof raw?.summary === "string" && raw.summary.trim()
+          ? raw.summary.trim()
+          : summarizeProgressDetail(detail);
+
+      return {
+        id: stage.id,
+        label: stage.label,
+        shortLabel: stage.shortLabel,
+        description: stage.description,
+        status: normalizedStatus,
+        state: normalizedStatus,
+        summary,
+        detail,
+        startedAt: normalizeProgressTimestamp(raw?.startedAt),
+        finishedAt,
+        completedAt,
+        durationMs: normalizeProgressNumber(raw?.durationMs),
+        promptChars: normalizeProgressNumber(raw?.promptChars),
+        reasoningEffort:
+          typeof raw?.reasoningEffort === "string" && raw.reasoningEffort.trim()
+            ? raw.reasoningEffort.trim()
+            : null
+      };
+    })
   };
 }

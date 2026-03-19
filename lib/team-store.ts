@@ -5,9 +5,19 @@ import { getAppDataDir } from "./app-paths";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { hashPassword, verifyPassword } from "./auth/password";
 import {
+  DEFAULT_STAGE2_HARD_CONSTRAINTS,
   getBundledStage2ExamplesSeedJson,
-  parseStage2ExamplesJson
+  parseStage2ExamplesJson,
+  parseStage2HardConstraintsJson,
+  stringifyStage2HardConstraints,
+  type Stage2HardConstraints
 } from "./stage2-channel-config";
+import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
+  parseStage2PromptConfigJson,
+  stringifyStage2PromptConfig,
+  type Stage2PromptConfig
+} from "./stage2-pipeline";
 
 export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
 export type WorkspaceCodexStatus = "connected" | "disconnected" | "connecting" | "error";
@@ -18,6 +28,8 @@ export type WorkspaceRecord = {
   name: string;
   slug: string;
   stage2ExamplesCorpusJson: string;
+  stage2HardConstraints: Stage2HardConstraints;
+  stage2PromptConfig: Stage2PromptConfig;
   createdAt: string;
   updatedAt: string;
 };
@@ -172,6 +184,12 @@ function mapWorkspace(row: Record<string, unknown>): WorkspaceRecord {
     stage2ExamplesCorpusJson: normalizeWorkspaceStage2ExamplesCorpusJson(
       row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null
     ),
+    stage2HardConstraints: normalizeWorkspaceStage2HardConstraints(
+      row.stage2_hard_constraints_json ? String(row.stage2_hard_constraints_json) : null
+    ),
+    stage2PromptConfig: normalizeWorkspaceStage2PromptConfig(
+      row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null
+    ),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
@@ -195,6 +213,16 @@ function normalizeWorkspaceStage2ExamplesCorpusJson(value: string | null | undef
   } catch {
     return getBundledStage2ExamplesSeedJson();
   }
+}
+
+function normalizeWorkspaceStage2HardConstraints(
+  value: string | null | undefined
+): Stage2HardConstraints {
+  return parseStage2HardConstraintsJson(value);
+}
+
+function normalizeWorkspaceStage2PromptConfig(value: string | null | undefined): Stage2PromptConfig {
+  return parseStage2PromptConfigJson(value);
 }
 
 function mapUser(row: Record<string, unknown>): UserRecord {
@@ -308,6 +336,48 @@ export function getWorkspaceStage2ExamplesCorpusJson(workspaceId: string): strin
   return normalized;
 }
 
+export function getWorkspaceStage2HardConstraints(workspaceId: string): Stage2HardConstraints {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT stage2_hard_constraints_json FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  const normalized = normalizeWorkspaceStage2HardConstraints(
+    row.stage2_hard_constraints_json ? String(row.stage2_hard_constraints_json) : null
+  );
+  const serialized = stringifyStage2HardConstraints(normalized);
+  if ((row.stage2_hard_constraints_json ? String(row.stage2_hard_constraints_json) : null) !== serialized) {
+    db.prepare("UPDATE workspaces SET stage2_hard_constraints_json = ? WHERE id = ?").run(
+      serialized,
+      workspaceId
+    );
+  }
+  return normalized;
+}
+
+export function getWorkspaceStage2PromptConfig(workspaceId: string): Stage2PromptConfig {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT stage2_prompt_config_json FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  const normalized = normalizeWorkspaceStage2PromptConfig(
+    row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null
+  );
+  const serialized = stringifyStage2PromptConfig(normalized);
+  if ((row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null) !== serialized) {
+    db.prepare("UPDATE workspaces SET stage2_prompt_config_json = ? WHERE id = ?").run(
+      serialized,
+      workspaceId
+    );
+  }
+  return normalized;
+}
+
 export function updateWorkspaceStage2ExamplesCorpusJson(
   workspaceId: string,
   rawJson: string
@@ -335,6 +405,44 @@ export function updateWorkspaceStage2ExamplesCorpusJson(
   db.prepare(
     "UPDATE workspaces SET stage2_examples_corpus_json = ?, updated_at = ? WHERE id = ?"
   ).run(normalized, updatedAt, workspaceId);
+  const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  return mapWorkspace(row);
+}
+
+export function updateWorkspaceStage2HardConstraints(
+  workspaceId: string,
+  constraints: Stage2HardConstraints
+): WorkspaceRecord {
+  const serialized = stringifyStage2HardConstraints(constraints);
+  const updatedAt = nowIso();
+  const db = getDb();
+  db.prepare(
+    "UPDATE workspaces SET stage2_hard_constraints_json = ?, updated_at = ? WHERE id = ?"
+  ).run(serialized, updatedAt, workspaceId);
+  const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  return mapWorkspace(row);
+}
+
+export function updateWorkspaceStage2PromptConfig(
+  workspaceId: string,
+  promptConfig: Stage2PromptConfig
+): WorkspaceRecord {
+  const serialized = stringifyStage2PromptConfig(promptConfig);
+  const updatedAt = nowIso();
+  const db = getDb();
+  db.prepare(
+    "UPDATE workspaces SET stage2_prompt_config_json = ?, updated_at = ? WHERE id = ?"
+  ).run(serialized, updatedAt, workspaceId);
   const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
     | Record<string, unknown>
     | undefined;
@@ -467,6 +575,8 @@ export async function bootstrapOwner(input: {
     name: input.workspaceName.trim() || "Workspace",
     slug: sanitizeSlug(input.workspaceName),
     stage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
+    stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+    stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
     createdAt: now,
     updatedAt: now
   };
@@ -491,12 +601,14 @@ export async function bootstrapOwner(input: {
 
   runInTransaction((db) => {
     db.prepare(
-      "INSERT INTO workspaces (id, name, slug, stage2_examples_corpus_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO workspaces (id, name, slug, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       workspace.id,
       workspace.name,
       workspace.slug,
       workspace.stage2ExamplesCorpusJson,
+      stringifyStage2HardConstraints(workspace.stage2HardConstraints),
+      stringifyStage2PromptConfig(workspace.stage2PromptConfig),
       workspace.createdAt,
       workspace.updatedAt
     );
@@ -796,6 +908,8 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
         w.name as workspace_name,
         w.slug as workspace_slug,
         w.stage2_examples_corpus_json as workspace_stage2_examples_corpus_json,
+        w.stage2_hard_constraints_json as workspace_stage2_hard_constraints_json,
+        w.stage2_prompt_config_json as workspace_stage2_prompt_config_json,
         w.created_at as workspace_created_at,
         w.updated_at as workspace_updated_at
       FROM auth_sessions s
@@ -827,6 +941,8 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
       name: String(row.workspace_name),
       slug: String(row.workspace_slug),
       stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(String(row.workspace_id)),
+      stage2HardConstraints: getWorkspaceStage2HardConstraints(String(row.workspace_id)),
+      stage2PromptConfig: getWorkspaceStage2PromptConfig(String(row.workspace_id)),
       createdAt: String(row.workspace_created_at),
       updatedAt: String(row.workspace_updated_at)
     },

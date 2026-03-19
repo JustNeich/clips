@@ -1520,6 +1520,14 @@ select.text-input:focus {
   gap: 18px;
 }
 
+.stage2-defaults-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding-inline: 12px;
+}
+
 .stage2-config-stage-card {
   display: grid;
   gap: 18px;
@@ -2152,6 +2160,24 @@ select.text-input:focus {
   padding: 20px;
 }
 
+.source-player-shell {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  background: rgba(6, 10, 16, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.source-embed-frame,
+.source-video-player {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  background: #05080d;
+}
+
 .placeholder-title {
   margin: 0;
   font-size: 14px;
@@ -2165,6 +2191,15 @@ select.text-input:focus {
   font-size: 12px;
   color: var(--text);
   word-break: break-all;
+}
+
+.source-link-anchor {
+  color: color-mix(in srgb, var(--accent) 56%, white);
+  text-decoration: none;
+}
+
+.source-link-anchor:hover {
+  text-decoration: underline;
 }
 
 .options-grid {
@@ -4417,7 +4452,80 @@ select.text-input:focus {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .worker-setup-overlay {
-    padding: 12px;
+.worker-setup-overlay {
+  padding: 12px;
+}
+}
+
+.stage3-caption-editor-card {
+  gap: 18px;
+}
+
+.stage3-caption-origin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.stage3-caption-editor-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stage3-caption-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.stage3-caption-editor-actions {
+  flex-wrap: wrap;
+}
+
+.stage3-caption-source-list {
+  display: grid;
+  gap: 12px;
+}
+
+.stage3-caption-source-card {
+  border: 1px solid rgba(97, 135, 255, 0.22);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(14, 20, 32, 0.62);
+  display: grid;
+  gap: 10px;
+}
+
+.stage3-caption-source-card.selected {
+  border-color: rgba(126, 169, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(126, 169, 255, 0.18);
+}
+
+.stage3-caption-source-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.stage3-caption-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .stage3-caption-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stage3-caption-source-head {
+    flex-direction: column;
+  }
+
+  .stage3-caption-source-actions {
+    justify-content: flex-start;
   }
 }

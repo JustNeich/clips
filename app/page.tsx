@@ -5,7 +5,11 @@ import { AppShell, FlowStep } from "./components/AppShell";
 import { ChannelManager } from "./components/ChannelManager";
 import { DetailsDrawer } from "./components/DetailsDrawer";
 import { Step1PasteLink } from "./components/Step1PasteLink";
-import { Step2PickCaption } from "./components/Step2PickCaption";
+import {
+  normalizeStage2DiagnosticsForView,
+  Stage2RunDiagnosticsPanels,
+  Step2PickCaption
+} from "./components/Step2PickCaption";
 import { Step3RenderTemplate } from "./components/Step3RenderTemplate";
 import {
   AppRole,
@@ -48,8 +52,18 @@ import {
   Stage2Response,
   UserRecord
 } from "./components/types";
-import type { Stage2ProgressSnapshot, Stage2PromptConfig } from "../lib/stage2-pipeline";
-import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../lib/stage2-channel-config";
+import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
+  normalizeStage2PromptConfig,
+  type Stage2ProgressSnapshot,
+  type Stage2PromptConfig
+} from "../lib/stage2-pipeline";
+import {
+  DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  normalizeStage2HardConstraints,
+  type Stage2ExamplesConfig,
+  type Stage2HardConstraints
+} from "../lib/stage2-channel-config";
 import {
   issueScopedRequestVersion,
   getStage2ElapsedMs,
@@ -88,7 +102,62 @@ import {
   getPreferredStepForChat,
   normalizeChatDraft
 } from "../lib/chat-workflow";
+import { buildChatTraceExportFileName } from "../lib/chat-trace-export-shared";
+import {
+  applyStage2CaptionToStage3Text,
+  buildStage2ToStage3HandoffSummary,
+  getSelectedStage2Caption,
+  getSelectedStage2Title,
+  getStage2SelectionDefaults
+} from "../lib/stage2-stage3-handoff";
 import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
+import {
+  buildChannelAssetUrl,
+  buildScopedStorageKey,
+  buildSharedCodexStatus,
+  buildStage3AgentConversation,
+  clampWorkflowStep,
+  currentPollDelay,
+  deriveLivePreferredStep,
+  equalChatDraft,
+  equalChatListItem,
+  equalChatList,
+  equalChatThread,
+  equalCodexAuthResponse,
+  equalSharedCodexStatus,
+  equalSourceJobDetail,
+  equalSourceJobSummaries,
+  equalStage2RunDetail,
+  equalStage2RunSummaries,
+  fallbackRenderPlan,
+  fetchWithTimeout,
+  findAssetById,
+  formatSourceProviderLabel,
+  formatStage3Operation,
+  formatStage3Status,
+  formatStage3StopReason,
+  getEditingPolicy,
+  isAbortError,
+  mergeSavedChannelIntoList,
+  mergeStage3Versions,
+  normalizeClientSegments,
+  normalizePersistedFlowShellState,
+  normalizeRenderPlan,
+  normalizeStage2DurationMetric,
+  parseDownloadFileName,
+  parseRetryAfterMs,
+  PersistedFlowShellState,
+  responseLooksLikeHtml,
+  responseLooksLikeJson,
+  responseContentType,
+  shorten,
+  stripRenderPlanForPreview,
+  sumClientSegmentsDuration,
+  toJsonDownload,
+  triggerBlobDownload,
+  triggerUrlDownload,
+  trimClientSegmentsToDuration
+} from "./home-page-support";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
@@ -124,925 +193,9 @@ type BusyAction =
   | "channel-create"
   | "channel-delete"
   | "channel-asset-delete"
+  | "trace-export"
   | "connect-codex"
   | "refresh-codex";
-
-type PersistedFlowShellState = {
-  channelId: string | null;
-  chatId: string | null;
-  step: 1 | 2 | 3;
-};
-
-function buildScopedStorageKey(
-  prefix: string,
-  workspaceId: string | null | undefined,
-  userId: string | null | undefined
-): string | null {
-  if (!workspaceId || !userId) {
-    return null;
-  }
-  return `${prefix}:${workspaceId}:${userId}`;
-}
-
-function clampWorkflowStep(value: unknown): 1 | 2 | 3 {
-  return value === 2 || value === 3 ? value : 1;
-}
-
-function normalizePersistedFlowShellState(value: unknown): PersistedFlowShellState | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const candidate = value as Record<string, unknown>;
-  return {
-    channelId: typeof candidate.channelId === "string" && candidate.channelId.trim() ? candidate.channelId : null,
-    chatId: typeof candidate.chatId === "string" && candidate.chatId.trim() ? candidate.chatId : null,
-    step: clampWorkflowStep(candidate.step)
-  };
-}
-
-function normalizeStage2DurationMetric(value: unknown): number | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const candidate = value as Record<string, unknown>;
-  const parsed =
-    typeof candidate.lastDurationMs === "number" && Number.isFinite(candidate.lastDurationMs)
-      ? candidate.lastDurationMs
-      : null;
-  if (parsed === null) {
-    return null;
-  }
-  return Math.min(5 * 60_000, Math.max(1_000, Math.round(parsed)));
-}
-
-function buildChannelAssetUrl(channelId: string, assetId: string): string {
-  return `/api/channels/${channelId}/assets/${assetId}`;
-}
-
-function findAssetById(assets: ChannelAsset[], assetId: string | null | undefined): ChannelAsset | null {
-  if (!assetId) {
-    return null;
-  }
-  return assets.find((asset) => asset.id === assetId) ?? null;
-}
-
-function toJsonDownload(fileName: string, data: unknown): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json;charset=utf-8"
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function triggerUrlDownload(url: string, fileName?: string | null): void {
-  const a = document.createElement("a");
-  a.href = url;
-  if (fileName) {
-    a.download = fileName;
-  }
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
-function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException) {
-    return error.name === "AbortError";
-  }
-  if (error instanceof Error) {
-    return error.name === "AbortError";
-  }
-  return false;
-}
-
-function parseRetryAfterMs(value: string | null | undefined, fallbackMs: number): number {
-  const seconds = Number.parseFloat(value ?? "");
-  if (!Number.isFinite(seconds) || seconds <= 0) {
-    return fallbackMs;
-  }
-  return Math.max(250, Math.round(seconds * 1000));
-}
-
-function responseContentType(response: Response): string {
-  return (response.headers.get("content-type") ?? "").toLowerCase();
-}
-
-function responseLooksLikeHtml(response: Response): boolean {
-  const contentType = responseContentType(response);
-  return contentType.includes("text/html") || contentType.includes("application/xhtml+xml");
-}
-
-function responseLooksLikeJson(response: Response): boolean {
-  return responseContentType(response).includes("application/json");
-}
-
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMs: number
-): Promise<Response> {
-  const controller = new AbortController();
-  const externalSignal = init.signal;
-  const abortFromExternal = () => {
-    controller.abort();
-  };
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      controller.abort();
-    } else {
-      externalSignal.addEventListener("abort", abortFromExternal, { once: true });
-    }
-  }
-  const timeout = window.setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal
-    });
-  } finally {
-    window.clearTimeout(timeout);
-    if (externalSignal) {
-      externalSignal.removeEventListener("abort", abortFromExternal);
-    }
-  }
-}
-
-function equalCodexDeviceAuth(
-  left: CodexDeviceAuth | null | undefined,
-  right: CodexDeviceAuth | null | undefined
-): boolean {
-  if (!left && !right) {
-    return true;
-  }
-  if (!left || !right) {
-    return false;
-  }
-  return (
-    left.status === right.status &&
-    left.output === right.output &&
-    left.loginUrl === right.loginUrl &&
-    left.userCode === right.userCode
-  );
-}
-
-function equalCodexAuthResponse(
-  left: CodexAuthResponse | null | undefined,
-  right: CodexAuthResponse | null | undefined
-): boolean {
-  if (!left && !right) {
-    return true;
-  }
-  if (!left || !right) {
-    return false;
-  }
-  return (
-    left.sessionId === right.sessionId &&
-    left.loggedIn === right.loggedIn &&
-    left.loginStatusText === right.loginStatusText &&
-    equalCodexDeviceAuth(left.deviceAuth, right.deviceAuth)
-  );
-}
-
-function buildSharedCodexStatus(
-  auth: CodexAuthResponse,
-  canManageCodex: boolean
-): AuthMeResponse["sharedCodexStatus"] {
-  return {
-    status: auth.loggedIn
-      ? "connected"
-      : auth.deviceAuth.status === "running"
-        ? "connecting"
-        : "disconnected",
-    connected: auth.loggedIn,
-    loginStatusText: auth.loginStatusText,
-    deviceAuth: canManageCodex ? auth.deviceAuth : null
-  };
-}
-
-function equalSharedCodexStatus(
-  left: AuthMeResponse["sharedCodexStatus"],
-  right: AuthMeResponse["sharedCodexStatus"]
-): boolean {
-  return (
-    left.status === right.status &&
-    left.connected === right.connected &&
-    left.loginStatusText === right.loginStatusText &&
-    equalCodexDeviceAuth(left.deviceAuth, right.deviceAuth)
-  );
-}
-
-function equalChatListItem(left: ChatListItem, right: ChatListItem): boolean {
-  return (
-    left.id === right.id &&
-    left.channelId === right.channelId &&
-    left.url === right.url &&
-    left.title === right.title &&
-    left.updatedAt === right.updatedAt &&
-    left.status === right.status &&
-    left.maxStep === right.maxStep &&
-    left.preferredStep === right.preferredStep &&
-    left.hasDraft === right.hasDraft &&
-    left.exportTitle === right.exportTitle &&
-    (left.liveAction ?? null) === (right.liveAction ?? null)
-  );
-}
-
-function equalChatList(left: ChatListItem[], right: ChatListItem[]): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (left.length !== right.length) {
-    return false;
-  }
-  for (let index = 0; index < left.length; index += 1) {
-    if (!equalChatListItem(left[index]!, right[index]!)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function equalChatThread(
-  left: ChatThread | null | undefined,
-  right: ChatThread | null | undefined
-): boolean {
-  if (!left && !right) {
-    return true;
-  }
-  if (!left || !right) {
-    return false;
-  }
-  const leftLastEvent = left.events[left.events.length - 1] ?? null;
-  const rightLastEvent = right.events[right.events.length - 1] ?? null;
-  return (
-    left.id === right.id &&
-    left.channelId === right.channelId &&
-    left.url === right.url &&
-    left.title === right.title &&
-    left.updatedAt === right.updatedAt &&
-    left.events.length === right.events.length &&
-    leftLastEvent?.id === rightLastEvent?.id &&
-    leftLastEvent?.createdAt === rightLastEvent?.createdAt
-  );
-}
-
-function equalChatDraft(left: ChatDraft | null | undefined, right: ChatDraft | null | undefined): boolean {
-  if (!left && !right) {
-    return true;
-  }
-  if (!left || !right) {
-    return false;
-  }
-  return (
-    left.id === right.id &&
-    left.threadId === right.threadId &&
-    left.updatedAt === right.updatedAt
-  );
-}
-
-function equalStage2RunSummary(
-  left: Stage2RunSummary,
-  right: Stage2RunSummary
-): boolean {
-  return (
-    left.runId === right.runId &&
-    left.chatId === right.chatId &&
-    left.channelId === right.channelId &&
-    left.sourceUrl === right.sourceUrl &&
-    left.userInstruction === right.userInstruction &&
-    left.mode === right.mode &&
-    left.status === right.status &&
-    left.errorMessage === right.errorMessage &&
-    left.hasResult === right.hasResult &&
-    left.createdAt === right.createdAt &&
-    left.startedAt === right.startedAt &&
-    left.updatedAt === right.updatedAt &&
-    left.finishedAt === right.finishedAt &&
-    left.progress.status === right.progress.status &&
-    left.progress.updatedAt === right.progress.updatedAt &&
-    left.progress.activeStageId === right.progress.activeStageId &&
-    left.progress.error === right.progress.error
-  );
-}
-
-function equalStage2RunSummaries(left: Stage2RunSummary[], right: Stage2RunSummary[]): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (left.length !== right.length) {
-    return false;
-  }
-  for (let index = 0; index < left.length; index += 1) {
-    if (!equalStage2RunSummary(left[index]!, right[index]!)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function equalStage2RunDetail(
-  left: Stage2RunDetail | null | undefined,
-  right: Stage2RunDetail | null | undefined
-): boolean {
-  if (!left && !right) {
-    return true;
-  }
-  if (!left || !right) {
-    return false;
-  }
-  return (
-    equalStage2RunSummary(left, right) &&
-    Boolean(left.result) === Boolean(right.result)
-  );
-}
-
-function equalSourceJobSummary(
-  left: SourceJobSummary,
-  right: SourceJobSummary
-): boolean {
-  return (
-    left.jobId === right.jobId &&
-    left.chatId === right.chatId &&
-    left.channelId === right.channelId &&
-    left.sourceUrl === right.sourceUrl &&
-    left.status === right.status &&
-    left.errorMessage === right.errorMessage &&
-    left.hasResult === right.hasResult &&
-    left.createdAt === right.createdAt &&
-    left.startedAt === right.startedAt &&
-    left.updatedAt === right.updatedAt &&
-    left.finishedAt === right.finishedAt &&
-    left.progress.status === right.progress.status &&
-    left.progress.updatedAt === right.progress.updatedAt &&
-    left.progress.activeStageId === right.progress.activeStageId &&
-    left.progress.error === right.progress.error &&
-    (left.progress.detail ?? null) === (right.progress.detail ?? null)
-  );
-}
-
-function equalSourceJobSummaries(left: SourceJobSummary[], right: SourceJobSummary[]): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (left.length !== right.length) {
-    return false;
-  }
-  for (let index = 0; index < left.length; index += 1) {
-    if (!equalSourceJobSummary(left[index]!, right[index]!)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function equalSourceJobDetail(
-  left: SourceJobDetail | null | undefined,
-  right: SourceJobDetail | null | undefined
-): boolean {
-  if (!left && !right) {
-    return true;
-  }
-  if (!left || !right) {
-    return false;
-  }
-  return equalSourceJobSummary(left, right) && Boolean(left.result) === Boolean(right.result);
-}
-
-function deriveLivePreferredStep(params: {
-  chat: ChatThread | null;
-  draft: ChatDraft | null;
-  sourceJobs?: SourceJobSummary[];
-  stage2Runs?: Stage2RunSummary[];
-}): 1 | 2 | 3 {
-  if (params.sourceJobs?.some((job) => isSourceJobActive(job))) {
-    return 1;
-  }
-  if (params.stage2Runs?.some((run) => isStage2RunActive(run))) {
-    return 2;
-  }
-  return getPreferredStepForChat(params.chat, params.draft);
-}
-
-function currentPollDelay(visibleMs: number, hiddenMs: number): number {
-  if (typeof document === "undefined") {
-    return visibleMs;
-  }
-  return document.visibilityState === "visible" ? visibleMs : hiddenMs;
-}
-
-function mergeSavedChannelIntoList(channels: Channel[], savedChannel: Channel): Channel[] {
-  const existing = channels.find((channel) => channel.id === savedChannel.id);
-  const merged = existing ? { ...existing, ...savedChannel } : savedChannel;
-  const rest = channels.filter((channel) => channel.id !== savedChannel.id);
-  return [merged, ...rest];
-}
-
-function fallbackRenderPlan(): Stage3RenderPlan {
-  return {
-    targetDurationSec: 6,
-    timingMode: "auto",
-    audioMode: "source_only",
-    sourceAudioEnabled: true,
-    smoothSlowMo: false,
-    mirrorEnabled: true,
-    cameraMotion: "disabled",
-    videoZoom: 1,
-    topFontScale: DEFAULT_TEXT_SCALE,
-    bottomFontScale: DEFAULT_TEXT_SCALE,
-    musicGain: 0.65,
-    textPolicy: "strict_fit",
-    segments: [],
-    policy: "fixed_segments",
-    backgroundAssetId: null,
-    backgroundAssetMimeType: null,
-    musicAssetId: null,
-    musicAssetMimeType: null,
-    avatarAssetId: null,
-    avatarAssetMimeType: null,
-    authorName: "Science Snack",
-    authorHandle: "@Science_Snack_1",
-    templateId: STAGE3_TEMPLATE_ID,
-    prompt: ""
-  };
-}
-
-function roundStage3Tenth(value: number): number {
-  return Math.round(value * 10) / 10;
-}
-
-function normalizeStage3SegmentSpeed(value: unknown): Stage3Segment["speed"] {
-  if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
-    return value as Stage3Segment["speed"];
-  }
-  return 1;
-}
-
-function normalizeStage3CameraMotion(value: unknown): Stage3CameraMotion {
-  if (value === "top_to_bottom" || value === "bottom_to_top" || value === "disabled") {
-    return value;
-  }
-  return "disabled";
-}
-
-function normalizeClientSegments(
-  segments: Stage3Segment[],
-  sourceDurationSec: number | null
-): Stage3Segment[] {
-  return segments
-    .map((segment, index) => {
-      const startSec =
-        typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
-          ? Math.max(0, segment.startSec)
-          : null;
-      if (startSec === null) {
-        return null;
-      }
-      const rawEnd =
-        segment.endSec === null
-          ? sourceDurationSec ?? startSec + 0.5
-          : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
-            ? segment.endSec
-            : startSec + 0.5;
-      const cappedEnd =
-        sourceDurationSec === null ? rawEnd : Math.min(Math.max(startSec + 0.1, rawEnd), sourceDurationSec);
-      return {
-        startSec: roundStage3Tenth(startSec),
-        endSec: roundStage3Tenth(Math.max(startSec + 0.1, cappedEnd)),
-        speed: normalizeStage3SegmentSpeed(segment.speed),
-        label:
-          typeof segment.label === "string" && segment.label.trim()
-            ? segment.label.trim()
-            : `Фрагмент ${index + 1}`
-      };
-    })
-    .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
-    .sort((left, right) => left.startSec - right.startSec)
-    .slice(0, 12)
-    .map((segment, index) => ({
-      ...segment,
-      label: segment.label || `Фрагмент ${index + 1}`
-    }));
-}
-
-function sumClientSegmentsDuration(
-  segments: Stage3Segment[],
-  sourceDurationSec: number | null
-): number {
-  return segments.reduce((total, segment) => {
-    const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
-    return total + Math.max(0, endSec - segment.startSec) / normalizeStage3SegmentSpeed(segment.speed);
-  }, 0);
-}
-
-function trimClientSegmentsToDuration(
-  segments: Stage3Segment[],
-  targetDurationSec: number,
-  sourceDurationSec: number | null
-): Stage3Segment[] {
-  let remaining = targetDurationSec;
-  const trimmed: Stage3Segment[] = [];
-
-  for (const segment of normalizeClientSegments(segments, sourceDurationSec)) {
-    if (remaining <= 0.05) {
-      break;
-    }
-    const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
-    const duration = Math.max(0.1, endSec - segment.startSec);
-    const keepDuration = Math.min(duration, remaining * segment.speed);
-    trimmed.push({
-      ...segment,
-      endSec: roundStage3Tenth(segment.startSec + keepDuration)
-    });
-    remaining -= keepDuration / segment.speed;
-  }
-
-  return normalizeClientSegments(trimmed, sourceDurationSec);
-}
-
-function getEditingPolicy(
-  segments: Stage3Segment[],
-  compressionEnabled: boolean
-): Stage3RenderPlan["policy"] {
-  if (segments.length > 0) {
-    return "fixed_segments";
-  }
-  return compressionEnabled ? "full_source_normalize" : "fixed_segments";
-}
-
-function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
-  const fallback = fallbackRenderPlan();
-  return {
-    ...fallback,
-    targetDurationSec: plan.targetDurationSec,
-    timingMode: plan.timingMode,
-    audioMode: plan.audioMode,
-    sourceAudioEnabled: plan.sourceAudioEnabled,
-    smoothSlowMo: plan.smoothSlowMo,
-    segments: plan.segments,
-    policy: plan.policy,
-    // Keep preview lightweight and stable: only transport fields that affect the server preview file.
-    prompt: "",
-    musicGain: plan.musicGain,
-    musicAssetId: plan.musicAssetId,
-    musicAssetMimeType: plan.musicAssetMimeType
-  };
-}
-
-function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage3RenderPlan {
-  const candidate = value && typeof value === "object" ? (value as Partial<Stage3RenderPlan>) : undefined;
-  const base = fallback ?? fallbackRenderPlan();
-  const segments = Array.isArray(candidate?.segments)
-    ? candidate.segments
-        .map((segment) => {
-          if (!segment || typeof segment !== "object") {
-            return null;
-          }
-          const startSec =
-            typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
-              ? segment.startSec
-              : null;
-          const endSec =
-            segment.endSec === null
-              ? null
-              : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
-                ? segment.endSec
-                : null;
-          if (startSec === null) {
-            return null;
-          }
-          return {
-            startSec,
-            endSec,
-            speed: normalizeStage3SegmentSpeed(segment.speed),
-            label:
-              typeof segment.label === "string" && segment.label.trim()
-                ? segment.label
-                : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`
-          };
-        })
-        .filter(
-          (segment): segment is { startSec: number; endSec: number | null; speed: Stage3Segment["speed"]; label: string } =>
-            Boolean(segment)
-        )
-    : base.segments;
-
-  return {
-    targetDurationSec: 6,
-    timingMode:
-      candidate?.timingMode === "auto" ||
-      candidate?.timingMode === "compress" ||
-      candidate?.timingMode === "stretch"
-        ? candidate.timingMode
-        : base.timingMode,
-    audioMode:
-      candidate?.audioMode === "source_only" || candidate?.audioMode === "source_plus_music"
-        ? candidate.audioMode
-        : base.audioMode,
-    sourceAudioEnabled: Boolean(candidate?.sourceAudioEnabled ?? base.sourceAudioEnabled),
-    smoothSlowMo: Boolean(candidate?.smoothSlowMo ?? base.smoothSlowMo),
-    mirrorEnabled: Boolean(candidate?.mirrorEnabled ?? base.mirrorEnabled),
-    cameraMotion: normalizeStage3CameraMotion(candidate?.cameraMotion ?? base.cameraMotion),
-    videoZoom:
-      typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
-        ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
-        : base.videoZoom,
-    topFontScale:
-      typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
-        ? clampStage3TextScaleUi(candidate.topFontScale)
-        : base.topFontScale,
-    bottomFontScale:
-      typeof candidate?.bottomFontScale === "number" && Number.isFinite(candidate.bottomFontScale)
-        ? clampStage3TextScaleUi(candidate.bottomFontScale)
-        : base.bottomFontScale,
-    musicGain:
-      typeof candidate?.musicGain === "number" && Number.isFinite(candidate.musicGain)
-        ? Math.min(1, Math.max(0, candidate.musicGain))
-        : base.musicGain,
-    textPolicy:
-      candidate?.textPolicy === "strict_fit" ||
-      candidate?.textPolicy === "preserve_words" ||
-      candidate?.textPolicy === "aggressive_compact"
-        ? candidate.textPolicy
-        : base.textPolicy,
-    segments,
-    policy:
-      candidate?.policy === "adaptive_window" ||
-      candidate?.policy === "full_source_normalize" ||
-      candidate?.policy === "fixed_segments"
-        ? candidate.policy
-        : base.policy,
-    backgroundAssetId:
-      typeof candidate?.backgroundAssetId === "string" && candidate.backgroundAssetId.trim()
-        ? candidate.backgroundAssetId.trim()
-        : null,
-    backgroundAssetMimeType:
-      typeof candidate?.backgroundAssetMimeType === "string" &&
-      candidate.backgroundAssetMimeType.trim()
-        ? candidate.backgroundAssetMimeType.trim()
-        : null,
-    musicAssetId:
-      typeof candidate?.musicAssetId === "string" && candidate.musicAssetId.trim()
-        ? candidate.musicAssetId.trim()
-        : null,
-    musicAssetMimeType:
-      typeof candidate?.musicAssetMimeType === "string" && candidate.musicAssetMimeType.trim()
-        ? candidate.musicAssetMimeType.trim()
-        : null,
-    avatarAssetId:
-      typeof candidate?.avatarAssetId === "string" && candidate.avatarAssetId.trim()
-        ? candidate.avatarAssetId.trim()
-        : null,
-    avatarAssetMimeType:
-      typeof candidate?.avatarAssetMimeType === "string" && candidate.avatarAssetMimeType.trim()
-        ? candidate.avatarAssetMimeType.trim()
-        : null,
-    authorName:
-      typeof candidate?.authorName === "string" && candidate.authorName.trim()
-        ? candidate.authorName.trim()
-        : base.authorName,
-    authorHandle:
-      typeof candidate?.authorHandle === "string" && candidate.authorHandle.trim()
-        ? candidate.authorHandle.trim()
-        : base.authorHandle,
-    templateId:
-      typeof candidate?.templateId === "string" && candidate.templateId.trim()
-        ? candidate.templateId.trim()
-        : base.templateId,
-    prompt: typeof candidate?.prompt === "string" ? candidate.prompt : base.prompt
-  };
-}
-
-function shorten(value: string, max = 54): string {
-  if (value.length <= max) {
-    return value;
-  }
-  return `${value.slice(0, max - 1)}...`;
-}
-
-function formatStage3Status(value: Stage3SessionStatus): string {
-  switch (value) {
-    case "running":
-      return "В работе";
-    case "completed":
-      return "Цель достигнута";
-    case "partiallyApplied":
-      return "Лучший найденный вариант";
-    case "failed":
-      return "Остановлено";
-    default:
-      return value;
-  }
-}
-
-function formatStage3StopReason(value: Stage3IterationStopReason | null | undefined): string {
-  switch (value) {
-    case "targetScoreReached":
-      return "достигнут target score";
-    case "maxIterationsReached":
-      return "исчерпан лимит итераций";
-    case "minGainReached":
-      return "прогресс стабилизировался";
-    case "safety":
-      return "остановка по safety";
-    case "noProgress":
-      return "нет прогресса";
-    case "plannerFailure":
-      return "планировщик не дал валидный план";
-    case "rollbackCreated":
-      return "создан rollback checkpoint";
-    case "userStop":
-      return "остановлено пользователем";
-    default:
-      return "цикл завершен";
-  }
-}
-
-function formatStage3Operation(op: string): string {
-  switch (op) {
-    case "set_video_zoom":
-      return "zoom";
-    case "set_focus_y":
-      return "focus";
-    case "set_clip_start":
-      return "clip start";
-    case "set_segments":
-      return "segments";
-    case "append_segment":
-      return "добавить сегмент";
-    case "clear_segments":
-      return "очистить сегменты";
-    case "set_audio_mode":
-      return "аудио";
-    case "set_slowmo":
-      return "слоу-мо";
-    case "set_top_font_scale":
-      return "размер верхнего текста";
-    case "set_bottom_font_scale":
-      return "размер нижнего текста";
-    case "rewrite_top_text":
-      return "переписать верх";
-    case "rewrite_bottom_text":
-      return "переписать низ";
-    case "set_timing_mode":
-      return "тайминг";
-    case "set_text_policy":
-      return "политика текста";
-    case "set_music_gain":
-      return "музыка";
-    default:
-      return op.replace(/^set_/, "").replace(/_/g, " ");
-  }
-}
-
-function formatSourceProviderLabel(provider: "visolix" | "ytDlp" | null | undefined): string | null {
-  if (provider === "visolix") {
-    return "Visolix";
-  }
-  if (provider === "ytDlp") {
-    return "локальный fallback-загрузчик";
-  }
-  return null;
-}
-
-function mergeStage3Versions(groups: Stage3Version[][]): Stage3Version[] {
-  const byRunId = new Map<string, Stage3Version>();
-  for (const group of groups) {
-    for (const version of group) {
-      if (!version?.runId) {
-        continue;
-      }
-      byRunId.set(version.runId, version);
-    }
-  }
-
-  return [...byRunId.values()]
-    .sort((left, right) => {
-      if (left.createdAt === right.createdAt) {
-        return left.runId.localeCompare(right.runId);
-      }
-      return left.createdAt < right.createdAt ? -1 : 1;
-    })
-    .map((version, index) => ({ ...version, versionNo: index + 1 }));
-}
-
-function buildStage3AgentConversation(
-  timeline: Stage3TimelineResponse | null
-): Stage3AgentConversationItem[] {
-  if (!timeline) {
-    return [];
-  }
-
-  const items: Stage3AgentConversationItem[] = [];
-
-  for (const message of timeline.messages) {
-    if (message.role === "user") {
-      const goal =
-        typeof message.payload?.goal === "string" && message.payload.goal.trim()
-          ? message.payload.goal.trim()
-          : timeline.session.goalText;
-      items.push({
-        id: message.id,
-        role: "user",
-        title: "Задача",
-        text: sanitizeDisplayText(goal),
-        meta: [
-          `тип цели: ${timeline.session.goalType}`,
-          `целевая оценка ${timeline.session.targetScore.toFixed(2)}`
-        ],
-        createdAt: message.createdAt
-      });
-      continue;
-    }
-
-    if (message.role === "assistant_summary") {
-      const status = normalizeStage3SessionStatus(message.payload?.status);
-      const whyStopped =
-        typeof message.payload?.whyStopped === "string"
-          ? (message.payload.whyStopped as Stage3IterationStopReason)
-          : null;
-      const iterationCount =
-        typeof message.payload?.iterations === "number" && Number.isFinite(message.payload.iterations)
-          ? message.payload.iterations
-          : timeline.iterations.length;
-      items.push({
-        id: message.id,
-        role: "assistant",
-        title: "Итог",
-        text:
-          status === "completed"
-            ? "Агент завершил цикл после достижения порога качества."
-            : status === "partiallyApplied"
-              ? "Агент сохранил лучший вариант и остановился без ручной паузы."
-              : "Агент завершил цикл с остановкой по ограничению или safety.",
-        meta: [
-          status ? formatStage3Status(status) : "Статус неизвестен",
-          `${iterationCount} итерац.`,
-          formatStage3StopReason(whyStopped)
-        ],
-        createdAt: message.createdAt,
-        tone: status === "completed" ? "success" : status === "failed" ? "warning" : "neutral"
-      });
-      continue;
-    }
-
-    if (message.role === "assistant_auto" && message.text === "rollback") {
-      const targetVersionId =
-        typeof message.payload?.targetVersionId === "string" ? message.payload.targetVersionId : null;
-      const reason = typeof message.payload?.reason === "string" ? message.payload.reason : "rollback";
-      items.push({
-        id: message.id,
-        role: "assistant",
-        title: "Откат",
-        text: "Создана новая версия-откат от выбранной точки timeline.",
-        meta: [
-          targetVersionId ? `цель ${shorten(targetVersionId, 18)}` : "целевая версия неизвестна",
-          reason
-        ],
-        createdAt: message.createdAt,
-        tone: "warning"
-      });
-    }
-  }
-
-  for (const iteration of timeline.iterations) {
-    const operations = iteration.appliedOps.map((operation) => formatStage3Operation(operation.op));
-    items.push({
-      id: `iteration-${iteration.id}`,
-      role: "assistant",
-      title: `Итерация ${iteration.iterationIndex}`,
-      text: sanitizeDisplayText(iteration.judgeNotes || iteration.plan.rationale),
-      meta: [
-        `оценка ${iteration.scores.total.toFixed(2)}`,
-        `прирост ${iteration.scores.stepGain >= 0 ? "+" : ""}${iteration.scores.stepGain.toFixed(2)}`,
-        operations.length ? operations.join(", ") : "без операций",
-        formatStage3StopReason(iteration.stoppedReason)
-      ],
-      createdAt: iteration.createdAt,
-      tone:
-        iteration.stoppedReason === "targetScoreReached"
-          ? "success"
-          : iteration.stoppedReason === "safety"
-            ? "warning"
-            : "neutral"
-    });
-  }
-
-  return items.sort((left, right) => {
-    if (left.createdAt === right.createdAt) {
-      return left.id.localeCompare(right.id);
-    }
-    return left.createdAt < right.createdAt ? -1 : 1;
-  });
-}
 
 export default function HomePage() {
   const [status, setStatus] = useState("");
@@ -1055,6 +208,12 @@ export default function HomePage() {
   const [draftUrl, setDraftUrl] = useState("");
   const [channels, setChannels] = useState<Channel[]>([]);
   const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState("[]");
+  const [workspaceStage2HardConstraints, setWorkspaceStage2HardConstraints] = useState<Stage2HardConstraints>(
+    DEFAULT_STAGE2_HARD_CONSTRAINTS
+  );
+  const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
+    DEFAULT_STAGE2_PROMPT_CONFIG
+  );
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelAssets, setChannelAssets] = useState<ChannelAsset[]>([]);
   const [channelAccessGrants, setChannelAccessGrants] = useState<ChannelAccessGrant[]>([]);
@@ -1192,6 +351,7 @@ export default function HomePage() {
     () => channels.find((channel) => channel.id === activeChannelId) ?? null,
     [channels, activeChannelId]
   );
+  const canOperateActiveChannel = activeChannel?.currentUserCanOperate !== false;
   const stage3BackgroundUrl =
     activeChannelId && stage3RenderPlan.backgroundAssetId
       ? buildChannelAssetUrl(activeChannelId, stage3RenderPlan.backgroundAssetId)
@@ -1542,15 +702,12 @@ export default function HomePage() {
       const stage2Event = extractStage2Payload(
         [...chat.events].reverse().find((event) => event.type === "stage2" && event.role === "assistant")?.data
       );
+      const selectionDefaults = getStage2SelectionDefaults(stage2Event);
       const preferredCaptionOption =
-        draft?.stage2.selectedCaptionOption ?? stage2Event?.output.finalPick.option ?? null;
+        draft?.stage2.selectedCaptionOption ?? selectionDefaults.captionOption;
       const preferredTitleOption =
-        draft?.stage2.selectedTitleOption ?? stage2Event?.output.titleOptions[0]?.option ?? null;
-      const selectedCaptionForHydration = stage2Event
-        ? stage2Event.output.captionOptions.find((item) => item.option === preferredCaptionOption) ??
-          stage2Event.output.captionOptions[0] ??
-          null
-        : null;
+        draft?.stage2.selectedTitleOption ?? selectionDefaults.titleOption;
+      const selectedCaptionForHydration = getSelectedStage2Caption(stage2Event, preferredCaptionOption);
       const legacyVersions = buildLegacyTimelineEntries(
         chat.events
           .filter((event) => event.type === "note" && event.role === "assistant")
@@ -1568,10 +725,15 @@ export default function HomePage() {
       const nextRenderPlan = draft?.stage3.renderPlan
         ? normalizeRenderPlan(draft.stage3.renderPlan, baseRenderPlan)
         : baseRenderPlan;
-
-      const nextTopText = draft?.stage3.topText ?? latestVersion?.final.topText ?? selectedCaptionForHydration?.top ?? "";
-      const nextBottomText =
-        draft?.stage3.bottomText ?? latestVersion?.final.bottomText ?? selectedCaptionForHydration?.bottom ?? "";
+      const handoffSummary = buildStage2ToStage3HandoffSummary({
+        stage2: stage2Event,
+        draft,
+        latestVersion,
+        selectedCaptionOption: preferredCaptionOption,
+        selectedTitleOption: preferredTitleOption
+      });
+      const nextTopText = handoffSummary.topText ?? "";
+      const nextBottomText = handoffSummary.bottomText ?? "";
       const hydratedFromSelectedCaption =
         Boolean(selectedCaptionForHydration) &&
         nextTopText === (selectedCaptionForHydration?.top ?? "") &&
@@ -1580,8 +742,8 @@ export default function HomePage() {
       initializedStage3ChatRef.current = chat.id;
       setCurrentStep(getPreferredStepForChat(chat, draft));
       setStage2Instruction(draft?.stage2.instruction ?? "");
-      setSelectedOption(preferredCaptionOption);
-      setSelectedTitleOption(preferredTitleOption);
+      setSelectedOption(handoffSummary.selectedCaptionOption);
+      setSelectedTitleOption(handoffSummary.selectedTitleOption);
       setStage3TopText(nextTopText);
       setStage3BottomText(nextBottomText);
       setStage3ClipStartSec(draft?.stage3.clipStartSec ?? latestVersion?.final.clipStartSec ?? 0);
@@ -1631,9 +793,15 @@ export default function HomePage() {
     const body = (await response.json()) as {
       channels: Channel[];
       workspaceStage2ExamplesCorpusJson?: string;
+      workspaceStage2HardConstraints?: Stage2HardConstraints;
+      workspaceStage2PromptConfig?: Stage2PromptConfig;
     };
     const nextChannels = body.channels ?? [];
     setWorkspaceStage2ExamplesCorpusJson(body.workspaceStage2ExamplesCorpusJson ?? "[]");
+    setWorkspaceStage2HardConstraints(
+      normalizeStage2HardConstraints(body.workspaceStage2HardConstraints)
+    );
+    setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.workspaceStage2PromptConfig));
     setChannels(nextChannels);
     setActiveChannelId((prev) => {
       if (prev && nextChannels.some((channel) => channel.id === prev)) {
@@ -1867,7 +1035,7 @@ export default function HomePage() {
     chatId: string,
     event: { role: ChatEvent["role"]; type: ChatEvent["type"]; text: string; data?: unknown }
   ): Promise<void> => {
-    const response = await fetch(`/api/chats/${chatId}/events`, {
+    const response = await fetch(`/api/chat-events/${chatId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(event)
@@ -3124,8 +2292,9 @@ export default function HomePage() {
       return;
     }
     if (isStage2RunVisibleRunning) {
-      setStatusType("error");
-      setStatus("Для этого чата уже идёт Stage 2.");
+      setCurrentStep(2);
+      setStatusType("ok");
+      setStatus("Stage 2 уже выполняется в фоне. Подключён текущий run.");
       return;
     }
 
@@ -3893,6 +3062,14 @@ export default function HomePage() {
     }
     return latestStage2Event?.payload ?? null;
   }, [latestStage2Event, selectedStage2RunDetail, selectedStage2RunSummary]);
+  const visibleStage2Diagnostics = useMemo(
+    () =>
+      normalizeStage2DiagnosticsForView(visibleStage2Result?.diagnostics ?? null, {
+        channelName: activeChannel?.name ?? null,
+        channelUsername: activeChannel?.username ?? null
+      }),
+    [visibleStage2Result?.diagnostics, activeChannel?.name, activeChannel?.username]
+  );
   const visibleStage2CreatedAt = useMemo(() => {
     if (selectedStage2RunDetail) {
       return selectedStage2RunDetail.finishedAt ?? selectedStage2RunDetail.updatedAt;
@@ -3926,13 +3103,7 @@ export default function HomePage() {
       : null;
   }, [latestStage2Event, visibleStage2SourceKey]);
   const visibleStage2SelectionDefaults = useMemo(() => {
-    if (!visibleStage2Result) {
-      return { captionOption: null, titleOption: null };
-    }
-    return {
-      captionOption: visibleStage2Result.output.finalPick.option,
-      titleOption: visibleStage2Result.output.titleOptions[0]?.option ?? 1
-    };
+    return getStage2SelectionDefaults(visibleStage2Result);
   }, [visibleStage2Result]);
   const isStage2RunVisibleRunning = useMemo(
     () => isStage2RunActive(selectedStage2RunDetail ?? selectedStage2RunSummary),
@@ -4009,6 +3180,19 @@ export default function HomePage() {
     stage1FetchState.ready,
     stage2BlockedReason
   ]);
+  const chatTraceBlockedReason = useMemo(() => {
+    if (!activeChat) {
+      return "Сначала выберите ролик из истории или получите источник.";
+    }
+    if (!canOperateActiveChannel) {
+      return "У вас нет прав на выгрузку trace для этого канала.";
+    }
+    return null;
+  }, [activeChat, canOperateActiveChannel]);
+  const canDownloadChatTrace = useMemo(
+    () => !chatTraceBlockedReason && busyAction !== "trace-export",
+    [busyAction, chatTraceBlockedReason]
+  );
 
   const stage3AgentSessionRef = useMemo(() => {
     if (!activeChat) {
@@ -4215,28 +3399,132 @@ export default function HomePage() {
   ]);
 
   const selectedCaption = useMemo(() => {
-    if (!visibleStage2Result) {
-      return null;
-    }
-    const preferredOption = selectedOption ?? visibleStage2Result.output.finalPick.option;
-    return (
-      visibleStage2Result.output.captionOptions.find((item) => item.option === preferredOption) ??
-      visibleStage2Result.output.captionOptions[0] ??
-      null
-    );
+    return getSelectedStage2Caption(visibleStage2Result, selectedOption);
   }, [selectedOption, visibleStage2Result]);
 
   const selectedTitle = useMemo(() => {
-    if (!visibleStage2Result) {
-      return null;
-    }
-    const preferredOption = selectedTitleOption ?? visibleStage2Result.output.titleOptions[0]?.option ?? 1;
-    return (
-      visibleStage2Result.output.titleOptions.find((item) => item.option === preferredOption) ??
-      visibleStage2Result.output.titleOptions[0] ??
-      null
-    );
+    return getSelectedStage2Title(visibleStage2Result, selectedTitleOption);
   }, [selectedTitleOption, visibleStage2Result]);
+
+  const latestStage3Version = useMemo(
+    () => stage3Versions[stage3Versions.length - 1] ?? null,
+    [stage3Versions]
+  );
+
+  const stage3HandoffSummary = useMemo(
+    () =>
+      buildStage2ToStage3HandoffSummary({
+        stage2: visibleStage2Result,
+        draft: activeDraft,
+        latestVersion: latestStage3Version,
+        selectedCaptionOption: selectedOption,
+        selectedTitleOption,
+        currentTopText: stage3TopText,
+        currentBottomText: stage3BottomText
+      }),
+    [
+      activeDraft,
+      latestStage3Version,
+      selectedOption,
+      selectedTitleOption,
+      stage3BottomText,
+      stage3TopText,
+      visibleStage2Result
+    ]
+  );
+
+  const syncStage3AutoAppliedCaption = useCallback(
+    (nextTopText: string, nextBottomText: string, preferredOption?: number | null) => {
+      if (!activeChat?.id || !visibleStage2Result) {
+        autoAppliedCaptionRef.current = null;
+        return;
+      }
+
+      const sourceCaption = getSelectedStage2Caption(
+        visibleStage2Result,
+        preferredOption ?? selectedOption ?? null
+      );
+      if (sourceCaption && nextTopText === sourceCaption.top && nextBottomText === sourceCaption.bottom) {
+        autoAppliedCaptionRef.current = {
+          chatId: activeChat.id,
+          option: sourceCaption.option,
+          top: sourceCaption.top,
+          bottom: sourceCaption.bottom
+        };
+        return;
+      }
+
+      autoAppliedCaptionRef.current = null;
+    },
+    [activeChat?.id, selectedOption, visibleStage2Result]
+  );
+
+  const handleStage3TopTextChange = useCallback(
+    (value: string) => {
+      setStage3TopText(value);
+      syncStage3AutoAppliedCaption(value, stage3BottomText);
+    },
+    [stage3BottomText, syncStage3AutoAppliedCaption]
+  );
+
+  const handleStage3BottomTextChange = useCallback(
+    (value: string) => {
+      setStage3BottomText(value);
+      syncStage3AutoAppliedCaption(stage3TopText, value);
+    },
+    [stage3TopText, syncStage3AutoAppliedCaption]
+  );
+
+  const handleApplyStage2CaptionToStage3 = useCallback(
+    (option: number, mode: "all" | "top" | "bottom") => {
+      if (!visibleStage2Result) {
+        return;
+      }
+      const sourceCaption =
+        visibleStage2Result.output.captionOptions.find((item) => item.option === option) ?? null;
+      const nextText = applyStage2CaptionToStage3Text({
+        currentTopText: stage3TopText,
+        currentBottomText: stage3BottomText,
+        caption: sourceCaption,
+        mode
+      });
+
+      if (mode === "all") {
+        setSelectedOption(option);
+        syncStage3AutoAppliedCaption(nextText.topText, nextText.bottomText, option);
+      } else {
+        syncStage3AutoAppliedCaption(nextText.topText, nextText.bottomText);
+      }
+
+      setStage3TopText(nextText.topText);
+      setStage3BottomText(nextText.bottomText);
+    },
+    [
+      stage3BottomText,
+      stage3TopText,
+      syncStage3AutoAppliedCaption,
+      visibleStage2Result
+    ]
+  );
+
+  const handleResetStage3CaptionText = useCallback(
+    (mode: "all" | "top" | "bottom") => {
+      if (!selectedCaption) {
+        return;
+      }
+      const nextText = applyStage2CaptionToStage3Text({
+        currentTopText: stage3TopText,
+        currentBottomText: stage3BottomText,
+        caption: selectedCaption,
+        mode
+      });
+
+      syncStage3AutoAppliedCaption(nextText.topText, nextText.bottomText, selectedCaption.option);
+      setStage3TopText(nextText.topText);
+      setStage3BottomText(nextText.bottomText);
+    },
+    [selectedCaption, stage3BottomText, stage3TopText, syncStage3AutoAppliedCaption]
+  );
 
   const hasActiveStage3Draft = useMemo(() => {
     if (!activeDraft) {
@@ -5196,19 +4484,37 @@ export default function HomePage() {
     }
   };
 
-  const handleSaveWorkspaceStage2ExamplesCorpus = async (value: string): Promise<void> => {
+  const handleSaveWorkspaceStage2Defaults = async (
+    patch: Partial<{
+      stage2ExamplesCorpusJson: string;
+      stage2HardConstraints: Stage2HardConstraints;
+      stage2PromptConfig: Stage2PromptConfig;
+    }>
+  ): Promise<void> => {
     setBusyAction("channel-save");
     try {
       const response = await fetch("/api/workspace", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage2ExamplesCorpusJson: value })
+        body: JSON.stringify(patch)
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Не удалось сохранить corpus workspace."));
+        throw new Error(await parseError(response, "Не удалось сохранить Stage 2 defaults workspace."));
       }
-      const body = (await response.json()) as { stage2ExamplesCorpusJson: string };
-      setWorkspaceStage2ExamplesCorpusJson(body.stage2ExamplesCorpusJson ?? "[]");
+      const body = (await response.json()) as {
+        stage2ExamplesCorpusJson?: string;
+        stage2HardConstraints?: Stage2HardConstraints;
+        stage2PromptConfig?: Stage2PromptConfig;
+      };
+      if (typeof body.stage2ExamplesCorpusJson === "string") {
+        setWorkspaceStage2ExamplesCorpusJson(body.stage2ExamplesCorpusJson);
+      }
+      if (body.stage2HardConstraints) {
+        setWorkspaceStage2HardConstraints(normalizeStage2HardConstraints(body.stage2HardConstraints));
+      }
+      if (body.stage2PromptConfig) {
+        setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.stage2PromptConfig));
+      }
     } finally {
       setBusyAction("");
     }
@@ -5418,6 +4724,50 @@ export default function HomePage() {
     setStatus("Конфиг шаблона экспортирован.");
   };
 
+  const handleDownloadChatTrace = async (): Promise<void> => {
+    const chat = activeChat;
+    if (!chat) {
+      setStatusType("error");
+      setStatus("Сначала выберите ролик из истории или получите источник.");
+      return;
+    }
+    if (!canOperateActiveChannel) {
+      setStatusType("error");
+      setStatus("У вас нет прав на выгрузку trace для этого канала.");
+      return;
+    }
+
+    setBusyAction("trace-export");
+    try {
+      const params = new URLSearchParams();
+      if (stage2RunId) {
+        params.set("selectedRunId", stage2RunId);
+      }
+      const response = await fetch(
+        `/api/chat-trace/${encodeURIComponent(chat.id)}${params.toString() ? `?${params.toString()}` : ""}`
+      );
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Не удалось выгрузить историю ролика."));
+      }
+      const blob = await response.blob();
+      const fileName =
+        parseDownloadFileName(response) ??
+        buildChatTraceExportFileName({
+          channelUsername: activeChannel?.username ?? null,
+          chatId: chat.id,
+          exportedAt: new Date().toISOString()
+        });
+      triggerBlobDownload(blob, fileName);
+      setStatusType("ok");
+      setStatus("Полная история ролика выгружена.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(getUiErrorMessage(error, "Не удалось выгрузить историю ролика."));
+    } finally {
+      setBusyAction("");
+    }
+  };
+
   const handleLogout = async (): Promise<void> => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -5505,6 +4855,20 @@ export default function HomePage() {
       }}
       statusText={status}
       statusTone={statusType}
+      headerActions={
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => {
+            void handleDownloadChatTrace();
+          }}
+          disabled={!canDownloadChatTrace}
+          title={!canDownloadChatTrace ? chatTraceBlockedReason ?? undefined : "Скачать полный trace JSON по текущему ролику"}
+          aria-busy={busyAction === "trace-export"}
+        >
+          {busyAction === "trace-export" ? "Выгружаем..." : "Скачать историю"}
+        </button>
+      }
       details={
         <DetailsDrawer
           events={activeChat?.events ?? []}
@@ -5522,6 +4886,11 @@ export default function HomePage() {
             setStatus("JSON комментариев скачан.");
           }}
         />
+      }
+      afterDetails={
+        currentStep === 2 ? (
+          <Stage2RunDiagnosticsPanels diagnostics={visibleStage2Diagnostics} />
+        ) : null
       }
     >
       {currentStep === 1 ? (
@@ -5617,6 +4986,9 @@ export default function HomePage() {
           canRollbackSelectedVersion={canRollbackStage3Version}
           topText={stage3TopText}
           bottomText={stage3BottomText}
+          captionSources={visibleStage2Result?.output.captionOptions ?? []}
+          selectedCaptionOption={selectedOption ?? visibleStage2SelectionDefaults.captionOption}
+          handoffSummary={stage3HandoffSummary}
           segments={stage3RenderPlan.segments}
           compressionEnabled={stage3RenderPlan.timingMode === "compress"}
           workerState={stage3WorkerPanelState}
@@ -5653,6 +5025,10 @@ export default function HomePage() {
             void handleRollbackStage3Version();
           }}
           onReset={handleResetFlow}
+          onTopTextChange={handleStage3TopTextChange}
+          onBottomTextChange={handleStage3BottomTextChange}
+          onApplyCaptionSource={handleApplyStage2CaptionToStage3}
+          onResetCaptionText={handleResetStage3CaptionText}
           onUploadBackground={handleUploadBackground}
           onUploadMusic={handleUploadMusic}
           onClearBackground={handleClearBackground}
@@ -5854,8 +5230,11 @@ export default function HomePage() {
         open={isChannelManagerOpen}
         channels={channels}
         workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
+        workspaceStage2HardConstraints={workspaceStage2HardConstraints}
+        workspaceStage2PromptConfig={workspaceStage2PromptConfig}
         activeChannelId={activeChannelId}
         assets={channelAssets}
+        currentUserRole={authState?.membership.role ?? null}
         onClose={() => setIsChannelManagerOpen(false)}
         onSelectChannel={handleSwitchChannel}
         canCreateChannel={canCreateChannel}
@@ -5866,7 +5245,7 @@ export default function HomePage() {
           void handleDeleteChannel(channelId);
         }}
         onSaveChannel={handleSaveChannel}
-        onSaveWorkspaceStage2ExamplesCorpus={handleSaveWorkspaceStage2ExamplesCorpus}
+        onSaveWorkspaceStage2Defaults={handleSaveWorkspaceStage2Defaults}
         onUploadAsset={(kind, file) => {
           void handleUploadChannelAsset(kind, file);
         }}

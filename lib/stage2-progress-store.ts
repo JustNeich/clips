@@ -6,15 +6,14 @@ import {
 } from "./db/client";
 import {
   createStage2ProgressSnapshot,
-  DEFAULT_STAGE2_PROMPT_CONFIG,
   finalizeStage2ProgressSuccess,
   markStage2ProgressStageCompleted,
   markStage2ProgressStageFailed,
   markStage2ProgressStageRunning,
+  normalizeStage2ProgressSnapshot,
   resetStage2ProgressForRetry,
   Stage2PipelineStageId,
-  Stage2ProgressSnapshot,
-  Stage2PromptConfig
+  Stage2ProgressSnapshot
 } from "./stage2-pipeline";
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
@@ -33,12 +32,8 @@ export type Stage2RunRequest = {
     id: string;
     name: string;
     username: string;
-    descriptionPrompt: string;
-    examplesJson?: string;
-    stage2WorkerProfileId: string | null;
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
-    stage2PromptConfig: Stage2PromptConfig;
   };
 };
 
@@ -97,7 +92,7 @@ function parseJsonOrNull<T>(raw: string | null | undefined): T | null {
   }
 }
 
-function normalizeRequest(record: Stage2RunRow, snapshot: Stage2ProgressSnapshot): Stage2RunRequest {
+function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
   const parsed = parseJsonOrNull<Partial<Stage2RunRequest>>(record.request_json);
   const mode = normalizeMode(parsed?.mode ?? record.mode);
   const sourceUrl = String(parsed?.sourceUrl ?? record.source_url ?? "").trim();
@@ -120,14 +115,6 @@ function normalizeRequest(record: Stage2RunRow, snapshot: Stage2ProgressSnapshot
       id: String(channelCandidate?.id ?? record.channel_id ?? "").trim(),
       name: String(channelCandidate?.name ?? "").trim(),
       username: String(channelCandidate?.username ?? "").trim(),
-      descriptionPrompt: String(channelCandidate?.descriptionPrompt ?? "").trim(),
-      examplesJson:
-        typeof channelCandidate?.examplesJson === "string" ? channelCandidate.examplesJson : "[]",
-      stage2WorkerProfileId:
-        typeof channelCandidate?.stage2WorkerProfileId === "string" &&
-        channelCandidate.stage2WorkerProfileId.trim()
-          ? channelCandidate.stage2WorkerProfileId.trim()
-          : null,
       stage2ExamplesConfig:
         channelCandidate?.stage2ExamplesConfig &&
         typeof channelCandidate.stage2ExamplesConfig === "object"
@@ -138,17 +125,16 @@ function normalizeRequest(record: Stage2RunRow, snapshot: Stage2ProgressSnapshot
         typeof channelCandidate.stage2HardConstraints === "object"
           ? (channelCandidate.stage2HardConstraints as Stage2HardConstraints)
           : DEFAULT_STAGE2_HARD_CONSTRAINTS,
-      stage2PromptConfig:
-        channelCandidate?.stage2PromptConfig && typeof channelCandidate.stage2PromptConfig === "object"
-          ? (channelCandidate.stage2PromptConfig as Stage2PromptConfig)
-          : DEFAULT_STAGE2_PROMPT_CONFIG
     }
   };
 }
 
 function mapStage2Run(row: Stage2RunRow): Stage2RunRecord {
-  const snapshot = JSON.parse(String(row.snapshot_json)) as Stage2ProgressSnapshot;
-  const request = normalizeRequest(row, snapshot);
+  const snapshot = normalizeStage2ProgressSnapshot(
+    parseJsonOrNull<unknown>(row.snapshot_json),
+    String(row.run_id)
+  );
+  const request = normalizeRequest(row);
   return {
     runId: String(row.run_id),
     workspaceId: String(row.workspace_id),
@@ -468,6 +454,7 @@ export function markStage2RunStageRunning(
   runId: string,
   stageId: Stage2PipelineStageId,
   patch?: Partial<{
+    summary: string | null;
     detail: string | null;
     promptChars: number | null;
     reasoningEffort: string | null;
@@ -491,6 +478,7 @@ export function markStage2RunStageCompleted(
   runId: string,
   stageId: Stage2PipelineStageId,
   patch?: Partial<{
+    summary: string | null;
     detail: string | null;
     durationMs: number | null;
     promptChars: number | null;
@@ -514,6 +502,7 @@ export function markStage2RunStageFailed(
   stageId: Stage2PipelineStageId,
   error: string,
   patch?: Partial<{
+    summary: string | null;
     durationMs: number | null;
     promptChars: number | null;
     reasoningEffort: string | null;

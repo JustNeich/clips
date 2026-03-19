@@ -7,6 +7,7 @@ export const SCIENCE_CARD_V3_TEMPLATE_ID = "science-card-v3";
 export const SCIENCE_CARD_V4_TEMPLATE_ID = "science-card-v4";
 export const SCIENCE_CARD_V5_TEMPLATE_ID = "science-card-v5";
 export const SCIENCE_CARD_V6_TEMPLATE_ID = "science-card-v6";
+export const SCIENCE_CARD_V7_TEMPLATE_ID = "science-card-v7";
 export const STAGE3_TEMPLATE_ID = SCIENCE_CARD_TEMPLATE_ID;
 
 const SHARED_STAGE3_CARD_METRICS = {
@@ -614,6 +615,109 @@ export const SCIENCE_CARD_V6 = {
     checkBadgeColor: "#8df33d",
     borderColor: "#121417",
     accentColor: "#4fd92a"
+  }
+} as const;
+
+export const SCIENCE_CARD_V7 = {
+  ...SCIENCE_CARD,
+  card: {
+    ...SCIENCE_CARD.card,
+    radius: 0,
+    borderWidth: 2,
+    borderColor: "#8d9398",
+    fill: "#ffffff",
+    shadow:
+      "20px 20px 0 rgba(35, 40, 47, 0.52), inset 0 0 0 1px rgba(255,255,255,0.58), inset 0 10px 18px rgba(17, 25, 34, 0.028), inset 0 -12px 18px rgba(17, 25, 34, 0.05)"
+  },
+  slot: {
+    ...SCIENCE_CARD.slot,
+    topHeight: SCIENCE_CARD_SECTION_METRICS.topHeight,
+    topPaddingX: 8,
+    topPaddingY: 8,
+    topPaddingTop: 8,
+    topPaddingBottom: 4,
+    bottomHeight: SCIENCE_CARD_SECTION_METRICS.bottomHeight,
+    bottomMetaHeight: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaHeight,
+    bottomMetaPaddingX: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaPaddingX,
+    bottomMetaPaddingY: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaPaddingY,
+    bottomTextPaddingX: SCIENCE_CARD.slot.bottomTextPaddingX,
+    bottomTextPaddingY: SCIENCE_CARD.slot.bottomTextPaddingY,
+    bottomTextPaddingTop: SCIENCE_CARD.slot.bottomTextPaddingTop,
+    bottomTextPaddingBottom: SCIENCE_CARD.slot.bottomTextPaddingBottom,
+    bottomTextPaddingLeft: SCIENCE_CARD.slot.bottomTextPaddingLeft,
+    bottomTextPaddingRight: SCIENCE_CARD.slot.bottomTextPaddingRight
+  },
+  author: {
+    ...SCIENCE_CARD.author,
+    name: "Echoes Of Honor",
+    handle: "@EchoesOfHonor50",
+    avatarSize: SCIENCE_CARD_AUTHOR_METRICS.avatarSize,
+    avatarBorder: 0,
+    checkSize: SCIENCE_CARD_AUTHOR_METRICS.checkSize,
+    gap: SCIENCE_CARD_AUTHOR_METRICS.gap,
+    copyGap: SCIENCE_CARD_AUTHOR_METRICS.copyGap,
+    nameCheckGap: SCIENCE_CARD_AUTHOR_METRICS.nameCheckGap,
+    checkAssetPath: undefined
+  },
+  typography: {
+    ...SCIENCE_CARD.typography,
+    top: {
+      ...SCIENCE_CARD.typography.top,
+      min: 50,
+      max: 74,
+      softLimit: 320,
+      penalty: 0.2,
+      lineHeight: 0.84,
+      maxLines: 7,
+      maxChars: 420,
+      horizontalSafety: 0.985,
+      glyphFactor: 0.54,
+      fillTargetMin: 0.97,
+      fillTargetMax: 0.995,
+      weight: 900,
+      letterSpacing: "-0.075em"
+    },
+    bottom: {
+      ...SCIENCE_CARD.typography.bottom,
+      min: 24,
+      max: 34,
+      softLimit: 190,
+      penalty: 0.16,
+      lineHeight: 1.08,
+      maxLines: 4,
+      maxChars: 260,
+      fillTargetMin: 0.82,
+      fillTargetMax: 0.9,
+      weight: 500,
+      letterSpacing: "-0.04em",
+      fontStyle: "normal"
+    },
+    authorName: {
+      ...SCIENCE_CARD.typography.authorName,
+      font: SCIENCE_CARD_AUTHOR_METRICS.authorNameFont,
+      lineHeight: 1,
+      weight: 800,
+      letterSpacing: "-0.03em"
+    },
+    authorHandle: {
+      ...SCIENCE_CARD.typography.authorHandle,
+      font: SCIENCE_CARD_AUTHOR_METRICS.authorHandleFont,
+      lineHeight: 1,
+      weight: 300,
+      letterSpacing: "-0.022em"
+    }
+  },
+  palette: {
+    cardFill: "#ffffff",
+    topSectionFill: "#ffffff",
+    bottomSectionFill: "#ffffff",
+    topTextColor: "#0d0f12",
+    bottomTextColor: "#17191d",
+    authorNameColor: "#0c0f13",
+    authorHandleColor: "#7c8085",
+    checkBadgeColor: "#33a9eb",
+    borderColor: "#8d9398",
+    accentColor: "#0d0f12"
   }
 } as const;
 
@@ -1387,6 +1491,9 @@ export function getTemplateComputed(
   if (templateId === SCIENCE_CARD_V6_TEMPLATE_ID) {
     return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V6);
   }
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V7);
+  }
   if (templateId === TURBO_FACE_TEMPLATE_ID) {
     return getTurboFaceComputed(topText, bottomText, fontOverrides);
   }
@@ -1408,6 +1515,9 @@ export function getTemplateById(templateId: string): Stage3TemplateConfig {
   }
   if (templateId === SCIENCE_CARD_V6_TEMPLATE_ID) {
     return SCIENCE_CARD_V6;
+  }
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID) {
+    return SCIENCE_CARD_V7;
   }
   if (templateId === TURBO_FACE_TEMPLATE_ID) {
     return TURBO_FACE_COMPAT;

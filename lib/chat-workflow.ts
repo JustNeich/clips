@@ -7,6 +7,7 @@ import {
   Stage2Response,
   Stage3Version
 } from "../app/components/types";
+import { normalizeStage2ProgressSnapshot } from "./stage2-pipeline";
 import { buildLegacyTimelineEntries, findLatestStage3AgentSessionRef } from "./stage3-legacy-bridge";
 
 type ChatEventLike = {
@@ -125,7 +126,18 @@ export function extractStage2Payload(data: unknown): Stage2Response | null {
     output: {
       ...((data as Stage2Response).output ?? {}),
       titleOptions
-    }
+    },
+    progress:
+      candidate.progress !== undefined
+        ? normalizeStage2ProgressSnapshot(
+            candidate.progress,
+            typeof candidate.stage2Run === "object" &&
+              candidate.stage2Run &&
+              typeof (candidate.stage2Run as Record<string, unknown>).runId === "string"
+              ? String((candidate.stage2Run as Record<string, unknown>).runId)
+              : "event_run"
+          )
+        : (data as Stage2Response).progress
   };
 }
 

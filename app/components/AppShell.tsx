@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sanitizeDisplayText } from "../../lib/ui-error";
 import type { ChatListItem, ChatWorkflowStatus, CodexDeviceAuth } from "./types";
 
@@ -64,8 +64,10 @@ type AppShellProps = {
   onLogout: () => void;
   statusText: string;
   statusTone: "ok" | "error" | "";
+  headerActions?: ReactNode;
   children: ReactNode;
   details: ReactNode;
+  afterDetails?: ReactNode;
 };
 
 function getStepState(stepId: number, currentStep: number): "completed" | "current" | "next" {
@@ -376,8 +378,10 @@ export function AppShell({
   onLogout,
   statusText,
   statusTone,
+  headerActions,
   children,
-  details
+  details,
+  afterDetails
 }: AppShellProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyPinned, setHistoryPinned] = useState(false);
@@ -781,6 +785,7 @@ export function AppShell({
                     Команда
                   </button>
                 ) : null}
+                {headerActions}
               </div>
             </div>
           </div>
@@ -941,6 +946,8 @@ export function AppShell({
             ) : null}
 
             {details}
+
+            {afterDetails}
           </div>
         </section>
       </section>

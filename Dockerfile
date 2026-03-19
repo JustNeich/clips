@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV APP_DATA_DIR=/var/data/app
 ENV CODEX_SESSIONS_DIR=/var/data/codex-sessions
 ENV CODEX_BIN=/usr/local/bin/codex
+ENV PIP_ROOT_USER_ACTION=ignore
 
 WORKDIR /app
 
