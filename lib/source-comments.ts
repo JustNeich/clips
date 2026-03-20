@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { CommentsPayload } from "../app/components/types";
 import { normalizeComments, sortCommentsByPopularity } from "./comments";
+import { readYtDlpMetadataArtifacts } from "./ytdlp-metadata";
 import {
   buildLimitedCommentsExtractorArgs,
   createYtDlpAuthContext,
@@ -51,19 +52,17 @@ export async function fetchCommentsPayloadForUrl(rawUrl: string): Promise<Commen
       maxBuffer: 1024 * 1024 * 16
     });
 
-    const files = await fs.readdir(tmpDir);
-    const infoJsonFile = files.find((file) => file.endsWith(".info.json"));
-    if (!infoJsonFile) {
+    const { infoJson, comments } = await readYtDlpMetadataArtifacts(tmpDir, "metadata");
+    if (!infoJson) {
       throw new Error("Не удалось получить метаданные видео.");
     }
 
-    const infoJsonPath = path.join(tmpDir, infoJsonFile);
-    const infoJson = JSON.parse(await fs.readFile(infoJsonPath, "utf-8")) as YtDlpCommentsInfo;
-    const sortedComments = sortCommentsByPopularity(normalizeComments(infoJson.comments));
+    const info = infoJson as YtDlpCommentsInfo;
+    const sortedComments = sortCommentsByPopularity(normalizeComments(comments));
     const allComments = sortedComments.slice(0, 300);
 
     return {
-      title: infoJson.title ?? "video",
+      title: info.title ?? "video",
       totalComments: allComments.length,
       topComments: allComments.slice(0, 10),
       allComments

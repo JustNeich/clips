@@ -48,3 +48,39 @@ export function getSourceJobElapsedMs(
   }
   return Math.max(0, finishedAt - startedAt);
 }
+
+export function shouldReuseActiveChatForSourceFetch(input: {
+  activeChatId?: string | null;
+  activeChatUrl?: string | null;
+  draftUrl?: string | null;
+}): boolean {
+  const draftUrl = input.draftUrl?.trim() ?? "";
+  const activeChatUrl = input.activeChatUrl?.trim() ?? "";
+  return Boolean(input.activeChatId && draftUrl && activeChatUrl && draftUrl === activeChatUrl);
+}
+
+export function resolveSourceFetchBlockedReason(input: {
+  activeChannelId?: string | null;
+  fetchSourceAvailable: boolean;
+  fetchSourceBlockedReason?: string | null;
+  reusesActiveChat: boolean;
+  hasActiveSourceJob: boolean;
+  hasActiveStage2Run: boolean;
+}): string | null {
+  if (!input.activeChannelId) {
+    return "Сначала создайте или выберите канал.";
+  }
+  if (!input.fetchSourceAvailable) {
+    return input.fetchSourceBlockedReason ?? "Source fetch is unavailable on this deployment.";
+  }
+  if (!input.reusesActiveChat) {
+    return null;
+  }
+  if (input.hasActiveSourceJob) {
+    return "Для этого чата уже идёт получение источника.";
+  }
+  if (input.hasActiveStage2Run) {
+    return "Для этого чата уже идёт Stage 2. Дождитесь завершения перед новым получением источника.";
+  }
+  return null;
+}

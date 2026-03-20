@@ -33,6 +33,10 @@ const MAX_SELECTOR_DESCRIPTION_CHARS = 1_200;
 const MAX_SELECTOR_TRANSCRIPT_CHARS = 6_000;
 const MAX_SELECTOR_COMMENT_COUNT = 12;
 const MAX_SELECTOR_COMMENT_CHARS = 220;
+const MAX_ANALYZER_DESCRIPTION_CHARS = 1_200;
+const MAX_ANALYZER_TRANSCRIPT_CHARS = 8_000;
+const MAX_ANALYZER_COMMENT_COUNT = 20;
+const MAX_ANALYZER_COMMENT_CHARS = 280;
 
 export type Stage2PromptTemplateKind = "llm_system";
 
@@ -167,6 +171,21 @@ function buildCompactSelectorVideoContext(videoContext: ViralShortsVideoContext)
   };
 }
 
+function buildCompactAnalyzerVideoContext(videoContext: ViralShortsVideoContext) {
+  return {
+    sourceUrl: videoContext.sourceUrl,
+    title: videoContext.title,
+    description: truncatePromptValue(videoContext.description, MAX_ANALYZER_DESCRIPTION_CHARS),
+    transcript: truncatePromptValue(videoContext.transcript, MAX_ANALYZER_TRANSCRIPT_CHARS),
+    frameDescriptions: videoContext.frameDescriptions.slice(0, 12),
+    comments: videoContext.comments.slice(0, MAX_ANALYZER_COMMENT_COUNT).map((comment) => ({
+      author: truncatePromptValue(comment.author, 40),
+      likes: comment.likes,
+      text: truncatePromptValue(comment.text, MAX_ANALYZER_COMMENT_CHARS)
+    }))
+  };
+}
+
 export function buildAnalyzerPrompt(
   channelConfig: Stage2RuntimeChannelConfig,
   videoContext: ViralShortsVideoContext,
@@ -175,7 +194,7 @@ export function buildAnalyzerPrompt(
 ): string {
   return renderPrompt(buildSystemPrompt("analyzer", promptConfig), {
     ...buildChannelPayload(channelConfig),
-    videoContext,
+    videoContext: buildCompactAnalyzerVideoContext(videoContext),
     heuristicAnalyzer
   });
 }

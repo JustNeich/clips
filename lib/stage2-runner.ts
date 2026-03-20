@@ -53,6 +53,7 @@ const execFileAsync = promisify(execFile);
 type VideoInfoJson = {
   title?: string;
   description?: string;
+  transcript?: string;
   comments?: unknown;
 };
 
@@ -71,6 +72,7 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   const infoJson: VideoInfoJson = {
     title,
     description: optionalInfo.infoJson?.description?.trim() || "",
+    transcript: optionalInfo.infoJson?.transcript?.trim() || "",
     comments: optionalInfo.infoJson?.comments
   };
 
@@ -113,11 +115,61 @@ async function probeVideoDurationSeconds(videoPath: string): Promise<number | nu
 function buildFrameTimestamps(durationSeconds: number | null): number[] {
   const safeDuration = durationSeconds && durationSeconds > 0.5 ? durationSeconds : 12;
   const maxTs = Math.max(0.1, safeDuration - 0.1);
-  const points = [0.15, 0.5, 0.85].map((ratio) =>
-    Math.max(0.1, Math.min(maxTs, safeDuration * ratio))
-  );
+  const ratios =
+    safeDuration <= 8
+      ? [0.08, 0.3, 0.62, 0.9]
+      : safeDuration <= 15
+        ? [0.06, 0.22, 0.45, 0.72, 0.92]
+        : safeDuration <= 25
+          ? [0.05, 0.16, 0.32, 0.52, 0.74, 0.92]
+          : safeDuration <= 40
+            ? [0.04, 0.12, 0.23, 0.36, 0.5, 0.64, 0.79, 0.93]
+            : safeDuration <= 60
+              ? [0.03, 0.1, 0.18, 0.28, 0.4, 0.52, 0.64, 0.76, 0.87, 0.95]
+              : [0.03, 0.08, 0.14, 0.21, 0.3, 0.41, 0.52, 0.63, 0.74, 0.83, 0.9, 0.96];
 
-  return points.map((point, index) => Math.max(0.1, point + index * 0.01));
+  return ratios.map((ratio, index) =>
+    Math.max(0.1, Math.min(maxTs, safeDuration * ratio + index * 0.01))
+  );
+}
+
+function describeFrameMoment(
+  second: number,
+  durationSeconds: number | null,
+  index: number,
+  totalFrames: number
+): string {
+  const safeDuration = durationSeconds && durationSeconds > 0.5 ? durationSeconds : null;
+  const ratio = safeDuration ? second / safeDuration : totalFrames <= 1 ? 0 : index / (totalFrames - 1);
+  const beat =
+    ratio <= 0.12
+      ? "opening setup"
+      : ratio <= 0.24
+        ? "early setup"
+        : ratio <= 0.4
+          ? "building action"
+          : ratio <= 0.58
+            ? "mid-clip progression"
+            : ratio <= 0.74
+              ? "pre-payoff turn"
+              : ratio <= 0.88
+                ? "payoff beat"
+                : "late aftermath";
+
+  if (safeDuration) {
+    return `frame ${index + 1}: ${beat} at ${second.toFixed(2)}s of ${safeDuration.toFixed(2)}s`;
+  }
+  return `frame ${index + 1}: ${beat} at ${second.toFixed(2)}s`;
+}
+
+export function buildAdaptiveFramePlan(
+  durationSeconds: number | null
+): Array<{ timestampSec: number; description: string }> {
+  const timestamps = buildFrameTimestamps(durationSeconds);
+  return timestamps.map((timestampSec, index) => ({
+    timestampSec,
+    description: describeFrameMoment(timestampSec, durationSeconds, index, timestamps.length)
+  }));
 }
 
 async function extractFrameImages(
@@ -125,12 +177,12 @@ async function extractFrameImages(
   tmpDir: string
 ): Promise<{ framePaths: string[]; frameDescriptions: string[] }> {
   const duration = await probeVideoDurationSeconds(videoPath);
-  const timestamps = buildFrameTimestamps(duration);
+  const framePlan = buildAdaptiveFramePlan(duration);
   const framePaths: string[] = [];
   const frameDescriptions: string[] = [];
 
-  for (let i = 0; i < timestamps.length; i += 1) {
-    const second = timestamps[i];
+  for (let i = 0; i < framePlan.length; i += 1) {
+    const second = framePlan[i]?.timestampSec ?? 0.1;
     const framePath = path.join(tmpDir, `frame-${i + 1}.jpg`);
     await execFileAsync(
       "ffmpeg",
@@ -141,10 +193,30 @@ async function extractFrameImages(
       }
     );
     framePaths.push(framePath);
-    frameDescriptions.push(`frame_${i + 1}_at_${second.toFixed(2)}s`);
+    frameDescriptions.push(framePlan[i]?.description ?? `frame ${i + 1} at ${second.toFixed(2)}s`);
   }
 
   return { framePaths, frameDescriptions };
+}
+
+export function buildStage2RuntimeVideoContext(input: {
+  sourceUrl: string;
+  title: string;
+  description?: string | null;
+  transcript?: string | null;
+  comments: Array<{ author: string; likes: number; text: string }>;
+  frameDescriptions: string[];
+  userInstruction?: string | null;
+}) {
+  return buildVideoContext({
+    sourceUrl: input.sourceUrl,
+    title: input.title,
+    description: input.description,
+    transcript: input.transcript,
+    comments: input.comments,
+    frameDescriptions: input.frameDescriptions,
+    userInstruction: input.userInstruction
+  });
 }
 
 function getPipelineErrorMessage(error: unknown): string {
@@ -316,10 +388,11 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     const workerService = new ViralShortsWorkerService();
     const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
     const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
-    const videoContext = buildVideoContext({
+    const videoContext = buildStage2RuntimeVideoContext({
       sourceUrl: run.sourceUrl,
       title: downloaded.title,
       description: downloaded.infoJson.description,
+      transcript: downloaded.infoJson.transcript,
       comments: promptComments.included,
       frameDescriptions: frames.frameDescriptions,
       userInstruction: run.userInstruction

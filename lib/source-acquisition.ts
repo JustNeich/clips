@@ -6,6 +6,8 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { resolveExecutableFromCandidates } from "./command-path";
+import { fetchTranscriptFromYtDlpInfo, type YtDlpCaptionInfo } from "./youtube-captions";
+import { readYtDlpMetadataArtifacts } from "./ytdlp-metadata";
 import {
   buildLimitedCommentsExtractorArgs,
   createYtDlpAuthContext,
@@ -53,7 +55,7 @@ type VisolixProgressResponse = {
   }> | null;
 };
 
-type YtDlpInfoJson = {
+type YtDlpInfoJson = YtDlpCaptionInfo & {
   title?: unknown;
   duration?: unknown;
   comments?: unknown;
@@ -78,7 +80,7 @@ export type SourceMetadataResult = {
 };
 
 export type OptionalYtDlpInfoResult = {
-  infoJson: { title?: string; description?: string; comments?: unknown } | null;
+  infoJson: { title?: string; description?: string; transcript?: string; comments?: unknown } | null;
   commentsExtractionFallbackUsed: boolean;
 };
 
@@ -627,21 +629,22 @@ export async function fetchOptionalYtDlpInfo(
     }
   }
 
-  const files = await fs.readdir(tmpDir);
-  const infoJsonFile = files.find((file) => file.endsWith(".info.json"));
-  if (!infoJsonFile) {
+  const { infoJson, comments } = await readYtDlpMetadataArtifacts(tmpDir, "metadata");
+  if (!infoJson) {
     return {
       infoJson: null,
       commentsExtractionFallbackUsed
     };
   }
 
-  const infoJson = JSON.parse(await fs.readFile(path.join(tmpDir, infoJsonFile), "utf-8")) as YtDlpInfoJson;
+  const normalizedInfo = infoJson as YtDlpInfoJson;
+  const transcript = await fetchTranscriptFromYtDlpInfo(normalizedInfo);
   return {
     infoJson: {
-      title: asTrimmedString(infoJson.title) ?? undefined,
-      description: asTrimmedString(infoJson.description) ?? undefined,
-      comments: infoJson.comments
+      title: asTrimmedString(normalizedInfo.title) ?? undefined,
+      description: asTrimmedString(normalizedInfo.description) ?? undefined,
+      transcript: transcript || undefined,
+      comments
     },
     commentsExtractionFallbackUsed
   };

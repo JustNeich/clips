@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -48,7 +48,9 @@ import {
   buildQuickRegenerateResult
 } from "../lib/stage2-quick-regenerate";
 import {
-  pickPreferredSourceJobId
+  pickPreferredSourceJobId,
+  resolveSourceFetchBlockedReason,
+  shouldReuseActiveChatForSourceFetch
 } from "../lib/source-job-client";
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
@@ -62,11 +64,21 @@ import {
 } from "../lib/stage2-channel-config";
 import { resolveChannelPermissions } from "../lib/acl";
 import { prepareCommentsForPrompt, sortCommentsByPopularity } from "../lib/comments";
+import {
+  pickPreferredYtDlpInfoJsonFile,
+  readYtDlpMetadataArtifacts
+} from "../lib/ytdlp-metadata";
+import { fetchTranscriptFromYtDlpInfo } from "../lib/youtube-captions";
 import { buildLimitedCommentsExtractorArgs } from "../lib/ytdlp";
 import {
+  buildAnalyzerPrompt,
   buildPromptPacket,
   resolveStage2PromptTemplate
 } from "../lib/viral-shorts-worker/prompts";
+import {
+  buildAdaptiveFramePlan,
+  buildStage2RuntimeVideoContext
+} from "../lib/stage2-runner";
 import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
 import { getTemplateFigmaSpec } from "../lib/stage3-template-spec";
 import {
@@ -648,6 +660,13 @@ async function runSuccessfulPipeline(options?: {
       subject: "old pickup",
       setting: "muddy field",
       first_seconds_signal: "The truck lunges into the rut and the axle already looks wrong.",
+      scene_beats: [
+        "opening setup with the pickup entering the muddy rut",
+        "the axle starts leaning while mud kicks up",
+        "the wheel nearly folds once the truck stays under load"
+      ],
+      reveal_moment: "the wheel almost folds once the axle gives way under load",
+      late_clip_change: "the failure becomes obvious only later when the wheel collapses sideways",
       stakes: ["the truck may break completely", "everyone sees it happen"],
       payoff: "the wheel almost folds under the truck",
       core_trigger: "the axle visibly gives way while the truck is still under load",
@@ -659,6 +678,7 @@ async function runSuccessfulPipeline(options?: {
       slang_to_adapt: ["cooked"],
       hidden_detail: "Several viewers noticed the axle was already bent before the last push.",
       generic_risks: ["calling it just a tool failure", "describing it as vague chaos"],
+      uncertainty_notes: [],
       raw_summary: "An old pickup bucks through a muddy rut until the axle twists sideways."
     },
     {
@@ -1269,6 +1289,142 @@ test("youtube comment extraction args stop yt-dlp at the top 300 comments", () =
   assert.deepEqual(buildLimitedCommentsExtractorArgs("https://www.instagram.com/reel/abc123/"), []);
 });
 
+test("adaptive frame sampling expands clip coverage while staying bounded by clip length", () => {
+  const shortPlan = buildAdaptiveFramePlan(7);
+  const mediumPlan = buildAdaptiveFramePlan(22);
+  const longPlan = buildAdaptiveFramePlan(95);
+
+  assert.equal(shortPlan.length, 4);
+  assert.equal(mediumPlan.length, 6);
+  assert.equal(longPlan.length, 12);
+  assert.ok(shortPlan[0]?.timestampSec < shortPlan[shortPlan.length - 1]!.timestampSec);
+  assert.ok(mediumPlan.every((entry, index) => index === 0 || entry.timestampSec > mediumPlan[index - 1]!.timestampSec));
+  assert.ok(longPlan.every((entry) => entry.timestampSec > 0));
+  assert.match(longPlan[0]?.description ?? "", /opening setup/);
+  assert.match(longPlan[longPlan.length - 1]?.description ?? "", /late aftermath/);
+});
+
+test("main Stage 2 runtime video context carries transcript and richer frame timeline when available", () => {
+  const runtimeContext = buildStage2RuntimeVideoContext({
+    sourceUrl: "https://example.com/clip",
+    title: "Clip title",
+    description: "Clip description",
+    transcript: "This is the spoken line that clarifies the late reveal.",
+    comments: [{ author: "viewer", likes: 8, text: "that reveal is nasty" }],
+    frameDescriptions: buildAdaptiveFramePlan(18).map((entry) => entry.description),
+    userInstruction: "Keep the narrator grounded."
+  });
+
+  assert.match(runtimeContext.transcript, /late reveal/);
+  assert.equal(runtimeContext.frameDescriptions.length, 6);
+  assert.match(runtimeContext.frameDescriptions[0] ?? "", /opening setup/);
+  assert.match(runtimeContext.frameDescriptions[runtimeContext.frameDescriptions.length - 1] ?? "", /late aftermath/);
+});
+
+test("yt-dlp caption metadata is converted into transcript text for Stage 2 when captions are available", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        events: [
+          { segs: [{ utf8: "The crowd hears the crack" }] },
+          { segs: [{ utf8: "right before the wheel folds." }] }
+        ]
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const transcript = await fetchTranscriptFromYtDlpInfo({
+      language: "en",
+      automatic_captions: {
+        en: [{ ext: "json3", url: "https://example.com/captions.json3" }]
+      }
+    });
+    assert.match(transcript, /The crowd hears the crack/);
+    assert.match(transcript, /wheel folds/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("yt-dlp metadata reader loads comments from a separate comments artifact when info json omits them", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "clips-comments-artifact-"));
+
+  try {
+    await Promise.all([
+      writeFile(
+        path.join(tmpDir, "metadata.info.json"),
+        JSON.stringify({
+          title: "Artifact-backed clip",
+          description: "Description from info json"
+        }),
+        "utf-8"
+      ),
+      writeFile(
+        path.join(tmpDir, "metadata.comments.json"),
+        JSON.stringify({
+          comments: [
+            { id: "comment_1", author: "user_1", text: "first comment", like_count: 7 },
+            { id: "comment_2", author: "user_2", text: "second comment", like_count: 2 }
+          ]
+        }),
+        "utf-8"
+      )
+    ]);
+
+    const resolved = await readYtDlpMetadataArtifacts(tmpDir, "metadata");
+    assert.equal(resolved.infoJson?.title, "Artifact-backed clip");
+    assert.deepEqual(resolved.comments, [
+      { id: "comment_1", author: "user_1", text: "first comment", like_count: 7 },
+      { id: "comment_2", author: "user_2", text: "second comment", like_count: 2 }
+    ]);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("yt-dlp metadata reader prefers metadata info json over source download info json when both exist", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "clips-comments-metadata-"));
+
+  try {
+    await Promise.all([
+      writeFile(
+        path.join(tmpDir, "source.info.json"),
+        JSON.stringify({
+          title: "Downloaded title",
+          description: "Download path metadata",
+          comments: []
+        }),
+        "utf-8"
+      ),
+      writeFile(
+        path.join(tmpDir, "metadata.info.json"),
+        JSON.stringify({
+          title: "Comments probe title",
+          description: "Metadata probe description",
+          comments: [{ id: "comment_1", author: "user_1", text: "preferred comment" }]
+        }),
+        "utf-8"
+      )
+    ]);
+
+    const preferredInfo = pickPreferredYtDlpInfoJsonFile(
+      ["source.info.json", "metadata.info.json"],
+      "metadata"
+    );
+    assert.equal(preferredInfo, "metadata.info.json");
+
+    const resolved = await readYtDlpMetadataArtifacts(tmpDir, "metadata");
+    assert.equal(resolved.infoJson?.title, "Comments probe title");
+    assert.deepEqual(resolved.comments, [
+      { id: "comment_1", author: "user_1", text: "preferred comment" }
+    ]);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test("channel manager adds a dedicated Default settings target only for owners", () => {
   const channels = [
     makeChannelForManager({ id: "alpha", name: "Alpha Channel", username: "alpha" }),
@@ -1781,12 +1937,12 @@ test("stage 2 pipeline returns a shortlist for human pick using selector-chosen 
   assert.equal(result.diagnostics.examples.selectorCandidateCount, 5);
   assert.equal(result.diagnostics.examples.selectedExamples.length, 3);
   assert.deepEqual(
-    result.diagnostics.examples.selectedExamples.map((example) => example.title),
+    result.diagnostics.examples.selectedExamples.map((example) => example.title).sort(),
     [
-      "Truck axle snaps in the mud",
       "Crowd reacts when the wheel folds",
       "Driver keeps rolling after the first wobble",
-    ]
+      "Truck axle snaps in the mud",
+    ].sort()
   );
 });
 
@@ -3049,6 +3205,9 @@ test("selector prompt compacts examples instead of embedding full transcript-hea
       action: "twists",
       setting: "field",
       firstSecondsSignal: "signal",
+      sceneBeats: ["opening setup", "mid clip escalation", "late payoff"],
+      revealMoment: "late payoff",
+      lateClipChange: "the later frame makes the failure obvious",
       stakes: ["danger"],
       payoff: "payoff",
       coreTrigger: "trigger",
@@ -3061,6 +3220,7 @@ test("selector prompt compacts examples instead of embedding full transcript-hea
       extractableSlang: ["cooked"],
       hiddenDetail: "detail",
       genericRisks: ["risk"],
+      uncertaintyNotes: ["uncertain late detail"],
       rawSummary: "summary"
     },
     selectorOutput: {
@@ -3103,6 +3263,59 @@ test("selector prompt compacts examples instead of embedding full transcript-hea
 
   assert.match(packet.prompts.selector, /availableExamples/);
   assert.doesNotMatch(packet.prompts.selector, /TRANSCRIPT SHOULD NOT APPEAR/);
+});
+
+test("analyzer prompt carries transcript support and sequence-aware frame coverage without exploding frame count", () => {
+  const framePlan = buildAdaptiveFramePlan(38);
+  const prompt = buildAnalyzerPrompt(
+    {
+      channelId: "target",
+      name: "Target Channel",
+      username: "target_channel",
+      hardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      examplesSource: "workspace_default"
+    },
+    buildVideoContext({
+      sourceUrl: "https://example.com/short",
+      title: "A truck slowly loses the axle while the crowd realizes it late.",
+      description: "The early frames hide the failure and the last frames expose it.",
+      transcript: "Everybody hears the crack before the wheel finally folds under the truck.",
+      frameDescriptions: framePlan.map((entry) => entry.description),
+      comments: [{ author: "viewer", likes: 4, text: "that crack told the whole story" }]
+    }),
+    {
+      visualAnchors: ["axle", "rut"],
+      specificNouns: ["truck", "axle"],
+      visibleActions: ["leans", "folds"],
+      subject: "truck",
+      action: "leans",
+      setting: "muddy trail",
+      firstSecondsSignal: "the truck already looks unstable",
+      sceneBeats: framePlan.slice(0, 4).map((entry) => entry.description),
+      revealMoment: "the wheel folds at the end",
+      lateClipChange: "the hidden failure becomes obvious later",
+      stakes: ["danger"],
+      payoff: "the wheel folds under load",
+      coreTrigger: "the late visible failure",
+      humanStake: "everyone watching knows the driver pushed too long",
+      narrativeFrame: "a failure that only becomes obvious later",
+      whyViewerCares: "the viewer waits for the reveal to fully land",
+      bestBottomEnergy: "dry humor",
+      commentVibe: "crowd reaction",
+      slangToAdapt: ["cooked"],
+      extractableSlang: ["cooked"],
+      hiddenDetail: "the crack arrives before the collapse",
+      genericRisks: ["generic failure talk"],
+      uncertaintyNotes: ["far background details remain ambiguous"],
+      rawSummary: "The truck looks unstable early and the axle failure becomes obvious only near the end."
+    },
+    normalizeStage2PromptConfig({})
+  );
+
+  assert.match(prompt, /Everybody hears the crack/);
+  assert.match(prompt, /opening setup/);
+  assert.match(prompt, /late aftermath/);
+  assert.ok((prompt.match(/frame \d+:/g) ?? []).length <= 12);
 });
 
 test("selector prompt uses a curated prompt pool instead of the entire active corpus", () => {
@@ -3196,8 +3409,12 @@ test("default prompt templates expose the new analyzer and selector contracts", 
 
   assert.match(analyzerResolved.defaultPrompt, /specific_nouns/);
   assert.match(analyzerResolved.defaultPrompt, /visible_actions/);
+  assert.match(analyzerResolved.defaultPrompt, /scene_beats/);
+  assert.match(analyzerResolved.defaultPrompt, /reveal_moment/);
+  assert.match(analyzerResolved.defaultPrompt, /uncertainty_notes/);
   assert.match(analyzerResolved.defaultPrompt, /core_trigger/);
   assert.match(analyzerResolved.defaultPrompt, /best_bottom_energy/);
+  assert.match(analyzerResolved.defaultPrompt, /Sequence Awareness Rule/);
   assert.match(selectorResolved.defaultPrompt, /primary_angle/);
   assert.match(selectorResolved.defaultPrompt, /top_strategy/);
   assert.match(selectorResolved.defaultPrompt, /why_old_v6_would_work_here/);
@@ -3935,6 +4152,47 @@ test("pickPreferredSourceJobId reconnects the UI to the active durable source jo
 
   assert.equal(pickPreferredSourceJobId(jobs, null), "job_active");
   assert.equal(pickPreferredSourceJobId(jobs, "job_done"), "job_done");
+});
+
+test("new source fetch only reuses active chat when the draft url still targets that same chat", () => {
+  assert.equal(
+    shouldReuseActiveChatForSourceFetch({
+      activeChatId: "chat_active",
+      activeChatUrl: "https://example.com/current",
+      draftUrl: "https://example.com/current"
+    }),
+    true
+  );
+  assert.equal(
+    shouldReuseActiveChatForSourceFetch({
+      activeChatId: "chat_active",
+      activeChatUrl: "https://example.com/current",
+      draftUrl: "https://example.com/new"
+    }),
+    false
+  );
+  assert.equal(
+    resolveSourceFetchBlockedReason({
+      activeChannelId: "channel_1",
+      fetchSourceAvailable: true,
+      fetchSourceBlockedReason: null,
+      reusesActiveChat: false,
+      hasActiveSourceJob: false,
+      hasActiveStage2Run: true
+    }),
+    null
+  );
+  assert.equal(
+    resolveSourceFetchBlockedReason({
+      activeChannelId: "channel_1",
+      fetchSourceAvailable: true,
+      fetchSourceBlockedReason: null,
+      reusesActiveChat: true,
+      hasActiveSourceJob: false,
+      hasActiveStage2Run: true
+    }),
+    "Для этого чата уже идёт Stage 2. Дождитесь завершения перед новым получением источника."
+  );
 });
 
 test("step 1 shows attached source job as neutral live state instead of repeating a red blocking error", () => {

@@ -74,7 +74,9 @@ import {
 import {
   getSourceJobElapsedMs,
   isSourceJobActive,
-  pickPreferredSourceJobId
+  pickPreferredSourceJobId,
+  resolveSourceFetchBlockedReason,
+  shouldReuseActiveChatForSourceFetch
 } from "../lib/source-job-client";
 import {
   STAGE3_TEMPLATE_ID
@@ -1941,7 +1943,12 @@ export default function HomePage() {
     url: string;
     trigger: "fetch" | "comments";
     autoRunStage2: boolean;
-  }): Promise<{ chat: ChatThread; job: SourceJobDetail; reused: boolean }> => {
+  }): Promise<{
+    chat: ChatThread;
+    job: SourceJobDetail | null;
+    reused: boolean;
+    activeStage2Run: Stage2RunDetail | null;
+  }> => {
     const response = await fetch("/api/pipeline/source", {
       method: "POST",
       headers: {
@@ -1961,6 +1968,7 @@ export default function HomePage() {
         error?: string;
         chat?: ChatThread;
         job?: SourceJobDetail;
+        run?: Stage2RunDetail;
       };
       if (body.error === "source_job_already_active" && body.chat && body.job) {
         setSourceJobId(body.job.jobId);
@@ -1969,7 +1977,21 @@ export default function HomePage() {
           const deduped = current.filter((item) => item.jobId !== body.job!.jobId);
           return [body.job!, ...deduped].slice(0, 20);
         });
-        return { chat: body.chat, job: body.job, reused: true };
+        return { chat: body.chat, job: body.job, reused: true, activeStage2Run: null };
+      }
+      if (body.error === "stage2_run_already_active" && body.chat && body.run) {
+        setStage2RunId(body.run.runId);
+        setStage2RunDetail(body.run);
+        setStage2Runs((current) => {
+          const deduped = current.filter((item) => item.runId !== body.run!.runId);
+          return [body.run!, ...deduped].slice(0, 20);
+        });
+        await Promise.allSettled([
+          refreshActiveChat(body.chat.id),
+          refreshStage2RunsForChat(body.chat.id),
+          refreshChats()
+        ]);
+        return { chat: body.chat, job: null, reused: true, activeStage2Run: body.run };
       }
       if (body.error === "stage2_run_already_active") {
         throw new Error("В этом чате уже идёт Stage 2. Дождитесь завершения перед новым получением источника.");
@@ -1995,7 +2017,7 @@ export default function HomePage() {
       refreshSourceJobsForChat(body.chat.id),
       refreshChats()
     ]);
-    return { chat: body.chat, job: body.job, reused: false };
+    return { chat: body.chat, job: body.job, reused: false, activeStage2Run: null };
   };
 
   const runStage2ForChat = async (
@@ -2114,22 +2136,29 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const reuseActiveChat = Boolean(activeChat?.id && activeChat.url.trim() === url);
-      const { chat, job, reused } = await enqueueSourceJobForChat({
-        chatId: reuseActiveChat ? activeChat?.id ?? null : null,
+      const { chat, job, reused, activeStage2Run } = await enqueueSourceJobForChat({
+        chatId: sourceFetchReusesActiveChat ? activeChat?.id ?? null : null,
         channelId: activeChannelId,
         url,
         trigger: "fetch",
         autoRunStage2: codexLoggedIn
       });
       setDraftUrl("");
-      await hydrateChatLiveState(chat.id);
+      await hydrateChatLiveState(chat.id, {
+        preferredStep: activeStage2Run ? 2 : 1
+      });
+      if (activeStage2Run) {
+        setCurrentStep(2);
+        setStatusType("ok");
+        setStatus("Для этого источника уже идёт Stage 2. Подключился к существующему чату и run.");
+        return;
+      }
       setCurrentStep(1);
       setStatusType("ok");
       setStatus(
         reused
           ? "Для этого чата уже идёт получение источника. Подключился к существующему процессу."
-          : job.progress.detail ??
+          : job?.progress.detail ??
             (codexLoggedIn
               ? "Получение источника запущено. Step 2 стартует автоматически после завершения Step 1."
               : "Получение источника запущено. Можно переключаться между чатами и вернуться позже.")
@@ -2248,13 +2277,21 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const { reused } = await enqueueSourceJobForChat({
+      const { chat: refreshedChat, reused, activeStage2Run } = await enqueueSourceJobForChat({
         chatId: chat.id,
         url: chat.url,
         trigger: "comments",
         autoRunStage2: false
       });
-      await hydrateChatLiveState(chat.id);
+      await hydrateChatLiveState(refreshedChat.id, {
+        preferredStep: activeStage2Run ? 2 : 1
+      });
+      if (activeStage2Run) {
+        setCurrentStep(2);
+        setStatusType("ok");
+        setStatus("Для этого источника уже идёт Stage 2. Подключился к существующему чату и run.");
+        return;
+      }
       setStatusType("ok");
       setStatus(
         reused
@@ -3183,6 +3220,15 @@ export default function HomePage() {
     () => isStage2RunActive(selectedStage2RunDetail ?? selectedStage2RunSummary),
     [selectedStage2RunDetail, selectedStage2RunSummary]
   );
+  const sourceFetchReusesActiveChat = useMemo(
+    () =>
+      shouldReuseActiveChatForSourceFetch({
+        activeChatId: activeChat?.id ?? null,
+        activeChatUrl: activeChat?.url ?? null,
+        draftUrl
+      }),
+    [activeChat?.id, activeChat?.url, draftUrl]
+  );
   useEffect(() => {
     if (!activeChat) {
       return;
@@ -3196,25 +3242,21 @@ export default function HomePage() {
     }
   }, [activeChat, isSourceJobVisibleRunning, isStage2RunVisibleRunning]);
   const sourceJobBlockedReason = useMemo(() => {
-    if (!activeChannelId) {
-      return "Сначала создайте или выберите канал.";
-    }
-    if (!fetchSourceAvailable) {
-      return fetchSourceBlockedReason ?? "Source fetch is unavailable on this deployment.";
-    }
-    if (isSourceJobVisibleRunning) {
-      return "Для этого чата уже идёт получение источника.";
-    }
-    if (isStage2RunVisibleRunning) {
-      return "Для этого чата уже идёт Stage 2. Дождитесь завершения перед новым получением источника.";
-    }
-    return null;
+    return resolveSourceFetchBlockedReason({
+      activeChannelId,
+      fetchSourceAvailable,
+      fetchSourceBlockedReason,
+      reusesActiveChat: sourceFetchReusesActiveChat,
+      hasActiveSourceJob: isSourceJobVisibleRunning,
+      hasActiveStage2Run: isStage2RunVisibleRunning
+    });
   }, [
+    activeChannelId,
     fetchSourceAvailable,
     fetchSourceBlockedReason,
-    activeChannelId,
     isSourceJobVisibleRunning,
-    isStage2RunVisibleRunning
+    isStage2RunVisibleRunning,
+    sourceFetchReusesActiveChat
   ]);
   const canFetchSourceForActiveChat = useMemo(
     () => Boolean(activeChannelId) && !sourceJobBlockedReason && !isSourceEnqueueing,

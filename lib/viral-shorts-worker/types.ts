@@ -122,6 +122,9 @@ export type AnalyzerOutput = {
   action: string;
   setting: string;
   firstSecondsSignal: string;
+  sceneBeats: string[];
+  revealMoment: string;
+  lateClipChange: string;
   stakes: string[];
   payoff: string;
   coreTrigger: string;
@@ -134,6 +137,7 @@ export type AnalyzerOutput = {
   extractableSlang: string[];
   hiddenDetail: string;
   genericRisks: string[];
+  uncertaintyNotes: string[];
   rawSummary: string;
 };
 

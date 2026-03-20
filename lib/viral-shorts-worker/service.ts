@@ -54,6 +54,9 @@ const ANALYZER_SCHEMA = {
     "visual_anchors",
     "subject",
     "setting",
+    "scene_beats",
+    "reveal_moment",
+    "late_clip_change",
     "stakes",
     "payoff",
     "core_trigger",
@@ -83,6 +86,12 @@ const ANALYZER_SCHEMA = {
     action: { type: "string", minLength: 1 },
     setting: { type: "string", minLength: 1 },
     first_seconds_signal: { type: "string", minLength: 1 },
+    scene_beats: {
+      type: "array",
+      items: { type: "string", minLength: 1 }
+    },
+    reveal_moment: { type: "string", minLength: 1 },
+    late_clip_change: { type: "string", minLength: 1 },
     stakes: { type: "array", items: { type: "string", minLength: 1 } },
     payoff: { type: "string", minLength: 1 },
     core_trigger: { type: "string", minLength: 1 },
@@ -95,6 +104,10 @@ const ANALYZER_SCHEMA = {
     extractable_slang: { type: "array", items: { type: "string", minLength: 1 } },
     hidden_detail: { type: "string", minLength: 1 },
     generic_risks: {
+      type: "array",
+      items: { type: "string", minLength: 1 }
+    },
+    uncertainty_notes: {
       type: "array",
       items: { type: "string", minLength: 1 }
     },
@@ -371,6 +384,11 @@ function normalizeAnalyzerOutput(raw: unknown, fallback: AnalyzerOutput): Analyz
     : Array.isArray(obj.visibleActions)
       ? obj.visibleActions
       : fallback.visibleActions;
+  const sceneBeatsRaw = Array.isArray(obj.scene_beats)
+    ? obj.scene_beats
+    : Array.isArray(obj.sceneBeats)
+      ? obj.sceneBeats
+      : fallback.sceneBeats;
   const slangToAdaptRaw = Array.isArray(obj.slang_to_adapt)
     ? obj.slang_to_adapt
     : Array.isArray(obj.extractable_slang)
@@ -402,6 +420,16 @@ function normalizeAnalyzerOutput(raw: unknown, fallback: AnalyzerOutput): Analyz
     firstSecondsSignal:
       String(obj.first_seconds_signal ?? obj.firstSecondsSignal ?? fallback.firstSecondsSignal).trim() ||
       fallback.firstSecondsSignal,
+    sceneBeats: sceneBeatsRaw
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 8),
+    revealMoment:
+      String(obj.reveal_moment ?? obj.revealMoment ?? fallback.revealMoment).trim() ||
+      fallback.revealMoment,
+    lateClipChange:
+      String(obj.late_clip_change ?? obj.lateClipChange ?? fallback.lateClipChange).trim() ||
+      fallback.lateClipChange,
     stakes: (Array.isArray(obj.stakes) ? obj.stakes : fallback.stakes)
       .map((value) => String(value ?? "").trim())
       .filter(Boolean),
@@ -439,6 +467,16 @@ function normalizeAnalyzerOutput(raw: unknown, fallback: AnalyzerOutput): Analyz
       .map((value) => String(value ?? "").trim())
       .filter(Boolean)
       .slice(0, 6),
+    uncertaintyNotes: (
+      Array.isArray(obj.uncertainty_notes)
+        ? obj.uncertainty_notes
+        : Array.isArray(obj.uncertaintyNotes)
+          ? obj.uncertaintyNotes
+          : fallback.uncertaintyNotes
+    )
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 5),
     rawSummary:
       String(obj.raw_summary ?? obj.rawSummary ?? fallback.rawSummary).trim() ||
       fallback.rawSummary
@@ -455,6 +493,9 @@ function buildCorpusQueryText(videoContext: ViralShortsVideoContext, analyzerOut
     analyzerOutput.specificNouns.join(" "),
     analyzerOutput.visibleActions.join(" "),
     analyzerOutput.firstSecondsSignal,
+    analyzerOutput.sceneBeats.join(" "),
+    analyzerOutput.revealMoment,
+    analyzerOutput.lateClipChange,
     analyzerOutput.stakes.join(" "),
     analyzerOutput.payoff,
     analyzerOutput.coreTrigger,
@@ -463,6 +504,7 @@ function buildCorpusQueryText(videoContext: ViralShortsVideoContext, analyzerOut
     analyzerOutput.whyViewerCares,
     analyzerOutput.bestBottomEnergy,
     analyzerOutput.hiddenDetail,
+    analyzerOutput.uncertaintyNotes.join(" "),
     analyzerOutput.slangToAdapt.join(" ")
   ]
     .map((value) => value.trim())
@@ -1964,7 +2006,7 @@ export class ViralShortsWorkerService {
       state: "running",
       promptChars: analyzerPrompt.length,
       reasoningEffort: analyzerReasoningEffort,
-      detail: "Разбираем кадры, title и комментарии."
+      detail: `Разбираем ${input.imagePaths.length} sampled frames, transcript и комментарии как короткую последовательность.`
     });
 
     let analyzerOutput = heuristicOutput;
@@ -1983,7 +2025,7 @@ export class ViralShortsWorkerService {
         durationMs: Date.now() - analyzerStartedAt,
         promptChars: analyzerPrompt.length,
         reasoningEffort: analyzerReasoningEffort,
-        detail: `Нашли ${analyzerOutput.visualAnchors.length} visual anchors.`
+        detail: `Нашли ${analyzerOutput.visualAnchors.length} visual anchors across ${input.imagePaths.length} sampled beats.`
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Analyzer fallback used.";

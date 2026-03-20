@@ -201,10 +201,10 @@ export function heuristicAnalyzer(videoContext: {
   const anchors = (videoContext.visualAnchors ?? [])
     .map((value) => compact(value))
     .filter(Boolean)
-    .slice(0, 3);
+    .slice(0, 5);
 
   const fallbackAnchors = [title, transcript, description].filter(Boolean).slice(0, 3);
-  const visualAnchors = (anchors.length > 0 ? anchors : fallbackAnchors).slice(0, 3);
+  const visualAnchors = (anchors.length > 0 ? anchors : fallbackAnchors).slice(0, 5);
   const subject = title.split(" ")[0] || "subject";
   const action =
     combined.match(/[A-Za-z0-9'-]+ing\b/)?.[0] ??
@@ -271,6 +271,10 @@ export function heuristicAnalyzer(videoContext: {
   ).slice(0, 5);
 
   const firstSecondsSignal = visualAnchors[0] || title || "visible setup";
+  const sceneBeats =
+    anchors.length > 0
+      ? anchors.slice(0, 6)
+      : [firstSecondsSignal, title || description || "mid-clip development", "visible payoff"].filter(Boolean).slice(0, 4);
   const hiddenDetail = comments.map((comment) => compact(comment)).find(Boolean) ?? "";
   const genericRisks = [
     "generic nouns that ignore what is visibly on screen",
@@ -300,6 +304,14 @@ export function heuristicAnalyzer(videoContext: {
           ? "a scale contrast that makes the clip feel bigger than normal"
           : "a grounded moment where the viewer quickly understands why it matters";
   const whyViewerCares = humanStake;
+  const revealMoment =
+    sceneBeats[sceneBeats.length - 1] ||
+    title ||
+    "the moment where the clip's meaning becomes obvious";
+  const lateClipChange =
+    sceneBeats.length >= 2
+      ? sceneBeats[sceneBeats.length - 1] ?? "later frames reveal the main change"
+      : revealMoment;
   const bestBottomEnergy =
     commentVibe === "sarcastic amusement"
       ? "sarcasm"
@@ -321,6 +333,9 @@ export function heuristicAnalyzer(videoContext: {
     action,
     setting,
     firstSecondsSignal,
+    sceneBeats,
+    revealMoment,
+    lateClipChange,
     stakes,
     payoff: title || description.slice(0, 140),
     coreTrigger,
@@ -333,6 +348,10 @@ export function heuristicAnalyzer(videoContext: {
     extractableSlang,
     hiddenDetail,
     genericRisks,
+    uncertaintyNotes:
+      anchors.length >= 4
+        ? []
+        : ["Only partial frame coverage is available, so subtle late-clip details may still be under-observed."],
     rawSummary: combined.slice(0, 500)
   };
 }

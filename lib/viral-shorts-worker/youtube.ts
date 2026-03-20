@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { fetchTranscriptFromYtDlpInfo, type YtDlpCaptionInfo } from "../youtube-captions";
 import { bestClipTypeForExample, computeQualityScore, deriveWhyItWorks, isAntiExample } from "./analysis";
 import { SourceVideoRecord, VideoSnapshot } from "./types";
 import { compact, isoformat, nowUtc, parseIso, parseUploadDate } from "./utils";
@@ -12,7 +13,7 @@ import { resolveYtDlpExecutable } from "../source-acquisition";
 const execFileAsync = promisify(execFile);
 const OCR_SCRIPT_PATH = path.join(process.cwd(), "scripts", "viral-shorts-ocr.swift");
 
-type YtDlpInfo = {
+type YtDlpInfo = YtDlpCaptionInfo & {
   id?: unknown;
   title?: unknown;
   description?: unknown;
@@ -22,9 +23,6 @@ type YtDlpInfo = {
   duration?: unknown;
   view_count?: unknown;
   like_count?: unknown;
-  language?: unknown;
-  subtitles?: Record<string, Array<{ ext?: unknown; url?: unknown }>> | null;
-  automatic_captions?: Record<string, Array<{ ext?: unknown; url?: unknown }>> | null;
 };
 
 function asString(value: unknown): string {
@@ -110,96 +108,8 @@ export async function fetchVideoInfo(videoUrl: string): Promise<Record<string, u
   ]);
 }
 
-function chooseCaptionUrl(info: YtDlpInfo): string | null {
-  const subtitles = info.subtitles ?? {};
-  const automatic = info.automatic_captions ?? {};
-  const preferred = [asString(info.language), "en", "en-US", "ru", "ru-RU"].filter(Boolean);
-
-  for (const key of preferred) {
-    const entries = subtitles[key] ?? automatic[key];
-    if (!entries) {
-      continue;
-    }
-    for (const entry of entries) {
-      const ext = asString(entry.ext);
-      const url = asString(entry.url);
-      if (url && ["json3", "vtt", "srv3"].includes(ext)) {
-        return url;
-      }
-    }
-  }
-
-  for (const pool of [subtitles, automatic]) {
-    for (const entries of Object.values(pool)) {
-      for (const entry of entries ?? []) {
-        const ext = asString(entry.ext);
-        const url = asString(entry.url);
-        if (url && ["json3", "vtt", "srv3"].includes(ext)) {
-          return url;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-function vttToText(payload: string): string {
-  const lines: string[] = [];
-  const seen = new Set<string>();
-  for (const rawLine of payload.split("\n")) {
-    const line = compact(rawLine);
-    if (!line || line === "WEBVTT" || line.includes("-->") || line.startsWith("Kind:") || line.startsWith("Language:")) {
-      continue;
-    }
-    if (!seen.has(line)) {
-      seen.add(line);
-      lines.push(line);
-    }
-  }
-  return compact(lines.join(" "));
-}
-
-function json3ToText(payload: string): string {
-  const data = JSON.parse(payload) as {
-    events?: Array<{ segs?: Array<{ utf8?: string }> }>;
-  };
-  const lines: string[] = [];
-  const seen = new Set<string>();
-  for (const event of data.events ?? []) {
-    for (const segment of event.segs ?? []) {
-      const value = compact(asString(segment.utf8).replace(/\n/g, " "));
-      if (value && !seen.has(value)) {
-        seen.add(value);
-        lines.push(value);
-      }
-    }
-  }
-  return compact(lines.join(" "));
-}
-
 export async function fetchTranscript(info: YtDlpInfo): Promise<string> {
-  const captionUrl = chooseCaptionUrl(info);
-  if (!captionUrl) {
-    return "";
-  }
-
-  try {
-    const response = await fetch(captionUrl, { cache: "no-store" });
-    if (!response.ok) {
-      return "";
-    }
-    const payload = await response.text();
-    if (payload.startsWith("WEBVTT")) {
-      return vttToText(payload);
-    }
-    if (payload.trim().startsWith("{")) {
-      return json3ToText(payload);
-    }
-    return compact(payload);
-  } catch {
-    return "";
-  }
+  return fetchTranscriptFromYtDlpInfo(info);
 }
 
 type OcrResult = {
