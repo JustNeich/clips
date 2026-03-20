@@ -9,7 +9,6 @@ export type HardConstraints = {
   topLengthMax: number;
   bottomLengthMin: number;
   bottomLengthMax: number;
-  bottomQuoteRequired: boolean;
   bannedWords: string[];
   bannedOpeners: string[];
 };
@@ -348,6 +347,18 @@ export type Stage2Diagnostics = {
     writerBrief: string;
     rationale: string | null;
     selectedExampleIds: string[];
+  };
+  analysis: {
+    visualAnchors: string[];
+    specificNouns: string[];
+    visibleActions: string[];
+    firstSecondsSignal: string;
+    sceneBeats: string[];
+    revealMoment: string;
+    lateClipChange: string;
+    commentVibe: string;
+    uncertaintyNotes: string[];
+    rawSummary: string;
   };
   effectivePrompting: {
     promptStages: Stage2DiagnosticsPromptStage[];

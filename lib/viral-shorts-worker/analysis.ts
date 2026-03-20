@@ -246,6 +246,9 @@ export function heuristicAnalyzer(videoContext: {
     } else {
       commentVibe = "observational reaction";
     }
+  } else {
+    commentVibe =
+      "Comments unavailable; infer the energy from the visual sequence and transcript instead of pretending there was a real comment consensus.";
   }
 
   const extractableSlang = Array.from(
@@ -280,6 +283,9 @@ export function heuristicAnalyzer(videoContext: {
     "generic nouns that ignore what is visibly on screen",
     "abstract narration that skips the visible action"
   ];
+  if (!commentBlob) {
+    genericRisks.push("inventing comment-section consensus when comments are unavailable");
+  }
   const coreTrigger =
     title ||
     visualAnchors[0] ||

@@ -75,6 +75,11 @@ export type ChatTraceExport = {
     selectedRunId: string | null;
     currentResult: Stage2Response | null;
     currentProgress: Stage2Response["progress"] | null;
+    analysis: Stage2Response["diagnostics"] extends infer T
+      ? T extends { analysis?: infer U }
+        ? U | null
+        : null
+      : null;
     effectivePrompting: Stage2Response["diagnostics"] extends infer T
       ? T extends { effectivePrompting?: infer U }
         ? U | null
@@ -367,6 +372,7 @@ export async function buildChatTraceExport(
       selectedRunId: selectedRun?.runId ?? null,
       currentResult: sanitizedCurrentStage2,
       currentProgress: sanitizedCurrentStage2?.progress ?? selectedRun?.snapshot ?? null,
+      analysis: sanitizedCurrentStage2?.diagnostics?.analysis ?? null,
       effectivePrompting: sanitizedCurrentStage2?.diagnostics?.effectivePrompting ?? null,
       examples: sanitizedCurrentStage2?.diagnostics?.examples ?? null,
       selection: sanitizedCurrentStage2?.diagnostics?.selection ?? null,

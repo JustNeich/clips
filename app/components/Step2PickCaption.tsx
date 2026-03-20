@@ -116,6 +116,26 @@ function formatRunModeLabel(mode: Stage2RunSummary["mode"]): string {
   return "full";
 }
 
+function formatStageProgressStatusLabel(input: {
+  stepState: NonNullable<Stage2Response["progress"]>["steps"][number]["state"];
+  progressStatus: NonNullable<Stage2Response["progress"]>["status"];
+  blockedAfterFailure: boolean;
+}): string {
+  if (input.blockedAfterFailure) {
+    return "Не запускался";
+  }
+  if (input.stepState === "running") {
+    return "Идёт";
+  }
+  if (input.stepState === "completed") {
+    return "Готов";
+  }
+  if (input.stepState === "failed") {
+    return "Ошибка";
+  }
+  return input.progressStatus === "queued" ? "В очереди" : "Ожидает запуска";
+}
+
 function formatExamplesSourceLabel(value: "workspace_default" | "channel_custom"): string {
   return value === "channel_custom" ? "channel custom" : "workspace default";
 }
@@ -272,6 +292,7 @@ export function normalizeStage2DiagnosticsForView(
   const selectionCandidate = asObject(candidate.selection);
   const promptingCandidate = asObject(candidate.effectivePrompting);
   const examplesCandidate = asObject(candidate.examples);
+  const analysisCandidate = asObject(candidate.analysis);
   const legacyRetrieval = asObject(candidate.retrieval);
 
   const promptStages = Array.isArray(promptingCandidate?.promptStages)
@@ -336,7 +357,6 @@ export function normalizeStage2DiagnosticsForView(
               topLengthMax: 0,
               bottomLengthMin: 0,
               bottomLengthMax: 0,
-              bottomQuoteRequired: false,
               bannedWords: [],
               bannedOpeners: []
             },
@@ -374,6 +394,18 @@ export function normalizeStage2DiagnosticsForView(
             .map((item) => (typeof item === "string" ? item.trim() : ""))
             .filter(Boolean)
         : []
+    },
+    analysis: {
+      visualAnchors: asStringArray(analysisCandidate?.visualAnchors),
+      specificNouns: asStringArray(analysisCandidate?.specificNouns),
+      visibleActions: asStringArray(analysisCandidate?.visibleActions),
+      firstSecondsSignal: asString(analysisCandidate?.firstSecondsSignal),
+      sceneBeats: asStringArray(analysisCandidate?.sceneBeats),
+      revealMoment: asString(analysisCandidate?.revealMoment),
+      lateClipChange: asString(analysisCandidate?.lateClipChange),
+      commentVibe: asString(analysisCandidate?.commentVibe),
+      uncertaintyNotes: asStringArray(analysisCandidate?.uncertaintyNotes),
+      rawSummary: asString(analysisCandidate?.rawSummary)
     },
     effectivePrompting: {
       promptStages
@@ -448,12 +480,60 @@ export function Stage2RunDiagnosticsPanels({
             </p>
           </article>
           <article className="stage2-insight-card">
+            <span className="field-label">Analyzer</span>
+            <strong>{diagnostics.analysis.sceneBeats.length} beats</strong>
+            <p className="subtle-text">
+              {diagnostics.analysis.revealMoment || diagnostics.analysis.firstSecondsSignal || "sequence read"}
+            </p>
+          </article>
+          <article className="stage2-insight-card">
             <span className="field-label">Custom prompts</span>
             <strong>{overrideCount}</strong>
             <p className="subtle-text">stage prompts отличаются от базовых defaults</p>
           </article>
         </div>
       </section>
+
+      <details className="details-drawer">
+        <summary>
+          <span>Analyzer read</span>
+          <small>Что Stage 2 увидел в последовательности клипа</small>
+        </summary>
+        <div className="details-content">
+          <section className="details-section">
+            <h3>Sequence understanding</h3>
+            {diagnostics.analysis.rawSummary ? (
+              <p className="subtle-text">{diagnostics.analysis.rawSummary}</p>
+            ) : null}
+            {diagnostics.analysis.firstSecondsSignal ? (
+              <p className="subtle-text">Opening signal: {diagnostics.analysis.firstSecondsSignal}</p>
+            ) : null}
+            {diagnostics.analysis.revealMoment ? (
+              <p className="subtle-text">Reveal moment: {diagnostics.analysis.revealMoment}</p>
+            ) : null}
+            {diagnostics.analysis.lateClipChange ? (
+              <p className="subtle-text">Late clip change: {diagnostics.analysis.lateClipChange}</p>
+            ) : null}
+            {diagnostics.selection.coreTrigger ? (
+              <p className="subtle-text">Core trigger: {diagnostics.selection.coreTrigger}</p>
+            ) : null}
+            {diagnostics.selection.whyViewerCares ? (
+              <p className="subtle-text">Why viewer cares: {diagnostics.selection.whyViewerCares}</p>
+            ) : null}
+            {diagnostics.analysis.commentVibe ? (
+              <p className="subtle-text">Comment read: {diagnostics.analysis.commentVibe}</p>
+            ) : null}
+            {diagnostics.analysis.sceneBeats.length > 0 ? (
+              <p className="subtle-text">Scene beats: {diagnostics.analysis.sceneBeats.join(" · ")}</p>
+            ) : null}
+            {diagnostics.analysis.uncertaintyNotes.length > 0 ? (
+              <p className="subtle-text">
+                Uncertainty: {diagnostics.analysis.uncertaintyNotes.join(" · ")}
+              </p>
+            ) : null}
+          </section>
+        </div>
+      </details>
 
       <details className="details-drawer">
         <summary>
@@ -675,6 +755,18 @@ export function Step2PickCaption({
       null
     );
   }, [visibleProgress]);
+  const failedProgressStepIndex = useMemo(() => {
+    if (!visibleProgress || visibleProgress.status !== "failed") {
+      return -1;
+    }
+    const explicitFailedIndex = visibleProgress.steps.findIndex((step) => step.state === "failed");
+    if (explicitFailedIndex >= 0) {
+      return explicitFailedIndex;
+    }
+    return visibleProgress.activeStageId
+      ? visibleProgress.steps.findIndex((step) => step.id === visibleProgress.activeStageId)
+      : -1;
+  }, [visibleProgress]);
   const progressRatio = useMemo(
     () => getStage2ProgressRatio(elapsedMs, expectedDurationMs),
     [elapsedMs, expectedDurationMs]
@@ -779,6 +871,8 @@ export function Step2PickCaption({
                     : activeProgressStep
                       ? `Сейчас: ${activeProgressStep.shortLabel}.`
                       : "Идет генерация. Оценка основана на предыдущем успешном запуске."
+                  : visibleProgress?.status === "failed"
+                    ? "Последний запуск остановился на этапе, отмеченном ниже."
                   : visibleProgress?.status === "completed"
                     ? "Последний запуск завершился по шагам ниже."
                     : "Оценка обновляется после каждого успешного запуска второго этапа."}
@@ -794,41 +888,55 @@ export function Step2PickCaption({
                 <ol className="stage2-stage-list" aria-label="Прогресс Stage 2 pipeline">
                   {visibleProgress.steps.map((step, index) => {
                     const isActive = visibleProgress.activeStageId === step.id || step.state === "running";
+                    const blockedAfterFailure =
+                      visibleProgress.status === "failed" &&
+                      failedProgressStepIndex >= 0 &&
+                      index > failedProgressStepIndex &&
+                      step.state === "pending";
+                    const displayState = blockedAfterFailure ? "blocked" : step.state;
+                    const displayStatusLabel = formatStageProgressStatusLabel({
+                      stepState: step.state,
+                      progressStatus: visibleProgress.status,
+                      blockedAfterFailure
+                    });
+                    const displayDetail = blockedAfterFailure
+                      ? "Этот этап не запускался, потому что run завершился ошибкой на предыдущем шаге."
+                      : step.detail;
                     return (
                       <li
                         key={step.id}
-                        className={`stage2-stage-item state-${step.state} ${isActive ? "is-active" : ""}`}
+                        className={`stage2-stage-item state-${displayState} ${isActive ? "is-active" : ""}`}
                         aria-current={isActive ? "step" : undefined}
                       >
                         <div className="stage2-stage-index">{index + 1}</div>
                         <div className="stage2-stage-body">
                           <div className="stage2-stage-head">
                             <strong>{step.shortLabel}</strong>
-                            <span className="subtle-text">{step.label}</span>
+                            <span className="subtle-text">{displayStatusLabel}</span>
                           </div>
                           <p className="subtle-text">{step.description}</p>
                           {step.summary &&
                           step.summary !== step.description &&
-                          step.summary !== step.detail ? (
+                          step.summary !== displayDetail ? (
                             <p className="subtle-text">{step.summary}</p>
                           ) : null}
-                          {step.detail && step.detail !== step.description ? (
-                            isVerboseStageDetail(step.detail) ? (
+                          {displayDetail && displayDetail !== step.description ? (
+                            isVerboseStageDetail(displayDetail) ? (
                               <details className="stage2-stage-detail-toggle">
                                 <summary>
                                   <span>
                                     {step.state === "failed" ? "Показать лог ошибки" : "Показать детали этапа"}
                                   </span>
-                                  {summarizeStageDetail(step.detail) ? (
-                                    <small>{summarizeStageDetail(step.detail)}</small>
+                                  {summarizeStageDetail(displayDetail) ? (
+                                    <small>{summarizeStageDetail(displayDetail)}</small>
                                   ) : null}
                                 </summary>
                                 <div className="stage2-stage-detail-panel">
-                                  <pre className="stage2-stage-detail-log">{step.detail}</pre>
+                                  <pre className="stage2-stage-detail-log">{displayDetail}</pre>
                                 </div>
                               </details>
                             ) : (
-                              <p className="subtle-text">{step.detail}</p>
+                              <p className="subtle-text">{displayDetail}</p>
                             )
                           ) : null}
                         </div>

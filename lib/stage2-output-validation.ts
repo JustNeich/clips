@@ -1,25 +1,30 @@
 import type { Stage2Output } from "../app/components/types";
-import type { Stage2HardConstraints } from "./stage2-channel-config";
+import {
+  DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  type Stage2HardConstraints
+} from "./stage2-channel-config";
 
 export type Stage2ValidationWarning = {
   field: string;
   message: string;
 };
 
+function containsBannedContent(text: string, constraints: Stage2HardConstraints): boolean {
+  const lower = text.toLowerCase();
+  return constraints.bannedWords.some((word) => lower.includes(word.toLowerCase()));
+}
+
+function startsWithBannedOpener(text: string, constraints: Stage2HardConstraints): boolean {
+  const lower = text.trim().toLowerCase();
+  return constraints.bannedOpeners.some((opener) => lower.startsWith(opener.toLowerCase()));
+}
+
 export function validateStage2Output(
   output: Stage2Output,
   constraints?: Stage2HardConstraints | null
 ): Stage2ValidationWarning[] {
   const warnings: Stage2ValidationWarning[] = [];
-  const resolved = constraints ?? {
-    topLengthMin: 140,
-    topLengthMax: 210,
-    bottomLengthMin: 80,
-    bottomLengthMax: 160,
-    bottomQuoteRequired: false,
-    bannedWords: [],
-    bannedOpeners: []
-  };
+  const resolved = constraints ?? DEFAULT_STAGE2_HARD_CONSTRAINTS;
 
   for (const option of output.captionOptions) {
     const topLength = option.top.length;
@@ -43,10 +48,16 @@ export function validateStage2Output(
         message: `BOTTOM length is ${bottomLength}, expected ${resolved.bottomLengthMin}-${resolved.bottomLengthMax}.`
       });
     }
-    if (resolved.bottomQuoteRequired && !option.bottom.includes("\"")) {
+    if (containsBannedContent(option.top, resolved) || containsBannedContent(option.bottom, resolved)) {
       warnings.push({
-        field: `captionOptions.option${option.option}.bottom`,
-        message: "BOTTOM must contain a quoted phrase."
+        field: `captionOptions.option${option.option}.constraintCheck`,
+        message: "Caption contains banned words."
+      });
+    }
+    if (startsWithBannedOpener(option.top, resolved)) {
+      warnings.push({
+        field: `captionOptions.option${option.option}.top`,
+        message: "TOP starts with a banned opener."
       });
     }
   }

@@ -239,7 +239,6 @@ const CRITIC_SCORE_KEYS = [
   "non_ai_feel",
   "paused_frame_accuracy",
   "comment_vibe_authenticity",
-  "quote_first_bottom_compliance",
   "length_compliance",
   "narrative_trigger_strength",
   "context_compression_quality"
@@ -480,6 +479,37 @@ function normalizeAnalyzerOutput(raw: unknown, fallback: AnalyzerOutput): Analyz
     rawSummary:
       String(obj.raw_summary ?? obj.rawSummary ?? fallback.rawSummary).trim() ||
       fallback.rawSummary
+  };
+}
+
+function applyNoCommentsTruthfulnessGuard(
+  analyzerOutput: AnalyzerOutput,
+  commentsAvailable: boolean
+): AnalyzerOutput {
+  if (commentsAvailable) {
+    return analyzerOutput;
+  }
+
+  const noCommentsNote =
+    "Comments were unavailable for this run, so audience vibe should be inferred from the visuals, title, description, and transcript rather than a real comment consensus.";
+  const genericRisks = analyzerOutput.genericRisks.includes(
+    "inventing comment-section consensus when comments are unavailable"
+  )
+    ? analyzerOutput.genericRisks
+    : [
+        ...analyzerOutput.genericRisks,
+        "inventing comment-section consensus when comments are unavailable"
+      ].slice(0, 6);
+  const uncertaintyNotes = analyzerOutput.uncertaintyNotes.includes(noCommentsNote)
+    ? analyzerOutput.uncertaintyNotes
+    : [...analyzerOutput.uncertaintyNotes, noCommentsNote].slice(0, 5);
+
+  return {
+    ...analyzerOutput,
+    commentVibe:
+      "Comments unavailable; lean on the clip's visual sequence and transcript instead of pretending there was a real crowd consensus.",
+    genericRisks,
+    uncertaintyNotes
   };
 }
 
@@ -1072,10 +1102,61 @@ const TOP_PADDING_OPTIONS = [
   "The road already looks like it knows how this ends."
 ];
 const BOTTOM_PADDING_OPTIONS = [
-  "Everybody watching knows who lost that exchange.",
-  "Everybody in that jeep knows exactly who lost that exchange.",
-  "Everybody in that jeep knows exactly who lost that exchange, and the whole road now has to sit with how public that drop was."
+  "And yeah, the whole room feels it immediately.",
+  "That is the part nobody there can shrug off.",
+  "Once that lands, the reaction basically writes itself.",
+  "At that point, everybody in the shot gets the same message."
 ];
+
+function stableTextHash(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function extractSentenceParts(text: string): string[] {
+  return text
+    .split(/(?<=[.!?]["']?)\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function extractBottomTailSegment(text: string): string {
+  const quoted = text.match(/^"[^"]+[.!?]?"/)?.[0];
+  if (quoted) {
+    const remainder = text.slice(quoted.length).trim();
+    if (remainder) {
+      return remainder;
+    }
+  }
+  const parts = extractSentenceParts(text);
+  return parts.length >= 2 ? parts[parts.length - 1] ?? text.trim() : text.trim();
+}
+
+function extractBottomLeadSegment(text: string): string {
+  const quoted = text.match(/^"[^"]+[.!?]?"/)?.[0];
+  if (quoted) {
+    return quoted.trim();
+  }
+  const parts = extractSentenceParts(text);
+  return parts.length >= 2 ? parts.slice(0, -1).join(" ").trim() : text.trim();
+}
+
+function normalizeTextKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/["'`]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildBottomTailKey(text: string): string {
+  const segment = normalizeTextKey(extractBottomTailSegment(text));
+  return segment.length >= 20 ? segment : "";
+}
 
 function truncateToWordBoundary(text: string, maxLength: number): string {
   if (text.length <= maxLength) {
@@ -1124,7 +1205,7 @@ function looksLikeBrokenCaptionEnding(text: string): boolean {
   }
   const words = extractNormalizedWords(value);
   if (words.length <= 4) {
-    return true;
+    return !TERMINAL_PUNCTUATION_PATTERN.test(value);
   }
   const last = words.at(-1) ?? "";
   return DANGLING_END_WORDS.has(last);
@@ -1168,63 +1249,46 @@ function padTextToMinimum(
     return ensureTerminalPunctuation(value, maxLength);
   }
   const glue = TERMINAL_PUNCTUATION_PATTERN.test(value) ? " " : ". ";
-  const candidates = suffixOptions
-    .map((suffix) => `${value}${glue}${suffix.trim()}`.trim())
-    .filter((candidate) => candidate.length >= minimum && candidate.length <= maxLength);
-  if (candidates.length === 0) {
-    return null;
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const pushCandidate = (candidate: string) => {
+    const normalized = candidate.trim();
+    if (!normalized || seen.has(normalized) || normalized.length > maxLength) {
+      return;
+    }
+    seen.add(normalized);
+    candidates.push(normalized);
+  };
+  for (const suffix of suffixOptions) {
+    pushCandidate(`${value}${glue}${suffix.trim()}`);
   }
-  return candidates.sort((left, right) => left.length - right.length)[0] ?? null;
-}
-
-function enforceQuotedReaction(text: string, maxLength: number): string | null {
-  const normalized = text.trim();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized.includes("\"")) {
-    return normalized;
-  }
-  const wholeSentence = ensureTerminalPunctuation(
-    normalized.replace(/^"+|"+$/g, "").trim(),
-    Math.max(1, maxLength - 2)
-  );
-  if (wholeSentence && wholeSentence.length + 2 <= maxLength) {
-    return `"${wholeSentence}"`;
-  }
-
-  const leadingExcerpt = extractLeadingExcerpt(normalized, 10);
-  if (!leadingExcerpt) {
-    return null;
-  }
-
-  let quotedLead = leadingExcerpt.replace(/^"+|"+$/g, "").replace(/[,:;]+$/, "").trim();
-  if (!quotedLead) {
-    return null;
-  }
-  if (!TERMINAL_PUNCTUATION_PATTERN.test(quotedLead)) {
-    quotedLead = `${quotedLead}.`;
-  }
-
-  const excerptIndex = normalized.indexOf(leadingExcerpt);
-  const remainder =
-    excerptIndex >= 0
-      ? normalized.slice(excerptIndex + leadingExcerpt.length).replace(/^[\s"'.,!?;:-]+/, "").trim()
-      : "";
-  let rebuilt = `"${quotedLead}"`;
-  if (remainder) {
-    rebuilt = `${rebuilt} ${remainder}`;
-  }
-  if (rebuilt.length > maxLength) {
-    rebuilt = truncateToWordBoundary(rebuilt, maxLength);
-    if (!rebuilt.includes("\"")) {
-      const fallbackQuote = truncateToWordBoundary(quotedLead, Math.max(1, maxLength - 2))
-        .replace(/^"+|"+$/g, "")
-        .trim();
-      rebuilt = fallbackQuote ? `"${fallbackQuote}"` : "";
+  if (candidates.every((candidate) => candidate.length < minimum)) {
+    for (const firstSuffix of suffixOptions) {
+      const firstCandidate = `${value}${glue}${firstSuffix.trim()}`.trim();
+      if (firstCandidate.length >= maxLength) {
+        continue;
+      }
+      for (const secondSuffix of suffixOptions) {
+        if (firstSuffix === secondSuffix) {
+          continue;
+        }
+        pushCandidate(`${firstCandidate} ${secondSuffix.trim()}`);
+      }
     }
   }
-  return rebuilt ? ensureTerminalPunctuation(rebuilt, maxLength) : null;
+  const viableCandidates = candidates.filter(
+    (candidate) => candidate.length >= minimum && candidate.length <= maxLength
+  );
+  if (viableCandidates.length === 0) {
+    return null;
+  }
+  const sortedCandidates = [...viableCandidates].sort((left, right) => left.length - right.length);
+  const shortestLength = sortedCandidates[0]?.length ?? 0;
+  const closeCandidates = sortedCandidates.filter((candidate) => candidate.length <= shortestLength + 18);
+  if (closeCandidates.length === 0) {
+    return sortedCandidates[0] ?? null;
+  }
+  return closeCandidates[stableTextHash(value) % closeCandidates.length] ?? closeCandidates[0] ?? null;
 }
 
 function repairCaptionLineForHardConstraints(input: {
@@ -1232,7 +1296,6 @@ function repairCaptionLineForHardConstraints(input: {
   minimum: number;
   maximum: number;
   suffixOptions: string[];
-  quoteRequired?: boolean;
 }): { text: string; repaired: boolean; valid: boolean } {
   let value = input.text.trim();
   let repaired = false;
@@ -1272,20 +1335,6 @@ function repairCaptionLineForHardConstraints(input: {
     value = padded;
     repaired = true;
   }
-  if (input.quoteRequired && !value.includes("\"")) {
-    const quoted = enforceQuotedReaction(value, input.maximum);
-    if (!quoted) {
-      return {
-        text: value,
-        repaired,
-        valid: false
-      };
-    }
-    if (quoted !== value) {
-      value = quoted;
-      repaired = true;
-    }
-  }
   value = ensureTerminalPunctuation(value, input.maximum);
   return {
     text: value,
@@ -1294,8 +1343,7 @@ function repairCaptionLineForHardConstraints(input: {
       Boolean(value) &&
       value.length >= input.minimum &&
       value.length <= input.maximum &&
-      !looksLikeBrokenCaptionEnding(value) &&
-      (!input.quoteRequired || value.includes("\""))
+      !looksLikeBrokenCaptionEnding(value)
   };
 }
 
@@ -1313,8 +1361,7 @@ export function repairCandidateForHardConstraints(
     text: candidate.bottom,
     minimum: constraints.bottomLengthMin,
     maximum: constraints.bottomLengthMax,
-    suffixOptions: BOTTOM_PADDING_OPTIONS,
-    quoteRequired: constraints.bottomQuoteRequired
+    suffixOptions: BOTTOM_PADDING_OPTIONS
   });
 
   return {
@@ -1346,9 +1393,6 @@ export function evaluateCandidateHardConstraints(
     issues.push(
       `BOTTOM length ${bottomLength} вне диапазона ${constraints.bottomLengthMin}-${constraints.bottomLengthMax}.`
     );
-  }
-  if (constraints.bottomQuoteRequired && !candidate.bottom.includes("\"")) {
-    issues.push("BOTTOM должен содержать quoted phrase.");
   }
   if (containsBannedContent(candidate.top, constraints) || containsBannedContent(candidate.bottom, constraints)) {
     issues.push("Найдены banned words.");
@@ -1458,16 +1502,11 @@ export function buildInternalFinalSelectorReason(input: {
     `Final selector evaluated ${evaluatedIds.length} shortlist candidate${evaluatedIds.length === 1 ? "" : "s"}: ` +
     `${evaluatedIds.join(", ") || "none"}. ` +
     `Final visible shortlist is ${shortlistIds.join(", ") || "empty"} with ${pickId || "no final pick"} as the final pick.`;
-  const shortlistStats = input.shortlistStats;
-  const shrinkNote =
-    shortlistStats && shortlistStats.visibleCount < shortlistStats.targetCount
-      ? ` Only ${shortlistStats.visibleCount} candidate${shortlistStats.visibleCount === 1 ? "" : "s"} survived constraint-safe repair and hard-constraint validation out of ${shortlistStats.requestedCount} requested finalists.`
-      : "";
   const angleNote =
     shortlistAngles.length > 0
       ? ` Visible angles: ${shortlistAngles.join(", ")}.`
       : "";
-  return `${base}${shrinkNote}${angleNote}`.trim();
+  return `${base}${angleNote}`.trim();
 }
 
 function buildResolvedFinalSelectorState(input: {
@@ -1495,17 +1534,13 @@ function buildResolvedFinalSelectorState(input: {
     shortlistCandidateIds[0] ??
     input.requestedFinalPickCandidateId;
   const progressSummary = `Shortlist ${shortlistCandidateIds.length} / pick ${finalPickCandidateId || "none"}.`;
-  const progressDetail =
-    input.shortlistStats && input.shortlistStats.visibleCount < input.shortlistStats.targetCount
-      ? `${progressSummary}\nOnly ${input.shortlistStats.visibleCount} candidate${input.shortlistStats.visibleCount === 1 ? "" : "s"} survived constraint-safe repair and hard-constraint validation out of ${input.shortlistStats.requestedCount} requested finalists.`
-      : progressSummary;
 
   return {
     candidateOptionMap,
     shortlistCandidateIds,
     finalPickCandidateId,
     progressSummary,
-    progressDetail,
+    progressDetail: progressSummary,
     rationaleInternalRaw: buildInternalFinalSelectorReason({
       evaluatedShortlist: input.visibleShortlist,
       visibleShortlist: input.visibleShortlist,
@@ -1513,6 +1548,121 @@ function buildResolvedFinalSelectorState(input: {
       shortlistStats: input.shortlistStats
     })
   };
+}
+
+function diversifyAcceptedBottomTails(
+  accepted: ShortlistEntry[],
+  remaining: ShortlistEntry[],
+  protectedFinalPickId: string
+): void {
+  const findDuplicateTailIndices = () => {
+    const seen = new Map<string, number>();
+    const duplicates: number[] = [];
+    for (let index = 0; index < accepted.length; index += 1) {
+      const entry = accepted[index];
+      if (!entry) {
+        continue;
+      }
+      const tailKey = buildBottomTailKey(entry.candidate.bottom);
+      if (!tailKey) {
+        continue;
+      }
+      if (seen.has(tailKey)) {
+        duplicates.push(index);
+        continue;
+      }
+      seen.set(tailKey, index);
+    }
+    return duplicates;
+  };
+
+  while (true) {
+    const duplicateIndices = findDuplicateTailIndices();
+    if (duplicateIndices.length === 0) {
+      break;
+    }
+    const duplicateIndex = duplicateIndices.find((index) => {
+      const entry = accepted[index];
+      return entry?.candidate.candidateId !== protectedFinalPickId;
+    });
+    if (duplicateIndex === undefined) {
+      break;
+    }
+    const duplicateEntry = accepted[duplicateIndex];
+    if (!duplicateEntry) {
+      break;
+    }
+
+    const acceptedTailKeys = new Set(
+      accepted
+        .map((entry) => buildBottomTailKey(entry.candidate.bottom))
+        .filter(Boolean)
+    );
+    const replacementIndex = remaining.findIndex((entry) => {
+      const tailKey = buildBottomTailKey(entry.candidate.bottom);
+      return (
+        Boolean(tailKey) &&
+        !acceptedTailKeys.has(tailKey) &&
+        entry.criticTotal >= duplicateEntry.criticTotal - 0.75
+      );
+    });
+    if (replacementIndex < 0) {
+      break;
+    }
+    const [replacement] = remaining.splice(replacementIndex, 1);
+    if (!replacement) {
+      break;
+    }
+    accepted.splice(duplicateIndex, 1, replacement);
+    remaining.push(duplicateEntry);
+    remaining.sort((left, right) => right.criticTotal - left.criticTotal);
+  }
+}
+
+function cleanupDuplicateBottomTails(
+  accepted: ShortlistEntry[],
+  constraints: Stage2HardConstraints,
+  protectedFinalPickId: string
+): void {
+  const seen = new Set<string>();
+  for (const entry of accepted) {
+    const tailKey = buildBottomTailKey(entry.candidate.bottom);
+    if (!tailKey || !seen.has(tailKey)) {
+      if (tailKey) {
+        seen.add(tailKey);
+      }
+      continue;
+    }
+    if (entry.candidate.candidateId === protectedFinalPickId) {
+      continue;
+    }
+    const strippedBottom = extractBottomLeadSegment(entry.candidate.bottom);
+    if (!strippedBottom || strippedBottom === entry.candidate.bottom) {
+      continue;
+    }
+    const repairedBottom = repairCaptionLineForHardConstraints({
+      text: strippedBottom,
+      minimum: constraints.bottomLengthMin,
+      maximum: constraints.bottomLengthMax,
+      suffixOptions: BOTTOM_PADDING_OPTIONS
+    });
+    if (!repairedBottom.valid || buildBottomTailKey(repairedBottom.text) === tailKey) {
+      continue;
+    }
+    entry.candidate = {
+      ...entry.candidate,
+      bottom: repairedBottom.text
+    };
+    entry.constraintCheck = evaluateCandidateHardConstraints(
+      entry.candidate,
+      constraints,
+      entry.constraintCheck.repaired || repairedBottom.repaired
+    );
+    const nextTailKey = buildBottomTailKey(entry.candidate.bottom);
+    if (nextTailKey) {
+      seen.add(nextTailKey);
+    }
+  }
 }
 
 function buildShortlist(input: {
@@ -1606,13 +1756,28 @@ function buildShortlist(input: {
 
   while (accepted.length < targetCount && remaining.length > 0) {
     const acceptedAngles = new Set(accepted.map((entry) => entry.candidate.angle));
+    const acceptedTailKeys = new Set(
+      accepted
+        .map((entry) => buildBottomTailKey(entry.candidate.bottom))
+        .filter(Boolean)
+    );
     const strongestRemainingScore = remaining[0]?.criticTotal ?? 0;
     const diverseIndex = remaining.findIndex(
       (entry) =>
         !acceptedAngles.has(entry.candidate.angle) &&
         entry.criticTotal >= strongestRemainingScore - 0.75
     );
-    const [next] = remaining.splice(diverseIndex >= 0 ? diverseIndex : 0, 1);
+    const uniqueTailIndex = remaining.findIndex((entry) => {
+      const tailKey = buildBottomTailKey(entry.candidate.bottom);
+      return (
+        Boolean(tailKey) &&
+        !acceptedTailKeys.has(tailKey) &&
+        entry.criticTotal >= strongestRemainingScore - 0.75
+      );
+    });
+    const pickedIndex =
+      uniqueTailIndex >= 0 ? uniqueTailIndex : diverseIndex >= 0 ? diverseIndex : 0;
+    const [next] = remaining.splice(pickedIndex, 1);
     if (!next) {
       break;
     }
@@ -1620,6 +1785,8 @@ function buildShortlist(input: {
   }
 
   diversifyAcceptedShortlist();
+  diversifyAcceptedBottomTails(accepted, remaining, protectedFinalPickId);
+  cleanupDuplicateBottomTails(accepted, input.constraints, protectedFinalPickId);
   const entries = accepted.slice(0, targetCount);
   return {
     entries,
@@ -1704,6 +1871,9 @@ function buildDiagnosticsExample(
   if (example.clipType) {
     reasons.push(`clip type ${example.clipType}`);
   }
+  if (example.whyItWorks.length > 0) {
+    reasons.push("why-it-works notes present");
+  }
   if (typeof example.qualityScore === "number") {
     reasons.push(`quality ${example.qualityScore.toFixed(2)}`);
   }
@@ -1734,6 +1904,7 @@ function buildDiagnosticsExample(
 
 function buildRunDiagnostics(input: {
   channelConfig: Stage2RuntimeChannelConfig;
+  analyzerOutput: AnalyzerOutput;
   promptConfig: Stage2PromptConfig | null;
   promptPacket: PromptPacket;
   titlePrompt: string;
@@ -1770,6 +1941,18 @@ function buildRunDiagnostics(input: {
       writerBrief: input.selectorOutput.writerBrief,
       rationale: input.selectorOutput.rationale ?? null,
       selectedExampleIds
+    },
+    analysis: {
+      visualAnchors: input.analyzerOutput.visualAnchors,
+      specificNouns: input.analyzerOutput.specificNouns,
+      visibleActions: input.analyzerOutput.visibleActions,
+      firstSecondsSignal: input.analyzerOutput.firstSecondsSignal,
+      sceneBeats: input.analyzerOutput.sceneBeats,
+      revealMoment: input.analyzerOutput.revealMoment,
+      lateClipChange: input.analyzerOutput.lateClipChange,
+      commentVibe: input.analyzerOutput.commentVibe,
+      uncertaintyNotes: input.analyzerOutput.uncertaintyNotes,
+      rawSummary: input.analyzerOutput.rawSummary
     },
     effectivePrompting: {
       promptStages: [
@@ -2040,6 +2223,18 @@ export class ViralShortsWorkerService {
         promptChars: analyzerPrompt.length,
         reasoningEffort: analyzerReasoningEffort,
         detail: `Fallback used: ${message}`
+      });
+    }
+
+    analyzerOutput = applyNoCommentsTruthfulnessGuard(
+      analyzerOutput,
+      input.videoContext.comments.length > 0
+    );
+    if (input.videoContext.comments.length === 0) {
+      warnings.push({
+        field: "comments",
+        message:
+          "Comments were unavailable for this run, so Stage 2 leaned on the visual sequence, transcript, title, and description instead of a real audience-comment read."
       });
     }
 
@@ -2422,6 +2617,7 @@ export class ViralShortsWorkerService {
 
     const diagnostics = buildRunDiagnostics({
       channelConfig,
+      analyzerOutput,
       promptConfig,
       promptPacket,
       titlePrompt,

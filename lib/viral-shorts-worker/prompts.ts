@@ -163,6 +163,7 @@ function buildCompactSelectorVideoContext(videoContext: ViralShortsVideoContext)
     description: truncatePromptValue(videoContext.description, MAX_SELECTOR_DESCRIPTION_CHARS),
     transcript: truncatePromptValue(videoContext.transcript, MAX_SELECTOR_TRANSCRIPT_CHARS),
     frameDescriptions: videoContext.frameDescriptions.slice(0, 8),
+    commentsAvailable: videoContext.comments.length > 0,
     comments: videoContext.comments.slice(0, MAX_SELECTOR_COMMENT_COUNT).map((comment) => ({
       author: truncatePromptValue(comment.author, 40),
       likes: comment.likes,
@@ -178,6 +179,7 @@ function buildCompactAnalyzerVideoContext(videoContext: ViralShortsVideoContext)
     description: truncatePromptValue(videoContext.description, MAX_ANALYZER_DESCRIPTION_CHARS),
     transcript: truncatePromptValue(videoContext.transcript, MAX_ANALYZER_TRANSCRIPT_CHARS),
     frameDescriptions: videoContext.frameDescriptions.slice(0, 12),
+    commentsAvailable: videoContext.comments.length > 0,
     comments: videoContext.comments.slice(0, MAX_ANALYZER_COMMENT_COUNT).map((comment) => ({
       author: truncatePromptValue(comment.author, 40),
       likes: comment.likes,

@@ -16,7 +16,7 @@ import {
   SourceJobRecord,
   SourceJobRequest
 } from "./source-job-store";
-import { fetchCommentsPayloadForUrl } from "./source-comments";
+import { fetchCommentsForUrl } from "./source-comments";
 import { getWorkspaceCodexIntegration } from "./team-store";
 
 type SourceRuntimeState = {
@@ -173,11 +173,12 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
   let commentsError: string | null = null;
 
   markSourceJobStageRunning(job.jobId, "comments", "Пробуем загрузить комментарии.");
-  try {
-    commentsPayload = await fetchCommentsPayloadForUrl(job.sourceUrl);
+  const commentsResolution = await fetchCommentsForUrl(job.sourceUrl);
+  if (commentsResolution.payload) {
+    commentsPayload = commentsResolution.payload;
     commentsAvailable = true;
-  } catch (error) {
-    commentsError = error instanceof Error ? error.message : "Не удалось получить комментарии.";
+  } else {
+    commentsError = commentsResolution.error ?? "Не удалось получить комментарии.";
   }
 
   let autoStage2RunId: string | null = null;

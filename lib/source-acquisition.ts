@@ -6,7 +6,9 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { resolveExecutableFromCandidates } from "./command-path";
+import { fetchCommentsForUrl } from "./source-comments";
 import { fetchTranscriptFromYtDlpInfo, type YtDlpCaptionInfo } from "./youtube-captions";
+import { extractYouTubeVideoIdFromUrl } from "./youtube-comments";
 import { readYtDlpMetadataArtifacts } from "./ytdlp-metadata";
 import {
   buildLimitedCommentsExtractorArgs,
@@ -145,12 +147,7 @@ function getVisolixYoutubeFormat(): string {
 }
 
 function isYouTubeUrl(rawUrl: string): boolean {
-  try {
-    const parsed = new URL(rawUrl);
-    return parsed.hostname.includes("youtube.com") || parsed.hostname === "youtu.be";
-  } catch {
-    return false;
-  }
+  return Boolean(extractYouTubeVideoIdFromUrl(rawUrl));
 }
 
 function normalizeYouTubeUrl(rawUrl: string): string {
@@ -582,6 +579,10 @@ export async function fetchOptionalYtDlpInfo(
   tmpDir: string
 ): Promise<OptionalYtDlpInfoResult> {
   const sourceUrl = normalizeSupportedUrl(rawUrl);
+  if (isYouTubeUrl(sourceUrl)) {
+    return fetchOptionalYouTubeInfo(sourceUrl, tmpDir);
+  }
+
   const ytDlpPath = await resolveYtDlpExecutable();
   if (!ytDlpPath) {
     return {
@@ -647,5 +648,73 @@ export async function fetchOptionalYtDlpInfo(
       comments
     },
     commentsExtractionFallbackUsed
+  };
+}
+
+async function fetchOptionalYouTubeInfo(
+  sourceUrl: string,
+  tmpDir: string
+): Promise<OptionalYtDlpInfoResult> {
+  const ytDlpPath = await resolveYtDlpExecutable();
+  let normalizedInfo: YtDlpInfoJson | null = null;
+  let transcript: string | null = null;
+
+  if (ytDlpPath) {
+    const outputTemplate = path.join(tmpDir, "metadata.%(ext)s");
+    const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
+
+    try {
+      await execFileAsync(
+        ytDlpPath,
+        [
+          ...ytDlpAuth.args,
+          "--skip-download",
+          "--no-playlist",
+          "--no-warnings",
+          "--write-info-json",
+          "-o",
+          outputTemplate,
+          sourceUrl
+        ],
+        {
+          timeout: 3 * 60 * 1000,
+          maxBuffer: 1024 * 1024 * 16
+        }
+      );
+
+      const { infoJson } = await readYtDlpMetadataArtifacts(tmpDir, "metadata");
+      if (infoJson) {
+        normalizedInfo = infoJson as YtDlpInfoJson;
+        transcript = await fetchTranscriptFromYtDlpInfo(normalizedInfo);
+      }
+    } catch {
+      normalizedInfo = null;
+      transcript = null;
+    }
+  }
+
+  const commentsResult = await fetchCommentsForUrl(sourceUrl);
+  const comments = commentsResult.payload?.allComments ?? [];
+  const title =
+    asTrimmedString(normalizedInfo?.title) ??
+    asTrimmedString(commentsResult.payload?.title) ??
+    null;
+  const description = asTrimmedString(normalizedInfo?.description);
+
+  if (!title && !description && !transcript && comments.length === 0) {
+    return {
+      infoJson: null,
+      commentsExtractionFallbackUsed: commentsResult.fallbackUsed
+    };
+  }
+
+  return {
+    infoJson: {
+      title: title ?? undefined,
+      description: description ?? undefined,
+      transcript: transcript || undefined,
+      comments
+    },
+    commentsExtractionFallbackUsed: commentsResult.fallbackUsed
   };
 }

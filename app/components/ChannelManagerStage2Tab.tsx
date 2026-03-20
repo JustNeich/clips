@@ -31,6 +31,8 @@ type ChannelManagerStage2TabProps = {
   workspaceExamplesJson: string;
   workspaceExamplesError: string | null;
   stage2HardConstraints: Stage2HardConstraints;
+  bannedWordsInput: string;
+  bannedOpenersInput: string;
   workspaceStage2PromptConfig: Stage2PromptConfig;
   stage2PromptStages: Stage2PromptStageMeta[];
   autosaveState: AutosaveState;
@@ -46,6 +48,8 @@ type ChannelManagerStage2TabProps = {
     key: keyof Stage2HardConstraints,
     value: string | boolean | string[]
   ) => void;
+  updateBannedWordsInput: (value: string) => void;
+  updateBannedOpenersInput: (value: string) => void;
   updateStage2PromptTemplate: (
     stageId: keyof Stage2PromptConfig["stages"],
     prompt: string
@@ -63,6 +67,8 @@ export function ChannelManagerStage2Tab({
   workspaceExamplesJson,
   workspaceExamplesError,
   stage2HardConstraints,
+  bannedWordsInput,
+  bannedOpenersInput,
   workspaceStage2PromptConfig,
   stage2PromptStages,
   autosaveState,
@@ -75,6 +81,8 @@ export function ChannelManagerStage2Tab({
   updateWorkspaceExamplesJson,
   updateCustomExamplesJson,
   updateStage2HardConstraint,
+  updateBannedWordsInput,
+  updateBannedOpenersInput,
   updateStage2PromptTemplate,
   updateStage2PromptReasoning,
   resetStage2PromptStage
@@ -109,11 +117,6 @@ export function ChannelManagerStage2Tab({
               <strong>
                 {stage2HardConstraints.bottomLengthMin}-{stage2HardConstraints.bottomLengthMax}
               </strong>
-              <p className="subtle-text">default hard constraints</p>
-            </article>
-            <article className="stage2-insight-card">
-              <span className="field-label">Quote first</span>
-              <strong>{stage2HardConstraints.bottomQuoteRequired ? "Required" : "Optional"}</strong>
               <p className="subtle-text">default hard constraints</p>
             </article>
           </div>
@@ -189,49 +192,24 @@ export function ChannelManagerStage2Tab({
                 />
               </div>
             </div>
-            <label className="field-label">
-              <input
-                type="checkbox"
-                checked={stage2HardConstraints.bottomQuoteRequired}
-                disabled={!canEditHardConstraints}
-                onChange={(event) =>
-                  updateStage2HardConstraint("bottomQuoteRequired", event.target.checked)
-                }
-              />{" "}
-              Bottom quote required
-            </label>
             <label className="field-label">Banned words</label>
             <textarea
               className="text-area"
               rows={3}
-              value={stage2HardConstraints.bannedWords.join(", ")}
+              value={bannedWordsInput}
               disabled={!canEditHardConstraints}
-              onChange={(event) =>
-                updateStage2HardConstraint(
-                  "bannedWords",
-                  event.target.value
-                    .split(",")
-                    .map((item) => item.trim())
-                    .filter(Boolean)
-                )
-              }
+              onChange={(event) => updateBannedWordsInput(event.target.value)}
             />
+            <p className="subtle-text">Разделяйте слова запятыми, точкой с запятой или с новой строки.</p>
             <label className="field-label">Banned openers</label>
             <textarea
               className="text-area"
               rows={3}
-              value={stage2HardConstraints.bannedOpeners.join(", ")}
+              value={bannedOpenersInput}
               disabled={!canEditHardConstraints}
-              onChange={(event) =>
-                updateStage2HardConstraint(
-                  "bannedOpeners",
-                  event.target.value
-                    .split(",")
-                    .map((item) => item.trim())
-                    .filter(Boolean)
-                )
-              }
+              onChange={(event) => updateBannedOpenersInput(event.target.value)}
             />
+            <p className="subtle-text">Banned openers проверяются в начале TOP и сохраняются как отдельный список.</p>
           </div>
 
           <div className="stage2-config-stage-list">
@@ -450,24 +428,32 @@ export function ChannelManagerStage2Tab({
               {stage2HardConstraints.bottomLengthMin}-{stage2HardConstraints.bottomLengthMax}
             </strong>
           </div>
-          <div className="compact-field">
-            <span className="field-label">Quote first</span>
-            <strong>{stage2HardConstraints.bottomQuoteRequired ? "Required" : "Optional"}</strong>
-          </div>
         </div>
-        <p className="subtle-text">
-          Banned words: {stage2HardConstraints.bannedWords.length ? stage2HardConstraints.bannedWords.join(", ") : "none"}
-        </p>
-        <p className="subtle-text">
-          Banned openers: {stage2HardConstraints.bannedOpeners.length ? stage2HardConstraints.bannedOpeners.join(", ") : "none"}
-        </p>
+        <label className="field-label">Banned words</label>
+        <textarea
+          className="text-area"
+          rows={3}
+          value={bannedWordsInput}
+          disabled={!canEditHardConstraints}
+          onChange={(event) => updateBannedWordsInput(event.target.value)}
+        />
+        <p className="subtle-text">Разделяйте слова запятыми, точкой с запятой или с новой строки.</p>
+        <label className="field-label">Banned openers</label>
+        <textarea
+          className="text-area"
+          rows={3}
+          value={bannedOpenersInput}
+          disabled={!canEditHardConstraints}
+          onChange={(event) => updateBannedOpenersInput(event.target.value)}
+        />
+        <p className="subtle-text">Banned openers проверяются в начале TOP и сохраняются как отдельный список.</p>
         <p className={`subtle-text ${autosaveState.stage2.status === "error" ? "danger-text" : ""}`}>
           {autosaveState.stage2.message ??
-            "На уровне канала автоматически сохраняются examples corpus JSON и лимиты длины TOP/BOTTOM."}
+            "На уровне канала автоматически сохраняются examples corpus JSON и все hard constraints."}
         </p>
         <p className="subtle-text">
           Prompt defaults задаются владельцем в пункте Default settings. Здесь на уровне канала редактируются
-          лимиты длины TOP/BOTTOM.
+          длины TOP/BOTTOM и banned lists.
         </p>
       </section>
     </div>

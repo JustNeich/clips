@@ -47,9 +47,7 @@ export async function POST(request: Request): Promise<Response> {
   let normalizedUrl = "";
   try {
     normalizedUrl = normalizeSupportedUrl(url);
-    // Validate URL format before creating chat.
-    // eslint-disable-next-line no-new
-    new URL(normalizedUrl);
+    void new URL(normalizedUrl);
   } catch {
     return Response.json({ error: "Некорректный URL." }, { status: 400 });
   }

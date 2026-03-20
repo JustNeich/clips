@@ -31,7 +31,7 @@ type HistoryDayGroup = {
   items: ChatListItem[];
 };
 
-type AppShellProps = {
+export type AppShellProps = {
   title: string;
   subtitle: string;
   steps: FlowStep[];

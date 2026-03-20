@@ -1402,6 +1402,12 @@ select.text-input:focus {
   background: color-mix(in srgb, #ff6b6b 8%, var(--surface));
 }
 
+.stage2-stage-item.state-blocked {
+  border-color: color-mix(in srgb, var(--border) 76%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 56%, black);
+  opacity: 0.78;
+}
+
 .stage2-stage-index {
   width: 28px;
   height: 28px;
@@ -1428,6 +1434,11 @@ select.text-input:focus {
 .stage2-stage-item.state-failed .stage2-stage-index {
   background: color-mix(in srgb, #ff6b6b 72%, black 8%);
   border-color: color-mix(in srgb, #ff6b6b 84%, transparent);
+}
+
+.stage2-stage-item.state-blocked .stage2-stage-index {
+  background: color-mix(in srgb, var(--surface-3) 72%, black 12%);
+  border-color: color-mix(in srgb, var(--border) 74%, transparent);
 }
 
 .stage2-stage-body {

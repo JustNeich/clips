@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AppShell } from "../app/components/AppShell";
+import { AppShell, type AppShellProps } from "../app/components/AppShell";
 import {
   CHANNEL_MANAGER_DEFAULT_SETTINGS_ID,
   canDeleteManagedChannel,
@@ -32,6 +32,7 @@ import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   createStage2ProgressSnapshot,
   markStage2ProgressStageCompleted,
+  markStage2ProgressStageFailed,
   markStage2ProgressStageRunning,
   normalizeStage2ProgressSnapshot,
   normalizeStage2PromptConfig
@@ -55,8 +56,11 @@ import {
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  formatStage2DelimitedStringList,
   getBundledStage2ExamplesSeed,
   getBundledStage2ExamplesSeedJson,
+  normalizeStage2HardConstraints,
+  parseStage2DelimitedStringList,
   resolveStage2ExamplesCorpus,
   Stage2CorpusExample,
   Stage2ExamplesConfig,
@@ -70,6 +74,7 @@ import {
 } from "../lib/ytdlp-metadata";
 import { fetchTranscriptFromYtDlpInfo } from "../lib/youtube-captions";
 import { buildLimitedCommentsExtractorArgs } from "../lib/ytdlp";
+import { validateStage2Output } from "../lib/stage2-output-validation";
 import {
   buildAnalyzerPrompt,
   buildPromptPacket,
@@ -79,6 +84,7 @@ import {
   buildAdaptiveFramePlan,
   buildStage2RuntimeVideoContext
 } from "../lib/stage2-runner";
+import { buildSelectorExamplePool } from "../lib/viral-shorts-worker/selector-example-pool";
 import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
 import { getTemplateFigmaSpec } from "../lib/stage3-template-spec";
 import {
@@ -146,7 +152,7 @@ function makeExample(input: {
     transcript: `${input.title} transcript`,
     clipType: input.clipType ?? "mechanical_failure",
     whyItWorks: input.whyItWorks ?? ["clear visual hook"],
-    qualityScore: input.qualityScore ?? 0.9
+    qualityScore: input.qualityScore === undefined ? 0.9 : input.qualityScore
   };
 }
 
@@ -179,7 +185,6 @@ function makeCriticScoreMap(index: number): Record<string, number> {
     non_ai_feel: Number((base - 0.12).toFixed(2)),
     paused_frame_accuracy: Number((base - 0.08).toFixed(2)),
     comment_vibe_authenticity: Number((base - 0.18).toFixed(2)),
-    quote_first_bottom_compliance: Number((base - 0.05).toFixed(2)),
     length_compliance: Number((base - 0.03).toFixed(2)),
     narrative_trigger_strength: Number((base - 0.09).toFixed(2)),
     context_compression_quality: Number((base - 0.11).toFixed(2))
@@ -581,6 +586,7 @@ async function runSuccessfulPipeline(options?: {
   rewriterResponse?: unknown;
   finalSelectorResponse?: Record<string, unknown>;
   titleResponse?: unknown;
+  comments?: Array<{ author: string; likes: number; text: string }>;
 }) {
   const service = new ViralShortsWorkerService();
   const promptConfig = options?.promptConfig ?? normalizeStage2PromptConfig({});
@@ -723,13 +729,15 @@ async function runSuccessfulPipeline(options?: {
     title: "Old pickup bucks through a muddy rut",
     description: "The axle starts twisting while the crowd sees the truck sink sideways.",
     transcript: "The driver tries one more time and the wheel almost folds under him.",
-    comments: [
-      {
-        author: "user1",
-        likes: 12,
-        text: "That axle was cooked before he even hit the rut."
-      }
-    ],
+    comments:
+      options?.comments ??
+      [
+        {
+          author: "user1",
+          likes: 12,
+          text: "That axle was cooked before he even hit the rut."
+        }
+      ],
     frameDescriptions: ["mud splashes around the tire", "axle leans hard to the left"],
     userInstruction: options?.userInstruction ?? "Keep it grounded and avoid slang overload."
   });
@@ -1017,7 +1025,6 @@ test("workspace hard constraints persist as owner defaults", { concurrency: fals
       topLengthMax: 72,
       bottomLengthMin: 30,
       bottomLengthMax: 96,
-      bottomQuoteRequired: false,
       bannedWords: ["literally"],
       bannedOpeners: ["Here is a"]
     };
@@ -1027,6 +1034,28 @@ test("workspace hard constraints persist as owner defaults", { concurrency: fals
     const saved = teamStore.getWorkspaceStage2HardConstraints(owner.workspace.id);
     assert.deepEqual(saved, updatedConstraints);
   });
+});
+
+test("stage 2 hard constraint list parsing accepts comma, semicolon, and newline separators", () => {
+  assert.deepEqual(parseStage2DelimitedStringList("alpha, beta;\ngamma\r\ndelta, alpha"), [
+    "alpha",
+    "beta",
+    "gamma",
+    "delta"
+  ]);
+  assert.deepEqual(
+    normalizeStage2HardConstraints({
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      bannedWords: "literal, generic\nsafe",
+      bannedOpeners: "Here is a; This is"
+    }),
+    {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      bannedWords: ["literal", "generic", "safe"],
+      bannedOpeners: ["Here is a", "This is"]
+    }
+  );
+  assert.equal(formatStage2DelimitedStringList(["alpha", "beta", "alpha"]), "alpha, beta");
 });
 
 test("channel hard constraints persist separately from workspace defaults", { concurrency: false }, async () => {
@@ -1046,7 +1075,6 @@ test("channel hard constraints persist separately from workspace defaults", { co
       topLengthMax: 72,
       bottomLengthMin: 30,
       bottomLengthMax: 96,
-      bottomQuoteRequired: true,
       bannedWords: ["literally"],
       bannedOpeners: ["Here is a"]
     };
@@ -1065,7 +1093,6 @@ test("channel hard constraints persist separately from workspace defaults", { co
       topLengthMax: 180,
       bottomLengthMin: 92,
       bottomLengthMax: 145,
-      bottomQuoteRequired: true,
       bannedWords: [],
       bannedOpeners: []
     };
@@ -1084,7 +1111,6 @@ test("channel hard constraints persist separately from workspace defaults", { co
       topLengthMax: 66,
       bottomLengthMin: 44,
       bottomLengthMax: 88,
-      bottomQuoteRequired: false,
       bannedWords: ["generic"],
       bannedOpeners: ["When you"]
     };
@@ -1116,7 +1142,6 @@ test("channel creation honors explicit hard constraints instead of workspace sna
       topLengthMax: 72,
       bottomLengthMin: 30,
       bottomLengthMax: 96,
-      bottomQuoteRequired: true,
       bannedWords: ["literally"],
       bannedOpeners: ["Here is a"]
     };
@@ -1125,7 +1150,6 @@ test("channel creation honors explicit hard constraints instead of workspace sna
       topLengthMax: 126,
       bottomLengthMin: 70,
       bottomLengthMax: 115,
-      bottomQuoteRequired: false,
       bannedWords: ["average"],
       bannedOpeners: ["This is"]
     };
@@ -1161,7 +1185,6 @@ test("stage 2 launch request snapshots effective channel hard constraints for ma
       topLengthMax: 72,
       bottomLengthMin: 30,
       bottomLengthMax: 96,
-      bottomQuoteRequired: true,
       bannedWords: ["workspace"],
       bannedOpeners: ["Workspace"]
     };
@@ -1170,7 +1193,6 @@ test("stage 2 launch request snapshots effective channel hard constraints for ma
       topLengthMax: 176,
       bottomLengthMin: 84,
       bottomLengthMax: 136,
-      bottomQuoteRequired: false,
       bannedWords: ["channel"],
       bannedOpeners: ["Channel"]
     };
@@ -1208,7 +1230,7 @@ test("stage 2 launch request snapshots effective channel hard constraints for ma
   });
 });
 
-test("channel Stage 2 tab exposes editable top and bottom length inputs", () => {
+test("channel Stage 2 tab exposes editable hard constraints including banned words and openers", () => {
   const element = ChannelManagerStage2Tab({
     isWorkspaceDefaultsSelection: false,
     workspaceExamplesCount: 12,
@@ -1219,10 +1241,11 @@ test("channel Stage 2 tab exposes editable top and bottom length inputs", () => 
       topLengthMax: 180,
       bottomLengthMin: 92,
       bottomLengthMax: 145,
-      bottomQuoteRequired: true,
-      bannedWords: [],
-      bannedOpeners: []
+      bannedWords: ["literal", "generic"],
+      bannedOpeners: ["Here is a", "This is"]
     },
+    bannedWordsInput: "literal, generic,",
+    bannedOpenersInput: "Here is a\nThis is",
     workspaceStage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
     stage2PromptStages: [],
     autosaveState: {
@@ -1244,6 +1267,8 @@ test("channel Stage 2 tab exposes editable top and bottom length inputs", () => 
     updateWorkspaceExamplesJson: () => undefined,
     updateCustomExamplesJson: () => undefined,
     updateStage2HardConstraint: () => undefined,
+    updateBannedWordsInput: () => undefined,
+    updateBannedOpenersInput: () => undefined,
     updateStage2PromptTemplate: () => undefined,
     updateStage2PromptReasoning: () => undefined,
     resetStage2PromptStage: () => undefined
@@ -1254,12 +1279,49 @@ test("channel Stage 2 tab exposes editable top and bottom length inputs", () => 
   assert.match(markup, /Top max/);
   assert.match(markup, /Bottom min/);
   assert.match(markup, /Bottom max/);
+  assert.match(markup, /Banned words/);
+  assert.match(markup, /Banned openers/);
   assert.match(markup, /type="number"/);
   assert.match(markup, /value="135"/);
   assert.match(markup, /value="180"/);
   assert.match(markup, /value="92"/);
   assert.match(markup, /value="145"/);
+  assert.match(markup, /literal, generic,/);
+  assert.match(markup, /Here is a\nThis is/);
   assert.doesNotMatch(markup, /disabled=""/);
+});
+
+test("stage 2 output validation warns on banned words and banned openers", () => {
+  const stage2 = makeRuntimeStage2Response("run_banned_lists", "banned-lists");
+  stage2.output.captionOptions[0] = {
+    ...stage2.output.captionOptions[0],
+    top: "Here is a literal problem",
+    bottom: "\"safe\" reaction"
+  };
+  stage2.output.captionOptions[1] = {
+    ...stage2.output.captionOptions[1],
+    top: "Clean top",
+    bottom: "\"literal\" problem in the bottom"
+  };
+
+  const warnings = validateStage2Output(stage2.output, {
+    ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+    bannedWords: ["literal"],
+    bannedOpeners: ["Here is a"]
+  });
+
+  assert.match(
+    warnings.map((warning) => `${warning.field}: ${warning.message}`).join("\n"),
+    /captionOptions\.option1\.constraintCheck: Caption contains banned words\./
+  );
+  assert.match(
+    warnings.map((warning) => `${warning.field}: ${warning.message}`).join("\n"),
+    /captionOptions\.option1\.top: TOP starts with a banned opener\./
+  );
+  assert.match(
+    warnings.map((warning) => `${warning.field}: ${warning.message}`).join("\n"),
+    /captionOptions\.option2\.constraintCheck: Caption contains banned words\./
+  );
 });
 
 test("comments prompt preparation keeps the most-liked comments and caps the payload at 300", () => {
@@ -1720,7 +1782,6 @@ test("critic uses a canonical object-root schema and the provider-facing contrac
       "non_ai_feel",
       "paused_frame_accuracy",
       "comment_vibe_authenticity",
-      "quote_first_bottom_compliance",
       "length_compliance",
       "narrative_trigger_strength",
       "context_compression_quality"
@@ -1936,6 +1997,8 @@ test("stage 2 pipeline returns a shortlist for human pick using selector-chosen 
   assert.equal(result.diagnostics.examples.activeCorpusCount, 5);
   assert.equal(result.diagnostics.examples.selectorCandidateCount, 5);
   assert.equal(result.diagnostics.examples.selectedExamples.length, 3);
+  assert.ok(result.diagnostics.analysis.sceneBeats.length > 0);
+  assert.ok(result.diagnostics.analysis.revealMoment.length > 0);
   assert.deepEqual(
     result.diagnostics.examples.selectedExamples.map((example) => example.title).sort(),
     [
@@ -2062,7 +2125,6 @@ test("caption options retain candidate ids, angles, and pass final constraint ch
     topLengthMax: 210,
     bottomLengthMin: 100,
     bottomLengthMax: 180,
-    bottomQuoteRequired: true,
     bannedWords: [],
     bannedOpeners: []
   };
@@ -2174,7 +2236,6 @@ test("constraint repair keeps complete sentences instead of chopped endings", as
     topLengthMax: 70,
     bottomLengthMin: 24,
     bottomLengthMax: 70,
-    bottomQuoteRequired: true,
     bannedWords: [],
     bannedOpeners: []
   };
@@ -2222,7 +2283,6 @@ test("unrecoverable broken captions are filtered out of the final shortlist", as
     topLengthMax: 40,
     bottomLengthMin: 10,
     bottomLengthMax: 40,
-    bottomQuoteRequired: true,
     bannedWords: [],
     bannedOpeners: []
   };
@@ -2289,7 +2349,6 @@ test("repair trims current trace-style broken endings instead of leaving chopped
     topLengthMax: 185,
     bottomLengthMin: 140,
     bottomLengthMax: 150,
-    bottomQuoteRequired: false,
     bannedWords: [],
     bannedOpeners: []
   };
@@ -3380,7 +3439,48 @@ test("selector prompt uses a curated prompt pool instead of the entire active co
   assert.doesNotMatch(packet.prompts.selector, /"bad":"json"|tiny/);
 });
 
-test("repairCandidateForHardConstraints restores quote-first bottoms when the draft is otherwise usable", () => {
+test("selector example pool downranks weak generic examples when richer metadata exists", () => {
+  const relevantRichExamples = Array.from({ length: 10 }, (_, index) =>
+    makeExample({
+      id: `awards_${index + 1}`,
+      ownerChannelId: `awards_source_${(index % 4) + 1}`,
+      ownerChannelName: `Awards Source ${(index % 4) + 1}`,
+      title: `All-time awards lineup payoff ${index + 1}`,
+      overlayTop: `The nominee grid keeps stacking heavyweight TV names until the category looks unfair ${index + 1}`,
+      overlayBottom: `That lineup makes the winner reveal feel like a finals round ${index + 1}`,
+      clipType: "prestige_awards",
+      whyItWorks: ["stacked lineup becomes the trigger", "winner reveal lands late"],
+      qualityScore: 0.9
+    })
+  );
+  const weakGenericExamples = Array.from({ length: 10 }, (_, index) =>
+    makeExample({
+      id: `generic_${index + 1}`,
+      ownerChannelId: "generic",
+      ownerChannelName: "Generic",
+      title: `NATURES CRAZY REACTION TIME ${index + 1}`,
+      overlayTop: `This buck reacts before the arrow finishes the sound barrier ${index + 1}`,
+      overlayBottom: `That is evolution doing all the work ${index + 1}`,
+      clipType: "general",
+      whyItWorks: [],
+      qualityScore: null
+    })
+  );
+
+  const selectorPool = buildSelectorExamplePool({
+    examples: [...relevantRichExamples, ...weakGenericExamples],
+    queryText:
+      "prestige awards nominee grid stacked lineup winner reveal bryan cranston emmy audience reaction"
+  });
+
+  assert.ok(selectorPool.selectorExamples.length > 0);
+  assert.ok(selectorPool.selectorExamples.every((example) => example.clipType !== "general"));
+  assert.ok(
+    selectorPool.selectorExamples.every((example) => example.whyItWorks.length > 0 || example.qualityScore !== null)
+  );
+});
+
+test("repairCandidateForHardConstraints no longer injects quote wrappers into bottom text", () => {
   const repaired = repairCandidateForHardConstraints(
     {
       candidateId: "cand_quote",
@@ -3389,14 +3489,98 @@ test("repairCandidateForHardConstraints restores quote-first bottoms when the dr
       bottom: "He knew that sound meant the whole weekend just got expensive.",
       topRu: "Мост уже выкручивает, пока машина еще не вышла из колеи.",
       bottomRu: "Он уже понял по звуку, что эти выходные всем обойдутся дороже.",
-      rationale: "Missing quote-first bottom."
+      rationale: "Bottom should stay readable without forced quote injection."
     },
     DEFAULT_STAGE2_HARD_CONSTRAINTS
   );
 
   assert.equal(repaired.valid, true);
+  assert.equal(repaired.repaired, false);
+  assert.equal(
+    repaired.candidate.bottom,
+    "He knew that sound meant the whole weekend just got expensive."
+  );
+});
+
+test("repairCandidateForHardConstraints pads short bottoms without injecting unrelated contamination tails", () => {
+  const repaired = repairCandidateForHardConstraints(
+    {
+      candidateId: "cand_short_bottom",
+      angle: "payoff_reveal",
+      top: "The nominee grid keeps stacking TV heavyweights until the category looks completely unfair.",
+      bottom: "\"That lineup is stupid.\"",
+      topRu: "Сетка номинантов становится настолько плотной, что категория выглядит уже просто нечестной.",
+      bottomRu: "\"Этот состав просто безумный.\"",
+      rationale: "Short quoted bottom needs neutral padding."
+    },
+    {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      topLengthMin: 18,
+      topLengthMax: 120,
+      bottomLengthMin: 120,
+      bottomLengthMax: 140
+    }
+  );
+
+  assert.equal(repaired.valid, true);
   assert.equal(repaired.repaired, true);
-  assert.match(repaired.candidate.bottom, /^"/);
+  assert.ok(repaired.candidate.bottom.length >= 120);
+  assert.doesNotMatch(repaired.candidate.bottom, /jeep|lost that exchange/i);
+});
+
+test("pipeline replaces repeated contaminated bottom tails when cleaner reserve candidates exist", async () => {
+  const contaminatedTail = "Everybody in that jeep knows exactly who lost that exchange.";
+  const writerCandidates = Array.from({ length: 8 }, (_, index) => ({
+    candidate_id: `cand_${index + 1}`,
+    angle: index < 3 ? "awe_scale" : index < 6 ? "shared_experience" : "warmth_reverence",
+    top: `The nominee montage keeps adding heavier names until the whole category feels absurd ${index + 1}.`,
+    bottom:
+      index < 5
+        ? `"This lineup is brutal." ${contaminatedTail}`
+        : `"That category had no soft landing." The room feels it the second the winner stands up ${index + 1}.`,
+    top_ru: `Монтаж номинантов становится все тяжелее и тяжелее, пока сама категория не выглядит абсурдной ${index + 1}.`,
+    bottom_ru:
+      index < 5
+        ? `"Этот состав безумный." ${contaminatedTail}`
+        : `"В этой категории не было легкой победы." Зал это считывает в ту же секунду ${index + 1}.`,
+    rationale: `candidate ${index + 1}`
+  }));
+  const rewrittenCandidates = writerCandidates.slice(0, 5).map((candidate) => ({
+    ...candidate,
+    top: candidate.top,
+    bottom: `"This lineup is brutal." ${contaminatedTail}`
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    writerCandidates,
+    rewrittenCandidates,
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_1"
+    }
+  });
+
+  const contaminatedCount = result.output.captionOptions.filter((option) =>
+    option.bottom.includes(contaminatedTail)
+  ).length;
+
+  assert.ok(contaminatedCount <= 1);
+  assertFinalShortlistContract(result);
+});
+
+test("no-comments fallback stays truthful and preserves analyzer sequence diagnostics", async () => {
+  const { executor, result } = await runSuccessfulPipeline({
+    comments: []
+  });
+
+  assert.match(result.output.inputAnalysis.commentVibe, /Comments unavailable/i);
+  assert.ok(result.warnings.some((warning) => warning.field === "comments"));
+  assert.match(executor.calls[0]?.prompt ?? "", /\"commentsAvailable\": false/);
+  assert.ok(result.diagnostics.analysis.sceneBeats.length > 0);
+  assert.match(result.diagnostics.analysis.commentVibe, /Comments unavailable/i);
+  assert.ok(
+    result.diagnostics.analysis.uncertaintyNotes.some((note) => /Comments were unavailable/i.test(note))
+  );
 });
 
 test("default prompt templates expose the new analyzer and selector contracts", () => {
@@ -3421,6 +3605,8 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(selectorResolved.defaultPrompt, /failure_modes/);
   assert.match(writerResolved.defaultPrompt, /Context Compression Rule/);
   assert.match(writerResolved.defaultPrompt, /Must explain why the viewer should care/);
+  assert.match(writerResolved.defaultPrompt, /Quoted openers are optional/);
+  assert.doesNotMatch(writerResolved.defaultPrompt, /Must begin with one quoted sentence/);
   assert.match(writerResolved.defaultPrompt, /top_ru/);
   assert.match(writerResolved.defaultPrompt, /bottom_ru/);
   assert.match(rewriterResolved.defaultPrompt, /top_ru/);
@@ -3524,11 +3710,13 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
   );
 
   assert.match(html, /Как этот run реально устроен/);
+  assert.match(html, /Analyzer read/);
   assert.match(html, /Active corpus \+ selector picks/);
   assert.match(html, /selector picked 3/);
   assert.match(html, /selector saw 5/);
   assert.match(html, /Target Channel/);
   assert.match(html, /Truck axle snaps in the mud/);
+  assert.match(html, /Core trigger:/);
   assert.match(html, /Selector rationale/);
   assert.ok(!/hot pool/i.test(html));
   assert.ok(!/stable \+ hot \+ anti/i.test(html));
@@ -3722,6 +3910,85 @@ test("step 2 keeps an attached running run informational instead of rendering it
   assert.doesNotMatch(html, /danger-text[^>]*>Для этого чата уже идёт Stage 2/);
 });
 
+test("step 2 marks future stages as not started after a shortlist failure instead of implying they ran", () => {
+  let progress = createStage2ProgressSnapshot("run_failed");
+  for (const stageId of ["analyzer", "selector", "writer", "critic", "rewriter"] as const) {
+    progress = markStage2ProgressStageRunning(progress, stageId, {
+      detail: `${stageId} running`
+    });
+    progress = markStage2ProgressStageCompleted(progress, stageId, {
+      detail: `${stageId} done`
+    });
+  }
+  progress = markStage2ProgressStageRunning(progress, "finalSelector", {
+    detail: "Selecting shortlist."
+  });
+  progress = markStage2ProgressStageFailed(
+    progress,
+    "finalSelector",
+    "Stage 2 final shortlist could not produce 5 valid options after constraint-safe repair and reserve backfill."
+  );
+
+  const html = renderToStaticMarkup(
+    React.createElement(Step2PickCaption, {
+      channelName: "Target Channel",
+      channelUsername: "target_channel",
+      stage2: null,
+      progress,
+      stageCreatedAt: nowIso(),
+      commentsAvailable: true,
+      instruction: "",
+      runs: [
+        {
+          runId: "run_failed",
+          chatId: "chat_1",
+          channelId: "target",
+          sourceUrl: "https://example.com/failed",
+          userInstruction: null,
+          mode: "manual",
+          baseRunId: null,
+          status: "failed",
+          progress,
+          errorMessage:
+            "Stage 2 final shortlist could not produce 5 valid options after constraint-safe repair and reserve backfill.",
+          hasResult: false,
+          createdAt: nowIso(),
+          startedAt: nowIso(),
+          updatedAt: nowIso(),
+          finishedAt: nowIso()
+        }
+      ],
+      selectedRunId: "run_failed",
+      currentRunStatus: "failed",
+      currentRunError:
+        "Stage 2 final shortlist could not produce 5 valid options after constraint-safe repair and reserve backfill.",
+      canRunStage2: true,
+      canQuickRegenerate: false,
+      runBlockedReason: null,
+      quickRegenerateBlockedReason: null,
+      isLaunching: false,
+      isRunning: false,
+      expectedDurationMs: 40_000,
+      elapsedMs: 12_000,
+      selectedOption: null,
+      selectedTitleOption: null,
+      onInstructionChange: () => undefined,
+      onQuickRegenerate: () => undefined,
+      onRunStage2: () => undefined,
+      onSelectRun: () => undefined,
+      onSelectOption: () => undefined,
+      onSelectTitleOption: () => undefined,
+      onCopy: () => undefined
+    })
+  );
+
+  assert.match(html, /Последний запуск остановился на этапе, отмеченном ниже/);
+  assert.match(html, /Не запускался/);
+  assert.match(html, /Этот этап не запускался, потому что run завершился ошибкой на предыдущем шаге/);
+  assert.doesNotMatch(html, /Generating titles/);
+  assert.doesNotMatch(html, /Generating SEO/);
+});
+
 test("step 2 renders separate quick regenerate and full rerun controls with run mode labels", () => {
   const stage2 = makeRuntimeStage2Response("run_quick_ui", "quick");
   const html = renderToStaticMarkup(
@@ -3903,7 +4170,6 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
     topLengthMax: 120,
     bottomLengthMin: 5,
     bottomLengthMax: 120,
-    bottomQuoteRequired: true,
     bannedWords: [],
     bannedOpeners: []
   };
@@ -3958,6 +4224,18 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
       writerBrief: "stay concrete",
       rationale: "base selector rationale",
       selectedExampleIds: ["example_1"]
+    },
+    analysis: {
+      visualAnchors: ["axle twisting under load"],
+      specificNouns: ["axle", "mud", "truck"],
+      visibleActions: ["rear axle drops", "truck lurches sideways"],
+      firstSecondsSignal: "The axle is visibly giving out before the truck clears the rut.",
+      sceneBeats: ["truck digs into mud", "axle twists", "rear corner drops"],
+      revealMoment: "The wheel folds inward and the failure becomes obvious.",
+      lateClipChange: "The truck stops reading as stuck and starts reading as broken.",
+      commentVibe: "Mechanical disaster with instant crowd recognition.",
+      uncertaintyNotes: [],
+      rawSummary: "A mud run turns into a visible axle failure once the rear corner collapses."
     },
     effectivePrompting: {
       promptStages: [
@@ -4785,7 +5063,6 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       topLengthMax: 68,
       bottomLengthMin: 34,
       bottomLengthMax: 102,
-      bottomQuoteRequired: true,
       bannedWords: ["workspace"],
       bannedOpeners: ["Workspace"]
     };
@@ -4794,7 +5071,6 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       topLengthMax: 170,
       bottomLengthMin: 88,
       bottomLengthMax: 144,
-      bottomQuoteRequired: false,
       bannedWords: ["channel"],
       bannedOpeners: ["Channel"]
     };
@@ -4901,6 +5177,18 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         ],
         rationale: "Lean into the design contrast and social irritation.",
         writerBrief: "Write it like fake progress versus useful design."
+      },
+      analysis: {
+        visualAnchors: ["screen header", "stacked names", "reaction frame"],
+        specificNouns: ["header", "lineup", "reaction"],
+        visibleActions: ["names stack", "reaction lands"],
+        firstSecondsSignal: "The header already frames the social tension.",
+        sceneBeats: ["header appears", "names stack", "reaction lands"],
+        revealMoment: "The stacked field turns the reveal into a social bloodbath.",
+        lateClipChange: "The social meaning gets clearer as the lineup fills out.",
+        commentVibe: "design disbelief and social irritation",
+        uncertaintyNotes: ["This fixture focuses on export truthfulness, not full scene coverage."],
+        rawSummary: "A display-driven clip escalates as the lineup fills in and the social reaction becomes obvious."
       },
       examples: {
         source: "workspace_default",
@@ -5134,6 +5422,8 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.equal(trace?.stage2.currentResult?.output.finalPick.reason, "Final pick for selected");
     assert.equal(trace?.stage2.currentResult?.source.topComments.length, 15);
     assert.equal(trace?.stage2.currentResult?.source.allComments.length, 15);
+    assert.equal(trace?.stage2.analysis?.revealMoment, baseDiagnostics.analysis.revealMoment);
+    assert.deepEqual(trace?.stage2.analysis?.sceneBeats, baseDiagnostics.analysis.sceneBeats);
     assert.equal(
       trace?.stage2.effectivePrompting?.promptStages[0]?.promptText,
       "SELECTOR FULL PROMPT WITH CONTEXT"
@@ -5199,55 +5489,56 @@ test("chat trace export remains valid when the chat has no comments, no stage 2 
 });
 
 test("app shell renders a compact current-chat header action", () => {
+  const shellProps: AppShellProps = {
+    title: "Автоматизация клипов",
+    subtitle: "Subtitle",
+    steps: [
+      { id: 1, label: "Шаг 1", enabled: true },
+      { id: 2, label: "Шаг 2", enabled: true },
+      { id: 3, label: "Шаг 3", enabled: true }
+    ],
+    currentStep: 1,
+    onStepChange: () => undefined,
+    historyItems: [],
+    activeHistoryId: null,
+    onHistoryOpen: () => undefined,
+    onDeleteHistory: () => undefined,
+    onCreateNew: () => undefined,
+    channels: [],
+    activeChannelId: null,
+    onSelectChannel: () => undefined,
+    onManageChannels: () => undefined,
+    canManageChannels: false,
+    canManageTeam: false,
+    onOpenTeam: () => undefined,
+    codexConnected: false,
+    codexBusyConnect: false,
+    codexBusyRefresh: false,
+    canManageCodex: false,
+    canConnectCodex: false,
+    codexConnectBlockedReason: null,
+    codexStatusLabel: "Disconnected",
+    codexActionLabel: "Connect",
+    codexDeviceAuth: null,
+    codexSecondaryActionLabel: null,
+    onConnectCodex: () => undefined,
+    onRefreshCodex: () => undefined,
+    currentUserName: "Owner",
+    currentUserRole: "owner",
+    workspaceName: "Workspace",
+    onLogout: () => undefined,
+    statusText: "",
+    statusTone: "",
+    headerActions: React.createElement(
+      "button",
+      { type: "button", className: "btn btn-ghost" },
+      "Скачать историю"
+    ),
+    details: React.createElement("div", null),
+    children: React.createElement("div", null, "Body")
+  };
   const html = renderToStaticMarkup(
-    React.createElement(AppShell, {
-      title: "Автоматизация клипов",
-      subtitle: "Subtitle",
-      steps: [
-        { id: 1, label: "Шаг 1", enabled: true },
-        { id: 2, label: "Шаг 2", enabled: true },
-        { id: 3, label: "Шаг 3", enabled: true }
-      ],
-      currentStep: 1,
-      onStepChange: () => undefined,
-      historyItems: [],
-      activeHistoryId: null,
-      onHistoryOpen: () => undefined,
-      onDeleteHistory: () => undefined,
-      onCreateNew: () => undefined,
-      channels: [],
-      activeChannelId: null,
-      onSelectChannel: () => undefined,
-      onManageChannels: () => undefined,
-      canManageChannels: false,
-      canManageTeam: false,
-      onOpenTeam: () => undefined,
-      codexConnected: false,
-      codexBusyConnect: false,
-      codexBusyRefresh: false,
-      canManageCodex: false,
-      canConnectCodex: false,
-      codexConnectBlockedReason: null,
-      codexStatusLabel: "Disconnected",
-      codexActionLabel: "Connect",
-      codexDeviceAuth: null,
-      codexSecondaryActionLabel: null,
-      onConnectCodex: () => undefined,
-      onRefreshCodex: () => undefined,
-      currentUserName: "Owner",
-      currentUserRole: "owner",
-      workspaceName: "Workspace",
-      onLogout: () => undefined,
-      statusText: "",
-      statusTone: "",
-      headerActions: React.createElement(
-        "button",
-        { type: "button", className: "btn btn-ghost" },
-        "Скачать историю"
-      ),
-      details: React.createElement("div", null),
-      children: React.createElement("div", null, "Body")
-    })
+    React.createElement(AppShell, shellProps)
   );
 
   assert.match(html, /Скачать историю/);

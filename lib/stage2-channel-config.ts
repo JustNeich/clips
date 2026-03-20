@@ -5,7 +5,6 @@ export type Stage2HardConstraints = {
   topLengthMax: number;
   bottomLengthMin: number;
   bottomLengthMax: number;
-  bottomQuoteRequired: boolean;
   bannedWords: string[];
   bannedOpeners: string[];
 };
@@ -38,7 +37,6 @@ export const DEFAULT_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
   topLengthMax: 80,
   bottomLengthMin: 22,
   bottomLengthMax: 110,
-  bottomQuoteRequired: true,
   bannedWords: [],
   bannedOpeners: []
 };
@@ -57,10 +55,37 @@ function sanitizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const STAGE2_STRING_LIST_SPLIT_PATTERN = /(?:\r?\n|,|;)+/g;
+
+export function parseStage2DelimitedStringList(value: unknown): string[] {
+  const entries = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(STAGE2_STRING_LIST_SPLIT_PATTERN)
+      : [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const entry of entries) {
+    const sanitized = sanitizeString(entry);
+    if (!sanitized) {
+      continue;
+    }
+    const dedupeKey = sanitized.toLowerCase();
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    normalized.push(sanitized);
+  }
+  return normalized;
+}
+
+export function formatStage2DelimitedStringList(values: readonly string[]): string {
+  return parseStage2DelimitedStringList(values).join(", ");
+}
+
 function sanitizeStringList(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.map((item) => sanitizeString(item)).filter(Boolean)
-    : [];
+  return parseStage2DelimitedStringList(value);
 }
 
 function sanitizeNumber(value: unknown, fallback: number): number {
@@ -187,10 +212,6 @@ export function normalizeStage2HardConstraints(input: unknown): Stage2HardConstr
       candidate?.bottomLengthMax,
       DEFAULT_STAGE2_HARD_CONSTRAINTS.bottomLengthMax
     ),
-    bottomQuoteRequired:
-      typeof candidate?.bottomQuoteRequired === "boolean"
-        ? candidate.bottomQuoteRequired
-        : DEFAULT_STAGE2_HARD_CONSTRAINTS.bottomQuoteRequired,
     bannedWords:
       sanitizeStringList(candidate?.bannedWords).length > 0
         ? sanitizeStringList(candidate?.bannedWords)

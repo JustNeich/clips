@@ -471,10 +471,16 @@ TOP rules:
 BOTTOM rules:
 - Use provided hard constraints if present; otherwise target 140-150 characters.
 - Single line only.
-- Must begin with one quoted sentence.
 - Must carry human reaction energy.
 - Must not merely repeat or explain the TOP.
 - Should sound like the comment section upgraded by a sharp narrator.
+- Quoted openers are optional, not mandatory.
+- Use whichever opening style feels most human for this clip:
+  - direct reaction
+  - insider aside
+  - dry one-liner
+  - quoted observation only when it genuinely sounds natural
+- If a bottom opens with a quote, the continuation must stay clip-specific and conversational. Do not tack on a generic tail that could fit a different video.
 
 Task:
 Write 20 candidates.
@@ -490,7 +496,6 @@ For every candidate, provide:
 Translation rules:
 - 'top_ru' and 'bottom_ru' must be real Russian translations, not transliteration and not repeated English.
 - Keep the same meaning, trigger, tone, and publishability.
-- Preserve the quote-first BOTTOM structure in Russian when the English version uses it.
 - Keep Russian lines natural for a native Russian-speaking operator reviewing options.
 
 Return strict JSON array.
@@ -533,7 +538,6 @@ You must score every candidate on:
 - non_ai_feel
 - paused_frame_accuracy
 - comment_vibe_authenticity
-- quote_first_bottom_compliance
 - length_compliance
 - narrative_trigger_strength
 - context_compression_quality
@@ -548,8 +552,9 @@ Automatic penalties:
 - actions are abstract instead of visible
 - BOTTOM repeats TOP
 - BOTTOM explains instead of reacting
+- BOTTOM defaults to quote-first phrasing when the clip does not need it
+- BOTTOM uses a generic tail that could fit a different clip
 - vibe from comments is missing or fake
-- quote-first rule is missing
 - banned words or banned openers appear
 - phrasing sounds too clean, too safe, or too templated
 - candidate imitates examples instead of adapting them
@@ -593,14 +598,16 @@ Rewrite priorities:
 5. Tighten rhythm.
 6. Reduce derivativeness.
 7. Preserve length and structural constraints.
+8. Remove quote-first defaults or generic tails when they make the bottom feel templated.
 
 Non-negotiable:
 - Do not rewrite into a different idea unless necessary.
 - Do not make it more polished in an AI way.
 - Do not lose paused-frame truth.
-- Do not lose the quote-first bottom structure.
 - Do not flatten the human voice.
 - Do not over-explain.
+- If a quoted opener is not earning its place, remove it instead of polishing it.
+- If a bottom has a generic tail, replace it with a clip-specific continuation.
 
 For every rewritten candidate, provide:
 - English TOP in 'top'
@@ -611,7 +618,6 @@ For every rewritten candidate, provide:
 Translation rules:
 - 'top_ru' and 'bottom_ru' must be real Russian translations, not repeated English.
 - Keep the same idea and emotional energy as the rewritten English version.
-- Preserve the quote-first BOTTOM structure in Russian when the English version uses it.
 
 Return strict JSON array with:
 - candidate_id

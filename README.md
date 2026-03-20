@@ -62,15 +62,21 @@ npm run dev
 - UI отправляет ссылку на `POST /api/download`.
 - API запускает `yt-dlp`, получает видео и возвращает клиенту `mp4` как attachment.
 - UI может отправить ссылку на `POST /api/comments`.
-- API получает комментарии через `yt-dlp`, сортирует по лайкам и возвращает:
+- API получает комментарии провайдерно:
+  - для `YouTube` сначала использует `YouTube Data API v3`;
+  - если API временно недоступен или не настроен, может сделать fallback через `yt-dlp`;
+  - для `Instagram / Facebook` сохраняется текущий `yt-dlp`-path;
+  - если комментарии недоступны, source flow продолжает работу без них.
+- После этого backend сортирует комментарии по лайкам и возвращает:
   - до 300 самых популярных комментариев,
   - `topComments` для preview,
   - `allComments` для локального inspect/export в пределах cap.
 - UI может запустить Stage 2 через `POST /api/pipeline/stage2`.
 - Stage 2:
   - скачивает видео и комментарии;
-  - если `--write-comments` недоступен для источника, делает fallback (видео + доступные метаданные);
-  - извлекает 3 кадра из видео;
+  - для `YouTube` использует тот же API-first comments path, а `yt-dlp` оставляет fallback-ом;
+  - если комментарии недоступны, продолжает пайплайн с доступными видео-метаданными;
+  - извлекает адаптивно сэмплированный набор кадров из видео, а не фиксированные 3 stills;
   - ставит durable background run в очередь и продолжает его независимо от открытой вкладки;
   - использует pipeline `analyzer -> selector -> writer -> critic -> rewriter -> final selector -> titles`;
   - использует один effective examples corpus на run: либо `workspace default corpus`, либо `channel custom corpus`;
@@ -174,11 +180,15 @@ npm run stage3-worker -- start
 - `titleOptions`: ровно 5 заголовков;
 - `finalPick`: выбор лучшей опции + причина.
 
+Инвариант success-path:
+- successful Stage 2 run должен завершаться ровно 5 visible caption options;
+- если после repair/validation нельзя собрать publishable shortlist из 5 distinct options, run падает явно, а не сохраняет противоречивый partial-success.
+
 Дополнительная валидация:
 - `TOP`: диапазон задается channel hard constraints;
 - `BOTTOM`: диапазон задается channel hard constraints;
-- `BOTTOM`: требуется quoted phrase;
 - сохраняются banned words / banned openers / anti-AI ограничения из worker config.
+- `BOTTOM` больше не зависит от legacy правила `bottom quote required`; quoted opener допускается только если это естественно для конкретного клипа.
 
 Channel-specific mapping теперь задается через `Stage 2` в Channel Manager.
 
@@ -211,6 +221,16 @@ Primary Stage 2 control surface:
 - `STAGE3_WORKER_PAIRING_TTL_SEC` — TTL pairing token в секундах.
 - `STAGE3_WORKER_SESSION_TTL_SEC` — TTL worker session token в секундах.
 - `APP_BOOTSTRAP_SECRET` — обязателен в production и на Vercel для one-time owner bootstrap.
+- `YOUTUBE_DATA_API_KEY` — серверный API key для `YouTube Data API v3`. Это основной production path для комментариев YouTube с любых публичных каналов. Ownership/OAuth не нужны.
+- `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для YouTube comments/media, если официальный API временно недоступен и нужно попытаться пройти через `yt-dlp`.
+
+Ограничения comments fetch для YouTube:
+- `comments disabled` — YouTube API честно вернёт, что комментарии отключены.
+- `video unavailable / not found` — видео недоступно или удалено.
+- `quota exceeded` — исчерпана квота `YouTube Data API`.
+- `api auth/config broken` — серверный ключ невалиден или API не включён.
+- если API временно падает, backend может сделать fallback через `yt-dlp`;
+- если оба пути не сработали, источник всё равно можно продолжить без комментариев.
 
 Шаблон:
 

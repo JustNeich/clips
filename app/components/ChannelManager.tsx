@@ -27,8 +27,10 @@ import {
   collectWorkspaceStage2Examples,
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  formatStage2DelimitedStringList,
   normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
+  parseStage2DelimitedStringList,
   resolveStage2ExamplesCorpus,
   type Stage2CorpusExample,
   Stage2ExamplesConfig,
@@ -141,6 +143,8 @@ export function ChannelManager({
   const [stage2HardConstraints, setStage2HardConstraints] = useState<Stage2HardConstraints>(
     DEFAULT_STAGE2_HARD_CONSTRAINTS
   );
+  const [bannedWordsInput, setBannedWordsInput] = useState("");
+  const [bannedOpenersInput, setBannedOpenersInput] = useState("");
   const [workspaceExamplesJson, setWorkspaceExamplesJson] = useState("[]");
   const [workspaceExamplesError, setWorkspaceExamplesError] = useState<string | null>(null);
   const [customExamplesJson, setCustomExamplesJson] = useState("[]");
@@ -297,6 +301,8 @@ export function ChannelManager({
     const normalizedHardConstraints = normalizeStage2HardConstraints(workspaceStage2HardConstraintsProp);
     const normalizedPromptConfig = normalizeStage2PromptConfig(workspaceStage2PromptConfigProp);
     setStage2HardConstraints(normalizedHardConstraints);
+    setBannedWordsInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedWords));
+    setBannedOpenersInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedOpeners));
     setWorkspaceExamplesJson(workspaceStage2ExamplesCorpusJson);
     setWorkspaceExamplesError(null);
     setWorkspaceStage2PromptConfig(normalizedPromptConfig);
@@ -331,6 +337,10 @@ export function ChannelManager({
     );
     setStage2ExamplesConfig(normalizedExamplesConfig);
     setStage2HardConstraints(normalizedChannelHardConstraints);
+    setBannedWordsInput(formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedWords));
+    setBannedOpenersInput(
+      formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedOpeners)
+    );
     setCustomExamplesJson(stringifyCorpusExamples(initialChannelExamples));
     setCustomExamplesError(null);
     setTemplateId(activeChannel.templateId);
@@ -734,6 +744,16 @@ export function ChannelManager({
     );
   };
 
+  const updateBannedWordsInput = (value: string) => {
+    setBannedWordsInput(value);
+    updateStage2HardConstraint("bannedWords", parseStage2DelimitedStringList(value));
+  };
+
+  const updateBannedOpenersInput = (value: string) => {
+    setBannedOpenersInput(value);
+    updateStage2HardConstraint("bannedOpeners", parseStage2DelimitedStringList(value));
+  };
+
   const formatTabLabel = (value: "brand" | "stage2" | "render" | "assets" | "access") => {
     switch (value) {
       case "brand":
@@ -898,6 +918,8 @@ export function ChannelManager({
                 workspaceExamplesJson={workspaceExamplesJson}
                 workspaceExamplesError={workspaceExamplesError}
                 stage2HardConstraints={stage2HardConstraints}
+                bannedWordsInput={bannedWordsInput}
+                bannedOpenersInput={bannedOpenersInput}
                 workspaceStage2PromptConfig={workspaceStage2PromptConfig}
                 stage2PromptStages={stage2PromptStages}
                 autosaveState={autosaveState}
@@ -910,6 +932,8 @@ export function ChannelManager({
                 updateWorkspaceExamplesJson={updateWorkspaceExamplesJson}
                 updateCustomExamplesJson={updateCustomExamplesJson}
                 updateStage2HardConstraint={updateStage2HardConstraint}
+                updateBannedWordsInput={updateBannedWordsInput}
+                updateBannedOpenersInput={updateBannedOpenersInput}
                 updateStage2PromptTemplate={updateStage2PromptTemplate}
                 updateStage2PromptReasoning={updateStage2PromptReasoning}
                 resetStage2PromptStage={resetStage2PromptStage}

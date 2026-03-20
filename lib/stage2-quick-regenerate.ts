@@ -315,6 +315,19 @@ function buildQuickDiagnostics(input: {
         ...input.selectorOutput,
         rationale: input.selectorOutput.rationale ?? null
       },
+      analysis:
+        input.baseResult.diagnostics.analysis ?? {
+          visualAnchors: [],
+          specificNouns: [],
+          visibleActions: [],
+          firstSecondsSignal: "",
+          sceneBeats: [],
+          revealMoment: "",
+          lateClipChange: "",
+          commentVibe: "",
+          uncertaintyNotes: [],
+          rawSummary: ""
+        },
       effectivePrompting: {
         promptStages: [
           ...(input.baseResult.diagnostics.effectivePrompting?.promptStages ?? []),
@@ -351,6 +364,18 @@ function buildQuickDiagnostics(input: {
       writerBrief: input.selectorOutput.writerBrief,
       rationale: input.selectorOutput.rationale ?? null,
       selectedExampleIds: input.selectorOutput.selectedExampleIds ?? []
+    },
+    analysis: {
+      visualAnchors: [],
+      specificNouns: [],
+      visibleActions: [],
+      firstSecondsSignal: "",
+      sceneBeats: [],
+      revealMoment: "",
+      lateClipChange: "",
+      commentVibe: "",
+      uncertaintyNotes: [],
+      rawSummary: ""
     },
     effectivePrompting: {
       promptStages: [syntheticPromptStage]

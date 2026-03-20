@@ -1731,7 +1731,6 @@ export default function HomePage() {
     return () => {
       clearStage3PreviewCache();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1744,7 +1743,6 @@ export default function HomePage() {
     setStage3PreviewJobId(null);
     setStage3RenderState("idle");
     setStage3RenderJobId(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChat?.id]);
 
   useEffect(() => {

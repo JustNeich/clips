@@ -20,6 +20,8 @@ services:
         sync: false
       - key: YTDLP_COOKIES_PATH
         sync: false
+      - key: YOUTUBE_DATA_API_KEY
+        sync: false
       - key: VISOLIX_API_KEY
         sync: false
       - key: VISOLIX_BASE_URL

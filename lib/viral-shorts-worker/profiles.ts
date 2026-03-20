@@ -9,7 +9,6 @@ export const BASE_CONSTRAINTS: HardConstraints = {
   topLengthMax: 180,
   bottomLengthMin: 140,
   bottomLengthMax: 150,
-  bottomQuoteRequired: true,
   bannedWords: [
     "testament",
     "showcase",

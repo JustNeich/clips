@@ -60,6 +60,21 @@ Durable store:
 - `/Users/neich/dev/clips automations/lib/stage2-progress-store.ts`
 - `/Users/neich/dev/clips automations/lib/stage2-run-runtime.ts`
 
+## 2.1 Source context quality inputs
+
+Analyzer больше не работает от фиксированных 3 still frames.
+
+Текущая модель:
+- используется adaptive frame sampling с bounded coverage по длине клипа;
+- transcript, если доступен, передаётся в `videoContext` и идёт в analyzer/selector как supporting context;
+- comments используются как vibe/context layer, но не заменяют visual truth;
+- если comments недоступны, run не ломается, но diagnostics и warnings должны честно показывать no-comments fallback.
+
+Практический смысл:
+- analyzer читает клип как короткую последовательность, а не как одну freeze-frame;
+- no-comments runs не должны притворяться, что у нас есть реальный audience consensus;
+- selector и downstream stages получают более truthful source context.
+
 ## 3. Examples corpus resolution
 
 ### Workspace default corpus
@@ -148,23 +163,32 @@ Downstream stages используют selector output напрямую:
 - final selector
 - titles
 
+### Retrieval hygiene expectations
+
+Selector candidate pool должен быть чище, чем полный corpus:
+- weak/noisy examples с плохим overlay signal downrank-ятся или выпадают;
+- richer metadata (`clipType`, `whyItWorks`, `qualityScore`) используется как quality signal;
+- generic `clipType=general` examples не должны доминировать, если есть более релевантные metadata-rich matches;
+- diagnostics должны показывать и active corpus, и curated selector pool, чтобы оператор видел реальный runtime boundary.
+
 ## 6. Final shortlist contract
 
-Финальный shortlist целится в 5 visible options, но это не unconditional guarantee.
+Финальный shortlist в success-path всегда должен содержать **ровно 5 visible options**.
 
 Текущая политика:
 - final selector просит 5 strongest finalists
 - затем shortlist проходит constraint-safe repair и hard-constraint validation
-- если после этого publishable survivors меньше 5, visible shortlist честно сужается
+- если publishable пятёрка не собирается даже после deterministic backfill/reserve fill, run **не считается successful** и падает явно
 
-Это теперь должно быть видно одновременно в нескольких местах:
-- `progress.finalSelector.summary/detail`
-- `output.pipeline.finalSelector.shortlistStats`
-- `output.pipeline.finalSelector.rationaleInternalRaw`
-- `warnings[]`
-- UI run warnings
+Required invariants для completed run:
+- `output.captionOptions.length === 5`
+- `output.pipeline.finalSelector.candidateOptionMap.length === 5`
+- `output.pipeline.finalSelector.shortlistCandidateIds.length === 5`
+- `output.pipeline.finalSelector.finalPickCandidateId` входит в visible shortlist
+- `progress.finalSelector.summary/detail` совпадают с persisted shortlist
+- `rationaleInternalRaw` описывает ту же visible shortlist, что видит оператор
 
-То есть поведение `Shortlist 2` или `Shortlist 3` теперь считается допустимым только как явный quality outcome, а не как молчаливый drift между слоями.
+То есть `Shortlist 2` / `Shortlist 3` / `Shortlist empty` больше не являются допустимым successful outcome.
 
 ## 7. Progress and durability
 
@@ -266,16 +290,22 @@ When a run looks suspicious:
    - `output.captionOptions.length`
    - `pipeline.finalSelector.candidateOptionMap.length`
    - `pipeline.finalSelector.shortlistCandidateIds.length`
-5. If the shortlist is smaller than 5, verify that:
-   - `warnings[]` explains why it shrank
-   - `rationaleInternalRaw` mentions the same shrink outcome
-   - UI run warnings surface the same reason
+5. If any of those values is not `5`, treat the run as contract-broken.
+   Successful runs must not persist a reduced visible shortlist anymore.
 6. Use clip trace export to verify:
    - selected run id
+   - analyzer read (`analysis`)
    - active corpus vs selector candidate pool
    - selected examples
    - effective prompts
    - Stage 2 -> Stage 3 handoff summary
+
+### Comments-specific debugging
+
+Если comments отсутствуют:
+- `warnings[]` должен содержать явное объяснение no-comments fallback;
+- `diagnostics.analysis.commentVibe` должен быть сформулирован truthfully, а не как fake crowd consensus;
+- trace export должен сохранять `analysis`, чтобы было видно `revealMoment`, `lateClipChange`, `sceneBeats`, `uncertaintyNotes`.
 
 ## 11. Related files
 

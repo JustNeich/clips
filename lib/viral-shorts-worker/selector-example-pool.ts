@@ -29,6 +29,27 @@ function countWords(value: string): number {
   return normalizeWhitespace(value).split(" ").filter(Boolean).length;
 }
 
+function hasSuspiciousTokenNoise(value: string): boolean {
+  const tokens = normalizeWhitespace(value)
+    .split(" ")
+    .map((token) => token.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, ""))
+    .filter(Boolean);
+
+  const suspiciousCount = tokens.filter((token) => {
+    if (token.length < 5) {
+      return false;
+    }
+    const hasLetters = /[A-Za-z]/.test(token);
+    const hasDigits = /\d/.test(token);
+    const mixedLetterDigit = hasLetters && hasDigits;
+    const weirdInternalCaps = /[a-z][A-Z]{2,}|[A-Z]{2,}[a-z]{2,}/.test(token);
+    const nonAscii = /[^\x00-\x7F]/.test(token);
+    return mixedLetterDigit || weirdInternalCaps || nonAscii;
+  }).length;
+
+  return suspiciousCount >= 2;
+}
+
 function hasEnoughSignal(value: string, minimumLength: number, minimumWords: number): boolean {
   const normalized = normalizeWhitespace(value);
   if (!normalized) {
@@ -51,12 +72,38 @@ function isPromptReadyExample(example: Stage2CorpusExample): boolean {
   );
 }
 
+function hasMetadataRichness(example: Stage2CorpusExample): boolean {
+  return (
+    example.clipType !== "general" ||
+    example.whyItWorks.length > 0 ||
+    (typeof example.qualityScore === "number" && example.qualityScore >= 0.55)
+  );
+}
+
+function isWeakGenericExample(example: Stage2CorpusExample): boolean {
+  return (
+    example.clipType === "general" &&
+    example.whyItWorks.length === 0 &&
+    !(typeof example.qualityScore === "number" && example.qualityScore >= 0.55)
+  );
+}
+
+function hasSuspiciousOverlayNoise(example: Stage2CorpusExample): boolean {
+  return (
+    hasSuspiciousTokenNoise(example.overlayTop) ||
+    hasSuspiciousTokenNoise(example.overlayBottom)
+  );
+}
+
 function scorePromptReadyExample(queryText: string, example: Stage2CorpusExample): number {
-  const whyItWorksBonus = Math.min(0.45, example.whyItWorks.length * 0.15);
+  const whyItWorksBonus = Math.min(0.6, example.whyItWorks.length * 0.22);
   const qualityScore = typeof example.qualityScore === "number" ? example.qualityScore : 0;
   const ownedExampleBonus = example.ownerChannelId === example.sourceChannelId ? 0.12 : 0;
-  const clipTypeBonus = example.clipType !== "general" ? 0.06 : 0;
+  const clipTypeBonus = example.clipType !== "general" ? 0.24 : 0;
   const titleBonus = example.title.trim().length > 0 ? 0.04 : 0;
+  const transcriptBonus = hasEnoughSignal(example.transcript, 24, 5) ? 0.05 : 0;
+  const weakGenericPenalty = isWeakGenericExample(example) ? 0.65 : 0;
+  const noisePenalty = hasSuspiciousOverlayNoise(example) ? 1.1 : 0;
 
   return (
     scoreTextMatch(queryText, {
@@ -70,7 +117,10 @@ function scorePromptReadyExample(queryText: string, example: Stage2CorpusExample
     qualityScore +
     ownedExampleBonus +
     clipTypeBonus +
-    titleBonus
+    titleBonus +
+    transcriptBonus -
+    weakGenericPenalty -
+    noisePenalty
   );
 }
 
@@ -115,7 +165,16 @@ export function buildSelectorExamplePool(input: {
   const limit = input.limit ?? MAX_SELECTOR_PROMPT_EXAMPLES;
   const perSourceLimit = input.perSourceLimit ?? MAX_SELECTOR_PROMPT_EXAMPLES_PER_SOURCE;
   const promptReadyExamples = input.examples.filter((example) => isPromptReadyExample(example));
-  const rankingPool = promptReadyExamples.length > 0 ? promptReadyExamples : input.examples;
+  const cleanPromptReadyExamples = promptReadyExamples.filter((example) => !hasSuspiciousOverlayNoise(example));
+  const metadataRichExamples = cleanPromptReadyExamples.filter((example) => hasMetadataRichness(example));
+  const rankingPool =
+    metadataRichExamples.length >= Math.min(8, limit)
+      ? metadataRichExamples
+      : cleanPromptReadyExamples.length > 0
+        ? cleanPromptReadyExamples
+      : promptReadyExamples.length > 0
+        ? promptReadyExamples
+        : input.examples;
   const ranked = [...rankingPool]
     .map((example) => ({
       example,
@@ -135,7 +194,7 @@ export function buildSelectorExamplePool(input: {
       activeCorpusCount: input.examples.length,
       selectorCandidateCount: selectorExamples.length,
       filteredOutForSignalCount:
-        promptReadyExamples.length > 0 ? Math.max(0, input.examples.length - promptReadyExamples.length) : 0,
+        rankingPool.length > 0 ? Math.max(0, input.examples.length - rankingPool.length) : 0,
       trimmedByLimitCount: Math.max(0, rankingPool.length - selectorExamples.length)
     }
   };
