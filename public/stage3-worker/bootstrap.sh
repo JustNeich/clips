@@ -111,7 +111,9 @@ done < <(
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 const files = Array.isArray(manifest.designFiles) ? manifest.designFiles : [
-  "templates/science-card-v1/figma-spec.json"
+  "templates/science-card-v1/figma-spec.json",
+  "templates/science-card-v7/figma-spec.json",
+  "templates/hedges-of-honor-v1/figma-spec.json"
 ];
 for (const file of files) {
   if (typeof file === "string" && file.trim()) console.log(file.trim());
@@ -128,7 +130,9 @@ const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 const files = Array.isArray(manifest.publicFiles) ? manifest.publicFiles : [
   "stage3-template-badges/science-card-v1-check.png",
-  "stage3-template-backdrops/science-card-v2.png"
+  "stage3-template-badges/honor-verified-badge.svg",
+  "stage3-template-backdrops/science-card-v7-shell.svg",
+  "stage3-template-backdrops/hedges-of-honor-v1-shell.svg"
 ];
 for (const file of files) {
   if (typeof file === "string" && file.trim()) console.log(file.trim());

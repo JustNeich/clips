@@ -10,6 +10,7 @@ import { requireRuntimeTool } from "../../../../lib/runtime-capabilities";
 import {
   listStage2RunsForChat,
   findActiveStage2RunForChat,
+  getStage2Run,
   Stage2RunMode,
   Stage2RunRecord
 } from "../../../../lib/stage2-progress-store";
@@ -18,14 +19,17 @@ import {
   getStage2RunOrThrow,
   scheduleStage2RunProcessing
 } from "../../../../lib/stage2-run-runtime";
+import { buildStage2RunRequestSnapshot } from "../../../../lib/stage2-run-request";
 import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
-import { getWorkspaceStage2HardConstraints } from "../../../../lib/team-store";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
 
 function normalizeMode(value: unknown): Stage2RunMode {
+  if (value === "regenerate") {
+    return "regenerate";
+  }
   return value === "auto" ? "auto" : "manual";
 }
 
@@ -37,6 +41,7 @@ function serializeStage2RunSummary(run: Stage2RunRecord) {
     sourceUrl: run.sourceUrl,
     userInstruction: run.userInstruction,
     mode: run.mode,
+    baseRunId: run.baseRunId,
     status: run.status,
     progress: run.snapshot,
     errorMessage: run.errorMessage ?? run.snapshot.error ?? null,
@@ -129,27 +134,20 @@ export async function GET(request: Request): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as
-    | { url?: string; chatId?: string; userInstruction?: string; mode?: Stage2RunMode }
+    | {
+        url?: string;
+        chatId?: string;
+        userInstruction?: string;
+        mode?: Stage2RunMode;
+        baseRunId?: string;
+      }
     | null;
+  const mode = normalizeMode(body?.mode);
   const chatId = body?.chatId?.trim();
   const chat = chatId ? await getChatById(chatId) : null;
-  const rawUrl = body?.url?.trim() || chat?.url?.trim();
+  const requestedBaseRunId = body?.baseRunId?.trim() || null;
   const userInstructionRaw = body?.userInstruction?.trim() ?? "";
   const userInstruction = userInstructionRaw ? userInstructionRaw.slice(0, 2000) : null;
-
-  if (!rawUrl) {
-    return Response.json({ error: "Передайте URL в теле запроса." }, { status: 400 });
-  }
-
-  const sourceUrl = normalizeSupportedUrl(rawUrl);
-  if (!isSupportedUrl(sourceUrl)) {
-    return Response.json(
-      {
-        error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
-      },
-      { status: 400 }
-    );
-  }
 
   try {
     const auth = await requireAuth();
@@ -159,11 +157,49 @@ export async function POST(request: Request): Promise<Response> {
         : await getDefaultChannel(auth.workspace.id);
     await requireChannelOperate(auth, channel.id);
 
-    await Promise.all([
-      requireRuntimeTool("ffmpeg"),
-      requireRuntimeTool("ffprobe"),
-      requireRuntimeTool("codex")
-    ]);
+    if (mode === "regenerate" && !requestedBaseRunId) {
+      return Response.json({ error: "Передайте baseRunId для быстрой перегенерации." }, { status: 400 });
+    }
+    const baseRun =
+      mode === "regenerate" && requestedBaseRunId ? getStage2Run(requestedBaseRunId) : null;
+    if (mode === "regenerate" && requestedBaseRunId && !baseRun) {
+      return Response.json({ error: "Выбранный base run не найден." }, { status: 404 });
+    }
+    if (baseRun) {
+      await requireRunVisibility(auth, baseRun);
+      if (chat?.id && baseRun.chatId && baseRun.chatId !== chat.id) {
+        return Response.json(
+          { error: "base_run_chat_mismatch", message: "Быстрая перегенерация должна использовать run из текущего чата." },
+          { status: 400 }
+        );
+      }
+      if (!baseRun.resultData) {
+        return Response.json(
+          { error: "base_run_missing_result", message: "Выбранный base run ещё не содержит результата." },
+          { status: 409 }
+        );
+      }
+    }
+
+    const rawUrl = body?.url?.trim() || chat?.url?.trim() || baseRun?.sourceUrl?.trim();
+    if (!rawUrl) {
+      return Response.json({ error: "Передайте URL в теле запроса." }, { status: 400 });
+    }
+    const sourceUrl = normalizeSupportedUrl(rawUrl);
+    if (!isSupportedUrl(sourceUrl)) {
+      return Response.json(
+        {
+          error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
+        },
+        { status: 400 }
+      );
+    }
+
+    await Promise.all(
+      mode === "regenerate"
+        ? [requireRuntimeTool("codex")]
+        : [requireRuntimeTool("ffmpeg"), requireRuntimeTool("ffprobe"), requireRuntimeTool("codex")]
+    );
     const integration = requireSharedCodexAvailable(auth.workspace.id);
     await ensureCodexLoggedIn(integration.codexHomePath as string);
 
@@ -208,18 +244,19 @@ export async function POST(request: Request): Promise<Response> {
       workspaceId: auth.workspace.id,
       creatorUserId: auth.user.id,
       chatId: chat?.id ?? null,
-      request: {
+      request: buildStage2RunRequestSnapshot({
         sourceUrl,
         userInstruction,
-        mode: normalizeMode(body?.mode),
+        mode,
+        baseRunId: baseRun?.runId ?? null,
         channel: {
           id: channel.id,
           name: channel.name,
           username: channel.username,
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
-          stage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id)
+          stage2HardConstraints: channel.stage2HardConstraints
         }
-      }
+      })
     });
 
     return Response.json({ run: serializeStage2RunDetail(run) }, { status: 202 });

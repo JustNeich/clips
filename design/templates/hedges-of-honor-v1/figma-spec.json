@@ -1,0 +1,65 @@
+{
+  "templateId": "hedges-of-honor-v1",
+  "source": "generated",
+  "frame": {
+    "width": 1080,
+    "height": 1920
+  },
+  "shell": {
+    "x": 0,
+    "y": 0,
+    "width": 1080,
+    "height": 1920,
+    "radius": 0,
+    "background": "#177FA6"
+  },
+  "card": {
+    "x": 83,
+    "y": 192,
+    "width": 907,
+    "height": 1461,
+    "radius": 0,
+    "borderWidth": 2,
+    "borderColor": "#000000",
+    "fill": "#ffffff",
+    "shadow": "20px 20px 0 rgba(35, 40, 47, 0.52), inset 0 0 0 1px rgba(10, 14, 20, 0.1), inset 0 0 18px rgba(17, 25, 34, 0.045), inset 0 4px 10px rgba(17, 25, 34, 0.075), inset 0 -7px 14px rgba(17, 25, 34, 0.095)"
+  },
+  "sections": {
+    "top": {
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 419
+    },
+    "media": {
+      "x": 83,
+      "y": 611,
+      "width": 907,
+      "height": 750
+    },
+    "bottom": {
+      "x": 83,
+      "y": 1361,
+      "width": 907,
+      "height": 292
+    },
+    "author": {
+      "x": 83,
+      "y": 1361,
+      "width": 907,
+      "height": 132
+    },
+    "avatar": {
+      "x": 106,
+      "y": 1379,
+      "width": 101,
+      "height": 101
+    },
+    "bottomText": {
+      "x": 106,
+      "y": 1493,
+      "width": 838,
+      "height": 160
+    }
+  }
+}

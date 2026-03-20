@@ -10,8 +10,8 @@ import {
 import {
   resolveTemplateAvatarBorderColor,
   resolveTemplateBuiltInBackdropAssetPath,
-  templateUsesBuiltInBackdropFromRegistry
 } from "../lib/stage3-template-registry";
+import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
 import { RenderVariationOverlay } from "./render-variation-overlay";
@@ -137,20 +137,17 @@ export function ScienceCardV1({
   const bgTransform = mirrorEnabled
     ? `scale(${(-backgroundScale).toFixed(3)}, ${backgroundScale.toFixed(3)})`
     : `scale(${backgroundScale.toFixed(3)})`;
+  const backgroundMode = resolveStage3BackgroundMode(resolvedTemplateId, {
+    hasCustomBackground: hasCustomBackground,
+    hasSourceVideo: Boolean(sourceUrl)
+  });
 
   const backgroundNode = (
     <AbsoluteFill>
-      {templateUsesBuiltInBackdropFromRegistry(resolvedTemplateId) ? (
-        resolveTemplateBackdropNode(
-          resolvedTemplateId,
-          resolveTemplateBuiltInBackdropAssetPath(resolvedTemplateId)
-            ? staticFile(resolveTemplateBuiltInBackdropAssetPath(resolvedTemplateId)!.replace(/^\//, ""))
-            : undefined
-        )
-      ) : customBackgroundSrc ? (
+      {backgroundMode === "custom" ? (
         customBackgroundIsVideo ? (
           <OffthreadVideo
-            src={customBackgroundSrc}
+            src={customBackgroundSrc!}
             style={{
               width: frame.width,
               height: frame.height,
@@ -161,7 +158,7 @@ export function ScienceCardV1({
           />
         ) : (
           <Img
-            src={customBackgroundSrc}
+            src={customBackgroundSrc!}
             style={{
               width: frame.width,
               height: frame.height,
@@ -170,7 +167,7 @@ export function ScienceCardV1({
             }}
           />
         )
-      ) : sourceUrl ? (
+      ) : backgroundMode === "source-blur" ? (
         <OffthreadVideo
           src={sourceUrl}
           startFrom={startFrom}
@@ -186,6 +183,13 @@ export function ScienceCardV1({
           }}
           volume={0}
         />
+      ) : backgroundMode === "built-in" ? (
+        resolveTemplateBackdropNode(
+          resolvedTemplateId,
+          resolveTemplateBuiltInBackdropAssetPath(resolvedTemplateId)
+            ? staticFile(resolveTemplateBuiltInBackdropAssetPath(resolvedTemplateId)!.replace(/^\//, ""))
+            : undefined
+        )
       ) : (
         <AbsoluteFill style={{ background: "#060606" }} />
       )}

@@ -120,6 +120,9 @@ npm run stage2-worker
 - Любые изменения typography/padding допустимы только если не нарушают предыдущее правило на коротком, среднем и длинном тексте.
 - Запрещено менять поведение так, чтобы текст “выпадал” за границы секции или появлялись несоразмерные вертикальные gaps.
 
+Подробный guide по интеграции и калибровке новых Stage 3 шаблонов:
+- [docs/stage3-template-integration.md](/Users/neich/dev/clips automations/docs/stage3-template-integration.md)
+
 Подробный rollout-гайд: [docs/stage3-local-worker.md](/Users/neich/dev/clips automations/docs/stage3-local-worker.md)
 
 ## Stage 3 local worker

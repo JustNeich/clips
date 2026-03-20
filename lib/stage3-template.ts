@@ -1,13 +1,17 @@
-import { clampStage3TextScaleUi } from "./stage3-text-fit";
+import {
+  ceilStage3TextFontPx,
+  clampStage3TextScaleUi,
+  snapStage3TextFontPx,
+  STAGE3_TEXT_FONT_STEP_PX
+} from "./stage3-text-fit";
 
 export const SCIENCE_CARD_TEMPLATE_ID = "science-card-v1";
-export const TURBO_FACE_TEMPLATE_ID = "turbo-face-v1";
-export const SCIENCE_CARD_V2_TEMPLATE_ID = "science-card-v2";
-export const SCIENCE_CARD_V3_TEMPLATE_ID = "science-card-v3";
-export const SCIENCE_CARD_V4_TEMPLATE_ID = "science-card-v4";
-export const SCIENCE_CARD_V5_TEMPLATE_ID = "science-card-v5";
-export const SCIENCE_CARD_V6_TEMPLATE_ID = "science-card-v6";
+export const SCIENCE_CARD_BLUE_TEMPLATE_ID = "science-card-blue-v1";
+export const SCIENCE_CARD_RED_TEMPLATE_ID = "science-card-red-v1";
+export const SCIENCE_CARD_GREEN_TEMPLATE_ID = "science-card-green-v1";
+export const AMERICAN_NEWS_TEMPLATE_ID = "american-news-v1";
 export const SCIENCE_CARD_V7_TEMPLATE_ID = "science-card-v7";
+export const HEDGES_OF_HONOR_TEMPLATE_ID = "hedges-of-honor-v1";
 export const STAGE3_TEMPLATE_ID = SCIENCE_CARD_TEMPLATE_ID;
 
 const SHARED_STAGE3_CARD_METRICS = {
@@ -18,59 +22,32 @@ const SHARED_STAGE3_CARD_METRICS = {
 } as const;
 
 const SCIENCE_CARD_SECTION_METRICS = {
-  topHeight: 349,
-  bottomHeight: 243
-} as const;
-
-const SCIENCE_CARD_V2_SECTION_METRICS = {
-  topHeight: 390,
-  bottomHeight: 270
-} as const;
-
-const TURBO_FACE_SECTION_METRICS = {
-  topHeight: 360,
-  bottomHeight: 300
-} as const;
-
-const TURBO_FACE_BASE_AUTHOR_METRICS = {
-  avatarSize: 88,
-  checkSize: 20,
-  authorNameFont: 38,
-  authorHandleFont: 24
-} as const;
-
-const SHARED_STAGE3_AUTHOR_METRICS = {
-  bottomMetaHeight: 118,
-  bottomMetaPaddingX: 20,
-  bottomMetaPaddingY: 4,
-  avatarSize: Math.round(TURBO_FACE_BASE_AUTHOR_METRICS.avatarSize * 1.2),
-  checkSize: Math.round(TURBO_FACE_BASE_AUTHOR_METRICS.checkSize * 2),
-  authorNameFont: Math.round(TURBO_FACE_BASE_AUTHOR_METRICS.authorNameFont * 1.1),
-  authorHandleFont: Math.round(TURBO_FACE_BASE_AUTHOR_METRICS.authorHandleFont * 1.5),
-  copyGap: 2,
-  nameCheckGap: 4
+  topHeight: 419,
+  bottomHeight: 292
 } as const;
 
 const SCIENCE_CARD_AUTHOR_METRICS = {
-  bottomMetaHeight: 110,
-  bottomMetaPaddingX: 19,
+  bottomMetaHeight: 132,
+  bottomMetaPaddingX: 23,
   bottomMetaPaddingY: 0,
-  avatarSize: 84,
-  checkSize: 45,
-  authorNameFont: 33,
-  authorHandleFont: 28,
+  avatarSize: 101,
+  checkSize: 54,
+  authorNameFont: 40,
+  authorHandleFont: 34,
   gap: 8,
   copyGap: 0,
   nameCheckGap: 2
 } as const;
 
+const SCIENCE_CARD_BORDER_VARIANT_BORDER_WIDTH = 16 as const;
+
 export const SCIENCE_CARD = {
   frame: { width: 1080, height: 1920 },
   card: {
-    x: 159,
-    y: 320,
-    width: 757,
-    height: 1217,
+    x: 83,
+    y: 192,
+    width: 907,
+    height: 1461,
     radius: 12,
     borderWidth: 8,
     borderColor: "#000000",
@@ -78,8 +55,8 @@ export const SCIENCE_CARD = {
     shadow: "0 4px 4px rgba(0,0,0,0.25)"
   },
   slot: {
-    topHeight: 349,
-    bottomHeight: 243,
+    topHeight: SCIENCE_CARD_SECTION_METRICS.topHeight,
+    bottomHeight: SCIENCE_CARD_SECTION_METRICS.bottomHeight,
     topPaddingX: 6,
     topPaddingY: 15,
     topPaddingTop: 15,
@@ -87,12 +64,12 @@ export const SCIENCE_CARD = {
     bottomMetaHeight: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaHeight,
     bottomMetaPaddingX: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaPaddingX,
     bottomMetaPaddingY: SCIENCE_CARD_AUTHOR_METRICS.bottomMetaPaddingY,
-    bottomTextPaddingX: 19,
+    bottomTextPaddingX: 23,
     bottomTextPaddingY: 0,
     bottomTextPaddingTop: 0,
     bottomTextPaddingBottom: 0,
-    bottomTextPaddingLeft: 19,
-    bottomTextPaddingRight: 39
+    bottomTextPaddingLeft: 23,
+    bottomTextPaddingRight: 46
   },
   palette: {
     cardFill: "#ffffff",
@@ -161,460 +138,110 @@ export const SCIENCE_CARD = {
   }
 } as const;
 
-export const SCIENCE_CARD_V2 = {
-  ...SCIENCE_CARD,
-  card: {
-    ...SCIENCE_CARD.card,
-    ...SHARED_STAGE3_CARD_METRICS,
-    radius: 0,
-    borderWidth: 6,
-    borderColor: "#22a65a",
-    fill: "#1b222a"
-  },
-  slot: {
-    ...SCIENCE_CARD.slot,
-    topHeight: SCIENCE_CARD_V2_SECTION_METRICS.topHeight,
-    topPaddingX: 58,
-    topPaddingY: 10,
-    topPaddingTop: 10,
-    topPaddingBottom: 12,
-    bottomHeight: SCIENCE_CARD_V2_SECTION_METRICS.bottomHeight,
-    bottomMetaHeight: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaHeight,
-    bottomMetaPaddingX: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaPaddingX,
-    bottomMetaPaddingY: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaPaddingY,
-    bottomTextPaddingX: 18,
-    bottomTextPaddingY: 0,
-    bottomTextPaddingTop: 6,
-    bottomTextPaddingBottom: 13,
-    bottomTextPaddingLeft: 18,
-    bottomTextPaddingRight: 18
-  },
-  author: {
-    ...SCIENCE_CARD.author,
-    name: "Zack The Bison",
-    handle: "@zackthebison",
-    avatarSize: SHARED_STAGE3_AUTHOR_METRICS.avatarSize,
-    avatarBorder: 1,
-    checkSize: SHARED_STAGE3_AUTHOR_METRICS.checkSize,
-    gap: 10,
-    copyGap: SHARED_STAGE3_AUTHOR_METRICS.copyGap,
-    nameCheckGap: SHARED_STAGE3_AUTHOR_METRICS.nameCheckGap
-  },
-  typography: {
-    ...SCIENCE_CARD.typography,
-    top: {
-      ...SCIENCE_CARD.typography.top,
-      min: 42,
-      max: 58,
-      softLimit: 190,
-      penalty: 0.18,
-      lineHeight: 0.93,
-      maxLines: 5,
-      maxChars: 240,
-      horizontalSafety: 0.95,
-      glyphFactor: 0.53,
-      fillTargetMin: 0.88,
-      fillTargetMax: 0.94,
-      weight: 800,
-      letterSpacing: "-0.03em"
+function createScienceCardBorderVariant(borderColor: string) {
+  return {
+    ...SCIENCE_CARD,
+    card: {
+      ...SCIENCE_CARD.card,
+      borderWidth: SCIENCE_CARD_BORDER_VARIANT_BORDER_WIDTH,
+      borderColor
     },
-    bottom: {
-      ...SCIENCE_CARD.typography.bottom,
-      min: 18,
-      max: 24,
-      softLimit: 165,
-      penalty: 0.2,
-      lineHeight: 0.97,
-      maxLines: 4,
-      maxChars: 220,
-      fillTargetMin: 0.84,
-      fillTargetMax: 0.9,
-      weight: 700,
-      letterSpacing: "-0.015em",
-      fontStyle: "italic"
-    },
-    authorName: {
-      ...SCIENCE_CARD.typography.authorName,
-      font: SHARED_STAGE3_AUTHOR_METRICS.authorNameFont,
-      lineHeight: 1,
-      weight: 700,
-      letterSpacing: "-0.012em"
-    },
-    authorHandle: {
-      ...SCIENCE_CARD.typography.authorHandle,
-      font: SHARED_STAGE3_AUTHOR_METRICS.authorHandleFont,
-      lineHeight: 1,
-      weight: 600,
-      letterSpacing: "-0.02em"
+    palette: {
+      ...SCIENCE_CARD.palette,
+      borderColor
     }
-  },
-  palette: {
-    cardFill: "#1b222a",
-    topSectionFill: "#232a32",
-    bottomSectionFill: "#21272f",
-    topTextColor: "#f5f7f7",
-    bottomTextColor: "#edf0f2",
-    authorNameColor: "#f0e7d4",
-    authorHandleColor: "#9da3ab",
-    checkBadgeColor: "#d4aa24",
-    borderColor: "#22a65a",
-    accentColor: "#77c15e"
-  }
-} as const;
+  } as const;
+}
 
-export const SCIENCE_CARD_V3 = {
+export const SCIENCE_CARD_BLUE = createScienceCardBorderVariant("#2057d6");
+export const SCIENCE_CARD_RED = createScienceCardBorderVariant("#d33f49");
+export const SCIENCE_CARD_GREEN = createScienceCardBorderVariant("#20a35a");
+
+export const AMERICAN_NEWS = {
   ...SCIENCE_CARD,
   card: {
     ...SCIENCE_CARD.card,
-    radius: 22,
+    radius: 0,
     borderWidth: 4,
-    borderColor: "#10243c",
-    fill: "#f8fbff",
-    shadow: "0 30px 80px rgba(10, 26, 48, 0.28), 0 12px 30px rgba(45, 108, 189, 0.18)"
+    borderColor: "#f3b31f",
+    fill: "#121820",
+    shadow: "0 10px 24px rgba(0, 0, 0, 0.22)"
   },
   slot: {
     ...SCIENCE_CARD.slot,
-    topPaddingX: 30,
-    topPaddingY: 18,
-    topPaddingTop: 18,
-    topPaddingBottom: 16,
-    bottomMetaPaddingX: 22,
-    bottomMetaPaddingY: 2,
+    topPaddingX: 26,
+    topPaddingY: 22,
+    topPaddingTop: 22,
+    topPaddingBottom: 18,
     bottomTextPaddingX: 22,
     bottomTextPaddingY: 0,
-    bottomTextPaddingTop: 2,
-    bottomTextPaddingBottom: 4,
+    bottomTextPaddingTop: 0,
+    bottomTextPaddingBottom: 0,
     bottomTextPaddingLeft: 22,
-    bottomTextPaddingRight: 30
+    bottomTextPaddingRight: 22
   },
   author: {
     ...SCIENCE_CARD.author,
-    avatarBorder: 2,
-    gap: 10,
-    nameCheckGap: 5
+    name: "American News",
+    handle: "@amnnews9",
+    checkAssetPath: "/stage3-template-badges/american-news-badge.svg",
+    nameCheckGap: 10
   },
   typography: {
     ...SCIENCE_CARD.typography,
     top: {
       ...SCIENCE_CARD.typography.top,
       min: 38,
-      max: 54,
-      softLimit: 210,
-      penalty: 0.14,
-      lineHeight: 0.94,
-      maxLines: 6,
-      horizontalSafety: 0.96,
-      glyphFactor: 0.52,
-      fillTargetMin: 0.89,
-      fillTargetMax: 0.95,
-      weight: 830,
-      letterSpacing: "-0.036em"
-    },
-    bottom: {
-      ...SCIENCE_CARD.typography.bottom,
-      min: 23,
-      max: 32,
-      softLimit: 180,
-      penalty: 0.15,
-      lineHeight: 1.04,
-      maxChars: 300,
-      fillTargetMin: 0.82,
-      fillTargetMax: 0.9,
-      weight: 550,
-      letterSpacing: "-0.012em"
-    },
-    authorName: {
-      ...SCIENCE_CARD.typography.authorName,
-      font: 34,
-      weight: 800,
-      letterSpacing: "-0.026em"
-    },
-    authorHandle: {
-      ...SCIENCE_CARD.typography.authorHandle,
-      font: 26,
-      weight: 450,
-      letterSpacing: "-0.018em"
-    }
-  },
-  palette: {
-    cardFill: "linear-gradient(180deg, #ffffff 0%, #edf5ff 100%)",
-    topSectionFill: "linear-gradient(180deg, #ffffff 0%, #f1f7ff 100%)",
-    bottomSectionFill: "linear-gradient(180deg, #ffffff 0%, #f6faff 100%)",
-    topTextColor: "#08121e",
-    bottomTextColor: "#0f1826",
-    authorNameColor: "#071320",
-    authorHandleColor: "rgba(12, 25, 38, 0.46)",
-    checkBadgeColor: "#4fbef7",
-    borderColor: "#10243c",
-    accentColor: "#178de8"
-  }
-} as const;
-
-export const SCIENCE_CARD_V4 = {
-  ...SCIENCE_CARD,
-  card: {
-    ...SCIENCE_CARD.card,
-    radius: 28,
-    borderWidth: 3,
-    borderColor: "rgba(112, 228, 255, 0.58)",
-    fill: "#071019",
-    shadow: "0 38px 90px rgba(0, 0, 0, 0.42), 0 18px 50px rgba(14, 120, 158, 0.22)"
-  },
-  slot: {
-    ...SCIENCE_CARD.slot,
-    topPaddingX: 34,
-    topPaddingY: 20,
-    topPaddingTop: 20,
-    topPaddingBottom: 16,
-    bottomMetaPaddingX: 24,
-    bottomMetaPaddingY: 3,
-    bottomTextPaddingX: 24,
-    bottomTextPaddingY: 0,
-    bottomTextPaddingTop: 4,
-    bottomTextPaddingBottom: 8,
-    bottomTextPaddingLeft: 24,
-    bottomTextPaddingRight: 28
-  },
-  author: {
-    ...SCIENCE_CARD.author,
-    avatarBorder: 2,
-    gap: 10,
-    nameCheckGap: 5
-  },
-  typography: {
-    ...SCIENCE_CARD.typography,
-    top: {
-      ...SCIENCE_CARD.typography.top,
-      min: 40,
-      max: 56,
-      softLimit: 210,
-      penalty: 0.17,
-      lineHeight: 0.93,
-      maxLines: 6,
-      horizontalSafety: 0.95,
-      glyphFactor: 0.52,
-      fillTargetMin: 0.88,
-      fillTargetMax: 0.94,
-      weight: 820,
-      letterSpacing: "-0.03em"
-    },
-    bottom: {
-      ...SCIENCE_CARD.typography.bottom,
-      min: 22,
-      max: 30,
-      softLimit: 175,
+      max: 58,
+      softLimit: 260,
       penalty: 0.16,
-      lineHeight: 1.05,
-      maxChars: 280,
-      fillTargetMin: 0.82,
-      fillTargetMax: 0.9,
-      weight: 560,
-      letterSpacing: "-0.01em"
-    },
-    authorName: {
-      ...SCIENCE_CARD.typography.authorName,
-      font: 34,
+      lineHeight: 0.96,
+      maxLines: 7,
+      maxChars: 360,
+      horizontalSafety: 0.985,
+      glyphFactor: 0.51,
+      fillTargetMin: 0.9,
+      fillTargetMax: 0.96,
       weight: 700,
-      letterSpacing: "-0.018em"
-    },
-    authorHandle: {
-      ...SCIENCE_CARD.typography.authorHandle,
-      font: 25,
-      weight: 500,
-      letterSpacing: "-0.014em"
-    }
-  },
-  palette: {
-    cardFill: "linear-gradient(180deg, rgba(10, 20, 31, 0.98) 0%, rgba(4, 9, 16, 0.98) 100%)",
-    topSectionFill: "linear-gradient(180deg, rgba(13, 25, 38, 0.98) 0%, rgba(9, 17, 28, 0.98) 100%)",
-    bottomSectionFill: "linear-gradient(180deg, rgba(8, 16, 26, 0.98) 0%, rgba(6, 12, 20, 0.98) 100%)",
-    topTextColor: "#f3fbff",
-    bottomTextColor: "#dfe9ef",
-    authorNameColor: "#f4fdff",
-    authorHandleColor: "rgba(194, 214, 229, 0.66)",
-    checkBadgeColor: "#64d9ff",
-    borderColor: "rgba(112, 228, 255, 0.58)",
-    accentColor: "#5af0cf"
-  }
-} as const;
-
-export const SCIENCE_CARD_V5 = {
-  ...SCIENCE_CARD,
-  card: {
-    ...SCIENCE_CARD.card,
-    radius: 18,
-    borderWidth: 5,
-    borderColor: "#6a3216",
-    fill: "#fff7ef",
-    shadow: "0 26px 60px rgba(79, 33, 16, 0.22), 0 10px 22px rgba(145, 74, 31, 0.14)"
-  },
-  slot: {
-    ...SCIENCE_CARD.slot,
-    topPaddingX: 28,
-    topPaddingY: 16,
-    topPaddingTop: 16,
-    topPaddingBottom: 14,
-    bottomMetaPaddingX: 21,
-    bottomMetaPaddingY: 1,
-    bottomTextPaddingX: 21,
-    bottomTextPaddingY: 0,
-    bottomTextPaddingTop: 3,
-    bottomTextPaddingBottom: 5,
-    bottomTextPaddingLeft: 21,
-    bottomTextPaddingRight: 28
-  },
-  author: {
-    ...SCIENCE_CARD.author,
-    avatarBorder: 1,
-    gap: 10,
-    nameCheckGap: 6
-  },
-  typography: {
-    ...SCIENCE_CARD.typography,
-    top: {
-      ...SCIENCE_CARD.typography.top,
-      min: 39,
-      max: 55,
-      softLimit: 210,
-      penalty: 0.15,
-      lineHeight: 0.95,
-      maxLines: 6,
-      horizontalSafety: 0.96,
-      glyphFactor: 0.52,
-      fillTargetMin: 0.89,
-      fillTargetMax: 0.95,
-      weight: 820,
-      letterSpacing: "-0.03em"
+      letterSpacing: "-0.025em"
     },
     bottom: {
       ...SCIENCE_CARD.typography.bottom,
-      min: 23,
-      max: 31,
-      softLimit: 185,
-      penalty: 0.16,
-      lineHeight: 1.06,
-      maxChars: 290,
-      fillTargetMin: 0.82,
-      fillTargetMax: 0.9,
-      weight: 600,
-      letterSpacing: "-0.012em",
+      min: 26,
+      max: 38,
+      softLimit: 220,
+      penalty: 0.18,
+      lineHeight: 1.02,
+      maxLines: 4,
+      maxChars: 260,
+      fillTargetMin: 0.84,
+      fillTargetMax: 0.92,
+      weight: 500,
+      letterSpacing: "-0.015em",
       fontStyle: "italic"
     },
     authorName: {
       ...SCIENCE_CARD.typography.authorName,
-      font: 34,
       weight: 800,
       letterSpacing: "-0.03em"
     },
     authorHandle: {
       ...SCIENCE_CARD.typography.authorHandle,
-      font: 26,
-      weight: 500,
-      letterSpacing: "-0.016em"
+      weight: 700,
+      letterSpacing: "-0.015em"
     }
   },
   palette: {
-    cardFill: "linear-gradient(180deg, #fffaf4 0%, #f8eadb 100%)",
-    topSectionFill:
-      "radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.96), rgba(255, 245, 230, 0.95) 38%, rgba(245, 220, 194, 0.96) 100%)",
-    bottomSectionFill: "linear-gradient(180deg, rgba(255, 253, 250, 0.98) 0%, rgba(246, 236, 223, 0.98) 100%)",
-    topTextColor: "#351308",
-    bottomTextColor: "#3a190d",
-    authorNameColor: "#281107",
-    authorHandleColor: "rgba(67, 29, 13, 0.48)",
-    checkBadgeColor: "#f28f5a",
-    borderColor: "#6a3216",
-    accentColor: "#d36e34"
-  }
-} as const;
-
-export const SCIENCE_CARD_V6 = {
-  ...SCIENCE_CARD,
-  card: {
-    ...SCIENCE_CARD.card,
-    radius: 24,
-    borderWidth: 6,
-    borderColor: "#121417",
-    fill: "#f7f4ea",
-    shadow: "14px 16px 0 rgba(18, 20, 23, 0.12), 0 28px 52px rgba(18, 20, 23, 0.14)"
-  },
-  slot: {
-    ...SCIENCE_CARD.slot,
-    topPaddingX: 26,
-    topPaddingY: 18,
-    topPaddingTop: 18,
-    topPaddingBottom: 14,
-    bottomMetaPaddingX: 22,
-    bottomMetaPaddingY: 2,
-    bottomTextPaddingX: 22,
-    bottomTextPaddingY: 0,
-    bottomTextPaddingTop: 6,
-    bottomTextPaddingBottom: 8,
-    bottomTextPaddingLeft: 22,
-    bottomTextPaddingRight: 28
-  },
-  author: {
-    ...SCIENCE_CARD.author,
-    avatarBorder: 2,
-    gap: 10,
-    nameCheckGap: 6,
-    checkAssetPath: undefined
-  },
-  typography: {
-    ...SCIENCE_CARD.typography,
-    top: {
-      ...SCIENCE_CARD.typography.top,
-      min: 39,
-      max: 55,
-      softLimit: 210,
-      penalty: 0.15,
-      lineHeight: 0.94,
-      maxLines: 6,
-      horizontalSafety: 0.96,
-      glyphFactor: 0.52,
-      fillTargetMin: 0.89,
-      fillTargetMax: 0.95,
-      weight: 850,
-      letterSpacing: "-0.038em"
-    },
-    bottom: {
-      ...SCIENCE_CARD.typography.bottom,
-      min: 23,
-      max: 31,
-      softLimit: 185,
-      penalty: 0.16,
-      lineHeight: 1.03,
-      maxChars: 280,
-      fillTargetMin: 0.82,
-      fillTargetMax: 0.89,
-      weight: 650,
-      letterSpacing: "-0.012em",
-      fontStyle: "normal"
-    },
-    authorName: {
-      ...SCIENCE_CARD.typography.authorName,
-      font: 33,
-      weight: 820,
-      letterSpacing: "-0.03em"
-    },
-    authorHandle: {
-      ...SCIENCE_CARD.typography.authorHandle,
-      font: 24,
-      weight: 600,
-      letterSpacing: "-0.018em"
-    }
-  },
-  palette: {
-    cardFill: "#f7f4ea",
-    topSectionFill: "#fffdf8",
-    bottomSectionFill: "#f7f4ea",
-    topTextColor: "#111318",
-    bottomTextColor: "#17191f",
-    authorNameColor: "#111318",
-    authorHandleColor: "rgba(17, 19, 24, 0.46)",
-    checkBadgeColor: "#8df33d",
-    borderColor: "#121417",
-    accentColor: "#4fd92a"
+    cardFill: "#121820",
+    topSectionFill: "#121820",
+    bottomSectionFill: "#121820",
+    topTextColor: "#f7f8fb",
+    bottomTextColor: "#f4f6fb",
+    authorNameColor: "#f7f8fb",
+    authorHandleColor: "#c3c8d1",
+    checkBadgeColor: "#f3b31f",
+    borderColor: "#f3b31f",
+    accentColor: "#f3b31f"
   }
 } as const;
 
@@ -624,7 +251,7 @@ export const SCIENCE_CARD_V7 = {
     ...SCIENCE_CARD.card,
     radius: 0,
     borderWidth: 2,
-    borderColor: "#8d9398",
+    borderColor: "#000000",
     fill: "#ffffff",
     shadow:
       "20px 20px 0 rgba(35, 40, 47, 0.52), inset 0 0 0 1px rgba(255,255,255,0.58), inset 0 10px 18px rgba(17, 25, 34, 0.028), inset 0 -12px 18px rgba(17, 25, 34, 0.05)"
@@ -656,8 +283,8 @@ export const SCIENCE_CARD_V7 = {
     checkSize: SCIENCE_CARD_AUTHOR_METRICS.checkSize,
     gap: SCIENCE_CARD_AUTHOR_METRICS.gap,
     copyGap: SCIENCE_CARD_AUTHOR_METRICS.copyGap,
-    nameCheckGap: SCIENCE_CARD_AUTHOR_METRICS.nameCheckGap,
-    checkAssetPath: undefined
+    nameCheckGap: 10,
+    checkAssetPath: "/stage3-template-badges/honor-verified-badge.svg"
   },
   typography: {
     ...SCIENCE_CARD.typography,
@@ -716,10 +343,36 @@ export const SCIENCE_CARD_V7 = {
     authorNameColor: "#0c0f13",
     authorHandleColor: "#7c8085",
     checkBadgeColor: "#33a9eb",
-    borderColor: "#8d9398",
+    borderColor: "#000000",
     accentColor: "#0d0f12"
   }
 } as const;
+
+export const HEDGES_OF_HONOR = {
+  ...SCIENCE_CARD,
+  card: {
+    ...SCIENCE_CARD.card,
+    radius: 0,
+    borderWidth: 2,
+    borderColor: "#000000",
+    shadow:
+      "20px 20px 0 rgba(35, 40, 47, 0.52), inset 0 0 0 1px rgba(10, 14, 20, 0.1), inset 0 0 18px rgba(17, 25, 34, 0.045), inset 0 4px 10px rgba(17, 25, 34, 0.075), inset 0 -7px 14px rgba(17, 25, 34, 0.095)"
+  },
+  palette: {
+    ...SCIENCE_CARD_V7.palette,
+    borderColor: "#000000"
+  },
+  author: {
+    ...SCIENCE_CARD_V7.author
+  }
+} as const;
+
+const CLASSIC_SCIENCE_CARD_TEMPLATE_IDS = new Set([
+  SCIENCE_CARD_TEMPLATE_ID,
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID
+]);
 
 export const STAGE3_TEMPLATE_SHELL = {
   x: SHARED_STAGE3_CARD_METRICS.x,
@@ -727,137 +380,6 @@ export const STAGE3_TEMPLATE_SHELL = {
   width: SHARED_STAGE3_CARD_METRICS.width,
   height: SHARED_STAGE3_CARD_METRICS.height,
   radius: 30
-} as const;
-
-const STAGE3_TEMPLATE_SHELL_BOTTOM =
-  SCIENCE_CARD.frame.height - STAGE3_TEMPLATE_SHELL.y - STAGE3_TEMPLATE_SHELL.height;
-
-export const TURBO_FACE = {
-  frame: { width: 1080, height: 1920 },
-  top: {
-    x: STAGE3_TEMPLATE_SHELL.x,
-    y: STAGE3_TEMPLATE_SHELL.y,
-    width: STAGE3_TEMPLATE_SHELL.width,
-    radius: 0,
-    paddingX: 20,
-    paddingY: 10,
-    minHeight: TURBO_FACE_SECTION_METRICS.topHeight,
-    maxHeight: TURBO_FACE_SECTION_METRICS.topHeight
-  },
-  video: {
-    x: STAGE3_TEMPLATE_SHELL.x,
-    minHeight: 760
-  },
-  bottom: {
-    x: STAGE3_TEMPLATE_SHELL.x,
-    bottom: STAGE3_TEMPLATE_SHELL_BOTTOM,
-    width: STAGE3_TEMPLATE_SHELL.width,
-    radius: 0,
-    paddingX: 18,
-    paddingY: 8,
-    metaHeight: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaHeight,
-    metaGap: 6,
-    minHeight: TURBO_FACE_SECTION_METRICS.bottomHeight,
-    maxHeight: TURBO_FACE_SECTION_METRICS.bottomHeight
-  },
-  author: {
-    name: "Stone Face Turbo",
-    handle: "@StoneFaceTurbo",
-    avatarSize: SHARED_STAGE3_AUTHOR_METRICS.avatarSize,
-    avatarBorder: 1,
-    checkSize: SHARED_STAGE3_AUTHOR_METRICS.checkSize,
-    gap: 10,
-    copyGap: SHARED_STAGE3_AUTHOR_METRICS.copyGap,
-    nameCheckGap: SHARED_STAGE3_AUTHOR_METRICS.nameCheckGap
-  },
-  typography: {
-    top: {
-      min: 50,
-      max: 76,
-      softLimit: 280,
-      penalty: 0.15,
-      lineHeight: 0.9,
-      maxLines: 6,
-      maxChars: 500,
-      horizontalSafety: 0.96,
-      glyphFactor: 0.52,
-      fillTargetMin: 0.9,
-      fillTargetMax: 0.95,
-      weight: 850,
-      letterSpacing: "-0.038em"
-    },
-    bottom: {
-      min: 26,
-      max: 46,
-      softLimit: 220,
-      penalty: 0.16,
-      lineHeight: 1.06,
-      maxLines: 4,
-      maxChars: 340,
-      fillTargetMin: 0.88,
-      fillTargetMax: 0.94,
-      weight: 400,
-      letterSpacing: "0",
-      fontStyle: "normal"
-    },
-    authorName: {
-      font: SHARED_STAGE3_AUTHOR_METRICS.authorNameFont,
-      lineHeight: 1.01,
-      weight: 700,
-      letterSpacing: "-0.012em"
-    },
-    authorHandle: {
-      font: SHARED_STAGE3_AUTHOR_METRICS.authorHandleFont,
-      lineHeight: 1.02,
-      weight: 400,
-      letterSpacing: "-0.006em"
-    }
-  }
-} as const;
-
-export const TURBO_FACE_PALETTE = {
-  cardFill: "#f6f3eb",
-  topSectionFill: "#fbf7ef",
-  bottomSectionFill: "#fbf7ef",
-  topTextColor: "#05070b",
-  bottomTextColor: "#171b21",
-  authorNameColor: "#0c1018",
-  authorHandleColor: "rgba(16, 19, 26, 0.46)",
-  checkBadgeColor: "#73b2dd",
-  borderColor: "rgba(10, 17, 25, 0.88)"
-} as const;
-
-const TURBO_FACE_COMPAT = {
-  frame: TURBO_FACE.frame,
-  card: {
-    x: STAGE3_TEMPLATE_SHELL.x,
-    y: STAGE3_TEMPLATE_SHELL.y,
-    width: STAGE3_TEMPLATE_SHELL.width,
-    height: STAGE3_TEMPLATE_SHELL.height,
-    radius: 18,
-    borderWidth: 2,
-    borderColor: "#0a1119",
-    fill: "#fbfbf8",
-    shadow: "0 24px 48px rgba(4, 10, 20, 0.38), 0 8px 22px rgba(4, 10, 20, 0.2)"
-  },
-  slot: {
-    topHeight: TURBO_FACE_SECTION_METRICS.topHeight,
-    bottomHeight: TURBO_FACE_SECTION_METRICS.bottomHeight,
-    topPaddingX: 38,
-    topPaddingY: 10,
-    topPaddingTop: 10,
-    topPaddingBottom: 12,
-    bottomMetaHeight: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaHeight,
-    bottomMetaPaddingX: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaPaddingX,
-    bottomMetaPaddingY: SHARED_STAGE3_AUTHOR_METRICS.bottomMetaPaddingY,
-    bottomTextPaddingX: 18,
-    bottomTextPaddingY: 0,
-    bottomTextPaddingTop: 4,
-    bottomTextPaddingBottom: 8
-  },
-  palette: TURBO_FACE_PALETTE,
-  author: TURBO_FACE.author,
-  typography: TURBO_FACE.typography
 } as const;
 
 export type Stage3TemplateConfig = {
@@ -1013,7 +535,12 @@ function getSectionBorderLosses(template: Stage3TemplateConfig): {
   bottomWidth: number;
   bottomHeight: number;
 } {
-  if (template === SCIENCE_CARD) {
+  if (
+    template === SCIENCE_CARD ||
+    template === SCIENCE_CARD_BLUE ||
+    template === SCIENCE_CARD_RED ||
+    template === SCIENCE_CARD_GREEN
+  ) {
     return {
       topWidth: template.card.borderWidth * 2,
       topHeight: template.card.borderWidth,
@@ -1137,11 +664,16 @@ function findBestFontForSlot(
   slot: SlotSize,
   config: TypographyConfig
 ): { font: number; lines: number; fits: boolean } {
-  const minFont = getSafeMinimumFont(config);
+  const minFont = ceilStage3TextFontPx(getSafeMinimumFont(config));
+  const maxFont = snapStage3TextFontPx(config.max);
   let fallbackFont = minFont;
   let fallbackLines = estimateLineCount(text, fallbackFont, slot.width, config);
 
-  for (let font = config.max; font >= minFont; font -= 1) {
+  for (
+    let font = maxFont;
+    font >= minFont - 0.0001;
+    font = snapStage3TextFontPx(font - STAGE3_TEXT_FONT_STEP_PX)
+  ) {
     const lines = estimateLineCount(text, font, slot.width, config);
     const contentHeight = lines * font * config.lineHeight;
     if (lines <= config.maxLines && contentHeight <= slot.height * VERTICAL_SAFETY) {
@@ -1165,14 +697,24 @@ function applyFontScaleWithSafety(params: {
   scale: number;
 }): { font: number; lines: number; lineHeight: number } {
   const normalizedScale = normalizeFontScale(params.scale);
-  const minFont = getSafeMinimumFont(params.config);
-  const maxFont = Math.max(
-    params.config.max,
-    Math.round(params.config.max * Math.max(1, normalizedScale))
+  const minFont = ceilStage3TextFontPx(getSafeMinimumFont(params.config));
+  const scaledBaseFont = clampNumber(
+    snapStage3TextFontPx(params.baseFont * normalizedScale),
+    minFont,
+    Math.max(
+      params.config.max,
+      snapStage3TextFontPx(params.config.max * Math.max(1, normalizedScale))
+    )
   );
+  const maxFont = normalizedScale < 1
+    ? scaledBaseFont
+    : Math.max(
+        snapStage3TextFontPx(params.config.max),
+        snapStage3TextFontPx(params.config.max * Math.max(1, normalizedScale))
+      );
   const minLineHeight = clampNumber(params.config.lineHeight * 0.82, 0.82, params.config.lineHeight);
   const maxHeight = params.slot.height * VERTICAL_SAFETY;
-  let font = clampNumber(Math.round(params.baseFont * normalizedScale), minFont, maxFont);
+  let font = scaledBaseFont;
   let effectiveLineHeight = params.config.lineHeight;
   let lines = estimateLineCount(params.text, font, params.slot.width, params.config);
   let contentHeight = lines * font * effectiveLineHeight;
@@ -1190,13 +732,20 @@ function applyFontScaleWithSafety(params: {
       continue;
     }
 
-    font -= 1;
+    const nextFont = snapStage3TextFontPx(font - STAGE3_TEXT_FONT_STEP_PX);
+    if (nextFont >= font) {
+      break;
+    }
+    font = nextFont;
     effectiveLineHeight = params.config.lineHeight;
     lines = estimateLineCount(params.text, font, params.slot.width, params.config);
     contentHeight = lines * font * effectiveLineHeight;
   }
 
-  const fillTargetMin = clampNumber(params.config.fillTargetMin ?? 0, 0, VERTICAL_SAFETY);
+  const fillTargetMin =
+    normalizedScale < 1
+      ? clampNumber((params.config.fillTargetMin ?? 0) * normalizedScale, 0, VERTICAL_SAFETY)
+      : clampNumber(params.config.fillTargetMin ?? 0, 0, VERTICAL_SAFETY);
   if (fillTargetMin > 0) {
     const targetContentHeight = params.slot.height * fillTargetMin;
     const maxLineHeight = Math.min(1.35, Math.max(params.config.lineHeight, params.config.lineHeight + 0.18));
@@ -1207,10 +756,14 @@ function applyFontScaleWithSafety(params: {
       let expanded = false;
 
       if (font < maxFont) {
-        const candidateFont = font + 1;
+        const candidateFont = Math.min(maxFont, snapStage3TextFontPx(font + STAGE3_TEXT_FONT_STEP_PX));
         const candidateLines = estimateLineCount(params.text, candidateFont, params.slot.width, params.config);
         const candidateHeight = candidateLines * candidateFont * effectiveLineHeight;
-        if (candidateLines <= params.config.maxLines && candidateHeight <= maxHeight) {
+        if (
+          candidateFont > font &&
+          candidateLines <= params.config.maxLines &&
+          candidateHeight <= maxHeight
+        ) {
           font = candidateFont;
           lines = candidateLines;
           contentHeight = candidateHeight;
@@ -1443,88 +996,60 @@ export function getScienceCardComputed(
   };
 }
 
-export function getTurboFaceComputed(
-  topText: string,
-  bottomText: string,
-  fontOverrides?: FontScaleOverrides
-): {
-  top: string;
-  bottom: string;
-  topFont: number;
-  bottomFont: number;
-  topLineHeight: number;
-  bottomLineHeight: number;
-  topLines: number;
-  bottomLines: number;
-  topCompacted: boolean;
-  bottomCompacted: boolean;
-  videoHeight: number;
-  bottomMetaHeight: number;
-  bottomBodyHeight: number;
-  topBlockHeight: number;
-  bottomBlockHeight: number;
-  videoY: number;
-  videoX: number;
-  videoWidth: number;
-} {
-  return getScienceCardComputed(topText, bottomText, fontOverrides, TURBO_FACE_COMPAT);
-}
-
 export function getTemplateComputed(
   templateId: string,
   topText: string,
   bottomText: string,
   fontOverrides?: FontScaleOverrides
 ): ReturnType<typeof getScienceCardComputed> {
-  if (templateId === SCIENCE_CARD_V2_TEMPLATE_ID) {
-    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V2);
+  if (templateId === AMERICAN_NEWS_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, AMERICAN_NEWS);
   }
-  if (templateId === SCIENCE_CARD_V3_TEMPLATE_ID) {
-    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V3);
+  if (templateId === SCIENCE_CARD_BLUE_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_BLUE);
   }
-  if (templateId === SCIENCE_CARD_V4_TEMPLATE_ID) {
-    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V4);
+  if (templateId === SCIENCE_CARD_RED_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_RED);
   }
-  if (templateId === SCIENCE_CARD_V5_TEMPLATE_ID) {
-    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V5);
-  }
-  if (templateId === SCIENCE_CARD_V6_TEMPLATE_ID) {
-    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V6);
+  if (templateId === SCIENCE_CARD_GREEN_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_GREEN);
   }
   if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID) {
     return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD_V7);
   }
-  if (templateId === TURBO_FACE_TEMPLATE_ID) {
-    return getTurboFaceComputed(topText, bottomText, fontOverrides);
+  if (templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
+    return getScienceCardComputed(topText, bottomText, fontOverrides, HEDGES_OF_HONOR);
   }
   return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD);
 }
 
 export function getTemplateById(templateId: string): Stage3TemplateConfig {
-  if (templateId === SCIENCE_CARD_V2_TEMPLATE_ID) {
-    return SCIENCE_CARD_V2;
+  if (templateId === AMERICAN_NEWS_TEMPLATE_ID) {
+    return AMERICAN_NEWS;
   }
-  if (templateId === SCIENCE_CARD_V3_TEMPLATE_ID) {
-    return SCIENCE_CARD_V3;
+  if (templateId === SCIENCE_CARD_BLUE_TEMPLATE_ID) {
+    return SCIENCE_CARD_BLUE;
   }
-  if (templateId === SCIENCE_CARD_V4_TEMPLATE_ID) {
-    return SCIENCE_CARD_V4;
+  if (templateId === SCIENCE_CARD_RED_TEMPLATE_ID) {
+    return SCIENCE_CARD_RED;
   }
-  if (templateId === SCIENCE_CARD_V5_TEMPLATE_ID) {
-    return SCIENCE_CARD_V5;
-  }
-  if (templateId === SCIENCE_CARD_V6_TEMPLATE_ID) {
-    return SCIENCE_CARD_V6;
+  if (templateId === SCIENCE_CARD_GREEN_TEMPLATE_ID) {
+    return SCIENCE_CARD_GREEN;
   }
   if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID) {
     return SCIENCE_CARD_V7;
   }
-  if (templateId === TURBO_FACE_TEMPLATE_ID) {
-    return TURBO_FACE_COMPAT;
+  if (templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
+    return HEDGES_OF_HONOR;
   }
   return SCIENCE_CARD;
 }
 
 export function templateUsesBuiltInBackdrop(templateId: string | null | undefined): boolean {
-  return templateId === SCIENCE_CARD_V2_TEMPLATE_ID;
+  return templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID;
+}
+
+export function isClassicScienceCardTemplateId(templateId: string | null | undefined): boolean {
+  const candidate = templateId?.trim();
+  return candidate ? CLASSIC_SCIENCE_CARD_TEMPLATE_IDS.has(candidate) : false;
 }

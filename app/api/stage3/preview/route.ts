@@ -57,7 +57,10 @@ export async function POST(request: Request): Promise<Response> {
       kind: "preview",
       executionTarget,
       payloadJson: JSON.stringify(body ?? {}),
-      dedupeKey: await buildStage3PreviewDedupeKey(body ?? {})
+      dedupeKey: await buildStage3PreviewDedupeKey(body ?? {}, {
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      })
     });
     const resolved =
       job.status === "completed"

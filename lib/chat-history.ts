@@ -20,7 +20,7 @@ import {
 } from "./stage2-channel-config";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
-import { getWorkspace } from "./team-store";
+import { getWorkspace, getWorkspaceStage2HardConstraints } from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
 
 export type ChatEventRole = "user" | "assistant" | "system";
@@ -367,7 +367,7 @@ export async function createChannel(input: {
       : DEFAULT_STAGE2_EXAMPLES_CONFIG,
     stage2HardConstraints: input.stage2HardConstraints
       ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(input.stage2HardConstraints))
-      : DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      : getWorkspaceStage2HardConstraints(input.workspaceId),
     stage2PromptConfig: input.stage2PromptConfig
       ? parseStage2PromptConfigJson(stringifyStage2PromptConfig(input.stage2PromptConfig))
       : DEFAULT_STAGE2_PROMPT_CONFIG,

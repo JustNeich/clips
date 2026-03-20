@@ -324,16 +324,25 @@ function buildPreviewCacheKey(params: {
   );
 }
 
-export async function buildStage3PreviewDedupeKey(body: Stage3PreviewRequestBody): Promise<string> {
+export async function buildStage3PreviewDedupeKey(
+  body: Stage3PreviewRequestBody,
+  scope?: { workspaceId?: string | null; userId?: string | null }
+): Promise<string> {
   const sourceUrl = resolveSourceUrl(body.sourceUrl);
   const snapshot = body.snapshot;
   const clipStartSec = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
   const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, null);
-  return buildPreviewCacheKey({
+  const previewKey = buildPreviewCacheKey({
     sourceKey: hashKey(sourceUrl),
     clipStartSec,
     renderPlan
   });
+  const workspaceId = scope?.workspaceId?.trim() ?? "";
+  const userId = scope?.userId?.trim() ?? "";
+  if (!workspaceId || !userId) {
+    return `preview:v2:global:${previewKey}`;
+  }
+  return `preview:v2:${workspaceId}:${userId}:${previewKey}`;
 }
 
 export async function prepareStage3Preview(

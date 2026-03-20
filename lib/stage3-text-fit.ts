@@ -1,6 +1,7 @@
 export const STAGE3_TEXT_SCALE_UI_MIN = 0.85;
 export const STAGE3_TEXT_SCALE_UI_MAX = 1.35;
 export const STAGE3_TEXT_SCALE_UI_PRESETS = [0.9, 1, 1.15, 1.3] as const;
+export const STAGE3_TEXT_FONT_STEP_PX = 0.25;
 
 type Stage3TextFitHashParams = {
   templateId: string;
@@ -71,8 +72,33 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function roundToStep(value: number, step: number): number {
+  if (!Number.isFinite(value)) {
+    return step;
+  }
+  return Number((Math.round(value / step) * step).toFixed(2));
+}
+
 export function clampStage3TextScaleUi(value: number): number {
   return clamp(value, STAGE3_TEXT_SCALE_UI_MIN, STAGE3_TEXT_SCALE_UI_MAX);
+}
+
+export function snapStage3TextFontPx(value: number): number {
+  return roundToStep(value, STAGE3_TEXT_FONT_STEP_PX);
+}
+
+export function floorStage3TextFontPx(value: number): number {
+  if (!Number.isFinite(value)) {
+    return STAGE3_TEXT_FONT_STEP_PX;
+  }
+  return Number((Math.floor(value / STAGE3_TEXT_FONT_STEP_PX) * STAGE3_TEXT_FONT_STEP_PX).toFixed(2));
+}
+
+export function ceilStage3TextFontPx(value: number): number {
+  if (!Number.isFinite(value)) {
+    return STAGE3_TEXT_FONT_STEP_PX;
+  }
+  return Number((Math.ceil(value / STAGE3_TEXT_FONT_STEP_PX) * STAGE3_TEXT_FONT_STEP_PX).toFixed(2));
 }
 
 export function getStage3TemplateTextFitPolicy(templateId: string): Stage3TemplateTextFitPolicy {

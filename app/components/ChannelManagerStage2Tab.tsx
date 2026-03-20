@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   STAGE2_DEFAULT_REASONING_EFFORTS,
@@ -382,6 +383,60 @@ export function ChannelManagerStage2Tab({
 
       <section className="control-card control-card-subtle">
         <p className="field-label">Hard constraints</p>
+        <p className="subtle-text">
+          Эти лимиты применяются только к этому каналу. Workspace prompt defaults по-прежнему задаются
+          владельцем в Default settings.
+        </p>
+        <div className="compact-grid">
+          <div className="compact-field">
+            <label className="field-label">Top min</label>
+            <input
+              className="text-input"
+              type="number"
+              value={stage2HardConstraints.topLengthMin}
+              disabled={!canEditHardConstraints}
+              onChange={(event) =>
+                updateStage2HardConstraint("topLengthMin", event.target.value)
+              }
+            />
+          </div>
+          <div className="compact-field">
+            <label className="field-label">Top max</label>
+            <input
+              className="text-input"
+              type="number"
+              value={stage2HardConstraints.topLengthMax}
+              disabled={!canEditHardConstraints}
+              onChange={(event) =>
+                updateStage2HardConstraint("topLengthMax", event.target.value)
+              }
+            />
+          </div>
+          <div className="compact-field">
+            <label className="field-label">Bottom min</label>
+            <input
+              className="text-input"
+              type="number"
+              value={stage2HardConstraints.bottomLengthMin}
+              disabled={!canEditHardConstraints}
+              onChange={(event) =>
+                updateStage2HardConstraint("bottomLengthMin", event.target.value)
+              }
+            />
+          </div>
+          <div className="compact-field">
+            <label className="field-label">Bottom max</label>
+            <input
+              className="text-input"
+              type="number"
+              value={stage2HardConstraints.bottomLengthMax}
+              disabled={!canEditHardConstraints}
+              onChange={(event) =>
+                updateStage2HardConstraint("bottomLengthMax", event.target.value)
+              }
+            />
+          </div>
+        </div>
         <div className="compact-grid">
           <div className="compact-field">
             <span className="field-label">TOP</span>
@@ -407,10 +462,12 @@ export function ChannelManagerStage2Tab({
           Banned openers: {stage2HardConstraints.bannedOpeners.length ? stage2HardConstraints.bannedOpeners.join(", ") : "none"}
         </p>
         <p className={`subtle-text ${autosaveState.stage2.status === "error" ? "danger-text" : ""}`}>
-          {autosaveState.stage2.message ?? "На уровне канала автоматически сохраняется examples corpus JSON."}
+          {autosaveState.stage2.message ??
+            "На уровне канала автоматически сохраняются examples corpus JSON и лимиты длины TOP/BOTTOM."}
         </p>
         <p className="subtle-text">
-          Hard constraints и prompt defaults задаются владельцем в пункте Default settings.
+          Prompt defaults задаются владельцем в пункте Default settings. Здесь на уровне канала редактируются
+          лимиты длины TOP/BOTTOM.
         </p>
       </section>
     </div>

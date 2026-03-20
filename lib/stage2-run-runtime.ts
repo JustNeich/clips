@@ -138,6 +138,7 @@ async function executeRun(run: Stage2RunRecord): Promise<void> {
       stage2Run: {
         runId: run.runId,
         mode: run.mode,
+        baseRunId: run.baseRunId,
         createdAt: run.createdAt,
         startedAt: completed?.startedAt ?? run.startedAt,
         finishedAt: completed?.finishedAt ?? null

@@ -35,6 +35,7 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../stage2-channel-config";
+import { normalizeStage2TitleOptionsValue } from "../stage2-title-options";
 import {
   STAGE2_PIPELINE_STAGES,
   Stage2PipelineStageId,
@@ -44,6 +45,7 @@ import {
 import { Stage2PromptConfigStageId } from "../stage2-prompt-specs";
 import { CommentItem } from "../comments";
 import { JsonStageExecutor } from "./executor";
+import { buildSelectorExamplePool } from "./selector-example-pool";
 
 const ANALYZER_SCHEMA = {
   type: "object",
@@ -319,6 +321,7 @@ type RunPipelineResult = {
 type PipelineProgressEvent = {
   stageId: Stage2PipelineStageId;
   state: "running" | "completed" | "failed";
+  summary?: string | null;
   detail?: string | null;
   durationMs?: number | null;
   promptChars?: number | null;
@@ -785,7 +788,25 @@ function normalizeCandidates(raw: unknown, selectorOutput: SelectorOutput): Cand
     .filter((candidate): candidate is CandidateCaption => candidate !== null);
 }
 
-function buildOperatorFacingFinalReason(input: {
+function extractLeadingExcerpt(text: string, maxWords: number): string {
+  const firstSentence = text.split(/(?<=[.!?]["']?)\s+/)[0] ?? text;
+  const firstClause = firstSentence.split(/[,:;]/)[0] ?? firstSentence;
+  return firstClause
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, maxWords)
+    .join(" ")
+    .replace(/^"+|"+$/g, "")
+    .trim();
+}
+
+function extractQuotedReaction(text: string): string {
+  const quoted = text.match(/^"[^"]+[.!?]?"/)?.[0];
+  return quoted ?? `"${extractLeadingExcerpt(text, 8)}"`;
+}
+
+export function buildOperatorFacingFinalReason(input: {
   shortlist: CandidateCaption[];
   shortlistOptionMap: Array<{ candidateId: string; option: number }>;
   finalPickCandidateId: string;
@@ -804,24 +825,6 @@ function buildOperatorFacingFinalReason(input: {
       sanitizedRationaleRaw: fallback
     };
   }
-
-  const extractLeadingExcerpt = (text: string, maxWords: number): string => {
-    const firstSentence = text.split(/(?<=[.!?]["']?)\s+/)[0] ?? text;
-    const firstClause = firstSentence.split(/[,:;]/)[0] ?? firstSentence;
-    return firstClause
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, maxWords)
-      .join(" ")
-      .replace(/^"+|"+$/g, "")
-      .trim();
-  };
-
-  const extractQuotedReaction = (text: string): string => {
-    const quoted = text.match(/^"[^"]+[.!?]?"/)?.[0];
-    return quoted ?? `"${extractLeadingExcerpt(text, 8)}"`;
-  };
 
   const describeAngle = (angle: string): string => {
     switch (angle) {
@@ -878,7 +881,7 @@ function buildOperatorFacingFinalReason(input: {
       ? `${operatorReasonBase} The rest of the visible shortlist still gives real alternates: ${angleAlternatives
           .map((item) => `option ${item.option} keeps ${describeAngle(item.candidate.angle)}`)
           .join(", ")}.`
-      : `${operatorReasonBase} The other visible options stay in the same lane, but this one has the cleanest hook-to-reaction path of the five.`;
+      : `${operatorReasonBase} The other visible options stay in the same lane, but this one has the cleanest hook-to-reaction path in the visible shortlist.`;
   const rewritten = operatorReason.trim();
   return {
     operatorReason: rewritten,
@@ -1082,8 +1085,7 @@ function looksLikeBrokenCaptionEnding(text: string): boolean {
     return true;
   }
   const last = words.at(-1) ?? "";
-  const previous = words.at(-2) ?? "";
-  return DANGLING_END_WORDS.has(last) || DANGLING_END_WORDS.has(previous);
+  return DANGLING_END_WORDS.has(last);
 }
 
 function trimTrailingBrokenEndingWords(text: string): string {
@@ -1133,11 +1135,62 @@ function padTextToMinimum(
   return candidates.sort((left, right) => left.length - right.length)[0] ?? null;
 }
 
+function enforceQuotedReaction(text: string, maxLength: number): string | null {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.includes("\"")) {
+    return normalized;
+  }
+  const wholeSentence = ensureTerminalPunctuation(
+    normalized.replace(/^"+|"+$/g, "").trim(),
+    Math.max(1, maxLength - 2)
+  );
+  if (wholeSentence && wholeSentence.length + 2 <= maxLength) {
+    return `"${wholeSentence}"`;
+  }
+
+  const leadingExcerpt = extractLeadingExcerpt(normalized, 10);
+  if (!leadingExcerpt) {
+    return null;
+  }
+
+  let quotedLead = leadingExcerpt.replace(/^"+|"+$/g, "").replace(/[,:;]+$/, "").trim();
+  if (!quotedLead) {
+    return null;
+  }
+  if (!TERMINAL_PUNCTUATION_PATTERN.test(quotedLead)) {
+    quotedLead = `${quotedLead}.`;
+  }
+
+  const excerptIndex = normalized.indexOf(leadingExcerpt);
+  const remainder =
+    excerptIndex >= 0
+      ? normalized.slice(excerptIndex + leadingExcerpt.length).replace(/^[\s"'.,!?;:-]+/, "").trim()
+      : "";
+  let rebuilt = `"${quotedLead}"`;
+  if (remainder) {
+    rebuilt = `${rebuilt} ${remainder}`;
+  }
+  if (rebuilt.length > maxLength) {
+    rebuilt = truncateToWordBoundary(rebuilt, maxLength);
+    if (!rebuilt.includes("\"")) {
+      const fallbackQuote = truncateToWordBoundary(quotedLead, Math.max(1, maxLength - 2))
+        .replace(/^"+|"+$/g, "")
+        .trim();
+      rebuilt = fallbackQuote ? `"${fallbackQuote}"` : "";
+    }
+  }
+  return rebuilt ? ensureTerminalPunctuation(rebuilt, maxLength) : null;
+}
+
 function repairCaptionLineForHardConstraints(input: {
   text: string;
   minimum: number;
   maximum: number;
   suffixOptions: string[];
+  quoteRequired?: boolean;
 }): { text: string; repaired: boolean; valid: boolean } {
   let value = input.text.trim();
   let repaired = false;
@@ -1177,6 +1230,20 @@ function repairCaptionLineForHardConstraints(input: {
     value = padded;
     repaired = true;
   }
+  if (input.quoteRequired && !value.includes("\"")) {
+    const quoted = enforceQuotedReaction(value, input.maximum);
+    if (!quoted) {
+      return {
+        text: value,
+        repaired,
+        valid: false
+      };
+    }
+    if (quoted !== value) {
+      value = quoted;
+      repaired = true;
+    }
+  }
   value = ensureTerminalPunctuation(value, input.maximum);
   return {
     text: value,
@@ -1185,11 +1252,12 @@ function repairCaptionLineForHardConstraints(input: {
       Boolean(value) &&
       value.length >= input.minimum &&
       value.length <= input.maximum &&
-      !looksLikeBrokenCaptionEnding(value)
+      !looksLikeBrokenCaptionEnding(value) &&
+      (!input.quoteRequired || value.includes("\""))
   };
 }
 
-function repairCandidateForHardConstraints(
+export function repairCandidateForHardConstraints(
   candidate: CandidateCaption,
   constraints: Stage2HardConstraints
 ): { candidate: CandidateCaption; repaired: boolean; valid: boolean } {
@@ -1203,7 +1271,8 @@ function repairCandidateForHardConstraints(
     text: candidate.bottom,
     minimum: constraints.bottomLengthMin,
     maximum: constraints.bottomLengthMax,
-    suffixOptions: BOTTOM_PADDING_OPTIONS
+    suffixOptions: BOTTOM_PADDING_OPTIONS,
+    quoteRequired: constraints.bottomQuoteRequired
   });
 
   return {
@@ -1220,7 +1289,7 @@ function repairCandidateForHardConstraints(
   };
 }
 
-function evaluateCandidateHardConstraints(
+export function evaluateCandidateHardConstraints(
   candidate: CandidateCaption,
   constraints: Stage2HardConstraints,
   repaired = false
@@ -1260,6 +1329,57 @@ type ShortlistEntry = {
   criticTotal: number;
 };
 
+type ShortlistStats = {
+  targetCount: number;
+  requestedCount: number;
+  validatedCount: number;
+  visibleCount: number;
+  repairedCount: number;
+  droppedAfterValidationCount: number;
+};
+
+const REQUIRED_FINAL_SHORTLIST_COUNT = 5;
+
+function buildShortlistFailureMessage(stats: ShortlistStats): string {
+  return (
+    `Stage 2 final shortlist could not produce ${stats.targetCount} valid options after constraint-safe ` +
+    `repair and reserve backfill. Only ${stats.visibleCount}/${stats.targetCount} visible option(s) remained ` +
+    `from ${stats.validatedCount} validated candidate(s) and ${stats.requestedCount} requested finalist pick(s).`
+  );
+}
+
+function assertCompletedShortlistContract(input: {
+  captionOptions: Array<{ candidateId?: string }>;
+  candidateOptionMap: Array<{ option: number; candidateId: string }>;
+  shortlistCandidateIds: string[];
+  finalPickCandidateId: string;
+}): void {
+  const captionCandidateIds = input.captionOptions.map((option) => option.candidateId ?? "").filter(Boolean);
+  const mapCandidateIds = input.candidateOptionMap.map((entry) => entry.candidateId);
+  const shortlistCandidateIds = input.shortlistCandidateIds;
+
+  if (
+    captionCandidateIds.length !== REQUIRED_FINAL_SHORTLIST_COUNT ||
+    mapCandidateIds.length !== REQUIRED_FINAL_SHORTLIST_COUNT ||
+    shortlistCandidateIds.length !== REQUIRED_FINAL_SHORTLIST_COUNT
+  ) {
+    throw new Error(
+      `Stage 2 completed shortlist contract drifted after assembly. Expected ${REQUIRED_FINAL_SHORTLIST_COUNT} ` +
+      `visible options but got captionOptions=${captionCandidateIds.length}, ` +
+      `candidateOptionMap=${mapCandidateIds.length}, shortlistCandidateIds=${shortlistCandidateIds.length}.`
+    );
+  }
+
+  const captionIdsJson = JSON.stringify(captionCandidateIds);
+  if (captionIdsJson !== JSON.stringify(mapCandidateIds) || captionIdsJson !== JSON.stringify(shortlistCandidateIds)) {
+    throw new Error("Stage 2 completed shortlist contract drifted after assembly. Final selector state no longer matches the visible caption shortlist.");
+  }
+
+  if (!captionCandidateIds.includes(input.finalPickCandidateId)) {
+    throw new Error("Stage 2 completed shortlist contract drifted after assembly. Final pick is not part of the persisted visible shortlist.");
+  }
+}
+
 function mergeRewriterCandidates(inputCandidates: CandidateCaption[], rewrites: CandidateCaption[]): {
   candidates: CandidateCaption[];
   appliedRewriteCount: number;
@@ -1278,15 +1398,14 @@ function mergeRewriterCandidates(inputCandidates: CandidateCaption[], rewrites: 
   };
 }
 
-function buildInternalFinalSelectorReason(input: {
-  evaluatedCandidates: CandidateCaption[];
+export function buildInternalFinalSelectorReason(input: {
+  evaluatedShortlist: CandidateCaption[];
   visibleShortlist: CandidateCaption[];
   finalPickCandidateId: string;
+  shortlistStats?: ShortlistStats | null;
 }): string {
-  const evaluatedIds = Array.from(new Set(input.evaluatedCandidates.map((candidate) => candidate.candidateId)));
+  const evaluatedIds = Array.from(new Set(input.evaluatedShortlist.map((candidate) => candidate.candidateId)));
   const shortlistIds = input.visibleShortlist.map((candidate) => candidate.candidateId);
-  const evaluatedIdSet = new Set(evaluatedIds);
-  const backfilledIds = shortlistIds.filter((candidateId) => !evaluatedIdSet.has(candidateId));
   const shortlistAngles = Array.from(new Set(input.visibleShortlist.map((candidate) => candidate.angle)));
   const pickId =
     input.visibleShortlist.find((candidate) => candidate.candidateId === input.finalPickCandidateId)?.candidateId ??
@@ -1294,18 +1413,64 @@ function buildInternalFinalSelectorReason(input: {
     input.finalPickCandidateId;
 
   const base =
-    `Final selector evaluated ${evaluatedIds.length} candidate${evaluatedIds.length === 1 ? "" : "s"}: ` +
+    `Final selector evaluated ${evaluatedIds.length} shortlist candidate${evaluatedIds.length === 1 ? "" : "s"}: ` +
     `${evaluatedIds.join(", ") || "none"}. ` +
     `Final visible shortlist is ${shortlistIds.join(", ") || "empty"} with ${pickId || "no final pick"} as the final pick.`;
-  const backfillNote =
-    backfilledIds.length > 0
-      ? ` ${backfilledIds.length} shortlist candidate${backfilledIds.length === 1 ? "" : "s"} came from the validated fallback pool: ${backfilledIds.join(", ")}.`
+  const shortlistStats = input.shortlistStats;
+  const shrinkNote =
+    shortlistStats && shortlistStats.visibleCount < shortlistStats.targetCount
+      ? ` Only ${shortlistStats.visibleCount} candidate${shortlistStats.visibleCount === 1 ? "" : "s"} survived constraint-safe repair and hard-constraint validation out of ${shortlistStats.requestedCount} requested finalists.`
       : "";
   const angleNote =
     shortlistAngles.length > 0
       ? ` Visible angles: ${shortlistAngles.join(", ")}.`
       : "";
-  return `${base}${backfillNote}${angleNote}`.trim();
+  return `${base}${shrinkNote}${angleNote}`.trim();
+}
+
+function buildResolvedFinalSelectorState(input: {
+  visibleShortlist: CandidateCaption[];
+  requestedFinalPickCandidateId: string;
+  shortlistStats?: ShortlistStats | null;
+}): {
+  candidateOptionMap: Array<{
+    option: number;
+    candidateId: string;
+  }>;
+  shortlistCandidateIds: string[];
+  finalPickCandidateId: string;
+  progressSummary: string;
+  progressDetail: string;
+  rationaleInternalRaw: string;
+} {
+  const shortlistCandidateIds = input.visibleShortlist.map((candidate) => candidate.candidateId);
+  const candidateOptionMap = shortlistCandidateIds.map((candidateId, index) => ({
+    option: index + 1,
+    candidateId
+  }));
+  const finalPickCandidateId =
+    input.visibleShortlist.find((candidate) => candidate.candidateId === input.requestedFinalPickCandidateId)?.candidateId ??
+    shortlistCandidateIds[0] ??
+    input.requestedFinalPickCandidateId;
+  const progressSummary = `Shortlist ${shortlistCandidateIds.length} / pick ${finalPickCandidateId || "none"}.`;
+  const progressDetail =
+    input.shortlistStats && input.shortlistStats.visibleCount < input.shortlistStats.targetCount
+      ? `${progressSummary}\nOnly ${input.shortlistStats.visibleCount} candidate${input.shortlistStats.visibleCount === 1 ? "" : "s"} survived constraint-safe repair and hard-constraint validation out of ${input.shortlistStats.requestedCount} requested finalists.`
+      : progressSummary;
+
+  return {
+    candidateOptionMap,
+    shortlistCandidateIds,
+    finalPickCandidateId,
+    progressSummary,
+    progressDetail,
+    rationaleInternalRaw: buildInternalFinalSelectorReason({
+      evaluatedShortlist: input.visibleShortlist,
+      visibleShortlist: input.visibleShortlist,
+      finalPickCandidateId,
+      shortlistStats: input.shortlistStats
+    })
+  };
 }
 
 function buildShortlist(input: {
@@ -1314,7 +1479,8 @@ function buildShortlist(input: {
   rewrittenCandidates: CandidateCaption[];
   fallbackCandidates: CandidateCaption[];
   criticScores: CriticScore[];
-}): ShortlistEntry[] {
+}): { entries: ShortlistEntry[]; stats: ShortlistStats } {
+  const targetCount = REQUIRED_FINAL_SHORTLIST_COUNT;
   const scoreMap = new Map(input.criticScores.map((score) => [score.candidateId, score.total]));
   const byId = new Map(
     [...input.rewrittenCandidates, ...input.fallbackCandidates].map((candidate) => [candidate.candidateId, candidate])
@@ -1335,7 +1501,7 @@ function buildShortlist(input: {
     })
     .map((candidateId) => byId.get(candidateId)!);
 
-  const repairedPool = orderedPool
+  const repairedEntries = orderedPool
     .map((candidate) => {
     const repaired = repairCandidateForHardConstraints(candidate, input.constraints);
     const constraintCheck = evaluateCandidateHardConstraints(
@@ -1349,12 +1515,12 @@ function buildShortlist(input: {
       criticTotal: scoreMap.get(candidate.candidateId) ?? 0,
       valid: repaired.valid
     };
-    })
-    .filter((entry) => entry.valid && entry.constraintCheck.passed);
+    });
+  const repairedPool = repairedEntries.filter((entry) => entry.valid && entry.constraintCheck.passed);
 
   const preferredIds = new Set(input.finalSelector.finalCandidates);
   const protectedFinalPickId = input.finalSelector.finalPick;
-  const accepted = repairedPool.filter((entry) => preferredIds.has(entry.candidate.candidateId)).slice(0, 5);
+  const accepted = repairedPool.filter((entry) => preferredIds.has(entry.candidate.candidateId)).slice(0, targetCount);
   const remaining = repairedPool
     .filter((entry) => !preferredIds.has(entry.candidate.candidateId))
     .sort((left, right) => right.criticTotal - left.criticTotal);
@@ -1396,7 +1562,7 @@ function buildShortlist(input: {
     }
   };
 
-  while (accepted.length < 5 && remaining.length > 0) {
+  while (accepted.length < targetCount && remaining.length > 0) {
     const acceptedAngles = new Set(accepted.map((entry) => entry.candidate.angle));
     const strongestRemainingScore = remaining[0]?.criticTotal ?? 0;
     const diverseIndex = remaining.findIndex(
@@ -1412,7 +1578,18 @@ function buildShortlist(input: {
   }
 
   diversifyAcceptedShortlist();
-  return accepted.slice(0, 5);
+  const entries = accepted.slice(0, targetCount);
+  return {
+    entries,
+    stats: {
+      targetCount,
+      requestedCount: Math.min(targetCount, input.finalSelector.finalCandidates.length || targetCount),
+      validatedCount: repairedPool.length,
+      visibleCount: entries.length,
+      repairedCount: repairedEntries.filter((entry) => entry.constraintCheck.repaired).length,
+      droppedAfterValidationCount: Math.max(0, repairedEntries.length - repairedPool.length)
+    }
+  };
 }
 
 function buildFallbackTitleOption(candidate: CandidateCaption, option: number): { option: number; title: string; titleRu: string } {
@@ -1435,36 +1612,7 @@ function normalizeTitleOptions(
   raw: unknown,
   shortlist: CandidateCaption[]
 ): Array<{ option: number; title: string; titleRu: string }> {
-  const titleOptionsRaw = Array.isArray((raw as { titleOptions?: unknown })?.titleOptions)
-    ? ((raw as { titleOptions: unknown[] }).titleOptions ?? [])
-    : Array.isArray(raw)
-      ? raw
-      : [];
-
-  const normalized = titleOptionsRaw
-    .map((entry, index) => {
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
-      const item = entry as Record<string, unknown>;
-      const titleId = String(item.title_id ?? item.titleId ?? "").trim();
-      const parsedOption = titleId.match(/(\d+)/)?.[1];
-      return {
-        option:
-          Number.isFinite(Number(item.option))
-            ? Number(item.option)
-            : Number.isFinite(Number(parsedOption))
-              ? Number(parsedOption)
-              : index + 1,
-        title: String(item.title ?? "").trim(),
-        titleRu: String(item.titleRu ?? item.title_ru ?? item.title ?? "").trim()
-      };
-    })
-    .filter(
-      (item): item is { option: number; title: string; titleRu: string } =>
-        item !== null && Boolean(item.title) && Boolean(item.titleRu)
-    )
-    .slice(0, 5);
+  const normalized = (normalizeStage2TitleOptionsValue(raw) ?? []).slice(0, 5);
 
   if (normalized.length === 5) {
     return normalized.map((item, index) => ({ ...item, option: index + 1 }));
@@ -1548,7 +1696,8 @@ function buildRunDiagnostics(input: {
   promptPacket: PromptPacket;
   titlePrompt: string;
   workspaceCorpusCount: number;
-  availableExamples: Stage2CorpusExample[];
+  activeExamplesCount: number;
+  selectorExamples: Stage2CorpusExample[];
   selectorOutput: SelectorOutput;
   queryText: string;
 }): Stage2Diagnostics {
@@ -1561,7 +1710,7 @@ function buildRunDiagnostics(input: {
       examplesSource: input.channelConfig.examplesSource,
       hardConstraints: input.channelConfig.hardConstraints,
       workspaceCorpusCount: input.workspaceCorpusCount,
-      activeCorpusCount: input.availableExamples.length
+      activeCorpusCount: input.activeExamplesCount
     },
     selection: {
       clipType: input.selectorOutput.clipType,
@@ -1630,8 +1779,9 @@ function buildRunDiagnostics(input: {
     examples: {
       source: input.channelConfig.examplesSource,
       workspaceCorpusCount: input.workspaceCorpusCount,
-      activeCorpusCount: input.availableExamples.length,
-      availableExamples: input.availableExamples.map((example) =>
+      activeCorpusCount: input.activeExamplesCount,
+      selectorCandidateCount: input.selectorExamples.length,
+      availableExamples: input.selectorExamples.map((example) =>
         buildDiagnosticsExample("available", example, input.queryText, selectedExampleIds)
       ),
       selectedExamples: (input.selectorOutput.selectedExamples ?? []).map((example) =>
@@ -1735,13 +1885,23 @@ export class ViralShortsWorkerService {
       comments: input.videoContext.comments.map((comment) => comment.text),
       visualAnchors: input.videoContext.frameDescriptions
     });
-    const selectorOutput = fallbackSelectorOutput(channelConfig, heuristicOutput, corpus, input.videoContext);
+    const queryText = buildCorpusQueryText(input.videoContext, heuristicOutput);
+    const selectorPool = buildSelectorExamplePool({
+      examples: corpus,
+      queryText
+    });
+    const selectorOutput = fallbackSelectorOutput(
+      channelConfig,
+      heuristicOutput,
+      selectorPool.selectorExamples,
+      input.videoContext
+    );
     return buildPromptPacket({
       channelConfig,
       videoContext: input.videoContext,
       analyzerOutput: heuristicOutput,
       selectorOutput,
-      availableExamples: corpus,
+      availableExamples: selectorPool.selectorExamples,
       promptConfig: normalizeStage2PromptConfig(input.promptConfig)
     });
   }
@@ -1841,11 +2001,32 @@ export class ViralShortsWorkerService {
       });
     }
 
+    const queryText = buildCorpusQueryText(input.videoContext, analyzerOutput);
+    const selectorPool = buildSelectorExamplePool({
+      examples: availableExamples,
+      queryText
+    });
+    if (selectorPool.selectorExamples.length < availableExamples.length) {
+      const poolNotes = [
+        `Selector prompt used ${selectorPool.selectorExamples.length} curated examples out of ${availableExamples.length} active corpus entries.`
+      ];
+      if (selectorPool.stats.filteredOutForSignalCount > 0) {
+        poolNotes.push(`${selectorPool.stats.filteredOutForSignalCount} low-signal examples were excluded.`);
+      }
+      if (selectorPool.stats.trimmedByLimitCount > 0) {
+        poolNotes.push(`${selectorPool.stats.trimmedByLimitCount} more examples stayed outside the prompt pool to keep latency bounded.`);
+      }
+      warnings.push({
+        field: "examples",
+        message: poolNotes.join(" ")
+      });
+    }
+
     const selectorPrompt = buildSelectorPrompt({
       channelConfig,
       videoContext: input.videoContext,
       analyzerOutput,
-      availableExamples,
+      availableExamples: selectorPool.selectorExamples,
       promptConfig
     });
     const selectorReasoningEffort = resolveStageReasoningEffort("selector", promptConfig);
@@ -1857,7 +2038,12 @@ export class ViralShortsWorkerService {
       detail: "Selector выбирает angle и релевантные examples."
     });
     const selectorStartedAt = Date.now();
-    const selectorFallback = fallbackSelectorOutput(channelConfig, analyzerOutput, availableExamples, input.videoContext);
+    const selectorFallback = fallbackSelectorOutput(
+      channelConfig,
+      analyzerOutput,
+      selectorPool.selectorExamples,
+      input.videoContext
+    );
     let selectorOutput = selectorFallback;
     try {
       const selectorRaw = await input.executor.runJson<unknown>({
@@ -1865,7 +2051,11 @@ export class ViralShortsWorkerService {
         schema: SELECTOR_SCHEMA,
         reasoningEffort: selectorReasoningEffort
       });
-      selectorOutput = normalizeSelectorOutput(selectorRaw, selectorFallback, availableExamples);
+      selectorOutput = normalizeSelectorOutput(
+        selectorRaw,
+        selectorFallback,
+        selectorPool.selectorExamples
+      );
       await reportProgress({
         stageId: "selector",
         state: "completed",
@@ -1895,7 +2085,7 @@ export class ViralShortsWorkerService {
       videoContext: input.videoContext,
       analyzerOutput,
       selectorOutput,
-      availableExamples,
+      availableExamples: selectorPool.selectorExamples,
       promptConfig
     });
 
@@ -2095,16 +2285,7 @@ export class ViralShortsWorkerService {
         reasoningEffort: finalSelectorReasoningEffort
       });
       finalSelector = normalizeFinalSelector(finalRaw, rewrittenCandidates);
-      await reportProgress({
-        stageId: "finalSelector",
-        state: "completed",
-        durationMs: Date.now() - finalSelectorStartedAt,
-        promptChars: finalSelectorPrompt.length,
-        reasoningEffort: finalSelectorReasoningEffort,
-        detail: `Shortlist ${finalSelector.finalCandidates.length} / pick ${finalSelector.finalPick}.`
-      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Final selector fallback used.";
       warnings.push({
         field: "finalSelector",
         message:
@@ -2117,24 +2298,34 @@ export class ViralShortsWorkerService {
         finalPick: rewrittenCandidates[0]?.candidateId ?? candidates[0]?.candidateId ?? "",
         rationale: "Fallback shortlist based on critic ranking."
       };
-      await reportProgress({
-        stageId: "finalSelector",
-        state: "completed",
-        durationMs: Date.now() - finalSelectorStartedAt,
-        promptChars: finalSelectorPrompt.length,
-        reasoningEffort: finalSelectorReasoningEffort,
-        detail: `Fallback used: ${message}`
-      });
     }
 
-    const shortlistEntries = buildShortlist({
+    const shortlistResult = buildShortlist({
       constraints: channelConfig.hardConstraints,
       finalSelector,
       rewrittenCandidates,
       fallbackCandidates: candidates,
       criticScores
     });
+    if (shortlistResult.stats.visibleCount !== shortlistResult.stats.targetCount) {
+      throw new Error(buildShortlistFailureMessage(shortlistResult.stats));
+    }
+    const shortlistEntries = shortlistResult.entries;
     const shortlist = shortlistEntries.map((entry) => entry.candidate);
+    const resolvedFinalSelectorState = buildResolvedFinalSelectorState({
+      visibleShortlist: shortlist,
+      requestedFinalPickCandidateId: finalSelector.finalPick,
+      shortlistStats: shortlistResult.stats
+    });
+    await reportProgress({
+      stageId: "finalSelector",
+      state: "completed",
+      durationMs: Date.now() - finalSelectorStartedAt,
+      promptChars: finalSelectorPrompt.length,
+      reasoningEffort: finalSelectorReasoningEffort,
+      summary: resolvedFinalSelectorState.progressSummary,
+      detail: resolvedFinalSelectorState.progressDetail
+    });
 
     const titlePrompt = buildTitlePrompt({
       channelConfig,
@@ -2187,22 +2378,19 @@ export class ViralShortsWorkerService {
         return normalizeTitleOptions({}, shortlist);
       });
 
-    const queryText = buildCorpusQueryText(input.videoContext, analyzerOutput);
     const diagnostics = buildRunDiagnostics({
       channelConfig,
       promptConfig,
       promptPacket,
       titlePrompt,
       workspaceCorpusCount,
-      availableExamples,
+      activeExamplesCount: availableExamples.length,
+      selectorExamples: selectorPool.selectorExamples,
       selectorOutput,
       queryText
     });
 
-    const shortlistOptionMap = shortlist.map((candidate, index) => ({
-      option: index + 1,
-      candidateId: candidate.candidateId
-    }));
+    const shortlistOptionMap = resolvedFinalSelectorState.candidateOptionMap;
     const captionOptions = shortlistEntries.map((entry, index) => {
       const candidate = entry.candidate;
       return {
@@ -2216,15 +2404,10 @@ export class ViralShortsWorkerService {
         constraintCheck: entry.constraintCheck
       };
     });
-    const resolvedFinalPickCandidateId =
-      shortlist.find((candidate) => candidate.candidateId === finalSelector.finalPick)?.candidateId ??
-      shortlist[0]?.candidateId ??
-      finalSelector.finalPick;
+    const resolvedFinalPickCandidateId = resolvedFinalSelectorState.finalPickCandidateId;
     const finalPickOption = Math.max(
       1,
-      captionOptions.findIndex(
-        (option) => shortlist[option.option - 1]?.candidateId === resolvedFinalPickCandidateId
-      ) + 1
+      shortlistOptionMap.findIndex((option) => option.candidateId === resolvedFinalPickCandidateId) + 1
     );
     const { operatorReason: operatorFacingFinalReason, sanitizedRationaleRaw } =
       buildOperatorFacingFinalReason({
@@ -2232,9 +2415,11 @@ export class ViralShortsWorkerService {
         shortlistOptionMap,
         finalPickCandidateId: resolvedFinalPickCandidateId
       });
-    const internalFinalSelectorReason = buildInternalFinalSelectorReason({
-      evaluatedCandidates: rewrittenCandidates,
-      visibleShortlist: shortlist,
+    const internalFinalSelectorReason = resolvedFinalSelectorState.rationaleInternalRaw;
+    assertCompletedShortlistContract({
+      captionOptions,
+      candidateOptionMap: shortlistOptionMap,
+      shortlistCandidateIds: resolvedFinalSelectorState.shortlistCandidateIds,
       finalPickCandidateId: resolvedFinalPickCandidateId
     });
 
@@ -2262,11 +2447,12 @@ export class ViralShortsWorkerService {
         selectedExamplesCount: selectorOutput.selectedExamples?.length ?? 0,
         finalSelector: {
           candidateOptionMap: shortlistOptionMap,
-          shortlistCandidateIds: shortlist.map((candidate) => candidate.candidateId),
+          shortlistCandidateIds: resolvedFinalSelectorState.shortlistCandidateIds,
           finalPickCandidateId: resolvedFinalPickCandidateId,
           rationaleRaw: sanitizedRationaleRaw,
           rationaleInternalRaw: internalFinalSelectorReason,
-          rationaleInternalModelRaw: finalSelector.rationale
+          rationaleInternalModelRaw: finalSelector.rationale,
+          shortlistStats: shortlistResult.stats
         }
       },
       diagnostics

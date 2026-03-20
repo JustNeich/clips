@@ -39,9 +39,9 @@ import {
 } from "../../lib/stage3-template-viewport";
 import {
   resolveTemplateAvatarBorderColor,
-  resolveTemplateOverlayTint,
-  templateUsesBuiltInBackdropFromRegistry
+  resolveTemplateOverlayTint
 } from "../../lib/stage3-template-registry";
+import { resolveStage3BackgroundMode } from "../../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
 import {
   STAGE3_TEXT_SCALE_UI_MAX,
@@ -790,6 +790,14 @@ function Stage3LivePreviewPanel({
     Boolean(backgroundAssetUrl) &&
     ((backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/") ||
       /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(backgroundAssetUrl ?? ""));
+  const backgroundMode = useMemo(
+    () =>
+      resolveStage3BackgroundMode(templateId, {
+        hasCustomBackground: Boolean(backgroundAssetUrl),
+        hasSourceVideo: Boolean(previewVideoUrl)
+      }),
+    [backgroundAssetUrl, previewVideoUrl, templateId]
+  );
   const overlayTint = useMemo(() => resolveTemplateOverlayTint(templateId), [templateId]);
   const summaryLine = summaryLines[0] ?? "Используется текущий live draft без сохраненной версии.";
   const sceneContent = useMemo<TemplateContentFixture>(
@@ -1152,16 +1160,14 @@ function Stage3LivePreviewPanel({
                   }}
                   runtime={{
                     showSafeArea: false,
-                    backgroundNode: templateUsesBuiltInBackdropFromRegistry(templateId)
-                      ? resolveTemplateBackdropNode(templateId)
-                      : backgroundAssetUrl
+                    backgroundNode: backgroundMode === "custom"
                         ? backgroundIsVideo
                           ? (
                             <video
                               key={backgroundAssetUrl}
                               ref={backgroundPreviewRef}
                               className="preview-bg-video preview-bg-custom"
-                              src={backgroundAssetUrl}
+                              src={backgroundAssetUrl ?? undefined}
                               muted
                               loop
                               playsInline
@@ -1183,13 +1189,13 @@ function Stage3LivePreviewPanel({
                               style={{ backgroundImage: `url(${backgroundAssetUrl})` }}
                             />
                           )
-                        : previewVideoUrl
+                        : backgroundMode === "source-blur"
                           ? (
                             <video
                               key={previewVideoUrl}
                               ref={backgroundPreviewRef}
                               className="preview-bg-video"
-                              src={previewVideoUrl}
+                              src={previewVideoUrl ?? undefined}
                               muted
                               loop
                               playsInline
@@ -1210,7 +1216,9 @@ function Stage3LivePreviewPanel({
                               }}
                             />
                           )
-                          : <div className="preview-bg-video preview-bg-fallback" />,
+                          : backgroundMode === "built-in"
+                            ? resolveTemplateBackdropNode(templateId)
+                            : <div className="preview-bg-video preview-bg-fallback" />,
                     overlayNode: overlayTint ? (
                       <div
                         style={{
@@ -1476,6 +1484,14 @@ export function Step3RenderTemplate({
     ]
   );
   const computed = previewTemplateSnapshot.computed;
+  const backgroundMode = useMemo(
+    () =>
+      resolveStage3BackgroundMode(templateId, {
+        hasCustomBackground: Boolean(backgroundAssetUrl),
+        hasSourceVideo: Boolean(previewVideoUrl)
+      }),
+    [backgroundAssetUrl, previewVideoUrl, templateId]
+  );
 
   const displayVersions = useMemo(
     () => [...versions].sort((a, b) => (a.versionNo < b.versionNo ? 1 : -1)),
@@ -2883,7 +2899,13 @@ export function Step3RenderTemplate({
                 <div className="quick-edit-label-row">
                   <span className="field-label">Фон</span>
                   <span className="quick-edit-value">
-                    {backgroundAssetUrl ? "Custom" : "Blur source"}
+                    {backgroundMode === "custom"
+                      ? "Custom"
+                      : backgroundMode === "source-blur"
+                        ? "Blur source"
+                        : backgroundMode === "built-in"
+                          ? "Template backdrop"
+                          : "Fallback"}
                   </span>
                 </div>
                 <div className="background-upload-row">
@@ -2928,9 +2950,13 @@ export function Step3RenderTemplate({
                   ) : null}
                 </div>
                 <p className="subtle-text">
-                  {backgroundAssetUrl
+                  {backgroundMode === "custom"
                     ? `Кастомный фон: ${(backgroundAssetMimeType ?? "asset").toLowerCase()}`
-                    : "Фон по умолчанию: blur исходного видео."}
+                    : backgroundMode === "source-blur"
+                      ? "Фон по умолчанию: blur исходного видео."
+                      : backgroundMode === "built-in"
+                        ? "Сейчас используется встроенный backdrop шаблона."
+                        : "Источник фона недоступен, используется fallback."}
                 </p>
               </div>
 

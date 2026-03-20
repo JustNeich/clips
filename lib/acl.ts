@@ -38,7 +38,7 @@ export function resolveChannelPermissions(input: {
     return {
       isVisible: visible,
       canOperate: visible,
-      canEditSetup: isCreator,
+      canEditSetup: visible,
       canManageAccess: false,
       canDelete: isCreator
     };

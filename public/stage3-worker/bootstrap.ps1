@@ -60,14 +60,18 @@ function Install-ClipsStage3Worker {
   $designFiles = @($manifest.designFiles)
   if ($designFiles.Count -eq 0) {
     $designFiles = @(
-      "templates/science-card-v1/figma-spec.json"
+      "templates/science-card-v1/figma-spec.json",
+      "templates/science-card-v7/figma-spec.json",
+      "templates/hedges-of-honor-v1/figma-spec.json"
     )
   }
   $publicFiles = @($manifest.publicFiles)
   if ($publicFiles.Count -eq 0) {
     $publicFiles = @(
       "stage3-template-badges/science-card-v1-check.png",
-      "stage3-template-backdrops/science-card-v2.png"
+      "stage3-template-badges/honor-verified-badge.svg",
+      "stage3-template-backdrops/science-card-v7-shell.svg",
+      "stage3-template-backdrops/hedges-of-honor-v1-shell.svg"
     )
   }
   foreach ($file in $remotionFiles) {

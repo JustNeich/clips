@@ -8,8 +8,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AppShell } from "../app/components/AppShell";
 import {
   CHANNEL_MANAGER_DEFAULT_SETTINGS_ID,
+  canDeleteManagedChannel,
   listChannelManagerTargets
 } from "../app/components/ChannelManager";
+import { ChannelManagerStage2Tab } from "../app/components/ChannelManagerStage2Tab";
 import { Step1PasteLink } from "../app/components/Step1PasteLink";
 import {
   normalizeStage2DiagnosticsForView,
@@ -27,6 +29,7 @@ import type {
   Stage3Version
 } from "../app/components/types";
 import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
   createStage2ProgressSnapshot,
   markStage2ProgressStageCompleted,
   markStage2ProgressStageRunning,
@@ -38,6 +41,12 @@ import {
   matchesScopedRequestVersion,
   pickPreferredStage2RunId
 } from "../lib/stage2-run-client";
+import { buildStage2RunRequestSnapshot } from "../lib/stage2-run-request";
+import { getRestrictedChannelEditError } from "../lib/channel-edit-permissions";
+import {
+  buildQuickRegeneratePrompt,
+  buildQuickRegenerateResult
+} from "../lib/stage2-quick-regenerate";
 import {
   pickPreferredSourceJobId
 } from "../lib/source-job-client";
@@ -51,13 +60,24 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../lib/stage2-channel-config";
+import { resolveChannelPermissions } from "../lib/acl";
 import { prepareCommentsForPrompt, sortCommentsByPopularity } from "../lib/comments";
 import { buildLimitedCommentsExtractorArgs } from "../lib/ytdlp";
 import {
   buildPromptPacket,
   resolveStage2PromptTemplate
 } from "../lib/viral-shorts-worker/prompts";
+import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
 import { getTemplateFigmaSpec } from "../lib/stage3-template-spec";
+import {
+  AMERICAN_NEWS_TEMPLATE_ID,
+  getTemplateById,
+  HEDGES_OF_HONOR_TEMPLATE_ID,
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_TEMPLATE_ID
+} from "../lib/stage3-template";
 import { prepareCodexSchemaTransport } from "../lib/viral-shorts-worker/executor";
 import {
   applyStage2CaptionToStage3Text,
@@ -69,11 +89,23 @@ import {
 } from "../lib/stage3-draft-render-plan";
 import {
   buildVideoContext,
+  repairCandidateForHardConstraints,
   ViralShortsWorkerService
 } from "../lib/viral-shorts-worker/service";
 import type { JsonStageExecutor } from "../lib/viral-shorts-worker/executor";
-import { normalizeChatDraft } from "../lib/chat-workflow";
+import { extractStage2Payload, normalizeChatDraft } from "../lib/chat-workflow";
+import { createStage2Run, getStage2Run, setStage2RunResultData } from "../lib/stage2-progress-store";
 import { fallbackRenderPlan, normalizeRenderPlan } from "../app/home-page-support";
+import { hydrateStage3RenderPlanOverride } from "../app/home-page-support";
+import {
+  getTemplateVariant,
+  resolveTemplateBuiltInBackdropAssetPath,
+  templateUsesBuiltInBackdropFromRegistry
+} from "../lib/stage3-template-registry";
+import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
+import { Stage3TemplateRenderer } from "../lib/stage3-template-renderer";
+import { buildStage3PreviewDedupeKey } from "../lib/stage3-preview-service";
+import { enqueueStage3Job } from "../lib/stage3-job-store";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -280,8 +312,8 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
   return {
     sourceUrl: "https://example.com/source",
     templateId: "template-road",
-    channelName: "Stone Face Turbo",
-    channelUsername: "StoneFaceTurbo",
+    channelName: "Echoes Of Honor",
+    channelUsername: "EchoesOfHonor50",
     avatarUrl: null,
     previewVideoUrl: null,
     backgroundAssetUrl: null,
@@ -516,6 +548,7 @@ function makeChannelForManager(input: { id: string; name: string; username: stri
     currentUserCanOperate: true,
     currentUserCanEditSetup: true,
     currentUserCanManageAccess: true,
+    currentUserCanDelete: true,
     isVisibleToCurrentUser: true
   };
 }
@@ -535,6 +568,7 @@ async function runSuccessfulPipeline(options?: {
   rewrittenCandidates?: Array<Record<string, unknown>>;
   rewriterResponse?: unknown;
   finalSelectorResponse?: Record<string, unknown>;
+  titleResponse?: unknown;
 }) {
   const service = new ViralShortsWorkerService();
   const promptConfig = options?.promptConfig ?? normalizeStage2PromptConfig({});
@@ -648,20 +682,20 @@ async function runSuccessfulPipeline(options?: {
       ...options?.finalSelectorResponse
     },
     options?.providerWrappedStageOutputs
-      ? {
+      ? (options?.titleResponse ?? {
           titleOptions: Array.from({ length: 5 }, (_, index) => ({
             title_id: `title_${index + 1}`,
             title: `HOW AXLE FAILS ${index + 1}`,
             title_ru: `КАК ЛОМАЕТСЯ МОСТ ${index + 1}`,
             rationale: `Title ${index + 1} leans into the failure mystery.`
           }))
-        }
-      : Array.from({ length: 5 }, (_, index) => ({
+        })
+      : (options?.titleResponse ?? Array.from({ length: 5 }, (_, index) => ({
           title_id: `title_${index + 1}`,
           title: `HOW AXLE FAILS ${index + 1}`,
           title_ru: `КАК ЛОМАЕТСЯ МОСТ ${index + 1}`,
           rationale: `Title ${index + 1} leans into the failure mystery.`
-        }))
+        })))
   ]);
   const progressEvents: Array<{ stageId: string; state: string; detail: string | null | undefined }> = [];
   const videoContext = buildVideoContext({
@@ -707,6 +741,22 @@ async function runSuccessfulPipeline(options?: {
     progressEvents,
     result
   };
+}
+
+function assertFinalShortlistContract(result: { output: Stage2Response["output"] }): void {
+  const visibleIds = result.output.captionOptions.map((option) => option.candidateId ?? "");
+  const finalSelector = result.output.pipeline?.finalSelector;
+  assert.equal(visibleIds.length, 5);
+  assert.ok(finalSelector);
+  assert.equal(finalSelector?.candidateOptionMap.length, 5);
+  assert.equal(finalSelector?.shortlistCandidateIds.length, 5);
+  assert.deepEqual(
+    finalSelector?.candidateOptionMap.map((entry) => entry.candidateId),
+    visibleIds
+  );
+  assert.deepEqual(finalSelector?.shortlistCandidateIds, visibleIds);
+  assert.ok(finalSelector?.finalPickCandidateId);
+  assert.ok(visibleIds.includes(finalSelector?.finalPickCandidateId ?? ""));
 }
 
 function assertSchemaRequiredMatchesProperties(schema: unknown): void {
@@ -959,6 +1009,239 @@ test("workspace hard constraints persist as owner defaults", { concurrency: fals
   });
 });
 
+test("channel hard constraints persist separately from workspace defaults", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Channel Hard Constraints",
+      email: "owner-channel-hard@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const workspaceConstraints: Stage2HardConstraints = {
+      topLengthMin: 24,
+      topLengthMax: 72,
+      bottomLengthMin: 30,
+      bottomLengthMax: 96,
+      bottomQuoteRequired: true,
+      bannedWords: ["literally"],
+      bannedOpeners: ["Here is a"]
+    };
+    teamStore.updateWorkspaceStage2HardConstraints(owner.workspace.id, workspaceConstraints);
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Per Channel Constraints",
+      username: "per_channel_constraints"
+    });
+    assert.deepEqual(channel.stage2HardConstraints, workspaceConstraints);
+
+    const channelConstraints: Stage2HardConstraints = {
+      topLengthMin: 135,
+      topLengthMax: 180,
+      bottomLengthMin: 92,
+      bottomLengthMax: 145,
+      bottomQuoteRequired: true,
+      bannedWords: [],
+      bannedOpeners: []
+    };
+
+    const updated = await chatHistory.updateChannelById(channel.id, {
+      stage2HardConstraints: channelConstraints
+    });
+    const reloaded = await chatHistory.getChannelById(channel.id);
+
+    assert.deepEqual(updated.stage2HardConstraints, channelConstraints);
+    assert.deepEqual(reloaded?.stage2HardConstraints, channelConstraints);
+    assert.deepEqual(teamStore.getWorkspaceStage2HardConstraints(owner.workspace.id), workspaceConstraints);
+
+    const nextWorkspaceConstraints: Stage2HardConstraints = {
+      topLengthMin: 40,
+      topLengthMax: 66,
+      bottomLengthMin: 44,
+      bottomLengthMax: 88,
+      bottomQuoteRequired: false,
+      bannedWords: ["generic"],
+      bannedOpeners: ["When you"]
+    };
+    teamStore.updateWorkspaceStage2HardConstraints(owner.workspace.id, nextWorkspaceConstraints);
+
+    const afterWorkspaceChange = await chatHistory.getChannelById(channel.id);
+    assert.deepEqual(afterWorkspaceChange?.stage2HardConstraints, channelConstraints);
+    assert.deepEqual(
+      teamStore.getWorkspaceStage2HardConstraints(owner.workspace.id),
+      nextWorkspaceConstraints
+    );
+  });
+});
+
+test("channel creation honors explicit hard constraints instead of workspace snapshot", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Explicit Channel Constraints",
+      email: "owner-explicit-channel@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const workspaceConstraints: Stage2HardConstraints = {
+      topLengthMin: 24,
+      topLengthMax: 72,
+      bottomLengthMin: 30,
+      bottomLengthMax: 96,
+      bottomQuoteRequired: true,
+      bannedWords: ["literally"],
+      bannedOpeners: ["Here is a"]
+    };
+    const explicitConstraints: Stage2HardConstraints = {
+      topLengthMin: 90,
+      topLengthMax: 126,
+      bottomLengthMin: 70,
+      bottomLengthMax: 115,
+      bottomQuoteRequired: false,
+      bannedWords: ["average"],
+      bannedOpeners: ["This is"]
+    };
+    teamStore.updateWorkspaceStage2HardConstraints(owner.workspace.id, workspaceConstraints);
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Explicit Constraints Channel",
+      username: "explicit_constraints_channel",
+      stage2HardConstraints: explicitConstraints
+    });
+
+    assert.deepEqual(channel.stage2HardConstraints, explicitConstraints);
+    assert.deepEqual(teamStore.getWorkspaceStage2HardConstraints(owner.workspace.id), workspaceConstraints);
+  });
+});
+
+test("stage 2 launch request snapshots effective channel hard constraints for manual and auto modes", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Stage 2 Launch Snapshot",
+      email: "owner-stage2-launch@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const workspaceConstraints: Stage2HardConstraints = {
+      topLengthMin: 24,
+      topLengthMax: 72,
+      bottomLengthMin: 30,
+      bottomLengthMax: 96,
+      bottomQuoteRequired: true,
+      bannedWords: ["workspace"],
+      bannedOpeners: ["Workspace"]
+    };
+    const channelConstraints: Stage2HardConstraints = {
+      topLengthMin: 132,
+      topLengthMax: 176,
+      bottomLengthMin: 84,
+      bottomLengthMax: 136,
+      bottomQuoteRequired: false,
+      bannedWords: ["channel"],
+      bannedOpeners: ["Channel"]
+    };
+    teamStore.updateWorkspaceStage2HardConstraints(owner.workspace.id, workspaceConstraints);
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Launch Snapshot Channel",
+      username: "launch_snapshot_channel"
+    });
+    await chatHistory.updateChannelById(channel.id, {
+      stage2HardConstraints: channelConstraints
+    });
+    const reloaded = await chatHistory.getChannelById(channel.id);
+    assert.ok(reloaded);
+
+    const manualRequest = buildStage2RunRequestSnapshot({
+      sourceUrl: "https://www.youtube.com/shorts/manual-snapshot",
+      userInstruction: "make it sharper",
+      mode: "manual",
+      channel: reloaded
+    });
+    const autoRequest = buildStage2RunRequestSnapshot({
+      sourceUrl: "https://www.youtube.com/shorts/auto-snapshot",
+      userInstruction: null,
+      mode: "auto",
+      channel: reloaded
+    });
+
+    assert.deepEqual(manualRequest.channel.stage2HardConstraints, channelConstraints);
+    assert.deepEqual(autoRequest.channel.stage2HardConstraints, channelConstraints);
+    assert.notDeepEqual(manualRequest.channel.stage2HardConstraints, workspaceConstraints);
+    assert.notDeepEqual(autoRequest.channel.stage2HardConstraints, workspaceConstraints);
+  });
+});
+
+test("channel Stage 2 tab exposes editable top and bottom length inputs", () => {
+  const element = ChannelManagerStage2Tab({
+    isWorkspaceDefaultsSelection: false,
+    workspaceExamplesCount: 12,
+    workspaceExamplesJson: "[]",
+    workspaceExamplesError: null,
+    stage2HardConstraints: {
+      topLengthMin: 135,
+      topLengthMax: 180,
+      bottomLengthMin: 92,
+      bottomLengthMax: 145,
+      bottomQuoteRequired: true,
+      bannedWords: [],
+      bannedOpeners: []
+    },
+    workspaceStage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+    stage2PromptStages: [],
+    autosaveState: {
+      brand: { status: "idle", message: null },
+      stage2: { status: "idle", message: null },
+      stage2Defaults: { status: "idle", message: null },
+      render: { status: "idle", message: null }
+    },
+    canEditWorkspaceDefaults: false,
+    canEditHardConstraints: true,
+    canEditChannelExamples: true,
+    activeExamplesPreview: {
+      source: "channel_custom",
+      corpus: [],
+      workspaceCorpusCount: 12
+    },
+    customExamplesJson: "[]",
+    customExamplesError: null,
+    updateWorkspaceExamplesJson: () => undefined,
+    updateCustomExamplesJson: () => undefined,
+    updateStage2HardConstraint: () => undefined,
+    updateStage2PromptTemplate: () => undefined,
+    updateStage2PromptReasoning: () => undefined,
+    resetStage2PromptStage: () => undefined
+  });
+  const markup = renderToStaticMarkup(element);
+
+  assert.match(markup, /Top min/);
+  assert.match(markup, /Top max/);
+  assert.match(markup, /Bottom min/);
+  assert.match(markup, /Bottom max/);
+  assert.match(markup, /type="number"/);
+  assert.match(markup, /value="135"/);
+  assert.match(markup, /value="180"/);
+  assert.match(markup, /value="92"/);
+  assert.match(markup, /value="145"/);
+  assert.doesNotMatch(markup, /disabled=""/);
+});
+
 test("comments prompt preparation keeps the most-liked comments and caps the payload at 300", () => {
   const comments = Array.from({ length: 350 }, (_, index) => ({
     id: `comment_${index + 1}`,
@@ -1003,6 +1286,125 @@ test("channel manager adds a dedicated Default settings target only for owners",
     redactorTargets.map((item) => item.id),
     ["alpha", "beta"]
   );
+});
+
+test("redactor with channel access can edit setup but still cannot manage access or delete чужой канал", () => {
+  const permissions = resolveChannelPermissions({
+    membership: {
+      id: "member_1",
+      workspaceId: "workspace_1",
+      userId: "redactor_1",
+      role: "redactor",
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    },
+    channel: {
+      id: "channel_1",
+      creatorUserId: "owner_1"
+    },
+    explicitAccess: {
+      id: "grant_1",
+      channelId: "channel_1",
+      userId: "redactor_1",
+      accessRole: "operate",
+      grantedByUserId: "owner_1",
+      createdAt: nowIso(),
+      revokedAt: null
+    }
+  });
+
+  assert.equal(permissions.isVisible, true);
+  assert.equal(permissions.canOperate, true);
+  assert.equal(permissions.canEditSetup, true);
+  assert.equal(permissions.canManageAccess, false);
+  assert.equal(permissions.canDelete, false);
+});
+
+test("limited redactor still cannot edit channel setup", () => {
+  const permissions = resolveChannelPermissions({
+    membership: {
+      id: "member_2",
+      workspaceId: "workspace_1",
+      userId: "redactor_limited_1",
+      role: "redactor_limited",
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    },
+    channel: {
+      id: "channel_1",
+      creatorUserId: "owner_1"
+    },
+    explicitAccess: {
+      id: "grant_2",
+      channelId: "channel_1",
+      userId: "redactor_limited_1",
+      accessRole: "operate",
+      grantedByUserId: "owner_1",
+      createdAt: nowIso(),
+      revokedAt: null
+    }
+  });
+
+  assert.equal(permissions.isVisible, true);
+  assert.equal(permissions.canOperate, true);
+  assert.equal(permissions.canEditSetup, false);
+  assert.equal(permissions.canDelete, false);
+});
+
+test("editor restrictions block only system prompts and thinking changes", () => {
+  assert.equal(
+    getRestrictedChannelEditError("redactor", {
+      name: "Updated channel",
+      username: "updated_channel"
+    }),
+    null
+  );
+  assert.equal(
+    getRestrictedChannelEditError("redactor", {
+      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS
+    }),
+    null
+  );
+  assert.equal(
+    getRestrictedChannelEditError("redactor", {
+      systemPrompt: "New system prompt"
+    }),
+    "Редактор не может менять системные промпты канала."
+  );
+  assert.equal(
+    getRestrictedChannelEditError("redactor", {
+      descriptionPrompt: "New description prompt"
+    }),
+    "Редактор не может менять системные промпты канала."
+  );
+  assert.equal(
+    getRestrictedChannelEditError("redactor", {
+      stage2PromptConfig: normalizeStage2PromptConfig({})
+    }),
+    "Только owner может менять Stage 2 prompt defaults."
+  );
+  assert.equal(
+    getRestrictedChannelEditError("manager", {
+      systemPrompt: "Manager prompt"
+    }),
+    null
+  );
+});
+
+test("channel delete action stays disabled when user may edit setup but may not delete", () => {
+  const editableButNotDeletable = {
+    ...makeChannelForManager({ id: "alpha", name: "Alpha Channel", username: "alpha" }),
+    currentUserCanEditSetup: true,
+    currentUserCanDelete: false
+  };
+  const deletable = {
+    ...makeChannelForManager({ id: "beta", name: "Beta Channel", username: "beta" }),
+    currentUserCanDelete: true
+  };
+
+  assert.equal(canDeleteManagedChannel([editableButNotDeletable, deletable], editableButNotDeletable), false);
+  assert.equal(canDeleteManagedChannel([editableButNotDeletable, deletable], deletable), true);
+  assert.equal(canDeleteManagedChannel([deletable], deletable), false);
 });
 
 test("selector prompt is LLM-driven and receives the active examples corpus plus per-stage prompt config", async () => {
@@ -1195,6 +1597,160 @@ test("pipeline accepts provider-native object-wrapped outputs for writer critic 
   assert.deepEqual((titlesCall?.schema as { required?: unknown }).required, ["titleOptions"]);
 });
 
+test("pipeline unwraps JSON-string title payloads before persisting title options", async () => {
+  const { result } = await runSuccessfulPipeline({
+    titleResponse: {
+      titleOptions: Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: JSON.stringify({
+          title_id: `${index + 1}`,
+          title: `WHO BROKE THE AXLE ${index + 1}`,
+          title_ru: `КТО СЛОМАЛ МОСТ ${index + 1}`,
+          rationale: `Title ${index + 1} rationale.`
+        }),
+        title_ru: JSON.stringify({
+          title_id: `${index + 1}`,
+          title: `WHO BROKE THE AXLE ${index + 1}`,
+          title_ru: `КТО СЛОМАЛ МОСТ ${index + 1}`,
+          rationale: `Title ${index + 1} rationale.`
+        })
+      }))
+    }
+  });
+
+  assert.deepEqual(result.output.titleOptions[0], {
+    option: 1,
+    title: "WHO BROKE THE AXLE 1",
+    titleRu: "КТО СЛОМАЛ МОСТ 1"
+  });
+  assert.doesNotMatch(result.output.titleOptions[0]?.title ?? "", /^\s*[{[]/);
+  assert.doesNotMatch(result.output.titleOptions[0]?.titleRu ?? "", /^\s*[{[]/);
+});
+
+test("extractStage2Payload repairs legacy stage2 events whose title strings contain a serialized title array", () => {
+  const embeddedTitleArray = JSON.stringify(
+    Array.from({ length: 5 }, (_, index) => ({
+      title_id: `${index + 1}`,
+      title: `WHO THOUGHT THIS MUCH ISSUED GEAR WAS CARRY-ON ${index + 1}`,
+      title_ru: `КТО РЕШИЛ, ЧТО СТОЛЬКО ВЫДАННОГО СНАРЯЖЕНИЯ МОЖНО ПРОНЕСТИ КАК РУЧНУЮ КЛАДЬ ${index + 1}`,
+      rationale: `Title ${index + 1} rationale.`
+    }))
+  );
+
+  const payload = extractStage2Payload({
+    source: {
+      url: "https://example.com/short",
+      title: "Legacy titles",
+      totalComments: 0,
+      topComments: [],
+      allComments: [],
+      commentsUsedForPrompt: 0
+    },
+    output: {
+      inputAnalysis: {
+        visualAnchors: ["anchor"],
+        commentVibe: "dry",
+        keyPhraseToAdapt: "legacy"
+      },
+      captionOptions: Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        top: `legacy top ${index + 1}`,
+        bottom: `"legacy" bottom ${index + 1}`,
+        topRu: `legacy верх ${index + 1}`,
+        bottomRu: `"legacy" низ ${index + 1}`
+      })),
+      titleOptions: Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: embeddedTitleArray,
+        titleRu: embeddedTitleArray
+      })),
+      finalPick: {
+        option: 1,
+        reason: "legacy winner"
+      }
+    },
+    warnings: []
+  });
+
+  assert.equal(
+    payload?.output.titleOptions[0]?.title,
+    "WHO THOUGHT THIS MUCH ISSUED GEAR WAS CARRY-ON 1"
+  );
+  assert.equal(
+    payload?.output.titleOptions[0]?.titleRu,
+    "КТО РЕШИЛ, ЧТО СТОЛЬКО ВЫДАННОГО СНАРЯЖЕНИЯ МОЖНО ПРОНЕСТИ КАК РУЧНУЮ КЛАДЬ 1"
+  );
+  assert.equal(
+    payload?.output.titleOptions[1]?.title,
+    "WHO THOUGHT THIS MUCH ISSUED GEAR WAS CARRY-ON 2"
+  );
+});
+
+test("stage2 run store repairs persisted title options with embedded JSON title payloads", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Title Repair Workspace",
+      email: "owner-title-repair@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Title Repair Channel",
+      username: "title_repair_channel"
+    });
+
+    const run = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: {
+        sourceUrl: "https://example.com/title-repair",
+        userInstruction: null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2ExamplesConfig: channel.stage2ExamplesConfig ?? DEFAULT_STAGE2_EXAMPLES_CONFIG,
+          stage2HardConstraints: channel.stage2HardConstraints ?? DEFAULT_STAGE2_HARD_CONSTRAINTS
+        }
+      }
+    });
+
+    const badTitles = Array.from({ length: 5 }, (_, index) =>
+      JSON.stringify({
+        title_id: `${index + 1}`,
+        title: `HOW IS THIS 5.3 STILL RUNNING ${index + 1}`,
+        title_ru: `КАК ЭТОТ 5.3 ВСЕ ЕЩЕ РАБОТАЕТ ${index + 1}`,
+        rationale: `Title ${index + 1} rationale.`
+      })
+    );
+
+    const baseResult = makeRuntimeStage2Response("run_title_fix", "titles");
+    const saved = setStage2RunResultData(run.runId, {
+      ...baseResult,
+      output: {
+        ...baseResult.output,
+        titleOptions: badTitles.map((title, index) => ({
+          option: index + 1,
+          title,
+          titleRu: title
+        }))
+      }
+    });
+    const reloaded = getStage2Run(run.runId);
+    const titleOptions = ((reloaded?.resultData as Stage2Response | null)?.output.titleOptions ?? []);
+
+    assert.ok(saved);
+    assert.equal(titleOptions[0]?.title, "HOW IS THIS 5.3 STILL RUNNING 1");
+    assert.equal(titleOptions[0]?.titleRu, "КАК ЭТОТ 5.3 ВСЕ ЕЩЕ РАБОТАЕТ 1");
+    assert.doesNotMatch(titleOptions[0]?.title ?? "", /^\s*[{[]/);
+  });
+});
+
 test("stage 2 pipeline returns a shortlist for human pick using selector-chosen examples", async () => {
   const { progressEvents, result } = await runSuccessfulPipeline();
   const runningStages = progressEvents
@@ -1214,6 +1770,7 @@ test("stage 2 pipeline returns a shortlist for human pick using selector-chosen 
   assert.equal(result.output.captionOptions.length, 5);
   assert.equal(result.output.titleOptions.length, 5);
   assert.equal(result.output.finalPick.option, 2);
+  assertFinalShortlistContract(result);
   assert.equal(result.output.pipeline.mode, "codex_pipeline");
   assert.equal(result.output.pipeline.availableExamplesCount, 5);
   assert.equal(result.output.pipeline.selectedExamplesCount, 3);
@@ -1221,13 +1778,14 @@ test("stage 2 pipeline returns a shortlist for human pick using selector-chosen 
   assert.ok(result.output.captionOptions.every((option) => option.angle));
   assert.ok(result.output.captionOptions.every((option) => option.constraintCheck?.passed));
   assert.equal(result.diagnostics.examples.activeCorpusCount, 5);
+  assert.equal(result.diagnostics.examples.selectorCandidateCount, 5);
   assert.equal(result.diagnostics.examples.selectedExamples.length, 3);
   assert.deepEqual(
     result.diagnostics.examples.selectedExamples.map((example) => example.title),
     [
       "Truck axle snaps in the mud",
+      "Crowd reacts when the wheel folds",
       "Driver keeps rolling after the first wobble",
-      "Crowd reacts when the wheel folds"
     ]
   );
 });
@@ -1268,6 +1826,7 @@ test("operator-facing final pick reason is generated from the visible shortlist 
     finalSelectorRationale:
       "c04 is strongest, but c07 and c08 still matter because they almost beat it on tension."
   });
+  const visibleIds = result.output.captionOptions.map((option) => option.candidateId);
 
   assert.match(result.output.finalPick.reason, /^option 2 is the strongest visible pick/i);
   assert.match(result.output.finalPick.reason, /lands the reaction with/i);
@@ -1277,7 +1836,9 @@ test("operator-facing final pick reason is generated from the visible shortlist 
   assert.equal(result.output.pipeline.finalSelector?.rationaleRaw, result.output.finalPick.reason);
   assert.equal(
     result.output.pipeline.finalSelector?.rationaleInternalRaw,
-    "Final selector evaluated 8 candidates: cand_1, cand_2, cand_3, cand_4, cand_5, cand_6, cand_7, cand_8. Final visible shortlist is cand_1, cand_2, cand_3, cand_4, cand_5 with cand_2 as the final pick. Visible angles: payoff_reveal, shared_experience, competence_process."
+    `Final selector evaluated ${visibleIds.length} shortlist candidates: ${visibleIds.join(", ")}. ` +
+      "Final visible shortlist is cand_1, cand_2, cand_3, cand_4, cand_5 with cand_2 as the final pick. " +
+      "Visible angles: payoff_reveal, shared_experience, competence_process."
   );
   assert.equal(
     result.output.pipeline.finalSelector?.rationaleInternalModelRaw,
@@ -1308,6 +1869,7 @@ test("shortlist preserves diversity when a same-angle final selector set can be 
   });
 
   const shortlistAngles = result.output.captionOptions.map((option) => option.angle);
+  assertFinalShortlistContract(result);
   assert.ok(new Set(shortlistAngles).size >= 2);
   assert.ok(result.output.captionOptions.some((option) => option.candidateId === "cand_2"));
   assert.ok(
@@ -1447,6 +2009,7 @@ test("caption options retain candidate ids, angles, and pass final constraint ch
     assert.equal(option.bottom.length >= traceLikeConstraints.bottomLengthMin, true);
     assert.equal(option.bottom.length <= traceLikeConstraints.bottomLengthMax, true);
   }
+  assertFinalShortlistContract(result);
 });
 
 test("constraint repair keeps complete sentences instead of chopped endings", async () => {
@@ -1551,7 +2114,8 @@ test("unrecoverable broken captions are filtered out of the final shortlist", as
 
   assert.ok(!result.output.captionOptions.some((option) => option.candidateId === "cand_1"));
   assert.ok(!result.output.captionOptions.some((option) => option.candidateId === "cand_2"));
-  assert.ok(result.output.captionOptions.length >= 1);
+  assertFinalShortlistContract(result);
+  assert.equal(result.output.captionOptions.length, 5);
   assert.ok(
     result.output.captionOptions.every(
       (option) =>
@@ -1601,7 +2165,33 @@ test("repair trims current trace-style broken endings instead of leaving chopped
       bottom_ru: "ru 3",
       rationale: "trace-like stop being case"
     },
-    ...Array.from({ length: 5 }, (_, index) => makeCandidate(`cand_${index + 4}`, "shared_experience", index + 4))
+    {
+      candidate_id: "cand_4",
+      angle: "shared_experience",
+      top: "A trainee steps out of the green jump tower like it's finally his big airborne moment, then the suspension lines snap tight and turn that clean exit into a harness lesson everybody watching already remembers in their hips and lower back.",
+      bottom: "\"Every airborne guy just crossed his legs.\" The tower looks cool for one second, then the harness gives him the part of jump school nobody forgets.",
+      top_ru: "ru 4",
+      bottom_ru: "ru 4",
+      rationale: "trace-like everybody reserve"
+    },
+    {
+      candidate_id: "cand_5",
+      angle: "payoff_reveal",
+      top: "That green tower doorway gives you exactly one second to think he's just stepping out clean, then the suspension lines yank the whole scene into a brutal little explanation of why the whole lesson lands in body memory instead of words.",
+      bottom: "\"There it is, the reason everybody suddenly walks bowlegged.\" No speech needed, the harness translates the lesson straight into body language.",
+      top_ru: "ru 5",
+      bottom_ru: "ru 5",
+      rationale: "trace-like why the reserve"
+    },
+    {
+      candidate_id: "cand_6",
+      angle: "tension_danger",
+      top: "This is why the clip works so well on mute: the trainee leaves the green tower and your brain immediately starts calculating the exact moment that harness is going to stop being theory and start feeling like paperwork in his spine.",
+      bottom: "\"That line system is about to become extremely persuasive.\" No explosion, no crash, just one sharp reminder that gravity always brings paperwork.",
+      top_ru: "ru 6",
+      bottom_ru: "ru 6",
+      rationale: "trace-like stop being reserve"
+    }
   ];
 
   const { result } = await runSuccessfulPipeline({
@@ -1645,10 +2235,17 @@ test("rewriter telemetry stays consistent with the critic-approved candidate poo
 
   const criticEvent = progressEvents.find((event) => event.stageId === "critic" && event.state === "completed");
   const rewriterEvent = progressEvents.find((event) => event.stageId === "rewriter" && event.state === "completed");
+  const visibleIds = result.output.captionOptions.map((option) => option.candidateId);
 
+  assertFinalShortlistContract(result);
   assert.equal(criticEvent?.detail, "1 candidates kept for rewrite.");
   assert.equal(rewriterEvent?.detail, "1 finalists sent to rewrite, 1 usable rewrites applied.");
-  assert.equal(result.output.pipeline.finalSelector?.rationaleInternalRaw?.includes("Final selector evaluated 1 candidate: cand_4."), true);
+  assert.equal(
+    result.output.pipeline.finalSelector?.rationaleInternalRaw,
+    `Final selector evaluated ${visibleIds.length} shortlist candidates: ${visibleIds.join(", ")}. ` +
+      `Final visible shortlist is ${visibleIds.join(", ")} with cand_2 as the final pick. ` +
+      "Visible angles: shared_experience, payoff_reveal."
+  );
   assert.ok(result.output.captionOptions.every((option) => option.candidateId !== "cand_1" || option.top !== "Noisy rewrite 1"));
 });
 
@@ -1674,13 +2271,87 @@ test("internal final selector rationale is rebuilt from the actual evaluated poo
 
   assert.equal(
     result.output.pipeline.finalSelector?.rationaleInternalRaw,
-    "Final selector evaluated 5 candidates: cand_1, cand_2, cand_3, cand_4, cand_5. Final visible shortlist is cand_4, cand_1, cand_3, cand_5, cand_2 with cand_4 as the final pick. Visible angles: payoff_reveal, shared_experience, tension_danger."
+    "Final selector evaluated 5 shortlist candidates: cand_4, cand_1, cand_3, cand_5, cand_2. Final visible shortlist is cand_4, cand_1, cand_3, cand_5, cand_2 with cand_4 as the final pick. Visible angles: payoff_reveal, shared_experience, tension_danger."
   );
   assert.equal(
     result.output.pipeline.finalSelector?.rationaleInternalModelRaw,
     "Only one unique candidate appears in the provided pool, and c04 is publishable."
   );
   assert.match(result.output.finalPick.reason, /^option 1 is the strongest visible pick/i);
+});
+
+test("stage 2 fails explicitly when shortlist recovery still cannot produce 5 valid options", async () => {
+  const writerCandidates = [
+    makeCandidate("c17", "shared_experience", 17),
+    makeCandidate("c01", "absurdity_chaos", 1),
+    makeCandidate("c11", "payoff_reveal", 11),
+    {
+      ...makeCandidate("c02", "shared_experience", 2),
+      top: "forbidden top that should never survive"
+    },
+    {
+      ...makeCandidate("c05", "competence_process", 5),
+      top: "forbidden top that should never survive"
+    },
+    {
+      ...makeCandidate("c08", "tension_danger", 8),
+      top: "forbidden top that should never survive"
+    },
+    {
+      ...makeCandidate("c14", "absurdity_chaos", 14),
+      top: "forbidden top that should never survive"
+    }
+  ];
+  const criticResponse = writerCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total: 10 - index * 0.25,
+    issues: [],
+    keep: true
+  }));
+
+  await assert.rejects(
+    runSuccessfulPipeline({
+      stage2HardConstraints: {
+        ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+        bannedWords: ["forbidden"]
+      },
+      writerCandidates,
+      rewrittenCandidates: writerCandidates,
+      criticResponse,
+      finalSelectorResponse: {
+        final_candidates: ["c02", "c05", "c08", "c14"],
+        final_pick: "c05",
+        rationale: "I compared c02, c05, c08, and c14 before trying to pick c05."
+      }
+    }),
+    /Stage 2 final shortlist could not produce 5 valid options after constraint-safe repair and reserve backfill\./
+  );
+});
+
+test("stage 2 cannot complete successfully with an empty visible shortlist", async () => {
+  const invalidWriterCandidates = Array.from({ length: 7 }, (_, index) => ({
+    ...makeCandidate(`x${index + 1}`, index % 2 === 0 ? "awe_scale" : "shared_experience", index + 1),
+    top: "forbidden top that should never survive",
+    bottom: "forbidden bottom that should never survive"
+  }));
+
+  await assert.rejects(
+    runSuccessfulPipeline({
+      stage2HardConstraints: {
+        ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+        bannedWords: ["forbidden"]
+      },
+      writerCandidates: invalidWriterCandidates,
+      rewrittenCandidates: invalidWriterCandidates,
+      finalSelectorResponse: {
+        final_candidates: ["x1", "x2", "x3", "x4", "x5"],
+        final_pick: "x3",
+        rationale: "x3 is still the strongest editorial read."
+      }
+    }),
+    /Only 0\/5 visible option\(s\) remained/
+  );
 });
 
 test("stage 2 to stage 3 handoff summary explains whether text comes from selection or overrides", () => {
@@ -1834,7 +2505,7 @@ test("stage 3 draft render-plan override strips channel-managed template fields"
   const base = fallbackRenderPlan();
   const rawOverride = {
     ...base,
-    templateId: "turbo-face-v1",
+    templateId: "hedges-of-honor-v1",
     authorName: "Changed channel",
     authorHandle: "@changed",
     avatarAssetId: "avatar_1",
@@ -1879,7 +2550,7 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
   const current = normalizeRenderPlan(
     {
       ...originalBase,
-      templateId: "turbo-face-v1",
+      templateId: "hedges-of-honor-v1",
       videoZoom: 1.35,
       topFontScale: 1.55
     },
@@ -1896,18 +2567,68 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
     {
       ...fallbackRenderPlan(),
       templateId: "science-card-v7",
-      authorName: "Stone Face Turbo",
-      authorHandle: "@StoneFaceTurbo"
+      avatarAssetId: "avatar_next",
+      avatarAssetMimeType: "image/jpeg",
+      backgroundAssetId: "background_next",
+      backgroundAssetMimeType: "video/mp4",
+      authorName: "Echoes Of Honor",
+      authorHandle: "@EchoesOfHonor50"
     },
     fallbackRenderPlan()
   );
 
-  const hydrated = normalizeRenderPlan(persistedOverride, updatedChannelBase);
+  const hydrated = hydrateStage3RenderPlanOverride(persistedOverride, updatedChannelBase);
   assert.equal(hydrated.templateId, "science-card-v7");
-  assert.equal(hydrated.authorName, "Stone Face Turbo");
-  assert.equal(hydrated.authorHandle, "@StoneFaceTurbo");
+  assert.equal(hydrated.authorName, "Echoes Of Honor");
+  assert.equal(hydrated.authorHandle, "@EchoesOfHonor50");
+  assert.equal(hydrated.avatarAssetId, "avatar_next");
+  assert.equal(hydrated.avatarAssetMimeType, "image/jpeg");
+  assert.equal(hydrated.backgroundAssetId, "background_next");
+  assert.equal(hydrated.backgroundAssetMimeType, "video/mp4");
   assert.equal(hydrated.videoZoom, 1.35);
   assert.equal(hydrated.topFontScale, 1.35);
+});
+
+test("stage 3 draft render-plan hydration keeps channel avatar while preserving explicit asset clears", () => {
+  const channelBase = normalizeRenderPlan(
+    {
+      ...fallbackRenderPlan(),
+      templateId: "science-card-v1",
+      avatarAssetId: "avatar_live",
+      avatarAssetMimeType: "image/jpeg",
+      backgroundAssetId: "background_live",
+      backgroundAssetMimeType: "video/mp4",
+      musicAssetId: "music_live",
+      musicAssetMimeType: "audio/mpeg",
+      authorName: "Echoes Of Honor",
+      authorHandle: "@EchoesOfHonor50"
+    },
+    fallbackRenderPlan()
+  );
+
+  const hydrated = hydrateStage3RenderPlanOverride(
+    {
+      sourceAudioEnabled: false,
+      cameraMotion: "top_to_bottom",
+      topFontScale: 0.99,
+      bottomFontScale: 1.05,
+      backgroundAssetId: "background_custom",
+      musicAssetId: null,
+      musicAssetMimeType: null
+    },
+    channelBase
+  );
+
+  assert.equal(hydrated.avatarAssetId, "avatar_live");
+  assert.equal(hydrated.avatarAssetMimeType, "image/jpeg");
+  assert.equal(hydrated.backgroundAssetId, "background_custom");
+  assert.equal(hydrated.backgroundAssetMimeType, "video/mp4");
+  assert.equal(hydrated.musicAssetId, null);
+  assert.equal(hydrated.musicAssetMimeType, null);
+  assert.equal(hydrated.sourceAudioEnabled, false);
+  assert.equal(hydrated.cameraMotion, "top_to_bottom");
+  assert.equal(hydrated.topFontScale, 0.99);
+  assert.equal(hydrated.bottomFontScale, 1.05);
 });
 
 test("normalizeChatDraft removes legacy template id from stage 3 render-plan override", () => {
@@ -1930,7 +2651,7 @@ test("normalizeChatDraft removes legacy template id from stage 3 render-plan ove
       focusY: null,
       renderPlan: {
         ...fallbackRenderPlan(),
-        templateId: "turbo-face-v1",
+        templateId: "hedges-of-honor-v1",
         authorName: "Legacy channel",
         authorHandle: "@legacy",
         videoZoom: 1.2
@@ -1976,6 +2697,7 @@ test("science-card-v7 uses the repo-backed spec and matches science-card geometr
     radius: 0,
     background: "#177FA6"
   });
+  assert.equal(v7Spec.card.borderColor, "#000000");
   assert.deepEqual(v7Spec.card.x, baseSpec.card.x);
   assert.deepEqual(v7Spec.card.y, baseSpec.card.y);
   assert.deepEqual(v7Spec.card.width, baseSpec.card.width);
@@ -1986,6 +2708,238 @@ test("science-card-v7 uses the repo-backed spec and matches science-card geometr
   assert.deepEqual(v7Spec.sections.author, baseSpec.sections.author);
   assert.deepEqual(v7Spec.sections.avatar, baseSpec.sections.avatar);
   assert.deepEqual(v7Spec.sections.bottomText, baseSpec.sections.bottomText);
+});
+
+test("american-news uses a dark gold news shell with source-friendly background behavior", () => {
+  const config = getTemplateById(AMERICAN_NEWS_TEMPLATE_ID);
+  const spec = getTemplateFigmaSpec(AMERICAN_NEWS_TEMPLATE_ID);
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: AMERICAN_NEWS_TEMPLATE_ID,
+      content: {
+        topText: "Top",
+        bottomText: "Bottom",
+        channelName: "American News",
+        channelHandle: "@amnnews9",
+        topFontScale: 1,
+        bottomFontScale: 1,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      }
+    })
+  );
+
+  assert.equal(getTemplateVariant(AMERICAN_NEWS_TEMPLATE_ID).label, "American News");
+  assert.equal(templateUsesBuiltInBackdropFromRegistry(AMERICAN_NEWS_TEMPLATE_ID), false);
+  assert.equal(spec.source, "generated");
+  assert.equal(config.card.radius, 0);
+  assert.equal(spec.card.radius, 0);
+  assert.equal(config.card.borderWidth, 4);
+  assert.equal(spec.card.borderWidth, 4);
+  assert.equal(config.card.borderColor, "#f3b31f");
+  assert.equal(spec.card.borderColor, "#f3b31f");
+  assert.equal(config.card.fill, "#121820");
+  assert.equal(config.palette.topSectionFill, "#121820");
+  assert.equal(config.palette.bottomSectionFill, "#121820");
+  assert.equal(config.palette.topTextColor, "#f7f8fb");
+  assert.equal(config.palette.bottomTextColor, "#f4f6fb");
+  assert.equal(config.palette.accentColor, "#f3b31f");
+  assert.equal(config.typography.bottom.fontStyle, "italic");
+  assert.equal(config.author.checkAssetPath, "/stage3-template-badges/american-news-badge.svg");
+  assert.ok(markup.includes("/stage3-template-badges/american-news-badge.svg"));
+});
+
+test("science-card runtime config stays aligned with the locked v1 geometry", () => {
+  const baseTemplate = getTemplateById(SCIENCE_CARD_TEMPLATE_ID);
+  const baseSpec = getTemplateFigmaSpec(SCIENCE_CARD_TEMPLATE_ID);
+
+  assert.equal(baseTemplate.card.x, baseSpec.card.x);
+  assert.equal(baseTemplate.card.y, baseSpec.card.y);
+  assert.equal(baseTemplate.card.width, baseSpec.card.width);
+  assert.equal(baseTemplate.card.height, baseSpec.card.height);
+  assert.equal(baseTemplate.card.radius, baseSpec.card.radius);
+  assert.equal(baseTemplate.card.borderWidth, baseSpec.card.borderWidth);
+  assert.equal(baseTemplate.slot.topHeight, baseSpec.sections.top.height);
+  assert.equal(baseTemplate.slot.bottomHeight, baseSpec.sections.bottom.height);
+  assert.equal(baseTemplate.slot.bottomMetaHeight, baseSpec.sections.author.height);
+  assert.equal(baseTemplate.slot.bottomMetaPaddingX, baseSpec.sections.avatar.x - baseSpec.card.x);
+  assert.equal(baseTemplate.slot.bottomTextPaddingLeft, baseSpec.sections.bottomText.x - baseSpec.card.x);
+  assert.equal(
+    baseTemplate.slot.bottomTextPaddingRight,
+    baseSpec.card.x + baseSpec.card.width - (baseSpec.sections.bottomText.x + baseSpec.sections.bottomText.width)
+  );
+  assert.equal(baseTemplate.author.avatarSize, baseSpec.sections.avatar.width);
+  assert.equal(baseTemplate.author.checkSize, baseSpec.typography?.badge?.size);
+  assert.equal(baseTemplate.typography.authorName.font, baseSpec.typography?.authorName?.fontSize);
+  assert.equal(baseTemplate.typography.authorHandle.font, baseSpec.typography?.authorHandle?.fontSize);
+});
+
+test("science-card border variants keep the base geometry and use a thicker colored border", () => {
+  const baseTemplate = getTemplateById(SCIENCE_CARD_TEMPLATE_ID);
+  const baseSpec = getTemplateFigmaSpec(SCIENCE_CARD_TEMPLATE_ID);
+  const variants = [
+    {
+      templateId: SCIENCE_CARD_BLUE_TEMPLATE_ID,
+      label: "Science Card Blue",
+      borderColor: "#2057d6"
+    },
+    {
+      templateId: SCIENCE_CARD_RED_TEMPLATE_ID,
+      label: "Science Card Red",
+      borderColor: "#d33f49"
+    },
+    {
+      templateId: SCIENCE_CARD_GREEN_TEMPLATE_ID,
+      label: "Science Card Green",
+      borderColor: "#20a35a"
+    }
+  ];
+
+  for (const variant of variants) {
+    const config = getTemplateById(variant.templateId);
+    const spec = getTemplateFigmaSpec(variant.templateId);
+
+    assert.equal(getTemplateVariant(variant.templateId).label, variant.label);
+    assert.equal(templateUsesBuiltInBackdropFromRegistry(variant.templateId), false);
+    assert.equal(spec.source, "generated");
+    assert.equal(config.card.borderWidth, 16);
+    assert.equal(spec.card.borderWidth, 16);
+    assert.equal(config.card.borderColor, variant.borderColor);
+    assert.equal(spec.card.borderColor, variant.borderColor);
+    assert.equal(spec.card.borderWidth, baseTemplate.card.borderWidth * 2);
+    assert.equal(spec.card.x, baseTemplate.card.x);
+    assert.equal(spec.card.y, baseTemplate.card.y);
+    assert.equal(spec.card.width, baseTemplate.card.width);
+    assert.equal(spec.card.height, baseTemplate.card.height);
+    assert.equal(spec.card.radius, baseTemplate.card.radius);
+    assert.deepEqual(spec.shell, baseSpec.shell);
+    assert.deepEqual(spec.sections.top, baseSpec.sections.top);
+    assert.deepEqual(spec.sections.media, baseSpec.sections.media);
+    assert.deepEqual(spec.sections.bottom, baseSpec.sections.bottom);
+    assert.deepEqual(spec.sections.author, baseSpec.sections.author);
+    assert.deepEqual(spec.sections.avatar, baseSpec.sections.avatar);
+    assert.deepEqual(spec.sections.bottomText, baseSpec.sections.bottomText);
+  }
+});
+
+test("hedges-of-honor uses the repo-backed spec, renders a built-in backdrop, and keeps science-card geometry", () => {
+  const baseSpec = getTemplateFigmaSpec(SCIENCE_CARD_TEMPLATE_ID);
+  const hedgesSpec = getTemplateFigmaSpec(HEDGES_OF_HONOR_TEMPLATE_ID);
+  const backdropMarkup = renderToStaticMarkup(resolveTemplateBackdropNode(HEDGES_OF_HONOR_TEMPLATE_ID));
+
+  assert.equal(getTemplateVariant(HEDGES_OF_HONOR_TEMPLATE_ID).label, "Hedges of Honor");
+  assert.equal(templateUsesBuiltInBackdropFromRegistry(HEDGES_OF_HONOR_TEMPLATE_ID), true);
+  assert.equal(
+    resolveTemplateBuiltInBackdropAssetPath(HEDGES_OF_HONOR_TEMPLATE_ID),
+    "/stage3-template-backdrops/hedges-of-honor-v1-shell.svg"
+  );
+  assert.deepEqual(hedgesSpec.card.x, baseSpec.card.x);
+  assert.deepEqual(hedgesSpec.card.y, baseSpec.card.y);
+  assert.deepEqual(hedgesSpec.card.width, baseSpec.card.width);
+  assert.deepEqual(hedgesSpec.card.height, baseSpec.card.height);
+  assert.equal(hedgesSpec.card.radius, 0);
+  assert.equal(hedgesSpec.card.borderWidth, 2);
+  assert.equal(hedgesSpec.card.borderColor, "#000000");
+  assert.ok((hedgesSpec.card.shadow ?? "").includes("inset"));
+  assert.deepEqual(hedgesSpec.sections.top, baseSpec.sections.top);
+  assert.deepEqual(hedgesSpec.sections.media, baseSpec.sections.media);
+  assert.deepEqual(hedgesSpec.sections.bottom, baseSpec.sections.bottom);
+  assert.deepEqual(hedgesSpec.sections.author, baseSpec.sections.author);
+  assert.deepEqual(hedgesSpec.sections.avatar, baseSpec.sections.avatar);
+  assert.deepEqual(hedgesSpec.sections.bottomText, baseSpec.sections.bottomText);
+  assert.ok(backdropMarkup.includes("hedges-of-honor-v1-shell.svg"));
+});
+
+test("science-card-v7 and hedges-of-honor use the honor verification badge asset with widened spacing", () => {
+  const scienceCardV7 = getTemplateById("science-card-v7");
+  const hedges = getTemplateById(HEDGES_OF_HONOR_TEMPLATE_ID);
+  const hedgesMarkup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: HEDGES_OF_HONOR_TEMPLATE_ID,
+      content: {
+        topText: "Top",
+        bottomText: "Bottom",
+        channelName: "Echoes Of Honor",
+        channelHandle: "@EchoesOfHonor50",
+        topFontScale: 1,
+        bottomFontScale: 1,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      }
+    })
+  );
+
+  assert.equal(scienceCardV7.author.checkAssetPath, "/stage3-template-badges/honor-verified-badge.svg");
+  assert.equal(hedges.author.checkAssetPath, "/stage3-template-badges/honor-verified-badge.svg");
+  assert.equal(scienceCardV7.author.nameCheckGap, 10);
+  assert.equal(hedges.author.nameCheckGap, 10);
+  assert.ok(hedgesMarkup.includes("/stage3-template-badges/honor-verified-badge.svg"));
+});
+
+test("hedges-of-honor renders card chrome on card bounds instead of covering the full shell", () => {
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: HEDGES_OF_HONOR_TEMPLATE_ID,
+      content: {
+        topText: "Top",
+        bottomText: "Bottom",
+        channelName: "Echoes Of Honor",
+        channelHandle: "@EchoesOfHonor50",
+        topFontScale: 1,
+        bottomFontScale: 1,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      }
+    })
+  );
+
+  assert.ok(
+    markup.includes(
+      "left:83px;top:192px;width:907px;height:1461px;border-radius:0;background:#ffffff"
+    )
+  );
+  assert.ok(
+    markup.includes(
+      "left:83px;top:192px;width:907px;height:1461px;border-radius:0;border:2px solid #000000"
+    )
+  );
+  assert.equal(
+    markup.includes(
+      "left:0px;top:0px;width:1080px;height:1920px;border-radius:0;border:2px solid #000000"
+    ),
+    false
+  );
+  assert.ok(markup.includes("box-shadow:inset 0 0 0 1px rgba(10, 14, 20, 0.1)"));
+});
+
+test("stage3 background mode prefers custom and source backgrounds before built-in template backdrops", () => {
+  assert.equal(
+    resolveStage3BackgroundMode(HEDGES_OF_HONOR_TEMPLATE_ID, {
+      hasCustomBackground: true,
+      hasSourceVideo: true
+    }),
+    "custom"
+  );
+  assert.equal(
+    resolveStage3BackgroundMode(HEDGES_OF_HONOR_TEMPLATE_ID, {
+      hasCustomBackground: false,
+      hasSourceVideo: true
+    }),
+    "source-blur"
+  );
+  assert.equal(
+    resolveStage3BackgroundMode(HEDGES_OF_HONOR_TEMPLATE_ID, {
+      hasCustomBackground: false,
+      hasSourceVideo: false
+    }),
+    "built-in"
+  );
 });
 
 test("prompt config exposes one direct per-stage prompt and reasoning mode", () => {
@@ -2151,6 +3105,87 @@ test("selector prompt compacts examples instead of embedding full transcript-hea
   assert.doesNotMatch(packet.prompts.selector, /TRANSCRIPT SHOULD NOT APPEAR/);
 });
 
+test("selector prompt uses a curated prompt pool instead of the entire active corpus", () => {
+  const service = new ViralShortsWorkerService();
+  const highSignalExamples = Array.from({ length: 36 }, (_, index) =>
+    makeExample({
+      id: `relevant_${index + 1}`,
+      ownerChannelId: `source_${(index % 9) + 1}`,
+      ownerChannelName: `Source ${(index % 9) + 1}`,
+      title: `Axle twist failure ${index + 1}`,
+      overlayTop: `The axle twist becomes obvious before the mud fully lets go ${index + 1}`,
+      overlayBottom: `"Everybody heard that crack," and the whole crowd already knows the bill ${index + 1}`,
+      qualityScore: 0.8 - (index % 4) * 0.05
+    })
+  );
+  const noisyExamples = [
+    makeExample({
+      id: "broken_json",
+      ownerChannelId: "noisy",
+      ownerChannelName: "Noisy",
+      title: "Broken JSON example",
+      overlayTop: "{\"bad\":\"json\"}",
+      overlayBottom: "{\"also\":\"bad\"}"
+    }),
+    makeExample({
+      id: "too_short",
+      ownerChannelId: "noisy",
+      ownerChannelName: "Noisy",
+      title: "Too short",
+      overlayTop: "oops",
+      overlayBottom: "tiny"
+    })
+  ];
+
+  const packet = service.buildPromptPacket({
+    channel: {
+      id: "target",
+      name: "Target Channel",
+      username: "target_channel",
+      stage2ExamplesConfig: {
+        version: 1,
+        useWorkspaceDefault: false,
+        customExamples: [...highSignalExamples, ...noisyExamples]
+      },
+      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/short",
+      title: "Old pickup axle twists in deep mud",
+      description: "The crowd sees the axle give up before the truck stops moving.",
+      transcript: "Everybody watching hears the crack before the wheel fully folds.",
+      frameDescriptions: ["axle leans hard", "mud sprays off the tire"],
+      comments: [{ author: "viewer", likes: 8, text: "That axle was done long before the last push." }]
+    }),
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+
+  assert.equal(packet.context.availableExamples?.length, 24);
+  assert.match(packet.prompts.selector, /Axle twist failure/);
+  assert.doesNotMatch(packet.prompts.selector, /broken_json|too_short/);
+  assert.doesNotMatch(packet.prompts.selector, /"bad":"json"|tiny/);
+});
+
+test("repairCandidateForHardConstraints restores quote-first bottoms when the draft is otherwise usable", () => {
+  const repaired = repairCandidateForHardConstraints(
+    {
+      candidateId: "cand_quote",
+      angle: "payoff_reveal",
+      top: "The axle is already twisting before the truck even clears the rut.",
+      bottom: "He knew that sound meant the whole weekend just got expensive.",
+      topRu: "Мост уже выкручивает, пока машина еще не вышла из колеи.",
+      bottomRu: "Он уже понял по звуку, что эти выходные всем обойдутся дороже.",
+      rationale: "Missing quote-first bottom."
+    },
+    DEFAULT_STAGE2_HARD_CONSTRAINTS
+  );
+
+  assert.equal(repaired.valid, true);
+  assert.equal(repaired.repaired, true);
+  assert.match(repaired.candidate.bottom, /^"/);
+});
+
 test("default prompt templates expose the new analyzer and selector contracts", () => {
   const analyzerResolved = resolveStage2PromptTemplate("analyzer", normalizeStage2PromptConfig({}));
   const selectorResolved = resolveStage2PromptTemplate("selector", normalizeStage2PromptConfig({}));
@@ -2235,6 +3270,7 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
             sourceUrl: "https://example.com/short",
             userInstruction: null,
             mode: "manual",
+            baseRunId: null,
             status: "completed",
             progress,
             errorMessage: null,
@@ -2249,7 +3285,9 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
         currentRunStatus: "completed",
         currentRunError: null,
         canRunStage2: true,
+        canQuickRegenerate: true,
         runBlockedReason: null,
+        quickRegenerateBlockedReason: null,
         isLaunching: false,
         isRunning: false,
         expectedDurationMs: 40_000,
@@ -2257,6 +3295,7 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
         selectedOption: 2,
         selectedTitleOption: 1,
         onInstructionChange: () => undefined,
+        onQuickRegenerate: () => undefined,
         onRunStage2: () => undefined,
         onSelectRun: () => undefined,
         onSelectOption: () => undefined,
@@ -2270,6 +3309,7 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
   assert.match(html, /Как этот run реально устроен/);
   assert.match(html, /Active corpus \+ selector picks/);
   assert.match(html, /selector picked 3/);
+  assert.match(html, /selector saw 5/);
   assert.match(html, /Target Channel/);
   assert.match(html, /Truck axle snaps in the mud/);
   assert.match(html, /Selector rationale/);
@@ -2381,7 +3421,9 @@ test("legacy diagnostics payload from older runs does not crash the Stage 2 UI",
         currentRunStatus: null,
         currentRunError: null,
         canRunStage2: true,
+        canQuickRegenerate: false,
         runBlockedReason: null,
+        quickRegenerateBlockedReason: "Сначала выберите готовый Stage 2 run с результатом.",
         isLaunching: false,
         isRunning: false,
         expectedDurationMs: 40_000,
@@ -2389,6 +3431,7 @@ test("legacy diagnostics payload from older runs does not crash the Stage 2 UI",
         selectedOption: 1,
         selectedTitleOption: 1,
         onInstructionChange: () => undefined,
+        onQuickRegenerate: () => undefined,
         onRunStage2: () => undefined,
         onSelectRun: () => undefined,
         onSelectOption: () => undefined,
@@ -2422,6 +3465,7 @@ test("step 2 keeps an attached running run informational instead of rendering it
           sourceUrl: "https://example.com/short",
           userInstruction: null,
           mode: "manual",
+          baseRunId: null,
           status: "running",
           progress: createStage2ProgressSnapshot("run_attached"),
           errorMessage: null,
@@ -2436,7 +3480,9 @@ test("step 2 keeps an attached running run informational instead of rendering it
       currentRunStatus: "running",
       currentRunError: null,
       canRunStage2: false,
+      canQuickRegenerate: false,
       runBlockedReason: "Для этого чата уже идёт Stage 2.",
+      quickRegenerateBlockedReason: "Для этого чата уже идёт Stage 2.",
       isLaunching: false,
       isRunning: false,
       expectedDurationMs: 40_000,
@@ -2444,6 +3490,7 @@ test("step 2 keeps an attached running run informational instead of rendering it
       selectedOption: null,
       selectedTitleOption: null,
       onInstructionChange: () => undefined,
+      onQuickRegenerate: () => undefined,
       onRunStage2: () => undefined,
       onSelectRun: () => undefined,
       onSelectOption: () => undefined,
@@ -2458,6 +3505,64 @@ test("step 2 keeps an attached running run informational instead of rendering it
   assert.doesNotMatch(html, /danger-text[^>]*>Для этого чата уже идёт Stage 2/);
 });
 
+test("step 2 renders separate quick regenerate and full rerun controls with run mode labels", () => {
+  const stage2 = makeRuntimeStage2Response("run_quick_ui", "quick");
+  const html = renderToStaticMarkup(
+    React.createElement(Step2PickCaption, {
+      channelName: "Quick Channel",
+      channelUsername: "quick_channel",
+      stage2,
+      progress: null,
+      stageCreatedAt: nowIso(),
+      commentsAvailable: true,
+      instruction: "make it sharper",
+      runs: [
+        {
+          runId: "run_quick_ui",
+          chatId: "chat_1",
+          channelId: "target",
+          sourceUrl: "https://example.com/quick",
+          userInstruction: "make it sharper",
+          mode: "regenerate",
+          baseRunId: "run_base_ui",
+          status: "completed",
+          progress: createStage2ProgressSnapshot("run_quick_ui", "regenerate"),
+          errorMessage: null,
+          hasResult: true,
+          createdAt: nowIso(),
+          startedAt: nowIso(),
+          updatedAt: nowIso(),
+          finishedAt: nowIso()
+        }
+      ],
+      selectedRunId: "run_quick_ui",
+      currentRunStatus: "completed",
+      currentRunError: null,
+      canRunStage2: true,
+      canQuickRegenerate: true,
+      runBlockedReason: null,
+      quickRegenerateBlockedReason: null,
+      isLaunching: false,
+      isRunning: false,
+      expectedDurationMs: 20_000,
+      elapsedMs: 4_000,
+      selectedOption: 1,
+      selectedTitleOption: 1,
+      onInstructionChange: () => undefined,
+      onQuickRegenerate: () => undefined,
+      onRunStage2: () => undefined,
+      onSelectRun: () => undefined,
+      onSelectOption: () => undefined,
+      onSelectTitleOption: () => undefined,
+      onCopy: () => undefined
+    })
+  );
+
+  assert.match(html, /Перегенерировать варианты/);
+  assert.match(html, /Полный прогон Stage 2/);
+  assert.match(html, /Готов · быстрый/);
+});
+
 test("pickPreferredStage2RunId reconnects the UI to the active durable run first", () => {
   const runs: Stage2RunSummary[] = [
     {
@@ -2467,6 +3572,7 @@ test("pickPreferredStage2RunId reconnects the UI to the active durable run first
       sourceUrl: "https://example.com/done",
       userInstruction: null,
       mode: "manual",
+      baseRunId: null,
       status: "completed",
       progress: createStage2ProgressSnapshot("run_done"),
       errorMessage: null,
@@ -2483,6 +3589,7 @@ test("pickPreferredStage2RunId reconnects the UI to the active durable run first
       sourceUrl: "https://example.com/active",
       userInstruction: null,
       mode: "manual",
+      baseRunId: null,
       status: "running",
       progress: createStage2ProgressSnapshot("run_active"),
       errorMessage: null,
@@ -2496,6 +3603,271 @@ test("pickPreferredStage2RunId reconnects the UI to the active durable run first
 
   assert.equal(pickPreferredStage2RunId(runs, null), "run_active");
   assert.equal(pickPreferredStage2RunId(runs, "run_done"), "run_done");
+});
+
+test("regenerate runs persist baseRunId and use lightweight progress stages", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Stage 2 Quick Regenerate",
+      email: "owner-quick@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Quick Channel",
+      username: "quick_channel"
+    });
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/shorts/quick-regenerate",
+      channel.id
+    );
+
+    const baseRun = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: chat.id,
+      request: {
+        sourceUrl: chat.url,
+        userInstruction: null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints
+        }
+      }
+    });
+
+    const regenerateRun = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: chat.id,
+      request: {
+        sourceUrl: chat.url,
+        userInstruction: "make it shorter",
+        mode: "regenerate",
+        baseRunId: baseRun.runId,
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints
+        }
+      }
+    });
+
+    assert.equal(regenerateRun.baseRunId, baseRun.runId);
+    assert.deepEqual(
+      regenerateRun.snapshot.steps.map((step) => step.id),
+      ["base", "regenerate", "assemble"]
+    );
+
+    const reloaded = getStage2Run(regenerateRun.runId);
+    assert.equal(reloaded?.baseRunId, baseRun.runId);
+    assert.deepEqual(
+      reloaded?.snapshot.steps.map((step) => step.id),
+      ["base", "regenerate", "assemble"]
+    );
+  });
+});
+
+test("quick regenerate result preserves base shortlist structure and only rewrites visible options", () => {
+  const baseStage2 = makeRuntimeStage2Response("run_base_quick", "base");
+  const channelConstraints: Stage2HardConstraints = {
+    topLengthMin: 5,
+    topLengthMax: 120,
+    bottomLengthMin: 5,
+    bottomLengthMax: 120,
+    bottomQuoteRequired: true,
+    bannedWords: [],
+    bannedOpeners: []
+  };
+  baseStage2.output.captionOptions = baseStage2.output.captionOptions.map((option, index) => ({
+    ...option,
+    candidateId: `cand_${index + 1}`,
+    angle: index % 2 === 0 ? "payoff_reveal" : "shared_experience",
+    top: `Base option ${index + 1} keeps the axle twist visible for everyone watching.`,
+    bottom: `"Nobody in that cab expected the axle to fold," and the whole lane hears it ${index + 1}.`,
+    topRu: `Базовый вариант ${index + 1} прямо показывает, как мост уходит под всей машиной.`,
+    bottomRu: `"Никто в кабине не ждал такого удара", и это слышит вся колонна ${index + 1}.`
+  }));
+  baseStage2.output.titleOptions = baseStage2.output.titleOptions.map((option, index) => ({
+    ...option,
+    title: `BASE FILE ${index + 1}`,
+    titleRu: `БАЗОВЫЙ ФАЙЛ ${index + 1}`
+  }));
+  baseStage2.output.finalPick = {
+    option: 2,
+    reason: "Base final pick"
+  };
+  baseStage2.seo = {
+    description: "Saved SEO block",
+    tags: "alpha,beta"
+  };
+  baseStage2.diagnostics = {
+    channel: {
+      channelId: "channel_quick",
+      name: "Quick Channel",
+      username: "quick_channel",
+      examplesSource: "workspace_default",
+      hardConstraints: channelConstraints,
+      workspaceCorpusCount: 8,
+      activeCorpusCount: 3
+    },
+    selection: {
+      clipType: "mechanical_failure",
+      primaryAngle: "payoff_reveal",
+      secondaryAngles: ["shared_experience"],
+      rankedAngles: [
+        { angle: "payoff_reveal", score: 9.5, why: "best fit" },
+        { angle: "shared_experience", score: 8.8, why: "strong alternate" }
+      ],
+      coreTrigger: "axle drop",
+      humanStake: "the whole cab feels it",
+      narrativeFrame: "slow disaster",
+      whyViewerCares: "the failure is visible immediately",
+      topStrategy: "name the visual failure cleanly",
+      bottomEnergy: "quoted reaction",
+      whyOldV6WouldWorkHere: "strong visual",
+      failureModes: ["too generic"],
+      writerBrief: "stay concrete",
+      rationale: "base selector rationale",
+      selectedExampleIds: ["example_1"]
+    },
+    effectivePrompting: {
+      promptStages: [
+        {
+          stageId: "writer",
+          label: "Writer",
+          stageType: "llm_prompt",
+          defaultPrompt: "writer default",
+          configuredPrompt: "writer default",
+          reasoningEffort: "low",
+          isCustomPrompt: false,
+          promptText: "writer prompt",
+          promptChars: 42,
+          usesImages: false,
+          summary: "writer stage"
+        }
+      ]
+    },
+    examples: {
+      source: "workspace_default",
+      workspaceCorpusCount: 8,
+      activeCorpusCount: 3,
+      selectorCandidateCount: 3,
+      availableExamples: [],
+      selectedExamples: []
+    }
+  };
+  (baseStage2.output as Record<string, unknown>).pipeline = {
+    channelId: "channel_quick",
+    mode: "codex_pipeline",
+    selectorOutput: {
+      clipType: "mechanical_failure",
+      primaryAngle: "payoff_reveal",
+      secondaryAngles: ["shared_experience"],
+      rankedAngles: [
+        { angle: "payoff_reveal", score: 9.5, why: "best fit" },
+        { angle: "shared_experience", score: 8.8, why: "strong alternate" }
+      ],
+      coreTrigger: "axle drop",
+      humanStake: "the whole cab feels it",
+      narrativeFrame: "slow disaster",
+      whyViewerCares: "the failure is visible immediately",
+      topStrategy: "name the visual failure cleanly",
+      bottomEnergy: "quoted reaction",
+      whyOldV6WouldWorkHere: "strong visual",
+      failureModes: ["too generic"],
+      writerBrief: "stay concrete",
+      rationale: "base selector rationale",
+      selectedExampleIds: ["example_1"]
+    },
+    availableExamplesCount: 8,
+    selectedExamplesCount: 3
+  };
+
+  const promptText = buildQuickRegeneratePrompt({
+    stage2: baseStage2,
+    channel: {
+      id: "channel_quick",
+      name: "Quick Channel",
+      username: "quick_channel",
+      stage2HardConstraints: channelConstraints
+    },
+    userInstruction: "make it shorter and sneak in one dry joke"
+  });
+  const result = buildQuickRegenerateResult({
+    runId: "run_quick_regen",
+    createdAt: nowIso(),
+    mode: "regenerate",
+    baseRunId: "run_base_quick",
+    baseResult: baseStage2,
+    channel: {
+      id: "channel_quick",
+      name: "Quick Channel",
+      username: "quick_channel",
+      stage2HardConstraints: channelConstraints
+    },
+    userInstruction: "make it shorter and sneak in one dry joke",
+    promptText,
+    reasoningEffort: "low",
+    model: "gpt-test",
+    rawOutput: {
+      options: baseStage2.output.captionOptions.map((option, index) => ({
+        option: option.option,
+        candidate_id: option.candidateId,
+        angle: option.angle,
+        top:
+          index === 1
+            ? "bad"
+            : `Quick rewrite ${index + 1} keeps the axle twist visible and the joke dry.`,
+        bottom:
+          index === 1
+            ? "bad"
+            : `"Nobody in that cab had a backup plan," and the whole lane feels it ${index + 1}.`,
+        top_ru: `Быстрая версия ${index + 1}.`,
+        bottom_ru: `"У них не было плана Б", и это чувствует вся колонна ${index + 1}.`,
+        title: index === 1 ? "" : `QUICK FILE ${index + 1}`,
+        title_ru: index === 1 ? "" : `БЫСТРЫЙ ФАЙЛ ${index + 1}`
+      })),
+      final_pick_option: 4,
+      selection_rationale: "Option 4 is the cleanest visible winner in this saved shortlist."
+    }
+  });
+
+  const pipeline = (result.output as Record<string, unknown>).pipeline as Record<string, unknown>;
+  const finalSelector = (pipeline.finalSelector ?? {}) as Record<string, unknown>;
+  const candidateIds = result.output.captionOptions.map((option) => option.candidateId);
+
+  assert.equal(result.stage2Run?.mode, "regenerate");
+  assert.equal(result.stage2Run?.baseRunId, "run_base_quick");
+  assert.equal(result.output.captionOptions.length, baseStage2.output.captionOptions.length);
+  assert.equal(result.output.titleOptions.length, baseStage2.output.titleOptions.length);
+  assert.deepEqual(
+    candidateIds,
+    baseStage2.output.captionOptions.map((option, index) => option.candidateId ?? `cand_${index + 1}`)
+  );
+  assert.equal(result.output.finalPick.option, 4);
+  assert.equal(finalSelector.finalPickCandidateId, "cand_4");
+  assert.deepEqual(finalSelector.shortlistCandidateIds, candidateIds);
+  assert.equal(finalSelector.rationaleRaw, result.output.finalPick.reason);
+  assert.equal(result.output.captionOptions[1]?.top, baseStage2.output.captionOptions[1]?.top);
+  assert.equal(result.output.titleOptions[1]?.title, baseStage2.output.titleOptions[1]?.title);
+  assert.match(result.warnings.map((warning) => warning.message).join(" "), /SEO reused from base run/);
+  assert.match(result.warnings.map((warning) => warning.message).join(" "), /restored from the base run/);
+  assert.ok(
+    result.diagnostics?.effectivePrompting.promptStages.some((stage) => stage.stageId === "regenerate")
+  );
+  assert.equal(pipeline.mode, "regenerate");
 });
 
 test("scoped Stage 2 request versions do not let one chat invalidate another chat response", () => {
@@ -3150,12 +4522,36 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       password: "Password123!",
       displayName: "Owner"
     });
+    const workspaceConstraints: Stage2HardConstraints = {
+      topLengthMin: 26,
+      topLengthMax: 68,
+      bottomLengthMin: 34,
+      bottomLengthMax: 102,
+      bottomQuoteRequired: true,
+      bannedWords: ["workspace"],
+      bannedOpeners: ["Workspace"]
+    };
+    const channelConstraints: Stage2HardConstraints = {
+      topLengthMin: 128,
+      topLengthMax: 170,
+      bottomLengthMin: 88,
+      bottomLengthMax: 144,
+      bottomQuoteRequired: false,
+      bannedWords: ["channel"],
+      bannedOpeners: ["Channel"]
+    };
+    teamStore.updateWorkspaceStage2HardConstraints(owner.workspace.id, workspaceConstraints);
     const channel = await chatHistory.createChannel({
       workspaceId: owner.workspace.id,
       creatorUserId: owner.user.id,
       name: "Trace Channel",
       username: "trace_channel"
     });
+    await chatHistory.updateChannelById(channel.id, {
+      stage2HardConstraints: channelConstraints
+    });
+    const traceChannel = await chatHistory.getChannelById(channel.id);
+    assert.ok(traceChannel);
     const chat = await chatHistory.createOrGetChatByUrl(
       "https://www.youtube.com/watch?v=traceExport01",
       channel.id
@@ -3252,6 +4648,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         source: "workspace_default",
         workspaceCorpusCount: 5,
         activeCorpusCount: 5,
+        selectorCandidateCount: 1,
         availableExamples: [
           {
             id: "example_available",
@@ -3384,11 +4781,11 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         userInstruction: "selected instruction",
         mode: "manual",
         channel: {
-          id: channel.id,
-          name: channel.name,
-          username: channel.username,
-          stage2ExamplesConfig: channel.stage2ExamplesConfig,
-          stage2HardConstraints: channel.stage2HardConstraints
+          id: traceChannel.id,
+          name: traceChannel.name,
+          username: traceChannel.username,
+          stage2ExamplesConfig: traceChannel.stage2ExamplesConfig,
+          stage2HardConstraints: traceChannel.stage2HardConstraints
         }
       }
     });
@@ -3407,11 +4804,11 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         userInstruction: "latest instruction",
         mode: "manual",
         channel: {
-          id: channel.id,
-          name: channel.name,
-          username: channel.username,
-          stage2ExamplesConfig: channel.stage2ExamplesConfig,
-          stage2HardConstraints: channel.stage2HardConstraints
+          id: traceChannel.id,
+          name: traceChannel.name,
+          username: traceChannel.username,
+          stage2ExamplesConfig: traceChannel.stage2ExamplesConfig,
+          stage2HardConstraints: traceChannel.stage2HardConstraints
         }
       }
     });
@@ -3473,6 +4870,8 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.equal(trace?.sourceJobs[0]?.request.trigger, "fetch");
     assert.equal(trace?.stage2.runs.length, 2);
     assert.equal(trace?.stage2.runs[0]?.request.channel.username, channel.username);
+    assert.deepEqual(trace?.stage2.workspaceDefaults.hardConstraints, workspaceConstraints);
+    assert.deepEqual(trace?.channel.stage2HardConstraints, channelConstraints);
     assert.equal(trace?.stage2.selectedRunId, selectedRun.runId);
     assert.equal(trace?.stage2.currentResult?.output.finalPick.reason, "Final pick for selected");
     assert.equal(trace?.stage2.currentResult?.source.topComments.length, 15);
@@ -3609,4 +5008,126 @@ test("step 3 render template exposes final text editor and stage 2 mix actions",
   assert.match(html, /Взять TOP/);
   assert.match(html, /Взять BOTTOM/);
   assert.match(html, /Используется manual draft/);
+});
+
+test("step 3 background UI reflects the actual resolved background mode", () => {
+  const customHtml = renderToStaticMarkup(
+    React.createElement(
+      Step3RenderTemplate,
+      makeStep3RenderTemplateProps({
+        templateId: HEDGES_OF_HONOR_TEMPLATE_ID,
+        previewVideoUrl: "https://example.com/source.mp4",
+        backgroundAssetUrl: "https://example.com/custom.mp4",
+        backgroundAssetMimeType: "video/mp4"
+      })
+    )
+  );
+  const sourceBlurHtml = renderToStaticMarkup(
+    React.createElement(
+      Step3RenderTemplate,
+      makeStep3RenderTemplateProps({
+        templateId: HEDGES_OF_HONOR_TEMPLATE_ID,
+        previewVideoUrl: "https://example.com/source.mp4",
+        backgroundAssetUrl: null,
+        backgroundAssetMimeType: null
+      })
+    )
+  );
+  const builtInHtml = renderToStaticMarkup(
+    React.createElement(
+      Step3RenderTemplate,
+      makeStep3RenderTemplateProps({
+        templateId: HEDGES_OF_HONOR_TEMPLATE_ID,
+        previewVideoUrl: null,
+        backgroundAssetUrl: null,
+        backgroundAssetMimeType: null
+      })
+    )
+  );
+
+  assert.match(customHtml, /<span class="quick-edit-value">Custom<\/span>/);
+  assert.match(sourceBlurHtml, /<span class="quick-edit-value">Blur source<\/span>/);
+  assert.match(builtInHtml, /<span class="quick-edit-value">Template backdrop<\/span>/);
+});
+
+test("stage 3 preview dedupe is scoped to workspace and user so only owned previews are reused", async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Preview Dedupe A",
+      email: "preview-owner-a@example.com",
+      password: "Password123!",
+      displayName: "Owner A"
+    });
+    const invite = await teamStore.createInvite({
+      workspaceId: owner.workspace.id,
+      email: "preview-editor@example.com",
+      role: "redactor_limited",
+      createdByUserId: owner.user.id
+    });
+    const sameWorkspaceOtherUser = await teamStore.acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Editor"
+    });
+
+    const previewBody = {
+      sourceUrl: "https://www.youtube.com/shorts/abc123xyz00",
+      clipStartSec: 0,
+      renderPlan: {
+        templateId: SCIENCE_CARD_TEMPLATE_ID,
+        topFontScale: 1.1,
+        bottomFontScale: 1.05
+      }
+    };
+
+    const ownerKey = await buildStage3PreviewDedupeKey(previewBody, {
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id
+    });
+    const ownerKeyRepeat = await buildStage3PreviewDedupeKey(previewBody, {
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id
+    });
+    const otherUserKey = await buildStage3PreviewDedupeKey(previewBody, {
+      workspaceId: owner.workspace.id,
+      userId: sameWorkspaceOtherUser.user.id
+    });
+    const otherWorkspaceKey = await buildStage3PreviewDedupeKey(previewBody, {
+      workspaceId: "workspace-b",
+      userId: owner.user.id
+    });
+
+    assert.equal(ownerKey, ownerKeyRepeat);
+    assert.notEqual(ownerKey, otherUserKey);
+    assert.notEqual(ownerKey, otherWorkspaceKey);
+
+    const ownerJob = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "preview",
+      executionTarget: "host",
+      payloadJson: JSON.stringify(previewBody),
+      dedupeKey: ownerKey
+    });
+    const ownerRetry = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "preview",
+      executionTarget: "host",
+      payloadJson: JSON.stringify(previewBody),
+      dedupeKey: ownerKeyRepeat
+    });
+    const otherUserJob = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: sameWorkspaceOtherUser.user.id,
+      kind: "preview",
+      executionTarget: "host",
+      payloadJson: JSON.stringify(previewBody),
+      dedupeKey: otherUserKey
+    });
+
+    assert.equal(ownerRetry.id, ownerJob.id);
+    assert.notEqual(otherUserJob.id, ownerJob.id);
+  });
 });

@@ -17,7 +17,9 @@ type Step2PickCaptionProps = {
   currentRunStatus: Stage2RunStatus | null;
   currentRunError: string | null;
   canRunStage2: boolean;
+  canQuickRegenerate: boolean;
   runBlockedReason?: string | null;
+  quickRegenerateBlockedReason?: string | null;
   isLaunching: boolean;
   isRunning: boolean;
   expectedDurationMs: number;
@@ -25,6 +27,7 @@ type Step2PickCaptionProps = {
   selectedOption: number | null;
   selectedTitleOption: number | null;
   onInstructionChange: (value: string) => void;
+  onQuickRegenerate: () => void;
   onRunStage2: () => void;
   onSelectRun: (runId: string) => void;
   onSelectOption: (option: number) => void;
@@ -101,6 +104,16 @@ function formatRunStatusLabel(status: Stage2RunStatus): string {
     default:
       return status;
   }
+}
+
+function formatRunModeLabel(mode: Stage2RunSummary["mode"]): string {
+  if (mode === "auto") {
+    return "auto";
+  }
+  if (mode === "regenerate") {
+    return "быстрый";
+  }
+  return "full";
 }
 
 function formatExamplesSourceLabel(value: "workspace_default" | "channel_custom"): string {
@@ -371,6 +384,8 @@ export function normalizeStage2DiagnosticsForView(
       workspaceCorpusCount:
         asNumber(examplesCandidate?.workspaceCorpusCount) ?? availableExamples.length,
       activeCorpusCount: asNumber(examplesCandidate?.activeCorpusCount) ?? availableExamples.length,
+      selectorCandidateCount:
+        asNumber(examplesCandidate?.selectorCandidateCount) ?? availableExamples.length,
       availableExamples,
       selectedExamples
     }
@@ -424,11 +439,12 @@ export function Stage2RunDiagnosticsPanels({
           <article className="stage2-insight-card">
             <span className="field-label">Examples</span>
             <strong>
-              active {diagnostics.examples.activeCorpusCount} / workspace{" "}
-              {diagnostics.examples.workspaceCorpusCount}
+              prompt {diagnostics.examples.selectorCandidateCount} / active{" "}
+              {diagnostics.examples.activeCorpusCount}
             </strong>
             <p className="subtle-text">
-              selector picked {diagnostics.examples.selectedExamples.length}
+              selector picked {diagnostics.examples.selectedExamples.length} · workspace{" "}
+              {diagnostics.examples.workspaceCorpusCount}
             </p>
           </article>
           <article className="stage2-insight-card">
@@ -514,14 +530,15 @@ export function Stage2RunDiagnosticsPanels({
             ) : null}
             <p className="subtle-text">
               Corpus source: {formatExamplesSourceLabel(diagnostics.examples.source)} · active{" "}
-              {diagnostics.examples.activeCorpusCount} / workspace{" "}
+              {diagnostics.examples.activeCorpusCount} · selector saw{" "}
+              {diagnostics.examples.selectorCandidateCount} / workspace{" "}
               {diagnostics.examples.workspaceCorpusCount}
             </p>
           </section>
 
           {([
             ["selectedExamples", "Selector picks"],
-            ["availableExamples", "Available corpus"]
+            ["availableExamples", "Selector prompt pool"]
           ] as const).map(([key, label]) => {
             const items = diagnostics.examples[key];
             return (
@@ -586,7 +603,9 @@ export function Step2PickCaption({
   currentRunStatus,
   currentRunError,
   canRunStage2,
+  canQuickRegenerate,
   runBlockedReason,
+  quickRegenerateBlockedReason,
   isLaunching,
   isRunning,
   expectedDurationMs,
@@ -594,6 +613,7 @@ export function Step2PickCaption({
   selectedOption,
   selectedTitleOption,
   onInstructionChange,
+  onQuickRegenerate,
   onRunStage2,
   onSelectRun,
   onSelectOption,
@@ -715,18 +735,31 @@ export function Step2PickCaption({
               <button
                 type="button"
                 className="btn btn-primary"
+                onClick={onQuickRegenerate}
+                disabled={!canQuickRegenerate}
+                aria-busy={isLaunching}
+                title={
+                  !canQuickRegenerate && !isAttachedStage2Run
+                    ? quickRegenerateBlockedReason ?? undefined
+                    : undefined
+                }
+              >
+                {isLaunching ? "Запускаем..." : "Перегенерировать варианты"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
                 onClick={onRunStage2}
                 disabled={!canRunStage2}
                 aria-busy={isLaunching}
                 title={!canRunStage2 && !isAttachedStage2Run ? runBlockedReason ?? undefined : undefined}
               >
-                {isLaunching
-                  ? "Запускаем..."
-                  : isRunning
-                    ? "Запустить ещё одну генерацию"
-                    : "Сгенерировать варианты"}
+                {isLaunching ? "Запускаем..." : "Полный прогон Stage 2"}
               </button>
             </div>
+            <p className="subtle-text">
+              Быстрая перегенерация использует текущий выбранный run как базу. Полный прогон заново проходит весь Stage 2 pipeline.
+            </p>
             <section className="stage2-timing-card" aria-live="polite">
               <div className="stage2-timing-row">
                 <span className="field-label">Обычно занимает</span>
@@ -753,7 +786,7 @@ export function Step2PickCaption({
               {selectedRun ? (
                 <p className={`subtle-text ${currentRunStatus === "failed" ? "danger-text" : ""}`}>
                   Run {selectedRun.runId.slice(0, 8)} · {formatRunStatusLabel(selectedRun.status)}
-                  {selectedRun.mode === "auto" ? " · auto" : ""}
+                  {` · ${formatRunModeLabel(selectedRun.mode)}`}
                   {currentRunError ? ` · ${currentRunError}` : ""}
                 </p>
               ) : null}
@@ -819,7 +852,7 @@ export function Step2PickCaption({
                       className={`stage2-run-pill ${selectedRunId === run.runId ? "is-active" : ""} status-${run.status}`}
                       onClick={() => onSelectRun(run.runId)}
                     >
-                      <strong>{formatRunStatusLabel(run.status)}</strong>
+                      <strong>{formatRunStatusLabel(run.status)} · {formatRunModeLabel(run.mode)}</strong>
                       <span>{formatDate(run.createdAt)}</span>
                     </button>
                   ))}
@@ -842,6 +875,27 @@ export function Step2PickCaption({
             </div>
           ) : (
             <>
+              {stage2.warnings.length > 0 ? (
+                <section className="control-card control-card-subtle">
+                  <div className="option-card-head">
+                    <div>
+                      <h3>Run warnings</h3>
+                      <p className="subtle-text">
+                        Здесь видны реальные degraded states и runtime decisions, которые стоит учитывать перед выбором финального текста.
+                      </p>
+                    </div>
+                  </div>
+                  <ul className="stage2-example-list">
+                    {stage2.warnings.map((warning, index) => (
+                      <li key={`${warning.field}-${index}`} className="stage2-example-card">
+                        <strong>{warning.field}</strong>
+                        <p className="subtle-text">{warning.message}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
               <section className="options-grid options-grid-stage2">
                 {stage2.output.captionOptions.map((option) => {
                   const selected = activeOption?.option === option.option;

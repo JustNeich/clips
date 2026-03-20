@@ -286,6 +286,36 @@ select.text-input:focus {
   gap: 8px;
 }
 
+.history-day-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.history-day-group {
+  display: grid;
+  gap: 8px;
+}
+
+.history-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-day-head h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.history-day-head span {
+  font-size: 10px;
+  color: var(--text-soft);
+}
+
 .history-section-head {
   display: flex;
   align-items: center;

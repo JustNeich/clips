@@ -2,6 +2,7 @@ import type { CommentsPayload, SourceJobResult, Stage2Response } from "../app/co
 import { appendChatEvent, getChatById, getChannelById } from "./chat-history";
 import { enqueueAndScheduleStage2Run } from "./stage2-run-runtime";
 import { findActiveStage2RunForChat } from "./stage2-progress-store";
+import { buildStage2RunRequestSnapshot } from "./stage2-run-request";
 import {
   claimNextQueuedSourceJob,
   createSourceJob,
@@ -16,7 +17,7 @@ import {
   SourceJobRequest
 } from "./source-job-store";
 import { fetchCommentsPayloadForUrl } from "./source-comments";
-import { getWorkspaceCodexIntegration, getWorkspaceStage2HardConstraints } from "./team-store";
+import { getWorkspaceCodexIntegration } from "./team-store";
 
 type SourceRuntimeState = {
   initialized: boolean;
@@ -143,7 +144,7 @@ async function maybeEnqueueStage2(job: SourceJobRecord): Promise<string | null> 
     workspaceId: job.workspaceId,
     creatorUserId: job.creatorUserId ?? integration.ownerUserId,
     chatId: chat.id,
-    request: {
+    request: buildStage2RunRequestSnapshot({
       sourceUrl: chat.url,
       userInstruction: null,
       mode: "auto",
@@ -152,9 +153,9 @@ async function maybeEnqueueStage2(job: SourceJobRecord): Promise<string | null> 
         name: channel.name,
         username: channel.username,
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
-        stage2HardConstraints: getWorkspaceStage2HardConstraints(job.workspaceId)
+        stage2HardConstraints: channel.stage2HardConstraints
       }
-    }
+    })
   });
   return run.runId;
 }

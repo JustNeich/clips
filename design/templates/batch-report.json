@@ -6,8 +6,14 @@
     "lastChromeMismatchPercent": null
   },
   {
-    "templateId": "turbo-face-v1",
+    "templateId": "science-card-v7",
     "status": "in-progress",
+    "lastMismatchPercent": null,
+    "lastChromeMismatchPercent": null
+  },
+  {
+    "templateId": "hedges-of-honor-v1",
+    "status": "review",
     "lastMismatchPercent": null,
     "lastChromeMismatchPercent": null
   }

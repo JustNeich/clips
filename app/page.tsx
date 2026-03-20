@@ -84,7 +84,6 @@ import {
   clampStage3TextScaleUi,
   createStage3TextFitSnapshot
 } from "../lib/stage3-text-fit";
-import { templateUsesBuiltInBackdropFromRegistry } from "../lib/stage3-template-registry";
 import {
   buildLegacyTimelineEntries,
   findLatestStage3AgentSessionRef,
@@ -137,6 +136,7 @@ import {
   formatStage3Operation,
   formatStage3Status,
   formatStage3StopReason,
+  hydrateStage3RenderPlanOverride,
   getEditingPolicy,
   isAbortError,
   mergeSavedChannelIntoList,
@@ -640,11 +640,8 @@ export default function HomePage() {
         return base;
       }
       const resolvedTemplateId = channel.templateId || STAGE3_TEMPLATE_ID;
-      const useBuiltInBackdrop = templateUsesBuiltInBackdropFromRegistry(resolvedTemplateId);
       const avatar = findAssetById(assets, channel.avatarAssetId);
-      const background = useBuiltInBackdrop
-        ? null
-        : findAssetById(assets, channel.defaultBackgroundAssetId);
+      const background = findAssetById(assets, channel.defaultBackgroundAssetId);
       const music = findAssetById(assets, channel.defaultMusicAssetId);
       return normalizeRenderPlan(
         {
@@ -656,7 +653,7 @@ export default function HomePage() {
             : `@${channel.username || "channel"}`,
           avatarAssetId: channel.avatarAssetId,
           avatarAssetMimeType: avatar?.mimeType ?? null,
-          backgroundAssetId: useBuiltInBackdrop ? null : channel.defaultBackgroundAssetId,
+          backgroundAssetId: channel.defaultBackgroundAssetId,
           backgroundAssetMimeType: background?.mimeType ?? null,
           musicAssetId: channel.defaultMusicAssetId,
           musicAssetMimeType: music?.mimeType ?? null,
@@ -724,7 +721,7 @@ export default function HomePage() {
         ? normalizeRenderPlan(latestVersion.final.renderPlan, fallbackRenderPlan())
         : applyChannelToRenderPlan(activeChannel, channelAssets);
       const nextRenderPlan = draft?.stage3.renderPlan
-        ? normalizeRenderPlan(draft.stage3.renderPlan, baseRenderPlan)
+        ? hydrateStage3RenderPlanOverride(draft.stage3.renderPlan, baseRenderPlan)
         : baseRenderPlan;
       const handoffSummary = buildStage2ToStage3HandoffSummary({
         stage2: stage2Event,
@@ -1679,7 +1676,6 @@ export default function HomePage() {
     previousChannelIdRef.current = activeChannel.id;
 
     const resolvedTemplateId = activeChannel.templateId || STAGE3_TEMPLATE_ID;
-    const useBuiltInBackdrop = templateUsesBuiltInBackdropFromRegistry(resolvedTemplateId);
     setStage3RenderPlan((prev) =>
       normalizeRenderPlan(
         {
@@ -1691,11 +1687,9 @@ export default function HomePage() {
             : `@${activeChannel.username || "channel"}`,
           avatarAssetId: activeChannel.avatarAssetId,
           avatarAssetMimeType: findAssetById(channelAssets, activeChannel.avatarAssetId)?.mimeType ?? null,
-          backgroundAssetId: useBuiltInBackdrop ? null : activeChannel.defaultBackgroundAssetId,
+          backgroundAssetId: activeChannel.defaultBackgroundAssetId,
           backgroundAssetMimeType:
-            useBuiltInBackdrop
-              ? null
-              : findAssetById(channelAssets, activeChannel.defaultBackgroundAssetId)?.mimeType ?? null,
+            findAssetById(channelAssets, activeChannel.defaultBackgroundAssetId)?.mimeType ?? null,
           musicAssetId: activeChannel.defaultMusicAssetId,
           musicAssetMimeType:
             findAssetById(channelAssets, activeChannel.defaultMusicAssetId)?.mimeType ?? null
@@ -2007,7 +2001,8 @@ export default function HomePage() {
   const runStage2ForChat = async (
     chat: Pick<ChatThread, "id" | "url">,
     instruction: string,
-    mode: "manual" | "auto"
+    mode: "manual" | "auto" | "regenerate",
+    options?: { baseRunId?: string | null }
   ): Promise<{ run: Stage2RunDetail; reused: boolean }> => {
     if (!codexLoggedIn) {
       throw new Error("Shared Codex недоступен. Обратитесь к владельцу.");
@@ -2023,7 +2018,8 @@ export default function HomePage() {
         chatId: chat.id,
         url: chat.url,
         userInstruction: trimmedInstruction || undefined,
-        mode
+        mode,
+        baseRunId: options?.baseRunId ?? undefined
       })
     });
 
@@ -2058,6 +2054,10 @@ export default function HomePage() {
       text:
         mode === "auto"
           ? "Auto Stage 2 запущен сразу после Step 1."
+          : mode === "regenerate"
+            ? trimmedInstruction
+              ? `Пользователь запустил быструю перегенерацию Stage 2 с инструкцией: ${trimmedInstruction}`
+              : "Пользователь запустил быструю перегенерацию Stage 2."
           : trimmedInstruction
             ? `Пользователь запустил Stage 2 с инструкцией: ${trimmedInstruction}`
             : "Пользователь запустил Stage 2."
@@ -2317,6 +2317,70 @@ export default function HomePage() {
       );
     } catch (error) {
       const message = getUiErrorMessage(error, "Stage 2 не удалось запустить.");
+      setStatusType("error");
+      setStatus(message);
+    } finally {
+      setIsStage2Enqueueing(false);
+      setIsBusy(false);
+      setBusyAction("");
+    }
+  };
+
+  const handleQuickRegenerateStage2 = async (): Promise<void> => {
+    const chat = requireActiveChat();
+    if (!chat) {
+      return;
+    }
+    if (!selectedStage2RunnableBaseRunId) {
+      setStatusType("error");
+      setStatus(
+        quickRegenerateBlockedReason ??
+          "Сначала выберите готовый Stage 2 run с результатом для быстрой перегенерации."
+      );
+      return;
+    }
+    if (!stage2RuntimeAvailable) {
+      setStatusType("error");
+      setStatus(stage2BlockedReason ?? "Среда выполнения Stage 2 недоступна на этом деплое.");
+      return;
+    }
+    if (!codexLoggedIn) {
+      setStatusType("error");
+      setStatus("Shared Codex недоступен — обратитесь к владельцу.");
+      return;
+    }
+    if (isSourceJobVisibleRunning) {
+      setStatusType("error");
+      setStatus("Сначала дождитесь окончания получения источника для этого чата.");
+      return;
+    }
+    if (isStage2RunVisibleRunning) {
+      setCurrentStep(2);
+      setStatusType("ok");
+      setStatus("Stage 2 уже выполняется в фоне. Подключён текущий run.");
+      return;
+    }
+
+    setIsStage2Enqueueing(true);
+    setBusyAction("stage2");
+    setIsBusy(true);
+    setStatus("");
+    setStatusType("");
+
+    try {
+      const { run, reused } = await runStage2ForChat(chat, stage2Instruction, "regenerate", {
+        baseRunId: selectedStage2RunnableBaseRunId
+      });
+      setStage2RunId(run.runId);
+      setCurrentStep(2);
+      setStatusType("ok");
+      setStatus(
+        reused
+          ? "Для этого чата уже идёт Stage 2. Подключился к существующему run."
+          : "Быстрая перегенерация Stage 2 запущена в фоне и использует выбранный run как базу."
+      );
+    } catch (error) {
+      const message = getUiErrorMessage(error, "Быструю перегенерацию Stage 2 не удалось запустить.");
       setStatusType("error");
       setStatus(message);
     } finally {
@@ -3040,6 +3104,15 @@ export default function HomePage() {
     () => (stage2RunDetail?.runId === stage2RunId ? stage2RunDetail : null),
     [stage2RunDetail, stage2RunId]
   );
+  const selectedStage2RunnableBaseRunId = useMemo(() => {
+    if (selectedStage2RunDetail?.status === "completed" && selectedStage2RunDetail.result) {
+      return selectedStage2RunDetail.runId;
+    }
+    if (selectedStage2RunSummary?.status === "completed" && selectedStage2RunSummary.hasResult) {
+      return selectedStage2RunSummary.runId;
+    }
+    return null;
+  }, [selectedStage2RunDetail, selectedStage2RunSummary]);
   const visibleStage2Progress = useMemo<Stage2ProgressSnapshot | null>(
     () =>
       selectedStage2RunDetail?.progress ??
@@ -3164,6 +3237,10 @@ export default function HomePage() {
     isSourceJobVisibleRunning,
     isStage2RunVisibleRunning
   ]);
+  const canQuickRegenerateForActiveChat = useMemo(
+    () => Boolean(selectedStage2RunnableBaseRunId) && canRunStage2ForActiveChat,
+    [canRunStage2ForActiveChat, selectedStage2RunnableBaseRunId]
+  );
   const effectiveStage2BlockedReason = useMemo(() => {
     if (isSourceJobVisibleRunning) {
       return "Сначала дождитесь окончания получения источника для этого чата.";
@@ -3181,6 +3258,12 @@ export default function HomePage() {
     stage1FetchState.ready,
     stage2BlockedReason
   ]);
+  const quickRegenerateBlockedReason = useMemo(() => {
+    if (!selectedStage2RunnableBaseRunId) {
+      return "Сначала выберите готовый Stage 2 run с результатом.";
+    }
+    return effectiveStage2BlockedReason;
+  }, [effectiveStage2BlockedReason, selectedStage2RunnableBaseRunId]);
   const chatTraceBlockedReason = useMemo(() => {
     if (!activeChat) {
       return "Сначала выберите ролик из истории или получите источник.";
@@ -4426,11 +4509,8 @@ export default function HomePage() {
       setChannels((prev) => mergeSavedChannelIntoList(prev, body.channel));
       if (body.channel.id === activeChannelId) {
         const resolvedTemplateId = body.channel.templateId || STAGE3_TEMPLATE_ID;
-        const useBuiltInBackdrop = templateUsesBuiltInBackdropFromRegistry(resolvedTemplateId);
         const resolvedAvatar = channelAssets.find((item) => item.id === body.channel.avatarAssetId);
-        const resolvedBg = useBuiltInBackdrop
-          ? null
-          : channelAssets.find((item) => item.id === body.channel.defaultBackgroundAssetId);
+        const resolvedBg = channelAssets.find((item) => item.id === body.channel.defaultBackgroundAssetId);
         const resolvedMusic = channelAssets.find((item) => item.id === body.channel.defaultMusicAssetId);
         setStage3RenderPlan((prev) =>
           normalizeRenderPlan(
@@ -4451,9 +4531,7 @@ export default function HomePage() {
                   : prev.avatarAssetMimeType,
               backgroundAssetId:
                 patch.defaultBackgroundAssetId !== undefined
-                  ? useBuiltInBackdrop
-                    ? null
-                    : body.channel.defaultBackgroundAssetId
+                  ? body.channel.defaultBackgroundAssetId
                   : prev.backgroundAssetId,
               backgroundAssetMimeType:
                 patch.defaultBackgroundAssetId !== undefined
@@ -4933,7 +5011,9 @@ export default function HomePage() {
             selectedStage2RunDetail?.errorMessage ?? selectedStage2RunSummary?.errorMessage ?? null
           }
           canRunStage2={canRunStage2ForActiveChat}
+          canQuickRegenerate={canQuickRegenerateForActiveChat}
           runBlockedReason={effectiveStage2BlockedReason}
+          quickRegenerateBlockedReason={quickRegenerateBlockedReason}
           isLaunching={isStage2Enqueueing}
           isRunning={isStage2RunVisibleRunning}
           expectedDurationMs={stage2ExpectedDurationMs}
@@ -4941,6 +5021,9 @@ export default function HomePage() {
           selectedOption={selectedOption}
           selectedTitleOption={selectedTitleOption}
           onInstructionChange={setStage2Instruction}
+          onQuickRegenerate={() => {
+            void handleQuickRegenerateStage2();
+          }}
           onRunStage2={() => {
             void handleRunStage2();
           }}

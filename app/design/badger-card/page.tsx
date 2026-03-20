@@ -118,16 +118,12 @@ export default async function BadgerCardPage({ searchParams }: BadgerCardPagePro
               overflow: "hidden"
             }}
           >
-            <img
-              src="/stage3-template-backdrops/science-card-v2.png"
-              alt=""
+            <div
               style={{
                 position: "absolute",
                 inset: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                display: "block"
+                background:
+                  "radial-gradient(circle at 30% 20%, rgba(207, 231, 193, 0.46), rgba(207, 231, 193, 0) 22%), linear-gradient(180deg, #a6b67b 0%, #7d8b57 42%, #4d5535 100%)"
               }}
             />
             <div

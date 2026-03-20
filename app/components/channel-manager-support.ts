@@ -29,6 +29,10 @@ export function listByKind(assets: ChannelAsset[], kind: ChannelAssetKind): Chan
   return assets.filter((item) => item.kind === kind);
 }
 
+export function canDeleteManagedChannel(channels: Channel[], activeChannel: Channel | null): boolean {
+  return channels.length > 1 && Boolean(activeChannel?.currentUserCanDelete);
+}
+
 export function listChannelManagerTargets(
   channels: Channel[],
   isOwner: boolean

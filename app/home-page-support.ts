@@ -352,6 +352,7 @@ export function equalStage2RunSummary(left: Stage2RunSummary, right: Stage2RunSu
     left.sourceUrl === right.sourceUrl &&
     left.userInstruction === right.userInstruction &&
     left.mode === right.mode &&
+    left.baseRunId === right.baseRunId &&
     left.status === right.status &&
     left.errorMessage === right.errorMessage &&
     left.hasResult === right.hasResult &&
@@ -746,6 +747,22 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
         : base.templateId,
     prompt: typeof candidate?.prompt === "string" ? candidate.prompt : base.prompt
   };
+}
+
+export function hydrateStage3RenderPlanOverride(
+  value: unknown,
+  base: Stage3RenderPlan
+): Stage3RenderPlan {
+  if (!value || typeof value !== "object") {
+    return normalizeRenderPlan(base, base);
+  }
+  return normalizeRenderPlan(
+    {
+      ...base,
+      ...(value as Record<string, unknown>)
+    },
+    base
+  );
 }
 
 export function shorten(value: string, max = 54): string {

@@ -14,9 +14,6 @@ import {
 } from "../app/components/types";
 import {
   SCIENCE_CARD_TEMPLATE_ID,
-  SCIENCE_CARD,
-  TURBO_FACE,
-  TURBO_FACE_TEMPLATE_ID,
   getTemplateById,
   getTemplateComputed
 } from "./stage3-template";

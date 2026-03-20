@@ -1,13 +1,12 @@
 import {
+  AMERICAN_NEWS_TEMPLATE_ID,
   SCIENCE_CARD_TEMPLATE_ID,
-  SCIENCE_CARD_V2_TEMPLATE_ID,
-  SCIENCE_CARD_V3_TEMPLATE_ID,
-  SCIENCE_CARD_V4_TEMPLATE_ID,
-  SCIENCE_CARD_V5_TEMPLATE_ID,
-  SCIENCE_CARD_V6_TEMPLATE_ID,
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
+  HEDGES_OF_HONOR_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
-  TURBO_FACE_TEMPLATE_ID,
   getTemplateById,
   templateUsesBuiltInBackdrop
 } from "./stage3-template";
@@ -42,61 +41,38 @@ const TEMPLATE_VARIANTS: TemplateVariant[] = [
     }
   },
   {
-    id: TURBO_FACE_TEMPLATE_ID,
-    label: "Stone Face Turbo",
+    id: AMERICAN_NEWS_TEMPLATE_ID,
+    label: "American News",
     runtime: {
-      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(TURBO_FACE_TEMPLATE_ID),
-      overlayTint: "rgba(0, 0, 0, 0.08)",
-      avatarBorderColor: "rgba(8,12,18,0.16)",
+      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(AMERICAN_NEWS_TEMPLATE_ID),
+      avatarBorderColor: "rgba(255,255,255,0)",
       previewFrameMode: "full-frame"
     }
   },
   {
-    id: SCIENCE_CARD_V2_TEMPLATE_ID,
-    label: "Science Card V2",
+    id: SCIENCE_CARD_BLUE_TEMPLATE_ID,
+    label: "Science Card Blue",
     runtime: {
-      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_V2_TEMPLATE_ID),
-      builtInBackdropAssetPath: "/stage3-template-backdrops/science-card-v2.png",
-      avatarBorderColor: "rgba(218, 189, 136, 0.34)",
+      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_BLUE_TEMPLATE_ID),
+      avatarBorderColor: "rgba(7, 13, 23, 0.25)",
       previewFrameMode: "full-frame"
     }
   },
   {
-    id: SCIENCE_CARD_V3_TEMPLATE_ID,
-    label: "Science Card Halo",
+    id: SCIENCE_CARD_RED_TEMPLATE_ID,
+    label: "Science Card Red",
     runtime: {
-      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_V3_TEMPLATE_ID),
-      overlayTint: "linear-gradient(180deg, rgba(8, 28, 48, 0.08), rgba(8, 28, 48, 0.02))",
-      avatarBorderColor: "rgba(24, 74, 138, 0.24)",
+      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_RED_TEMPLATE_ID),
+      avatarBorderColor: "rgba(7, 13, 23, 0.25)",
       previewFrameMode: "full-frame"
     }
   },
   {
-    id: SCIENCE_CARD_V4_TEMPLATE_ID,
-    label: "Science Card Nightglass",
+    id: SCIENCE_CARD_GREEN_TEMPLATE_ID,
+    label: "Science Card Green",
     runtime: {
-      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_V4_TEMPLATE_ID),
-      overlayTint: "linear-gradient(180deg, rgba(0, 11, 20, 0.22), rgba(0, 11, 20, 0.08))",
-      avatarBorderColor: "rgba(101, 224, 255, 0.3)",
-      previewFrameMode: "full-frame"
-    }
-  },
-  {
-    id: SCIENCE_CARD_V5_TEMPLATE_ID,
-    label: "Science Card Copperline",
-    runtime: {
-      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_V5_TEMPLATE_ID),
-      overlayTint: "linear-gradient(180deg, rgba(112, 58, 27, 0.08), rgba(112, 58, 27, 0.02))",
-      avatarBorderColor: "rgba(122, 58, 25, 0.26)",
-      previewFrameMode: "full-frame"
-    }
-  },
-  {
-    id: SCIENCE_CARD_V6_TEMPLATE_ID,
-    label: "Science Card Arcade",
-    runtime: {
-      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_V6_TEMPLATE_ID),
-      avatarBorderColor: "rgba(79, 217, 42, 0.34)",
+      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_GREEN_TEMPLATE_ID),
+      avatarBorderColor: "rgba(7, 13, 23, 0.25)",
       previewFrameMode: "full-frame"
     }
   },
@@ -105,8 +81,19 @@ const TEMPLATE_VARIANTS: TemplateVariant[] = [
     label: "Science Card Skyframe",
     runtime: {
       usesBuiltInBackdrop: templateUsesBuiltInBackdrop(SCIENCE_CARD_V7_TEMPLATE_ID),
+      builtInBackdropAssetPath: "/stage3-template-backdrops/science-card-v7-shell.svg",
       avatarBorderColor: "rgba(255,255,255,0)",
       previewFrameMode: "template-shell"
+    }
+  },
+  {
+    id: HEDGES_OF_HONOR_TEMPLATE_ID,
+    label: "Hedges of Honor",
+    runtime: {
+      usesBuiltInBackdrop: templateUsesBuiltInBackdrop(HEDGES_OF_HONOR_TEMPLATE_ID),
+      builtInBackdropAssetPath: "/stage3-template-backdrops/hedges-of-honor-v1-shell.svg",
+      avatarBorderColor: "rgba(0, 0, 0, 0.2)",
+      previewFrameMode: "full-frame"
     }
   }
 ];

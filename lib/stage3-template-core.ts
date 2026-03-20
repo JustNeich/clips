@@ -1,5 +1,6 @@
 import type { TemplateContentFixture } from "./template-calibration-types";
 import {
+  isClassicScienceCardTemplateId,
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   Stage3TemplateConfig,
@@ -128,7 +129,7 @@ export function resolveTemplateChromeMetrics(
   const baseTopPaddingTop = getTopPaddingTop(templateConfig);
   const baseTopPaddingBottom = getTopPaddingBottom(templateConfig);
 
-  if (templateId !== SCIENCE_CARD_TEMPLATE_ID) {
+  if (!isClassicScienceCardTemplateId(templateId)) {
     return {
       cardRadius: spec.card.radius,
       cardBorderWidth: spec.card.borderWidth,

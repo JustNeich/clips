@@ -41,7 +41,8 @@ const WORKER_LIB_RUNTIME_FILES = [
   "stage3-template-spec.ts",
   "stage3-template-renderer.tsx",
   "stage3-template-runtime.tsx",
-  "stage3-template-registry.ts"
+  "stage3-template-registry.ts",
+  "stage3-background-mode.ts"
 ];
 
 async function listWorkerRemotionRuntimeFiles() {

@@ -41,13 +41,14 @@ import {
   CHANNEL_MANAGER_DEFAULT_SETTINGS_ID,
   ChannelManagerTargetKind,
   listByKind,
+  canDeleteManagedChannel,
   listChannelManagerTargets,
   stringifyCorpusExamples,
   areCorpusExamplesEquivalent,
   TabId
 } from "./channel-manager-support";
 
-export { CHANNEL_MANAGER_DEFAULT_SETTINGS_ID, listChannelManagerTargets };
+export { CHANNEL_MANAGER_DEFAULT_SETTINGS_ID, canDeleteManagedChannel, listChannelManagerTargets };
 
 type ChannelManagerProps = {
   open: boolean;
@@ -267,9 +268,13 @@ export function ChannelManager({
       username: nextUsername
     });
 
-  const buildStage2Snapshot = (nextExamplesConfig: Stage2ExamplesConfig): string =>
+  const buildStage2Snapshot = (
+    nextExamplesConfig: Stage2ExamplesConfig,
+    nextHardConstraints: Stage2HardConstraints
+  ): string =>
     JSON.stringify({
-      stage2ExamplesConfig: nextExamplesConfig
+      stage2ExamplesConfig: nextExamplesConfig,
+      stage2HardConstraints: nextHardConstraints
     });
 
   const buildStage2DefaultsSnapshot = (
@@ -321,13 +326,17 @@ export function ChannelManager({
     const initialChannelExamples = normalizedExamplesConfig.useWorkspaceDefault
       ? collectWorkspaceStage2Examples(workspaceStage2ExamplesCorpusJson)
       : normalizedExamplesConfig.customExamples ?? [];
+    const normalizedChannelHardConstraints = normalizeStage2HardConstraints(
+      activeChannel.stage2HardConstraints
+    );
     setStage2ExamplesConfig(normalizedExamplesConfig);
+    setStage2HardConstraints(normalizedChannelHardConstraints);
     setCustomExamplesJson(stringifyCorpusExamples(initialChannelExamples));
     setCustomExamplesError(null);
     setTemplateId(activeChannel.templateId);
     persistedSnapshotRef.current = {
       brand: buildBrandSnapshot(activeChannel.name, activeChannel.username),
-      stage2: buildStage2Snapshot(normalizedExamplesConfig),
+      stage2: buildStage2Snapshot(normalizedExamplesConfig, normalizedChannelHardConstraints),
       stage2Defaults: buildStage2DefaultsSnapshot(
         workspaceStage2ExamplesCorpusJson,
         normalizedHardConstraints,
@@ -383,7 +392,7 @@ export function ChannelManager({
   const canEditSetup = Boolean(activeChannel?.currentUserCanEditSetup);
   const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
   const canEditChannelExamples = canEditSetup;
-  const canEditHardConstraints = canEditWorkspaceDefaults;
+  const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditSetup;
   const activeExamplesPreview = useMemo(() => {
     if (!activeChannel) {
       return {
@@ -461,7 +470,7 @@ export function ChannelManager({
       );
       return;
     }
-    const nextSnapshot = buildStage2Snapshot(stage2ExamplesConfig);
+    const nextSnapshot = buildStage2Snapshot(stage2ExamplesConfig, stage2HardConstraints);
     if (nextSnapshot === persistedSnapshotRef.current.stage2) {
       if (autosaveState.stage2.status !== "idle") {
         setAutosaveFeedback("stage2", "idle", null);
@@ -474,7 +483,8 @@ export function ChannelManager({
     const timerId = window.setTimeout(() => {
       setAutosaveFeedback("stage2", "saving", "Сохраняем Stage 2…");
       void saveChannelRef.current(activeChannel.id, {
-        stage2ExamplesConfig
+        stage2ExamplesConfig,
+        stage2HardConstraints
       })
         .then(() => {
           if (autosaveRevisionRef.current.stage2 !== revision) {
@@ -499,7 +509,8 @@ export function ChannelManager({
     activeChannel,
     canEditChannelExamples,
     customExamplesError,
-    stage2ExamplesConfig
+    stage2ExamplesConfig,
+    stage2HardConstraints
   ]);
 
   useEffect(() => {
@@ -793,7 +804,7 @@ export function ChannelManager({
               type="button"
               className="btn btn-ghost"
               onClick={() => onDeleteChannel(activeChannel.id)}
-              disabled={channels.length <= 1 || !activeChannel.currentUserCanEditSetup}
+              disabled={!canDeleteManagedChannel(channels, activeChannel)}
             >
               Удалить канал
             </button>

@@ -4,8 +4,12 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { TemplateContentFixture } from "./template-calibration-types";
 import {
   SCIENCE_CARD_TEMPLATE_ID,
-  SCIENCE_CARD_V2_TEMPLATE_ID,
-  TURBO_FACE_TEMPLATE_ID,
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
+  SCIENCE_CARD_V7_TEMPLATE_ID,
+  HEDGES_OF_HONOR_TEMPLATE_ID,
+  isClassicScienceCardTemplateId,
   getTemplateById,
   getTemplateComputed,
   resolveScaledMaxLines
@@ -13,10 +17,13 @@ import {
 import { getTemplateFigmaSpec } from "./stage3-template-spec";
 import { buildTemplateRenderSnapshot, resolveTemplateChromeMetrics } from "./stage3-template-core";
 import {
+  ceilStage3TextFontPx,
   STAGE3_TEXT_SCALE_UI_MAX,
   STAGE3_TEXT_SCALE_UI_MIN,
+  STAGE3_TEXT_FONT_STEP_PX,
   clampStage3TextScaleUi,
-  getStage3TemplateTextFitPolicy
+  getStage3TemplateTextFitPolicy,
+  snapStage3TextFontPx
 } from "./stage3-text-fit";
 import { TemplateScene, type TemplateSceneProps } from "./template-scene";
 
@@ -28,6 +35,7 @@ type MeasuredSlotSpec = {
   height: number;
   minFont: number;
   maxFont: number;
+  preferredFont: number;
   maxLines: number;
   baseLineHeight: number;
   fillTargetMin: number;
@@ -86,7 +94,12 @@ function getSectionBorderLosses(templateId: string): {
   bottomWidth: number;
   bottomHeight: number;
 } {
-  if (templateId === "science-card-v1") {
+  if (
+    templateId === SCIENCE_CARD_TEMPLATE_ID ||
+    templateId === SCIENCE_CARD_BLUE_TEMPLATE_ID ||
+    templateId === SCIENCE_CARD_RED_TEMPLATE_ID ||
+    templateId === SCIENCE_CARD_GREEN_TEMPLATE_ID
+  ) {
     return {
       topWidth: 0,
       topHeight: 0,
@@ -103,32 +116,29 @@ function getSectionBorderLosses(templateId: string): {
 }
 
 function getTopFontFamily(templateId: string): string {
-  if (templateId === TURBO_FACE_TEMPLATE_ID) {
-    return '"Arial Black","Arial",sans-serif';
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
+    return '"Arial Rounded MT Bold",".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial",sans-serif';
   }
   return '"Inter","Helvetica Neue",Helvetica,sans-serif';
 }
 
 function getBottomFontFamily(templateId: string): string {
-  if (templateId === TURBO_FACE_TEMPLATE_ID) {
-    return '"Arial","Helvetica Neue",Helvetica,sans-serif';
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
+    return '".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial Rounded MT Bold","Arial",sans-serif';
   }
   return '"Inter","Helvetica Neue",Helvetica,sans-serif';
 }
 
 function getTopFontHeadroom(templateId: string): number {
-  if (templateId === TURBO_FACE_TEMPLATE_ID) {
-    return 1.08;
-  }
-  if (templateId === SCIENCE_CARD_V2_TEMPLATE_ID) {
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
     return 1.04;
   }
   return 1.02;
 }
 
 function getBottomFontHeadroom(templateId: string): number {
-  if (templateId === TURBO_FACE_TEMPLATE_ID) {
-    return 1.08;
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
+    return 1.04;
   }
   return 1.02;
 }
@@ -140,7 +150,7 @@ function getScaleCeiling(scale: number, maxScaleBoost: number): number {
 function buildCacheKey(templateId: string, content: TemplateContentFixture, baseComputed: TemplateSceneComputed): string {
   const template = getTemplateById(templateId);
   return JSON.stringify({
-    version: "scene-autofit-v8",
+    version: "scene-autofit-v9",
     templateId,
     topText: baseComputed.top,
     bottomText: baseComputed.bottom,
@@ -209,6 +219,12 @@ function normalizeScalePreference(scale: number): number {
   return 0.5 + clamp((clamped - 1) / Math.max(0.0001, STAGE3_TEXT_SCALE_UI_MAX - 1), 0, 1) * 0.5;
 }
 
+function resolveAdaptiveBottomLineHeightFloor(baseLineHeight: number, scale: number): number {
+  const progress = clamp((scale - 1.02) / 0.16, 0, 1);
+  const reduction = 0.08 + (0.22 - 0.08) * progress;
+  return Math.max(0.78, Number((baseLineHeight - reduction).toFixed(3)));
+}
+
 function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): MeasuredSlotResult {
   const scalePreference = normalizeScalePreference(spec.scale);
   const targetFill =
@@ -221,7 +237,11 @@ function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): 
     baseScore: number;
   }> = [];
 
-  for (let font = spec.minFont; font <= spec.maxFont; font += 1) {
+  for (
+    let font = spec.minFont;
+    font <= spec.maxFont + 0.0001;
+    font = snapStage3TextFontPx(font + STAGE3_TEXT_FONT_STEP_PX)
+  ) {
     for (
       let lineHeight = spec.lineHeightFloor;
       lineHeight <= spec.lineHeightCeil + 0.0001;
@@ -248,8 +268,6 @@ function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): 
   }
 
   if (candidates.length > 0) {
-    const minCandidateFont = Math.min(...candidates.map((candidate) => candidate.font));
-    const maxCandidateFont = Math.max(...candidates.map((candidate) => candidate.font));
     let bestCandidate:
       | {
           font: number;
@@ -260,11 +278,10 @@ function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): 
       | null = null;
 
     for (const candidate of candidates) {
-      const fontPosition =
-        maxCandidateFont <= minCandidateFont
-          ? 0.5
-          : (candidate.font - minCandidateFont) / (maxCandidateFont - minCandidateFont);
-      const score = candidate.baseScore + Math.abs(fontPosition - scalePreference) * 18;
+      const score =
+        candidate.baseScore +
+        Math.abs(candidate.font - spec.preferredFont) * 6 +
+        Math.abs(candidate.fill - targetFill) * Math.max(0, scalePreference - 0.5) * 8;
 
       if (
         !bestCandidate ||
@@ -312,7 +329,7 @@ function buildMeasuredComputed(
   const topScale = normalizeScale(content.topFontScale);
   const bottomScale = normalizeScale(content.bottomFontScale);
   const topFigmaFont = templateSpec.typography?.topText?.fontSize ?? baseComputed.topFont;
-  const isScienceCardV1 = templateId === SCIENCE_CARD_TEMPLATE_ID;
+  const usesClassicScienceCardChrome = isClassicScienceCardTemplateId(templateId);
   const topFigmaLineHeight = Number(
     (
       (templateSpec.typography?.topText?.lineHeightPx ?? topFigmaFont * baseComputed.topLineHeight) /
@@ -324,44 +341,50 @@ function buildMeasuredComputed(
   const topPaddingTop = chromeMetrics.topPaddingTop;
   const topPaddingBottom = chromeMetrics.topPaddingBottom;
   const sectionBorderLosses = getSectionBorderLosses(templateId);
+  const usesWideHeadlineScaling =
+    templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID;
 
   const topSpec: MeasuredSlotSpec = {
     text: baseComputed.top,
     width: layout.top.width - sectionBorderLosses.topWidth - chromeMetrics.topPaddingX * 2,
     height: layout.top.height - sectionBorderLosses.topHeight - topPaddingTop - topPaddingBottom,
-    minFont: Math.max(14, Math.floor(template.typography.top.min * 0.58)),
+    minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(template.typography.top.min * 0.58))),
     maxFont: Math.max(
       topFigmaFont,
       template.typography.top.max,
-      Math.round(
+      snapStage3TextFontPx(
         template.typography.top.max *
           getTopFontHeadroom(templateId) *
-          getScaleCeiling(topScale, templateId === TURBO_FACE_TEMPLATE_ID ? 1.35 : 1.18)
+          getScaleCeiling(topScale, usesWideHeadlineScaling ? 1.24 : 1.18)
       )
     ),
+    preferredFont: baseComputed.topFont,
     maxLines: resolveScaledMaxLines(template.typography.top.maxLines, topScale, "top"),
-    baseLineHeight: isScienceCardV1 ? scienceCardPreferredTopLineHeight : baseComputed.topLineHeight,
+    baseLineHeight: usesClassicScienceCardChrome ? scienceCardPreferredTopLineHeight : baseComputed.topLineHeight,
     fillTargetMin: fitPolicy.topFillTargetMin,
     fillTargetMax: fitPolicy.topFillTargetMax,
     fontFamily: getTopFontFamily(templateId),
-    fontWeight: template.typography.top.weight ?? (templateId === TURBO_FACE_TEMPLATE_ID ? 850 : 800),
+    fontWeight: template.typography.top.weight ?? 800,
     fontStyle: template.typography.top.fontStyle ?? "normal",
     letterSpacing: template.typography.top.letterSpacing ?? "-0.015em",
     textAlign: "center",
     scale: topScale,
     lineHeightFloor: Math.max(
       fitPolicy.topLineHeightFloor,
-      isScienceCardV1
+      usesClassicScienceCardChrome
         ? fitPolicy.topLineHeightFloor
         : Math.max(topFigmaLineHeight, Math.max(0.84, Number((baseComputed.topLineHeight - 0.08).toFixed(3))))
     ),
     lineHeightCeil: Math.min(
       fitPolicy.topLineHeightCeil,
-      isScienceCardV1
+      usesClassicScienceCardChrome
         ? fitPolicy.topLineHeightCeil
         : Math.min(1.22, Number((baseComputed.topLineHeight + 0.08).toFixed(3)))
     )
   };
+  if (topScale < 1) {
+    topSpec.maxFont = Math.min(topSpec.maxFont, Math.max(topSpec.minFont, baseComputed.topFont));
+  }
 
   const bottomBodyHeight = Math.max(
     80,
@@ -371,18 +394,19 @@ function buildMeasuredComputed(
     text: baseComputed.bottom,
     width: layout.bottomText.width,
     height: layout.bottomText.height,
-    minFont: Math.max(14, Math.floor(template.typography.bottom.min * 0.58)),
+    minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(template.typography.bottom.min * 0.58))),
     maxFont: Math.max(
       bottomFigmaFont,
       template.typography.bottom.max,
-      Math.round(
+      snapStage3TextFontPx(
         template.typography.bottom.max *
           getBottomFontHeadroom(templateId) *
-          getScaleCeiling(bottomScale, templateId === TURBO_FACE_TEMPLATE_ID ? 1.6 : 1.3)
+          getScaleCeiling(bottomScale, usesWideHeadlineScaling ? 1.4 : 1.3)
       )
     ),
+    preferredFont: baseComputed.bottomFont,
     maxLines: resolveScaledMaxLines(template.typography.bottom.maxLines, bottomScale, "bottom"),
-    baseLineHeight: isScienceCardV1 ? baseComputed.bottomLineHeight : baseComputed.bottomLineHeight,
+    baseLineHeight: usesClassicScienceCardChrome ? baseComputed.bottomLineHeight : baseComputed.bottomLineHeight,
     fillTargetMin: fitPolicy.bottomFillTargetMin,
     fillTargetMax: fitPolicy.bottomFillTargetMax,
     fontFamily: getBottomFontFamily(templateId),
@@ -393,19 +417,23 @@ function buildMeasuredComputed(
     scale: bottomScale,
     lineHeightFloor: Math.max(
       fitPolicy.bottomLineHeightFloor,
-      isScienceCardV1
+      usesClassicScienceCardChrome
         ? fitPolicy.bottomLineHeightFloor
-        : bottomScale > 1.05
-          ? Math.max(0.78, Number((baseComputed.bottomLineHeight - 0.22).toFixed(3)))
-          : Math.max(0.92, Number((baseComputed.bottomLineHeight - 0.08).toFixed(3)))
+        : Math.max(0.92, resolveAdaptiveBottomLineHeightFloor(baseComputed.bottomLineHeight, bottomScale))
     ),
     lineHeightCeil: Math.min(
       fitPolicy.bottomLineHeightCeil,
-      isScienceCardV1
+      usesClassicScienceCardChrome
         ? fitPolicy.bottomLineHeightCeil
         : Math.min(1.32, Number((baseComputed.bottomLineHeight + 0.08).toFixed(3)))
     )
   };
+  if (bottomScale < 1) {
+    bottomSpec.maxFont = Math.min(
+      bottomSpec.maxFont,
+      Math.max(bottomSpec.minFont, baseComputed.bottomFont)
+    );
+  }
 
   const topResult = solveMeasuredSlot(topMeasureNode, topSpec);
   const bottomResult = solveMeasuredSlot(bottomMeasureNode, bottomSpec);

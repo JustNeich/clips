@@ -5,6 +5,7 @@ import {
 } from "../../../lib/chat-history";
 import { requireAuth } from "../../../lib/auth/guards";
 import { resolveChannelPermissions } from "../../../lib/acl";
+import { getRestrictedChannelEditError } from "../../../lib/channel-edit-permissions";
 import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2-channel-config";
 import {
@@ -47,6 +48,7 @@ export async function GET(): Promise<Response> {
           currentUserCanOperate: permissions.canOperate,
           currentUserCanEditSetup: permissions.canEditSetup,
           currentUserCanManageAccess: permissions.canManageAccess,
+          currentUserCanDelete: permissions.canDelete,
           isVisibleToCurrentUser: permissions.isVisible
         };
       })
@@ -78,6 +80,10 @@ export async function POST(request: Request): Promise<Response> {
     const auth = await requireAuth();
     if (auth.membership.role === "redactor_limited") {
       return Response.json({ error: "Forbidden." }, { status: 403 });
+    }
+    const restrictedError = getRestrictedChannelEditError(auth.membership.role, body);
+    if (restrictedError) {
+      return Response.json({ error: restrictedError }, { status: 403 });
     }
     const channel = await createChannel({
       workspaceId: auth.workspace.id,

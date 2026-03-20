@@ -21,7 +21,8 @@ function serializeStage2RunSummary(run: {
   channelId: string | null;
   sourceUrl: string;
   userInstruction: string | null;
-  mode: "manual" | "auto";
+  mode: Stage2RunSummary["mode"];
+  baseRunId: string | null;
   status: Stage2RunSummary["status"];
   snapshot: Stage2RunSummary["progress"];
   errorMessage: string | null;
@@ -38,6 +39,7 @@ function serializeStage2RunSummary(run: {
     sourceUrl: run.sourceUrl,
     userInstruction: run.userInstruction,
     mode: run.mode,
+    baseRunId: run.baseRunId,
     status: run.status,
     progress: run.snapshot,
     errorMessage: run.errorMessage ?? run.snapshot.error ?? null,

@@ -45,6 +45,11 @@ Run lifecycle:
 - progress по шагам сохраняется в snapshot
 - completed / failed result живут в persistent storage и переживают reload/navigation
 
+Run modes:
+- `manual` / `auto` проходят полный multi-stage pipeline
+- `regenerate` использует уже сохранённый successful run как base run и делает один быстрый LLM pass только по visible options
+- быстрый regenerate не притворяется полным pipeline: у него отдельные progress steps `База -> Перегенерация -> Сборка`
+
 Основной runtime entry:
 - `/Users/neich/dev/clips automations/lib/stage2-runner.ts`
 
@@ -118,7 +123,23 @@ Selector prompt собирается из:
 - channel info
 - hard constraints
 - analyzer output
-- available examples corpus
+- compact source context
+- curated selector candidate pool
+
+### Active corpus vs selector candidate pool
+
+Stage 2 может иметь большой active corpus, но selector не получает весь corpus raw.
+
+Текущая модель:
+- `activeCorpusCount` = полный effective corpus на run
+- `selectorCandidateCount` = curated subset, который реально уходит в selector prompt
+- selector candidate pool режется по signal quality и cap-ится по размеру, чтобы не раздувать prompt и не засорять selection noisy examples
+- diagnostics panel и trace export теперь явно показывают оба числа
+
+Важно:
+- selector по-прежнему остаётся editorial LLM stage
+- это не старый retrieval architecture return
+- curated pool нужен только как truthful runtime boundary между corpus hygiene и selector prompt size
 
 Downstream stages используют selector output напрямую:
 - writer
@@ -127,7 +148,25 @@ Downstream stages используют selector output напрямую:
 - final selector
 - titles
 
-## 6. Progress and durability
+## 6. Final shortlist contract
+
+Финальный shortlist целится в 5 visible options, но это не unconditional guarantee.
+
+Текущая политика:
+- final selector просит 5 strongest finalists
+- затем shortlist проходит constraint-safe repair и hard-constraint validation
+- если после этого publishable survivors меньше 5, visible shortlist честно сужается
+
+Это теперь должно быть видно одновременно в нескольких местах:
+- `progress.finalSelector.summary/detail`
+- `output.pipeline.finalSelector.shortlistStats`
+- `output.pipeline.finalSelector.rationaleInternalRaw`
+- `warnings[]`
+- UI run warnings
+
+То есть поведение `Shortlist 2` или `Shortlist 3` теперь считается допустимым только как явный quality outcome, а не как молчаливый drift между слоями.
+
+## 7. Progress and durability
 
 Progress truth lives in backend state, not in component memory.
 
@@ -161,7 +200,7 @@ Notes:
 - `completedAt` is still kept as a compatibility alias, but `finishedAt` should be treated as the primary timestamp for a finished step.
 - old stored snapshots are normalized on read so legacy runs still render truthfully in UI and trace export.
 
-## 7. Active runtime contract
+## 8. Active runtime contract
 
 Stage 2 run request intentionally carries only the runtime fields that Stage 2 actually uses:
 - source url
@@ -173,7 +212,7 @@ Stage 2 run request intentionally carries only the runtime fields that Stage 2 a
 
 Legacy fields such as channel-level worker profile ids or channel-level prompt config must not be treated as active runtime authority for the simplified Stage 2 model.
 
-## 8. Stage 2 -> Stage 3 handoff
+## 9. Stage 2 -> Stage 3 handoff
 
 The current handoff model is:
 - Stage 2 persists the shortlist and final pick
@@ -216,21 +255,29 @@ Trace export uses the same helper to explain:
 - whether Stage 3 text comes from a draft override, latest version, or selected caption
 - whether the current editor state can be reset back to the selected Stage 2 caption
 
-## 9. Debugging incomplete or failed runs
+## 10. Debugging incomplete or failed runs
 
 When a run looks suspicious:
 1. Inspect the durable run in `stage2_runs`.
 2. Check `progress.status`, `activeStageId`, and each step's `status/finishedAt/summary/detail`.
 3. Compare `output.finalPick.reason` with `pipeline.finalSelector.rationaleRaw`.
-   The first is operator-facing and must refer to visible options.
-   The second may still contain internal candidate ids for debugging.
-4. Use clip trace export to verify:
+   The first is operator-facing and must refer only to visible options.
+4. Compare `pipeline.finalSelector.shortlistStats.visibleCount` with:
+   - `output.captionOptions.length`
+   - `pipeline.finalSelector.candidateOptionMap.length`
+   - `pipeline.finalSelector.shortlistCandidateIds.length`
+5. If the shortlist is smaller than 5, verify that:
+   - `warnings[]` explains why it shrank
+   - `rationaleInternalRaw` mentions the same shrink outcome
+   - UI run warnings surface the same reason
+6. Use clip trace export to verify:
    - selected run id
+   - active corpus vs selector candidate pool
    - selected examples
    - effective prompts
    - Stage 2 -> Stage 3 handoff summary
 
-## 10. Related files
+## 11. Related files
 
 - API:
   - `/Users/neich/dev/clips automations/app/api/pipeline/source/route.ts`

@@ -59,7 +59,10 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    const dedupeKey = await buildStage3PreviewDedupeKey(body ?? {});
+    const dedupeKey = await buildStage3PreviewDedupeKey(body ?? {}, {
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id
+    });
     const job = enqueueAndScheduleStage3Job({
       workspaceId: auth.workspace.id,
       userId: auth.user.id,

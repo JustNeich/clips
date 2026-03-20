@@ -10,7 +10,8 @@ export function resolveTemplateBackdropNode(
   templateId: string,
   assetUrl?: string | null
 ): React.JSX.Element {
-  return <TemplateBackdrop templateId={templateId} assetUrl={assetUrl ?? undefined} />;
+  const resolvedAssetUrl = assetUrl ?? resolveTemplateBuiltInBackdropAssetPath(templateId);
+  return <TemplateBackdrop templateId={templateId} assetUrl={resolvedAssetUrl ?? undefined} />;
 }
 
 export function resolveTemplateBuiltInBackdropNode(templateId: string): React.JSX.Element | null {
@@ -38,4 +39,3 @@ export function resolveTemplateOverlayNode(templateId: string): React.JSX.Elemen
 export function resolveTemplateAvatarBorderColorNode(templateId: string): string {
   return resolveTemplateAvatarBorderColor(templateId);
 }
-

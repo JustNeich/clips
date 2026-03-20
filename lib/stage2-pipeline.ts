@@ -83,7 +83,32 @@ const STAGE2_PIPELINE_STAGE_DEFINITIONS = [
 
 export const STAGE2_PIPELINE_STAGES = STAGE2_PIPELINE_STAGE_DEFINITIONS;
 
+const STAGE2_REGENERATE_STAGE_DEFINITIONS = [
+  {
+    id: "base",
+    label: "Loading base run",
+    shortLabel: "База",
+    description: "Берём текущий сохранённый Stage 2 run как основу для быстрой правки."
+  },
+  {
+    id: "regenerate",
+    label: "Quick regenerate",
+    shortLabel: "Перегенерация",
+    description: "Один LLM-запрос быстро переписывает текущие visible options."
+  },
+  {
+    id: "assemble",
+    label: "Assembling result",
+    shortLabel: "Сборка",
+    description: "Нормализуем output, проверяем ограничения и сохраняем новый run."
+  }
+] as const;
+
+export const STAGE2_REGENERATE_PROGRESS_STAGES = STAGE2_REGENERATE_STAGE_DEFINITIONS;
+
 export type Stage2PipelineStageId = (typeof STAGE2_PIPELINE_STAGES)[number]["id"];
+export type Stage2RegenerateStageId = (typeof STAGE2_REGENERATE_PROGRESS_STAGES)[number]["id"];
+export type Stage2ProgressStageId = Stage2PipelineStageId | Stage2RegenerateStageId;
 
 export type Stage2PromptStageConfig = {
   prompt: string;
@@ -100,7 +125,7 @@ export type Stage2ProgressStatus = "queued" | "running" | "completed" | "failed"
 export type Stage2ProgressStepState = "pending" | "running" | "completed" | "failed";
 
 export type Stage2ProgressStep = {
-  id: Stage2PipelineStageId;
+  id: Stage2ProgressStageId;
   label: string;
   shortLabel: string;
   description: string;
@@ -119,7 +144,7 @@ export type Stage2ProgressStep = {
 export type Stage2ProgressSnapshot = {
   runId: string;
   status: Stage2ProgressStatus;
-  activeStageId: Stage2PipelineStageId | null;
+  activeStageId: Stage2ProgressStageId | null;
   startedAt: string;
   updatedAt: string;
   finishedAt: string | null;
@@ -130,6 +155,13 @@ export type Stage2ProgressSnapshot = {
 type Stage2ProgressStepPatch = Partial<
   Pick<Stage2ProgressStep, "summary" | "detail" | "promptChars" | "reasoningEffort" | "durationMs">
 >;
+
+type Stage2ProgressStageDefinition = {
+  id: Stage2ProgressStageId;
+  label: string;
+  shortLabel: string;
+  description: string;
+};
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -162,6 +194,41 @@ export function listStage2PromptConfigStages(): Array<{
     description: stage.description,
     promptStageType: stage.promptStageType
   }));
+}
+
+function isRegenerateMode(value: string | null | undefined): boolean {
+  return value === "regenerate";
+}
+
+function resolveStage2ProgressDefinitions(
+  mode?: string | null,
+  stepCandidates?: Record<string, unknown>[]
+): readonly Stage2ProgressStageDefinition[] {
+  if (isRegenerateMode(mode)) {
+    return STAGE2_REGENERATE_PROGRESS_STAGES;
+  }
+
+  if (stepCandidates && stepCandidates.length > 0) {
+    const candidateIds = new Set(
+      stepCandidates
+        .map((step) => (typeof step.id === "string" ? step.id.trim() : ""))
+        .filter(Boolean)
+    );
+    if (
+      Array.from(candidateIds).some((id) =>
+        STAGE2_REGENERATE_PROGRESS_STAGES.some((stage) => stage.id === id)
+      ) &&
+      !Array.from(candidateIds).some((id) => STAGE2_PIPELINE_STAGES.some((stage) => stage.id === id))
+    ) {
+      return STAGE2_REGENERATE_PROGRESS_STAGES;
+    }
+  }
+
+  return STAGE2_PIPELINE_STAGES;
+}
+
+export function getStage2ProgressStartStageId(mode?: string | null): Stage2ProgressStageId {
+  return resolveStage2ProgressDefinitions(mode)[0]?.id ?? "analyzer";
 }
 
 function sanitizePrompt(value: unknown, fallback: string): string {
@@ -278,8 +345,12 @@ export function hasStage2PromptOverrides(config: Stage2PromptConfig): boolean {
   });
 }
 
-export function createStage2ProgressSnapshot(runId: string): Stage2ProgressSnapshot {
+export function createStage2ProgressSnapshot(
+  runId: string,
+  mode: string | null | undefined = "manual"
+): Stage2ProgressSnapshot {
   const timestamp = nowIso();
+  const stageDefinitions = resolveStage2ProgressDefinitions(mode);
   return {
     runId,
     status: "queued",
@@ -288,7 +359,7 @@ export function createStage2ProgressSnapshot(runId: string): Stage2ProgressSnaps
     updatedAt: timestamp,
     finishedAt: null,
     error: null,
-    steps: STAGE2_PIPELINE_STAGES.map((stage) => ({
+    steps: stageDefinitions.map((stage) => ({
       id: stage.id,
       label: stage.label,
       shortLabel: stage.shortLabel,
@@ -359,7 +430,7 @@ function patchStep(step: Stage2ProgressStep, patch?: Stage2ProgressStepPatch): S
 
 export function markStage2ProgressStageRunning(
   snapshot: Stage2ProgressSnapshot,
-  stageId: Stage2PipelineStageId,
+  stageId: Stage2ProgressStageId,
   patch?: Stage2ProgressStepPatch
 ): Stage2ProgressSnapshot {
   const timestamp = nowIso();
@@ -389,7 +460,7 @@ export function markStage2ProgressStageRunning(
 
 export function markStage2ProgressStageCompleted(
   snapshot: Stage2ProgressSnapshot,
-  stageId: Stage2PipelineStageId,
+  stageId: Stage2ProgressStageId,
   patch?: Stage2ProgressStepPatch
 ): Stage2ProgressSnapshot {
   const timestamp = nowIso();
@@ -418,7 +489,7 @@ export function markStage2ProgressStageCompleted(
 
 export function markStage2ProgressStageFailed(
   snapshot: Stage2ProgressSnapshot,
-  stageId: Stage2PipelineStageId,
+  stageId: Stage2ProgressStageId,
   error: string,
   patch?: Stage2ProgressStepPatch
 ): Stage2ProgressSnapshot {
@@ -475,9 +546,10 @@ export function finalizeStage2ProgressSuccess(snapshot: Stage2ProgressSnapshot):
 
 export function resetStage2ProgressForRetry(
   snapshot: Stage2ProgressSnapshot,
-  detail?: string | null
+  detail?: string | null,
+  mode: string | null | undefined = "manual"
 ): Stage2ProgressSnapshot {
-  const restarted = createStage2ProgressSnapshot(snapshot.runId);
+  const restarted = createStage2ProgressSnapshot(snapshot.runId, mode);
   if (!detail) {
     return restarted;
   }
@@ -485,7 +557,7 @@ export function resetStage2ProgressForRetry(
   return {
     ...restarted,
     steps: restarted.steps.map((step) =>
-      step.id === "analyzer"
+      step.id === getStage2ProgressStartStageId(mode)
         ? {
             ...step,
             summary: summarizeProgressDetail(detail),
@@ -498,7 +570,8 @@ export function resetStage2ProgressForRetry(
 
 export function normalizeStage2ProgressSnapshot(
   input: unknown,
-  runId: string
+  runId: string,
+  mode: string | null | undefined = "manual"
 ): Stage2ProgressSnapshot {
   const candidate =
     input && typeof input === "object" ? (input as Record<string, unknown>) : null;
@@ -518,6 +591,7 @@ export function normalizeStage2ProgressSnapshot(
   const stepCandidates = Array.isArray(candidate?.steps)
     ? candidate.steps.filter((step): step is Record<string, unknown> => Boolean(step) && typeof step === "object")
     : [];
+  const stageDefinitions = resolveStage2ProgressDefinitions(mode, stepCandidates);
   const stepMap = new Map(
     stepCandidates
       .map((step) => {
@@ -532,14 +606,14 @@ export function normalizeStage2ProgressSnapshot(
     status: rootStatus,
     activeStageId:
       typeof candidate?.activeStageId === "string" &&
-      STAGE2_PIPELINE_STAGES.some((stage) => stage.id === candidate.activeStageId)
-        ? (candidate.activeStageId as Stage2PipelineStageId)
+      stageDefinitions.some((stage) => stage.id === candidate.activeStageId)
+        ? (candidate.activeStageId as Stage2ProgressStageId)
         : null,
     startedAt: snapshotStartedAt,
     updatedAt: snapshotUpdatedAt,
     finishedAt: snapshotFinishedAt,
     error: typeof candidate?.error === "string" && candidate.error.trim() ? candidate.error.trim() : null,
-    steps: STAGE2_PIPELINE_STAGES.map((stage) => {
+    steps: stageDefinitions.map((stage) => {
       const raw = stepMap.get(stage.id);
       const normalizedStatus =
         normalizeProgressState(raw?.status) ??

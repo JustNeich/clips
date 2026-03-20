@@ -9,6 +9,7 @@ import {
   requireChannelSetupEdit,
   requireChannelVisibility
 } from "../../../../lib/auth/guards";
+import { getRestrictedChannelEditError } from "../../../../lib/channel-edit-permissions";
 import { Stage2PromptConfig } from "../../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../../lib/stage2-channel-config";
 
@@ -45,6 +46,7 @@ export async function GET(_request: Request, context: Context): Promise<Response
           currentUserCanOperate: permissions.canOperate,
           currentUserCanEditSetup: permissions.canEditSetup,
           currentUserCanManageAccess: permissions.canManageAccess,
+          currentUserCanDelete: permissions.canDelete,
           isVisibleToCurrentUser: permissions.isVisible
         },
         assets: {
@@ -76,11 +78,9 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
   try {
     const auth = await requireAuth();
     await requireChannelSetupEdit(auth, id);
-    if ("stage2HardConstraints" in body && body.stage2HardConstraints && auth.membership.role !== "owner") {
-      return Response.json({ error: "Только owner может менять Stage 2 hard constraints defaults." }, { status: 403 });
-    }
-    if ("stage2PromptConfig" in body && body.stage2PromptConfig && auth.membership.role !== "owner") {
-      return Response.json({ error: "Только owner может менять Stage 2 prompt defaults." }, { status: 403 });
+    const restrictedError = getRestrictedChannelEditError(auth.membership.role, body);
+    if (restrictedError) {
+      return Response.json({ error: restrictedError }, { status: 403 });
     }
     const channel = await updateChannelById(id, body);
     return Response.json({ channel }, { status: 200 });

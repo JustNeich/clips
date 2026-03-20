@@ -48,6 +48,7 @@ export type ChatTraceExport = {
     name: string;
     username: string;
     stage2ExamplesConfig: unknown;
+    stage2HardConstraints: unknown;
     templateId: string;
   };
   chat: {
@@ -141,7 +142,8 @@ function sanitizeStage2ResponseForExport(stage2: Stage2Response | null): Stage2R
       stage2.progress !== undefined
         ? normalizeStage2ProgressSnapshot(
             stage2.progress,
-            stage2.stage2Run?.runId ?? stage2.stage2Worker?.runId ?? "exported_run"
+            stage2.stage2Run?.runId ?? stage2.stage2Worker?.runId ?? "exported_run",
+            stage2.stage2Run?.mode
           )
         : stage2.progress,
     source: {
@@ -190,6 +192,7 @@ function sanitizeStage2RunForExport(run: Stage2RunRecord): Stage2RunDetail & { r
     sourceUrl: run.sourceUrl,
     userInstruction: run.userInstruction,
     mode: run.mode,
+    baseRunId: run.baseRunId,
     status: run.status,
     progress: run.snapshot,
     errorMessage: run.errorMessage ?? run.snapshot.error ?? null,
@@ -334,6 +337,7 @@ export async function buildChatTraceExport(
       name: channel.name,
       username: channel.username,
       stage2ExamplesConfig: channel.stage2ExamplesConfig,
+      stage2HardConstraints: channel.stage2HardConstraints,
       templateId: channel.templateId
     },
     chat: {

@@ -7,12 +7,13 @@ import {
 import {
   createStage2ProgressSnapshot,
   finalizeStage2ProgressSuccess,
+  getStage2ProgressStartStageId,
   markStage2ProgressStageCompleted,
   markStage2ProgressStageFailed,
   markStage2ProgressStageRunning,
   normalizeStage2ProgressSnapshot,
   resetStage2ProgressForRetry,
-  Stage2PipelineStageId,
+  Stage2ProgressStageId,
   Stage2ProgressSnapshot
 } from "./stage2-pipeline";
 import {
@@ -21,13 +22,15 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "./stage2-channel-config";
+import { normalizeStage2ResultTitleOptions } from "./stage2-title-options";
 
-export type Stage2RunMode = "manual" | "auto";
+export type Stage2RunMode = "manual" | "auto" | "regenerate";
 
 export type Stage2RunRequest = {
   sourceUrl: string;
   userInstruction: string | null;
   mode: Stage2RunMode;
+  baseRunId?: string | null;
   channel: {
     id: string;
     name: string;
@@ -46,6 +49,7 @@ export type Stage2RunRecord = {
   sourceUrl: string;
   userInstruction: string | null;
   mode: Stage2RunMode;
+  baseRunId: string | null;
   request: Stage2RunRequest;
   snapshot: Stage2ProgressSnapshot;
   status: Stage2ProgressSnapshot["status"];
@@ -78,6 +82,9 @@ type Stage2RunRow = {
 };
 
 function normalizeMode(value: string | null | undefined): Stage2RunMode {
+  if (value === "regenerate") {
+    return "regenerate";
+  }
   return value === "auto" ? "auto" : "manual";
 }
 
@@ -96,6 +103,10 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
   const parsed = parseJsonOrNull<Partial<Stage2RunRequest>>(record.request_json);
   const mode = normalizeMode(parsed?.mode ?? record.mode);
   const sourceUrl = String(parsed?.sourceUrl ?? record.source_url ?? "").trim();
+  const baseRunId =
+    typeof parsed?.baseRunId === "string" && parsed.baseRunId.trim()
+      ? parsed.baseRunId.trim()
+      : null;
   const userInstruction =
     typeof parsed?.userInstruction === "string" && parsed.userInstruction.trim()
       ? parsed.userInstruction.trim()
@@ -111,6 +122,7 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
     sourceUrl,
     userInstruction,
     mode,
+    baseRunId,
     channel: {
       id: String(channelCandidate?.id ?? record.channel_id ?? "").trim(),
       name: String(channelCandidate?.name ?? "").trim(),
@@ -130,11 +142,12 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
 }
 
 function mapStage2Run(row: Stage2RunRow): Stage2RunRecord {
+  const request = normalizeRequest(row);
   const snapshot = normalizeStage2ProgressSnapshot(
     parseJsonOrNull<unknown>(row.snapshot_json),
-    String(row.run_id)
+    String(row.run_id),
+    request.mode
   );
-  const request = normalizeRequest(row);
   return {
     runId: String(row.run_id),
     workspaceId: String(row.workspace_id),
@@ -144,10 +157,11 @@ function mapStage2Run(row: Stage2RunRow): Stage2RunRecord {
     sourceUrl: request.sourceUrl,
     userInstruction: request.userInstruction,
     mode: request.mode,
+    baseRunId: request.baseRunId ?? null,
     request,
     snapshot,
     status: String(row.status) as Stage2ProgressSnapshot["status"],
-    resultData: parseJsonOrNull<unknown>(row.result_json),
+    resultData: normalizeStage2ResultTitleOptions(parseJsonOrNull<unknown>(row.result_json)),
     errorMessage: row.error_message ? String(row.error_message) : null,
     createdAt: String(row.created_at),
     startedAt: row.started_at ? String(row.started_at) : null,
@@ -245,8 +259,9 @@ export function createStage2Run(input: {
     sourceUrl: input.request.sourceUrl,
     userInstruction: input.request.userInstruction,
     mode: input.request.mode,
+    baseRunId: input.request.baseRunId ?? null,
     request: input.request,
-    snapshot: createStage2ProgressSnapshot(runId),
+    snapshot: createStage2ProgressSnapshot(runId, input.request.mode),
     status: "queued",
     resultData: null,
     errorMessage: null,
@@ -383,7 +398,7 @@ export function interruptRunningStage2Runs(message = "Stage 2 run interrupted by
       const record = mapStage2Run(row);
       const failedSnapshot = markStage2ProgressStageFailed(
         record.snapshot,
-        record.snapshot.activeStageId ?? "analyzer",
+        record.snapshot.activeStageId ?? getStage2ProgressStartStageId(record.mode),
         message
       );
       db.prepare(
@@ -420,7 +435,11 @@ export function recoverInterruptedStage2Runs(
 
     for (const row of rows) {
       const record = mapStage2Run(row);
-      const restartedSnapshot = resetStage2ProgressForRetry(record.snapshot, detail);
+      const restartDetail =
+        record.mode === "regenerate"
+          ? "Recovered after process restart. Re-running quick regenerate from base."
+          : detail;
+      const restartedSnapshot = resetStage2ProgressForRetry(record.snapshot, restartDetail, record.mode);
       db.prepare(
         `UPDATE stage2_runs
             SET status = 'queued',
@@ -452,7 +471,7 @@ function mutateStage2Run(
 
 export function markStage2RunStageRunning(
   runId: string,
-  stageId: Stage2PipelineStageId,
+  stageId: Stage2ProgressStageId,
   patch?: Partial<{
     summary: string | null;
     detail: string | null;
@@ -476,7 +495,7 @@ export function markStage2RunStageRunning(
 
 export function markStage2RunStageCompleted(
   runId: string,
-  stageId: Stage2PipelineStageId,
+  stageId: Stage2ProgressStageId,
   patch?: Partial<{
     summary: string | null;
     detail: string | null;
@@ -499,7 +518,7 @@ export function markStage2RunStageCompleted(
 
 export function markStage2RunStageFailed(
   runId: string,
-  stageId: Stage2PipelineStageId,
+  stageId: Stage2ProgressStageId,
   error: string,
   patch?: Partial<{
     summary: string | null;
@@ -557,7 +576,7 @@ export function finalizeStage2RunFailure(
         }
       : markStage2ProgressStageFailed(
           record.snapshot,
-          record.snapshot.activeStageId ?? "analyzer",
+          record.snapshot.activeStageId ?? getStage2ProgressStartStageId(record.mode),
           errorMessage
         );
 

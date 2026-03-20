@@ -352,6 +352,7 @@ export type Stage2Diagnostics = {
     source: Stage2ExamplesCorpusSource;
     workspaceCorpusCount: number;
     activeCorpusCount: number;
+    selectorCandidateCount: number;
     availableExamples: Stage2DiagnosticsExample[];
     selectedExamples: Stage2DiagnosticsExample[];
   };
@@ -390,7 +391,7 @@ export type ViralShortsStage2Result = {
   };
   pipeline: {
     channelId: string;
-    mode: "packet_only" | "codex_pipeline";
+    mode: "packet_only" | "codex_pipeline" | "regenerate";
     selectorOutput: SelectorOutput;
     availableExamplesCount: number;
     selectedExamplesCount: number;
@@ -404,6 +405,14 @@ export type ViralShortsStage2Result = {
       rationaleRaw: string;
       rationaleInternalRaw?: string;
       rationaleInternalModelRaw?: string;
+      shortlistStats?: {
+        targetCount: number;
+        requestedCount: number;
+        validatedCount: number;
+        visibleCount: number;
+        repairedCount: number;
+        droppedAfterValidationCount: number;
+      };
     };
   };
   diagnostics?: Stage2Diagnostics;

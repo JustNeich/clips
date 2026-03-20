@@ -48,6 +48,32 @@ export type Stage2Output = {
     option: number;
     reason: string;
   };
+  pipeline?: {
+    channelId: string;
+    mode: "packet_only" | "codex_pipeline" | "regenerate";
+    selectorOutput: unknown;
+    availableExamplesCount: number;
+    selectedExamplesCount: number;
+    finalSelector?: {
+      candidateOptionMap: Array<{
+        option: number;
+        candidateId: string;
+      }>;
+      shortlistCandidateIds: string[];
+      finalPickCandidateId: string;
+      rationaleRaw: string;
+      rationaleInternalRaw?: string;
+      rationaleInternalModelRaw?: string;
+      shortlistStats?: {
+        targetCount: number;
+        requestedCount: number;
+        validatedCount: number;
+        visibleCount: number;
+        repairedCount: number;
+        droppedAfterValidationCount: number;
+      };
+    };
+  };
 };
 
 export type Stage2Response = {
@@ -90,7 +116,8 @@ export type Stage2Response = {
   };
   stage2Run?: {
     runId: string;
-    mode: "manual" | "auto";
+    mode: "manual" | "auto" | "regenerate";
+    baseRunId?: string | null;
     createdAt: string;
     startedAt?: string | null;
     finishedAt?: string | null;
@@ -110,7 +137,8 @@ export type Stage2RunSummary = {
   channelId: string | null;
   sourceUrl: string;
   userInstruction: string | null;
-  mode: "manual" | "auto";
+  mode: "manual" | "auto" | "regenerate";
+  baseRunId: string | null;
   status: Stage2RunStatus;
   progress: Stage2ProgressSnapshot;
   errorMessage: string | null;
@@ -717,6 +745,7 @@ export type Channel = {
   currentUserCanOperate?: boolean;
   currentUserCanEditSetup?: boolean;
   currentUserCanManageAccess?: boolean;
+  currentUserCanDelete?: boolean;
   isVisibleToCurrentUser?: boolean;
   assets?: {
     avatar?: ChannelAsset | null;

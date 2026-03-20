@@ -1,12 +1,10 @@
 import scienceCardV1SpecJson from "../design/templates/science-card-v1/figma-spec.json";
-import scienceCardV2SpecJson from "../design/templates/science-card-v2/figma-spec.json";
-import scienceCardV3SpecJson from "../design/templates/science-card-v3/figma-spec.json";
-import scienceCardV4SpecJson from "../design/templates/science-card-v4/figma-spec.json";
-import scienceCardV5SpecJson from "../design/templates/science-card-v5/figma-spec.json";
-import scienceCardV6SpecJson from "../design/templates/science-card-v6/figma-spec.json";
 import scienceCardV7SpecJson from "../design/templates/science-card-v7/figma-spec.json";
-import turboFaceV1SpecJson from "../design/templates/turbo-face-v1/figma-spec.json";
+import hedgesOfHonorV1SpecJson from "../design/templates/hedges-of-honor-v1/figma-spec.json";
 import {
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_SHELL,
   STAGE3_TEMPLATE_ID,
@@ -80,15 +78,40 @@ export type TemplateFigmaSpec = {
 };
 
 const SCIENCE_CARD_V1_FIGMA_SPEC = scienceCardV1SpecJson as TemplateFigmaSpec;
+
+function createScienceCardBorderVariantSpec(
+  templateId: string,
+  borderColor: string,
+  borderWidth: number
+): TemplateFigmaSpec {
+  return {
+    ...SCIENCE_CARD_V1_FIGMA_SPEC,
+    templateId,
+    source: "generated",
+    card: {
+      ...SCIENCE_CARD_V1_FIGMA_SPEC.card,
+      borderColor,
+      borderWidth
+    }
+  };
+}
+
 const REPO_BACKED_TEMPLATE_SPECS = new Map<string, TemplateFigmaSpec>([
   [SCIENCE_CARD_TEMPLATE_ID, SCIENCE_CARD_V1_FIGMA_SPEC],
-  ["science-card-v2", scienceCardV2SpecJson as TemplateFigmaSpec],
-  ["science-card-v3", scienceCardV3SpecJson as TemplateFigmaSpec],
-  ["science-card-v4", scienceCardV4SpecJson as TemplateFigmaSpec],
-  ["science-card-v5", scienceCardV5SpecJson as TemplateFigmaSpec],
-  ["science-card-v6", scienceCardV6SpecJson as TemplateFigmaSpec],
+  [
+    SCIENCE_CARD_BLUE_TEMPLATE_ID,
+    createScienceCardBorderVariantSpec(SCIENCE_CARD_BLUE_TEMPLATE_ID, "#2057d6", 16)
+  ],
+  [
+    SCIENCE_CARD_RED_TEMPLATE_ID,
+    createScienceCardBorderVariantSpec(SCIENCE_CARD_RED_TEMPLATE_ID, "#d33f49", 16)
+  ],
+  [
+    SCIENCE_CARD_GREEN_TEMPLATE_ID,
+    createScienceCardBorderVariantSpec(SCIENCE_CARD_GREEN_TEMPLATE_ID, "#20a35a", 16)
+  ],
   ["science-card-v7", scienceCardV7SpecJson as TemplateFigmaSpec],
-  ["turbo-face-v1", turboFaceV1SpecJson as TemplateFigmaSpec]
+  ["hedges-of-honor-v1", hedgesOfHonorV1SpecJson as TemplateFigmaSpec]
 ]);
 
 function getBottomTextPaddingTop(template: Stage3TemplateConfig): number {

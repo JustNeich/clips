@@ -2,13 +2,13 @@ import type { JSX } from "react";
 import Script from "next/script";
 import { Stage3TemplateRenderer } from "../../../lib/stage3-template-renderer";
 import {
+  AMERICAN_NEWS_TEMPLATE_ID,
   SCIENCE_CARD_TEMPLATE_ID,
-  SCIENCE_CARD_V2_TEMPLATE_ID,
-  SCIENCE_CARD_V3_TEMPLATE_ID,
-  SCIENCE_CARD_V4_TEMPLATE_ID,
-  SCIENCE_CARD_V5_TEMPLATE_ID,
-  SCIENCE_CARD_V6_TEMPLATE_ID,
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
+  HEDGES_OF_HONOR_TEMPLATE_ID,
   getTemplateById
 } from "../../../lib/stage3-template";
 import { buildTemplateRenderSnapshot } from "../../../lib/stage3-template-core";
@@ -26,6 +26,10 @@ const DEFAULT_TOP_TEXT =
   "Between the tight close-up and that wider shot with the round mic, he doesn’t look fired up at all. That’s what makes it land harder. He’s dressed like a gentleman and talking like a foreman.";
 const DEFAULT_BOTTOM_TEXT =
   "\"Now it’s awake.\" That little rooster tail out back tells you everything, the rear wheels finally clocked in and quit letting the front suffer alone.";
+const AMERICAN_NEWS_TOP_TEXT =
+  "This baby capybara just discovered his off switch. Someone found the exact pressure point on his side and now he goes into a total trance for the entire afternoon.";
+const AMERICAN_NEWS_BOTTOM_TEXT =
+  "It is like his brain just short circuited from pure joy. He is definitely not moving until that stick goes away for good.";
 const SKYFRAME_TOP_TEXT =
   "This sailor is performing a mandatory abandon ship drill from the bow of hull to prove he can handle the height and keep his form tight before the unit heads back to sea.";
 const SKYFRAME_BOTTOM_TEXT =
@@ -55,12 +59,12 @@ type ScienceCardDesignPageProps = {
 
 const SUPPORTED_TEMPLATE_IDS = new Set([
   SCIENCE_CARD_TEMPLATE_ID,
-  SCIENCE_CARD_V2_TEMPLATE_ID,
-  SCIENCE_CARD_V3_TEMPLATE_ID,
-  SCIENCE_CARD_V4_TEMPLATE_ID,
-  SCIENCE_CARD_V5_TEMPLATE_ID,
-  SCIENCE_CARD_V6_TEMPLATE_ID,
-  SCIENCE_CARD_V7_TEMPLATE_ID
+  AMERICAN_NEWS_TEMPLATE_ID,
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
+  SCIENCE_CARD_V7_TEMPLATE_ID,
+  HEDGES_OF_HONOR_TEMPLATE_ID
 ]);
 
 function normalizeScale(value: string | undefined): number {
@@ -96,7 +100,13 @@ function resolveTemplateId(value: string | undefined): string {
 }
 
 function resolveDefaultTexts(templateId: string): { topText: string; bottomText: string } {
-  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID) {
+  if (templateId === AMERICAN_NEWS_TEMPLATE_ID) {
+    return {
+      topText: AMERICAN_NEWS_TOP_TEXT,
+      bottomText: AMERICAN_NEWS_BOTTOM_TEXT
+    };
+  }
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
     return {
       topText: SKYFRAME_TOP_TEXT,
       bottomText: SKYFRAME_BOTTOM_TEXT
@@ -204,7 +214,7 @@ function renderRuntimeBadge({
 }
 
 function renderMediaPlaceholder(templateId: string) {
-  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID) {
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
     return (
       <div
         style={{
@@ -575,10 +585,7 @@ export default async function ScienceCardDesignPage({ searchParams }: ScienceCar
                         height: avatarSize,
                         borderRadius: 999,
                         border: `${templateConfig.author.avatarBorder}px solid ${resolveTemplateAvatarBorderColorNode(templateId)}`,
-                        background:
-                          templateId === SCIENCE_CARD_V2_TEMPLATE_ID
-                            ? "radial-gradient(circle at 30% 30%, rgba(163, 123, 72, 0.92), rgba(56, 41, 32, 0.98) 68%, rgba(16, 18, 22, 1) 100%)"
-                            : "#10131a",
+                        background: "#10131a",
                         objectFit: "cover",
                         display: "block",
                         boxSizing: "border-box"

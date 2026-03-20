@@ -15,6 +15,10 @@ import {
   parseStage2SeoOutput,
   STAGE2_SEO_OUTPUT_SCHEMA
 } from "./stage2-seo";
+import {
+  buildQuickRegenerateResult,
+  runQuickRegenerateModel
+} from "./stage2-quick-regenerate";
 import { validateStage2Output } from "./stage2-output-validation";
 import {
   getStage2Run,
@@ -161,7 +165,131 @@ function getPipelineErrorMessage(error: unknown): string {
   return message || "Пайплайн Stage 2 завершился с ошибкой.";
 }
 
+async function createStage2ExecutorContext(workspaceId: string): Promise<{
+  codexHome: string;
+  model: string | null;
+  reasoningEffort: string;
+  timeoutMs: number;
+  executor: CodexJsonStageExecutor;
+}> {
+  const integration = requireSharedCodexAvailable(workspaceId);
+  const codexHome = integration.codexHomePath as string;
+  await ensureCodexLoggedIn(codexHome);
+
+  const timeoutFromEnv = Number.parseInt(process.env.CODEX_STAGE2_TIMEOUT_MS ?? "", 10);
+  const timeoutMs =
+    Number.isFinite(timeoutFromEnv) && timeoutFromEnv > 0 ? timeoutFromEnv : 8 * 60_000;
+  const model = process.env.CODEX_STAGE2_MODEL ?? null;
+  const isDevelopment = process.env.NODE_ENV === "development";
+  const reasoningEffort =
+    process.env.CODEX_STAGE2_REASONING_EFFORT ?? (isDevelopment ? "low" : "high");
+
+  return {
+    codexHome,
+    model,
+    reasoningEffort,
+    timeoutMs,
+    executor: new CodexJsonStageExecutor({
+      cwd: process.cwd(),
+      codexHome,
+      defaultTimeoutMs: timeoutMs,
+      defaultModel: model,
+      defaultReasoningEffort: reasoningEffort
+    })
+  };
+}
+
+async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2Response> {
+  await requireRuntimeTool("codex");
+  const baseRunId = run.baseRunId ?? run.request.baseRunId ?? null;
+  if (!baseRunId) {
+    throw new Error("Quick regenerate requires a base Stage 2 run.");
+  }
+
+  markStage2RunStageRunning(run.runId, "base", {
+    detail: `Loading base run ${baseRunId.slice(0, 8)}.`
+  });
+  const baseRun = getStage2Run(baseRunId);
+  if (!baseRun || !baseRun.resultData) {
+    markStage2RunStageFailed(
+      run.runId,
+      "base",
+      "The selected base Stage 2 run could not be loaded."
+    );
+    throw new Error("The selected base Stage 2 run could not be loaded.");
+  }
+  const baseResult = baseRun.resultData as Stage2Response;
+  markStage2RunStageCompleted(run.runId, "base", {
+    detail: `Base run ${baseRunId.slice(0, 8)} loaded.`
+  });
+
+  const channel = run.request.channel;
+  const executorContext = await createStage2ExecutorContext(run.workspaceId);
+  markStage2RunStageRunning(run.runId, "regenerate", {
+    detail: "Quick-regenerating the visible shortlist and paired titles.",
+    reasoningEffort: executorContext.reasoningEffort
+  });
+  const regenerateStartedAt = Date.now();
+
+  let promptText = "";
+  let rawOutput = null;
+  try {
+    const quickResult = await runQuickRegenerateModel({
+      stage2: baseResult,
+      channel,
+      userInstruction: run.userInstruction,
+      executor: executorContext.executor,
+      reasoningEffort: executorContext.reasoningEffort
+    });
+    promptText = quickResult.promptText;
+    rawOutput = quickResult.rawOutput;
+    markStage2RunStageCompleted(run.runId, "regenerate", {
+      detail: "Quick regenerate response received.",
+      durationMs: Date.now() - regenerateStartedAt,
+      promptChars: promptText.length,
+      reasoningEffort: executorContext.reasoningEffort
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Quick regenerate failed.";
+    markStage2RunStageFailed(run.runId, "regenerate", message, {
+      durationMs: Date.now() - regenerateStartedAt,
+      promptChars: promptText.length || null,
+      reasoningEffort: executorContext.reasoningEffort
+    });
+    throw error instanceof Error ? error : new Error(message);
+  }
+
+  markStage2RunStageRunning(run.runId, "assemble", {
+    detail: "Normalizing quick regenerate output and persisting the new run."
+  });
+  const assembled = buildQuickRegenerateResult({
+    runId: run.runId,
+    createdAt: run.createdAt,
+    mode: "regenerate",
+    baseRunId,
+    baseResult,
+    channel,
+    userInstruction: run.userInstruction,
+    promptText,
+    reasoningEffort: executorContext.reasoningEffort,
+    model: executorContext.model,
+    rawOutput
+  });
+  markStage2RunStageCompleted(run.runId, "assemble", {
+    detail: `Quick regenerate saved ${assembled.output.captionOptions.length} caption options and ${assembled.output.titleOptions.length} title options.`
+  });
+
+  return {
+    ...assembled,
+    progress: getStage2Run(run.runId)?.snapshot ?? assembled.progress ?? null
+  };
+}
+
 export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Response> {
+  if (run.mode === "regenerate") {
+    return processRegenerateStage2Run(run);
+  }
+
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage2-"));
 
   try {
@@ -170,10 +298,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       requireRuntimeTool("ffprobe"),
       requireRuntimeTool("codex")
     ]);
-
-    const integration = requireSharedCodexAvailable(run.workspaceId);
-    const codexHome = integration.codexHomePath as string;
-    await ensureCodexLoggedIn(codexHome);
+    const executorContext = await createStage2ExecutorContext(run.workspaceId);
 
     const channel = run.request.channel;
     markStage2RunStageRunning(run.runId, "analyzer", {
@@ -188,24 +313,9 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     });
     const frames = await extractFrameImages(downloaded.videoPath, tmpDir);
 
-    const timeoutFromEnv = Number.parseInt(process.env.CODEX_STAGE2_TIMEOUT_MS ?? "", 10);
-    const timeoutMs =
-      Number.isFinite(timeoutFromEnv) && timeoutFromEnv > 0 ? timeoutFromEnv : 8 * 60_000;
-    const model = process.env.CODEX_STAGE2_MODEL ?? null;
-    const isDevelopment = process.env.NODE_ENV === "development";
-    const reasoningEffort =
-      process.env.CODEX_STAGE2_REASONING_EFFORT ?? (isDevelopment ? "low" : "high");
-
     const workerService = new ViralShortsWorkerService();
     const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
     const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
-    const executor = new CodexJsonStageExecutor({
-      cwd: process.cwd(),
-      codexHome,
-      defaultTimeoutMs: timeoutMs,
-      defaultModel: model,
-      defaultReasoningEffort: reasoningEffort
-    });
     const videoContext = buildVideoContext({
       sourceUrl: run.sourceUrl,
       title: downloaded.title,
@@ -225,11 +335,12 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       workspaceStage2ExamplesCorpusJson,
       videoContext,
       imagePaths: frames.framePaths,
-      executor,
+      executor: executorContext.executor,
       promptConfig: workspaceStage2PromptConfig,
       onProgress: async (event) => {
         if (event.state === "running") {
           markStage2RunStageRunning(run.runId, event.stageId, {
+            summary: event.summary ?? null,
             detail: event.detail ?? null,
             promptChars: event.promptChars ?? null,
             reasoningEffort: event.reasoningEffort ?? null
@@ -238,6 +349,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         }
         if (event.state === "completed") {
           markStage2RunStageCompleted(run.runId, event.stageId, {
+            summary: event.summary ?? null,
             detail: event.detail ?? null,
             durationMs: event.durationMs ?? null,
             promptChars: event.promptChars ?? null,
@@ -272,7 +384,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         userInstruction: run.userInstruction
       });
       seoPromptText = seoPrompt;
-      const seoModel = process.env.CODEX_STAGE2_DESCRIPTION_MODEL ?? model;
+      const seoModel = process.env.CODEX_STAGE2_DESCRIPTION_MODEL ?? executorContext.model;
       const seoReasoningEffort = seoTemplate.reasoningEffort;
       markStage2RunStageRunning(run.runId, "seo", {
         detail: "Генерируем описание и tags.",
@@ -300,7 +412,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         outputSchemaPath: seoSchemaPath,
         outputMessagePath: seoOutputPath,
         cwd: process.cwd(),
-        codexHome,
+        codexHome: executorContext.codexHome,
         timeoutMs: seoTimeoutMs,
         model: seoModel,
         reasoningEffort: seoReasoningEffort
@@ -386,8 +498,8 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
           }
         : pipelineResult.diagnostics,
       progress: getStage2Run(run.runId)?.snapshot ?? null,
-      model: model ?? "default",
-      reasoningEffort,
+      model: executorContext.model ?? "default",
+      reasoningEffort: executorContext.reasoningEffort,
       userInstructionUsed: run.userInstruction,
       stage2Worker: {
         runId: run.runId

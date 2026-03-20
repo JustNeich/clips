@@ -3,14 +3,13 @@ import { Composition, registerRoot } from "remotion";
 import { ScienceCardV1 } from "./science-card-v1";
 import type { Stage3VariationProfile } from "../lib/stage3-render-variation";
 import {
+  AMERICAN_NEWS_TEMPLATE_ID,
   SCIENCE_CARD_TEMPLATE_ID,
-  TURBO_FACE_TEMPLATE_ID,
-  SCIENCE_CARD_V2_TEMPLATE_ID,
-  SCIENCE_CARD_V3_TEMPLATE_ID,
-  SCIENCE_CARD_V4_TEMPLATE_ID,
-  SCIENCE_CARD_V5_TEMPLATE_ID,
-  SCIENCE_CARD_V6_TEMPLATE_ID,
-  SCIENCE_CARD_V7_TEMPLATE_ID
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
+  SCIENCE_CARD_V7_TEMPLATE_ID,
+  HEDGES_OF_HONOR_TEMPLATE_ID
 } from "../lib/stage3-template";
 
 export type ScienceCardV1Props = {
@@ -46,14 +45,38 @@ export type ScienceCardV1Props = {
 };
 
 export const SCENE_ID = SCIENCE_CARD_TEMPLATE_ID;
-export const TURBO_SCENE_ID = TURBO_FACE_TEMPLATE_ID;
-export const SCIENCE_CARD_V2_SCENE_ID = SCIENCE_CARD_V2_TEMPLATE_ID;
-export const SCIENCE_CARD_V3_SCENE_ID = SCIENCE_CARD_V3_TEMPLATE_ID;
-export const SCIENCE_CARD_V4_SCENE_ID = SCIENCE_CARD_V4_TEMPLATE_ID;
-export const SCIENCE_CARD_V5_SCENE_ID = SCIENCE_CARD_V5_TEMPLATE_ID;
-export const SCIENCE_CARD_V6_SCENE_ID = SCIENCE_CARD_V6_TEMPLATE_ID;
+export const AMERICAN_NEWS_SCENE_ID = AMERICAN_NEWS_TEMPLATE_ID;
+export const SCIENCE_CARD_BLUE_SCENE_ID = SCIENCE_CARD_BLUE_TEMPLATE_ID;
+export const SCIENCE_CARD_RED_SCENE_ID = SCIENCE_CARD_RED_TEMPLATE_ID;
+export const SCIENCE_CARD_GREEN_SCENE_ID = SCIENCE_CARD_GREEN_TEMPLATE_ID;
 export const SCIENCE_CARD_V7_SCENE_ID = SCIENCE_CARD_V7_TEMPLATE_ID;
+export const HEDGES_OF_HONOR_SCENE_ID = HEDGES_OF_HONOR_TEMPLATE_ID;
 const DEFAULT_TEXT_SCALE = 1.25;
+
+function buildDefaultProps(templateId: string, authorName: string, authorHandle: string): ScienceCardV1Props {
+  return {
+    templateId,
+    sourceVideoFileName: "source.mp4",
+    topText: "",
+    bottomText: "",
+    clipStartSec: 0,
+    clipDurationSec: 6,
+    focusY: 0.5,
+    mirrorEnabled: true,
+    cameraMotion: "disabled",
+    videoZoom: 1,
+    topFontScale: DEFAULT_TEXT_SCALE,
+    bottomFontScale: DEFAULT_TEXT_SCALE,
+    authorName,
+    authorHandle,
+    avatarAssetFileName: null,
+    avatarAssetMimeType: null,
+    backgroundAssetFileName: null,
+    backgroundAssetMimeType: null,
+    textFit: null,
+    variationProfile: null
+  };
+}
 
 export const RemotionRoot = () => {
   return (
@@ -65,208 +88,43 @@ export const RemotionRoot = () => {
         height={1920}
         fps={30}
         durationInFrames={6 * 30}
-        defaultProps={{
-          templateId: SCIENCE_CARD_TEMPLATE_ID,
-          sourceVideoFileName: "source.mp4",
-          topText: "",
-          bottomText: "",
-          clipStartSec: 0,
-          clipDurationSec: 6,
-          focusY: 0.5,
-          mirrorEnabled: true,
-          cameraMotion: "disabled",
-          videoZoom: 1,
-          topFontScale: DEFAULT_TEXT_SCALE,
-          bottomFontScale: DEFAULT_TEXT_SCALE,
-          authorName: "Science Snack",
-          authorHandle: "@Science_Snack_1",
-          avatarAssetFileName: null,
-          avatarAssetMimeType: null,
-          backgroundAssetFileName: null,
-          backgroundAssetMimeType: null,
-          textFit: null,
-          variationProfile: null
-        }}
+        defaultProps={buildDefaultProps(SCIENCE_CARD_TEMPLATE_ID, "Science Snack", "@Science_Snack_1")}
       />
       <Composition
-        id={TURBO_SCENE_ID}
+        id={AMERICAN_NEWS_SCENE_ID}
         component={ScienceCardV1}
         width={1080}
         height={1920}
         fps={30}
         durationInFrames={6 * 30}
-        defaultProps={{
-          templateId: TURBO_FACE_TEMPLATE_ID,
-          sourceVideoFileName: "source.mp4",
-          topText: "",
-          bottomText: "",
-          clipStartSec: 0,
-          clipDurationSec: 6,
-          focusY: 0.5,
-          mirrorEnabled: true,
-          cameraMotion: "disabled",
-          videoZoom: 1,
-          topFontScale: DEFAULT_TEXT_SCALE,
-          bottomFontScale: DEFAULT_TEXT_SCALE,
-          authorName: "Stone Face Turbo",
-          authorHandle: "@StoneFaceTurbo",
-          avatarAssetFileName: null,
-          avatarAssetMimeType: null,
-          backgroundAssetFileName: null,
-          backgroundAssetMimeType: null,
-          textFit: null,
-          variationProfile: null
-        }}
+        defaultProps={buildDefaultProps(AMERICAN_NEWS_TEMPLATE_ID, "American News", "@amnnews9")}
       />
       <Composition
-        id={SCIENCE_CARD_V2_SCENE_ID}
+        id={SCIENCE_CARD_BLUE_SCENE_ID}
         component={ScienceCardV1}
         width={1080}
         height={1920}
         fps={30}
         durationInFrames={6 * 30}
-        defaultProps={{
-          templateId: SCIENCE_CARD_V2_TEMPLATE_ID,
-          sourceVideoFileName: "source.mp4",
-          topText: "",
-          bottomText: "",
-          clipStartSec: 0,
-          clipDurationSec: 6,
-          focusY: 0.5,
-          mirrorEnabled: true,
-          cameraMotion: "disabled",
-          videoZoom: 1,
-          topFontScale: DEFAULT_TEXT_SCALE,
-          bottomFontScale: DEFAULT_TEXT_SCALE,
-          authorName: "Science Card",
-          authorHandle: "@ScienceCard",
-          avatarAssetFileName: null,
-          avatarAssetMimeType: null,
-          backgroundAssetFileName: null,
-          backgroundAssetMimeType: null,
-          textFit: null,
-          variationProfile: null
-        }}
+        defaultProps={buildDefaultProps(SCIENCE_CARD_BLUE_TEMPLATE_ID, "Science Snack", "@Science_Snack_1")}
       />
       <Composition
-        id={SCIENCE_CARD_V3_SCENE_ID}
+        id={SCIENCE_CARD_RED_SCENE_ID}
         component={ScienceCardV1}
         width={1080}
         height={1920}
         fps={30}
         durationInFrames={6 * 30}
-        defaultProps={{
-          templateId: SCIENCE_CARD_V3_TEMPLATE_ID,
-          sourceVideoFileName: "source.mp4",
-          topText: "",
-          bottomText: "",
-          clipStartSec: 0,
-          clipDurationSec: 6,
-          focusY: 0.5,
-          mirrorEnabled: true,
-          cameraMotion: "disabled",
-          videoZoom: 1,
-          topFontScale: DEFAULT_TEXT_SCALE,
-          bottomFontScale: DEFAULT_TEXT_SCALE,
-          authorName: "Science Snack",
-          authorHandle: "@Science_Snack_1",
-          avatarAssetFileName: null,
-          avatarAssetMimeType: null,
-          backgroundAssetFileName: null,
-          backgroundAssetMimeType: null,
-          textFit: null,
-          variationProfile: null
-        }}
+        defaultProps={buildDefaultProps(SCIENCE_CARD_RED_TEMPLATE_ID, "Science Snack", "@Science_Snack_1")}
       />
       <Composition
-        id={SCIENCE_CARD_V4_SCENE_ID}
+        id={SCIENCE_CARD_GREEN_SCENE_ID}
         component={ScienceCardV1}
         width={1080}
         height={1920}
         fps={30}
         durationInFrames={6 * 30}
-        defaultProps={{
-          templateId: SCIENCE_CARD_V4_TEMPLATE_ID,
-          sourceVideoFileName: "source.mp4",
-          topText: "",
-          bottomText: "",
-          clipStartSec: 0,
-          clipDurationSec: 6,
-          focusY: 0.5,
-          mirrorEnabled: true,
-          cameraMotion: "disabled",
-          videoZoom: 1,
-          topFontScale: DEFAULT_TEXT_SCALE,
-          bottomFontScale: DEFAULT_TEXT_SCALE,
-          authorName: "Science Snack",
-          authorHandle: "@Science_Snack_1",
-          avatarAssetFileName: null,
-          avatarAssetMimeType: null,
-          backgroundAssetFileName: null,
-          backgroundAssetMimeType: null,
-          textFit: null,
-          variationProfile: null
-        }}
-      />
-      <Composition
-        id={SCIENCE_CARD_V5_SCENE_ID}
-        component={ScienceCardV1}
-        width={1080}
-        height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
-        defaultProps={{
-          templateId: SCIENCE_CARD_V5_TEMPLATE_ID,
-          sourceVideoFileName: "source.mp4",
-          topText: "",
-          bottomText: "",
-          clipStartSec: 0,
-          clipDurationSec: 6,
-          focusY: 0.5,
-          mirrorEnabled: true,
-          cameraMotion: "disabled",
-          videoZoom: 1,
-          topFontScale: DEFAULT_TEXT_SCALE,
-          bottomFontScale: DEFAULT_TEXT_SCALE,
-          authorName: "Science Snack",
-          authorHandle: "@Science_Snack_1",
-          avatarAssetFileName: null,
-          avatarAssetMimeType: null,
-          backgroundAssetFileName: null,
-          backgroundAssetMimeType: null,
-          textFit: null,
-          variationProfile: null
-        }}
-      />
-      <Composition
-        id={SCIENCE_CARD_V6_SCENE_ID}
-        component={ScienceCardV1}
-        width={1080}
-        height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
-        defaultProps={{
-          templateId: SCIENCE_CARD_V6_TEMPLATE_ID,
-          sourceVideoFileName: "source.mp4",
-          topText: "",
-          bottomText: "",
-          clipStartSec: 0,
-          clipDurationSec: 6,
-          focusY: 0.5,
-          mirrorEnabled: true,
-          cameraMotion: "disabled",
-          videoZoom: 1,
-          topFontScale: DEFAULT_TEXT_SCALE,
-          bottomFontScale: DEFAULT_TEXT_SCALE,
-          authorName: "Science Snack",
-          authorHandle: "@Science_Snack_1",
-          avatarAssetFileName: null,
-          avatarAssetMimeType: null,
-          backgroundAssetFileName: null,
-          backgroundAssetMimeType: null,
-          textFit: null,
-          variationProfile: null
-        }}
+        defaultProps={buildDefaultProps(SCIENCE_CARD_GREEN_TEMPLATE_ID, "Science Snack", "@Science_Snack_1")}
       />
       <Composition
         id={SCIENCE_CARD_V7_SCENE_ID}
@@ -275,28 +133,16 @@ export const RemotionRoot = () => {
         height={1920}
         fps={30}
         durationInFrames={6 * 30}
-        defaultProps={{
-          templateId: SCIENCE_CARD_V7_TEMPLATE_ID,
-          sourceVideoFileName: "source.mp4",
-          topText: "",
-          bottomText: "",
-          clipStartSec: 0,
-          clipDurationSec: 6,
-          focusY: 0.5,
-          mirrorEnabled: true,
-          cameraMotion: "disabled",
-          videoZoom: 1,
-          topFontScale: DEFAULT_TEXT_SCALE,
-          bottomFontScale: DEFAULT_TEXT_SCALE,
-          authorName: "Echoes Of Honor",
-          authorHandle: "@EchoesOfHonor50",
-          avatarAssetFileName: null,
-          avatarAssetMimeType: null,
-          backgroundAssetFileName: null,
-          backgroundAssetMimeType: null,
-          textFit: null,
-          variationProfile: null
-        }}
+        defaultProps={buildDefaultProps(SCIENCE_CARD_V7_TEMPLATE_ID, "Echoes Of Honor", "@EchoesOfHonor50")}
+      />
+      <Composition
+        id={HEDGES_OF_HONOR_SCENE_ID}
+        component={ScienceCardV1}
+        width={1080}
+        height={1920}
+        fps={30}
+        durationInFrames={6 * 30}
+        defaultProps={buildDefaultProps(HEDGES_OF_HONOR_TEMPLATE_ID, "Echoes Of Honor", "@EchoesOfHonor50")}
       />
     </>
   );

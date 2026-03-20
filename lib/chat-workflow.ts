@@ -9,6 +9,7 @@ import {
 } from "../app/components/types";
 import { normalizeStage2ProgressSnapshot } from "./stage2-pipeline";
 import { sanitizeStage3DraftRenderPlanOverride } from "./stage3-draft-render-plan";
+import { normalizeStage2TitleOptionsValue } from "./stage2-title-options";
 import { buildLegacyTimelineEntries, findLatestStage3AgentSessionRef } from "./stage3-legacy-bridge";
 
 type ChatEventLike = {
@@ -39,53 +40,7 @@ export type Stage1FetchState = {
 function normalizeStage2TitleOptions(
   value: unknown
 ): Stage2Response["output"]["titleOptions"] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const normalized = value
-    .map((item, index) => {
-      if (typeof item === "string") {
-        const title = item.trim();
-        if (!title) {
-          return null;
-        }
-        return {
-          option: index + 1,
-          title,
-          titleRu: title
-        };
-      }
-
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-
-      const record = item as Record<string, unknown>;
-      const title = String(record.title ?? "").trim();
-      if (!title) {
-        return null;
-      }
-      return {
-        option:
-          typeof record.option === "number" && Number.isFinite(record.option)
-            ? Math.max(1, Math.floor(record.option))
-            : index + 1,
-        title,
-        titleRu: String(record.titleRu ?? "").trim() || title
-      };
-    })
-    .filter(
-      (
-        item
-      ): item is {
-        option: number;
-        title: string;
-        titleRu: string;
-      } => Boolean(item)
-    );
-
-  return normalized.length === value.length ? normalized : null;
+  return normalizeStage2TitleOptionsValue(value);
 }
 
 export function extractCommentsPayload(data: unknown): CommentsPayload | null {
@@ -136,7 +91,12 @@ export function extractStage2Payload(data: unknown): Stage2Response | null {
               candidate.stage2Run &&
               typeof (candidate.stage2Run as Record<string, unknown>).runId === "string"
               ? String((candidate.stage2Run as Record<string, unknown>).runId)
-              : "event_run"
+              : "event_run",
+            typeof candidate.stage2Run === "object" &&
+              candidate.stage2Run &&
+              typeof (candidate.stage2Run as Record<string, unknown>).mode === "string"
+              ? String((candidate.stage2Run as Record<string, unknown>).mode)
+              : undefined
           )
         : (data as Stage2Response).progress
   };

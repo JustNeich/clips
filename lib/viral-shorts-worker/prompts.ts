@@ -29,6 +29,11 @@ const BASE_STYLE_RULES = [
   "- Use examples as conditioning, not as lines to copy."
 ].join("\n");
 
+const MAX_SELECTOR_DESCRIPTION_CHARS = 1_200;
+const MAX_SELECTOR_TRANSCRIPT_CHARS = 6_000;
+const MAX_SELECTOR_COMMENT_COUNT = 12;
+const MAX_SELECTOR_COMMENT_CHARS = 220;
+
 export type Stage2PromptTemplateKind = "llm_system";
 
 export type ResolvedStage2PromptTemplate = {
@@ -147,6 +152,21 @@ function buildCompactSelectorExamples(
   }));
 }
 
+function buildCompactSelectorVideoContext(videoContext: ViralShortsVideoContext) {
+  return {
+    sourceUrl: videoContext.sourceUrl,
+    title: videoContext.title,
+    description: truncatePromptValue(videoContext.description, MAX_SELECTOR_DESCRIPTION_CHARS),
+    transcript: truncatePromptValue(videoContext.transcript, MAX_SELECTOR_TRANSCRIPT_CHARS),
+    frameDescriptions: videoContext.frameDescriptions.slice(0, 8),
+    comments: videoContext.comments.slice(0, MAX_SELECTOR_COMMENT_COUNT).map((comment) => ({
+      author: truncatePromptValue(comment.author, 40),
+      likes: comment.likes,
+      text: truncatePromptValue(comment.text, MAX_SELECTOR_COMMENT_CHARS)
+    }))
+  };
+}
+
 export function buildAnalyzerPrompt(
   channelConfig: Stage2RuntimeChannelConfig,
   videoContext: ViralShortsVideoContext,
@@ -169,14 +189,7 @@ export function buildSelectorPrompt(input: {
 }): string {
   return renderPrompt(buildSystemPrompt("selector", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig),
-    videoContext: {
-      sourceUrl: input.videoContext.sourceUrl,
-      title: input.videoContext.title,
-      description: input.videoContext.description,
-      transcript: input.videoContext.transcript,
-      frameDescriptions: input.videoContext.frameDescriptions,
-      comments: input.videoContext.comments
-    },
+    videoContext: buildCompactSelectorVideoContext(input.videoContext),
     analyzerOutput: input.analyzerOutput,
     availableExamples: buildCompactSelectorExamples(input.availableExamples)
   });
