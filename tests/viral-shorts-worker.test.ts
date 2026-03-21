@@ -44,6 +44,8 @@ import {
 } from "../lib/stage2-run-client";
 import { buildStage2RunRequestSnapshot } from "../lib/stage2-run-request";
 import { getRestrictedChannelEditError } from "../lib/channel-edit-permissions";
+import { buildStage2SeoPrompt } from "../lib/stage2-seo";
+import { buildStage2Spec } from "../lib/stage2-spec";
 import {
   buildQuickRegeneratePrompt,
   buildQuickRegenerateResult
@@ -575,6 +577,7 @@ async function runSuccessfulPipeline(options?: {
   stage2ExamplesConfig?: Stage2ExamplesConfig;
   workspaceStage2ExamplesCorpusJson?: string;
   stage2HardConstraints?: Stage2HardConstraints;
+  analyzerResponse?: Record<string, unknown>;
   selectedExampleIds?: string[];
   userInstruction?: string | null;
   providerWrappedStageOutputs?: boolean;
@@ -685,7 +688,8 @@ async function runSuccessfulPipeline(options?: {
       hidden_detail: "Several viewers noticed the axle was already bent before the last push.",
       generic_risks: ["calling it just a tool failure", "describing it as vague chaos"],
       uncertainty_notes: [],
-      raw_summary: "An old pickup bucks through a muddy rut until the axle twists sideways."
+      raw_summary: "An old pickup bucks through a muddy rut until the axle twists sideways.",
+      ...options?.analyzerResponse
     },
     {
       clip_type: "mechanical_failure",
@@ -3480,6 +3484,59 @@ test("selector example pool downranks weak generic examples when richer metadata
   );
 });
 
+test("buildPromptPacket keeps comments-aware slang and suspicion details in analyzer context", () => {
+  const service = new ViralShortsWorkerService();
+  const packet = service.buildPromptPacket({
+    channel: {
+      id: "target",
+      name: "Target Channel",
+      username: "target_channel",
+      stage2ExamplesConfig: {
+        version: 1,
+        useWorkspaceDefault: false,
+        customExamples: [
+          makeExample({
+            id: "tcg_pack",
+            ownerChannelId: "cards",
+            ownerChannelName: "Card Source",
+            title: "Insane god pack reveal",
+            overlayTop: "The rip goes from normal pack opening to a full art pile instantly.",
+            overlayBottom: "You can hear the collector disbelief before the stack even settles.",
+            clipType: "tcg_pack_reveal",
+            whyItWorks: ["god-pack language is already in the audience read"],
+            qualityScore: 0.94
+          })
+        ]
+      },
+      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/god-pack",
+      title: "Pokemon god pack reveal with huge reaction",
+      description: "The card pile keeps escalating and viewers start suspecting the pack was pre-opened.",
+      transcript: "Bro that is a god pack, no way that was sealed clean.",
+      frameDescriptions: [
+        "foil card stack starts normal",
+        "full art cards keep stacking",
+        "money counter overlay jumps fast"
+      ],
+      comments: [
+        { author: "viewer_1", likes: 1200, text: "bro got a literal god pack" },
+        { author: "viewer_2", likes: 780, text: "that scooby doo laugh killed me" },
+        { author: "viewer_3", likes: 620, text: "pack looked pre-opened not gonna lie" }
+      ]
+    }),
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+
+  assert.ok(packet.context.analyzerOutput.slangToAdapt.includes("god pack"));
+  assert.ok(packet.context.analyzerOutput.slangToAdapt.includes("Scooby laugh"));
+  assert.match(packet.context.analyzerOutput.hiddenDetail, /pre-opened|fake|resealed/i);
+  assert.match(packet.prompts.selector, /god pack/i);
+  assert.match(packet.prompts.selector, /Scooby laugh/i);
+});
+
 test("repairCandidateForHardConstraints no longer injects quote wrappers into bottom text", () => {
   const repaired = repairCandidateForHardConstraints(
     {
@@ -3528,6 +3585,29 @@ test("repairCandidateForHardConstraints pads short bottoms without injecting unr
   assert.doesNotMatch(repaired.candidate.bottom, /jeep|lost that exchange/i);
 });
 
+test("repairCandidateForHardConstraints removes dangling fragment endings before final validation", () => {
+  const repaired = repairCandidateForHardConstraints(
+    {
+      candidateId: "cand_dangling_fragment",
+      angle: "payoff_reveal",
+      top: "The money counter spikes so hard it looks like the pack just.",
+      bottom: "\"That stack is unreal,\" and the whole table reacts at once.",
+      topRu: "Счетчик подпрыгивает так резко, будто эта пачка просто.",
+      bottomRu: "\"Эта пачка нереальная\", и это считывает весь стол.",
+      rationale: "Broken fragment should not survive."
+    },
+    {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      topLengthMin: 18,
+      topLengthMax: 120
+    }
+  );
+
+  assert.equal(repaired.valid, true);
+  assert.doesNotMatch(repaired.candidate.top, /just\.$/i);
+  assert.doesNotMatch(repaired.candidate.top, /like the pack\.$/i);
+});
+
 test("pipeline replaces repeated contaminated bottom tails when cleaner reserve candidates exist", async () => {
   const contaminatedTail = "Everybody in that jeep knows exactly who lost that exchange.";
   const writerCandidates = Array.from({ length: 8 }, (_, index) => ({
@@ -3568,6 +3648,45 @@ test("pipeline replaces repeated contaminated bottom tails when cleaner reserve 
   assertFinalShortlistContract(result);
 });
 
+test("pipeline diversifies duplicate stock tails even when reserve pool cannot supply cleaner replacements", async () => {
+  const contaminatedTail = "Once that lands, the reaction basically writes itself.";
+  const duplicatedBottom = `"That pack is stupid." ${contaminatedTail}`;
+  const duplicatedCandidates = Array.from({ length: 8 }, (_, index) => ({
+    candidate_id: `cand_${index + 1}`,
+    angle: index % 2 === 0 ? "payoff_reveal" : "shared_experience",
+    top: `The foil stack keeps escalating until the pull reads like a planted god pack ${index + 1}.`,
+    bottom: duplicatedBottom,
+    top_ru: `Стопка фойлы продолжает расти, пока вскрытие не начинает выглядеть как подставной god pack ${index + 1}.`,
+    bottom_ru: duplicatedBottom,
+    rationale: `candidate ${index + 1}`
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    writerCandidates: duplicatedCandidates,
+    rewrittenCandidates: duplicatedCandidates,
+    stage2HardConstraints: {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      bottomLengthMin: 120,
+      bottomLengthMax: 140
+    },
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_1"
+    }
+  });
+
+  const uniqueBottomCount = new Set(
+    result.output.captionOptions.map((option) => option.bottom)
+  ).size;
+  const uniqueTailCount = new Set(
+    result.output.captionOptions.map((option) => option.bottom.split(/(?<=[.!?]["']?)\s+/).slice(-1)[0])
+  ).size;
+
+  assert.ok(uniqueBottomCount >= 4);
+  assert.ok(uniqueTailCount >= 3);
+  assertFinalShortlistContract(result);
+});
+
 test("no-comments fallback stays truthful and preserves analyzer sequence diagnostics", async () => {
   const { executor, result } = await runSuccessfulPipeline({
     comments: []
@@ -3581,6 +3700,90 @@ test("no-comments fallback stays truthful and preserves analyzer sequence diagno
   assert.ok(
     result.diagnostics.analysis.uncertaintyNotes.some((note) => /Comments were unavailable/i.test(note))
   );
+});
+
+test("analyzer normalization keeps structured arrays clean and preserves comment-derived detail", async () => {
+  const { result } = await runSuccessfulPipeline({
+    comments: [
+      { author: "viewer_1", likes: 1100, text: "literal god pack" },
+      { author: "viewer_2", likes: 850, text: "that scooby laugh got me" },
+      { author: "viewer_3", likes: 700, text: "looks pre-opened honestly" }
+    ],
+    analyzerResponse: {
+      visual_anchors: [
+        "dark full-art foil character card reveal with red accents and eye motif cards after it','green money total overlay jumping past four hundred dollars"
+      ],
+      slang_to_adapt: "None",
+      hidden_detail: "None",
+      generic_risks: ["None", "calling it random luck only"]
+    }
+  });
+
+  assert.equal(
+    result.diagnostics.analysis.visualAnchors.some((anchor) => anchor.includes("','")),
+    false
+  );
+  assert.ok(result.diagnostics.analysis.visualAnchors.length >= 2);
+  assert.ok(result.diagnostics.analysis.slangToAdapt?.includes("god pack"));
+  assert.ok(result.diagnostics.analysis.slangToAdapt?.includes("Scooby laugh"));
+  assert.match(result.diagnostics.analysis.hiddenDetail ?? "", /pre-opened|fake|resealed/i);
+  assert.ok(
+    (result.diagnostics.analysis.genericRisks ?? []).includes("calling it random luck only")
+  );
+});
+
+test("stage 2 spec reflects the effective hard constraints truthfully", () => {
+  const hardConstraints: Stage2HardConstraints = {
+    topLengthMin: 180,
+    topLengthMax: 200,
+    bottomLengthMin: 120,
+    bottomLengthMax: 140,
+    bannedWords: ["boring"],
+    bannedOpeners: ["watch this"]
+  };
+
+  assert.deepEqual(
+    buildStage2Spec({
+      name: "Stage 2",
+      outputSections: ["TOP", "BOTTOM"],
+      hardConstraints,
+      enforcedVia: "Validated against runtime hard constraints."
+    }),
+    {
+      name: "Stage 2",
+      outputSections: ["TOP", "BOTTOM"],
+      topLengthRule: "180-200 chars",
+      bottomLengthRule: "120-140 chars",
+      enforcedVia: "Validated against runtime hard constraints."
+    }
+  );
+});
+
+test("SEO prompt compaction removes low-value duplicated context", async () => {
+  const { result } = await runSuccessfulPipeline();
+  const comments = Array.from({ length: 80 }, (_, index) => ({
+    id: `comment_${index + 1}`,
+    author: `viewer_${index + 1}`,
+    likes: 500 - index,
+    timestamp: null,
+    postedAt: null,
+    text:
+      index % 2 === 0
+        ? "This same comment repeats to stress how bloated the prompt used to get around SEO assembly."
+        : `Unique comment ${index + 1} about the axle folding sideways under the truck.`
+  }));
+
+  const prompt = buildStage2SeoPrompt({
+    sourceUrl: "https://example.com/short",
+    title: "Old pickup bucks through a muddy rut",
+    comments,
+    omittedCommentsCount: 0,
+    stage2Output: result.output
+  });
+
+  assert.ok(prompt.length < 20_000);
+  assert.doesNotMatch(prompt, /topRu|bottomRu|reason/i);
+  assert.match(prompt, /"totalIncluded":\s*(1\d|2[0-4])/);
 });
 
 test("default prompt templates expose the new analyzer and selector contracts", () => {

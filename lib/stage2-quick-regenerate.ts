@@ -1,6 +1,7 @@
 import type { Stage2Response } from "../app/components/types";
 import type { Stage2HardConstraints } from "./stage2-channel-config";
 import { validateStage2Output } from "./stage2-output-validation";
+import { buildStage2Spec } from "./stage2-spec";
 import type { JsonStageExecutor } from "./viral-shorts-worker/executor";
 import {
   buildInternalFinalSelectorReason,
@@ -599,7 +600,7 @@ export function buildQuickRegenerateResult(input: {
 
   return {
     source: { ...input.baseResult.source },
-    stage2Spec: {
+    stage2Spec: buildStage2Spec({
       name: "Viral Shorts Quick Regenerate",
       outputSections: [
         "inputAnalysis",
@@ -609,10 +610,9 @@ export function buildQuickRegenerateResult(input: {
         "seo(reused)",
         "diagnostics(base provenance + regenerate prompt)"
       ],
-      topLengthRule: `${input.channel.stage2HardConstraints.topLengthMin}-${input.channel.stage2HardConstraints.topLengthMax} chars`,
-      bottomLengthRule: `${input.channel.stage2HardConstraints.bottomLengthMin}-${input.channel.stage2HardConstraints.bottomLengthMax} chars`,
+      hardConstraints: input.channel.stage2HardConstraints,
       enforcedVia: "Saved Stage 2 base run + single-shot quick regenerate + post-validation"
-    },
+    }),
     output,
     seo: input.baseResult.seo ?? null,
     warnings,

@@ -60,6 +60,61 @@ type BuildStage2SeoPromptInput = {
   userInstruction?: string | null;
 };
 
+const MAX_SEO_COMMENT_COUNT = 24;
+const MAX_SEO_COMMENT_CHARS = 200;
+const MAX_SEO_COMMENTS_PAYLOAD_CHARS = 6_000;
+const MAX_SEO_VISUAL_ANCHORS = 4;
+
+function normalizeSeoText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function truncateSeoText(value: string, maxLength: number): string {
+  const normalized = normalizeSeoText(value);
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function prepareCommentsForSeoPrompt(
+  comments: CommentItem[]
+): { included: Array<{ likes: number; text: string }>; omittedCount: number } {
+  const included: Array<{ likes: number; text: string }> = [];
+  const seen = new Set<string>();
+  let payloadChars = 0;
+
+  for (const comment of comments) {
+    if (included.length >= MAX_SEO_COMMENT_COUNT) {
+      break;
+    }
+    const text = truncateSeoText(comment.text, MAX_SEO_COMMENT_CHARS);
+    if (!text) {
+      continue;
+    }
+    const dedupeKey = text.toLowerCase();
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    const compact = {
+      likes: comment.likes,
+      text
+    };
+    const encoded = JSON.stringify(compact);
+    if (payloadChars + encoded.length > MAX_SEO_COMMENTS_PAYLOAD_CHARS) {
+      break;
+    }
+    seen.add(dedupeKey);
+    payloadChars += encoded.length;
+    included.push(compact);
+  }
+
+  return {
+    included,
+    omittedCount: Math.max(0, comments.length - included.length)
+  };
+}
+
 function parseJsonBlock(raw: string): unknown {
   const trimmed = raw.trim();
 
@@ -84,11 +139,15 @@ export function buildStage2SeoPrompt(input: BuildStage2SeoPromptInput): string {
       (option) => option.option === input.stage2Output.finalPick.option
     ) ?? input.stage2Output.captionOptions[0];
 
-  const commentsPayload = input.comments.map((comment) => ({
-    author: comment.author,
-    likes: comment.likes,
-    text: comment.text
-  }));
+  const commentsPayload = prepareCommentsForSeoPrompt(input.comments);
+  const compactInputAnalysis = {
+    visualAnchors: input.stage2Output.inputAnalysis.visualAnchors
+      .map((anchor) => truncateSeoText(anchor, 120))
+      .filter(Boolean)
+      .slice(0, MAX_SEO_VISUAL_ANCHORS),
+    commentVibe: truncateSeoText(input.stage2Output.inputAnalysis.commentVibe, 220),
+    keyPhraseToAdapt: truncateSeoText(input.stage2Output.inputAnalysis.keyPhraseToAdapt, 80)
+  };
 
   return [
     "You must follow the SYSTEM PROMPT exactly.",
@@ -106,23 +165,20 @@ export function buildStage2SeoPrompt(input: BuildStage2SeoPromptInput): string {
         option: selectedOption?.option ?? input.stage2Output.finalPick.option,
         top: selectedOption?.top ?? "",
         bottom: selectedOption?.bottom ?? "",
-        topRu: selectedOption?.topRu ?? "",
-        bottomRu: selectedOption?.bottomRu ?? "",
-        reason: input.stage2Output.finalPick.reason
       },
       null,
       2
     ),
     "",
     "INPUT ANALYSIS FROM STAGE 2:",
-    JSON.stringify(input.stage2Output.inputAnalysis, null, 2),
+    JSON.stringify(compactInputAnalysis, null, 2),
     "",
     "TOP COMMENTS (sorted by popularity):",
     JSON.stringify(
       {
-        totalIncluded: commentsPayload.length,
-        omittedCommentsCount: input.omittedCommentsCount,
-        items: commentsPayload
+        totalIncluded: commentsPayload.included.length,
+        omittedCommentsCount: input.omittedCommentsCount + commentsPayload.omittedCount,
+        items: commentsPayload.included
       },
       null,
       2

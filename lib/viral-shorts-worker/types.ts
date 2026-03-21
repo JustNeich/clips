@@ -357,6 +357,9 @@ export type Stage2Diagnostics = {
     revealMoment: string;
     lateClipChange: string;
     commentVibe: string;
+    slangToAdapt?: string[];
+    hiddenDetail?: string;
+    genericRisks?: string[];
     uncertaintyNotes: string[];
     rawSummary: string;
   };

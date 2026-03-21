@@ -366,6 +366,254 @@ function normalizeWhyItWorks(value: unknown): string[] {
   return [];
 }
 
+const NULLISH_ANALYZER_VALUES = new Set([
+  "",
+  "[]",
+  "{}",
+  "n/a",
+  "na",
+  "nil",
+  "none",
+  "null",
+  "unknown"
+]);
+
+function isNullishAnalyzerText(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[\s"'`([{]+|[\s"'`)\]}.,:;!?]+$/g, "");
+  return NULLISH_ANALYZER_VALUES.has(normalized);
+}
+
+function splitMergedAnalyzerListItem(value: string): string[] {
+  const normalized = String(value ?? "").replace(/\r\n?/g, "\n").trim();
+  if (!normalized) {
+    return [];
+  }
+  const merged = normalized
+    .replace(/['"]\s*,\s*['"]/g, "\n")
+    .replace(/\]\s*,\s*\[/g, "\n")
+    .replace(/\s+\|\s+/g, "\n");
+  return merged
+    .split(/\n+/)
+    .map((item) => item.replace(/^[\s"'`[\],]+|[\s"'`[\],]+$/g, "").trim())
+    .filter(Boolean);
+}
+
+function normalizeAnalyzerStringList(
+  value: unknown,
+  fallback: string[],
+  maxItems: number
+): string[] {
+  const rawItems = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? [value]
+      : fallback;
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const item of rawItems) {
+    for (const part of splitMergedAnalyzerListItem(String(item ?? ""))) {
+      if (isNullishAnalyzerText(part)) {
+        continue;
+      }
+      const dedupeKey = part.toLowerCase();
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      normalized.push(part);
+      if (normalized.length >= maxItems) {
+        return normalized;
+      }
+    }
+  }
+  return normalized;
+}
+
+function normalizeAnalyzerStringValue(value: unknown, fallback: string): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || isNullishAnalyzerText(normalized)) {
+    return fallback;
+  }
+  return normalized;
+}
+
+function mergeUniqueAnalyzerStrings(...groups: Array<string[] | undefined>): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const group of groups) {
+    for (const item of group ?? []) {
+      const normalized = String(item ?? "").trim();
+      if (!normalized || isNullishAnalyzerText(normalized)) {
+        continue;
+      }
+      const dedupeKey = normalized.toLowerCase();
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      merged.push(normalized);
+    }
+  }
+  return merged;
+}
+
+type CommentIntelligence = {
+  slangToAdapt: string[];
+  hiddenDetail: string | null;
+  commentVibe: string | null;
+  genericRisks: string[];
+};
+
+function deriveCommentIntelligence(
+  comments: ViralShortsVideoContext["comments"]
+): CommentIntelligence {
+  const sortedComments = [...comments]
+    .sort((left, right) => right.likes - left.likes)
+    .slice(0, 40)
+    .map((comment) => ({
+      likes: comment.likes,
+      text: String(comment.text ?? "").replace(/\s+/g, " ").trim()
+    }))
+    .filter((comment) => comment.text);
+
+  if (sortedComments.length === 0) {
+    return {
+      slangToAdapt: [],
+      hiddenDetail: null,
+      commentVibe: null,
+      genericRisks: []
+    };
+  }
+
+  const scoreByPhrase = new Map<string, number>();
+  const boost = (phrase: string, score: number) => {
+    scoreByPhrase.set(phrase, (scoreByPhrase.get(phrase) ?? 0) + score);
+  };
+
+  let suspicionScore = 0;
+  let laughScore = 0;
+  let hypeScore = 0;
+  let artScore = 0;
+
+  for (const comment of sortedComments) {
+    const lower = comment.text.toLowerCase();
+    const weight = Math.max(1, Math.min(8, Math.floor(Math.log10(comment.likes + 10))));
+
+    if (/\bgod ?pack\b|\bdemon pack\b/.test(lower)) {
+      boost("god pack", weight + 3);
+      hypeScore += weight + 2;
+    }
+    if (/\bscooby(?:[- ]?doo)?\b|\bhorse sounds?\b|\bturned into scooby\b/.test(lower)) {
+      boost("Scooby laugh", weight + 2);
+      laughScore += weight + 2;
+    }
+    if (/\b(fake|pre[- ]?opened|already open(?:ed)?|resealed|tampered|cut and switch)\b/.test(lower)) {
+      boost("pre-opened suspicion", weight + 2);
+      suspicionScore += weight + 2;
+    }
+    if (/\b(art goes hard|cards? look|cards? are|texture is insane|beautiful cards|sick art|art style)\b/.test(lower)) {
+      boost("art goes hard", weight + 1);
+      artScore += weight + 1;
+    }
+  }
+
+  const slangToAdapt = Array.from(scoreByPhrase.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([phrase]) => phrase)
+    .slice(0, 5);
+
+  let hiddenDetail: string | null = null;
+  const genericRisks: string[] = [];
+  if (suspicionScore > 0) {
+    hiddenDetail =
+      "Several commenters suspect the pack looked pre-opened, resealed, or fake instead of treating it like a normal clean rip.";
+    genericRisks.push(
+      "treating fake or pre-opened accusations as confirmed fact when the clip itself only supports suspicion"
+    );
+  } else if (laughScore > 0) {
+    hiddenDetail =
+      "A lot of the comments fixate on the Scooby-Doo laugh and the reaction noises, not just the cards themselves.";
+  } else if (hypeScore > 0) {
+    hiddenDetail =
+      "Multiple commenters frame it as a literal god pack, not just one lucky pull.";
+  } else if (artScore > 0) {
+    hiddenDetail =
+      "A noticeable chunk of the comments care about how insane the card art and texture look, not only the value.";
+  }
+
+  const commentVibe =
+    suspicionScore > 0 && (laughScore > 0 || hypeScore > 0)
+      ? "Hype, laugh jokes, and fake-pack suspicion all show up at once."
+      : suspicionScore > 0
+        ? "Excitement mixed with real suspicion that the pack looked tampered or pre-opened."
+        : laughScore > 0 && hypeScore > 0
+          ? "Awe and collector hype mixed with jokes about the Scooby-Doo laugh."
+          : hypeScore > 0
+            ? "Collector disbelief and god-pack hype."
+            : laughScore > 0
+              ? "Mostly amused reaction focused on the laugh and the shock."
+              : artScore > 0
+                ? "Fans are impressed by the card art as much as the pull itself."
+                : null;
+
+  return {
+    slangToAdapt,
+    hiddenDetail,
+    commentVibe,
+    genericRisks
+  };
+}
+
+function isGenericCommentVibe(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === "unknown" ||
+    normalized === "observational reaction" ||
+    normalized === "comment reaction" ||
+    normalized === "general audience reaction"
+  );
+}
+
+function applyCommentIntelligenceBoost(
+  analyzerOutput: AnalyzerOutput,
+  comments: ViralShortsVideoContext["comments"]
+): AnalyzerOutput {
+  if (comments.length === 0) {
+    return analyzerOutput;
+  }
+
+  const intelligence = deriveCommentIntelligence(comments);
+  const slangToAdapt = mergeUniqueAnalyzerStrings(
+    intelligence.slangToAdapt,
+    analyzerOutput.slangToAdapt,
+    analyzerOutput.extractableSlang
+  ).slice(0, 5);
+  const hiddenDetail = intelligence.hiddenDetail
+    ? intelligence.hiddenDetail
+    : analyzerOutput.hiddenDetail;
+  const commentVibe =
+    intelligence.commentVibe && isGenericCommentVibe(analyzerOutput.commentVibe)
+      ? intelligence.commentVibe
+      : analyzerOutput.commentVibe;
+  const genericRisks = mergeUniqueAnalyzerStrings(
+    analyzerOutput.genericRisks,
+    intelligence.genericRisks
+  ).slice(0, 6);
+
+  return {
+    ...analyzerOutput,
+    commentVibe,
+    slangToAdapt,
+    extractableSlang: slangToAdapt,
+    hiddenDetail,
+    genericRisks
+  };
+}
+
 function normalizeAnalyzerOutput(raw: unknown, fallback: AnalyzerOutput): AnalyzerOutput {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const visualAnchorsRaw = Array.isArray(obj.visual_anchors)
@@ -397,88 +645,84 @@ function normalizeAnalyzerOutput(raw: unknown, fallback: AnalyzerOutput): Analyz
         : Array.isArray(obj.extractableSlang)
           ? obj.extractableSlang
           : fallback.slangToAdapt;
+  const stakesRaw = Array.isArray(obj.stakes) ? obj.stakes : fallback.stakes;
+  const genericRisksRaw = Array.isArray(obj.generic_risks)
+    ? obj.generic_risks
+    : Array.isArray(obj.genericRisks)
+      ? obj.genericRisks
+      : fallback.genericRisks;
+  const uncertaintyNotesRaw = Array.isArray(obj.uncertainty_notes)
+    ? obj.uncertainty_notes
+    : Array.isArray(obj.uncertaintyNotes)
+      ? obj.uncertaintyNotes
+      : fallback.uncertaintyNotes;
 
   return {
-    visualAnchors: visualAnchorsRaw
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 5),
-    specificNouns: specificNounsRaw
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 8),
-    visibleActions: visibleActionsRaw
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 5),
-    subject: String(obj.subject ?? fallback.subject).trim() || fallback.subject,
-    action:
-      String(obj.action ?? visibleActionsRaw[0] ?? fallback.action).trim() ||
-      fallback.action,
-    setting: String(obj.setting ?? fallback.setting).trim() || fallback.setting,
-    firstSecondsSignal:
-      String(obj.first_seconds_signal ?? obj.firstSecondsSignal ?? fallback.firstSecondsSignal).trim() ||
-      fallback.firstSecondsSignal,
-    sceneBeats: sceneBeatsRaw
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 8),
-    revealMoment:
-      String(obj.reveal_moment ?? obj.revealMoment ?? fallback.revealMoment).trim() ||
-      fallback.revealMoment,
-    lateClipChange:
-      String(obj.late_clip_change ?? obj.lateClipChange ?? fallback.lateClipChange).trim() ||
-      fallback.lateClipChange,
-    stakes: (Array.isArray(obj.stakes) ? obj.stakes : fallback.stakes)
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean),
-    payoff: String(obj.payoff ?? fallback.payoff).trim() || fallback.payoff,
-    coreTrigger:
-      String(obj.core_trigger ?? obj.coreTrigger ?? fallback.coreTrigger).trim() ||
-      fallback.coreTrigger,
-    humanStake:
-      String(obj.human_stake ?? obj.humanStake ?? fallback.humanStake).trim() ||
-      fallback.humanStake,
-    narrativeFrame:
-      String(obj.narrative_frame ?? obj.narrativeFrame ?? fallback.narrativeFrame).trim() ||
-      fallback.narrativeFrame,
-    whyViewerCares:
-      String(obj.why_viewer_cares ?? obj.whyViewerCares ?? fallback.whyViewerCares).trim() ||
-      fallback.whyViewerCares,
-    bestBottomEnergy:
-      String(obj.best_bottom_energy ?? obj.bestBottomEnergy ?? fallback.bestBottomEnergy).trim() ||
-      fallback.bestBottomEnergy,
-    commentVibe:
-      String(obj.comment_vibe ?? obj.commentVibe ?? fallback.commentVibe).trim() ||
-      fallback.commentVibe,
-    slangToAdapt: slangToAdaptRaw
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 5),
-    extractableSlang: slangToAdaptRaw
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 5),
-    hiddenDetail:
-      String(obj.hidden_detail ?? obj.hiddenDetail ?? fallback.hiddenDetail).trim() ||
-      fallback.hiddenDetail,
-    genericRisks: (Array.isArray(obj.generic_risks) ? obj.generic_risks : fallback.genericRisks)
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 6),
-    uncertaintyNotes: (
-      Array.isArray(obj.uncertainty_notes)
-        ? obj.uncertainty_notes
-        : Array.isArray(obj.uncertaintyNotes)
-          ? obj.uncertaintyNotes
-          : fallback.uncertaintyNotes
-    )
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 5),
-    rawSummary:
-      String(obj.raw_summary ?? obj.rawSummary ?? fallback.rawSummary).trim() ||
+    visualAnchors: normalizeAnalyzerStringList(visualAnchorsRaw, fallback.visualAnchors, 5),
+    specificNouns: normalizeAnalyzerStringList(specificNounsRaw, fallback.specificNouns, 8),
+    visibleActions: normalizeAnalyzerStringList(visibleActionsRaw, fallback.visibleActions, 5),
+    subject: normalizeAnalyzerStringValue(obj.subject, fallback.subject),
+    action: normalizeAnalyzerStringValue(obj.action ?? visibleActionsRaw[0], fallback.action),
+    setting: normalizeAnalyzerStringValue(obj.setting, fallback.setting),
+    firstSecondsSignal: normalizeAnalyzerStringValue(
+      obj.first_seconds_signal ?? obj.firstSecondsSignal,
+      fallback.firstSecondsSignal
+    ),
+    sceneBeats: normalizeAnalyzerStringList(sceneBeatsRaw, fallback.sceneBeats, 8),
+    revealMoment: normalizeAnalyzerStringValue(
+      obj.reveal_moment ?? obj.revealMoment,
+      fallback.revealMoment
+    ),
+    lateClipChange: normalizeAnalyzerStringValue(
+      obj.late_clip_change ?? obj.lateClipChange,
+      fallback.lateClipChange
+    ),
+    stakes: normalizeAnalyzerStringList(stakesRaw, fallback.stakes, 6),
+    payoff: normalizeAnalyzerStringValue(obj.payoff, fallback.payoff),
+    coreTrigger: normalizeAnalyzerStringValue(
+      obj.core_trigger ?? obj.coreTrigger,
+      fallback.coreTrigger
+    ),
+    humanStake: normalizeAnalyzerStringValue(
+      obj.human_stake ?? obj.humanStake,
+      fallback.humanStake
+    ),
+    narrativeFrame: normalizeAnalyzerStringValue(
+      obj.narrative_frame ?? obj.narrativeFrame,
+      fallback.narrativeFrame
+    ),
+    whyViewerCares: normalizeAnalyzerStringValue(
+      obj.why_viewer_cares ?? obj.whyViewerCares,
+      fallback.whyViewerCares
+    ),
+    bestBottomEnergy: normalizeAnalyzerStringValue(
+      obj.best_bottom_energy ?? obj.bestBottomEnergy,
+      fallback.bestBottomEnergy
+    ),
+    commentVibe: normalizeAnalyzerStringValue(
+      obj.comment_vibe ?? obj.commentVibe,
+      fallback.commentVibe
+    ),
+    slangToAdapt: normalizeAnalyzerStringList(slangToAdaptRaw, fallback.slangToAdapt, 5),
+    extractableSlang: normalizeAnalyzerStringList(
+      slangToAdaptRaw,
+      fallback.extractableSlang,
+      5
+    ),
+    hiddenDetail: normalizeAnalyzerStringValue(
+      obj.hidden_detail ?? obj.hiddenDetail,
+      fallback.hiddenDetail
+    ),
+    genericRisks: normalizeAnalyzerStringList(genericRisksRaw, fallback.genericRisks, 6),
+    uncertaintyNotes: normalizeAnalyzerStringList(
+      uncertaintyNotesRaw,
+      fallback.uncertaintyNotes,
+      5
+    ),
+    rawSummary: normalizeAnalyzerStringValue(
+      obj.raw_summary ?? obj.rawSummary,
       fallback.rawSummary
+    )
   };
 }
 
@@ -1070,12 +1314,17 @@ const DANGLING_END_WORDS = new Set([
   "everybody",
   "everyone",
   "everything",
+  "feels",
   "for",
   "from",
+  "gets",
   "how",
   "in",
   "into",
+  "just",
+  "keeps",
   "like",
+  "looks",
   "nobody",
   "nothing",
   "of",
@@ -1084,17 +1333,22 @@ const DANGLING_END_WORDS = new Set([
   "somebody",
   "someone",
   "something",
+  "sounds",
+  "stays",
   "stop",
   "than",
   "that",
   "the",
   "then",
   "to",
+  "turns",
   "until",
   "when",
   "while",
   "why",
-  "with"
+  "with",
+  "reads",
+  "seems"
 ]);
 const TOP_PADDING_OPTIONS = [
   "It is already over.",
@@ -1223,6 +1477,28 @@ function trimTrailingBrokenEndingWords(text: string): string {
   return value;
 }
 
+function trimTrailingIncompleteFragment(text: string): string {
+  let value = text.trim();
+  const patterns = [
+    /\b(?:it|this|that|he|she|they|we|you)\s+(?:looks|looked|looking|feels|felt|feeling|sounds|seems|seemed|reads|read)\s+like\b(?:\s+\w+){0,4}$/i,
+    /\b(?:like|because|when|while|until|if|as|than|that)\s+(?:\w+\s+){0,4}\w+$/i
+  ];
+  while (value) {
+    const fragmentMatch = patterns
+      .map((pattern) => value.match(pattern))
+      .find((match) => match?.index !== undefined);
+    if (!fragmentMatch || fragmentMatch.index === undefined || fragmentMatch.index <= 0) {
+      break;
+    }
+    const shortened = value.slice(0, fragmentMatch.index).replace(/[,:;\s]+$/g, "").trim();
+    if (!shortened || shortened === value) {
+      break;
+    }
+    value = shortened;
+  }
+  return value;
+}
+
 function ensureTerminalPunctuation(text: string, maxLength: number): string {
   let value = text.trim();
   if (!value || TERMINAL_PUNCTUATION_PATTERN.test(value)) {
@@ -1242,33 +1518,45 @@ function padTextToMinimum(
   text: string,
   minimum: number,
   maxLength: number,
-  suffixOptions: string[]
+  suffixOptions: string[],
+  disallowedTailKeys?: Set<string>
 ): string | null {
   let value = text.trim();
   if (value.length >= minimum) {
     return ensureTerminalPunctuation(value, maxLength);
   }
   const glue = TERMINAL_PUNCTUATION_PATTERN.test(value) ? " " : ". ";
+  const currentTailKey = buildBottomTailKey(value);
+  const filteredSuffixOptions = suffixOptions.filter(
+    (suffix) => buildBottomTailKey(suffix) !== currentTailKey
+  );
+  const usableSuffixOptions = filteredSuffixOptions.length > 0 ? filteredSuffixOptions : suffixOptions;
   const candidates: string[] = [];
   const seen = new Set<string>();
   const pushCandidate = (candidate: string) => {
     const normalized = candidate.trim();
-    if (!normalized || seen.has(normalized) || normalized.length > maxLength) {
+    const tailKey = buildBottomTailKey(normalized);
+    if (
+      !normalized ||
+      seen.has(normalized) ||
+      normalized.length > maxLength ||
+      (tailKey && disallowedTailKeys?.has(tailKey))
+    ) {
       return;
     }
     seen.add(normalized);
     candidates.push(normalized);
   };
-  for (const suffix of suffixOptions) {
+  for (const suffix of usableSuffixOptions) {
     pushCandidate(`${value}${glue}${suffix.trim()}`);
   }
   if (candidates.every((candidate) => candidate.length < minimum)) {
-    for (const firstSuffix of suffixOptions) {
+    for (const firstSuffix of usableSuffixOptions) {
       const firstCandidate = `${value}${glue}${firstSuffix.trim()}`.trim();
       if (firstCandidate.length >= maxLength) {
         continue;
       }
-      for (const secondSuffix of suffixOptions) {
+      for (const secondSuffix of usableSuffixOptions) {
         if (firstSuffix === secondSuffix) {
           continue;
         }
@@ -1296,6 +1584,7 @@ function repairCaptionLineForHardConstraints(input: {
   minimum: number;
   maximum: number;
   suffixOptions: string[];
+  disallowedTailKeys?: Set<string>;
 }): { text: string; repaired: boolean; valid: boolean } {
   let value = input.text.trim();
   let repaired = false;
@@ -1305,7 +1594,7 @@ function repairCaptionLineForHardConstraints(input: {
   }
   if (looksLikeBrokenCaptionEnding(value)) {
     const prefix = extractLeadingCompleteSentences(value);
-    if (prefix) {
+    if (prefix && prefix.length < value.length) {
       value = prefix;
       repaired = true;
     } else {
@@ -1314,6 +1603,16 @@ function repairCaptionLineForHardConstraints(input: {
         value = trimmed;
         repaired = true;
       }
+    }
+    const trimmedFragment = trimTrailingIncompleteFragment(value);
+    if (trimmedFragment && trimmedFragment !== value) {
+      value = trimmedFragment;
+      repaired = true;
+    }
+    const retrimmed = trimTrailingBrokenEndingWords(value);
+    if (retrimmed && retrimmed !== value) {
+      value = retrimmed;
+      repaired = true;
     }
     if (extractNormalizedWords(value).length <= 4 || looksLikeBrokenCaptionEnding(value)) {
       return {
@@ -1324,7 +1623,13 @@ function repairCaptionLineForHardConstraints(input: {
     }
   }
   if (value.length < input.minimum) {
-    const padded = padTextToMinimum(value, input.minimum, input.maximum, input.suffixOptions);
+    const padded = padTextToMinimum(
+      value,
+      input.minimum,
+      input.maximum,
+      input.suffixOptions,
+      input.disallowedTailKeys
+    );
     if (!padded) {
       return {
         text: value,
@@ -1637,6 +1942,9 @@ function cleanupDuplicateBottomTails(
       continue;
     }
     const strippedBottom = extractBottomLeadSegment(entry.candidate.bottom);
+    const cleanupSuffixOptions = BOTTOM_PADDING_OPTIONS.filter(
+      (option) => buildBottomTailKey(option) !== tailKey
+    );
     if (!strippedBottom || strippedBottom === entry.candidate.bottom) {
       continue;
     }
@@ -1644,24 +1952,44 @@ function cleanupDuplicateBottomTails(
       text: strippedBottom,
       minimum: constraints.bottomLengthMin,
       maximum: constraints.bottomLengthMax,
-      suffixOptions: BOTTOM_PADDING_OPTIONS
+      suffixOptions: cleanupSuffixOptions,
+      disallowedTailKeys: seen
     });
-    if (!repairedBottom.valid || buildBottomTailKey(repairedBottom.text) === tailKey) {
+    let resolvedBottom = repairedBottom;
+    let repairedTailKey = buildBottomTailKey(resolvedBottom.text);
+    if ((!resolvedBottom.valid || !repairedTailKey || seen.has(repairedTailKey)) && strippedBottom.length < constraints.bottomLengthMax) {
+      const forcedMinimum = Math.min(
+        constraints.bottomLengthMax,
+        Math.max(constraints.bottomLengthMin, strippedBottom.length + 18)
+      );
+      if (forcedMinimum > strippedBottom.length) {
+        const diversifiedBottom = repairCaptionLineForHardConstraints({
+          text: strippedBottom,
+          minimum: forcedMinimum,
+          maximum: constraints.bottomLengthMax,
+          suffixOptions: cleanupSuffixOptions,
+          disallowedTailKeys: seen
+        });
+        const diversifiedTailKey = buildBottomTailKey(diversifiedBottom.text);
+        if (diversifiedBottom.valid && diversifiedTailKey && !seen.has(diversifiedTailKey)) {
+          resolvedBottom = diversifiedBottom;
+          repairedTailKey = diversifiedTailKey;
+        }
+      }
+    }
+    if (!resolvedBottom.valid || !repairedTailKey || seen.has(repairedTailKey)) {
       continue;
     }
     entry.candidate = {
       ...entry.candidate,
-      bottom: repairedBottom.text
+      bottom: resolvedBottom.text
     };
     entry.constraintCheck = evaluateCandidateHardConstraints(
       entry.candidate,
       constraints,
-      entry.constraintCheck.repaired || repairedBottom.repaired
+      entry.constraintCheck.repaired || resolvedBottom.repaired
     );
-    const nextTailKey = buildBottomTailKey(entry.candidate.bottom);
-    if (nextTailKey) {
-      seen.add(nextTailKey);
-    }
+    seen.add(repairedTailKey);
   }
 }
 
@@ -1951,6 +2279,9 @@ function buildRunDiagnostics(input: {
       revealMoment: input.analyzerOutput.revealMoment,
       lateClipChange: input.analyzerOutput.lateClipChange,
       commentVibe: input.analyzerOutput.commentVibe,
+      slangToAdapt: input.analyzerOutput.slangToAdapt,
+      hiddenDetail: input.analyzerOutput.hiddenDetail,
+      genericRisks: input.analyzerOutput.genericRisks,
       uncertaintyNotes: input.analyzerOutput.uncertaintyNotes,
       rawSummary: input.analyzerOutput.rawSummary
     },
@@ -2110,21 +2441,25 @@ export class ViralShortsWorkerService {
       comments: input.videoContext.comments.map((comment) => comment.text),
       visualAnchors: input.videoContext.frameDescriptions
     });
-    const queryText = buildCorpusQueryText(input.videoContext, heuristicOutput);
+    const analyzedHeuristicOutput =
+      input.videoContext.comments.length > 0
+        ? applyCommentIntelligenceBoost(heuristicOutput, input.videoContext.comments)
+        : applyNoCommentsTruthfulnessGuard(heuristicOutput, false);
+    const queryText = buildCorpusQueryText(input.videoContext, analyzedHeuristicOutput);
     const selectorPool = buildSelectorExamplePool({
       examples: corpus,
       queryText
     });
     const selectorOutput = fallbackSelectorOutput(
       channelConfig,
-      heuristicOutput,
+      analyzedHeuristicOutput,
       selectorPool.selectorExamples,
       input.videoContext
     );
     return buildPromptPacket({
       channelConfig,
       videoContext: input.videoContext,
-      analyzerOutput: heuristicOutput,
+      analyzerOutput: analyzedHeuristicOutput,
       selectorOutput,
       availableExamples: selectorPool.selectorExamples,
       promptConfig: normalizeStage2PromptConfig(input.promptConfig)
@@ -2226,11 +2561,13 @@ export class ViralShortsWorkerService {
       });
     }
 
-    analyzerOutput = applyNoCommentsTruthfulnessGuard(
-      analyzerOutput,
-      input.videoContext.comments.length > 0
-    );
-    if (input.videoContext.comments.length === 0) {
+    if (input.videoContext.comments.length > 0) {
+      analyzerOutput = applyCommentIntelligenceBoost(
+        analyzerOutput,
+        input.videoContext.comments
+      );
+    } else {
+      analyzerOutput = applyNoCommentsTruthfulnessGuard(analyzerOutput, false);
       warnings.push({
         field: "comments",
         message:

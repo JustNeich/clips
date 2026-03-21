@@ -15,6 +15,7 @@ import {
   parseStage2SeoOutput,
   STAGE2_SEO_OUTPUT_SCHEMA
 } from "./stage2-seo";
+import { buildStage2Spec } from "./stage2-spec";
 import {
   buildQuickRegenerateResult,
   runQuickRegenerateModel
@@ -528,7 +529,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         frameDescriptions: frames.frameDescriptions,
         commentsExtractionFallbackUsed: downloaded.commentsExtractionFallbackUsed
       },
-      stage2Spec: {
+      stage2Spec: buildStage2Spec({
         name: "Viral Shorts Worker Overlay Generation",
         outputSections: [
           "inputAnalysis",
@@ -539,10 +540,9 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
           "diagnostics(channel,prompts,examples)",
           "progress(stage snapshots)"
         ],
-        topLengthRule: "175-180 chars",
-        bottomLengthRule: "140-150 chars",
+        hardConstraints: channel.stage2HardConstraints,
         enforcedVia: "Multi-stage worker pipeline + Codex JSON stages + post-validation"
-      },
+      }),
       output: parsedOutput,
       seo,
       warnings,

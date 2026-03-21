@@ -404,6 +404,9 @@ export function normalizeStage2DiagnosticsForView(
       revealMoment: asString(analysisCandidate?.revealMoment),
       lateClipChange: asString(analysisCandidate?.lateClipChange),
       commentVibe: asString(analysisCandidate?.commentVibe),
+      slangToAdapt: asStringArray(analysisCandidate?.slangToAdapt),
+      hiddenDetail: asString(analysisCandidate?.hiddenDetail),
+      genericRisks: asStringArray(analysisCandidate?.genericRisks),
       uncertaintyNotes: asStringArray(analysisCandidate?.uncertaintyNotes),
       rawSummary: asString(analysisCandidate?.rawSummary)
     },
@@ -523,8 +526,21 @@ export function Stage2RunDiagnosticsPanels({
             {diagnostics.analysis.commentVibe ? (
               <p className="subtle-text">Comment read: {diagnostics.analysis.commentVibe}</p>
             ) : null}
+            {diagnostics.analysis.slangToAdapt?.length ? (
+              <p className="subtle-text">
+                Audience phrases: {diagnostics.analysis.slangToAdapt.join(" · ")}
+              </p>
+            ) : null}
+            {diagnostics.analysis.hiddenDetail ? (
+              <p className="subtle-text">Hidden detail: {diagnostics.analysis.hiddenDetail}</p>
+            ) : null}
             {diagnostics.analysis.sceneBeats.length > 0 ? (
               <p className="subtle-text">Scene beats: {diagnostics.analysis.sceneBeats.join(" · ")}</p>
+            ) : null}
+            {diagnostics.analysis.genericRisks?.length ? (
+              <p className="subtle-text">
+                Avoid: {diagnostics.analysis.genericRisks.join(" · ")}
+              </p>
             ) : null}
             {diagnostics.analysis.uncertaintyNotes.length > 0 ? (
               <p className="subtle-text">

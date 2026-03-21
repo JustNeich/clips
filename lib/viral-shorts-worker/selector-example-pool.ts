@@ -29,6 +29,48 @@ function countWords(value: string): number {
   return normalizeWhitespace(value).split(" ").filter(Boolean).length;
 }
 
+const GENERIC_QUERY_TOKENS = new Set([
+  "about",
+  "after",
+  "before",
+  "being",
+  "because",
+  "between",
+  "change",
+  "comments",
+  "description",
+  "during",
+  "every",
+  "everyone",
+  "frame",
+  "frames",
+  "going",
+  "guy",
+  "guys",
+  "later",
+  "moment",
+  "normal",
+  "people",
+  "really",
+  "reaction",
+  "scene",
+  "sequence",
+  "starts",
+  "still",
+  "suddenly",
+  "their",
+  "there",
+  "these",
+  "thing",
+  "title",
+  "transcript",
+  "video",
+  "viewer",
+  "watch",
+  "whole",
+  "with"
+]);
+
 function hasSuspiciousTokenNoise(value: string): boolean {
   const tokens = normalizeWhitespace(value)
     .split(" ")
@@ -95,14 +137,72 @@ function hasSuspiciousOverlayNoise(example: Stage2CorpusExample): boolean {
   );
 }
 
+function tokenizeHighSignalText(value: string): string[] {
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .match(/[a-z0-9][a-z0-9'-]*/g)
+    ?.filter((token) => token.length >= 4 && !GENERIC_QUERY_TOKENS.has(token)) ?? [];
+}
+
+function extractHighSignalQueryTokens(queryText: string): string[] {
+  return Array.from(new Set(tokenizeHighSignalText(queryText))).slice(0, 24);
+}
+
+function countHighSignalTokenOverlap(
+  queryTokens: string[],
+  example: Stage2CorpusExample
+): number {
+  if (queryTokens.length === 0) {
+    return 0;
+  }
+  const exampleTokens = new Set(
+    tokenizeHighSignalText(
+      [
+        example.title,
+        example.overlayTop,
+        example.overlayBottom,
+        example.transcript,
+        example.clipType,
+        example.whyItWorks.join(" ")
+      ].join(" ")
+    )
+  );
+  let overlap = 0;
+  for (const token of queryTokens) {
+    if (exampleTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+  return overlap;
+}
+
 function scorePromptReadyExample(queryText: string, example: Stage2CorpusExample): number {
+  const highSignalQueryTokens = extractHighSignalQueryTokens(queryText);
+  const highSignalOverlap = countHighSignalTokenOverlap(highSignalQueryTokens, example);
   const whyItWorksBonus = Math.min(0.6, example.whyItWorks.length * 0.22);
   const qualityScore = typeof example.qualityScore === "number" ? example.qualityScore : 0;
   const ownedExampleBonus = example.ownerChannelId === example.sourceChannelId ? 0.12 : 0;
   const clipTypeBonus = example.clipType !== "general" ? 0.24 : 0;
   const titleBonus = example.title.trim().length > 0 ? 0.04 : 0;
   const transcriptBonus = hasEnoughSignal(example.transcript, 24, 5) ? 0.05 : 0;
-  const weakGenericPenalty = isWeakGenericExample(example) ? 0.65 : 0;
+  const highSignalOverlapBonus = Math.min(0.84, highSignalOverlap * 0.16);
+  const highSignalMismatchPenalty =
+    highSignalQueryTokens.length >= 6
+      ? highSignalOverlap === 0
+        ? 0.95
+        : highSignalOverlap === 1
+          ? 0.28
+          : 0
+      : 0;
+  const weakGenericPenalty = isWeakGenericExample(example)
+    ? highSignalQueryTokens.length >= 6
+      ? 1.05
+      : 0.65
+    : 0;
+  const genericDomainPenalty =
+    example.clipType === "general" && highSignalQueryTokens.length >= 6 && highSignalOverlap === 0
+      ? 0.35
+      : 0;
   const noisePenalty = hasSuspiciousOverlayNoise(example) ? 1.1 : 0;
 
   return (
@@ -118,8 +218,11 @@ function scorePromptReadyExample(queryText: string, example: Stage2CorpusExample
     ownedExampleBonus +
     clipTypeBonus +
     titleBonus +
-    transcriptBonus -
+    transcriptBonus +
+    highSignalOverlapBonus -
+    highSignalMismatchPenalty -
     weakGenericPenalty -
+    genericDomainPenalty -
     noisePenalty
   );
 }
