@@ -31,11 +31,14 @@ type YtDlpCommentsInfo = {
 };
 
 export type CommentsProviderId = "youtubeDataApi" | "ytDlp";
+export type CommentsFetchStatus = "primary_success" | "fallback_success" | "unavailable";
 
 export type CommentsFetchResolution = {
   payload: CommentsPayload | null;
   provider: CommentsProviderId | null;
   fallbackUsed: boolean;
+  status: CommentsFetchStatus;
+  note: string | null;
   error: string | null;
 };
 
@@ -145,12 +148,14 @@ export async function fetchCommentsForUrl(
 ): Promise<CommentsFetchResolution> {
   const sourceUrl = normalizeSupportedUrl(rawUrl.trim());
   if (!sourceUrl || !isSupportedUrl(sourceUrl)) {
-    return {
-      payload: null,
-      provider: null,
-      fallbackUsed: false,
-      error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
-    };
+      return {
+        payload: null,
+        provider: null,
+        fallbackUsed: false,
+        status: "unavailable",
+        note: "Источник не поддерживается для загрузки комментариев.",
+        error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
+      };
   }
 
   const maxComments = clampCommentsCap(options.maxComments);
@@ -171,6 +176,8 @@ export async function fetchCommentsForUrl(
         payload,
         provider: "youtubeDataApi",
         fallbackUsed: false,
+        status: "primary_success",
+        note: "Комментарии загружены через YouTube Data API.",
         error: null
       };
     } catch (error) {
@@ -180,6 +187,8 @@ export async function fetchCommentsForUrl(
           payload: null,
           provider: null,
           fallbackUsed: false,
+          status: "unavailable",
+          note: primaryErrorMessage,
           error: primaryErrorMessage
         };
       }
@@ -194,6 +203,9 @@ export async function fetchCommentsForUrl(
         payload,
         provider: "ytDlp",
         fallbackUsed: true,
+        status: "fallback_success",
+        note:
+          "Основной YouTube-провайдер комментариев был недоступен, поэтому комментарии успешно получены через резервный путь yt-dlp.",
         error: null
       };
     } catch (fallbackError) {
@@ -201,6 +213,11 @@ export async function fetchCommentsForUrl(
         payload: null,
         provider: null,
         fallbackUsed: true,
+        status: "unavailable",
+        note: buildYouTubeCommentsFailureMessage(
+          primaryErrorMessage ?? "Не удалось получить комментарии через YouTube Data API.",
+          toErrorMessage(fallbackError, "yt-dlp fallback тоже не смог получить комментарии.")
+        ),
         error: buildYouTubeCommentsFailureMessage(
           primaryErrorMessage ?? "Не удалось получить комментарии через YouTube Data API.",
           toErrorMessage(fallbackError, "yt-dlp fallback тоже не смог получить комментарии.")
@@ -218,6 +235,8 @@ export async function fetchCommentsForUrl(
       payload,
       provider: "ytDlp",
       fallbackUsed: false,
+      status: "primary_success",
+      note: "Комментарии загружены через yt-dlp.",
       error: null
     };
   } catch (error) {
@@ -225,6 +244,8 @@ export async function fetchCommentsForUrl(
       payload: null,
       provider: null,
       fallbackUsed: false,
+      status: "unavailable",
+      note: toErrorMessage(error, "Не удалось получить комментарии."),
       error: toErrorMessage(error, "Не удалось получить комментарии.")
     };
   }

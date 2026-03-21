@@ -476,7 +476,7 @@ export function ChannelManager({
       setAutosaveFeedback(
         "stage2",
         "error",
-        "Исправьте JSON custom corpus, чтобы сохранить Stage 2."
+        "Исправьте JSON собственного корпуса, чтобы сохранить настройки второго этапа."
       );
       return;
     }
@@ -488,10 +488,10 @@ export function ChannelManager({
       return;
     }
     clearAutosaveReset("stage2");
-    setAutosaveFeedback("stage2", "pending", "Сохраним Stage 2 автоматически.");
+    setAutosaveFeedback("stage2", "pending", "Сохраним настройки второго этапа автоматически.");
     const revision = ++autosaveRevisionRef.current.stage2;
     const timerId = window.setTimeout(() => {
-      setAutosaveFeedback("stage2", "saving", "Сохраняем Stage 2…");
+      setAutosaveFeedback("stage2", "saving", "Сохраняем настройки второго этапа…");
       void saveChannelRef.current(activeChannel.id, {
         stage2ExamplesConfig,
         stage2HardConstraints
@@ -501,14 +501,14 @@ export function ChannelManager({
             return;
           }
           persistedSnapshotRef.current.stage2 = nextSnapshot;
-          setAutosaveFeedback("stage2", "saved", "Stage 2 сохранён.");
+          setAutosaveFeedback("stage2", "saved", "Настройки второго этапа сохранены.");
           scheduleAutosaveReset("stage2");
         })
         .catch(() => {
           if (autosaveRevisionRef.current.stage2 !== revision) {
             return;
           }
-          setAutosaveFeedback("stage2", "error", "Не удалось сохранить Stage 2.");
+          setAutosaveFeedback("stage2", "error", "Не удалось сохранить настройки второго этапа.");
         });
     }, 900);
 
@@ -536,7 +536,7 @@ export function ChannelManager({
       setAutosaveFeedback(
         "stage2Defaults",
         "error",
-        "Исправьте JSON workspace corpus, чтобы сохранить defaults."
+        "Исправьте JSON общего корпуса, чтобы сохранить общие настройки."
       );
       return;
     }
@@ -552,10 +552,10 @@ export function ChannelManager({
       return;
     }
     clearAutosaveReset("stage2Defaults");
-    setAutosaveFeedback("stage2Defaults", "pending", "Сохраним Stage 2 defaults автоматически.");
+    setAutosaveFeedback("stage2Defaults", "pending", "Сохраним общие настройки второго этапа автоматически.");
     const revision = ++autosaveRevisionRef.current.stage2Defaults;
     const timerId = window.setTimeout(() => {
-      setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем Stage 2 defaults…");
+      setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем общие настройки второго этапа…");
       void saveWorkspaceStage2DefaultsRef.current({
         stage2ExamplesCorpusJson: workspaceExamplesJson,
         stage2HardConstraints,
@@ -566,14 +566,14 @@ export function ChannelManager({
             return;
           }
           persistedSnapshotRef.current.stage2Defaults = nextSnapshot;
-          setAutosaveFeedback("stage2Defaults", "saved", "Stage 2 defaults сохранены.");
+          setAutosaveFeedback("stage2Defaults", "saved", "Общие настройки второго этапа сохранены.");
           scheduleAutosaveReset("stage2Defaults");
         })
         .catch(() => {
           if (autosaveRevisionRef.current.stage2Defaults !== revision) {
             return;
           }
-          setAutosaveFeedback("stage2Defaults", "error", "Не удалось сохранить Stage 2 defaults.");
+          setAutosaveFeedback("stage2Defaults", "error", "Не удалось сохранить общие настройки второго этапа.");
         });
     }, 900);
 
@@ -688,11 +688,11 @@ export function ChannelManager({
     try {
       const parsed = JSON.parse(value) as unknown;
       if (!Array.isArray(parsed)) {
-        throw new Error("Workspace examples corpus JSON должен быть JSON-массивом.");
+        throw new Error("JSON общего корпуса должен быть JSON-массивом.");
       }
       setWorkspaceExamplesError(null);
     } catch {
-      setWorkspaceExamplesError("Workspace default corpus JSON должен быть валидным JSON-массивом.");
+      setWorkspaceExamplesError("JSON общего корпуса должен быть валидным JSON-массивом.");
     }
   };
 
@@ -728,7 +728,7 @@ export function ChannelManager({
       );
       setCustomExamplesError(null);
     } catch {
-      setCustomExamplesError("Examples corpus JSON должен быть валидным JSON-массивом.");
+      setCustomExamplesError("JSON корпуса примеров должен быть валидным JSON-массивом.");
     }
   };
 
@@ -927,6 +927,7 @@ export function ChannelManager({
                 canEditHardConstraints={canEditHardConstraints}
                 canEditChannelExamples={canEditChannelExamples}
                 activeExamplesPreview={activeExamplesPreview}
+                channelStyleProfile={activeChannel?.stage2StyleProfile ?? null}
                 customExamplesJson={customExamplesJson}
                 customExamplesError={customExamplesError}
                 updateWorkspaceExamplesJson={updateWorkspaceExamplesJson}

@@ -10,6 +10,10 @@ import {
   stringifyStage2HardConstraints
 } from "../stage2-channel-config";
 import { stringifyStage2PromptConfig, DEFAULT_STAGE2_PROMPT_CONFIG } from "../stage2-pipeline";
+import {
+  DEFAULT_STAGE2_STYLE_PROFILE,
+  stringifyStage2StyleProfile
+} from "../stage2-channel-learning";
 
 type GlobalDbScope = typeof globalThis & {
   __clipsAppDb?: DatabaseSync;
@@ -145,6 +149,7 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "channels", "stage2_examples_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_hard_constraints_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_prompt_config_json", "TEXT");
+  addColumnIfMissing(db, "channels", "stage2_style_profile_json", "TEXT");
   addColumnIfMissing(db, "stage2_runs", "creator_user_id", "TEXT");
   addColumnIfMissing(db, "stage2_runs", "channel_id", "TEXT");
   addColumnIfMissing(db, "stage2_runs", "source_url", "TEXT");
@@ -162,6 +167,12 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "source_jobs", "result_json", "TEXT");
   addColumnIfMissing(db, "source_jobs", "error_message", "TEXT");
   addColumnIfMissing(db, "source_jobs", "started_at", "TEXT");
+  addColumnIfMissing(db, "channel_style_discovery_runs", "creator_user_id", "TEXT");
+  addColumnIfMissing(db, "channel_style_discovery_runs", "request_json", "TEXT");
+  addColumnIfMissing(db, "channel_style_discovery_runs", "request_fingerprint", "TEXT");
+  addColumnIfMissing(db, "channel_style_discovery_runs", "result_json", "TEXT");
+  addColumnIfMissing(db, "channel_style_discovery_runs", "error_message", "TEXT");
+  addColumnIfMissing(db, "channel_style_discovery_runs", "started_at", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "execution_target", "TEXT NOT NULL DEFAULT 'local'");
   addColumnIfMissing(db, "stage3_jobs", "assigned_worker_id", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "lease_expires_at", "TEXT");
@@ -186,6 +197,12 @@ function applyDbMigrations(db: DatabaseSync): void {
       WHERE stage2_prompt_config_json IS NULL
          OR trim(stage2_prompt_config_json) = ''`
   ).run(stringifyStage2PromptConfig(DEFAULT_STAGE2_PROMPT_CONFIG));
+  db.prepare(
+    `UPDATE channels
+        SET stage2_style_profile_json = ?
+      WHERE stage2_style_profile_json IS NULL
+         OR trim(stage2_style_profile_json) = ''`
+  ).run(stringifyStage2StyleProfile(DEFAULT_STAGE2_STYLE_PROFILE));
   migrateLegacyStage3WorkerTokens(db);
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage2_runs_workspace_updated ON stage2_runs(workspace_id, updated_at DESC)"
@@ -204,6 +221,21 @@ function applyDbMigrations(db: DatabaseSync): void {
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_source_jobs_status_created ON source_jobs(status, created_at ASC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_channel ON channel_editorial_feedback_events(channel_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_workspace ON channel_editorial_feedback_events(workspace_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_channel_style_discovery_runs_workspace_updated ON channel_style_discovery_runs(workspace_id, updated_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_channel_style_discovery_runs_status_created ON channel_style_discovery_runs(status, created_at ASC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_channel_style_discovery_runs_creator_fingerprint ON channel_style_discovery_runs(workspace_id, creator_user_id, request_fingerprint, created_at DESC)"
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage3_jobs_execution ON stage3_jobs(execution_target, status, created_at ASC)"

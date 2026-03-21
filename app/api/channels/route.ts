@@ -8,6 +8,7 @@ import { resolveChannelPermissions } from "../../../lib/acl";
 import { getRestrictedChannelEditError } from "../../../lib/channel-edit-permissions";
 import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2-channel-config";
+import { Stage2StyleProfile } from "../../../lib/stage2-channel-learning";
 import {
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints
@@ -25,6 +26,7 @@ type CreateChannelBody = {
   stage2ExamplesConfig?: Stage2ExamplesConfig;
   stage2HardConstraints?: Stage2HardConstraints;
   stage2PromptConfig?: Stage2PromptConfig;
+  stage2StyleProfile?: Stage2StyleProfile;
   templateId?: string;
 };
 
@@ -97,6 +99,7 @@ export async function POST(request: Request): Promise<Response> {
       stage2ExamplesConfig: body?.stage2ExamplesConfig,
       stage2HardConstraints: body?.stage2HardConstraints,
       stage2PromptConfig: body?.stage2PromptConfig,
+      stage2StyleProfile: body?.stage2StyleProfile,
       templateId: body?.templateId
     });
     return Response.json({ channel }, { status: 200 });

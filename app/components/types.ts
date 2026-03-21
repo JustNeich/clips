@@ -1,5 +1,9 @@
 import type { Stage2ProgressSnapshot, Stage2PromptConfig } from "../../lib/stage2-pipeline";
 import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../../lib/stage2-channel-config";
+import type {
+  Stage2ExplorationMode,
+  Stage2StyleProfile
+} from "../../lib/stage2-channel-learning";
 import type { Stage2Diagnostics } from "../../lib/viral-shorts-worker/types";
 
 export type CommentItem = {
@@ -31,6 +35,8 @@ export type Stage2Output = {
     bottom: string;
     topRu?: string;
     bottomRu?: string;
+    styleDirectionIds?: string[];
+    explorationMode?: Stage2ExplorationMode;
     constraintCheck?: {
       passed: boolean;
       repaired: boolean;
@@ -90,6 +96,10 @@ export type Stage2Response = {
     commentsOmittedFromPrompt?: number;
     frameDescriptions?: string[];
     commentsExtractionFallbackUsed?: boolean;
+    commentsAcquisitionStatus?: "primary_success" | "fallback_success" | "unavailable";
+    commentsAcquisitionProvider?: "youtubeDataApi" | "ytDlp" | null;
+    commentsAcquisitionNote?: string | null;
+    commentsAcquisitionError?: string | null;
   };
   output: Stage2Output;
   seo?: {
@@ -177,6 +187,9 @@ export type SourceJobResult = {
   commentsAvailable: boolean;
   commentsError: string | null;
   commentsPayload: CommentsPayload | null;
+  commentsAcquisitionStatus?: "primary_success" | "fallback_success" | "unavailable";
+  commentsAcquisitionProvider?: "youtubeDataApi" | "ytDlp" | null;
+  commentsAcquisitionNote?: string | null;
   autoStage2RunId: string | null;
 };
 
@@ -735,6 +748,7 @@ export type Channel = {
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
+  stage2StyleProfile?: Stage2StyleProfile;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;

@@ -11,6 +11,13 @@
   - скачивание видео + комментариев;
   - анализ кадров видео + комментариев;
   - генерация 5 вариантов caption + 5 title + final pick через multi-stage viral worker pipeline.
+- Channel onboarding теперь проходит через guided wizard:
+  - basic setup;
+  - Stage 2 baseline settings;
+  - 10+ reference links;
+  - dynamic style discovery with a broad selectable startup pool, including explicit regeneration.
+  - onboarding draft persists across panel close/reopen and page reload;
+  - bootstrap style discovery runs durably on the server and reattaches by `runId`.
 
 ## 1. Установка зависимостей проекта
 
@@ -80,6 +87,15 @@ npm run dev
   - ставит durable background run в очередь и продолжает его независимо от открытой вкладки;
   - использует pipeline `analyzer -> selector -> writer -> critic -> rewriter -> final selector -> titles`;
   - использует один effective examples corpus на run: либо `workspace default corpus`, либо `channel custom corpus`;
+  - использует channel learning layer:
+    - bootstrap style profile из onboarding;
+    - rolling editorial memory из последних feedback events;
+    - confidence-aware examples mode: `domain_guided`, `form_guided`, or `style_guided` depending on retrieval quality;
+    - controlled exploratory share, чтобы варианты не схлопывались в один mode;
+  - использует comments-aware prompt stack:
+    - analyzer separates mixed audience lanes instead of flattening them;
+    - writer/critic/rewriter suppress stock generic tails and batch sameness;
+    - final selector keeps real stylistic alternatives in the visible five;
   - `data/examples.json` используется только один раз как seed для нового workspace, а не как live runtime source;
   - вызывает `codex exec` по stage-этапам с авторизацией пользователя через кнопку `Connect Codex` (device auth);
   - отдает live progress snapshot по шагам pipeline (`GET /api/pipeline/stage2?runId=...`);
@@ -191,6 +207,30 @@ npm run stage3-worker -- start
 - `BOTTOM` больше не зависит от legacy правила `bottom quote required`; quoted opener допускается только если это естественно для конкретного клипа.
 
 Channel-specific mapping теперь задается через `Stage 2` в Channel Manager.
+
+### Guided channel bootstrap and learning
+
+- `+ New Channel` больше не создаёт канал сразу в старой edit-форме.
+- Вместо этого открывается wizard, который проводит редактора через:
+  - basics;
+  - Stage 2 base settings;
+  - reference links;
+  - dynamic style picks.
+- После добавления 10+ reference clips запускается отдельный LLM discovery pass.
+- Этот pass генерирует около 20 human-readable style directions.
+- Discovery обязан держать баланс между core high-fit directions, adjacent possibilities и smaller exploratory tail, а не просто перефразировать одни и те же reference narratives.
+- Editor может выбрать много направлений, включая почти весь пул, и именно этот набор становится initial style prior канала.
+- Если reference links меняются после discovery, старый style pool не пропадает автоматически: wizard помечает его как stale и ждёт явного regenerate.
+- Дальше normal Stage 2 work может дообучать канал через:
+  - `More like this`
+  - `Less like this`
+  - optional note
+  - lightweight `selected option` signal
+- Feedback хранится как bounded rolling memory: сильнее всего влияют последние ~30 реакций.
+- При этом около 25% option space всегда остаётся exploratory, чтобы канал мог эволюционировать.
+
+Подробная документация по новому learning layer:
+- [docs/stage2-channel-learning.md](/Users/neich/dev/clips automations/docs/stage2-channel-learning.md)
 
 Primary Stage 2 control surface:
 - owner редактирует workspace-wide defaults через `Default settings`;

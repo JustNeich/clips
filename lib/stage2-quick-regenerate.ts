@@ -2,12 +2,17 @@ import type { Stage2Response } from "../app/components/types";
 import type { Stage2HardConstraints } from "./stage2-channel-config";
 import { validateStage2Output } from "./stage2-output-validation";
 import { buildStage2Spec } from "./stage2-spec";
+import {
+  createEmptyStage2EditorialMemorySummary,
+  DEFAULT_STAGE2_STYLE_PROFILE
+} from "./stage2-channel-learning";
 import type { JsonStageExecutor } from "./viral-shorts-worker/executor";
 import {
   buildInternalFinalSelectorReason,
   buildOperatorFacingFinalReason,
   evaluateCandidateHardConstraints,
-  repairCandidateForHardConstraints
+  repairCandidateForHardConstraints,
+  sanitizeFinalSelectorModelRationale
 } from "./viral-shorts-worker/service";
 import type {
   CandidateCaption,
@@ -28,6 +33,7 @@ const QUICK_REGENERATE_PROMPT = [
   "- Keep the same option numbers.",
   "- Keep the same candidate_id values.",
   "- Keep the same angle labels.",
+  "- Preserve style_direction_ids and exploration_mode unless the rewrite clearly changes the lane.",
   "- Return one revised title paired with each revised caption option.",
   "- final_pick_option must point to one of the visible options.",
   "- Stay specific, visual, and grounded in the provided source context.",
@@ -38,7 +44,11 @@ const QUICK_REGENERATE_PROMPT = [
   "Tone rules:",
   "- Improve sharpness, specificity, pacing, and variety across the visible options.",
   "- If the user asks for a shorter/longer/funnier/more serious version, apply that request directly.",
-  "- Preserve diversity across options instead of making five near-duplicates."
+  "- Preserve diversity across options instead of making five near-duplicates.",
+  "- Do not smooth every bottom into the same continuation logic.",
+  "- Remove stock tails like 'the reaction basically writes itself' or 'the whole room feels it immediately'.",
+  "- If a quoted opener is not earning its place, replace it with a more natural clip-specific start.",
+  "- Never leave broken fragments after tightening."
 ].join("\n");
 
 export const QUICK_REGENERATE_SCHEMA = {
@@ -107,6 +117,8 @@ type QuickRegenerateBaseOption = {
   bottomRu: string;
   title: string;
   titleRu: string;
+  styleDirectionIds: string[];
+  explorationMode: "aligned" | "exploratory";
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -185,7 +197,9 @@ function buildBaseOptions(stage2: Stage2Response): QuickRegenerateBaseOption[] {
       topRu: option.topRu?.trim() || option.top,
       bottomRu: option.bottomRu?.trim() || option.bottom,
       title: titleOption?.title?.trim() || `Option ${option.option}`,
-      titleRu: titleOption?.titleRu?.trim() || titleOption?.title?.trim() || `Option ${option.option}`
+      titleRu: titleOption?.titleRu?.trim() || titleOption?.title?.trim() || `Option ${option.option}`,
+      styleDirectionIds: option.styleDirectionIds ?? [],
+      explorationMode: option.explorationMode === "exploratory" ? "exploratory" : "aligned"
     };
   });
 }
@@ -221,6 +235,26 @@ function buildQuickRegeneratePromptPayload(
       }))
     },
     inputAnalysis: stage2.output.inputAnalysis,
+    analysisContext: {
+      whyViewerCares: stage2.diagnostics?.selection?.whyViewerCares ?? "",
+      bottomEnergy: stage2.diagnostics?.selection?.bottomEnergy ?? "",
+      commentVibe: stage2.diagnostics?.analysis?.commentVibe ?? "",
+      commentConsensusLane: stage2.diagnostics?.analysis?.commentConsensusLane ?? "",
+      commentJokeLane: stage2.diagnostics?.analysis?.commentJokeLane ?? "",
+      commentDissentLane: stage2.diagnostics?.analysis?.commentDissentLane ?? "",
+      commentSuspicionLane: stage2.diagnostics?.analysis?.commentSuspicionLane ?? "",
+      commentLanguageCues: stage2.diagnostics?.analysis?.commentLanguageCues ?? []
+    },
+    retrievalContext: {
+      retrievalConfidence: stage2.diagnostics?.examples?.retrievalConfidence ?? null,
+      examplesMode: stage2.diagnostics?.examples?.examplesMode ?? null,
+      examplesRoleSummary: stage2.diagnostics?.examples?.examplesRoleSummary ?? null,
+      primaryDriverSummary: stage2.diagnostics?.examples?.primaryDriverSummary ?? null
+    },
+    channelLearning: {
+      bootstrapSummary: stage2.diagnostics?.channel?.styleProfile?.referenceInfluenceSummary ?? "",
+      editorialMemorySummary: stage2.diagnostics?.channel?.editorialMemory?.promptSummary ?? ""
+    },
     selectorContext: {
       clipType: selectorOutput.clipType,
       primaryAngle: selectorOutput.primaryAngle,
@@ -325,7 +359,14 @@ function buildQuickDiagnostics(input: {
           sceneBeats: [],
           revealMoment: "",
           lateClipChange: "",
+          whyViewerCares: "",
+          bestBottomEnergy: "",
           commentVibe: "",
+          commentConsensusLane: "",
+          commentJokeLane: "",
+          commentDissentLane: "",
+          commentSuspicionLane: "",
+          commentLanguageCues: [],
           uncertaintyNotes: [],
           rawSummary: ""
         },
@@ -346,6 +387,8 @@ function buildQuickDiagnostics(input: {
       username: input.channel.username,
       examplesSource: "workspace_default",
       hardConstraints: input.channel.stage2HardConstraints,
+      styleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
+      editorialMemory: createEmptyStage2EditorialMemorySummary(DEFAULT_STAGE2_STYLE_PROFILE),
       workspaceCorpusCount: 0,
       activeCorpusCount: 0
     },
@@ -374,7 +417,14 @@ function buildQuickDiagnostics(input: {
       sceneBeats: [],
       revealMoment: "",
       lateClipChange: "",
+      whyViewerCares: "",
+      bestBottomEnergy: "",
       commentVibe: "",
+      commentConsensusLane: "",
+      commentJokeLane: "",
+      commentDissentLane: "",
+      commentSuspicionLane: "",
+      commentLanguageCues: [],
       uncertaintyNotes: [],
       rawSummary: ""
     },
@@ -386,6 +436,16 @@ function buildQuickDiagnostics(input: {
       workspaceCorpusCount: 0,
       activeCorpusCount: 0,
       selectorCandidateCount: 0,
+      retrievalConfidence: "low",
+      examplesMode: "style_guided",
+      explanation: "",
+      evidence: [],
+      retrievalWarning: null,
+      examplesRoleSummary: "",
+      primaryDriverSummary: "",
+      primaryDrivers: [],
+      channelStylePriority: "primary",
+      editorialMemoryPriority: "primary",
       availableExamples: [],
       selectedExamples: []
     }
@@ -413,7 +473,9 @@ function buildFallbackBaseCandidate(option: QuickRegenerateBaseOption): Candidat
     bottom: option.bottom,
     topRu: option.topRu,
     bottomRu: option.bottomRu,
-    rationale: "Reused from the base run."
+    rationale: "Reused from the base run.",
+    styleDirectionIds: option.styleDirectionIds,
+    explorationMode: option.explorationMode
   };
 }
 
@@ -466,7 +528,9 @@ export function buildQuickRegenerateResult(input: {
       bottom: asString(rawEntry?.bottom, baseOption.bottom) || baseOption.bottom,
       topRu: asString(rawEntry?.top_ru, baseOption.topRu) || baseOption.topRu,
       bottomRu: asString(rawEntry?.bottom_ru, baseOption.bottomRu) || baseOption.bottomRu,
-      rationale: "Quick regenerate revision."
+      rationale: "Quick regenerate revision.",
+      styleDirectionIds: baseOption.styleDirectionIds,
+      explorationMode: baseOption.explorationMode
     };
     const repaired = repairCandidateForHardConstraints(
       generatedCandidate,
@@ -563,6 +627,8 @@ export function buildQuickRegenerateResult(input: {
       bottom: entry.candidate.bottom,
       topRu: entry.candidate.topRu,
       bottomRu: entry.candidate.bottomRu,
+      styleDirectionIds: entry.candidate.styleDirectionIds,
+      explorationMode: entry.candidate.explorationMode,
       constraintCheck: entry.constraintCheck
     })),
     titleOptions: normalizedOptions.map((entry) => ({
@@ -590,8 +656,13 @@ export function buildQuickRegenerateResult(input: {
           visibleShortlist,
           finalPickCandidateId: resolvedFinalPickCandidateId
         }),
-        rationaleInternalModelRaw:
-          asString(input.rawOutput?.selection_rationale) || "Quick regenerate selection rationale unavailable."
+        rationaleInternalModelRaw: sanitizeFinalSelectorModelRationale({
+          rawRationale:
+            asString(input.rawOutput?.selection_rationale) ||
+            "Quick regenerate selection rationale unavailable.",
+          visibleShortlist,
+          finalPickCandidateId: resolvedFinalPickCandidateId
+        })
       }
     }
   };

@@ -70,18 +70,25 @@ import {
 } from "../lib/stage2-channel-config";
 import { resolveChannelPermissions } from "../lib/acl";
 import { prepareCommentsForPrompt, sortCommentsByPopularity } from "../lib/comments";
+import { fetchCommentsForUrl } from "../lib/source-comments";
 import {
   pickPreferredYtDlpInfoJsonFile,
   readYtDlpMetadataArtifacts
 } from "../lib/ytdlp-metadata";
 import { fetchTranscriptFromYtDlpInfo } from "../lib/youtube-captions";
+import { YouTubeCommentsApiError } from "../lib/youtube-comments";
 import { buildLimitedCommentsExtractorArgs } from "../lib/ytdlp";
 import { validateStage2Output } from "../lib/stage2-output-validation";
 import {
   buildAnalyzerPrompt,
+  buildCriticPrompt,
+  buildFinalSelectorPrompt,
   buildPromptPacket,
+  buildRewriterPrompt,
+  buildWriterPrompt,
   resolveStage2PromptTemplate
 } from "../lib/viral-shorts-worker/prompts";
+import type { Stage2ExamplesAssessment } from "../lib/viral-shorts-worker/types";
 import {
   buildAdaptiveFramePlan,
   buildStage2RuntimeVideoContext
@@ -155,6 +162,29 @@ function makeExample(input: {
     clipType: input.clipType ?? "mechanical_failure",
     whyItWorks: input.whyItWorks ?? ["clear visual hook"],
     qualityScore: input.qualityScore === undefined ? 0.9 : input.qualityScore
+  };
+}
+
+function makeExamplesAssessment(
+  overrides?: Partial<Stage2ExamplesAssessment>
+): Stage2ExamplesAssessment {
+  return {
+    retrievalConfidence: "high",
+    examplesMode: "domain_guided",
+    explanation: "Top examples are domain-near and strong enough to guide framing.",
+    evidence: ["2/5 top examples are domain-near", "avg semantic fit 0.72"],
+    retrievalWarning: null,
+    examplesRoleSummary: "Examples can guide semantics, structure, and tone.",
+    primaryDriverSummary: "Clip truth stays primary, with strong retrieval support.",
+    primaryDrivers: [
+      "actual clip truth",
+      "retrieval examples as semantic guidance",
+      "bootstrap channel style directions",
+      "rolling editorial memory"
+    ],
+    channelStylePriority: "supporting",
+    editorialMemoryPriority: "supporting",
+    ...overrides
   };
 }
 
@@ -324,6 +354,31 @@ function makeRuntimeStage2Response(runId: string, label: string): Stage2Response
       createdAt: nowIso()
     },
     userInstructionUsed: label
+  };
+}
+
+function makeCommentsPayload(label: string) {
+  return {
+    title: `${label} title`,
+    totalComments: 1,
+    topComments: [
+      {
+        id: `${label}-1`,
+        author: `${label} author`,
+        text: `${label} text`,
+        likes: 10,
+        postedAt: "2026-03-20T10:00:00.000Z"
+      }
+    ],
+    allComments: [
+      {
+        id: `${label}-1`,
+        author: `${label} author`,
+        text: `${label} text`,
+        likes: 10,
+        postedAt: "2026-03-20T10:00:00.000Z"
+      }
+    ]
   };
 }
 
@@ -1279,12 +1334,12 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   });
   const markup = renderToStaticMarkup(element);
 
-  assert.match(markup, /Top min/);
-  assert.match(markup, /Top max/);
-  assert.match(markup, /Bottom min/);
-  assert.match(markup, /Bottom max/);
-  assert.match(markup, /Banned words/);
-  assert.match(markup, /Banned openers/);
+  assert.match(markup, /TOP мин\./);
+  assert.match(markup, /TOP макс\./);
+  assert.match(markup, /BOTTOM мин\./);
+  assert.match(markup, /BOTTOM макс\./);
+  assert.match(markup, /Запрещённые слова/);
+  assert.match(markup, /Запрещённые начала/);
   assert.match(markup, /type="number"/);
   assert.match(markup, /value="135"/);
   assert.match(markup, /value="180"/);
@@ -1491,7 +1546,7 @@ test("yt-dlp metadata reader prefers metadata info json over source download inf
   }
 });
 
-test("channel manager adds a dedicated Default settings target only for owners", () => {
+test("channel manager adds a dedicated shared settings target only for owners", () => {
   const channels = [
     makeChannelForManager({ id: "alpha", name: "Alpha Channel", username: "alpha" }),
     makeChannelForManager({ id: "beta", name: "Beta Channel", username: "beta" })
@@ -1499,7 +1554,7 @@ test("channel manager adds a dedicated Default settings target only for owners",
 
   const ownerTargets = listChannelManagerTargets(channels, true);
   assert.equal(ownerTargets[0]?.id, CHANNEL_MANAGER_DEFAULT_SETTINGS_ID);
-  assert.equal(ownerTargets[0]?.label, "Default settings");
+  assert.equal(ownerTargets[0]?.label, "Общие настройки");
   assert.equal(ownerTargets[0]?.kind, "workspace_defaults");
   assert.equal(ownerTargets[1]?.id, "alpha");
 
@@ -1995,11 +2050,15 @@ test("stage 2 pipeline returns a shortlist for human pick using selector-chosen 
   assert.equal(result.output.pipeline.mode, "codex_pipeline");
   assert.equal(result.output.pipeline.availableExamplesCount, 5);
   assert.equal(result.output.pipeline.selectedExamplesCount, 3);
+  assert.equal(result.output.pipeline.retrievalConfidence, "high");
+  assert.equal(result.output.pipeline.examplesMode, "domain_guided");
   assert.ok(result.output.captionOptions.every((option) => option.candidateId));
   assert.ok(result.output.captionOptions.every((option) => option.angle));
   assert.ok(result.output.captionOptions.every((option) => option.constraintCheck?.passed));
   assert.equal(result.diagnostics.examples.activeCorpusCount, 5);
   assert.equal(result.diagnostics.examples.selectorCandidateCount, 5);
+  assert.equal(result.diagnostics.examples.retrievalConfidence, "high");
+  assert.equal(result.diagnostics.examples.examplesMode, "domain_guided");
   assert.equal(result.diagnostics.examples.selectedExamples.length, 3);
   assert.ok(result.diagnostics.analysis.sceneBeats.length > 0);
   assert.ok(result.diagnostics.analysis.revealMoment.length > 0);
@@ -2065,7 +2124,10 @@ test("operator-facing final pick reason is generated from the visible shortlist 
   );
   assert.equal(
     result.output.pipeline.finalSelector?.rationaleInternalModelRaw,
-    "c04 is strongest, but c07 and c08 still matter because they almost beat it on tension."
+    "Sanitized because the model rationale contradicted the persisted shortlist. " +
+      `Final selector evaluated ${visibleIds.length} shortlist candidates: ${visibleIds.join(", ")}. ` +
+      "Final visible shortlist is cand_1, cand_2, cand_3, cand_4, cand_5 with cand_2 as the final pick. " +
+      "Visible angles: payoff_reveal, shared_experience, competence_process."
   );
 });
 
@@ -2492,9 +2554,17 @@ test("internal final selector rationale is rebuilt from the actual evaluated poo
     result.output.pipeline.finalSelector?.rationaleInternalRaw,
     "Final selector evaluated 5 shortlist candidates: cand_4, cand_1, cand_3, cand_5, cand_2. Final visible shortlist is cand_4, cand_1, cand_3, cand_5, cand_2 with cand_4 as the final pick. Visible angles: payoff_reveal, shared_experience, tension_danger."
   );
-  assert.equal(
-    result.output.pipeline.finalSelector?.rationaleInternalModelRaw,
-    "Only one unique candidate appears in the provided pool, and c04 is publishable."
+  assert.match(
+    result.output.pipeline.finalSelector?.rationaleInternalModelRaw ?? "",
+    /^Sanitized because the model rationale contradicted the persisted shortlist\./
+  );
+  assert.doesNotMatch(
+    result.output.pipeline.finalSelector?.rationaleInternalModelRaw ?? "",
+    /\bc04\b/i
+  );
+  assert.match(
+    result.output.pipeline.finalSelector?.rationaleInternalModelRaw ?? "",
+    /\bcand_4\b/
   );
   assert.match(result.output.finalPick.reason, /^option 1 is the strongest visible pick/i);
 });
@@ -3279,7 +3349,12 @@ test("selector prompt compacts examples instead of embedding full transcript-hea
       whyViewerCares: "care",
       bestBottomEnergy: "dry humor",
       commentVibe: "crowd reacts",
+      commentConsensusLane: "Consensus lane stays on the visible axle failure.",
+      commentJokeLane: "Joke lane turns it into a cooked-truck punchline.",
+      commentDissentLane: "",
+      commentSuspicionLane: "",
       slangToAdapt: ["cooked"],
+      commentLanguageCues: ["cooked"],
       extractableSlang: ["cooked"],
       hiddenDetail: "detail",
       genericRisks: ["risk"],
@@ -3299,9 +3374,10 @@ test("selector prompt compacts examples instead of embedding full transcript-hea
       bottomEnergy: "dry humor",
       whyOldV6WouldWorkHere: "old v6",
       failureModes: ["generic"],
-      writerBrief: "brief",
-      selectedExampleIds: ["alpha_1"]
-    },
+        writerBrief: "brief",
+        selectedExampleIds: ["alpha_1"]
+      },
+    examplesAssessment: makeExamplesAssessment(),
     availableExamples: [
       {
         ...makeExample({
@@ -3365,7 +3441,12 @@ test("analyzer prompt carries transcript support and sequence-aware frame covera
       whyViewerCares: "the viewer waits for the reveal to fully land",
       bestBottomEnergy: "dry humor",
       commentVibe: "crowd reaction",
+      commentConsensusLane: "Consensus lane stays with the late visible failure.",
+      commentJokeLane: "Joke lane treats it like the truck was cooked from the start.",
+      commentDissentLane: "",
+      commentSuspicionLane: "",
       slangToAdapt: ["cooked"],
+      commentLanguageCues: ["that crack told the whole story", "cooked"],
       extractableSlang: ["cooked"],
       hiddenDetail: "the crack arrives before the collapse",
       genericRisks: ["generic failure talk"],
@@ -3379,6 +3460,71 @@ test("analyzer prompt carries transcript support and sequence-aware frame covera
   assert.match(prompt, /opening setup/);
   assert.match(prompt, /late aftermath/);
   assert.ok((prompt.match(/frame \d+:/g) ?? []).length <= 12);
+});
+
+test("analyzer prompt asks for mixed comment lanes and carries a compact comment digest", () => {
+  const prompt = buildAnalyzerPrompt(
+    {
+      channelId: "target",
+      name: "Target Channel",
+      username: "target_channel",
+      hardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      examplesSource: "workspace_default"
+    },
+    buildVideoContext({
+      sourceUrl: "https://example.com/celeb",
+      title: "Scarlett drops one line and the room melts down",
+      description: "A polished interview suddenly reads like a school-friends joke landing too hard.",
+      transcript: "She's so pretty. What? The room glitches and she stays calm.",
+      frameDescriptions: ["smiling answer", "group reaction", "calm aftermath"],
+      comments: [
+        { author: "fan_1", likes: 440, text: "she's so pretty still destroys the whole room" },
+        { author: "fan_2", likes: 318, text: "Lady Hemsworth is still the funniest one here" },
+        { author: "fan_3", likes: 210, text: "it feels staged honestly" }
+      ]
+    }),
+    {
+      visualAnchors: ["Scarlett smiling", "cast reaction"],
+      specificNouns: ["interview couch", "cast", "Scarlett"],
+      visibleActions: ["she answers", "the group reacts"],
+      subject: "cast interview",
+      action: "reacts",
+      setting: "press junket",
+      firstSecondsSignal: "a basic answer suddenly flips the room dynamic",
+      sceneBeats: ["question lands", "compliment slips out", "room melts down"],
+      revealMoment: "everyone else glitches while she stays composed",
+      lateClipChange: "the calm aftermath makes the teasing look intentional",
+      stakes: ["social read"],
+      payoff: "the room melts down around one light compliment",
+      coreTrigger: "a tiny compliment detonates the group chemistry",
+      humanStake: "everyone recognizes the friend-group malfunction instantly",
+      narrativeFrame: "a polished interview turning into a private joke",
+      whyViewerCares: "the clip humanizes celebrities through a painfully familiar social glitch",
+      bestBottomEnergy: "dry amused disbelief",
+      commentVibe: "fond chaos with some staged skepticism",
+      commentConsensusLane: "Consensus lane loves the friend-group malfunction.",
+      commentJokeLane: "Joke lane keeps using Lady Hemsworth as the punchline.",
+      commentDissentLane: "A smaller dissent lane says the whole beat feels staged.",
+      commentSuspicionLane: "Suspicion lane reads the blocking as too clean to be accidental.",
+      slangToAdapt: ["she's so pretty", "Lady Hemsworth"],
+      commentLanguageCues: ["she's so pretty", "Lady Hemsworth", "staged honestly"],
+      extractableSlang: ["she's so pretty", "Lady Hemsworth"],
+      hiddenDetail: "The calm aftermath is what sells the joke.",
+      genericRisks: ["flattening it into generic celebrity banter"],
+      uncertaintyNotes: [],
+      rawSummary: "A simple compliment turns the room into a friend-group glitch while she stays calm."
+    },
+    normalizeStage2PromptConfig({})
+  );
+
+  assert.match(prompt, /comment_consensus_lane/);
+  assert.match(prompt, /comment_joke_lane/);
+  assert.match(prompt, /comment_dissent_lane/);
+  assert.match(prompt, /comment_suspicion_lane/);
+  assert.match(prompt, /"commentDigest":/);
+  assert.match(prompt, /Consensus read/);
+  assert.match(prompt, /joke or meme lane/i);
+  assert.match(prompt, /dissent or pushback lane/i);
 });
 
 test("selector prompt uses a curated prompt pool instead of the entire active corpus", () => {
@@ -3482,6 +3628,332 @@ test("selector example pool downranks weak generic examples when richer metadata
   assert.ok(
     selectorPool.selectorExamples.every((example) => example.whyItWorks.length > 0 || example.qualityScore !== null)
   );
+});
+
+test("strong domain-near examples produce domain_guided retrieval with high confidence", () => {
+  const strongExamples = Array.from({ length: 8 }, (_, index) =>
+    makeExample({
+      id: `domain_${index + 1}`,
+      ownerChannelId: `mud_source_${(index % 4) + 1}`,
+      ownerChannelName: `Mud Source ${(index % 4) + 1}`,
+      title: `Truck axle crack in deep mud ${index + 1}`,
+      overlayTop: `The axle starts twisting before the mud even lets the truck breathe ${index + 1}`,
+      overlayBottom: `Everybody there already knows the next crack is going to get expensive ${index + 1}`,
+      clipType: "mechanical_failure",
+      whyItWorks: ["same trigger structure", "same crowd-side failure read"],
+      qualityScore: 0.93
+    })
+  );
+
+  const selectorPool = buildSelectorExamplePool({
+    examples: strongExamples,
+    queryText:
+      "truck axle crack deep mud wheel folds under load crowd hears it before the driver stops"
+  });
+
+  assert.equal(selectorPool.assessment.retrievalConfidence, "high");
+  assert.equal(selectorPool.assessment.examplesMode, "domain_guided");
+  assert.ok(selectorPool.stats.semanticGuidanceCount >= 2);
+  assert.match(selectorPool.assessment.explanation, /domain-near overlap/i);
+});
+
+test("structurally useful but semantically weak pools produce form_guided retrieval", () => {
+  const structuralExamples = Array.from({ length: 8 }, (_, index) =>
+    makeExample({
+      id: `form_${index + 1}`,
+      ownerChannelId: `awards_source_${(index % 4) + 1}`,
+      ownerChannelName: `Awards Source ${(index % 4) + 1}`,
+      title: `Awards lineup tension ${index + 1}`,
+      overlayTop: `The nominee board keeps stacking heavyweight names until the whole category feels unfair ${index + 1}`,
+      overlayBottom: `That lineup turns the reveal into social bloodsport ${index + 1}`,
+      clipType: "prestige_awards",
+      whyItWorks: ["strong top/bottom split", "late reveal compression"],
+      qualityScore: 0.92
+    })
+  );
+
+  const selectorPool = buildSelectorExamplePool({
+    examples: structuralExamples,
+    queryText:
+      "robot arm solder joint fails under load factory floor everyone hears the crack before it collapses"
+  });
+
+  assert.equal(selectorPool.assessment.retrievalConfidence, "medium");
+  assert.equal(selectorPool.assessment.examplesMode, "form_guided");
+  assert.ok(selectorPool.stats.formGuidanceCount >= 3);
+  assert.match(selectorPool.assessment.explanation, /structurally useful/i);
+});
+
+test("weak generic pools produce style_guided retrieval with truthful warning", () => {
+  const weakGenericExamples = Array.from({ length: 8 }, (_, index) =>
+    makeExample({
+      id: `weak_${index + 1}`,
+      ownerChannelId: "generic",
+      ownerChannelName: "Generic",
+      title: `Wild reaction clip ${index + 1}`,
+      overlayTop: `This whole thing gets crazy right away and everybody starts losing it ${index + 1}`,
+      overlayBottom: `That is one of those videos people keep replaying for the vibe ${index + 1}`,
+      clipType: "general",
+      whyItWorks: [],
+      qualityScore: 0.2
+    })
+  );
+
+  const selectorPool = buildSelectorExamplePool({
+    examples: weakGenericExamples,
+    queryText:
+      "robot arm solder joint fails under load factory floor everyone hears the crack before it collapses"
+  });
+
+  assert.equal(selectorPool.assessment.retrievalConfidence, "low");
+  assert.equal(selectorPool.assessment.examplesMode, "style_guided");
+  assert.match(selectorPool.assessment.retrievalWarning ?? "", /did not find strong domain-near examples/i);
+});
+
+test("selector prompt changes behavior by examples mode instead of treating every pool as semantic guidance", () => {
+  const service = new ViralShortsWorkerService();
+  const formOnlyExamples = Array.from({ length: 6 }, (_, index) =>
+    makeExample({
+      id: `form_prompt_${index + 1}`,
+      ownerChannelId: `awards_prompt_${(index % 3) + 1}`,
+      ownerChannelName: `Awards Prompt ${(index % 3) + 1}`,
+      title: `Awards reveal rhythm ${index + 1}`,
+      overlayTop: `The lineup keeps stacking names until the reveal feels socially brutal ${index + 1}`,
+      overlayBottom: `That board turns a normal category into a public execution ${index + 1}`,
+      clipType: "prestige_awards",
+      whyItWorks: ["tight reveal compression", "strong top/bottom pacing"],
+      qualityScore: 0.9
+    })
+  );
+
+  const packet = service.buildPromptPacket({
+    channel: {
+      id: "target",
+      name: "Target Channel",
+      username: "target_channel",
+      stage2ExamplesConfig: {
+        version: 1,
+        useWorkspaceDefault: false,
+        customExamples: formOnlyExamples
+      },
+      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/factory",
+      title: "Robot arm joint snaps under load",
+      description: "The factory floor clip ends with the arm giving way once the pressure shifts.",
+      transcript: "Everyone hears the crack before the arm finally drops.",
+      frameDescriptions: ["robot arm strains", "joint gives way"],
+      comments: [{ author: "viewer", likes: 9, text: "you could hear that joint begging for mercy" }]
+    }),
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+
+  assert.match(packet.prompts.selector, /"examplesMode": "form_guided"/);
+  assert.match(packet.prompts.selector, /form guidance/i);
+  assert.match(packet.prompts.selector, /do not let example nouns or background assumptions overrule the actual clip/i);
+});
+
+test("writer and critic prompts guard against wrong-market borrowing in low-confidence runs", async () => {
+  const weakGenericExamples = Array.from({ length: 8 }, (_, index) =>
+    makeExample({
+      id: `weak_prompt_${index + 1}`,
+      ownerChannelId: "generic",
+      ownerChannelName: "Generic",
+      title: `Wild reaction clip ${index + 1}`,
+      overlayTop: `This whole thing gets crazy right away and everybody starts losing it ${index + 1}`,
+      overlayBottom: `That is one of those videos people keep replaying for the vibe ${index + 1}`,
+      clipType: "general",
+      whyItWorks: [],
+      qualityScore: 0.2
+    })
+  );
+
+  const { executor, result } = await runSuccessfulPipeline({
+    stage2ExamplesConfig: {
+      version: 1,
+      useWorkspaceDefault: false,
+      customExamples: weakGenericExamples
+    },
+    selectedExampleIds: weakGenericExamples.slice(0, 3).map((example) => example.id),
+    selectorResponse: {
+      selected_example_ids: weakGenericExamples.slice(0, 3).map((example) => example.id)
+    }
+  });
+
+  const writerCall = executor.calls[2];
+  const criticCall = executor.calls[3];
+
+  assert.equal(result.diagnostics.examples.examplesMode, "style_guided");
+  assert.equal(result.diagnostics.examples.retrievalConfidence, "low");
+  assert.match(writerCall?.prompt ?? "", /"examplesMode": "style_guided"/);
+  assert.match(writerCall?.prompt ?? "", /Never import nouns, setting, causal logic, or market assumptions from weak examples/i);
+  assert.match(writerCall?.prompt ?? "", /bootstrap channel style directions/i);
+  assert.match(criticCall?.prompt ?? "", /candidate borrows the wrong market/i);
+  assert.match(criticCall?.prompt ?? "", /Good form is not enough if the semantics were imported from a weak example pool/i);
+});
+
+test("writer, critic, rewriter, and final selector prompts carry comment lanes plus batch sameness signals", () => {
+  const channelConfig = {
+    channelId: "target",
+    name: "Target Channel",
+    username: "target_channel",
+    hardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+    examplesSource: "workspace_default" as const
+  };
+  const analyzerOutput = {
+    visualAnchors: ["cast reaction", "calm aftermath"],
+    specificNouns: ["interview couch", "cast", "Scarlett"],
+    visibleActions: ["group glitches", "she stays calm"],
+    subject: "celebrity interview",
+    action: "reacts",
+    setting: "press junket",
+    firstSecondsSignal: "a simple answer already feels too loaded",
+    sceneBeats: ["question lands", "compliment lands", "room melts down"],
+    revealMoment: "everyone else glitches while she stays composed",
+    lateClipChange: "the calm aftermath makes it funnier",
+    stakes: ["social read"],
+    payoff: "the room melts down over one line",
+    coreTrigger: "one compliment detonates the group chemistry",
+    humanStake: "everyone recognizes the social glitch immediately",
+    narrativeFrame: "a tiny friend-group malfunction in a polished interview",
+    whyViewerCares: "it turns polished celebrity footage into a painfully familiar social beat",
+    bestBottomEnergy: "dry amused disbelief",
+    commentVibe: "fond chaos with some staged skepticism",
+    commentConsensusLane: "Consensus lane loves the group malfunction.",
+    commentJokeLane: "Joke lane keeps using Lady Hemsworth as the punchline.",
+    commentDissentLane: "A smaller lane says the whole thing feels staged.",
+    commentSuspicionLane: "Suspicion lane thinks the blocking is too clean to be accidental.",
+    slangToAdapt: ["Lady Hemsworth"],
+    commentLanguageCues: ["Lady Hemsworth", "she's so pretty"],
+    extractableSlang: ["Lady Hemsworth"],
+    hiddenDetail: "Her calm face after the line is the whole payoff.",
+    genericRisks: ["flattening it into generic celebrity banter"],
+    uncertaintyNotes: [],
+    rawSummary: "A single compliment lands, the room glitches, and she stays calm."
+  };
+  const selectorOutput = {
+    clipType: "celebrity interview glitch",
+    primaryAngle: "shared_experience",
+    secondaryAngles: ["warmth_reverence", "payoff_reveal"],
+    rankedAngles: [
+      { angle: "shared_experience", score: 9.4, why: "the social glitch is instantly readable" },
+      { angle: "warmth_reverence", score: 8.9, why: "the line still feels fond" },
+      { angle: "payoff_reveal", score: 8.3, why: "the aftermath reframes the first beat" }
+    ],
+    coreTrigger: "one teasing compliment detonates the group chemistry",
+    humanStake: "everyone recognizes the social glitch immediately",
+    narrativeFrame: "a polished interview turning into a private joke",
+    whyViewerCares: "it turns celebrity distance into a familiar human glitch",
+    topStrategy: "contrast-first context compression",
+    bottomEnergy: "dry amused disbelief",
+    whyOldV6WouldWorkHere: "it would lock onto the exact second the room glitches",
+    failureModes: ["generic celebrity banter", "bottom repeating the top"],
+    writerBrief: "Frame the compliment as a tiny social detonation and keep the bottom clip-specific.",
+    rationale: "The social glitch is the whole reason the clip works.",
+    selectedExampleIds: ["example_1"],
+    retrievalConfidence: "low" as const,
+    examplesMode: "style_guided" as const,
+    examplesRoleSummary: "Examples are weak support only.",
+    primaryDriverSummary: "Clip truth and channel learning carry the run."
+  };
+  const examplesAssessment = makeExamplesAssessment({
+    retrievalConfidence: "low",
+    examplesMode: "style_guided",
+    explanation: "No strong domain-near examples exist for this clip family.",
+    retrievalWarning: "Examples are weak support only for this run."
+  });
+  const candidates = [
+    {
+      candidateId: "cand_1",
+      angle: "shared_experience",
+      top: "A basic hair-and-makeup answer turns into a full cast glitch the second Scarlett says it.",
+      bottom: "\"Lady Hemsworth\" is funny because she says it and then lets the room panic for her.",
+      topRu: "Обычный ответ про грим внезапно ломает весь состав, как только это говорит Скарлетт.",
+      bottomRu: "\"Lady Hemsworth\" смешно именно потому, что она это бросает и даёт комнате паниковать самой.",
+      rationale: "comment-language version",
+      styleDirectionIds: ["core_lane"],
+      explorationMode: "aligned" as const
+    },
+    {
+      candidateId: "cand_2",
+      angle: "shared_experience",
+      top: "A routine junket answer somehow turns into the exact kind of group-chat joke that ruins everyone else.",
+      bottom: "\"She's so pretty\" lands once and then the reaction basically writes itself.",
+      topRu: "Рутинный junket-ответ внезапно превращается в тот самый групповой прикол, который ломает всех остальных.",
+      bottomRu: "\"She's so pretty\" звучит один раз, а дальше реакция будто пишет себя сама.",
+      rationale: "generic-tail version",
+      styleDirectionIds: ["core_lane"],
+      explorationMode: "aligned" as const
+    },
+    {
+      candidateId: "cand_3",
+      angle: "warmth_reverence",
+      top: "The line is light, but the room reads it like she just flipped the entire seating chart.",
+      bottom: "The whole room feels it immediately, and she still looks like this was the safest sentence in the world.",
+      topRu: "Фраза лёгкая, но комната читает её так, будто она перевернула всю рассадку.",
+      bottomRu: "Это сразу чувствует вся комната, а она всё ещё выглядит так, будто сказала самую безопасную фразу в мире.",
+      rationale: "another generic-tail version",
+      styleDirectionIds: ["adjacent_lane"],
+      explorationMode: "exploratory" as const
+    }
+  ];
+
+  const writerPrompt = buildWriterPrompt({
+    channelConfig,
+    analyzerOutput,
+    selectorOutput,
+    examplesAssessment,
+    userInstruction: null,
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+  const criticPrompt = buildCriticPrompt({
+    channelConfig,
+    analyzerOutput,
+    selectorOutput,
+    examplesAssessment,
+    candidates,
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+  const rewriterPrompt = buildRewriterPrompt({
+    channelConfig,
+    analyzerOutput,
+    selectorOutput,
+    examplesAssessment,
+    candidates,
+    criticScores: candidates.map((candidate, index) => ({
+      candidateId: candidate.candidateId,
+      scores: makeCriticScoreMap(index),
+      total: 9 - index * 0.2,
+      issues: [],
+      keep: true
+    })),
+    userInstruction: null,
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+  const finalSelectorPrompt = buildFinalSelectorPrompt({
+    channelConfig,
+    analyzerOutput,
+    selectorOutput,
+    examplesAssessment,
+    candidates,
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+
+  assert.match(writerPrompt, /commentConsensusLane/);
+  assert.match(writerPrompt, /commentJokeLane/);
+  assert.match(writerPrompt, /commentLanguageCues/);
+  assert.match(writerPrompt, /stock continuations/i);
+  assert.match(criticPrompt, /"candidateSetSignals":/);
+  assert.match(criticPrompt, /"genericTailCandidateIds": \[/);
+  assert.match(criticPrompt, /"repeatedBottomTailSignatures": \[/);
+  assert.match(criticPrompt, /"examplesMode": "style_guided"/);
+  assert.match(rewriterPrompt, /"candidateSetSignals":/);
+  assert.match(rewriterPrompt, /"explorationMode": "exploratory"/);
+  assert.match(finalSelectorPrompt, /"candidateSetSignals":/);
+  assert.match(finalSelectorPrompt, /"styleDirectionIds": \[/);
+  assert.match(finalSelectorPrompt, /"explorationMode": "exploratory"/);
 });
 
 test("buildPromptPacket keeps comments-aware slang and suspicion details in analyzer context", () => {
@@ -3702,6 +4174,50 @@ test("no-comments fallback stays truthful and preserves analyzer sequence diagno
   );
 });
 
+test("comments diagnostics distinguish primary success, fallback success, and unavailable states", async () => {
+  const primary = await fetchCommentsForUrl("https://www.youtube.com/watch?v=abc123XYZ89", {
+    youtubeApiProvider: async () => makeCommentsPayload("primary"),
+    ytDlpProvider: async () => makeCommentsPayload("fallback")
+  });
+  const fallback = await fetchCommentsForUrl("https://www.youtube.com/watch?v=abc123XYZ89", {
+    youtubeApiProvider: async () => {
+      throw new YouTubeCommentsApiError({
+        code: "quota_exceeded",
+        message: "API quota exceeded",
+        retryable: true,
+        status: 403
+      });
+    },
+    ytDlpProvider: async () => makeCommentsPayload("fallback")
+  });
+  const unavailable = await fetchCommentsForUrl("https://www.youtube.com/watch?v=abc123XYZ89", {
+    youtubeApiProvider: async () => {
+      throw new YouTubeCommentsApiError({
+        code: "comments_disabled",
+        message: "Комментарии отключены для этого YouTube-видео.",
+        retryable: false,
+        status: 403
+      });
+    },
+    ytDlpProvider: async () => makeCommentsPayload("unused")
+  });
+
+  assert.equal(primary.status, "primary_success");
+  assert.equal(primary.provider, "youtubeDataApi");
+  assert.equal(primary.fallbackUsed, false);
+  assert.match(primary.note ?? "", /YouTube Data API/i);
+
+  assert.equal(fallback.status, "fallback_success");
+  assert.equal(fallback.provider, "ytDlp");
+  assert.equal(fallback.fallbackUsed, true);
+  assert.match(fallback.note ?? "", /резервный путь yt-dlp/i);
+
+  assert.equal(unavailable.status, "unavailable");
+  assert.equal(unavailable.provider, null);
+  assert.equal(unavailable.fallbackUsed, false);
+  assert.match(unavailable.note ?? "", /Комментарии отключены/i);
+});
+
 test("analyzer normalization keeps structured arrays clean and preserves comment-derived detail", async () => {
   const { result } = await runSuccessfulPipeline({
     comments: [
@@ -3801,19 +4317,31 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(analyzerResolved.defaultPrompt, /uncertainty_notes/);
   assert.match(analyzerResolved.defaultPrompt, /core_trigger/);
   assert.match(analyzerResolved.defaultPrompt, /best_bottom_energy/);
+  assert.match(analyzerResolved.defaultPrompt, /comment_consensus_lane/);
+  assert.match(analyzerResolved.defaultPrompt, /comment_joke_lane/);
+  assert.match(analyzerResolved.defaultPrompt, /comment_dissent_lane/);
+  assert.match(analyzerResolved.defaultPrompt, /comment_suspicion_lane/);
   assert.match(analyzerResolved.defaultPrompt, /Sequence Awareness Rule/);
   assert.match(selectorResolved.defaultPrompt, /primary_angle/);
   assert.match(selectorResolved.defaultPrompt, /top_strategy/);
   assert.match(selectorResolved.defaultPrompt, /why_old_v6_would_work_here/);
   assert.match(selectorResolved.defaultPrompt, /failure_modes/);
+  assert.match(selectorResolved.defaultPrompt, /Comments should shape stance, not replace visual truth/);
   assert.match(writerResolved.defaultPrompt, /Context Compression Rule/);
   assert.match(writerResolved.defaultPrompt, /Must explain why the viewer should care/);
   assert.match(writerResolved.defaultPrompt, /Quoted openers are optional/);
+  assert.match(writerResolved.defaultPrompt, /stock continuations/i);
+  assert.match(writerResolved.defaultPrompt, /Do not let the batch collapse into one repeated bottom rhythm/i);
   assert.doesNotMatch(writerResolved.defaultPrompt, /Must begin with one quoted sentence/);
+  assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /Batch audit rules/);
+  assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /polished-but-interchangeable bottoms/i);
   assert.match(writerResolved.defaultPrompt, /top_ru/);
   assert.match(writerResolved.defaultPrompt, /bottom_ru/);
   assert.match(rewriterResolved.defaultPrompt, /top_ru/);
   assert.match(rewriterResolved.defaultPrompt, /bottom_ru/);
+  assert.match(rewriterResolved.defaultPrompt, /Never leave a tightening fragment or broken truncation behind/i);
+  assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /style_direction_ids/i);
+  assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /exploration_mode/i);
   assert.match(titlesResolved.defaultPrompt, /title_ru/);
   assert.match(titlesResolved.defaultPrompt, /real Russian/);
   assert.match(seoResolved.defaultPrompt, /Search terms and topics covered:/);
@@ -3912,15 +4440,16 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
     )
   );
 
-  assert.match(html, /Как этот run реально устроен/);
-  assert.match(html, /Analyzer read/);
-  assert.match(html, /Active corpus \+ selector picks/);
-  assert.match(html, /selector picked 3/);
-  assert.match(html, /selector saw 5/);
+  assert.match(html, /Как этот запуск реально устроен/);
+  assert.match(html, /Чтение клипа анализатором/);
+  assert.match(html, /Активный корпус и выбор селектора/);
+  assert.match(html, /селектор выбрал 3/);
+  assert.match(html, /селектор увидел 5/);
+  assert.match(html, /Retrieval режим/);
   assert.match(html, /Target Channel/);
   assert.match(html, /Truck axle snaps in the mud/);
-  assert.match(html, /Core trigger:/);
-  assert.match(html, /Selector rationale/);
+  assert.match(html, /Главный триггер:/);
+  assert.match(html, /Почему селектор выбрал это/);
   assert.ok(!/hot pool/i.test(html));
   assert.ok(!/stable \+ hot \+ anti/i.test(html));
 });
@@ -4052,7 +4581,7 @@ test("legacy diagnostics payload from older runs does not crash the Stage 2 UI",
 
   assert.match(html, /Science Snack|Legacy Channel/);
   assert.match(html, /Legacy stable example/);
-  assert.match(html, /Effective prompts/);
+  assert.match(html, /Эффективные промпты/);
 });
 
 test("step 2 keeps an attached running run informational instead of rendering it as a blocking error", () => {
@@ -4108,7 +4637,7 @@ test("step 2 keeps an attached running run informational instead of rendering it
   );
 
   assert.match(html, /Stage 2 уже выполняется в фоне/);
-  assert.match(html, /Результат этого run еще не готов/);
+  assert.match(html, /Результат этого запуска ещё не готов/);
   assert.doesNotMatch(html, /Результат второго этапа пуст\. Сначала запустите второй этап/);
   assert.doesNotMatch(html, /danger-text[^>]*>Для этого чата уже идёт Stage 2/);
 });
@@ -4187,7 +4716,7 @@ test("step 2 marks future stages as not started after a shortlist failure instea
 
   assert.match(html, /Последний запуск остановился на этапе, отмеченном ниже/);
   assert.match(html, /Не запускался/);
-  assert.match(html, /Этот этап не запускался, потому что run завершился ошибкой на предыдущем шаге/);
+  assert.match(html, /Этот этап не запускался, потому что запуск завершился ошибкой на предыдущем шаге/);
   assert.doesNotMatch(html, /Generating titles/);
   assert.doesNotMatch(html, /Generating SEO/);
 });
@@ -4436,7 +4965,14 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
       sceneBeats: ["truck digs into mud", "axle twists", "rear corner drops"],
       revealMoment: "The wheel folds inward and the failure becomes obvious.",
       lateClipChange: "The truck stops reading as stuck and starts reading as broken.",
+      whyViewerCares: "The failure is visible before the run fully ends.",
+      bestBottomEnergy: "dry mechanic disbelief",
       commentVibe: "Mechanical disaster with instant crowd recognition.",
+      commentConsensusLane: "Consensus lane stays on the visible axle failure.",
+      commentJokeLane: "Joke lane frames it like the truck was cooked from the first push.",
+      commentDissentLane: "",
+      commentSuspicionLane: "",
+      commentLanguageCues: ["cooked", "that axle was done"],
       uncertaintyNotes: [],
       rawSummary: "A mud run turns into a visible axle failure once the rear corner collapses."
     },
@@ -4462,6 +4998,21 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
       workspaceCorpusCount: 8,
       activeCorpusCount: 3,
       selectorCandidateCount: 3,
+      retrievalConfidence: "medium",
+      examplesMode: "form_guided",
+      explanation: "Examples are structurally useful but only partially domain-near.",
+      evidence: ["0/3 top examples are strong semantic guides", "3/3 remain structurally useful"],
+      retrievalWarning: "Examples are being used mainly for form guidance.",
+      examplesRoleSummary: "Examples help with structure more than semantics.",
+      primaryDriverSummary: "Clip truth and channel learning carry more weight than retrieval.",
+      primaryDrivers: [
+        "actual clip truth",
+        "bootstrap channel style directions",
+        "rolling editorial memory",
+        "retrieval examples as form guidance"
+      ],
+      channelStylePriority: "elevated",
+      editorialMemoryPriority: "elevated",
       availableExamples: [],
       selectedExamples: []
     }
@@ -4562,6 +5113,10 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
   assert.equal(result.output.titleOptions[1]?.title, baseStage2.output.titleOptions[1]?.title);
   assert.match(result.warnings.map((warning) => warning.message).join(" "), /SEO reused from base run/);
   assert.match(result.warnings.map((warning) => warning.message).join(" "), /restored from the base run/);
+  assert.match(promptText, /Preserve style_direction_ids and exploration_mode/i);
+  assert.match(promptText, /Remove stock tails like 'the reaction basically writes itself'/i);
+  assert.match(promptText, /"retrievalContext":/);
+  assert.match(promptText, /"analysisContext":/);
   assert.ok(
     result.diagnostics?.effectivePrompting.promptStages.some((stage) => stage.stageId === "regenerate")
   );
@@ -5355,6 +5910,10 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       commentsAvailable: true,
       commentsError: null,
       commentsPayload,
+      commentsAcquisitionStatus: "fallback_success",
+      commentsAcquisitionProvider: "ytDlp",
+      commentsAcquisitionNote:
+        "Основной YouTube-провайдер комментариев был недоступен, поэтому комментарии успешно получены через резервный путь yt-dlp.",
       autoStage2RunId: null
     });
     await chatHistory.appendChatEvent(chat.id, {
@@ -5389,7 +5948,14 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         sceneBeats: ["header appears", "names stack", "reaction lands"],
         revealMoment: "The stacked field turns the reveal into a social bloodbath.",
         lateClipChange: "The social meaning gets clearer as the lineup fills out.",
+        whyViewerCares: "The reveal turns a simple lineup into a social read people instantly argue over.",
+        bestBottomEnergy: "dry social side-eye",
         commentVibe: "design disbelief and social irritation",
+        commentConsensusLane: "Consensus lane treats the reveal like a social bloodbath.",
+        commentJokeLane: "Joke lane sharpens the lineup into a punchline.",
+        commentDissentLane: "",
+        commentSuspicionLane: "",
+        commentLanguageCues: ["social bloodbath"],
         uncertaintyNotes: ["This fixture focuses on export truthfulness, not full scene coverage."],
         rawSummary: "A display-driven clip escalates as the lineup fills in and the social reaction becomes obvious."
       },
@@ -5398,6 +5964,21 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         workspaceCorpusCount: 5,
         activeCorpusCount: 5,
         selectorCandidateCount: 1,
+        retrievalConfidence: "medium",
+        examplesMode: "form_guided",
+        explanation: "Examples are structurally useful but not strong domain-near guides for this clip family.",
+        evidence: ["0/1 top examples are domain-near", "1/1 remains structurally useful"],
+        retrievalWarning: "Examples are being used mainly for form guidance.",
+        examplesRoleSummary: "Examples help with structure more than semantics.",
+        primaryDriverSummary: "Clip truth and channel learning carry more weight than retrieval.",
+        primaryDrivers: [
+          "actual clip truth",
+          "bootstrap channel style directions",
+          "rolling editorial memory",
+          "retrieval examples as form guidance"
+        ],
+        channelStylePriority: "elevated",
+        editorialMemoryPriority: "elevated",
         availableExamples: [
           {
             id: "example_available",
@@ -5411,6 +5992,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
             retrievalReasons: ["same trigger structure"],
             qualityScore: 0.91,
             retrievalScore: 0.86,
+            guidanceRole: "form_guidance",
             sampleKind: "workspace_default"
           }
         ],
@@ -5427,6 +6009,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
             retrievalReasons: ["good top/bottom split"],
             qualityScore: 0.98,
             retrievalScore: 0.94,
+            guidanceRole: "form_guidance",
             sampleKind: "workspace_default"
           }
         ]
@@ -5459,7 +6042,12 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         topComments: comments,
         allComments: comments,
         commentsUsedForPrompt: 15,
-        downloadProvider: "ytDlp"
+        downloadProvider: "ytDlp",
+        commentsAcquisitionStatus: "fallback_success",
+        commentsAcquisitionProvider: "ytDlp",
+        commentsAcquisitionNote:
+          "Основной YouTube-провайдер комментариев был недоступен, поэтому комментарии успешно получены через резервный путь yt-dlp.",
+        commentsExtractionFallbackUsed: true
       },
       diagnostics: {
         ...baseDiagnostics,
@@ -5488,7 +6076,11 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         topComments: comments,
         allComments: comments,
         commentsUsedForPrompt: 15,
-        downloadProvider: "visolix"
+        downloadProvider: "visolix",
+        commentsAcquisitionStatus: "primary_success",
+        commentsAcquisitionProvider: "youtubeDataApi",
+        commentsAcquisitionNote: "Комментарии загружены через YouTube Data API.",
+        commentsExtractionFallbackUsed: false
       },
       diagnostics: {
         ...baseDiagnostics,
@@ -5615,6 +6207,9 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.equal(trace?.comments.totalComments, 20);
     assert.equal(trace?.comments.includedCount, 15);
     assert.equal(trace?.comments.items.length, 15);
+    assert.equal(trace?.comments.status, "fallback_success");
+    assert.equal(trace?.comments.provider, "ytDlp");
+    assert.equal(trace?.comments.fallbackUsed, true);
     assert.equal(trace?.sourceJobs.length, 1);
     assert.equal(trace?.sourceJobs[0]?.request.trigger, "fetch");
     assert.equal(trace?.stage2.runs.length, 2);
@@ -5625,12 +6220,17 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.equal(trace?.stage2.currentResult?.output.finalPick.reason, "Final pick for selected");
     assert.equal(trace?.stage2.currentResult?.source.topComments.length, 15);
     assert.equal(trace?.stage2.currentResult?.source.allComments.length, 15);
+    assert.equal(trace?.source.commentsAcquisitionStatus, "fallback_success");
+    assert.equal(trace?.source.commentsAcquisitionProvider, "ytDlp");
+    assert.equal(trace?.source.commentsFallbackUsed, true);
     assert.equal(trace?.stage2.analysis?.revealMoment, baseDiagnostics.analysis.revealMoment);
     assert.deepEqual(trace?.stage2.analysis?.sceneBeats, baseDiagnostics.analysis.sceneBeats);
     assert.equal(
       trace?.stage2.effectivePrompting?.promptStages[0]?.promptText,
       "SELECTOR FULL PROMPT WITH CONTEXT"
     );
+    assert.equal(trace?.stage2.examples?.examplesMode, "form_guided");
+    assert.equal(trace?.stage2.examples?.retrievalConfidence, "medium");
     assert.equal(trace?.stage2.examples?.selectedExamples.length, 1);
     assert.equal(trace?.stage3.handoff.selectedCaptionOption, 2);
     assert.equal(trace?.stage3.handoff.defaultCaptionOption, 1);

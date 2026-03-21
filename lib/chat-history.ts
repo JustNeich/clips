@@ -18,6 +18,12 @@ import {
   stringifyStage2ExamplesConfig,
   stringifyStage2HardConstraints
 } from "./stage2-channel-config";
+import {
+  DEFAULT_STAGE2_STYLE_PROFILE,
+  parseStage2StyleProfileJson,
+  stringifyStage2StyleProfile,
+  type Stage2StyleProfile
+} from "./stage2-channel-learning";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
 import { getWorkspace, getWorkspaceStage2HardConstraints } from "./team-store";
@@ -80,6 +86,7 @@ export type Channel = {
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
+  stage2StyleProfile: Stage2StyleProfile;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
@@ -182,6 +189,9 @@ function mapChannel(row: Record<string, unknown>): Channel {
       : DEFAULT_STAGE2_HARD_CONSTRAINTS,
     stage2PromptConfig: parseStage2PromptConfigJson(
       row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null
+    ),
+    stage2StyleProfile: parseStage2StyleProfileJson(
+      row.stage2_style_profile_json ? String(row.stage2_style_profile_json) : null
     ),
     templateId: sanitizeName(String(row.template_id ?? ""), DEFAULT_TEMPLATE_ID),
     avatarAssetId: row.avatar_asset_id ? String(row.avatar_asset_id) : null,
@@ -342,6 +352,7 @@ export async function createChannel(input: {
   stage2ExamplesConfig?: Stage2ExamplesConfig;
   stage2HardConstraints?: Stage2HardConstraints;
   stage2PromptConfig?: Stage2PromptConfig;
+  stage2StyleProfile?: Stage2StyleProfile;
   templateId?: string;
 }): Promise<Channel> {
   const now = nowIso();
@@ -371,6 +382,9 @@ export async function createChannel(input: {
     stage2PromptConfig: input.stage2PromptConfig
       ? parseStage2PromptConfigJson(stringifyStage2PromptConfig(input.stage2PromptConfig))
       : DEFAULT_STAGE2_PROMPT_CONFIG,
+    stage2StyleProfile: input.stage2StyleProfile
+      ? parseStage2StyleProfileJson(stringifyStage2StyleProfile(input.stage2StyleProfile))
+      : DEFAULT_STAGE2_STYLE_PROFILE,
     templateId: sanitizeName(input.templateId, DEFAULT_TEMPLATE_ID),
     avatarAssetId: null,
     defaultBackgroundAssetId: null,
@@ -391,8 +405,8 @@ export async function createChannel(input: {
   const db = getDb();
   db.prepare(
     `INSERT INTO channels
-    (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_examples_config_json, stage2_hard_constraints_json, stage2_prompt_config_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)`
+    (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_examples_config_json, stage2_hard_constraints_json, stage2_prompt_config_json, stage2_style_profile_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)`
   ).run(
     channel.id,
     channel.workspaceId,
@@ -409,6 +423,7 @@ export async function createChannel(input: {
     }),
     stringifyStage2HardConstraints(channel.stage2HardConstraints),
     stringifyStage2PromptConfig(channel.stage2PromptConfig),
+    stringifyStage2StyleProfile(channel.stage2StyleProfile),
     channel.templateId,
     channel.createdAt,
     channel.updatedAt
@@ -428,6 +443,7 @@ export async function updateChannelById(
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
     stage2PromptConfig: Stage2PromptConfig;
+    stage2StyleProfile: Stage2StyleProfile;
     templateId: string;
     avatarAssetId: string | null;
     defaultBackgroundAssetId: string | null;
@@ -479,6 +495,10 @@ export async function updateChannelById(
       "stage2PromptConfig" in patch && patch.stage2PromptConfig
         ? parseStage2PromptConfigJson(stringifyStage2PromptConfig(patch.stage2PromptConfig))
         : channel.stage2PromptConfig,
+    stage2StyleProfile:
+      "stage2StyleProfile" in patch && patch.stage2StyleProfile
+        ? parseStage2StyleProfileJson(stringifyStage2StyleProfile(patch.stage2StyleProfile))
+        : channel.stage2StyleProfile,
     templateId:
       typeof patch.templateId === "string"
         ? sanitizeName(patch.templateId, channel.templateId)
@@ -516,6 +536,7 @@ export async function updateChannelById(
       stage2_examples_config_json = ?,
       stage2_hard_constraints_json = ?,
       stage2_prompt_config_json = ?,
+      stage2_style_profile_json = ?,
       template_id = ?,
       avatar_asset_id = ?,
       default_background_asset_id = ?,
@@ -535,6 +556,7 @@ export async function updateChannelById(
     }),
     stringifyStage2HardConstraints(next.stage2HardConstraints),
     stringifyStage2PromptConfig(next.stage2PromptConfig),
+    stringifyStage2StyleProfile(next.stage2StyleProfile),
     next.templateId,
     next.avatarAssetId,
     next.defaultBackgroundAssetId,

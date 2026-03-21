@@ -84,6 +84,12 @@ export type SourceMetadataResult = {
 export type OptionalYtDlpInfoResult = {
   infoJson: { title?: string; description?: string; transcript?: string; comments?: unknown } | null;
   commentsExtractionFallbackUsed: boolean;
+  commentsAcquisition: {
+    status: "primary_success" | "fallback_success" | "unavailable";
+    provider: "youtubeDataApi" | "ytDlp" | null;
+    note: string | null;
+    error: string | null;
+  };
 };
 
 function asTrimmedString(value: unknown): string | null {
@@ -116,6 +122,15 @@ function asPositiveNumber(value: unknown): number | null {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createCommentsAcquisition(input?: Partial<OptionalYtDlpInfoResult["commentsAcquisition"]>) {
+  return {
+    status: input?.status ?? "unavailable",
+    provider: input?.provider ?? null,
+    note: input?.note ?? null,
+    error: input?.error ?? null
+  } satisfies OptionalYtDlpInfoResult["commentsAcquisition"];
 }
 
 function getVisolixApiKey(): string | null {
@@ -587,7 +602,13 @@ export async function fetchOptionalYtDlpInfo(
   if (!ytDlpPath) {
     return {
       infoJson: null,
-      commentsExtractionFallbackUsed: true
+      commentsExtractionFallbackUsed: true,
+      commentsAcquisition: createCommentsAcquisition({
+        status: "unavailable",
+        provider: null,
+        note: "Локальный yt-dlp недоступен, поэтому comments metadata path не смог сработать.",
+        error: "yt-dlp недоступен для извлечения комментариев."
+      })
     };
   }
 
@@ -625,7 +646,14 @@ export async function fetchOptionalYtDlpInfo(
     } catch {
       return {
         infoJson: null,
-        commentsExtractionFallbackUsed: true
+        commentsExtractionFallbackUsed: true,
+        commentsAcquisition: createCommentsAcquisition({
+          status: "unavailable",
+          provider: null,
+          note:
+            "yt-dlp не смог извлечь комментарии и не смог даже перейти в metadata-only режим без комментариев.",
+          error: "yt-dlp не смог получить комментарии."
+        })
       };
     }
   }
@@ -634,7 +662,15 @@ export async function fetchOptionalYtDlpInfo(
   if (!infoJson) {
     return {
       infoJson: null,
-      commentsExtractionFallbackUsed
+      commentsExtractionFallbackUsed,
+      commentsAcquisition: createCommentsAcquisition({
+        status: "unavailable",
+        provider: null,
+        note: commentsExtractionFallbackUsed
+          ? "yt-dlp смог получить только metadata fallback без пригодного comments payload."
+          : "yt-dlp не вернул пригодные metadata для comments payload.",
+        error: "Комментарии недоступны в metadata artifacts."
+      })
     };
   }
 
@@ -647,7 +683,23 @@ export async function fetchOptionalYtDlpInfo(
       transcript: transcript || undefined,
       comments
     },
-    commentsExtractionFallbackUsed
+    commentsExtractionFallbackUsed,
+    commentsAcquisition: comments.length > 0
+      ? createCommentsAcquisition({
+          status: "primary_success",
+          provider: "ytDlp",
+          note: commentsExtractionFallbackUsed
+            ? "Комментарии извлечены через yt-dlp metadata path после частичного fallback внутри yt-dlp."
+            : "Комментарии извлечены через yt-dlp metadata path."
+        })
+      : createCommentsAcquisition({
+          status: "unavailable",
+          provider: commentsExtractionFallbackUsed ? null : "ytDlp",
+          note: commentsExtractionFallbackUsed
+            ? "yt-dlp перешёл в metadata-only fallback и подготовил ролик без комментариев."
+            : "yt-dlp metadata path завершился без комментариев.",
+          error: "Комментарии для этого источника недоступны."
+        })
   };
 }
 
@@ -704,7 +756,13 @@ async function fetchOptionalYouTubeInfo(
   if (!title && !description && !transcript && comments.length === 0) {
     return {
       infoJson: null,
-      commentsExtractionFallbackUsed: commentsResult.fallbackUsed
+      commentsExtractionFallbackUsed: commentsResult.fallbackUsed,
+      commentsAcquisition: createCommentsAcquisition({
+        status: commentsResult.status,
+        provider: commentsResult.provider,
+        note: commentsResult.note,
+        error: commentsResult.error
+      })
     };
   }
 
@@ -715,6 +773,12 @@ async function fetchOptionalYouTubeInfo(
       transcript: transcript || undefined,
       comments
     },
-    commentsExtractionFallbackUsed: commentsResult.fallbackUsed
+    commentsExtractionFallbackUsed: commentsResult.fallbackUsed,
+    commentsAcquisition: createCommentsAcquisition({
+      status: commentsResult.payload && comments.length > 0 ? commentsResult.status : "unavailable",
+      provider: commentsResult.payload && comments.length > 0 ? commentsResult.provider : commentsResult.provider,
+      note: commentsResult.note,
+      error: commentsResult.payload && comments.length > 0 ? null : commentsResult.error
+    })
   };
 }

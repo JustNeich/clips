@@ -3,6 +3,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Stage2Response, Stage2RunStatus, Stage2RunSummary } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
+import {
+  createEmptyStage2EditorialMemorySummary,
+  DEFAULT_STAGE2_STYLE_PROFILE,
+  normalizeStage2EditorialMemorySummary,
+  normalizeStage2StyleProfile
+} from "../../lib/stage2-channel-learning";
 
 type Step2PickCaptionProps = {
   channelName?: string | null;
@@ -20,6 +26,7 @@ type Step2PickCaptionProps = {
   canQuickRegenerate: boolean;
   runBlockedReason?: string | null;
   quickRegenerateBlockedReason?: string | null;
+  canSubmitFeedback?: boolean;
   isLaunching: boolean;
   isRunning: boolean;
   expectedDurationMs: number;
@@ -32,6 +39,11 @@ type Step2PickCaptionProps = {
   onSelectRun: (runId: string) => void;
   onSelectOption: (option: number) => void;
   onSelectTitleOption: (option: number) => void;
+  onSubmitOptionFeedback?: (input: {
+    option: number;
+    kind: "more_like_this" | "less_like_this" | "selected_option";
+    note: string;
+  }) => Promise<void>;
   onCopy: (value: string, successMessage: string) => void;
 };
 
@@ -59,6 +71,25 @@ function formatSourceProviderLabel(provider: Stage2Response["source"]["downloadP
   return null;
 }
 
+function formatCommentsAcquisitionLabel(source: Stage2Response["source"] | null | undefined): string | null {
+  if (!source?.commentsAcquisitionStatus) {
+    return null;
+  }
+  if (source.commentsAcquisitionStatus === "fallback_success") {
+    return source.commentsAcquisitionNote || "Комментарии получены через резервный путь.";
+  }
+  if (source.commentsAcquisitionStatus === "unavailable") {
+    return source.commentsAcquisitionNote || source.commentsAcquisitionError || "Комментарии недоступны.";
+  }
+  if (source.commentsAcquisitionProvider === "youtubeDataApi") {
+    return "Комментарии получены через основной YouTube-провайдер.";
+  }
+  if (source.commentsAcquisitionProvider === "ytDlp") {
+    return "Комментарии получены напрямую через yt-dlp.";
+  }
+  return source.commentsAcquisitionNote || null;
+}
+
 function formatDurationMs(value: number): string {
   const safe = Math.max(0, value);
   if (safe < 60_000) {
@@ -83,7 +114,7 @@ function getStage2ProgressRatio(elapsedMs: number, expectedDurationMs: number): 
 
 function formatReasoningEffort(value: string | null | undefined): string {
   if (!value) {
-    return "Not set";
+    return "Не задан";
   }
   if (value === "x-high" || value === "xhigh") {
     return "X-High";
@@ -108,12 +139,12 @@ function formatRunStatusLabel(status: Stage2RunStatus): string {
 
 function formatRunModeLabel(mode: Stage2RunSummary["mode"]): string {
   if (mode === "auto") {
-    return "auto";
+    return "авто";
   }
   if (mode === "regenerate") {
     return "быстрый";
   }
-  return "full";
+  return "полный";
 }
 
 function formatStageProgressStatusLabel(input: {
@@ -137,7 +168,37 @@ function formatStageProgressStatusLabel(input: {
 }
 
 function formatExamplesSourceLabel(value: "workspace_default" | "channel_custom"): string {
-  return value === "channel_custom" ? "channel custom" : "workspace default";
+  return value === "channel_custom" ? "собственный корпус канала" : "общий корпус";
+}
+
+function formatRetrievalConfidenceLabel(value: DiagnosticsView["examples"]["retrievalConfidence"]): string {
+  if (value === "high") {
+    return "Высокая";
+  }
+  if (value === "medium") {
+    return "Средняя";
+  }
+  return "Низкая";
+}
+
+function formatExamplesModeLabel(value: DiagnosticsView["examples"]["examplesMode"]): string {
+  if (value === "domain_guided") {
+    return "Доменный режим";
+  }
+  if (value === "form_guided") {
+    return "Формальный режим";
+  }
+  return "Style-guided режим";
+}
+
+function formatGuidanceRoleLabel(value: DiagnosticsExample["guidanceRole"]): string {
+  if (value === "semantic_guidance") {
+    return "семантическая опора";
+  }
+  if (value === "form_guidance") {
+    return "опора по форме";
+  }
+  return "слабая опора";
 }
 
 function truncateText(value: string, maxLength = 140): string {
@@ -233,6 +294,12 @@ function normalizeDiagnosticsExample(input: unknown, bucket: DiagnosticsExample[
     qualityScore: asNumber(candidate?.qualityScore),
     retrievalScore: asNumber(candidate?.retrievalScore),
     retrievalReasons: asStringArray(candidate?.retrievalReasons),
+    guidanceRole:
+      candidate?.guidanceRole === "semantic_guidance"
+        ? "semantic_guidance"
+        : candidate?.guidanceRole === "form_guidance"
+          ? "form_guidance"
+          : "weak_support",
     sampleKind: asOptionalString(candidate?.sampleKind),
     isOwnedAnchor: Boolean(candidate?.isOwnedAnchor),
     isAntiExample: Boolean(candidate?.isAntiExample),
@@ -345,7 +412,7 @@ export function normalizeStage2DiagnosticsForView(
         asString(currentChannel?.id) ||
         asString(legacyProfile?.profileId) ||
         "current-channel",
-      name: asString(currentChannel?.name) || asString(legacyProfile?.name) || fallback.channelName || "Current channel",
+      name: asString(currentChannel?.name) || asString(legacyProfile?.name) || fallback.channelName || "Текущий канал",
       username: asString(currentChannel?.username) || fallback.channelUsername || "",
       examplesSource:
         currentChannel?.examplesSource === "channel_custom" ? "channel_custom" : "workspace_default",
@@ -360,6 +427,21 @@ export function normalizeStage2DiagnosticsForView(
               bannedWords: [],
               bannedOpeners: []
             },
+      styleProfile: currentChannel?.styleProfile
+        ? normalizeStage2StyleProfile(currentChannel.styleProfile)
+        : DEFAULT_STAGE2_STYLE_PROFILE,
+      editorialMemory: currentChannel?.editorialMemory
+        ? normalizeStage2EditorialMemorySummary(
+            currentChannel.editorialMemory,
+            currentChannel?.styleProfile
+              ? normalizeStage2StyleProfile(currentChannel.styleProfile)
+              : DEFAULT_STAGE2_STYLE_PROFILE
+          )
+        : createEmptyStage2EditorialMemorySummary(
+            currentChannel?.styleProfile
+              ? normalizeStage2StyleProfile(currentChannel.styleProfile)
+              : DEFAULT_STAGE2_STYLE_PROFILE
+          ),
       workspaceCorpusCount: asNumber(currentChannel?.workspaceCorpusCount) ?? availableExamples.length,
       activeCorpusCount: asNumber(currentChannel?.activeCorpusCount) ?? availableExamples.length
     },
@@ -403,8 +485,15 @@ export function normalizeStage2DiagnosticsForView(
       sceneBeats: asStringArray(analysisCandidate?.sceneBeats),
       revealMoment: asString(analysisCandidate?.revealMoment),
       lateClipChange: asString(analysisCandidate?.lateClipChange),
+      whyViewerCares: asString(analysisCandidate?.whyViewerCares),
+      bestBottomEnergy: asString(analysisCandidate?.bestBottomEnergy),
       commentVibe: asString(analysisCandidate?.commentVibe),
+      commentConsensusLane: asString(analysisCandidate?.commentConsensusLane),
+      commentJokeLane: asString(analysisCandidate?.commentJokeLane),
+      commentDissentLane: asString(analysisCandidate?.commentDissentLane),
+      commentSuspicionLane: asString(analysisCandidate?.commentSuspicionLane),
       slangToAdapt: asStringArray(analysisCandidate?.slangToAdapt),
+      commentLanguageCues: asStringArray(analysisCandidate?.commentLanguageCues),
       hiddenDetail: asString(analysisCandidate?.hiddenDetail),
       genericRisks: asStringArray(analysisCandidate?.genericRisks),
       uncertaintyNotes: asStringArray(analysisCandidate?.uncertaintyNotes),
@@ -421,6 +510,36 @@ export function normalizeStage2DiagnosticsForView(
       activeCorpusCount: asNumber(examplesCandidate?.activeCorpusCount) ?? availableExamples.length,
       selectorCandidateCount:
         asNumber(examplesCandidate?.selectorCandidateCount) ?? availableExamples.length,
+      retrievalConfidence:
+        examplesCandidate?.retrievalConfidence === "high"
+          ? "high"
+          : examplesCandidate?.retrievalConfidence === "medium"
+            ? "medium"
+            : "low",
+      examplesMode:
+        examplesCandidate?.examplesMode === "domain_guided"
+          ? "domain_guided"
+          : examplesCandidate?.examplesMode === "form_guided"
+            ? "form_guided"
+            : "style_guided",
+      explanation: asString(examplesCandidate?.explanation),
+      evidence: asStringArray(examplesCandidate?.evidence),
+      retrievalWarning: asOptionalString(examplesCandidate?.retrievalWarning),
+      examplesRoleSummary: asString(examplesCandidate?.examplesRoleSummary),
+      primaryDriverSummary: asString(examplesCandidate?.primaryDriverSummary),
+      primaryDrivers: asStringArray(examplesCandidate?.primaryDrivers),
+      channelStylePriority:
+        examplesCandidate?.channelStylePriority === "primary"
+          ? "primary"
+          : examplesCandidate?.channelStylePriority === "elevated"
+            ? "elevated"
+            : "supporting",
+      editorialMemoryPriority:
+        examplesCandidate?.editorialMemoryPriority === "primary"
+          ? "primary"
+          : examplesCandidate?.editorialMemoryPriority === "elevated"
+            ? "elevated"
+            : "supporting",
       availableExamples,
       selectedExamples
     }
@@ -448,103 +567,143 @@ export function Stage2RunDiagnosticsPanels({
       <section className="control-card control-card-subtle">
         <div className="option-card-head">
           <div>
-            <h3>Как этот run реально устроен</h3>
+            <h3>Как этот запуск реально устроен</h3>
             <p className="subtle-text">
-              Channel config, active examples corpus и selector output ниже отражают реальную
-              Stage 2 конфигурацию этого запуска.
+              Ниже показаны реальные настройки канала, активный корпус примеров и то, что выбрал
+              селектор для этого запуска второго этапа.
             </p>
           </div>
         </div>
         <div className="stage2-insight-grid">
           <article className="stage2-insight-card">
-            <span className="field-label">Channel</span>
+            <span className="field-label">Канал</span>
             <strong>{diagnostics.channel.name}</strong>
             <p className="subtle-text">
-              @{diagnostics.channel.username} · source{" "}
+              @{diagnostics.channel.username} · источник корпуса{" "}
               {formatExamplesSourceLabel(diagnostics.channel.examplesSource)}
             </p>
           </article>
           <article className="stage2-insight-card">
-            <span className="field-label">Selection</span>
+            <span className="field-label">Выбор</span>
             <strong>{diagnostics.selection.clipType}</strong>
             <p className="subtle-text">
               {diagnostics.selection.rankedAngles.map((item) => item.angle).slice(0, 3).join(", ")}
             </p>
           </article>
           <article className="stage2-insight-card">
-            <span className="field-label">Examples</span>
+            <span className="field-label">Примеры</span>
             <strong>
-              prompt {diagnostics.examples.selectorCandidateCount} / active{" "}
+              в промпте {diagnostics.examples.selectorCandidateCount} / активно{" "}
               {diagnostics.examples.activeCorpusCount}
             </strong>
             <p className="subtle-text">
-              selector picked {diagnostics.examples.selectedExamples.length} · workspace{" "}
+              селектор выбрал {diagnostics.examples.selectedExamples.length} · в общем корпусе{" "}
               {diagnostics.examples.workspaceCorpusCount}
             </p>
           </article>
           <article className="stage2-insight-card">
-            <span className="field-label">Analyzer</span>
-            <strong>{diagnostics.analysis.sceneBeats.length} beats</strong>
+            <span className="field-label">Retrieval режим</span>
+            <strong>
+              {formatExamplesModeLabel(diagnostics.examples.examplesMode)} ·{" "}
+              {formatRetrievalConfidenceLabel(diagnostics.examples.retrievalConfidence)}
+            </strong>
             <p className="subtle-text">
-              {diagnostics.analysis.revealMoment || diagnostics.analysis.firstSecondsSignal || "sequence read"}
+              {diagnostics.examples.examplesRoleSummary || diagnostics.examples.primaryDriverSummary}
             </p>
           </article>
           <article className="stage2-insight-card">
-            <span className="field-label">Custom prompts</span>
+            <span className="field-label">Анализатор</span>
+            <strong>{diagnostics.analysis.sceneBeats.length} смысловых ударов</strong>
+            <p className="subtle-text">
+              {diagnostics.analysis.revealMoment || diagnostics.analysis.firstSecondsSignal || "прочтение последовательности"}
+            </p>
+          </article>
+          <article className="stage2-insight-card">
+            <span className="field-label">Переопределения</span>
             <strong>{overrideCount}</strong>
-            <p className="subtle-text">stage prompts отличаются от базовых defaults</p>
+            <p className="subtle-text">этапов используют промпты, отличные от базовых</p>
           </article>
         </div>
       </section>
 
       <details className="details-drawer">
         <summary>
-          <span>Analyzer read</span>
+          <span>Чтение клипа анализатором</span>
           <small>Что Stage 2 увидел в последовательности клипа</small>
         </summary>
         <div className="details-content">
           <section className="details-section">
-            <h3>Sequence understanding</h3>
+            <h3>Понимание последовательности</h3>
             {diagnostics.analysis.rawSummary ? (
               <p className="subtle-text">{diagnostics.analysis.rawSummary}</p>
             ) : null}
             {diagnostics.analysis.firstSecondsSignal ? (
-              <p className="subtle-text">Opening signal: {diagnostics.analysis.firstSecondsSignal}</p>
+              <p className="subtle-text">Открывающий сигнал: {diagnostics.analysis.firstSecondsSignal}</p>
             ) : null}
             {diagnostics.analysis.revealMoment ? (
-              <p className="subtle-text">Reveal moment: {diagnostics.analysis.revealMoment}</p>
+              <p className="subtle-text">Момент раскрытия: {diagnostics.analysis.revealMoment}</p>
             ) : null}
             {diagnostics.analysis.lateClipChange ? (
-              <p className="subtle-text">Late clip change: {diagnostics.analysis.lateClipChange}</p>
+              <p className="subtle-text">Поздний поворот клипа: {diagnostics.analysis.lateClipChange}</p>
             ) : null}
             {diagnostics.selection.coreTrigger ? (
-              <p className="subtle-text">Core trigger: {diagnostics.selection.coreTrigger}</p>
+              <p className="subtle-text">Главный триггер: {diagnostics.selection.coreTrigger}</p>
             ) : null}
             {diagnostics.selection.whyViewerCares ? (
-              <p className="subtle-text">Why viewer cares: {diagnostics.selection.whyViewerCares}</p>
+              <p className="subtle-text">Почему зрителю не всё равно: {diagnostics.selection.whyViewerCares}</p>
             ) : null}
             {diagnostics.analysis.commentVibe ? (
-              <p className="subtle-text">Comment read: {diagnostics.analysis.commentVibe}</p>
+              <p className="subtle-text">Чтение комментариев: {diagnostics.analysis.commentVibe}</p>
+            ) : null}
+            {diagnostics.analysis.bestBottomEnergy ? (
+              <p className="subtle-text">
+                Натуральная энергия bottom: {diagnostics.analysis.bestBottomEnergy}
+              </p>
+            ) : null}
+            {diagnostics.analysis.commentConsensusLane ? (
+              <p className="subtle-text">
+                Consensus lane: {diagnostics.analysis.commentConsensusLane}
+              </p>
+            ) : null}
+            {diagnostics.analysis.commentJokeLane ? (
+              <p className="subtle-text">
+                Joke lane: {diagnostics.analysis.commentJokeLane}
+              </p>
+            ) : null}
+            {diagnostics.analysis.commentDissentLane ? (
+              <p className="subtle-text">
+                Dissent lane: {diagnostics.analysis.commentDissentLane}
+              </p>
+            ) : null}
+            {diagnostics.analysis.commentSuspicionLane ? (
+              <p className="subtle-text">
+                Suspicion lane: {diagnostics.analysis.commentSuspicionLane}
+              </p>
             ) : null}
             {diagnostics.analysis.slangToAdapt?.length ? (
               <p className="subtle-text">
-                Audience phrases: {diagnostics.analysis.slangToAdapt.join(" · ")}
+                Фразы аудитории: {diagnostics.analysis.slangToAdapt.join(" · ")}
+              </p>
+            ) : null}
+            {diagnostics.analysis.commentLanguageCues?.length ? (
+              <p className="subtle-text">
+                Живые языковые cues: {diagnostics.analysis.commentLanguageCues.join(" · ")}
               </p>
             ) : null}
             {diagnostics.analysis.hiddenDetail ? (
-              <p className="subtle-text">Hidden detail: {diagnostics.analysis.hiddenDetail}</p>
+              <p className="subtle-text">Скрытая деталь: {diagnostics.analysis.hiddenDetail}</p>
             ) : null}
             {diagnostics.analysis.sceneBeats.length > 0 ? (
-              <p className="subtle-text">Scene beats: {diagnostics.analysis.sceneBeats.join(" · ")}</p>
+              <p className="subtle-text">Смысловые удары: {diagnostics.analysis.sceneBeats.join(" · ")}</p>
             ) : null}
             {diagnostics.analysis.genericRisks?.length ? (
               <p className="subtle-text">
-                Avoid: {diagnostics.analysis.genericRisks.join(" · ")}
+                Чего избегать: {diagnostics.analysis.genericRisks.join(" · ")}
               </p>
             ) : null}
             {diagnostics.analysis.uncertaintyNotes.length > 0 ? (
               <p className="subtle-text">
-                Uncertainty: {diagnostics.analysis.uncertaintyNotes.join(" · ")}
+                Неопределённость: {diagnostics.analysis.uncertaintyNotes.join(" · ")}
               </p>
             ) : null}
           </section>
@@ -553,12 +712,12 @@ export function Stage2RunDiagnosticsPanels({
 
       <details className="details-drawer">
         <summary>
-          <span>Effective prompts</span>
-          <small>Что реально driving Stage 2</small>
+          <span>Эффективные промпты</span>
+          <small>Что реально ведёт Stage 2</small>
         </summary>
         <div className="details-content">
           <p className="subtle-text">
-            Здесь видно, какой конкретный prompt и какой reasoning реально были настроены
+            Здесь видно, какой конкретный промпт и какой уровень рассуждений реально были настроены
             для каждого Stage 2 этапа.
           </p>
           <div className="stage2-prompt-stage-list">
@@ -568,37 +727,37 @@ export function Stage2RunDiagnosticsPanels({
                   <div>
                     <strong>{stage.label}</strong>
                     <p className="subtle-text">
-                      LLM stage
-                      {" · system prompt"}
-                      {stage.usesImages ? " · uses extracted frames" : ""}
-                      {stage.promptChars ? ` · ${stage.promptChars} chars` : ""}
+                      LLM-этап
+                      {" · системный промпт"}
+                      {stage.usesImages ? " · использует извлечённые кадры" : ""}
+                      {stage.promptChars ? ` · ${stage.promptChars} символов` : ""}
                     </p>
                   </div>
                   {stage.isCustomPrompt ? (
-                    <span className="badge">Custom prompt</span>
+                    <span className="badge">Свой промпт</span>
                   ) : (
-                    <span className="badge muted">Default prompt</span>
+                    <span className="badge muted">Базовый промпт</span>
                   )}
                 </div>
                 <p className="subtle-text">{stage.summary}</p>
                 <div className="stage2-prompt-meta-row">
                   <div className="stage2-prompt-meta">
-                    <span className="field-label">Reasoning</span>
+                    <span className="field-label">Уровень рассуждений</span>
                     <p className="text-block">{formatReasoningEffort(stage.reasoningEffort)}</p>
                   </div>
                   <div className="stage2-prompt-meta">
-                    <span className="field-label">Prompt source</span>
+                    <span className="field-label">Источник промпта</span>
                     <p className="text-block">
-                      {stage.isCustomPrompt ? "Channel-specific prompt" : "Default prompt"}
+                      {stage.isCustomPrompt ? "Промпт канала" : "Базовый промпт"}
                     </p>
                   </div>
                 </div>
                 <div className="stage2-prompt-meta">
-                  <span className="field-label">Configured prompt</span>
+                  <span className="field-label">Текущий промпт</span>
                   <p className="text-block">{stage.configuredPrompt}</p>
                 </div>
                 <details className="advanced-block">
-                  <summary>Показать полный prompt с контекстом</summary>
+                  <summary>Показать полный промпт с контекстом</summary>
                   <div className="advanced-content">
                     <pre className="json-view">{stage.promptText}</pre>
                   </div>
@@ -611,30 +770,55 @@ export function Stage2RunDiagnosticsPanels({
 
       <details className="details-drawer">
         <summary>
-          <span>Examples used</span>
-          <small>Active corpus + selector picks</small>
+          <span>Использованные примеры</span>
+          <small>Активный корпус и выбор селектора</small>
         </summary>
         <div className="details-content">
           <section className="details-section">
-            <h3>Selection context</h3>
-            <p className="subtle-text">Writer brief: {diagnostics.selection.writerBrief}</p>
+            <h3>Контекст выбора</h3>
+            <p className="subtle-text">Краткая задача для генератора: {diagnostics.selection.writerBrief}</p>
             <p className="subtle-text">
-              Ranked angles: {diagnostics.selection.rankedAngles.map((item) => `${item.angle} (${item.score.toFixed(1)})`).join(", ")}
+              Retrieval: {formatExamplesModeLabel(diagnostics.examples.examplesMode)} ·{" "}
+              {formatRetrievalConfidenceLabel(diagnostics.examples.retrievalConfidence)}
             </p>
-            {diagnostics.selection.rationale ? (
-              <p className="subtle-text">Selector rationale: {diagnostics.selection.rationale}</p>
+            {diagnostics.examples.explanation ? (
+              <p className="subtle-text">{diagnostics.examples.explanation}</p>
+            ) : null}
+            {diagnostics.examples.retrievalWarning ? (
+              <p className="subtle-text danger-text">{diagnostics.examples.retrievalWarning}</p>
+            ) : null}
+            {diagnostics.examples.primaryDriverSummary ? (
+              <p className="subtle-text">
+                Что реально вело run: {diagnostics.examples.primaryDriverSummary}
+              </p>
+            ) : null}
+            {diagnostics.examples.primaryDrivers.length > 0 ? (
+              <p className="subtle-text">
+                Порядок влияния: {diagnostics.examples.primaryDrivers.join(" · ")}
+              </p>
+            ) : null}
+            {diagnostics.examples.evidence.length > 0 ? (
+              <p className="subtle-text">
+                Почему выбран этот режим: {diagnostics.examples.evidence.join(" · ")}
+              </p>
             ) : null}
             <p className="subtle-text">
-              Corpus source: {formatExamplesSourceLabel(diagnostics.examples.source)} · active{" "}
-              {diagnostics.examples.activeCorpusCount} · selector saw{" "}
-              {diagnostics.examples.selectorCandidateCount} / workspace{" "}
+              Ранжированные углы: {diagnostics.selection.rankedAngles.map((item) => `${item.angle} (${item.score.toFixed(1)})`).join(", ")}
+            </p>
+            {diagnostics.selection.rationale ? (
+              <p className="subtle-text">Почему селектор выбрал это: {diagnostics.selection.rationale}</p>
+            ) : null}
+            <p className="subtle-text">
+              Источник корпуса: {formatExamplesSourceLabel(diagnostics.examples.source)} · активно{" "}
+              {diagnostics.examples.activeCorpusCount} · селектор увидел{" "}
+              {diagnostics.examples.selectorCandidateCount} / из общего корпуса{" "}
               {diagnostics.examples.workspaceCorpusCount}
             </p>
           </section>
 
           {([
-            ["selectedExamples", "Selector picks"],
-            ["availableExamples", "Selector prompt pool"]
+            ["selectedExamples", "Выбранные селектором"],
+            ["availableExamples", "Пул примеров в промпте селектора"]
           ] as const).map(([key, label]) => {
             const items = diagnostics.examples[key];
             return (
@@ -661,7 +845,7 @@ export function Stage2RunDiagnosticsPanels({
                           BOTTOM: {truncateText(item.overlayBottom)}
                         </p>
                         <p className="subtle-text">
-                          quality {formatNullableNumber(item.qualityScore) ?? "n/a"} · score {formatNullableNumber(item.retrievalScore) ?? "n/a"} · {item.sampleKind ?? "n/a"}
+                          {formatGuidanceRoleLabel(item.guidanceRole)} · quality {formatNullableNumber(item.qualityScore) ?? "n/a"} · score {formatNullableNumber(item.retrievalScore) ?? "n/a"} · {item.sampleKind ?? "n/a"}
                         </p>
                         {item.whyItWorks.length > 0 ? (
                           <p className="subtle-text">
@@ -670,7 +854,7 @@ export function Stage2RunDiagnosticsPanels({
                         ) : null}
                         {item.retrievalReasons.length > 0 ? (
                           <p className="subtle-text">
-                            Picked because: {item.retrievalReasons.join(", ")}
+                            Выбрано потому что: {item.retrievalReasons.join(", ")}
                           </p>
                         ) : null}
                       </li>
@@ -702,6 +886,7 @@ export function Step2PickCaption({
   canQuickRegenerate,
   runBlockedReason,
   quickRegenerateBlockedReason,
+  canSubmitFeedback = false,
   isLaunching,
   isRunning,
   expectedDurationMs,
@@ -714,9 +899,17 @@ export function Step2PickCaption({
   onSelectRun,
   onSelectOption,
   onSelectTitleOption,
+  onSubmitOptionFeedback,
   onCopy
 }: Step2PickCaptionProps) {
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [feedbackDraft, setFeedbackDraft] = useState<{
+    option: number;
+    kind: "more_like_this" | "less_like_this";
+    note: string;
+    status: "idle" | "saving" | "saved" | "error";
+    message: string | null;
+  } | null>(null);
   const selectedRun = useMemo(
     () => runs.find((run) => run.runId === selectedRunId) ?? null,
     [runs, selectedRunId]
@@ -760,6 +953,7 @@ export function Step2PickCaption({
     );
   }, [selectedTitleOption, stage2]);
   const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
+  const commentsAcquisitionLabel = formatCommentsAcquisitionLabel(stage2?.source ?? null);
   const visibleProgress = progress ?? stage2?.progress ?? null;
   const activeProgressStep = useMemo(() => {
     if (!visibleProgress) {
@@ -792,8 +986,85 @@ export function Step2PickCaption({
     typeof runBlockedReason === "string" &&
     runBlockedReason.startsWith("Для этого чата уже идёт Stage 2.");
   const inlineRunMessage = isAttachedStage2Run
-    ? "Stage 2 уже выполняется в фоне. Ниже показан текущий подключённый run."
+    ? "Stage 2 уже выполняется в фоне. Ниже показан текущий подключённый запуск."
     : runBlockedReason ?? null;
+
+  useEffect(() => {
+    setFeedbackDraft(null);
+  }, [stage2?.stage2Run?.runId]);
+
+  const openFeedbackComposer = (
+    option: number,
+    kind: "more_like_this" | "less_like_this"
+  ) => {
+    setFeedbackDraft((current) => {
+      if (current?.option === option && current.kind === kind) {
+        return current;
+      }
+      return {
+        option,
+        kind,
+        note: "",
+        status: "idle",
+        message: null
+      };
+    });
+  };
+
+  const submitFeedback = async (): Promise<void> => {
+    if (!feedbackDraft || !onSubmitOptionFeedback) {
+      return;
+    }
+    setFeedbackDraft((current) =>
+      current
+        ? {
+            ...current,
+            status: "saving",
+            message: null
+          }
+        : current
+    );
+    try {
+      await onSubmitOptionFeedback({
+        option: feedbackDraft.option,
+        kind: feedbackDraft.kind,
+        note: feedbackDraft.note
+      });
+      setFeedbackDraft((current) =>
+        current
+          ? {
+              ...current,
+              status: "saved",
+              message: "Обратная связь сохранена для будущих запусков."
+            }
+          : current
+      );
+    } catch (error) {
+      setFeedbackDraft((current) =>
+        current
+          ? {
+              ...current,
+              status: "error",
+              message: error instanceof Error ? error.message : "Не удалось сохранить обратную связь."
+            }
+          : current
+      );
+    }
+  };
+
+  const handleChooseOption = (option: number): void => {
+    const changed = selectedOption !== option;
+    onSelectOption(option);
+    if (!changed || !canSubmitFeedback || !onSubmitOptionFeedback) {
+      return;
+    }
+    void onSubmitOptionFeedback({
+      option,
+      kind: "selected_option",
+      note: ""
+    }).catch(() => undefined);
+  };
+
   return (
     <StepWorkspace
       editLabel="Редактирование"
@@ -818,6 +1089,9 @@ export function Step2PickCaption({
             ) : null}
             {sourceProviderLabel ? (
               <p className="subtle-text">Источник медиа: {sourceProviderLabel}</p>
+            ) : null}
+            {commentsAcquisitionLabel ? (
+              <p className="subtle-text">Комментарии: {commentsAcquisitionLabel}</p>
             ) : null}
             {!commentsAvailable ? (
               <p className="subtle-text">
@@ -866,7 +1140,8 @@ export function Step2PickCaption({
               </button>
             </div>
             <p className="subtle-text">
-              Быстрая перегенерация использует текущий выбранный run как базу. Полный прогон заново проходит весь Stage 2 pipeline.
+              Быстрая перегенерация использует текущий выбранный запуск как базу. Полный прогон
+              заново проходит весь пайплайн Stage 2.
             </p>
             <section className="stage2-timing-card" aria-live="polite">
               <div className="stage2-timing-row">
@@ -895,13 +1170,13 @@ export function Step2PickCaption({
               </p>
               {selectedRun ? (
                 <p className={`subtle-text ${currentRunStatus === "failed" ? "danger-text" : ""}`}>
-                  Run {selectedRun.runId.slice(0, 8)} · {formatRunStatusLabel(selectedRun.status)}
+                  Запуск {selectedRun.runId.slice(0, 8)} · {formatRunStatusLabel(selectedRun.status)}
                   {` · ${formatRunModeLabel(selectedRun.mode)}`}
                   {currentRunError ? ` · ${currentRunError}` : ""}
                 </p>
               ) : null}
               {visibleProgress ? (
-                <ol className="stage2-stage-list" aria-label="Прогресс Stage 2 pipeline">
+                <ol className="stage2-stage-list" aria-label="Прогресс пайплайна Stage 2">
                   {visibleProgress.steps.map((step, index) => {
                     const isActive = visibleProgress.activeStageId === step.id || step.state === "running";
                     const blockedAfterFailure =
@@ -916,7 +1191,7 @@ export function Step2PickCaption({
                       blockedAfterFailure
                     });
                     const displayDetail = blockedAfterFailure
-                      ? "Этот этап не запускался, потому что run завершился ошибкой на предыдущем шаге."
+                      ? "Этот этап не запускался, потому что запуск завершился ошибкой на предыдущем шаге."
                       : step.detail;
                     return (
                       <li
@@ -963,10 +1238,13 @@ export function Step2PickCaption({
               ) : null}
             </section>
             {runs.length > 0 ? (
-              <section className="stage2-run-picker" aria-label="История Stage 2 runs">
+              <section className="stage2-run-picker" aria-label="История запусков Stage 2">
                 <div className="stage2-run-picker-head">
-                  <span className="field-label">Runs</span>
-                  <span className="subtle-text">Текущий экран привязан к durable run state, а не к открытому tab.</span>
+                  <span className="field-label">Запуски</span>
+                  <span className="subtle-text">
+                    Текущий экран привязан к устойчивому состоянию запуска, а не к просто
+                    открытой вкладке.
+                  </span>
                 </div>
                 <div className="stage2-run-pill-list">
                   {runs.map((run) => (
@@ -991,7 +1269,7 @@ export function Step2PickCaption({
           {!stage2 ? (
             <div className="empty-box">
               {hasActiveRunWithoutResult
-                ? "Результат этого run еще не готов. Прогресс второго этапа уже идет выше и будет доступен здесь сразу после завершения."
+                ? "Результат этого запуска ещё не готов. Прогресс второго этапа уже идёт выше и появится здесь сразу после завершения."
                 : "Результат второго этапа пуст. Сначала запустите второй этап."}
               {!commentsAvailable && !hasActiveRunWithoutResult
                 ? " Комментарии необязательны для этого запуска."
@@ -1038,12 +1316,15 @@ export function Step2PickCaption({
                           <h3>Вариант {option.option}</h3>
                           {finalPick ? <span className="badge">Финальный выбор</span> : null}
                           {selected ? <span className="badge muted">Выбран</span> : null}
+                          {option.explorationMode === "exploratory" ? (
+                            <span className="badge muted">Эксперимент</span>
+                          ) : null}
                         </div>
                         <div className="option-actions">
                           <button
                             type="button"
                             className="btn btn-secondary"
-                            onClick={() => onSelectOption(option.option)}
+                            onClick={() => handleChooseOption(option.option)}
                           >
                             Выбрать
                           </button>
@@ -1064,6 +1345,24 @@ export function Step2PickCaption({
                           >
                             Копировать
                           </button>
+                          {canSubmitFeedback ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => openFeedbackComposer(option.option, "more_like_this")}
+                              >
+                                Больше в эту сторону
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => openFeedbackComposer(option.option, "less_like_this")}
+                              >
+                                Меньше в эту сторону
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1093,6 +1392,66 @@ export function Step2PickCaption({
                           </div>
                         </div>
                       </div>
+                      {feedbackDraft?.option === option.option ? (
+                        <div className="option-feedback-panel">
+                          <div className="option-feedback-head">
+                            <strong>
+                              {feedbackDraft.kind === "more_like_this"
+                                ? "Больше в эту сторону"
+                                : "Меньше в эту сторону"}
+                            </strong>
+                            <span className="subtle-text">
+                              Необязательная заметка для будущих запусков Stage 2
+                            </span>
+                          </div>
+                          <textarea
+                            className="text-area"
+                            rows={3}
+                            placeholder="Например: меньше позы, больше живого наблюдения"
+                            value={feedbackDraft.note}
+                            onChange={(event) =>
+                              setFeedbackDraft((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      note: event.target.value,
+                                      status: current.status === "saved" ? "idle" : current.status,
+                                      message: null
+                                    }
+                                  : current
+                              )
+                            }
+                          />
+                          <div className="option-feedback-actions">
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={feedbackDraft.status === "saving"}
+                              onClick={() => {
+                                void submitFeedback();
+                              }}
+                            >
+                              {feedbackDraft.status === "saving" ? "Сохраняем..." : "Сохранить обратную связь"}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => setFeedbackDraft(null)}
+                            >
+                              Отмена
+                            </button>
+                          </div>
+                          {feedbackDraft.message ? (
+                            <p
+                              className={`subtle-text ${
+                                feedbackDraft.status === "error" ? "danger-text" : ""
+                              }`}
+                            >
+                              {feedbackDraft.message}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </article>
                   );
                 })}
@@ -1101,9 +1460,9 @@ export function Step2PickCaption({
               <section className="control-card">
                 <div className="option-card-head">
                   <div>
-                    <h3>Title options</h3>
+                    <h3>Варианты заголовка</h3>
                     <p className="subtle-text">
-                      Выбранный title используется в имени экспортируемого файла.
+                      Выбранный заголовок используется в имени экспортируемого файла.
                     </p>
                   </div>
                 </div>
@@ -1116,20 +1475,20 @@ export function Step2PickCaption({
                       <article
                         key={titleOption.option}
                         className={`option-card ${selected ? "selected" : ""}`}
-                        aria-label={`Title option ${titleOption.option}`}
+                        aria-label={`Вариант заголовка ${titleOption.option}`}
                       >
                         <div className="option-card-head">
                           <div className="option-title-row">
-                            <h3>Title {titleOption.option}</h3>
+                            <h3>Заголовок {titleOption.option}</h3>
                             {selected ? <span className="badge muted">Выбран для файла</span> : null}
                           </div>
                           <div className="option-actions">
                             <button
                               type="button"
-                              className="btn btn-secondary"
-                              onClick={() => onSelectTitleOption(titleOption.option)}
-                            >
-                              Pick
+                            className="btn btn-secondary"
+                            onClick={() => onSelectTitleOption(titleOption.option)}
+                          >
+                              Выбрать
                             </button>
                             <button
                               type="button"
@@ -1137,7 +1496,7 @@ export function Step2PickCaption({
                               onClick={() =>
                                 onCopy(
                                   [`TITLE EN: ${titleOption.title}`, `TITLE RU: ${titleRu}`].join("\n"),
-                                  `Title ${titleOption.option} скопирован.`
+                                  `Заголовок ${titleOption.option} скопирован.`
                                 )
                               }
                             >

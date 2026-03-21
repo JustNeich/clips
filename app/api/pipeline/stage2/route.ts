@@ -21,6 +21,8 @@ import {
 } from "../../../../lib/stage2-run-runtime";
 import { buildStage2RunRequestSnapshot } from "../../../../lib/stage2-run-request";
 import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
+import { listChannelEditorialFeedbackEvents } from "../../../../lib/channel-editorial-feedback-store";
+import { buildStage2EditorialMemorySummary } from "../../../../lib/stage2-channel-learning";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 
@@ -254,7 +256,12 @@ export async function POST(request: Request): Promise<Response> {
           name: channel.name,
           username: channel.username,
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
-          stage2HardConstraints: channel.stage2HardConstraints
+          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2StyleProfile: channel.stage2StyleProfile,
+          editorialMemory: buildStage2EditorialMemorySummary({
+            profile: channel.stage2StyleProfile,
+            feedbackEvents: listChannelEditorialFeedbackEvents(channel.id, 30)
+          })
         }
       })
     });

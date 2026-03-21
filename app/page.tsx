@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, FlowStep } from "./components/AppShell";
 import { ChannelManager } from "./components/ChannelManager";
+import { ChannelOnboardingWizard } from "./components/ChannelOnboardingWizard";
 import { DetailsDrawer } from "./components/DetailsDrawer";
 import { Step1PasteLink } from "./components/Step1PasteLink";
 import {
@@ -64,6 +65,7 @@ import {
   type Stage2ExamplesConfig,
   type Stage2HardConstraints
 } from "../lib/stage2-channel-config";
+import type { ChannelStyleDiscoveryRunDetail } from "../lib/channel-style-discovery-types";
 import {
   issueScopedRequestVersion,
   getStage2ElapsedMs,
@@ -222,6 +224,7 @@ export default function HomePage() {
   const [channelAccessGrants, setChannelAccessGrants] = useState<ChannelAccessGrant[]>([]);
   const [workspaceMembers, setWorkspaceMembers] = useState<Array<{ user: UserRecord; role: AppRole }>>([]);
   const [isChannelManagerOpen, setIsChannelManagerOpen] = useState(false);
+  const [isChannelOnboardingOpen, setIsChannelOnboardingOpen] = useState(false);
   const [chatList, setChatList] = useState<ChatListItem[]>([]);
   const [activeChat, setActiveChat] = useState<ChatThread | null>(null);
   const [activeDraft, setActiveDraft] = useState<ChatDraft | null>(null);
@@ -444,6 +447,11 @@ export default function HomePage() {
   const getFlowShellStorageKey = useCallback((): string | null => {
     return buildScopedStorageKey("clips-flow-shell", authState?.workspace.id, authState?.user.id);
   }, [authState?.user.id, authState?.workspace.id]);
+
+  const channelOnboardingStorageKey = useMemo(
+    () => buildScopedStorageKey("clips-channel-onboarding", authState?.workspace.id, authState?.user.id),
+    [authState?.user.id, authState?.workspace.id]
+  );
 
   const readFlowShellState = useCallback(
     (workspaceId?: string, userId?: string): PersistedFlowShellState | null => {
@@ -970,7 +978,7 @@ export default function HomePage() {
       signal: options?.signal
     });
     if (!response.ok) {
-      throw new Error(await parseError(response, "Не удалось загрузить Stage 2 runs."));
+      throw new Error(await parseError(response, "Не удалось загрузить историю запусков Stage 2."));
     }
     const body = (await response.json()) as { runs?: Stage2RunSummary[] };
     const nextRuns = body.runs ?? [];
@@ -993,7 +1001,7 @@ export default function HomePage() {
       signal: options?.signal
     });
     if (!response.ok) {
-      throw new Error(await parseError(response, "Не удалось загрузить Stage 2 run."));
+      throw new Error(await parseError(response, "Не удалось загрузить запуск Stage 2."));
     }
     const body = (await response.json()) as { run?: Stage2RunDetail | null };
     return body.run ?? null;
@@ -2148,7 +2156,7 @@ export default function HomePage() {
       if (activeStage2Run) {
         setCurrentStep(2);
         setStatusType("ok");
-        setStatus("Для этого источника уже идёт Stage 2. Подключился к существующему чату и run.");
+        setStatus("Для этого источника уже идёт Stage 2. Подключился к существующему чату и запуску.");
         return;
       }
       setCurrentStep(1);
@@ -2287,7 +2295,7 @@ export default function HomePage() {
       if (activeStage2Run) {
         setCurrentStep(2);
         setStatusType("ok");
-        setStatus("Для этого источника уже идёт Stage 2. Подключился к существующему чату и run.");
+        setStatus("Для этого источника уже идёт Stage 2. Подключился к существующему чату и запуску.");
         return;
       }
       setStatusType("ok");
@@ -2330,7 +2338,7 @@ export default function HomePage() {
     if (isStage2RunVisibleRunning) {
       setCurrentStep(2);
       setStatusType("ok");
-      setStatus("Stage 2 уже выполняется в фоне. Подключён текущий run.");
+      setStatus("Stage 2 уже выполняется в фоне. Подключён текущий запуск.");
       return;
     }
 
@@ -2347,8 +2355,8 @@ export default function HomePage() {
       setStatusType("ok");
       setStatus(
         reused
-          ? "Для этого чата уже идёт Stage 2. Подключился к существующему run."
-          : "Stage 2 запущен в фоне. Прогресс и результат сохраняются и переживут refresh."
+          ? "Для этого чата уже идёт Stage 2. Подключился к существующему запуску."
+          : "Stage 2 запущен в фоне. Прогресс и результат сохраняются и переживут обновление страницы."
       );
     } catch (error) {
       const message = getUiErrorMessage(error, "Stage 2 не удалось запустить.");
@@ -2370,7 +2378,7 @@ export default function HomePage() {
       setStatusType("error");
       setStatus(
         quickRegenerateBlockedReason ??
-          "Сначала выберите готовый Stage 2 run с результатом для быстрой перегенерации."
+          "Сначала выберите готовый запуск Stage 2 с результатом для быстрой перегенерации."
       );
       return;
     }
@@ -2392,7 +2400,7 @@ export default function HomePage() {
     if (isStage2RunVisibleRunning) {
       setCurrentStep(2);
       setStatusType("ok");
-      setStatus("Stage 2 уже выполняется в фоне. Подключён текущий run.");
+      setStatus("Stage 2 уже выполняется в фоне. Подключён текущий запуск.");
       return;
     }
 
@@ -2411,8 +2419,8 @@ export default function HomePage() {
       setStatusType("ok");
       setStatus(
         reused
-          ? "Для этого чата уже идёт Stage 2. Подключился к существующему run."
-          : "Быстрая перегенерация Stage 2 запущена в фоне и использует выбранный run как базу."
+          ? "Для этого чата уже идёт Stage 2. Подключился к существующему запуску."
+          : "Быстрая перегенерация Stage 2 запущена в фоне и использует выбранный запуск как базу."
       );
     } catch (error) {
       const message = getUiErrorMessage(error, "Быструю перегенерацию Stage 2 не удалось запустить.");
@@ -3300,7 +3308,7 @@ export default function HomePage() {
   ]);
   const quickRegenerateBlockedReason = useMemo(() => {
     if (!selectedStage2RunnableBaseRunId) {
-      return "Сначала выберите готовый Stage 2 run с результатом.";
+      return "Сначала выберите готовый запуск Stage 2 с результатом.";
     }
     return effectiveStage2BlockedReason;
   }, [effectiveStage2BlockedReason, selectedStage2RunnableBaseRunId]);
@@ -4497,25 +4505,101 @@ export default function HomePage() {
     }
   }, [activeChat?.id, getDraftStorageKey, getUiErrorMessage, parseError, refreshChats]);
 
-  const handleCreateChannel = async (): Promise<void> => {
+  const handleCreateChannel = (): void => {
+    setIsChannelOnboardingOpen(true);
+  };
+
+  const handleStartChannelStyleDiscovery = useCallback(async (input: {
+    name: string;
+    username: string;
+    stage2HardConstraints: Stage2HardConstraints;
+    referenceLinks: string[];
+  }): Promise<ChannelStyleDiscoveryRunDetail> => {
+    const response = await fetch("/api/channels/style-discovery", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    });
+    if (!response.ok) {
+      throw new Error(
+        await parseError(response, "Не удалось запустить подбор стартовых стилистических направлений.")
+      );
+    }
+    const body = (await response.json()) as { run?: ChannelStyleDiscoveryRunDetail };
+    if (!body.run) {
+      throw new Error("Сервис style discovery не вернул идентификатор запуска.");
+    }
+    return body.run;
+  }, [parseError]);
+
+  const handleGetChannelStyleDiscoveryRun = useCallback(async (runId: string): Promise<ChannelStyleDiscoveryRunDetail> => {
+    const response = await fetch(`/api/channels/style-discovery?runId=${encodeURIComponent(runId)}`);
+    if (!response.ok) {
+      throw new Error(
+        await parseError(response, "Не удалось загрузить состояние style discovery.")
+      );
+    }
+    const body = (await response.json()) as { run?: ChannelStyleDiscoveryRunDetail };
+    if (!body.run) {
+      throw new Error("Сервис style discovery вернул пустой запуск.");
+    }
+    return body.run;
+  }, [parseError]);
+
+  const handleCreateChannelFromOnboarding = async (input: {
+    name: string;
+    username: string;
+    stage2ExamplesConfig: Stage2ExamplesConfig;
+    stage2HardConstraints: Stage2HardConstraints;
+    stage2StyleProfile: Channel["stage2StyleProfile"];
+    referenceUrls: string[];
+    avatarFile: File | null;
+  }): Promise<void> => {
+    void input.referenceUrls;
     setBusyAction("channel-create");
     try {
       const response = await fetch("/api/channels", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New channel", username: "channel" })
+        body: JSON.stringify({
+          name: input.name,
+          username: input.username,
+          stage2ExamplesConfig: input.stage2ExamplesConfig,
+          stage2HardConstraints: input.stage2HardConstraints,
+          stage2StyleProfile: input.stage2StyleProfile
+        })
       });
       if (!response.ok) {
         throw new Error(await parseError(response, "Не удалось создать канал."));
       }
       const body = (await response.json()) as { channel: Channel };
-      await refreshChannels();
+      let avatarNotice: string | null = null;
+      if (input.avatarFile) {
+        try {
+          const formData = new FormData();
+          formData.append("kind", "avatar");
+          formData.append("file", input.avatarFile);
+          const avatarResponse = await fetch(`/api/channels/${body.channel.id}/assets`, {
+            method: "POST",
+            body: formData
+          });
+          if (!avatarResponse.ok) {
+            throw new Error(await parseError(avatarResponse, "Не удалось загрузить аватар."));
+          }
+        } catch (error) {
+          avatarNotice = getUiErrorMessage(error, "Канал создан, но аватар загрузить не удалось.");
+        }
+      }
+
+      await refreshChannels(body.channel.id);
       handleSwitchChannel(body.channel.id);
+      setIsChannelOnboardingOpen(false);
       setStatusType("ok");
-      setStatus("Канал создан.");
+      setStatus(avatarNotice ?? "Канал создан через новый пошаговый мастер.");
     } catch (error) {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось создать канал."));
+      throw error;
     } finally {
       setBusyAction("");
     }
@@ -4615,7 +4699,7 @@ export default function HomePage() {
         body: JSON.stringify(patch)
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Не удалось сохранить Stage 2 defaults workspace."));
+        throw new Error(await parseError(response, "Не удалось сохранить общие настройки Stage 2."));
       }
       const body = (await response.json()) as {
         stage2ExamplesCorpusJson?: string;
@@ -4634,6 +4718,52 @@ export default function HomePage() {
     } finally {
       setBusyAction("");
     }
+  };
+
+  const handleSubmitStage2OptionFeedback = async (input: {
+    option: number;
+    kind: "more_like_this" | "less_like_this" | "selected_option";
+    note: string;
+  }): Promise<void> => {
+    if (!activeChannelId || !visibleStage2Result) {
+      throw new Error("Сначала выберите канал и загрузите результаты Stage 2.");
+    }
+    const option = visibleStage2Result.output.captionOptions.find(
+      (candidate) => candidate.option === input.option
+    );
+    if (!option) {
+      throw new Error("Выбранный вариант Stage 2 не найден.");
+    }
+
+    const response = await fetch(`/api/channels/${activeChannelId}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: activeChat?.id ?? null,
+        stage2RunId: visibleStage2Result.stage2Run?.runId ?? null,
+        kind: input.kind,
+        note: input.note.trim() || null,
+        optionSnapshot: {
+          candidateId: option.candidateId ?? `option_${option.option}`,
+          top: option.top,
+          bottom: option.bottom,
+          angle: option.angle ?? "",
+          styleDirectionIds: option.styleDirectionIds ?? [],
+          explorationMode: option.explorationMode ?? "aligned"
+        }
+      })
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось сохранить обратную связь."));
+    }
+    setStatusType("ok");
+    setStatus(
+      input.kind === "more_like_this"
+        ? "Обратная связь сохранена: будущие запуски будут тяготеть ближе к этому варианту."
+        : input.kind === "less_like_this"
+          ? "Обратная связь сохранена: будущие запуски будут мягко уходить от этого варианта."
+          : "Выбор сохранён: канал воспримет его как лёгкий положительный сигнал."
+    );
   };
 
   const handleDeleteChannel = async (channelId: string): Promise<void> => {
@@ -5054,6 +5184,7 @@ export default function HomePage() {
           canQuickRegenerate={canQuickRegenerateForActiveChat}
           runBlockedReason={effectiveStage2BlockedReason}
           quickRegenerateBlockedReason={quickRegenerateBlockedReason}
+          canSubmitFeedback={Boolean(canOperateActiveChannel && activeChannelId && visibleStage2Result)}
           isLaunching={isStage2Enqueueing}
           isRunning={isStage2RunVisibleRunning}
           expectedDurationMs={stage2ExpectedDurationMs}
@@ -5070,6 +5201,7 @@ export default function HomePage() {
           onSelectRun={setStage2RunId}
           onSelectOption={setSelectedOption}
           onSelectTitleOption={setSelectedTitleOption}
+          onSubmitOptionFeedback={handleSubmitStage2OptionFeedback}
           onCopy={(value, successMessage) => {
             void copyToClipboard(value, successMessage);
           }}
@@ -5359,9 +5491,7 @@ export default function HomePage() {
         onClose={() => setIsChannelManagerOpen(false)}
         onSelectChannel={handleSwitchChannel}
         canCreateChannel={canCreateChannel}
-        onCreateChannel={() => {
-          void handleCreateChannel();
-        }}
+        onCreateChannel={handleCreateChannel}
         onDeleteChannel={(channelId) => {
           void handleDeleteChannel(channelId);
         }}
@@ -5379,6 +5509,16 @@ export default function HomePage() {
         onUpdateAccess={(channelId, input) => {
           void handleUpdateChannelAccess(channelId, input);
         }}
+      />
+      <ChannelOnboardingWizard
+        open={isChannelOnboardingOpen}
+        storageKey={channelOnboardingStorageKey}
+        workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
+        workspaceStage2HardConstraints={workspaceStage2HardConstraints}
+        onClose={() => setIsChannelOnboardingOpen(false)}
+        onStartStyleDiscovery={handleStartChannelStyleDiscovery}
+        onGetStyleDiscoveryRun={handleGetChannelStyleDiscoveryRun}
+        onSubmit={handleCreateChannelFromOnboarding}
       />
     </AppShell>
   );

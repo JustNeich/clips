@@ -12,6 +12,7 @@ import {
 import { getRestrictedChannelEditError } from "../../../../lib/channel-edit-permissions";
 import { Stage2PromptConfig } from "../../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../../lib/stage2-channel-config";
+import { Stage2StyleProfile } from "../../../../lib/stage2-channel-learning";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,7 @@ type PatchBody = Partial<{
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
+  stage2StyleProfile: Stage2StyleProfile;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;

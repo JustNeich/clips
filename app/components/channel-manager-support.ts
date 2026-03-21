@@ -51,7 +51,7 @@ export function listChannelManagerTargets(
   return [
     {
       id: CHANNEL_MANAGER_DEFAULT_SETTINGS_ID,
-      label: "Default settings",
+      label: "Общие настройки",
       kind: "workspace_defaults",
       channel: null
     },

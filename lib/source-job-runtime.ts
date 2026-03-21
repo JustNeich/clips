@@ -3,6 +3,8 @@ import { appendChatEvent, getChatById, getChannelById } from "./chat-history";
 import { enqueueAndScheduleStage2Run } from "./stage2-run-runtime";
 import { findActiveStage2RunForChat } from "./stage2-progress-store";
 import { buildStage2RunRequestSnapshot } from "./stage2-run-request";
+import { listChannelEditorialFeedbackEvents } from "./channel-editorial-feedback-store";
+import { buildStage2EditorialMemorySummary } from "./stage2-channel-learning";
 import {
   claimNextQueuedSourceJob,
   createSourceJob,
@@ -153,7 +155,12 @@ async function maybeEnqueueStage2(job: SourceJobRecord): Promise<string | null> 
         name: channel.name,
         username: channel.username,
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
-        stage2HardConstraints: channel.stage2HardConstraints
+        stage2HardConstraints: channel.stage2HardConstraints,
+        stage2StyleProfile: channel.stage2StyleProfile,
+        editorialMemory: buildStage2EditorialMemorySummary({
+          profile: channel.stage2StyleProfile,
+          feedbackEvents: listChannelEditorialFeedbackEvents(channel.id, 30)
+        })
       }
     })
   });
@@ -196,6 +203,9 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     commentsAvailable,
     commentsError,
     commentsPayload,
+    commentsAcquisitionStatus: commentsResolution.status,
+    commentsAcquisitionProvider: commentsResolution.provider,
+    commentsAcquisitionNote: commentsResolution.note,
     autoStage2RunId
   };
 

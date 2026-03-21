@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS channels (
   stage2_examples_config_json TEXT,
   stage2_hard_constraints_json TEXT,
   stage2_prompt_config_json TEXT,
+  stage2_style_profile_json TEXT,
   template_id TEXT NOT NULL,
   avatar_asset_id TEXT,
   default_background_asset_id TEXT,
@@ -216,6 +217,41 @@ CREATE TABLE IF NOT EXISTS source_jobs (
   FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS channel_editorial_feedback_events (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  user_id TEXT,
+  chat_id TEXT,
+  stage2_run_id TEXT,
+  kind TEXT NOT NULL,
+  note TEXT,
+  option_snapshot_json TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE SET NULL,
+  FOREIGN KEY (stage2_run_id) REFERENCES stage2_runs(run_id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS channel_style_discovery_runs (
+  run_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  creator_user_id TEXT,
+  status TEXT NOT NULL,
+  request_json TEXT NOT NULL,
+  request_fingerprint TEXT,
+  result_json TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  updated_at TEXT NOT NULL,
+  finished_at TEXT,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (creator_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -317,6 +353,12 @@ CREATE INDEX IF NOT EXISTS idx_channel_access_channel
 
 CREATE INDEX IF NOT EXISTS idx_channel_access_user
   ON channel_access(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_channel
+  ON channel_editorial_feedback_events(channel_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_workspace
+  ON channel_editorial_feedback_events(workspace_id, created_at DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_drafts_thread_user
   ON chat_drafts(thread_id, user_id);

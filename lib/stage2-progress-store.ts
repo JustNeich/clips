@@ -22,6 +22,14 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "./stage2-channel-config";
+import {
+  createEmptyStage2EditorialMemorySummary,
+  DEFAULT_STAGE2_STYLE_PROFILE,
+  normalizeStage2EditorialMemorySummary,
+  normalizeStage2StyleProfile,
+  Stage2EditorialMemorySummary,
+  Stage2StyleProfile
+} from "./stage2-channel-learning";
 import { normalizeStage2ResultTitleOptions } from "./stage2-title-options";
 
 export type Stage2RunMode = "manual" | "auto" | "regenerate";
@@ -37,6 +45,8 @@ export type Stage2RunRequest = {
     username: string;
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
+    stage2StyleProfile?: Stage2StyleProfile;
+    editorialMemory?: Stage2EditorialMemorySummary;
   };
 };
 
@@ -137,6 +147,27 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
         typeof channelCandidate.stage2HardConstraints === "object"
           ? (channelCandidate.stage2HardConstraints as Stage2HardConstraints)
           : DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      stage2StyleProfile:
+        channelCandidate?.stage2StyleProfile &&
+        typeof channelCandidate.stage2StyleProfile === "object"
+          ? normalizeStage2StyleProfile(channelCandidate.stage2StyleProfile)
+          : DEFAULT_STAGE2_STYLE_PROFILE,
+      editorialMemory:
+        channelCandidate?.editorialMemory &&
+        typeof channelCandidate.editorialMemory === "object"
+          ? normalizeStage2EditorialMemorySummary(
+              channelCandidate.editorialMemory,
+              channelCandidate?.stage2StyleProfile &&
+                typeof channelCandidate.stage2StyleProfile === "object"
+                ? normalizeStage2StyleProfile(channelCandidate.stage2StyleProfile)
+                : DEFAULT_STAGE2_STYLE_PROFILE
+            )
+          : createEmptyStage2EditorialMemorySummary(
+              channelCandidate?.stage2StyleProfile &&
+                typeof channelCandidate.stage2StyleProfile === "object"
+                ? normalizeStage2StyleProfile(channelCandidate.stage2StyleProfile)
+                : DEFAULT_STAGE2_STYLE_PROFILE
+            )
     }
   };
 }

@@ -15,6 +15,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "npm run clean:typegen && next typegen && tsc --noEmit --incremental false",
+    "test:stage2": "node --import tsx --test --test-concurrency=1 tests/viral-shorts-worker.test.ts tests/channel-learning-onboarding.test.ts",
     "test:viral-worker": "node --import tsx --test --test-concurrency=1 tests/viral-shorts-worker.test.ts",
     "stage2-worker": "tsx scripts/viral-shorts-worker.ts",
     "stage3-worker": "tsx apps/stage3-worker/index.ts",

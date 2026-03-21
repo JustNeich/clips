@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { Stage2Response } from "../app/components/types";
-import { ensureCodexLoggedIn, runCodexExec } from "./codex-runner";
+import { runCodexExec } from "./codex-runner";
 import {
   normalizeComments,
   prepareCommentsForPrompt,
@@ -40,14 +40,13 @@ import {
   extractYtDlpErrorFromUnknown,
   sanitizeFileName
 } from "./ytdlp";
-import { requireSharedCodexAvailable } from "./auth/guards";
 import { requireRuntimeTool } from "./runtime-capabilities";
-import { CodexJsonStageExecutor } from "./viral-shorts-worker/executor";
 import { resolveStage2PromptTemplate } from "./viral-shorts-worker/prompts";
 import {
   buildVideoContext,
   ViralShortsWorkerService
 } from "./viral-shorts-worker/service";
+import { createStage2CodexExecutorContext } from "./stage2-codex-executor";
 
 const execFileAsync = promisify(execFile);
 
@@ -66,6 +65,12 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   videoSizeBytes: number;
   downloadProvider: "visolix" | "ytDlp";
   commentsExtractionFallbackUsed: boolean;
+  commentsAcquisition: {
+    status: "primary_success" | "fallback_success" | "unavailable";
+    provider: "youtubeDataApi" | "ytDlp" | null;
+    note: string | null;
+    error: string | null;
+  };
 }> {
   const downloaded = await downloadSourceMedia(url, tmpDir);
   const optionalInfo = await fetchOptionalYtDlpInfo(url, tmpDir);
@@ -84,7 +89,8 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
     infoJson,
     videoSizeBytes: downloaded.videoSizeBytes,
     downloadProvider: downloaded.provider,
-    commentsExtractionFallbackUsed: optionalInfo.commentsExtractionFallbackUsed
+    commentsExtractionFallbackUsed: optionalInfo.commentsExtractionFallbackUsed,
+    commentsAcquisition: optionalInfo.commentsAcquisition
   };
 }
 
@@ -238,40 +244,6 @@ function getPipelineErrorMessage(error: unknown): string {
   return message || "Пайплайн Stage 2 завершился с ошибкой.";
 }
 
-async function createStage2ExecutorContext(workspaceId: string): Promise<{
-  codexHome: string;
-  model: string | null;
-  reasoningEffort: string;
-  timeoutMs: number;
-  executor: CodexJsonStageExecutor;
-}> {
-  const integration = requireSharedCodexAvailable(workspaceId);
-  const codexHome = integration.codexHomePath as string;
-  await ensureCodexLoggedIn(codexHome);
-
-  const timeoutFromEnv = Number.parseInt(process.env.CODEX_STAGE2_TIMEOUT_MS ?? "", 10);
-  const timeoutMs =
-    Number.isFinite(timeoutFromEnv) && timeoutFromEnv > 0 ? timeoutFromEnv : 8 * 60_000;
-  const model = process.env.CODEX_STAGE2_MODEL ?? null;
-  const isDevelopment = process.env.NODE_ENV === "development";
-  const reasoningEffort =
-    process.env.CODEX_STAGE2_REASONING_EFFORT ?? (isDevelopment ? "low" : "high");
-
-  return {
-    codexHome,
-    model,
-    reasoningEffort,
-    timeoutMs,
-    executor: new CodexJsonStageExecutor({
-      cwd: process.cwd(),
-      codexHome,
-      defaultTimeoutMs: timeoutMs,
-      defaultModel: model,
-      defaultReasoningEffort: reasoningEffort
-    })
-  };
-}
-
 async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2Response> {
   await requireRuntimeTool("codex");
   const baseRunId = run.baseRunId ?? run.request.baseRunId ?? null;
@@ -297,7 +269,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
   });
 
   const channel = run.request.channel;
-  const executorContext = await createStage2ExecutorContext(run.workspaceId);
+  const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
   markStage2RunStageRunning(run.runId, "regenerate", {
     detail: "Quick-regenerating the visible shortlist and paired titles.",
     reasoningEffort: executorContext.reasoningEffort
@@ -371,7 +343,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       requireRuntimeTool("ffprobe"),
       requireRuntimeTool("codex")
     ]);
-    const executorContext = await createStage2ExecutorContext(run.workspaceId);
+    const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
 
     const channel = run.request.channel;
     markStage2RunStageRunning(run.runId, "analyzer", {
@@ -404,7 +376,9 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         name: channel.name,
         username: channel.username,
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
-        stage2HardConstraints: channel.stage2HardConstraints
+        stage2HardConstraints: channel.stage2HardConstraints,
+        stage2StyleProfile: channel.stage2StyleProfile,
+        editorialMemory: channel.editorialMemory
       },
       workspaceStage2ExamplesCorpusJson,
       videoContext,
@@ -527,7 +501,11 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         commentsUsedForPrompt: promptComments.included.length,
         commentsOmittedFromPrompt: promptComments.omittedCount,
         frameDescriptions: frames.frameDescriptions,
-        commentsExtractionFallbackUsed: downloaded.commentsExtractionFallbackUsed
+        commentsExtractionFallbackUsed: downloaded.commentsExtractionFallbackUsed,
+        commentsAcquisitionStatus: downloaded.commentsAcquisition.status,
+        commentsAcquisitionProvider: downloaded.commentsAcquisition.provider,
+        commentsAcquisitionNote: downloaded.commentsAcquisition.note,
+        commentsAcquisitionError: downloaded.commentsAcquisition.error
       },
       stage2Spec: buildStage2Spec({
         name: "Viral Shorts Worker Overlay Generation",

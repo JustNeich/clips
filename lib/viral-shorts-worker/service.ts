@@ -6,6 +6,8 @@ import {
   PreparedGenerationContext,
   PromptPacket,
   SelectorOutput,
+  Stage2ExamplesAssessment,
+  Stage2ExampleGuidanceRole,
   Stage2Diagnostics,
   Stage2DiagnosticsExample,
   Stage2DiagnosticsPromptStage,
@@ -46,6 +48,10 @@ import { Stage2PromptConfigStageId } from "../stage2-prompt-specs";
 import { CommentItem } from "../comments";
 import { JsonStageExecutor } from "./executor";
 import { buildSelectorExamplePool } from "./selector-example-pool";
+import {
+  createEmptyStage2EditorialMemorySummary,
+  DEFAULT_STAGE2_STYLE_PROFILE
+} from "../stage2-channel-learning";
 
 const ANALYZER_SCHEMA = {
   type: "object",
@@ -100,7 +106,12 @@ const ANALYZER_SCHEMA = {
     why_viewer_cares: { type: "string", minLength: 1 },
     best_bottom_energy: { type: "string", minLength: 1 },
     comment_vibe: { type: "string", minLength: 1 },
+    comment_consensus_lane: { type: "string" },
+    comment_joke_lane: { type: "string" },
+    comment_dissent_lane: { type: "string" },
+    comment_suspicion_lane: { type: "string" },
     slang_to_adapt: { type: "array", items: { type: "string", minLength: 1 } },
+    comment_language_cues: { type: "array", items: { type: "string", minLength: 1 } },
     extractable_slang: { type: "array", items: { type: "string", minLength: 1 } },
     hidden_detail: { type: "string", minLength: 1 },
     generic_risks: {
@@ -190,17 +201,6 @@ const SELECTOR_SCHEMA = {
   }
 } as const;
 
-const SUPPORTED_SELECTOR_ANGLES = new Set([
-  "insider_expertise",
-  "awe_scale",
-  "tension_danger",
-  "absurdity_chaos",
-  "competence_process",
-  "shared_experience",
-  "warmth_reverence",
-  "payoff_reveal"
-]);
-
 const CANDIDATES_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -221,7 +221,16 @@ const CANDIDATES_SCHEMA = {
           bottom: { type: "string", minLength: 1 },
           top_ru: { type: "string", minLength: 1 },
           bottom_ru: { type: "string", minLength: 1 },
-          rationale: { type: "string", minLength: 1 }
+          rationale: { type: "string", minLength: 1 },
+          style_direction_ids: {
+            type: "array",
+            maxItems: 3,
+            items: { type: "string", minLength: 1 }
+          },
+          exploration_mode: {
+            type: "string",
+            enum: ["aligned", "exploratory"]
+          }
         }
       }
     }
@@ -462,10 +471,57 @@ function mergeUniqueAnalyzerStrings(...groups: Array<string[] | undefined>): str
 
 type CommentIntelligence = {
   slangToAdapt: string[];
+  commentLanguageCues: string[];
   hiddenDetail: string | null;
   commentVibe: string | null;
+  commentConsensusLane: string | null;
+  commentJokeLane: string | null;
+  commentDissentLane: string | null;
+  commentSuspicionLane: string | null;
   genericRisks: string[];
 };
+
+type ScoredComment = {
+  likes: number;
+  text: string;
+  lower: string;
+};
+
+function truncateCommentLaneText(value: string, maxLength = 120): string {
+  const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function buildCommentLaneSummary(comments: ScoredComment[], fallbackLead: string): string | null {
+  const topComments = comments
+    .map((comment) => truncateCommentLaneText(comment.text))
+    .filter(Boolean)
+    .slice(0, 2);
+  if (topComments.length === 0) {
+    return null;
+  }
+  return topComments.length === 1
+    ? `${fallbackLead}: ${topComments[0]}.`
+    : `${fallbackLead}: ${topComments[0]} | ${topComments[1]}.`;
+}
+
+function extractCommentCueText(text: string): string {
+  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  const quoted = normalized.match(/"([^"]{2,60})"/)?.[1];
+  if (quoted) {
+    return quoted.trim();
+  }
+  return extractLeadingExcerpt(normalized, 7);
+}
 
 function deriveCommentIntelligence(
   comments: ViralShortsVideoContext["comments"]
@@ -475,15 +531,24 @@ function deriveCommentIntelligence(
     .slice(0, 40)
     .map((comment) => ({
       likes: comment.likes,
-      text: String(comment.text ?? "").replace(/\s+/g, " ").trim()
+      text: String(comment.text ?? "").replace(/\s+/g, " ").trim(),
+      lower: String(comment.text ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase()
     }))
     .filter((comment) => comment.text);
 
   if (sortedComments.length === 0) {
     return {
       slangToAdapt: [],
+      commentLanguageCues: [],
       hiddenDetail: null,
       commentVibe: null,
+      commentConsensusLane: null,
+      commentJokeLane: null,
+      commentDissentLane: null,
+      commentSuspicionLane: null,
       genericRisks: []
     };
   }
@@ -497,6 +562,16 @@ function deriveCommentIntelligence(
   let laughScore = 0;
   let hypeScore = 0;
   let artScore = 0;
+  const suspicionComments: ScoredComment[] = [];
+  const dissentComments: ScoredComment[] = [];
+  const jokeComments: ScoredComment[] = [];
+  const consensusComments: ScoredComment[] = [];
+  const dissentPattern =
+    /\b(cringe|corny|overrated|staged|scripted|setup|set up|manufactured|fake|pre[- ]?opened|resealed|tampered|not that deep|not that serious|it'?s a movie|from a movie|just acting|equality)\b/;
+  const suspicionPattern =
+    /\b(fake|pre[- ]?opened|already open(?:ed)?|resealed|tampered|cut and switch|planted|staged|scripted|cgi|setup|set up)\b/;
+  const jokePattern =
+    /\b(lol|lmao|lmfao|haha|ahah|😭|😂|💀|bro|ahh|mode|queen|lady|god pack|scooby|what\b)\b|[:]{1,}/;
 
   for (const comment of sortedComments) {
     const lower = comment.text.toLowerCase();
@@ -518,12 +593,32 @@ function deriveCommentIntelligence(
       boost("art goes hard", weight + 1);
       artScore += weight + 1;
     }
+
+    const suspicious = suspicionPattern.test(lower);
+    const dissenting = dissentPattern.test(lower);
+    const joking = jokePattern.test(lower);
+
+    if (suspicious) {
+      suspicionComments.push(comment);
+    }
+    if (dissenting && !suspicious) {
+      dissentComments.push(comment);
+    }
+    if (joking && !suspicious) {
+      jokeComments.push(comment);
+    }
+    if (!suspicious && !dissenting) {
+      consensusComments.push(comment);
+    }
   }
 
   const slangToAdapt = Array.from(scoreByPhrase.entries())
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .map(([phrase]) => phrase)
     .slice(0, 5);
+  const commentLanguageCues = mergeUniqueAnalyzerStrings(
+    sortedComments.map((comment) => extractCommentCueText(comment.text))
+  ).slice(0, 6);
 
   let hiddenDetail: string | null = null;
   const genericRisks: string[] = [];
@@ -561,8 +656,30 @@ function deriveCommentIntelligence(
 
   return {
     slangToAdapt,
+    commentLanguageCues,
     hiddenDetail,
     commentVibe,
+    commentConsensusLane:
+      buildCommentLaneSummary(
+        consensusComments,
+        "Consensus lane keeps gravitating toward the main visible reaction"
+      ) ??
+      buildCommentLaneSummary(
+        sortedComments.slice(0, 2),
+        "Consensus lane stays close to the most replayable visible beat"
+      ),
+    commentJokeLane: buildCommentLaneSummary(
+      jokeComments,
+      "Joke or meme lane keeps phrasing the moment like a lived-in punchline"
+    ),
+    commentDissentLane: buildCommentLaneSummary(
+      dissentComments,
+      "Dissent lane pushes back on the easy read instead of fully buying the main reaction"
+    ),
+    commentSuspicionLane: buildCommentLaneSummary(
+      suspicionComments,
+      "Suspicion lane reads a hidden motive, fake setup, or off-screen explanation into the clip"
+    ),
     genericRisks
   };
 }
@@ -599,15 +716,37 @@ function applyCommentIntelligenceBoost(
     intelligence.commentVibe && isGenericCommentVibe(analyzerOutput.commentVibe)
       ? intelligence.commentVibe
       : analyzerOutput.commentVibe;
+  const commentConsensusLane = intelligence.commentConsensusLane
+    ? intelligence.commentConsensusLane
+    : analyzerOutput.commentConsensusLane;
+  const commentJokeLane = intelligence.commentJokeLane
+    ? intelligence.commentJokeLane
+    : analyzerOutput.commentJokeLane;
+  const commentDissentLane = intelligence.commentDissentLane
+    ? intelligence.commentDissentLane
+    : analyzerOutput.commentDissentLane;
+  const commentSuspicionLane = intelligence.commentSuspicionLane
+    ? intelligence.commentSuspicionLane
+    : analyzerOutput.commentSuspicionLane;
   const genericRisks = mergeUniqueAnalyzerStrings(
     analyzerOutput.genericRisks,
     intelligence.genericRisks
+  ).slice(0, 6);
+  const commentLanguageCues = mergeUniqueAnalyzerStrings(
+    intelligence.commentLanguageCues,
+    analyzerOutput.commentLanguageCues,
+    analyzerOutput.slangToAdapt
   ).slice(0, 6);
 
   return {
     ...analyzerOutput,
     commentVibe,
+    commentConsensusLane,
+    commentJokeLane,
+    commentDissentLane,
+    commentSuspicionLane,
     slangToAdapt,
+    commentLanguageCues,
     extractableSlang: slangToAdapt,
     hiddenDetail,
     genericRisks
@@ -643,8 +782,13 @@ function normalizeAnalyzerOutput(raw: unknown, fallback: AnalyzerOutput): Analyz
       : Array.isArray(obj.slangToAdapt)
         ? obj.slangToAdapt
         : Array.isArray(obj.extractableSlang)
-          ? obj.extractableSlang
+        ? obj.extractableSlang
           : fallback.slangToAdapt;
+  const commentLanguageCuesRaw = Array.isArray(obj.comment_language_cues)
+    ? obj.comment_language_cues
+    : Array.isArray(obj.commentLanguageCues)
+      ? obj.commentLanguageCues
+      : fallback.commentLanguageCues;
   const stakesRaw = Array.isArray(obj.stakes) ? obj.stakes : fallback.stakes;
   const genericRisksRaw = Array.isArray(obj.generic_risks)
     ? obj.generic_risks
@@ -703,7 +847,28 @@ function normalizeAnalyzerOutput(raw: unknown, fallback: AnalyzerOutput): Analyz
       obj.comment_vibe ?? obj.commentVibe,
       fallback.commentVibe
     ),
+    commentConsensusLane: normalizeAnalyzerStringValue(
+      obj.comment_consensus_lane ?? obj.commentConsensusLane,
+      fallback.commentConsensusLane
+    ),
+    commentJokeLane: normalizeAnalyzerStringValue(
+      obj.comment_joke_lane ?? obj.commentJokeLane,
+      fallback.commentJokeLane
+    ),
+    commentDissentLane: normalizeAnalyzerStringValue(
+      obj.comment_dissent_lane ?? obj.commentDissentLane,
+      fallback.commentDissentLane
+    ),
+    commentSuspicionLane: normalizeAnalyzerStringValue(
+      obj.comment_suspicion_lane ?? obj.commentSuspicionLane,
+      fallback.commentSuspicionLane
+    ),
     slangToAdapt: normalizeAnalyzerStringList(slangToAdaptRaw, fallback.slangToAdapt, 5),
+    commentLanguageCues: normalizeAnalyzerStringList(
+      commentLanguageCuesRaw,
+      fallback.commentLanguageCues,
+      6
+    ),
     extractableSlang: normalizeAnalyzerStringList(
       slangToAdaptRaw,
       fallback.extractableSlang,
@@ -752,6 +917,11 @@ function applyNoCommentsTruthfulnessGuard(
     ...analyzerOutput,
     commentVibe:
       "Comments unavailable; lean on the clip's visual sequence and transcript instead of pretending there was a real crowd consensus.",
+    commentConsensusLane: "Comments unavailable, so there is no reliable consensus lane to quote.",
+    commentJokeLane: "",
+    commentDissentLane: "",
+    commentSuspicionLane: "",
+    commentLanguageCues: [],
     genericRisks,
     uncertaintyNotes
   };
@@ -798,8 +968,69 @@ function scoreExampleMatch(queryText: string, example: Stage2CorpusExample): num
   );
 }
 
+function pickExamplesForMode(input: {
+  availableExamples: Stage2CorpusExample[];
+  assessment: Stage2ExamplesAssessment;
+  exampleInsights: Array<{
+    exampleId: string;
+    guidanceRole: Stage2ExampleGuidanceRole;
+  }>;
+}): Stage2CorpusExample[] {
+  const insightById = new Map(
+    input.exampleInsights.map((entry) => [entry.exampleId, entry.guidanceRole] as const)
+  );
+  const preferredRoles =
+    input.assessment.examplesMode === "domain_guided"
+      ? (["semantic_guidance", "form_guidance", "weak_support"] as const)
+      : input.assessment.examplesMode === "form_guided"
+        ? (["form_guidance", "semantic_guidance", "weak_support"] as const)
+        : (["form_guidance", "weak_support", "semantic_guidance"] as const);
+  const targetCount =
+    input.assessment.examplesMode === "domain_guided"
+      ? 6
+      : input.assessment.examplesMode === "form_guided"
+        ? 4
+        : 3;
+  const ordered = preferredRoles.flatMap((role) =>
+    input.availableExamples.filter((example) => (insightById.get(example.id) ?? "weak_support") === role)
+  );
+  return ordered.slice(0, Math.min(targetCount, ordered.length));
+}
+
+function applyExamplesAssessmentToSelectorOutput(
+  selectorOutput: SelectorOutput,
+  assessment: Stage2ExamplesAssessment
+): SelectorOutput {
+  return {
+    ...selectorOutput,
+    retrievalConfidence: assessment.retrievalConfidence,
+    examplesMode: assessment.examplesMode,
+    retrievalExplanation: assessment.explanation,
+    retrievalEvidence: assessment.evidence,
+    retrievalWarning: assessment.retrievalWarning,
+    examplesRoleSummary: assessment.examplesRoleSummary,
+    primaryDriverSummary: assessment.primaryDriverSummary
+  };
+}
+
+function buildModeAwareWriterBrief(input: {
+  baseBrief: string;
+  assessment: Stage2ExamplesAssessment;
+}): string {
+  const diversityGuardrail =
+    "Keep the batch varied in bottom openings and continuation logic, and avoid stock tails that could fit unrelated clips.";
+  if (input.assessment.examplesMode === "domain_guided") {
+    return `${input.baseBrief} The retrieval pool is domain-near enough to help with framing and trigger logic, but clip truth still outranks example mimicry. ${diversityGuardrail}`;
+  }
+  if (input.assessment.examplesMode === "form_guided") {
+    return `${input.baseBrief} Examples are for form guidance only: use them for rhythm, density, and top/bottom construction, not for borrowed nouns or domain assumptions. ${diversityGuardrail}`;
+  }
+  return `${input.baseBrief} Retrieval is weak here, so let the clip, bootstrap style directions, and editorial memory drive the narrative. Examples are weak support only. ${diversityGuardrail}`;
+}
+
 function isSupportedSelectorAngle(value: string): boolean {
-  return SUPPORTED_SELECTOR_ANGLES.has(value);
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= 80;
 }
 
 function buildFallbackRankedAngleReason(angle: string, index: number, fallback: SelectorOutput): string {
@@ -815,13 +1046,22 @@ function fallbackSelectorOutput(
   channelConfig: Stage2RuntimeChannelConfig,
   analyzerOutput: AnalyzerOutput,
   availableExamples: Stage2CorpusExample[],
-  videoContext: ViralShortsVideoContext
+  videoContext: ViralShortsVideoContext,
+  examplesAssessment: Stage2ExamplesAssessment,
+  exampleInsights: Array<{
+    exampleId: string;
+    guidanceRole: Stage2ExampleGuidanceRole;
+  }>
 ): SelectorOutput {
   const queryText = buildCorpusQueryText(videoContext, analyzerOutput);
   const stakes = analyzerOutput.stakes.map((stake) => stake.toLowerCase());
-  const chosenExamples = [...availableExamples]
-    .sort((left, right) => scoreExampleMatch(queryText, right) - scoreExampleMatch(queryText, left))
-    .slice(0, Math.min(6, availableExamples.length));
+  const chosenExamples = pickExamplesForMode({
+    availableExamples: [...availableExamples].sort(
+      (left, right) => scoreExampleMatch(queryText, right) - scoreExampleMatch(queryText, left)
+    ),
+    assessment: examplesAssessment,
+    exampleInsights
+  });
 
   const clipType =
     chosenExamples[0]?.clipType || classifyClipType("general", analyzerOutput.rawSummary || videoContext.title);
@@ -894,7 +1134,10 @@ function fallbackSelectorOutput(
       "literal camera-log description",
       "object inventory instead of trigger framing",
       "bottom repeating top",
-      "overly clean AI wording"
+      "overly clean AI wording",
+      ...(examplesAssessment.examplesMode === "domain_guided"
+        ? []
+        : ["borrowing nouns or market logic from weak examples instead of the actual clip"])
     ],
     selectedExampleIds: chosenExamples.map((example) => example.id),
     selectedExamples: chosenExamples,
@@ -902,16 +1145,24 @@ function fallbackSelectorOutput(
     confidence: chosenExamples.length > 0 ? 0.54 : 0.3,
     rationale:
       chosenExamples.length > 0
-        ? "Fallback selector used text-match similarity against the available corpus."
+        ? `Fallback selector used the ${examplesAssessment.examplesMode} retrieval assessment instead of treating every example as equally semantic.`
         : "Fallback selector had no examples available and relied on the analyzer output only.",
-    writerBrief: `Write for ${channelConfig.name}. Lead with the visible scene, then react like a human viewer.`
+    writerBrief: buildModeAwareWriterBrief({
+      baseBrief: `Write for ${channelConfig.name}. Lead with the visible scene, then react like a human viewer.`,
+      assessment: examplesAssessment
+    })
   };
 }
 
 function normalizeSelectorOutput(
   raw: unknown,
   fallback: SelectorOutput,
-  availableExamples: Stage2CorpusExample[]
+  availableExamples: Stage2CorpusExample[],
+  examplesAssessment: Stage2ExamplesAssessment,
+  exampleInsights: Array<{
+    exampleId: string;
+    guidanceRole: Stage2ExampleGuidanceRole;
+  }>
 ): SelectorOutput {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const rankedAnglesRaw = Array.isArray(obj.ranked_angles)
@@ -927,7 +1178,21 @@ function normalizeSelectorOutput(
   const selectedExampleIds = selectedIdsRaw
     .map((value) => String(value ?? "").trim())
     .filter(Boolean);
-  const selectedExamples = availableExamples.filter((example) => selectedExampleIds.includes(example.id));
+  const selectedExamplesByModel = availableExamples.filter((example) => selectedExampleIds.includes(example.id));
+  const selectedExamples =
+    pickExamplesForMode({
+      availableExamples:
+        selectedExamplesByModel.length > 0 ? selectedExamplesByModel : availableExamples,
+      assessment: examplesAssessment,
+      exampleInsights
+    }).slice(
+      0,
+      examplesAssessment.examplesMode === "domain_guided"
+        ? 6
+        : examplesAssessment.examplesMode === "form_guided"
+          ? 4
+          : 3
+    );
   const requestedPrimaryAngle = String(
     obj.primary_angle ??
       obj.primaryAngle ??
@@ -1062,8 +1327,11 @@ function normalizeSelectorOutput(
     rationale:
       String(obj.selection_rationale ?? obj.rationale ?? fallback.rationale ?? "").trim() ||
       fallback.rationale,
-    writerBrief:
-      String(obj.writer_brief ?? obj.writerBrief ?? fallback.writerBrief).trim() || fallback.writerBrief,
+    writerBrief: buildModeAwareWriterBrief({
+      baseBrief:
+        String(obj.writer_brief ?? obj.writerBrief ?? fallback.writerBrief).trim() || fallback.writerBrief,
+      assessment: examplesAssessment
+    }),
     confidence:
       Number.isFinite(Number(obj.confidence)) ? Number(obj.confidence) : fallback.confidence
   };
@@ -1077,7 +1345,7 @@ function normalizeCandidates(raw: unknown, selectorOutput: SelectorOutput): Cand
       : [];
 
   return candidatesRaw
-    .map((entry, index) => {
+    .map((entry, index): CandidateCaption | null => {
       if (!entry || typeof entry !== "object") {
         return null;
       }
@@ -1098,7 +1366,20 @@ function normalizeCandidates(raw: unknown, selectorOutput: SelectorOutput): Cand
         bottom,
         topRu: String(item.top_ru ?? item.topRu ?? top).trim() || top,
         bottomRu: String(item.bottom_ru ?? item.bottomRu ?? bottom).trim() || bottom,
-        rationale: String(item.rationale ?? "").trim() || "Generated by writer stage."
+        rationale: String(item.rationale ?? "").trim() || "Generated by writer stage.",
+        styleDirectionIds: (Array.isArray(item.style_direction_ids)
+          ? item.style_direction_ids
+          : Array.isArray(item.styleDirectionIds)
+            ? item.styleDirectionIds
+            : []
+        )
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean)
+          .slice(0, 3),
+        explorationMode:
+          String(item.exploration_mode ?? item.explorationMode ?? "").trim() === "exploratory"
+            ? "exploratory"
+            : "aligned"
       };
     })
     .filter((candidate): candidate is CandidateCaption => candidate !== null);
@@ -1814,6 +2095,68 @@ export function buildInternalFinalSelectorReason(input: {
   return `${base}${angleNote}`.trim();
 }
 
+function extractCandidateLikeIds(value: string): string[] {
+  return Array.from(
+    new Set((value.match(/\b(?:cand_\d+|c\d{2,})\b/gi) ?? []).map((item) => item.toLowerCase()))
+  );
+}
+
+function parseWordOrDigitCount(value: string): number | null {
+  const normalized = value.trim().toLowerCase();
+  if (/^\d+$/.test(normalized)) {
+    return Number(normalized);
+  }
+  const numberWords: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+  };
+  return numberWords[normalized] ?? null;
+}
+
+function parseClaimedUniqueCandidateCount(value: string): number | null {
+  const match = value.match(/\bonly\s+([a-z0-9]+)\s+unique\s+candidates?\b/i);
+  return match?.[1] ? parseWordOrDigitCount(match[1]) : null;
+}
+
+export function sanitizeFinalSelectorModelRationale(input: {
+  rawRationale: string | null | undefined;
+  visibleShortlist: CandidateCaption[];
+  finalPickCandidateId: string;
+}): string {
+  const rawRationale = String(input.rawRationale ?? "").trim();
+  const truthfulSummary = buildInternalFinalSelectorReason({
+    evaluatedShortlist: input.visibleShortlist,
+    visibleShortlist: input.visibleShortlist,
+    finalPickCandidateId: input.finalPickCandidateId
+  });
+
+  if (!rawRationale) {
+    return truthfulSummary;
+  }
+
+  const visibleIds = new Set(input.visibleShortlist.map((candidate) => candidate.candidateId.toLowerCase()));
+  const mentionedIds = extractCandidateLikeIds(rawRationale);
+  const mentionsOutsideVisibleShortlist = mentionedIds.some((candidateId) => !visibleIds.has(candidateId));
+  const claimedUniqueCount = parseClaimedUniqueCandidateCount(rawRationale);
+  const contradictsVisibleCount =
+    typeof claimedUniqueCount === "number" &&
+    claimedUniqueCount !== new Set(input.visibleShortlist.map((candidate) => candidate.candidateId)).size;
+
+  if (mentionsOutsideVisibleShortlist || contradictsVisibleCount) {
+    return `Sanitized because the model rationale contradicted the persisted shortlist. ${truthfulSummary}`;
+  }
+
+  return rawRationale;
+}
+
 function buildResolvedFinalSelectorState(input: {
   visibleShortlist: CandidateCaption[];
   requestedFinalPickCandidateId: string;
@@ -2189,21 +2532,16 @@ function buildDiagnosticsExample(
   bucket: Stage2DiagnosticsExample["bucket"],
   example: Stage2CorpusExample,
   queryText: string,
-  selectedExampleIds: string[]
+  selectedExampleIds: string[],
+  insight: {
+    guidanceRole: Stage2ExampleGuidanceRole;
+    retrievalScore: number;
+    retrievalReasons: string[];
+  } | null
 ): Stage2DiagnosticsExample {
-  const overlapScore = scoreExampleMatch(queryText, example);
   const reasons = [];
   if (selectedExampleIds.includes(example.id)) {
     reasons.push("selected by selector");
-  }
-  if (example.clipType) {
-    reasons.push(`clip type ${example.clipType}`);
-  }
-  if (example.whyItWorks.length > 0) {
-    reasons.push("why-it-works notes present");
-  }
-  if (typeof example.qualityScore === "number") {
-    reasons.push(`quality ${example.qualityScore.toFixed(2)}`);
   }
   return {
     id: example.id,
@@ -2218,8 +2556,12 @@ function buildDiagnosticsExample(
     overlayBottom: example.overlayBottom,
     whyItWorks: example.whyItWorks,
     qualityScore: typeof example.qualityScore === "number" ? example.qualityScore : null,
-    retrievalScore: overlapScore,
-    retrievalReasons: reasons,
+    retrievalScore: insight?.retrievalScore ?? scoreExampleMatch(queryText, example),
+    retrievalReasons:
+      insight?.retrievalReasons && insight.retrievalReasons.length > 0
+        ? [...reasons, ...insight.retrievalReasons]
+        : reasons,
+    guidanceRole: insight?.guidanceRole ?? "weak_support",
     sampleKind: example.ownerChannelId,
     isOwnedAnchor: example.ownerChannelId === example.sourceChannelId,
     isAntiExample: false,
@@ -2239,10 +2581,18 @@ function buildRunDiagnostics(input: {
   workspaceCorpusCount: number;
   activeExamplesCount: number;
   selectorExamples: Stage2CorpusExample[];
+  examplesAssessment: Stage2ExamplesAssessment;
+  exampleInsights: Array<{
+    exampleId: string;
+    guidanceRole: Stage2ExampleGuidanceRole;
+    retrievalScore: number;
+    retrievalReasons: string[];
+  }>;
   selectorOutput: SelectorOutput;
   queryText: string;
 }): Stage2Diagnostics {
   const selectedExampleIds = input.selectorOutput.selectedExampleIds ?? [];
+  const insightById = new Map(input.exampleInsights.map((entry) => [entry.exampleId, entry]));
   return {
     channel: {
       channelId: input.channelConfig.channelId,
@@ -2250,6 +2600,8 @@ function buildRunDiagnostics(input: {
       username: input.channelConfig.username,
       examplesSource: input.channelConfig.examplesSource,
       hardConstraints: input.channelConfig.hardConstraints,
+      styleProfile: input.channelConfig.styleProfile,
+      editorialMemory: input.channelConfig.editorialMemory,
       workspaceCorpusCount: input.workspaceCorpusCount,
       activeCorpusCount: input.activeExamplesCount
     },
@@ -2278,8 +2630,15 @@ function buildRunDiagnostics(input: {
       sceneBeats: input.analyzerOutput.sceneBeats,
       revealMoment: input.analyzerOutput.revealMoment,
       lateClipChange: input.analyzerOutput.lateClipChange,
+      whyViewerCares: input.analyzerOutput.whyViewerCares,
+      bestBottomEnergy: input.analyzerOutput.bestBottomEnergy,
       commentVibe: input.analyzerOutput.commentVibe,
+      commentConsensusLane: input.analyzerOutput.commentConsensusLane,
+      commentJokeLane: input.analyzerOutput.commentJokeLane,
+      commentDissentLane: input.analyzerOutput.commentDissentLane,
+      commentSuspicionLane: input.analyzerOutput.commentSuspicionLane,
       slangToAdapt: input.analyzerOutput.slangToAdapt,
+      commentLanguageCues: input.analyzerOutput.commentLanguageCues,
       hiddenDetail: input.analyzerOutput.hiddenDetail,
       genericRisks: input.analyzerOutput.genericRisks,
       uncertaintyNotes: input.analyzerOutput.uncertaintyNotes,
@@ -2337,11 +2696,33 @@ function buildRunDiagnostics(input: {
       workspaceCorpusCount: input.workspaceCorpusCount,
       activeCorpusCount: input.activeExamplesCount,
       selectorCandidateCount: input.selectorExamples.length,
+      retrievalConfidence: input.examplesAssessment.retrievalConfidence,
+      examplesMode: input.examplesAssessment.examplesMode,
+      explanation: input.examplesAssessment.explanation,
+      evidence: input.examplesAssessment.evidence,
+      retrievalWarning: input.examplesAssessment.retrievalWarning,
+      examplesRoleSummary: input.examplesAssessment.examplesRoleSummary,
+      primaryDriverSummary: input.examplesAssessment.primaryDriverSummary,
+      primaryDrivers: input.examplesAssessment.primaryDrivers,
+      channelStylePriority: input.examplesAssessment.channelStylePriority,
+      editorialMemoryPriority: input.examplesAssessment.editorialMemoryPriority,
       availableExamples: input.selectorExamples.map((example) =>
-        buildDiagnosticsExample("available", example, input.queryText, selectedExampleIds)
+        buildDiagnosticsExample(
+          "available",
+          example,
+          input.queryText,
+          selectedExampleIds,
+          insightById.get(example.id) ?? null
+        )
       ),
       selectedExamples: (input.selectorOutput.selectedExamples ?? []).map((example) =>
-        buildDiagnosticsExample("selected", example, input.queryText, selectedExampleIds)
+        buildDiagnosticsExample(
+          "selected",
+          example,
+          input.queryText,
+          selectedExampleIds,
+          insightById.get(example.id) ?? null
+        )
       )
     }
   };
@@ -2353,13 +2734,18 @@ function normalizeChannelConfig(input: {
   username: string;
   stage2HardConstraints: Stage2HardConstraints;
   stage2ExamplesConfig: Stage2ExamplesConfig;
+  stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
+  editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
   resolvedExamplesSource?: Stage2RuntimeChannelConfig["examplesSource"];
 }): Stage2RuntimeChannelConfig {
+  const styleProfile = input.stage2StyleProfile ?? DEFAULT_STAGE2_STYLE_PROFILE;
   return {
     channelId: input.id,
     name: input.name,
     username: input.username,
     hardConstraints: input.stage2HardConstraints,
+    styleProfile,
+    editorialMemory: input.editorialMemory ?? createEmptyStage2EditorialMemorySummary(styleProfile),
     examplesSource:
       input.resolvedExamplesSource ??
       (input.stage2ExamplesConfig.useWorkspaceDefault ? "workspace_default" : "channel_custom")
@@ -2417,6 +2803,8 @@ export class ViralShortsWorkerService {
       username: string;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
+      stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
+      editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -2450,17 +2838,23 @@ export class ViralShortsWorkerService {
       examples: corpus,
       queryText
     });
-    const selectorOutput = fallbackSelectorOutput(
-      channelConfig,
-      analyzedHeuristicOutput,
-      selectorPool.selectorExamples,
-      input.videoContext
+    const selectorOutput = applyExamplesAssessmentToSelectorOutput(
+      fallbackSelectorOutput(
+        channelConfig,
+        analyzedHeuristicOutput,
+        selectorPool.selectorExamples,
+        input.videoContext,
+        selectorPool.assessment,
+        selectorPool.exampleInsights
+      ),
+      selectorPool.assessment
     );
     return buildPromptPacket({
       channelConfig,
       videoContext: input.videoContext,
       analyzerOutput: analyzedHeuristicOutput,
       selectorOutput,
+      examplesAssessment: selectorPool.assessment,
       availableExamples: selectorPool.selectorExamples,
       promptConfig: normalizeStage2PromptConfig(input.promptConfig)
     });
@@ -2473,6 +2867,8 @@ export class ViralShortsWorkerService {
       username: string;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
+      stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
+      editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -2595,12 +2991,19 @@ export class ViralShortsWorkerService {
         message: poolNotes.join(" ")
       });
     }
+    if (selectorPool.assessment.retrievalWarning) {
+      warnings.push({
+        field: "retrieval",
+        message: selectorPool.assessment.retrievalWarning
+      });
+    }
 
     const selectorPrompt = buildSelectorPrompt({
       channelConfig,
       videoContext: input.videoContext,
       analyzerOutput,
       availableExamples: selectorPool.selectorExamples,
+      examplesAssessment: selectorPool.assessment,
       promptConfig
     });
     const selectorReasoningEffort = resolveStageReasoningEffort("selector", promptConfig);
@@ -2616,19 +3019,29 @@ export class ViralShortsWorkerService {
       channelConfig,
       analyzerOutput,
       selectorPool.selectorExamples,
-      input.videoContext
+      input.videoContext,
+      selectorPool.assessment,
+      selectorPool.exampleInsights
     );
-    let selectorOutput = selectorFallback;
+    let selectorOutput = applyExamplesAssessmentToSelectorOutput(
+      selectorFallback,
+      selectorPool.assessment
+    );
     try {
       const selectorRaw = await input.executor.runJson<unknown>({
         prompt: selectorPrompt,
         schema: SELECTOR_SCHEMA,
         reasoningEffort: selectorReasoningEffort
       });
-      selectorOutput = normalizeSelectorOutput(
-        selectorRaw,
-        selectorFallback,
-        selectorPool.selectorExamples
+      selectorOutput = applyExamplesAssessmentToSelectorOutput(
+        normalizeSelectorOutput(
+          selectorRaw,
+          selectorFallback,
+          selectorPool.selectorExamples,
+          selectorPool.assessment,
+          selectorPool.exampleInsights
+        ),
+        selectorPool.assessment
       );
       await reportProgress({
         stageId: "selector",
@@ -2659,6 +3072,7 @@ export class ViralShortsWorkerService {
       videoContext: input.videoContext,
       analyzerOutput,
       selectorOutput,
+      examplesAssessment: selectorPool.assessment,
       availableExamples: selectorPool.selectorExamples,
       promptConfig
     });
@@ -2667,6 +3081,7 @@ export class ViralShortsWorkerService {
       channelConfig,
       analyzerOutput,
       selectorOutput,
+      examplesAssessment: selectorPool.assessment,
       userInstruction: input.videoContext.userInstruction,
       promptConfig
     });
@@ -2724,6 +3139,7 @@ export class ViralShortsWorkerService {
       channelConfig,
       analyzerOutput,
       selectorOutput,
+      examplesAssessment: selectorPool.assessment,
       candidates,
       promptConfig
     });
@@ -2785,6 +3201,7 @@ export class ViralShortsWorkerService {
       channelConfig,
       analyzerOutput,
       selectorOutput,
+      examplesAssessment: selectorPool.assessment,
       candidates: topCandidates,
       criticScores: criticScores.slice(0, 8),
       userInstruction: input.videoContext.userInstruction,
@@ -2839,6 +3256,7 @@ export class ViralShortsWorkerService {
       channelConfig,
       analyzerOutput,
       selectorOutput,
+      examplesAssessment: selectorPool.assessment,
       candidates: rewrittenCandidates,
       promptConfig
     });
@@ -2905,6 +3323,7 @@ export class ViralShortsWorkerService {
       channelConfig,
       videoContext: input.videoContext,
       selectorOutput,
+      examplesAssessment: selectorPool.assessment,
       shortlist,
       userInstruction: input.videoContext.userInstruction,
       promptConfig
@@ -2961,6 +3380,8 @@ export class ViralShortsWorkerService {
       workspaceCorpusCount,
       activeExamplesCount: availableExamples.length,
       selectorExamples: selectorPool.selectorExamples,
+      examplesAssessment: selectorPool.assessment,
+      exampleInsights: selectorPool.exampleInsights,
       selectorOutput,
       queryText
     });
@@ -2976,6 +3397,8 @@ export class ViralShortsWorkerService {
         bottom: candidate.bottom,
         topRu: candidate.topRu,
         bottomRu: candidate.bottomRu,
+        styleDirectionIds: candidate.styleDirectionIds,
+        explorationMode: candidate.explorationMode,
         constraintCheck: entry.constraintCheck
       };
     });
@@ -2991,6 +3414,11 @@ export class ViralShortsWorkerService {
         finalPickCandidateId: resolvedFinalPickCandidateId
       });
     const internalFinalSelectorReason = resolvedFinalSelectorState.rationaleInternalRaw;
+    const sanitizedModelFinalSelectorReason = sanitizeFinalSelectorModelRationale({
+      rawRationale: finalSelector.rationale,
+      visibleShortlist: shortlist,
+      finalPickCandidateId: resolvedFinalPickCandidateId
+    });
     assertCompletedShortlistContract({
       captionOptions,
       candidateOptionMap: shortlistOptionMap,
@@ -3020,13 +3448,16 @@ export class ViralShortsWorkerService {
         selectorOutput,
         availableExamplesCount: availableExamples.length,
         selectedExamplesCount: selectorOutput.selectedExamples?.length ?? 0,
+        retrievalConfidence: selectorPool.assessment.retrievalConfidence,
+        examplesMode: selectorPool.assessment.examplesMode,
+        retrievalExplanation: selectorPool.assessment.explanation,
         finalSelector: {
           candidateOptionMap: shortlistOptionMap,
           shortlistCandidateIds: resolvedFinalSelectorState.shortlistCandidateIds,
           finalPickCandidateId: resolvedFinalPickCandidateId,
           rationaleRaw: sanitizedRationaleRaw,
           rationaleInternalRaw: internalFinalSelectorReason,
-          rationaleInternalModelRaw: finalSelector.rationale,
+          rationaleInternalModelRaw: sanitizedModelFinalSelectorReason,
           shortlistStats: shortlistResult.stats
         }
       },

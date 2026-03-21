@@ -1,13 +1,16 @@
-import { cookies } from "next/headers";
-
 export const APP_SESSION_COOKIE = "clips_session";
 
 function cookieSecure(): boolean {
   return process.env.NODE_ENV === "production";
 }
 
+async function getCookieStore() {
+  const { cookies } = await import("next/headers");
+  return cookies();
+}
+
 export async function setAppSessionCookie(token: string, expiresAt: Date): Promise<void> {
-  const store = await cookies();
+  const store = await getCookieStore();
   store.set(APP_SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -18,7 +21,7 @@ export async function setAppSessionCookie(token: string, expiresAt: Date): Promi
 }
 
 export async function clearAppSessionCookie(): Promise<void> {
-  const store = await cookies();
+  const store = await getCookieStore();
   store.set(APP_SESSION_COOKIE, "", {
     httpOnly: true,
     sameSite: "lax",
@@ -29,7 +32,7 @@ export async function clearAppSessionCookie(): Promise<void> {
 }
 
 export async function readAppSessionCookie(): Promise<string | null> {
-  const store = await cookies();
+  const store = await getCookieStore();
   const value = store.get(APP_SESSION_COOKIE)?.value?.trim();
   return value || null;
 }

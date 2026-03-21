@@ -6,6 +6,13 @@ import {
   type Stage2ExamplesConfig,
   type Stage2HardConstraints
 } from "./stage2-channel-config";
+import {
+  createEmptyStage2EditorialMemorySummary,
+  normalizeStage2EditorialMemorySummary,
+  normalizeStage2StyleProfile,
+  type Stage2EditorialMemorySummary,
+  type Stage2StyleProfile
+} from "./stage2-channel-learning";
 import type { Stage2RunMode, Stage2RunRequest } from "./stage2-progress-store";
 
 type Stage2RunChannelSnapshotInput = {
@@ -14,6 +21,8 @@ type Stage2RunChannelSnapshotInput = {
   username: string;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
+  stage2StyleProfile?: Stage2StyleProfile;
+  editorialMemory?: Stage2EditorialMemorySummary;
 };
 
 export function buildStage2RunRequestSnapshot(input: {
@@ -44,6 +53,17 @@ export function buildStage2RunRequestSnapshot(input: {
       ),
       stage2HardConstraints: parseStage2HardConstraintsJson(
         stringifyStage2HardConstraints(input.channel.stage2HardConstraints)
+      ),
+      stage2StyleProfile: normalizeStage2StyleProfile(
+        input.channel.stage2StyleProfile
+      ),
+      editorialMemory: normalizeStage2EditorialMemorySummary(
+        input.channel.editorialMemory ?? createEmptyStage2EditorialMemorySummary(
+          input.channel.stage2StyleProfile
+            ? normalizeStage2StyleProfile(input.channel.stage2StyleProfile)
+            : undefined
+        ),
+        input.channel.stage2StyleProfile
       )
     }
   };

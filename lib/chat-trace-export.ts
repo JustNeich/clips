@@ -31,6 +31,10 @@ export type ChatTraceExportComments = {
   totalComments: number;
   includedCount: number;
   truncated: boolean;
+  provider: Stage2Response["source"]["commentsAcquisitionProvider"] | null;
+  status: Stage2Response["source"]["commentsAcquisitionStatus"] | null;
+  note: string | null;
+  fallbackUsed: boolean;
   error: string | null;
   items: CommentItem[];
 };
@@ -66,6 +70,10 @@ export type ChatTraceExport = {
     commentsError: string | null;
     totalComments: number;
     includedComments: number;
+    commentsAcquisitionStatus: Stage2Response["source"]["commentsAcquisitionStatus"] | null;
+    commentsAcquisitionProvider: Stage2Response["source"]["commentsAcquisitionProvider"] | null;
+    commentsAcquisitionNote: string | null;
+    commentsFallbackUsed: boolean;
     activeJobId: string | null;
     latestCompletedJobId: string | null;
   };
@@ -265,6 +273,10 @@ function buildExportComments(input: {
       totalComments: sourceComments.totalComments,
       includedCount: sourceComments.topComments.length,
       truncated: sourceComments.totalComments > sourceComments.topComments.length,
+      provider: input.latestSourceResult?.commentsAcquisitionProvider ?? null,
+      status: input.latestSourceResult?.commentsAcquisitionStatus ?? "primary_success",
+      note: input.latestSourceResult?.commentsAcquisitionNote ?? null,
+      fallbackUsed: input.latestSourceResult?.commentsAcquisitionStatus === "fallback_success",
       error: input.latestSourceResult?.commentsError ?? null,
       items: sourceComments.topComments
     };
@@ -277,7 +289,11 @@ function buildExportComments(input: {
     totalComments: stage2Total,
     includedCount: stage2Comments.length,
     truncated: stage2Total > stage2Comments.length,
-    error: null,
+    provider: input.currentStage2Result?.source.commentsAcquisitionProvider ?? null,
+    status: input.currentStage2Result?.source.commentsAcquisitionStatus ?? null,
+    note: input.currentStage2Result?.source.commentsAcquisitionNote ?? null,
+    fallbackUsed: input.currentStage2Result?.source.commentsAcquisitionStatus === "fallback_success",
+    error: input.currentStage2Result?.source.commentsAcquisitionError ?? null,
     items: stage2Comments
   };
 }
@@ -363,6 +379,22 @@ export async function buildChatTraceExport(
       commentsError: latestSourceJobWithResult?.resultData?.commentsError ?? null,
       totalComments: exportComments.totalComments,
       includedComments: exportComments.includedCount,
+      commentsAcquisitionStatus:
+        latestSourceJobWithResult?.resultData?.commentsAcquisitionStatus ??
+        sanitizedCurrentStage2?.source.commentsAcquisitionStatus ??
+        null,
+      commentsAcquisitionProvider:
+        latestSourceJobWithResult?.resultData?.commentsAcquisitionProvider ??
+        sanitizedCurrentStage2?.source.commentsAcquisitionProvider ??
+        null,
+      commentsAcquisitionNote:
+        latestSourceJobWithResult?.resultData?.commentsAcquisitionNote ??
+        sanitizedCurrentStage2?.source.commentsAcquisitionNote ??
+        null,
+      commentsFallbackUsed:
+        (latestSourceJobWithResult?.resultData?.commentsAcquisitionStatus ??
+          sanitizedCurrentStage2?.source.commentsAcquisitionStatus ??
+          null) === "fallback_success",
       activeJobId: sourceJobs.find((job) => job.status === "queued" || job.status === "running")?.jobId ?? null,
       latestCompletedJobId: latestSourceJobWithResult?.jobId ?? null
     },

@@ -3,6 +3,31 @@ import type {
   Stage2ExamplesCorpusSource,
   Stage2HardConstraints
 } from "../stage2-channel-config";
+import type {
+  Stage2EditorialMemorySummary,
+  Stage2ExplorationMode,
+  Stage2StyleProfile
+} from "../stage2-channel-learning";
+
+export type Stage2RetrievalConfidence = "high" | "medium" | "low";
+export type Stage2ExamplesMode = "domain_guided" | "form_guided" | "style_guided";
+export type Stage2ExampleGuidanceRole =
+  | "semantic_guidance"
+  | "form_guidance"
+  | "weak_support";
+
+export type Stage2ExamplesAssessment = {
+  retrievalConfidence: Stage2RetrievalConfidence;
+  examplesMode: Stage2ExamplesMode;
+  explanation: string;
+  evidence: string[];
+  retrievalWarning: string | null;
+  examplesRoleSummary: string;
+  primaryDriverSummary: string;
+  primaryDrivers: string[];
+  channelStylePriority: "supporting" | "elevated" | "primary";
+  editorialMemoryPriority: "supporting" | "elevated" | "primary";
+};
 
 export type HardConstraints = {
   topLengthMin: number;
@@ -132,7 +157,12 @@ export type AnalyzerOutput = {
   whyViewerCares: string;
   bestBottomEnergy: string;
   commentVibe: string;
+  commentConsensusLane: string;
+  commentJokeLane: string;
+  commentDissentLane: string;
+  commentSuspicionLane: string;
   slangToAdapt: string[];
+  commentLanguageCues: string[];
   extractableSlang: string[];
   hiddenDetail: string;
   genericRisks: string[];
@@ -165,6 +195,13 @@ export type SelectorOutput = {
   rejectedExampleIds?: string[];
   selectedExamples?: Stage2CorpusExample[];
   confidence?: number;
+  retrievalConfidence?: Stage2RetrievalConfidence;
+  examplesMode?: Stage2ExamplesMode;
+  retrievalExplanation?: string;
+  retrievalEvidence?: string[];
+  retrievalWarning?: string | null;
+  examplesRoleSummary?: string;
+  primaryDriverSummary?: string;
   archetype?: string;
   allowedAngles?: string[];
   retrievalFilters?: {
@@ -219,6 +256,8 @@ export type CandidateCaption = {
   topRu: string;
   bottomRu: string;
   rationale: string;
+  styleDirectionIds?: string[];
+  explorationMode?: Stage2ExplorationMode;
 };
 
 export type CriticScore = {
@@ -255,6 +294,7 @@ export type PreparedGenerationContext = {
   analyzerOutput: AnalyzerOutput;
   selectorOutput: SelectorOutput;
   retrievalBundle?: RetrievalBundle;
+  examplesAssessment?: Stage2ExamplesAssessment;
   availableExamples?: Stage2CorpusExample[];
 };
 
@@ -264,6 +304,8 @@ export type Stage2RuntimeChannelConfig = {
   username: string;
   hardConstraints: Stage2HardConstraints;
   examplesSource: Stage2ExamplesCorpusSource;
+  styleProfile?: Stage2StyleProfile;
+  editorialMemory?: Stage2EditorialMemorySummary;
 };
 
 export type PromptPacket = {
@@ -312,6 +354,7 @@ export type Stage2DiagnosticsExample = {
   qualityScore: number | null;
   retrievalScore: number | null;
   retrievalReasons: string[];
+  guidanceRole: Stage2ExampleGuidanceRole;
   sampleKind: string | null;
   isOwnedAnchor: boolean;
   isAntiExample: boolean;
@@ -328,6 +371,8 @@ export type Stage2Diagnostics = {
     username: string;
     examplesSource: Stage2ExamplesCorpusSource;
     hardConstraints: Stage2HardConstraints;
+    styleProfile?: Stage2StyleProfile;
+    editorialMemory?: Stage2EditorialMemorySummary;
     workspaceCorpusCount: number;
     activeCorpusCount: number;
   };
@@ -356,8 +401,15 @@ export type Stage2Diagnostics = {
     sceneBeats: string[];
     revealMoment: string;
     lateClipChange: string;
+    whyViewerCares: string;
+    bestBottomEnergy: string;
     commentVibe: string;
+    commentConsensusLane?: string;
+    commentJokeLane?: string;
+    commentDissentLane?: string;
+    commentSuspicionLane?: string;
     slangToAdapt?: string[];
+    commentLanguageCues?: string[];
     hiddenDetail?: string;
     genericRisks?: string[];
     uncertaintyNotes: string[];
@@ -371,6 +423,16 @@ export type Stage2Diagnostics = {
     workspaceCorpusCount: number;
     activeCorpusCount: number;
     selectorCandidateCount: number;
+    retrievalConfidence: Stage2RetrievalConfidence;
+    examplesMode: Stage2ExamplesMode;
+    explanation: string;
+    evidence: string[];
+    retrievalWarning: string | null;
+    examplesRoleSummary: string;
+    primaryDriverSummary: string;
+    primaryDrivers: string[];
+    channelStylePriority: Stage2ExamplesAssessment["channelStylePriority"];
+    editorialMemoryPriority: Stage2ExamplesAssessment["editorialMemoryPriority"];
     availableExamples: Stage2DiagnosticsExample[];
     selectedExamples: Stage2DiagnosticsExample[];
   };
@@ -413,6 +475,9 @@ export type ViralShortsStage2Result = {
     selectorOutput: SelectorOutput;
     availableExamplesCount: number;
     selectedExamplesCount: number;
+    retrievalConfidence?: Stage2RetrievalConfidence;
+    examplesMode?: Stage2ExamplesMode;
+    retrievalExplanation?: string;
     finalSelector?: {
       candidateOptionMap: Array<{
         option: number;

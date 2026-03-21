@@ -330,6 +330,7 @@ export function heuristicAnalyzer(videoContext: {
             : stakes.includes("reverence")
               ? "awe"
               : "insider recognition";
+  const topComment = comments.map((comment) => compact(comment)).find(Boolean) ?? "";
 
   return {
     visualAnchors,
@@ -350,7 +351,14 @@ export function heuristicAnalyzer(videoContext: {
     whyViewerCares,
     bestBottomEnergy,
     commentVibe,
+    commentConsensusLane: topComment
+      ? `Consensus lane is mostly anchored by comments like: ${topComment.slice(0, 120)}`
+      : "",
+    commentJokeLane: commentVibe === "sarcastic amusement" ? "Joke lane is active in the comments." : "",
+    commentDissentLane: "",
+    commentSuspicionLane: "",
     slangToAdapt: extractableSlang,
+    commentLanguageCues: extractableSlang,
     extractableSlang,
     hiddenDetail,
     genericRisks,

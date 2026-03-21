@@ -9,6 +9,7 @@ import {
   Stage2PromptConfig
 } from "../../lib/stage2-pipeline";
 import { Stage2CorpusExample, Stage2HardConstraints } from "../../lib/stage2-channel-config";
+import { getSelectedStage2StyleDirections, Stage2StyleProfile } from "../../lib/stage2-channel-learning";
 import { AutosaveState } from "./channel-manager-support";
 
 type Stage2PromptStageMeta = {
@@ -40,6 +41,7 @@ type ChannelManagerStage2TabProps = {
   canEditHardConstraints: boolean;
   canEditChannelExamples: boolean;
   activeExamplesPreview: ActiveExamplesPreview;
+  channelStyleProfile?: Stage2StyleProfile | null;
   customExamplesJson: string;
   customExamplesError: string | null;
   updateWorkspaceExamplesJson: (value: string) => void;
@@ -76,6 +78,7 @@ export function ChannelManagerStage2Tab({
   canEditHardConstraints,
   canEditChannelExamples,
   activeExamplesPreview,
+  channelStyleProfile,
   customExamplesJson,
   customExamplesError,
   updateWorkspaceExamplesJson,
@@ -91,38 +94,38 @@ export function ChannelManagerStage2Tab({
     return (
       <div className="field-stack">
         <section className="control-card control-card-priority">
-          <p className="field-label">Default settings</p>
+          <p className="field-label">Общие настройки</p>
           <p className="subtle-text">
-            Здесь владелец задаёт общий Stage 2 default для всего workspace: corpus,
-            hard constraints и default prompt/thinking для каждого этапа.
+            Здесь владелец задаёт общую базу Stage 2 для всего рабочего пространства:
+            корпус примеров, ограничения и базовые промпты с уровнем рассуждений для каждого этапа.
           </p>
         </section>
 
         <section className="control-card control-card-subtle">
           <div className="stage2-insight-grid">
             <article className="stage2-insight-card">
-              <span className="field-label">Workspace corpus</span>
+              <span className="field-label">Общий корпус</span>
               <strong>{workspaceExamplesCount}</strong>
-              <p className="subtle-text">примеров попадут в default corpus workspace</p>
+              <p className="subtle-text">примеров попадут в общий корпус рабочего пространства</p>
             </article>
             <article className="stage2-insight-card">
               <span className="field-label">TOP</span>
               <strong>
                 {stage2HardConstraints.topLengthMin}-{stage2HardConstraints.topLengthMax}
               </strong>
-              <p className="subtle-text">default hard constraints</p>
+              <p className="subtle-text">ограничения по умолчанию</p>
             </article>
             <article className="stage2-insight-card">
               <span className="field-label">BOTTOM</span>
               <strong>
                 {stage2HardConstraints.bottomLengthMin}-{stage2HardConstraints.bottomLengthMax}
               </strong>
-              <p className="subtle-text">default hard constraints</p>
+              <p className="subtle-text">ограничения по умолчанию</p>
             </article>
           </div>
 
           <div className="compact-field">
-            <label className="field-label">Workspace default corpus JSON</label>
+            <label className="field-label">JSON общего корпуса</label>
             <textarea
               className="text-area mono"
               rows={10}
@@ -134,17 +137,17 @@ export function ChannelManagerStage2Tab({
               <p className="subtle-text danger-text">{workspaceExamplesError}</p>
             ) : (
               <p className="subtle-text">
-                Это общий default corpus workspace. Все каналы используют его, если не
-                включён channel custom corpus.
+                Это общий корпус рабочего пространства. Все каналы используют его, если
+                для канала не включён собственный корпус.
               </p>
             )}
           </div>
 
           <div className="compact-field">
-            <p className="field-label">Default hard constraints</p>
+            <p className="field-label">Ограничения по умолчанию</p>
             <div className="compact-grid">
               <div className="compact-field">
-                <label className="field-label">Top min</label>
+                <label className="field-label">TOP мин.</label>
                 <input
                   className="text-input"
                   type="number"
@@ -156,7 +159,7 @@ export function ChannelManagerStage2Tab({
                 />
               </div>
               <div className="compact-field">
-                <label className="field-label">Top max</label>
+                <label className="field-label">TOP макс.</label>
                 <input
                   className="text-input"
                   type="number"
@@ -168,7 +171,7 @@ export function ChannelManagerStage2Tab({
                 />
               </div>
               <div className="compact-field">
-                <label className="field-label">Bottom min</label>
+                <label className="field-label">BOTTOM мин.</label>
                 <input
                   className="text-input"
                   type="number"
@@ -180,7 +183,7 @@ export function ChannelManagerStage2Tab({
                 />
               </div>
               <div className="compact-field">
-                <label className="field-label">Bottom max</label>
+                <label className="field-label">BOTTOM макс.</label>
                 <input
                   className="text-input"
                   type="number"
@@ -192,7 +195,7 @@ export function ChannelManagerStage2Tab({
                 />
               </div>
             </div>
-            <label className="field-label">Banned words</label>
+            <label className="field-label">Запрещённые слова</label>
             <textarea
               className="text-area"
               rows={3}
@@ -201,7 +204,7 @@ export function ChannelManagerStage2Tab({
               onChange={(event) => updateBannedWordsInput(event.target.value)}
             />
             <p className="subtle-text">Разделяйте слова запятыми, точкой с запятой или с новой строки.</p>
-            <label className="field-label">Banned openers</label>
+            <label className="field-label">Запрещённые начала</label>
             <textarea
               className="text-area"
               rows={3}
@@ -209,7 +212,7 @@ export function ChannelManagerStage2Tab({
               disabled={!canEditHardConstraints}
               onChange={(event) => updateBannedOpenersInput(event.target.value)}
             />
-            <p className="subtle-text">Banned openers проверяются в начале TOP и сохраняются как отдельный список.</p>
+            <p className="subtle-text">Запрещённые начала проверяются только в начале TOP и хранятся отдельным списком.</p>
           </div>
 
           <div className="stage2-config-stage-list">
@@ -226,19 +229,19 @@ export function ChannelManagerStage2Tab({
                     <div className="stage2-config-stage-copy">
                       <div className="quick-edit-label-row">
                         <label className="field-label">
-                          {stage.shortLabel} <span className="badge">LLM stage</span>
+                          {stage.shortLabel} <span className="badge">LLM-этап</span>
                         </label>
                         {!isDefaultPrompt || !isDefaultReasoning ? (
-                          <span className="badge">Custom</span>
+                          <span className="badge">Переопределено</span>
                         ) : (
-                          <span className="badge muted">Default</span>
+                          <span className="badge muted">По умолчанию</span>
                         )}
                       </div>
                       <p className="subtle-text">{stage.description}</p>
                     </div>
                   </div>
                   <div className="stage2-config-stage-body">
-                    <label className="field-label">Default prompt</label>
+                    <label className="field-label">Базовый промпт</label>
                     <textarea
                       className="text-area mono"
                       rows={10}
@@ -250,7 +253,7 @@ export function ChannelManagerStage2Tab({
                     />
                     <div className="stage2-config-stage-controls">
                       <div className="compact-field">
-                        <label className="field-label">Default thinking</label>
+                        <label className="field-label">Базовый уровень рассуждений</label>
                         <select
                           className="text-input"
                           value={stageConfig.reasoningEffort}
@@ -276,7 +279,7 @@ export function ChannelManagerStage2Tab({
                           disabled={!canEditWorkspaceDefaults}
                           onClick={() => resetStage2PromptStage(stage.id)}
                         >
-                          Reset to product default
+                          Сбросить к продуктовым настройкам
                         </button>
                       </div>
                     </div>
@@ -290,7 +293,7 @@ export function ChannelManagerStage2Tab({
             className={`subtle-text ${autosaveState.stage2Defaults.status === "error" ? "danger-text" : ""}`}
           >
             {autosaveState.stage2Defaults.message ??
-              "Workspace Stage 2 defaults сохраняются автоматически."}
+              "Общие настройки Stage 2 сохраняются автоматически."}
           </p>
         </section>
       </div>
@@ -300,35 +303,86 @@ export function ChannelManagerStage2Tab({
   return (
     <div className="field-stack">
       <section className="control-card control-card-priority">
-        <p className="field-label">Channel Stage 2</p>
+        <p className="field-label">Настройки Stage 2 канала</p>
         <p className="subtle-text">
-          Для конкретного канала здесь настраивается один examples corpus JSON.
-          Дефолтный corpus задаётся владельцем отдельно через пункт Default settings.
+          Для конкретного канала здесь настраивается свой JSON корпуса примеров.
+          Базовый корпус задаётся владельцем отдельно через раздел общих настроек.
         </p>
       </section>
+      {!isWorkspaceDefaultsSelection && channelStyleProfile ? (
+        <section className="control-card control-card-subtle">
+          <div className="control-section-head">
+            <div>
+              <h3>Стартовый стиль</h3>
+              <p className="subtle-text">
+                Стартовый стиль теперь формируется через пошаговый мастер: референсные ссылки
+                сужают пространство вариантов, но финальный стартовый набор направлений
+                выбирает редактор.
+              </p>
+            </div>
+          </div>
+          <div className="stage2-insight-grid">
+            <article className="stage2-insight-card">
+              <span className="field-label">Референсные ссылки</span>
+              <strong>{channelStyleProfile.referenceLinks.length}</strong>
+              <p className="subtle-text">ссылок было использовано для стартовой настройки</p>
+            </article>
+            <article className="stage2-insight-card">
+              <span className="field-label">Предложенные направления</span>
+              <strong>{channelStyleProfile.candidateDirections.length}</strong>
+              <p className="subtle-text">кандидатных направлений было предложено</p>
+            </article>
+            <article className="stage2-insight-card">
+              <span className="field-label">Доля исследования</span>
+              <strong>{Math.round(channelStyleProfile.explorationShare * 100)}%</strong>
+              <p className="subtle-text">резервируется под контролируемое разнообразие</p>
+            </article>
+          </div>
+          {getSelectedStage2StyleDirections(channelStyleProfile).length > 0 ? (
+            <div className="stage2-style-pill-list">
+              {getSelectedStage2StyleDirections(channelStyleProfile).map((direction) => (
+                <article key={direction.id} className="stage2-style-pill">
+                  <strong>{direction.name}</strong>
+                  <p className="subtle-text">{direction.description}</p>
+                  <p className="subtle-text">
+                    TOP: {direction.topPattern}
+                    {" · "}
+                    BOTTOM: {direction.bottomPattern}
+                  </p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="subtle-text">
+              Этот канал ещё не прошёл новый стартовый мастер или пока не выбраны стартовые
+              направления.
+            </p>
+          )}
+        </section>
+      ) : null}
       <section className="control-card control-card-subtle">
         <div className="control-section-head">
           <div>
-            <h3>Examples corpus</h3>
+            <h3>Корпус примеров</h3>
             <p className="subtle-text">
-              Поле изначально заполнено workspace default corpus. Его можно просто
+              Поле изначально заполнено общим корпусом рабочего пространства. Его можно просто
               отредактировать или полностью заменить.
             </p>
           </div>
         </div>
         <div className="stage2-insight-grid">
           <article className="stage2-insight-card">
-            <span className="field-label">Workspace default</span>
+            <span className="field-label">Общий корпус</span>
             <strong>{workspaceExamplesCount}</strong>
-            <p className="subtle-text">примеров находится в общем corpus workspace</p>
+            <p className="subtle-text">примеров сейчас лежит в общем корпусе рабочего пространства</p>
           </article>
           <article className="stage2-insight-card">
-            <span className="field-label">Current corpus</span>
+            <span className="field-label">Текущий корпус</span>
             <strong>{activeExamplesPreview.corpus.length}</strong>
-            <p className="subtle-text">столько examples сейчас увидят selector и writer</p>
+            <p className="subtle-text">столько примеров сейчас увидят селектор и генератор</p>
           </article>
           <article className="stage2-insight-card">
-            <span className="field-label">Hard constraints</span>
+            <span className="field-label">Ограничения</span>
             <strong>
               TOP {stage2HardConstraints.topLengthMin}-{stage2HardConstraints.topLengthMax}
             </strong>
@@ -339,7 +393,7 @@ export function ChannelManagerStage2Tab({
         </div>
 
         <div className="compact-field">
-          <label className="field-label">Examples corpus JSON</label>
+          <label className="field-label">JSON корпуса примеров</label>
           <textarea
             className="text-area mono"
             rows={12}
@@ -351,23 +405,22 @@ export function ChannelManagerStage2Tab({
             <p className="subtle-text danger-text">{customExamplesError}</p>
           ) : (
             <p className="subtle-text">
-              По умолчанию сюда подставляется corpus из Default settings. Если вы
-              редактируете JSON, этот канал начинает использовать отредактированную
-              версию.
+              По умолчанию сюда подставляется корпус из общих настроек. Если вы
+              редактируете JSON, этот канал начинает использовать собственную версию.
             </p>
           )}
         </div>
       </section>
 
       <section className="control-card control-card-subtle">
-        <p className="field-label">Hard constraints</p>
+        <p className="field-label">Ограничения</p>
         <p className="subtle-text">
-          Эти лимиты применяются только к этому каналу. Workspace prompt defaults по-прежнему задаются
-          владельцем в Default settings.
+          Эти лимиты применяются только к этому каналу. Базовые промпты Stage 2 по-прежнему
+          задаются владельцем в общих настройках.
         </p>
         <div className="compact-grid">
           <div className="compact-field">
-            <label className="field-label">Top min</label>
+            <label className="field-label">TOP мин.</label>
             <input
               className="text-input"
               type="number"
@@ -379,7 +432,7 @@ export function ChannelManagerStage2Tab({
             />
           </div>
           <div className="compact-field">
-            <label className="field-label">Top max</label>
+            <label className="field-label">TOP макс.</label>
             <input
               className="text-input"
               type="number"
@@ -391,7 +444,7 @@ export function ChannelManagerStage2Tab({
             />
           </div>
           <div className="compact-field">
-            <label className="field-label">Bottom min</label>
+            <label className="field-label">BOTTOM мин.</label>
             <input
               className="text-input"
               type="number"
@@ -403,7 +456,7 @@ export function ChannelManagerStage2Tab({
             />
           </div>
           <div className="compact-field">
-            <label className="field-label">Bottom max</label>
+            <label className="field-label">BOTTOM макс.</label>
             <input
               className="text-input"
               type="number"
@@ -429,7 +482,7 @@ export function ChannelManagerStage2Tab({
             </strong>
           </div>
         </div>
-        <label className="field-label">Banned words</label>
+        <label className="field-label">Запрещённые слова</label>
         <textarea
           className="text-area"
           rows={3}
@@ -438,7 +491,7 @@ export function ChannelManagerStage2Tab({
           onChange={(event) => updateBannedWordsInput(event.target.value)}
         />
         <p className="subtle-text">Разделяйте слова запятыми, точкой с запятой или с новой строки.</p>
-        <label className="field-label">Banned openers</label>
+        <label className="field-label">Запрещённые начала</label>
         <textarea
           className="text-area"
           rows={3}
@@ -446,14 +499,14 @@ export function ChannelManagerStage2Tab({
           disabled={!canEditHardConstraints}
           onChange={(event) => updateBannedOpenersInput(event.target.value)}
         />
-        <p className="subtle-text">Banned openers проверяются в начале TOP и сохраняются как отдельный список.</p>
+        <p className="subtle-text">Запрещённые начала проверяются только в начале TOP и хранятся отдельным списком.</p>
         <p className={`subtle-text ${autosaveState.stage2.status === "error" ? "danger-text" : ""}`}>
           {autosaveState.stage2.message ??
-            "На уровне канала автоматически сохраняются examples corpus JSON и все hard constraints."}
+            "На уровне канала автоматически сохраняются JSON корпуса примеров и все ограничения."}
         </p>
         <p className="subtle-text">
-          Prompt defaults задаются владельцем в пункте Default settings. Здесь на уровне канала редактируются
-          длины TOP/BOTTOM и banned lists.
+          Базовые промпты задаются владельцем в разделе общих настроек. Здесь на уровне канала
+          редактируются длины TOP/BOTTOM и списки запретов.
         </p>
       </section>
     </div>
