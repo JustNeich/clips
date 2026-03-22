@@ -16,8 +16,14 @@
   - Stage 2 baseline settings;
   - 10+ reference links;
   - dynamic style discovery with a broad selectable startup pool, including explicit regeneration.
+  - bootstrap style discovery now weights liked comments more aggressively, samples real reference frames, and builds compact audience + packaging portraits.
   - onboarding draft persists across panel close/reopen and page reload;
   - bootstrap style discovery runs durably on the server and reattaches by `runId`.
+- После onboarding редактор канала может донастраивать style profile без повторного wizard:
+  - менять reference links;
+  - явно перегенерировать pool направлений;
+  - менять selected directions;
+  - менять exploration share.
 
 ## 1. Установка зависимостей проекта
 
@@ -89,13 +95,24 @@ npm run dev
   - использует один effective examples corpus на run: либо `workspace default corpus`, либо `channel custom corpus`;
   - использует channel learning layer:
     - bootstrap style profile из onboarding;
-    - rolling editorial memory из последних feedback events;
-    - confidence-aware examples mode: `domain_guided`, `form_guided`, or `style_guided` depending on retrieval quality;
+    - rolling editorial memory из последних explicit feedback events;
+  - separate weaker passive `selected_option` signal;
+  - removable explicit like/dislike reactions with immediate editorial-memory recompute;
+  - confidence-aware examples mode: `domain_guided`, `form_guided`, or `style_guided` depending on retrieval quality;
     - controlled exploratory share, чтобы варианты не схлопывались в один mode;
+  - поддерживает editor feedback по трём scope:
+    - whole option;
+    - top only;
+    - bottom only;
   - использует comments-aware prompt stack:
     - analyzer separates mixed audience lanes instead of flattening them;
     - writer/critic/rewriter suppress stock generic tails and batch sameness;
     - final selector keeps real stylistic alternatives in the visible five;
+  - clip trace export is forensic-oriented:
+    - canonical causal inputs live in `stage2.causalInputs`;
+    - per-stage prompt manifests live in `stage2.stageManifests`;
+    - final outcome truth lives in `stage2.outcome`;
+    - export truncation is reported explicitly instead of being silently hidden;
   - `data/examples.json` используется только один раз как seed для нового workspace, а не как live runtime source;
   - вызывает `codex exec` по stage-этапам с авторизацией пользователя через кнопку `Connect Codex` (device auth);
   - отдает live progress snapshot по шагам pipeline (`GET /api/pipeline/stage2?runId=...`);

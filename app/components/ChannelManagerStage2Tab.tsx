@@ -9,7 +9,13 @@ import {
   Stage2PromptConfig
 } from "../../lib/stage2-pipeline";
 import { Stage2CorpusExample, Stage2HardConstraints } from "../../lib/stage2-channel-config";
-import { getSelectedStage2StyleDirections, Stage2StyleProfile } from "../../lib/stage2-channel-learning";
+import type { ChannelFeedbackResponse } from "./types";
+import {
+  getSelectedStage2StyleDirections,
+  type Stage2EditorialMemorySummary,
+  Stage2StyleProfile
+} from "../../lib/stage2-channel-learning";
+import type { ChannelStyleProfileEditorDraft } from "./channel-onboarding-support";
 import { AutosaveState } from "./channel-manager-support";
 
 type Stage2PromptStageMeta = {
@@ -42,6 +48,29 @@ type ChannelManagerStage2TabProps = {
   canEditChannelExamples: boolean;
   activeExamplesPreview: ActiveExamplesPreview;
   channelStyleProfile?: Stage2StyleProfile | null;
+  channelStyleProfileDraft?: ChannelStyleProfileEditorDraft | null;
+  channelStyleProfileStatus?: "missing" | "fresh" | "stale";
+  channelStyleProfileDirty?: boolean;
+  channelStyleProfileFeedbackHistory: ChannelFeedbackResponse["historyEvents"];
+  channelStyleProfileFeedbackHistoryLoading: boolean;
+  onDeleteChannelFeedbackEvent?: (eventId: string) => Promise<void>;
+  deletingChannelFeedbackEventId?: string | null;
+  channelEditorialMemory: Stage2EditorialMemorySummary | null;
+  canEditChannelStyleProfile: boolean;
+  channelStyleProfileDiscovering: boolean;
+  channelStyleProfileDiscoveryError: string | null;
+  channelStyleProfileSaveState: {
+    status: "idle" | "saving" | "saved" | "error";
+    message: string | null;
+  };
+  updateChannelStyleProfileReferenceLinks: (value: string) => void;
+  updateChannelStyleProfileExplorationShare: (value: number) => void;
+  toggleChannelStyleProfileDirectionSelection: (directionId: string) => void;
+  selectAllChannelStyleProfileDirections: () => void;
+  clearChannelStyleProfileDirectionSelection: () => void;
+  startChannelStyleProfileDiscovery: () => Promise<void>;
+  saveChannelStyleProfileDraft: () => Promise<void>;
+  discardChannelStyleProfileDraft: () => void;
   customExamplesJson: string;
   customExamplesError: string | null;
   updateWorkspaceExamplesJson: (value: string) => void;
@@ -63,6 +92,74 @@ type ChannelManagerStage2TabProps = {
   resetStage2PromptStage: (stageId: keyof Stage2PromptConfig["stages"]) => void;
 };
 
+function formatStyleLevel(level: "low" | "medium" | "high"): string {
+  if (level === "low") {
+    return "низкий";
+  }
+  if (level === "high") {
+    return "высокий";
+  }
+  return "средний";
+}
+
+function formatStyleFitBand(fitBand: "core" | "adjacent" | "exploratory"): string {
+  if (fitBand === "core") {
+    return "Опорное";
+  }
+  if (fitBand === "adjacent") {
+    return "Соседний ход";
+  }
+  return "Исследование";
+}
+
+function formatFeedbackScope(scope: "option" | "top" | "bottom"): string {
+  if (scope === "top") {
+    return "TOP";
+  }
+  if (scope === "bottom") {
+    return "BOTTOM";
+  }
+  return "Опция";
+}
+
+function formatFeedbackTimestamp(value: string): string {
+  return new Date(value).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatFeedbackNoteMode(mode: ChannelFeedbackResponse["historyEvents"][number]["noteMode"]): string {
+  if (mode === "hard_rule") {
+    return "Hard rule";
+  }
+  if (mode === "situational_note") {
+    return "Situational note";
+  }
+  return "Soft preference";
+}
+
+function getFeedbackSnippet(
+  event: ChannelFeedbackResponse["historyEvents"][number]
+): string {
+  if (!event.optionSnapshot) {
+    return "Снимок варианта недоступен.";
+  }
+
+  const optionLabel = event.optionSnapshot.optionNumber
+    ? `Вариант ${event.optionSnapshot.optionNumber}`
+    : event.optionSnapshot.candidateId;
+  if (event.scope === "top") {
+    return `${optionLabel}: ${event.optionSnapshot.top}`;
+  }
+  if (event.scope === "bottom") {
+    return `${optionLabel}: ${event.optionSnapshot.bottom}`;
+  }
+  return `${optionLabel}: ${event.optionSnapshot.top} · ${event.optionSnapshot.bottom}`;
+}
+
 export function ChannelManagerStage2Tab({
   isWorkspaceDefaultsSelection,
   workspaceExamplesCount,
@@ -79,6 +176,26 @@ export function ChannelManagerStage2Tab({
   canEditChannelExamples,
   activeExamplesPreview,
   channelStyleProfile,
+  channelStyleProfileDraft,
+  channelStyleProfileStatus = "missing",
+  channelStyleProfileDirty = false,
+  channelStyleProfileFeedbackHistory,
+  channelStyleProfileFeedbackHistoryLoading,
+  onDeleteChannelFeedbackEvent,
+  deletingChannelFeedbackEventId = null,
+  channelEditorialMemory,
+  canEditChannelStyleProfile,
+  channelStyleProfileDiscovering,
+  channelStyleProfileDiscoveryError,
+  channelStyleProfileSaveState,
+  updateChannelStyleProfileReferenceLinks,
+  updateChannelStyleProfileExplorationShare,
+  toggleChannelStyleProfileDirectionSelection,
+  selectAllChannelStyleProfileDirections,
+  clearChannelStyleProfileDirectionSelection,
+  startChannelStyleProfileDiscovery,
+  saveChannelStyleProfileDraft,
+  discardChannelStyleProfileDraft,
   customExamplesJson,
   customExamplesError,
   updateWorkspaceExamplesJson,
@@ -300,6 +417,21 @@ export function ChannelManagerStage2Tab({
     );
   }
 
+  const selectedPersistedDirections = channelStyleProfile
+    ? getSelectedStage2StyleDirections(channelStyleProfile)
+    : [];
+  const selectedDraftDirections = channelStyleProfileDraft?.styleProfile
+    ? channelStyleProfileDraft.styleProfile.candidateDirections.filter((direction) =>
+        channelStyleProfileDraft.selectedStyleDirectionIds.includes(direction.id)
+      )
+    : [];
+  const currentReferenceCount = channelStyleProfileDraft?.referenceLinksText
+    ? channelStyleProfileDraft.referenceLinksText
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean).length
+    : 0;
+
   return (
     <div className="field-stack">
       <section className="control-card control-card-priority">
@@ -313,51 +445,296 @@ export function ChannelManagerStage2Tab({
         <section className="control-card control-card-subtle">
           <div className="control-section-head">
             <div>
-              <h3>Стартовый стиль</h3>
+              <h3>Стиль канала</h3>
               <p className="subtle-text">
-                Стартовый стиль теперь формируется через пошаговый мастер: референсные ссылки
-                сужают пространство вариантов, но финальный стартовый набор направлений
-                выбирает редактор.
+                После онбординга стиль можно спокойно донастроить: поменять референсы,
+                пересобрать пул направлений, отметить новые карточки и подправить долю исследования.
               </p>
             </div>
+            <span className={`badge ${channelStyleProfileStatus === "stale" ? "" : "muted"}`}>
+              {channelStyleProfileStatus === "stale"
+                ? "Нужна пересборка"
+                : channelStyleProfileDirty
+                  ? "Есть несохранённые изменения"
+                  : "Синхронизировано"}
+            </span>
           </div>
           <div className="stage2-insight-grid">
             <article className="stage2-insight-card">
               <span className="field-label">Референсные ссылки</span>
-              <strong>{channelStyleProfile.referenceLinks.length}</strong>
-              <p className="subtle-text">ссылок было использовано для стартовой настройки</p>
+              <strong>{currentReferenceCount || channelStyleProfile.referenceLinks.length}</strong>
+              <p className="subtle-text">текущий набор ссылок для следующей style discovery пересборки</p>
             </article>
             <article className="stage2-insight-card">
-              <span className="field-label">Предложенные направления</span>
-              <strong>{channelStyleProfile.candidateDirections.length}</strong>
-              <p className="subtle-text">кандидатных направлений было предложено</p>
+              <span className="field-label">Направления</span>
+              <strong>{channelStyleProfileDraft?.styleProfile.candidateDirections.length ?? channelStyleProfile.candidateDirections.length}</strong>
+              <p className="subtle-text">карточек сейчас доступно для стартового приоритета канала</p>
+            </article>
+            <article className="stage2-insight-card">
+              <span className="field-label">Выбрано</span>
+              <strong>{selectedDraftDirections.length || selectedPersistedDirections.length}</strong>
+              <p className="subtle-text">жёсткого лимита нет, runtime сам сжимает это в компактный prior</p>
             </article>
             <article className="stage2-insight-card">
               <span className="field-label">Доля исследования</span>
-              <strong>{Math.round(channelStyleProfile.explorationShare * 100)}%</strong>
-              <p className="subtle-text">резервируется под контролируемое разнообразие</p>
+              <strong>{Math.round((channelStyleProfileDraft?.explorationShare ?? channelStyleProfile.explorationShare) * 100)}%</strong>
+              <p className="subtle-text">обычно 20–30%, выше — больше эксперимента</p>
             </article>
           </div>
-          {getSelectedStage2StyleDirections(channelStyleProfile).length > 0 ? (
-            <div className="stage2-style-pill-list">
-              {getSelectedStage2StyleDirections(channelStyleProfile).map((direction) => (
-                <article key={direction.id} className="stage2-style-pill">
-                  <strong>{direction.name}</strong>
-                  <p className="subtle-text">{direction.description}</p>
-                  <p className="subtle-text">
-                    TOP: {direction.topPattern}
-                    {" · "}
-                    BOTTOM: {direction.bottomPattern}
-                  </p>
-                </article>
-              ))}
+
+          {channelEditorialMemory ? (
+            <div className="channel-onboarding-note-card">
+              <strong>Как сейчас учится канал</strong>
+              <p className="subtle-text">{channelEditorialMemory.promptSummary}</p>
+            </div>
+          ) : null}
+          {channelStyleProfile.bootstrapDiagnostics ? (
+            <div className="channel-onboarding-note-card">
+              <strong>
+                Уверенность bootstrap: {channelStyleProfile.bootstrapDiagnostics.confidence === "high"
+                  ? "высокая"
+                  : channelStyleProfile.bootstrapDiagnostics.confidence === "medium"
+                    ? "средняя"
+                    : "осторожная"}
+              </strong>
+              <p className="subtle-text">{channelStyleProfile.bootstrapDiagnostics.summary}</p>
+              {channelStyleProfile.audiencePortrait?.summary ? (
+                <p className="subtle-text">
+                  <strong>Портрет аудитории:</strong> {channelStyleProfile.audiencePortrait.summary}
+                </p>
+              ) : null}
+              {channelStyleProfile.packagingPortrait?.summary ? (
+                <p className="subtle-text">
+                  <strong>Портрет упаковки:</strong> {channelStyleProfile.packagingPortrait.summary}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="compact-field">
+            <label className="field-label">Референсные ссылки</label>
+            <textarea
+              className="text-area mono"
+              rows={10}
+              value={channelStyleProfileDraft?.referenceLinksText ?? ""}
+              disabled={!canEditChannelStyleProfile}
+              placeholder="По одной поддерживаемой ссылке на строку"
+              onChange={(event) => updateChannelStyleProfileReferenceLinks(event.target.value)}
+            />
+            <p className="subtle-text">
+              Можно добавлять, убирать и менять ссылки. Текущий пул карточек не исчезает, пока вы явно не запустите пересборку.
+            </p>
+            {channelStyleProfileStatus === "stale" ? (
+              <p className="subtle-text danger-text">
+                Ссылки изменились после последней генерации. Перед сохранением обновите пул направлений под текущий набор.
+              </p>
+            ) : null}
+            {channelStyleProfileDiscoveryError ? (
+              <p className="subtle-text danger-text">{channelStyleProfileDiscoveryError}</p>
+            ) : null}
+          </div>
+
+          <div className="compact-field">
+            <div className="quick-edit-label-row">
+              <label className="field-label" htmlFor="channelStyleExplorationShare">
+                Доля исследования
+              </label>
+              <strong>{Math.round((channelStyleProfileDraft?.explorationShare ?? channelStyleProfile.explorationShare) * 100)}%</strong>
+            </div>
+            <input
+              id="channelStyleExplorationShare"
+              type="range"
+              min={10}
+              max={40}
+              step={5}
+              disabled={!canEditChannelStyleProfile}
+              value={Math.round((channelStyleProfileDraft?.explorationShare ?? channelStyleProfile.explorationShare) * 100)}
+              onChange={(event) =>
+                updateChannelStyleProfileExplorationShare(Number(event.target.value) / 100)
+              }
+            />
+            <p className="subtle-text">
+              Эта настройка меняет только долю исследовательских вариантов в runtime. Выбор карточек по-прежнему можно оставить широким.
+            </p>
+          </div>
+
+          <div className="channel-onboarding-selection-toolbar">
+            <p className="subtle-text">
+              Отмечайте все реально подходящие направления. Рантайм сам использует их как взвешенный prior, а не как стену из одинаковых указаний.
+            </p>
+            <div className="channel-onboarding-selection-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={!canEditChannelStyleProfile || !channelStyleProfileDraft?.styleProfile.candidateDirections.length}
+                onClick={selectAllChannelStyleProfileDirections}
+              >
+                Выбрать всё
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={!canEditChannelStyleProfile || !channelStyleProfileDraft?.selectedStyleDirectionIds.length}
+                onClick={clearChannelStyleProfileDirectionSelection}
+              >
+                Снять выбор
+              </button>
+            </div>
+          </div>
+
+          {channelStyleProfileDraft?.styleProfile.candidateDirections.length ? (
+            <div className="channel-style-grid">
+              {channelStyleProfileDraft.styleProfile.candidateDirections.map((direction) => {
+                const selected = channelStyleProfileDraft.selectedStyleDirectionIds.includes(direction.id);
+                return (
+                  <button
+                    key={direction.id}
+                    type="button"
+                    className={`channel-style-card ${selected ? "is-selected" : ""}`}
+                    disabled={!canEditChannelStyleProfile}
+                    onClick={() => toggleChannelStyleProfileDirectionSelection(direction.id)}
+                  >
+                    <div className="channel-style-card-head">
+                      <div className="channel-style-card-title">
+                        <strong>{direction.name}</strong>
+                        <div className="channel-style-card-tags">
+                          <span className={`badge channel-style-fit-badge fit-${direction.fitBand}`}>
+                            {formatStyleFitBand(direction.fitBand)}
+                          </span>
+                          <span className={`badge ${selected ? "" : "muted"}`}>
+                            {selected ? "Выбрано" : "Выбрать"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <p>{direction.description}</p>
+                    <div className="channel-style-card-meta">
+                      <div className="channel-style-meta-block">
+                        <span className="field-label">Как ощущается</span>
+                        <span>{direction.voice}</span>
+                      </div>
+                      <div className="channel-style-meta-block">
+                        <span className="field-label">TOP</span>
+                        <span>{direction.topPattern}</span>
+                      </div>
+                      <div className="channel-style-meta-block">
+                        <span className="field-label">BOTTOM</span>
+                        <span>{direction.bottomPattern}</span>
+                      </div>
+                      <div className="channel-style-tone-grid">
+                        <span className="channel-style-tone-pill">Юмор: {formatStyleLevel(direction.humorLevel)}</span>
+                        <span className="channel-style-tone-pill">Сарказм: {formatStyleLevel(direction.sarcasmLevel)}</span>
+                        <span className="channel-style-tone-pill">Теплота: {formatStyleLevel(direction.warmthLevel)}</span>
+                        <span className="channel-style-tone-pill">Инсайдерность: {formatStyleLevel(direction.insiderDensityLevel)}</span>
+                      </div>
+                      <div className="channel-style-meta-block">
+                        <span className="field-label">Лучше всего работает</span>
+                        <span>{direction.bestFor}</span>
+                      </div>
+                      <div className="channel-style-meta-block">
+                        <span className="field-label">Лучше избегать</span>
+                        <span>{direction.avoids}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <p className="subtle-text">
-              Этот канал ещё не прошёл новый стартовый мастер или пока не выбраны стартовые
-              направления.
+              У канала ещё нет сохранённого style pool. Сначала соберите ссылки и запустите пересборку.
             </p>
           )}
+
+          <div className="control-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={!canEditChannelStyleProfile || currentReferenceCount < 10 || channelStyleProfileDiscovering}
+              onClick={() => {
+                void startChannelStyleProfileDiscovery();
+              }}
+            >
+              {channelStyleProfileDiscovering ? "Пересобираем..." : "Перегенерировать направления"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={!canEditChannelStyleProfile || !channelStyleProfileDirty}
+              onClick={discardChannelStyleProfileDraft}
+            >
+              Отменить изменения
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={
+                !canEditChannelStyleProfile ||
+                !channelStyleProfileDirty ||
+                channelStyleProfileStatus === "stale" ||
+                channelStyleProfileSaveState.status === "saving"
+              }
+              onClick={() => {
+                void saveChannelStyleProfileDraft();
+              }}
+            >
+              {channelStyleProfileSaveState.status === "saving" ? "Сохраняем..." : "Сохранить стиль"}
+            </button>
+          </div>
+          <p className={`subtle-text ${channelStyleProfileSaveState.status === "error" ? "danger-text" : ""}`}>
+            {channelStyleProfileSaveState.message ??
+              (channelStyleProfileStatus === "stale"
+                ? "Сначала обновите пул направлений под текущие ссылки, затем сохраните стиль канала."
+                : "Редактор канала может спокойно редактировать ссылки, направления и exploration share без повторного онбординга.")}
+          </p>
+
+          <section className="control-card control-card-subtle">
+            <div className="control-section-head">
+              <div>
+                <h3>Последние реакции канала</h3>
+                <p className="subtle-text">
+                  Здесь видны только явные лайки и дизлайки. Пассивный выбор варианта остаётся системным слабым сигналом и в эту историю не попадает.
+                </p>
+              </div>
+            </div>
+            {channelStyleProfileFeedbackHistoryLoading ? (
+              <p className="subtle-text">Загружаем историю реакций…</p>
+            ) : channelStyleProfileFeedbackHistory.length > 0 ? (
+              <div className="stage2-example-list">
+                {channelStyleProfileFeedbackHistory.map((event) => (
+                  <article key={event.id} className="stage2-example-card">
+                    <div className="quick-edit-label-row">
+                      <strong>{event.kind === "more_like_this" ? "👍" : "👎"} {formatFeedbackScope(event.scope)}</strong>
+                      <div className="history-item-actions">
+                        <span className="subtle-text">{formatFeedbackTimestamp(event.createdAt)}</span>
+                        {canEditChannelStyleProfile && onDeleteChannelFeedbackEvent ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost history-delete-btn"
+                            aria-label={`Удалить реакцию ${event.id}`}
+                            title="Удалить реакцию"
+                            disabled={deletingChannelFeedbackEventId === event.id}
+                            onClick={() => {
+                              void onDeleteChannelFeedbackEvent(event.id);
+                            }}
+                          >
+                            {deletingChannelFeedbackEventId === event.id ? "Удаляем…" : "Удалить"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <p className="subtle-text">Режим: {formatFeedbackNoteMode(event.noteMode)}</p>
+                    <p className="subtle-text">{getFeedbackSnippet(event)}</p>
+                    {event.note ? <p className="subtle-text">Заметка: {event.note}</p> : null}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="subtle-text">
+                Явных лайков и дизлайков пока нет. Канал всё ещё больше опирается на bootstrap prior и дальнейший выбор редактора.
+              </p>
+            )}
+          </section>
         </section>
       ) : null}
       <section className="control-card control-card-subtle">

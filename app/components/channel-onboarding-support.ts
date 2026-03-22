@@ -9,6 +9,7 @@ import {
 } from "../../lib/stage2-channel-config";
 import {
   normalizeStage2StyleProfile,
+  STAGE2_EDITORIAL_EXPLORATION_SHARE,
   STAGE2_STYLE_MIN_REFERENCE_LINKS,
   type Stage2StyleProfile
 } from "../../lib/stage2-channel-learning";
@@ -51,12 +52,25 @@ export type ChannelOnboardingDraft = {
   referenceLinksText: string;
   styleProfile: Stage2StyleProfile | null;
   selectedStyleDirectionIds: string[];
+  explorationShare: number;
 };
 
 export type PersistedChannelOnboardingState = {
   step: ChannelOnboardingStepId;
   furthestUnlockedStep: ChannelOnboardingStepId;
   draft: ChannelOnboardingDraft;
+  activeStyleDiscoveryRunId: string | null;
+};
+
+export type ChannelStyleProfileEditorDraft = {
+  referenceLinksText: string;
+  styleProfile: Stage2StyleProfile;
+  selectedStyleDirectionIds: string[];
+  explorationShare: number;
+};
+
+export type PersistedChannelStyleProfileEditorState = {
+  draft: ChannelStyleProfileEditorDraft;
   activeStyleDiscoveryRunId: string | null;
 };
 
@@ -72,7 +86,8 @@ export function createChannelOnboardingDraft(input: {
     stage2HardConstraints: normalizeStage2HardConstraints(input.workspaceStage2HardConstraints),
     referenceLinksText: "",
     styleProfile: null,
-    selectedStyleDirectionIds: []
+    selectedStyleDirectionIds: [],
+    explorationShare: STAGE2_EDITORIAL_EXPLORATION_SHARE
   };
 }
 
@@ -130,7 +145,11 @@ export function normalizePersistedChannelOnboardingState(
           .filter((item): item is string => typeof item === "string")
           .map((item) => item.trim())
           .filter(Boolean)
-      : fallbackDraft.selectedStyleDirectionIds
+      : fallbackDraft.selectedStyleDirectionIds,
+    explorationShare:
+      typeof draftCandidate?.explorationShare === "number"
+        ? Math.max(0.1, Math.min(0.4, draftCandidate.explorationShare))
+        : fallbackDraft.explorationShare
   };
 
   return {
@@ -254,9 +273,20 @@ export function applyChannelOnboardingStyleDiscoveryResult(
   return {
     ...draft,
     styleProfile: normalizedProfile,
+    explorationShare: draft.explorationShare,
     selectedStyleDirectionIds: draft.selectedStyleDirectionIds.filter((id) =>
       normalizedProfile.candidateDirections.some((direction) => direction.id === id)
     )
+  };
+}
+
+export function setChannelOnboardingExplorationShare(
+  draft: ChannelOnboardingDraft,
+  explorationShare: number
+): ChannelOnboardingDraft {
+  return {
+    ...draft,
+    explorationShare: Math.max(0.1, Math.min(0.4, explorationShare))
   };
 }
 
@@ -383,7 +413,164 @@ export function buildChannelOnboardingCreatePayload(draft: ChannelOnboardingDraf
       createdAt: normalizedStyleProfile.createdAt ?? now,
       updatedAt: now,
       onboardingCompletedAt: now,
+      explorationShare: draft.explorationShare,
       selectedDirectionIds: draft.selectedStyleDirectionIds
     })
   };
+}
+
+export function createChannelStyleProfileEditorDraft(
+  profile: Stage2StyleProfile | null | undefined
+): ChannelStyleProfileEditorDraft {
+  const normalizedProfile = normalizeStage2StyleProfile(profile);
+  return {
+    referenceLinksText: normalizeStage2StyleDiscoveryReferenceUrls(
+      normalizedProfile.referenceLinks.map((reference) => reference.normalizedUrl || reference.url)
+    ).join("\n"),
+    styleProfile: normalizedProfile,
+    selectedStyleDirectionIds: [...normalizedProfile.selectedDirectionIds],
+    explorationShare: normalizedProfile.explorationShare
+  };
+}
+
+export function normalizePersistedChannelStyleProfileEditorState(
+  value: unknown,
+  fallbackProfile: Stage2StyleProfile | null | undefined
+): PersistedChannelStyleProfileEditorState | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const fallbackDraft = createChannelStyleProfileEditorDraft(fallbackProfile);
+  const draftCandidate =
+    candidate.draft && typeof candidate.draft === "object"
+      ? (candidate.draft as Partial<ChannelStyleProfileEditorDraft>)
+      : null;
+
+  return {
+    draft: {
+      referenceLinksText:
+        typeof draftCandidate?.referenceLinksText === "string"
+          ? draftCandidate.referenceLinksText
+          : fallbackDraft.referenceLinksText,
+      styleProfile: draftCandidate?.styleProfile
+        ? normalizeStage2StyleProfile(draftCandidate.styleProfile)
+        : fallbackDraft.styleProfile,
+      selectedStyleDirectionIds: Array.isArray(draftCandidate?.selectedStyleDirectionIds)
+        ? draftCandidate.selectedStyleDirectionIds
+            .filter((item): item is string => typeof item === "string")
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : fallbackDraft.selectedStyleDirectionIds,
+      explorationShare:
+        typeof draftCandidate?.explorationShare === "number"
+          ? Math.max(0.1, Math.min(0.4, draftCandidate.explorationShare))
+          : fallbackDraft.explorationShare
+    },
+    activeStyleDiscoveryRunId:
+      typeof candidate.activeStyleDiscoveryRunId === "string" &&
+      candidate.activeStyleDiscoveryRunId.trim()
+        ? candidate.activeStyleDiscoveryRunId.trim()
+        : null
+  };
+}
+
+export function getChannelStyleProfileEditorDiscoveryStatus(
+  draft: Pick<ChannelStyleProfileEditorDraft, "referenceLinksText" | "styleProfile">
+): ChannelOnboardingStyleDiscoveryStatus {
+  return getChannelOnboardingStyleDiscoveryStatus({
+    referenceLinksText: draft.referenceLinksText,
+    styleProfile: draft.styleProfile
+  });
+}
+
+export function updateChannelStyleProfileEditorReferenceLinks(
+  draft: ChannelStyleProfileEditorDraft,
+  referenceLinksText: string
+): ChannelStyleProfileEditorDraft {
+  return {
+    ...draft,
+    referenceLinksText
+  };
+}
+
+export function applyChannelStyleProfileEditorDiscoveryResult(
+  draft: ChannelStyleProfileEditorDraft,
+  styleProfile: Stage2StyleProfile
+): ChannelStyleProfileEditorDraft {
+  const normalizedProfile = normalizeStage2StyleProfile(styleProfile);
+  return {
+    ...draft,
+    styleProfile: {
+      ...normalizedProfile,
+      explorationShare: draft.explorationShare
+    },
+    selectedStyleDirectionIds: draft.selectedStyleDirectionIds.filter((id) =>
+      normalizedProfile.candidateDirections.some((direction) => direction.id === id)
+    )
+  };
+}
+
+export function toggleChannelStyleProfileEditorDirectionSelection(
+  draft: ChannelStyleProfileEditorDraft,
+  directionId: string
+): ChannelStyleProfileEditorDraft {
+  const profile = normalizeStage2StyleProfile(draft.styleProfile);
+  if (!profile.candidateDirections.some((direction) => direction.id === directionId)) {
+    return draft;
+  }
+  const alreadySelected = draft.selectedStyleDirectionIds.includes(directionId);
+  return {
+    ...draft,
+    selectedStyleDirectionIds: alreadySelected
+      ? draft.selectedStyleDirectionIds.filter((id) => id !== directionId)
+      : [...draft.selectedStyleDirectionIds, directionId]
+  };
+}
+
+export function selectAllChannelStyleProfileEditorDirections(
+  draft: ChannelStyleProfileEditorDraft,
+  options?: {
+    fitBands?: Array<NonNullable<Stage2StyleProfile["candidateDirections"][number]["fitBand"]>>;
+  }
+): ChannelStyleProfileEditorDraft {
+  const profile = normalizeStage2StyleProfile(draft.styleProfile);
+  const allowedFitBands = options?.fitBands ?? null;
+  return {
+    ...draft,
+    selectedStyleDirectionIds: profile.candidateDirections
+      .filter((direction) => !allowedFitBands || allowedFitBands.includes(direction.fitBand))
+      .map((direction) => direction.id)
+  };
+}
+
+export function clearChannelStyleProfileEditorDirectionSelection(
+  draft: ChannelStyleProfileEditorDraft
+): ChannelStyleProfileEditorDraft {
+  return {
+    ...draft,
+    selectedStyleDirectionIds: []
+  };
+}
+
+export function setChannelStyleProfileEditorExplorationShare(
+  draft: ChannelStyleProfileEditorDraft,
+  explorationShare: number
+): ChannelStyleProfileEditorDraft {
+  return {
+    ...draft,
+    explorationShare: Math.max(0.1, Math.min(0.4, explorationShare))
+  };
+}
+
+export function buildChannelStyleProfileFromEditorDraft(
+  draft: ChannelStyleProfileEditorDraft
+): Stage2StyleProfile {
+  const normalizedStyleProfile = normalizeStage2StyleProfile(draft.styleProfile);
+  return normalizeStage2StyleProfile({
+    ...normalizedStyleProfile,
+    updatedAt: new Date().toISOString(),
+    selectedDirectionIds: draft.selectedStyleDirectionIds,
+    explorationShare: draft.explorationShare
+  });
 }

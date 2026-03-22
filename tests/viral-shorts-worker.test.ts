@@ -7,8 +7,15 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AppShell, type AppShellProps } from "../app/components/AppShell";
 import {
+  buildHistorySections,
+  getHistoryProgressBadge,
+  matchesHistoryFilter,
+  upsertHistoryItemByMeaningfulUpdate
+} from "../app/components/history-panel-support";
+import {
   CHANNEL_MANAGER_DEFAULT_SETTINGS_ID,
   canDeleteManagedChannel,
+  describeChannelManagerSavePatch,
   listChannelManagerTargets
 } from "../app/components/ChannelManager";
 import { ChannelManagerStage2Tab } from "../app/components/ChannelManagerStage2Tab";
@@ -68,6 +75,10 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../lib/stage2-channel-config";
+import {
+  createEmptyStage2EditorialMemorySummary,
+  normalizeStage2StyleProfile
+} from "../lib/stage2-channel-learning";
 import { resolveChannelPermissions } from "../lib/acl";
 import { prepareCommentsForPrompt, sortCommentsByPopularity } from "../lib/comments";
 import { fetchCommentsForUrl } from "../lib/source-comments";
@@ -1321,6 +1332,25 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
       corpus: [],
       workspaceCorpusCount: 12
     },
+    channelStyleProfile: null,
+    channelStyleProfileDraft: null,
+    channelStyleProfileStatus: "missing",
+    channelStyleProfileDirty: false,
+    channelStyleProfileFeedbackHistory: [],
+    channelStyleProfileFeedbackHistoryLoading: false,
+    channelEditorialMemory: null,
+    canEditChannelStyleProfile: false,
+    channelStyleProfileDiscovering: false,
+    channelStyleProfileDiscoveryError: null,
+    channelStyleProfileSaveState: { status: "idle", message: null },
+    updateChannelStyleProfileReferenceLinks: () => undefined,
+    updateChannelStyleProfileExplorationShare: () => undefined,
+    toggleChannelStyleProfileDirectionSelection: () => undefined,
+    selectAllChannelStyleProfileDirections: () => undefined,
+    clearChannelStyleProfileDirectionSelection: () => undefined,
+    startChannelStyleProfileDiscovery: async () => undefined,
+    saveChannelStyleProfileDraft: async () => undefined,
+    discardChannelStyleProfileDraft: () => undefined,
     customExamplesJson: "[]",
     customExamplesError: null,
     updateWorkspaceExamplesJson: () => undefined,
@@ -1348,6 +1378,222 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   assert.match(markup, /literal, generic,/);
   assert.match(markup, /Here is a\nThis is/);
   assert.doesNotMatch(markup, /disabled=""/);
+});
+
+test("channel manager save notices classify Stage 2 and style-profile saves with visible copy", () => {
+  assert.deepEqual(
+    describeChannelManagerSavePatch({
+      stage2ExamplesConfig: {
+        version: 1,
+        useWorkspaceDefault: true,
+        customExamples: []
+      }
+    }),
+    {
+      saving: "Сохраняем настройки Stage 2…",
+      saved: "Настройки Stage 2 сохранены.",
+      error: "Не удалось сохранить настройки Stage 2."
+    }
+  );
+
+  assert.deepEqual(
+    describeChannelManagerSavePatch({
+      stage2StyleProfile: normalizeStage2StyleProfile(null)
+    }),
+    {
+      saving: "Сохраняем стиль канала…",
+      saved: "Стиль канала сохранён.",
+      error: "Не удалось сохранить стиль канала."
+    }
+  );
+});
+
+test("channel Stage 2 tab exposes post-onboarding style profile editing and feedback history", () => {
+  const styleProfile = {
+    version: 1 as const,
+    createdAt: "2026-03-21T10:00:00.000Z",
+    updatedAt: "2026-03-21T10:00:00.000Z",
+    onboardingCompletedAt: "2026-03-21T10:00:00.000Z",
+    discoveryPromptVersion: "test",
+    referenceInfluenceSummary: "Референсы сужают пространство, но редактор выбирает финальную смесь.",
+    audiencePortrait: null,
+    packagingPortrait: null,
+    bootstrapDiagnostics: null,
+    explorationShare: 0.25,
+    referenceLinks: [
+      {
+        id: "reference_1",
+        url: "https://www.youtube.com/shorts/ref-1",
+        normalizedUrl: "https://www.youtube.com/shorts/ref-1",
+        title: "Reference 1",
+        description: "Description 1",
+        transcriptExcerpt: "Transcript 1",
+        commentHighlights: ["Comment 1"],
+        totalCommentCount: 12,
+        selectedCommentCount: 4,
+        audienceSignalSummary: "Аудитория быстро считывает момент и уходит в мемный пересказ.",
+        frameMoments: [
+          "setup frame: early setup beat at 0.90s of 6.00s",
+          "turn frame: middle turn beat at 3.00s of 6.00s",
+          "payoff frame: late payoff beat at 5.16s of 6.00s"
+        ],
+        framesUsed: true,
+        sourceHint: "YouTube"
+      }
+    ],
+    candidateDirections: [
+      {
+        id: "direction_1",
+        fitBand: "core" as const,
+        name: "Direction 1",
+        description: "Description 1",
+        voice: "Voice 1",
+        topPattern: "Top 1",
+        bottomPattern: "Bottom 1",
+        humorLevel: "medium" as const,
+        sarcasmLevel: "low" as const,
+        warmthLevel: "medium" as const,
+        insiderDensityLevel: "medium" as const,
+        bestFor: "Best for 1",
+        avoids: "Avoid 1",
+        microExample: "Example 1",
+        sourceReferenceIds: ["reference_1"],
+        internalPromptNotes: "Note 1",
+        axes: {
+          humor: 0.5,
+          sarcasm: 0.3,
+          warmth: 0.5,
+          insiderDensity: 0.4,
+          intensity: 0.5,
+          explanationDensity: 0.4,
+          quoteDensity: 0.2,
+          topCompression: 0.7
+        }
+      }
+    ],
+    selectedDirectionIds: ["direction_1"]
+  };
+
+  const element = ChannelManagerStage2Tab({
+    isWorkspaceDefaultsSelection: false,
+    workspaceExamplesCount: 12,
+    workspaceExamplesJson: "[]",
+    workspaceExamplesError: null,
+    stage2HardConstraints: {
+      topLengthMin: 135,
+      topLengthMax: 180,
+      bottomLengthMin: 92,
+      bottomLengthMax: 145,
+      bannedWords: [],
+      bannedOpeners: []
+    },
+    bannedWordsInput: "",
+    bannedOpenersInput: "",
+    workspaceStage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+    stage2PromptStages: [],
+    autosaveState: {
+      brand: { status: "idle", message: null },
+      stage2: { status: "idle", message: null },
+      stage2Defaults: { status: "idle", message: null },
+      render: { status: "idle", message: null }
+    },
+    canEditWorkspaceDefaults: false,
+    canEditHardConstraints: true,
+    canEditChannelExamples: true,
+    activeExamplesPreview: {
+      source: "channel_custom",
+      corpus: [],
+      workspaceCorpusCount: 12
+    },
+    channelStyleProfile: styleProfile,
+    channelStyleProfileDraft: {
+      referenceLinksText: "https://www.youtube.com/shorts/ref-1",
+      styleProfile,
+      selectedStyleDirectionIds: ["direction_1"],
+      explorationShare: 0.3
+    },
+    channelStyleProfileStatus: "fresh",
+    channelStyleProfileDirty: true,
+    channelStyleProfileFeedbackHistory: [
+      {
+        id: "feedback_1",
+        workspaceId: "workspace_1",
+        channelId: "channel_1",
+        userId: "user_1",
+        chatId: null,
+        stage2RunId: "run_1",
+        kind: "less_like_this",
+        scope: "bottom",
+        note: "Низ нужно суше.",
+        optionSnapshot: {
+          candidateId: "cand_1",
+          optionNumber: 2,
+          top: "Top sample",
+          bottom: "Bottom sample",
+          angle: "dry read",
+          styleDirectionIds: ["direction_1"],
+          explorationMode: "aligned"
+        },
+        createdAt: "2026-03-21T10:15:00.000Z"
+      }
+    ],
+    channelStyleProfileFeedbackHistoryLoading: false,
+    onDeleteChannelFeedbackEvent: async () => undefined,
+    deletingChannelFeedbackEventId: null,
+    channelEditorialMemory: {
+      version: 1,
+      windowSize: 30,
+      recentFeedbackCount: 1,
+      recentSelectionCount: 0,
+      explorationShare: 0.3,
+      directionScores: [],
+      angleScores: [],
+      preferredTextCues: [],
+      discouragedTextCues: [],
+      recentNotes: ["Низ нужно суше."],
+      normalizedAxes: {
+        humor: 0.5,
+        sarcasm: 0.5,
+        warmth: 0.5,
+        insiderDensity: 0.5,
+        intensity: 0.5,
+        explanationDensity: 0.5,
+        quoteDensity: 0.5,
+        topCompression: 0.5
+      },
+      promptSummary: "Bootstrap directions: Direction 1. Recent explicit feedback: bottom should stay drier."
+    },
+    canEditChannelStyleProfile: true,
+    channelStyleProfileDiscovering: false,
+    channelStyleProfileDiscoveryError: null,
+    channelStyleProfileSaveState: { status: "idle", message: null },
+    updateChannelStyleProfileReferenceLinks: () => undefined,
+    updateChannelStyleProfileExplorationShare: () => undefined,
+    toggleChannelStyleProfileDirectionSelection: () => undefined,
+    selectAllChannelStyleProfileDirections: () => undefined,
+    clearChannelStyleProfileDirectionSelection: () => undefined,
+    startChannelStyleProfileDiscovery: async () => undefined,
+    saveChannelStyleProfileDraft: async () => undefined,
+    discardChannelStyleProfileDraft: () => undefined,
+    customExamplesJson: "[]",
+    customExamplesError: null,
+    updateWorkspaceExamplesJson: () => undefined,
+    updateCustomExamplesJson: () => undefined,
+    updateStage2HardConstraint: () => undefined,
+    updateBannedWordsInput: () => undefined,
+    updateBannedOpenersInput: () => undefined,
+    updateStage2PromptTemplate: () => undefined,
+    updateStage2PromptReasoning: () => undefined,
+    resetStage2PromptStage: () => undefined
+  });
+  const markup = renderToStaticMarkup(element);
+
+  assert.match(markup, /Стиль канала/);
+  assert.match(markup, /Перегенерировать направления/);
+  assert.match(markup, /Последние реакции канала/);
+  assert.match(markup, /Низ нужно суше/);
+  assert.match(markup, /Удалить реакцию feedback_1/);
+  assert.match(markup, /type="range"/);
 });
 
 test("stage 2 output validation warns on banned words and banned openers", () => {
@@ -2162,6 +2408,231 @@ test("shortlist preserves diversity when a same-angle final selector set can be 
       (option) => option.candidateId === "cand_6" || option.candidateId === "cand_7" || option.candidateId === "cand_8"
     )
   );
+});
+
+test("shortlist promotes a strong comment-native candidate into the visible five when comment pressure is high", async () => {
+  const stage2HardConstraints: Stage2HardConstraints = {
+    topLengthMin: 40,
+    topLengthMax: 180,
+    bottomLengthMin: 40,
+    bottomLengthMax: 150,
+    bannedWords: [],
+    bannedOpeners: []
+  };
+  const writerCandidates = [
+    {
+      candidate_id: "cand_1",
+      angle: "tension_danger",
+      top: "The armored run looks fine for one second, then the whole vehicle carries too much speed and heads straight for the crowd fence.",
+      bottom: "That fence is there for manners, not physics, and everybody by the pickup learns that the hard way.",
+      top_ru: "ru 1",
+      bottom_ru: "ru 1",
+      rationale: "safe generic winner"
+    },
+    {
+      candidate_id: "cand_2",
+      angle: "shared_experience",
+      top: "The demo stops looking controlled the second the vehicle starts skating wide and the spectator side becomes part of the route.",
+      bottom: "That slow shuffle from the crowd tells you exactly when the show stops feeling like a show.",
+      top_ru: "ru 2",
+      bottom_ru: "ru 2",
+      rationale: "crowd read"
+    },
+    {
+      candidate_id: "cand_3",
+      angle: "insider_expertise",
+      top: "Once that much armored weight misses the line, the rest of the clip is just momentum bullying the fence into surrender.",
+      bottom: "Nobody near that pickup needs an announcer to explain what the next bad second is about to do.",
+      top_ru: "ru 3",
+      bottom_ru: "ru 3",
+      rationale: "insider read"
+    },
+    {
+      candidate_id: "cand_4",
+      angle: "absurdity_chaos",
+      top: "This starts like a military demo and ends like the course suddenly opened a bonus exit straight through the spectators.",
+      bottom: "It stops feeling tactical the second the truck chooses local traffic over whatever the plan was supposed to be.",
+      top_ru: "ru 4",
+      bottom_ru: "ru 4",
+      rationale: "absurdity read"
+    },
+    {
+      candidate_id: "cand_5",
+      angle: "shared_experience",
+      top: "The crowd thinks they are watching a clean pass until the armor slides off line and turns the fence into a suggestion.",
+      bottom: "One bad arc and the safe side of the course becomes pure wishful thinking for everybody standing there.",
+      top_ru: "ru 5",
+      bottom_ru: "ru 5",
+      rationale: "safe reserve"
+    },
+    {
+      candidate_id: "cand_6",
+      angle: "absurdity_chaos",
+      top: "The armored run is supposed to look elite right up until the thing blows through the fence like nobody told elite SADF about braking room.",
+      bottom: "This is taxi driver in SANDF energy with eight wheels and a full audience, which is exactly why the whole crowd starts moving at once.",
+      top_ru: "ru 6",
+      bottom_ru: "ru 6",
+      rationale: "comment-native jab"
+    },
+    {
+      candidate_id: "cand_7",
+      angle: "tension_danger",
+      top: "You can see the line disappear under that vehicle long before the fence gets a vote in how the demonstration should end.",
+      bottom: "The panic here is not cinematic, it is everybody at the pickup realizing the heavy part has picked a new route.",
+      top_ru: "ru 7",
+      bottom_ru: "ru 7",
+      rationale: "danger reserve"
+    },
+    {
+      candidate_id: "cand_8",
+      angle: "shared_experience",
+      top: "The speed sells the demo until the armor starts skating and suddenly the crowd is learning the difference between a show lane and real momentum.",
+      bottom: "The crowd-side reaction lands because everyone there can tell the fence was a courtesy, not a plan.",
+      top_ru: "ru 8",
+      bottom_ru: "ru 8",
+      rationale: "safe reserve 2"
+    }
+  ];
+  const criticResponse = writerCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total: candidate.candidate_id === "cand_6" ? 8.25 : 9 - index * 0.15,
+    issues: [],
+    keep: true
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    stage2HardConstraints,
+    comments: [
+      { author: "viewer_1", likes: 33, text: "The SADF doesn’t need an enemy, they’ll eliminate themselves!" },
+      { author: "viewer_2", likes: 14, text: "And I present to you our elite SADF🫡" },
+      { author: "viewer_3", likes: 6, text: "Taxi driver in SANDF.....also learned to drive on his play station😂😂" }
+    ],
+    analyzerResponse: {
+      comment_vibe: "mocking disbelief",
+      comment_consensus_lane: "Consensus lane keeps gravitating toward The SADF doesn’t need an enemy.",
+      comment_joke_lane: "Joke lane keeps phrasing it like Taxi driver in SANDF and elite SADF.",
+      slang_to_adapt: ["SADF", "elite SADF", "Taxi driver in SANDF"],
+      comment_language_cues: ["The SADF doesn’t need an enemy", "elite SADF", "Taxi driver in SANDF"],
+      hidden_detail: "The audience keeps reducing the whole moment to compact SADF jokes."
+    },
+    writerCandidates,
+    rewrittenCandidates: writerCandidates,
+    criticResponse,
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_1",
+      rationale: "The cleanest five keep the safe visible reads."
+    }
+  });
+
+  assert.ok(result.output.captionOptions.some((option) => option.candidateId === "cand_6"));
+});
+
+test("final pick can override a sanitized winner when a strong comment-native option is equally competitive", async () => {
+  const stage2HardConstraints: Stage2HardConstraints = {
+    topLengthMin: 40,
+    topLengthMax: 180,
+    bottomLengthMin: 40,
+    bottomLengthMax: 150,
+    bannedWords: [],
+    bannedOpeners: []
+  };
+  const writerCandidates = [
+    {
+      candidate_id: "cand_1",
+      angle: "tension_danger",
+      top: "The armored run looks controlled until the vehicle drifts off line and turns the crowd fence into the next obstacle.",
+      bottom: "That fence is there for manners, not physics, and the whole crowd reads the rest of the clip from the pickup side.",
+      top_ru: "ru 1",
+      bottom_ru: "ru 1",
+      rationale: "sanitized winner"
+    },
+    {
+      candidate_id: "cand_2",
+      angle: "shared_experience",
+      top: "The crowd only needs one second of that wide slide to understand the course has stopped being the course.",
+      bottom: "That spectator shuffle is what tells you the demonstration has already changed categories.",
+      top_ru: "ru 2",
+      bottom_ru: "ru 2",
+      rationale: "crowd read"
+    },
+    {
+      candidate_id: "cand_3",
+      angle: "insider_expertise",
+      top: "Too much armored weight, not enough room, and the fence learns first why the line stopped mattering.",
+      bottom: "This is the point where everyone nearby starts respecting momentum more than whatever the demo brief said.",
+      top_ru: "ru 3",
+      bottom_ru: "ru 3",
+      rationale: "process read"
+    },
+    {
+      candidate_id: "cand_4",
+      angle: "absurdity_chaos",
+      top: "The clip sells elite timing right until the vehicle takes the crowd fence like it was just another suggestion.",
+      bottom: "It stops looking tactical the second the show picks the same route a bad local driver would.",
+      top_ru: "ru 4",
+      bottom_ru: "ru 4",
+      rationale: "absurdity read"
+    },
+    {
+      candidate_id: "cand_5",
+      angle: "shared_experience",
+      top: "The moment that armor starts skating wide, everybody watching knows the safest thing in frame is the dust cloud.",
+      bottom: "The crowd-side panic lands because the course line has already lost the argument by then.",
+      top_ru: "ru 5",
+      bottom_ru: "ru 5",
+      rationale: "reserve"
+    },
+    {
+      candidate_id: "cand_6",
+      angle: "absurdity_chaos",
+      top: "This is supposed to look like elite SADF control, then the whole machine goes taxi-driver wide and introduces itself to the spectator fence.",
+      bottom: "That is pure taxi driver in SANDF energy, which is why this lands harder than another clean generic military-demo joke.",
+      top_ru: "ru 6",
+      bottom_ru: "ru 6",
+      rationale: "comment-native strong alternate"
+    }
+  ];
+  const criticResponse = writerCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total:
+      candidate.candidate_id === "cand_1"
+        ? 8.8
+        : candidate.candidate_id === "cand_6"
+          ? 8.65
+          : 8.1 - index * 0.1,
+    issues: [],
+    keep: true
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    stage2HardConstraints,
+    comments: [
+      { author: "viewer_1", likes: 33, text: "The SADF doesn’t need an enemy, they’ll eliminate themselves!" },
+      { author: "viewer_2", likes: 14, text: "And I present to you our elite SADF🫡" },
+      { author: "viewer_3", likes: 6, text: "Taxi driver in SANDF.....also learned to drive on his play station😂😂" }
+    ],
+    analyzerResponse: {
+      comment_vibe: "mocking disbelief",
+      comment_consensus_lane: "Consensus lane keeps gravitating toward The SADF doesn’t need an enemy.",
+      comment_joke_lane: "Joke lane keeps phrasing it like Taxi driver in SANDF and elite SADF.",
+      slang_to_adapt: ["SADF", "elite SADF", "Taxi driver in SANDF"],
+      comment_language_cues: ["The SADF doesn’t need an enemy", "elite SADF", "Taxi driver in SANDF"],
+      hidden_detail: "The audience keeps reducing the whole moment to compact SADF jokes."
+    },
+    writerCandidates,
+    rewrittenCandidates: writerCandidates,
+    criticResponse,
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_6"],
+      final_pick: "cand_1",
+      rationale: "cand_1 is cleanest."
+    }
+  });
+
+  assert.equal(result.output.pipeline.finalSelector?.finalPickCandidateId, "cand_6");
 });
 
 test("selector normalization keeps the primary angle inside ranked angles and mirrors it into diagnostics", async () => {
@@ -3527,6 +3998,80 @@ test("analyzer prompt asks for mixed comment lanes and carries a compact comment
   assert.match(prompt, /dissent or pushback lane/i);
 });
 
+test("writer prompt explicitly carries strong audience shorthand when comment pressure is high", () => {
+  const prompt = buildWriterPrompt({
+    channelConfig: {
+      channelId: "target",
+      name: "Echoes Of Honor",
+      username: "echoesofhonor50",
+      hardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      examplesSource: "workspace_default"
+    },
+    analyzerOutput: {
+      visualAnchors: ["armored vehicle near the crowd fence"],
+      specificNouns: ["SADF vehicle", "crowd fence", "pickup"],
+      visibleActions: ["slides wide", "hits the fence"],
+      subject: "armored vehicle demo",
+      action: "slides wide",
+      setting: "dusty training field",
+      firstSecondsSignal: "the vehicle already looks too fast for the line",
+      sceneBeats: ["clean setup", "wide slide", "crowd-side near miss"],
+      revealMoment: "the vehicle breaks through the fence line",
+      lateClipChange: "the crowd realizes the course line is gone",
+      stakes: ["danger", "absurdity"],
+      payoff: "the armored vehicle ends up on the spectator side",
+      coreTrigger: "a military demo turns into a crowd-side self-own",
+      humanStake: "everyone watching instantly understands the near-miss and the embarrassment",
+      narrativeFrame: "a power demo becoming a public self-own",
+      whyViewerCares: "the clip sells both danger and humiliation in one visible move",
+      bestBottomEnergy: "dry mocking disbelief",
+      commentVibe: "mocking disbelief",
+      commentConsensusLane: "Consensus lane keeps circling The SADF doesn’t need an enemy.",
+      commentJokeLane: "Joke lane keeps calling it Taxi driver in SANDF and elite SADF.",
+      commentDissentLane: "",
+      commentSuspicionLane: "",
+      slangToAdapt: ["SADF", "elite SADF", "Taxi driver in SANDF"],
+      commentLanguageCues: ["The SADF doesn’t need an enemy", "elite SADF", "Taxi driver in SANDF"],
+      extractableSlang: ["SADF", "elite SADF", "Taxi driver in SANDF"],
+      hiddenDetail: "The audience keeps reducing the whole moment to SADF shorthand.",
+      genericRisks: ["sanding the whole joke down into generic military-demo language"],
+      uncertaintyNotes: [],
+      rawSummary: "An armored vehicle slides out of a demo lane and breaks into the spectator fence."
+    },
+    selectorOutput: {
+      clipType: "military_fail",
+      primaryAngle: "tension_danger",
+      secondaryAngles: ["shared_experience", "absurdity_chaos"],
+      rankedAngles: [{ angle: "tension_danger", score: 9.4, why: "Visible crowd-side danger." }],
+      coreTrigger: "demo becomes near miss",
+      humanStake: "the crowd suddenly matters",
+      narrativeFrame: "military demo turns into self-own",
+      whyViewerCares: "danger plus humiliation",
+      topStrategy: "danger-first setup",
+      bottomEnergy: "dry mocking disbelief",
+      whyOldV6WouldWorkHere: "v6 would lean into the self-own immediately",
+      failureModes: ["generic military wording"],
+      writerBrief: "Lead with the near miss, then let the bottom react like the crowd already has a nickname for it.",
+      selectedExampleIds: ["ex_1"]
+    },
+    examplesAssessment: makeExamplesAssessment({
+      retrievalConfidence: "low",
+      examplesMode: "style_guided",
+      examplesRoleSummary: "Examples are weak support only.",
+      primaryDriverSummary: "Clip truth and comment shorthand should drive the run.",
+      channelStylePriority: "primary",
+      editorialMemoryPriority: "elevated"
+    }),
+    userInstruction: null,
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+
+  assert.match(prompt, /"commentCarryProfile":/);
+  assert.match(prompt, /SADF/);
+  assert.match(prompt, /Taxi driver in SANDF/);
+  assert.match(prompt, /at least 2 candidates must cash one of those cues in naturally/i);
+});
+
 test("selector prompt uses a curated prompt pool instead of the entire active corpus", () => {
   const service = new ViralShortsWorkerService();
   const highSignalExamples = Array.from({ length: 36 }, (_, index) =>
@@ -3945,18 +4490,24 @@ test("writer, critic, rewriter, and final selector prompts carry comment lanes p
   assert.match(writerPrompt, /commentJokeLane/);
   assert.match(writerPrompt, /commentLanguageCues/);
   assert.match(writerPrompt, /stock continuations/i);
+  assert.match(writerPrompt, /high-like comment shorthand, acronym, or nickname/i);
+  assert.match(writerPrompt, /reporting or bridge verb such as says, means, proves, shows, or tells/i);
   assert.match(criticPrompt, /"candidateSetSignals":/);
   assert.match(criticPrompt, /"genericTailCandidateIds": \[/);
   assert.match(criticPrompt, /"repeatedBottomTailSignatures": \[/);
   assert.match(criticPrompt, /"examplesMode": "style_guided"/);
+  assert.match(criticPrompt, /dominant audience shorthand/i);
+  assert.match(criticPrompt, /generic filler was appended after a weak or incomplete core clause/i);
   assert.match(rewriterPrompt, /"candidateSetSignals":/);
   assert.match(rewriterPrompt, /"explorationMode": "exploratory"/);
+  assert.match(rewriterPrompt, /Never leave a sentence ending on a reporting or bridge verb/i);
   assert.match(finalSelectorPrompt, /"candidateSetSignals":/);
   assert.match(finalSelectorPrompt, /"styleDirectionIds": \[/);
   assert.match(finalSelectorPrompt, /"explorationMode": "exploratory"/);
+  assert.match(finalSelectorPrompt, /needed repair and still leans on a generic bottom tail/i);
 });
 
-test("buildPromptPacket keeps comments-aware slang and suspicion details in analyzer context", () => {
+test("buildPromptPacket keeps comments-aware slang and generic suspicion details in analyzer context", () => {
   const service = new ViralShortsWorkerService();
   const packet = service.buildPromptPacket({
     channel: {
@@ -4002,11 +4553,11 @@ test("buildPromptPacket keeps comments-aware slang and suspicion details in anal
     promptConfig: normalizeStage2PromptConfig({})
   });
 
-  assert.ok(packet.context.analyzerOutput.slangToAdapt.includes("god pack"));
-  assert.ok(packet.context.analyzerOutput.slangToAdapt.includes("Scooby laugh"));
-  assert.match(packet.context.analyzerOutput.hiddenDetail, /pre-opened|fake|resealed/i);
+  assert.ok(packet.context.analyzerOutput.slangToAdapt.some((cue) => /god pack/i.test(cue)));
+  assert.match(packet.context.analyzerOutput.hiddenDetail, /staging|tampering|fakery|face value/i);
+  assert.doesNotMatch(packet.context.analyzerOutput.hiddenDetail, /pre-opened|resealed/i);
   assert.match(packet.prompts.selector, /god pack/i);
-  assert.match(packet.prompts.selector, /Scooby laugh/i);
+  assert.match(packet.prompts.selector, /scooby/i);
 });
 
 test("repairCandidateForHardConstraints no longer injects quote wrappers into bottom text", () => {
@@ -4031,7 +4582,7 @@ test("repairCandidateForHardConstraints no longer injects quote wrappers into bo
   );
 });
 
-test("repairCandidateForHardConstraints pads short bottoms without injecting unrelated contamination tails", () => {
+test("repairCandidateForHardConstraints rejects short bottoms instead of padding them with unrelated filler", () => {
   const repaired = repairCandidateForHardConstraints(
     {
       candidateId: "cand_short_bottom",
@@ -4051,10 +4602,10 @@ test("repairCandidateForHardConstraints pads short bottoms without injecting unr
     }
   );
 
-  assert.equal(repaired.valid, true);
-  assert.equal(repaired.repaired, true);
-  assert.ok(repaired.candidate.bottom.length >= 120);
-  assert.doesNotMatch(repaired.candidate.bottom, /jeep|lost that exchange/i);
+  assert.equal(repaired.valid, false);
+  assert.equal(repaired.repaired, false);
+  assert.equal(repaired.candidate.bottom, "\"That lineup is stupid.\"");
+  assert.doesNotMatch(repaired.candidate.bottom, /jeep|lost that exchange|reaction basically writes itself|whole room feels it/i);
 });
 
 test("repairCandidateForHardConstraints removes dangling fragment endings before final validation", () => {
@@ -4080,7 +4631,145 @@ test("repairCandidateForHardConstraints removes dangling fragment endings before
   assert.doesNotMatch(repaired.candidate.top, /like the pack\.$/i);
 });
 
-test("pipeline replaces repeated contaminated bottom tails when cleaner reserve candidates exist", async () => {
+test("repairCandidateForHardConstraints rejects short bottoms trimmed from reporting-verb cliffhangers", () => {
+  const repaired = repairCandidateForHardConstraints(
+    {
+      candidateId: "cand_reporting_verb",
+      angle: "shared_experience",
+      top: "The armored vehicle hops so far sideways that the crowd behind the barrier already steps back before the dust even clears.",
+      bottom: "That little hop backward from the spectators says.",
+      topRu: "Бронемашину так уводит вбок, что толпа за ограждением отшатывается еще до того, как оседает пыль.",
+      bottomRu: "Этот маленький шаг назад от зрителей говорит.",
+      rationale: "A reporting-verb cliffhanger should not be rescued with stock filler."
+    },
+    {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      topLengthMin: 18,
+      topLengthMax: 140,
+      bottomLengthMin: 120,
+      bottomLengthMax: 140
+    }
+  );
+
+  assert.equal(repaired.valid, false);
+  assert.equal(repaired.repaired, true);
+  assert.doesNotMatch(repaired.candidate.bottom, /\bsays\.$/i);
+});
+
+test("comment intelligence keeps high-like acronym shorthand and self-own punchlines from non-TCG clips", async () => {
+  const { result } = await runSuccessfulPipeline({
+    comments: [
+      {
+        author: "viewer_1",
+        likes: 3300,
+        text: "The SADF doesn't need an enemy, they'll eliminate themselves!"
+      },
+      {
+        author: "viewer_2",
+        likes: 1400,
+        text: "And I present to you our elite SADF"
+      },
+      {
+        author: "viewer_3",
+        likes: 1100,
+        text: "Just a normal day in South Africa"
+      },
+      {
+        author: "viewer_4",
+        likes: 900,
+        text: "Taxi driver in SANDF....also learned to drive on his play station"
+      }
+    ]
+  });
+
+  assert.ok(
+    result.diagnostics.analysis.slangToAdapt?.some((cue) => /SADF|SANDF/i.test(cue))
+  );
+  assert.ok(
+    result.diagnostics.analysis.commentLanguageCues?.some((cue) =>
+      /SADF|SANDF|normal day in South Africa|Taxi driver/i.test(cue)
+    )
+  );
+  assert.match(
+    result.diagnostics.analysis.commentJokeLane ?? "",
+    /SADF|SANDF|normal day in South Africa|Taxi driver/i
+  );
+});
+
+test("final selector falls back to a cleaner visible pick when the requested winner is repaired and generic-tailed", async () => {
+  const requestedWinnerBottom =
+    "\"That lineup is stupid.\" Once that lands, the reaction basically writes itself.";
+  const { result } = await runSuccessfulPipeline({
+    writerCandidates: [
+      {
+        candidate_id: "cand_1",
+        angle: "shared_experience",
+        top: "The lineup is so overloaded with obvious ringers that the whole room clocks the joke before anyone even gets to pretend otherwise at all.",
+        bottom: requestedWinnerBottom,
+        top_ru: "Состав настолько перегружен очевидными фаворитами, что зал считывает шутку еще до того, как кто-то пытается сделать вид, будто все честно.",
+        bottom_ru: requestedWinnerBottom,
+        rationale: "generic-tailed requested winner"
+      },
+      {
+        candidate_id: "cand_2",
+        angle: "shared_experience",
+        top: "The lineup gets so unfair so fast that everyone watching already knows which name turned the whole category into a joke.",
+        bottom: "\"That lineup is stupid\" works because everybody there reaches the exact same conclusion half a second later.",
+        top_ru: "Состав становится таким нечестным так быстро, что все уже заранее знают, какое имя превратило всю категорию в прикол.",
+        bottom_ru: "\"Этот состав просто безумный\" работает именно потому, что все в зале приходят к тому же выводу через полсекунды.",
+        rationale: "cleaner alternative"
+      },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        candidate_id: `cand_${index + 3}`,
+        angle: index % 2 === 0 ? "payoff_reveal" : "warmth_reverence",
+        top: `Reserve candidate ${index + 3} keeps the lineup tension readable without flattening the joke into filler language for the room.`,
+        bottom: `Reserve candidate ${index + 3} stays specific to the clip instead of leaning on a generic reaction tail for the whole batch.`,
+        top_ru: `Резервный вариант ${index + 3} сохраняет напряжение состава без того, чтобы сплющивать шутку в шаблонный хвост.`,
+        bottom_ru: `Резервный вариант ${index + 3} остается конкретным по клипу и не опирается на универсальную реакцию для всего батча.`,
+        rationale: `reserve ${index + 3}`
+      }))
+    ],
+    rewrittenCandidates: [
+      {
+        candidate_id: "cand_1",
+        angle: "shared_experience",
+        top: "The lineup is so overloaded with obvious ringers that the whole room clocks the joke before anyone even gets to pretend otherwise.",
+        bottom: requestedWinnerBottom,
+        top_ru: "Состав настолько перегружен очевидными фаворитами, что зал считывает шутку еще до того, как кто-то успевает сделать вид, будто все иначе.",
+        bottom_ru: requestedWinnerBottom,
+        rationale: "rewritten generic-tailed requested winner"
+      },
+      {
+        candidate_id: "cand_2",
+        angle: "shared_experience",
+        top: "The lineup gets unfair so fast that everyone watching already knows which name turned the whole category into a joke.",
+        bottom: "\"That lineup is stupid\" works because everybody there reaches the same conclusion half a second later.",
+        top_ru: "Состав становится нечестным так быстро, что все уже понимают, какое имя превратило всю категорию в прикол.",
+        bottom_ru: "\"Этот состав просто безумный\" работает именно потому, что все в зале приходят к тому же выводу через полсекунды.",
+        rationale: "rewritten cleaner alternative"
+      },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        candidate_id: `cand_${index + 3}`,
+        angle: index % 2 === 0 ? "payoff_reveal" : "warmth_reverence",
+        top: `Reserve rewrite ${index + 3} keeps the lineup readable without flattening the joke into stock filler language for the room.`,
+        bottom: `Reserve rewrite ${index + 3} stays specific to the clip instead of leaning on a generic reaction tail for the batch.`,
+        top_ru: `Резервный рерайт ${index + 3} сохраняет читаемость состава и не сплющивает шутку в шаблонный хвост.`,
+        bottom_ru: `Резервный рерайт ${index + 3} остается конкретным по клипу и не опирается на универсальную реакцию для батча.`,
+        rationale: `rewritten reserve ${index + 3}`
+      }))
+    ],
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_1"
+    }
+  });
+
+  assert.equal(result.output.pipeline?.finalSelector?.finalPickCandidateId, "cand_2");
+  assert.equal(result.output.finalPick.option, 2);
+  assertFinalShortlistContract(result);
+});
+
+test("pipeline does not invent canned fallback tails when repeated contaminated bottoms remain", async () => {
   const contaminatedTail = "Everybody in that jeep knows exactly who lost that exchange.";
   const writerCandidates = Array.from({ length: 8 }, (_, index) => ({
     candidate_id: `cand_${index + 1}`,
@@ -4089,12 +4778,12 @@ test("pipeline replaces repeated contaminated bottom tails when cleaner reserve 
     bottom:
       index < 5
         ? `"This lineup is brutal." ${contaminatedTail}`
-        : `"That category had no soft landing." The room feels it the second the winner stands up ${index + 1}.`,
+        : `"That category had no soft landing." The winner standing up ${index + 1} confirms what the lineup already promised.`,
     top_ru: `Монтаж номинантов становится все тяжелее и тяжелее, пока сама категория не выглядит абсурдной ${index + 1}.`,
     bottom_ru:
       index < 5
         ? `"Этот состав безумный." ${contaminatedTail}`
-        : `"В этой категории не было легкой победы." Зал это считывает в ту же секунду ${index + 1}.`,
+        : `"В этой категории не было легкой победы." Подъем победителя ${index + 1} подтверждает то, что зал уже понял по самому абсурдному составу.`,
     rationale: `candidate ${index + 1}`
   }));
   const rewrittenCandidates = writerCandidates.slice(0, 5).map((candidate) => ({
@@ -4112,15 +4801,18 @@ test("pipeline replaces repeated contaminated bottom tails when cleaner reserve 
     }
   });
 
-  const contaminatedCount = result.output.captionOptions.filter((option) =>
-    option.bottom.includes(contaminatedTail)
-  ).length;
-
-  assert.ok(contaminatedCount <= 1);
+  assert.equal(
+    result.output.captionOptions.some((option) =>
+      /the whole room feels it immediately|nobody there can shrug (?:it|that) off|reaction basically writes itself|everybody in the shot gets the same message/i.test(
+        option.bottom
+      )
+    ),
+    false
+  );
   assertFinalShortlistContract(result);
 });
 
-test("pipeline diversifies duplicate stock tails even when reserve pool cannot supply cleaner replacements", async () => {
+test("pipeline fails explicitly instead of fabricating new stock-tail variants when reserve pool cannot supply cleaner replacements", async () => {
   const contaminatedTail = "Once that lands, the reaction basically writes itself.";
   const duplicatedBottom = `"That pack is stupid." ${contaminatedTail}`;
   const duplicatedCandidates = Array.from({ length: 8 }, (_, index) => ({
@@ -4133,30 +4825,23 @@ test("pipeline diversifies duplicate stock tails even when reserve pool cannot s
     rationale: `candidate ${index + 1}`
   }));
 
-  const { result } = await runSuccessfulPipeline({
-    writerCandidates: duplicatedCandidates,
-    rewrittenCandidates: duplicatedCandidates,
-    stage2HardConstraints: {
-      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
-      bottomLengthMin: 120,
-      bottomLengthMax: 140
-    },
-    finalSelectorResponse: {
-      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
-      final_pick: "cand_1"
-    }
-  });
-
-  const uniqueBottomCount = new Set(
-    result.output.captionOptions.map((option) => option.bottom)
-  ).size;
-  const uniqueTailCount = new Set(
-    result.output.captionOptions.map((option) => option.bottom.split(/(?<=[.!?]["']?)\s+/).slice(-1)[0])
-  ).size;
-
-  assert.ok(uniqueBottomCount >= 4);
-  assert.ok(uniqueTailCount >= 3);
-  assertFinalShortlistContract(result);
+  await assert.rejects(
+    () =>
+      runSuccessfulPipeline({
+        writerCandidates: duplicatedCandidates,
+        rewrittenCandidates: duplicatedCandidates,
+        stage2HardConstraints: {
+          ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+          bottomLengthMin: 120,
+          bottomLengthMax: 140
+        },
+        finalSelectorResponse: {
+          final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+          final_pick: "cand_1"
+        }
+      }),
+    /could not produce 5 valid options after constraint-safe repair and reserve backfill/i
+  );
 });
 
 test("no-comments fallback stays truthful and preserves analyzer sequence diagnostics", async () => {
@@ -4240,9 +4925,9 @@ test("analyzer normalization keeps structured arrays clean and preserves comment
     false
   );
   assert.ok(result.diagnostics.analysis.visualAnchors.length >= 2);
-  assert.ok(result.diagnostics.analysis.slangToAdapt?.includes("god pack"));
-  assert.ok(result.diagnostics.analysis.slangToAdapt?.includes("Scooby laugh"));
-  assert.match(result.diagnostics.analysis.hiddenDetail ?? "", /pre-opened|fake|resealed/i);
+  assert.ok(result.diagnostics.analysis.slangToAdapt?.some((cue) => /god pack/i.test(cue)));
+  assert.match(result.diagnostics.analysis.hiddenDetail ?? "", /staging|tampering|fakery|face value/i);
+  assert.doesNotMatch(result.diagnostics.analysis.hiddenDetail ?? "", /pre-opened|resealed/i);
   assert.ok(
     (result.diagnostics.analysis.genericRisks ?? []).includes("calling it random luck only")
   );
@@ -5333,6 +6018,106 @@ test("step 1 preview makes the source link clickable and embeds a YouTube player
   assert.match(html, /youtube\.com\/embed\/qQhqClv6fNo/);
 });
 
+test("step 1 no longer renders an inline next-chat shortcut card inside the workspace", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(Step1PasteLink, {
+      draftUrl: "",
+      activeUrl: "https://example.com/ready",
+      sourceJob: {
+        jobId: "job_ready",
+        chatId: "chat_ready",
+        channelId: "channel_ready",
+        sourceUrl: "https://example.com/ready",
+        status: "completed",
+        progress: {
+          status: "completed",
+          activeStageId: null,
+          detail: "Источник готов.",
+          createdAt: nowIso(),
+          startedAt: nowIso(),
+          updatedAt: nowIso(),
+          finishedAt: nowIso(),
+          error: null
+        },
+        errorMessage: null,
+        hasResult: true,
+        createdAt: nowIso(),
+        startedAt: nowIso(),
+        updatedAt: nowIso(),
+        finishedAt: nowIso(),
+        result: {
+          chatId: "chat_ready",
+          channelId: "channel_ready",
+          sourceUrl: "https://example.com/ready",
+          stage1Ready: true,
+          title: "Ready clip",
+          commentsAvailable: true,
+          commentsError: null,
+          commentsPayload: null,
+          autoStage2RunId: "run_ready"
+        }
+      },
+      sourceJobElapsedMs: 0,
+      commentsFallbackActive: false,
+      fetchBusy: false,
+      downloadBusy: false,
+      fetchAvailable: true,
+      fetchBlockedReason: null,
+      downloadAvailable: true,
+      downloadBlockedReason: null,
+      showCreateNextChatShortcut: true,
+      onDraftUrlChange: () => undefined,
+      onPaste: () => undefined,
+      onFetch: () => undefined,
+      onDownloadSource: () => undefined,
+      onCreateNextChat: () => undefined
+    })
+  );
+
+  assert.doesNotMatch(html, /Следующий ролик/);
+  assert.doesNotMatch(html, /Создать новый чат/);
+});
+
+test("step 2 no longer renders an inline next-chat shortcut card inside the workspace", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(Step2PickCaption, {
+      channelName: "Queue Channel",
+      channelUsername: "queue_channel",
+      stage2: null,
+      progress: null,
+      stageCreatedAt: nowIso(),
+      commentsAvailable: true,
+      instruction: "",
+      runs: [],
+      selectedRunId: null,
+      currentRunStatus: null,
+      currentRunError: null,
+      canRunStage2: true,
+      canQuickRegenerate: true,
+      runBlockedReason: null,
+      quickRegenerateBlockedReason: null,
+      showCreateNextChatShortcut: true,
+      isLaunching: false,
+      isRunning: false,
+      expectedDurationMs: 40_000,
+      elapsedMs: 0,
+      selectedOption: null,
+      selectedTitleOption: null,
+      onInstructionChange: () => undefined,
+      onQuickRegenerate: () => undefined,
+      onRunStage2: () => undefined,
+      onSelectRun: () => undefined,
+      onSelectOption: () => undefined,
+      onSelectTitleOption: () => undefined,
+      onCreateNextChat: () => undefined,
+      onCopy: () => undefined
+    })
+  );
+
+  assert.doesNotMatch(html, /Следующий ролик/);
+  assert.doesNotMatch(html, /Создать новый чат/);
+});
+
 test("chat list items surface active source jobs as live fetching state", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const sourceStore = await import("../lib/source-job-store");
@@ -5923,12 +6708,89 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       data: commentsPayload
     });
 
+    const traceStyleProfile = normalizeStage2StyleProfile({
+      version: 1,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      onboardingCompletedAt: nowIso(),
+      discoveryPromptVersion: "trace-test",
+      referenceInfluenceSummary:
+        "The bootstrap references point toward dry social reads with a controlled exploratory tail.",
+      explorationShare: 0.25,
+      referenceLinks: [],
+      candidateDirections: [
+        {
+          id: "direction_1",
+          fitBand: "core",
+          name: "Dry social side-eye",
+          description: "Reads the clip as a social reveal instead of a loud joke.",
+          voice: "dry, observant",
+          topPattern: "call out the reveal quickly",
+          bottomPattern: "land the social read without overselling it",
+          humorLevel: "low",
+          sarcasmLevel: "medium",
+          warmthLevel: "medium",
+          insiderDensityLevel: "low",
+          bestFor: "socially loaded reveal clips",
+          avoids: "cartoon punchlines",
+          microExample: "The lineup says more than the app ever does.",
+          sourceReferenceIds: [],
+          internalPromptNotes: "",
+          axes: {
+            humor: 0.35,
+            sarcasm: 0.58,
+            warmth: 0.44,
+            insiderDensity: 0.3,
+            intensity: 0.46,
+            explanationDensity: 0.42,
+            quoteDensity: 0.18,
+            topCompression: 0.73
+          }
+        },
+        {
+          id: "direction_2",
+          fitBand: "adjacent",
+          name: "Earned social disbelief",
+          description: "Lets the crowd reaction feel lived-in rather than meme-pasted.",
+          voice: "human, clipped",
+          topPattern: "surface the friction",
+          bottomPattern: "translate it into a social consequence",
+          humorLevel: "medium",
+          sarcasmLevel: "low",
+          warmthLevel: "medium",
+          insiderDensityLevel: "low",
+          bestFor: "comment-heavy social clips",
+          avoids: "generic hype language",
+          microExample: "You can feel exactly why the comments split.",
+          sourceReferenceIds: [],
+          internalPromptNotes: "",
+          axes: {
+            humor: 0.42,
+            sarcasm: 0.28,
+            warmth: 0.51,
+            insiderDensity: 0.24,
+            intensity: 0.49,
+            explanationDensity: 0.46,
+            quoteDensity: 0.19,
+            topCompression: 0.67
+          }
+        }
+      ],
+      selectedDirectionIds: ["direction_1", "direction_2"]
+    });
+    const traceEditorialMemory = createEmptyStage2EditorialMemorySummary(traceStyleProfile);
+
     const baseDiagnostics = {
       channel: {
         id: channel.id,
         name: channel.name,
         username: channel.username,
-        examplesSource: "workspace_default"
+        examplesSource: "workspace_default",
+        styleProfile: traceStyleProfile,
+        editorialMemory: traceEditorialMemory,
+        hardConstraints: channelConstraints,
+        workspaceCorpusCount: 5,
+        activeCorpusCount: 5
       },
       selection: {
         clipType: "general",
@@ -5958,6 +6820,16 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         commentLanguageCues: ["social bloodbath"],
         uncertaintyNotes: ["This fixture focuses on export truthfulness, not full scene coverage."],
         rawSummary: "A display-driven clip escalates as the lineup fills in and the social reaction becomes obvious."
+      },
+      sourceContext: {
+        sourceUrl: chat.url,
+        title: "Selected run clip",
+        descriptionChars: 324,
+        transcriptChars: 1402,
+        frameCount: 6,
+        runtimeCommentCount: 20,
+        runtimeCommentIds: comments.map((comment) => comment.id),
+        userInstructionChars: "selected instruction".length
       },
       examples: {
         source: "workspace_default",
@@ -5998,7 +6870,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         ],
         selectedExamples: [
           {
-            id: "example_selected",
+            id: "example_available",
             sourceChannelId: "workspace-default",
             sourceChannelName: "Workspace default",
             title: "Selected example",
@@ -6017,6 +6889,61 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       effectivePrompting: {
         promptStages: [
           {
+            stageId: "analyzer",
+            label: "Анализ",
+            summary: "Reads frames, transcript, and comments.",
+            configuredPrompt: "ANALYZER CONFIGURED PROMPT",
+            promptText: "ANALYZER FULL PROMPT WITH CONTEXT",
+            reasoningEffort: "medium",
+            promptChars: 1180,
+            usesImages: true,
+            isCustomPrompt: false,
+            inputManifest: {
+              learningDetail: "minimal",
+              description: {
+                availableChars: 324,
+                passedChars: 324,
+                omittedChars: 0,
+                truncated: false,
+                limit: 1200
+              },
+              transcript: {
+                availableChars: 1402,
+                passedChars: 1402,
+                omittedChars: 0,
+                truncated: false,
+                limit: 8000
+              },
+              frames: {
+                availableCount: 6,
+                passedCount: 6,
+                omittedCount: 0,
+                truncated: false,
+                limit: 12
+              },
+              comments: {
+                availableCount: 20,
+                passedCount: 20,
+                omittedCount: 0,
+                truncated: false,
+                limit: 20,
+                passedCommentIds: comments.map((comment) => comment.id)
+              },
+              examples: null,
+              channelLearning: {
+                detail: "minimal",
+                selectedDirectionCount: 2,
+                highlightedDirectionIds: ["direction_1", "direction_2"],
+                explorationShare: 0.25,
+                recentFeedbackCount: 0,
+                recentSelectionCount: 0,
+                promptSummary: traceEditorialMemory.promptSummary
+              },
+              candidates: null,
+              stageFlags: ["frames+comments aware", "comment digest included"]
+            }
+          },
+          {
             stageId: "selector",
             label: "Выбор угла",
             summary: "Chooses angle and examples.",
@@ -6025,7 +6952,66 @@ test("chat trace export assembles a full payload, truncates comments, and honors
             reasoningEffort: "high",
             promptChars: 1234,
             usesImages: false,
-            isCustomPrompt: true
+            isCustomPrompt: true,
+            inputManifest: {
+              learningDetail: "compact",
+              description: {
+                availableChars: 324,
+                passedChars: 324,
+                omittedChars: 0,
+                truncated: false,
+                limit: 1200
+              },
+              transcript: {
+                availableChars: 1402,
+                passedChars: 1402,
+                omittedChars: 0,
+                truncated: false,
+                limit: 6000
+              },
+              frames: {
+                availableCount: 6,
+                passedCount: 6,
+                omittedCount: 0,
+                truncated: false,
+                limit: 8
+              },
+              comments: {
+                availableCount: 20,
+                passedCount: 12,
+                omittedCount: 8,
+                truncated: true,
+                limit: 12,
+                passedCommentIds: comments.slice(0, 12).map((comment) => comment.id)
+              },
+              examples: {
+                availableCount: 1,
+                passedCount: 1,
+                omittedCount: 0,
+                truncated: false,
+                limit: null,
+                activeCorpusCount: 5,
+                promptPoolCount: 1,
+                passedExampleIds: ["example_available"],
+                selectedExampleIds: ["example_available"],
+                rejectedExampleIds: [],
+                retrievalConfidence: "medium",
+                examplesMode: "form_guided",
+                examplesRoleSummary: "Examples help with structure more than semantics.",
+                primaryDriverSummary: "Clip truth and channel learning carry more weight than retrieval."
+              },
+              channelLearning: {
+                detail: "compact",
+                selectedDirectionCount: 2,
+                highlightedDirectionIds: ["direction_1", "direction_2"],
+                explorationShare: 0.25,
+                recentFeedbackCount: 0,
+                recentSelectionCount: 0,
+                promptSummary: traceEditorialMemory.promptSummary
+              },
+              candidates: null,
+              stageFlags: ["curated prompt pool", "retrieval-mode aware", "comment digest included"]
+            }
           }
         ]
       }
@@ -6041,7 +7027,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         totalComments: comments.length,
         topComments: comments,
         allComments: comments,
-        commentsUsedForPrompt: 15,
+        commentsUsedForPrompt: 20,
         downloadProvider: "ytDlp",
         commentsAcquisitionStatus: "fallback_success",
         commentsAcquisitionProvider: "ytDlp",
@@ -6075,7 +7061,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         totalComments: comments.length,
         topComments: comments,
         allComments: comments,
-        commentsUsedForPrompt: 15,
+        commentsUsedForPrompt: 20,
         downloadProvider: "visolix",
         commentsAcquisitionStatus: "primary_success",
         commentsAcquisitionProvider: "youtubeDataApi",
@@ -6126,7 +7112,9 @@ test("chat trace export assembles a full payload, truncates comments, and honors
           name: traceChannel.name,
           username: traceChannel.username,
           stage2ExamplesConfig: traceChannel.stage2ExamplesConfig,
-          stage2HardConstraints: traceChannel.stage2HardConstraints
+          stage2HardConstraints: traceChannel.stage2HardConstraints,
+          stage2StyleProfile: traceStyleProfile,
+          editorialMemory: traceEditorialMemory
         }
       }
     });
@@ -6149,7 +7137,9 @@ test("chat trace export assembles a full payload, truncates comments, and honors
           name: traceChannel.name,
           username: traceChannel.username,
           stage2ExamplesConfig: traceChannel.stage2ExamplesConfig,
-          stage2HardConstraints: traceChannel.stage2HardConstraints
+          stage2HardConstraints: traceChannel.stage2HardConstraints,
+          stage2StyleProfile: traceStyleProfile,
+          editorialMemory: traceEditorialMemory
         }
       }
     });
@@ -6204,12 +7194,23 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     });
 
     assert.ok(trace);
+    assert.equal(trace?.version, "clip-trace-export-v2");
     assert.equal(trace?.comments.totalComments, 20);
     assert.equal(trace?.comments.includedCount, 15);
     assert.equal(trace?.comments.items.length, 15);
     assert.equal(trace?.comments.status, "fallback_success");
     assert.equal(trace?.comments.provider, "ytDlp");
     assert.equal(trace?.comments.fallbackUsed, true);
+    assert.equal(trace?.comments.runtimeUsage.totalExtractedCount, 20);
+    assert.equal(trace?.comments.runtimeUsage.runtimeAvailableCount, 20);
+    assert.equal(trace?.comments.runtimeUsage.analyzer.passedCount, 20);
+    assert.equal(trace?.comments.runtimeUsage.selector.passedCount, 12);
+    assert.deepEqual(
+      trace?.comments.runtimeUsage.selector.passedCommentIds,
+      comments.slice(0, 12).map((comment) => comment.id)
+    );
+    assert.equal(trace?.comments.exportUsage.includedCount, 15);
+    assert.equal(trace?.comments.exportUsage.omittedCount, 5);
     assert.equal(trace?.sourceJobs.length, 1);
     assert.equal(trace?.sourceJobs[0]?.request.trigger, "fetch");
     assert.equal(trace?.stage2.runs.length, 2);
@@ -6217,16 +7218,71 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.deepEqual(trace?.stage2.workspaceDefaults.hardConstraints, workspaceConstraints);
     assert.deepEqual(trace?.channel.stage2HardConstraints, channelConstraints);
     assert.equal(trace?.stage2.selectedRunId, selectedRun.runId);
+    assert.equal(trace?.traceContract.canonicalSections.stage2CausalInputs, "stage2.causalInputs");
+    assert.match(trace?.traceContract.note ?? "", /canonical/i);
+    assert.equal(trace?.stage2.causalInputs.run.mode, "manual");
+    assert.equal(trace?.stage2.causalInputs.run.userInstruction, "selected instruction");
+    assert.deepEqual(trace?.stage2.causalInputs.stylePrior.selectedDirectionIds, ["direction_1", "direction_2"]);
+    assert.equal(trace?.stage2.causalInputs.stylePrior.selectedDirections.length, 2);
+    assert.equal(trace?.stage2.causalInputs.editorialMemory?.recentFeedbackCount, 0);
+    assert.equal(trace?.stage2.causalInputs.sourceContext.transcriptChars, 1402);
+    assert.equal(trace?.stage2.causalInputs.sourceContext.commentsUsedForPrompt, 20);
+    assert.equal(trace?.stage2.causalInputs.sourceContext.commentsOmittedFromPrompt, 0);
+    assert.ok(trace?.stage2.stageManifests.some((stage) => stage.stageId === "selector"));
+    assert.equal(
+      trace?.stage2.stageManifests.find((stage) => stage.stageId === "selector")?.inputManifest?.comments?.passedCount,
+      12
+    );
+    assert.equal(
+      trace?.stage2.stageManifests.find((stage) => stage.stageId === "selector")?.inputManifest?.examples?.promptPoolCount,
+      1
+    );
+    assert.equal(trace?.stage2.outcome.retrievalConfidence, "medium");
+    assert.equal(trace?.stage2.outcome.examplesMode, "form_guided");
+    assert.equal(trace?.stage2.outcome.examplesRoleSummary, "Examples help with structure more than semantics.");
+    assert.equal(trace?.stage2.outcome.primaryDriverSummary, "Clip truth and channel learning carry more weight than retrieval.");
+    assert.deepEqual(
+      trace?.stage2.outcome.candidateOptionMap,
+      trace?.stage2.currentResult?.output.pipeline?.finalSelector?.candidateOptionMap ?? []
+    );
+    assert.deepEqual(
+      trace?.stage2.outcome.visibleOptionToCandidateMap,
+      trace?.stage2.outcome.candidateOptionMap
+    );
+    assert.equal(
+      trace?.stage2.outcome.finalPickCandidateId,
+      trace?.stage2.currentResult?.output.pipeline?.finalSelector?.finalPickCandidateId ?? null
+    );
     assert.equal(trace?.stage2.currentResult?.output.finalPick.reason, "Final pick for selected");
     assert.equal(trace?.stage2.currentResult?.source.topComments.length, 15);
     assert.equal(trace?.stage2.currentResult?.source.allComments.length, 15);
     assert.equal(trace?.source.commentsAcquisitionStatus, "fallback_success");
     assert.equal(trace?.source.commentsAcquisitionProvider, "ytDlp");
     assert.equal(trace?.source.commentsFallbackUsed, true);
+    assert.equal(trace?.stage2.examplesRuntimeUsage.activeCorpusCount, 5);
+    assert.equal(trace?.stage2.examplesRuntimeUsage.selectorPromptPoolCount, 1);
+    assert.deepEqual(trace?.stage2.examplesRuntimeUsage.promptPoolExampleIds, ["example_available"]);
+    assert.deepEqual(trace?.stage2.examplesRuntimeUsage.selectedExampleIds, ["example_available"]);
+    assert.deepEqual(trace?.stage2.examplesRuntimeUsage.rejectedExampleIds, []);
+    assert.deepEqual(trace?.stage2.examplesRuntimeUsage.guidanceRoleBuckets.formGuidanceIds, ["example_available"]);
+    assert.equal(trace?.stage2.exportOmissions.comments.exportLimit, 15);
+    assert.ok(
+      trace?.stage2.exportOmissions.comments.sections.some(
+        (section) =>
+          section.path === "stage2.currentResult.source.allComments" &&
+          section.availableCount === 20 &&
+          section.exportedCount === 15 &&
+          section.omittedCount === 5
+      )
+    );
     assert.equal(trace?.stage2.analysis?.revealMoment, baseDiagnostics.analysis.revealMoment);
     assert.deepEqual(trace?.stage2.analysis?.sceneBeats, baseDiagnostics.analysis.sceneBeats);
     assert.equal(
       trace?.stage2.effectivePrompting?.promptStages[0]?.promptText,
+      "ANALYZER FULL PROMPT WITH CONTEXT"
+    );
+    assert.equal(
+      trace?.stage2.effectivePrompting?.promptStages[1]?.promptText,
       "SELECTOR FULL PROMPT WITH CONTEXT"
     );
     assert.equal(trace?.stage2.examples?.examplesMode, "form_guided");
@@ -6278,16 +7334,211 @@ test("chat trace export remains valid when the chat has no comments, no stage 2 
     });
 
     assert.ok(trace);
+    assert.equal(trace?.traceContract.canonicalSections.stage2Outcome, "stage2.outcome");
     assert.equal(trace?.comments.available, false);
+    assert.equal(trace?.comments.runtimeUsage.totalExtractedCount, 0);
+    assert.equal(trace?.comments.exportUsage.includedCount, 0);
     assert.equal(trace?.stage3.handoff.stage2Available, false);
     assert.equal(trace?.stage3.handoff.topTextSource, "empty");
     assert.equal(trace?.comments.items.length, 0);
     assert.equal(trace?.sourceJobs.length, 0);
     assert.equal(trace?.stage2.runs.length, 0);
+    assert.equal(trace?.stage2.selectedRunId, null);
+    assert.equal(trace?.stage2.stageManifests.length, 0);
+    assert.equal(trace?.stage2.outcome.finalPickCandidateId, null);
+    assert.equal(trace?.stage2.examplesRuntimeUsage.activeCorpusCount, 0);
     assert.equal(trace?.stage2.currentResult, null);
     assert.equal(trace?.stage3.draft, null);
     assert.equal(trace?.stage3.latestRenderExport, null);
     assert.equal(trace?.stage3.latestAgentSession, null);
+  });
+});
+
+test("history list upsert keeps stable meaningful-update order instead of moving an opened item to the top", () => {
+  const base = [
+    {
+      id: "chat_1",
+      channelId: "channel",
+      url: "https://example.com/1",
+      title: "First",
+      updatedAt: "2026-03-21T12:00:00.000Z",
+      status: "stage2Ready" as const,
+      maxStep: 3 as const,
+      preferredStep: 3 as const,
+      hasDraft: false,
+      exportTitle: null,
+      liveAction: null
+    },
+    {
+      id: "chat_2",
+      channelId: "channel",
+      url: "https://example.com/2",
+      title: "Second",
+      updatedAt: "2026-03-21T11:00:00.000Z",
+      status: "sourceReady" as const,
+      maxStep: 2 as const,
+      preferredStep: 2 as const,
+      hasDraft: false,
+      exportTitle: null,
+      liveAction: null
+    }
+  ];
+
+  const updated = upsertHistoryItemByMeaningfulUpdate(base, {
+    ...base[1],
+    preferredStep: 1
+  });
+
+  assert.deepEqual(updated.map((item) => item.id), ["chat_1", "chat_2"]);
+  assert.equal(updated[1]?.preferredStep, 1);
+});
+
+test("history sections separate current recent working and archive without duplicating the active item", () => {
+  const items = [
+    {
+      id: "current_chat",
+      channelId: "channel",
+      url: "https://example.com/current",
+      title: "Current clip",
+      updatedAt: "2026-03-21T12:10:00.000Z",
+      status: "editing" as const,
+      maxStep: 3 as const,
+      preferredStep: 3 as const,
+      hasDraft: true,
+      exportTitle: null,
+      liveAction: null
+    },
+    {
+      id: "recent_chat",
+      channelId: "channel",
+      url: "https://example.com/recent",
+      title: "Recent clip",
+      updatedAt: "2026-03-21T12:05:00.000Z",
+      status: "sourceReady" as const,
+      maxStep: 2 as const,
+      preferredStep: 2 as const,
+      hasDraft: false,
+      exportTitle: null,
+      liveAction: null
+    },
+    {
+      id: "working_chat",
+      channelId: "channel",
+      url: "https://example.com/working",
+      title: "Working clip",
+      updatedAt: "2026-03-21T11:55:00.000Z",
+      status: "stage2Ready" as const,
+      maxStep: 3 as const,
+      preferredStep: 2 as const,
+      hasDraft: false,
+      exportTitle: null,
+      liveAction: "Stage 2" as const
+    },
+    {
+      id: "archive_chat",
+      channelId: "channel",
+      url: "https://example.com/archive",
+      title: "Archive clip",
+      updatedAt: "2026-03-21T11:40:00.000Z",
+      status: "exported" as const,
+      maxStep: 3 as const,
+      preferredStep: 3 as const,
+      hasDraft: false,
+      exportTitle: "Archive title",
+      liveAction: null
+    }
+  ];
+
+  const sections = buildHistorySections({
+    allItems: items,
+    visibleItems: items,
+    activeHistoryId: "current_chat",
+    recentHistoryIds: ["current_chat", "recent_chat", "archive_chat"],
+    filter: "all"
+  });
+
+  assert.deepEqual(
+    sections.map((section) => ({
+      title: section.title,
+      ids: section.items.map((item) => item.id)
+    })),
+    [
+      { title: "Открыт сейчас", ids: ["current_chat"] },
+      { title: "Недавно открывали", ids: ["recent_chat", "archive_chat"] },
+      { title: "В работе", ids: ["working_chat"] }
+    ]
+  );
+});
+
+test("history filters keep archive and working distinctions explicit in the new panel logic", () => {
+  const workingItem = {
+    id: "working_chat",
+    channelId: "channel",
+    url: "https://example.com/working",
+    title: "Working clip",
+    updatedAt: "2026-03-21T11:55:00.000Z",
+    status: "stage2Ready" as const,
+    maxStep: 3 as const,
+    preferredStep: 2 as const,
+    hasDraft: false,
+    exportTitle: null,
+    liveAction: null
+  };
+  const archiveItem = {
+    id: "archive_chat",
+    channelId: "channel",
+    url: "https://example.com/archive",
+    title: "Archive clip",
+    updatedAt: "2026-03-21T11:40:00.000Z",
+    status: "exported" as const,
+    maxStep: 3 as const,
+    preferredStep: 3 as const,
+    hasDraft: false,
+    exportTitle: "Archive title",
+    liveAction: null
+  };
+
+  assert.equal(matchesHistoryFilter(workingItem, "working"), true);
+  assert.equal(matchesHistoryFilter(workingItem, "archive"), false);
+  assert.equal(matchesHistoryFilter(archiveItem, "archive"), true);
+  assert.equal(matchesHistoryFilter(archiveItem, "error"), false);
+});
+
+test("history progress badge makes step 2 state explicit without relying on source-host noise", () => {
+  const stage2RunningItem = {
+    id: "running_chat",
+    channelId: "channel",
+    url: "https://www.youtube.com/watch?v=running",
+    title: "Running clip",
+    updatedAt: "2026-03-21T11:55:00.000Z",
+    status: "sourceReady" as const,
+    maxStep: 2 as const,
+    preferredStep: 2 as const,
+    hasDraft: false,
+    exportTitle: null,
+    liveAction: "Stage 2" as const
+  };
+  const readyItem = {
+    id: "ready_chat",
+    channelId: "channel",
+    url: "https://www.youtube.com/watch?v=ready",
+    title: "Ready clip",
+    updatedAt: "2026-03-21T11:40:00.000Z",
+    status: "editing" as const,
+    maxStep: 3 as const,
+    preferredStep: 2 as const,
+    hasDraft: true,
+    exportTitle: null,
+    liveAction: null
+  };
+
+  assert.deepEqual(getHistoryProgressBadge(stage2RunningItem), {
+    label: "Шаг 2: в процессе",
+    tone: "running"
+  });
+  assert.deepEqual(getHistoryProgressBadge(readyItem), {
+    label: "Опции готовы",
+    tone: "ready"
   });
 });
 
@@ -6332,6 +7583,8 @@ test("app shell renders a compact current-chat header action", () => {
     onLogout: () => undefined,
     statusText: "",
     statusTone: "",
+    toasts: [],
+    onDismissToast: () => undefined,
     headerActions: React.createElement(
       "button",
       { type: "button", className: "btn btn-ghost" },
@@ -6345,6 +7598,73 @@ test("app shell renders a compact current-chat header action", () => {
   );
 
   assert.match(html, /Скачать историю/);
+});
+
+test("app shell renders app-level toasts in a dedicated top-left viewport", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(AppShell, {
+      title: "Автоматизация клипов",
+      subtitle: "Subtitle",
+      steps: [
+        { id: 1, label: "Шаг 1", enabled: true },
+        { id: 2, label: "Шаг 2", enabled: true },
+        { id: 3, label: "Шаг 3", enabled: true }
+      ],
+      currentStep: 1,
+      onStepChange: () => undefined,
+      historyItems: [],
+      activeHistoryId: null,
+      onHistoryOpen: () => undefined,
+      onDeleteHistory: () => undefined,
+      onCreateNew: () => undefined,
+      channels: [],
+      activeChannelId: null,
+      onSelectChannel: () => undefined,
+      onManageChannels: () => undefined,
+      canManageChannels: false,
+      canManageTeam: false,
+      onOpenTeam: () => undefined,
+      codexConnected: false,
+      codexBusyConnect: false,
+      codexBusyRefresh: false,
+      canManageCodex: false,
+      canConnectCodex: false,
+      codexConnectBlockedReason: null,
+      codexStatusLabel: "Disconnected",
+      codexActionLabel: "Connect",
+      codexDeviceAuth: null,
+      codexSecondaryActionLabel: null,
+      onConnectCodex: () => undefined,
+      onRefreshCodex: () => undefined,
+      currentUserName: "Owner",
+      currentUserRole: "owner",
+      workspaceName: "Workspace",
+      onLogout: () => undefined,
+      statusText: "",
+      statusTone: "",
+      toasts: [
+        {
+          id: "next-chat-shortcut",
+          tone: "neutral",
+          title: "Следующий ролик",
+          message: "Источник уже получен.",
+          variant: "shortcut",
+          actionLabel: "Создать новый чат",
+          onAction: () => undefined,
+          durationMs: 5000
+        }
+      ],
+      onDismissToast: () => undefined,
+      details: React.createElement("div", null),
+      children: React.createElement("div", null, "Body")
+    })
+  );
+
+  assert.match(html, /app-toast-stack/);
+  assert.match(html, /Следующий ролик/);
+  assert.match(html, /Создать новый чат/);
+  assert.match(html, /app-toast-timer/);
+  assert.match(html, /--toast-duration:5000ms/);
 });
 
 test("step 3 render template exposes final text editor and stage 2 mix actions", () => {

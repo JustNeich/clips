@@ -3,7 +3,10 @@ import { appendChatEvent, getChatById, getChannelById } from "./chat-history";
 import { enqueueAndScheduleStage2Run } from "./stage2-run-runtime";
 import { findActiveStage2RunForChat } from "./stage2-progress-store";
 import { buildStage2RunRequestSnapshot } from "./stage2-run-request";
-import { listChannelEditorialFeedbackEvents } from "./channel-editorial-feedback-store";
+import {
+  listChannelEditorialPassiveSelectionEvents,
+  listChannelEditorialRatingEvents
+} from "./channel-editorial-feedback-store";
 import { buildStage2EditorialMemorySummary } from "./stage2-channel-learning";
 import {
   claimNextQueuedSourceJob,
@@ -159,7 +162,10 @@ async function maybeEnqueueStage2(job: SourceJobRecord): Promise<string | null> 
         stage2StyleProfile: channel.stage2StyleProfile,
         editorialMemory: buildStage2EditorialMemorySummary({
           profile: channel.stage2StyleProfile,
-          feedbackEvents: listChannelEditorialFeedbackEvents(channel.id, 30)
+          feedbackEvents: [
+            ...listChannelEditorialRatingEvents(channel.id, 30),
+            ...listChannelEditorialPassiveSelectionEvents(channel.id, 12)
+          ]
         })
       }
     })

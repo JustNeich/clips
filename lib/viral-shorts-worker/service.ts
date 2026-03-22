@@ -17,7 +17,11 @@ import {
 } from "./types";
 import {
   buildAnalyzerPrompt,
+  buildCommentCarryProfile,
+  buildStage2PromptInputManifestMap,
+  buildStage2SourceContextSummary,
   buildCriticPrompt,
+  evaluateCandidateCommentCarry,
   buildFinalSelectorPrompt,
   buildPromptPacket,
   buildRewriterPrompt,
@@ -487,6 +491,84 @@ type ScoredComment = {
   lower: string;
 };
 
+type RankedCommentCue = {
+  phrase: string;
+  score: number;
+  mentions: number;
+};
+
+const COMMENT_CUE_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "been",
+  "but",
+  "by",
+  "for",
+  "from",
+  "get",
+  "got",
+  "had",
+  "has",
+  "have",
+  "he",
+  "her",
+  "here",
+  "him",
+  "his",
+  "how",
+  "i",
+  "if",
+  "in",
+  "into",
+  "is",
+  "it",
+  "its",
+  "just",
+  "me",
+  "my",
+  "not",
+  "of",
+  "on",
+  "or",
+  "our",
+  "she",
+  "so",
+  "that",
+  "the",
+  "their",
+  "them",
+  "there",
+  "they",
+  "this",
+  "to",
+  "too",
+  "was",
+  "we",
+  "were",
+  "what",
+  "when",
+  "who",
+  "why",
+  "will",
+  "with",
+  "you",
+  "your"
+]);
+
+function truncateWords(value: string, maxWords: number): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, maxWords)
+    .join(" ");
+}
+
 function truncateCommentLaneText(value: string, maxLength = 120): string {
   const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
   if (!normalized) {
@@ -511,6 +593,16 @@ function buildCommentLaneSummary(comments: ScoredComment[], fallbackLead: string
     : `${fallbackLead}: ${topComments[0]} | ${topComments[1]}.`;
 }
 
+function extractLeadingCommentClause(text: string, maxWords: number): string {
+  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  const firstClause =
+    normalized.split(/(?:\.{2,}|[.!?]+|[,;]+|\u2026|\s[-\u2014]\s)/)[0] ?? normalized;
+  return truncateWords(firstClause, maxWords).replace(/^"+|"+$/g, "").trim();
+}
+
 function extractCommentCueText(text: string): string {
   const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
   if (!normalized) {
@@ -520,7 +612,210 @@ function extractCommentCueText(text: string): string {
   if (quoted) {
     return quoted.trim();
   }
-  return extractLeadingExcerpt(normalized, 7);
+  return extractLeadingCommentClause(normalized, 7);
+}
+
+function tokenizeCommentCueWords(text: string): Array<{
+  raw: string;
+  normalized: string;
+  isAcronym: boolean;
+}> {
+  return Array.from(text.matchAll(/#?[A-Za-z0-9]+(?:'[A-Za-z0-9]+)*/g)).map((match) => {
+    const raw = match[0] ?? "";
+    const normalized = raw.replace(/^#/, "").toLowerCase();
+    return {
+      raw: raw.replace(/^#/, ""),
+      normalized,
+      isAcronym: /^[A-Z]{2,6}$/.test(raw.replace(/^#/, ""))
+    };
+  });
+}
+
+function trimCueStopwordEdges(
+  tokens: Array<{
+    raw: string;
+    normalized: string;
+    isAcronym: boolean;
+  }>
+): Array<{
+  raw: string;
+  normalized: string;
+  isAcronym: boolean;
+}> {
+  let start = 0;
+  let end = tokens.length;
+  while (
+    start < end &&
+    COMMENT_CUE_STOPWORDS.has(tokens[start]?.normalized ?? "") &&
+    !tokens[start]?.isAcronym
+  ) {
+    start += 1;
+  }
+  while (
+    end > start &&
+    COMMENT_CUE_STOPWORDS.has(tokens[end - 1]?.normalized ?? "") &&
+    !tokens[end - 1]?.isAcronym
+  ) {
+    end -= 1;
+  }
+  return tokens.slice(start, end);
+}
+
+function hasUsefulCommentCueSignal(
+  tokens: Array<{
+    raw: string;
+    normalized: string;
+    isAcronym: boolean;
+  }>
+): boolean {
+  const contentTokens = tokens.filter(
+    (token) => token.isAcronym || !COMMENT_CUE_STOPWORDS.has(token.normalized)
+  );
+  if (contentTokens.length === 0) {
+    return false;
+  }
+  if (contentTokens.some((token) => token.isAcronym)) {
+    return true;
+  }
+  return contentTokens.length >= 2 || contentTokens.some((token) => token.normalized.length >= 6);
+}
+
+function extractCommentCueVariants(text: string): string[] {
+  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const variants: string[] = [];
+  const seen = new Set<string>();
+  const pushVariant = (value: string) => {
+    const phrase = value.trim().replace(/^"+|"+$/g, "");
+    const dedupeKey = normalizeTextKey(phrase);
+    if (!phrase || !dedupeKey || seen.has(dedupeKey)) {
+      return;
+    }
+    seen.add(dedupeKey);
+    variants.push(phrase);
+  };
+
+  const quoted = normalized.match(/"([^"]{2,80})"/)?.[1];
+  if (quoted) {
+    pushVariant(quoted);
+  }
+
+  const primaryClause = extractLeadingCommentClause(normalized, 9);
+  if (primaryClause) {
+    pushVariant(primaryClause);
+  }
+
+  const clauseTokens = trimCueStopwordEdges(tokenizeCommentCueWords(primaryClause || normalized));
+  if (clauseTokens.length === 0) {
+    return variants;
+  }
+
+  for (let index = 0; index < clauseTokens.length; index += 1) {
+    if (!clauseTokens[index]?.isAcronym) {
+      continue;
+    }
+    const start = Math.max(0, index - 3);
+    const end = Math.min(clauseTokens.length, index + 3);
+    const span = trimCueStopwordEdges(clauseTokens.slice(start, end));
+    if (span.length > 0 && hasUsefulCommentCueSignal(span)) {
+      pushVariant(span.map((token) => token.raw).join(" "));
+    }
+  }
+
+  for (let size = Math.min(5, clauseTokens.length); size >= 2; size -= 1) {
+    for (let index = 0; index <= clauseTokens.length - size; index += 1) {
+      const span = trimCueStopwordEdges(clauseTokens.slice(index, index + size));
+      if (!span.length || !hasUsefulCommentCueSignal(span)) {
+        continue;
+      }
+      pushVariant(span.map((token) => token.raw).join(" "));
+    }
+  }
+
+  return variants.slice(0, 6);
+}
+
+function scoreRankedCommentCue(phrase: string): number {
+  let score = 0;
+  if (/[A-Z]{2,6}/.test(phrase)) {
+    score += 3;
+  }
+  const words = phrase.split(/\s+/).filter(Boolean);
+  if (words.length === 2) {
+    score += 4;
+  } else if (words.length === 3) {
+    score += 3;
+  } else if (words.length === 4) {
+    score += 2;
+  } else if (words.length === 5) {
+    score += 1;
+  }
+  if (/['"]/.test(phrase)) {
+    score += 1;
+  }
+  if (/\b(?:mode|energy|driver|enemy|elite|normal day)\b/i.test(phrase)) {
+    score += 1;
+  }
+  return score;
+}
+
+function buildRankedCommentCues(comments: ScoredComment[]): RankedCommentCue[] {
+  const cueMap = new Map<string, { phrase: string; score: number; mentions: number }>();
+  for (const comment of comments) {
+    const baseWeight = Math.max(1, Math.min(8, Math.floor(Math.log10(comment.likes + 10))));
+    const cueVariants = extractCommentCueVariants(comment.text);
+    for (const [index, cue] of cueVariants.entries()) {
+      const key = normalizeTextKey(cue);
+      if (!key || key.length < 4) {
+        continue;
+      }
+      const entry = cueMap.get(key) ?? {
+        phrase: cue,
+        score: 0,
+        mentions: 0
+      };
+      entry.phrase =
+        cue.length < entry.phrase.length || /^[A-Z]{2,6}\b/.test(cue) ? cue : entry.phrase;
+      entry.score += baseWeight + scoreRankedCommentCue(cue) + (index === 0 ? 2 : 0);
+      entry.mentions += 1;
+      cueMap.set(key, entry);
+    }
+  }
+  return Array.from(cueMap.values())
+    .sort((left, right) => {
+      const leftWordCount = left.phrase.split(/\s+/).filter(Boolean).length;
+      const rightWordCount = right.phrase.split(/\s+/).filter(Boolean).length;
+      return (
+        right.score - left.score ||
+        right.mentions - left.mentions ||
+        leftWordCount - rightWordCount ||
+        left.phrase.length - right.phrase.length ||
+        left.phrase.localeCompare(right.phrase)
+      );
+    })
+    .slice(0, 12);
+}
+
+function computeCommentPunchlineScore(comment: ScoredComment): number {
+  const cue = extractCommentCueText(comment.text);
+  const baseWeight = Math.max(1, Math.min(8, Math.floor(Math.log10(comment.likes + 10))));
+  let score = baseWeight;
+  if (/\b(lol|lmao|lmfao|haha|ahah|bro)\b|[😂🤣😭💀😅]/i.test(comment.text)) {
+    score += 2;
+  }
+  if (/\.{2,}|!{2,}|#+/.test(comment.text)) {
+    score += 1;
+  }
+  if (/[A-Z]{2,6}/.test(comment.text)) {
+    score += 2;
+  }
+  if (cue && cue.split(/\s+/).filter(Boolean).length <= 7) {
+    score += 1;
+  }
+  return score;
 }
 
 function deriveCommentIntelligence(
@@ -553,50 +848,25 @@ function deriveCommentIntelligence(
     };
   }
 
-  const scoreByPhrase = new Map<string, number>();
-  const boost = (phrase: string, score: number) => {
-    scoreByPhrase.set(phrase, (scoreByPhrase.get(phrase) ?? 0) + score);
-  };
-
-  let suspicionScore = 0;
-  let laughScore = 0;
-  let hypeScore = 0;
-  let artScore = 0;
+  const rankedCues = buildRankedCommentCues(sortedComments);
   const suspicionComments: ScoredComment[] = [];
   const dissentComments: ScoredComment[] = [];
-  const jokeComments: ScoredComment[] = [];
+  const jokeCandidates: Array<ScoredComment & { punchlineScore: number }> = [];
   const consensusComments: ScoredComment[] = [];
   const dissentPattern =
     /\b(cringe|corny|overrated|staged|scripted|setup|set up|manufactured|fake|pre[- ]?opened|resealed|tampered|not that deep|not that serious|it'?s a movie|from a movie|just acting|equality)\b/;
   const suspicionPattern =
     /\b(fake|pre[- ]?opened|already open(?:ed)?|resealed|tampered|cut and switch|planted|staged|scripted|cgi|setup|set up)\b/;
   const jokePattern =
-    /\b(lol|lmao|lmfao|haha|ahah|😭|😂|💀|bro|ahh|mode|queen|lady|god pack|scooby|what\b)\b|[:]{1,}/;
+    /\b(lol|lmao|lmfao|haha|ahah|😭|😂|💀|bro|ahh|mode|queen|lady|what\b)\b|[:]{1,}/;
 
   for (const comment of sortedComments) {
     const lower = comment.text.toLowerCase();
-    const weight = Math.max(1, Math.min(8, Math.floor(Math.log10(comment.likes + 10))));
-
-    if (/\bgod ?pack\b|\bdemon pack\b/.test(lower)) {
-      boost("god pack", weight + 3);
-      hypeScore += weight + 2;
-    }
-    if (/\bscooby(?:[- ]?doo)?\b|\bhorse sounds?\b|\bturned into scooby\b/.test(lower)) {
-      boost("Scooby laugh", weight + 2);
-      laughScore += weight + 2;
-    }
-    if (/\b(fake|pre[- ]?opened|already open(?:ed)?|resealed|tampered|cut and switch)\b/.test(lower)) {
-      boost("pre-opened suspicion", weight + 2);
-      suspicionScore += weight + 2;
-    }
-    if (/\b(art goes hard|cards? look|cards? are|texture is insane|beautiful cards|sick art|art style)\b/.test(lower)) {
-      boost("art goes hard", weight + 1);
-      artScore += weight + 1;
-    }
 
     const suspicious = suspicionPattern.test(lower);
     const dissenting = dissentPattern.test(lower);
-    const joking = jokePattern.test(lower);
+    const punchlineScore = computeCommentPunchlineScore(comment);
+    const joking = jokePattern.test(lower) || punchlineScore >= 5;
 
     if (suspicious) {
       suspicionComments.push(comment);
@@ -605,54 +875,68 @@ function deriveCommentIntelligence(
       dissentComments.push(comment);
     }
     if (joking && !suspicious) {
-      jokeComments.push(comment);
+      jokeCandidates.push({
+        ...comment,
+        punchlineScore
+      });
     }
     if (!suspicious && !dissenting) {
       consensusComments.push(comment);
     }
   }
 
-  const slangToAdapt = Array.from(scoreByPhrase.entries())
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .map(([phrase]) => phrase)
-    .slice(0, 5);
+  const jokeComments = jokeCandidates
+    .sort((left, right) => right.punchlineScore - left.punchlineScore || right.likes - left.likes)
+    .slice(0, 8)
+    .map(({ punchlineScore: _punchlineScore, ...comment }) => comment);
+  const slangToAdapt = rankedCues.map((cue) => cue.phrase).slice(0, 5);
   const commentLanguageCues = mergeUniqueAnalyzerStrings(
+    rankedCues.map((cue) => cue.phrase).slice(0, 6),
     sortedComments.map((comment) => extractCommentCueText(comment.text))
   ).slice(0, 6);
 
+  const dominantCue = rankedCues[0]?.phrase ?? null;
+  const hasSuspicion = suspicionComments.length > 0;
+  const hasJokes = jokeComments.length > 0;
+  const hasDissent = dissentComments.length > 0;
+
   let hiddenDetail: string | null = null;
   const genericRisks: string[] = [];
-  if (suspicionScore > 0) {
+  if (hasSuspicion) {
     hiddenDetail =
-      "Several commenters suspect the pack looked pre-opened, resealed, or fake instead of treating it like a normal clean rip.";
+      "A noticeable chunk of the comments reads hidden incompetence, staging, tampering, or fakery into the clip instead of taking it at face value.";
     genericRisks.push(
-      "treating fake or pre-opened accusations as confirmed fact when the clip itself only supports suspicion"
+      "treating audience suspicion as confirmed fact when the clip itself only supports a read, joke, or accusation"
     );
-  } else if (laughScore > 0) {
+  } else if (hasDissent) {
     hiddenDetail =
-      "A lot of the comments fixate on the Scooby-Doo laugh and the reaction noises, not just the cards themselves.";
-  } else if (hypeScore > 0) {
+      "Some viewers push back on the easy interpretation, which means later stages should not flatten the audience into one fake consensus.";
+  } else if (dominantCue) {
     hiddenDetail =
-      "Multiple commenters frame it as a literal god pack, not just one lucky pull.";
-  } else if (artScore > 0) {
-    hiddenDetail =
-      "A noticeable chunk of the comments care about how insane the card art and texture look, not only the value.";
+      `The audience keeps circling one compact read or punchline: "${dominantCue}".`;
   }
 
   const commentVibe =
-    suspicionScore > 0 && (laughScore > 0 || hypeScore > 0)
-      ? "Hype, laugh jokes, and fake-pack suspicion all show up at once."
-      : suspicionScore > 0
-        ? "Excitement mixed with real suspicion that the pack looked tampered or pre-opened."
-        : laughScore > 0 && hypeScore > 0
-          ? "Awe and collector hype mixed with jokes about the Scooby-Doo laugh."
-          : hypeScore > 0
-            ? "Collector disbelief and god-pack hype."
-            : laughScore > 0
-              ? "Mostly amused reaction focused on the laugh and the shock."
-              : artScore > 0
-                ? "Fans are impressed by the card art as much as the pull itself."
-                : null;
+    hasSuspicion && hasJokes
+      ? "Mocking punchlines and suspicious self-own reads are both active in the comments."
+      : hasSuspicion
+        ? "Comments keep reading the moment as incompetence, staging, or a hidden self-own."
+        : hasJokes && hasDissent
+          ? "Comments split between lived-in jokes and pushback against the obvious read."
+          : hasJokes
+            ? "Comments lean into punchline-style, lived-in reactions more than dry explanation."
+            : hasDissent
+              ? "Comments are visibly split instead of agreeing on one clean reaction."
+              : dominantCue
+                ? `Comments keep orbiting one compact audience read: "${dominantCue}".`
+                : "Comments mostly reinforce the main visible beat without much resistance.";
+
+  if (hasJokes && hasDissent) {
+    genericRisks.push("flattening mixed joke and pushback lanes into one neat consensus");
+  }
+  if (hasJokes && dominantCue) {
+    genericRisks.push("missing the dominant audience shorthand when it would sharpen the bottom naturally");
+  }
 
   return {
     slangToAdapt,
@@ -1016,16 +1300,24 @@ function applyExamplesAssessmentToSelectorOutput(
 function buildModeAwareWriterBrief(input: {
   baseBrief: string;
   assessment: Stage2ExamplesAssessment;
+  analyzerOutput: AnalyzerOutput;
 }): string {
   const diversityGuardrail =
     "Keep the batch varied in bottom openings and continuation logic, and avoid stock tails that could fit unrelated clips.";
+  const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
+  const commentCarryGuardrail =
+    commentCarryProfile.expectation === "high"
+      ? ` High-signal audience shorthand is available (${commentCarryProfile.dominantCues.join(" | ")}). Keep at least 2 candidates where the bottom cashes one of those cues in naturally and clip-safely instead of sanding everything into generic reaction English.`
+      : commentCarryProfile.expectation === "medium"
+        ? ` There is usable audience shorthand (${commentCarryProfile.dominantCues.join(" | ")}). Let at least 1 candidate carry that language naturally when it sharpens the bottom.`
+        : "";
   if (input.assessment.examplesMode === "domain_guided") {
-    return `${input.baseBrief} The retrieval pool is domain-near enough to help with framing and trigger logic, but clip truth still outranks example mimicry. ${diversityGuardrail}`;
+    return `${input.baseBrief} The retrieval pool is domain-near enough to help with framing and trigger logic, but clip truth still outranks example mimicry. ${diversityGuardrail}${commentCarryGuardrail}`;
   }
   if (input.assessment.examplesMode === "form_guided") {
-    return `${input.baseBrief} Examples are for form guidance only: use them for rhythm, density, and top/bottom construction, not for borrowed nouns or domain assumptions. ${diversityGuardrail}`;
+    return `${input.baseBrief} Examples are for form guidance only: use them for rhythm, density, and top/bottom construction, not for borrowed nouns or domain assumptions. ${diversityGuardrail}${commentCarryGuardrail}`;
   }
-  return `${input.baseBrief} Retrieval is weak here, so let the clip, bootstrap style directions, and editorial memory drive the narrative. Examples are weak support only. ${diversityGuardrail}`;
+  return `${input.baseBrief} Retrieval is weak here, so let the clip, bootstrap style directions, and editorial memory drive the narrative. Examples are weak support only. ${diversityGuardrail}${commentCarryGuardrail}`;
 }
 
 function isSupportedSelectorAngle(value: string): boolean {
@@ -1054,6 +1346,7 @@ function fallbackSelectorOutput(
   }>
 ): SelectorOutput {
   const queryText = buildCorpusQueryText(videoContext, analyzerOutput);
+  const commentCarryProfile = buildCommentCarryProfile(analyzerOutput);
   const stakes = analyzerOutput.stakes.map((stake) => stake.toLowerCase());
   const chosenExamples = pickExamplesForMode({
     availableExamples: [...availableExamples].sort(
@@ -1135,6 +1428,9 @@ function fallbackSelectorOutput(
       "object inventory instead of trigger framing",
       "bottom repeating top",
       "overly clean AI wording",
+      ...(commentCarryProfile.expectation !== "low"
+        ? ["sanding down strong audience shorthand into generic reaction copy"]
+        : []),
       ...(examplesAssessment.examplesMode === "domain_guided"
         ? []
         : ["borrowing nouns or market logic from weak examples instead of the actual clip"])
@@ -1149,7 +1445,8 @@ function fallbackSelectorOutput(
         : "Fallback selector had no examples available and relied on the analyzer output only.",
     writerBrief: buildModeAwareWriterBrief({
       baseBrief: `Write for ${channelConfig.name}. Lead with the visible scene, then react like a human viewer.`,
-      assessment: examplesAssessment
+      assessment: examplesAssessment,
+      analyzerOutput
     })
   };
 }
@@ -1162,9 +1459,11 @@ function normalizeSelectorOutput(
   exampleInsights: Array<{
     exampleId: string;
     guidanceRole: Stage2ExampleGuidanceRole;
-  }>
+  }>,
+  analyzerOutput: AnalyzerOutput
 ): SelectorOutput {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const commentCarryProfile = buildCommentCarryProfile(analyzerOutput);
   const rankedAnglesRaw = Array.isArray(obj.ranked_angles)
     ? obj.ranked_angles
     : Array.isArray(obj.rankedAngles)
@@ -1319,6 +1618,12 @@ function normalizeSelectorOutput(
     )
       .map((value) => String(value ?? "").trim())
       .filter(Boolean)
+      .concat(
+        commentCarryProfile.expectation !== "low"
+          ? ["sanding down strong audience shorthand into generic reaction copy"]
+          : []
+      )
+      .filter((value, index, array) => array.indexOf(value) === index)
       .slice(0, 8),
     selectedExampleIds:
       selectedExamples.length >= 1 ? selectedExamples.map((example) => example.id) : fallback.selectedExampleIds,
@@ -1330,7 +1635,8 @@ function normalizeSelectorOutput(
     writerBrief: buildModeAwareWriterBrief({
       baseBrief:
         String(obj.writer_brief ?? obj.writerBrief ?? fallback.writerBrief).trim() || fallback.writerBrief,
-      assessment: examplesAssessment
+      assessment: examplesAssessment,
+      analyzerOutput
     }),
     confidence:
       Number.isFinite(Number(obj.confidence)) ? Number(obj.confidence) : fallback.confidence
@@ -1629,18 +1935,32 @@ const DANGLING_END_WORDS = new Set([
   "why",
   "with",
   "reads",
-  "seems"
+  "said",
+  "says",
+  "screamed",
+  "screams",
+  "seems",
+  "showed",
+  "shows",
+  "signaled",
+  "signals",
+  "tells",
+  "told",
+  "means",
+  "meant",
+  "proved",
+  "proves"
 ]);
-const TOP_PADDING_OPTIONS = [
-  "It is already over.",
-  "You can feel the winner coming.",
-  "The road already looks like it knows how this ends."
-];
-const BOTTOM_PADDING_OPTIONS = [
-  "And yeah, the whole room feels it immediately.",
-  "That is the part nobody there can shrug off.",
-  "Once that lands, the reaction basically writes itself.",
-  "At that point, everybody in the shot gets the same message."
+// Keep repair semantic-light: invalid short lines should drop out instead of
+// getting rescued by canned filler that changes the meaning of the clip.
+const TOP_PADDING_OPTIONS: string[] = [];
+const BOTTOM_PADDING_OPTIONS: string[] = [];
+const GENERIC_BOTTOM_TAIL_PATTERNS = [
+  /reaction basically writes itself/i,
+  /whole room feels it immediately/i,
+  /nobody there can shrug (?:it|that) off/i,
+  /everybody in the shot gets the same message/i,
+  /the whole room feels it/i
 ];
 
 function stableTextHash(value: string): number {
@@ -1780,6 +2100,21 @@ function trimTrailingIncompleteFragment(text: string): string {
   return value;
 }
 
+function hasBrokenSentencePart(text: string): boolean {
+  return extractSentenceParts(text).some((part) => looksLikeBrokenCaptionEnding(part));
+}
+
+function hasGenericBottomTail(text: string): boolean {
+  return GENERIC_BOTTOM_TAIL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isCompromisedShortlistEntry(entry: ShortlistEntry): boolean {
+  return (
+    hasBrokenSentencePart(entry.candidate.bottom) ||
+    (entry.constraintCheck.repaired && hasGenericBottomTail(entry.candidate.bottom))
+  );
+}
+
 function ensureTerminalPunctuation(text: string, maxLength: number): string {
   let value = text.trim();
   if (!value || TERMINAL_PUNCTUATION_PATTERN.test(value)) {
@@ -1805,6 +2140,9 @@ function padTextToMinimum(
   let value = text.trim();
   if (value.length >= minimum) {
     return ensureTerminalPunctuation(value, maxLength);
+  }
+  if (suffixOptions.length === 0) {
+    return null;
   }
   const glue = TERMINAL_PUNCTUATION_PATTERN.test(value) ? " " : ". ";
   const currentTailKey = buildBottomTailKey(value);
@@ -1869,6 +2207,7 @@ function repairCaptionLineForHardConstraints(input: {
 }): { text: string; repaired: boolean; valid: boolean } {
   let value = input.text.trim();
   let repaired = false;
+  let repairedBrokenEnding = false;
   if (value.length > input.maximum) {
     value = truncateToWordBoundary(value, input.maximum);
     repaired = true;
@@ -1878,22 +2217,26 @@ function repairCaptionLineForHardConstraints(input: {
     if (prefix && prefix.length < value.length) {
       value = prefix;
       repaired = true;
+      repairedBrokenEnding = true;
     } else {
       const trimmed = trimTrailingBrokenEndingWords(value);
       if (trimmed && trimmed !== value) {
         value = trimmed;
         repaired = true;
+        repairedBrokenEnding = true;
       }
     }
     const trimmedFragment = trimTrailingIncompleteFragment(value);
     if (trimmedFragment && trimmedFragment !== value) {
       value = trimmedFragment;
       repaired = true;
+      repairedBrokenEnding = true;
     }
     const retrimmed = trimTrailingBrokenEndingWords(value);
     if (retrimmed && retrimmed !== value) {
       value = retrimmed;
       repaired = true;
+      repairedBrokenEnding = true;
     }
     if (extractNormalizedWords(value).length <= 4 || looksLikeBrokenCaptionEnding(value)) {
       return {
@@ -1902,6 +2245,13 @@ function repairCaptionLineForHardConstraints(input: {
         valid: false
       };
     }
+  }
+  if (repairedBrokenEnding && value.length < input.minimum) {
+    return {
+      text: value,
+      repaired,
+      valid: false
+    };
   }
   if (value.length < input.minimum) {
     const padded = padTextToMinimum(
@@ -1999,6 +2349,10 @@ type ShortlistEntry = {
   candidate: CandidateCaption;
   constraintCheck: CandidateConstraintCheck;
   criticTotal: number;
+  commentCarryScore: number;
+  usesDominantCommentCue: boolean;
+  matchedCommentCues: string[];
+  selectionScore: number;
 };
 
 type ShortlistStats = {
@@ -2050,6 +2404,33 @@ function assertCompletedShortlistContract(input: {
   if (!captionCandidateIds.includes(input.finalPickCandidateId)) {
     throw new Error("Stage 2 completed shortlist contract drifted after assembly. Final pick is not part of the persisted visible shortlist.");
   }
+}
+
+function computeShortlistSelectionScore(entry: {
+  criticTotal: number;
+  constraintCheck: CandidateConstraintCheck;
+  candidate: CandidateCaption;
+  commentCarryScore: number;
+  usesDominantCommentCue: boolean;
+}): number {
+  const genericTailPenalty = hasGenericBottomTail(entry.candidate.bottom)
+    ? entry.constraintCheck.repaired
+      ? 1.35
+      : 0.55
+    : 0;
+  const repairedPenalty = entry.constraintCheck.repaired ? 0.12 : 0;
+  const commentCarryBonus =
+    entry.commentCarryScore >= 3
+      ? 0.7
+      : entry.commentCarryScore >= 2
+        ? 0.45
+        : entry.commentCarryScore > 0
+          ? 0.2
+          : 0;
+  const dominantCueBonus = entry.usesDominantCommentCue ? 0.15 : 0;
+  return Number(
+    (entry.criticTotal + commentCarryBonus + dominantCueBonus - genericTailPenalty - repairedPenalty).toFixed(3)
+  );
 }
 
 function mergeRewriterCandidates(inputCandidates: CandidateCaption[], rewrites: CandidateCaption[]): {
@@ -2158,9 +2539,10 @@ export function sanitizeFinalSelectorModelRationale(input: {
 }
 
 function buildResolvedFinalSelectorState(input: {
-  visibleShortlist: CandidateCaption[];
+  visibleShortlistEntries: ShortlistEntry[];
   requestedFinalPickCandidateId: string;
   shortlistStats?: ShortlistStats | null;
+  commentCarryExpectation?: "low" | "medium" | "high";
 }): {
   candidateOptionMap: Array<{
     option: number;
@@ -2172,13 +2554,47 @@ function buildResolvedFinalSelectorState(input: {
   progressDetail: string;
   rationaleInternalRaw: string;
 } {
-  const shortlistCandidateIds = input.visibleShortlist.map((candidate) => candidate.candidateId);
+  const visibleShortlist = input.visibleShortlistEntries.map((entry) => entry.candidate);
+  const shortlistCandidateIds = visibleShortlist.map((candidate) => candidate.candidateId);
   const candidateOptionMap = shortlistCandidateIds.map((candidateId, index) => ({
     option: index + 1,
     candidateId
   }));
+  const requestedEntry = input.visibleShortlistEntries.find(
+    (entry) => entry.candidate.candidateId === input.requestedFinalPickCandidateId
+  );
+  const requestedEntryCompromised = requestedEntry ? isCompromisedShortlistEntry(requestedEntry) : false;
+  const fallbackFinalPickEntry = [...input.visibleShortlistEntries]
+    .sort((left, right) => {
+      const leftPenalty = Number(isCompromisedShortlistEntry(left));
+      const rightPenalty = Number(isCompromisedShortlistEntry(right));
+      return leftPenalty - rightPenalty || right.selectionScore - left.selectionScore;
+    })
+    .find((entry) => {
+      if (!requestedEntryCompromised) {
+        return true;
+      }
+      const cleanEnough = !isCompromisedShortlistEntry(entry);
+      return cleanEnough && (!requestedEntry || entry.selectionScore >= requestedEntry.selectionScore - 0.75);
+    });
+  const strongerCommentNativeEntry =
+    input.commentCarryExpectation === "high" && requestedEntry && !requestedEntry.usesDominantCommentCue
+      ? [...input.visibleShortlistEntries]
+          .filter(
+            (entry) =>
+              entry.usesDominantCommentCue &&
+              !isCompromisedShortlistEntry(entry) &&
+              entry.selectionScore >= requestedEntry.selectionScore - 0.35
+          )
+          .sort((left, right) => right.selectionScore - left.selectionScore)[0]
+      : null;
+  const resolvedRequestedEntry =
+    requestedEntryCompromised
+      ? fallbackFinalPickEntry
+      : strongerCommentNativeEntry ?? requestedEntry ?? fallbackFinalPickEntry;
   const finalPickCandidateId =
-    input.visibleShortlist.find((candidate) => candidate.candidateId === input.requestedFinalPickCandidateId)?.candidateId ??
+    resolvedRequestedEntry?.candidate.candidateId ??
+    requestedEntry?.candidate.candidateId ??
     shortlistCandidateIds[0] ??
     input.requestedFinalPickCandidateId;
   const progressSummary = `Shortlist ${shortlistCandidateIds.length} / pick ${finalPickCandidateId || "none"}.`;
@@ -2190,8 +2606,8 @@ function buildResolvedFinalSelectorState(input: {
     progressSummary,
     progressDetail: progressSummary,
     rationaleInternalRaw: buildInternalFinalSelectorReason({
-      evaluatedShortlist: input.visibleShortlist,
-      visibleShortlist: input.visibleShortlist,
+      evaluatedShortlist: visibleShortlist,
+      visibleShortlist,
       finalPickCandidateId,
       shortlistStats: input.shortlistStats
     })
@@ -2251,7 +2667,7 @@ function diversifyAcceptedBottomTails(
       return (
         Boolean(tailKey) &&
         !acceptedTailKeys.has(tailKey) &&
-        entry.criticTotal >= duplicateEntry.criticTotal - 0.75
+        entry.selectionScore >= duplicateEntry.selectionScore - 0.75
       );
     });
     if (replacementIndex < 0) {
@@ -2263,8 +2679,40 @@ function diversifyAcceptedBottomTails(
     }
     accepted.splice(duplicateIndex, 1, replacement);
     remaining.push(duplicateEntry);
-    remaining.sort((left, right) => right.criticTotal - left.criticTotal);
+    remaining.sort((left, right) => right.selectionScore - left.selectionScore);
   }
+}
+
+function promoteCommentNativeShortlistEntry(
+  accepted: ShortlistEntry[],
+  remaining: ShortlistEntry[],
+  protectedFinalPickId: string,
+  commentCarryExpectation: "low" | "medium" | "high"
+): void {
+  if (commentCarryExpectation !== "high" || accepted.some((entry) => entry.commentCarryScore >= 2)) {
+    return;
+  }
+  const replacementCandidateIndex = remaining.findIndex(
+    (entry) => entry.commentCarryScore >= 2 && !isCompromisedShortlistEntry(entry)
+  );
+  if (replacementCandidateIndex < 0) {
+    return;
+  }
+  const weakestReplaceable = accepted
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.candidate.candidateId !== protectedFinalPickId)
+    .sort((left, right) => left.entry.selectionScore - right.entry.selectionScore)[0];
+  if (!weakestReplaceable) {
+    return;
+  }
+  const replacement = remaining[replacementCandidateIndex];
+  if (!replacement || replacement.selectionScore < weakestReplaceable.entry.selectionScore - 0.75) {
+    return;
+  }
+  accepted.splice(weakestReplaceable.index, 1, replacement);
+  remaining.splice(replacementCandidateIndex, 1);
+  remaining.push(weakestReplaceable.entry);
+  remaining.sort((left, right) => right.selectionScore - left.selectionScore);
 }
 
 function cleanupDuplicateBottomTails(
@@ -2281,7 +2729,7 @@ function cleanupDuplicateBottomTails(
       }
       continue;
     }
-    if (entry.candidate.candidateId === protectedFinalPickId) {
+    if (entry.candidate.candidateId === protectedFinalPickId && !hasGenericBottomTail(entry.candidate.bottom)) {
       continue;
     }
     const strippedBottom = extractBottomLeadSegment(entry.candidate.bottom);
@@ -2338,12 +2786,14 @@ function cleanupDuplicateBottomTails(
 
 function buildShortlist(input: {
   constraints: Stage2HardConstraints;
+  analyzerOutput: AnalyzerOutput;
   finalSelector: FinalSelectorOutput;
   rewrittenCandidates: CandidateCaption[];
   fallbackCandidates: CandidateCaption[];
   criticScores: CriticScore[];
 }): { entries: ShortlistEntry[]; stats: ShortlistStats } {
   const targetCount = REQUIRED_FINAL_SHORTLIST_COUNT;
+  const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
   const scoreMap = new Map(input.criticScores.map((score) => [score.candidateId, score.total]));
   const byId = new Map(
     [...input.rewrittenCandidates, ...input.fallbackCandidates].map((candidate) => [candidate.candidateId, candidate])
@@ -2366,18 +2816,30 @@ function buildShortlist(input: {
 
   const repairedEntries = orderedPool
     .map((candidate) => {
-    const repaired = repairCandidateForHardConstraints(candidate, input.constraints);
-    const constraintCheck = evaluateCandidateHardConstraints(
-      repaired.candidate,
-      input.constraints,
-      repaired.repaired
-    );
-    return {
-      candidate: repaired.candidate,
-      constraintCheck,
-      criticTotal: scoreMap.get(candidate.candidateId) ?? 0,
-      valid: repaired.valid
-    };
+      const repaired = repairCandidateForHardConstraints(candidate, input.constraints);
+      const constraintCheck = evaluateCandidateHardConstraints(
+        repaired.candidate,
+        input.constraints,
+        repaired.repaired
+      );
+      const commentCarry = evaluateCandidateCommentCarry({
+        candidate: repaired.candidate,
+        commentCarryProfile
+      });
+      const baseEntry = {
+        candidate: repaired.candidate,
+        constraintCheck,
+        criticTotal: scoreMap.get(candidate.candidateId) ?? 0,
+        commentCarryScore: commentCarry.score,
+        usesDominantCommentCue: commentCarry.usesDominantCue,
+        matchedCommentCues: commentCarry.matchedCues,
+        selectionScore: 0,
+        valid: repaired.valid
+      };
+      return {
+        ...baseEntry,
+        selectionScore: computeShortlistSelectionScore(baseEntry)
+      };
     });
   const repairedPool = repairedEntries.filter((entry) => entry.valid && entry.constraintCheck.passed);
 
@@ -2386,7 +2848,7 @@ function buildShortlist(input: {
   const accepted = repairedPool.filter((entry) => preferredIds.has(entry.candidate.candidateId)).slice(0, targetCount);
   const remaining = repairedPool
     .filter((entry) => !preferredIds.has(entry.candidate.candidateId))
-    .sort((left, right) => right.criticTotal - left.criticTotal);
+    .sort((left, right) => right.selectionScore - left.selectionScore);
 
   const diversifyAcceptedShortlist = () => {
     const possibleAngles = new Set(repairedPool.map((entry) => entry.candidate.angle));
@@ -2408,19 +2870,19 @@ function buildShortlist(input: {
             entry.candidate.candidateId !== protectedFinalPickId &&
             accepted.filter((item) => item.candidate.angle === entry.candidate.angle).length > 1
         )
-        .sort((left, right) => left.entry.criticTotal - right.entry.criticTotal)[0];
+        .sort((left, right) => left.entry.selectionScore - right.entry.selectionScore)[0];
       if (!replaceable) {
         remaining.unshift(alternative);
         break;
       }
-      if (alternative.criticTotal < replaceable.entry.criticTotal - 0.75) {
+      if (alternative.selectionScore < replaceable.entry.selectionScore - 0.75) {
         remaining.unshift(alternative);
         break;
       }
       const [removed] = accepted.splice(replaceable.index, 1, alternative);
       if (removed) {
         remaining.push(removed);
-        remaining.sort((left, right) => right.criticTotal - left.criticTotal);
+        remaining.sort((left, right) => right.selectionScore - left.selectionScore);
       }
     }
   };
@@ -2432,18 +2894,18 @@ function buildShortlist(input: {
         .map((entry) => buildBottomTailKey(entry.candidate.bottom))
         .filter(Boolean)
     );
-    const strongestRemainingScore = remaining[0]?.criticTotal ?? 0;
+    const strongestRemainingScore = remaining[0]?.selectionScore ?? 0;
     const diverseIndex = remaining.findIndex(
       (entry) =>
         !acceptedAngles.has(entry.candidate.angle) &&
-        entry.criticTotal >= strongestRemainingScore - 0.75
+        entry.selectionScore >= strongestRemainingScore - 0.75
     );
     const uniqueTailIndex = remaining.findIndex((entry) => {
       const tailKey = buildBottomTailKey(entry.candidate.bottom);
       return (
         Boolean(tailKey) &&
         !acceptedTailKeys.has(tailKey) &&
-        entry.criticTotal >= strongestRemainingScore - 0.75
+        entry.selectionScore >= strongestRemainingScore - 0.75
       );
     });
     const pickedIndex =
@@ -2458,6 +2920,12 @@ function buildShortlist(input: {
   diversifyAcceptedShortlist();
   diversifyAcceptedBottomTails(accepted, remaining, protectedFinalPickId);
   cleanupDuplicateBottomTails(accepted, input.constraints, protectedFinalPickId);
+  promoteCommentNativeShortlistEntry(
+    accepted,
+    remaining,
+    protectedFinalPickId,
+    commentCarryProfile.expectation
+  );
   const entries = accepted.slice(0, targetCount);
   return {
     entries,
@@ -2507,6 +2975,7 @@ function buildPromptStageDiagnostics(input: {
   promptText: string | null;
   usesImages?: boolean;
   summary: string;
+  inputManifest?: Stage2DiagnosticsPromptStage["inputManifest"];
 }): Stage2DiagnosticsPromptStage {
   const stageMeta = STAGE2_PIPELINE_STAGES.find((stage) => stage.id === input.stageId);
   const resolved = resolveStage2PromptTemplate(
@@ -2524,7 +2993,8 @@ function buildPromptStageDiagnostics(input: {
     promptText: input.promptText,
     promptChars: input.promptText ? input.promptText.length : null,
     usesImages: Boolean(input.usesImages),
-    summary: input.summary
+    summary: input.summary,
+    ...(input.inputManifest ? { inputManifest: input.inputManifest } : {})
   };
 }
 
@@ -2574,6 +3044,7 @@ function buildDiagnosticsExample(
 
 function buildRunDiagnostics(input: {
   channelConfig: Stage2RuntimeChannelConfig;
+  videoContext: ViralShortsVideoContext;
   analyzerOutput: AnalyzerOutput;
   promptConfig: Stage2PromptConfig | null;
   promptPacket: PromptPacket;
@@ -2590,9 +3061,25 @@ function buildRunDiagnostics(input: {
   }>;
   selectorOutput: SelectorOutput;
   queryText: string;
+  writerCandidates: CandidateCaption[];
+  criticScores: CriticScore[];
+  rewrittenCandidates: CandidateCaption[];
+  shortlist: CandidateCaption[];
 }): Stage2Diagnostics {
   const selectedExampleIds = input.selectorOutput.selectedExampleIds ?? [];
   const insightById = new Map(input.exampleInsights.map((entry) => [entry.exampleId, entry]));
+  const promptInputManifests = buildStage2PromptInputManifestMap({
+    channelConfig: input.channelConfig,
+    videoContext: input.videoContext,
+    activeExamplesCount: input.activeExamplesCount,
+    selectorPromptPool: input.selectorExamples,
+    selectorOutput: input.selectorOutput,
+    examplesAssessment: input.examplesAssessment,
+    writerCandidates: input.writerCandidates,
+    criticScores: input.criticScores,
+    rewriteCandidates: input.rewrittenCandidates,
+    shortlist: input.shortlist
+  });
   return {
     channel: {
       channelId: input.channelConfig.channelId,
@@ -2644,6 +3131,7 @@ function buildRunDiagnostics(input: {
       uncertaintyNotes: input.analyzerOutput.uncertaintyNotes,
       rawSummary: input.analyzerOutput.rawSummary
     },
+    sourceContext: buildStage2SourceContextSummary(input.videoContext),
     effectivePrompting: {
       promptStages: [
         buildPromptStageDiagnostics({
@@ -2651,43 +3139,50 @@ function buildRunDiagnostics(input: {
           promptConfig: input.promptConfig,
           promptText: input.promptPacket.prompts.analyzer,
           usesImages: true,
-          summary: "LLM stage: reads frames, comments, title and description to produce the visual analysis."
+          summary: "LLM stage: reads frames, comments, title and description to produce the visual analysis.",
+          inputManifest: promptInputManifests.analyzer
         }),
         buildPromptStageDiagnostics({
           stageId: "selector",
           promptConfig: input.promptConfig,
           promptText: input.promptPacket.prompts.selector,
-          summary: "LLM stage: chooses clip angle(s) and the most relevant examples from the active corpus."
+          summary: "LLM stage: chooses clip angle(s) and the most relevant examples from the active corpus.",
+          inputManifest: promptInputManifests.selector
         }),
         buildPromptStageDiagnostics({
           stageId: "writer",
           promptConfig: input.promptConfig,
           promptText: input.promptPacket.prompts.writer,
-          summary: "LLM stage: drafts 20 caption options using selector-chosen examples."
+          summary: "LLM stage: drafts 20 caption options using selector-chosen examples.",
+          inputManifest: promptInputManifests.writer
         }),
         buildPromptStageDiagnostics({
           stageId: "critic",
           promptConfig: input.promptConfig,
           promptText: input.promptPacket.prompts.critic,
-          summary: "LLM stage: scores the writer candidates and decides what survives."
+          summary: "LLM stage: scores the writer candidates and decides what survives.",
+          inputManifest: promptInputManifests.critic
         }),
         buildPromptStageDiagnostics({
           stageId: "rewriter",
           promptConfig: input.promptConfig,
           promptText: input.promptPacket.prompts.rewriter,
-          summary: "LLM stage: rewrites the strongest candidates without dropping hard constraints."
+          summary: "LLM stage: rewrites the strongest candidates without dropping hard constraints.",
+          inputManifest: promptInputManifests.rewriter
         }),
         buildPromptStageDiagnostics({
           stageId: "finalSelector",
           promptConfig: input.promptConfig,
           promptText: input.promptPacket.prompts.finalSelector,
-          summary: "LLM stage: assembles the shortlist and chooses the recommended final pick."
+          summary: "LLM stage: assembles the shortlist and chooses the recommended final pick.",
+          inputManifest: promptInputManifests.finalSelector
         }),
         buildPromptStageDiagnostics({
           stageId: "titles",
           promptConfig: input.promptConfig,
           promptText: input.titlePrompt,
-          summary: "LLM stage: generates the 5 title options for the shortlist."
+          summary: "LLM stage: generates the 5 title options for the shortlist.",
+          inputManifest: promptInputManifests.titles
         })
       ]
     },
@@ -3039,7 +3534,8 @@ export class ViralShortsWorkerService {
           selectorFallback,
           selectorPool.selectorExamples,
           selectorPool.assessment,
-          selectorPool.exampleInsights
+          selectorPool.exampleInsights,
+          analyzerOutput
         ),
         selectorPool.assessment
       );
@@ -3294,6 +3790,7 @@ export class ViralShortsWorkerService {
 
     const shortlistResult = buildShortlist({
       constraints: channelConfig.hardConstraints,
+      analyzerOutput,
       finalSelector,
       rewrittenCandidates,
       fallbackCandidates: candidates,
@@ -3305,9 +3802,10 @@ export class ViralShortsWorkerService {
     const shortlistEntries = shortlistResult.entries;
     const shortlist = shortlistEntries.map((entry) => entry.candidate);
     const resolvedFinalSelectorState = buildResolvedFinalSelectorState({
-      visibleShortlist: shortlist,
+      visibleShortlistEntries: shortlistEntries,
       requestedFinalPickCandidateId: finalSelector.finalPick,
-      shortlistStats: shortlistResult.stats
+      shortlistStats: shortlistResult.stats,
+      commentCarryExpectation: buildCommentCarryProfile(analyzerOutput).expectation
     });
     await reportProgress({
       stageId: "finalSelector",
@@ -3373,6 +3871,7 @@ export class ViralShortsWorkerService {
 
     const diagnostics = buildRunDiagnostics({
       channelConfig,
+      videoContext: input.videoContext,
       analyzerOutput,
       promptConfig,
       promptPacket,
@@ -3383,7 +3882,11 @@ export class ViralShortsWorkerService {
       examplesAssessment: selectorPool.assessment,
       exampleInsights: selectorPool.exampleInsights,
       selectorOutput,
-      queryText
+      queryText,
+      writerCandidates: candidates,
+      criticScores,
+      rewrittenCandidates,
+      shortlist
     });
 
     const shortlistOptionMap = resolvedFinalSelectorState.candidateOptionMap;

@@ -281,9 +281,11 @@ export type ViralShortsVideoContext = {
   transcript: string;
   frameDescriptions: string[];
   comments: Array<{
+    id?: string | null;
     author: string;
     likes: number;
     text: string;
+    postedAt?: string | null;
   }>;
   userInstruction?: string | null;
 };
@@ -337,6 +339,79 @@ export type Stage2DiagnosticsPromptStage = {
   promptChars: number | null;
   usesImages: boolean;
   summary: string;
+  inputManifest?: Stage2DiagnosticsPromptStageInputManifest;
+};
+
+export type Stage2DiagnosticsPromptStageTextUsage = {
+  availableChars: number;
+  passedChars: number;
+  omittedChars: number;
+  truncated: boolean;
+  limit: number | null;
+};
+
+export type Stage2DiagnosticsPromptStageListUsage = {
+  availableCount: number;
+  passedCount: number;
+  omittedCount: number;
+  truncated: boolean;
+  limit: number | null;
+};
+
+export type Stage2DiagnosticsPromptStageCommentsUsage = Stage2DiagnosticsPromptStageListUsage & {
+  passedCommentIds: string[];
+};
+
+export type Stage2DiagnosticsPromptStageExamplesUsage = Stage2DiagnosticsPromptStageListUsage & {
+  activeCorpusCount: number;
+  promptPoolCount: number;
+  passedExampleIds: string[];
+  selectedExampleIds: string[];
+  rejectedExampleIds: string[];
+  retrievalConfidence: Stage2RetrievalConfidence | null;
+  examplesMode: Stage2ExamplesMode | null;
+  examplesRoleSummary: string | null;
+  primaryDriverSummary: string | null;
+};
+
+export type Stage2DiagnosticsPromptStageChannelLearningUsage = {
+  detail: "none" | "minimal" | "compact";
+  selectedDirectionCount: number;
+  highlightedDirectionIds: string[];
+  explorationShare: number | null;
+  recentFeedbackCount: number;
+  recentSelectionCount: number;
+  promptSummary: string | null;
+};
+
+export type Stage2DiagnosticsPromptStageCandidateUsage = {
+  passedCount: number;
+  passedCandidateIds: string[];
+  criticScoreCount: number | null;
+  shortlistCount: number | null;
+};
+
+export type Stage2DiagnosticsPromptStageInputManifest = {
+  learningDetail: "none" | "minimal" | "compact";
+  description: Stage2DiagnosticsPromptStageTextUsage | null;
+  transcript: Stage2DiagnosticsPromptStageTextUsage | null;
+  frames: Stage2DiagnosticsPromptStageListUsage | null;
+  comments: Stage2DiagnosticsPromptStageCommentsUsage | null;
+  examples: Stage2DiagnosticsPromptStageExamplesUsage | null;
+  channelLearning: Stage2DiagnosticsPromptStageChannelLearningUsage | null;
+  candidates: Stage2DiagnosticsPromptStageCandidateUsage | null;
+  stageFlags: string[];
+};
+
+export type Stage2DiagnosticsSourceContext = {
+  sourceUrl: string;
+  title: string;
+  descriptionChars: number;
+  transcriptChars: number;
+  frameCount: number;
+  runtimeCommentCount: number;
+  runtimeCommentIds: string[];
+  userInstructionChars: number;
 };
 
 export type Stage2DiagnosticsExample = {
@@ -415,6 +490,7 @@ export type Stage2Diagnostics = {
     uncertaintyNotes: string[];
     rawSummary: string;
   };
+  sourceContext?: Stage2DiagnosticsSourceContext;
   effectivePrompting: {
     promptStages: Stage2DiagnosticsPromptStage[];
   };

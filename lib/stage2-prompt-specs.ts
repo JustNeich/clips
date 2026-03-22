@@ -103,6 +103,7 @@ Mixed-comments rule:
 - joke lane = meme phrasing, nicknames, punchlines, or lived-in comment language worth adapting
 - dissent lane = pushback, corrective reads, or viewers resisting the obvious framing
 - suspicion lane = viewers reading hidden motive, fakery, staging, or subtext into the clip
+- If high-like comments keep using the same shorthand, acronym, nickname, or compact punchline, preserve it in slang_to_adapt and comment_language_cues instead of flattening it into generic paraphrase.
 - If a lane is absent, return an empty string for that lane instead of inventing one.
 
 Return strict JSON with these keys:
@@ -556,12 +557,17 @@ BOTTOM rules:
   - quoted observation only when it genuinely sounds natural
 - If a bottom opens with a quote, the continuation must stay clip-specific and conversational. Do not tack on a generic tail that could fit a different video.
 - If audience language from comments is worth using, adapt it like lived-in phrasing, not like pasted meme text.
+- If a high-like comment shorthand, acronym, or nickname is obviously useful and clip-safe, do not sand it down into generic wording. Some candidates should use that audience language naturally.
+- If analyzerOutput/commentCarryProfile shows high-signal shorthand, at least 2 candidates must cash one of those cues in naturally, preferably in the bottom.
+- Do not hide every strong audience phrase behind safer editorial English if a clip-safe native version is available.
 - Never default to stock continuations like:
   - the reaction basically writes itself
   - the whole room feels it immediately
   - nobody there can shrug it off
   - everybody in the shot gets the same message
 - If a continuation could fit five unrelated videos, it is too generic for this batch.
+- Never end the core clause on a reporting or bridge verb such as says, means, proves, shows, or tells and then try to save the line with filler.
+- If a line would need generic filler to hit length, rewrite the thought earlier instead of padding the ending.
 
 Task:
 Write 20 candidates.
@@ -659,6 +665,10 @@ Automatic penalties:
 - candidate sounds polished but semantically belongs to another clip family
 - length misses the target range
 - the line is valid but emotionally dead
+- the dominant audience shorthand from high-like comments was available, clip-safe, and would have sharpened the line, but the candidate sanded it down into generic wording anyway
+- analyzerOutput/commentCarryProfile showed strong audience shorthand, but the whole visible batch still avoids using it in any natural way
+- the bottom only works because generic filler was appended after a weak or incomplete core clause
+- a sentence ends on a reporting or bridge verb like says, means, proves, shows, or tells
 
 Cold-start honesty rule:
 - Good form is not enough if the semantics were imported from a weak example pool.
@@ -669,6 +679,7 @@ Strong preference:
 - reward lines that trigger agreement, laughter, tension, or recognition
 - reward lines with lived-in rhythm
 - reward lines that feel socially or emotionally legible
+- when high-signal audience shorthand exists, reward candidates that use it naturally and visually truthfully over equally clean but more generic lines
 - protect 1-2 strong exploratory candidates when they are genuinely competitive; do not auto-delete them just because they are less familiar
 
 Batch audit rules:
@@ -722,6 +733,10 @@ Non-negotiable:
 - Never leave a tightening fragment or broken truncation behind.
 - If the rewrite becomes smoother but more generic, you failed the rewrite.
 - Prefer a sharper clip-specific social read over a cleaner interchangeable line.
+- If high-like audience shorthand or acronyms are clip-safe, use them when they genuinely sharpen the line instead of sanitizing them away.
+- If the batch contains a clean comment-native candidate and a similarly strong sanitized generic candidate, prefer the comment-native one.
+- Never leave a sentence ending on a reporting or bridge verb like says, means, proves, shows, or tells.
+- If cleanup makes a line too short, rewrite the idea earlier in the sentence instead of rescuing it with a generic tail.
 
 For every rewritten candidate, provide:
 - English TOP in 'top'
@@ -774,6 +789,10 @@ Selection rules:
 - never include an obviously weaker line just to represent an angle
 - if quality is close, keep at least one credible exploratory alternate in the visible set so the editor can keep teaching the channel
 - if retrieval was weak, do not reward candidates that only sound polished because they borrowed semantics from another market
+- if a candidate needed repair and still leans on a generic bottom tail, do not let it win the final pick over a cleaner alternative
+- if a high-like audience cue or shorthand clearly sharpens one otherwise-competitive line, count that as a real strength rather than smoothing it away
+- if analyzerOutput/commentCarryProfile says shorthand pressure is high, do not let all five visible options stay sanitized
+- when quality is close, prefer one line that naturally cashes the dominant shorthand over another line that lands in generic polished commentary
 
 Return strict JSON object with:
 - final_candidates

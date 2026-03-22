@@ -5,6 +5,7 @@ import { AppShell, FlowStep } from "./components/AppShell";
 import { ChannelManager } from "./components/ChannelManager";
 import { ChannelOnboardingWizard } from "./components/ChannelOnboardingWizard";
 import { DetailsDrawer } from "./components/DetailsDrawer";
+import { upsertHistoryItemByMeaningfulUpdate } from "./components/history-panel-support";
 import { Step1PasteLink } from "./components/Step1PasteLink";
 import {
   normalizeStage2DiagnosticsForView,
@@ -18,6 +19,7 @@ import {
   Channel,
   ChannelAccessGrant,
   ChannelAsset,
+  ChannelFeedbackResponse,
   ChatDraft,
   ChatEvent,
   ChatListItem,
@@ -202,9 +204,22 @@ type BusyAction =
   | "connect-codex"
   | "refresh-codex";
 
+type AppToastInput = {
+  id: string;
+  tone: "neutral" | "success" | "error";
+  title?: string | null;
+  message: string;
+  actionLabel?: string | null;
+  onAction?: () => void;
+  variant?: "default" | "shortcut";
+  durationMs?: number | null;
+  autoHideMs?: number | null;
+};
+
 export default function HomePage() {
   const [status, setStatus] = useState("");
   const [statusType, setStatusType] = useState<"ok" | "error" | "">("");
+  const [appToasts, setAppToasts] = useState<Array<Omit<AppToastInput, "autoHideMs">>>([]);
   const [isBusy, setIsBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [authState, setAuthState] = useState<AuthMeResponse | null>(null);
@@ -223,6 +238,10 @@ export default function HomePage() {
   const [channelAssets, setChannelAssets] = useState<ChannelAsset[]>([]);
   const [channelAccessGrants, setChannelAccessGrants] = useState<ChannelAccessGrant[]>([]);
   const [workspaceMembers, setWorkspaceMembers] = useState<Array<{ user: UserRecord; role: AppRole }>>([]);
+  const [channelFeedbackHistory, setChannelFeedbackHistory] = useState<ChannelFeedbackResponse["historyEvents"]>([]);
+  const [channelEditorialMemory, setChannelEditorialMemory] = useState<ChannelFeedbackResponse["editorialMemory"] | null>(null);
+  const [isChannelFeedbackLoading, setIsChannelFeedbackLoading] = useState(false);
+  const [deletingChannelFeedbackEventId, setDeletingChannelFeedbackEventId] = useState<string | null>(null);
   const [isChannelManagerOpen, setIsChannelManagerOpen] = useState(false);
   const [isChannelOnboardingOpen, setIsChannelOnboardingOpen] = useState(false);
   const [chatList, setChatList] = useState<ChatListItem[]>([]);
@@ -252,6 +271,46 @@ export default function HomePage() {
   const [isStage3WorkerPairing, setIsStage3WorkerPairing] = useState(false);
   const [stage3AgentPrompt, setStage3AgentPrompt] = useState("");
   const [stage3AgentSessionId, setStage3AgentSessionId] = useState<string | null>(null);
+  const toastTimersRef = useRef<Record<string, number>>({});
+
+  const dismissAppToast = useCallback((toastId: string): void => {
+    const timerId = toastTimersRef.current[toastId];
+    if (typeof timerId === "number") {
+      window.clearTimeout(timerId);
+      delete toastTimersRef.current[toastId];
+    }
+    setAppToasts((prev) => prev.filter((toast) => toast.id !== toastId));
+  }, []);
+
+  const showAppToast = useCallback(
+    (input: AppToastInput): void => {
+      const { autoHideMs = null, ...toast } = input;
+      const existingTimerId = toastTimersRef.current[toast.id];
+      if (typeof existingTimerId === "number") {
+        window.clearTimeout(existingTimerId);
+        delete toastTimersRef.current[toast.id];
+      }
+      setAppToasts((prev) => {
+        const next = prev.filter((item) => item.id !== toast.id);
+        return [toast, ...next].slice(0, 4);
+      });
+      if (typeof autoHideMs === "number" && autoHideMs > 0) {
+        toastTimersRef.current[toast.id] = window.setTimeout(() => {
+          dismissAppToast(toast.id);
+        }, autoHideMs);
+      }
+    },
+    [dismissAppToast]
+  );
+
+  useEffect(() => {
+    return () => {
+      Object.values(toastTimersRef.current).forEach((timerId) => {
+        window.clearTimeout(timerId);
+      });
+      toastTimersRef.current = {};
+    };
+  }, []);
   const [stage3AgentTimeline, setStage3AgentTimeline] = useState<Stage3TimelineResponse | null>(null);
   const [isStage3TimelineLoading, setIsStage3TimelineLoading] = useState(false);
   const [ignoreStage3ChatSessionRef, setIgnoreStage3ChatSessionRef] = useState(false);
@@ -557,12 +616,11 @@ export default function HomePage() {
 
   const patchChatListItem = useCallback((nextItem: ChatListItem): void => {
     setChatList((prev) => {
-      const currentIndex = prev.findIndex((item) => item.id === nextItem.id);
-      if (currentIndex === 0 && equalChatListItem(prev[0]!, nextItem)) {
+      const currentItem = prev.find((item) => item.id === nextItem.id) ?? null;
+      if (currentItem && equalChatListItem(currentItem, nextItem)) {
         return prev;
       }
-      const without = prev.filter((item) => item.id !== nextItem.id);
-      const nextList = [nextItem, ...without];
+      const nextList = upsertHistoryItemByMeaningfulUpdate(prev, nextItem);
       return equalChatList(prev, nextList) ? prev : nextList;
     });
   }, []);
@@ -861,6 +919,28 @@ export default function HomePage() {
     const body = (await response.json()) as { grants: ChannelAccessGrant[] };
     setChannelAccessGrants(body.grants ?? []);
   }, [authState?.effectivePermissions.canManageAnyChannelAccess, parseError]);
+
+  const refreshChannelFeedback = useCallback(async (channelId: string): Promise<ChannelFeedbackResponse | null> => {
+    if (!channelId) {
+      setChannelFeedbackHistory([]);
+      setChannelEditorialMemory(null);
+      return null;
+    }
+
+    setIsChannelFeedbackLoading(true);
+    try {
+      const response = await fetch(`/api/channels/${channelId}/feedback`);
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Не удалось загрузить историю редакторских реакций."));
+      }
+      const body = (await response.json()) as ChannelFeedbackResponse;
+      setChannelFeedbackHistory(body.historyEvents ?? []);
+      setChannelEditorialMemory(body.editorialMemory ?? null);
+      return body;
+    } finally {
+      setIsChannelFeedbackLoading(false);
+    }
+  }, [parseError]);
 
   const refreshChats = useCallback(async (): Promise<ChatListItem[]> => {
     const query = activeChannelId ? `?channelId=${encodeURIComponent(activeChannelId)}` : "";
@@ -1255,12 +1335,15 @@ export default function HomePage() {
       setActiveChat(null);
       setActiveDraft(null);
       setChannelAccessGrants([]);
+      setChannelFeedbackHistory([]);
+      setChannelEditorialMemory(null);
       return;
     }
     void refreshChats().catch(() => undefined);
     void refreshChannelAssets(activeChannelId).catch(() => undefined);
     void refreshChannelAccess(activeChannelId).catch(() => undefined);
-  }, [activeChannelId]);
+    void refreshChannelFeedback(activeChannelId).catch(() => undefined);
+  }, [activeChannelId, refreshChannelAccess, refreshChannelAssets, refreshChannelFeedback, refreshChats]);
 
   useEffect(() => {
     const shell = restoringFlowShellStateRef.current;
@@ -2159,6 +2242,7 @@ export default function HomePage() {
         setStatus("Для этого источника уже идёт Stage 2. Подключился к существующему чату и запуску.");
         return;
       }
+      showNextChatShortcutToast(chat.id);
       setCurrentStep(1);
       setStatusType("ok");
       setStatus(
@@ -2298,6 +2382,7 @@ export default function HomePage() {
         setStatus("Для этого источника уже идёт Stage 2. Подключился к существующему чату и запуску.");
         return;
       }
+      showNextChatShortcutToast(refreshedChat.id);
       setStatusType("ok");
       setStatus(
         reused
@@ -4420,6 +4505,37 @@ export default function HomePage() {
     setStatusType("");
   };
 
+  const showNextChatShortcutToast = useCallback(
+    (chatId: string): void => {
+      const toastId = `next-chat-shortcut:${chatId}`;
+      showAppToast({
+        id: toastId,
+        tone: "neutral",
+        title: "Следующий ролик",
+        message: "Можно уже открыть новый чат для следующей ссылки.",
+        variant: "shortcut",
+        actionLabel: "Создать новый чат",
+        durationMs: 5000,
+        autoHideMs: 5000,
+        onAction: () => {
+          dismissAppToast(toastId);
+          handleCreateNextChatShortcut(chatId);
+        }
+      });
+    },
+    [dismissAppToast, showAppToast]
+  );
+
+  const handleCreateNextChatShortcut = (toastChatId?: string | null): void => {
+    const resolvedToastChatId = toastChatId ?? activeChat?.id ?? null;
+    if (resolvedToastChatId) {
+      dismissAppToast(`next-chat-shortcut:${resolvedToastChatId}`);
+    }
+    handleResetFlow();
+    setStatusType("ok");
+    setStatus("Открыт новый чат. Вставьте следующую ссылку.");
+  };
+
   const handleSwitchChannel = useCallback(
     (channelId: string): void => {
       if (!channelId || channelId === activeChannelId) {
@@ -4613,6 +4729,7 @@ export default function HomePage() {
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2PromptConfig: Stage2PromptConfig;
+      stage2StyleProfile: Channel["stage2StyleProfile"];
       templateId: string;
       avatarAssetId: string | null;
       defaultBackgroundAssetId: string | null;
@@ -4723,6 +4840,8 @@ export default function HomePage() {
   const handleSubmitStage2OptionFeedback = async (input: {
     option: number;
     kind: "more_like_this" | "less_like_this" | "selected_option";
+    scope: "option" | "top" | "bottom";
+    noteMode: "soft_preference" | "hard_rule" | "situational_note";
     note: string;
   }): Promise<void> => {
     if (!activeChannelId || !visibleStage2Result) {
@@ -4742,9 +4861,12 @@ export default function HomePage() {
         chatId: activeChat?.id ?? null,
         stage2RunId: visibleStage2Result.stage2Run?.runId ?? null,
         kind: input.kind,
+        scope: input.scope,
+        noteMode: input.noteMode,
         note: input.note.trim() || null,
         optionSnapshot: {
           candidateId: option.candidateId ?? `option_${option.option}`,
+          optionNumber: option.option,
           top: option.top,
           bottom: option.bottom,
           angle: option.angle ?? "",
@@ -4756,14 +4878,68 @@ export default function HomePage() {
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось сохранить обратную связь."));
     }
+    const body = (await response.json()) as ChannelFeedbackResponse & { event?: unknown };
+    setChannelFeedbackHistory(body.historyEvents ?? []);
+    setChannelEditorialMemory(body.editorialMemory ?? null);
+    const savedModeLabel =
+      input.noteMode === "hard_rule"
+        ? "Жёсткое правило"
+        : input.noteMode === "situational_note"
+          ? "Ситуативная заметка"
+          : "Мягкое предпочтение";
     setStatusType("ok");
     setStatus(
-      input.kind === "more_like_this"
-        ? "Обратная связь сохранена: будущие запуски будут тяготеть ближе к этому варианту."
+      input.kind === "selected_option"
+        ? "Выбор сохранён: канал воспримет его как лёгкий положительный сигнал."
+        : input.noteMode === "hard_rule"
+          ? `${savedModeLabel} сохранено: этот сигнал останется активным правилом канала, пока его не удалят.`
+          : input.kind === "more_like_this"
+        ? input.scope === "top"
+          ? `${savedModeLabel} для TOP сохранено: будущие запуски мягко подтянутся к этому ходу.`
+          : input.scope === "bottom"
+            ? `${savedModeLabel} для BOTTOM сохранено: будущие запуски мягко подтянутся к этому ходу.`
+            : `${savedModeLabel} сохранено: будущие запуски будут тяготеть ближе к этому варианту.`
         : input.kind === "less_like_this"
-          ? "Обратная связь сохранена: будущие запуски будут мягко уходить от этого варианта."
+          ? input.scope === "top"
+            ? `${savedModeLabel} для TOP сохранено: будущие запуски мягко уйдут от этого хода.`
+            : input.scope === "bottom"
+              ? `${savedModeLabel} для BOTTOM сохранено: будущие запуски мягко уйдут от этого хода.`
+              : `${savedModeLabel} сохранено: будущие запуски будут мягко уходить от этого варианта.`
           : "Выбор сохранён: канал воспримет его как лёгкий положительный сигнал."
     );
+  };
+
+  const handleDeleteChannelFeedbackEvent = async (eventId: string): Promise<void> => {
+    if (!activeChannelId) {
+      setStatusType("error");
+      setStatus("Сначала выберите канал.");
+      return;
+    }
+    if (!window.confirm("Удалить эту реакцию канала из истории и обучающей памяти?")) {
+      return;
+    }
+
+    setDeletingChannelFeedbackEventId(eventId);
+    try {
+      const response = await fetch(`/api/channels/${activeChannelId}/feedback`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId })
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Не удалось удалить реакцию канала."));
+      }
+      const body = (await response.json()) as ChannelFeedbackResponse & { deletedEventId?: string };
+      setChannelFeedbackHistory(body.historyEvents ?? []);
+      setChannelEditorialMemory(body.editorialMemory ?? null);
+      setStatusType("ok");
+      setStatus("Реакция удалена: editorial memory сразу пересчитана по оставшимся сигналам.");
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error instanceof Error ? error.message : "Не удалось удалить реакцию канала.");
+    } finally {
+      setDeletingChannelFeedbackEventId(null);
+    }
   };
 
   const handleDeleteChannel = async (channelId: string): Promise<void> => {
@@ -5101,6 +5277,8 @@ export default function HomePage() {
       }}
       statusText={status}
       statusTone={statusType}
+      toasts={appToasts}
+      onDismissToast={dismissAppToast}
       headerActions={
         <button
           type="button"
@@ -5201,7 +5379,11 @@ export default function HomePage() {
           onSelectRun={setStage2RunId}
           onSelectOption={setSelectedOption}
           onSelectTitleOption={setSelectedTitleOption}
+          feedbackHistory={channelFeedbackHistory}
+          feedbackHistoryLoading={isChannelFeedbackLoading}
           onSubmitOptionFeedback={handleSubmitStage2OptionFeedback}
+          onDeleteFeedbackEvent={handleDeleteChannelFeedbackEvent}
+          deletingFeedbackEventId={deletingChannelFeedbackEventId}
           onCopy={(value, successMessage) => {
             void copyToClipboard(value, successMessage);
           }}
@@ -5496,6 +5678,15 @@ export default function HomePage() {
           void handleDeleteChannel(channelId);
         }}
         onSaveChannel={handleSaveChannel}
+        onShowGlobalToast={showAppToast}
+        onDismissGlobalToast={dismissAppToast}
+        onStartStyleDiscovery={handleStartChannelStyleDiscovery}
+        onGetStyleDiscoveryRun={handleGetChannelStyleDiscoveryRun}
+        feedbackHistory={channelFeedbackHistory}
+        feedbackHistoryLoading={isChannelFeedbackLoading}
+        editorialMemory={channelEditorialMemory}
+        onDeleteFeedbackEvent={handleDeleteChannelFeedbackEvent}
+        deletingFeedbackEventId={deletingChannelFeedbackEventId}
         onSaveWorkspaceStage2Defaults={handleSaveWorkspaceStage2Defaults}
         onUploadAsset={(kind, file) => {
           void handleUploadChannelAsset(kind, file);

@@ -1,7 +1,9 @@
 import type { Stage2ProgressSnapshot, Stage2PromptConfig } from "../../lib/stage2-pipeline";
 import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../../lib/stage2-channel-config";
 import type {
+  ChannelEditorialFeedbackEvent,
   Stage2ExplorationMode,
+  Stage2EditorialMemorySummary,
   Stage2StyleProfile
 } from "../../lib/stage2-channel-learning";
 import type { Stage2Diagnostics } from "../../lib/viral-shorts-worker/types";
@@ -161,6 +163,11 @@ export type Stage2RunSummary = {
 
 export type Stage2RunDetail = Stage2RunSummary & {
   result: Stage2Response | null;
+};
+
+export type ChannelFeedbackResponse = {
+  historyEvents: ChannelEditorialFeedbackEvent[];
+  editorialMemory: Stage2EditorialMemorySummary;
 };
 
 export type SourceJobStatus = "queued" | "running" | "completed" | "failed";

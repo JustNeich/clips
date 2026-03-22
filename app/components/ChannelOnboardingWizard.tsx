@@ -28,6 +28,7 @@ import {
   parseChannelOnboardingCustomExamples,
   parseChannelOnboardingReferenceLinks,
   selectAllChannelOnboardingStyleDirections,
+  setChannelOnboardingExplorationShare,
   toggleChannelOnboardingStyleDirectionSelection,
   updateChannelOnboardingReferenceLinks,
   type ChannelOnboardingDraft,
@@ -772,6 +773,32 @@ export function ChannelOnboardingWizard({
                 {draft.styleProfile?.referenceInfluenceSummary ||
                   "Модель использовала референсы, чтобы предложить направления, но стартовую смесь всё равно определяет редактор."}
               </p>
+              {draft.styleProfile?.bootstrapDiagnostics ? (
+                <div className="channel-onboarding-note-card">
+                  <strong>
+                    Уверенность bootstrap: {draft.styleProfile.bootstrapDiagnostics.confidence === "high"
+                      ? "высокая"
+                      : draft.styleProfile.bootstrapDiagnostics.confidence === "medium"
+                        ? "средняя"
+                        : "осторожная"}
+                  </strong>
+                  <p className="subtle-text">{draft.styleProfile.bootstrapDiagnostics.summary}</p>
+                </div>
+              ) : null}
+              {draft.styleProfile?.audiencePortrait?.summary || draft.styleProfile?.packagingPortrait?.summary ? (
+                <div className="channel-onboarding-note-card">
+                  {draft.styleProfile?.audiencePortrait?.summary ? (
+                    <p className="subtle-text">
+                      <strong>Портрет аудитории:</strong> {draft.styleProfile.audiencePortrait.summary}
+                    </p>
+                  ) : null}
+                  {draft.styleProfile?.packagingPortrait?.summary ? (
+                    <p className="subtle-text">
+                      <strong>Портрет упаковки:</strong> {draft.styleProfile.packagingPortrait.summary}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {stylesNeedRefresh ? (
                 <div className="channel-onboarding-note-card is-warning">
                   <strong>Эти карточки собраны по предыдущему набору ссылок</strong>
@@ -815,6 +842,33 @@ export function ChannelOnboardingWizard({
                     Снять выбор
                   </button>
                 </div>
+              </div>
+              <div className="compact-field">
+                <div className="quick-edit-label-row">
+                  <label className="field-label" htmlFor="channelOnboardingExplorationShare">
+                    Доля исследования
+                  </label>
+                  <strong>{Math.round(draft.explorationShare * 100)}%</strong>
+                </div>
+                <input
+                  id="channelOnboardingExplorationShare"
+                  type="range"
+                  min={10}
+                  max={40}
+                  step={5}
+                  value={Math.round(draft.explorationShare * 100)}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      setChannelOnboardingExplorationShare(
+                        current,
+                        Number(event.target.value) / 100
+                      )
+                    )
+                  }
+                />
+                <p className="subtle-text">
+                  Обычно достаточно 20–30%. Чем выше значение, тем больше канал оставляет места для исследовательских вариантов.
+                </p>
               </div>
               <div className="channel-style-grid">
                 {draft.styleProfile?.candidateDirections.map((direction) => {

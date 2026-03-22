@@ -16,10 +16,12 @@ type Step1PasteLinkProps = {
   fetchBlockedReason?: string | null;
   downloadAvailable: boolean;
   downloadBlockedReason?: string | null;
+  showCreateNextChatShortcut?: boolean;
   onDraftUrlChange: (value: string) => void;
   onPaste: () => void;
   onFetch: () => void;
   onDownloadSource: () => void;
+  onCreateNextChat?: () => void;
 };
 
 type SourcePreview =

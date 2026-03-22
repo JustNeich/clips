@@ -7,6 +7,7 @@ export const STAGE2_EDITORIAL_EXPLORATION_SHARE = 0.25;
 export type Stage2StyleLevel = "low" | "medium" | "high";
 export type Stage2ExplorationMode = "aligned" | "exploratory";
 export type Stage2StyleFitBand = "core" | "adjacent" | "exploratory";
+export type Stage2BootstrapConfidenceLevel = "low" | "medium" | "high";
 
 export type Stage2StyleAxisVector = {
   humor: number;
@@ -27,7 +28,52 @@ export type Stage2StyleReferenceLink = {
   description: string;
   transcriptExcerpt: string;
   commentHighlights: string[];
+  totalCommentCount: number;
+  selectedCommentCount: number;
+  audienceSignalSummary: string;
+  frameMoments: string[];
+  framesUsed: boolean;
   sourceHint: string;
+};
+
+export type Stage2StyleAudiencePortrait = {
+  summary: string;
+  rewards: string[];
+  jokes: string[];
+  pushback: string[];
+  suspicion: string[];
+  languageCues: string[];
+  dominantPosture: string;
+  tonePreferences: string[];
+  rejects: string[];
+};
+
+export type Stage2StylePackagingPortrait = {
+  summary: string;
+  momentPatterns: string[];
+  visualTriggers: string[];
+  topMechanics: string[];
+  bottomMechanics: string[];
+  framingModes: string[];
+};
+
+export type Stage2StyleBootstrapDiagnostics = {
+  confidence: Stage2BootstrapConfidenceLevel;
+  summary: string;
+  totalReferences: number;
+  usableReferences: number;
+  referencesWithTranscript: number;
+  referencesWithComments: number;
+  referencesWithFrames: number;
+  imagesUsed: boolean;
+  hiddenCandidatePoolSize: number;
+  surfacedCandidateCount: number;
+  promptVersion: string;
+  model: string | null;
+  reasoningEffort: string | null;
+  commentCoverageSummary: string;
+  extractionSummary: string;
+  evidenceNotes: string[];
 };
 
 export type Stage2StyleDirection = {
@@ -57,6 +103,9 @@ export type Stage2StyleProfile = {
   onboardingCompletedAt: string | null;
   discoveryPromptVersion: string;
   referenceInfluenceSummary: string;
+  audiencePortrait: Stage2StyleAudiencePortrait | null;
+  packagingPortrait: Stage2StylePackagingPortrait | null;
+  bootstrapDiagnostics: Stage2StyleBootstrapDiagnostics | null;
   explorationShare: number;
   referenceLinks: Stage2StyleReferenceLink[];
   candidateDirections: Stage2StyleDirection[];
@@ -68,8 +117,16 @@ export type ChannelEditorialFeedbackKind =
   | "less_like_this"
   | "selected_option";
 
+export type ChannelEditorialFeedbackScope = "option" | "top" | "bottom";
+
+export type ChannelEditorialFeedbackNoteMode =
+  | "soft_preference"
+  | "hard_rule"
+  | "situational_note";
+
 export type ChannelEditorialFeedbackOptionSnapshot = {
   candidateId: string;
+  optionNumber: number | null;
   top: string;
   bottom: string;
   angle: string;
@@ -85,6 +142,8 @@ export type ChannelEditorialFeedbackEvent = {
   chatId: string | null;
   stage2RunId: string | null;
   kind: ChannelEditorialFeedbackKind;
+  scope: ChannelEditorialFeedbackScope;
+  noteMode: ChannelEditorialFeedbackNoteMode;
   note: string | null;
   optionSnapshot: ChannelEditorialFeedbackOptionSnapshot | null;
   createdAt: string;
@@ -100,11 +159,14 @@ export type Stage2EditorialMemorySummary = {
   version: 1;
   windowSize: number;
   recentFeedbackCount: number;
+  recentSelectionCount: number;
+  activeHardRuleCount: number;
   explorationShare: number;
   directionScores: Stage2EditorialMemoryScore[];
   angleScores: Stage2EditorialMemoryScore[];
   preferredTextCues: string[];
   discouragedTextCues: string[];
+  hardRuleNotes: string[];
   recentNotes: string[];
   normalizedAxes: Stage2StyleAxisVector;
   promptSummary: string;
@@ -128,6 +190,9 @@ export const DEFAULT_STAGE2_STYLE_PROFILE: Stage2StyleProfile = {
   onboardingCompletedAt: null,
   discoveryPromptVersion: "unconfigured",
   referenceInfluenceSummary: "",
+  audiencePortrait: null,
+  packagingPortrait: null,
+  bootstrapDiagnostics: null,
   explorationShare: STAGE2_EDITORIAL_EXPLORATION_SHARE,
   referenceLinks: [],
   candidateDirections: [],
@@ -171,6 +236,17 @@ function parseStyleLevel(value: unknown, fallback: Stage2StyleLevel = "medium"):
 function parseStyleFitBand(value: unknown, fallback: Stage2StyleFitBand = "core"): Stage2StyleFitBand {
   const normalized = sanitizeString(value).toLowerCase();
   if (normalized === "core" || normalized === "adjacent" || normalized === "exploratory") {
+    return normalized;
+  }
+  return fallback;
+}
+
+function parseBootstrapConfidenceLevel(
+  value: unknown,
+  fallback: Stage2BootstrapConfidenceLevel = "medium"
+): Stage2BootstrapConfidenceLevel {
+  const normalized = sanitizeString(value).toLowerCase();
+  if (normalized === "low" || normalized === "medium" || normalized === "high") {
     return normalized;
   }
   return fallback;
@@ -245,8 +321,124 @@ export function normalizeStage2StyleReferenceLink(
     transcriptExcerpt: sanitizeString(candidate.transcriptExcerpt),
     commentHighlights: dedupeStrings(
       Array.isArray(candidate.commentHighlights) ? (candidate.commentHighlights as string[]) : []
-    ).slice(0, 4),
+    ).slice(0, 6),
+    totalCommentCount: Math.max(0, Math.floor(Number(candidate.totalCommentCount) || 0)),
+    selectedCommentCount: Math.max(0, Math.floor(Number(candidate.selectedCommentCount) || 0)),
+    audienceSignalSummary: sanitizeString(candidate.audienceSignalSummary),
+    frameMoments: dedupeStrings(
+      Array.isArray(candidate.frameMoments) ? (candidate.frameMoments as string[]) : []
+    ).slice(0, 3),
+    framesUsed: candidate.framesUsed === true,
     sourceHint: sanitizeString(candidate.sourceHint)
+  };
+}
+
+function normalizeStage2StyleAudiencePortrait(
+  input: unknown
+): Stage2StyleAudiencePortrait | null {
+  const candidate = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  if (!candidate) {
+    return null;
+  }
+  const summary = sanitizeString(candidate.summary);
+  const dominantPosture = sanitizeString(candidate.dominantPosture);
+  if (!summary && !dominantPosture) {
+    return null;
+  }
+  return {
+    summary,
+    rewards: dedupeStrings(Array.isArray(candidate.rewards) ? (candidate.rewards as string[]) : []).slice(0, 6),
+    jokes: dedupeStrings(Array.isArray(candidate.jokes) ? (candidate.jokes as string[]) : []).slice(0, 6),
+    pushback: dedupeStrings(Array.isArray(candidate.pushback) ? (candidate.pushback as string[]) : []).slice(0, 6),
+    suspicion: dedupeStrings(Array.isArray(candidate.suspicion) ? (candidate.suspicion as string[]) : []).slice(0, 6),
+    languageCues: dedupeStrings(
+      Array.isArray(candidate.languageCues) ? (candidate.languageCues as string[]) : []
+    ).slice(0, 8),
+    dominantPosture,
+    tonePreferences: dedupeStrings(
+      Array.isArray(candidate.tonePreferences) ? (candidate.tonePreferences as string[]) : []
+    ).slice(0, 6),
+    rejects: dedupeStrings(Array.isArray(candidate.rejects) ? (candidate.rejects as string[]) : []).slice(0, 6)
+  };
+}
+
+function normalizeStage2StylePackagingPortrait(
+  input: unknown
+): Stage2StylePackagingPortrait | null {
+  const candidate = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  if (!candidate) {
+    return null;
+  }
+  const summary = sanitizeString(candidate.summary);
+  if (!summary) {
+    return null;
+  }
+  return {
+    summary,
+    momentPatterns: dedupeStrings(
+      Array.isArray(candidate.momentPatterns) ? (candidate.momentPatterns as string[]) : []
+    ).slice(0, 6),
+    visualTriggers: dedupeStrings(
+      Array.isArray(candidate.visualTriggers) ? (candidate.visualTriggers as string[]) : []
+    ).slice(0, 6),
+    topMechanics: dedupeStrings(
+      Array.isArray(candidate.topMechanics) ? (candidate.topMechanics as string[]) : []
+    ).slice(0, 6),
+    bottomMechanics: dedupeStrings(
+      Array.isArray(candidate.bottomMechanics) ? (candidate.bottomMechanics as string[]) : []
+    ).slice(0, 6),
+    framingModes: dedupeStrings(
+      Array.isArray(candidate.framingModes) ? (candidate.framingModes as string[]) : []
+    ).slice(0, 6)
+  };
+}
+
+function normalizeStage2StyleBootstrapDiagnostics(
+  input: unknown,
+  fallbackPromptVersion: string
+): Stage2StyleBootstrapDiagnostics | null {
+  const candidate = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  if (!candidate) {
+    return null;
+  }
+  const summary = sanitizeString(candidate.summary);
+  const extractionSummary = sanitizeString(candidate.extractionSummary);
+  const commentCoverageSummary = sanitizeString(candidate.commentCoverageSummary);
+  const totalReferences = Math.max(0, Math.floor(Number(candidate.totalReferences) || 0));
+  if (!summary && !extractionSummary && !commentCoverageSummary && totalReferences === 0) {
+    return null;
+  }
+  return {
+    confidence: parseBootstrapConfidenceLevel(candidate.confidence, "medium"),
+    summary,
+    totalReferences,
+    usableReferences: Math.max(0, Math.floor(Number(candidate.usableReferences) || 0)),
+    referencesWithTranscript: Math.max(
+      0,
+      Math.floor(Number(candidate.referencesWithTranscript) || 0)
+    ),
+    referencesWithComments: Math.max(
+      0,
+      Math.floor(Number(candidate.referencesWithComments) || 0)
+    ),
+    referencesWithFrames: Math.max(0, Math.floor(Number(candidate.referencesWithFrames) || 0)),
+    imagesUsed: candidate.imagesUsed === true,
+    hiddenCandidatePoolSize: Math.max(
+      0,
+      Math.floor(Number(candidate.hiddenCandidatePoolSize) || 0)
+    ),
+    surfacedCandidateCount: Math.max(
+      0,
+      Math.floor(Number(candidate.surfacedCandidateCount) || 0)
+    ),
+    promptVersion: sanitizeString(candidate.promptVersion) || fallbackPromptVersion,
+    model: sanitizeString(candidate.model) || null,
+    reasoningEffort: sanitizeString(candidate.reasoningEffort) || null,
+    commentCoverageSummary,
+    extractionSummary,
+    evidenceNotes: dedupeStrings(
+      Array.isArray(candidate.evidenceNotes) ? (candidate.evidenceNotes as string[]) : []
+    ).slice(0, 8)
   };
 }
 
@@ -354,6 +546,13 @@ export function normalizeStage2StyleProfile(input: unknown): Stage2StyleProfile 
     discoveryPromptVersion:
       sanitizeString(candidate?.discoveryPromptVersion) || DEFAULT_STAGE2_STYLE_PROFILE.discoveryPromptVersion,
     referenceInfluenceSummary: sanitizeString(candidate?.referenceInfluenceSummary),
+    audiencePortrait: normalizeStage2StyleAudiencePortrait(candidate?.audiencePortrait),
+    packagingPortrait: normalizeStage2StylePackagingPortrait(candidate?.packagingPortrait),
+    bootstrapDiagnostics: normalizeStage2StyleBootstrapDiagnostics(
+      candidate?.bootstrapDiagnostics,
+      sanitizeString(candidate?.discoveryPromptVersion) ||
+        DEFAULT_STAGE2_STYLE_PROFILE.discoveryPromptVersion
+    ),
     explorationShare: parseAxisValue(
       candidate?.explorationShare,
       STAGE2_EDITORIAL_EXPLORATION_SHARE
@@ -407,6 +606,8 @@ export function createEmptyStage2EditorialMemorySummary(
     version: 1,
     windowSize: STAGE2_EDITORIAL_MEMORY_WINDOW,
     recentFeedbackCount: 0,
+    recentSelectionCount: 0,
+    activeHardRuleCount: 0,
     explorationShare: normalizedProfile.explorationShare,
     directionScores: selectedDirections.map((direction) => ({
       id: direction.id,
@@ -416,6 +617,7 @@ export function createEmptyStage2EditorialMemorySummary(
     angleScores: [],
     preferredTextCues: [],
     discouragedTextCues: [],
+    hardRuleNotes: [],
     recentNotes: [],
     normalizedAxes: selectedDirections.length > 0
       ? averageAxes(selectedDirections.map((direction) => direction.axes))
@@ -436,6 +638,22 @@ function normalizeFeedbackKind(value: unknown): ChannelEditorialFeedbackKind {
   return "more_like_this";
 }
 
+function normalizeFeedbackScope(value: unknown): ChannelEditorialFeedbackScope {
+  const normalized = sanitizeString(value).toLowerCase();
+  if (normalized === "top" || normalized === "bottom") {
+    return normalized;
+  }
+  return "option";
+}
+
+function normalizeFeedbackNoteMode(value: unknown): ChannelEditorialFeedbackNoteMode {
+  const normalized = sanitizeString(value).toLowerCase();
+  if (normalized === "hard_rule" || normalized === "situational_note") {
+    return normalized;
+  }
+  return "soft_preference";
+}
+
 export function normalizeChannelEditorialFeedbackOptionSnapshot(
   input: unknown
 ): ChannelEditorialFeedbackOptionSnapshot | null {
@@ -444,6 +662,7 @@ export function normalizeChannelEditorialFeedbackOptionSnapshot(
     return null;
   }
   const candidateId = sanitizeString(candidate.candidateId);
+  const optionNumberRaw = Number(candidate.optionNumber);
   const top = sanitizeString(candidate.top);
   const bottom = sanitizeString(candidate.bottom);
   if (!candidateId || (!top && !bottom)) {
@@ -454,6 +673,10 @@ export function normalizeChannelEditorialFeedbackOptionSnapshot(
     : "aligned";
   return {
     candidateId,
+    optionNumber:
+      Number.isFinite(optionNumberRaw) && optionNumberRaw > 0
+        ? Math.floor(optionNumberRaw)
+        : null,
     top,
     bottom,
     angle: sanitizeString(candidate.angle),
@@ -486,10 +709,22 @@ export function normalizeChannelEditorialFeedbackEvent(
     chatId: sanitizeString(candidate.chatId) || null,
     stage2RunId: sanitizeString(candidate.stage2RunId) || null,
     kind: normalizeFeedbackKind(candidate.kind),
+    scope: normalizeFeedbackScope(candidate.scope),
+    noteMode: normalizeFeedbackNoteMode(candidate.noteMode),
     note: sanitizeString(candidate.note) || null,
     optionSnapshot: normalizeChannelEditorialFeedbackOptionSnapshot(candidate.optionSnapshot),
     createdAt
   };
+}
+
+function getFeedbackModeWeight(noteMode: ChannelEditorialFeedbackNoteMode): number {
+  if (noteMode === "hard_rule") {
+    return 1.35;
+  }
+  if (noteMode === "situational_note") {
+    return 0.72;
+  }
+  return 1;
 }
 
 function averageAxes(axesList: Stage2StyleAxisVector[]): Stage2StyleAxisVector {
@@ -617,11 +852,15 @@ function buildBootstrapStyleLessons(profile: Stage2StyleProfile) {
     selectedDirections.flatMap((direction) => [direction.voice, direction.bestFor])
   ).slice(0, 4);
   const avoidNotes = dedupeStrings(selectedDirections.map((direction) => direction.avoids)).slice(0, 4);
+  const audienceSummary = sanitizeString(profile.audiencePortrait?.summary);
+  const packagingSummary = sanitizeString(profile.packagingPortrait?.summary);
   const summaryParts = [
     topMoves.length > 0 ? `TOP tends to work when it: ${topMoves.join(" | ")}.` : "",
     bottomMoves.length > 0 ? `BOTTOM tends to work when it: ${bottomMoves.join(" | ")}.` : "",
     toneWins.length > 0 ? `Winning tone cues: ${toneWins.join(" | ")}.` : "",
-    avoidNotes.length > 0 ? `Avoid drifting into: ${avoidNotes.join(" | ")}.` : ""
+    avoidNotes.length > 0 ? `Avoid drifting into: ${avoidNotes.join(" | ")}.` : "",
+    audienceSummary ? `Bootstrap audience portrait: ${audienceSummary}` : "",
+    packagingSummary ? `Bootstrap packaging portrait: ${packagingSummary}` : ""
   ].filter(Boolean);
 
   return {
@@ -629,6 +868,8 @@ function buildBootstrapStyleLessons(profile: Stage2StyleProfile) {
     bottomMoves,
     toneWins,
     avoidNotes,
+    audienceSummary,
+    packagingSummary,
     summary:
       summaryParts.join(" ") ||
       `No distilled bootstrap lessons yet. Stay clip-truthful and let the channel learn through live feedback.`
@@ -750,6 +991,14 @@ export function normalizeStage2EditorialMemorySummary(
       0,
       Math.floor(Number(candidate?.recentFeedbackCount) || fallback.recentFeedbackCount)
     ),
+    recentSelectionCount: Math.max(
+      0,
+      Math.floor(Number(candidate?.recentSelectionCount) || fallback.recentSelectionCount)
+    ),
+    activeHardRuleCount: Math.max(
+      0,
+      Math.floor(Number(candidate?.activeHardRuleCount) || fallback.activeHardRuleCount)
+    ),
     explorationShare: parseAxisValue(candidate?.explorationShare, fallback.explorationShare),
     directionScores: Array.isArray(candidate?.directionScores)
       ? (candidate.directionScores as Stage2EditorialMemoryScore[])
@@ -775,6 +1024,9 @@ export function normalizeStage2EditorialMemorySummary(
     discouragedTextCues: dedupeStrings(
       Array.isArray(candidate?.discouragedTextCues) ? candidate.discouragedTextCues : []
     ).slice(0, 6),
+    hardRuleNotes: dedupeStrings(
+      Array.isArray(candidate?.hardRuleNotes) ? candidate.hardRuleNotes : []
+    ).slice(0, 6),
     recentNotes: dedupeStrings(
       Array.isArray(candidate?.recentNotes) ? candidate.recentNotes : []
     ).slice(0, 6),
@@ -799,6 +1051,7 @@ export function buildStage2EditorialMemorySummary(input: {
   const feedbackAngleScores = new Map<string, { label: string; score: number }>();
   const preferredCueScores = new Map<string, number>();
   const discouragedCueScores = new Map<string, number>();
+  const hardRuleNotes: string[] = [];
   const recentNotes: string[] = [];
   const windowSize = Math.max(1, Math.floor(input.windowSize ?? STAGE2_EDITORIAL_MEMORY_WINDOW));
 
@@ -811,45 +1064,68 @@ export function buildStage2EditorialMemorySummary(input: {
     axisWeight += 0.35;
   }
 
-  const recentEvents = [...input.feedbackEvents]
+  const allRecentEvents = [...input.feedbackEvents]
     .map((event) => normalizeChannelEditorialFeedbackEvent(event))
     .filter((event): event is ChannelEditorialFeedbackEvent => event !== null)
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+  const recentExplicitEvents = allRecentEvents
+    .filter(
+      (event) =>
+        (event.kind === "more_like_this" || event.kind === "less_like_this") &&
+        event.noteMode !== "hard_rule"
+    )
     .slice(0, windowSize);
+  const activeHardRuleEvents = allRecentEvents.filter(
+    (event) =>
+      (event.kind === "more_like_this" || event.kind === "less_like_this") &&
+      event.noteMode === "hard_rule"
+  );
+  const recentPassiveSelectionEvents = allRecentEvents
+    .filter((event) => event.kind === "selected_option")
+    .slice(0, 12);
 
-  recentEvents.forEach((event, index) => {
-    const recencyWeight = 1 - (index / Math.max(windowSize - 1, 1)) * 0.82;
-    const kindWeight =
-      event.kind === "less_like_this"
-        ? -1
-        : event.kind === "selected_option"
-          ? 0.35
-          : 1;
-    const signedWeight = Number((recencyWeight * kindWeight).toFixed(4));
+  const applyEventWeight = (
+    event: ChannelEditorialFeedbackEvent,
+    signedWeight: number
+  ) => {
     const option = event.optionSnapshot;
+    const scopeWeight =
+      event.scope === "option"
+        ? 1
+        : 0.58;
+    const weightedSigned = Number((signedWeight * scopeWeight).toFixed(4));
+    const absoluteWeighted = Math.abs(weightedSigned);
 
-    if (event.note && recentNotes.length < 6) {
+    if (event.note && event.noteMode === "hard_rule" && hardRuleNotes.length < 6) {
+      hardRuleNotes.push(event.note);
+    } else if (event.note && recentNotes.length < 6) {
       recentNotes.push(event.note);
     }
 
-    if (option?.angle) {
+    if (option?.angle && event.scope !== "bottom") {
       const entry = angleScores.get(option.angle) ?? { label: option.angle, score: 0 };
-      entry.score += signedWeight;
+      entry.score += weightedSigned;
       angleScores.set(option.angle, entry);
-      const feedbackEntry = feedbackAngleScores.get(option.angle) ?? {
-        label: option.angle,
-        score: 0
-      };
-      feedbackEntry.score += signedWeight;
-      feedbackAngleScores.set(option.angle, feedbackEntry);
+      if (event.kind !== "selected_option") {
+        const feedbackEntry = feedbackAngleScores.get(option.angle) ?? {
+          label: option.angle,
+          score: 0
+        };
+        feedbackEntry.score += weightedSigned;
+        feedbackAngleScores.set(option.angle, feedbackEntry);
+      }
     }
 
-    const cueText = [extractTextCue(option?.top ?? ""), extractTextCue(option?.bottom ?? "")]
+    const cueText = [
+      event.scope !== "bottom" ? extractTextCue(option?.top ?? "") : "",
+      event.scope !== "top" ? extractTextCue(option?.bottom ?? "") : ""
+    ]
       .map((value) => sanitizeString(value))
       .filter(Boolean);
     for (const cue of cueText) {
-      const target = signedWeight >= 0 ? preferredCueScores : discouragedCueScores;
-      target.set(cue, (target.get(cue) ?? 0) + Math.abs(signedWeight));
+      const target = weightedSigned >= 0 ? preferredCueScores : discouragedCueScores;
+      target.set(cue, (target.get(cue) ?? 0) + absoluteWeighted);
     }
 
     const matchedDirections =
@@ -859,17 +1135,44 @@ export function buildStage2EditorialMemorySummary(input: {
 
     for (const direction of matchedDirections) {
       const entry = directionScores.get(direction.id) ?? { label: direction.name, score: 0 };
-      entry.score += signedWeight;
+      entry.score += weightedSigned;
       directionScores.set(direction.id, entry);
-      const feedbackEntry = feedbackDirectionScores.get(direction.id) ?? {
-        label: direction.name,
-        score: 0
-      };
-      feedbackEntry.score += signedWeight;
-      feedbackDirectionScores.set(direction.id, feedbackEntry);
-      axisTotals = addWeightedAxes(axisTotals, direction.axes, Math.abs(signedWeight));
-      axisWeight += Math.abs(signedWeight);
+      if (event.kind !== "selected_option") {
+        const feedbackEntry = feedbackDirectionScores.get(direction.id) ?? {
+          label: direction.name,
+          score: 0
+        };
+        feedbackEntry.score += weightedSigned;
+        feedbackDirectionScores.set(direction.id, feedbackEntry);
+      }
+      axisTotals = addWeightedAxes(axisTotals, direction.axes, absoluteWeighted);
+      axisWeight += absoluteWeighted;
     }
+  };
+
+  activeHardRuleEvents.forEach((event) => {
+    const kindWeight = event.kind === "less_like_this" ? -1 : 1;
+    applyEventWeight(
+      event,
+      Number((kindWeight * getFeedbackModeWeight(event.noteMode)).toFixed(4))
+    );
+  });
+
+  recentExplicitEvents.forEach((event, index) => {
+    const recencyWeight = 1 - (index / Math.max(windowSize - 1, 1)) * 0.82;
+    const kindWeight = event.kind === "less_like_this" ? -1 : 1;
+    applyEventWeight(
+      event,
+      Number((recencyWeight * kindWeight * getFeedbackModeWeight(event.noteMode)).toFixed(4))
+    );
+  });
+
+  recentPassiveSelectionEvents.forEach((event, index) => {
+    const recencyWeight = 1 - (index / Math.max(Math.max(recentPassiveSelectionEvents.length, 1) - 1, 1)) * 0.6;
+    applyEventWeight(
+      event,
+      Number((recencyWeight * 0.22 * getFeedbackModeWeight(event.noteMode)).toFixed(4))
+    );
   });
 
   const directionScoreList = scoreMapToList(directionScores);
@@ -906,8 +1209,16 @@ export function buildStage2EditorialMemorySummary(input: {
     selectedDirections.length > 0
       ? `Bootstrap directions: ${summarizeDirectionNames(selectedDirections)}.`
       : "Bootstrap directions are still light or unset.",
-    recentEvents.length === 0
-      ? "No recent editor feedback yet, so the bootstrap prior is still doing the early steering."
+    hardRuleNotes.length > 0
+      ? `Active hard rules: ${hardRuleNotes.map((note) => `"${note}"`).join("; ")}.`
+      : activeHardRuleEvents.length > 0
+        ? `Active hard-rule reactions: ${activeHardRuleEvents.length}.`
+      : "",
+    recentExplicitEvents.length === 0 && activeHardRuleEvents.length === 0
+      ? "No recent explicit editor ratings yet, so the bootstrap prior is still doing the early steering."
+      : "",
+    recentExplicitEvents.length === 0 && activeHardRuleEvents.length > 0
+      ? "No recent rolling ratings beyond the pinned hard rules yet, so those rules are carrying most of the editorial memory."
       : "",
     preferredDirections.length > 0
       ? `Recent positive pull: ${preferredDirections.join(", ")}.`
@@ -921,14 +1232,11 @@ export function buildStage2EditorialMemorySummary(input: {
     discouragedAngles.length > 0
       ? `De-emphasize lanes like: ${discouragedAngles.join(", ")}.`
       : "",
-    preferredTextCues.length > 0
-      ? `Text cues worth keeping nearby: ${preferredTextCues.map((cue) => `"${cue}"`).join(", ")}.`
-      : "",
-    discouragedTextCues.length > 0
-      ? `Text cues drifting wrong lately: ${discouragedTextCues.map((cue) => `"${cue}"`).join(", ")}.`
-      : "",
     recentNotes.length > 0
       ? `Recent editor notes: ${recentNotes.map((note) => `"${note}"`).join("; ")}.`
+      : "",
+    recentPassiveSelectionEvents.length > 0
+      ? `Passive option selections lately: ${recentPassiveSelectionEvents.length}. Treat them as weaker than explicit likes or dislikes.`
       : "",
     `Keep roughly ${Math.round(profile.explorationShare * 100)}% of the option space exploratory so the channel can keep learning.`
   ].filter(Boolean);
@@ -936,12 +1244,15 @@ export function buildStage2EditorialMemorySummary(input: {
   return {
     version: 1,
     windowSize,
-    recentFeedbackCount: recentEvents.length,
+    recentFeedbackCount: recentExplicitEvents.length + activeHardRuleEvents.length,
+    recentSelectionCount: recentPassiveSelectionEvents.length,
+    activeHardRuleCount: activeHardRuleEvents.length,
     explorationShare: profile.explorationShare,
     directionScores: directionScoreList,
     angleScores: angleScoreList,
     preferredTextCues,
     discouragedTextCues,
+    hardRuleNotes: dedupeStrings(hardRuleNotes).slice(0, 6),
     recentNotes,
     normalizedAxes: normalizeAccumulatedAxes(axisTotals, axisWeight),
     promptSummary: promptSummaryParts.join(" ")
@@ -967,6 +1278,23 @@ export function buildStage2LearningPromptContext(input: {
         profile.referenceInfluenceSummary,
         detail === "minimal" ? 280 : 520
       ),
+      audiencePortraitSummary: truncatePromptText(
+        profile.audiencePortrait?.summary ?? "",
+        detail === "minimal" ? 200 : 320
+      ),
+      packagingPortraitSummary: truncatePromptText(
+        profile.packagingPortrait?.summary ?? "",
+        detail === "minimal" ? 200 : 320
+      ),
+      bootstrapConfidence: profile.bootstrapDiagnostics
+        ? {
+            level: profile.bootstrapDiagnostics.confidence,
+            summary: truncatePromptText(
+              profile.bootstrapDiagnostics.summary,
+              detail === "minimal" ? 180 : 280
+            )
+          }
+        : null,
       explorationShare: profile.explorationShare,
       selectionSummary: directionHighlights.selectionSummary,
       selectedDirectionCount: directionHighlights.totalSelected,
@@ -977,18 +1305,24 @@ export function buildStage2LearningPromptContext(input: {
           ? {
               summary: truncatePromptText(bootstrapLessons.summary, 420),
               topMoves: bootstrapLessons.topMoves.slice(0, 2),
-              bottomMoves: bootstrapLessons.bottomMoves.slice(0, 2)
+              bottomMoves: bootstrapLessons.bottomMoves.slice(0, 2),
+              audienceSummary: truncatePromptText(bootstrapLessons.audienceSummary, 180),
+              packagingSummary: truncatePromptText(bootstrapLessons.packagingSummary, 180)
             }
           : {
               topMoves: bootstrapLessons.topMoves.slice(0, 2),
               bottomMoves: bootstrapLessons.bottomMoves.slice(0, 2),
               toneWins: bootstrapLessons.toneWins.slice(0, 2),
               avoidNotes: bootstrapLessons.avoidNotes.slice(0, 2),
+              audienceSummary: truncatePromptText(bootstrapLessons.audienceSummary, 240),
+              packagingSummary: truncatePromptText(bootstrapLessons.packagingSummary, 240),
               summary: truncatePromptText(bootstrapLessons.summary, 620)
             }
     },
     editorialMemory: {
       recentFeedbackCount: editorialMemory.recentFeedbackCount,
+      recentSelectionCount: editorialMemory.recentSelectionCount,
+      activeHardRuleCount: editorialMemory.activeHardRuleCount,
       promptSummary: truncatePromptText(
         editorialMemory.promptSummary,
         detail === "minimal" ? 220 : 360
@@ -1001,11 +1335,9 @@ export function buildStage2LearningPromptContext(input: {
         editorialMemory.recentFeedbackCount > 0
           ? editorialMemory.angleScores.slice(0, detail === "minimal" ? 2 : 4)
           : [],
-      preferredTextCues: editorialMemory.preferredTextCues.slice(0, detail === "minimal" ? 2 : 4),
-      discouragedTextCues: editorialMemory.discouragedTextCues.slice(
-        0,
-        detail === "minimal" ? 2 : 4
-      ),
+      preferredTextCues: [],
+      discouragedTextCues: [],
+      hardRuleNotes: editorialMemory.hardRuleNotes.slice(0, detail === "minimal" ? 2 : 4),
       recentNotes: editorialMemory.recentNotes.slice(0, detail === "minimal" ? 2 : 4),
       normalizedAxes:
         detail === "compact"

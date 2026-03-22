@@ -179,6 +179,18 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "stage3_jobs", "heartbeat_at", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "attempt_limit", "INTEGER NOT NULL DEFAULT 3");
   addColumnIfMissing(db, "stage3_jobs", "attempt_group", "TEXT");
+  addColumnIfMissing(
+    db,
+    "channel_editorial_feedback_events",
+    "scope",
+    "TEXT NOT NULL DEFAULT 'option'"
+  );
+  addColumnIfMissing(
+    db,
+    "channel_editorial_feedback_events",
+    "note_mode",
+    "TEXT NOT NULL DEFAULT 'soft_preference'"
+  );
   db.prepare(
     `UPDATE workspaces
         SET stage2_examples_corpus_json = ?

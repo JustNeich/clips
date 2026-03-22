@@ -47,6 +47,7 @@ const QUICK_REGENERATE_PROMPT = [
   "- Preserve diversity across options instead of making five near-duplicates.",
   "- Do not smooth every bottom into the same continuation logic.",
   "- Remove stock tails like 'the reaction basically writes itself' or 'the whole room feels it immediately'.",
+  "- If the saved analysis includes strong audience shorthand or acronyms, let at least one revised option use that language naturally when it sharpens the bottom.",
   "- If a quoted opener is not earning its place, replace it with a more natural clip-specific start.",
   "- Never leave broken fragments after tightening."
 ].join("\n");
@@ -302,9 +303,11 @@ export function buildQuickRegeneratePrompt(input: {
 }
 
 function buildQuickPromptStageDiagnostics(input: {
+  baseResult: Stage2Response;
   promptText: string;
   reasoningEffort: string | null;
 }): NonNullable<Stage2Diagnostics["effectivePrompting"]>["promptStages"][number] {
+  const visibleOptions = input.baseResult.output.captionOptions ?? [];
   return {
     stageId: "regenerate",
     label: "Quick regenerate",
@@ -316,7 +319,68 @@ function buildQuickPromptStageDiagnostics(input: {
     promptText: input.promptText,
     promptChars: input.promptText.length,
     usesImages: false,
-    summary: "Single LLM stage: rewrites the visible shortlist and paired titles from the saved Stage 2 run."
+    summary: "Single LLM stage: rewrites the visible shortlist and paired titles from the saved Stage 2 run.",
+    inputManifest: {
+      learningDetail: "minimal",
+      description: null,
+      transcript: null,
+      frames: {
+        availableCount: input.baseResult.source.frameDescriptions?.length ?? 0,
+        passedCount: input.baseResult.source.frameDescriptions?.length ?? 0,
+        omittedCount: 0,
+        truncated: false,
+        limit: null
+      },
+      comments: {
+        availableCount: input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length,
+        passedCount: 0,
+        omittedCount: input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length,
+        truncated: (input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length) > 0,
+        limit: null,
+        passedCommentIds: []
+      },
+      examples: {
+        availableCount: input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0,
+        passedCount: 0,
+        omittedCount: input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0,
+        truncated: (input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0) > 0,
+        limit: null,
+        activeCorpusCount: input.baseResult.diagnostics?.examples?.activeCorpusCount ?? 0,
+        promptPoolCount: input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0,
+        passedExampleIds: [],
+        selectedExampleIds: input.baseResult.diagnostics?.selection?.selectedExampleIds ?? [],
+        rejectedExampleIds: [],
+        retrievalConfidence: input.baseResult.diagnostics?.examples?.retrievalConfidence ?? "low",
+        examplesMode: input.baseResult.diagnostics?.examples?.examplesMode ?? "style_guided",
+        examplesRoleSummary: input.baseResult.diagnostics?.examples?.examplesRoleSummary ?? "",
+        primaryDriverSummary: input.baseResult.diagnostics?.examples?.primaryDriverSummary ?? ""
+      },
+      channelLearning: {
+        detail: "minimal",
+        selectedDirectionCount:
+          input.baseResult.diagnostics?.channel?.styleProfile?.selectedDirectionIds?.length ?? 0,
+        highlightedDirectionIds:
+          input.baseResult.diagnostics?.channel?.styleProfile?.selectedDirectionIds?.slice(0, 4) ?? [],
+        explorationShare:
+          input.baseResult.diagnostics?.channel?.editorialMemory?.explorationShare ??
+          input.baseResult.diagnostics?.channel?.styleProfile?.explorationShare ??
+          null,
+        recentFeedbackCount: input.baseResult.diagnostics?.channel?.editorialMemory?.recentFeedbackCount ?? 0,
+        recentSelectionCount: input.baseResult.diagnostics?.channel?.editorialMemory?.recentSelectionCount ?? 0,
+        promptSummary: input.baseResult.diagnostics?.channel?.editorialMemory?.promptSummary ?? null
+      },
+      candidates: {
+        passedCount: visibleOptions.length,
+        passedCandidateIds: visibleOptions.map((option) => option.candidateId ?? `option_${option.option}`),
+        criticScoreCount: null,
+        shortlistCount: visibleOptions.length
+      },
+      stageFlags: [
+        "single-stage quick regenerate",
+        "reuses analyzer, selector, and examples from the base run",
+        "rewrites only the visible shortlist and paired titles"
+      ]
+    }
   };
 }
 
@@ -333,6 +397,7 @@ function buildQuickDiagnostics(input: {
   selectorOutput: SelectorOutput;
 }): Stage2Diagnostics {
   const syntheticPromptStage = buildQuickPromptStageDiagnostics({
+    baseResult: input.baseResult,
     promptText: input.promptText,
     reasoningEffort: input.reasoningEffort
   });
@@ -369,6 +434,18 @@ function buildQuickDiagnostics(input: {
           commentLanguageCues: [],
           uncertaintyNotes: [],
           rawSummary: ""
+        },
+      sourceContext:
+        input.baseResult.diagnostics.sourceContext ?? {
+          sourceUrl: input.baseResult.source.url,
+          title: input.baseResult.source.title,
+          descriptionChars: 0,
+          transcriptChars: 0,
+          frameCount: input.baseResult.source.frameDescriptions?.length ?? 0,
+          runtimeCommentCount:
+            input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length,
+          runtimeCommentIds: input.baseResult.source.allComments.map((comment) => comment.id),
+          userInstructionChars: input.baseResult.userInstructionUsed?.trim().length ?? 0
         },
       effectivePrompting: {
         promptStages: [
@@ -427,6 +504,17 @@ function buildQuickDiagnostics(input: {
       commentLanguageCues: [],
       uncertaintyNotes: [],
       rawSummary: ""
+    },
+    sourceContext: {
+      sourceUrl: input.baseResult.source.url,
+      title: input.baseResult.source.title,
+      descriptionChars: 0,
+      transcriptChars: 0,
+      frameCount: input.baseResult.source.frameDescriptions?.length ?? 0,
+      runtimeCommentCount:
+        input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length,
+      runtimeCommentIds: input.baseResult.source.allComments.map((comment) => comment.id),
+      userInstructionChars: input.baseResult.userInstructionUsed?.trim().length ?? 0
     },
     effectivePrompting: {
       promptStages: [syntheticPromptStage]

@@ -1,9 +1,15 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Stage2Response, Stage2RunStatus, Stage2RunSummary } from "./types";
+import {
+  ChannelFeedbackResponse,
+  Stage2Response,
+  Stage2RunStatus,
+  Stage2RunSummary
+} from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 import {
+  type ChannelEditorialFeedbackNoteMode,
   createEmptyStage2EditorialMemorySummary,
   DEFAULT_STAGE2_STYLE_PROFILE,
   normalizeStage2EditorialMemorySummary,
@@ -27,6 +33,9 @@ type Step2PickCaptionProps = {
   runBlockedReason?: string | null;
   quickRegenerateBlockedReason?: string | null;
   canSubmitFeedback?: boolean;
+  feedbackHistory?: ChannelFeedbackResponse["historyEvents"];
+  feedbackHistoryLoading?: boolean;
+  showCreateNextChatShortcut?: boolean;
   isLaunching: boolean;
   isRunning: boolean;
   expectedDurationMs: number;
@@ -42,8 +51,13 @@ type Step2PickCaptionProps = {
   onSubmitOptionFeedback?: (input: {
     option: number;
     kind: "more_like_this" | "less_like_this" | "selected_option";
+    scope: "option" | "top" | "bottom";
+    noteMode: ChannelEditorialFeedbackNoteMode;
     note: string;
   }) => Promise<void>;
+  onDeleteFeedbackEvent?: (eventId: string) => Promise<void>;
+  deletingFeedbackEventId?: string | null;
+  onCreateNextChat?: () => void;
   onCopy: (value: string, successMessage: string) => void;
 };
 
@@ -88,6 +102,63 @@ function formatCommentsAcquisitionLabel(source: Stage2Response["source"] | null 
     return "Комментарии получены напрямую через yt-dlp.";
   }
   return source.commentsAcquisitionNote || null;
+}
+
+function formatFeedbackScopeLabel(scope: "option" | "top" | "bottom"): string {
+  if (scope === "top") {
+    return "TOP";
+  }
+  if (scope === "bottom") {
+    return "BOTTOM";
+  }
+  return "Опция";
+}
+
+function formatFeedbackHistoryTimestamp(value: string): string {
+  return new Date(value).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatFeedbackNoteModeLabel(mode: ChannelEditorialFeedbackNoteMode): string {
+  if (mode === "hard_rule") {
+    return "Hard rule";
+  }
+  if (mode === "situational_note") {
+    return "Situational note";
+  }
+  return "Soft preference";
+}
+
+function formatFeedbackNoteModeHelp(mode: ChannelEditorialFeedbackNoteMode): string {
+  if (mode === "hard_rule") {
+    return "Останется активным правилом канала, даже когда обычные реакции выйдут из окна последних 30.";
+  }
+  if (mode === "situational_note") {
+    return "Больше похоже на локальную подсказку для похожих кейсов, чем на долгую привычку канала.";
+  }
+  return "Базовый режим: мягко влияет на будущие варианты и живёт внутри окна последних 30 реакций.";
+}
+
+function getFeedbackHistorySnippet(
+  event: ChannelFeedbackResponse["historyEvents"][number]
+): string {
+  if (!event.optionSnapshot) {
+    return "Снимок варианта недоступен.";
+  }
+  const optionLabel = event.optionSnapshot.optionNumber
+    ? `Вариант ${event.optionSnapshot.optionNumber}`
+    : event.optionSnapshot.candidateId;
+  if (event.scope === "top") {
+    return `${optionLabel}: ${event.optionSnapshot.top}`;
+  }
+  if (event.scope === "bottom") {
+    return `${optionLabel}: ${event.optionSnapshot.bottom}`;
+  }
+  return `${optionLabel}: ${event.optionSnapshot.top} · ${event.optionSnapshot.bottom}`;
 }
 
 function formatDurationMs(value: number): string {
@@ -887,6 +958,8 @@ export function Step2PickCaption({
   runBlockedReason,
   quickRegenerateBlockedReason,
   canSubmitFeedback = false,
+  feedbackHistory = [],
+  feedbackHistoryLoading = false,
   isLaunching,
   isRunning,
   expectedDurationMs,
@@ -900,12 +973,16 @@ export function Step2PickCaption({
   onSelectOption,
   onSelectTitleOption,
   onSubmitOptionFeedback,
+  onDeleteFeedbackEvent,
+  deletingFeedbackEventId = null,
   onCopy
 }: Step2PickCaptionProps) {
   const [jsonOpen, setJsonOpen] = useState(false);
   const [feedbackDraft, setFeedbackDraft] = useState<{
     option: number;
+    scope: "option" | "top" | "bottom";
     kind: "more_like_this" | "less_like_this";
+    noteMode: ChannelEditorialFeedbackNoteMode;
     note: string;
     status: "idle" | "saving" | "saved" | "error";
     message: string | null;
@@ -995,15 +1072,18 @@ export function Step2PickCaption({
 
   const openFeedbackComposer = (
     option: number,
+    scope: "option" | "top" | "bottom",
     kind: "more_like_this" | "less_like_this"
   ) => {
     setFeedbackDraft((current) => {
-      if (current?.option === option && current.kind === kind) {
+      if (current?.option === option && current.scope === scope && current.kind === kind) {
         return current;
       }
       return {
         option,
+        scope,
         kind,
+        noteMode: "soft_preference",
         note: "",
         status: "idle",
         message: null
@@ -1028,17 +1108,11 @@ export function Step2PickCaption({
       await onSubmitOptionFeedback({
         option: feedbackDraft.option,
         kind: feedbackDraft.kind,
+        scope: feedbackDraft.scope,
+        noteMode: feedbackDraft.noteMode,
         note: feedbackDraft.note
       });
-      setFeedbackDraft((current) =>
-        current
-          ? {
-              ...current,
-              status: "saved",
-              message: "Обратная связь сохранена для будущих запусков."
-            }
-          : current
-      );
+      setFeedbackDraft(null);
     } catch (error) {
       setFeedbackDraft((current) =>
         current
@@ -1061,6 +1135,8 @@ export function Step2PickCaption({
     void onSubmitOptionFeedback({
       option,
       kind: "selected_option",
+      scope: "option",
+      noteMode: "soft_preference",
       note: ""
     }).catch(() => undefined);
   };
@@ -1346,28 +1422,56 @@ export function Step2PickCaption({
                             Копировать
                           </button>
                           {canSubmitFeedback ? (
-                            <>
+                            <div className="option-feedback-hover-actions">
                               <button
                                 type="button"
-                                className="btn btn-ghost"
-                                onClick={() => openFeedbackComposer(option.option, "more_like_this")}
+                                className="btn btn-ghost option-feedback-icon-btn"
+                                title="Лайкнуть весь вариант"
+                                aria-label={`Лайкнуть вариант ${option.option}`}
+                                onClick={() => openFeedbackComposer(option.option, "option", "more_like_this")}
                               >
-                                Больше в эту сторону
+                                <span aria-hidden="true">👍</span>
                               </button>
                               <button
                                 type="button"
-                                className="btn btn-ghost"
-                                onClick={() => openFeedbackComposer(option.option, "less_like_this")}
+                                className="btn btn-ghost option-feedback-icon-btn"
+                                title="Дизлайкнуть весь вариант"
+                                aria-label={`Дизлайкнуть вариант ${option.option}`}
+                                onClick={() => openFeedbackComposer(option.option, "option", "less_like_this")}
                               >
-                                Меньше в эту сторону
+                                <span aria-hidden="true">👎</span>
                               </button>
-                            </>
+                            </div>
                           ) : null}
                         </div>
                       </div>
 
                       <div className="translation-row">
-                        <span className="field-label">TOP</span>
+                        <div className="option-feedback-scope-head">
+                          <span className="field-label">TOP</span>
+                          {canSubmitFeedback ? (
+                            <div className="option-feedback-scope-actions">
+                              <button
+                                type="button"
+                                className="btn btn-ghost option-feedback-icon-btn"
+                                title="Лайкнуть только TOP"
+                                aria-label={`Лайкнуть TOP варианта ${option.option}`}
+                                onClick={() => openFeedbackComposer(option.option, "top", "more_like_this")}
+                              >
+                                <span aria-hidden="true">👍</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost option-feedback-icon-btn"
+                                title="Дизлайкнуть только TOP"
+                                aria-label={`Дизлайкнуть TOP варианта ${option.option}`}
+                                onClick={() => openFeedbackComposer(option.option, "top", "less_like_this")}
+                              >
+                                <span aria-hidden="true">👎</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                         <div className="translation-grid">
                           <div className="translation-col">
                             <span className="translation-label">EN</span>
@@ -1380,7 +1484,31 @@ export function Step2PickCaption({
                         </div>
                       </div>
                       <div className="translation-row">
-                        <span className="field-label">BOTTOM</span>
+                        <div className="option-feedback-scope-head">
+                          <span className="field-label">BOTTOM</span>
+                          {canSubmitFeedback ? (
+                            <div className="option-feedback-scope-actions">
+                              <button
+                                type="button"
+                                className="btn btn-ghost option-feedback-icon-btn"
+                                title="Лайкнуть только BOTTOM"
+                                aria-label={`Лайкнуть BOTTOM варианта ${option.option}`}
+                                onClick={() => openFeedbackComposer(option.option, "bottom", "more_like_this")}
+                              >
+                                <span aria-hidden="true">👍</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost option-feedback-icon-btn"
+                                title="Дизлайкнуть только BOTTOM"
+                                aria-label={`Дизлайкнуть BOTTOM варианта ${option.option}`}
+                                onClick={() => openFeedbackComposer(option.option, "bottom", "less_like_this")}
+                              >
+                                <span aria-hidden="true">👎</span>
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                         <div className="translation-grid">
                           <div className="translation-col">
                             <span className="translation-label">EN</span>
@@ -1397,12 +1525,41 @@ export function Step2PickCaption({
                           <div className="option-feedback-head">
                             <strong>
                               {feedbackDraft.kind === "more_like_this"
-                                ? "Больше в эту сторону"
-                                : "Меньше в эту сторону"}
+                                ? "Лайк"
+                                : "Дизлайк"}
                             </strong>
                             <span className="subtle-text">
-                              Необязательная заметка для будущих запусков Stage 2
+                              {formatFeedbackScopeLabel(feedbackDraft.scope)} · {formatFeedbackNoteModeLabel(feedbackDraft.noteMode)}
                             </span>
+                          </div>
+                          <div className="compact-field">
+                            <label className="field-label" htmlFor={`feedback-note-mode-${option.option}`}>
+                              Режим заметки
+                            </label>
+                            <select
+                              id={`feedback-note-mode-${option.option}`}
+                              className="text-input"
+                              value={feedbackDraft.noteMode}
+                              onChange={(event) =>
+                                setFeedbackDraft((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        noteMode: event.target.value as ChannelEditorialFeedbackNoteMode,
+                                        status: current.status === "saved" ? "idle" : current.status,
+                                        message: null
+                                      }
+                                    : current
+                                )
+                              }
+                            >
+                              <option value="soft_preference">Soft preference</option>
+                              <option value="hard_rule">Hard rule</option>
+                              <option value="situational_note">Situational note</option>
+                            </select>
+                            <p className="subtle-text">
+                              {formatFeedbackNoteModeHelp(feedbackDraft.noteMode)}
+                            </p>
                           </div>
                           <textarea
                             className="text-area"
@@ -1431,7 +1588,7 @@ export function Step2PickCaption({
                                 void submitFeedback();
                               }}
                             >
-                              {feedbackDraft.status === "saving" ? "Сохраняем..." : "Сохранить обратную связь"}
+                              {feedbackDraft.status === "saving" ? "Сохраняем..." : "Сохранить"}
                             </button>
                             <button
                               type="button"
@@ -1455,6 +1612,56 @@ export function Step2PickCaption({
                     </article>
                   );
                 })}
+              </section>
+
+              <section className="control-card control-card-subtle">
+                <div className="option-card-head">
+                  <div>
+                    <h3>Последние реакции канала</h3>
+                    <p className="subtle-text">
+                      Здесь видны только явные лайки и дизлайки по whole option, TOP или BOTTOM. Автосигнал от простого выбора варианта в эту историю не попадает.
+                    </p>
+                  </div>
+                </div>
+                {feedbackHistoryLoading ? (
+                  <p className="subtle-text">Загружаем историю реакций…</p>
+                ) : feedbackHistory.length > 0 ? (
+                  <div className="stage2-example-list">
+                    {feedbackHistory.map((event) => (
+                      <article key={event.id} className="stage2-example-card">
+                        <div className="quick-edit-label-row">
+                          <strong>
+                            {event.kind === "more_like_this" ? "👍" : "👎"} {formatFeedbackScopeLabel(event.scope)}
+                          </strong>
+                          <div className="history-item-actions">
+                            <span className="subtle-text">{formatFeedbackHistoryTimestamp(event.createdAt)}</span>
+                            {canSubmitFeedback && onDeleteFeedbackEvent ? (
+                              <button
+                                type="button"
+                                className="btn btn-ghost history-delete-btn"
+                                aria-label={`Удалить реакцию ${event.id}`}
+                                title="Удалить реакцию"
+                                disabled={deletingFeedbackEventId === event.id}
+                                onClick={() => {
+                                  void onDeleteFeedbackEvent(event.id);
+                                }}
+                              >
+                                {deletingFeedbackEventId === event.id ? "Удаляем…" : "Удалить"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="subtle-text">Режим: {formatFeedbackNoteModeLabel(event.noteMode)}</p>
+                        <p className="subtle-text">{getFeedbackHistorySnippet(event)}</p>
+                        {event.note ? <p className="subtle-text">Заметка: {event.note}</p> : null}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="subtle-text">
+                    Явных реакций ещё нет. Канал пока больше опирается на bootstrap prior и текущий выбор редактора.
+                  </p>
+                )}
               </section>
 
               <section className="control-card">

@@ -3,6 +3,14 @@
 import React, { memo, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sanitizeDisplayText } from "../../lib/ui-error";
 import type { ChatListItem, ChatWorkflowStatus, CodexDeviceAuth } from "./types";
+import {
+  buildHistorySections,
+  getHistoryProgressBadge,
+  matchesHistoryFilter,
+  type HistoryFilter
+} from "./history-panel-support";
+
+export { formatHistoryDayLabel, groupHistoryItemsByDay } from "./history-panel-support";
 
 export type FlowStep = {
   id: 1 | 2 | 3;
@@ -17,18 +25,17 @@ export type ChannelSelectorItem = {
   avatarUrl?: string | null;
 };
 
-type HistoryFilter = "all" | "working" | "exported" | "error";
+export type AppShellToastTone = "neutral" | "success" | "error";
 
-type HistorySection = {
+export type AppShellToast = {
   id: string;
-  title: string;
-  items: ChatListItem[];
-};
-
-type HistoryDayGroup = {
-  id: string;
-  label: string;
-  items: ChatListItem[];
+  tone: AppShellToastTone;
+  title?: string | null;
+  message: string;
+  actionLabel?: string | null;
+  onAction?: () => void;
+  variant?: "default" | "shortcut";
+  durationMs?: number | null;
 };
 
 export type AppShellProps = {
@@ -70,6 +77,8 @@ export type AppShellProps = {
   onLogout: () => void;
   statusText: string;
   statusTone: "ok" | "error" | "";
+  toasts?: AppShellToast[];
+  onDismissToast?: (toastId: string) => void;
   headerActions?: ReactNode;
   children: ReactNode;
   details: ReactNode;
@@ -125,13 +134,13 @@ function formatHistoryStatusLabel(status: ChatWorkflowStatus): string {
     case "new":
       return "Новый";
     case "sourceReady":
-      return "Source ready";
+      return "Источник готов";
     case "stage2Ready":
-      return "Stage 2 ready";
+      return "Опции готовы";
     case "editing":
-      return "Editing";
+      return "Редактирование";
     case "agentRunning":
-      return "Agent running";
+      return "Агент";
     case "exported":
       return "Экспорт";
     case "error":
@@ -148,73 +157,6 @@ function formatHistoryTime(value: string): string {
   });
 }
 
-function getHistoryTimestamp(value: string): number {
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function sortHistoryItemsByUpdatedAt(items: ChatListItem[]): ChatListItem[] {
-  return [...items].sort((left, right) => {
-    const timestampDelta = getHistoryTimestamp(right.updatedAt) - getHistoryTimestamp(left.updatedAt);
-    if (timestampDelta !== 0) {
-      return timestampDelta;
-    }
-    return left.id.localeCompare(right.id);
-  });
-}
-
-function buildHistoryDayKey(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return `unknown:${value}`;
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-export function formatHistoryDayLabel(value: string, now = new Date()): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Без даты";
-  }
-
-  const targetDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const currentDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dayDelta = Math.round((currentDay.getTime() - targetDay.getTime()) / 86_400_000);
-
-  if (dayDelta === 0) {
-    return "Сегодня";
-  }
-  if (dayDelta === 1) {
-    return "Вчера";
-  }
-
-  return date.toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {})
-  });
-}
-
-export function groupHistoryItemsByDay(items: ChatListItem[], now = new Date()): HistoryDayGroup[] {
-  const groups = new Map<string, HistoryDayGroup>();
-
-  sortHistoryItemsByUpdatedAt(items).forEach((item) => {
-    const key = buildHistoryDayKey(item.updatedAt);
-    const existing = groups.get(key);
-    if (existing) {
-      existing.items.push(item);
-      return;
-    }
-    groups.set(key, {
-      id: key,
-      label: formatHistoryDayLabel(item.updatedAt, now),
-      items: [item]
-    });
-  });
-
-  return Array.from(groups.values());
-}
-
 function getChannelInitials(name: string): string {
   const parts = name
     .trim()
@@ -227,95 +169,67 @@ function getChannelInitials(name: string): string {
   return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "CH";
 }
 
-function matchesHistoryFilter(item: ChatListItem, filter: HistoryFilter): boolean {
-  if (filter === "all") {
-    return true;
+function formatHistoryLiveAction(liveAction: NonNullable<ChatListItem["liveAction"]>): string {
+  switch (liveAction) {
+    case "Fetching":
+      return "Получение";
+    case "Comments":
+      return "Комментарии";
+    case "Stage 2":
+      return "В процессе";
+    case "Rendering":
+      return "Рендер";
+    default:
+      return liveAction;
   }
-  if (filter === "exported") {
-    return item.status === "exported";
-  }
-  if (filter === "error") {
-    return item.status === "error";
-  }
-  return (
-    item.status === "new" ||
-    item.status === "sourceReady" ||
-    item.status === "stage2Ready" ||
-    item.status === "editing" ||
-    item.status === "agentRunning"
-  );
-}
-
-function buildHistorySections(items: ChatListItem[], activeHistoryId: string | null): HistorySection[] {
-  const sections: HistorySection[] = [];
-  const activeItem = activeHistoryId ? items.find((item) => item.id === activeHistoryId) ?? null : null;
-  const remainder = activeItem ? items.filter((item) => item.id !== activeItem.id) : items;
-
-  if (activeItem) {
-    sections.push({ id: "active", title: "Активный", items: [activeItem] });
-  }
-
-  const working = remainder.filter((item) =>
-    item.status === "new" ||
-    item.status === "sourceReady" ||
-    item.status === "stage2Ready" ||
-    item.status === "editing" ||
-    item.status === "agentRunning"
-  );
-  const exported = remainder.filter((item) => item.status === "exported");
-  const errors = remainder.filter((item) => item.status === "error");
-
-  if (working.length > 0) {
-    sections.push({ id: "working", title: "В работе", items: working });
-  }
-  if (exported.length > 0) {
-    sections.push({ id: "exported", title: "Экспорт", items: exported });
-  }
-  if (errors.length > 0) {
-    sections.push({ id: "error", title: "Ошибка", items: errors });
-  }
-
-  return sections;
 }
 
 const HistoryCard = memo(function HistoryCard({
   item,
   active,
-  compact = false,
   onOpen,
   onDelete
 }: {
   item: ChatListItem;
   active: boolean;
-  compact?: boolean;
   onOpen: (id: string, step?: 1 | 2 | 3) => void;
   onDelete: (id: string) => void;
 }) {
+  const primaryStatusLabel = item.liveAction
+    ? formatHistoryLiveAction(item.liveAction)
+    : formatHistoryStatusLabel(item.status);
+  const progressBadge = getHistoryProgressBadge(item);
   const handleOpen = useCallback(() => {
     onOpen(item.id);
   }, [item.id, onOpen]);
   const handleDelete = useCallback(() => {
     onDelete(item.id);
   }, [item.id, onDelete]);
-  const handleOpenStep2 = useCallback(() => {
-    onOpen(item.id, 2);
-  }, [item.id, onOpen]);
-  const handleOpenStep3 = useCallback(() => {
-    onOpen(item.id, 3);
-  }, [item.id, onOpen]);
 
   return (
     <article
-      className={`history-card ${active ? "active" : ""} ${compact ? "compact" : ""} status-${item.status}`}
+      className={`history-card compact status-${item.status} ${active ? "active" : ""}`}
     >
-      <div className="history-card-head">
-        <div className="history-badge-row">
-          <span className={`history-status-chip status-${item.status}`}>
-            {formatHistoryStatusLabel(item.status)}
+      <button
+        type="button"
+        className="history-open history-open-row"
+        onClick={handleOpen}
+        aria-current={active ? "true" : undefined}
+        title={item.url}
+      >
+        <span className="history-row-main">
+          <span className="history-title clamp-1">{item.title}</span>
+          <span className="history-meta-line">
+            <span>Обновлён {formatHistoryTime(item.updatedAt)}</span>
           </span>
-          {item.liveAction ? <span className="history-live-chip">{item.liveAction}</span> : null}
-          {active ? <span className="history-current-pill">Current</span> : null}
-        </div>
+          {item.exportTitle ? <span className="history-export-line">Экспорт: {item.exportTitle}</span> : null}
+        </span>
+      </button>
+      <div className="history-row-side">
+        <span className={`history-status-chip ${item.liveAction ? "status-live" : `status-${item.status}`}`}>
+          {primaryStatusLabel}
+        </span>
+        <span className={`history-step-pill tone-${progressBadge.tone}`}>{progressBadge.label}</span>
         <button
           type="button"
           className="history-remove"
@@ -325,58 +239,42 @@ const HistoryCard = memo(function HistoryCard({
           ✕
         </button>
       </div>
-
-      <button
-        type="button"
-        className="history-open"
-        onClick={handleOpen}
-        aria-current={active ? "true" : undefined}
-        title={item.url}
-      >
-        <span className="history-title clamp-2">{item.title}</span>
-        <span className="history-meta-line">
-          <span>Шаг {item.preferredStep}</span>
-          <span>Обновлён {formatHistoryTime(item.updatedAt)}</span>
-          {item.hasDraft ? <span className="history-draft-pill">draft</span> : null}
-        </span>
-        {item.exportTitle ? <span className="history-export-line">Export: {item.exportTitle}</span> : null}
-      </button>
-
-      <div className="history-actions">
-        <button type="button" className="btn btn-secondary" onClick={handleOpen}>
-          Open
-        </button>
-        {item.maxStep >= 2 ? (
-          <button type="button" className="btn btn-ghost" onClick={handleOpenStep2}>
-            Step 2
-          </button>
-        ) : null}
-        {item.maxStep >= 3 ? (
-          <button type="button" className="btn btn-ghost" onClick={handleOpenStep3}>
-            Step 3
-          </button>
-        ) : null}
-      </div>
     </article>
   );
 });
 
 const HistoryPanel = memo(function HistoryPanel({
-  items,
+  allItems,
+  visibleItems,
   activeHistoryId,
+  recentHistoryIds,
+  filter,
   compact = false,
   emptyText,
   onOpen,
   onDelete
 }: {
-  items: ChatListItem[];
+  allItems: ChatListItem[];
+  visibleItems: ChatListItem[];
   activeHistoryId: string | null;
+  recentHistoryIds: string[];
+  filter: HistoryFilter;
   compact?: boolean;
   emptyText: string;
   onOpen: (id: string, step?: 1 | 2 | 3) => void;
   onDelete: (id: string) => void;
 }) {
-  const sections = useMemo(() => buildHistorySections(items, activeHistoryId), [activeHistoryId, items]);
+  const sections = useMemo(
+    () =>
+      buildHistorySections({
+        allItems,
+        visibleItems,
+        activeHistoryId,
+        recentHistoryIds,
+        filter
+      }),
+    [activeHistoryId, allItems, filter, recentHistoryIds, visibleItems]
+  );
 
   if (sections.length === 0) {
     return <p className="empty-box">{emptyText}</p>;
@@ -390,32 +288,21 @@ const HistoryPanel = memo(function HistoryPanel({
             <h3>{section.title}</h3>
             <span>{section.items.length}</span>
           </div>
-          <div className="history-day-groups">
-            {groupHistoryItemsByDay(section.items).map((group) => (
-              <div key={group.id} className="history-day-group">
-                <div className="history-day-head">
-                  <h4>{group.label}</h4>
-                  <span>{group.items.length}</span>
-                </div>
-                <ul className="history-list">
-                  {group.items.map((item) => {
-                    const active = item.id === activeHistoryId;
-                    return (
-                      <li key={item.id} className="history-row">
-                        <HistoryCard
-                          item={item}
-                          active={active}
-                          compact={compact}
-                          onOpen={onOpen}
-                          onDelete={onDelete}
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
+          <ul className={`history-list ${compact ? "compact" : ""}`}>
+            {section.items.map((item) => {
+              const active = item.id === activeHistoryId;
+              return (
+                <li key={item.id} className="history-row">
+                  <HistoryCard
+                    item={item}
+                    active={active}
+                    onOpen={onOpen}
+                    onDelete={onDelete}
+                  />
+                </li>
+              );
+            })}
+          </ul>
         </section>
       ))}
     </div>
@@ -461,6 +348,8 @@ export function AppShell({
   onLogout,
   statusText,
   statusTone,
+  toasts = [],
+  onDismissToast,
   headerActions,
   children,
   details,
@@ -470,17 +359,21 @@ export function AppShell({
   const [historyPinned, setHistoryPinned] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
+  const [recentHistoryIds, setRecentHistoryIds] = useState<string[]>([]);
   const [codexPanelOpen, setCodexPanelOpen] = useState(false);
   const [channelMenuOpen, setChannelMenuOpen] = useState(false);
   const historyPopoverRef = useRef<HTMLDivElement | null>(null);
   const channelMenuRef = useRef<HTMLDivElement | null>(null);
   const historyCloseTimerRef = useRef<number | null>(null);
+  const historyRecentStorageKey = activeChannelId
+    ? `clips:history-recents:${activeChannelId}`
+    : "clips:history-recents:all";
   const selectedChannel = useMemo(
     () => channels.find((channel) => channel.id === activeChannelId) ?? channels[0] ?? null,
     [activeChannelId, channels]
   );
 
-  const filteredHistory = useMemo(() => {
+  const visibleHistoryItems = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
     return historyItems.filter((item) => {
       if (!matchesHistoryFilter(item, historyFilter)) {
@@ -500,6 +393,43 @@ export function AppShell({
       );
     });
   }, [historyFilter, historyItems, historyQuery]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(historyRecentStorageKey) ?? "[]");
+      setRecentHistoryIds(
+        Array.isArray(parsed)
+          ? parsed.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+          : []
+      );
+    } catch {
+      setRecentHistoryIds([]);
+    }
+  }, [historyRecentStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        historyRecentStorageKey,
+        JSON.stringify(recentHistoryIds.slice(0, 8))
+      );
+    } catch {
+      // Persist recent open ids best-effort only.
+    }
+  }, [historyRecentStorageKey, recentHistoryIds]);
+
+  useEffect(() => {
+    if (!activeHistoryId) {
+      return;
+    }
+    setRecentHistoryIds((current) => [activeHistoryId, ...current.filter((id) => id !== activeHistoryId)].slice(0, 8));
+  }, [activeHistoryId]);
 
   const hasCodexDeviceAuthDetails = Boolean(
     canManageCodex &&
@@ -661,6 +591,53 @@ export function AppShell({
 
   return (
     <main className="app-layout">
+      {toasts.length > 0 ? (
+        <div className="app-toast-stack" aria-live="polite" aria-atomic="false">
+          {toasts.map((toast) => (
+            <section
+              key={toast.id}
+              className={`app-toast tone-${toast.tone} variant-${toast.variant ?? "default"}`}
+              role={toast.tone === "error" ? "alert" : "status"}
+              style={
+                typeof toast.durationMs === "number" && toast.durationMs > 0
+                  ? ({
+                      ["--toast-duration" as string]: `${toast.durationMs}ms`
+                    } as React.CSSProperties)
+                  : undefined
+              }
+            >
+              <div className="app-toast-head">
+                <div className="app-toast-body">
+                  {toast.title ? <strong>{sanitizeDisplayText(toast.title)}</strong> : null}
+                  <p>{sanitizeDisplayText(toast.message)}</p>
+                </div>
+                {onDismissToast ? (
+                  <button
+                    type="button"
+                    className="app-toast-close"
+                    aria-label="Скрыть уведомление"
+                    onClick={() => onDismissToast(toast.id)}
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+              {(toast.actionLabel && toast.onAction) || toast.durationMs ? (
+                <div className="app-toast-footer">
+                  {toast.actionLabel && toast.onAction ? (
+                    <button type="button" className="btn btn-secondary" onClick={toast.onAction}>
+                      {toast.actionLabel}
+                    </button>
+                  ) : null}
+                  {typeof toast.durationMs === "number" && toast.durationMs > 0 ? (
+                    <span className="app-toast-timer" aria-hidden="true" />
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+          ))}
+        </div>
+      ) : null}
       <section className="app-main">
         <header className="app-topbar">
           <div className="topbar-primary">
@@ -739,7 +716,7 @@ export function AppShell({
                     />
 
                     <div className="history-filter-row">
-                      {(["all", "working", "exported", "error"] as const).map((filter) => (
+                      {(["all", "working", "archive", "error"] as const).map((filter) => (
                         <button
                           key={filter}
                           type="button"
@@ -750,19 +727,22 @@ export function AppShell({
                             ? "Все"
                             : filter === "working"
                               ? "В работе"
-                              : filter === "exported"
-                                ? "Экспорт"
-                                : "Ошибка"}
+                              : filter === "archive"
+                                ? "Архив"
+                                : "С ошибкой"}
                         </button>
                       ))}
                     </div>
 
                     <div className="history-popover-scroll">
                       <HistoryPanel
-                        items={filteredHistory}
+                        allItems={historyItems}
+                        visibleItems={visibleHistoryItems}
                         activeHistoryId={activeHistoryId}
+                        recentHistoryIds={recentHistoryIds}
+                        filter={historyFilter}
                         compact
-                        emptyText={historyItems.length > 0 ? "Ничего не найдено." : "Чатов пока нет."}
+                        emptyText={historyItems.length > 0 ? "Ничего не найдено." : "Роликов пока нет."}
                         onOpen={handleHistoryOpenAndClose}
                         onDelete={onDeleteHistory}
                       />

@@ -17,6 +17,11 @@ import { findLatestStage3AgentSessionRef, buildLegacyTimelineEntries, type Stage
 import { normalizeStage2ProgressSnapshot } from "./stage2-pipeline";
 import { buildStage2ToStage3HandoffSummary, type Stage2ToStage3HandoffSummary } from "./stage2-stage3-handoff";
 import {
+  getSelectedStage2StyleDirections,
+  normalizeStage2EditorialMemorySummary,
+  normalizeStage2StyleProfile
+} from "./stage2-channel-learning";
+import {
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints,
   getWorkspaceStage2PromptConfig,
@@ -24,6 +29,7 @@ import {
 } from "./team-store";
 import { listSourceJobsForChat, type SourceJobRecord } from "./source-job-store";
 import { listStage2RunsForChat, type Stage2RunRecord } from "./stage2-progress-store";
+import type { Stage2DiagnosticsPromptStage } from "./viral-shorts-worker/types";
 import { MAX_EXPORTED_COMMENTS, TRACE_EXPORT_VERSION } from "./chat-trace-export-shared";
 
 export type ChatTraceExportComments = {
@@ -37,11 +43,70 @@ export type ChatTraceExportComments = {
   fallbackUsed: boolean;
   error: string | null;
   items: CommentItem[];
+  runtimeUsage: {
+    totalExtractedCount: number;
+    runtimeAvailableCount: number;
+    analyzer: {
+      passedCount: number;
+      omittedCount: number;
+      truncated: boolean;
+      limit: number | null;
+      passedCommentIds: string[];
+    };
+    selector: {
+      passedCount: number;
+      omittedCount: number;
+      truncated: boolean;
+      limit: number | null;
+      passedCommentIds: string[];
+    };
+  };
+  exportUsage: {
+    includedCount: number;
+    omittedCount: number;
+    truncated: boolean;
+    exportLimit: number;
+    exportedCommentIds: string[];
+  };
+};
+
+type ChatTraceExportTraceContract = {
+  canonicalSections: {
+    stage2CausalInputs: string;
+    stage2StageManifests: string;
+    stage2Outcome: string;
+    commentsUsage: string;
+    examplesUsage: string;
+  };
+  convenienceMirrors: string[];
+  note: string;
+};
+
+type ChatTraceExportStageManifest = {
+  stageId: string;
+  label: string;
+  summary: string;
+  promptChars: number | null;
+  reasoningEffort: string | null;
+  usesImages: boolean;
+  promptTextPresent: boolean;
+  manifestSource: "runtime" | "missing";
+  inputManifest: Stage2DiagnosticsPromptStage["inputManifest"] | null;
+};
+
+type ChatTraceExportOmissionSection = {
+  path: string;
+  availableCount: number;
+  exportedCount: number;
+  omittedCount: number;
+  truncated: boolean;
+  reason: string;
 };
 
 export type ChatTraceExport = {
   version: string;
   exportedAt: string;
+  traceContract: ChatTraceExportTraceContract;
   workspace: {
     id: string;
     name: string;
@@ -81,6 +146,118 @@ export type ChatTraceExport = {
   sourceJobs: Array<SourceJobDetail & { request: SourceJobRecord["request"] }>;
   stage2: {
     selectedRunId: string | null;
+    causalInputs: {
+      run: {
+        selectedRunId: string | null;
+        mode: Stage2RunRecord["mode"] | null;
+        baseRunId: string | null;
+        userInstruction: string | null;
+      };
+      channelSnapshotUsed: {
+        channelId: string | null;
+        name: string | null;
+        username: string | null;
+        hardConstraints: unknown | null;
+        examplesConfig: unknown | null;
+      };
+      stylePrior: {
+        selectedDirectionIds: string[];
+        selectedDirections: ReturnType<typeof getSelectedStage2StyleDirections>;
+        explorationShare: number;
+        referenceInfluenceSummary: string;
+      };
+      editorialMemory: Stage2RunRecord["request"]["channel"]["editorialMemory"] | null;
+      sourceContext: {
+        sourceUrl: string | null;
+        title: string | null;
+        descriptionChars: number;
+        transcriptChars: number;
+        frameCount: number;
+        runtimeCommentCount: number;
+        runtimeCommentIds: string[];
+        commentsUsedForPrompt: number;
+        commentsOmittedFromPrompt: number;
+        downloadProvider: Stage2Response["source"]["downloadProvider"] | null;
+        commentsAcquisitionStatus: Stage2Response["source"]["commentsAcquisitionStatus"] | null;
+        commentsAcquisitionProvider: Stage2Response["source"]["commentsAcquisitionProvider"] | null;
+        commentsAcquisitionNote: string | null;
+        commentsExtractionFallbackUsed: boolean;
+      };
+    };
+    stageManifests: ChatTraceExportStageManifest[];
+    exportOmissions: {
+      comments: {
+        exportLimit: number;
+        sections: ChatTraceExportOmissionSection[];
+      };
+      notes: string[];
+    };
+    outcome: {
+      retrievalConfidence: Stage2Response["diagnostics"] extends infer T
+        ? T extends { examples?: { retrievalConfidence?: infer U } }
+          ? U | null
+          : null
+        : null;
+      examplesMode: Stage2Response["diagnostics"] extends infer T
+        ? T extends { examples?: { examplesMode?: infer U } }
+          ? U | null
+          : null
+        : null;
+      examplesRoleSummary: string | null;
+      primaryDriverSummary: string | null;
+      candidateOptionMap: Array<{ option: number; candidateId: string }>;
+      visibleOptionToCandidateMap: Array<{ option: number; candidateId: string }>;
+      shortlistCandidateIds: string[];
+      finalPickCandidateId: string | null;
+      finalPickOption: number | null;
+      finalPickReason: string | null;
+      rationaleRaw: string | null;
+      rationaleInternalRaw: string | null;
+      rationaleInternalModelRaw: string | null;
+    };
+    examplesRuntimeUsage: {
+      source: Stage2Response["diagnostics"] extends infer T
+        ? T extends { examples?: { source?: infer U } }
+          ? U | null
+          : null
+        : null;
+      activeCorpusCount: number;
+      selectorPromptPoolCount: number;
+      promptPoolExampleIds: string[];
+      selectedExampleIds: string[];
+      rejectedExampleIds: string[];
+      selectedExamples: Stage2Response["diagnostics"] extends infer T
+        ? T extends { examples?: { selectedExamples?: infer U } }
+          ? U
+          : []
+        : [];
+      rejectedExamples: Stage2Response["diagnostics"] extends infer T
+        ? T extends { examples?: { availableExamples?: infer U } }
+          ? U
+          : []
+        : [];
+      retrievalConfidence: Stage2Response["diagnostics"] extends infer T
+        ? T extends { examples?: { retrievalConfidence?: infer U } }
+          ? U | null
+          : null
+        : null;
+      examplesMode: Stage2Response["diagnostics"] extends infer T
+        ? T extends { examples?: { examplesMode?: infer U } }
+          ? U | null
+          : null
+        : null;
+      explanation: string | null;
+      evidence: string[];
+      retrievalWarning: string | null;
+      examplesRoleSummary: string | null;
+      primaryDriverSummary: string | null;
+      primaryDrivers: string[];
+      guidanceRoleBuckets: {
+        semanticGuidanceIds: string[];
+        formGuidanceIds: string[];
+        weakSupportIds: string[];
+      };
+    };
     currentResult: Stage2Response | null;
     currentProgress: Stage2Response["progress"] | null;
     analysis: Stage2Response["diagnostics"] extends infer T
@@ -148,7 +325,11 @@ function sanitizeStage2ResponseForExport(stage2: Stage2Response | null): Stage2R
     return null;
   }
 
-  const limitedTopComments = stage2.source.topComments.slice(0, MAX_EXPORTED_COMMENTS);
+  const runtimeComments = stage2.source.allComments.slice(
+    0,
+    stage2.source.commentsUsedForPrompt || stage2.source.allComments.length
+  );
+  const exportedComments = runtimeComments.slice(0, MAX_EXPORTED_COMMENTS);
   return {
     ...stage2,
     progress:
@@ -161,8 +342,8 @@ function sanitizeStage2ResponseForExport(stage2: Stage2Response | null): Stage2R
         : stage2.progress,
     source: {
       ...stage2.source,
-      topComments: limitedTopComments,
-      allComments: limitedTopComments
+      topComments: exportedComments,
+      allComments: exportedComments
     }
   };
 }
@@ -262,10 +443,346 @@ function pickSelectedStage2Run(
   return runs[0] ?? null;
 }
 
+function buildTraceContract(): ChatTraceExportTraceContract {
+  return {
+    canonicalSections: {
+      stage2CausalInputs: "stage2.causalInputs",
+      stage2StageManifests: "stage2.stageManifests",
+      stage2Outcome: "stage2.outcome",
+      commentsUsage: "comments.runtimeUsage",
+      examplesUsage: "stage2.examplesRuntimeUsage"
+    },
+    convenienceMirrors: [
+      "stage2.currentResult",
+      "stage2.analysis",
+      "stage2.selection",
+      "stage2.examples",
+      "stage2.effectivePrompting",
+      "thread.events[*].data",
+      "sourceJobs[*].result"
+    ],
+    note:
+      "Canonical sections above are the trace's source-of-truth summaries. Existing nested result/diagnostics/raw event payloads remain as convenience mirrors and may duplicate the same facts in a less direct form."
+  };
+}
+
+function buildStageManifestSummaries(
+  promptStages: Stage2DiagnosticsPromptStage[] | null | undefined
+): ChatTraceExportStageManifest[] {
+  return (promptStages ?? []).map((stage) => ({
+    stageId: stage.stageId,
+    label: stage.label,
+    summary: stage.summary,
+    promptChars: stage.promptChars,
+    reasoningEffort: stage.reasoningEffort,
+    usesImages: stage.usesImages,
+    promptTextPresent: Boolean(stage.promptText),
+    manifestSource: stage.inputManifest ? "runtime" : "missing",
+    inputManifest: stage.inputManifest ?? null
+  }));
+}
+
+function buildStage2Outcome(rawStage2: Stage2Response | null) {
+  const finalSelector = rawStage2?.output.pipeline?.finalSelector;
+  return {
+    retrievalConfidence: rawStage2?.diagnostics?.examples?.retrievalConfidence ?? null,
+    examplesMode: rawStage2?.diagnostics?.examples?.examplesMode ?? null,
+    examplesRoleSummary: rawStage2?.diagnostics?.examples?.examplesRoleSummary ?? null,
+    primaryDriverSummary: rawStage2?.diagnostics?.examples?.primaryDriverSummary ?? null,
+    candidateOptionMap: finalSelector?.candidateOptionMap ?? [],
+    visibleOptionToCandidateMap: finalSelector?.candidateOptionMap ?? [],
+    shortlistCandidateIds: finalSelector?.shortlistCandidateIds ?? [],
+    finalPickCandidateId: finalSelector?.finalPickCandidateId ?? null,
+    finalPickOption: rawStage2?.output.finalPick.option ?? null,
+    finalPickReason: rawStage2?.output.finalPick.reason ?? null,
+    rationaleRaw: finalSelector?.rationaleRaw ?? null,
+    rationaleInternalRaw: finalSelector?.rationaleInternalRaw ?? null,
+    rationaleInternalModelRaw: finalSelector?.rationaleInternalModelRaw ?? null
+  };
+}
+
+function buildExamplesRuntimeUsage(rawStage2: Stage2Response | null) {
+  const diagnosticsExamples = rawStage2?.diagnostics?.examples;
+  const availableExamples = diagnosticsExamples?.availableExamples ?? [];
+  const selectedExamples = diagnosticsExamples?.selectedExamples ?? [];
+  const selectorPipelineOutput =
+    (rawStage2?.output.pipeline?.selectorOutput as
+      | {
+          selectedExampleIds?: string[];
+          rejectedExampleIds?: string[];
+        }
+      | undefined) ?? undefined;
+  const selectedExampleIds = new Set(
+    selectorPipelineOutput?.selectedExampleIds ??
+      diagnosticsExamples?.selectedExamples.map((example) => example.id) ??
+      rawStage2?.diagnostics?.selection?.selectedExampleIds ??
+      []
+  );
+  const rejectedExampleIds = new Set(
+    selectorPipelineOutput?.rejectedExampleIds ??
+      availableExamples
+        .filter((example) => !selectedExampleIds.has(example.id))
+        .map((example) => example.id)
+  );
+  return {
+    source: diagnosticsExamples?.source ?? null,
+    activeCorpusCount: diagnosticsExamples?.activeCorpusCount ?? 0,
+    selectorPromptPoolCount: diagnosticsExamples?.selectorCandidateCount ?? 0,
+    promptPoolExampleIds: availableExamples.map((example) => example.id),
+    selectedExampleIds: Array.from(selectedExampleIds),
+    rejectedExampleIds: Array.from(rejectedExampleIds),
+    selectedExamples,
+    rejectedExamples: availableExamples.filter(
+      (example) => rejectedExampleIds.has(example.id) || !selectedExampleIds.has(example.id)
+    ),
+    retrievalConfidence: diagnosticsExamples?.retrievalConfidence ?? null,
+    examplesMode: diagnosticsExamples?.examplesMode ?? null,
+    explanation: diagnosticsExamples?.explanation ?? null,
+    evidence: diagnosticsExamples?.evidence ?? [],
+    retrievalWarning: diagnosticsExamples?.retrievalWarning ?? null,
+    examplesRoleSummary: diagnosticsExamples?.examplesRoleSummary ?? null,
+    primaryDriverSummary: diagnosticsExamples?.primaryDriverSummary ?? null,
+    primaryDrivers: diagnosticsExamples?.primaryDrivers ?? [],
+    guidanceRoleBuckets: {
+      semanticGuidanceIds: availableExamples
+        .filter((example) => example.guidanceRole === "semantic_guidance")
+        .map((example) => example.id),
+      formGuidanceIds: availableExamples
+        .filter((example) => example.guidanceRole === "form_guidance")
+        .map((example) => example.id),
+      weakSupportIds: availableExamples
+        .filter((example) => example.guidanceRole === "weak_support")
+        .map((example) => example.id)
+    }
+  };
+}
+
+function buildStage2CausalInputs(input: {
+  selectedRun: Stage2RunRecord | null;
+  rawStage2: Stage2Response | null;
+}) {
+  const channelSnapshot = input.selectedRun?.request.channel;
+  const styleProfile = normalizeStage2StyleProfile(channelSnapshot?.stage2StyleProfile);
+  const editorialMemory = normalizeStage2EditorialMemorySummary(
+    channelSnapshot?.editorialMemory,
+    styleProfile
+  );
+  const selectedDirections = getSelectedStage2StyleDirections(styleProfile);
+  const sourceContext = input.rawStage2?.diagnostics?.sourceContext;
+  return {
+    run: {
+      selectedRunId: input.selectedRun?.runId ?? null,
+      mode: input.selectedRun?.mode ?? null,
+      baseRunId: input.selectedRun?.baseRunId ?? null,
+      userInstruction: input.selectedRun?.userInstruction ?? null
+    },
+    channelSnapshotUsed: {
+      channelId: channelSnapshot?.id ?? null,
+      name: channelSnapshot?.name ?? null,
+      username: channelSnapshot?.username ?? null,
+      hardConstraints: channelSnapshot?.stage2HardConstraints ?? null,
+      examplesConfig: channelSnapshot?.stage2ExamplesConfig ?? null
+    },
+    stylePrior: {
+      selectedDirectionIds: styleProfile.selectedDirectionIds,
+      selectedDirections,
+      explorationShare: styleProfile.explorationShare,
+      referenceInfluenceSummary: styleProfile.referenceInfluenceSummary
+    },
+    editorialMemory,
+    sourceContext: {
+      sourceUrl: sourceContext?.sourceUrl ?? input.rawStage2?.source.url ?? null,
+      title: sourceContext?.title ?? input.rawStage2?.source.title ?? null,
+      descriptionChars: sourceContext?.descriptionChars ?? 0,
+      transcriptChars: sourceContext?.transcriptChars ?? 0,
+      frameCount: sourceContext?.frameCount ?? input.rawStage2?.source.frameDescriptions?.length ?? 0,
+      runtimeCommentCount:
+        sourceContext?.runtimeCommentCount ?? input.rawStage2?.source.commentsUsedForPrompt ?? 0,
+      runtimeCommentIds: sourceContext?.runtimeCommentIds ?? [],
+      commentsUsedForPrompt: input.rawStage2?.source.commentsUsedForPrompt ?? 0,
+      commentsOmittedFromPrompt: input.rawStage2?.source.commentsOmittedFromPrompt ?? 0,
+      downloadProvider: input.rawStage2?.source.downloadProvider ?? null,
+      commentsAcquisitionStatus: input.rawStage2?.source.commentsAcquisitionStatus ?? null,
+      commentsAcquisitionProvider: input.rawStage2?.source.commentsAcquisitionProvider ?? null,
+      commentsAcquisitionNote: input.rawStage2?.source.commentsAcquisitionNote ?? null,
+      commentsExtractionFallbackUsed: input.rawStage2?.source.commentsExtractionFallbackUsed ?? false
+    }
+  };
+}
+
+function buildCommentExportSections(input: {
+  currentStage2Raw: Stage2Response | null;
+  currentStage2Sanitized: Stage2Response | null;
+  sourceJobs: SourceJobRecord[];
+  threadEvents: ChatEvent[];
+}): ChatTraceExportOmissionSection[] {
+  const sections: ChatTraceExportOmissionSection[] = [];
+  const pushSection = (path: string, availableCount: number, exportedCount: number) => {
+    const omittedCount = Math.max(0, availableCount - exportedCount);
+    sections.push({
+      path,
+      availableCount,
+      exportedCount,
+      omittedCount,
+      truncated: omittedCount > 0,
+      reason:
+        omittedCount > 0
+          ? `Trace export caps comment arrays at ${MAX_EXPORTED_COMMENTS} items to stay practical; this is export truncation only.`
+          : "No export truncation on this path."
+    });
+  };
+
+  if (input.currentStage2Raw && input.currentStage2Sanitized) {
+    const rawRuntimeComments = input.currentStage2Raw.source.allComments.slice(
+      0,
+      input.currentStage2Raw.source.commentsUsedForPrompt ||
+        input.currentStage2Raw.source.allComments.length
+    );
+    pushSection(
+      "stage2.currentResult.source.topComments",
+      rawRuntimeComments.length,
+      input.currentStage2Sanitized.source.topComments.length
+    );
+    pushSection(
+      "stage2.currentResult.source.allComments",
+      rawRuntimeComments.length,
+      input.currentStage2Sanitized.source.allComments.length
+    );
+  }
+
+  input.sourceJobs.forEach((job, index) => {
+    const raw = job.resultData?.commentsPayload;
+    const exported = sanitizeSourceJobResultForExport(job.resultData)?.commentsPayload;
+    if (raw && exported) {
+      pushSection(
+        `sourceJobs[${index}].result.commentsPayload.topComments`,
+        raw.topComments.length,
+        exported.topComments.length
+      );
+      pushSection(
+        `sourceJobs[${index}].result.commentsPayload.allComments`,
+        raw.allComments.length,
+        exported.allComments.length
+      );
+    }
+  });
+
+  input.threadEvents.forEach((event, index) => {
+    if (event.type === "comments") {
+      const raw = event.data as CommentsPayload | null;
+      const exported = sanitizeCommentsPayload(raw);
+      if (raw && exported) {
+        pushSection(
+          `thread.events[${index}].data.topComments`,
+          raw.topComments.length,
+          exported.topComments.length
+        );
+        pushSection(
+          `thread.events[${index}].data.allComments`,
+          raw.allComments.length,
+          exported.allComments.length
+        );
+      }
+    }
+    if (event.type === "stage2") {
+      const raw = event.data as Stage2Response | null;
+      const exported = sanitizeStage2ResponseForExport(raw);
+      if (raw && exported) {
+        const rawRuntimeComments = raw.source.allComments.slice(
+          0,
+          raw.source.commentsUsedForPrompt || raw.source.allComments.length
+        );
+        pushSection(
+          `thread.events[${index}].data.source.topComments`,
+          rawRuntimeComments.length,
+          exported.source.topComments.length
+        );
+        pushSection(
+          `thread.events[${index}].data.source.allComments`,
+          rawRuntimeComments.length,
+          exported.source.allComments.length
+        );
+      }
+    }
+  });
+
+  return sections;
+}
+
 function buildExportComments(input: {
   latestSourceResult: SourceJobResult | null;
   currentStage2Result: Stage2Response | null;
 }): ChatTraceExportComments {
+  const stage2PromptComments =
+    input.currentStage2Result?.source.allComments.slice(
+      0,
+      input.currentStage2Result.source.commentsUsedForPrompt ||
+        input.currentStage2Result.source.allComments.length
+    ) ?? [];
+  const stage2TotalComments = input.currentStage2Result?.source.totalComments ?? 0;
+  if (input.currentStage2Result) {
+    const exportedItems = stage2PromptComments.slice(0, MAX_EXPORTED_COMMENTS);
+    const runtimeAvailableCount =
+      input.currentStage2Result.source.commentsUsedForPrompt ?? stage2PromptComments.length;
+    const analyzerManifest =
+      input.currentStage2Result.diagnostics?.effectivePrompting?.promptStages.find(
+        (stage) => stage.stageId === "analyzer"
+      )?.inputManifest?.comments ?? null;
+    const selectorManifest =
+      input.currentStage2Result.diagnostics?.effectivePrompting?.promptStages.find(
+        (stage) => stage.stageId === "selector"
+      )?.inputManifest?.comments ?? null;
+    const analyzerPassedCount = Math.min(
+      runtimeAvailableCount,
+      analyzerManifest?.passedCount ?? 20
+    );
+    const selectorPassedCount = Math.min(
+      runtimeAvailableCount,
+      selectorManifest?.passedCount ?? 12
+    );
+    return {
+      available: runtimeAvailableCount > 0,
+      totalComments: stage2TotalComments,
+      includedCount: exportedItems.length,
+      truncated: runtimeAvailableCount > exportedItems.length,
+      provider: input.currentStage2Result.source.commentsAcquisitionProvider ?? null,
+      status: input.currentStage2Result.source.commentsAcquisitionStatus ?? "primary_success",
+      note: input.currentStage2Result.source.commentsAcquisitionNote ?? null,
+      fallbackUsed: input.currentStage2Result.source.commentsAcquisitionStatus === "fallback_success",
+      error: input.currentStage2Result.source.commentsAcquisitionError ?? null,
+      items: exportedItems,
+      runtimeUsage: {
+        totalExtractedCount: stage2TotalComments,
+        runtimeAvailableCount,
+        analyzer: {
+          passedCount: analyzerPassedCount,
+          omittedCount: Math.max(0, runtimeAvailableCount - analyzerPassedCount),
+          truncated: runtimeAvailableCount > analyzerPassedCount,
+          limit: analyzerManifest?.limit ?? 20,
+          passedCommentIds: stage2PromptComments
+            .slice(0, analyzerPassedCount)
+            .map((comment) => comment.id)
+        },
+        selector: {
+          passedCount: selectorPassedCount,
+          omittedCount: Math.max(0, runtimeAvailableCount - selectorPassedCount),
+          truncated: runtimeAvailableCount > selectorPassedCount,
+          limit: selectorManifest?.limit ?? 12,
+          passedCommentIds: stage2PromptComments
+            .slice(0, selectorPassedCount)
+            .map((comment) => comment.id)
+        }
+      },
+      exportUsage: {
+        includedCount: exportedItems.length,
+        omittedCount: Math.max(0, runtimeAvailableCount - exportedItems.length),
+        truncated: runtimeAvailableCount > exportedItems.length,
+        exportLimit: MAX_EXPORTED_COMMENTS,
+        exportedCommentIds: exportedItems.map((comment) => comment.id)
+      }
+    };
+  }
+
   const sourceComments = sanitizeCommentsPayload(input.latestSourceResult?.commentsPayload ?? null);
   if (sourceComments) {
     return {
@@ -278,23 +795,71 @@ function buildExportComments(input: {
       note: input.latestSourceResult?.commentsAcquisitionNote ?? null,
       fallbackUsed: input.latestSourceResult?.commentsAcquisitionStatus === "fallback_success",
       error: input.latestSourceResult?.commentsError ?? null,
-      items: sourceComments.topComments
+      items: sourceComments.topComments,
+      runtimeUsage: {
+        totalExtractedCount: sourceComments.totalComments,
+        runtimeAvailableCount: sourceComments.topComments.length,
+        analyzer: {
+          passedCount: 0,
+          omittedCount: 0,
+          truncated: false,
+          limit: null,
+          passedCommentIds: []
+        },
+        selector: {
+          passedCount: 0,
+          omittedCount: 0,
+          truncated: false,
+          limit: null,
+          passedCommentIds: []
+        }
+      },
+      exportUsage: {
+        includedCount: sourceComments.topComments.length,
+        omittedCount: Math.max(0, sourceComments.totalComments - sourceComments.topComments.length),
+        truncated: sourceComments.totalComments > sourceComments.topComments.length,
+        exportLimit: MAX_EXPORTED_COMMENTS,
+        exportedCommentIds: sourceComments.topComments.map((comment) => comment.id)
+      }
     };
   }
 
-  const stage2Comments = input.currentStage2Result?.source.topComments.slice(0, MAX_EXPORTED_COMMENTS) ?? [];
-  const stage2Total = input.currentStage2Result?.source.totalComments ?? 0;
   return {
-    available: stage2Comments.length > 0,
-    totalComments: stage2Total,
-    includedCount: stage2Comments.length,
-    truncated: stage2Total > stage2Comments.length,
-    provider: input.currentStage2Result?.source.commentsAcquisitionProvider ?? null,
-    status: input.currentStage2Result?.source.commentsAcquisitionStatus ?? null,
-    note: input.currentStage2Result?.source.commentsAcquisitionNote ?? null,
-    fallbackUsed: input.currentStage2Result?.source.commentsAcquisitionStatus === "fallback_success",
-    error: input.currentStage2Result?.source.commentsAcquisitionError ?? null,
-    items: stage2Comments
+    available: false,
+    totalComments: 0,
+    includedCount: 0,
+    truncated: false,
+    provider: null,
+    status: null,
+    note: null,
+    fallbackUsed: false,
+    error: null,
+    items: [],
+    runtimeUsage: {
+      totalExtractedCount: 0,
+      runtimeAvailableCount: 0,
+      analyzer: {
+        passedCount: 0,
+        omittedCount: 0,
+        truncated: false,
+        limit: null,
+        passedCommentIds: []
+      },
+      selector: {
+        passedCount: 0,
+        omittedCount: 0,
+        truncated: false,
+        limit: null,
+        passedCommentIds: []
+      }
+    },
+    exportUsage: {
+      includedCount: 0,
+      omittedCount: 0,
+      truncated: false,
+      exportLimit: MAX_EXPORTED_COMMENTS,
+      exportedCommentIds: []
+    }
   };
 }
 
@@ -315,13 +880,14 @@ export async function buildChatTraceExport(
   const sourceJobs = listSourceJobsForChat(chat.id, input.workspace.id);
   const stage2Runs = listStage2RunsForChat(chat.id, input.workspace.id);
   const selectedRun = pickSelectedStage2Run(stage2Runs, input.selectedRunId);
+  const rawCurrentStage2 = (selectedRun?.resultData ?? null) as Stage2Response | null;
   const sanitizedCurrentStage2 = sanitizeStage2ResponseForExport(
-    (selectedRun?.resultData ?? null) as Stage2Response | null
+    rawCurrentStage2
   );
   const latestSourceJobWithResult = sourceJobs.find((job) => Boolean(job.resultData)) ?? null;
   const exportComments = buildExportComments({
     latestSourceResult: latestSourceJobWithResult?.resultData ?? null,
-    currentStage2Result: sanitizedCurrentStage2
+    currentStage2Result: rawCurrentStage2
   });
   const workspaceDefaults = {
     examplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(input.workspace.id),
@@ -344,10 +910,21 @@ export async function buildChatTraceExport(
     latestVersion: latestLegacyVersion
   });
   const exportedAt = new Date().toISOString();
+  const examplesRuntimeUsage = buildExamplesRuntimeUsage(rawCurrentStage2);
+  const commentExportSections = buildCommentExportSections({
+    currentStage2Raw: rawCurrentStage2,
+    currentStage2Sanitized: sanitizedCurrentStage2,
+    sourceJobs,
+    threadEvents: chat.events
+  });
+  const stageManifests = buildStageManifestSummaries(
+    rawCurrentStage2?.diagnostics?.effectivePrompting?.promptStages
+  );
 
   return {
     version: TRACE_EXPORT_VERSION,
     exportedAt,
+    traceContract: buildTraceContract(),
     workspace: {
       id: input.workspace.id,
       name: input.workspace.name,
@@ -371,29 +948,32 @@ export async function buildChatTraceExport(
     source: {
       url: chat.url,
       title:
-        latestSourceJobWithResult?.resultData?.title ??
         sanitizedCurrentStage2?.source.title ??
+        latestSourceJobWithResult?.resultData?.title ??
         (chat.title !== chat.url ? chat.title : null),
       downloadProvider: sanitizedCurrentStage2?.source.downloadProvider ?? null,
       commentsAvailable: exportComments.available,
-      commentsError: latestSourceJobWithResult?.resultData?.commentsError ?? null,
+      commentsError:
+        rawCurrentStage2?.source.commentsAcquisitionError ??
+        latestSourceJobWithResult?.resultData?.commentsError ??
+        null,
       totalComments: exportComments.totalComments,
       includedComments: exportComments.includedCount,
       commentsAcquisitionStatus:
-        latestSourceJobWithResult?.resultData?.commentsAcquisitionStatus ??
         sanitizedCurrentStage2?.source.commentsAcquisitionStatus ??
+        latestSourceJobWithResult?.resultData?.commentsAcquisitionStatus ??
         null,
       commentsAcquisitionProvider:
-        latestSourceJobWithResult?.resultData?.commentsAcquisitionProvider ??
         sanitizedCurrentStage2?.source.commentsAcquisitionProvider ??
+        latestSourceJobWithResult?.resultData?.commentsAcquisitionProvider ??
         null,
       commentsAcquisitionNote:
-        latestSourceJobWithResult?.resultData?.commentsAcquisitionNote ??
         sanitizedCurrentStage2?.source.commentsAcquisitionNote ??
+        latestSourceJobWithResult?.resultData?.commentsAcquisitionNote ??
         null,
       commentsFallbackUsed:
-        (latestSourceJobWithResult?.resultData?.commentsAcquisitionStatus ??
-          sanitizedCurrentStage2?.source.commentsAcquisitionStatus ??
+        (sanitizedCurrentStage2?.source.commentsAcquisitionStatus ??
+          latestSourceJobWithResult?.resultData?.commentsAcquisitionStatus ??
           null) === "fallback_success",
       activeJobId: sourceJobs.find((job) => job.status === "queued" || job.status === "running")?.jobId ?? null,
       latestCompletedJobId: latestSourceJobWithResult?.jobId ?? null
@@ -402,6 +982,23 @@ export async function buildChatTraceExport(
     sourceJobs: sourceJobs.map(sanitizeSourceJobForExport),
     stage2: {
       selectedRunId: selectedRun?.runId ?? null,
+      causalInputs: buildStage2CausalInputs({
+        selectedRun,
+        rawStage2: rawCurrentStage2
+      }),
+      stageManifests,
+      exportOmissions: {
+        comments: {
+          exportLimit: MAX_EXPORTED_COMMENTS,
+          sections: commentExportSections
+        },
+        notes: [
+          "Canonical causal sections describe what shaped the selected run.",
+          "Comment truncation in this section refers to export trimming only; runtime truncation lives in comments.runtimeUsage and stage2.stageManifests."
+        ]
+      },
+      outcome: buildStage2Outcome(rawCurrentStage2),
+      examplesRuntimeUsage,
       currentResult: sanitizedCurrentStage2,
       currentProgress: sanitizedCurrentStage2?.progress ?? selectedRun?.snapshot ?? null,
       analysis: sanitizedCurrentStage2?.diagnostics?.analysis ?? null,

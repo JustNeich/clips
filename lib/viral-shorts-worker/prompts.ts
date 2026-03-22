@@ -5,6 +5,8 @@ import {
   PreparedGenerationContext,
   PromptPacket,
   SelectorOutput,
+  Stage2DiagnosticsPromptStageInputManifest,
+  Stage2DiagnosticsSourceContext,
   Stage2ExamplesAssessment,
   Stage2RuntimeChannelConfig,
   ViralShortsVideoContext
@@ -48,6 +50,84 @@ const GENERIC_BOTTOM_TAIL_PATTERNS = [
   /everybody in the shot gets the same message/i,
   /the whole room feels it/i
 ];
+const COMMENT_CARRY_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "been",
+  "but",
+  "by",
+  "for",
+  "from",
+  "get",
+  "got",
+  "had",
+  "has",
+  "have",
+  "he",
+  "her",
+  "here",
+  "him",
+  "his",
+  "how",
+  "i",
+  "if",
+  "in",
+  "into",
+  "is",
+  "it",
+  "its",
+  "just",
+  "me",
+  "my",
+  "not",
+  "of",
+  "on",
+  "or",
+  "our",
+  "she",
+  "so",
+  "that",
+  "the",
+  "their",
+  "them",
+  "there",
+  "they",
+  "this",
+  "to",
+  "too",
+  "was",
+  "we",
+  "were",
+  "what",
+  "when",
+  "who",
+  "why",
+  "will",
+  "with",
+  "you",
+  "your"
+]);
+
+export type CommentCarryExpectation = "low" | "medium" | "high";
+
+export type Stage2CommentCarryProfile = {
+  expectation: CommentCarryExpectation;
+  dominantCues: string[];
+  allCues: string[];
+  summary: string | null;
+};
+
+export type Stage2CandidateCommentCarry = {
+  matchedCues: string[];
+  matchedInBottom: boolean;
+  usesDominantCue: boolean;
+  score: number;
+};
 
 export type Stage2PromptTemplateKind = "llm_system";
 
@@ -137,13 +217,192 @@ function truncateWords(value: string, maxWords: number): string {
     .join(" ");
 }
 
+function extractCommentCueFragments(cue: string): string[] {
+  const original = String(cue ?? "").replace(/\s+/g, " ").trim();
+  if (!original) {
+    return [];
+  }
+  const normalized = normalizePromptTextKey(original);
+  const normalizedTokens = normalized.split(" ").filter(Boolean);
+  const contentTokens = normalizedTokens.filter((token) => !COMMENT_CARRY_STOPWORDS.has(token));
+  const fragments = new Set<string>();
+  const push = (value: string) => {
+    const cleaned = normalizePromptTextKey(value);
+    if (cleaned) {
+      fragments.add(cleaned);
+    }
+  };
+
+  push(original);
+  if (contentTokens.length >= 2) {
+    push(contentTokens.slice(0, 2).join(" "));
+  }
+  if (contentTokens.length >= 3) {
+    push(contentTokens.slice(0, 3).join(" "));
+  }
+  for (let index = 0; index < contentTokens.length; index += 1) {
+    const token = contentTokens[index];
+    if (!token) {
+      continue;
+    }
+    if (token.length >= 4 || /^[a-z0-9]{2,6}$/.test(token)) {
+      push(token);
+    }
+    if (index < contentTokens.length - 1) {
+      push(`${token} ${contentTokens[index + 1]}`);
+    }
+  }
+  for (const match of original.matchAll(/\b[A-Z]{2,6}\b/g)) {
+    push(match[0] ?? "");
+  }
+
+  return Array.from(fragments).slice(0, 6);
+}
+
+function buildCommentCarryCueList(analyzerOutput: Pick<
+  AnalyzerOutput,
+  | "slangToAdapt"
+  | "commentLanguageCues"
+  | "commentConsensusLane"
+  | "commentJokeLane"
+  | "commentDissentLane"
+>): string[] {
+  const merged = Array.from(
+    new Set(
+      [...analyzerOutput.slangToAdapt, ...analyzerOutput.commentLanguageCues]
+        .map((cue) => String(cue ?? "").replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+    )
+  );
+  const laneHints = [
+    analyzerOutput.commentConsensusLane,
+    analyzerOutput.commentJokeLane,
+    analyzerOutput.commentDissentLane
+  ]
+    .map((lane) => extractPromptCommentCue(lane ?? ""))
+    .filter(Boolean);
+  return Array.from(new Set([...merged, ...laneHints])).slice(0, 8);
+}
+
+export function buildCommentCarryProfile(
+  analyzerOutput: Pick<
+    AnalyzerOutput,
+    | "slangToAdapt"
+    | "commentLanguageCues"
+    | "commentConsensusLane"
+    | "commentJokeLane"
+    | "commentDissentLane"
+  >
+): Stage2CommentCarryProfile {
+  const allCues = buildCommentCarryCueList(analyzerOutput);
+  const dominantCues = allCues.slice(0, 3);
+  const hasMixedCommentPressure = Boolean(
+    analyzerOutput.commentConsensusLane || analyzerOutput.commentJokeLane || analyzerOutput.commentDissentLane
+  );
+  const expectation: CommentCarryExpectation =
+    dominantCues.length >= 2 && hasMixedCommentPressure
+      ? "high"
+      : dominantCues.length >= 1
+        ? "medium"
+        : "low";
+  return {
+    expectation,
+    dominantCues,
+    allCues,
+    summary:
+      dominantCues.length > 0
+        ? `Audience shorthand worth carrying when clip-safe: ${dominantCues.join(" | ")}.`
+        : null
+  };
+}
+
+export function evaluateCandidateCommentCarry(input: {
+  candidate: Pick<CandidateCaption, "top" | "bottom">;
+  commentCarryProfile: Stage2CommentCarryProfile;
+}): Stage2CandidateCommentCarry {
+  const text = `${input.candidate.top} ${input.candidate.bottom}`;
+  const normalizedFull = normalizePromptTextKey(text);
+  const normalizedBottom = normalizePromptTextKey(input.candidate.bottom);
+  if (!normalizedFull || input.commentCarryProfile.allCues.length === 0) {
+    return {
+      matchedCues: [],
+      matchedInBottom: false,
+      usesDominantCue: false,
+      score: 0
+    };
+  }
+
+  const matchedCues: string[] = [];
+  let matchedInBottom = false;
+  let usesDominantCue = false;
+
+  for (const cue of input.commentCarryProfile.allCues) {
+    const fragments = extractCommentCueFragments(cue);
+    if (fragments.length === 0) {
+      continue;
+    }
+    const matchedFragment = fragments.find(
+      (fragment) =>
+        normalizedFull.includes(fragment) ||
+        (fragment.length >= 8 &&
+          fragment.split(" ").filter(Boolean).length >= 2 &&
+          fragment
+            .split(" ")
+            .filter((token) => token.length >= 4)
+            .every((token) => normalizedFull.includes(token)))
+    );
+    if (!matchedFragment) {
+      continue;
+    }
+    matchedCues.push(cue);
+    if (normalizedBottom.includes(matchedFragment)) {
+      matchedInBottom = true;
+    }
+    if (
+      input.commentCarryProfile.dominantCues.some(
+        (dominantCue) => normalizePromptTextKey(dominantCue) === normalizePromptTextKey(cue)
+      )
+    ) {
+      usesDominantCue = true;
+    }
+  }
+
+  const score =
+    matchedCues.length === 0
+      ? 0
+      : matchedInBottom
+        ? usesDominantCue
+          ? 3
+          : 2
+        : usesDominantCue
+          ? 1.5
+          : 1;
+
+  return {
+    matchedCues: Array.from(new Set(matchedCues)).slice(0, 3),
+    matchedInBottom,
+    usesDominantCue,
+    score
+  };
+}
+
+function extractLeadingCommentClause(text: string, maxWords: number): string {
+  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  const firstClause =
+    normalized.split(/(?:\.{2,}|[.!?]+|[,;]+|\u2026|\s[-\u2014]\s)/)[0] ?? normalized;
+  return truncateWords(firstClause, maxWords).replace(/^"+|"+$/g, "").trim();
+}
+
 function extractPromptCommentCue(text: string): string {
   const normalized = truncatePromptValue(String(text ?? ""), 120);
   const quoted = normalized.match(/"([^"]{2,60})"/)?.[1];
   if (quoted) {
     return quoted.trim();
   }
-  return truncateWords(normalized, 7);
+  return extractLeadingCommentClause(normalized, 7);
 }
 
 function buildCommentPromptDigest(
@@ -193,12 +452,29 @@ function buildCommentPromptDigest(
   };
 }
 
-function buildCandidateBatchSignals(candidates: CandidateCaption[]) {
+function buildCandidateBatchSignals(
+  candidates: CandidateCaption[],
+  analyzerOutput?: Pick<
+    AnalyzerOutput,
+    | "slangToAdapt"
+    | "commentLanguageCues"
+    | "commentConsensusLane"
+    | "commentJokeLane"
+    | "commentDissentLane"
+  >
+) {
   const angleCounts = new Map<string, number>();
   const styleDirectionCounts = new Map<string, number>();
   const openingCounts = new Map<string, { count: number; candidateIds: string[] }>();
   const tailCounts = new Map<string, { count: number; candidateIds: string[] }>();
   const genericTailCandidateIds: string[] = [];
+  const commentCarryProfile = analyzerOutput ? buildCommentCarryProfile(analyzerOutput) : null;
+  const commentNativeCandidates: Array<{
+    candidateId: string;
+    matchedCues: string[];
+    matchedInBottom: boolean;
+    usesDominantCue: boolean;
+  }> = [];
   let alignedCount = 0;
   let exploratoryCount = 0;
 
@@ -233,6 +509,20 @@ function buildCandidateBatchSignals(candidates: CandidateCaption[]) {
     if (GENERIC_BOTTOM_TAIL_PATTERNS.some((pattern) => pattern.test(candidate.bottom))) {
       genericTailCandidateIds.push(candidate.candidateId);
     }
+    if (commentCarryProfile) {
+      const commentCarry = evaluateCandidateCommentCarry({
+        candidate,
+        commentCarryProfile
+      });
+      if (commentCarry.matchedCues.length > 0) {
+        commentNativeCandidates.push({
+          candidateId: candidate.candidateId,
+          matchedCues: commentCarry.matchedCues,
+          matchedInBottom: commentCarry.matchedInBottom,
+          usesDominantCue: commentCarry.usesDominantCue
+        });
+      }
+    }
   }
 
   const toRepeatedList = (
@@ -261,7 +551,11 @@ function buildCandidateBatchSignals(candidates: CandidateCaption[]) {
       .sort((left, right) => right[1] - left[1])
       .slice(0, 6)
       .map(([styleDirectionId, count]) => ({ styleDirectionId, count })),
-    genericTailCandidateIds
+    genericTailCandidateIds,
+    commentCarryExpectation: commentCarryProfile?.expectation ?? "low",
+    dominantAudienceCues: commentCarryProfile?.dominantCues ?? [],
+    commentCarrySummary: commentCarryProfile?.summary ?? null,
+    commentNativeCandidates
   };
 }
 
@@ -375,6 +669,279 @@ function buildCompactAnalyzerVideoContext(videoContext: ViralShortsVideoContext)
   };
 }
 
+function buildTextUsage(
+  value: string,
+  limit: number | null
+): NonNullable<Stage2DiagnosticsPromptStageInputManifest["description"]> {
+  const trimmed = value.trim();
+  const availableChars = trimmed.length;
+  const passedChars = limit === null ? availableChars : Math.min(availableChars, limit);
+  return {
+    availableChars,
+    passedChars,
+    omittedChars: Math.max(0, availableChars - passedChars),
+    truncated: limit !== null ? availableChars > passedChars : false,
+    limit
+  };
+}
+
+function buildListUsage<T>(
+  items: T[],
+  limit: number | null
+): NonNullable<Stage2DiagnosticsPromptStageInputManifest["frames"]> {
+  const availableCount = items.length;
+  const passedCount = limit === null ? availableCount : Math.min(availableCount, limit);
+  return {
+    availableCount,
+    passedCount,
+    omittedCount: Math.max(0, availableCount - passedCount),
+    truncated: limit !== null ? availableCount > passedCount : false,
+    limit
+  };
+}
+
+function buildCommentUsage(
+  comments: ViralShortsVideoContext["comments"],
+  limit: number | null
+): NonNullable<Stage2DiagnosticsPromptStageInputManifest["comments"]> {
+  const usage = buildListUsage(comments, limit);
+  return {
+    ...usage,
+    passedCommentIds: comments
+      .slice(0, usage.passedCount)
+      .map((comment, index) => String(comment.id ?? `comment_${index + 1}`))
+  };
+}
+
+function buildChannelLearningUsage(
+  channelConfig: Stage2RuntimeChannelConfig,
+  detail: Stage2DiagnosticsPromptStageInputManifest["learningDetail"]
+): NonNullable<Stage2DiagnosticsPromptStageInputManifest["channelLearning"]> | null {
+  if (detail === "none") {
+    return null;
+  }
+  const learningContext = buildStage2LearningPromptContext({
+    profile: channelConfig.styleProfile,
+    editorialMemory: channelConfig.editorialMemory,
+    detail
+  });
+  return {
+    detail,
+    selectedDirectionCount: learningContext.bootstrap.selectedDirectionCount,
+    highlightedDirectionIds: learningContext.bootstrap.directionHighlights.map((entry) => entry.id),
+    explorationShare: learningContext.bootstrap.explorationShare ?? null,
+    recentFeedbackCount: learningContext.editorialMemory.recentFeedbackCount,
+    recentSelectionCount: learningContext.editorialMemory.recentSelectionCount,
+    promptSummary: learningContext.editorialMemory.promptSummary || null
+  };
+}
+
+function buildExamplesUsage(input: {
+  activeCorpusCount: number;
+  promptPool: PreparedGenerationContext["availableExamples"];
+  passedExamples: PreparedGenerationContext["availableExamples"];
+  selectedExampleIds?: string[] | null;
+  rejectedExampleIds?: string[] | null;
+  examplesAssessment: Stage2ExamplesAssessment;
+}): NonNullable<Stage2DiagnosticsPromptStageInputManifest["examples"]> {
+  const promptPool = input.promptPool ?? [];
+  const passedExamples = input.passedExamples ?? [];
+  const selectedExampleIds = input.selectedExampleIds ?? [];
+  const rejectedExampleIds = input.rejectedExampleIds ?? [];
+  return {
+    availableCount: promptPool.length,
+    passedCount: passedExamples.length,
+    omittedCount: Math.max(0, promptPool.length - passedExamples.length),
+    truncated: promptPool.length > passedExamples.length,
+    limit: null,
+    activeCorpusCount: input.activeCorpusCount,
+    promptPoolCount: promptPool.length,
+    passedExampleIds: passedExamples.map((example) => example.id),
+    selectedExampleIds,
+    rejectedExampleIds,
+    retrievalConfidence: input.examplesAssessment.retrievalConfidence,
+    examplesMode: input.examplesAssessment.examplesMode,
+    examplesRoleSummary: input.examplesAssessment.examplesRoleSummary,
+    primaryDriverSummary: input.examplesAssessment.primaryDriverSummary
+  };
+}
+
+function buildCandidateUsage(input: {
+  candidates: CandidateCaption[];
+  criticScores?: CriticScore[] | null;
+  shortlist?: CandidateCaption[] | null;
+}): NonNullable<Stage2DiagnosticsPromptStageInputManifest["candidates"]> {
+  return {
+    passedCount: input.candidates.length,
+    passedCandidateIds: input.candidates.map((candidate) => candidate.candidateId),
+    criticScoreCount: input.criticScores ? input.criticScores.length : null,
+    shortlistCount: input.shortlist ? input.shortlist.length : null
+  };
+}
+
+export function buildStage2SourceContextSummary(
+  videoContext: ViralShortsVideoContext
+): Stage2DiagnosticsSourceContext {
+  return {
+    sourceUrl: videoContext.sourceUrl,
+    title: videoContext.title,
+    descriptionChars: videoContext.description.trim().length,
+    transcriptChars: videoContext.transcript.trim().length,
+    frameCount: videoContext.frameDescriptions.length,
+    runtimeCommentCount: videoContext.comments.length,
+    runtimeCommentIds: videoContext.comments.map((comment, index) =>
+      String(comment.id ?? `comment_${index + 1}`)
+    ),
+    userInstructionChars: videoContext.userInstruction?.trim().length ?? 0
+  };
+}
+
+export function buildStage2PromptInputManifestMap(input: {
+  channelConfig: Stage2RuntimeChannelConfig;
+  videoContext: ViralShortsVideoContext;
+  activeExamplesCount: number;
+  selectorPromptPool: PreparedGenerationContext["availableExamples"];
+  selectorOutput: SelectorOutput;
+  examplesAssessment: Stage2ExamplesAssessment;
+  writerCandidates: CandidateCaption[];
+  criticScores: CriticScore[];
+  rewriteCandidates: CandidateCaption[];
+  shortlist: CandidateCaption[];
+}): Record<string, Stage2DiagnosticsPromptStageInputManifest> {
+  const commonSelectorExamples = buildExamplesUsage({
+    activeCorpusCount: input.activeExamplesCount,
+    promptPool: input.selectorPromptPool,
+    passedExamples: input.selectorPromptPool,
+    selectedExampleIds: input.selectorOutput.selectedExampleIds ?? [],
+    rejectedExampleIds: input.selectorOutput.rejectedExampleIds ?? [],
+    examplesAssessment: input.examplesAssessment
+  });
+  const selectedExamples = input.selectorOutput.selectedExamples ?? [];
+  return {
+    analyzer: {
+      learningDetail: "minimal",
+      description: buildTextUsage(input.videoContext.description, MAX_ANALYZER_DESCRIPTION_CHARS),
+      transcript: buildTextUsage(input.videoContext.transcript, MAX_ANALYZER_TRANSCRIPT_CHARS),
+      frames: buildListUsage(input.videoContext.frameDescriptions, 12),
+      comments: buildCommentUsage(input.videoContext.comments, MAX_ANALYZER_COMMENT_COUNT),
+      examples: null,
+      channelLearning: buildChannelLearningUsage(input.channelConfig, "minimal"),
+      candidates: null,
+      stageFlags: ["frames+comments aware", "heuristic analyzer seed", "comment digest included"]
+    },
+    selector: {
+      learningDetail: "compact",
+      description: buildTextUsage(input.videoContext.description, MAX_SELECTOR_DESCRIPTION_CHARS),
+      transcript: buildTextUsage(input.videoContext.transcript, MAX_SELECTOR_TRANSCRIPT_CHARS),
+      frames: buildListUsage(input.videoContext.frameDescriptions, 8),
+      comments: buildCommentUsage(input.videoContext.comments, MAX_SELECTOR_COMMENT_COUNT),
+      examples: commonSelectorExamples,
+      channelLearning: buildChannelLearningUsage(input.channelConfig, "compact"),
+      candidates: null,
+      stageFlags: ["curated prompt pool", "retrieval-mode aware", "comment digest included"]
+    },
+    writer: {
+      learningDetail: "compact",
+      description: null,
+      transcript: null,
+      frames: null,
+      comments: null,
+      examples: buildExamplesUsage({
+        activeCorpusCount: input.activeExamplesCount,
+        promptPool: input.selectorPromptPool,
+        passedExamples: selectedExamples,
+        selectedExampleIds: input.selectorOutput.selectedExampleIds ?? [],
+        rejectedExampleIds: input.selectorOutput.rejectedExampleIds ?? [],
+        examplesAssessment: input.examplesAssessment
+      }),
+      channelLearning: buildChannelLearningUsage(input.channelConfig, "compact"),
+      candidates: null,
+      stageFlags: ["selected examples only", "selector brief context", "user instruction aware"]
+    },
+    critic: {
+      learningDetail: "compact",
+      description: null,
+      transcript: null,
+      frames: null,
+      comments: null,
+      examples: {
+        ...commonSelectorExamples,
+        passedCount: 0,
+        omittedCount: commonSelectorExamples.promptPoolCount,
+        truncated: commonSelectorExamples.promptPoolCount > 0,
+        passedExampleIds: []
+      },
+      channelLearning: buildChannelLearningUsage(input.channelConfig, "compact"),
+      candidates: buildCandidateUsage({
+        candidates: input.writerCandidates,
+        criticScores: input.criticScores
+      }),
+      stageFlags: ["candidate batch signals", "selector-output examples context only"]
+    },
+    rewriter: {
+      learningDetail: "compact",
+      description: null,
+      transcript: null,
+      frames: null,
+      comments: null,
+      examples: buildExamplesUsage({
+        activeCorpusCount: input.activeExamplesCount,
+        promptPool: input.selectorPromptPool,
+        passedExamples: selectedExamples,
+        selectedExampleIds: input.selectorOutput.selectedExampleIds ?? [],
+        rejectedExampleIds: input.selectorOutput.rejectedExampleIds ?? [],
+        examplesAssessment: input.examplesAssessment
+      }),
+      channelLearning: buildChannelLearningUsage(input.channelConfig, "compact"),
+      candidates: buildCandidateUsage({
+        candidates: input.rewriteCandidates,
+        criticScores: input.criticScores
+      }),
+      stageFlags: ["critic-shortlisted candidates", "selected examples included", "user instruction aware"]
+    },
+    finalSelector: {
+      learningDetail: "minimal",
+      description: null,
+      transcript: null,
+      frames: null,
+      comments: null,
+      examples: {
+        ...commonSelectorExamples,
+        passedCount: 0,
+        omittedCount: commonSelectorExamples.promptPoolCount,
+        truncated: commonSelectorExamples.promptPoolCount > 0,
+        passedExampleIds: []
+      },
+      channelLearning: buildChannelLearningUsage(input.channelConfig, "minimal"),
+      candidates: buildCandidateUsage({
+        candidates: input.rewriteCandidates,
+        shortlist: input.shortlist
+      }),
+      stageFlags: ["quality-first shortlist assembly", "exploration-aware final mix"]
+    },
+    titles: {
+      learningDetail: "minimal",
+      description: null,
+      transcript: null,
+      frames: buildListUsage(input.videoContext.frameDescriptions, null),
+      comments: null,
+      examples: {
+        ...commonSelectorExamples,
+        passedCount: 0,
+        omittedCount: commonSelectorExamples.promptPoolCount,
+        truncated: commonSelectorExamples.promptPoolCount > 0,
+        passedExampleIds: []
+      },
+      channelLearning: buildChannelLearningUsage(input.channelConfig, "minimal"),
+      candidates: buildCandidateUsage({
+        candidates: input.shortlist,
+        shortlist: input.shortlist
+      }),
+      stageFlags: ["shortlist-only title generation", "frame context only"]
+    }
+  };
+}
+
 export function buildAnalyzerPrompt(
   channelConfig: Stage2RuntimeChannelConfig,
   videoContext: ViralShortsVideoContext,
@@ -413,9 +980,11 @@ export function buildWriterPrompt(input: {
   userInstruction?: string | null;
   promptConfig?: Stage2PromptConfig | null;
 }): string {
+  const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
   return renderPrompt(buildSystemPrompt("writer", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "compact"),
     analyzerOutput: input.analyzerOutput,
+    commentCarryProfile,
     examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
     selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
     selectedExamples: buildCompactSelectorExamples(input.selectorOutput.selectedExamples ?? []),
@@ -436,7 +1005,7 @@ export function buildCriticPrompt(input: {
     analyzerOutput: input.analyzerOutput,
     examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
     selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
-    candidateSetSignals: buildCandidateBatchSignals(input.candidates),
+    candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
     candidates: input.candidates
   });
 }
@@ -451,13 +1020,15 @@ export function buildRewriterPrompt(input: {
   userInstruction?: string | null;
   promptConfig?: Stage2PromptConfig | null;
 }): string {
+  const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
   return renderPrompt(buildSystemPrompt("rewriter", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "compact"),
     analyzerOutput: input.analyzerOutput,
+    commentCarryProfile,
     examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
     selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
     selectedExamples: buildCompactSelectorExamples(input.selectorOutput.selectedExamples ?? []),
-    candidateSetSignals: buildCandidateBatchSignals(input.candidates),
+    candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
     criticScores: input.criticScores,
     candidates: input.candidates,
     userInstruction: input.userInstruction?.trim() || null
@@ -477,7 +1048,7 @@ export function buildFinalSelectorPrompt(input: {
     analyzerOutput: input.analyzerOutput,
     examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
     selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
-    candidateSetSignals: buildCandidateBatchSignals(input.candidates),
+    candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
     candidates: input.candidates
   });
 }

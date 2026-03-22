@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { AppShellToastTone } from "./AppShell";
 import { ChannelManagerStage2Tab } from "./ChannelManagerStage2Tab";
 import {
   AppRole,
@@ -9,6 +10,7 @@ import {
   ChannelAccessGrant,
   ChannelAsset,
   ChannelAssetKind,
+  ChannelFeedbackResponse,
   WorkspaceMemberRecord,
   UserRecord
 } from "./types";
@@ -37,6 +39,27 @@ import {
   Stage2HardConstraints
 } from "../../lib/stage2-channel-config";
 import {
+  applyChannelStyleProfileEditorDiscoveryResult,
+  buildChannelStyleProfileFromEditorDraft,
+  createChannelStyleProfileEditorDraft,
+  getChannelStyleProfileEditorDiscoveryStatus,
+  normalizePersistedChannelStyleProfileEditorState,
+  parseChannelOnboardingReferenceLinks,
+  selectAllChannelStyleProfileEditorDirections,
+  setChannelStyleProfileEditorExplorationShare,
+  toggleChannelStyleProfileEditorDirectionSelection,
+  type ChannelStyleProfileEditorDraft,
+  updateChannelStyleProfileEditorReferenceLinks,
+  clearChannelStyleProfileEditorDirectionSelection
+} from "./channel-onboarding-support";
+import type { ChannelStyleDiscoveryRunDetail } from "../../lib/channel-style-discovery-types";
+import {
+  normalizeStage2StyleProfile,
+  stringifyStage2StyleProfile,
+  type Stage2EditorialMemorySummary,
+  type Stage2StyleProfile
+} from "../../lib/stage2-channel-learning";
+import {
   AutosaveScope,
   AutosaveState,
   AutosaveStatus,
@@ -51,6 +74,59 @@ import {
 } from "./channel-manager-support";
 
 export { CHANNEL_MANAGER_DEFAULT_SETTINGS_ID, canDeleteManagedChannel, listChannelManagerTargets };
+
+type ChannelSavePatch = Partial<{
+  name: string;
+  username: string;
+  stage2ExamplesConfig: Stage2ExamplesConfig;
+  stage2HardConstraints: Stage2HardConstraints;
+  stage2PromptConfig: Stage2PromptConfig;
+  stage2StyleProfile: Stage2StyleProfile;
+  templateId: string;
+  avatarAssetId: string | null;
+  defaultBackgroundAssetId: string | null;
+  defaultMusicAssetId: string | null;
+}>;
+
+export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
+  saving: string;
+  saved: string;
+  error: string;
+} {
+  if ("stage2StyleProfile" in patch) {
+    return {
+      saving: "Сохраняем стиль канала…",
+      saved: "Стиль канала сохранён.",
+      error: "Не удалось сохранить стиль канала."
+    };
+  }
+  if ("stage2ExamplesConfig" in patch || "stage2HardConstraints" in patch) {
+    return {
+      saving: "Сохраняем настройки Stage 2…",
+      saved: "Настройки Stage 2 сохранены.",
+      error: "Не удалось сохранить настройки Stage 2."
+    };
+  }
+  if ("templateId" in patch || "defaultBackgroundAssetId" in patch || "defaultMusicAssetId" in patch) {
+    return {
+      saving: "Сохраняем настройки рендера…",
+      saved: "Настройки рендера сохранены.",
+      error: "Не удалось сохранить настройки рендера."
+    };
+  }
+  if ("name" in patch || "username" in patch || "avatarAssetId" in patch) {
+    return {
+      saving: "Сохраняем бренд канала…",
+      saved: "Бренд канала сохранён.",
+      error: "Не удалось сохранить бренд канала."
+    };
+  }
+  return {
+    saving: "Сохраняем настройки канала…",
+    saved: "Настройки канала сохранены.",
+    error: "Не удалось сохранить настройки канала."
+  };
+}
 
 type ChannelManagerProps = {
   open: boolean;
@@ -68,18 +144,30 @@ type ChannelManagerProps = {
   canCreateChannel: boolean;
   onSaveChannel: (
     channelId: string,
-    patch: Partial<{
-      name: string;
-      username: string;
-      stage2ExamplesConfig: Stage2ExamplesConfig;
-      stage2HardConstraints: Stage2HardConstraints;
-      stage2PromptConfig: Stage2PromptConfig;
-      templateId: string;
-      avatarAssetId: string | null;
-      defaultBackgroundAssetId: string | null;
-      defaultMusicAssetId: string | null;
-    }>
+    patch: ChannelSavePatch
   ) => Promise<void>;
+  onShowGlobalToast?: (input: {
+    id: string;
+    tone: AppShellToastTone;
+    title?: string | null;
+    message: string;
+    actionLabel?: string | null;
+    onAction?: () => void;
+    autoHideMs?: number | null;
+  }) => void;
+  onDismissGlobalToast?: (toastId: string) => void;
+  onStartStyleDiscovery: (input: {
+    name: string;
+    username: string;
+    stage2HardConstraints: Stage2HardConstraints;
+    referenceLinks: string[];
+  }) => Promise<ChannelStyleDiscoveryRunDetail>;
+  onGetStyleDiscoveryRun: (runId: string) => Promise<ChannelStyleDiscoveryRunDetail>;
+  feedbackHistory: ChannelFeedbackResponse["historyEvents"];
+  feedbackHistoryLoading: boolean;
+  editorialMemory: Stage2EditorialMemorySummary | null;
+  onDeleteFeedbackEvent: (eventId: string) => Promise<void>;
+  deletingFeedbackEventId: string | null;
   onSaveWorkspaceStage2Defaults: (
     patch: Partial<{
       stage2ExamplesCorpusJson: string;
@@ -110,6 +198,15 @@ export function ChannelManager({
   onDeleteChannel,
   canCreateChannel,
   onSaveChannel,
+  onShowGlobalToast,
+  onDismissGlobalToast,
+  onStartStyleDiscovery,
+  onGetStyleDiscoveryRun,
+  feedbackHistory,
+  feedbackHistoryLoading,
+  editorialMemory,
+  onDeleteFeedbackEvent,
+  deletingFeedbackEventId,
   onSaveWorkspaceStage2Defaults,
   onUploadAsset,
   onDeleteAsset,
@@ -118,6 +215,17 @@ export function ChannelManager({
   workspaceMembers,
   onUpdateAccess
 }: ChannelManagerProps) {
+  const [styleProfileDraft, setStyleProfileDraft] = useState<ChannelStyleProfileEditorDraft | null>(null);
+  const [styleProfileActiveRunId, setStyleProfileActiveRunId] = useState<string | null>(null);
+  const [styleProfileIsDiscovering, setStyleProfileIsDiscovering] = useState(false);
+  const [styleProfileDiscoveryError, setStyleProfileDiscoveryError] = useState<string | null>(null);
+  const [styleProfileSaveState, setStyleProfileSaveState] = useState<{
+    status: "idle" | "saving" | "saved" | "error";
+    message: string | null;
+  }>({
+    status: "idle",
+    message: null
+  });
   const [tab, setTab] = useState<TabId>("brand");
   const [mounted, setMounted] = useState(false);
   const isOwner = currentUserRole === "owner";
@@ -134,6 +242,9 @@ export function ChannelManager({
   }, [activeChannelId, managerSelectionId, managerTargets]);
   const isWorkspaceDefaultsSelection = selectedTarget?.kind === "workspace_defaults";
   const activeChannel = selectedTarget?.kind === "channel" ? selectedTarget.channel : null;
+  const styleProfileStorageKey = activeChannel
+    ? `clips:channel-style-profile-editor:${activeChannel.id}`
+    : null;
 
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -189,17 +300,85 @@ export function ChannelManager({
   const autosaveResetTimersRef = useRef<Partial<Record<AutosaveScope, number>>>({});
   const saveChannelRef = useRef(onSaveChannel);
   const saveWorkspaceStage2DefaultsRef = useRef(onSaveWorkspaceStage2Defaults);
+
+  const showManagerSaveNotice = useCallback(
+    (tone: AppShellToastTone, message: string | null, autoHide = false) => {
+      if (!message) {
+        onDismissGlobalToast?.("channel-manager-save");
+        return;
+      }
+      onShowGlobalToast?.({
+        id: "channel-manager-save",
+        tone,
+        title: tone === "error" ? "Проверьте сохранение" : "Сохранение",
+        message,
+        autoHideMs: autoHide ? 2400 : null
+      });
+    },
+    [onDismissGlobalToast, onShowGlobalToast]
+  );
+
+  const saveManagedChannel = useCallback(
+    async (channelId: string, patch: ChannelSavePatch): Promise<void> => {
+      const copy = describeChannelManagerSavePatch(patch);
+      showManagerSaveNotice("neutral", copy.saving);
+      try {
+        await onSaveChannel(channelId, patch);
+        showManagerSaveNotice("success", copy.saved, true);
+      } catch (error) {
+        showManagerSaveNotice(
+          "error",
+          error instanceof Error && error.message ? error.message : copy.error
+        );
+        throw error;
+      }
+    },
+    [onSaveChannel, showManagerSaveNotice]
+  );
+
+  const saveWorkspaceStage2DefaultsWithNotice = useCallback(
+    async (
+      patch: Partial<{
+        stage2ExamplesCorpusJson: string;
+        stage2HardConstraints: Stage2HardConstraints;
+        stage2PromptConfig: Stage2PromptConfig;
+      }>
+    ): Promise<void> => {
+      showManagerSaveNotice("neutral", "Сохраняем общие настройки Stage 2…");
+      try {
+        await onSaveWorkspaceStage2Defaults(patch);
+        showManagerSaveNotice("success", "Общие настройки Stage 2 сохранены.", true);
+      } catch (error) {
+        showManagerSaveNotice(
+          "error",
+          error instanceof Error && error.message
+            ? error.message
+            : "Не удалось сохранить общие настройки Stage 2."
+        );
+        throw error;
+      }
+    },
+    [onSaveWorkspaceStage2Defaults, showManagerSaveNotice]
+  );
+
+  const triggerManagedChannelSave = useCallback(
+    (channelId: string, patch: ChannelSavePatch): void => {
+      void saveManagedChannel(channelId, patch).catch(() => undefined);
+    },
+    [saveManagedChannel]
+  );
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    saveChannelRef.current = onSaveChannel;
-  }, [onSaveChannel]);
+    saveChannelRef.current = saveManagedChannel;
+  }, [saveManagedChannel]);
 
   useEffect(() => {
-    saveWorkspaceStage2DefaultsRef.current = onSaveWorkspaceStage2Defaults;
-  }, [onSaveWorkspaceStage2Defaults]);
+    saveWorkspaceStage2DefaultsRef.current = saveWorkspaceStage2DefaultsWithNotice;
+  }, [saveWorkspaceStage2DefaultsWithNotice]);
 
   useEffect(() => {
     return () => {
@@ -208,13 +387,15 @@ export function ChannelManager({
           window.clearTimeout(timerId);
         }
       });
+      onDismissGlobalToast?.("channel-manager-save");
     };
-  }, []);
+  }, [onDismissGlobalToast]);
 
   useEffect(() => {
     if (!open) {
       setManagerSelectionId(null);
       setTab("brand");
+      onDismissGlobalToast?.("channel-manager-save");
       return;
     }
 
@@ -228,13 +409,72 @@ export function ChannelManager({
     }
 
     setManagerSelectionId(managerTargets[0]?.id ?? null);
-  }, [open, activeChannelId, managerSelectionId, managerTargets]);
+  }, [open, activeChannelId, managerSelectionId, managerTargets, onDismissGlobalToast]);
+
+  useEffect(() => {
+    onDismissGlobalToast?.("channel-manager-save");
+  }, [managerSelectionId, onDismissGlobalToast]);
 
   useEffect(() => {
     if (isWorkspaceDefaultsSelection && tab !== "stage2") {
       setTab("stage2");
     }
   }, [isWorkspaceDefaultsSelection, tab]);
+
+  useEffect(() => {
+    if (!activeChannel || isWorkspaceDefaultsSelection) {
+      setStyleProfileDraft(null);
+      setStyleProfileActiveRunId(null);
+      setStyleProfileIsDiscovering(false);
+      setStyleProfileDiscoveryError(null);
+      setStyleProfileSaveState({ status: "idle", message: null });
+      return;
+    }
+
+    const fallbackDraft = createChannelStyleProfileEditorDraft(activeChannel.stage2StyleProfile);
+    if (!styleProfileStorageKey || typeof window === "undefined") {
+      setStyleProfileDraft(fallbackDraft);
+      setStyleProfileActiveRunId(null);
+      setStyleProfileIsDiscovering(false);
+      setStyleProfileDiscoveryError(null);
+      setStyleProfileSaveState({ status: "idle", message: null });
+      return;
+    }
+
+    try {
+      const persisted = normalizePersistedChannelStyleProfileEditorState(
+        JSON.parse(window.localStorage.getItem(styleProfileStorageKey) ?? "null"),
+        activeChannel.stage2StyleProfile
+      );
+      setStyleProfileDraft(persisted?.draft ?? fallbackDraft);
+      setStyleProfileActiveRunId(persisted?.activeStyleDiscoveryRunId ?? null);
+    } catch {
+      setStyleProfileDraft(fallbackDraft);
+      setStyleProfileActiveRunId(null);
+    } finally {
+      setStyleProfileIsDiscovering(false);
+      setStyleProfileDiscoveryError(null);
+      setStyleProfileSaveState({ status: "idle", message: null });
+    }
+  }, [activeChannel?.id, isWorkspaceDefaultsSelection, styleProfileStorageKey]);
+
+  useEffect(() => {
+    if (!styleProfileStorageKey || !styleProfileDraft || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        styleProfileStorageKey,
+        JSON.stringify({
+          draft: styleProfileDraft,
+          activeStyleDiscoveryRunId: styleProfileActiveRunId
+        })
+      );
+    } catch {
+      // Persist editor draft best-effort only.
+    }
+  }, [styleProfileActiveRunId, styleProfileDraft, styleProfileStorageKey]);
 
   const setAutosaveFeedback = (
     scope: AutosaveScope,
@@ -631,6 +871,181 @@ export function ChannelManager({
     };
   }, [activeChannel, canEditSetup, templateId]);
 
+  useEffect(() => {
+    if (!styleProfileActiveRunId) {
+      setStyleProfileIsDiscovering(false);
+      return;
+    }
+
+    let cancelled = false;
+    let timer = 0;
+
+    const scheduleNextPoll = (delayMs: number) => {
+      if (cancelled) {
+        return;
+      }
+      timer = window.setTimeout(() => {
+        void poll();
+      }, delayMs);
+    };
+
+    const poll = async (): Promise<void> => {
+      try {
+        const run = await onGetStyleDiscoveryRun(styleProfileActiveRunId);
+        if (cancelled) {
+          return;
+        }
+        if (run.status === "completed" && run.result) {
+          setStyleProfileDraft((current) =>
+            current
+              ? applyChannelStyleProfileEditorDiscoveryResult(
+                  current,
+                  run.result as Stage2StyleProfile
+                )
+              : current
+          );
+          setStyleProfileIsDiscovering(false);
+          setStyleProfileDiscoveryError(null);
+          setStyleProfileActiveRunId(null);
+          return;
+        }
+        if (run.status === "failed") {
+          setStyleProfileIsDiscovering(false);
+          setStyleProfileDiscoveryError(run.errorMessage ?? "Не удалось обновить пул стилей.");
+          setStyleProfileActiveRunId(null);
+          return;
+        }
+        setStyleProfileIsDiscovering(true);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setStyleProfileIsDiscovering(true);
+        scheduleNextPoll(document.hidden ? 2500 : 900);
+        return;
+      }
+
+      scheduleNextPoll(document.hidden ? 2500 : 900);
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [onGetStyleDiscoveryRun, styleProfileActiveRunId]);
+
+  const handleStartStyleProfileDiscovery = async (): Promise<void> => {
+    if (!activeChannel || !styleProfileDraft) {
+      return;
+    }
+
+    const referenceLinks = parseChannelOnboardingReferenceLinks(styleProfileDraft.referenceLinksText);
+    if (referenceLinks.length < 10) {
+      setStyleProfileDiscoveryError("Добавьте минимум 10 поддерживаемых ссылок перед пересборкой.");
+      return;
+    }
+
+    setStyleProfileDiscoveryError(null);
+    setStyleProfileIsDiscovering(true);
+    try {
+      const run = await onStartStyleDiscovery({
+        name: activeChannel.name,
+        username: activeChannel.username,
+        stage2HardConstraints,
+        referenceLinks
+      });
+      setStyleProfileActiveRunId(run.runId);
+    } catch (error) {
+      setStyleProfileIsDiscovering(false);
+      setStyleProfileDiscoveryError(
+        error instanceof Error ? error.message : "Не удалось обновить пул стилей."
+      );
+    }
+  };
+
+  const handleDiscardStyleProfileDraft = (): void => {
+    if (!activeChannel) {
+      return;
+    }
+    setStyleProfileDraft(createChannelStyleProfileEditorDraft(activeChannel.stage2StyleProfile));
+    setStyleProfileActiveRunId(null);
+    setStyleProfileIsDiscovering(false);
+    setStyleProfileDiscoveryError(null);
+    setStyleProfileSaveState({ status: "idle", message: null });
+    if (styleProfileStorageKey && typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(styleProfileStorageKey);
+      } catch {
+        // Ignore best-effort cleanup failures.
+      }
+    }
+  };
+
+  const handleSaveStyleProfileDraft = async (): Promise<void> => {
+    if (!activeChannel || !styleProfileDraft) {
+      return;
+    }
+    if (getChannelStyleProfileEditorDiscoveryStatus(styleProfileDraft) === "stale") {
+      setStyleProfileSaveState({
+        status: "error",
+        message: "Сначала обновите пул стилей под текущий набор референсов."
+      });
+      return;
+    }
+
+    const nextStyleProfile = buildChannelStyleProfileFromEditorDraft(styleProfileDraft);
+    setStyleProfileSaveState({ status: "saving", message: "Сохраняем стиль канала…" });
+    try {
+      await saveChannelRef.current(activeChannel.id, {
+        stage2StyleProfile: nextStyleProfile
+      });
+      setStyleProfileDraft(createChannelStyleProfileEditorDraft(nextStyleProfile));
+      setStyleProfileActiveRunId(null);
+      setStyleProfileDiscoveryError(null);
+      setStyleProfileSaveState({ status: "saved", message: "Стиль канала сохранён." });
+      if (styleProfileStorageKey && typeof window !== "undefined") {
+        try {
+          window.localStorage.removeItem(styleProfileStorageKey);
+        } catch {
+          // Ignore best-effort cleanup failures.
+        }
+      }
+    } catch (error) {
+      setStyleProfileSaveState({
+        status: "error",
+        message: error instanceof Error ? error.message : "Не удалось сохранить стиль канала."
+      });
+    }
+  };
+
+  const normalizeComparableStyleProfile = (profile: Stage2StyleProfile): Stage2StyleProfile =>
+    normalizeStage2StyleProfile({
+      ...profile,
+      updatedAt: null
+    });
+
+  const styleProfileStatus = styleProfileDraft
+    ? getChannelStyleProfileEditorDiscoveryStatus(styleProfileDraft)
+    : "missing";
+  const styleProfileDraftHasChanges = Boolean(
+    activeChannel &&
+      styleProfileDraft &&
+      (
+        styleProfileDraft.referenceLinksText !==
+          createChannelStyleProfileEditorDraft(activeChannel.stage2StyleProfile).referenceLinksText ||
+        stringifyStage2StyleProfile(
+          normalizeComparableStyleProfile(buildChannelStyleProfileFromEditorDraft(styleProfileDraft))
+        ) !==
+          stringifyStage2StyleProfile(
+            normalizeComparableStyleProfile(
+              normalizeStage2StyleProfile(activeChannel.stage2StyleProfile)
+            )
+          )
+      )
+  );
+
   if (!open || !mounted) {
     return null;
   }
@@ -897,7 +1312,11 @@ export function ChannelManager({
                     className="text-input"
                     value={activeChannel?.avatarAssetId ?? ""}
                     onChange={(event) =>
-                        activeChannel && onSaveChannel(activeChannel.id, { avatarAssetId: event.target.value || null })
+                      activeChannel
+                        ? triggerManagedChannelSave(activeChannel.id, {
+                            avatarAssetId: event.target.value || null
+                          })
+                        : undefined
                     }
                   >
                     <option value="">Без аватара</option>
@@ -928,6 +1347,54 @@ export function ChannelManager({
                 canEditChannelExamples={canEditChannelExamples}
                 activeExamplesPreview={activeExamplesPreview}
                 channelStyleProfile={activeChannel?.stage2StyleProfile ?? null}
+                channelStyleProfileDraft={styleProfileDraft}
+                channelStyleProfileStatus={styleProfileStatus}
+                channelStyleProfileDirty={styleProfileDraftHasChanges}
+                channelStyleProfileFeedbackHistory={feedbackHistory}
+                channelStyleProfileFeedbackHistoryLoading={feedbackHistoryLoading}
+                onDeleteChannelFeedbackEvent={onDeleteFeedbackEvent}
+                deletingChannelFeedbackEventId={deletingFeedbackEventId}
+                channelEditorialMemory={editorialMemory}
+                canEditChannelStyleProfile={canEditSetup}
+                channelStyleProfileDiscovering={styleProfileIsDiscovering}
+                channelStyleProfileDiscoveryError={styleProfileDiscoveryError}
+                channelStyleProfileSaveState={styleProfileSaveState}
+                updateChannelStyleProfileReferenceLinks={(value) => {
+                  setStyleProfileDiscoveryError(null);
+                  setStyleProfileSaveState({ status: "idle", message: null });
+                  setStyleProfileDraft((current) =>
+                    current ? updateChannelStyleProfileEditorReferenceLinks(current, value) : current
+                  );
+                }}
+                updateChannelStyleProfileExplorationShare={(value) => {
+                  setStyleProfileSaveState({ status: "idle", message: null });
+                  setStyleProfileDraft((current) =>
+                    current ? setChannelStyleProfileEditorExplorationShare(current, value) : current
+                  );
+                }}
+                toggleChannelStyleProfileDirectionSelection={(directionId) => {
+                  setStyleProfileSaveState({ status: "idle", message: null });
+                  setStyleProfileDraft((current) =>
+                    current
+                      ? toggleChannelStyleProfileEditorDirectionSelection(current, directionId)
+                      : current
+                  );
+                }}
+                selectAllChannelStyleProfileDirections={() => {
+                  setStyleProfileSaveState({ status: "idle", message: null });
+                  setStyleProfileDraft((current) =>
+                    current ? selectAllChannelStyleProfileEditorDirections(current) : current
+                  );
+                }}
+                clearChannelStyleProfileDirectionSelection={() => {
+                  setStyleProfileSaveState({ status: "idle", message: null });
+                  setStyleProfileDraft((current) =>
+                    current ? clearChannelStyleProfileEditorDirectionSelection(current) : current
+                  );
+                }}
+                startChannelStyleProfileDiscovery={handleStartStyleProfileDiscovery}
+                saveChannelStyleProfileDraft={handleSaveStyleProfileDraft}
+                discardChannelStyleProfileDraft={handleDiscardStyleProfileDraft}
                 customExamplesJson={customExamplesJson}
                 customExamplesError={customExamplesError}
                 updateWorkspaceExamplesJson={updateWorkspaceExamplesJson}
@@ -963,9 +1430,11 @@ export function ChannelManager({
                       className="text-input"
                       value={activeChannel?.defaultBackgroundAssetId ?? ""}
                       onChange={(event) =>
-                        activeChannel && onSaveChannel(activeChannel.id, {
-                          defaultBackgroundAssetId: event.target.value || null
-                        })
+                        activeChannel
+                          ? triggerManagedChannelSave(activeChannel.id, {
+                              defaultBackgroundAssetId: event.target.value || null
+                            })
+                          : undefined
                       }
                     >
                       <option value="">None</option>
@@ -982,9 +1451,11 @@ export function ChannelManager({
                       className="text-input"
                       value={activeChannel?.defaultMusicAssetId ?? ""}
                       onChange={(event) =>
-                        activeChannel && onSaveChannel(activeChannel.id, {
-                          defaultMusicAssetId: event.target.value || null
-                        })
+                        activeChannel
+                          ? triggerManagedChannelSave(activeChannel.id, {
+                              defaultMusicAssetId: event.target.value || null
+                            })
+                          : undefined
                       }
                     >
                       <option value="">None</option>
@@ -1049,9 +1520,13 @@ export function ChannelManager({
                             type="button"
                             className="btn btn-ghost"
                             onClick={() =>
-                            activeChannel && onSaveChannel(activeChannel.id, { defaultBackgroundAssetId: asset.id })
-                          }
-                        >
+                              activeChannel
+                                ? triggerManagedChannelSave(activeChannel.id, {
+                                    defaultBackgroundAssetId: asset.id
+                                  })
+                                : undefined
+                            }
+                          >
                             Сделать по умолчанию
                           </button>
                           <button type="button" className="btn btn-ghost" onClick={() => onDeleteAsset(asset.id)}>
@@ -1072,7 +1547,13 @@ export function ChannelManager({
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            onClick={() => activeChannel && onSaveChannel(activeChannel.id, { defaultMusicAssetId: asset.id })}
+                            onClick={() =>
+                              activeChannel
+                                ? triggerManagedChannelSave(activeChannel.id, {
+                                    defaultMusicAssetId: asset.id
+                                  })
+                                : undefined
+                            }
                           >
                             Сделать по умолчанию
                           </button>
@@ -1094,7 +1575,13 @@ export function ChannelManager({
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            onClick={() => activeChannel && onSaveChannel(activeChannel.id, { avatarAssetId: asset.id })}
+                            onClick={() =>
+                              activeChannel
+                                ? triggerManagedChannelSave(activeChannel.id, {
+                                    avatarAssetId: asset.id
+                                  })
+                                : undefined
+                            }
                           >
                             Сделать аватаром
                           </button>

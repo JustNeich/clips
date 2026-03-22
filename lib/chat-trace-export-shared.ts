@@ -1,4 +1,4 @@
-export const TRACE_EXPORT_VERSION = "clip-trace-export-v1";
+export const TRACE_EXPORT_VERSION = "clip-trace-export-v2";
 export const MAX_EXPORTED_COMMENTS = 15;
 
 export function buildChatTraceExportFileName(input: {

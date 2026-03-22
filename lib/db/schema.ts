@@ -225,6 +225,8 @@ CREATE TABLE IF NOT EXISTS channel_editorial_feedback_events (
   chat_id TEXT,
   stage2_run_id TEXT,
   kind TEXT NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'option',
+  note_mode TEXT NOT NULL DEFAULT 'soft_preference',
   note TEXT,
   option_snapshot_json TEXT,
   created_at TEXT NOT NULL,
