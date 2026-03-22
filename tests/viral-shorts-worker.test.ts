@@ -90,6 +90,7 @@ import { fetchTranscriptFromYtDlpInfo } from "../lib/youtube-captions";
 import { YouTubeCommentsApiError } from "../lib/youtube-comments";
 import { buildLimitedCommentsExtractorArgs } from "../lib/ytdlp";
 import { validateStage2Output } from "../lib/stage2-output-validation";
+import { normalizeCodexReasoningEffort } from "../lib/codex-runner";
 import {
   buildAnalyzerPrompt,
   buildCriticPrompt,
@@ -1079,6 +1080,15 @@ test("workspace prompt defaults persist as the new default source for stage prom
   });
 });
 
+test("codex runner normalizes stage reasoning effort aliases to CLI-supported values", () => {
+  assert.equal(normalizeCodexReasoningEffort("x-high"), "xhigh");
+  assert.equal(normalizeCodexReasoningEffort("extra-high"), "xhigh");
+  assert.equal(normalizeCodexReasoningEffort("high"), "high");
+  assert.equal(normalizeCodexReasoningEffort("  medium  "), "medium");
+  assert.equal(normalizeCodexReasoningEffort(""), null);
+  assert.equal(normalizeCodexReasoningEffort(null), null);
+});
+
 test("workspace hard constraints persist as owner defaults", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");
@@ -1524,6 +1534,7 @@ test("channel Stage 2 tab exposes post-onboarding style profile editing and feed
         stage2RunId: "run_1",
         kind: "less_like_this",
         scope: "bottom",
+        noteMode: "soft_preference",
         note: "Низ нужно суше.",
         optionSnapshot: {
           candidateId: "cand_1",
@@ -1545,11 +1556,13 @@ test("channel Stage 2 tab exposes post-onboarding style profile editing and feed
       windowSize: 30,
       recentFeedbackCount: 1,
       recentSelectionCount: 0,
+      activeHardRuleCount: 0,
       explorationShare: 0.3,
       directionScores: [],
       angleScores: [],
       preferredTextCues: [],
       discouragedTextCues: [],
+      hardRuleNotes: [],
       recentNotes: ["Низ нужно суше."],
       normalizedAxes: {
         humor: 0.5,

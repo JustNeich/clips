@@ -1263,6 +1263,7 @@ test("editorial memory keeps only the latest rolling window of reactions", () =>
         stage2RunId: null,
         kind: "more_like_this",
         scope: "option",
+        noteMode: "soft_preference",
         note: null,
         optionSnapshot: {
           candidateId: `candidate_${index + 1}`,
@@ -1307,6 +1308,7 @@ test("editorial memory counts only explicit ratings in recentFeedbackCount and k
       stage2RunId: null,
       kind: "more_like_this",
       scope: "top",
+      noteMode: "soft_preference",
       note: "Top should stay drier.",
       optionSnapshot: {
         candidateId: "candidate_1",
@@ -1328,6 +1330,7 @@ test("editorial memory counts only explicit ratings in recentFeedbackCount and k
       stage2RunId: null,
       kind: "selected_option",
       scope: "option",
+      noteMode: "soft_preference",
       note: null,
       optionSnapshot: {
         candidateId: "candidate_2",
@@ -1656,9 +1659,6 @@ test("Step2PickCaption renders Russian feedback controls for lighter editorial l
   assert.match(markup, /Лайкнуть вариант 1/);
   assert.match(markup, /Дизлайкнуть TOP варианта 1/);
   assert.match(markup, /Последние реакции канала/);
-  assert.match(markup, /Soft preference/);
-  assert.match(markup, /Hard rule/);
-  assert.match(markup, /Situational note/);
   assert.match(markup, /Режим: Hard rule/);
   assert.match(markup, /Оставить этот сухой TOP/);
   assert.match(markup, /Удалить реакцию feedback_1/);

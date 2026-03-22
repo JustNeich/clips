@@ -25,6 +25,20 @@ type RunCodexExecResult = {
   stderr: string;
 };
 
+export function normalizeCodexReasoningEffort(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "x-high" || normalized === "extra-high") {
+    return "xhigh";
+  }
+  return normalized;
+}
+
 export async function getCodexLoginStatus(
   codexHome: string
 ): Promise<{ loggedIn: boolean; raw: string }> {
@@ -99,8 +113,9 @@ export async function runCodexExec(input: RunCodexExecInput): Promise<RunCodexEx
   if (input.model && input.model.trim()) {
     args.push("--model", input.model.trim());
   }
-  if (input.reasoningEffort && input.reasoningEffort.trim()) {
-    args.push("-c", `model_reasoning_effort="${input.reasoningEffort.trim()}"`);
+  const normalizedReasoningEffort = normalizeCodexReasoningEffort(input.reasoningEffort);
+  if (normalizedReasoningEffort) {
+    args.push("-c", `model_reasoning_effort="${normalizedReasoningEffort}"`);
   }
 
   for (const imagePath of input.imagePaths) {
