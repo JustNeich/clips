@@ -2362,16 +2362,28 @@ type ShortlistStats = {
   visibleCount: number;
   repairedCount: number;
   droppedAfterValidationCount: number;
+  invalidReasonSummary?: string | null;
 };
 
 const REQUIRED_FINAL_SHORTLIST_COUNT = 5;
+const MAX_REWRITER_CANDIDATE_COUNT = 8;
+const MAX_STRICT_REWRITER_CANDIDATE_COUNT = 12;
+
+function usesStrictShortlistConstraintWindow(constraints: Stage2HardConstraints): boolean {
+  return (
+    constraints.topLengthMin >= 120 ||
+    constraints.bottomLengthMin >= 120 ||
+    constraints.topLengthMax - constraints.topLengthMin <= 24 ||
+    constraints.bottomLengthMax - constraints.bottomLengthMin <= 16
+  );
+}
 
 function buildShortlistFailureMessage(stats: ShortlistStats): string {
-  return (
+  const base =
     `Stage 2 final shortlist could not produce ${stats.targetCount} valid options after constraint-safe ` +
     `repair and reserve backfill. Only ${stats.visibleCount}/${stats.targetCount} visible option(s) remained ` +
-    `from ${stats.validatedCount} validated candidate(s) and ${stats.requestedCount} requested finalist pick(s).`
-  );
+    `from ${stats.validatedCount} validated candidate(s) and ${stats.requestedCount} requested finalist pick(s).`;
+  return stats.invalidReasonSummary ? `${base} ${stats.invalidReasonSummary}` : base;
 }
 
 function assertCompletedShortlistContract(input: {
@@ -2431,6 +2443,85 @@ function computeShortlistSelectionScore(entry: {
   return Number(
     (entry.criticTotal + commentCarryBonus + dominantCueBonus - genericTailPenalty - repairedPenalty).toFixed(3)
   );
+}
+
+function buildRewriterCandidatePool(input: {
+  candidates: CandidateCaption[];
+  criticScores: CriticScore[];
+  constraints: Stage2HardConstraints;
+}): {
+  candidates: CandidateCaption[];
+  criticApprovedCount: number;
+  reserveBackfillCount: number;
+} {
+  const byId = new Map(input.candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const criticApprovedIds = input.criticScores
+    .filter((score) => score.keep && byId.has(score.candidateId))
+    .map((score) => score.candidateId);
+
+  if (criticApprovedIds.length === 0) {
+    return {
+      candidates: input.candidates,
+      criticApprovedCount: 0,
+      reserveBackfillCount: 0
+    };
+  }
+
+  const selectedIds: string[] = [];
+  const seen = new Set<string>();
+  const pushCandidateId = (candidateId: string) => {
+    if (!candidateId || seen.has(candidateId) || !byId.has(candidateId)) {
+      return;
+    }
+    seen.add(candidateId);
+    selectedIds.push(candidateId);
+  };
+
+  for (const candidateId of criticApprovedIds.slice(0, MAX_REWRITER_CANDIDATE_COUNT)) {
+    pushCandidateId(candidateId);
+  }
+
+  const maxCandidateCount = usesStrictShortlistConstraintWindow(input.constraints)
+    ? MAX_STRICT_REWRITER_CANDIDATE_COUNT
+    : MAX_REWRITER_CANDIDATE_COUNT;
+  const targetCount = Math.min(
+    maxCandidateCount,
+    Math.min(
+      input.candidates.length,
+      Math.max(
+        REQUIRED_FINAL_SHORTLIST_COUNT,
+        selectedIds.length,
+        usesStrictShortlistConstraintWindow(input.constraints) ? MAX_STRICT_REWRITER_CANDIDATE_COUNT : selectedIds.length
+      )
+    )
+  );
+
+  if (selectedIds.length < targetCount) {
+    const reserveScores = [...input.criticScores]
+      .filter((score) => !score.keep && byId.has(score.candidateId))
+      .sort((left, right) => right.total - left.total);
+    for (const score of reserveScores) {
+      if (selectedIds.length >= targetCount) {
+        break;
+      }
+      pushCandidateId(score.candidateId);
+    }
+  }
+
+  if (selectedIds.length < targetCount) {
+    for (const candidate of input.candidates) {
+      if (selectedIds.length >= targetCount) {
+        break;
+      }
+      pushCandidateId(candidate.candidateId);
+    }
+  }
+
+  return {
+    candidates: selectedIds.map((candidateId) => byId.get(candidateId)!),
+    criticApprovedCount: criticApprovedIds.length,
+    reserveBackfillCount: Math.max(0, selectedIds.length - Math.min(criticApprovedIds.length, MAX_REWRITER_CANDIDATE_COUNT))
+  };
 }
 
 function mergeRewriterCandidates(inputCandidates: CandidateCaption[], rewrites: CandidateCaption[]): {
@@ -2796,7 +2887,7 @@ function buildShortlist(input: {
   const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
   const scoreMap = new Map(input.criticScores.map((score) => [score.candidateId, score.total]));
   const byId = new Map(
-    [...input.rewrittenCandidates, ...input.fallbackCandidates].map((candidate) => [candidate.candidateId, candidate])
+    [...input.fallbackCandidates, ...input.rewrittenCandidates].map((candidate) => [candidate.candidateId, candidate])
   );
   const orderedIds = [
     ...input.finalSelector.finalCandidates,
@@ -2842,6 +2933,38 @@ function buildShortlist(input: {
       };
     });
   const repairedPool = repairedEntries.filter((entry) => entry.valid && entry.constraintCheck.passed);
+  const invalidEntries = repairedEntries.filter((entry) => !(entry.valid && entry.constraintCheck.passed));
+  const invalidReasonParts = [
+    invalidEntries.filter((entry) => entry.candidate.top.length < input.constraints.topLengthMin).length > 0
+      ? `TOP short: ${invalidEntries.filter((entry) => entry.candidate.top.length < input.constraints.topLengthMin).length}`
+      : null,
+    invalidEntries.filter((entry) => entry.candidate.top.length > input.constraints.topLengthMax).length > 0
+      ? `TOP long: ${invalidEntries.filter((entry) => entry.candidate.top.length > input.constraints.topLengthMax).length}`
+      : null,
+    invalidEntries.filter((entry) => entry.candidate.bottom.length < input.constraints.bottomLengthMin).length > 0
+      ? `BOTTOM short: ${invalidEntries.filter((entry) => entry.candidate.bottom.length < input.constraints.bottomLengthMin).length}`
+      : null,
+    invalidEntries.filter((entry) => entry.candidate.bottom.length > input.constraints.bottomLengthMax).length > 0
+      ? `BOTTOM long: ${invalidEntries.filter((entry) => entry.candidate.bottom.length > input.constraints.bottomLengthMax).length}`
+      : null,
+    invalidEntries.filter((entry) =>
+      entry.constraintCheck.issues.some((issue) => /banned words/i.test(issue))
+    ).length > 0
+      ? `banned words: ${invalidEntries.filter((entry) =>
+          entry.constraintCheck.issues.some((issue) => /banned words/i.test(issue))
+        ).length}`
+      : null,
+    invalidEntries.filter((entry) =>
+      entry.constraintCheck.issues.some((issue) => /banned opener/i.test(issue))
+    ).length > 0
+      ? `banned openers: ${invalidEntries.filter((entry) =>
+          entry.constraintCheck.issues.some((issue) => /banned opener/i.test(issue))
+        ).length}`
+      : null,
+    invalidEntries.filter((entry) => hasBrokenSentencePart(entry.candidate.top) || hasBrokenSentencePart(entry.candidate.bottom)).length > 0
+      ? `broken endings: ${invalidEntries.filter((entry) => hasBrokenSentencePart(entry.candidate.top) || hasBrokenSentencePart(entry.candidate.bottom)).length}`
+      : null
+  ].filter((value): value is string => Boolean(value));
 
   const preferredIds = new Set(input.finalSelector.finalCandidates);
   const protectedFinalPickId = input.finalSelector.finalPick;
@@ -2935,7 +3058,11 @@ function buildShortlist(input: {
       validatedCount: repairedPool.length,
       visibleCount: entries.length,
       repairedCount: repairedEntries.filter((entry) => entry.constraintCheck.repaired).length,
-      droppedAfterValidationCount: Math.max(0, repairedEntries.length - repairedPool.length)
+      droppedAfterValidationCount: Math.max(0, repairedEntries.length - repairedPool.length),
+      invalidReasonSummary:
+        invalidReasonParts.length > 0
+          ? `Likely invalidation mix: ${invalidReasonParts.join(", ")}.`
+          : null
     }
   };
 }
@@ -3681,15 +3808,12 @@ export class ViralShortsWorkerService {
       });
     }
 
-    const keptIds = new Set(
-      criticScores
-        .filter((score) => score.keep)
-        .slice(0, 8)
-        .map((score) => score.candidateId)
-    );
-    const topCandidates = candidates.filter((candidate) =>
-      keptIds.size > 0 ? keptIds.has(candidate.candidateId) : true
-    );
+    const rewriterCandidatePool = buildRewriterCandidatePool({
+      candidates,
+      criticScores,
+      constraints: channelConfig.hardConstraints
+    });
+    const topCandidates = rewriterCandidatePool.candidates;
 
     let rewrittenCandidates = topCandidates;
     let appliedRewriteCount = 0;
@@ -3730,7 +3854,10 @@ export class ViralShortsWorkerService {
         durationMs: Date.now() - rewriterStartedAt,
         promptChars: rewriterPrompt.length,
         reasoningEffort: rewriterReasoningEffort,
-        detail: `${topCandidates.length} finalists sent to rewrite, ${appliedRewriteCount} usable rewrites applied.`
+        detail:
+          rewriterCandidatePool.reserveBackfillCount > 0
+            ? `${topCandidates.length} finalists sent to rewrite (${rewriterCandidatePool.criticApprovedCount} critic-approved + ${rewriterCandidatePool.reserveBackfillCount} reserve), ${appliedRewriteCount} usable rewrites applied.`
+            : `${topCandidates.length} finalists sent to rewrite, ${appliedRewriteCount} usable rewrites applied.`
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Rewriter fallback used.";

@@ -13,21 +13,77 @@ export function pickPreferredStage2RunId(
   runs: Stage2RunSummary[],
   preferredRunId?: string | null
 ): string | null {
-  if (preferredRunId && runs.some((run) => run.runId === preferredRunId)) {
-    return preferredRunId;
+  const getRunRecencyMs = (run: Stage2RunSummary): number => {
+    const timestamps = [run.updatedAt, run.finishedAt, run.startedAt, run.createdAt];
+    for (const value of timestamps) {
+      if (!value) {
+        continue;
+      }
+      const parsed = new Date(value).getTime();
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return Number.NEGATIVE_INFINITY;
+  };
+
+  const pickMostRecent = (
+    predicate: (run: Stage2RunSummary) => boolean
+  ): Stage2RunSummary | null => {
+    let best: Stage2RunSummary | null = null;
+    let bestTs = Number.NEGATIVE_INFINITY;
+    for (const run of runs) {
+      if (!predicate(run)) {
+        continue;
+      }
+      const ts = getRunRecencyMs(run);
+      if (!best || ts > bestTs) {
+        best = run;
+        bestTs = ts;
+      }
+    }
+    return best;
+  };
+
+  const preferredRun =
+    preferredRunId && preferredRunId.trim()
+      ? runs.find((run) => run.runId === preferredRunId.trim()) ?? null
+      : null;
+
+  if (preferredRun) {
+    if (preferredRun.status === "failed") {
+      const active = pickMostRecent((run) => isStage2RunActive(run));
+      if (active) {
+        return active.runId;
+      }
+      const completed = pickMostRecent((run) => run.status === "completed" || run.hasResult);
+      if (completed) {
+        const preferredTs = getRunRecencyMs(preferredRun);
+        const completedTs = getRunRecencyMs(completed);
+        if (completedTs > preferredTs) {
+          return completed.runId;
+        }
+      }
+    }
+    return preferredRun.runId;
   }
 
-  const active = runs.find((run) => isStage2RunActive(run));
+  const active = pickMostRecent((run) => isStage2RunActive(run));
   if (active) {
     return active.runId;
   }
 
-  const failed = runs.find((run) => run.status === "failed");
+  const completed = pickMostRecent((run) => run.status === "completed" || run.hasResult);
+  if (completed) {
+    return completed.runId;
+  }
+
+  const failed = pickMostRecent((run) => run.status === "failed");
   if (failed) {
     return failed.runId;
   }
 
-  return runs[0]?.runId ?? null;
+  return pickMostRecent(() => true)?.runId ?? null;
 }
 
 export function getStage2ElapsedMs(

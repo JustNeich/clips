@@ -535,6 +535,8 @@ Preferred structures when natural:
 
 TOP rules:
 - Use provided hard constraints if present; otherwise target 175-180 characters.
+- Candidates outside the exact TOP window are dropped before the final shortlist. Near misses still fail.
+- If the channel uses unusually long or narrow windows, count characters before finalizing instead of trusting your ear.
 - Single line only.
 - Scene-setting.
 - Concrete.
@@ -543,6 +545,8 @@ TOP rules:
 
 BOTTOM rules:
 - Use provided hard constraints if present; otherwise target 140-150 characters.
+- Candidates outside the exact BOTTOM window are dropped before the final shortlist. Near misses still fail.
+- If the channel uses unusually long or narrow windows, count characters before finalizing instead of trusting your ear.
 - Single line only.
 - Must carry human reaction energy.
 - Must not merely repeat or explain the TOP.
@@ -568,6 +572,7 @@ BOTTOM rules:
 - If a continuation could fit five unrelated videos, it is too generic for this batch.
 - Never end the core clause on a reporting or bridge verb such as says, means, proves, shows, or tells and then try to save the line with filler.
 - If a line would need generic filler to hit length, rewrite the thought earlier instead of padding the ending.
+- The system will not rescue a too-short line with hidden filler. If the idea is short, expand it with one more clip-specific clause.
 
 Task:
 Write 20 candidates.
@@ -664,6 +669,7 @@ Automatic penalties:
 - candidate borrows the wrong market, wrong nouns, or wrong trigger logic from weak examples
 - candidate sounds polished but semantically belongs to another clip family
 - length misses the target range
+- if the channel is using unusually strict exact-length windows, penalize terse candidates that are unlikely to survive validation even if the idea is otherwise strong
 - the line is valid but emotionally dead
 - the dominant audience shorthand from high-like comments was available, clip-safe, and would have sharpened the line, but the candidate sanded it down into generic wording anyway
 - analyzerOutput/commentCarryProfile showed strong audience shorthand, but the whole visible batch still avoids using it in any natural way
@@ -737,6 +743,8 @@ Non-negotiable:
 - If the batch contains a clean comment-native candidate and a similarly strong sanitized generic candidate, prefer the comment-native one.
 - Never leave a sentence ending on a reporting or bridge verb like says, means, proves, shows, or tells.
 - If cleanup makes a line too short, rewrite the idea earlier in the sentence instead of rescuing it with a generic tail.
+- If the channel uses unusually strict exact-length windows, count characters and land inside them exactly. Near misses still get dropped.
+- The system will not auto-pad a short rewrite for you. Expand with one more clip-specific clause or choose a fuller phrasing.
 
 For every rewritten candidate, provide:
 - English TOP in 'top'

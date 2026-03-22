@@ -19,6 +19,7 @@ import {
   Stage2ReasoningEffort
 } from "../stage2-prompt-specs";
 import { buildStage2LearningPromptContext } from "../stage2-channel-learning";
+import { buildStage2Spec } from "../stage2-spec";
 
 const BASE_STYLE_RULES = [
   "Role:",
@@ -175,12 +176,29 @@ function buildChannelPayload(
   channelConfig: Stage2RuntimeChannelConfig,
   learningDetail: "minimal" | "compact" = "compact"
 ) {
+  const strictConstraintMode =
+    channelConfig.hardConstraints.topLengthMin >= 120 ||
+    channelConfig.hardConstraints.bottomLengthMin >= 120 ||
+    channelConfig.hardConstraints.topLengthMax - channelConfig.hardConstraints.topLengthMin <= 24 ||
+    channelConfig.hardConstraints.bottomLengthMax - channelConfig.hardConstraints.bottomLengthMin <= 16;
   return {
     channel: channelConfig.name,
     channelId: channelConfig.channelId,
     username: channelConfig.username,
     examplesSource: channelConfig.examplesSource,
     constraints: channelConfig.hardConstraints,
+    constraintTargets: {
+      ...buildStage2Spec({
+        name: "Stage 2",
+        outputSections: ["TOP", "BOTTOM"],
+        hardConstraints: channelConfig.hardConstraints,
+        enforcedVia: "Candidates outside these exact ranges are dropped before the final shortlist."
+      }),
+      strictConstraintMode,
+      survivalRule: strictConstraintMode
+        ? "This channel uses unusually strict exact-length windows. Near misses still die; count characters before finalizing each line."
+        : "Use the exact hard-constraint windows above. Near misses still fail validation."
+    },
     channelLearning: buildStage2LearningPromptContext({
       profile: channelConfig.styleProfile,
       editorialMemory: channelConfig.editorialMemory,

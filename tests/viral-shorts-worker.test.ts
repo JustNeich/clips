@@ -2973,7 +2973,7 @@ test("repair trims current trace-style broken endings instead of leaving chopped
   }
 });
 
-test("rewriter telemetry stays consistent with the critic-approved candidate pool", async () => {
+test("rewriter telemetry truthfully reports reserve finalists when critic-approved pool is too narrow", async () => {
   const writerCandidates = Array.from({ length: 8 }, (_, index) =>
     makeCandidate(`cand_${index + 1}`, index < 4 ? "shared_experience" : "payoff_reveal", index + 1)
   );
@@ -2986,10 +2986,10 @@ test("rewriter telemetry stays consistent with the critic-approved candidate poo
   }));
   const noisyRewriterResponse = writerCandidates.map((candidate, index) => ({
     ...candidate,
-    top: `Noisy rewrite ${index + 1}`,
-    bottom: `"Noisy ${index + 1}" bottom`,
-    top_ru: `ru noisy ${index + 1}`,
-    bottom_ru: `ru noisy ${index + 1}`
+    top: makeCandidate(candidate.candidate_id, candidate.angle, index + 1).top,
+    bottom: makeCandidate(candidate.candidate_id, candidate.angle, index + 1).bottom,
+    top_ru: makeCandidate(candidate.candidate_id, candidate.angle, index + 1).top_ru,
+    bottom_ru: makeCandidate(candidate.candidate_id, candidate.angle, index + 1).bottom_ru
   }));
 
   const { result, progressEvents } = await runSuccessfulPipeline({
@@ -3004,14 +3004,121 @@ test("rewriter telemetry stays consistent with the critic-approved candidate poo
 
   assertFinalShortlistContract(result);
   assert.equal(criticEvent?.detail, "1 candidates kept for rewrite.");
-  assert.equal(rewriterEvent?.detail, "1 finalists sent to rewrite, 1 usable rewrites applied.");
+  assert.equal(
+    rewriterEvent?.detail,
+    "5 finalists sent to rewrite (1 critic-approved + 4 reserve), 5 usable rewrites applied."
+  );
   assert.equal(
     result.output.pipeline.finalSelector?.rationaleInternalRaw,
     `Final selector evaluated ${visibleIds.length} shortlist candidates: ${visibleIds.join(", ")}. ` +
       `Final visible shortlist is ${visibleIds.join(", ")} with cand_2 as the final pick. ` +
       "Visible angles: shared_experience, payoff_reveal."
   );
-  assert.ok(result.output.captionOptions.every((option) => option.candidateId !== "cand_1" || option.top !== "Noisy rewrite 1"));
+  assert.ok(visibleIds.includes("cand_2"));
+});
+
+test("rewriter reserve finalists can rescue a shortlist when only one critic-approved candidate exists", async () => {
+  const stage2HardConstraints: Stage2HardConstraints = {
+    ...DEFAULT_STAGE2_HARD_CONSTRAINTS
+  };
+  const writerCandidates = Array.from({ length: 8 }, (_, index) => ({
+    candidate_id: `cand_${index + 1}`,
+    angle: index % 2 === 0 ? "shared_experience" : "payoff_reveal",
+    top:
+      index === 0
+        ? "The landing already looks wrong before the whole axle gives up in plain view."
+        : `Too short ${index + 1}`,
+    bottom:
+      index === 0
+        ? "\"Yeah, that's cooked.\" The whole landing tells the crowd the repair bill is already locked in."
+        : `"Short ${index + 1}."`,
+    top_ru: `ru ${index + 1}`,
+    bottom_ru: `ru ${index + 1}`,
+    rationale: `candidate ${index + 1}`
+  }));
+  const criticResponse = writerCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total: 9 - index * 0.2,
+    issues: [],
+    keep: candidate.candidate_id === "cand_1"
+  }));
+  const rewriterResponse = Array.from({ length: 5 }, (_, index) =>
+    makeCandidate(
+      `cand_${index + 1}`,
+      index % 2 === 0 ? "shared_experience" : "payoff_reveal",
+      index + 1
+    )
+  );
+
+  const { result, progressEvents } = await runSuccessfulPipeline({
+    stage2HardConstraints,
+    writerCandidates,
+    criticResponse,
+    rewriterResponse
+  });
+
+  assertFinalShortlistContract(result);
+  assert.equal(
+    progressEvents.find((event) => event.stageId === "rewriter" && event.state === "completed")?.detail,
+    "5 finalists sent to rewrite (1 critic-approved + 4 reserve), 5 usable rewrites applied."
+  );
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.ok(result.output.captionOptions.every((option) => option.constraintCheck?.passed));
+  assert.deepEqual(
+    result.output.captionOptions.map((option) => option.candidateId),
+    ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"]
+  );
+});
+
+test("strict-length channels widen the rewriter reserve pool beyond the critic-approved finalists", async () => {
+  const stage2HardConstraints: Stage2HardConstraints = {
+    topLengthMin: 160,
+    topLengthMax: 180,
+    bottomLengthMin: 140,
+    bottomLengthMax: 150,
+    bannedWords: ["clip"],
+    bannedOpeners: []
+  };
+  const writerCandidates = Array.from({ length: 20 }, (_, index) =>
+    makeCandidate(`cand_${index + 1}`, index % 2 === 0 ? "shared_experience" : "payoff_reveal", index + 1)
+  );
+  const criticResponse = writerCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total: 9 - index * 0.1,
+    issues: [],
+    keep: index < 7
+  }));
+  const rewriterResponse = Array.from({ length: 12 }, (_, index) => ({
+    candidate_id: `cand_${index + 1}`,
+    angle: index % 2 === 0 ? "shared_experience" : "payoff_reveal",
+    top:
+      "The crew keeps the whole lift steady while the load swings just enough to show who actually trusts the rig and who is only pretending to stay calm under pressure.",
+    bottom:
+      "\"That is old-school control,\" and the reaction lands because nobody in frame has spare room for sloppy work once the weight starts drifting sideways.",
+    top_ru: `ru ${index + 1}`,
+    bottom_ru: `ru ${index + 1}`,
+    rationale: `strict rewrite ${index + 1}`
+  }));
+
+  const { result, progressEvents } = await runSuccessfulPipeline({
+    stage2HardConstraints,
+    writerCandidates,
+    criticResponse,
+    rewriterResponse,
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_1",
+      rationale: "cand_1 is strongest."
+    }
+  });
+
+  assertFinalShortlistContract(result);
+  assert.equal(
+    progressEvents.find((event) => event.stageId === "rewriter" && event.state === "completed")?.detail,
+    "12 finalists sent to rewrite (7 critic-approved + 5 reserve), 12 usable rewrites applied."
+  );
 });
 
 test("internal final selector rationale is rebuilt from the actual evaluated pool and visible shortlist", async () => {
@@ -5029,21 +5136,116 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(writerResolved.defaultPrompt, /Must explain why the viewer should care/);
   assert.match(writerResolved.defaultPrompt, /Quoted openers are optional/);
   assert.match(writerResolved.defaultPrompt, /stock continuations/i);
+  assert.match(writerResolved.defaultPrompt, /Near misses still fail/i);
+  assert.match(writerResolved.defaultPrompt, /The system will not rescue a too-short line with hidden filler/i);
   assert.match(writerResolved.defaultPrompt, /Do not let the batch collapse into one repeated bottom rhythm/i);
   assert.doesNotMatch(writerResolved.defaultPrompt, /Must begin with one quoted sentence/);
   assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /Batch audit rules/);
+  assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /strict exact-length windows/i);
   assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /polished-but-interchangeable bottoms/i);
   assert.match(writerResolved.defaultPrompt, /top_ru/);
   assert.match(writerResolved.defaultPrompt, /bottom_ru/);
   assert.match(rewriterResolved.defaultPrompt, /top_ru/);
   assert.match(rewriterResolved.defaultPrompt, /bottom_ru/);
   assert.match(rewriterResolved.defaultPrompt, /Never leave a tightening fragment or broken truncation behind/i);
+  assert.match(rewriterResolved.defaultPrompt, /The system will not auto-pad a short rewrite for you/i);
   assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /style_direction_ids/i);
   assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /exploration_mode/i);
   assert.match(titlesResolved.defaultPrompt, /title_ru/);
   assert.match(titlesResolved.defaultPrompt, /real Russian/);
   assert.match(seoResolved.defaultPrompt, /Search terms and topics covered:/);
   assert.match(seoResolved.defaultPrompt, /Exactly 17 tags/);
+});
+
+test("writer prompt surfaces exact constraint targets and flags strict-length mode", () => {
+  const prompt = buildWriterPrompt({
+    channelConfig: {
+      channelId: "channel_strict",
+      name: "Strict Channel",
+      username: "strict_channel",
+      examplesSource: "workspace_default",
+      hardConstraints: {
+        topLengthMin: 160,
+        topLengthMax: 180,
+        bottomLengthMin: 140,
+        bottomLengthMax: 150,
+        bannedWords: ["clip"],
+        bannedOpeners: []
+      },
+      styleProfile: normalizeStage2StyleProfile(undefined),
+      editorialMemory: createEmptyStage2EditorialMemorySummary(normalizeStage2StyleProfile(undefined))
+    },
+    analyzerOutput: {
+      visualAnchors: ["anchor"],
+      specificNouns: [],
+      visibleActions: [],
+      subject: "subject",
+      action: "action",
+      setting: "setting",
+      firstSecondsSignal: "signal",
+      sceneBeats: ["beat"],
+      revealMoment: "reveal",
+      lateClipChange: "change",
+      stakes: ["stakes"],
+      payoff: "payoff",
+      coreTrigger: "trigger",
+      humanStake: "stake",
+      narrativeFrame: "frame",
+      whyViewerCares: "care",
+      bestBottomEnergy: "dry",
+      commentVibe: "measured",
+      commentConsensusLane: "",
+      commentJokeLane: "",
+      commentDissentLane: "",
+      commentSuspicionLane: "",
+      slangToAdapt: [],
+      commentLanguageCues: [],
+      extractableSlang: [],
+      hiddenDetail: "",
+      genericRisks: [],
+      uncertaintyNotes: [],
+      rawSummary: "summary"
+    },
+    selectorOutput: {
+      clipType: "general",
+      primaryAngle: "shared_experience",
+      secondaryAngles: ["payoff_reveal"],
+      rankedAngles: [{ angle: "shared_experience", score: 9, why: "fit" }],
+      selectedExampleIds: [],
+      rejectedExampleIds: [],
+      selectedExamples: [],
+      coreTrigger: "trigger",
+      humanStake: "stake",
+      narrativeFrame: "frame",
+      whyViewerCares: "care",
+      topStrategy: "top",
+      bottomEnergy: "bottom",
+      whyOldV6WouldWorkHere: "v6",
+      failureModes: ["dead"],
+      rationale: "rationale",
+      writerBrief: "brief",
+      confidence: 0.7
+    },
+    examplesAssessment: {
+      retrievalConfidence: "low",
+      examplesMode: "style_guided",
+      explanation: "weak examples",
+      evidence: [],
+      retrievalWarning: "weak",
+      examplesRoleSummary: "Examples are weak support only.",
+      primaryDriverSummary: "Clip truth and channel style drive the run.",
+      primaryDrivers: ["clip_truth", "channel_style"],
+      channelStylePriority: "primary",
+      editorialMemoryPriority: "primary"
+    },
+    userInstruction: null,
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+
+  assert.match(prompt, /"topLengthRule": "160-180 chars"/);
+  assert.match(prompt, /"bottomLengthRule": "140-150 chars"/);
+  assert.match(prompt, /"strictConstraintMode": true/);
+  assert.match(prompt, /Near misses still die; count characters before finalizing each line/);
 });
 
 test("stage 2 ui surfaces active corpus and selector picks instead of profile or hot-pool internals", async () => {
@@ -5517,6 +5719,88 @@ test("pickPreferredStage2RunId reconnects the UI to the active durable run first
 
   assert.equal(pickPreferredStage2RunId(runs, null), "run_active");
   assert.equal(pickPreferredStage2RunId(runs, "run_done"), "run_done");
+});
+
+test("pickPreferredStage2RunId prefers a completed run over failed history when no run is active", () => {
+  const runs: Stage2RunSummary[] = [
+    {
+      runId: "run_failed_newer",
+      chatId: "chat_1",
+      channelId: "target",
+      sourceUrl: "https://example.com/failed",
+      userInstruction: null,
+      mode: "manual",
+      baseRunId: null,
+      status: "failed",
+      progress: createStage2ProgressSnapshot("run_failed_newer"),
+      errorMessage: "failed",
+      hasResult: false,
+      createdAt: "2026-03-22T18:20:29.629Z",
+      startedAt: "2026-03-22T18:20:30.000Z",
+      updatedAt: "2026-03-22T18:24:24.602Z",
+      finishedAt: "2026-03-22T18:24:24.602Z"
+    },
+    {
+      runId: "run_completed_older",
+      chatId: "chat_1",
+      channelId: "target",
+      sourceUrl: "https://example.com/completed",
+      userInstruction: null,
+      mode: "manual",
+      baseRunId: null,
+      status: "completed",
+      progress: createStage2ProgressSnapshot("run_completed_older"),
+      errorMessage: null,
+      hasResult: true,
+      createdAt: "2026-03-22T18:16:11.967Z",
+      startedAt: "2026-03-22T18:16:12.000Z",
+      updatedAt: "2026-03-22T18:18:57.117Z",
+      finishedAt: "2026-03-22T18:18:57.117Z"
+    }
+  ];
+
+  assert.equal(pickPreferredStage2RunId(runs, null), "run_completed_older");
+});
+
+test("pickPreferredStage2RunId heals a stale failed selection when a newer completed run appears", () => {
+  const runs: Stage2RunSummary[] = [
+    {
+      runId: "run_completed_newer",
+      chatId: "chat_1",
+      channelId: "target",
+      sourceUrl: "https://example.com/completed",
+      userInstruction: null,
+      mode: "manual",
+      baseRunId: null,
+      status: "completed",
+      progress: createStage2ProgressSnapshot("run_completed_newer"),
+      errorMessage: null,
+      hasResult: true,
+      createdAt: "2026-03-22T18:39:26.242Z",
+      startedAt: "2026-03-22T18:39:27.000Z",
+      updatedAt: "2026-03-22T18:43:56.362Z",
+      finishedAt: "2026-03-22T18:43:56.362Z"
+    },
+    {
+      runId: "run_failed_older",
+      chatId: "chat_1",
+      channelId: "target",
+      sourceUrl: "https://example.com/failed",
+      userInstruction: null,
+      mode: "manual",
+      baseRunId: null,
+      status: "failed",
+      progress: createStage2ProgressSnapshot("run_failed_older"),
+      errorMessage: "failed",
+      hasResult: false,
+      createdAt: "2026-03-22T18:07:31.032Z",
+      startedAt: "2026-03-22T18:07:32.000Z",
+      updatedAt: "2026-03-22T18:11:15.978Z",
+      finishedAt: "2026-03-22T18:11:15.978Z"
+    }
+  ];
+
+  assert.equal(pickPreferredStage2RunId(runs, "run_failed_older"), "run_completed_newer");
 });
 
 test("regenerate runs persist baseRunId and use lightweight progress stages", { concurrency: false }, async () => {
