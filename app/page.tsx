@@ -1,18 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, FlowStep } from "./components/AppShell";
-import { ChannelManager } from "./components/ChannelManager";
-import { ChannelOnboardingWizard } from "./components/ChannelOnboardingWizard";
-import { DetailsDrawer } from "./components/DetailsDrawer";
 import { upsertHistoryItemByMeaningfulUpdate } from "./components/history-panel-support";
-import { Step1PasteLink } from "./components/Step1PasteLink";
 import {
   normalizeStage2DiagnosticsForView,
   Stage2RunDiagnosticsPanels,
   Step2PickCaption
 } from "./components/Step2PickCaption";
-import { Step3RenderTemplate } from "./components/Step3RenderTemplate";
 import {
   AppRole,
   AuthMeResponse,
@@ -158,7 +154,6 @@ import {
   responseLooksLikeJson,
   responseContentType,
   shorten,
-  stripRenderPlanForPreview,
   sumClientSegmentsDuration,
   toJsonDownload,
   triggerBlobDownload,
@@ -182,6 +177,41 @@ const STAGE2_ELAPSED_TICK_HIDDEN_MS = 1_000;
 const STAGE2_POLL_RETRY_VISIBLE_MS = 1_500;
 const STAGE2_POLL_RETRY_HIDDEN_MS = 4_000;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
+
+const Step1PasteLink = dynamic(
+  () => import("./components/Step1PasteLink").then((mod) => mod.Step1PasteLink),
+  {
+    loading: () => <p className="subtle-text">Загружаю шаг 1...</p>
+  }
+);
+
+const Step3RenderTemplate = dynamic(
+  () => import("./components/Step3RenderTemplate").then((mod) => mod.Step3RenderTemplate),
+  {
+    loading: () => <p className="subtle-text">Подготавливаю редактор Stage 3...</p>
+  }
+);
+
+const DetailsDrawer = dynamic(
+  () => import("./components/DetailsDrawer").then((mod) => mod.DetailsDrawer),
+  {
+    loading: () => <p className="subtle-text">Загружаю детали...</p>
+  }
+);
+
+const ChannelManager = dynamic(
+  () => import("./components/ChannelManager").then((mod) => mod.ChannelManager),
+  {
+    loading: () => null
+  }
+);
+
+const ChannelOnboardingWizard = dynamic(
+  () => import("./components/ChannelOnboardingWizard").then((mod) => mod.ChannelOnboardingWizard),
+  {
+    loading: () => null
+  }
+);
 
 type BusyAction =
   | ""
@@ -3528,34 +3558,7 @@ export default function HomePage() {
     [stage3RenderPlan]
   );
 
-  const stage3LivePreviewState = useMemo(
-    () => ({
-      clipStartSec: stage3ClipStartSec,
-      clipDurationSec: CLIP_DURATION_SEC,
-      renderPlan: stripRenderPlanForPreview(normalizedStage3RenderPlan)
-    }),
-    [
-      stage3ClipStartSec,
-      normalizedStage3RenderPlan
-    ]
-  );
-  const stage3LivePreviewStateRef = useRef(stage3LivePreviewState);
-
-  const stage3LivePreviewKey = useMemo(() => {
-    if (!activeChat?.url) {
-      return "";
-    }
-    return JSON.stringify({
-      sourceUrl: activeChat.url,
-      clipStartSec: Number(stage3LivePreviewState.clipStartSec.toFixed(3)),
-      clipDurationSec: stage3LivePreviewState.clipDurationSec,
-      renderPlan: stage3LivePreviewState.renderPlan
-    });
-  }, [activeChat?.url, stage3LivePreviewState]);
-
-  useEffect(() => {
-    stage3LivePreviewStateRef.current = stage3LivePreviewState;
-  }, [stage3LivePreviewState]);
+  const stage3EditingProxyKey = useMemo(() => activeChat?.url ?? "", [activeChat?.url]);
 
   const stage3PassSelectionJson = useMemo(
     () => JSON.stringify(stage3PassSelectionByVersion),
@@ -4125,8 +4128,7 @@ export default function HomePage() {
       return;
     }
 
-    const previewState = stage3LivePreviewStateRef.current;
-    const previewKey = stage3LivePreviewKey;
+    const previewKey = stage3EditingProxyKey;
     stage3PreviewRequestKeyRef.current = previewKey;
     const requestId = stage3PreviewRequestIdRef.current + 1;
     stage3PreviewRequestIdRef.current = requestId;
@@ -4139,14 +4141,7 @@ export default function HomePage() {
       return;
     }
 
-    if (stage3RenderInProgress) {
-      setStage3PreviewState("retrying");
-      setStage3PreviewNotice("Предпросмотр обновится после рендера...");
-      return;
-    }
-
     const controller = new AbortController();
-    let debounceTimer: number | null = null;
     let retryTimer: number | null = null;
 
     const isStale = (): boolean =>
@@ -4215,11 +4210,11 @@ export default function HomePage() {
             job.status === "queued"
               ? "Ожидает локальный executor..."
               : job.workerLabel
-                ? `Предпросмотр выполняется на ${job.workerLabel}...`
-                : "Локальный executor обновляет предпросмотр..."
+                ? `Proxy-видео готовится на ${job.workerLabel}...`
+                : "Локальный executor подготавливает proxy-видео..."
           );
         } else {
-          setStage3PreviewNotice(job.status === "queued" ? "Предпросмотр в очереди..." : "Обновляю предпросмотр...");
+          setStage3PreviewNotice(job.status === "queued" ? "Proxy-видео в очереди..." : "Подготавливаю proxy-видео...");
         }
 
         await new Promise<void>((resolve) => {
@@ -4238,11 +4233,11 @@ export default function HomePage() {
         }
 
         try {
-          const response = await fetchWithTimeout(`/api/stage3/preview/jobs/${job.id}`, {
+          const response = await fetchWithTimeout(`/api/stage3/editing-proxy/jobs/${job.id}`, {
             signal: controller.signal
           }, 12_000);
           if (!response.ok) {
-            const message = await parseError(response, "Не удалось обновить статус предпросмотра.");
+            const message = await parseError(response, "Не удалось обновить статус proxy-видео.");
             const retryDelayMs = parseRetryAfterMs(response.headers.get("retry-after"), 4000);
             scheduleRetry(message, retryDelayMs);
             return;
@@ -4254,10 +4249,10 @@ export default function HomePage() {
             return;
           }
           if (isAbortError(error)) {
-            scheduleRetry("Предпросмотр обновляется дольше обычного. Повторяю...", 4000);
+            scheduleRetry("Proxy-видео готовится дольше обычного. Повторяю...", 4000);
             return;
           }
-          scheduleRetry(getUiErrorMessage(error, "Не удалось обновить статус предпросмотра."), 4000);
+          scheduleRetry(getUiErrorMessage(error, "Не удалось обновить статус proxy-видео."), 4000);
           return;
         }
       }
@@ -4267,28 +4262,22 @@ export default function HomePage() {
       if (isStale()) {
         return;
       }
+      setStage3PreviewVideoUrl(null);
+      setStage3PreviewJobId(null);
       setStage3PreviewState("loading");
-      setStage3PreviewNotice("Обновляю предпросмотр...");
+      setStage3PreviewNotice("Подготавливаю proxy-видео...");
 
       try {
-        const response = await fetchWithTimeout("/api/stage3/preview/jobs", {
+        const response = await fetchWithTimeout("/api/stage3/editing-proxy/jobs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sourceUrl: activeChat.url,
-            channelId: activeChannelId,
-            clipDurationSec: CLIP_DURATION_SEC,
-            renderPlan: previewState.renderPlan,
-            snapshot: {
-              clipStartSec: previewState.clipStartSec,
-              clipDurationSec: previewState.clipDurationSec,
-              renderPlan: previewState.renderPlan
-            }
+            sourceUrl: activeChat.url
           }),
           signal: controller.signal
         }, 12_000);
         if (!response.ok) {
-          const message = await parseError(response, "Не удалось поставить предпросмотр в очередь.");
+          const message = await parseError(response, "Не удалось поставить proxy-видео в очередь.");
           const retryDelayMs = parseRetryAfterMs(response.headers.get("retry-after"), 4000);
           if (response.status >= 500) {
             scheduleRetry(message, retryDelayMs);
@@ -4306,36 +4295,27 @@ export default function HomePage() {
           return;
         }
         if (isAbortError(error)) {
-          scheduleRetry("Предпросмотр обновляется дольше обычного. Повторяю...", 4000);
+          scheduleRetry("Proxy-видео готовится дольше обычного. Повторяю...", 4000);
           return;
         }
-        scheduleRetry(getUiErrorMessage(error, "Не удалось загрузить предпросмотр."), 4000);
+        scheduleRetry(getUiErrorMessage(error, "Не удалось загрузить proxy-видео."), 4000);
       }
     };
 
-    setStage3PreviewState("debouncing");
-    setStage3PreviewNotice("Обновляю предпросмотр...");
-    debounceTimer = window.setTimeout(() => {
-      void startPreviewRequest();
-    }, 650);
+    void startPreviewRequest();
 
     return () => {
       controller.abort();
-      if (debounceTimer !== null) {
-        window.clearTimeout(debounceTimer);
-      }
       if (retryTimer !== null) {
         window.clearTimeout(retryTimer);
       }
     };
   }, [
-    activeChannelId,
     activeChat?.url,
     currentStep,
     getUiErrorMessage,
     parseError,
-    stage3LivePreviewKey,
-    stage3RenderInProgress
+    stage3EditingProxyKey
   ]);
 
   useEffect(() => {
@@ -4346,7 +4326,7 @@ export default function HomePage() {
       __STAGE3_PREVIEW_DEBUG__?: Record<string, unknown>;
     };
     scope.__STAGE3_PREVIEW_DEBUG__ = {
-      previewKey: stage3LivePreviewKey,
+      previewKey: stage3EditingProxyKey,
       previewState: stage3PreviewState,
       previewNotice: stage3PreviewNotice,
       previewJobId: stage3PreviewJobId,
@@ -4357,7 +4337,7 @@ export default function HomePage() {
       delete scope.__STAGE3_PREVIEW_DEBUG__;
     };
   }, [
-    stage3LivePreviewKey,
+    stage3EditingProxyKey,
     stage3PreviewJobId,
     stage3PreviewNotice,
     stage3PreviewState
@@ -5426,6 +5406,8 @@ export default function HomePage() {
           handoffSummary={stage3HandoffSummary}
           segments={stage3RenderPlan.segments}
           compressionEnabled={stage3RenderPlan.timingMode === "compress"}
+          timingMode={stage3RenderPlan.timingMode}
+          renderPolicy={stage3RenderPlan.policy}
           workerState={stage3WorkerPanelState}
           workerLabel={activeStage3Worker?.label ?? null}
           workerPlatform={activeStage3Worker?.platform ?? null}
@@ -5661,56 +5643,60 @@ export default function HomePage() {
         />
       ) : null}
 
-      <ChannelManager
-        open={isChannelManagerOpen}
-        channels={channels}
-        workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
-        workspaceStage2HardConstraints={workspaceStage2HardConstraints}
-        workspaceStage2PromptConfig={workspaceStage2PromptConfig}
-        activeChannelId={activeChannelId}
-        assets={channelAssets}
-        currentUserRole={authState?.membership.role ?? null}
-        onClose={() => setIsChannelManagerOpen(false)}
-        onSelectChannel={handleSwitchChannel}
-        canCreateChannel={canCreateChannel}
-        onCreateChannel={handleCreateChannel}
-        onDeleteChannel={(channelId) => {
-          void handleDeleteChannel(channelId);
-        }}
-        onSaveChannel={handleSaveChannel}
-        onShowGlobalToast={showAppToast}
-        onDismissGlobalToast={dismissAppToast}
-        onStartStyleDiscovery={handleStartChannelStyleDiscovery}
-        onGetStyleDiscoveryRun={handleGetChannelStyleDiscoveryRun}
-        feedbackHistory={channelFeedbackHistory}
-        feedbackHistoryLoading={isChannelFeedbackLoading}
-        editorialMemory={channelEditorialMemory}
-        onDeleteFeedbackEvent={handleDeleteChannelFeedbackEvent}
-        deletingFeedbackEventId={deletingChannelFeedbackEventId}
-        onSaveWorkspaceStage2Defaults={handleSaveWorkspaceStage2Defaults}
-        onUploadAsset={(kind, file) => {
-          void handleUploadChannelAsset(kind, file);
-        }}
-        onDeleteAsset={(assetId) => {
-          void handleDeleteChannelAsset(assetId);
-        }}
-        canManageAccess={Boolean(authState?.effectivePermissions.canManageAnyChannelAccess)}
-        accessGrants={channelAccessGrants}
-        workspaceMembers={workspaceMembers}
-        onUpdateAccess={(channelId, input) => {
-          void handleUpdateChannelAccess(channelId, input);
-        }}
-      />
-      <ChannelOnboardingWizard
-        open={isChannelOnboardingOpen}
-        storageKey={channelOnboardingStorageKey}
-        workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
-        workspaceStage2HardConstraints={workspaceStage2HardConstraints}
-        onClose={() => setIsChannelOnboardingOpen(false)}
-        onStartStyleDiscovery={handleStartChannelStyleDiscovery}
-        onGetStyleDiscoveryRun={handleGetChannelStyleDiscoveryRun}
-        onSubmit={handleCreateChannelFromOnboarding}
-      />
+      {isChannelManagerOpen ? (
+        <ChannelManager
+          open={isChannelManagerOpen}
+          channels={channels}
+          workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
+          workspaceStage2HardConstraints={workspaceStage2HardConstraints}
+          workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+          activeChannelId={activeChannelId}
+          assets={channelAssets}
+          currentUserRole={authState?.membership.role ?? null}
+          onClose={() => setIsChannelManagerOpen(false)}
+          onSelectChannel={handleSwitchChannel}
+          canCreateChannel={canCreateChannel}
+          onCreateChannel={handleCreateChannel}
+          onDeleteChannel={(channelId) => {
+            void handleDeleteChannel(channelId);
+          }}
+          onSaveChannel={handleSaveChannel}
+          onShowGlobalToast={showAppToast}
+          onDismissGlobalToast={dismissAppToast}
+          onStartStyleDiscovery={handleStartChannelStyleDiscovery}
+          onGetStyleDiscoveryRun={handleGetChannelStyleDiscoveryRun}
+          feedbackHistory={channelFeedbackHistory}
+          feedbackHistoryLoading={isChannelFeedbackLoading}
+          editorialMemory={channelEditorialMemory}
+          onDeleteFeedbackEvent={handleDeleteChannelFeedbackEvent}
+          deletingFeedbackEventId={deletingChannelFeedbackEventId}
+          onSaveWorkspaceStage2Defaults={handleSaveWorkspaceStage2Defaults}
+          onUploadAsset={(kind, file) => {
+            void handleUploadChannelAsset(kind, file);
+          }}
+          onDeleteAsset={(assetId) => {
+            void handleDeleteChannelAsset(assetId);
+          }}
+          canManageAccess={Boolean(authState?.effectivePermissions.canManageAnyChannelAccess)}
+          accessGrants={channelAccessGrants}
+          workspaceMembers={workspaceMembers}
+          onUpdateAccess={(channelId, input) => {
+            void handleUpdateChannelAccess(channelId, input);
+          }}
+        />
+      ) : null}
+      {isChannelOnboardingOpen ? (
+        <ChannelOnboardingWizard
+          open={isChannelOnboardingOpen}
+          storageKey={channelOnboardingStorageKey}
+          workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
+          workspaceStage2HardConstraints={workspaceStage2HardConstraints}
+          onClose={() => setIsChannelOnboardingOpen(false)}
+          onStartStyleDiscovery={handleStartChannelStyleDiscovery}
+          onGetStyleDiscoveryRun={handleGetChannelStyleDiscoveryRun}
+          onSubmit={handleCreateChannelFromOnboarding}
+        />
+      ) : null}
     </AppShell>
   );
 }

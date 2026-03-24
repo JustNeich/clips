@@ -92,7 +92,13 @@ type ClaimStage3WorkerJobInput = {
 };
 
 function normalizeJobKind(value: string): Stage3JobKind {
-  if (value === "preview" || value === "render" || value === "source-download" || value === "agent-media-step") {
+  if (
+    value === "preview" ||
+    value === "render" ||
+    value === "editing-proxy" ||
+    value === "source-download" ||
+    value === "agent-media-step"
+  ) {
     return value;
   }
   return "preview";
@@ -161,7 +167,7 @@ function mapJobRow(row: JobRow | null): Stage3JobRecord | null {
   const artifactRow = readArtifactRow(String(row.id));
   const artifact = mapArtifactRow(artifactRow);
   const baseStatus = normalizeJobStatus(String(row.status));
-  const requiresArtifact = kind === "preview" || kind === "render";
+  const requiresArtifact = kind === "preview" || kind === "render" || kind === "editing-proxy";
   const status = baseStatus === "completed" && requiresArtifact && !artifact.filePath ? "interrupted" : baseStatus;
   const errorCode =
     baseStatus === "completed" && requiresArtifact && !artifact.filePath

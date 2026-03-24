@@ -15,11 +15,13 @@ import {
   Stage3CameraMotion,
   Stage3EditorDraftOverrides,
   Stage3PreviewState,
+  Stage3RenderPolicy,
   Stage3RenderState,
   Stage3Segment,
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionRecord,
   Stage3TextFitSnapshot,
+  Stage3TimingMode,
   TemplateContentFixture,
   Stage3Version,
   Stage2Response,
@@ -54,6 +56,12 @@ import {
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../../lib/stage3-constants";
 import { getStage3DesignLabLabel } from "../../lib/stage3-design-lab";
 import { sanitizeDisplayText } from "../../lib/ui-error";
+import {
+  applyStage3PlaybackPositionToVideo,
+  buildStage3PlaybackPlan,
+  mapStage3SourceTimeToOutputTime,
+  resolveStage3PlaybackPosition
+} from "../../lib/stage3-preview-playback";
 import type {
   Stage2ToStage3HandoffSummary,
   Stage3CaptionApplyMode
@@ -91,6 +99,8 @@ type Step3RenderTemplateProps = {
   handoffSummary: Stage2ToStage3HandoffSummary | null;
   segments: Stage3Segment[];
   compressionEnabled: boolean;
+  timingMode?: Stage3TimingMode;
+  renderPolicy?: Stage3RenderPolicy;
   renderState: Stage3RenderState;
   workerState: Stage3WorkerStatus | "not_paired";
   workerLabel: string | null;
@@ -477,7 +487,8 @@ function formatSessionStatus(value: Stage3SessionRecord["status"]): string {
 
 function PreviewClipVideo({
   sourceUrl,
-  clipDurationSec,
+  playbackDurationSec,
+  playbackPlan,
   className,
   objectPosition,
   videoZoom,
@@ -487,10 +498,12 @@ function PreviewClipVideo({
   isPlaying,
   loopEnabled,
   onPositionChange,
+  onSourceDurationChange,
   onClipEnd
 }: {
   sourceUrl: string;
-  clipDurationSec: number;
+  playbackDurationSec: number;
+  playbackPlan: ReturnType<typeof buildStage3PlaybackPlan>;
   className: string;
   objectPosition?: string;
   videoZoom?: number;
@@ -499,11 +512,32 @@ function PreviewClipVideo({
   videoRef: MutableRefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
   loopEnabled: boolean;
-  onPositionChange?: (sec: number) => void;
+  onPositionChange?: (outputSec: number, sourceSec: number) => void;
+  onSourceDurationChange?: (sec: number | null) => void;
   onClipEnd?: () => void;
 }) {
   const frameLoopTokenRef = useRef<number | null>(null);
-  const lastPublishedTimeRef = useRef(0);
+  const activeSegmentIndexRef = useRef(0);
+  const lastPublishedOutputRef = useRef(0);
+
+  const seekToOutputTime = useCallback(
+    (outputSec: number, toleranceSec = 0.04) => {
+      const video = videoRef.current;
+      if (!video) {
+        return null;
+      }
+      const position = resolveStage3PlaybackPosition(playbackPlan, outputSec);
+      if (!position) {
+        return null;
+      }
+      activeSegmentIndexRef.current = position.segmentIndex;
+      lastPublishedOutputRef.current = position.outputTimeSec;
+      applyStage3PlaybackPositionToVideo(video, position, toleranceSec);
+      onPositionChange?.(position.outputTimeSec, position.sourceTimeSec);
+      return position;
+    },
+    [onPositionChange, playbackPlan, videoRef]
+  );
 
   useEffect(() => {
     const video = videoRef.current;
@@ -512,13 +546,18 @@ function PreviewClipVideo({
     }
 
     const seekToStart = () => {
-      lastPublishedTimeRef.current = 0;
-      video.currentTime = 0;
-      onPositionChange?.(0);
+      const mediaDurationSec =
+        Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
+      onSourceDurationChange?.(mediaDurationSec);
+      const initialPosition = seekToOutputTime(0, 0);
       if (isPlaying) {
         void video.play().catch(() => undefined);
       } else {
         video.pause();
+      }
+      if (!initialPosition) {
+        video.currentTime = 0;
+        onPositionChange?.(0, 0);
       }
     };
 
@@ -531,7 +570,7 @@ function PreviewClipVideo({
     return () => {
       video.removeEventListener("loadedmetadata", seekToStart);
     };
-  }, [isPlaying, onPositionChange, sourceUrl, videoRef]);
+  }, [isPlaying, onPositionChange, onSourceDurationChange, playbackPlan, seekToOutputTime, sourceUrl, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -539,16 +578,14 @@ function PreviewClipVideo({
       return;
     }
     if (isPlaying) {
-      if (video.ended || video.currentTime >= Math.max(0, clipDurationSec - 0.02)) {
-        lastPublishedTimeRef.current = 0;
-        video.currentTime = 0;
-        onPositionChange?.(0);
+      if (video.ended || lastPublishedOutputRef.current >= Math.max(0, playbackDurationSec - 0.02)) {
+        seekToOutputTime(0, 0);
       }
       void video.play().catch(() => undefined);
     } else {
       video.pause();
     }
-  }, [clipDurationSec, isPlaying, onPositionChange, sourceUrl, videoRef]);
+  }, [isPlaying, playbackDurationSec, seekToOutputTime, sourceUrl, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -557,10 +594,8 @@ function PreviewClipVideo({
     }
 
     const handleEnded = () => {
-      lastPublishedTimeRef.current = 0;
       if (loopEnabled && isPlaying) {
-        video.currentTime = 0;
-        onPositionChange?.(0);
+        seekToOutputTime(0, 0);
         void video.play().catch(() => undefined);
         return;
       }
@@ -571,30 +606,59 @@ function PreviewClipVideo({
     return () => {
       video.removeEventListener("ended", handleEnded);
     };
-  }, [isPlaying, loopEnabled, onClipEnd, onPositionChange, videoRef]);
+  }, [isPlaying, loopEnabled, onClipEnd, seekToOutputTime, videoRef]);
 
   const publishPosition = useCallback(() => {
     const video = videoRef.current;
     if (!video) {
       return false;
     }
-    const currentTime = video.currentTime;
-    const previousTime = lastPublishedTimeRef.current;
-    lastPublishedTimeRef.current = currentTime;
-
-    if (loopEnabled && currentTime + 1 / 60 < previousTime) {
-      onPositionChange?.(0);
+    const segment = playbackPlan.segments[activeSegmentIndexRef.current] ?? playbackPlan.segments[0];
+    if (!segment) {
+      return false;
     }
-    onPositionChange?.(currentTime);
+    const currentTime = video.currentTime;
+    const transitionThresholdSec = 0.02;
 
-    if (!loopEnabled && currentTime >= clipDurationSec - 0.02) {
+    if (currentTime >= segment.sourceEndSec - transitionThresholdSec) {
+      const nextSegment = playbackPlan.segments[activeSegmentIndexRef.current + 1];
+      if (nextSegment) {
+        const nextPosition = resolveStage3PlaybackPosition(playbackPlan, nextSegment.outputStartSec);
+        if (nextPosition) {
+          activeSegmentIndexRef.current = nextPosition.segmentIndex;
+          lastPublishedOutputRef.current = nextPosition.outputTimeSec;
+          applyStage3PlaybackPositionToVideo(video, nextPosition, 0);
+          onPositionChange?.(nextPosition.outputTimeSec, nextPosition.sourceTimeSec);
+          return true;
+        }
+      }
+
+      if (loopEnabled && isPlaying) {
+        const restartPosition = seekToOutputTime(0, 0);
+        if (restartPosition) {
+          void video.play().catch(() => undefined);
+          return true;
+        }
+      }
+
       video.pause();
-      lastPublishedTimeRef.current = 0;
+      lastPublishedOutputRef.current = playbackDurationSec;
+      onPositionChange?.(playbackDurationSec, segment.sourceEndSec);
+      onClipEnd?.();
+      return false;
+    }
+
+    const outputSec = mapStage3SourceTimeToOutputTime(segment, currentTime);
+    lastPublishedOutputRef.current = outputSec;
+    onPositionChange?.(outputSec, currentTime);
+
+    if (!loopEnabled && outputSec >= playbackDurationSec - 0.02) {
+      video.pause();
       onClipEnd?.();
       return false;
     }
     return true;
-  }, [clipDurationSec, loopEnabled, onClipEnd, onPositionChange, videoRef]);
+  }, [isPlaying, loopEnabled, onClipEnd, onPositionChange, playbackDurationSec, playbackPlan, seekToOutputTime, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current as
@@ -658,7 +722,6 @@ function PreviewClipVideo({
       className={className}
       src={sourceUrl}
       muted={muted}
-      loop={loopEnabled}
       playsInline
       preload="metadata"
       style={{
@@ -695,13 +758,19 @@ type Stage3LivePreviewPanelProps = {
   previewTemplateSnapshot: TemplateRenderSnapshot;
   previewTopText: string;
   previewBottomText: string;
+  clipStartSec: number;
   clipDurationSec: number;
+  sourceDurationSec: number | null;
+  segments: Stage3Segment[];
+  timingMode: Stage3TimingMode;
+  renderPolicy: Stage3RenderPolicy;
   focusY: number;
   cameraMotion: Stage3CameraMotion;
   mirrorEnabled: boolean;
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
+  sourceAudioEnabled: boolean;
   templateConfig: ReturnType<typeof getTemplateById>;
   onMeasuredTextFitChange?: (fit: Stage3TextFitSnapshot) => void;
   onSelectVersionId: (runId: string) => void;
@@ -728,13 +797,19 @@ function Stage3LivePreviewPanel({
   previewTemplateSnapshot,
   previewTopText,
   previewBottomText,
+  clipStartSec,
   clipDurationSec,
+  sourceDurationSec,
+  segments,
+  timingMode,
+  renderPolicy,
   focusY,
   cameraMotion,
   mirrorEnabled,
   videoZoom,
   topFontScale,
   bottomFontScale,
+  sourceAudioEnabled,
   templateConfig,
   onMeasuredTextFitChange,
   onSelectVersionId,
@@ -755,6 +830,11 @@ function Stage3LivePreviewPanel({
   const [zoomMode, setZoomMode] = useState<"fit" | 75 | 100>("fit");
   const [versionsDrawerOpen, setVersionsDrawerOpen] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 720, height: 1280 });
+  const [proxySourceDurationSec, setProxySourceDurationSec] = useState<number | null>(sourceDurationSec);
+
+  useEffect(() => {
+    setProxySourceDurationSec(sourceDurationSec);
+  }, [sourceDurationSec]);
 
   const previewViewport = useMemo(
     () => getTemplatePreviewViewportMetrics(templateId, "full-frame"),
@@ -781,11 +861,27 @@ function Stage3LivePreviewPanel({
     return zoomMode / 100;
   }, [zoomMode]);
 
+  const resolvedSourceDurationSec = sourceDurationSec ?? proxySourceDurationSec;
+  const playbackPlan = useMemo(
+    () =>
+      buildStage3PlaybackPlan({
+        segments,
+        sourceDurationSec: resolvedSourceDurationSec,
+        clipStartSec,
+        clipDurationSec,
+        targetDurationSec: clipDurationSec,
+        timingMode,
+        policy: renderPolicy
+      }),
+    [clipDurationSec, clipStartSec, renderPolicy, resolvedSourceDurationSec, segments, timingMode]
+  );
+  const playbackDurationSec =
+    playbackPlan.totalOutputDurationSec > 0 ? playbackPlan.totalOutputDurationSec : clipDurationSec;
   const layoutScale = fitScale * previewScaleMultiplier;
-  const previewProgress = clipDurationSec > 0 ? clamp(timelineSec / clipDurationSec, 0, 1) : 0;
+  const previewProgress = playbackDurationSec > 0 ? clamp(timelineSec / playbackDurationSec, 0, 1) : 0;
   const animatedFocusY = resolveAnimatedFocusY(focusY, cameraMotion, previewProgress);
   const objectPosition = `50% ${(animatedFocusY * 100).toFixed(3)}%`;
-  const timelinePercent = clamp((timelineSec / Math.max(0.01, clipDurationSec)) * 100, 0, 100);
+  const timelinePercent = clamp((timelineSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
   const backgroundIsVideo =
     Boolean(backgroundAssetUrl) &&
     ((backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/") ||
@@ -855,29 +951,33 @@ function Stage3LivePreviewPanel({
 
   useEffect(() => {
     setTimelineSec(0);
-  }, [previewVideoUrl]);
+  }, [playbackPlan, previewVideoUrl]);
 
-  const syncBackgroundTo = useCallback((sec: number) => {
+  const syncBackgroundTo = useCallback((outputSec: number, sourceSec: number) => {
     const bg = backgroundPreviewRef.current;
     if (!bg || bg.readyState < 1) {
       return;
     }
     const duration = Number.isFinite(bg.duration) && bg.duration > 0 ? bg.duration : null;
-    const next = duration ? sec % duration : sec;
+    const desiredSec =
+      backgroundMode === "source-blur"
+        ? sourceSec
+        : outputSec;
+    const next = duration ? desiredSec % duration : desiredSec;
     if (Math.abs(bg.currentTime - next) > 0.08) {
       bg.currentTime = next;
     }
     if (isPlayingRef.current && bg.paused) {
       void bg.play().catch(() => undefined);
     }
-  }, []);
+  }, [backgroundMode]);
 
   const handlePreviewPositionChange = useCallback(
-    (sec: number) => {
+    (outputSec: number, sourceSec: number) => {
       if (!isTimelineScrubbingRef.current) {
-        setTimelineSec((prev) => (Math.abs(prev - sec) >= 1 / 240 ? sec : prev));
+        setTimelineSec((prev) => (Math.abs(prev - outputSec) >= 1 / 240 ? outputSec : prev));
       }
-      syncBackgroundTo(sec);
+      syncBackgroundTo(outputSec, sourceSec);
     },
     [syncBackgroundTo]
   );
@@ -900,15 +1000,20 @@ function Stage3LivePreviewPanel({
 
   const seekTimeline = useCallback(
     (value: number) => {
-      const clamped = clamp(value, 0, clipDurationSec);
+      const clamped = clamp(value, 0, playbackDurationSec);
       setTimelineSec(clamped);
       const video = slotPreviewRef.current;
       if (video) {
-        video.currentTime = clamped;
+        const position = resolveStage3PlaybackPosition(playbackPlan, clamped);
+        if (position) {
+          applyStage3PlaybackPositionToVideo(video, position, 0);
+          syncBackgroundTo(position.outputTimeSec, position.sourceTimeSec);
+          return;
+        }
       }
-      syncBackgroundTo(clamped);
+      syncBackgroundTo(clamped, clamped);
     },
-    [clipDurationSec, syncBackgroundTo]
+    [playbackDurationSec, playbackPlan, syncBackgroundTo]
   );
 
   const seekTimelineAtClientX = useCallback(
@@ -922,9 +1027,9 @@ function Stage3LivePreviewPanel({
         return;
       }
       const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
-      seekTimeline(ratio * clipDurationSec);
+      seekTimeline(ratio * playbackDurationSec);
     },
-    [clipDurationSec, seekTimeline]
+    [playbackDurationSec, seekTimeline]
   );
 
   useEffect(() => {
@@ -1173,7 +1278,11 @@ function Stage3LivePreviewPanel({
                               playsInline
                               preload="metadata"
                               onLoadedMetadata={() => {
-                                syncBackgroundTo(timelineSec);
+                                const position = resolveStage3PlaybackPosition(playbackPlan, timelineSec);
+                                syncBackgroundTo(
+                                  position?.outputTimeSec ?? timelineSec,
+                                  position?.sourceTimeSec ?? timelineSec
+                                );
                                 if (isPlaying) {
                                   const bg = backgroundPreviewRef.current;
                                   if (bg) {
@@ -1206,7 +1315,11 @@ function Stage3LivePreviewPanel({
                                 transformOrigin: "center center"
                               }}
                               onLoadedMetadata={() => {
-                                syncBackgroundTo(timelineSec);
+                                const position = resolveStage3PlaybackPosition(playbackPlan, timelineSec);
+                                syncBackgroundTo(
+                                  position?.outputTimeSec ?? timelineSec,
+                                  position?.sourceTimeSec ?? timelineSec
+                                );
                                 if (isPlaying) {
                                   const bg = backgroundPreviewRef.current;
                                   if (bg) {
@@ -1233,16 +1346,18 @@ function Stage3LivePreviewPanel({
                       <PreviewClipVideo
                         key={previewVideoUrl}
                         sourceUrl={previewVideoUrl}
-                        clipDurationSec={clipDurationSec}
+                        playbackDurationSec={playbackDurationSec}
+                        playbackPlan={playbackPlan}
                         className="preview-slot-video"
                         objectPosition={objectPosition}
                         videoZoom={videoZoom}
                         mirrorEnabled={mirrorEnabled}
-                        muted={isMuted}
+                        muted={isMuted || !sourceAudioEnabled}
                         videoRef={slotPreviewRef}
                         isPlaying={isPlaying}
                         loopEnabled={loopEnabled}
                         onPositionChange={handlePreviewPositionChange}
+                        onSourceDurationChange={setProxySourceDurationSec}
                         onClipEnd={handlePreviewClipEnd}
                       />
                     ) : (
@@ -1304,7 +1419,7 @@ function Stage3LivePreviewPanel({
               role="slider"
               aria-label="Позиция воспроизведения"
               aria-valuemin={0}
-              aria-valuemax={clipDurationSec}
+              aria-valuemax={playbackDurationSec}
               aria-valuenow={Number(timelineSec.toFixed(2))}
               tabIndex={0}
               onPointerDown={(event) => {
@@ -1326,7 +1441,7 @@ function Stage3LivePreviewPanel({
             </div>
             <div className="timeline-time">
               <span>{formatTimeSec(timelineSec)}</span>
-              <span>{formatTimeSec(clipDurationSec)}</span>
+              <span>{formatTimeSec(playbackDurationSec)}</span>
             </div>
           </div>
           <div className="timeline-notice">
@@ -1372,6 +1487,8 @@ export function Step3RenderTemplate({
   handoffSummary,
   segments,
   compressionEnabled,
+  timingMode = compressionEnabled ? "compress" : "auto",
+  renderPolicy = segments.length > 0 ? "fixed_segments" : compressionEnabled ? "full_source_normalize" : "fixed_segments",
   renderState,
   workerState,
   workerLabel,
@@ -3184,13 +3301,19 @@ export function Step3RenderTemplate({
             onMeasuredTextFitChange={handlePreviewMeasuredTextFitChange}
             previewTopText={previewTopText}
             previewBottomText={previewBottomText}
+            clipStartSec={localClipStartSec}
             clipDurationSec={clipDurationSec}
+            sourceDurationSec={sourceDurationSec}
+            segments={normalizedSegments}
+            timingMode={timingMode}
+            renderPolicy={renderPolicy}
             focusY={localFocusY}
             cameraMotion={cameraMotion}
             mirrorEnabled={mirrorEnabled}
             videoZoom={previewVideoZoom}
             topFontScale={localTopFontScale}
             bottomFontScale={localBottomFontScale}
+            sourceAudioEnabled={sourceAudioEnabled}
             templateConfig={templateConfig}
             onSelectVersionId={onSelectVersionId}
             onSelectPassIndex={onSelectPassIndex}

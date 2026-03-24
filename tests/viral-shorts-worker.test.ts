@@ -90,7 +90,11 @@ import { fetchTranscriptFromYtDlpInfo } from "../lib/youtube-captions";
 import { YouTubeCommentsApiError } from "../lib/youtube-comments";
 import { buildLimitedCommentsExtractorArgs } from "../lib/ytdlp";
 import { validateStage2Output } from "../lib/stage2-output-validation";
-import { normalizeCodexReasoningEffort } from "../lib/codex-runner";
+import {
+  assertCodexProducedFinalMessage,
+  formatCodexExecFailureMessage,
+  normalizeCodexReasoningEffort
+} from "../lib/codex-runner";
 import {
   buildAnalyzerPrompt,
   buildCriticPrompt,
@@ -8099,4 +8103,49 @@ test("stage 3 preview dedupe is scoped to workspace and user so only owned previ
     assert.equal(ownerRetry.id, ownerJob.id);
     assert.notEqual(otherUserJob.id, ownerJob.id);
   });
+});
+
+test("formatCodexExecFailureMessage keeps both stderr and stdout diagnostics", () => {
+  const message = formatCodexExecFailureMessage({
+    stderr: "Warning: no last agent message; wrote empty content to /tmp/output.json",
+    stdout:
+      "ERROR: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits.",
+    fallback: "Codex exec failed."
+  });
+
+  assert.equal(
+    message,
+    [
+      "Warning: no last agent message; wrote empty content to /tmp/output.json",
+      "ERROR: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits."
+    ].join("\n")
+  );
+});
+
+test("assertCodexProducedFinalMessage allows non-empty output", () => {
+  assert.doesNotThrow(() => {
+    assertCodexProducedFinalMessage({
+      rawOutput: '  {"result":"ok"}  ',
+      stdout: "",
+      stderr: ""
+    });
+  });
+});
+
+test("assertCodexProducedFinalMessage surfaces CLI diagnostics when output is blank", () => {
+  assert.throws(
+    () => {
+      assertCodexProducedFinalMessage({
+        rawOutput: "   \n",
+        stderr: "Warning: no last agent message; wrote empty content to /tmp/output.json",
+        stdout: "ERROR: You've hit your usage limit. Try again tomorrow."
+      });
+    },
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /usage limit/i);
+      assert.match(error.message, /no last agent message/i);
+      return true;
+    }
+  );
 });

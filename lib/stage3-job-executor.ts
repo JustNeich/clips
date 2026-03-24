@@ -9,6 +9,12 @@ import {
   summarizeStage3PreviewError
 } from "./stage3-preview-service";
 import {
+  EDITING_PROXY_WAIT_TIMEOUT_MS,
+  prepareStage3EditingProxy,
+  Stage3EditingProxyRequestBody,
+  summarizeStage3EditingProxyError
+} from "./stage3-editing-proxy-service";
+import {
   renderStage3Video,
   RENDER_WAIT_TIMEOUT_MS,
   Stage3RenderRequestBody,
@@ -80,6 +86,26 @@ export async function executeStage3HeavyJobPayload(
     };
   }
 
+  if (kind === "editing-proxy") {
+    const payload = JSON.parse(payloadJson) as Stage3EditingProxyRequestBody;
+    const prepared = await prepareStage3EditingProxy(payload, {
+      waitTimeoutMs: EDITING_PROXY_WAIT_TIMEOUT_MS
+    });
+    return {
+      resultJson: JSON.stringify({
+        sourceKey: prepared.sourceKey,
+        sourceDurationSec: prepared.sourceDurationSec,
+        cacheState: prepared.cacheState
+      }),
+      artifact: {
+        filePath: prepared.filePath,
+        fileName: prepared.fileName,
+        mimeType: "video/mp4"
+      },
+      cleanup: null
+    };
+  }
+
   if (kind === "source-download") {
     const payload = JSON.parse(payloadJson) as { sourceUrl?: string };
     const sourceUrl = payload.sourceUrl?.trim() ?? "";
@@ -117,6 +143,9 @@ export function summarizeStage3HeavyJobError(kind: Stage3JobKind, error: unknown
   }
   if (kind === "render") {
     return summarizeStage3RenderError(error);
+  }
+  if (kind === "editing-proxy") {
+    return summarizeStage3EditingProxyError(error);
   }
   if (kind === "agent-media-step") {
     return error instanceof Error ? error.message : "Stage 3 agent media step failed.";

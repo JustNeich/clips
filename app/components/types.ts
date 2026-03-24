@@ -283,7 +283,7 @@ export type Stage3TextFitSnapshot = {
   fitHash?: string;
 };
 
-export type Stage3JobKind = "preview" | "render" | "source-download" | "agent-media-step";
+export type Stage3JobKind = "preview" | "render" | "editing-proxy" | "source-download" | "agent-media-step";
 
 export type Stage3JobStatus = "queued" | "running" | "completed" | "failed" | "interrupted";
 

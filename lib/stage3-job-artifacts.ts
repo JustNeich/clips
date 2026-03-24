@@ -48,12 +48,36 @@ async function pruneArtifactDirectory(
   }
 }
 
-function resolveArtifactDir(kind: Extract<Stage3JobKind, "preview" | "render">): string {
+function resolveArtifactDir(kind: Extract<Stage3JobKind, "preview" | "render" | "editing-proxy">): string {
   return path.join(JOB_ARTIFACT_ROOT, kind);
 }
 
+function resolveArtifactRetention(
+  kind: Extract<Stage3JobKind, "preview" | "render" | "editing-proxy">
+): { maxFiles: number; maxBytes: number; maxAgeMs: number } {
+  if (kind === "render") {
+    return {
+      maxFiles: 16,
+      maxBytes: 1024 * 1024 * 1024,
+      maxAgeMs: 6 * 60 * 60_000
+    };
+  }
+  if (kind === "editing-proxy") {
+    return {
+      maxFiles: 24,
+      maxBytes: 1024 * 1024 * 1024,
+      maxAgeMs: 3 * 60 * 60_000
+    };
+  }
+  return {
+    maxFiles: 40,
+    maxBytes: 768 * 1024 * 1024,
+    maxAgeMs: 60 * 60_000
+  };
+}
+
 export async function publishStage3VideoArtifact(
-  kind: Extract<Stage3JobKind, "preview" | "render">,
+  kind: Extract<Stage3JobKind, "preview" | "render" | "editing-proxy">,
   jobId: string,
   sourcePath: string
 ): Promise<{ filePath: string; sizeBytes: number }> {
@@ -64,11 +88,7 @@ export async function publishStage3VideoArtifact(
   await fs.copyFile(sourcePath, tempPath);
   await fs.rename(tempPath, finalPath);
   const stat = await fs.stat(finalPath);
-  await pruneArtifactDirectory(dirPath, {
-    maxFiles: kind === "preview" ? 40 : 16,
-    maxBytes: kind === "preview" ? 768 * 1024 * 1024 : 1024 * 1024 * 1024,
-    maxAgeMs: kind === "preview" ? 60 * 60_000 : 6 * 60 * 60_000
-  }).catch(() => undefined);
+  await pruneArtifactDirectory(dirPath, resolveArtifactRetention(kind)).catch(() => undefined);
   return {
     filePath: finalPath,
     sizeBytes: stat.size
@@ -76,7 +96,7 @@ export async function publishStage3VideoArtifact(
 }
 
 export async function publishStage3VideoArtifactFromBuffer(
-  kind: Extract<Stage3JobKind, "preview" | "render">,
+  kind: Extract<Stage3JobKind, "preview" | "render" | "editing-proxy">,
   jobId: string,
   bytes: Uint8Array
 ): Promise<{ filePath: string; sizeBytes: number }> {
@@ -87,11 +107,7 @@ export async function publishStage3VideoArtifactFromBuffer(
   await fs.writeFile(tempPath, bytes);
   await fs.rename(tempPath, finalPath);
   const stat = await fs.stat(finalPath);
-  await pruneArtifactDirectory(dirPath, {
-    maxFiles: kind === "preview" ? 40 : 16,
-    maxBytes: kind === "preview" ? 768 * 1024 * 1024 : 1024 * 1024 * 1024,
-    maxAgeMs: kind === "preview" ? 60 * 60_000 : 6 * 60 * 60_000
-  }).catch(() => undefined);
+  await pruneArtifactDirectory(dirPath, resolveArtifactRetention(kind)).catch(() => undefined);
   return {
     filePath: finalPath,
     sizeBytes: stat.size

@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import {
   codexNotFoundMessage,
@@ -24,6 +25,36 @@ type RunCodexExecResult = {
   stdout: string;
   stderr: string;
 };
+
+export function formatCodexExecFailureMessage(input: {
+  stdout: string;
+  stderr: string;
+  fallback: string;
+}): string {
+  const stdout = input.stdout.trim();
+  const stderr = input.stderr.trim();
+  const parts = [stderr, stdout].filter(Boolean);
+  const uniqueParts = parts.filter((part, index) => parts.indexOf(part) === index);
+  return uniqueParts.join("\n") || input.fallback;
+}
+
+export function assertCodexProducedFinalMessage(input: {
+  rawOutput: string;
+  stdout: string;
+  stderr: string;
+}): void {
+  if (input.rawOutput.trim()) {
+    return;
+  }
+
+  throw new Error(
+    formatCodexExecFailureMessage({
+      stdout: input.stdout,
+      stderr: input.stderr,
+      fallback: "Codex completed without producing a final message."
+    })
+  );
+}
 
 export function normalizeCodexReasoningEffort(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -167,11 +198,41 @@ export async function runCodexExec(input: RunCodexExecInput): Promise<RunCodexEx
       clearTimeout(timer);
 
       if (code !== 0) {
-        reject(new Error(stderr.trim() || stdout.trim() || "Codex exec failed."));
+        reject(
+          new Error(
+            formatCodexExecFailureMessage({
+              stdout,
+              stderr,
+              fallback: "Codex exec failed."
+            })
+          )
+        );
         return;
       }
 
-      resolve({ stdout, stderr });
+      void readFile(input.outputMessagePath, "utf-8")
+        .then((rawOutput) => {
+          assertCodexProducedFinalMessage({
+            rawOutput,
+            stdout,
+            stderr
+          });
+          resolve({ stdout, stderr });
+        })
+        .catch((error) => {
+          reject(
+            new Error(
+              formatCodexExecFailureMessage({
+                stdout,
+                stderr,
+                fallback:
+                  error instanceof Error
+                    ? `Codex completed without writing the final message file: ${error.message}`
+                    : "Codex completed without writing the final message file."
+              })
+            )
+          );
+        });
     });
 
     child.stdin.write(input.prompt);

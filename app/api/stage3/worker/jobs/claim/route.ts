@@ -10,7 +10,7 @@ import { touchStage3WorkerHeartbeat } from "../../../../../../lib/stage3-worker-
 export const runtime = "nodejs";
 
 type ClaimBody = {
-  supportedKinds?: Array<"preview" | "render" | "source-download" | "agent-media-step">;
+  supportedKinds?: Array<"preview" | "render" | "editing-proxy" | "source-download" | "agent-media-step">;
   appVersion?: string | null;
   capabilities?: Record<string, unknown> | null;
 };

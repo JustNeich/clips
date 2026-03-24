@@ -36,8 +36,8 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       | null = null;
 
     if (artifactFile instanceof File) {
-      if (current.kind !== "preview" && current.kind !== "render") {
-        return Response.json({ error: "Artifacts are only supported for preview/render jobs." }, { status: 400 });
+      if (current.kind !== "preview" && current.kind !== "render" && current.kind !== "editing-proxy") {
+        return Response.json({ error: "Artifacts are only supported for preview/render/proxy jobs." }, { status: 400 });
       }
       const bytes = new Uint8Array(await artifactFile.arrayBuffer());
       const published = await publishStage3VideoArtifactFromBuffer(current.kind, current.id, bytes);
@@ -61,7 +61,11 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     return Response.json(
       buildStage3JobEnvelope(
         completed,
-        completed.artifact ? `/api/stage3/${completed.kind}/jobs/${completed.id}?download=1` : null
+        completed.artifact
+          ? completed.kind === "editing-proxy"
+            ? `/api/stage3/editing-proxy/jobs/${completed.id}?download=1`
+            : `/api/stage3/${completed.kind}/jobs/${completed.id}?download=1`
+          : null
       ),
       { status: 200 }
     );

@@ -122,8 +122,10 @@ async function normalizeJobFailure(job: Stage3JobRecord, error: unknown): Promis
       job.kind === "preview"
         ? "preview_failed"
         : job.kind === "render"
-        ? "render_failed"
-        : job.kind === "source-download"
+          ? "render_failed"
+          : job.kind === "editing-proxy"
+            ? "editing_proxy_failed"
+            : job.kind === "source-download"
             ? "source_download_failed"
             : "job_failed",
     message: await summarizeJobFailure(job, error),
@@ -152,7 +154,7 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
     const executed = await executor.executeStage3HeavyJobPayload(job.kind, job.payloadJson);
     try {
       const published =
-        executed.artifact && (job.kind === "preview" || job.kind === "render")
+        executed.artifact && (job.kind === "preview" || job.kind === "render" || job.kind === "editing-proxy")
           ? await publishStage3VideoArtifact(job.kind, job.id, executed.artifact.filePath)
           : null;
       completeStage3Job(job.id, {

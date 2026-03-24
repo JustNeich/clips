@@ -25,7 +25,7 @@ type WorkerCapabilities = {
 type Stage3JobEnvelope = {
   job: {
     id: string;
-    kind: "preview" | "render" | "source-download" | "agent-media-step";
+    kind: "preview" | "render" | "editing-proxy" | "source-download" | "agent-media-step";
     status: "queued" | "running" | "completed" | "failed" | "interrupted";
   };
 };
@@ -564,7 +564,7 @@ async function startCommand(): Promise<void> {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          supportedKinds: ["preview", "render", "source-download", "agent-media-step"],
+          supportedKinds: ["preview", "render", "editing-proxy", "source-download", "agent-media-step"],
           appVersion,
           capabilities
         })
