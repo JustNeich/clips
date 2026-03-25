@@ -3,8 +3,14 @@ export async function register(): Promise<void> {
     return;
   }
 
-  const [{ scheduleChannelPublicationProcessing }] = await Promise.all([
-    import("./lib/channel-publication-runtime")
-  ]);
+  const dynamicImport = new Function("specifier", "return import(specifier);") as <
+    TModule = { scheduleChannelPublicationProcessing: () => void }
+  >(
+    specifier: string
+  ) => Promise<TModule>;
+
+  const { scheduleChannelPublicationProcessing } = await dynamicImport(
+    "./lib/channel-publication-runtime"
+  );
   scheduleChannelPublicationProcessing();
 }
