@@ -86,6 +86,7 @@ type Step3RenderTemplateProps = {
   channelUsername: string;
   avatarUrl: string | null;
   previewVideoUrl: string | null;
+  accuratePreviewVideoUrl?: string | null;
   backgroundAssetUrl: string | null;
   backgroundAssetMimeType: string | null;
   backgroundOptions: ChannelAsset[];
@@ -97,6 +98,8 @@ type Step3RenderTemplateProps = {
   selectedPassIndex: number;
   previewState: Stage3PreviewState;
   previewNotice: string | null;
+  accuratePreviewState?: Stage3PreviewState;
+  accuratePreviewNotice?: string | null;
   agentPrompt: string;
   agentSession: Stage3SessionRecord | null;
   agentMessages: Stage3AgentConversationItem[];
@@ -188,6 +191,7 @@ type PendingTextFitAction = {
 };
 
 type Stage3SurfaceMode = "finish" | "editor";
+type Stage3PreviewMediaMode = "mapped" | "linear";
 
 function formatTimeSec(value: number): string {
   const total = Math.max(0, value);
@@ -523,6 +527,7 @@ function PreviewClipVideo({
   sourceUrl,
   playbackDurationSec,
   playbackPlan,
+  mediaMode,
   className,
   objectPosition,
   videoZoom,
@@ -538,6 +543,7 @@ function PreviewClipVideo({
   sourceUrl: string;
   playbackDurationSec: number;
   playbackPlan: ReturnType<typeof buildStage3PlaybackPlan>;
+  mediaMode: Stage3PreviewMediaMode;
   className: string;
   objectPosition?: string;
   videoZoom?: number;
@@ -560,6 +566,16 @@ function PreviewClipVideo({
       if (!video) {
         return null;
       }
+      if (mediaMode === "linear") {
+        const nextSec = clamp(outputSec, 0, playbackDurationSec);
+        lastPublishedOutputRef.current = nextSec;
+        video.currentTime = nextSec;
+        onPositionChange?.(nextSec, nextSec);
+        return {
+          outputTimeSec: nextSec,
+          sourceTimeSec: nextSec
+        };
+      }
       const position = resolveStage3PlaybackPosition(playbackPlan, outputSec);
       if (!position) {
         return null;
@@ -570,7 +586,7 @@ function PreviewClipVideo({
       onPositionChange?.(position.outputTimeSec, position.sourceTimeSec);
       return position;
     },
-    [onPositionChange, playbackPlan, videoRef]
+    [mediaMode, onPositionChange, playbackDurationSec, playbackPlan, videoRef]
   );
 
   useEffect(() => {
@@ -604,7 +620,16 @@ function PreviewClipVideo({
     return () => {
       video.removeEventListener("loadedmetadata", seekToStart);
     };
-  }, [isPlaying, onPositionChange, onSourceDurationChange, playbackPlan, seekToOutputTime, sourceUrl, videoRef]);
+  }, [
+    isPlaying,
+    mediaMode,
+    onPositionChange,
+    onSourceDurationChange,
+    playbackPlan,
+    seekToOutputTime,
+    sourceUrl,
+    videoRef
+  ]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -619,7 +644,7 @@ function PreviewClipVideo({
     } else {
       video.pause();
     }
-  }, [isPlaying, playbackDurationSec, seekToOutputTime, sourceUrl, videoRef]);
+  }, [isPlaying, mediaMode, playbackDurationSec, seekToOutputTime, sourceUrl, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -646,6 +671,17 @@ function PreviewClipVideo({
     const video = videoRef.current;
     if (!video) {
       return false;
+    }
+    if (mediaMode === "linear") {
+      const outputSec = clamp(video.currentTime, 0, playbackDurationSec);
+      lastPublishedOutputRef.current = outputSec;
+      onPositionChange?.(outputSec, outputSec);
+      if (!loopEnabled && outputSec >= playbackDurationSec - 0.02) {
+        video.pause();
+        onClipEnd?.();
+        return false;
+      }
+      return true;
     }
     const segment = playbackPlan.segments[activeSegmentIndexRef.current] ?? playbackPlan.segments[0];
     if (!segment) {
@@ -692,7 +728,17 @@ function PreviewClipVideo({
       return false;
     }
     return true;
-  }, [isPlaying, loopEnabled, onClipEnd, onPositionChange, playbackDurationSec, playbackPlan, seekToOutputTime, videoRef]);
+  }, [
+    isPlaying,
+    loopEnabled,
+    mediaMode,
+    onClipEnd,
+    onPositionChange,
+    playbackDurationSec,
+    playbackPlan,
+    seekToOutputTime,
+    videoRef
+  ]);
 
   useEffect(() => {
     const video = videoRef.current as
@@ -779,6 +825,7 @@ type Stage3LivePreviewPanelProps = {
   channelUsername: string;
   avatarUrl: string | null;
   previewVideoUrl: string | null;
+  accuratePreviewVideoUrl?: string | null;
   backgroundAssetUrl: string | null;
   backgroundAssetMimeType: string | null;
   previewVersion: Stage3Version | null;
@@ -790,6 +837,8 @@ type Stage3LivePreviewPanelProps = {
   summaryLines: string[];
   previewState: Stage3PreviewState;
   previewNotice: string | null;
+  accuratePreviewState?: Stage3PreviewState;
+  accuratePreviewNotice?: string | null;
   previewTemplateSnapshot: TemplateRenderSnapshot;
   clipStartSec: number;
   clipDurationSec: number;
@@ -830,6 +879,7 @@ function Stage3LivePreviewPanel({
   channelUsername,
   avatarUrl,
   previewVideoUrl,
+  accuratePreviewVideoUrl = null,
   backgroundAssetUrl,
   backgroundAssetMimeType,
   previewVersion,
@@ -841,6 +891,8 @@ function Stage3LivePreviewPanel({
   summaryLines,
   previewState,
   previewNotice,
+  accuratePreviewState = "idle",
+  accuratePreviewNotice = null,
   previewTemplateSnapshot,
   clipStartSec,
   clipDurationSec,
@@ -985,10 +1037,33 @@ function Stage3LivePreviewPanel({
     () =>
       resolveStage3BackgroundMode(templateId, {
         hasCustomBackground: Boolean(backgroundAssetUrl),
-        hasSourceVideo: Boolean(previewVideoUrl)
+        hasSourceVideo: Boolean(previewVideoUrl || accuratePreviewVideoUrl)
       }),
-    [backgroundAssetUrl, previewVideoUrl, templateId]
+    [accuratePreviewVideoUrl, backgroundAssetUrl, previewVideoUrl, templateId]
   );
+  const accuratePreviewReady = Boolean(accuratePreviewVideoUrl);
+  const activePreviewMediaMode: Stage3PreviewMediaMode = !editorMode && accuratePreviewReady ? "linear" : "mapped";
+  const activePreviewVideoUrl =
+    activePreviewMediaMode === "linear" ? accuratePreviewVideoUrl : previewVideoUrl;
+  const previewBackgroundMode = useMemo(() => {
+    if (backgroundMode !== "source-blur") {
+      return backgroundMode;
+    }
+    if (editorMode) {
+      return resolveStage3BackgroundMode(templateId, {
+        hasCustomBackground: Boolean(backgroundAssetUrl),
+        hasSourceVideo: false
+      });
+    }
+    return backgroundMode;
+  }, [backgroundAssetUrl, backgroundMode, editorMode, templateId]);
+  const effectivePreviewNotice =
+    editorMode && backgroundMode === "source-blur" && !previewNotice
+      ? "Быстрый preview использует лёгкий backdrop вместо blur-фона. Финальный export не меняется."
+      : !editorMode
+        ? accuratePreviewNotice ?? previewNotice
+        : previewNotice;
+  const effectivePreviewState = !editorMode ? accuratePreviewState : previewState;
   const overlayTint = useMemo(() => resolveTemplateOverlayTint(templateId), [templateId]);
   const summaryLine = summaryLines[0] ?? "Используется текущий live draft без сохраненной версии.";
   const sceneContent = useMemo<TemplateContentFixture>(
@@ -1045,8 +1120,8 @@ function Stage3LivePreviewPanel({
   }, []);
 
   useEffect(() => {
-    setTimelineSec(0);
-  }, [playbackPlan, previewVideoUrl]);
+    setTimelineSec((prev) => clamp(prev, 0, playbackDurationSec));
+  }, [activePreviewMediaMode, activePreviewVideoUrl, playbackDurationSec, playbackPlan]);
 
   useEffect(() => {
     if (editorMode) {
@@ -1070,7 +1145,7 @@ function Stage3LivePreviewPanel({
     }
     const duration = Number.isFinite(bg.duration) && bg.duration > 0 ? bg.duration : null;
     const desiredSec =
-      backgroundMode === "source-blur"
+      previewBackgroundMode === "source-blur" && activePreviewMediaMode === "mapped"
         ? sourceSec
         : outputSec;
     const next = duration ? desiredSec % duration : desiredSec;
@@ -1080,7 +1155,7 @@ function Stage3LivePreviewPanel({
     if (isPlayingRef.current && bg.paused) {
       void bg.play().catch(() => undefined);
     }
-  }, [backgroundMode]);
+  }, [activePreviewMediaMode, previewBackgroundMode]);
 
   const handlePreviewPositionChange = useCallback(
     (outputSec: number, sourceSec: number) => {
@@ -1106,7 +1181,7 @@ function Stage3LivePreviewPanel({
     } else {
       bg.pause();
     }
-  }, [isPlaying, backgroundAssetUrl, previewVideoUrl]);
+  }, [activePreviewVideoUrl, backgroundAssetUrl, isPlaying]);
 
   const seekTimeline = useCallback(
     (value: number) => {
@@ -1114,6 +1189,11 @@ function Stage3LivePreviewPanel({
       setTimelineSec(clamped);
       const video = slotPreviewRef.current;
       if (video) {
+        if (activePreviewMediaMode === "linear") {
+          video.currentTime = clamped;
+          syncBackgroundTo(clamped, clamped);
+          return;
+        }
         const position = resolveStage3PlaybackPosition(playbackPlan, clamped);
         if (position) {
           applyStage3PlaybackPositionToVideo(video, position, 0);
@@ -1123,7 +1203,7 @@ function Stage3LivePreviewPanel({
       }
       syncBackgroundTo(clamped, clamped);
     },
-    [playbackDurationSec, playbackPlan, syncBackgroundTo]
+    [activePreviewMediaMode, playbackDurationSec, playbackPlan, syncBackgroundTo]
   );
 
   const seekTimelineAtClientX = useCallback(
@@ -1485,7 +1565,7 @@ function Stage3LivePreviewPanel({
                   }}
                   runtime={{
                     showSafeArea: false,
-                    backgroundNode: backgroundMode === "custom"
+                    backgroundNode: previewBackgroundMode === "custom"
                         ? backgroundIsVideo
                           ? (
                             <video
@@ -1518,13 +1598,13 @@ function Stage3LivePreviewPanel({
                               style={{ backgroundImage: `url(${backgroundAssetUrl})` }}
                             />
                           )
-                        : backgroundMode === "source-blur"
+                        : previewBackgroundMode === "source-blur"
                           ? (
                             <video
-                              key={previewVideoUrl}
+                              key={activePreviewVideoUrl}
                               ref={backgroundPreviewRef}
                               className="preview-bg-video"
-                              src={previewVideoUrl ?? undefined}
+                              src={activePreviewVideoUrl ?? undefined}
                               muted
                               loop
                               playsInline
@@ -1549,7 +1629,7 @@ function Stage3LivePreviewPanel({
                               }}
                             />
                           )
-                          : backgroundMode === "built-in"
+                          : previewBackgroundMode === "built-in"
                             ? resolveTemplateBackdropNode(templateId)
                             : <div className="preview-bg-video preview-bg-fallback" />,
                     overlayNode: overlayTint ? (
@@ -1562,12 +1642,13 @@ function Stage3LivePreviewPanel({
                         }}
                       />
                     ) : undefined,
-                    mediaNode: previewVideoUrl ? (
+                    mediaNode: activePreviewVideoUrl ? (
                       <PreviewClipVideo
-                        key={previewVideoUrl}
-                        sourceUrl={previewVideoUrl}
+                        key={`${activePreviewMediaMode}:${activePreviewVideoUrl}`}
+                        sourceUrl={activePreviewVideoUrl}
                         playbackDurationSec={playbackDurationSec}
                         playbackPlan={playbackPlan}
+                        mediaMode={activePreviewMediaMode}
                         className="preview-slot-video"
                         objectPosition={objectPosition}
                         videoZoom={cameraState.zoom}
@@ -1786,15 +1867,19 @@ function Stage3LivePreviewPanel({
                 </div>
               </>
             ) : null}
-            <div className="timeline-time">
-              <span>{formatTimeSec(timelineSec)}</span>
-              <span>{formatTimeSec(playbackDurationSec)}</span>
-            </div>
-          </div>
-          <div className="timeline-notice">
-            {previewNotice ? <p className="subtle-text">{sanitizeDisplayText(previewNotice)}</p> : null}
+          <div className="timeline-time">
+            <span>{formatTimeSec(timelineSec)}</span>
+            <span>{formatTimeSec(playbackDurationSec)}</span>
           </div>
         </div>
+        <div className="timeline-notice">
+            {effectivePreviewNotice ? (
+              <p className="subtle-text">{sanitizeDisplayText(effectivePreviewNotice)}</p>
+            ) : effectivePreviewState === "loading" || effectivePreviewState === "retrying" || effectivePreviewState === "debouncing" ? (
+              <p className="subtle-text">Обновляю предпросмотр...</p>
+            ) : null}
+        </div>
+      </div>
       </div>
 
       {versionsDrawer}
@@ -1809,6 +1894,7 @@ export function Step3RenderTemplate({
   channelUsername,
   avatarUrl,
   previewVideoUrl,
+  accuratePreviewVideoUrl = null,
   backgroundAssetUrl,
   backgroundAssetMimeType,
   backgroundOptions,
@@ -1820,6 +1906,8 @@ export function Step3RenderTemplate({
   selectedPassIndex,
   previewState,
   previewNotice,
+  accuratePreviewState = "idle",
+  accuratePreviewNotice = null,
   agentPrompt,
   agentSession,
   agentMessages,
@@ -4254,6 +4342,7 @@ export function Step3RenderTemplate({
             channelUsername={channelUsername}
             avatarUrl={avatarUrl}
             previewVideoUrl={previewVideoUrl}
+            accuratePreviewVideoUrl={accuratePreviewVideoUrl}
             backgroundAssetUrl={backgroundAssetUrl}
             backgroundAssetMimeType={backgroundAssetMimeType}
             previewVersion={previewVersion}
@@ -4265,6 +4354,8 @@ export function Step3RenderTemplate({
             summaryLines={summaryLines}
             previewState={previewState}
             previewNotice={previewNotice ?? (isPreviewBusy ? "Обновляю предпросмотр..." : null)}
+            accuratePreviewState={accuratePreviewState}
+            accuratePreviewNotice={accuratePreviewNotice}
             previewTemplateSnapshot={previewTemplateSnapshot}
             onMeasuredTextFitChange={handlePreviewMeasuredTextFitChange}
             clipStartSec={localClipStartSec}

@@ -302,6 +302,9 @@ export default function HomePage() {
   const [stage3PreviewState, setStage3PreviewState] = useState<Stage3PreviewState>("idle");
   const [stage3PreviewNotice, setStage3PreviewNotice] = useState<string | null>(null);
   const [stage3PreviewJobId, setStage3PreviewJobId] = useState<string | null>(null);
+  const [stage3AccuratePreviewVideoUrl, setStage3AccuratePreviewVideoUrl] = useState<string | null>(null);
+  const [stage3AccuratePreviewState, setStage3AccuratePreviewState] = useState<Stage3PreviewState>("idle");
+  const [stage3AccuratePreviewNotice, setStage3AccuratePreviewNotice] = useState<string | null>(null);
   const [stage3Workers, setStage3Workers] = useState<Stage3WorkerSummary[]>([]);
   const [stage3WorkerPairing, setStage3WorkerPairing] = useState<Stage3WorkerPairingResponse | null>(null);
   const [isStage3WorkerPairing, setIsStage3WorkerPairing] = useState(false);
@@ -379,6 +382,9 @@ export default function HomePage() {
   const stage3PreviewRequestKeyRef = useRef<string>("");
   const stage3PreviewRequestIdRef = useRef(0);
   const stage3LastGoodPreviewAtRef = useRef<number | null>(null);
+  const stage3AccuratePreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
+  const stage3AccuratePreviewRequestKeyRef = useRef<string>("");
+  const stage3AccuratePreviewRequestIdRef = useRef(0);
   const restoringFlowShellStateRef = useRef<PersistedFlowShellState | null>(null);
   const sourceProgressPollIdRef = useRef(0);
   const sourceJobsRequestVersionsRef = useRef<Record<string, number>>({});
@@ -1927,17 +1933,24 @@ export default function HomePage() {
   useEffect(() => {
     return () => {
       clearStage3PreviewCache();
+      clearStage3AccuratePreviewCache();
     };
   }, []);
 
   useEffect(() => {
     stage3PreviewRequestKeyRef.current = "";
     stage3PreviewRequestIdRef.current += 1;
+    stage3AccuratePreviewRequestKeyRef.current = "";
+    stage3AccuratePreviewRequestIdRef.current += 1;
     clearStage3PreviewCache();
+    clearStage3AccuratePreviewCache();
     setStage3PreviewVideoUrl(null);
     setStage3PreviewState("idle");
     setStage3PreviewNotice(null);
     setStage3PreviewJobId(null);
+    setStage3AccuratePreviewVideoUrl(null);
+    setStage3AccuratePreviewState("idle");
+    setStage3AccuratePreviewNotice(null);
     setStage3RenderState("idle");
     setStage3RenderJobId(null);
   }, [activeChat?.id]);
@@ -1972,109 +1985,141 @@ export default function HomePage() {
     }
   }, []);
 
-  const makeLiveSnapshot = (
-    draftOverrides?: Partial<Stage3EditorDraftOverrides>,
-    textFitOverride?: Stage3TextFitSnapshot | null
-  ): Stage3StateSnapshot => {
-    const hasLegacyCameraOverride = Array.isArray(draftOverrides?.cameraKeyframes);
-    const hasPositionTrackOverride = Array.isArray(draftOverrides?.cameraPositionKeyframes);
-    const hasScaleTrackOverride = Array.isArray(draftOverrides?.cameraScaleKeyframes);
-    const hasTransformTrackOverride = hasPositionTrackOverride || hasScaleTrackOverride;
-    const effectiveRenderPlan = normalizeRenderPlan(
-      {
-        ...stage3RenderPlan,
-        cameraKeyframes: hasTransformTrackOverride
-          ? []
-          : hasLegacyCameraOverride
-            ? draftOverrides?.cameraKeyframes ?? []
-            : stage3RenderPlan.cameraKeyframes,
-        cameraPositionKeyframes: hasPositionTrackOverride
-          ? draftOverrides?.cameraPositionKeyframes ?? []
-          : stage3RenderPlan.cameraPositionKeyframes,
-        cameraScaleKeyframes: hasScaleTrackOverride
-          ? draftOverrides?.cameraScaleKeyframes ?? []
-          : stage3RenderPlan.cameraScaleKeyframes,
-        cameraMotion: hasTransformTrackOverride || hasLegacyCameraOverride ? "disabled" : stage3RenderPlan.cameraMotion,
-        videoZoom:
-          typeof draftOverrides?.videoZoom === "number" && Number.isFinite(draftOverrides.videoZoom)
-            ? draftOverrides.videoZoom
-            : stage3RenderPlan.videoZoom,
-        topFontScale:
-          typeof draftOverrides?.topFontScale === "number" && Number.isFinite(draftOverrides.topFontScale)
-            ? draftOverrides.topFontScale
-            : stage3RenderPlan.topFontScale,
-        bottomFontScale:
-          typeof draftOverrides?.bottomFontScale === "number" && Number.isFinite(draftOverrides.bottomFontScale)
-            ? draftOverrides.bottomFontScale
-            : stage3RenderPlan.bottomFontScale,
-        musicGain:
-          typeof draftOverrides?.musicGain === "number" && Number.isFinite(draftOverrides.musicGain)
-            ? draftOverrides.musicGain
-            : stage3RenderPlan.musicGain,
-        prompt: stage3AgentPrompt.trim() || stage3RenderPlan.prompt
-      },
-      fallbackRenderPlan()
-    );
-    const templateSnapshot = buildTemplateRenderSnapshot({
-      templateId: effectiveRenderPlan.templateId || STAGE3_TEMPLATE_ID,
-      content: {
-        topText: stage3TopText,
-        bottomText: stage3BottomText,
-        channelName: effectiveRenderPlan.authorName,
-        channelHandle: effectiveRenderPlan.authorHandle,
-        topFontScale: effectiveRenderPlan.topFontScale,
-        bottomFontScale: effectiveRenderPlan.bottomFontScale,
-        previewScale: 1,
-        mediaAsset: null,
-        backgroundAsset: null,
-        avatarAsset: null
-      },
-      fitOverride: textFitOverride ?? undefined
-    });
-    const snapshotClipStart =
-      typeof draftOverrides?.clipStartSec === "number" && Number.isFinite(draftOverrides.clipStartSec)
-        ? Math.max(0, draftOverrides.clipStartSec)
-        : stage3ClipStartSec;
-    const snapshotFocusY =
-      typeof draftOverrides?.focusY === "number" && Number.isFinite(draftOverrides.focusY)
-        ? Math.min(0.88, Math.max(0.12, draftOverrides.focusY))
-        : stage3FocusY;
-    return {
-      topText: templateSnapshot.content.topText,
-      bottomText: templateSnapshot.content.bottomText,
-      clipStartSec: snapshotClipStart,
-      clipDurationSec: CLIP_DURATION_SEC,
-      focusY: snapshotFocusY,
-      renderPlan: effectiveRenderPlan,
-      sourceDurationSec,
-      templateSnapshot: {
-        templateId: templateSnapshot.templateId,
-        specRevision: templateSnapshot.specRevision,
-        snapshotHash: templateSnapshot.snapshotHash,
-        fitRevision: templateSnapshot.fitRevision
-      },
-      textFit: createStage3TextFitSnapshot(
+  const makeLiveSnapshot = useCallback(
+    (
+      draftOverrides?: Partial<Stage3EditorDraftOverrides>,
+      textFitOverride?: Stage3TextFitSnapshot | null
+    ): Stage3StateSnapshot => {
+      const hasLegacyCameraOverride = Array.isArray(draftOverrides?.cameraKeyframes);
+      const hasPositionTrackOverride = Array.isArray(draftOverrides?.cameraPositionKeyframes);
+      const hasScaleTrackOverride = Array.isArray(draftOverrides?.cameraScaleKeyframes);
+      const hasTransformTrackOverride = hasPositionTrackOverride || hasScaleTrackOverride;
+      const effectiveRenderPlan = normalizeRenderPlan(
         {
-          templateId: templateSnapshot.templateId,
-          snapshotHash: templateSnapshot.snapshotHash,
-          topText: templateSnapshot.content.topText,
-          bottomText: templateSnapshot.content.bottomText,
-          topFontScale: effectiveRenderPlan.topFontScale,
-          bottomFontScale: effectiveRenderPlan.bottomFontScale
+          ...stage3RenderPlan,
+          cameraKeyframes: hasTransformTrackOverride
+            ? []
+            : hasLegacyCameraOverride
+              ? draftOverrides?.cameraKeyframes ?? []
+              : stage3RenderPlan.cameraKeyframes,
+          cameraPositionKeyframes: hasPositionTrackOverride
+            ? draftOverrides?.cameraPositionKeyframes ?? []
+            : stage3RenderPlan.cameraPositionKeyframes,
+          cameraScaleKeyframes: hasScaleTrackOverride
+            ? draftOverrides?.cameraScaleKeyframes ?? []
+            : stage3RenderPlan.cameraScaleKeyframes,
+          cameraMotion:
+            hasTransformTrackOverride || hasLegacyCameraOverride ? "disabled" : stage3RenderPlan.cameraMotion,
+          videoZoom:
+            typeof draftOverrides?.videoZoom === "number" && Number.isFinite(draftOverrides.videoZoom)
+              ? draftOverrides.videoZoom
+              : stage3RenderPlan.videoZoom,
+          topFontScale:
+            typeof draftOverrides?.topFontScale === "number" && Number.isFinite(draftOverrides.topFontScale)
+              ? draftOverrides.topFontScale
+              : stage3RenderPlan.topFontScale,
+          bottomFontScale:
+            typeof draftOverrides?.bottomFontScale === "number" && Number.isFinite(draftOverrides.bottomFontScale)
+              ? draftOverrides.bottomFontScale
+              : stage3RenderPlan.bottomFontScale,
+          musicGain:
+            typeof draftOverrides?.musicGain === "number" && Number.isFinite(draftOverrides.musicGain)
+              ? draftOverrides.musicGain
+              : stage3RenderPlan.musicGain,
+          prompt: stage3AgentPrompt.trim() || stage3RenderPlan.prompt
         },
-        {
-          topFontPx: templateSnapshot.fit.topFontPx,
-          bottomFontPx: templateSnapshot.fit.bottomFontPx,
-          topLineHeight: templateSnapshot.fit.topLineHeight,
-          bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
-          topLines: templateSnapshot.fit.topLines,
-          bottomLines: templateSnapshot.fit.bottomLines,
-          topCompacted: templateSnapshot.fit.topCompacted,
-          bottomCompacted: templateSnapshot.fit.bottomCompacted
-        }
-      )
-    };
-  };
+        fallbackRenderPlan()
+      );
+      const templateSnapshot = buildTemplateRenderSnapshot({
+        templateId: effectiveRenderPlan.templateId || STAGE3_TEMPLATE_ID,
+        content: {
+          topText: stage3TopText,
+          bottomText: stage3BottomText,
+          channelName: effectiveRenderPlan.authorName,
+          channelHandle: effectiveRenderPlan.authorHandle,
+          topFontScale: effectiveRenderPlan.topFontScale,
+          bottomFontScale: effectiveRenderPlan.bottomFontScale,
+          previewScale: 1,
+          mediaAsset: null,
+          backgroundAsset: null,
+          avatarAsset: null
+        },
+        fitOverride: textFitOverride ?? undefined
+      });
+      const snapshotClipStart =
+        typeof draftOverrides?.clipStartSec === "number" && Number.isFinite(draftOverrides.clipStartSec)
+          ? Math.max(0, draftOverrides.clipStartSec)
+          : stage3ClipStartSec;
+      const snapshotFocusY =
+        typeof draftOverrides?.focusY === "number" && Number.isFinite(draftOverrides.focusY)
+          ? Math.min(0.88, Math.max(0.12, draftOverrides.focusY))
+          : stage3FocusY;
+      return {
+        topText: templateSnapshot.content.topText,
+        bottomText: templateSnapshot.content.bottomText,
+        clipStartSec: snapshotClipStart,
+        clipDurationSec: CLIP_DURATION_SEC,
+        focusY: snapshotFocusY,
+        renderPlan: effectiveRenderPlan,
+        sourceDurationSec,
+        templateSnapshot: {
+          templateId: templateSnapshot.templateId,
+          specRevision: templateSnapshot.specRevision,
+          snapshotHash: templateSnapshot.snapshotHash,
+          fitRevision: templateSnapshot.fitRevision
+        },
+        textFit: createStage3TextFitSnapshot(
+          {
+            templateId: templateSnapshot.templateId,
+            snapshotHash: templateSnapshot.snapshotHash,
+            topText: templateSnapshot.content.topText,
+            bottomText: templateSnapshot.content.bottomText,
+            topFontScale: effectiveRenderPlan.topFontScale,
+            bottomFontScale: effectiveRenderPlan.bottomFontScale
+          },
+          {
+            topFontPx: templateSnapshot.fit.topFontPx,
+            bottomFontPx: templateSnapshot.fit.bottomFontPx,
+            topLineHeight: templateSnapshot.fit.topLineHeight,
+            bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
+            topLines: templateSnapshot.fit.topLines,
+            bottomLines: templateSnapshot.fit.bottomLines,
+            topCompacted: templateSnapshot.fit.topCompacted,
+            bottomCompacted: templateSnapshot.fit.bottomCompacted
+          }
+        )
+      };
+    },
+    [
+      sourceDurationSec,
+      stage3AgentPrompt,
+      stage3BottomText,
+      stage3ClipStartSec,
+      stage3FocusY,
+      stage3RenderPlan,
+      stage3TopText
+    ]
+  );
+
+  const stage3LivePreviewSnapshot = useMemo(
+    () => makeLiveSnapshot(),
+    [makeLiveSnapshot]
+  );
+  const stage3EditingProxyKey = useMemo(() => activeChat?.url ?? "", [activeChat?.url]);
+  const stage3AccuratePreviewKey = useMemo(() => {
+    if (!activeChat?.url) {
+      return "";
+    }
+    return JSON.stringify({
+      sourceUrl: activeChat.url,
+      channelId: activeChannelId ?? null,
+      topText: stage3LivePreviewSnapshot.topText,
+      bottomText: stage3LivePreviewSnapshot.bottomText,
+      clipStartSec: stage3LivePreviewSnapshot.clipStartSec,
+      focusY: stage3LivePreviewSnapshot.focusY,
+      renderPlan: stage3LivePreviewSnapshot.renderPlan
+    });
+  }, [activeChannelId, activeChat?.url, stage3LivePreviewSnapshot]);
 
   const applyTimelineVersion = (
     timeline: Stage3TimelineResponse,
@@ -2109,6 +2154,16 @@ export default function HomePage() {
 
   const clearStage3PreviewCache = (): void => {
     const cache = stage3PreviewCacheRef.current;
+    for (const { url } of cache.values()) {
+      if (url.startsWith("blob:")) {
+        URL.revokeObjectURL(url);
+      }
+    }
+    cache.clear();
+  };
+
+  const clearStage3AccuratePreviewCache = (): void => {
+    const cache = stage3AccuratePreviewCacheRef.current;
     for (const { url } of cache.values()) {
       if (url.startsWith("blob:")) {
         URL.revokeObjectURL(url);
@@ -3630,8 +3685,6 @@ export default function HomePage() {
     [stage3RenderPlan]
   );
 
-  const stage3EditingProxyKey = useMemo(() => activeChat?.url ?? "", [activeChat?.url]);
-
   const stage3PassSelectionJson = useMemo(
     () => JSON.stringify(stage3PassSelectionByVersion),
     [stage3PassSelectionByVersion]
@@ -4193,7 +4246,7 @@ export default function HomePage() {
     })();
 
     return () => controller.abort();
-  }, [currentStep, activeChat?.url, stage3RenderInProgress]);
+  }, [activeChat?.url, currentStep, parseError, stage3RenderInProgress]);
 
   useEffect(() => {
     if (currentStep !== 3 || !activeChat?.url) {
@@ -4415,6 +4468,150 @@ export default function HomePage() {
     stage3PreviewState
   ]);
 
+  useEffect(() => {
+    if (currentStep !== 3 || !activeChat?.url || !stage3AccuratePreviewKey) {
+      return;
+    }
+
+    const previewKey = stage3AccuratePreviewKey;
+    stage3AccuratePreviewRequestKeyRef.current = previewKey;
+    const requestId = stage3AccuratePreviewRequestIdRef.current + 1;
+    stage3AccuratePreviewRequestIdRef.current = requestId;
+
+    const cached = stage3AccuratePreviewCacheRef.current.get(previewKey);
+    if (cached) {
+      setStage3AccuratePreviewVideoUrl(cached.url);
+      setStage3AccuratePreviewState("ready");
+      setStage3AccuratePreviewNotice(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let debounceTimer: number | null = null;
+    let retryTimer: number | null = null;
+
+    const isStale = (): boolean =>
+      controller.signal.aborted ||
+      stage3AccuratePreviewRequestIdRef.current !== requestId ||
+      stage3AccuratePreviewRequestKeyRef.current !== previewKey;
+
+    const rememberPreviewUrl = (url: string) => {
+      const cache = stage3AccuratePreviewCacheRef.current;
+      cache.set(previewKey, { url, createdAt: Date.now() });
+      while (cache.size > 10) {
+        const oldestEntry = [...cache.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt)[0];
+        if (!oldestEntry) {
+          break;
+        }
+        if (oldestEntry[1].url.startsWith("blob:")) {
+          URL.revokeObjectURL(oldestEntry[1].url);
+        }
+        cache.delete(oldestEntry[0]);
+      }
+      setStage3AccuratePreviewVideoUrl(url);
+      setStage3AccuratePreviewState("ready");
+      setStage3AccuratePreviewNotice(null);
+    };
+
+    const scheduleRetry = (message: string, delayMs: number) => {
+      if (isStale()) {
+        return;
+      }
+      setStage3AccuratePreviewState("retrying");
+      setStage3AccuratePreviewNotice(message);
+      retryTimer = window.setTimeout(() => {
+        if (isStale()) {
+          return;
+        }
+        void startAccuratePreviewRequest();
+      }, delayMs);
+    };
+
+    const startAccuratePreviewRequest = async (): Promise<void> => {
+      if (isStale()) {
+        return;
+      }
+      setStage3AccuratePreviewVideoUrl(null);
+      setStage3AccuratePreviewState("loading");
+      setStage3AccuratePreviewNotice("Собираю точный clip-preview...");
+
+      try {
+        const response = await fetchWithTimeout(
+          "/api/stage3/preview",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sourceUrl: activeChat.url,
+              channelId: activeChannelId ?? undefined,
+              clipStartSec: stage3LivePreviewSnapshot.clipStartSec,
+              clipDurationSec: CLIP_DURATION_SEC,
+              agentPrompt: stage3AgentPrompt.trim() || undefined,
+              renderPlan: stage3LivePreviewSnapshot.renderPlan,
+              snapshot: stage3LivePreviewSnapshot
+            }),
+            signal: controller.signal
+          },
+          45_000
+        );
+        if (isStale() || response.status === 204) {
+          return;
+        }
+        const contentType = responseContentType(response);
+        if (!response.ok || !contentType.includes("video/")) {
+          const message = await parseError(response, "Не удалось обновить точный clip-preview.");
+          if (response.status >= 500) {
+            scheduleRetry(message, parseRetryAfterMs(response.headers.get("retry-after"), 5000));
+            return;
+          }
+          setStage3AccuratePreviewState("error");
+          setStage3AccuratePreviewNotice(message);
+          return;
+        }
+
+        const blob = await response.blob();
+        if (isStale()) {
+          return;
+        }
+        rememberPreviewUrl(URL.createObjectURL(blob));
+      } catch (error) {
+        if (isStale() || isAbortError(error)) {
+          return;
+        }
+        scheduleRetry(getUiErrorMessage(error, "Не удалось обновить точный clip-preview."), 5000);
+      }
+    };
+
+    setStage3AccuratePreviewVideoUrl(null);
+    setStage3AccuratePreviewState("debouncing");
+    setStage3AccuratePreviewNotice("Подготавливаю точный clip-preview...");
+    debounceTimer = window.setTimeout(() => {
+      if (isStale()) {
+        return;
+      }
+      void startAccuratePreviewRequest();
+    }, 900);
+
+    return () => {
+      controller.abort();
+      if (debounceTimer !== null) {
+        window.clearTimeout(debounceTimer);
+      }
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+    };
+  }, [
+    activeChannelId,
+    activeChat?.url,
+    currentStep,
+    getUiErrorMessage,
+    parseError,
+    stage3AccuratePreviewKey,
+    stage3AgentPrompt,
+    stage3LivePreviewSnapshot
+  ]);
+
   const steps: FlowStep[] = useMemo(
     () => [
       { id: 1, label: "Вставить ссылку", enabled: true },
@@ -4552,11 +4749,17 @@ export default function HomePage() {
     autoAppliedCaptionRef.current = null;
     stage3PreviewRequestKeyRef.current = "";
     stage3PreviewRequestIdRef.current += 1;
+    stage3AccuratePreviewRequestKeyRef.current = "";
+    stage3AccuratePreviewRequestIdRef.current += 1;
     clearStage3PreviewCache();
+    clearStage3AccuratePreviewCache();
     setStage3PreviewVideoUrl(null);
     setStage3PreviewState("idle");
     setStage3PreviewNotice(null);
     setStage3PreviewJobId(null);
+    setStage3AccuratePreviewVideoUrl(null);
+    setStage3AccuratePreviewState("idle");
+    setStage3AccuratePreviewNotice(null);
     setStage3RenderState("idle");
     setStage3RenderJobId(null);
     setStatus("");
@@ -4629,11 +4832,17 @@ export default function HomePage() {
       autoAppliedCaptionRef.current = null;
       stage3PreviewRequestKeyRef.current = "";
       stage3PreviewRequestIdRef.current += 1;
+      stage3AccuratePreviewRequestKeyRef.current = "";
+      stage3AccuratePreviewRequestIdRef.current += 1;
       clearStage3PreviewCache();
+      clearStage3AccuratePreviewCache();
       setStage3PreviewVideoUrl(null);
       setStage3PreviewState("idle");
       setStage3PreviewNotice(null);
       setStage3PreviewJobId(null);
+      setStage3AccuratePreviewVideoUrl(null);
+      setStage3AccuratePreviewState("idle");
+      setStage3AccuratePreviewNotice(null);
       setStage3RenderState("idle");
       setStage3RenderJobId(null);
       setStatus("");
@@ -5653,6 +5862,7 @@ export default function HomePage() {
           }
           avatarUrl={stage3AvatarUrl}
           previewVideoUrl={stage3PreviewVideoUrl}
+          accuratePreviewVideoUrl={stage3AccuratePreviewVideoUrl}
           backgroundAssetUrl={stage3BackgroundUrl}
           backgroundAssetMimeType={stage3RenderPlan.backgroundAssetMimeType}
           backgroundOptions={backgroundOptions}
@@ -5664,6 +5874,8 @@ export default function HomePage() {
           selectedPassIndex={selectedStage3PassIndex}
           previewState={stage3PreviewState}
           previewNotice={stage3PreviewNotice}
+          accuratePreviewState={stage3AccuratePreviewState}
+          accuratePreviewNotice={stage3AccuratePreviewNotice}
           agentPrompt={stage3AgentPrompt}
           agentSession={activeStage3AgentTimeline?.session ?? null}
           agentMessages={stage3AgentConversation}

@@ -23,6 +23,14 @@ type EncodeProfile = {
   fitScalePrefix: string;
 };
 
+type EditingProxyProfile = {
+  preset: string;
+  crf: string;
+  threads: string;
+  maxDimensionPx: number;
+  fps: number;
+};
+
 export type VideoDimensions = {
   width: number;
   height: number;
@@ -77,6 +85,17 @@ function getEncodeProfile(profile: Stage3MediaProfile): EncodeProfile {
     crf: "20",
     threads: constrained ? "1" : "0",
     fitScalePrefix: ""
+  };
+}
+
+function getEditingProxyProfile(): EditingProxyProfile {
+  const constrained = isMemoryConstrainedRuntime();
+  return {
+    preset: "ultrafast",
+    crf: "34",
+    threads: constrained ? "1" : "2",
+    maxDimensionPx: constrained ? 720 : 960,
+    fps: 30
   };
 }
 
@@ -1125,6 +1144,55 @@ async function mixMusicIfNeeded(params: {
   );
 
   return output;
+}
+
+export async function prepareStage3EditingProxy(params: {
+  sourcePath: string;
+  tmpDir: string;
+  sourceFileName?: string | null;
+}): Promise<{ proxyPath: string; fileName: string }> {
+  const profile = getEditingProxyProfile();
+  const output = path.join(params.tmpDir, "editing-proxy.mp4");
+  const fileBase =
+    (params.sourceFileName ? path.parse(sanitizeFileName(params.sourceFileName)).name : "").trim() || "source";
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      params.sourcePath,
+      "-vf",
+      `fps=${profile.fps},scale=${profile.maxDimensionPx}:-2:force_original_aspect_ratio=decrease,setsar=1`,
+      "-c:v",
+      "libx264",
+      "-preset",
+      profile.preset,
+      "-crf",
+      profile.crf,
+      "-threads",
+      profile.threads,
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "96k",
+      "-ar",
+      "48000",
+      "-ac",
+      "2",
+      output
+    ],
+    { timeout: 10 * 60_000, maxBuffer: 1024 * 1024 * 16 }
+  );
+
+  return {
+    proxyPath: output,
+    fileName: `${fileBase}.editing-proxy.mp4`
+  };
 }
 
 export async function prepareStage3SourceClip(params: {
