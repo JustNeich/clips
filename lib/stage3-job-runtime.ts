@@ -164,7 +164,27 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
         executed.artifact && (job.kind === "preview" || job.kind === "render" || job.kind === "editing-proxy")
           ? await publishStage3VideoArtifact(job.kind, job.id, executed.artifact.filePath)
           : null;
-      const completed = completeStage3Job(job.id, {
+      if (job.kind === "render" && executed.artifact && published) {
+        await persistRenderExportCompletion(job, {
+          jobId: job.id,
+          artifactFileName: executed.artifact.fileName,
+          artifactFilePath: published.filePath,
+          artifactMimeType: executed.artifact.mimeType,
+          artifactSizeBytes: published.sizeBytes,
+          completedAt: new Date().toISOString()
+        }).catch((error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Не удалось сохранить server-side результат Stage 3 render.";
+          appendStage3JobEvent(job.id, "warn", message);
+          logStage3Runtime("render_completion_persist_fail", {
+            jobId: job.id,
+            message
+          });
+        });
+      }
+      completeStage3Job(job.id, {
         resultJson: executed.resultJson,
         artifact:
           executed.artifact && published
@@ -177,19 +197,6 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
               }
             : null
       });
-      if (completed.kind === "render" && completed.artifact && completed.artifactFilePath) {
-        await persistRenderExportCompletion(job, completed).catch((error) => {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Не удалось сохранить server-side результат Stage 3 render.";
-          appendStage3JobEvent(job.id, "warn", message);
-          logStage3Runtime("render_completion_persist_fail", {
-            jobId: job.id,
-            message
-          });
-        });
-      }
       if (published && executed.artifact) {
         appendStage3JobEvent(job.id, "info", "Published artifact.", {
           kind: job.kind,
@@ -275,11 +282,18 @@ function buildRenderExportChatRef(input: {
 
 async function persistRenderExportCompletion(
   initialJob: Stage3JobRecord,
-  completedJob: Stage3JobRecord
+  completedArtifact: {
+    jobId: string;
+    artifactFileName: string;
+    artifactFilePath: string;
+    artifactMimeType: string;
+    artifactSizeBytes: number;
+    completedAt: string;
+  }
 ): Promise<void> {
   const payload = JSON.parse(initialJob.payloadJson) as Stage3RenderRequestBody;
   const chatId = payload.chatId?.trim() ?? "";
-  if (!chatId || !completedJob.artifact || !completedJob.artifactFilePath) {
+  if (!chatId) {
     return;
   }
 
@@ -294,11 +308,11 @@ async function persistRenderExportCompletion(
     channelId: chat.channelId,
     chatId: chat.id,
     chatTitle: chat.title,
-    stage3JobId: completedJob.id,
-    artifactFileName: completedJob.artifact.fileName,
-    artifactFilePath: completedJob.artifactFilePath,
-    artifactMimeType: completedJob.artifact.mimeType,
-    artifactSizeBytes: completedJob.artifact.sizeBytes,
+    stage3JobId: completedArtifact.jobId,
+    artifactFileName: completedArtifact.artifactFileName,
+    artifactFilePath: completedArtifact.artifactFilePath,
+    artifactMimeType: completedArtifact.artifactMimeType,
+    artifactSizeBytes: completedArtifact.artifactSizeBytes,
     renderTitle: payload.renderTitle?.trim() || null,
     sourceUrl: payload.sourceUrl?.trim() || chat.url,
     snapshotJson: JSON.stringify(payload.snapshot ?? null),
@@ -307,8 +321,8 @@ async function persistRenderExportCompletion(
   });
 
   const exportRef = buildRenderExportChatRef({
-    completedAt: completedJob.completedAt,
-    fileName: completedJob.artifact.fileName,
+    completedAt: completedArtifact.completedAt,
+    fileName: completedArtifact.artifactFileName,
     renderTitle: payload.renderTitle?.trim() || null,
     payload
   });

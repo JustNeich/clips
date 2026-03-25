@@ -3289,8 +3289,13 @@ export function Step3RenderTemplate({
 
   const finishFooter = (
     <div className="sticky-action-bar">
-      <button type="button" className="btn btn-ghost" onClick={onReset}>
-        Сбросить
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={onReset}
+        title="Очистить текущий flow и перейти к следующей ссылке"
+      >
+        Новый чат
       </button>
       <button type="button" className="btn btn-secondary" onClick={onExport} disabled={!sourceUrl}>
         Экспорт JSON
@@ -3315,8 +3320,13 @@ export function Step3RenderTemplate({
 
   const editorFooter = (
     <div className="sticky-action-bar">
-      <button type="button" className="btn btn-ghost" onClick={onReset}>
-        Сбросить
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={onReset}
+        title="Очистить текущий flow и перейти к следующей ссылке"
+      >
+        Новый чат
       </button>
       <button type="button" className="btn btn-secondary" onClick={() => setStage3Mode("finish")}>
         Назад к финализации

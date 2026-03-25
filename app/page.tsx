@@ -3434,18 +3434,6 @@ export default function HomePage() {
       }),
     [activeChat?.id, activeChat?.url, draftUrl]
   );
-  useEffect(() => {
-    if (!activeChat) {
-      return;
-    }
-    if (isSourceJobVisibleRunning) {
-      setCurrentStep((prev) => (prev === 1 ? prev : 1));
-      return;
-    }
-    if (isStage2RunVisibleRunning) {
-      setCurrentStep((prev) => (prev === 2 ? prev : 2));
-    }
-  }, [activeChat, isSourceJobVisibleRunning, isStage2RunVisibleRunning]);
   const sourceJobBlockedReason = useMemo(() => {
     return resolveSourceFetchBlockedReason({
       activeChannelId,
@@ -4532,8 +4520,14 @@ export default function HomePage() {
 
   const handleResetFlow = (): void => {
     void flushActiveDraftSave();
+    restoringFlowShellStateRef.current = null;
     desiredActiveChatIdRef.current = null;
     activeChatIdRef.current = null;
+    writeFlowShellState({
+      channelId: activeChannelId ?? null,
+      chatId: null,
+      step: 1
+    });
     setActiveChat(null);
     setActiveDraft(null);
     draftPayloadJsonRef.current = "";

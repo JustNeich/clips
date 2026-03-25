@@ -1508,27 +1508,6 @@ export function Step2PickCaption({
             </div>
           ) : (
             <>
-              {stage2.warnings.length > 0 ? (
-                <section className="control-card control-card-subtle">
-                  <div className="option-card-head">
-                    <div>
-                      <h3>Run warnings</h3>
-                      <p className="subtle-text">
-                        Здесь видны реальные degraded states и runtime decisions, которые стоит учитывать перед выбором финального текста.
-                      </p>
-                    </div>
-                  </div>
-                  <ul className="stage2-example-list">
-                    {stage2.warnings.map((warning, index) => (
-                      <li key={`${warning.field}-${index}`} className="stage2-example-card">
-                        <strong>{warning.field}</strong>
-                        <p className="subtle-text">{warning.message}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-
               <section className="options-grid options-grid-stage2">
                 {stage2.output.captionOptions.map((option) => {
                   const selected = activeOption?.option === option.option;
@@ -1769,56 +1748,6 @@ export function Step2PickCaption({
                 })}
               </section>
 
-              <section className="control-card control-card-subtle">
-                <div className="option-card-head">
-                  <div>
-                    <h3>Последние реакции канала</h3>
-                    <p className="subtle-text">
-                      Здесь видны только явные лайки и дизлайки по whole option, TOP или BOTTOM. Автосигнал от простого выбора варианта в эту историю не попадает.
-                    </p>
-                  </div>
-                </div>
-                {feedbackHistoryLoading ? (
-                  <p className="subtle-text">Загружаем историю реакций…</p>
-                ) : feedbackHistory.length > 0 ? (
-                  <div className="stage2-example-list">
-                    {feedbackHistory.map((event) => (
-                      <article key={event.id} className="stage2-example-card">
-                        <div className="quick-edit-label-row">
-                          <strong>
-                            {event.kind === "more_like_this" ? "👍" : "👎"} {formatFeedbackScopeLabel(event.scope)}
-                          </strong>
-                          <div className="history-item-actions">
-                            <span className="subtle-text">{formatFeedbackHistoryTimestamp(event.createdAt)}</span>
-                            {canSubmitFeedback && onDeleteFeedbackEvent ? (
-                              <button
-                                type="button"
-                                className="btn btn-ghost history-delete-btn"
-                                aria-label={`Удалить реакцию ${event.id}`}
-                                title="Удалить реакцию"
-                                disabled={deletingFeedbackEventId === event.id}
-                                onClick={() => {
-                                  void onDeleteFeedbackEvent(event.id);
-                                }}
-                              >
-                                {deletingFeedbackEventId === event.id ? "Удаляем…" : "Удалить"}
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                        <p className="subtle-text">Режим: {formatFeedbackNoteModeLabel(event.noteMode)}</p>
-                        <p className="subtle-text">{getFeedbackHistorySnippet(event)}</p>
-                        {event.note ? <p className="subtle-text">Заметка: {event.note}</p> : null}
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="subtle-text">
-                    Явных реакций ещё нет. Канал пока больше опирается на bootstrap prior и текущий выбор редактора.
-                  </p>
-                )}
-              </section>
-
               <section className="control-card">
                 <div className="option-card-head">
                   <div>
@@ -1921,6 +1850,77 @@ export function Step2PickCaption({
                   ) : null}
                 </section>
               ) : null}
+
+              {stage2.warnings.length > 0 ? (
+                <section className="control-card control-card-subtle">
+                  <div className="option-card-head">
+                    <div>
+                      <h3>Run warnings</h3>
+                      <p className="subtle-text">
+                        Диагностика рантайма и degraded states. Основной рабочий выбор уже выше.
+                      </p>
+                    </div>
+                  </div>
+                  <ul className="stage2-example-list">
+                    {stage2.warnings.map((warning, index) => (
+                      <li key={`${warning.field}-${index}`} className="stage2-example-card">
+                        <strong>{warning.field}</strong>
+                        <p className="subtle-text">{warning.message}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              <section className="control-card control-card-subtle">
+                <div className="option-card-head">
+                  <div>
+                    <h3>Последние реакции канала</h3>
+                    <p className="subtle-text">
+                      Здесь видны только явные лайки и дизлайки по whole option, TOP или BOTTOM. Автосигнал от простого выбора варианта в эту историю не попадает.
+                    </p>
+                  </div>
+                </div>
+                {feedbackHistoryLoading ? (
+                  <p className="subtle-text">Загружаем историю реакций…</p>
+                ) : feedbackHistory.length > 0 ? (
+                  <div className="stage2-example-list">
+                    {feedbackHistory.map((event) => (
+                      <article key={event.id} className="stage2-example-card">
+                        <div className="quick-edit-label-row">
+                          <strong>
+                            {event.kind === "more_like_this" ? "👍" : "👎"} {formatFeedbackScopeLabel(event.scope)}
+                          </strong>
+                          <div className="history-item-actions">
+                            <span className="subtle-text">{formatFeedbackHistoryTimestamp(event.createdAt)}</span>
+                            {canSubmitFeedback && onDeleteFeedbackEvent ? (
+                              <button
+                                type="button"
+                                className="btn btn-ghost history-delete-btn"
+                                aria-label={`Удалить реакцию ${event.id}`}
+                                title="Удалить реакцию"
+                                disabled={deletingFeedbackEventId === event.id}
+                                onClick={() => {
+                                  void onDeleteFeedbackEvent(event.id);
+                                }}
+                              >
+                                {deletingFeedbackEventId === event.id ? "Удаляем…" : "Удалить"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="subtle-text">Режим: {formatFeedbackNoteModeLabel(event.noteMode)}</p>
+                        <p className="subtle-text">{getFeedbackHistorySnippet(event)}</p>
+                        {event.note ? <p className="subtle-text">Заметка: {event.note}</p> : null}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="subtle-text">
+                    Явных реакций ещё нет. Канал пока больше опирается на bootstrap prior и текущий выбор редактора.
+                  </p>
+                )}
+              </section>
             </>
           )}
 
