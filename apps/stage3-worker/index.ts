@@ -467,24 +467,37 @@ async function completeRemoteJob(
     artifactMimeType: string | null;
   }
 ): Promise<void> {
-  const form = new FormData();
-  if (result.resultJson) {
-    form.set("resultJson", result.resultJson);
-  }
+  const url = `${config.serverOrigin}/api/stage3/worker/jobs/${job.id}/complete`;
+  let response: Response;
   if (result.artifactPath) {
     const bytes = await fs.readFile(result.artifactPath);
-    form.set(
-      "artifact",
-      new Blob([bytes], { type: result.artifactMimeType || "video/mp4" }),
-      result.artifactName || `${job.id}.mp4`
-    );
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        ...authHeaders(config),
+        "Content-Type": result.artifactMimeType || "video/mp4",
+        "x-stage3-artifact-name": encodeURIComponent(result.artifactName || `${job.id}.mp4`),
+        "x-stage3-artifact-mime-type": encodeURIComponent(result.artifactMimeType || "video/mp4"),
+        ...(result.resultJson
+          ? {
+              "x-stage3-result-json": Buffer.from(result.resultJson, "utf-8").toString("base64url")
+            }
+          : {})
+      },
+      body: bytes
+    });
+  } else {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        ...authHeaders(config),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        resultJson: result.resultJson
+      })
+    });
   }
-
-  const response = await fetch(`${config.serverOrigin}/api/stage3/worker/jobs/${job.id}/complete`, {
-    method: "POST",
-    headers: authHeaders(config),
-    body: form
-  });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error || "Failed to complete remote Stage 3 job.");
