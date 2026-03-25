@@ -1,4 +1,5 @@
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
+import { resolveStage3ExecutionTarget } from "../../../../lib/stage3-execution";
 import {
   enqueueAndScheduleStage3Job,
   waitForStage3Job
@@ -9,6 +10,7 @@ import {
   Stage3PreviewRequestBody,
   tryCreateStage3PreviewResponse
 } from "../../../../lib/stage3-preview-service";
+import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
 
 export const runtime = "nodejs";
 
@@ -22,7 +24,32 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
-    const executionTarget = "host" as const;
+    const executionTarget = resolveStage3ExecutionTarget("host");
+    if (executionTarget === "local") {
+      const readiness = await resolveStage3LocalWorkerReadiness({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      });
+      if (!readiness.ready) {
+        return Response.json(
+          {
+            error:
+              "Локальный executor устарел или недоступен. Обновите worker через bootstrap и повторите попытку."
+          },
+          {
+            status: 503,
+            headers: {
+              "Retry-After": PREVIEW_BUSY_RETRY_AFTER_SEC,
+              "x-stage3-busy": "1",
+              "x-stage3-worker-update-required": "1",
+              ...(readiness.expectedRuntimeVersion
+                ? { "x-stage3-worker-required-version": readiness.expectedRuntimeVersion }
+                : {})
+            }
+          }
+        );
+      }
+    }
 
     const job = enqueueAndScheduleStage3Job({
       workspaceId: auth.workspace.id,
