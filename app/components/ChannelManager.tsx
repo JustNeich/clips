@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AppShellToastTone } from "./AppShell";
+import { ChannelManagerPublishingTab } from "./ChannelManagerPublishingTab";
 import { ChannelManagerStage2Tab } from "./ChannelManagerStage2Tab";
 import {
   AppRole,
@@ -130,6 +131,7 @@ export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
 
 type ChannelManagerProps = {
   open: boolean;
+  initialTab?: TabId | null;
   channels: Channel[];
   workspaceStage2ExamplesCorpusJson: string;
   workspaceStage2HardConstraints: Stage2HardConstraints;
@@ -181,10 +183,18 @@ type ChannelManagerProps = {
   accessGrants: ChannelAccessGrant[];
   workspaceMembers: Array<{ user: UserRecord; role: WorkspaceMemberRecord["role"] }>;
   onUpdateAccess: (channelId: string, input: { grantUserIds: string[]; revokeUserIds: string[] }) => void;
+  onSavePublishSettings: (
+    channelId: string,
+    patch: Partial<NonNullable<Channel["publishSettings"]>>
+  ) => Promise<void>;
+  onConnectYouTube: (channelId: string) => Promise<void>;
+  onDisconnectYouTube: (channelId: string) => Promise<void>;
+  onSelectYouTubeDestination: (channelId: string, selectedYoutubeChannelId: string) => Promise<void>;
 };
 
 export function ChannelManager({
   open,
+  initialTab = null,
   channels,
   workspaceStage2ExamplesCorpusJson,
   workspaceStage2HardConstraints: workspaceStage2HardConstraintsProp,
@@ -213,7 +223,11 @@ export function ChannelManager({
   canManageAccess,
   accessGrants,
   workspaceMembers,
-  onUpdateAccess
+  onUpdateAccess,
+  onSavePublishSettings,
+  onConnectYouTube,
+  onDisconnectYouTube,
+  onSelectYouTubeDestination
 }: ChannelManagerProps) {
   const [styleProfileDraft, setStyleProfileDraft] = useState<ChannelStyleProfileEditorDraft | null>(null);
   const [styleProfileActiveRunId, setStyleProfileActiveRunId] = useState<string | null>(null);
@@ -420,6 +434,13 @@ export function ChannelManager({
       setTab("stage2");
     }
   }, [isWorkspaceDefaultsSelection, tab]);
+
+  useEffect(() => {
+    if (!open || !initialTab || isWorkspaceDefaultsSelection) {
+      return;
+    }
+    setTab(initialTab);
+  }, [initialTab, isWorkspaceDefaultsSelection, open]);
 
   useEffect(() => {
     if (!activeChannel || isWorkspaceDefaultsSelection) {
@@ -956,6 +977,19 @@ export function ChannelManager({
         stage2HardConstraints,
         referenceLinks
       });
+      if (run.status === "completed" && run.result) {
+        setStyleProfileDraft((current) =>
+          current
+            ? applyChannelStyleProfileEditorDiscoveryResult(
+                current,
+                run.result as Stage2StyleProfile
+              )
+            : current
+        );
+        setStyleProfileIsDiscovering(false);
+        setStyleProfileActiveRunId(null);
+        return;
+      }
       setStyleProfileActiveRunId(run.runId);
     } catch (error) {
       setStyleProfileIsDiscovering(false);
@@ -1169,7 +1203,7 @@ export function ChannelManager({
     updateStage2HardConstraint("bannedOpeners", parseStage2DelimitedStringList(value));
   };
 
-  const formatTabLabel = (value: "brand" | "stage2" | "render" | "assets" | "access") => {
+  const formatTabLabel = (value: "brand" | "stage2" | "render" | "publishing" | "assets" | "access") => {
     switch (value) {
       case "brand":
         return "Бренд";
@@ -1177,6 +1211,8 @@ export function ChannelManager({
         return "Stage 2";
       case "render":
         return "Рендер";
+      case "publishing":
+        return "Publishing";
       case "assets":
         return "Ассеты";
       case "access":
@@ -1249,7 +1285,7 @@ export function ChannelManager({
         <div className="channel-tabs">
           {(isWorkspaceDefaultsSelection
             ? (["stage2"] as const)
-            : (["brand", "stage2", "render", "assets", "access"] as const)
+            : (["brand", "stage2", "render", "publishing", "assets", "access"] as const)
           ).map((item) => {
             if (item === "access" && !canManageAccess) {
               return null;
@@ -1471,6 +1507,17 @@ export function ChannelManager({
                   {autosaveState.render.message ?? "Настройки рендера сохраняются автоматически."}
                 </p>
               </div>
+            ) : null}
+
+            {tab === "publishing" ? (
+              <ChannelManagerPublishingTab
+                channel={activeChannel}
+                canEditSetup={canEditSetup}
+                onSaveSettings={onSavePublishSettings}
+                onConnectYouTube={onConnectYouTube}
+                onDisconnectYouTube={onDisconnectYouTube}
+                onSelectYouTubeDestination={onSelectYouTubeDestination}
+              />
             ) : null}
 
             {tab === "assets" ? (

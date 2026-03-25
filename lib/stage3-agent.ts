@@ -18,6 +18,11 @@ import {
   getTemplateComputed
 } from "./stage3-template";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
+import {
+  normalizeStage3CameraKeyframes,
+  normalizeStage3CameraMotion,
+  resolveStage3EffectiveCameraTracks
+} from "./stage3-camera";
 
 export type {
   Stage3RenderPlan,
@@ -259,10 +264,6 @@ function normalizeSegmentSpeed(value: unknown): Stage3Segment["speed"] {
     return value as Stage3Segment["speed"];
   }
   return 1;
-}
-
-function normalizeCameraMotion(value: unknown): Stage3RenderPlan["cameraMotion"] {
-  return value === "top_to_bottom" || value === "bottom_to_top" ? value : "disabled";
 }
 
 function normalizeText(value: string): string {
@@ -664,6 +665,9 @@ function createDefaultRenderPlan(
     smoothSlowMo: false,
     mirrorEnabled: true,
     cameraMotion: "disabled",
+    cameraKeyframes: [],
+    cameraPositionKeyframes: [],
+    cameraScaleKeyframes: [],
     videoZoom: 1,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
@@ -692,6 +696,19 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
   const audioMode = input?.audioMode;
   const policy = input?.policy;
   const textPolicy = input?.textPolicy;
+  const videoZoom =
+    typeof input?.videoZoom === "number" && Number.isFinite(input.videoZoom)
+      ? clamp(input.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM)
+      : defaultPlan.videoZoom;
+  const cameraTracks = resolveStage3EffectiveCameraTracks({
+    cameraPositionKeyframes: input?.cameraPositionKeyframes,
+    cameraScaleKeyframes: input?.cameraScaleKeyframes,
+    cameraKeyframes: input?.cameraKeyframes ?? defaultPlan.cameraKeyframes,
+    cameraMotion: input?.cameraMotion,
+    clipDurationSec: TARGET_DURATION_SEC,
+    baseFocusY: 0.5,
+    baseZoom: videoZoom
+  });
   const segments = Array.isArray(input?.segments)
     ? input.segments
         .map((segment) => normalizeSegment(segment, sourceDurationSec))
@@ -711,11 +728,15 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
     sourceAudioEnabled: Boolean(input?.sourceAudioEnabled ?? defaultPlan.sourceAudioEnabled),
     smoothSlowMo: Boolean(input?.smoothSlowMo),
     mirrorEnabled: Boolean(input?.mirrorEnabled ?? defaultPlan.mirrorEnabled),
-    cameraMotion: normalizeCameraMotion(input?.cameraMotion),
-    videoZoom:
-      typeof input?.videoZoom === "number" && Number.isFinite(input.videoZoom)
-        ? clamp(input.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM)
-        : defaultPlan.videoZoom,
+    cameraMotion: normalizeStage3CameraMotion(input?.cameraMotion),
+    cameraKeyframes: normalizeStage3CameraKeyframes(input?.cameraKeyframes ?? defaultPlan.cameraKeyframes, {
+      clipDurationSec: TARGET_DURATION_SEC,
+      fallbackFocusY: 0.5,
+      fallbackZoom: videoZoom
+    }),
+    cameraPositionKeyframes: cameraTracks.positionKeyframes,
+    cameraScaleKeyframes: cameraTracks.scaleKeyframes,
+    videoZoom,
     topFontScale:
       typeof input?.topFontScale === "number" && Number.isFinite(input.topFontScale)
         ? clamp(input.topFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX)
@@ -1080,6 +1101,9 @@ export function hasMeaningfulMediaChange(before: Stage3StateSnapshot, after: Sta
   if (before.renderPlan.cameraMotion !== after.renderPlan.cameraMotion) {
     return true;
   }
+  if (JSON.stringify(before.renderPlan.cameraKeyframes) !== JSON.stringify(after.renderPlan.cameraKeyframes)) {
+    return true;
+  }
   if (before.renderPlan.policy !== after.renderPlan.policy) {
     return true;
   }
@@ -1142,7 +1166,8 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
     Math.abs(baseline.focusY - final.focusY) >= 0.005 ||
     Math.abs(baseline.renderPlan.videoZoom - final.renderPlan.videoZoom) >= 0.01 ||
     baseline.renderPlan.mirrorEnabled !== final.renderPlan.mirrorEnabled ||
-    baseline.renderPlan.cameraMotion !== final.renderPlan.cameraMotion;
+    baseline.renderPlan.cameraMotion !== final.renderPlan.cameraMotion ||
+    JSON.stringify(baseline.renderPlan.cameraKeyframes) !== JSON.stringify(final.renderPlan.cameraKeyframes);
   const timingChanged =
     baseline.renderPlan.timingMode !== final.renderPlan.timingMode ||
     baseline.renderPlan.policy !== final.renderPlan.policy ||

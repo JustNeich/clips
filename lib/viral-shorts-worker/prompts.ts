@@ -5,10 +5,12 @@ import {
   PreparedGenerationContext,
   PromptPacket,
   SelectorOutput,
+  Stage2AnalysisDigest,
   Stage2DiagnosticsPromptStageInputManifest,
   Stage2DiagnosticsSourceContext,
   Stage2ExamplesAssessment,
   Stage2RuntimeChannelConfig,
+  Stage2WriterBriefDigest,
   ViralShortsVideoContext
 } from "./types";
 import { Stage2PromptConfig } from "../stage2-pipeline";
@@ -659,14 +661,125 @@ function buildExamplesAssessmentPayload(examplesAssessment: Stage2ExamplesAssess
     retrievalConfidence: examplesAssessment.retrievalConfidence,
     examplesMode: examplesAssessment.examplesMode,
     explanation: examplesAssessment.explanation,
-    evidence: examplesAssessment.evidence,
+    evidence: examplesAssessment.evidence.slice(0, 4),
     retrievalWarning: examplesAssessment.retrievalWarning,
     examplesRoleSummary: examplesAssessment.examplesRoleSummary,
     primaryDriverSummary: examplesAssessment.primaryDriverSummary,
-    primaryDrivers: examplesAssessment.primaryDrivers,
+    primaryDrivers: examplesAssessment.primaryDrivers.slice(0, 4),
     channelStylePriority: examplesAssessment.channelStylePriority,
     editorialMemoryPriority: examplesAssessment.editorialMemoryPriority
   };
+}
+
+function buildRetrievalDigest(examplesAssessment: Stage2ExamplesAssessment, selectorOutput: SelectorOutput) {
+  return {
+    retrievalConfidence: selectorOutput.retrievalConfidence ?? examplesAssessment.retrievalConfidence,
+    examplesMode: selectorOutput.examplesMode ?? examplesAssessment.examplesMode,
+    examplesRoleSummary: selectorOutput.examplesRoleSummary ?? examplesAssessment.examplesRoleSummary,
+    primaryDriverSummary: selectorOutput.primaryDriverSummary ?? examplesAssessment.primaryDriverSummary,
+    retrievalWarning: selectorOutput.retrievalWarning ?? examplesAssessment.retrievalWarning
+  };
+}
+
+function buildAnalysisDigest(analyzerOutput: AnalyzerOutput): Stage2AnalysisDigest {
+  return {
+    visualAnchors: analyzerOutput.visualAnchors.slice(0, 6),
+    specificNouns: analyzerOutput.specificNouns.slice(0, 8),
+    visibleActions: analyzerOutput.visibleActions.slice(0, 6),
+    firstSecondsSignal: analyzerOutput.firstSecondsSignal,
+    sceneBeats: analyzerOutput.sceneBeats.slice(0, 5),
+    revealMoment: analyzerOutput.revealMoment,
+    lateClipChange: analyzerOutput.lateClipChange,
+    stakes: analyzerOutput.stakes.slice(0, 4),
+    coreTrigger: analyzerOutput.coreTrigger,
+    humanStake: analyzerOutput.humanStake,
+    narrativeFrame: analyzerOutput.narrativeFrame,
+    whyViewerCares: analyzerOutput.whyViewerCares,
+    bestBottomEnergy: analyzerOutput.bestBottomEnergy,
+    commentVibe: analyzerOutput.commentVibe,
+    commentConsensusLane: analyzerOutput.commentConsensusLane,
+    commentJokeLane: analyzerOutput.commentJokeLane,
+    commentDissentLane: analyzerOutput.commentDissentLane,
+    commentSuspicionLane: analyzerOutput.commentSuspicionLane,
+    slangToAdapt: analyzerOutput.slangToAdapt.slice(0, 6),
+    commentLanguageCues: analyzerOutput.commentLanguageCues.slice(0, 6),
+    hiddenDetail: analyzerOutput.hiddenDetail,
+    genericRisks: analyzerOutput.genericRisks.slice(0, 4),
+    uncertaintyNotes: analyzerOutput.uncertaintyNotes.slice(0, 4),
+    rawSummary: truncatePromptValue(analyzerOutput.rawSummary, 220)
+  };
+}
+
+function buildSelectedExampleEvidence(
+  examples: PreparedGenerationContext["availableExamples"]
+): Stage2WriterBriefDigest["selectedExamples"] {
+  return (examples ?? []).slice(0, 4).map((example) => ({
+    id: example.id,
+    channelName: example.sourceChannelName || example.ownerChannelName,
+    title: truncatePromptValue(example.title, 96),
+    overlayTop: truncatePromptValue(example.overlayTop, 160),
+    overlayBottom: truncatePromptValue(example.overlayBottom, 140),
+    whyItWorks: example.whyItWorks.slice(0, 2).map((item) => truncatePromptValue(item, 90))
+  }));
+}
+
+function buildWriterBriefDigest(input: {
+  analyzerOutput: AnalyzerOutput;
+  selectorOutput: SelectorOutput;
+  userInstruction?: string | null;
+}): Stage2WriterBriefDigest {
+  return {
+    clipType: input.selectorOutput.clipType,
+    primaryAngle: input.selectorOutput.primaryAngle,
+    secondaryAngles: input.selectorOutput.secondaryAngles,
+    rankedAngles: input.selectorOutput.rankedAngles.slice(0, 4),
+    writerBrief: input.selectorOutput.writerBrief,
+    topStrategy: input.selectorOutput.topStrategy,
+    bottomEnergy: input.selectorOutput.bottomEnergy,
+    whyViewerCares: input.selectorOutput.whyViewerCares,
+    failureModes: input.selectorOutput.failureModes.slice(0, 6),
+    selectedExamples: buildSelectedExampleEvidence(input.selectorOutput.selectedExamples ?? []),
+    commentCarry: buildCommentCarryProfile(input.analyzerOutput),
+    userInstruction: input.userInstruction?.trim() || null
+  };
+}
+
+function buildCandidateReviewPayload(
+  candidates: CandidateCaption[],
+  options?: {
+    includeTranslations?: boolean;
+    includeRationale?: boolean;
+    maxItems?: number;
+  }
+) {
+  const includeTranslations = options?.includeTranslations ?? false;
+  const includeRationale = options?.includeRationale ?? false;
+  return candidates.slice(0, options?.maxItems ?? candidates.length).map((candidate) => ({
+    candidateId: candidate.candidateId,
+    angle: candidate.angle,
+    styleDirectionIds: candidate.styleDirectionIds ?? [],
+    explorationMode: candidate.explorationMode,
+    top: candidate.top,
+    bottom: candidate.bottom,
+    topLength: candidate.top.length,
+    bottomLength: candidate.bottom.length,
+    ...(includeTranslations
+      ? {
+          topRu: candidate.topRu,
+          bottomRu: candidate.bottomRu
+        }
+      : {}),
+    ...(includeRationale ? { rationale: truncatePromptValue(candidate.rationale, 140) } : {})
+  }));
+}
+
+function buildCriticScoreDigest(criticScores: CriticScore[]) {
+  return criticScores.slice(0, 8).map((score) => ({
+    candidateId: score.candidateId,
+    total: score.total,
+    keep: score.keep,
+    issues: score.issues.slice(0, 3)
+  }));
 }
 
 function buildCompactAnalyzerVideoContext(videoContext: ViralShortsVideoContext) {
@@ -984,7 +1097,7 @@ export function buildSelectorPrompt(input: {
   return renderPrompt(buildSystemPrompt("selector", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "compact"),
     videoContext: buildCompactSelectorVideoContext(input.videoContext),
-    analyzerOutput: input.analyzerOutput,
+    analysisDigest: buildAnalysisDigest(input.analyzerOutput),
     examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
     availableExamples: buildCompactSelectorExamples(input.availableExamples)
   });
@@ -1001,12 +1114,14 @@ export function buildWriterPrompt(input: {
   const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
   return renderPrompt(buildSystemPrompt("writer", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "compact"),
-    analyzerOutput: input.analyzerOutput,
+    analysisDigest: buildAnalysisDigest(input.analyzerOutput),
     commentCarryProfile,
     examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
-    selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
-    selectedExamples: buildCompactSelectorExamples(input.selectorOutput.selectedExamples ?? []),
-    userInstruction: input.userInstruction?.trim() || null
+    writerBriefDigest: buildWriterBriefDigest({
+      analyzerOutput: input.analyzerOutput,
+      selectorOutput: input.selectorOutput,
+      userInstruction: input.userInstruction
+    })
   });
 }
 
@@ -1020,11 +1135,17 @@ export function buildCriticPrompt(input: {
 }): string {
   return renderPrompt(buildSystemPrompt("critic", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "compact"),
-    analyzerOutput: input.analyzerOutput,
-    examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
-    selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
+    analysisDigest: buildAnalysisDigest(input.analyzerOutput),
+    retrievalDigest: buildRetrievalDigest(input.examplesAssessment, input.selectorOutput),
+    writerBriefDigest: buildWriterBriefDigest({
+      analyzerOutput: input.analyzerOutput,
+      selectorOutput: input.selectorOutput
+    }),
     candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
-    candidates: input.candidates
+    candidates: buildCandidateReviewPayload(input.candidates, {
+      includeTranslations: false,
+      includeRationale: false
+    })
   });
 }
 
@@ -1041,15 +1162,21 @@ export function buildRewriterPrompt(input: {
   const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
   return renderPrompt(buildSystemPrompt("rewriter", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "compact"),
-    analyzerOutput: input.analyzerOutput,
+    analysisDigest: buildAnalysisDigest(input.analyzerOutput),
+    retrievalDigest: buildRetrievalDigest(input.examplesAssessment, input.selectorOutput),
     commentCarryProfile,
-    examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
-    selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
-    selectedExamples: buildCompactSelectorExamples(input.selectorOutput.selectedExamples ?? []),
+    writerBriefDigest: buildWriterBriefDigest({
+      analyzerOutput: input.analyzerOutput,
+      selectorOutput: input.selectorOutput,
+      userInstruction: input.userInstruction
+    }),
     candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
-    criticScores: input.criticScores,
-    candidates: input.candidates,
-    userInstruction: input.userInstruction?.trim() || null
+    criticScores: buildCriticScoreDigest(input.criticScores),
+    candidates: buildCandidateReviewPayload(input.candidates, {
+      includeTranslations: true,
+      includeRationale: false,
+      maxItems: 8
+    })
   });
 }
 
@@ -1063,11 +1190,17 @@ export function buildFinalSelectorPrompt(input: {
 }): string {
   return renderPrompt(buildSystemPrompt("finalSelector", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "minimal"),
-    analyzerOutput: input.analyzerOutput,
-    examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
-    selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
+    analysisDigest: buildAnalysisDigest(input.analyzerOutput),
+    retrievalDigest: buildRetrievalDigest(input.examplesAssessment, input.selectorOutput),
+    writerBriefDigest: buildWriterBriefDigest({
+      analyzerOutput: input.analyzerOutput,
+      selectorOutput: input.selectorOutput
+    }),
     candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
-    candidates: input.candidates
+    candidates: buildCandidateReviewPayload(input.candidates, {
+      includeTranslations: false,
+      includeRationale: false
+    })
   });
 }
 
@@ -1082,14 +1215,27 @@ export function buildTitlePrompt(input: {
 }): string {
   return renderPrompt(buildSystemPrompt("titles", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "minimal"),
-    examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
+    analysisDigest: {
+      whyViewerCares: input.selectorOutput.whyViewerCares,
+      coreTrigger: input.selectorOutput.coreTrigger,
+      narrativeFrame: input.selectorOutput.narrativeFrame
+    },
     videoContext: {
       sourceUrl: input.videoContext.sourceUrl,
       title: input.videoContext.title,
-      frameDescriptions: input.videoContext.frameDescriptions
+      frameDescriptions: input.videoContext.frameDescriptions.slice(0, 4)
     },
-    selectorOutput: buildPromptSelectorOutputPayload(input.selectorOutput),
-    shortlist: input.shortlist,
+    selectorOutput: {
+      clipType: input.selectorOutput.clipType,
+      primaryAngle: input.selectorOutput.primaryAngle,
+      secondaryAngles: input.selectorOutput.secondaryAngles,
+      writerBrief: input.selectorOutput.writerBrief
+    },
+    shortlist: buildCandidateReviewPayload(input.shortlist, {
+      includeTranslations: false,
+      includeRationale: false,
+      maxItems: 5
+    }),
     userInstruction: input.userInstruction?.trim() || null
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChannelFeedbackResponse,
   Stage2Response,
@@ -15,6 +15,7 @@ import {
   normalizeStage2EditorialMemorySummary,
   normalizeStage2StyleProfile
 } from "../../lib/stage2-channel-learning";
+import type { Stage2RunDebugArtifact } from "../../lib/viral-shorts-worker/types";
 
 type Step2PickCaptionProps = {
   channelName?: string | null;
@@ -304,6 +305,23 @@ function formatNullableNumber(value: number | null | undefined, digits = 2): str
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : null;
 }
 
+function formatInteger(value: number | null | undefined): string | null {
+  return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString("ru-RU") : null;
+}
+
+function formatByteCount(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
@@ -407,7 +425,12 @@ function normalizePromptStage(input: unknown, index: number): DiagnosticsPromptS
         ? candidate.isCustomPrompt
         : configuredPrompt !== defaultPrompt,
     promptText: asOptionalString(candidate.promptText),
+    promptTextAvailable: Boolean(candidate.promptTextAvailable),
     promptChars: asNumber(candidate.promptChars),
+    estimatedInputTokens: asNumber(candidate.estimatedInputTokens),
+    estimatedOutputTokens: asNumber(candidate.estimatedOutputTokens),
+    serializedResultBytes: asNumber(candidate.serializedResultBytes),
+    persistedPayloadBytes: asNumber(candidate.persistedPayloadBytes),
     usesImages: Boolean(candidate.usesImages),
     summary: asString(candidate.summary)
   };
@@ -618,9 +641,11 @@ export function normalizeStage2DiagnosticsForView(
 }
 
 export function Stage2RunDiagnosticsPanels({
-  diagnostics
+  diagnostics,
+  stage2Result = null
 }: {
   diagnostics: DiagnosticsView | null;
+  stage2Result?: Stage2Response | null;
 }) {
   const overrideCount = useMemo(() => {
     if (!diagnostics) {
@@ -628,6 +653,60 @@ export function Stage2RunDiagnosticsPanels({
     }
     return diagnostics.effectivePrompting.promptStages.filter((stage) => stage.isCustomPrompt).length;
   }, [diagnostics]);
+  const [rawDebugArtifact, setRawDebugArtifact] = useState<Stage2RunDebugArtifact | null>(null);
+  const [rawDebugArtifactLoading, setRawDebugArtifactLoading] = useState(false);
+  const [rawDebugArtifactError, setRawDebugArtifactError] = useState<string | null>(null);
+  const rawDebugRunId = stage2Result?.stage2Run?.runId ?? null;
+  const rawDebugRef =
+    stage2Result?.debugRef?.kind === "stage2-run-debug" ? stage2Result.debugRef.ref : null;
+  const canLoadRawPromptArtifact = Boolean(rawDebugRunId && rawDebugRef);
+  const hasDeferredPromptStages = useMemo(
+    () =>
+      (diagnostics?.effectivePrompting.promptStages ?? []).some(
+        (stage) => !stage.promptText && stage.promptTextAvailable
+      ),
+    [diagnostics]
+  );
+  const rawPromptTextByStageId = useMemo(() => {
+    const entries = rawDebugArtifact?.promptStages ?? [];
+    return new Map(
+      entries
+        .filter((stage) => typeof stage.promptText === "string" && stage.promptText.trim())
+        .map((stage) => [stage.stageId, stage.promptText as string])
+    );
+  }, [rawDebugArtifact]);
+
+  useEffect(() => {
+    setRawDebugArtifact(null);
+    setRawDebugArtifactError(null);
+    setRawDebugArtifactLoading(false);
+  }, [rawDebugRef, rawDebugRunId]);
+
+  const loadRawPromptArtifact = useCallback(async (): Promise<void> => {
+    if (!rawDebugRunId || !rawDebugRef || rawDebugArtifact || rawDebugArtifactLoading) {
+      return;
+    }
+    setRawDebugArtifactLoading(true);
+    setRawDebugArtifactError(null);
+    try {
+      const response = await fetch(
+        `/api/pipeline/stage2/debug?runId=${encodeURIComponent(rawDebugRunId)}&debugRef=${encodeURIComponent(rawDebugRef)}`
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | { artifact?: Stage2RunDebugArtifact; error?: string }
+        | null;
+      if (!response.ok || !payload?.artifact) {
+        throw new Error(payload?.error || "Не удалось загрузить raw prompt context.");
+      }
+      setRawDebugArtifact(payload.artifact);
+    } catch (error) {
+      setRawDebugArtifactError(
+        error instanceof Error ? error.message : "Не удалось загрузить raw prompt context."
+      );
+    } finally {
+      setRawDebugArtifactLoading(false);
+    }
+  }, [rawDebugArtifact, rawDebugArtifactLoading, rawDebugRef, rawDebugRunId]);
 
   if (!diagnostics) {
     return null;
@@ -694,6 +773,20 @@ export function Stage2RunDiagnosticsPanels({
             <strong>{overrideCount}</strong>
             <p className="subtle-text">этапов используют промпты, отличные от базовых</p>
           </article>
+          {stage2Result?.tokenUsage ? (
+            <article className="stage2-insight-card">
+              <span className="field-label">LLM budget</span>
+              <strong>
+                {formatInteger(stage2Result.tokenUsage.totalEstimatedInputTokens) ?? "0"} in ·{" "}
+                {formatInteger(stage2Result.tokenUsage.totalEstimatedOutputTokens) ?? "0"} out
+              </strong>
+              <p className="subtle-text">
+                {formatInteger(stage2Result.tokenUsage.totalPromptChars) ?? "0"} символов промптов
+                {" · "}
+                {formatByteCount(stage2Result.tokenUsage.totalPersistedPayloadBytes) ?? "n/a"} сохранено
+              </p>
+            </article>
+          ) : null}
         </div>
       </section>
 
@@ -781,7 +874,18 @@ export function Stage2RunDiagnosticsPanels({
         </div>
       </details>
 
-      <details className="details-drawer">
+      <details
+        className="details-drawer"
+        onToggle={(event) => {
+          if (
+            (event.currentTarget as HTMLDetailsElement).open &&
+            hasDeferredPromptStages &&
+            canLoadRawPromptArtifact
+          ) {
+            void loadRawPromptArtifact();
+          }
+        }}
+      >
         <summary>
           <span>Эффективные промпты</span>
           <small>Что реально ведёт Stage 2</small>
@@ -791,50 +895,101 @@ export function Stage2RunDiagnosticsPanels({
             Здесь видно, какой конкретный промпт и какой уровень рассуждений реально были настроены
             для каждого Stage 2 этапа.
           </p>
+          {hasDeferredPromptStages && canLoadRawPromptArtifact ? (
+            <p className="subtle-text">
+              Raw prompt contexts вынесены из основного Stage 2 payload и подгружаются отдельно
+              только при открытии этого блока.
+            </p>
+          ) : null}
+          {rawDebugArtifactLoading ? (
+            <p className="subtle-text">Подгружаем raw prompt context…</p>
+          ) : null}
+          {rawDebugArtifactError ? (
+            <p className="subtle-text danger-text">{rawDebugArtifactError}</p>
+          ) : null}
           <div className="stage2-prompt-stage-list">
-            {diagnostics.effectivePrompting.promptStages.map((stage) => (
-              <article key={stage.stageId} className="stage2-prompt-stage-card">
-                <div className="stage2-prompt-stage-head">
-                  <div>
-                    <strong>{stage.label}</strong>
-                    <p className="subtle-text">
-                      LLM-этап
-                      {" · системный промпт"}
-                      {stage.usesImages ? " · использует извлечённые кадры" : ""}
-                      {stage.promptChars ? ` · ${stage.promptChars} символов` : ""}
-                    </p>
+            {diagnostics.effectivePrompting.promptStages.map((stage) => {
+              const resolvedPromptText =
+                stage.promptText ?? rawPromptTextByStageId.get(stage.stageId) ?? null;
+              return (
+                <article key={stage.stageId} className="stage2-prompt-stage-card">
+                  <div className="stage2-prompt-stage-head">
+                    <div>
+                      <strong>{stage.label}</strong>
+                      <p className="subtle-text">
+                        LLM-этап
+                        {" · системный промпт"}
+                        {stage.usesImages ? " · использует извлечённые кадры" : ""}
+                        {stage.promptChars ? ` · ${stage.promptChars} символов` : ""}
+                      </p>
+                    </div>
+                    {stage.isCustomPrompt ? (
+                      <span className="badge">Свой промпт</span>
+                    ) : (
+                      <span className="badge muted">Базовый промпт</span>
+                    )}
                   </div>
-                  {stage.isCustomPrompt ? (
-                    <span className="badge">Свой промпт</span>
-                  ) : (
-                    <span className="badge muted">Базовый промпт</span>
-                  )}
-                </div>
-                <p className="subtle-text">{stage.summary}</p>
-                <div className="stage2-prompt-meta-row">
-                  <div className="stage2-prompt-meta">
-                    <span className="field-label">Уровень рассуждений</span>
-                    <p className="text-block">{formatReasoningEffort(stage.reasoningEffort)}</p>
+                  <p className="subtle-text">{stage.summary}</p>
+                  <div className="stage2-prompt-meta-row">
+                    <div className="stage2-prompt-meta">
+                      <span className="field-label">Уровень рассуждений</span>
+                      <p className="text-block">{formatReasoningEffort(stage.reasoningEffort)}</p>
+                    </div>
+                    <div className="stage2-prompt-meta">
+                      <span className="field-label">Источник промпта</span>
+                      <p className="text-block">
+                        {stage.isCustomPrompt ? "Промпт канала" : "Базовый промпт"}
+                      </p>
+                    </div>
+                    {stage.estimatedInputTokens != null || stage.estimatedOutputTokens != null ? (
+                      <div className="stage2-prompt-meta">
+                        <span className="field-label">Token budget</span>
+                        <p className="text-block">
+                          {formatInteger(stage.estimatedInputTokens) ?? "0"} in ·{" "}
+                          {formatInteger(stage.estimatedOutputTokens) ?? "0"} out
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="stage2-prompt-meta">
-                    <span className="field-label">Источник промпта</span>
-                    <p className="text-block">
-                      {stage.isCustomPrompt ? "Промпт канала" : "Базовый промпт"}
-                    </p>
+                  <div className="stage2-prompt-meta-row">
+                    <div className="stage2-prompt-meta">
+                      <span className="field-label">Текущий промпт</span>
+                      <p className="text-block">{stage.configuredPrompt}</p>
+                    </div>
+                    {stage.serializedResultBytes != null || stage.persistedPayloadBytes != null ? (
+                      <div className="stage2-prompt-meta">
+                        <span className="field-label">Payload</span>
+                        <p className="text-block">
+                          {formatByteCount(stage.serializedResultBytes) ?? "n/a"} result ·{" "}
+                          {formatByteCount(stage.persistedPayloadBytes) ?? "n/a"} saved
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-                <div className="stage2-prompt-meta">
-                  <span className="field-label">Текущий промпт</span>
-                  <p className="text-block">{stage.configuredPrompt}</p>
-                </div>
-                <details className="advanced-block">
-                  <summary>Показать полный промпт с контекстом</summary>
-                  <div className="advanced-content">
-                    <pre className="json-view">{stage.promptText}</pre>
-                  </div>
-                </details>
-              </article>
-            ))}
+                  <details className="advanced-block">
+                    <summary>Показать полный промпт с контекстом</summary>
+                    <div className="advanced-content">
+                      {resolvedPromptText ? (
+                        <pre className="json-view">{resolvedPromptText}</pre>
+                      ) : rawDebugArtifactLoading && stage.promptTextAvailable && canLoadRawPromptArtifact ? (
+                        <p className="subtle-text">Подгружаем raw prompt context…</p>
+                      ) : rawDebugArtifactError && stage.promptTextAvailable && canLoadRawPromptArtifact ? (
+                        <p className="subtle-text danger-text">{rawDebugArtifactError}</p>
+                      ) : stage.promptTextAvailable && canLoadRawPromptArtifact ? (
+                        <p className="subtle-text">
+                          Raw prompt context хранится отдельно и загрузится при открытии блока
+                          “Эффективные промпты”.
+                        </p>
+                      ) : (
+                        <p className="subtle-text">
+                          Raw prompt context больше не хранится inline в обычном результате Stage 2.
+                        </p>
+                      )}
+                    </div>
+                  </details>
+                </article>
+              );
+            })}
           </div>
         </div>
       </details>

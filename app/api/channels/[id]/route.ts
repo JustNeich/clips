@@ -4,6 +4,7 @@ import {
   updateChannelById
 } from "../../../../lib/chat-history";
 import { deleteChannelAssetDir } from "../../../../lib/channel-assets";
+import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../../lib/publication-store";
 import {
   requireAuth,
   requireChannelSetupEdit,
@@ -45,6 +46,8 @@ export async function GET(_request: Request, context: Context): Promise<Response
       {
         channel: {
           ...channel,
+          publishSettings: getChannelPublishSettings(channel.id),
+          publishIntegration: getChannelPublishIntegration(channel.id),
           currentUserCanOperate: permissions.canOperate,
           currentUserCanEditSetup: permissions.canEditSetup,
           currentUserCanManageAccess: permissions.canManageAccess,

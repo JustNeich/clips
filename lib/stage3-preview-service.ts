@@ -14,6 +14,11 @@ import { Stage3StateSnapshot } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { STAGE3_TEMPLATE_ID, getTemplateById } from "./stage3-template";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
+import {
+  normalizeStage3CameraKeyframes,
+  normalizeStage3CameraMotion,
+  resolveStage3EffectiveCameraTracks
+} from "./stage3-camera";
 import { getAppDataDir } from "./app-paths";
 import { createNodeStreamResponse } from "./node-stream-response";
 import {
@@ -93,10 +98,6 @@ function normalizeSegmentSpeed(value: unknown): Stage3RenderPlan["segments"][num
     return value as Stage3RenderPlan["segments"][number]["speed"];
   }
   return 1;
-}
-
-function normalizeCameraMotion(value: unknown): Stage3RenderPlan["cameraMotion"] {
-  return value === "top_to_bottom" || value === "bottom_to_top" ? value : "disabled";
 }
 
 function pathExists(filePath: string): Promise<boolean> {
@@ -188,6 +189,19 @@ function normalizeRenderPlan(
       ? rawPlan.templateId.trim()
       : STAGE3_TEMPLATE_ID;
   const template = getTemplateById(templateId);
+  const videoZoom =
+    typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
+      ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
+      : 1;
+  const cameraTracks = resolveStage3EffectiveCameraTracks({
+    cameraPositionKeyframes: rawPlan?.cameraPositionKeyframes,
+    cameraScaleKeyframes: rawPlan?.cameraScaleKeyframes,
+    cameraKeyframes: rawPlan?.cameraKeyframes,
+    cameraMotion: rawPlan?.cameraMotion,
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: videoZoom
+  });
 
   return {
     targetDurationSec: 6,
@@ -202,11 +216,15 @@ function normalizeRenderPlan(
     sourceAudioEnabled: Boolean(rawPlan?.sourceAudioEnabled ?? true),
     smoothSlowMo: Boolean(rawPlan?.smoothSlowMo),
     mirrorEnabled: Boolean(rawPlan?.mirrorEnabled ?? true),
-    cameraMotion: normalizeCameraMotion(rawPlan?.cameraMotion),
-    videoZoom:
-      typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
-        ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
-        : 1,
+    cameraMotion: normalizeStage3CameraMotion(rawPlan?.cameraMotion),
+    cameraKeyframes: normalizeStage3CameraKeyframes(rawPlan?.cameraKeyframes, {
+      clipDurationSec: 6,
+      fallbackFocusY: 0.5,
+      fallbackZoom: videoZoom
+    }),
+    cameraPositionKeyframes: cameraTracks.positionKeyframes,
+    cameraScaleKeyframes: cameraTracks.scaleKeyframes,
+    videoZoom,
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
         ? clampStage3TextScaleUi(rawPlan.topFontScale)

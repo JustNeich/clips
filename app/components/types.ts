@@ -6,7 +6,11 @@ import type {
   Stage2EditorialMemorySummary,
   Stage2StyleProfile
 } from "../../lib/stage2-channel-learning";
-import type { Stage2Diagnostics } from "../../lib/viral-shorts-worker/types";
+import type {
+  Stage2DebugMode,
+  Stage2Diagnostics,
+  Stage2TokenUsage
+} from "../../lib/viral-shorts-worker/types";
 
 export type CommentItem = {
   id: string;
@@ -110,6 +114,12 @@ export type Stage2Response = {
   } | null;
   warnings: Array<{ field: string; message: string }>;
   diagnostics?: Stage2Diagnostics;
+  tokenUsage?: Stage2TokenUsage;
+  debugMode?: Stage2DebugMode;
+  debugRef?: {
+    kind: "stage2-run-debug";
+    ref: string;
+  } | null;
   progress?: Stage2ProgressSnapshot | null;
   model?: string;
   reasoningEffort?: string;
@@ -243,6 +253,39 @@ export type Stage3AgentPass = {
   renderPlan: Stage3RenderPlan;
 };
 
+export type Stage3PlannerSnapshotDigest = {
+  sourceDurationSec: number | null;
+  topText: string;
+  bottomText: string;
+  clipStartSec: number;
+  clipDurationSec: number;
+  focusY: number;
+  textFit: {
+    topCompacted: boolean;
+    bottomCompacted: boolean;
+    topFontPx: number;
+    bottomFontPx: number;
+    topOverflow: boolean;
+    bottomOverflow: boolean;
+  };
+  renderPlan: {
+    timingMode: Stage3TimingMode;
+    audioMode: Stage3AudioMode;
+    videoZoom: number;
+    topFontScale: number;
+    bottomFontScale: number;
+    textPolicy: Stage3TextPolicy;
+    smoothSlowMo: boolean;
+    segmentCount: number;
+    segments: Array<{
+      startSec: number;
+      endSec: number | null;
+      speed: Stage3SegmentSpeed;
+      label: string;
+    }>;
+  };
+};
+
 export type Stage3TimingMode = "auto" | "compress" | "stretch";
 
 export type Stage3AudioMode = "source_only" | "source_plus_music";
@@ -257,6 +300,25 @@ export type Stage3SegmentSpeed = (typeof STAGE3_SEGMENT_SPEED_OPTIONS)[number];
 
 export type Stage3CameraMotion = "disabled" | "top_to_bottom" | "bottom_to_top";
 
+export type Stage3CameraKeyframe = {
+  id: string;
+  timeSec: number;
+  focusY: number;
+  zoom: number;
+};
+
+export type Stage3PositionKeyframe = {
+  id: string;
+  timeSec: number;
+  focusY: number;
+};
+
+export type Stage3ScaleKeyframe = {
+  id: string;
+  timeSec: number;
+  zoom: number;
+};
+
 export type Stage3PreviewState = "idle" | "debouncing" | "loading" | "retrying" | "ready" | "error";
 
 export type Stage3RenderState = "idle" | "queued" | "rendering" | "ready" | "error";
@@ -265,6 +327,9 @@ export type Stage3EditorDraftOverrides = {
   clipStartSec: number;
   focusY: number;
   videoZoom: number;
+  cameraKeyframes: Stage3CameraKeyframe[];
+  cameraPositionKeyframes: Stage3PositionKeyframe[];
+  cameraScaleKeyframes: Stage3ScaleKeyframe[];
   topFontScale: number;
   bottomFontScale: number;
   musicGain: number;
@@ -405,6 +470,9 @@ export type Stage3RenderPlan = {
   smoothSlowMo: boolean;
   mirrorEnabled: boolean;
   cameraMotion: Stage3CameraMotion;
+  cameraKeyframes: Stage3CameraKeyframe[];
+  cameraPositionKeyframes: Stage3PositionKeyframe[];
+  cameraScaleKeyframes: Stage3ScaleKeyframe[];
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
@@ -695,6 +763,101 @@ export type ChatDraft = {
 
 export type ChatListItemAction = "open" | "step2" | "step3" | "delete";
 
+export type ChannelPublishIntegrationStatus =
+  | "disconnected"
+  | "pending_selection"
+  | "connected"
+  | "reauth_required"
+  | "error";
+
+export type ChannelPublishSettings = {
+  timezone: string;
+  firstSlotLocalTime: string;
+  dailySlotCount: number;
+  slotIntervalMinutes: number;
+  autoQueueEnabled: boolean;
+  uploadLeadMinutes: number;
+};
+
+export type ChannelPublishIntegrationOption = {
+  id: string;
+  title: string;
+  customUrl: string | null;
+};
+
+export type ChannelPublishIntegration = {
+  provider: "youtube";
+  status: ChannelPublishIntegrationStatus;
+  connectedAt: string | null;
+  updatedAt: string;
+  selectedYoutubeChannelId: string | null;
+  selectedYoutubeChannelTitle: string | null;
+  selectedYoutubeChannelCustomUrl: string | null;
+  selectedGoogleAccountEmail: string | null;
+  availableChannels: ChannelPublishIntegrationOption[];
+  scopes: string[];
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+};
+
+export type ChannelPublicationStatus =
+  | "queued"
+  | "uploading"
+  | "scheduled"
+  | "published"
+  | "failed"
+  | "paused"
+  | "canceled";
+
+export type ChannelPublicationEvent = {
+  id: string;
+  publicationId: string;
+  level: "info" | "warn" | "error";
+  message: string;
+  createdAt: string;
+};
+
+export type ChannelPublication = {
+  id: string;
+  workspaceId: string;
+  channelId: string;
+  chatId: string;
+  renderExportId: string;
+  status: ChannelPublicationStatus;
+  scheduledAt: string;
+  uploadReadyAt: string;
+  slotDate: string;
+  slotIndex: number;
+  title: string;
+  description: string;
+  tags: string[];
+  needsReview: boolean;
+  titleManual: boolean;
+  descriptionManual: boolean;
+  tagsManual: boolean;
+  scheduleManual: boolean;
+  youtubeVideoId: string | null;
+  youtubeVideoUrl: string | null;
+  publishedAt: string | null;
+  canceledAt: string | null;
+  lastError: string | null;
+  renderFileName: string;
+  sourceUrl: string;
+  chatTitle: string;
+  createdAt: string;
+  updatedAt: string;
+  events: ChannelPublicationEvent[];
+};
+
+export type ChannelPublicationSummary = {
+  id: string;
+  status: ChannelPublicationStatus;
+  scheduledAt: string;
+  needsReview: boolean;
+  youtubeVideoUrl: string | null;
+  lastError: string | null;
+};
+
 export type ChatListItem = {
   id: string;
   channelId: string;
@@ -706,6 +869,7 @@ export type ChatListItem = {
   preferredStep: 1 | 2 | 3;
   hasDraft: boolean;
   exportTitle: string | null;
+  publication?: ChannelPublicationSummary | null;
   liveAction?: "Fetching" | "Comments" | "Stage 2" | "Rendering" | null;
 };
 
@@ -768,6 +932,8 @@ export type Channel = {
   currentUserCanManageAccess?: boolean;
   currentUserCanDelete?: boolean;
   isVisibleToCurrentUser?: boolean;
+  publishSettings?: ChannelPublishSettings;
+  publishIntegration?: ChannelPublishIntegration | null;
   assets?: {
     avatar?: ChannelAsset | null;
     backgrounds?: ChannelAsset[];

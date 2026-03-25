@@ -14,7 +14,6 @@ import {
   Stage2RunDetail,
   Stage2RunSummary,
   Stage3AgentConversationItem,
-  Stage3CameraMotion,
   Stage3IterationStopReason,
   Stage3RenderPlan,
   Stage3Segment,
@@ -27,6 +26,13 @@ import { getPreferredStepForChat } from "../lib/chat-workflow";
 import { isSourceJobActive } from "../lib/source-job-client";
 import { isStage2RunActive } from "../lib/stage2-run-client";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
+import {
+  normalizeStage3CameraKeyframes,
+  normalizeStage3CameraMotion,
+  normalizeStage3PositionKeyframes,
+  normalizeStage3ScaleKeyframes,
+  resolveStage3EffectiveCameraTracks
+} from "../lib/stage3-camera";
 import { normalizeStage3SessionStatus } from "../lib/stage3-legacy-bridge";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { clampStage3TextScaleUi } from "../lib/stage3-text-fit";
@@ -288,6 +294,12 @@ export function equalChatListItem(left: ChatListItem, right: ChatListItem): bool
     left.preferredStep === right.preferredStep &&
     left.hasDraft === right.hasDraft &&
     left.exportTitle === right.exportTitle &&
+    (left.publication?.id ?? null) === (right.publication?.id ?? null) &&
+    (left.publication?.status ?? null) === (right.publication?.status ?? null) &&
+    (left.publication?.scheduledAt ?? null) === (right.publication?.scheduledAt ?? null) &&
+    (left.publication?.needsReview ?? null) === (right.publication?.needsReview ?? null) &&
+    (left.publication?.youtubeVideoUrl ?? null) === (right.publication?.youtubeVideoUrl ?? null) &&
+    (left.publication?.lastError ?? null) === (right.publication?.lastError ?? null) &&
     (left.liveAction ?? null) === (right.liveAction ?? null)
   );
 }
@@ -482,6 +494,9 @@ export function fallbackRenderPlan(): Stage3RenderPlan {
     smoothSlowMo: false,
     mirrorEnabled: true,
     cameraMotion: "disabled",
+    cameraKeyframes: [],
+    cameraPositionKeyframes: [],
+    cameraScaleKeyframes: [],
     videoZoom: 1,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
@@ -511,13 +526,6 @@ export function normalizeStage3SegmentSpeed(value: unknown): Stage3Segment["spee
     return value as Stage3Segment["speed"];
   }
   return 1;
-}
-
-export function normalizeStage3CameraMotion(value: unknown): Stage3CameraMotion {
-  if (value === "top_to_bottom" || value === "bottom_to_top" || value === "disabled") {
-    return value;
-  }
-  return "disabled";
 }
 
 export function normalizeClientSegments(
@@ -614,6 +622,12 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
     audioMode: plan.audioMode,
     sourceAudioEnabled: plan.sourceAudioEnabled,
     smoothSlowMo: plan.smoothSlowMo,
+    mirrorEnabled: plan.mirrorEnabled,
+    cameraMotion: plan.cameraMotion,
+    cameraKeyframes: plan.cameraKeyframes,
+    cameraPositionKeyframes: plan.cameraPositionKeyframes,
+    cameraScaleKeyframes: plan.cameraScaleKeyframes,
+    videoZoom: plan.videoZoom,
     segments: plan.segments,
     policy: plan.policy,
     prompt: "",
@@ -626,6 +640,24 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
 export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage3RenderPlan {
   const candidate = value && typeof value === "object" ? (value as Partial<Stage3RenderPlan>) : undefined;
   const base = fallback ?? fallbackRenderPlan();
+  const videoZoom =
+    typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
+      ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
+      : base.videoZoom;
+  const legacyCameraKeyframes = normalizeStage3CameraKeyframes(candidate?.cameraKeyframes ?? base.cameraKeyframes, {
+    clipDurationSec: base.targetDurationSec,
+    fallbackFocusY: 0.5,
+    fallbackZoom: videoZoom
+  });
+  const effectiveCameraTracks = resolveStage3EffectiveCameraTracks({
+    cameraPositionKeyframes: candidate?.cameraPositionKeyframes,
+    cameraScaleKeyframes: candidate?.cameraScaleKeyframes,
+    cameraKeyframes: candidate?.cameraKeyframes ?? base.cameraKeyframes,
+    cameraMotion: candidate?.cameraMotion ?? base.cameraMotion,
+    clipDurationSec: base.targetDurationSec,
+    baseFocusY: 0.5,
+    baseZoom: videoZoom
+  });
   const segments = Array.isArray(candidate?.segments)
     ? candidate.segments
         .map((segment) => {
@@ -679,10 +711,19 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
     smoothSlowMo: Boolean(candidate?.smoothSlowMo ?? base.smoothSlowMo),
     mirrorEnabled: Boolean(candidate?.mirrorEnabled ?? base.mirrorEnabled),
     cameraMotion: normalizeStage3CameraMotion(candidate?.cameraMotion ?? base.cameraMotion),
-    videoZoom:
-      typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
-        ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
-        : base.videoZoom,
+    cameraKeyframes: legacyCameraKeyframes,
+    cameraPositionKeyframes: normalizeStage3PositionKeyframes(
+      effectiveCameraTracks.positionKeyframes,
+      {
+        clipDurationSec: base.targetDurationSec,
+        fallbackFocusY: 0.5
+      }
+    ),
+    cameraScaleKeyframes: normalizeStage3ScaleKeyframes(effectiveCameraTracks.scaleKeyframes, {
+      clipDurationSec: base.targetDurationSec,
+      fallbackZoom: videoZoom
+    }),
+    videoZoom,
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
         ? clampStage3TextScaleUi(candidate.topFontScale)
@@ -756,11 +797,20 @@ export function hydrateStage3RenderPlanOverride(
   if (!value || typeof value !== "object") {
     return normalizeRenderPlan(base, base);
   }
+  const override = value as Record<string, unknown>;
+  const merged: Record<string, unknown> = {
+    ...base,
+    ...override
+  };
+  const hasLegacyCameraOverride = "cameraKeyframes" in override || "cameraMotion" in override;
+  if (hasLegacyCameraOverride && !("cameraPositionKeyframes" in override)) {
+    delete merged.cameraPositionKeyframes;
+  }
+  if (hasLegacyCameraOverride && !("cameraScaleKeyframes" in override)) {
+    delete merged.cameraScaleKeyframes;
+  }
   return normalizeRenderPlan(
-    {
-      ...base,
-      ...(value as Record<string, unknown>)
-    },
+    merged,
     base
   );
 }

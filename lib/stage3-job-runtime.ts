@@ -2,9 +2,15 @@ import { promises as fs } from "node:fs";
 import {
   Stage3ExecutionTarget,
   Stage3JobKind,
+  ChatRenderExportRef,
   Stage3JobStatus,
+  Stage2Response,
   Stage3JobSummary
 } from "../app/components/types";
+import { completeRenderExportAndMaybeQueue } from "./channel-publication-service";
+import { scheduleChannelPublicationProcessing } from "./channel-publication-runtime";
+import { appendChatEvent, getChatById } from "./chat-history";
+import { findLatestStage2Event } from "./chat-workflow";
 import {
   appendStage3JobEvent,
   claimNextQueuedStage3Job,
@@ -18,6 +24,7 @@ import {
 } from "./stage3-job-store";
 import { publishStage3VideoArtifact } from "./stage3-job-artifacts";
 import { isHostStage3ExecutionAllowed } from "./stage3-execution";
+import { Stage3RenderRequestBody } from "./stage3-render-service";
 import { isStage3HostedBusyError } from "./stage3-server-control";
 
 const JOB_POLL_INTERVAL_MS = 350;
@@ -157,7 +164,7 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
         executed.artifact && (job.kind === "preview" || job.kind === "render" || job.kind === "editing-proxy")
           ? await publishStage3VideoArtifact(job.kind, job.id, executed.artifact.filePath)
           : null;
-      completeStage3Job(job.id, {
+      const completed = completeStage3Job(job.id, {
         resultJson: executed.resultJson,
         artifact:
           executed.artifact && published
@@ -170,6 +177,19 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
               }
             : null
       });
+      if (completed.kind === "render" && completed.artifact && completed.artifactFilePath) {
+        await persistRenderExportCompletion(job, completed).catch((error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Не удалось сохранить server-side результат Stage 3 render.";
+          appendStage3JobEvent(job.id, "warn", message);
+          logStage3Runtime("render_completion_persist_fail", {
+            jobId: job.id,
+            message
+          });
+        });
+      }
       if (published && executed.artifact) {
         appendStage3JobEvent(job.id, "info", "Published artifact.", {
           kind: job.kind,
@@ -211,6 +231,102 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
       code: failure.code,
       memoryMb: memorySnapshotMb()
     });
+  }
+}
+
+function buildRenderExportChatRef(input: {
+  completedAt: string | null;
+  fileName: string;
+  renderTitle: string | null;
+  payload: Stage3RenderRequestBody;
+}): ChatRenderExportRef {
+  const clipStartSec =
+    typeof input.payload.snapshot?.clipStartSec === "number" && Number.isFinite(input.payload.snapshot.clipStartSec)
+      ? input.payload.snapshot.clipStartSec
+      : null;
+  const clipDurationSec =
+    typeof input.payload.clipDurationSec === "number" && Number.isFinite(input.payload.clipDurationSec)
+      ? input.payload.clipDurationSec
+      : null;
+  const clipEndSec =
+    clipStartSec !== null && clipDurationSec !== null ? clipStartSec + clipDurationSec : null;
+  const focusY =
+    typeof input.payload.snapshot?.focusY === "number" && Number.isFinite(input.payload.snapshot.focusY)
+      ? input.payload.snapshot.focusY
+      : null;
+  const templateId =
+    typeof input.payload.snapshot?.renderPlan?.templateId === "string" && input.payload.snapshot.renderPlan.templateId.trim()
+      ? input.payload.snapshot.renderPlan.templateId.trim()
+      : typeof input.payload.templateId === "string" && input.payload.templateId.trim()
+        ? input.payload.templateId.trim()
+        : null;
+
+  return {
+    kind: "stage3-render-export",
+    fileName: input.fileName,
+    renderTitle: input.renderTitle,
+    clipStartSec,
+    clipEndSec,
+    focusY,
+    templateId,
+    createdAt: input.completedAt ?? new Date().toISOString()
+  };
+}
+
+async function persistRenderExportCompletion(
+  initialJob: Stage3JobRecord,
+  completedJob: Stage3JobRecord
+): Promise<void> {
+  const payload = JSON.parse(initialJob.payloadJson) as Stage3RenderRequestBody;
+  const chatId = payload.chatId?.trim() ?? "";
+  if (!chatId || !completedJob.artifact || !completedJob.artifactFilePath) {
+    return;
+  }
+
+  const chat = await getChatById(chatId);
+  if (!chat || chat.workspaceId !== initialJob.workspaceId) {
+    return;
+  }
+
+  const stage2Result = findLatestStage2Event(chat)?.payload ?? null;
+  const completion = completeRenderExportAndMaybeQueue({
+    workspaceId: initialJob.workspaceId,
+    channelId: chat.channelId,
+    chatId: chat.id,
+    chatTitle: chat.title,
+    stage3JobId: completedJob.id,
+    artifactFileName: completedJob.artifact.fileName,
+    artifactFilePath: completedJob.artifactFilePath,
+    artifactMimeType: completedJob.artifact.mimeType,
+    artifactSizeBytes: completedJob.artifact.sizeBytes,
+    renderTitle: payload.renderTitle?.trim() || null,
+    sourceUrl: payload.sourceUrl?.trim() || chat.url,
+    snapshotJson: JSON.stringify(payload.snapshot ?? null),
+    createdByUserId: initialJob.userId,
+    stage2Result: (stage2Result ?? null) as Stage2Response | null
+  });
+
+  const exportRef = buildRenderExportChatRef({
+    completedAt: completedJob.completedAt,
+    fileName: completedJob.artifact.fileName,
+    renderTitle: payload.renderTitle?.trim() || null,
+    payload
+  });
+  await appendChatEvent(chat.id, {
+    role: "assistant",
+    type: "note",
+    text: `Stage 3 export finished: ${exportRef.fileName} (title ${exportRef.renderTitle ?? "n/a"}, clip ${exportRef.clipStartSec?.toFixed(1) ?? "n/a"}-${exportRef.clipEndSec?.toFixed(1) ?? "n/a"}s, focus ${exportRef.focusY === null ? "n/a" : Math.round(exportRef.focusY * 100)}%)`,
+    data: {
+      ...exportRef,
+      renderExportId: completion.renderExport.id,
+      publicationId: completion.publication?.id ?? null,
+      publicationStatus: completion.publication?.status ?? null,
+      publicationScheduledAt: completion.publication?.scheduledAt ?? null
+    }
+  });
+
+  if (completion.publication) {
+    scheduleChannelPublicationProcessing();
   }
 }
 

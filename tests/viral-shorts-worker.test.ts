@@ -111,6 +111,7 @@ import {
 } from "../lib/stage2-runner";
 import { buildSelectorExamplePool } from "../lib/viral-shorts-worker/selector-example-pool";
 import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
+import { shouldUseCodexPlanner } from "../lib/stage3-agent-autonomous";
 import { getTemplateFigmaSpec } from "../lib/stage3-template-spec";
 import {
   AMERICAN_NEWS_TEMPLATE_ID,
@@ -149,6 +150,12 @@ import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
 import { Stage3TemplateRenderer } from "../lib/stage3-template-renderer";
 import { buildStage3PreviewDedupeKey } from "../lib/stage3-preview-service";
 import { enqueueStage3Job } from "../lib/stage3-job-store";
+import {
+  buildLegacyCameraKeyframes,
+  resolveCameraStateAtTime,
+  resolveStage3EffectiveCameraTracks,
+  resolveStage3EffectiveCameraKeyframes
+} from "../lib/stage3-camera";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -480,6 +487,9 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     sourceDurationSec: 15,
     focusY: 0.5,
     cameraMotion: "disabled" as const,
+    cameraKeyframes: [],
+    cameraPositionKeyframes: [],
+    cameraScaleKeyframes: [],
     mirrorEnabled: false,
     videoZoom: 1,
     topFontScale: 1,
@@ -508,7 +518,8 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     onFragmentStateChange: () => undefined,
     onClipStartChange: () => undefined,
     onFocusYChange: () => undefined,
-    onCameraMotionChange: () => undefined,
+    onCameraPositionKeyframesChange: () => undefined,
+    onCameraScaleKeyframesChange: () => undefined,
     onMirrorEnabledChange: () => undefined,
     onVideoZoomChange: () => undefined,
     onTopFontScaleChange: () => undefined,
@@ -661,6 +672,7 @@ async function runSuccessfulPipeline(options?: {
   finalSelectorResponse?: Record<string, unknown>;
   titleResponse?: unknown;
   comments?: Array<{ author: string; likes: number; text: string }>;
+  debugMode?: "summary" | "raw";
 }) {
   const service = new ViralShortsWorkerService();
   const promptConfig = options?.promptConfig ?? normalizeStage2PromptConfig({});
@@ -825,6 +837,7 @@ async function runSuccessfulPipeline(options?: {
     imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
     executor,
     promptConfig,
+    debugMode: options?.debugMode,
     onProgress: async (event) => {
       progressEvents.push({
         stageId: event.stageId,
@@ -2021,6 +2034,83 @@ test("executor wraps non-object root schemas for Codex transport and unwraps the
   });
   assert.match(transport.prompt, /single JSON object with exactly one key: "result"/);
   assert.deepEqual(transport.unwrap({ result: [{ value: "ok" }] }), [{ value: "ok" }]);
+});
+
+test("pipeline summary diagnostics omit raw prompt text but keep token usage", async () => {
+  const { result } = await runSuccessfulPipeline();
+
+  assert.ok(result.tokenUsage);
+  assert.ok((result.tokenUsage?.totalPromptChars ?? 0) > 0);
+  assert.ok((result.tokenUsage?.stages.length ?? 0) >= 6);
+  assert.ok(
+    result.diagnostics.effectivePrompting.promptStages.every((stage) => stage.promptText === null)
+  );
+  assert.ok(
+    result.diagnostics.effectivePrompting.promptStages.some((stage) => stage.promptTextAvailable === true)
+  );
+});
+
+test("pipeline raw mode captures executed prompt text in debug artifact", async () => {
+  const { result } = await runSuccessfulPipeline({ debugMode: "raw" });
+
+  assert.ok(result.rawDebugArtifact);
+  assert.equal(result.rawDebugArtifact?.kind, "stage2-run-debug");
+  assert.ok(
+    result.rawDebugArtifact?.promptStages.some(
+      (stage) => stage.stageId === "writer" && typeof stage.promptText === "string" && stage.promptText.length > 0
+    )
+  );
+  assert.ok(
+    result.diagnostics.effectivePrompting.promptStages.every((stage) => stage.promptText === null)
+  );
+});
+
+test("simple Stage 3 goals skip Codex planner when heuristic ops are available", () => {
+  const shouldUse = shouldUseCodexPlanner(
+    {
+      goalSignal: {
+        goalType: "focusOnly",
+        confidence: 0.88,
+        ambiguity: 0.31,
+        constraints: {
+          forbidZoom: false,
+          forbidAudio: false,
+          forbidCrop: false,
+          targetZoom: 1.18,
+          allowTextRewrite: false
+        },
+        guidance: {
+          tightenFraming: true,
+          verticalReframe: false,
+          polish: false,
+          artifactEdges: [],
+          desiredFocusShift: 0,
+          preferStrongerIterations: true,
+          forceIteration: false,
+          useFullSource: false
+        },
+        rawGoal: "focus on the subject and tighten the framing"
+      },
+      goalText: "focus on the subject and tighten the framing",
+      snapshot: {} as any,
+      autoClipStartSec: 0,
+      autoFocusY: 0.5,
+      iterationIndex: 1,
+      planBudget: 4,
+      lastTotalScore: 0.52,
+      sourceDurationSec: 8,
+      codexHome: "/tmp/fake-codex-home"
+    } as any,
+    {
+      rationale: "heuristic",
+      strategy: "heuristic",
+      hypothesis: "simple focus shift",
+      operations: [{ op: "set_focus_y", focusY: 0.44 }],
+      magnitudes: [0.5]
+    } as any
+  );
+
+  assert.equal(shouldUse, false);
 });
 
 test("executor strictifies object schemas so every property is required for Codex structured output", () => {
@@ -3407,6 +3497,9 @@ test("stage 3 draft render-plan override strips channel-managed template fields"
     smoothSlowMo: base.smoothSlowMo,
     mirrorEnabled: base.mirrorEnabled,
     cameraMotion: base.cameraMotion,
+    cameraKeyframes: base.cameraKeyframes,
+    cameraPositionKeyframes: base.cameraPositionKeyframes,
+    cameraScaleKeyframes: base.cameraScaleKeyframes,
     videoZoom: 1.4,
     topFontScale: 1.6,
     bottomFontScale: base.bottomFontScale,
@@ -3494,6 +3587,10 @@ test("stage 3 draft render-plan hydration keeps channel avatar while preserving 
     {
       sourceAudioEnabled: false,
       cameraMotion: "top_to_bottom",
+      cameraKeyframes: [
+        { id: "camera-a", timeSec: 0, focusY: 0.28, zoom: 1.12 },
+        { id: "camera-b", timeSec: 6, focusY: 0.7, zoom: 1.3 }
+      ],
       topFontScale: 0.99,
       bottomFontScale: 1.05,
       backgroundAssetId: "background_custom",
@@ -3511,8 +3608,123 @@ test("stage 3 draft render-plan hydration keeps channel avatar while preserving 
   assert.equal(hydrated.musicAssetMimeType, null);
   assert.equal(hydrated.sourceAudioEnabled, false);
   assert.equal(hydrated.cameraMotion, "top_to_bottom");
+  assert.deepEqual(hydrated.cameraKeyframes, [
+    { id: "camera-a", timeSec: 0, focusY: 0.28, zoom: 1.12 },
+    { id: "camera-b", timeSec: 6, focusY: 0.7, zoom: 1.3 }
+  ]);
+  assert.deepEqual(hydrated.cameraPositionKeyframes, [
+    { id: "camera-a", timeSec: 0, focusY: 0.28 },
+    { id: "camera-b", timeSec: 6, focusY: 0.7 }
+  ]);
+  assert.deepEqual(hydrated.cameraScaleKeyframes, [
+    { id: "camera-a", timeSec: 0, zoom: 1.12 },
+    { id: "camera-b", timeSec: 6, zoom: 1.3 }
+  ]);
   assert.equal(hydrated.topFontScale, 0.99);
   assert.equal(hydrated.bottomFontScale, 1.05);
+});
+
+test("legacy camera motion resolves into synthetic position keyframes without affecting scale", () => {
+  const tracks = resolveStage3EffectiveCameraTracks({
+    cameraKeyframes: [],
+    cameraMotion: "top_to_bottom",
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: 1.2
+  });
+
+  assert.deepEqual(
+    resolveStage3EffectiveCameraKeyframes({
+      cameraKeyframes: [],
+      cameraMotion: "top_to_bottom",
+      clipDurationSec: 6,
+      baseFocusY: 0.5,
+      baseZoom: 1.2
+    }),
+    buildLegacyCameraKeyframes({
+      cameraMotion: "top_to_bottom",
+      clipDurationSec: 6,
+      baseFocusY: 0.5,
+      baseZoom: 1.2
+    })
+  );
+  assert.equal(tracks.positionKeyframes.length, 2);
+  assert.deepEqual(tracks.scaleKeyframes, []);
+});
+
+test("camera transform interpolation keeps position and scale independent with linear timing", () => {
+  const positionKeyframes = [
+    { id: "pos-a", timeSec: 1, focusY: 0.22 },
+    { id: "pos-b", timeSec: 2, focusY: 0.22 },
+    { id: "pos-c", timeSec: 4, focusY: 0.78 }
+  ];
+  const scaleKeyframes = [
+    { id: "scale-a", timeSec: 1, zoom: 1 },
+    { id: "scale-b", timeSec: 2, zoom: 1.28 }
+  ];
+
+  const beforeFirst = resolveCameraStateAtTime({
+    timeSec: 0.5,
+    cameraPositionKeyframes: positionKeyframes,
+    cameraScaleKeyframes: scaleKeyframes,
+    cameraMotion: "disabled",
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: 1
+  });
+  const duringScaleMove = resolveCameraStateAtTime({
+    timeSec: 1.5,
+    cameraPositionKeyframes: positionKeyframes,
+    cameraScaleKeyframes: scaleKeyframes,
+    cameraMotion: "disabled",
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: 1
+  });
+  const duringPositionMove = resolveCameraStateAtTime({
+    timeSec: 2.5,
+    cameraPositionKeyframes: positionKeyframes,
+    cameraScaleKeyframes: scaleKeyframes,
+    cameraMotion: "disabled",
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: 1
+  });
+  const afterLast = resolveCameraStateAtTime({
+    timeSec: 5.2,
+    cameraPositionKeyframes: positionKeyframes,
+    cameraScaleKeyframes: scaleKeyframes,
+    cameraMotion: "disabled",
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: 1
+  });
+
+  assert.equal(beforeFirst.focusY, 0.5);
+  assert.equal(beforeFirst.zoom, 1);
+  assert.equal(duringScaleMove.focusY, 0.22);
+  assert.equal(duringScaleMove.zoom, 1.14);
+  assert.equal(duringPositionMove.focusY, 0.36);
+  assert.equal(duringPositionMove.zoom, 1.28);
+  assert.equal(afterLast.focusY, 0.78);
+  assert.equal(afterLast.zoom, 1.28);
+});
+
+test("combined legacy camera keyframes still resolve for compatibility", () => {
+  const keyframes = resolveStage3EffectiveCameraKeyframes({
+    cameraKeyframes: [],
+    cameraMotion: "top_to_bottom",
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: 1.2
+  });
+
+  assert.deepEqual(keyframes, buildLegacyCameraKeyframes({
+    cameraMotion: "top_to_bottom",
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: 1.2
+  }));
 });
 
 test("normalizeChatDraft removes legacy template id from stage 3 render-plan override", () => {
@@ -3554,6 +3766,9 @@ test("normalizeChatDraft removes legacy template id from stage 3 render-plan ove
     smoothSlowMo: false,
     mirrorEnabled: true,
     cameraMotion: "disabled",
+    cameraKeyframes: [],
+    cameraPositionKeyframes: [],
+    cameraScaleKeyframes: [],
     videoZoom: 1.2,
     topFontScale: fallbackRenderPlan().topFontScale,
     bottomFontScale: fallbackRenderPlan().bottomFontScale,
@@ -5276,6 +5491,12 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
     output: result.output,
     warnings: result.warnings,
     diagnostics: result.diagnostics,
+    tokenUsage: result.tokenUsage,
+    debugMode: "raw",
+    debugRef: {
+      kind: "stage2-run-debug",
+      ref: "stage2_debug_fixture"
+    },
     progress,
     stage2Run: {
       runId: "run_ui",
@@ -5340,7 +5561,7 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
         onSelectTitleOption: () => undefined,
         onCopy: () => undefined
       }),
-      React.createElement(Stage2RunDiagnosticsPanels, { diagnostics })
+      React.createElement(Stage2RunDiagnosticsPanels, { diagnostics, stage2Result: stage2 })
     )
   );
 
@@ -5354,6 +5575,8 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
   assert.match(html, /Truck axle snaps in the mud/);
   assert.match(html, /Главный триггер:/);
   assert.match(html, /Почему селектор выбрал это/);
+  assert.match(html, /LLM budget/);
+  assert.match(html, /Raw prompt contexts вынесены из основного Stage 2 payload/);
   assert.ok(!/hot pool/i.test(html));
   assert.ok(!/stable \+ hot \+ anti/i.test(html));
 });
@@ -5891,6 +6114,22 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
     bannedWords: [],
     bannedOpeners: []
   };
+  baseStage2.source.topComments = [
+    {
+      id: "quick-1",
+      author: "Quick author",
+      text: "that axle was done",
+      likes: 42,
+      postedAt: "2026-03-20T10:00:00.000Z"
+    }
+  ];
+  baseStage2.source.allComments = [...baseStage2.source.topComments];
+  baseStage2.source.totalComments = baseStage2.source.topComments.length;
+  baseStage2.source.commentsUsedForPrompt = baseStage2.source.topComments.length;
+  baseStage2.source.frameDescriptions = [
+    "frame 1: axle still holding",
+    "frame 2: axle twist becomes visible"
+  ];
   baseStage2.output.captionOptions = baseStage2.output.captionOptions.map((option, index) => ({
     ...option,
     candidateId: `cand_${index + 1}`,
@@ -6000,7 +6239,32 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
       channelStylePriority: "elevated",
       editorialMemoryPriority: "elevated",
       availableExamples: [],
-      selectedExamples: []
+      selectedExamples: [
+        {
+          id: "example_1",
+          bucket: "selected",
+          channelName: "Quick corpus",
+          sourceChannelId: "workspace-default",
+          sourceChannelName: "Workspace default",
+          videoId: null,
+          title: "Quick selected example",
+          clipType: "mechanical_failure",
+          overlayTop: "Selected example top",
+          overlayBottom: "Selected example bottom",
+          whyItWorks: ["strong mechanical framing"],
+          qualityScore: 0.91,
+          retrievalScore: 0.89,
+          retrievalReasons: ["same failure beat"],
+          guidanceRole: "form_guidance",
+          sampleKind: "workspace_default",
+          isOwnedAnchor: false,
+          isAntiExample: false,
+          publishedAt: null,
+          views: null,
+          ageHours: null,
+          anomalyScore: null
+        }
+      ]
     }
   };
   (baseStage2.output as Record<string, unknown>).pipeline = {
@@ -6040,7 +6304,7 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
     },
     userInstruction: "make it shorter and sneak in one dry joke"
   });
-  const result = buildQuickRegenerateResult({
+  const quick = buildQuickRegenerateResult({
     runId: "run_quick_regen",
     createdAt: nowIso(),
     mode: "regenerate",
@@ -6078,6 +6342,7 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
       selection_rationale: "Option 4 is the cleanest visible winner in this saved shortlist."
     }
   });
+  const result = quick.response;
 
   const pipeline = (result.output as Record<string, unknown>).pipeline as Record<string, unknown>;
   const finalSelector = (pipeline.finalSelector ?? {}) as Record<string, unknown>;
@@ -6101,11 +6366,18 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
   assert.match(result.warnings.map((warning) => warning.message).join(" "), /restored from the base run/);
   assert.match(promptText, /Preserve style_direction_ids and exploration_mode/i);
   assert.match(promptText, /Remove stock tails like 'the reaction basically writes itself'/i);
-  assert.match(promptText, /"retrievalContext":/);
-  assert.match(promptText, /"analysisContext":/);
+  assert.match(promptText, /"retrieval":/);
+  assert.match(promptText, /"analysis":/);
   assert.ok(
     result.diagnostics?.effectivePrompting.promptStages.some((stage) => stage.stageId === "regenerate")
   );
+  const regenerateStage = result.diagnostics?.effectivePrompting.promptStages.find(
+    (stage) => stage.stageId === "regenerate"
+  );
+  assert.equal(regenerateStage?.inputManifest?.comments?.passedCount, 1);
+  assert.deepEqual(regenerateStage?.inputManifest?.comments?.passedCommentIds, ["quick-1"]);
+  assert.equal(regenerateStage?.inputManifest?.examples?.passedCount, 1);
+  assert.deepEqual(regenerateStage?.inputManifest?.examples?.passedExampleIds, ["example_1"]);
   assert.equal(pipeline.mode, "regenerate");
 });
 
@@ -7968,13 +8240,14 @@ test("app shell renders app-level toasts in a dedicated top-left viewport", () =
   assert.match(html, /--toast-duration:5000ms/);
 });
 
-test("step 3 render template exposes final text editor and stage 2 mix actions", () => {
+test("step 3 render template defaults to the finalization surface with stage 2 mix actions", () => {
   const html = renderToStaticMarkup(
     React.createElement(Step3RenderTemplate, makeStep3RenderTemplateProps())
   );
 
-  assert.ok(html.indexOf("Editing") < html.indexOf("Финальный текст"));
-  assert.match(html, /details class="details-drawer stage3-caption-editor-drawer"/);
+  assert.ok(html.indexOf("Финализация") < html.indexOf("Финальный текст"));
+  assert.match(html, /Открыть редактор/);
+  assert.doesNotMatch(html, /details class="details-drawer stage3-caption-editor-drawer"/);
   assert.match(html, /Финальный текст/);
   assert.match(html, /Сбросить к выбранному варианту/);
   assert.match(html, /Взять всё/);

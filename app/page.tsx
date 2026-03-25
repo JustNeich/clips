@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, FlowStep } from "./components/AppShell";
+import { PublishingPlanner } from "./components/PublishingPlanner";
 import { upsertHistoryItemByMeaningfulUpdate } from "./components/history-panel-support";
 import {
   normalizeStage2DiagnosticsForView,
@@ -15,6 +16,7 @@ import {
   Channel,
   ChannelAccessGrant,
   ChannelAsset,
+  ChannelPublication,
   ChannelFeedbackResponse,
   ChatDraft,
   ChatEvent,
@@ -105,6 +107,7 @@ import {
 } from "../lib/chat-workflow";
 import { buildChatTraceExportFileName } from "../lib/chat-trace-export-shared";
 import { buildStage3DraftRenderPlanOverride } from "../lib/stage3-draft-render-plan";
+import type { TabId } from "./components/channel-manager-support";
 import {
   applyStage2CaptionToStage3Text,
   buildStage2ToStage3HandoffSummary,
@@ -266,6 +269,8 @@ export default function HomePage() {
   );
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelAssets, setChannelAssets] = useState<ChannelAsset[]>([]);
+  const [channelPublications, setChannelPublications] = useState<ChannelPublication[]>([]);
+  const [isChannelPublicationsLoading, setIsChannelPublicationsLoading] = useState(false);
   const [channelAccessGrants, setChannelAccessGrants] = useState<ChannelAccessGrant[]>([]);
   const [workspaceMembers, setWorkspaceMembers] = useState<Array<{ user: UserRecord; role: AppRole }>>([]);
   const [channelFeedbackHistory, setChannelFeedbackHistory] = useState<ChannelFeedbackResponse["historyEvents"]>([]);
@@ -273,6 +278,7 @@ export default function HomePage() {
   const [isChannelFeedbackLoading, setIsChannelFeedbackLoading] = useState(false);
   const [deletingChannelFeedbackEventId, setDeletingChannelFeedbackEventId] = useState<string | null>(null);
   const [isChannelManagerOpen, setIsChannelManagerOpen] = useState(false);
+  const [channelManagerInitialTab, setChannelManagerInitialTab] = useState<TabId | null>(null);
   const [isChannelOnboardingOpen, setIsChannelOnboardingOpen] = useState(false);
   const [chatList, setChatList] = useState<ChatListItem[]>([]);
   const [activeChat, setActiveChat] = useState<ChatThread | null>(null);
@@ -389,6 +395,7 @@ export default function HomePage() {
     renderTitle: string | null;
   } | null>(null);
   const stage3RenderPollIdRef = useRef(0);
+  const publishingPlannerRef = useRef<HTMLDivElement | null>(null);
   const draftSaveTimerRef = useRef<number | null>(null);
   const draftInFlightRef = useRef<Promise<void> | null>(null);
   const draftPayloadJsonRef = useRef<string>("");
@@ -446,6 +453,45 @@ export default function HomePage() {
     () => channels.find((channel) => channel.id === activeChannelId) ?? null,
     [channels, activeChannelId]
   );
+  const latestPublicationSummaryByChatId = useMemo(() => {
+    const map = new Map<string, NonNullable<ChatListItem["publication"]>>();
+    const updatedAtMap = new Map<string, number>();
+    for (const publication of channelPublications) {
+      const currentUpdatedAt = updatedAtMap.get(publication.chatId) ?? 0;
+      const nextUpdatedAt = new Date(publication.updatedAt).getTime();
+      if (nextUpdatedAt >= currentUpdatedAt) {
+        map.set(publication.chatId, {
+          id: publication.id,
+          status: publication.status,
+          scheduledAt: publication.scheduledAt,
+          needsReview: publication.needsReview,
+          youtubeVideoUrl: publication.youtubeVideoUrl,
+          lastError: publication.lastError
+        });
+        updatedAtMap.set(publication.chatId, nextUpdatedAt);
+      }
+    }
+    return map;
+  }, [channelPublications]);
+  const applyPublicationSummary = useCallback(
+    (item: ChatListItem): ChatListItem => ({
+      ...item,
+      publication: latestPublicationSummaryByChatId.get(item.id) ?? item.publication ?? null
+    }),
+    [latestPublicationSummaryByChatId]
+  );
+  const activeChatPublication = useMemo(() => {
+    if (!activeChat?.id) {
+      return null;
+    }
+    const matches = channelPublications.filter((publication) => publication.chatId === activeChat.id);
+    if (matches.length === 0) {
+      return null;
+    }
+    return [...matches].sort(
+      (left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime()
+    )[matches.length - 1] ?? null;
+  }, [activeChat?.id, channelPublications]);
   const canOperateActiveChannel = activeChannel?.currentUserCanOperate !== false;
   const stage3BackgroundUrl =
     activeChannelId && stage3RenderPlan.backgroundAssetId
@@ -972,6 +1018,27 @@ export default function HomePage() {
     }
   }, [parseError]);
 
+  const refreshChannelPublications = useCallback(async (channelId: string): Promise<ChannelPublication[]> => {
+    if (!channelId) {
+      setChannelPublications([]);
+      return [];
+    }
+
+    setIsChannelPublicationsLoading(true);
+    try {
+      const response = await fetch(`/api/channels/${channelId}/publications`);
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Не удалось загрузить очередь публикаций."));
+      }
+      const body = (await response.json()) as { publications?: ChannelPublication[] };
+      const nextPublications = body.publications ?? [];
+      setChannelPublications(nextPublications);
+      return nextPublications;
+    } finally {
+      setIsChannelPublicationsLoading(false);
+    }
+  }, [parseError]);
+
   const refreshChats = useCallback(async (): Promise<ChatListItem[]> => {
     const query = activeChannelId ? `?channelId=${encodeURIComponent(activeChannelId)}` : "";
     const response = await fetch(`/api/chats${query}`);
@@ -1010,7 +1077,7 @@ export default function HomePage() {
         new Date(localDraft.updatedAt).getTime() > new Date(serverDraft.updatedAt).getTime())
         ? localDraft
         : serverDraft;
-    patchChatListItem(buildChatListItem(body.chat, resolvedDraft));
+    patchChatListItem(applyPublicationSummary(buildChatListItem(body.chat, resolvedDraft)));
     if (desiredActiveChatIdRef.current && desiredActiveChatIdRef.current !== chatId) {
       return { chat: body.chat, draft: resolvedDraft };
     }
@@ -1035,7 +1102,7 @@ export default function HomePage() {
       hydrateChatEditorState(body.chat, resolvedDraft);
     }
     return { chat: body.chat, draft: resolvedDraft };
-  }, [hydrateChatEditorState, parseError, patchChatListItem, readLocalDraftCache]);
+  }, [applyPublicationSummary, hydrateChatEditorState, parseError, patchChatListItem, readLocalDraftCache]);
 
   const refreshSourceJobsForChat = useCallback(async (
     chatId: string,
@@ -1164,9 +1231,9 @@ export default function HomePage() {
     const body = (await response.json()) as { chat: ChatThread };
     setActiveChat(body.chat);
     patchChatListItem(
-      buildChatListItem(body.chat, activeChat?.id === body.chat.id ? activeDraft : null)
+      applyPublicationSummary(buildChatListItem(body.chat, activeChat?.id === body.chat.id ? activeDraft : null))
     );
-  }, [activeChat?.id, activeDraft, parseError, patchChatListItem]);
+  }, [activeChat?.id, activeDraft, applyPublicationSummary, parseError, patchChatListItem]);
 
   const loadStage3AgentTimeline = useCallback(
     async (sessionId: string): Promise<Stage3TimelineResponse> => {
@@ -1364,6 +1431,7 @@ export default function HomePage() {
       setChatList([]);
       setActiveChat(null);
       setActiveDraft(null);
+      setChannelPublications([]);
       setChannelAccessGrants([]);
       setChannelFeedbackHistory([]);
       setChannelEditorialMemory(null);
@@ -1371,9 +1439,17 @@ export default function HomePage() {
     }
     void refreshChats().catch(() => undefined);
     void refreshChannelAssets(activeChannelId).catch(() => undefined);
+    void refreshChannelPublications(activeChannelId).catch(() => undefined);
     void refreshChannelAccess(activeChannelId).catch(() => undefined);
     void refreshChannelFeedback(activeChannelId).catch(() => undefined);
-  }, [activeChannelId, refreshChannelAccess, refreshChannelAssets, refreshChannelFeedback, refreshChats]);
+  }, [
+    activeChannelId,
+    refreshChannelAccess,
+    refreshChannelAssets,
+    refreshChannelFeedback,
+    refreshChannelPublications,
+    refreshChats
+  ]);
 
   useEffect(() => {
     const shell = restoringFlowShellStateRef.current;
@@ -1900,9 +1976,25 @@ export default function HomePage() {
     draftOverrides?: Partial<Stage3EditorDraftOverrides>,
     textFitOverride?: Stage3TextFitSnapshot | null
   ): Stage3StateSnapshot => {
+    const hasLegacyCameraOverride = Array.isArray(draftOverrides?.cameraKeyframes);
+    const hasPositionTrackOverride = Array.isArray(draftOverrides?.cameraPositionKeyframes);
+    const hasScaleTrackOverride = Array.isArray(draftOverrides?.cameraScaleKeyframes);
+    const hasTransformTrackOverride = hasPositionTrackOverride || hasScaleTrackOverride;
     const effectiveRenderPlan = normalizeRenderPlan(
       {
         ...stage3RenderPlan,
+        cameraKeyframes: hasTransformTrackOverride
+          ? []
+          : hasLegacyCameraOverride
+            ? draftOverrides?.cameraKeyframes ?? []
+            : stage3RenderPlan.cameraKeyframes,
+        cameraPositionKeyframes: hasPositionTrackOverride
+          ? draftOverrides?.cameraPositionKeyframes ?? []
+          : stage3RenderPlan.cameraPositionKeyframes,
+        cameraScaleKeyframes: hasScaleTrackOverride
+          ? draftOverrides?.cameraScaleKeyframes ?? []
+          : stage3RenderPlan.cameraScaleKeyframes,
+        cameraMotion: hasTransformTrackOverride || hasLegacyCameraOverride ? "disabled" : stage3RenderPlan.cameraMotion,
         videoZoom:
           typeof draftOverrides?.videoZoom === "number" && Number.isFinite(draftOverrides.videoZoom)
             ? draftOverrides.videoZoom
@@ -2611,6 +2703,7 @@ export default function HomePage() {
           body: JSON.stringify({
             sourceUrl: chat.url,
             channelId: activeChannelId,
+            chatId: chat.id,
             renderTitle: selectedTitle?.title ?? undefined,
             templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
             topText: renderSnapshot.topText,
@@ -2647,6 +2740,10 @@ export default function HomePage() {
         setStage3RenderJobId(null);
         setStatusType("ok");
         setStatus("Render export complete.");
+        void refreshChats().catch(() => undefined);
+        if (activeChannelId) {
+          void refreshChannelPublications(activeChannelId).catch(() => undefined);
+        }
         return;
       }
       if (job.status === "failed" || job.status === "interrupted") {
@@ -2747,31 +2844,15 @@ export default function HomePage() {
               : "Рендер выполняется."
           );
         } else if (job.status === "completed" && job.artifact?.downloadUrl) {
-          const renderContext = stage3RenderContextRef.current;
           triggerUrlDownload(job.artifact.downloadUrl, job.artifact.fileName);
-          if (renderContext?.chatId) {
-            await appendEvent(renderContext.chatId, {
-              role: "assistant",
-              type: "note",
-              text: `Stage 3 export finished: ${job.artifact.fileName} (title ${renderContext.renderTitle ?? "n/a"}, clip ${renderContext.snapshot.clipStartSec.toFixed(1)}-${(
-                renderContext.snapshot.clipStartSec + CLIP_DURATION_SEC
-              ).toFixed(1)}s, focus ${Math.round(renderContext.snapshot.focusY * 100)}%)`,
-              data: {
-                kind: "stage3-render-export",
-                fileName: job.artifact.fileName,
-                renderTitle: renderContext.renderTitle,
-                clipStartSec: renderContext.snapshot.clipStartSec,
-                clipEndSec: renderContext.snapshot.clipStartSec + CLIP_DURATION_SEC,
-                focusY: renderContext.snapshot.focusY,
-                templateId: renderContext.snapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
-                createdAt: new Date().toISOString()
-              } satisfies ChatRenderExportRef
-            });
-          }
           setStage3RenderState("ready");
           setStage3RenderJobId(null);
           setStatusType("ok");
           setStatus("Render export complete.");
+          void refreshChats().catch(() => undefined);
+          if (activeChannelId) {
+            void refreshChannelPublications(activeChannelId).catch(() => undefined);
+          }
           void refreshStage3Workers().catch(() => undefined);
           return;
         } else {
@@ -2814,10 +2895,13 @@ export default function HomePage() {
       controller.abort();
     };
   }, [
+    activeChannelId,
     activeChat?.id,
     appendEvent,
     getUiErrorMessage,
     parseError,
+    refreshChannelPublications,
+    refreshChats,
     refreshStage3Workers,
     stage3RenderJobId,
     stage3RenderState
@@ -4781,6 +4865,186 @@ export default function HomePage() {
     }
   };
 
+  const openChannelManagerTab = useCallback((nextTab: TabId | null) => {
+    setChannelManagerInitialTab(nextTab);
+    setIsChannelManagerOpen(true);
+  }, []);
+
+  const handleOpenPublishingPlanner = useCallback(() => {
+    publishingPlannerRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }, []);
+
+  const handleSavePublishSettings = useCallback(async (
+    channelId: string,
+    patch: Partial<NonNullable<Channel["publishSettings"]>>
+  ): Promise<void> => {
+    const response = await fetch(`/api/channels/${channelId}/publishing/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch)
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось сохранить настройки публикации."));
+    }
+    const body = (await response.json()) as { settings?: Channel["publishSettings"] };
+    setChannels((prev) =>
+      prev.map((channel) =>
+        channel.id === channelId
+          ? {
+              ...channel,
+              publishSettings: body.settings ?? channel.publishSettings
+            }
+          : channel
+      )
+    );
+    if (activeChannelId === channelId) {
+      await refreshChannelPublications(channelId);
+    }
+  }, [activeChannelId, parseError, refreshChannelPublications]);
+
+  const handleConnectYouTube = useCallback(async (channelId: string): Promise<void> => {
+    const response = await fetch(`/api/channels/${channelId}/publishing/youtube/connect`, {
+      method: "POST"
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось начать YouTube OAuth."));
+    }
+    const body = (await response.json()) as { url?: string };
+    const connectUrl = body.url?.trim() ?? "";
+    if (!connectUrl) {
+      throw new Error("Сервер не вернул ссылку для YouTube OAuth.");
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const popup = window.open(connectUrl, "clips-youtube-oauth", "width=560,height=760");
+      if (!popup) {
+        reject(new Error("Браузер заблокировал popup. Разрешите всплывающие окна и повторите."));
+        return;
+      }
+
+      let settled = false;
+      const cleanup = () => {
+        window.removeEventListener("message", handleMessage);
+        window.clearInterval(closePollId);
+        window.clearTimeout(timeoutId);
+      };
+      const settle = (fn: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        fn();
+      };
+      const handleMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) {
+          return;
+        }
+        const payload =
+          event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : null;
+        if (payload?.type !== "youtube-oauth-result" || payload.channelId !== channelId) {
+          return;
+        }
+        if (payload.ok === true) {
+          settle(resolve);
+          return;
+        }
+        const errorMessage =
+          typeof payload.error === "string" && payload.error.trim()
+            ? payload.error.trim()
+            : "Не удалось завершить YouTube OAuth.";
+        settle(() => reject(new Error(errorMessage)));
+      };
+      const closePollId = window.setInterval(() => {
+        if (popup.closed) {
+          settle(() => reject(new Error("Окно YouTube OAuth было закрыто до завершения подключения.")));
+        }
+      }, 500);
+      const timeoutId = window.setTimeout(() => {
+        settle(() => reject(new Error("YouTube OAuth не завершился вовремя. Попробуйте ещё раз.")));
+      }, 3 * 60_000);
+
+      window.addEventListener("message", handleMessage);
+    });
+
+    await refreshChannels(channelId);
+    setStatusType("ok");
+    setStatus("YouTube подключён.");
+  }, [parseError, refreshChannels]);
+
+  const handleDisconnectYouTube = useCallback(async (channelId: string): Promise<void> => {
+    const response = await fetch(`/api/channels/${channelId}/publishing/youtube/connection`, {
+      method: "DELETE"
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось отключить YouTube интеграцию."));
+    }
+    await refreshChannels(channelId);
+    if (activeChannelId === channelId) {
+      await refreshChannelPublications(channelId);
+    }
+    setStatusType("ok");
+    setStatus("YouTube интеграция отключена.");
+  }, [activeChannelId, parseError, refreshChannelPublications, refreshChannels]);
+
+  const handleSelectYouTubeDestination = useCallback(async (
+    channelId: string,
+    selectedYoutubeChannelId: string
+  ): Promise<void> => {
+    const response = await fetch(`/api/channels/${channelId}/publishing/youtube/connection`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selectedYoutubeChannelId })
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось выбрать канал назначения YouTube."));
+    }
+    await refreshChannels(channelId);
+    setStatusType("ok");
+    setStatus("Канал назначения YouTube сохранён.");
+  }, [parseError, refreshChannels]);
+
+  const handleSavePublication = useCallback(async (
+    publicationId: string,
+    patch: Partial<{
+      title: string;
+      description: string;
+      tags: string[];
+      slotDate: string;
+      slotIndex: number;
+    }>
+  ): Promise<void> => {
+    const response = await fetch(`/api/publications/${publicationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch)
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось обновить публикацию."));
+    }
+    if (activeChannelId) {
+      await Promise.all([refreshChannelPublications(activeChannelId), refreshChats()]);
+    }
+  }, [activeChannelId, parseError, refreshChannelPublications, refreshChats]);
+
+  const handlePublicationAction = useCallback(async (
+    publicationId: string,
+    action: "pause" | "resume" | "retry" | "publish-now" | "delete"
+  ): Promise<void> => {
+    const response = await fetch(`/api/publications/${publicationId}/${action}`, {
+      method: "POST"
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось выполнить действие для публикации."));
+    }
+    if (activeChannelId) {
+      await Promise.all([refreshChannelPublications(activeChannelId), refreshChats()]);
+    }
+  }, [activeChannelId, parseError, refreshChannelPublications, refreshChats]);
+
   const handleSaveWorkspaceStage2Defaults = async (
     patch: Partial<{
       stage2ExamplesCorpusJson: string;
@@ -5210,7 +5474,7 @@ export default function HomePage() {
       }))}
       activeChannelId={activeChannelId}
       onSelectChannel={handleSwitchChannel}
-      onManageChannels={() => setIsChannelManagerOpen(true)}
+      onManageChannels={() => openChannelManagerTab(null)}
       canManageChannels={canCreateChannel || Boolean(activeChannel?.currentUserCanEditSetup)}
       canManageTeam={Boolean(authState?.effectivePermissions.canManageMembers)}
       onOpenTeam={() => {
@@ -5293,7 +5557,21 @@ export default function HomePage() {
       }
       afterDetails={
         currentStep === 2 ? (
-          <Stage2RunDiagnosticsPanels diagnostics={visibleStage2Diagnostics} />
+          <Stage2RunDiagnosticsPanels diagnostics={visibleStage2Diagnostics} stage2Result={visibleStage2Result} />
+        ) : currentStep === 3 && activeChannel ? (
+          <div ref={publishingPlannerRef}>
+            <PublishingPlanner
+              channelName={activeChannel.name}
+              settings={activeChannel.publishSettings}
+              integration={activeChannel.publishIntegration}
+              publications={channelPublications}
+              activeChatId={activeChat?.id ?? null}
+              loading={isChannelPublicationsLoading}
+              onSavePublication={handleSavePublication}
+              onRunAction={handlePublicationAction}
+              onOpenPublishingSettings={() => openChannelManagerTab("publishing")}
+            />
+          </div>
         ) : null
       }
     >
@@ -5420,12 +5698,16 @@ export default function HomePage() {
           sourceDurationSec={sourceDurationSec}
           focusY={stage3FocusY}
           cameraMotion={stage3RenderPlan.cameraMotion}
+          cameraKeyframes={stage3RenderPlan.cameraKeyframes}
+          cameraPositionKeyframes={stage3RenderPlan.cameraPositionKeyframes}
+          cameraScaleKeyframes={stage3RenderPlan.cameraScaleKeyframes}
           mirrorEnabled={stage3RenderPlan.mirrorEnabled}
           videoZoom={stage3RenderPlan.videoZoom}
           topFontScale={stage3RenderPlan.topFontScale}
           bottomFontScale={stage3RenderPlan.bottomFontScale}
           sourceAudioEnabled={stage3RenderPlan.sourceAudioEnabled}
           musicGain={stage3RenderPlan.musicGain}
+          publication={activeChatPublication}
           renderState={stage3RenderState}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
@@ -5559,12 +5841,27 @@ export default function HomePage() {
             });
           }}
           onFocusYChange={(value) => setStage3FocusY(value)}
-          onCameraMotionChange={(value) =>
+          onCameraPositionKeyframesChange={(value) =>
             setStage3RenderPlan((prev) =>
               normalizeRenderPlan(
                 {
                   ...prev,
-                  cameraMotion: value
+                  cameraMotion: "disabled",
+                  cameraKeyframes: [],
+                  cameraPositionKeyframes: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onCameraScaleKeyframesChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  cameraMotion: "disabled",
+                  cameraKeyframes: [],
+                  cameraScaleKeyframes: value
                 },
                 fallbackRenderPlan()
               )
@@ -5639,6 +5936,7 @@ export default function HomePage() {
           onCreateWorkerPairing={() => {
             void createStage3WorkerPairing();
           }}
+          onOpenPlanner={handleOpenPublishingPlanner}
           onExport={handleExportTemplate}
         />
       ) : null}
@@ -5646,6 +5944,7 @@ export default function HomePage() {
       {isChannelManagerOpen ? (
         <ChannelManager
           open={isChannelManagerOpen}
+          initialTab={channelManagerInitialTab}
           channels={channels}
           workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
@@ -5653,7 +5952,10 @@ export default function HomePage() {
           activeChannelId={activeChannelId}
           assets={channelAssets}
           currentUserRole={authState?.membership.role ?? null}
-          onClose={() => setIsChannelManagerOpen(false)}
+          onClose={() => {
+            setIsChannelManagerOpen(false);
+            setChannelManagerInitialTab(null);
+          }}
           onSelectChannel={handleSwitchChannel}
           canCreateChannel={canCreateChannel}
           onCreateChannel={handleCreateChannel}
@@ -5683,6 +5985,10 @@ export default function HomePage() {
           onUpdateAccess={(channelId, input) => {
             void handleUpdateChannelAccess(channelId, input);
           }}
+          onSavePublishSettings={handleSavePublishSettings}
+          onConnectYouTube={handleConnectYouTube}
+          onDisconnectYouTube={handleDisconnectYouTube}
+          onSelectYouTubeDestination={handleSelectYouTubeDestination}
         />
       ) : null}
       {isChannelOnboardingOpen ? (

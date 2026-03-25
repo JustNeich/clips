@@ -1383,16 +1383,64 @@ function buildFallbackPlan(args: {
   };
 };
 
+export function shouldUseCodexPlanner(input: PlannerInput, heuristicPlan: Stage3IterationPlan): boolean {
+  if (!input.codexHome) {
+    return false;
+  }
+  const simpleGoal =
+    input.goalSignal.goalType === "focusOnly" ||
+    input.goalSignal.goalType === "zoom" ||
+    input.goalSignal.goalType === "timing" ||
+    input.goalSignal.goalType === "audio" ||
+    input.goalSignal.goalType === "text";
+  if (simpleGoal && heuristicPlan.operations.length > 0) {
+    return false;
+  }
+  const plannerPassLimit =
+    input.goalSignal.goalType === "unknown" || input.goalSignal.ambiguity > 0.55 ? 3 : 2;
+  if (input.iterationIndex > plannerPassLimit) {
+    return false;
+  }
+  if (input.iterationIndex === 1 && input.goalSignal.ambiguity <= 0.42 && heuristicPlan.operations.length > 0) {
+    return false;
+  }
+  return true;
+}
+
 export async function selectNextPlan(input: PlannerInput): Promise<Stage3IterationPlan> {
-  if (input.codexHome) {
+  const fallbackPlan = buildFallbackPlan({
+    goalSignal: input.goalSignal,
+    goalText: input.goalText,
+    snapshot: input.snapshot,
+    autoClipStartSec: input.autoClipStartSec,
+    autoFocusY: input.autoFocusY,
+    iterationIndex: input.iterationIndex,
+    planBudget: input.planBudget,
+    sourceDurationSec: input.sourceDurationSec,
+    realityMetrics: input.realityMetrics
+  });
+  const fallbackBounded = guardAndNormalizePlan(
+    fallbackPlan,
+    input.snapshot,
+    input.goalSignal,
+    input.iterationIndex,
+    input.planBudget
+  );
+
+  if (shouldUseCodexPlanner(input, fallbackBounded)) {
+    const codexHome = input.codexHome;
+    if (!codexHome) {
+      return fallbackBounded;
+    }
     try {
       const plan = await planStage3OperationsWithCodex({
-        codexHome: input.codexHome,
+        codexHome,
         prompt: input.goalText,
         snapshot: input.snapshot,
         sourceDurationSec: input.sourceDurationSec,
         passIndex: input.iterationIndex,
-        maxPasses: Math.max(1, DEFAULT_MAX_ITERATIONS),
+        maxPasses:
+          input.goalSignal.goalType === "unknown" || input.goalSignal.ambiguity > 0.55 ? 3 : 2,
         scoreBefore: input.lastTotalScore * 100,
         lastPassSummary: null,
         model: input.planner?.model ?? "gpt-5.2",
@@ -1402,7 +1450,7 @@ export async function selectNextPlan(input: PlannerInput): Promise<Stage3Iterati
         visualDiagnostics: summarizeRealityMetrics(input.realityMetrics)
       });
 
-  const bounded = guardAndNormalizePlan(
+      const bounded = guardAndNormalizePlan(
         {
           rationale: plan.summary,
           strategy: "llm",
@@ -1419,24 +1467,6 @@ export async function selectNextPlan(input: PlannerInput): Promise<Stage3Iterati
       if (bounded.operations.length > 0) {
         return bounded;
       }
-      const fallbackPlan = buildFallbackPlan({
-        goalSignal: input.goalSignal,
-        goalText: input.goalText,
-        snapshot: input.snapshot,
-        autoClipStartSec: input.autoClipStartSec,
-        autoFocusY: input.autoFocusY,
-        iterationIndex: input.iterationIndex,
-        planBudget: input.planBudget,
-        sourceDurationSec: input.sourceDurationSec,
-        realityMetrics: input.realityMetrics
-      });
-      const fallbackBounded = guardAndNormalizePlan(
-        fallbackPlan,
-        input.snapshot,
-        input.goalSignal,
-        input.iterationIndex,
-        input.planBudget
-      );
       if (fallbackBounded.operations.length > 0) {
         return fallbackBounded;
       }
@@ -1446,24 +1476,7 @@ export async function selectNextPlan(input: PlannerInput): Promise<Stage3Iterati
     }
   }
 
-  const fallbackPlan = buildFallbackPlan({
-    goalSignal: input.goalSignal,
-    goalText: input.goalText,
-    snapshot: input.snapshot,
-    autoClipStartSec: input.autoClipStartSec,
-    autoFocusY: input.autoFocusY,
-    iterationIndex: input.iterationIndex,
-    planBudget: input.planBudget,
-    sourceDurationSec: input.sourceDurationSec,
-    realityMetrics: input.realityMetrics
-  });
-  return guardAndNormalizePlan(
-    fallbackPlan,
-    input.snapshot,
-    input.goalSignal,
-    input.iterationIndex,
-    input.planBudget
-  );
+  return fallbackBounded;
 }
 
 function computeGoalFit(

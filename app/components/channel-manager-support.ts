@@ -3,7 +3,7 @@
 import { Channel, ChannelAsset, ChannelAssetKind } from "./types";
 import { Stage2CorpusExample } from "../../lib/stage2-channel-config";
 
-export type TabId = "brand" | "stage2" | "render" | "assets" | "access";
+export type TabId = "brand" | "stage2" | "render" | "publishing" | "assets" | "access";
 export type AutosaveScope = "brand" | "stage2" | "stage2Defaults" | "render";
 export type AutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
 export type ChannelManagerTargetKind = "workspace_defaults" | "channel";

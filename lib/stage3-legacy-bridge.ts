@@ -7,6 +7,11 @@ import {
   Stage3Version
 } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
+import {
+  normalizeStage3CameraKeyframes,
+  normalizeStage3CameraMotion,
+  resolveStage3EffectiveCameraTracks
+} from "./stage3-camera";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
 
 const CLIP_DURATION_SEC = 6;
@@ -29,6 +34,9 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     smoothSlowMo: false,
     mirrorEnabled: true,
     cameraMotion: "disabled",
+    cameraKeyframes: [],
+    cameraPositionKeyframes: [],
+    cameraScaleKeyframes: [],
     videoZoom: 1,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
@@ -51,6 +59,19 @@ function fallbackRenderPlan(): Stage3RenderPlan {
 
 function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): Stage3RenderPlan {
   const candidate = value && typeof value === "object" ? (value as Partial<Stage3RenderPlan>) : undefined;
+  const videoZoom =
+    typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
+      ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
+      : fallback.videoZoom;
+  const cameraTracks = resolveStage3EffectiveCameraTracks({
+    cameraPositionKeyframes: candidate?.cameraPositionKeyframes,
+    cameraScaleKeyframes: candidate?.cameraScaleKeyframes,
+    cameraKeyframes: candidate?.cameraKeyframes ?? fallback.cameraKeyframes,
+    cameraMotion: candidate?.cameraMotion ?? fallback.cameraMotion,
+    clipDurationSec: fallback.targetDurationSec,
+    baseFocusY: 0.5,
+    baseZoom: videoZoom
+  });
   const segments = Array.isArray(candidate?.segments)
     ? candidate.segments
         .map((segment) => {
@@ -102,14 +123,15 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
     sourceAudioEnabled: Boolean(candidate?.sourceAudioEnabled ?? fallback.sourceAudioEnabled),
     smoothSlowMo: Boolean(candidate?.smoothSlowMo ?? fallback.smoothSlowMo),
     mirrorEnabled: Boolean(candidate?.mirrorEnabled ?? fallback.mirrorEnabled),
-    cameraMotion:
-      candidate?.cameraMotion === "top_to_bottom" || candidate?.cameraMotion === "bottom_to_top"
-        ? candidate.cameraMotion
-        : fallback.cameraMotion,
-    videoZoom:
-      typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
-        ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
-        : fallback.videoZoom,
+    cameraMotion: normalizeStage3CameraMotion(candidate?.cameraMotion ?? fallback.cameraMotion),
+    cameraKeyframes: normalizeStage3CameraKeyframes(candidate?.cameraKeyframes ?? fallback.cameraKeyframes, {
+      clipDurationSec: fallback.targetDurationSec,
+      fallbackFocusY: 0.5,
+      fallbackZoom: videoZoom
+    }),
+    cameraPositionKeyframes: cameraTracks.positionKeyframes,
+    cameraScaleKeyframes: cameraTracks.scaleKeyframes,
+    videoZoom,
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
         ? clampStage3TextScaleUi(candidate.topFontScale)

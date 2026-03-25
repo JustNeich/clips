@@ -23,6 +23,11 @@ import { Stage3RenderPlan } from "./stage3-agent";
 import { Stage3StateSnapshot } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import {
+  normalizeStage3CameraKeyframes,
+  normalizeStage3CameraMotion,
+  resolveStage3EffectiveCameraTracks
+} from "./stage3-camera";
+import {
   ensureStage3SourceCached,
   isStage3HostedRuntime,
   runHostedStage3HeavyJob
@@ -67,6 +72,7 @@ function resolveStage3ExecutionRoot(): string {
 export type Stage3RenderRequestBody = {
   sourceUrl?: string;
   channelId?: string;
+  chatId?: string;
   renderTitle?: string;
   topText?: string;
   bottomText?: string;
@@ -104,10 +110,6 @@ function normalizeSegmentSpeed(value: unknown): Stage3RenderPlan["segments"][num
     return value as Stage3RenderPlan["segments"][number]["speed"];
   }
   return 1;
-}
-
-function normalizeCameraMotion(value: unknown): Stage3RenderPlan["cameraMotion"] {
-  return value === "top_to_bottom" || value === "bottom_to_top" ? value : "disabled";
 }
 
 async function ensureRemotionRuntime(): Promise<RemotionModule> {
@@ -367,6 +369,9 @@ async function runRemotionRender(params: {
   focusY: number;
   mirrorEnabled: boolean;
   cameraMotion: Stage3RenderPlan["cameraMotion"];
+  cameraKeyframes: Stage3RenderPlan["cameraKeyframes"];
+  cameraPositionKeyframes: Stage3RenderPlan["cameraPositionKeyframes"];
+  cameraScaleKeyframes: Stage3RenderPlan["cameraScaleKeyframes"];
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
@@ -402,6 +407,9 @@ async function runRemotionRender(params: {
     focusY: params.focusY,
     mirrorEnabled: params.mirrorEnabled,
     cameraMotion: params.cameraMotion,
+    cameraKeyframes: params.cameraKeyframes,
+    cameraPositionKeyframes: params.cameraPositionKeyframes,
+    cameraScaleKeyframes: params.cameraScaleKeyframes,
     videoZoom: params.videoZoom,
     topFontScale: params.topFontScale,
     bottomFontScale: params.bottomFontScale,
@@ -524,6 +532,19 @@ function normalizeRenderPlan(
   const template = getTemplateById(fallbackTemplateId);
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
+  const videoZoom =
+    typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
+      ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
+      : 1;
+  const cameraTracks = resolveStage3EffectiveCameraTracks({
+    cameraPositionKeyframes: rawPlan?.cameraPositionKeyframes,
+    cameraScaleKeyframes: rawPlan?.cameraScaleKeyframes,
+    cameraKeyframes: rawPlan?.cameraKeyframes,
+    cameraMotion: rawPlan?.cameraMotion,
+    clipDurationSec: 6,
+    baseFocusY: 0.5,
+    baseZoom: videoZoom
+  });
   return {
     targetDurationSec: 6,
     timingMode:
@@ -537,11 +558,15 @@ function normalizeRenderPlan(
     sourceAudioEnabled: Boolean(rawPlan?.sourceAudioEnabled ?? true),
     smoothSlowMo: Boolean(rawPlan?.smoothSlowMo),
     mirrorEnabled: Boolean(rawPlan?.mirrorEnabled ?? true),
-    cameraMotion: normalizeCameraMotion(rawPlan?.cameraMotion),
-    videoZoom:
-      typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
-        ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
-        : 1,
+    cameraMotion: normalizeStage3CameraMotion(rawPlan?.cameraMotion),
+    cameraKeyframes: normalizeStage3CameraKeyframes(rawPlan?.cameraKeyframes, {
+      clipDurationSec: 6,
+      fallbackFocusY: 0.5,
+      fallbackZoom: videoZoom
+    }),
+    cameraPositionKeyframes: cameraTracks.positionKeyframes,
+    cameraScaleKeyframes: cameraTracks.scaleKeyframes,
+    videoZoom,
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
         ? clampStage3TextScaleUi(rawPlan.topFontScale)
@@ -871,6 +896,9 @@ export async function renderStage3Video(
           focusY,
           mirrorEnabled: renderPlan.mirrorEnabled,
           cameraMotion: renderPlan.cameraMotion,
+          cameraKeyframes: renderPlan.cameraKeyframes,
+          cameraPositionKeyframes: renderPlan.cameraPositionKeyframes,
+          cameraScaleKeyframes: renderPlan.cameraScaleKeyframes,
           videoZoom: renderPlan.videoZoom,
           topFontScale: renderPlan.topFontScale,
           bottomFontScale: renderPlan.bottomFontScale,

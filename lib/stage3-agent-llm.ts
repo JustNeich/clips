@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   Stage3AudioMode,
   Stage3Operation,
+  Stage3PlannerSnapshotDigest,
   Stage3RenderPlan,
   Stage3StateSnapshot,
   Stage3TimingMode
@@ -318,6 +319,49 @@ function normalizeIntent(value: unknown): PlannerIntent {
   };
 }
 
+function truncatePlannerText(value: string, maxLength: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function buildStage3PlannerSnapshotDigest(snapshot: Stage3StateSnapshot): Stage3PlannerSnapshotDigest {
+  return {
+    sourceDurationSec: snapshot.sourceDurationSec,
+    topText: truncatePlannerText(snapshot.topText, 220),
+    bottomText: truncatePlannerText(snapshot.bottomText, 220),
+    clipStartSec: snapshot.clipStartSec,
+    clipDurationSec: snapshot.clipDurationSec,
+    focusY: snapshot.focusY,
+    textFit: {
+      topCompacted: snapshot.textFit.topCompacted,
+      bottomCompacted: snapshot.textFit.bottomCompacted,
+      topFontPx: snapshot.textFit.topFontPx,
+      bottomFontPx: snapshot.textFit.bottomFontPx,
+      topOverflow: snapshot.textFit.topFontPx <= 0,
+      bottomOverflow: snapshot.textFit.bottomFontPx <= 0
+    },
+    renderPlan: {
+      timingMode: snapshot.renderPlan.timingMode,
+      audioMode: snapshot.renderPlan.audioMode,
+      videoZoom: snapshot.renderPlan.videoZoom,
+      topFontScale: snapshot.renderPlan.topFontScale,
+      bottomFontScale: snapshot.renderPlan.bottomFontScale,
+      textPolicy: snapshot.renderPlan.textPolicy,
+      smoothSlowMo: snapshot.renderPlan.smoothSlowMo,
+      segmentCount: snapshot.renderPlan.segments.length,
+      segments: snapshot.renderPlan.segments.slice(0, 6).map((segment) => ({
+        startSec: segment.startSec,
+        endSec: segment.endSec,
+        speed: segment.speed,
+        label: segment.label
+      }))
+    }
+  };
+}
+
 export async function planStage3OperationsWithCodex(input: {
   codexHome: string;
   prompt: string;
@@ -359,21 +403,8 @@ export async function planStage3OperationsWithCodex(input: {
         ? `Current visual diagnostics: ${input.visualDiagnostics.trim()}`
         : "Current visual diagnostics: n/a",
       "",
-      "Current snapshot JSON:",
-      JSON.stringify(
-        {
-          sourceDurationSec: input.sourceDurationSec,
-          topText: input.snapshot.topText,
-          bottomText: input.snapshot.bottomText,
-          clipStartSec: input.snapshot.clipStartSec,
-          clipDurationSec: input.snapshot.clipDurationSec,
-          focusY: input.snapshot.focusY,
-          textFit: input.snapshot.textFit,
-          renderPlan: input.snapshot.renderPlan
-        },
-        null,
-        2
-      ),
+      "Current snapshot digest JSON:",
+      JSON.stringify(buildStage3PlannerSnapshotDigest(input.snapshot), null, 2),
       "",
       "User instruction:",
       input.prompt.trim() || "No extra instruction",

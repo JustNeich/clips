@@ -1,0 +1,64 @@
+{
+  "templateId": "american-news-v1",
+  "source": "generated",
+  "frame": {
+    "width": 1080,
+    "height": 1920
+  },
+  "shell": {
+    "x": 83,
+    "y": 192,
+    "width": 907,
+    "height": 1461,
+    "radius": 18
+  },
+  "card": {
+    "x": 83,
+    "y": 192,
+    "width": 907,
+    "height": 1461,
+    "radius": 0,
+    "borderWidth": 4,
+    "borderColor": "#f3b31f",
+    "fill": "#121820",
+    "shadow": "0 10px 24px rgba(0, 0, 0, 0.22)"
+  },
+  "sections": {
+    "top": {
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 419
+    },
+    "media": {
+      "x": 83,
+      "y": 611,
+      "width": 907,
+      "height": 750
+    },
+    "bottom": {
+      "x": 83,
+      "y": 1361,
+      "width": 907,
+      "height": 292
+    },
+    "author": {
+      "x": 83,
+      "y": 1361,
+      "width": 907,
+      "height": 132
+    },
+    "avatar": {
+      "x": 106,
+      "y": 1377,
+      "width": 101,
+      "height": 101
+    },
+    "bottomText": {
+      "x": 105,
+      "y": 1493,
+      "width": 863,
+      "height": 160
+    }
+  }
+}

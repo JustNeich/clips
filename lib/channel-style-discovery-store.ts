@@ -49,11 +49,14 @@ function normalizeRequest(input: Partial<ChannelStyleDiscoveryRequest> | null | 
 }
 
 function createRequestFingerprint(request: ChannelStyleDiscoveryRequest): string {
+  const normalizedReferenceUrls = [
+    ...normalizeStage2StyleDiscoveryReferenceUrls(request.referenceUrls)
+  ].sort((left, right) => left.localeCompare(right));
   return JSON.stringify({
     channelName: request.channelName.trim(),
     username: request.username.trim(),
     hardConstraints: normalizeStage2HardConstraints(request.hardConstraints),
-    referenceUrls: normalizeStage2StyleDiscoveryReferenceUrls(request.referenceUrls)
+    referenceUrls: normalizedReferenceUrls
   });
 }
 
@@ -89,6 +92,30 @@ function readRunRow(runId: string): ChannelStyleDiscoveryRunRow | null {
     (db
       .prepare("SELECT * FROM channel_style_discovery_runs WHERE run_id = ? LIMIT 1")
       .get(runId) as ChannelStyleDiscoveryRunRow | undefined) ?? null
+  );
+}
+
+function findLatestReusableCompletedRun(input: {
+  workspaceId: string;
+  creatorUserId: string;
+  fingerprint: string;
+}): ChannelStyleDiscoveryRunRow | null {
+  const db = getDb();
+  return (
+    (db
+      .prepare(
+        `SELECT * FROM channel_style_discovery_runs
+          WHERE workspace_id = ?
+            AND creator_user_id = ?
+            AND request_fingerprint = ?
+            AND status = 'completed'
+            AND result_json IS NOT NULL
+            AND trim(result_json) != ''
+          ORDER BY finished_at DESC, updated_at DESC, created_at DESC
+          LIMIT 1`
+      )
+      .get(input.workspaceId, input.creatorUserId, input.fingerprint) as ChannelStyleDiscoveryRunRow | undefined) ??
+    null
   );
 }
 
@@ -165,6 +192,15 @@ export function createChannelStyleDiscoveryRun(input: {
       .get(input.workspaceId, input.creatorUserId, fingerprint) as ChannelStyleDiscoveryRunRow | undefined;
     if (existing) {
       return mapRun(existing);
+    }
+
+    const cachedCompleted = findLatestReusableCompletedRun({
+      workspaceId: input.workspaceId,
+      creatorUserId: input.creatorUserId,
+      fingerprint
+    });
+    if (cachedCompleted) {
+      return mapRun(cachedCompleted);
     }
 
     const now = nowIso();

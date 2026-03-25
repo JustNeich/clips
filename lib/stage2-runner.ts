@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { Stage2Response } from "../app/components/types";
 import { runCodexExec } from "./codex-runner";
+import { saveStage2RunDebugArtifact } from "./stage2-debug-artifacts";
 import {
   normalizeComments,
   prepareCommentsForPrompt,
@@ -47,6 +48,7 @@ import {
   ViralShortsWorkerService
 } from "./viral-shorts-worker/service";
 import { createStage2CodexExecutorContext } from "./stage2-codex-executor";
+import type { Stage2RunDebugArtifact, Stage2TokenUsage } from "./viral-shorts-worker/types";
 
 const execFileAsync = promisify(execFile);
 
@@ -244,6 +246,39 @@ function getPipelineErrorMessage(error: unknown): string {
   return message || "Пайплайн Stage 2 завершился с ошибкой.";
 }
 
+function measurePersistedPayloadBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
+}
+
+function finalizeTokenUsage(
+  tokenUsage: Stage2TokenUsage | undefined,
+  persistedPayloadBytes: number
+): Stage2TokenUsage | undefined {
+  if (!tokenUsage) {
+    return undefined;
+  }
+  return {
+    ...tokenUsage,
+    totalPersistedPayloadBytes: persistedPayloadBytes
+  };
+}
+
+async function persistStage2RawDebugArtifact(input: {
+  runId: string;
+  rawDebugArtifact: Stage2RunDebugArtifact | null;
+}): Promise<string | null> {
+  if (!input.rawDebugArtifact) {
+    return null;
+  }
+  return saveStage2RunDebugArtifact({
+    runId: input.runId,
+    artifact: {
+      ...input.rawDebugArtifact,
+      runId: input.runId
+    }
+  });
+}
+
 async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2Response> {
   await requireRuntimeTool("codex");
   const baseRunId = run.baseRunId ?? run.request.baseRunId ?? null;
@@ -318,15 +353,27 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     promptText,
     reasoningEffort: executorContext.reasoningEffort,
     model: executorContext.model,
-    rawOutput
+    rawOutput,
+    debugMode: run.request.debugMode
+  });
+  const debugRef = await persistStage2RawDebugArtifact({
+    runId: run.runId,
+    rawDebugArtifact: assembled.rawDebugArtifact
+  });
+  const persistedPayloadBytes = measurePersistedPayloadBytes({
+    ...assembled.response,
+    tokenUsage: finalizeTokenUsage(assembled.tokenUsage, 0)
   });
   markStage2RunStageCompleted(run.runId, "assemble", {
-    detail: `Quick regenerate saved ${assembled.output.captionOptions.length} caption options and ${assembled.output.titleOptions.length} title options.`
+    detail: `Quick regenerate saved ${assembled.response.output.captionOptions.length} caption options and ${assembled.response.output.titleOptions.length} title options.`
   });
 
   return {
-    ...assembled,
-    progress: getStage2Run(run.runId)?.snapshot ?? assembled.progress ?? null
+    ...assembled.response,
+    debugMode: run.request.debugMode === "raw" ? "raw" : "summary",
+    debugRef: debugRef ? { kind: "stage2-run-debug", ref: debugRef } : null,
+    tokenUsage: finalizeTokenUsage(assembled.tokenUsage, persistedPayloadBytes),
+    progress: getStage2Run(run.runId)?.snapshot ?? assembled.response.progress ?? null
   };
 }
 
@@ -385,6 +432,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       imagePaths: frames.framePaths,
       executor: executorContext.executor,
       promptConfig: workspaceStage2PromptConfig,
+      debugMode: run.request.debugMode,
       onProgress: async (event) => {
         if (event.state === "running") {
           markStage2RunStageRunning(run.runId, event.stageId, {
@@ -421,6 +469,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     let seo: { description: string; tags: string } | null = null;
     const seoTemplate = resolveStage2PromptTemplate("seo", workspaceStage2PromptConfig);
     let seoPromptText: string | null = null;
+    let seoSerializedResultBytes: number | null = null;
     try {
       const seoPrompt = buildStage2SeoPrompt({
         sourceUrl: run.sourceUrl,
@@ -468,6 +517,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
 
       const rawSeoOutput = await fs.readFile(seoOutputPath, "utf-8");
       seo = parseStage2SeoOutput(rawSeoOutput);
+      seoSerializedResultBytes = measurePersistedPayloadBytes(seo);
       markStage2RunStageCompleted(run.runId, "seo", {
         detail: "SEO metadata готова.",
         durationMs: Date.now() - seoStartedAt,
@@ -487,8 +537,53 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         detail: `Fallback/no SEO: ${message}`
       });
     }
-
-    return {
+    const seoPromptStage = {
+      stageId: "seo",
+      label: "SEO",
+      stageType: "llm_prompt" as const,
+      defaultPrompt: seoTemplate.defaultPrompt,
+      configuredPrompt: seoTemplate.configuredPrompt,
+      reasoningEffort: seoTemplate.reasoningEffort,
+      isCustomPrompt: seoTemplate.isCustomPrompt,
+      promptText: null,
+      promptTextAvailable: Boolean(seoPromptText),
+      promptChars: seoPromptText?.length ?? null,
+      estimatedInputTokens: seoPromptText ? Math.max(1, Math.ceil(seoPromptText.length / 4)) : null,
+      estimatedOutputTokens:
+        seoSerializedResultBytes !== null ? Math.max(1, Math.ceil(seoSerializedResultBytes / 4)) : null,
+      serializedResultBytes: seoSerializedResultBytes,
+      persistedPayloadBytes: null,
+      usesImages: false,
+      summary: "LLM stage: generates SEO description and tags from the final Stage 2 pick."
+    };
+    const diagnostics = pipelineResult.diagnostics
+      ? {
+          ...pipelineResult.diagnostics,
+          effectivePrompting: {
+            ...pipelineResult.diagnostics.effectivePrompting,
+            promptStages: [...pipelineResult.diagnostics.effectivePrompting.promptStages, seoPromptStage]
+          }
+        }
+      : pipelineResult.diagnostics;
+    const rawDebugArtifact =
+      run.request.debugMode === "raw" && pipelineResult.rawDebugArtifact
+        ? {
+            ...pipelineResult.rawDebugArtifact,
+            runId: run.runId,
+            promptStages: [
+              ...pipelineResult.rawDebugArtifact.promptStages,
+              {
+                ...seoPromptStage,
+                promptText: seoPromptText
+              }
+            ]
+          }
+        : null;
+    const debugRef = await persistStage2RawDebugArtifact({
+      runId: run.runId,
+      rawDebugArtifact
+    });
+    const baseResponse = {
       source: {
         url: run.sourceUrl,
         title: downloaded.title,
@@ -524,34 +619,13 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       output: parsedOutput,
       seo,
       warnings,
-      diagnostics: pipelineResult.diagnostics
-        ? {
-            ...pipelineResult.diagnostics,
-            effectivePrompting: {
-              ...pipelineResult.diagnostics.effectivePrompting,
-              promptStages: [
-                ...pipelineResult.diagnostics.effectivePrompting.promptStages,
-                {
-                  stageId: "seo",
-                  label: "SEO",
-                  stageType: "llm_prompt",
-                  defaultPrompt: seoTemplate.defaultPrompt,
-                  configuredPrompt: seoTemplate.configuredPrompt,
-                  reasoningEffort: seoTemplate.reasoningEffort,
-                  isCustomPrompt: seoTemplate.isCustomPrompt,
-                  promptText: seoPromptText,
-                  promptChars: seoPromptText?.length ?? null,
-                  usesImages: false,
-                  summary: "LLM stage: generates SEO description and tags from the final Stage 2 pick."
-                }
-              ]
-            }
-          }
-        : pipelineResult.diagnostics,
+      diagnostics,
       progress: getStage2Run(run.runId)?.snapshot ?? null,
       model: executorContext.model ?? "default",
       reasoningEffort: executorContext.reasoningEffort,
       userInstructionUsed: run.userInstruction,
+      debugMode: run.request.debugMode === "raw" ? "raw" : "summary",
+      debugRef: debugRef ? { kind: "stage2-run-debug" as const, ref: debugRef } : null,
       stage2Worker: {
         runId: run.runId
       },
@@ -566,6 +640,28 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         name: channel.name,
         username: channel.username
       }
+    };
+    const tokenUsage = finalizeTokenUsage(
+      {
+        ...pipelineResult.tokenUsage,
+        stages: [
+          ...pipelineResult.tokenUsage.stages,
+          {
+            stageId: "seo",
+            promptChars: seoPromptText?.length ?? null,
+            estimatedInputTokens: seoPromptText ? Math.max(1, Math.ceil(seoPromptText.length / 4)) : null,
+            estimatedOutputTokens:
+              seoSerializedResultBytes !== null ? Math.max(1, Math.ceil(seoSerializedResultBytes / 4)) : null,
+            serializedResultBytes: seoSerializedResultBytes,
+            persistedPayloadBytes: 0
+          }
+        ]
+      },
+      measurePersistedPayloadBytes(baseResponse)
+    );
+    return {
+      ...baseResponse,
+      tokenUsage
     } as Stage2Response;
   } catch (error) {
     const ytdlpMessage = extractYtDlpErrorFromUnknown(error);

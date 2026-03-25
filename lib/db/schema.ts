@@ -135,6 +135,61 @@ CREATE TABLE IF NOT EXISTS channel_assets (
   FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS channel_publish_integrations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  encrypted_token_json TEXT,
+  google_account_email TEXT,
+  selected_youtube_channel_id TEXT,
+  selected_youtube_channel_title TEXT,
+  selected_youtube_channel_custom_url TEXT,
+  available_channels_json TEXT,
+  scopes_json TEXT,
+  connected_by_user_id TEXT,
+  connected_at TEXT,
+  last_verified_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (connected_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS channel_publish_settings (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL UNIQUE,
+  timezone TEXT NOT NULL,
+  first_slot_local_time TEXT NOT NULL,
+  daily_slot_count INTEGER NOT NULL,
+  slot_interval_minutes INTEGER NOT NULL,
+  auto_queue_enabled INTEGER NOT NULL DEFAULT 1,
+  upload_lead_minutes INTEGER NOT NULL DEFAULT 120,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  updated_by_user_id TEXT,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS channel_youtube_oauth_states (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  state_token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS chat_threads (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -310,6 +365,75 @@ CREATE TABLE IF NOT EXISTS stage3_job_artifacts (
   FOREIGN KEY (job_id) REFERENCES stage3_jobs(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS render_exports (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  stage3_job_id TEXT NOT NULL UNIQUE,
+  artifact_file_name TEXT NOT NULL,
+  artifact_file_path TEXT NOT NULL,
+  artifact_mime_type TEXT NOT NULL,
+  artifact_size_bytes INTEGER NOT NULL,
+  render_title TEXT,
+  source_url TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  created_by_user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (stage3_job_id) REFERENCES stage3_jobs(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS channel_publications (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  render_export_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  scheduled_at TEXT NOT NULL,
+  upload_ready_at TEXT NOT NULL,
+  slot_date TEXT NOT NULL,
+  slot_index INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  tags_json TEXT NOT NULL,
+  needs_review INTEGER NOT NULL DEFAULT 0,
+  title_manual INTEGER NOT NULL DEFAULT 0,
+  description_manual INTEGER NOT NULL DEFAULT 0,
+  tags_manual INTEGER NOT NULL DEFAULT 0,
+  schedule_manual INTEGER NOT NULL DEFAULT 0,
+  youtube_video_id TEXT,
+  youtube_video_url TEXT,
+  published_at TEXT,
+  canceled_at TEXT,
+  last_error TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  lease_token TEXT,
+  lease_expires_at TEXT,
+  created_by_user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (chat_id) REFERENCES chat_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (render_export_id) REFERENCES render_exports(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS channel_publication_events (
+  id TEXT PRIMARY KEY,
+  publication_id TEXT NOT NULL,
+  level TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (publication_id) REFERENCES channel_publications(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS stage3_workers (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -356,6 +480,15 @@ CREATE INDEX IF NOT EXISTS idx_channel_access_channel
 CREATE INDEX IF NOT EXISTS idx_channel_access_user
   ON channel_access(user_id);
 
+CREATE INDEX IF NOT EXISTS idx_channel_publish_integrations_channel
+  ON channel_publish_integrations(channel_id);
+
+CREATE INDEX IF NOT EXISTS idx_channel_publish_settings_channel
+  ON channel_publish_settings(channel_id);
+
+CREATE INDEX IF NOT EXISTS idx_channel_youtube_oauth_states_expires
+  ON channel_youtube_oauth_states(expires_at);
+
 CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_channel
   ON channel_editorial_feedback_events(channel_id, created_at DESC);
 
@@ -398,6 +531,21 @@ CREATE INDEX IF NOT EXISTS idx_stage3_job_events_job
 
 CREATE INDEX IF NOT EXISTS idx_stage3_job_artifacts_job
   ON stage3_job_artifacts(job_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_render_exports_chat_created
+  ON render_exports(chat_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_channel_publications_channel_scheduled
+  ON channel_publications(channel_id, scheduled_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_channel_publications_status_upload_ready
+  ON channel_publications(status, upload_ready_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_channel_publications_chat_updated
+  ON channel_publications(chat_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_channel_publication_events_publication
+  ON channel_publication_events(publication_id, created_at ASC);
 
 CREATE INDEX IF NOT EXISTS idx_stage3_workers_user
   ON stage3_workers(workspace_id, user_id, updated_at DESC);

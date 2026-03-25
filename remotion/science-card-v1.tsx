@@ -15,6 +15,12 @@ import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
 import { RenderVariationOverlay } from "./render-variation-overlay";
+import { resolveCameraStateAtTime } from "../lib/stage3-camera";
+import type {
+  Stage3CameraKeyframe,
+  Stage3PositionKeyframe,
+  Stage3ScaleKeyframe
+} from "../lib/stage3-camera";
 
 type ScienceCardV1Props = {
   templateId?: string;
@@ -26,6 +32,9 @@ type ScienceCardV1Props = {
   focusY: number;
   mirrorEnabled: boolean;
   cameraMotion: "disabled" | "top_to_bottom" | "bottom_to_top";
+  cameraKeyframes: Stage3CameraKeyframe[];
+  cameraPositionKeyframes: Stage3PositionKeyframe[];
+  cameraScaleKeyframes: Stage3ScaleKeyframe[];
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
@@ -48,17 +57,6 @@ type ScienceCardV1Props = {
   variationProfile?: Stage3VariationProfile | null;
 };
 
-function easeInOutSine(value: number): number {
-  const clamped = Math.min(1, Math.max(0, value));
-  return 0.5 - Math.cos(clamped * Math.PI) / 2;
-}
-
-function resolveLoopFriendlyMotionProgress(value: number): number {
-  const clamped = Math.min(1, Math.max(0, value));
-  const eased = easeInOutSine(clamped);
-  return clamped * 0.72 + eased * 0.28;
-}
-
 export function ScienceCardV1({
   templateId,
   topText,
@@ -74,6 +72,9 @@ export function ScienceCardV1({
   sourceVideoFileName,
   mirrorEnabled,
   cameraMotion,
+  cameraKeyframes,
+  cameraPositionKeyframes,
+  cameraScaleKeyframes,
   avatarAssetFileName,
   avatarAssetMimeType,
   backgroundAssetFileName,
@@ -99,21 +100,22 @@ export function ScienceCardV1({
   const startFrom = Math.max(0, Math.round(clipStartSec * fps));
   const clipFrames = Math.max(1, Math.round(clipDurationSec * fps));
   const endAt = startFrom + clipFrames;
-  const progress = clipFrames <= 1 ? 0 : Math.min(1, Math.max(0, frameNumber / Math.max(1, clipFrames - 1)));
-  const baseFocus = Math.min(0.88, Math.max(0.12, focusY));
-  const sweepStart = Math.min(0.88 - 0.28, Math.max(0.12, baseFocus - 0.14));
-  const sweepEnd = Math.min(0.88, Math.max(0.12, sweepStart + 0.28));
-  const easedProgress = resolveLoopFriendlyMotionProgress(progress);
-  const animatedFocus =
-    cameraMotion === "top_to_bottom"
-      ? sweepStart + (sweepEnd - sweepStart) * easedProgress
-      : cameraMotion === "bottom_to_top"
-        ? sweepEnd - (sweepEnd - sweepStart) * easedProgress
-        : baseFocus;
+  const currentTimeSec = clipFrames <= 1 ? 0 : frameNumber / fps;
+  const cameraState = resolveCameraStateAtTime({
+    timeSec: currentTimeSec,
+    cameraPositionKeyframes,
+    cameraScaleKeyframes,
+    cameraKeyframes,
+    cameraMotion,
+    clipDurationSec,
+    baseFocusY: focusY,
+    baseZoom: videoZoom
+  });
+  const animatedFocus = cameraState.focusY;
   const objectPosition = `50% ${(Math.min(88, Math.max(12, animatedFocus * 100))).toFixed(3)}%`;
   const normalizedZoom = Math.min(
     STAGE3_MAX_VIDEO_ZOOM,
-    Math.max(STAGE3_MIN_VIDEO_ZOOM, Number.isFinite(videoZoom) ? videoZoom : 1)
+    Math.max(STAGE3_MIN_VIDEO_ZOOM, Number.isFinite(cameraState.zoom) ? cameraState.zoom : 1)
   );
   const renderSnapshot = buildTemplateRenderSnapshot({
     templateId: resolvedTemplateId,

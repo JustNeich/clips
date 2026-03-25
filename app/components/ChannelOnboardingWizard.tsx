@@ -311,6 +311,16 @@ export function ChannelOnboardingWizard({
         stage2HardConstraints: draft.stage2HardConstraints,
         referenceLinks
       });
+      if (run.status === "completed" && run.result) {
+        setDraft((current) =>
+          applyChannelOnboardingStyleDiscoveryResult(current, run.result as Stage2StyleProfile)
+        );
+        setFurthestUnlockedStep("styles");
+        setStep("styles");
+        setIsDiscovering(false);
+        setActiveStyleDiscoveryRunId(null);
+        return;
+      }
       setActiveStyleDiscoveryRunId(run.runId);
     } catch (error) {
       setDiscoveryError(error instanceof Error ? error.message : "Не удалось предложить стили.");

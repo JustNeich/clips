@@ -31,6 +31,7 @@ import {
   Stage2StyleProfile
 } from "./stage2-channel-learning";
 import { normalizeStage2ResultTitleOptions } from "./stage2-title-options";
+import type { Stage2DebugMode } from "./viral-shorts-worker/types";
 
 export type Stage2RunMode = "manual" | "auto" | "regenerate";
 
@@ -39,6 +40,7 @@ export type Stage2RunRequest = {
   userInstruction: string | null;
   mode: Stage2RunMode;
   baseRunId?: string | null;
+  debugMode?: Stage2DebugMode;
   channel: {
     id: string;
     name: string;
@@ -123,6 +125,7 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
       : record.user_instruction
         ? String(record.user_instruction).trim() || null
         : null;
+  const debugMode = parsed?.debugMode === "raw" ? "raw" : "summary";
   const channelCandidate =
     parsed?.channel && typeof parsed.channel === "object"
       ? (parsed.channel as Partial<Stage2RunRequest["channel"]>)
@@ -133,6 +136,7 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
     userInstruction,
     mode,
     baseRunId,
+    debugMode,
     channel: {
       id: String(channelCandidate?.id ?? record.channel_id ?? "").trim(),
       name: String(channelCandidate?.name ?? "").trim(),

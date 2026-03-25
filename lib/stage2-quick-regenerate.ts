@@ -17,7 +17,11 @@ import {
 import type {
   CandidateCaption,
   SelectorOutput,
-  Stage2Diagnostics
+  Stage2DebugMode,
+  Stage2Diagnostics,
+  Stage2RegenerateBaseSnapshot,
+  Stage2RunDebugArtifact,
+  Stage2TokenUsage
 } from "./viral-shorts-worker/types";
 
 const QUICK_REGENERATE_PROMPT = [
@@ -215,7 +219,7 @@ function buildQuickRegeneratePromptPayload(
   },
   baseOptions: QuickRegenerateBaseOption[],
   userInstruction: string | null
-) {
+): Stage2RegenerateBaseSnapshot {
   const selectorOutput = buildFallbackSelectorOutput(stage2, baseOptions);
   return {
     channel: {
@@ -227,16 +231,14 @@ function buildQuickRegeneratePromptPayload(
     source: {
       url: stage2.source.url,
       title: stage2.source.title,
-      description: "Reused from the saved Stage 2 source payload.",
-      frameDescriptions: stage2.source.frameDescriptions ?? [],
-      comments: stage2.source.topComments.slice(0, 8).map((comment) => ({
+      frameDescriptions: (stage2.source.frameDescriptions ?? []).slice(0, 4),
+      topComments: stage2.source.topComments.slice(0, 6).map((comment) => ({
         author: comment.author,
         likes: comment.likes,
         text: comment.text
       }))
     },
-    inputAnalysis: stage2.output.inputAnalysis,
-    analysisContext: {
+    analysis: {
       whyViewerCares: stage2.diagnostics?.selection?.whyViewerCares ?? "",
       bottomEnergy: stage2.diagnostics?.selection?.bottomEnergy ?? "",
       commentVibe: stage2.diagnostics?.analysis?.commentVibe ?? "",
@@ -246,17 +248,18 @@ function buildQuickRegeneratePromptPayload(
       commentSuspicionLane: stage2.diagnostics?.analysis?.commentSuspicionLane ?? "",
       commentLanguageCues: stage2.diagnostics?.analysis?.commentLanguageCues ?? []
     },
-    retrievalContext: {
+    retrieval: {
       retrievalConfidence: stage2.diagnostics?.examples?.retrievalConfidence ?? null,
       examplesMode: stage2.diagnostics?.examples?.examplesMode ?? null,
       examplesRoleSummary: stage2.diagnostics?.examples?.examplesRoleSummary ?? null,
-      primaryDriverSummary: stage2.diagnostics?.examples?.primaryDriverSummary ?? null
+      primaryDriverSummary: stage2.diagnostics?.examples?.primaryDriverSummary ?? null,
+      selectedExamples: (stage2.diagnostics?.examples?.selectedExamples ?? []).slice(0, 4).map((example) => ({
+        id: example.id,
+        title: example.title,
+        channelName: example.channelName
+      }))
     },
-    channelLearning: {
-      bootstrapSummary: stage2.diagnostics?.channel?.styleProfile?.referenceInfluenceSummary ?? "",
-      editorialMemorySummary: stage2.diagnostics?.channel?.editorialMemory?.promptSummary ?? ""
-    },
-    selectorContext: {
+    selection: {
       clipType: selectorOutput.clipType,
       primaryAngle: selectorOutput.primaryAngle,
       secondaryAngles: selectorOutput.secondaryAngles,
@@ -306,8 +309,12 @@ function buildQuickPromptStageDiagnostics(input: {
   baseResult: Stage2Response;
   promptText: string;
   reasoningEffort: string | null;
+  includePromptText?: boolean;
 }): NonNullable<Stage2Diagnostics["effectivePrompting"]>["promptStages"][number] {
   const visibleOptions = input.baseResult.output.captionOptions ?? [];
+  const passedQuickComments = input.baseResult.source.topComments.slice(0, 6);
+  const selectedQuickExamples = (input.baseResult.diagnostics?.examples?.selectedExamples ?? []).slice(0, 4);
+  const availablePromptPoolCount = input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0;
   return {
     stageId: "regenerate",
     label: "Quick regenerate",
@@ -316,7 +323,8 @@ function buildQuickPromptStageDiagnostics(input: {
     configuredPrompt: QUICK_REGENERATE_PROMPT,
     reasoningEffort: input.reasoningEffort,
     isCustomPrompt: false,
-    promptText: input.promptText,
+    promptText: input.includePromptText ? input.promptText : null,
+    promptTextAvailable: Boolean(input.promptText),
     promptChars: input.promptText.length,
     usesImages: false,
     summary: "Single LLM stage: rewrites the visible shortlist and paired titles from the saved Stage 2 run.",
@@ -333,21 +341,27 @@ function buildQuickPromptStageDiagnostics(input: {
       },
       comments: {
         availableCount: input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length,
-        passedCount: 0,
-        omittedCount: input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length,
-        truncated: (input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length) > 0,
+        passedCount: passedQuickComments.length,
+        omittedCount: Math.max(
+          0,
+          (input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length) -
+            passedQuickComments.length
+        ),
+        truncated:
+          (input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length) >
+          passedQuickComments.length,
         limit: null,
-        passedCommentIds: []
+        passedCommentIds: passedQuickComments.map((comment) => comment.id)
       },
       examples: {
-        availableCount: input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0,
-        passedCount: 0,
-        omittedCount: input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0,
-        truncated: (input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0) > 0,
+        availableCount: availablePromptPoolCount,
+        passedCount: selectedQuickExamples.length,
+        omittedCount: Math.max(0, availablePromptPoolCount - selectedQuickExamples.length),
+        truncated: availablePromptPoolCount > selectedQuickExamples.length,
         limit: null,
         activeCorpusCount: input.baseResult.diagnostics?.examples?.activeCorpusCount ?? 0,
-        promptPoolCount: input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0,
-        passedExampleIds: [],
+        promptPoolCount: availablePromptPoolCount,
+        passedExampleIds: selectedQuickExamples.map((example) => example.id),
         selectedExampleIds: input.baseResult.diagnostics?.selection?.selectedExampleIds ?? [],
         rejectedExampleIds: [],
         retrievalConfidence: input.baseResult.diagnostics?.examples?.retrievalConfidence ?? "low",
@@ -395,11 +409,13 @@ function buildQuickDiagnostics(input: {
   promptText: string;
   reasoningEffort: string | null;
   selectorOutput: SelectorOutput;
+  debugMode: Stage2DebugMode;
 }): Stage2Diagnostics {
   const syntheticPromptStage = buildQuickPromptStageDiagnostics({
     baseResult: input.baseResult,
     promptText: input.promptText,
-    reasoningEffort: input.reasoningEffort
+    reasoningEffort: input.reasoningEffort,
+    includePromptText: false
   });
   if (input.baseResult.diagnostics) {
     return {
@@ -584,7 +600,12 @@ export function buildQuickRegenerateResult(input: {
   reasoningEffort: string | null;
   model: string | null;
   rawOutput: QuickRegenerateModelOutput | null;
-}): Stage2Response {
+  debugMode?: Stage2DebugMode;
+}): {
+  response: Stage2Response;
+  rawDebugArtifact: Stage2RunDebugArtifact | null;
+  tokenUsage: Stage2TokenUsage;
+} {
   const baseOptions = buildBaseOptions(input.baseResult);
   const rawEntries = sanitizeModelEntries(input.rawOutput);
   const warnings: Stage2Response["warnings"] = [
@@ -692,7 +713,8 @@ export function buildQuickRegenerateResult(input: {
     channel: input.channel,
     promptText: input.promptText,
     reasoningEffort: input.reasoningEffort,
-    selectorOutput
+    selectorOutput,
+    debugMode: input.debugMode === "raw" ? "raw" : "summary"
   });
   const basePipeline = asRecord((input.baseResult.output as Record<string, unknown>).pipeline);
   const availableExamplesCount =
@@ -757,7 +779,41 @@ export function buildQuickRegenerateResult(input: {
 
   warnings.push(...validateStage2Output(output, input.channel.stage2HardConstraints));
 
-  return {
+  const rawDebugArtifact =
+    input.debugMode === "raw"
+      ? {
+          kind: "stage2-run-debug" as const,
+          runId: input.runId,
+          createdAt: input.createdAt,
+          promptStages: [
+            buildQuickPromptStageDiagnostics({
+              baseResult: input.baseResult,
+              promptText: input.promptText,
+              reasoningEffort: input.reasoningEffort,
+              includePromptText: true
+            })
+          ]
+        }
+      : null;
+  const promptChars = input.promptText.length;
+  const tokenUsage: Stage2TokenUsage = {
+    stages: [
+      {
+        stageId: "regenerate",
+        promptChars,
+        estimatedInputTokens: Math.max(1, Math.ceil(promptChars / 4)),
+        estimatedOutputTokens: Math.max(1, Math.ceil((JSON.stringify(input.rawOutput ?? {})?.length ?? 0) / 4)),
+        serializedResultBytes: JSON.stringify(output).length,
+        persistedPayloadBytes: 0
+      }
+    ],
+    totalPromptChars: promptChars,
+    totalEstimatedInputTokens: Math.max(1, Math.ceil(promptChars / 4)),
+    totalEstimatedOutputTokens: Math.max(1, Math.ceil((JSON.stringify(input.rawOutput ?? {})?.length ?? 0) / 4)),
+    totalSerializedResultBytes: JSON.stringify(output).length,
+    totalPersistedPayloadBytes: 0
+  };
+  const response: Stage2Response = {
     source: { ...input.baseResult.source },
     stage2Spec: buildStage2Spec({
       name: "Viral Shorts Quick Regenerate",
@@ -794,6 +850,11 @@ export function buildQuickRegenerateResult(input: {
       name: input.channel.name,
       username: input.channel.username
     }
+  };
+  return {
+    response,
+    rawDebugArtifact,
+    tokenUsage
   };
 }
 

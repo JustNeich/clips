@@ -184,6 +184,27 @@ function formatHistoryLiveAction(liveAction: NonNullable<ChatListItem["liveActio
   }
 }
 
+function formatPublicationStatusLabel(status: NonNullable<ChatListItem["publication"]>["status"]): string {
+  switch (status) {
+    case "queued":
+      return "Queued";
+    case "uploading":
+      return "Uploading";
+    case "scheduled":
+      return "Scheduled";
+    case "published":
+      return "Published";
+    case "failed":
+      return "Failed";
+    case "paused":
+      return "Paused";
+    case "canceled":
+      return "Canceled";
+    default:
+      return status;
+  }
+}
+
 const HistoryCard = memo(function HistoryCard({
   item,
   active,
@@ -197,7 +218,9 @@ const HistoryCard = memo(function HistoryCard({
 }) {
   const primaryStatusLabel = item.liveAction
     ? formatHistoryLiveAction(item.liveAction)
-    : formatHistoryStatusLabel(item.status);
+    : item.publication
+      ? formatPublicationStatusLabel(item.publication.status)
+      : formatHistoryStatusLabel(item.status);
   const progressBadge = getHistoryProgressBadge(item);
   const handleOpen = useCallback(() => {
     onOpen(item.id);
@@ -223,6 +246,12 @@ const HistoryCard = memo(function HistoryCard({
             <span>Обновлён {formatHistoryTime(item.updatedAt)}</span>
           </span>
           {item.exportTitle ? <span className="history-export-line">Экспорт: {item.exportTitle}</span> : null}
+          {item.publication ? (
+            <span className="history-publication-line">
+              Публикация: {formatPublicationStatusLabel(item.publication.status)} · {formatHistoryTime(item.publication.scheduledAt)}
+              {item.publication.needsReview ? " · needs review" : ""}
+            </span>
+          ) : null}
         </span>
       </button>
       <div className="history-row-side">

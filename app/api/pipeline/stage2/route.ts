@@ -28,6 +28,7 @@ import {
 import { buildStage2EditorialMemorySummary } from "../../../../lib/stage2-channel-learning";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
+import type { Stage2DebugMode } from "../../../../lib/viral-shorts-worker/types";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,10 @@ function normalizeMode(value: unknown): Stage2RunMode {
     return "regenerate";
   }
   return value === "auto" ? "auto" : "manual";
+}
+
+function normalizeDebugMode(value: unknown): Stage2DebugMode {
+  return value === "raw" ? "raw" : "summary";
 }
 
 function serializeStage2RunSummary(run: Stage2RunRecord) {
@@ -145,12 +150,14 @@ export async function POST(request: Request): Promise<Response> {
         userInstruction?: string;
         mode?: Stage2RunMode;
         baseRunId?: string;
+        debugMode?: Stage2DebugMode;
       }
     | null;
   const mode = normalizeMode(body?.mode);
   const chatId = body?.chatId?.trim();
   const chat = chatId ? await getChatById(chatId) : null;
   const requestedBaseRunId = body?.baseRunId?.trim() || null;
+  const debugMode = normalizeDebugMode(body?.debugMode);
   const userInstructionRaw = body?.userInstruction?.trim() ?? "";
   const userInstruction = userInstructionRaw ? userInstructionRaw.slice(0, 2000) : null;
 
@@ -254,6 +261,7 @@ export async function POST(request: Request): Promise<Response> {
         userInstruction,
         mode,
         baseRunId: baseRun?.runId ?? null,
+        debugMode,
         channel: {
           id: channel.id,
           name: channel.name,

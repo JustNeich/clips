@@ -14,6 +14,7 @@ import {
   type Stage2StyleProfile
 } from "./stage2-channel-learning";
 import type { Stage2RunMode, Stage2RunRequest } from "./stage2-progress-store";
+import type { Stage2DebugMode } from "./viral-shorts-worker/types";
 
 type Stage2RunChannelSnapshotInput = {
   id: string;
@@ -30,6 +31,7 @@ export function buildStage2RunRequestSnapshot(input: {
   userInstruction: string | null;
   mode: Stage2RunMode;
   baseRunId?: string | null;
+  debugMode?: Stage2DebugMode;
   channel: Stage2RunChannelSnapshotInput;
 }): Stage2RunRequest {
   const channelName = input.channel.name.trim() || "Channel";
@@ -42,6 +44,7 @@ export function buildStage2RunRequestSnapshot(input: {
     sourceUrl: input.sourceUrl,
     userInstruction: input.userInstruction,
     mode: input.mode,
+    debugMode: input.debugMode === "raw" ? "raw" : "summary",
     ...(input.baseRunId !== undefined ? { baseRunId: input.baseRunId ?? null } : {}),
     channel: {
       id: input.channel.id,

@@ -10,13 +10,16 @@ import {
   type MutableRefObject
 } from "react";
 import {
+  ChannelPublication,
   ChannelAsset,
   Stage3AgentConversationItem,
   Stage3CameraMotion,
   Stage3EditorDraftOverrides,
+  Stage3PositionKeyframe,
   Stage3PreviewState,
   Stage3RenderPolicy,
   Stage3RenderState,
+  Stage3ScaleKeyframe,
   Stage3Segment,
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionRecord,
@@ -54,6 +57,15 @@ import {
   createStage3TextFitSnapshot
 } from "../../lib/stage3-text-fit";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../../lib/stage3-constants";
+import {
+  buildLegacyPositionKeyframes,
+  clampStage3CameraZoom,
+  clampStage3FocusY,
+  normalizeStage3PositionKeyframes,
+  normalizeStage3ScaleKeyframes,
+  resolveCameraStateAtTime,
+  resolveStage3EffectiveCameraTracks
+} from "../../lib/stage3-camera";
 import { getStage3DesignLabLabel } from "../../lib/stage3-design-lab";
 import { sanitizeDisplayText } from "../../lib/ui-error";
 import {
@@ -116,12 +128,16 @@ type Step3RenderTemplateProps = {
   sourceDurationSec: number | null;
   focusY: number;
   cameraMotion: Stage3CameraMotion;
+  cameraKeyframes: Array<{ id: string; timeSec: number; focusY: number; zoom: number }>;
+  cameraPositionKeyframes: Stage3PositionKeyframe[];
+  cameraScaleKeyframes: Stage3ScaleKeyframe[];
   mirrorEnabled: boolean;
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
   musicGain: number;
+  publication?: ChannelPublication | null;
   onRender: (overrides?: Stage3EditorDraftOverrides, textFitOverride?: Stage3TextFitSnapshot | null) => void;
   onExport: () => void;
   onOptimize: (overrides?: Stage3EditorDraftOverrides, textFitOverride?: Stage3TextFitSnapshot | null) => void;
@@ -144,7 +160,8 @@ type Step3RenderTemplateProps = {
   onFragmentStateChange: (value: { segments: Stage3Segment[]; compressionEnabled: boolean }) => void;
   onClipStartChange: (value: number) => void;
   onFocusYChange: (value: number) => void;
-  onCameraMotionChange: (value: Stage3CameraMotion) => void;
+  onCameraPositionKeyframesChange: (value: Stage3PositionKeyframe[]) => void;
+  onCameraScaleKeyframesChange: (value: Stage3ScaleKeyframe[]) => void;
   onMirrorEnabledChange: (value: boolean) => void;
   onVideoZoomChange: (value: number) => void;
   onTopFontScaleChange: (value: number) => void;
@@ -152,6 +169,7 @@ type Step3RenderTemplateProps = {
   onSourceAudioEnabledChange: (value: boolean) => void;
   onMusicGainChange: (value: number) => void;
   onCreateWorkerPairing: () => void;
+  onOpenPlanner?: () => void;
 };
 
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -168,6 +186,8 @@ type PendingTextFitAction = {
   snapshotHash: string;
   fitHash: string;
 };
+
+type Stage3SurfaceMode = "finish" | "editor";
 
 function formatTimeSec(value: number): string {
   const total = Math.max(0, value);
@@ -236,11 +256,33 @@ function getWorkerInstallLinks(platform: WorkerGuidePlatform): WorkerInstallLink
 
 function formatDateShort(value: string): string {
   return new Date(value).toLocaleString("ru-RU", {
+    timeZone: "Europe/Moscow",
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function formatPublicationStatus(status: ChannelPublication["status"]): string {
+  switch (status) {
+    case "queued":
+      return "В очереди";
+    case "uploading":
+      return "Загружается";
+    case "scheduled":
+      return "Запланировано";
+    case "published":
+      return "Опубликовано";
+    case "failed":
+      return "Ошибка";
+    case "paused":
+      return "На паузе";
+    case "canceled":
+      return "Удалено";
+    default:
+      return status;
+  }
 }
 
 function shortPrompt(value: string): string {
@@ -359,37 +401,29 @@ function formatSegmentSpeed(speed: Stage3Segment["speed"]): string {
   return Number.isInteger(speed) ? `x${speed}` : `x${speed.toFixed(1)}`;
 }
 
-function resolveAnimatedFocusY(
-  baseFocusY: number,
-  cameraMotion: Stage3CameraMotion,
-  progress: number
-): number {
-  const focus = clamp(baseFocusY, 0.12, 0.88);
-  if (cameraMotion === "disabled") {
-    return focus;
+function formatTrackCountLabel(count: number): string {
+  if (count > 0) {
+    return `${count} точ${count === 1 ? "ка" : count < 5 ? "ки" : "ек"}`;
   }
-
-  const sweep = 0.28;
-  const start = clamp(focus - sweep / 2, 0.12, 0.88 - sweep);
-  const end = clamp(start + sweep, 0.12, 0.88);
-  const t = clamp(progress, 0, 1);
-  const easedT = 0.5 - Math.cos(t * Math.PI) / 2;
-  // Blend eased motion with linear drift so the camera starts moving immediately
-  // and does not visually "stall" at loop boundaries.
-  const motionT = t * 0.72 + easedT * 0.28;
-  return cameraMotion === "top_to_bottom"
-    ? start + (end - start) * motionT
-    : end - (end - start) * motionT;
+  return "База";
 }
 
-function formatCameraMotion(value: Stage3CameraMotion): string {
-  switch (value) {
+function formatCameraTrackLabel(
+  positionKeyframes: Stage3PositionKeyframe[],
+  scaleKeyframes: Stage3ScaleKeyframe[],
+  cameraMotion: Stage3CameraMotion
+): string {
+  const total = positionKeyframes.length + scaleKeyframes.length;
+  if (total > 0) {
+    return `${total} keyframes`;
+  }
+  switch (cameraMotion) {
     case "top_to_bottom":
-      return "Сверху вниз";
+      return "Legacy: сверху вниз";
     case "bottom_to_top":
-      return "Снизу вверх";
+      return "Legacy: снизу вверх";
     default:
-      return "Отключено";
+      return "База";
   }
 }
 
@@ -739,6 +773,7 @@ function PreviewClipVideo({
 type Stage3InternalPass = Stage3Version["internalPasses"][number];
 
 type Stage3LivePreviewPanelProps = {
+  editorMode: boolean;
   templateId: string;
   channelName: string;
   channelUsername: string;
@@ -756,8 +791,6 @@ type Stage3LivePreviewPanelProps = {
   previewState: Stage3PreviewState;
   previewNotice: string | null;
   previewTemplateSnapshot: TemplateRenderSnapshot;
-  previewTopText: string;
-  previewBottomText: string;
   clipStartSec: number;
   clipDurationSec: number;
   sourceDurationSec: number | null;
@@ -766,18 +799,32 @@ type Stage3LivePreviewPanelProps = {
   renderPolicy: Stage3RenderPolicy;
   focusY: number;
   cameraMotion: Stage3CameraMotion;
+  cameraKeyframes: Array<{ id: string; timeSec: number; focusY: number; zoom: number }>;
+  cameraPositionKeyframes: Stage3PositionKeyframe[];
+  cameraScaleKeyframes: Stage3ScaleKeyframe[];
   mirrorEnabled: boolean;
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
   templateConfig: ReturnType<typeof getTemplateById>;
+  selectedPositionKeyframeId: string | null;
+  selectedScaleKeyframeId: string | null;
+  requestedTimelineSec: number | null;
+  onRequestedTimelineHandled?: () => void;
   onMeasuredTextFitChange?: (fit: Stage3TextFitSnapshot) => void;
+  onTimelineSecChange?: (value: number) => void;
+  onSelectPositionKeyframeId: (id: string | null) => void;
+  onSelectScaleKeyframeId: (id: string | null) => void;
+  onPositionKeyframeTimeChange: (id: string, timeSec: number) => void;
+  onScaleKeyframeTimeChange: (id: string, timeSec: number) => void;
+  onCameraPreviewFocusChange: (focusY: number) => void;
   onSelectVersionId: (runId: string) => void;
   onSelectPassIndex: (index: number) => void;
 };
 
 function Stage3LivePreviewPanel({
+  editorMode,
   templateId,
   channelName,
   channelUsername,
@@ -795,8 +842,6 @@ function Stage3LivePreviewPanel({
   previewState,
   previewNotice,
   previewTemplateSnapshot,
-  previewTopText,
-  previewBottomText,
   clipStartSec,
   clipDurationSec,
   sourceDurationSec,
@@ -805,25 +850,46 @@ function Stage3LivePreviewPanel({
   renderPolicy,
   focusY,
   cameraMotion,
+  cameraKeyframes,
+  cameraPositionKeyframes,
+  cameraScaleKeyframes,
   mirrorEnabled,
   videoZoom,
   topFontScale,
   bottomFontScale,
   sourceAudioEnabled,
   templateConfig,
+  selectedPositionKeyframeId,
+  selectedScaleKeyframeId,
+  requestedTimelineSec,
+  onRequestedTimelineHandled,
   onMeasuredTextFitChange,
+  onTimelineSecChange,
+  onSelectPositionKeyframeId,
+  onSelectScaleKeyframeId,
+  onPositionKeyframeTimeChange,
+  onScaleKeyframeTimeChange,
+  onCameraPreviewFocusChange,
   onSelectVersionId,
   onSelectPassIndex
 }: Stage3LivePreviewPanelProps) {
   const slotPreviewRef = useRef<HTMLVideoElement | null>(null);
   const backgroundPreviewRef = useRef<HTMLVideoElement | null>(null);
   const previewCanvasRef = useRef<HTMLDivElement | null>(null);
+  const previewSurfaceRef = useRef<HTMLDivElement | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
+  const positionTrackRef = useRef<HTMLDivElement | null>(null);
+  const scaleTrackRef = useRef<HTMLDivElement | null>(null);
   const isPlayingRef = useRef(true);
   const isTimelineScrubbingRef = useRef(false);
+  const previewAdjustPointerIdRef = useRef<number | null>(null);
+  const draggingTransformKeyframeIdRef = useRef<string | null>(null);
+  const draggingTransformTrackRef = useRef<"position" | "scale" | null>(null);
 
   const [isTimelineScrubbing, setIsTimelineScrubbing] = useState(false);
   const [timelineSec, setTimelineSec] = useState(0);
+  const [isPreviewAdjustingCamera, setIsPreviewAdjustingCamera] = useState(false);
+  const [isDraggingCameraKeyframe, setIsDraggingCameraKeyframe] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(true);
   const [loopEnabled, setLoopEnabled] = useState(true);
@@ -878,10 +944,39 @@ function Stage3LivePreviewPanel({
   const playbackDurationSec =
     playbackPlan.totalOutputDurationSec > 0 ? playbackPlan.totalOutputDurationSec : clipDurationSec;
   const layoutScale = fitScale * previewScaleMultiplier;
-  const previewProgress = playbackDurationSec > 0 ? clamp(timelineSec / playbackDurationSec, 0, 1) : 0;
-  const animatedFocusY = resolveAnimatedFocusY(focusY, cameraMotion, previewProgress);
-  const objectPosition = `50% ${(animatedFocusY * 100).toFixed(3)}%`;
+  const cameraState = useMemo(
+    () =>
+      resolveCameraStateAtTime({
+        timeSec: timelineSec,
+        cameraPositionKeyframes,
+        cameraScaleKeyframes,
+        cameraKeyframes,
+        cameraMotion,
+        clipDurationSec: playbackDurationSec,
+        baseFocusY: focusY,
+        baseZoom: videoZoom
+      }),
+    [
+      cameraKeyframes,
+      cameraMotion,
+      cameraPositionKeyframes,
+      cameraScaleKeyframes,
+      focusY,
+      playbackDurationSec,
+      timelineSec,
+      videoZoom
+    ]
+  );
+  const objectPosition = `50% ${(cameraState.focusY * 100).toFixed(3)}%`;
   const timelinePercent = clamp((timelineSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
+  const activePositionKeyframes = cameraState.positionKeyframes;
+  const activeScaleKeyframes = cameraState.scaleKeyframes;
+  const selectedPositionKeyframe = selectedPositionKeyframeId
+    ? activePositionKeyframes.find((keyframe) => keyframe.id === selectedPositionKeyframeId) ?? null
+    : null;
+  const selectedScaleKeyframe = selectedScaleKeyframeId
+    ? activeScaleKeyframes.find((keyframe) => keyframe.id === selectedScaleKeyframeId) ?? null
+    : null;
   const backgroundIsVideo =
     Boolean(backgroundAssetUrl) &&
     ((backgroundAssetMimeType ?? "").toLowerCase().startsWith("video/") ||
@@ -952,6 +1047,21 @@ function Stage3LivePreviewPanel({
   useEffect(() => {
     setTimelineSec(0);
   }, [playbackPlan, previewVideoUrl]);
+
+  useEffect(() => {
+    if (editorMode) {
+      return;
+    }
+    previewAdjustPointerIdRef.current = null;
+    draggingTransformKeyframeIdRef.current = null;
+    draggingTransformTrackRef.current = null;
+    setIsPreviewAdjustingCamera(false);
+    setIsDraggingCameraKeyframe(false);
+  }, [editorMode]);
+
+  useEffect(() => {
+    onTimelineSecChange?.(timelineSec);
+  }, [onTimelineSecChange, timelineSec]);
 
   const syncBackgroundTo = useCallback((outputSec: number, sourceSec: number) => {
     const bg = backgroundPreviewRef.current;
@@ -1033,6 +1143,58 @@ function Stage3LivePreviewPanel({
   );
 
   useEffect(() => {
+    if (typeof requestedTimelineSec !== "number" || !Number.isFinite(requestedTimelineSec)) {
+      return;
+    }
+    if (Math.abs(timelineSec - requestedTimelineSec) <= 0.001) {
+      onRequestedTimelineHandled?.();
+      return;
+    }
+    seekTimeline(requestedTimelineSec);
+    onRequestedTimelineHandled?.();
+  }, [onRequestedTimelineHandled, requestedTimelineSec, seekTimeline, timelineSec]);
+
+  const updateCameraFocusFromClientY = useCallback(
+    (clientY: number) => {
+      const canvas = previewSurfaceRef.current;
+      if (!canvas) {
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      if (rect.height <= 0) {
+        return;
+      }
+      const focus = clampStage3FocusY((clientY - rect.top) / rect.height);
+      onCameraPreviewFocusChange(focus);
+    },
+    [onCameraPreviewFocusChange]
+  );
+
+  const updateTransformKeyframeTimeFromClientX = useCallback(
+    (clientX: number) => {
+      const activeId = draggingTransformKeyframeIdRef.current;
+      const activeTrack = draggingTransformTrackRef.current;
+      const track = activeTrack === "position" ? positionTrackRef.current : activeTrack === "scale" ? scaleTrackRef.current : null;
+      if (!activeId || !track || !activeTrack) {
+        return;
+      }
+      const rect = track.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+      const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
+      const nextTimeSec = ratio * playbackDurationSec;
+      if (activeTrack === "position") {
+        onPositionKeyframeTimeChange(activeId, nextTimeSec);
+      } else {
+        onScaleKeyframeTimeChange(activeId, nextTimeSec);
+      }
+      seekTimeline(nextTimeSec);
+    },
+    [onPositionKeyframeTimeChange, onScaleKeyframeTimeChange, playbackDurationSec, seekTimeline]
+  );
+
+  useEffect(() => {
     if (!isTimelineScrubbing) {
       return;
     }
@@ -1055,6 +1217,63 @@ function Stage3LivePreviewPanel({
       window.removeEventListener("pointercancel", handleEnd);
     };
   }, [isTimelineScrubbing, seekTimelineAtClientX]);
+
+  useEffect(() => {
+    if (!isPreviewAdjustingCamera) {
+      return;
+    }
+
+    const handleMove = (event: PointerEvent) => {
+      updateCameraFocusFromClientY(event.clientY);
+    };
+    const handleEnd = (event: PointerEvent) => {
+      if (
+        previewAdjustPointerIdRef.current !== null &&
+        event.pointerId !== previewAdjustPointerIdRef.current
+      ) {
+        return;
+      }
+      updateCameraFocusFromClientY(event.clientY);
+      previewAdjustPointerIdRef.current = null;
+      setIsPreviewAdjustingCamera(false);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+    };
+  }, [isPreviewAdjustingCamera, updateCameraFocusFromClientY]);
+
+  useEffect(() => {
+    if (!isDraggingCameraKeyframe) {
+      return;
+    }
+
+    const handleMove = (event: PointerEvent) => {
+      updateTransformKeyframeTimeFromClientX(event.clientX);
+    };
+    const handleEnd = (event: PointerEvent) => {
+      updateTransformKeyframeTimeFromClientX(event.clientX);
+      draggingTransformKeyframeIdRef.current = null;
+      draggingTransformTrackRef.current = null;
+      setIsDraggingCameraKeyframe(false);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+    };
+  }, [isDraggingCameraKeyframe, updateTransformKeyframeTimeFromClientX]);
 
   const handleTogglePlay = useCallback(() => {
     const video = slotPreviewRef.current;
@@ -1244,6 +1463,7 @@ function Stage3LivePreviewPanel({
         <div className="preview-stage stage3-preview-stage">
           <div ref={previewCanvasRef} className="stage3-canvas">
             <div
+              ref={previewSurfaceRef}
               className="stage3-zoom-wrap"
               style={{
                 width: previewViewportWidth,
@@ -1350,7 +1570,7 @@ function Stage3LivePreviewPanel({
                         playbackPlan={playbackPlan}
                         className="preview-slot-video"
                         objectPosition={objectPosition}
-                        videoZoom={videoZoom}
+                        videoZoom={cameraState.zoom}
                         mirrorEnabled={mirrorEnabled}
                         muted={isMuted || !sourceAudioEnabled}
                         videoRef={slotPreviewRef}
@@ -1393,6 +1613,33 @@ function Stage3LivePreviewPanel({
                   }}
                 />
               </Stage3TemplateViewport>
+              {editorMode ? (
+                <div
+                  className={`camera-preview-overlay ${isPreviewAdjustingCamera ? "dragging" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Перетащите вверх или вниз, чтобы изменить вертикальный фокус камеры"
+                  onPointerDown={(event) => {
+                    previewAdjustPointerIdRef.current = event.pointerId;
+                    setIsPreviewAdjustingCamera(true);
+                    updateCameraFocusFromClientY(event.clientY);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      onCameraPreviewFocusChange(clampStage3FocusY(cameraState.focusY - 0.01));
+                    }
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      onCameraPreviewFocusChange(clampStage3FocusY(cameraState.focusY + 0.01));
+                    }
+                  }}
+                >
+                  <span className="camera-preview-overlay-label">
+                    {selectedPositionKeyframe ? "Точка Position Y" : "База Position Y"} · Y {Math.round(cameraState.focusY * 100)}%
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1439,6 +1686,106 @@ function Stage3LivePreviewPanel({
             >
               <div className="timeline-playhead" style={{ left: `${timelinePercent}%` }} />
             </div>
+            {editorMode ? (
+              <>
+                <div
+                  ref={positionTrackRef}
+                  className="timeline-track camera-track"
+                  aria-label="Дорожка keyframes position"
+                  onPointerDown={(event) => {
+                    const target = event.target as HTMLElement | null;
+                    if (target?.closest?.("[data-position-keyframe-id]")) {
+                      return;
+                    }
+                    seekTimelineAtClientX(event.clientX);
+                    onSelectPositionKeyframeId(null);
+                    onSelectScaleKeyframeId(null);
+                  }}
+                >
+                  <div className="camera-track-label">Position Y</div>
+                  {activePositionKeyframes.map((keyframe) => {
+                    const left = clamp((keyframe.timeSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
+                    const active = keyframe.id === selectedPositionKeyframeId;
+                    return (
+                      <button
+                        key={keyframe.id}
+                        type="button"
+                        data-position-keyframe-id={keyframe.id}
+                        className={`camera-keyframe ${active ? "active" : ""}`}
+                        style={{ left: `${left}%` }}
+                        aria-label={`Keyframe Position Y ${formatTimeSec(keyframe.timeSec)}`}
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          draggingTransformKeyframeIdRef.current = keyframe.id;
+                          draggingTransformTrackRef.current = "position";
+                          setIsDraggingCameraKeyframe(true);
+                          onSelectPositionKeyframeId(keyframe.id);
+                          onSelectScaleKeyframeId(null);
+                          seekTimeline(keyframe.timeSec);
+                        }}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSelectPositionKeyframeId(keyframe.id);
+                          onSelectScaleKeyframeId(null);
+                          seekTimeline(keyframe.timeSec);
+                        }}
+                      />
+                    );
+                  })}
+                  <div className="timeline-playhead camera-track-playhead" style={{ left: `${timelinePercent}%` }} />
+                </div>
+                <div
+                  ref={scaleTrackRef}
+                  className="timeline-track camera-track"
+                  aria-label="Дорожка keyframes scale"
+                  onPointerDown={(event) => {
+                    const target = event.target as HTMLElement | null;
+                    if (target?.closest?.("[data-scale-keyframe-id]")) {
+                      return;
+                    }
+                    seekTimelineAtClientX(event.clientX);
+                    onSelectScaleKeyframeId(null);
+                    onSelectPositionKeyframeId(null);
+                  }}
+                >
+                  <div className="camera-track-label">Scale</div>
+                  {activeScaleKeyframes.map((keyframe) => {
+                    const left = clamp((keyframe.timeSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
+                    const active = keyframe.id === selectedScaleKeyframeId;
+                    return (
+                      <button
+                        key={keyframe.id}
+                        type="button"
+                        data-scale-keyframe-id={keyframe.id}
+                        className={`camera-keyframe ${active ? "active" : ""}`}
+                        style={{ left: `${left}%` }}
+                        aria-label={`Keyframe Scale ${formatTimeSec(keyframe.timeSec)}`}
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          draggingTransformKeyframeIdRef.current = keyframe.id;
+                          draggingTransformTrackRef.current = "scale";
+                          setIsDraggingCameraKeyframe(true);
+                          onSelectScaleKeyframeId(keyframe.id);
+                          onSelectPositionKeyframeId(null);
+                          seekTimeline(keyframe.timeSec);
+                        }}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSelectScaleKeyframeId(keyframe.id);
+                          onSelectPositionKeyframeId(null);
+                          seekTimeline(keyframe.timeSec);
+                        }}
+                      />
+                    );
+                  })}
+                  <div className="timeline-playhead camera-track-playhead" style={{ left: `${timelinePercent}%` }} />
+                </div>
+              </>
+            ) : null}
             <div className="timeline-time">
               <span>{formatTimeSec(timelineSec)}</span>
               <span>{formatTimeSec(playbackDurationSec)}</span>
@@ -1504,12 +1851,16 @@ export function Step3RenderTemplate({
   sourceDurationSec,
   focusY,
   cameraMotion,
+  cameraKeyframes,
+  cameraPositionKeyframes,
+  cameraScaleKeyframes,
   mirrorEnabled,
   videoZoom,
   topFontScale,
   bottomFontScale,
   sourceAudioEnabled,
   musicGain,
+  publication = null,
   onRender,
   onExport,
   onOptimize,
@@ -1532,18 +1883,22 @@ export function Step3RenderTemplate({
   onFragmentStateChange,
   onClipStartChange,
   onFocusYChange,
-  onCameraMotionChange,
+  onCameraPositionKeyframesChange,
+  onCameraScaleKeyframesChange,
   onMirrorEnabledChange,
   onVideoZoomChange,
   onTopFontScaleChange,
   onBottomFontScaleChange,
   onSourceAudioEnabledChange,
   onMusicGainChange,
-  onCreateWorkerPairing
+  onCreateWorkerPairing,
+  onOpenPlanner = () => undefined
 }: Step3RenderTemplateProps) {
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
   const videoZoomCommitTimerRef = useRef<number | null>(null);
+  const positionKeyframesCommitTimerRef = useRef<number | null>(null);
+  const scaleKeyframesCommitTimerRef = useRef<number | null>(null);
   const topFontScaleCommitTimerRef = useRef<number | null>(null);
   const bottomFontScaleCommitTimerRef = useRef<number | null>(null);
   const musicGainCommitTimerRef = useRef<number | null>(null);
@@ -1551,9 +1906,14 @@ export function Step3RenderTemplate({
   const [localClipStartSec, setLocalClipStartSec] = useState(clipStartSec);
   const [localFocusY, setLocalFocusY] = useState(focusY);
   const [localVideoZoom, setLocalVideoZoom] = useState(videoZoom);
+  const [selectedPositionKeyframeId, setSelectedPositionKeyframeId] = useState<string | null>(null);
+  const [selectedScaleKeyframeId, setSelectedScaleKeyframeId] = useState<string | null>(null);
+  const previewTimelineSecRef = useRef(0);
+  const [requestedTimelineSec, setRequestedTimelineSec] = useState<number | null>(null);
   const [localTopFontScale, setLocalTopFontScale] = useState(topFontScale);
   const [localBottomFontScale, setLocalBottomFontScale] = useState(bottomFontScale);
   const [localMusicGain, setLocalMusicGain] = useState(musicGain);
+  const [stage3Mode, setStage3Mode] = useState<Stage3SurfaceMode>("finish");
   const [workerSetupOpen, setWorkerSetupOpen] = useState(false);
   const [workerGuidePlatform, setWorkerGuidePlatform] = useState<WorkerGuidePlatform>(() => detectWorkerGuidePlatform());
   const [workerCopyState, setWorkerCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -1570,6 +1930,25 @@ export function Step3RenderTemplate({
   const [pendingTextFitAction, setPendingTextFitAction] = useState<PendingTextFitAction | null>(null);
 
   const templateConfig = getTemplateById(templateId);
+  const effectiveCameraTracks = useMemo(
+    () =>
+      resolveStage3EffectiveCameraTracks({
+        cameraPositionKeyframes,
+        cameraScaleKeyframes,
+        cameraKeyframes,
+        cameraMotion,
+        clipDurationSec,
+        baseFocusY: focusY,
+        baseZoom: videoZoom
+      }),
+    [cameraKeyframes, cameraMotion, cameraPositionKeyframes, cameraScaleKeyframes, clipDurationSec, focusY, videoZoom]
+  );
+  const [localPositionKeyframes, setLocalPositionKeyframes] = useState<Stage3PositionKeyframe[]>(
+    effectiveCameraTracks.positionKeyframes
+  );
+  const [localScaleKeyframes, setLocalScaleKeyframes] = useState<Stage3ScaleKeyframe[]>(
+    effectiveCameraTracks.scaleKeyframes
+  );
   const previewTemplateSnapshot = useMemo(
     () =>
       buildTemplateRenderSnapshot({
@@ -1621,24 +2000,8 @@ export function Step3RenderTemplate({
   );
 
   const selectedPass = selectedVersion?.internalPasses[selectedPassIndex] ?? null;
-  const currentSessionVersion = useMemo(
-    () =>
-      agentSession?.currentVersionId
-        ? versions.find((version) => version.runId === agentSession.currentVersionId) ?? null
-        : null,
-    [agentSession?.currentVersionId, versions]
-  );
-  const bestSessionVersion = useMemo(
-    () =>
-      agentSession?.bestVersionId
-        ? versions.find((version) => version.runId === agentSession.bestVersionId) ?? null
-        : null,
-    [agentSession?.bestVersionId, versions]
-  );
 
   const previewVersion = selectedVersion;
-  const previewTopText = previewTemplateSnapshot.content.topText;
-  const previewBottomText = previewTemplateSnapshot.content.bottomText;
   const selectedCaptionSource =
     captionSources.find((item) => item.option === selectedCaptionOption) ?? null;
   const topTextSourceLabel = formatCaptionSourceLabel(handoffSummary?.topTextSource ?? "empty");
@@ -1677,7 +2040,43 @@ export function Step3RenderTemplate({
     previewState === "debouncing" || previewState === "loading" || previewState === "retrying";
   const isRendering = renderState === "queued" || renderState === "rendering";
   const remainingSegmentsDurationSec = Math.max(0, clipDurationSec - explicitSegmentsDurationSec);
-  const focusPercent = Math.round(localFocusY * 100);
+  const normalizedLocalPositionKeyframes = useMemo(
+    () =>
+      normalizeStage3PositionKeyframes(localPositionKeyframes, {
+        clipDurationSec,
+        fallbackFocusY: localFocusY
+      }),
+    [clipDurationSec, localFocusY, localPositionKeyframes]
+  );
+  const normalizedLocalScaleKeyframes = useMemo(
+    () =>
+      normalizeStage3ScaleKeyframes(localScaleKeyframes, {
+        clipDurationSec,
+        fallbackZoom: localVideoZoom
+      }),
+    [clipDurationSec, localScaleKeyframes, localVideoZoom]
+  );
+  const selectedPositionKeyframe = selectedPositionKeyframeId
+    ? normalizedLocalPositionKeyframes.find((keyframe) => keyframe.id === selectedPositionKeyframeId) ?? null
+    : null;
+  const selectedScaleKeyframe = selectedScaleKeyframeId
+    ? normalizedLocalScaleKeyframes.find((keyframe) => keyframe.id === selectedScaleKeyframeId) ?? null
+    : null;
+  const cameraModeLabel = formatCameraTrackLabel(
+    normalizedLocalPositionKeyframes,
+    normalizedLocalScaleKeyframes,
+    cameraMotion
+  );
+  const cameraFocusPercent = Math.round((selectedPositionKeyframe?.focusY ?? localFocusY) * 100);
+  const isFinishMode = stage3Mode === "finish";
+  const backgroundModeLabel =
+    backgroundMode === "custom"
+      ? "Custom"
+      : backgroundMode === "source-blur"
+        ? "Blur source"
+        : backgroundMode === "built-in"
+          ? "Template backdrop"
+          : "Fallback";
   const audioModeLabel = selectedMusicAssetId
     ? sourceAudioEnabled
       ? "Музыка + исходник"
@@ -1685,6 +2084,11 @@ export function Step3RenderTemplate({
     : sourceAudioEnabled
       ? "Только исходник"
       : "Без звука";
+  const manualTimingLabel =
+    normalizedSegments.length > 0
+      ? `Фрагменты ${normalizedSegments.length} · ${formatTimeSec(explicitSegmentsDurationSec)}`
+      : `Окно ${formatTimeSec(clipDurationSec)}`;
+  const editorZoomLabel = `x${(selectedScaleKeyframe?.zoom ?? localVideoZoom).toFixed(2)}`;
   const handlePreviewMeasuredTextFitChange = useCallback(
     (nextFit: Stage3TextFitSnapshot) => {
       setPreviewMeasuredFitState((current) => {
@@ -1775,6 +2179,41 @@ export function Step3RenderTemplate({
   }, [videoZoom]);
 
   useEffect(() => {
+    setLocalPositionKeyframes(effectiveCameraTracks.positionKeyframes);
+    setLocalScaleKeyframes(effectiveCameraTracks.scaleKeyframes);
+  }, [effectiveCameraTracks]);
+
+  useEffect(() => {
+    setSelectedPositionKeyframeId((current) => {
+      if (!normalizedLocalPositionKeyframes.length) {
+        return null;
+      }
+      if (current === null) {
+        return null;
+      }
+      if (current && normalizedLocalPositionKeyframes.some((keyframe) => keyframe.id === current)) {
+        return current;
+      }
+      return normalizedLocalPositionKeyframes[normalizedLocalPositionKeyframes.length - 1]?.id ?? null;
+    });
+  }, [normalizedLocalPositionKeyframes]);
+
+  useEffect(() => {
+    setSelectedScaleKeyframeId((current) => {
+      if (!normalizedLocalScaleKeyframes.length) {
+        return null;
+      }
+      if (current === null) {
+        return null;
+      }
+      if (current && normalizedLocalScaleKeyframes.some((keyframe) => keyframe.id === current)) {
+        return current;
+      }
+      return normalizedLocalScaleKeyframes[normalizedLocalScaleKeyframes.length - 1]?.id ?? null;
+    });
+  }, [normalizedLocalScaleKeyframes]);
+
+  useEffect(() => {
     setLocalTopFontScale(clampStage3TextScaleUi(topFontScale));
   }, [topFontScale]);
 
@@ -1822,6 +2261,12 @@ export function Step3RenderTemplate({
       }
       if (videoZoomCommitTimerRef.current !== null) {
         window.clearTimeout(videoZoomCommitTimerRef.current);
+      }
+      if (positionKeyframesCommitTimerRef.current !== null) {
+        window.clearTimeout(positionKeyframesCommitTimerRef.current);
+      }
+      if (scaleKeyframesCommitTimerRef.current !== null) {
+        window.clearTimeout(scaleKeyframesCommitTimerRef.current);
       }
       if (topFontScaleCommitTimerRef.current !== null) {
         window.clearTimeout(topFontScaleCommitTimerRef.current);
@@ -1893,6 +2338,62 @@ export function Step3RenderTemplate({
       onVideoZoomChange(next);
       videoZoomCommitTimerRef.current = null;
     }, 320);
+  };
+
+  const flushPositionKeyframesCommit = (value: Stage3PositionKeyframe[]) => {
+    if (positionKeyframesCommitTimerRef.current !== null) {
+      window.clearTimeout(positionKeyframesCommitTimerRef.current);
+      positionKeyframesCommitTimerRef.current = null;
+    }
+    const next = normalizeStage3PositionKeyframes(value, {
+      clipDurationSec,
+      fallbackFocusY: localFocusY
+    });
+    setLocalPositionKeyframes(next);
+    onCameraPositionKeyframesChange(next);
+  };
+
+  const schedulePositionKeyframesCommit = (value: Stage3PositionKeyframe[]) => {
+    const next = normalizeStage3PositionKeyframes(value, {
+      clipDurationSec,
+      fallbackFocusY: localFocusY
+    });
+    setLocalPositionKeyframes(next);
+    if (positionKeyframesCommitTimerRef.current !== null) {
+      window.clearTimeout(positionKeyframesCommitTimerRef.current);
+    }
+    positionKeyframesCommitTimerRef.current = window.setTimeout(() => {
+      onCameraPositionKeyframesChange(next);
+      positionKeyframesCommitTimerRef.current = null;
+    }, 180);
+  };
+
+  const flushScaleKeyframesCommit = (value: Stage3ScaleKeyframe[]) => {
+    if (scaleKeyframesCommitTimerRef.current !== null) {
+      window.clearTimeout(scaleKeyframesCommitTimerRef.current);
+      scaleKeyframesCommitTimerRef.current = null;
+    }
+    const next = normalizeStage3ScaleKeyframes(value, {
+      clipDurationSec,
+      fallbackZoom: localVideoZoom
+    });
+    setLocalScaleKeyframes(next);
+    onCameraScaleKeyframesChange(next);
+  };
+
+  const scheduleScaleKeyframesCommit = (value: Stage3ScaleKeyframe[]) => {
+    const next = normalizeStage3ScaleKeyframes(value, {
+      clipDurationSec,
+      fallbackZoom: localVideoZoom
+    });
+    setLocalScaleKeyframes(next);
+    if (scaleKeyframesCommitTimerRef.current !== null) {
+      window.clearTimeout(scaleKeyframesCommitTimerRef.current);
+    }
+    scaleKeyframesCommitTimerRef.current = window.setTimeout(() => {
+      onCameraScaleKeyframesChange(next);
+      scaleKeyframesCommitTimerRef.current = null;
+    }, 180);
   };
 
   const flushTopFontScaleCommit = (value: number) => {
@@ -1987,8 +2488,11 @@ export function Step3RenderTemplate({
   const commitAdvancedControls = (): Stage3EditorDraftOverrides => {
     const overrides: Stage3EditorDraftOverrides = {
       clipStartSec: clamp(localClipStartSec, 0, maxStartSec),
-      focusY: clamp(localFocusY, 0.12, 0.88),
-      videoZoom: clamp(localVideoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM),
+      focusY: clampStage3FocusY(localFocusY),
+      videoZoom: clampStage3CameraZoom(localVideoZoom),
+      cameraKeyframes: [],
+      cameraPositionKeyframes: normalizedLocalPositionKeyframes,
+      cameraScaleKeyframes: normalizedLocalScaleKeyframes,
       topFontScale: clampStage3TextScaleUi(localTopFontScale),
       bottomFontScale: clampStage3TextScaleUi(localBottomFontScale),
       musicGain: clamp(localMusicGain, 0, 1)
@@ -1996,6 +2500,8 @@ export function Step3RenderTemplate({
     flushClipCommit(overrides.clipStartSec);
     flushFocusCommit(overrides.focusY);
     flushVideoZoomCommit(overrides.videoZoom);
+    flushPositionKeyframesCommit(overrides.cameraPositionKeyframes);
+    flushScaleKeyframesCommit(overrides.cameraScaleKeyframes);
     flushTopFontScaleCommit(overrides.topFontScale);
     flushBottomFontScaleCommit(overrides.bottomFontScale);
     flushMusicGainCommit(overrides.musicGain);
@@ -2047,6 +2553,302 @@ export function Step3RenderTemplate({
     }
   };
 
+  const buildTransformKeyframeId = (prefix: "position" | "scale") =>
+    globalThis.crypto?.randomUUID?.() ?? `${prefix}-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+
+  const updateSelectedPositionKeyframe = (
+    updater: (keyframe: Stage3PositionKeyframe) => Stage3PositionKeyframe,
+    options?: { immediate?: boolean }
+  ) => {
+    if (!selectedPositionKeyframe) {
+      return;
+    }
+    const next = normalizedLocalPositionKeyframes.map((keyframe) =>
+      keyframe.id === selectedPositionKeyframe.id ? updater(keyframe) : keyframe
+    );
+    setSelectedPositionKeyframeId(selectedPositionKeyframe.id);
+    if (options?.immediate) {
+      flushPositionKeyframesCommit(next);
+      return;
+    }
+    schedulePositionKeyframesCommit(next);
+  };
+
+  const updateSelectedScaleKeyframe = (
+    updater: (keyframe: Stage3ScaleKeyframe) => Stage3ScaleKeyframe,
+    options?: { immediate?: boolean }
+  ) => {
+    if (!selectedScaleKeyframe) {
+      return;
+    }
+    const next = normalizedLocalScaleKeyframes.map((keyframe) =>
+      keyframe.id === selectedScaleKeyframe.id ? updater(keyframe) : keyframe
+    );
+    setSelectedScaleKeyframeId(selectedScaleKeyframe.id);
+    if (options?.immediate) {
+      flushScaleKeyframesCommit(next);
+      return;
+    }
+    scheduleScaleKeyframesCommit(next);
+  };
+
+  const addPositionKeyframeAtPlayhead = () => {
+    const currentState = resolveCameraStateAtTime({
+      timeSec: previewTimelineSecRef.current,
+      cameraPositionKeyframes: normalizedLocalPositionKeyframes,
+      cameraScaleKeyframes: normalizedLocalScaleKeyframes,
+      cameraMotion,
+      clipDurationSec,
+      baseFocusY: localFocusY,
+      baseZoom: localVideoZoom
+    });
+    const nextKeyframe: Stage3PositionKeyframe = {
+      id: buildTransformKeyframeId("position"),
+      timeSec: previewTimelineSecRef.current,
+      focusY: currentState.focusY
+    };
+    const next = [
+      ...normalizedLocalPositionKeyframes.filter(
+        (keyframe) => Math.abs(keyframe.timeSec - previewTimelineSecRef.current) > 0.001
+      ),
+      nextKeyframe
+    ];
+    setSelectedPositionKeyframeId(nextKeyframe.id);
+    setSelectedScaleKeyframeId(null);
+    flushPositionKeyframesCommit(next);
+  };
+
+  const addScaleKeyframeAtPlayhead = () => {
+    const currentState = resolveCameraStateAtTime({
+      timeSec: previewTimelineSecRef.current,
+      cameraPositionKeyframes: normalizedLocalPositionKeyframes,
+      cameraScaleKeyframes: normalizedLocalScaleKeyframes,
+      cameraMotion,
+      clipDurationSec,
+      baseFocusY: localFocusY,
+      baseZoom: localVideoZoom
+    });
+    const nextKeyframe: Stage3ScaleKeyframe = {
+      id: buildTransformKeyframeId("scale"),
+      timeSec: previewTimelineSecRef.current,
+      zoom: currentState.zoom
+    };
+    const next = [
+      ...normalizedLocalScaleKeyframes.filter(
+        (keyframe) => Math.abs(keyframe.timeSec - previewTimelineSecRef.current) > 0.001
+      ),
+      nextKeyframe
+    ];
+    setSelectedScaleKeyframeId(nextKeyframe.id);
+    setSelectedPositionKeyframeId(null);
+    flushScaleKeyframesCommit(next);
+  };
+
+  const togglePositionKeyframeAtPlayhead = () => {
+    const existing = normalizedLocalPositionKeyframes.find(
+      (keyframe) => Math.abs(keyframe.timeSec - previewTimelineSecRef.current) <= 0.001
+    );
+    if (existing) {
+      const next = normalizedLocalPositionKeyframes.filter((keyframe) => keyframe.id !== existing.id);
+      setSelectedPositionKeyframeId(next[next.length - 1]?.id ?? null);
+      flushPositionKeyframesCommit(next);
+      return;
+    }
+    addPositionKeyframeAtPlayhead();
+  };
+
+  const toggleScaleKeyframeAtPlayhead = () => {
+    const existing = normalizedLocalScaleKeyframes.find(
+      (keyframe) => Math.abs(keyframe.timeSec - previewTimelineSecRef.current) <= 0.001
+    );
+    if (existing) {
+      const next = normalizedLocalScaleKeyframes.filter((keyframe) => keyframe.id !== existing.id);
+      setSelectedScaleKeyframeId(next[next.length - 1]?.id ?? null);
+      flushScaleKeyframesCommit(next);
+      return;
+    }
+    addScaleKeyframeAtPlayhead();
+  };
+
+  const removeSelectedPositionKeyframe = () => {
+    if (!selectedPositionKeyframe) {
+      return;
+    }
+    const next = normalizedLocalPositionKeyframes.filter((keyframe) => keyframe.id !== selectedPositionKeyframe.id);
+    setSelectedPositionKeyframeId(next[next.length - 1]?.id ?? null);
+    flushPositionKeyframesCommit(next);
+  };
+
+  const removeSelectedScaleKeyframe = () => {
+    if (!selectedScaleKeyframe) {
+      return;
+    }
+    const next = normalizedLocalScaleKeyframes.filter((keyframe) => keyframe.id !== selectedScaleKeyframe.id);
+    setSelectedScaleKeyframeId(next[next.length - 1]?.id ?? null);
+    flushScaleKeyframesCommit(next);
+  };
+
+  const clearCameraTracks = () => {
+    setSelectedPositionKeyframeId(null);
+    setSelectedScaleKeyframeId(null);
+    setLocalPositionKeyframes([]);
+    setLocalScaleKeyframes([]);
+    flushPositionKeyframesCommit([]);
+    flushScaleKeyframesCommit([]);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!selectedPositionKeyframe && !selectedScaleKeyframe) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) {
+        return;
+      }
+      if (event.key !== "Delete" && event.key !== "Backspace") {
+        return;
+      }
+      event.preventDefault();
+      if (selectedPositionKeyframe) {
+        removeSelectedPositionKeyframe();
+        return;
+      }
+      removeSelectedScaleKeyframe();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [removeSelectedPositionKeyframe, removeSelectedScaleKeyframe, selectedPositionKeyframe, selectedScaleKeyframe]);
+
+  const applyCameraMotionPreset = (motion: Exclude<Stage3CameraMotion, "disabled">) => {
+    const next = buildLegacyPositionKeyframes({
+      cameraMotion: motion,
+      clipDurationSec,
+      baseFocusY: localFocusY
+    }).map((keyframe, index) => ({
+      ...keyframe,
+      id: `${motion}-position-${index + 1}`
+    }));
+    setSelectedPositionKeyframeId(next[next.length - 1]?.id ?? null);
+    setSelectedScaleKeyframeId(null);
+    flushPositionKeyframesCommit(next);
+  };
+
+  const applyZoomPreset = (direction: "in" | "out") => {
+    const startZoom = clampStage3CameraZoom(localVideoZoom);
+    const endZoom = clampStage3CameraZoom(startZoom * 1.22);
+    const next =
+      direction === "in"
+        ? [
+            { id: "zoom-in-start", timeSec: 0, zoom: startZoom },
+            { id: "zoom-in-end", timeSec: clipDurationSec, zoom: endZoom }
+          ]
+        : [
+          { id: "zoom-out-start", timeSec: 0, zoom: endZoom },
+          { id: "zoom-out-end", timeSec: clipDurationSec, zoom: startZoom }
+        ];
+    setSelectedScaleKeyframeId(next[next.length - 1]?.id ?? null);
+    setSelectedPositionKeyframeId(null);
+    flushScaleKeyframesCommit(next);
+  };
+
+  const handleCameraPreviewFocusChange = (value: number) => {
+    const next = clampStage3FocusY(value);
+    if (selectedPositionKeyframe) {
+      updateSelectedPositionKeyframe((keyframe) => ({
+        ...keyframe,
+        focusY: next
+      }));
+      return;
+    }
+    scheduleFocusCommit(next);
+  };
+
+  const handlePositionKeyframeTimeChange = (id: string, timeSec: number) => {
+    const next = normalizedLocalPositionKeyframes.map((keyframe) =>
+      keyframe.id === id
+        ? {
+            ...keyframe,
+            timeSec: clamp(timeSec, 0, clipDurationSec)
+          }
+        : keyframe
+    );
+    setSelectedPositionKeyframeId(id);
+    setSelectedScaleKeyframeId(null);
+    schedulePositionKeyframesCommit(next);
+  };
+
+  const handleScaleKeyframeTimeChange = (id: string, timeSec: number) => {
+    const next = normalizedLocalScaleKeyframes.map((keyframe) =>
+      keyframe.id === id
+        ? {
+            ...keyframe,
+            timeSec: clamp(timeSec, 0, clipDurationSec)
+          }
+        : keyframe
+    );
+    setSelectedScaleKeyframeId(id);
+    setSelectedPositionKeyframeId(null);
+    scheduleScaleKeyframesCommit(next);
+  };
+
+  const scheduleFocusValue = (value: number) => {
+    const next = clampStage3FocusY(value);
+    if (selectedPositionKeyframe) {
+      updateSelectedPositionKeyframe((keyframe) => ({
+        ...keyframe,
+        focusY: next
+      }));
+      return;
+    }
+    scheduleFocusCommit(next);
+  };
+
+  const flushFocusValue = (value: number) => {
+    const next = clampStage3FocusY(value);
+    if (selectedPositionKeyframe) {
+      updateSelectedPositionKeyframe(
+        (keyframe) => ({
+          ...keyframe,
+          focusY: next
+        }),
+        { immediate: true }
+      );
+      return;
+    }
+    flushFocusCommit(next);
+  };
+
+  const scheduleZoomValue = (value: number) => {
+    const next = clampStage3CameraZoom(value);
+    if (selectedScaleKeyframe) {
+      updateSelectedScaleKeyframe((keyframe) => ({
+        ...keyframe,
+        zoom: next
+      }));
+      return;
+    }
+    scheduleVideoZoomCommit(next);
+  };
+
+  const flushZoomValue = (value: number) => {
+    const next = clampStage3CameraZoom(value);
+    if (selectedScaleKeyframe) {
+      updateSelectedScaleKeyframe(
+        (keyframe) => ({
+          ...keyframe,
+          zoom: next
+        }),
+        { immediate: true }
+      );
+      return;
+    }
+    flushVideoZoomCommit(next);
+  };
+
   const applyClipStartImmediate = (value: number) => {
     const next = clamp(value, 0, maxStartSec);
     setLocalClipStartSec(next);
@@ -2054,15 +2856,80 @@ export function Step3RenderTemplate({
   };
 
   const applyFocusImmediate = (value: number) => {
-    const next = clamp(value, 0.12, 0.88);
+    const next = clampStage3FocusY(value);
+    if (selectedPositionKeyframe) {
+      updateSelectedPositionKeyframe(
+        (keyframe) => ({
+          ...keyframe,
+          focusY: next
+        }),
+        { immediate: true }
+      );
+      return;
+    }
     setLocalFocusY(next);
     flushFocusCommit(next);
   };
 
   const applyVideoZoomImmediate = (value: number) => {
-    const next = clamp(value, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);
+    const next = clampStage3CameraZoom(value);
+    if (selectedScaleKeyframe) {
+      updateSelectedScaleKeyframe(
+        (keyframe) => ({
+          ...keyframe,
+          zoom: next
+        }),
+        { immediate: true }
+      );
+      return;
+    }
     setLocalVideoZoom(next);
     flushVideoZoomCommit(next);
+  };
+
+  const positionKeyframeAtPlayhead = normalizedLocalPositionKeyframes.find(
+    (keyframe) => Math.abs(keyframe.timeSec - previewTimelineSecRef.current) <= 0.001
+  ) ?? null;
+  const scaleKeyframeAtPlayhead = normalizedLocalScaleKeyframes.find(
+    (keyframe) => Math.abs(keyframe.timeSec - previewTimelineSecRef.current) <= 0.001
+  ) ?? null;
+
+  const jumpToNeighborPositionKeyframe = (direction: "prev" | "next") => {
+    const ordered = normalizedLocalPositionKeyframes;
+    if (!ordered.length) {
+      return;
+    }
+    const currentTime = selectedPositionKeyframe?.timeSec ?? previewTimelineSecRef.current;
+    const target =
+      direction === "prev"
+        ? [...ordered].reverse().find((keyframe) => keyframe.timeSec < currentTime - 0.001) ?? ordered[0]
+        : ordered.find((keyframe) => keyframe.timeSec > currentTime + 0.001) ?? ordered[ordered.length - 1];
+    if (!target) {
+      return;
+    }
+    setSelectedPositionKeyframeId(target.id);
+    setSelectedScaleKeyframeId(null);
+    previewTimelineSecRef.current = target.timeSec;
+    setRequestedTimelineSec(target.timeSec);
+  };
+
+  const jumpToNeighborScaleKeyframe = (direction: "prev" | "next") => {
+    const ordered = normalizedLocalScaleKeyframes;
+    if (!ordered.length) {
+      return;
+    }
+    const currentTime = selectedScaleKeyframe?.timeSec ?? previewTimelineSecRef.current;
+    const target =
+      direction === "prev"
+        ? [...ordered].reverse().find((keyframe) => keyframe.timeSec < currentTime - 0.001) ?? ordered[0]
+        : ordered.find((keyframe) => keyframe.timeSec > currentTime + 0.001) ?? ordered[ordered.length - 1];
+    if (!target) {
+      return;
+    }
+    setSelectedScaleKeyframeId(target.id);
+    setSelectedPositionKeyframeId(null);
+    previewTimelineSecRef.current = target.timeSec;
+    setRequestedTimelineSec(target.timeSec);
   };
 
   const workerStatusLabel =
@@ -2420,23 +3287,10 @@ export function Step3RenderTemplate({
 
   const isPreparingRenderText = Boolean(pendingTextFitAction);
 
-  const leftFooter = (
+  const finishFooter = (
     <div className="sticky-action-bar">
       <button type="button" className="btn btn-ghost" onClick={onReset}>
         Сбросить
-      </button>
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={() => startTextFitAction("optimize")}
-        disabled={!sourceUrl || isOptimizing || isRendering || isPreparingRenderText}
-        aria-busy={isOptimizing}
-      >
-        {isOptimizing
-          ? "Оптимизация..."
-          : pendingTextFitAction?.kind === "optimize"
-            ? "Подготавливаю текст..."
-            : "Оптимизировать"}
       </button>
       <button type="button" className="btn btn-secondary" onClick={onExport} disabled={!sourceUrl}>
         Экспорт JSON
@@ -2459,828 +3313,932 @@ export function Step3RenderTemplate({
     </div>
   );
 
+  const editorFooter = (
+    <div className="sticky-action-bar">
+      <button type="button" className="btn btn-ghost" onClick={onReset}>
+        Сбросить
+      </button>
+      <button type="button" className="btn btn-secondary" onClick={() => setStage3Mode("finish")}>
+        Назад к финализации
+      </button>
+    </div>
+  );
+
+  const leftFooter = isFinishMode ? finishFooter : editorFooter;
+
   return (
     <>
       <StepWorkspace
-        editLabel="Редактирование"
+        editLabel={isFinishMode ? "Финал" : "Редактор"}
         previewLabel="Предпросмотр"
         previewViewportHeight
         leftFooter={leftFooter}
         left={
           <div className="step-panel-stack">
-          <header className="step-head">
-            <p className="kicker">Шаг 3</p>
-            <h2>Рендер</h2>
-            <p>Финализируйте тайминг и кадрирование, затем отрендерите mp4 из выбранной версии.</p>
-            <div className="render-meta-strip">
-              <span className="meta-pill">{getStage3DesignLabLabel(templateId)}</span>
-              <span className="meta-pill mono">{templateId}</span>
-              <span className="meta-pill">
-                {channelName} (@{channelUsername})
-              </span>
-              <span className="meta-pill">
-                Исходник {sourceDurationSec ? formatTimeSec(sourceDurationSec) : "н/д"}
-              </span>
-              <span className="meta-pill">Версий {displayVersions.length}</span>
-            </div>
-            {showWorkerControls ? (
-              <div className="executor-summary-row">
-                <div className="executor-summary-copy">
-                  <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
-                    Executor: {workerStatusLabel}
-                  </span>
-                  <span className="subtle-text">
-                    {workerState === "not_paired"
-                      ? "Подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
-                      : workerStatusDescription}
-                  </span>
+            <header className="step-head">
+              <p className="kicker">Шаг 3</p>
+              <h2>{isFinishMode ? "Финализация" : "Редактор"}</h2>
+              <p>
+                {isFinishMode
+                  ? "Проверьте итоговый текст, фон и звук, затем отрендерите mp4 из выбранной версии."
+                  : "Ручной монтаж тайминга и камеры. Вернитесь в финализацию, когда кадр и движение готовы."}
+              </p>
+              <div className="render-meta-strip">
+                <span className="meta-pill">{getStage3DesignLabLabel(templateId)}</span>
+                <span className="meta-pill mono">{templateId}</span>
+                <span className="meta-pill">
+                  {channelName} (@{channelUsername})
+                </span>
+                <span className="meta-pill">
+                  Исходник {sourceDurationSec ? formatTimeSec(sourceDurationSec) : "н/д"}
+                </span>
+                <span className="meta-pill">Версий {displayVersions.length}</span>
+              </div>
+              {showWorkerControls ? (
+                <div className="executor-summary-row">
+                  <div className="executor-summary-copy">
+                    <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
+                      Executor: {workerStatusLabel}
+                    </span>
+                    <span className="subtle-text">
+                      {workerState === "not_paired"
+                        ? "Подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
+                        : workerStatusDescription}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn ${workerState === "not_paired" ? "btn-primary" : "btn-secondary"}`}
+                    onClick={() => setWorkerSetupOpen(true)}
+                  >
+                    {workerState === "not_paired" ? "Подключить executor" : "Executor"}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className={`btn ${workerState === "not_paired" ? "btn-primary" : "btn-secondary"}`}
-                  onClick={() => setWorkerSetupOpen(true)}
-                >
-                  {workerState === "not_paired" ? "Подключить executor" : "Executor"}
-                </button>
-              </div>
-            ) : null}
-          </header>
+              ) : null}
+            </header>
 
-          <section className="control-card control-card-priority">
-            <div className="control-section-head">
-              <div>
-                <h3>Editing</h3>
-                <p className="subtle-text">
-                  Частые действия вынесены сюда: тайминг, фокус, зум и размеры текста.
-                </p>
+            <section className="control-card control-card-priority stage3-surface-card">
+              <div className="control-section-head">
+                <div>
+                  <h3>{isFinishMode ? "Финал" : "Ручной редактор"}</h3>
+                  <p className="subtle-text">
+                    {isFinishMode
+                      ? "Основной путь: финальный TOP/BOTTOM, звук, фон, версии и экспорт."
+                      : "Здесь живут только тайминг и камера: fragments, фокус, zoom и keyframes."}
+                  </p>
+                </div>
+                <div className="stage3-surface-switch" role="tablist" aria-label="Режим Step 3">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isFinishMode}
+                    className={`stage3-surface-tab ${isFinishMode ? "active" : ""}`}
+                    onClick={() => setStage3Mode("finish")}
+                  >
+                    Финал
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={!isFinishMode}
+                    className={`stage3-surface-tab ${!isFinishMode ? "active" : ""}`}
+                    onClick={() => setStage3Mode("editor")}
+                  >
+                    Редактор
+                  </button>
+                </div>
               </div>
+
               <div className="editing-status-row">
-                <span className="meta-pill">
-                  {normalizedSegments.length > 0 ? `Курсор ${formatTimeSec(localClipStartSec)}` : `Старт ${formatTimeSec(localClipStartSec)}`}
-                </span>
-                <span className="meta-pill">
-                  {normalizedSegments.length > 0
-                    ? `Фрагменты ${normalizedSegments.length} · ${formatTimeSec(explicitSegmentsDurationSec)}`
-                    : `Окно ${formatTimeSec(clipDurationSec)}`}
-                </span>
-                <span className="meta-pill">Фокус {focusPercent}%</span>
-                <span className="meta-pill">Камера {formatCameraMotion(cameraMotion)}</span>
-                <span className="meta-pill">Зум x{localVideoZoom.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div className="quick-edit-grid">
-              <div className="quick-edit-card quick-edit-span-2 fragment-card">
-                <div className="fragment-toolbar">
-                  <label className="field-label fragment-toggle">
-                    <input
-                      type="checkbox"
-                      checked={compressionEnabled}
-                      onChange={(event) => commitFragments(normalizedSegments, event.target.checked)}
-                    />
-                    <span>Сжать до 6с</span>
-                  </label>
-                  <div className="fragment-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={!sourceUrl || (!compressionEnabled && remainingSegmentsDurationSec < 0.1)}
-                      onClick={createFragment}
-                    >
-                      + Фрагмент
-                    </button>
-                    {normalizedSegments.length > 0 ? (
-                      <button type="button" className="btn btn-ghost" onClick={() => commitFragments([])}>
-                        Очистить
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-
-                {normalizedSegments.length > 0 ? (
-                  <div className="fragment-list">
-                    {normalizedSegments.map((segment, index) => {
-                      const rowKey = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
-                      const draft = segmentDraftInputs[rowKey] ?? {
-                        startSec: segment.startSec.toFixed(1),
-                        endSec: (segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
-                      };
-                      const endValue = segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5;
-                      const rawDuration = Math.max(0, endValue - segment.startSec);
-                      const outputDuration = rawDuration / segment.speed;
-                      return (
-                        <article key={rowKey} className="fragment-row">
-                          <div className="fragment-row-head">
-                            <div className="fragment-row-meta">
-                              <span className="meta-pill mono">{index + 1}</span>
-                              <span className="meta-pill">{formatSegmentSpeed(segment.speed)}</span>
-                              <span className="quick-edit-value">{formatTimeSec(outputDuration)}</span>
-                              {segment.speed > 1 ? (
-                                <span className="subtle-text">
-                                  {formatTimeSec(rawDuration)} → {formatTimeSec(outputDuration)}
-                                </span>
-                              ) : null}
-                            </div>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-danger-soft"
-                              onClick={() => removeFragment(index)}
-                            >
-                              ×
-                            </button>
-                          </div>
-                          <div className="fragment-input-grid">
-                            <label className="field-stack">
-                              <span className="field-label">От</span>
-                              <input
-                                type="number"
-                                min={0}
-                                max={sourceDurationSec ?? undefined}
-                                step={0.1}
-                                className="text-input segment-input"
-                                value={draft.startSec}
-                                onChange={(event) =>
-                                  setFragmentDraftField(index, segment, "startSec", event.target.value)
-                                }
-                                onBlur={() => commitFragmentDraft(index, segment)}
-                              />
-                            </label>
-                            <label className="field-stack">
-                              <span className="field-label">До</span>
-                              <input
-                                type="number"
-                                min={0.1}
-                                max={sourceDurationSec ?? undefined}
-                                step={0.1}
-                                className="text-input segment-input"
-                                value={draft.endSec}
-                                onChange={(event) =>
-                                  setFragmentDraftField(index, segment, "endSec", event.target.value)
-                                }
-                                onBlur={() => commitFragmentDraft(index, segment)}
-                              />
-                            </label>
-                            <label className="field-stack">
-                              <span className="field-label">Сжатие</span>
-                              <select
-                                className="text-input segment-input"
-                                value={segment.speed}
-                                onChange={(event) =>
-                                  updateFragmentSpeed(
-                                    index,
-                                    normalizeSegmentSpeed(Number.parseFloat(event.target.value))
-                                  )
-                                }
-                              >
-                                {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
-                                  <option key={`segment-speed-${speed}`} value={speed}>
-                                    {formatSegmentSpeed(speed)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="fragment-empty subtle-text">Нет фрагментов</div>
-                )}
-              </div>
-
-              <div className="quick-edit-card slider-field">
-                <div className="quick-edit-label-row">
-                  <label className="field-label" htmlFor="clipStartRange">
-                    Начало клипа
-                  </label>
-                  <span className="quick-edit-value">
-                    {normalizedSegments.length > 0
-                      ? formatTimeSec(localClipStartSec)
-                      : `${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`}
-                  </span>
-                </div>
-                <input
-                  id="clipStartRange"
-                  type="range"
-                  min={0}
-                  max={Math.max(0, maxStartSec)}
-                  step={0.1}
-                  value={localClipStartSec}
-                  disabled={!sourceUrl || maxStartSec <= 0}
-                  onChange={(event) => scheduleClipCommit(Number.parseFloat(event.target.value))}
-                  onMouseUp={() => flushClipCommit(localClipStartSec)}
-                  onTouchEnd={() => flushClipCommit(localClipStartSec)}
-                  onBlur={() => flushClipCommit(localClipStartSec)}
-                />
-                <div className="preset-row">
-                  <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 1)}>
-                    -1.0s
-                  </button>
-                  <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 0.25)}>
-                    -0.25s
-                  </button>
-                  <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 0.25)}>
-                    +0.25s
-                  </button>
-                  <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 1)}>
-                    +1.0s
-                  </button>
-                </div>
-              </div>
-
-              <div className="quick-edit-card slider-field">
-                <div className="quick-edit-label-row">
-                  <label className="field-label" htmlFor="focusRange">
-                    Вертикальный фокус
-                  </label>
-                  <span className="quick-edit-value">{focusPercent}%</span>
-                </div>
-                <input
-                  id="focusRange"
-                  type="range"
-                  min={0.12}
-                  max={0.88}
-                  step={0.01}
-                  value={localFocusY}
-                  onChange={(event) => scheduleFocusCommit(Number.parseFloat(event.target.value))}
-                  onMouseUp={() => flushFocusCommit(localFocusY)}
-                  onTouchEnd={() => flushFocusCommit(localFocusY)}
-                  onBlur={() => flushFocusCommit(localFocusY)}
-                />
-                <div className="preset-row">
-                  <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.18)}>
-                    Верх
-                  </button>
-                  <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.5)}>
-                    Центр
-                  </button>
-                  <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.82)}>
-                    Низ
-                  </button>
-                </div>
-              </div>
-
-              <div className="quick-edit-card">
-                <div className="quick-edit-label-row">
-                  <span className="field-label">Отзеркаливание</span>
-                  <span className="quick-edit-value">{mirrorEnabled ? "Включено" : "Выключено"}</span>
-                </div>
-                <label className="field-label fragment-toggle">
-                  <input
-                    type="checkbox"
-                    checked={mirrorEnabled}
-                    onChange={(event) => onMirrorEnabledChange(event.target.checked)}
-                  />
-                  <span>Горизонтально</span>
-                </label>
-                <p className="subtle-text">По умолчанию включено для слота с исходным видео.</p>
-              </div>
-
-              <div className="quick-edit-card">
-                <div className="quick-edit-label-row">
-                  <label className="field-label" htmlFor="cameraMotionSelect">
-                    Движение камеры
-                  </label>
-                  <span className="quick-edit-value">{formatCameraMotion(cameraMotion)}</span>
-                </div>
-                <select
-                  id="cameraMotionSelect"
-                  className="text-input"
-                  value={cameraMotion}
-                  onChange={(event) => onCameraMotionChange(event.target.value as Stage3CameraMotion)}
-                >
-                  <option value="disabled">Отключено</option>
-                  <option value="top_to_bottom">Сверху вниз</option>
-                  <option value="bottom_to_top">Снизу вверх</option>
-                </select>
-                <p className="subtle-text">Движение использует текущий вертикальный фокус как центр траектории.</p>
-              </div>
-
-              <div className="quick-edit-card slider-field">
-                <div className="quick-edit-label-row">
-                  <label className="field-label" htmlFor="videoZoomRange">
-                    Масштаб видео
-                  </label>
-                  <span className="quick-edit-value">x{localVideoZoom.toFixed(2)}</span>
-                </div>
-                <input
-                  id="videoZoomRange"
-                  type="range"
-                  min={1}
-                  max={STAGE3_MAX_VIDEO_ZOOM}
-                  step={0.01}
-                  value={localVideoZoom}
-                  onChange={(event) => scheduleVideoZoomCommit(Number.parseFloat(event.target.value))}
-                  onMouseUp={() => flushVideoZoomCommit(localVideoZoom)}
-                  onTouchEnd={() => flushVideoZoomCommit(localVideoZoom)}
-                  onBlur={() => flushVideoZoomCommit(localVideoZoom)}
-                />
-                <div className="preset-row">
-                  {[1, 1.1, 1.25, 1.4].map((value) => (
-                    <button
-                      key={`zoom-${value}`}
-                      type="button"
-                      className="preset-chip"
-                      onClick={() => applyVideoZoomImmediate(value)}
-                    >
-                      x{value.toFixed(2)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="quick-edit-card slider-field">
-                <div className="quick-edit-label-row">
-                  <label className="field-label" htmlFor="topFontScaleRange">
-                    Размер верхнего текста
-                  </label>
-                  <span className="quick-edit-value">{Math.round(localTopFontScale * 100)}%</span>
-                </div>
-                <input
-                  id="topFontScaleRange"
-                  type="range"
-                  min={STAGE3_TEXT_SCALE_UI_MIN}
-                  max={STAGE3_TEXT_SCALE_UI_MAX}
-                  step={0.01}
-                  value={localTopFontScale}
-                  onChange={(event) => scheduleTopFontScaleCommit(Number.parseFloat(event.target.value))}
-                  onMouseUp={() => flushTopFontScaleCommit(localTopFontScale)}
-                  onTouchEnd={() => flushTopFontScaleCommit(localTopFontScale)}
-                  onBlur={() => flushTopFontScaleCommit(localTopFontScale)}
-                />
-                <div className="preset-row">
-                  {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
-                    <button
-                      key={`top-font-${value}`}
-                      type="button"
-                      className="preset-chip"
-                      onClick={() => applyTopFontScaleImmediate(value)}
-                    >
-                      {Math.round(value * 100)}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="quick-edit-card slider-field">
-                <div className="quick-edit-label-row">
-                  <label className="field-label" htmlFor="bottomFontScaleRange">
-                    Размер нижнего текста
-                  </label>
-                  <span className="quick-edit-value">{Math.round(localBottomFontScale * 100)}%</span>
-                </div>
-                <input
-                  id="bottomFontScaleRange"
-                  type="range"
-                  min={STAGE3_TEXT_SCALE_UI_MIN}
-                  max={STAGE3_TEXT_SCALE_UI_MAX}
-                  step={0.01}
-                  value={localBottomFontScale}
-                  onChange={(event) => scheduleBottomFontScaleCommit(Number.parseFloat(event.target.value))}
-                  onMouseUp={() => flushBottomFontScaleCommit(localBottomFontScale)}
-                  onTouchEnd={() => flushBottomFontScaleCommit(localBottomFontScale)}
-                  onBlur={() => flushBottomFontScaleCommit(localBottomFontScale)}
-                />
-                <div className="preset-row">
-                  {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
-                    <button
-                      key={`bottom-font-${value}`}
-                      type="button"
-                      className="preset-chip"
-                      onClick={() => applyBottomFontScaleImmediate(value)}
-                    >
-                      {Math.round(value * 100)}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <details className="details-drawer stage3-caption-editor-drawer">
-            <summary>
-              <span>Финальный текст</span>
-              <small>
-                {hasManualCaptionOverride
-                  ? "Используется manual draft"
-                  : selectedCaptionOption
-                    ? `База: option ${selectedCaptionOption}`
-                    : "TOP / BOTTOM для рендера"}
-              </small>
-            </summary>
-            <div className="details-content">
-              <section className="control-card control-card-priority stage3-caption-editor-card">
-                <div className="control-section-head">
-                  <div>
-                    <h3>Финальный текст</h3>
-                    <p className="subtle-text">
-                      Здесь редактируется итоговый TOP/BOTTOM, который реально уйдет в preview и render.
-                    </p>
-                  </div>
-                  <div className="editing-status-row">
+                {isFinishMode ? (
+                  <>
                     {selectedCaptionOption ? (
                       <span className="meta-pill">Stage 2 option {selectedCaptionOption}</span>
-                    ) : null}
+                    ) : (
+                      <span className="meta-pill">Финальный текст вручную</span>
+                    )}
                     <span className={`meta-pill ${hasManualCaptionOverride ? "warn" : ""}`}>
                       {hasManualCaptionOverride ? "Используется manual draft" : "Без ручных переопределений"}
                     </span>
-                  </div>
-                </div>
-
-                <div className="stage3-caption-origin-row">
-                  <span className="meta-pill">TOP: {topTextSourceLabel}</span>
-                  <span className="meta-pill">BOTTOM: {bottomTextSourceLabel}</span>
-                  {selectedCaptionSource ? (
-                    <span className="subtle-text">
-                      База сейчас: option {selectedCaptionSource.option}
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="stage3-caption-editor-grid">
-                  <label className="field-stack">
-                    <span className="field-label">TOP</span>
-                    <textarea
-                      className="text-area stage3-caption-textarea"
-                      rows={4}
-                      value={topText}
-                      onChange={(event) => onTopTextChange(event.target.value)}
-                      placeholder="Финальный TOP для рендера"
-                    />
-                  </label>
-                  <label className="field-stack">
-                    <span className="field-label">BOTTOM</span>
-                    <textarea
-                      className="text-area stage3-caption-textarea"
-                      rows={4}
-                      value={bottomText}
-                      onChange={(event) => onBottomTextChange(event.target.value)}
-                      placeholder="Финальный BOTTOM для рендера"
-                    />
-                  </label>
-                </div>
-
-                <div className="control-actions stage3-caption-editor-actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => onResetCaptionText("all")}
-                    disabled={!handoffSummary?.canResetToSelectedCaption}
-                  >
-                    Сбросить к выбранному варианту
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => onResetCaptionText("top")}
-                    disabled={!selectedCaptionSource || handoffSummary?.topText === selectedCaptionSource.top}
-                  >
-                    Сбросить TOP
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => onResetCaptionText("bottom")}
-                    disabled={!selectedCaptionSource || handoffSummary?.bottomText === selectedCaptionSource.bottom}
-                  >
-                    Сбросить BOTTOM
-                  </button>
-                </div>
-
-                {captionSources.length > 0 ? (
-                  <div className="stage3-caption-source-list">
-                    {captionSources.map((option) => {
-                      const isSelectedSource = option.option === selectedCaptionOption;
-                      return (
-                        <article
-                          key={`stage3-caption-source-${option.option}`}
-                          className={`stage3-caption-source-card ${isSelectedSource ? "selected" : ""}`}
-                        >
-                          <div className="stage3-caption-source-head">
-                            <div className="option-title-row">
-                              <strong>Option {option.option}</strong>
-                              {isSelectedSource ? <span className="badge muted">Выбран</span> : null}
-                            </div>
-                            <div className="stage3-caption-source-actions">
-                              <button
-                                type="button"
-                                className="btn btn-secondary"
-                                onClick={() => onApplyCaptionSource(option.option, "all")}
-                              >
-                                Взять всё
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => onApplyCaptionSource(option.option, "top")}
-                              >
-                                Взять TOP
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => onApplyCaptionSource(option.option, "bottom")}
-                              >
-                                Взять BOTTOM
-                              </button>
-                            </div>
-                          </div>
-                          <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
-                          <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>
-                        </article>
-                      );
-                    })}
-                  </div>
+                    <span className="meta-pill">Фон {backgroundModeLabel}</span>
+                    <span className="meta-pill">Звук {audioModeLabel}</span>
+                  </>
                 ) : (
-                  <p className="subtle-text">
-                    Источник вариантов Stage 2 пока недоступен. Редактор всё равно работает по текущему draft.
-                  </p>
+                  <>
+                    <span className="meta-pill">
+                      {normalizedSegments.length > 0
+                        ? `Курсор ${formatTimeSec(localClipStartSec)}`
+                        : `Старт ${formatTimeSec(localClipStartSec)}`}
+                    </span>
+                    <span className="meta-pill">{manualTimingLabel}</span>
+                    <span className="meta-pill">Фокус {cameraFocusPercent}%</span>
+                    <span className="meta-pill">Камера {cameraModeLabel}</span>
+                    <span className="meta-pill">Зум {editorZoomLabel}</span>
+                  </>
                 )}
-              </section>
-            </div>
-          </details>
-
-          <section className="control-card">
-            <div className="control-section-head">
-              <div>
-                <h3>Музыка и фон</h3>
-                <p className="subtle-text">
-                  Меняются реже, поэтому вынесены после editing.
-                </p>
               </div>
-            </div>
 
-            <div className="asset-grid">
-              <div className="asset-card">
-                <div className="quick-edit-label-row">
-                  <span className="field-label">Фон</span>
-                  <span className="quick-edit-value">
-                    {backgroundMode === "custom"
-                      ? "Custom"
-                      : backgroundMode === "source-blur"
-                        ? "Blur source"
-                        : backgroundMode === "built-in"
-                          ? "Template backdrop"
-                          : "Fallback"}
-                  </span>
+              <div className="stage3-surface-actions">
+                <p className="subtle-text">
+                  {isFinishMode
+                    ? "Открывайте редактор только когда нужно вручную подвинуть тайминг или нарисовать движение камеры."
+                    : "Фон, музыка, текст и export остаются в режиме финализации."}
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setStage3Mode(isFinishMode ? "editor" : "finish")}
+                >
+                  {isFinishMode ? "Открыть редактор" : "Назад к финализации"}
+                </button>
+              </div>
+            </section>
+
+            <section className="control-card stage3-publish-card">
+              <div className="control-section-head">
+                <div>
+                  <h3>Публикация</h3>
+                  <p className="subtle-text">
+                    После успешного render сервер создаёт или обновляет queued-публикацию для этого ролика.
+                  </p>
                 </div>
-                <div className="background-upload-row">
-                  <label className="btn btn-ghost background-upload-btn">
-                    <input
-                      type="file"
-                      accept="image/*,video/*"
-                      className="background-upload-input"
-                      disabled={isUploadingBackground}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (!file) {
-                          return;
-                        }
-                        void onUploadBackground(file);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                    {isUploadingBackground ? "Загрузка..." : "Upload"}
-                  </label>
-                  <select
-                    className="text-input"
-                    value={selectedBackgroundAssetId ?? ""}
-                    onChange={(event) => onSelectBackgroundAssetId(event.target.value || null)}
-                  >
-                    <option value="">Размытый фон из исходника</option>
-                    {backgroundOptions.map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.originalName}
-                      </option>
-                    ))}
-                  </select>
-                  {backgroundAssetUrl ? (
+                <button type="button" className="btn btn-secondary" onClick={onOpenPlanner}>
+                  Открыть planner
+                </button>
+              </div>
+
+              {publication ? (
+                <div className="publishing-inline-summary">
+                  <div className="editing-status-row">
+                    <span className={`meta-pill ${publication.status === "scheduled" ? "ok" : publication.status === "failed" ? "warn" : ""}`}>
+                      {formatPublicationStatus(publication.status)}
+                    </span>
+                    <span className="meta-pill">{formatDateShort(publication.scheduledAt)}</span>
+                    {publication.needsReview ? <span className="meta-pill warn">needs review</span> : null}
+                  </div>
+                  <p className="publishing-inline-title">{publication.title}</p>
+                  {publication.description ? <p className="subtle-text publishing-inline-description">{publication.description}</p> : null}
+                  {publication.tags.length > 0 ? (
+                    <div className="publishing-tag-row">
+                      {publication.tags.map((tag) => (
+                        <span key={`${publication.id}:${tag}`} className="meta-pill">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {publication.lastError ? <p className="danger-text subtle-text">{publication.lastError}</p> : null}
+                </div>
+              ) : (
+                <p className="subtle-text">
+                  Здесь появится draft публикации после первого успешного render, если для канала включён auto-queue.
+                </p>
+              )}
+            </section>
+
+            {isFinishMode ? (
+              <>
+                <section className="control-card control-card-priority stage3-caption-editor-card">
+                  <div className="control-section-head">
+                    <div>
+                      <h3>Финальный текст</h3>
+                      <p className="subtle-text">
+                        Здесь редактируется итоговый TOP/BOTTOM, который реально уйдет в preview и render.
+                      </p>
+                    </div>
+                    <div className="editing-status-row">
+                      <span className="meta-pill">TOP: {topTextSourceLabel}</span>
+                      <span className="meta-pill">BOTTOM: {bottomTextSourceLabel}</span>
+                      {selectedCaptionSource ? (
+                        <span className="subtle-text">База сейчас: option {selectedCaptionSource.option}</span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="stage3-caption-editor-grid">
+                    <label className="field-stack">
+                      <span className="field-label">TOP</span>
+                      <textarea
+                        className="text-area stage3-caption-textarea"
+                        rows={4}
+                        value={topText}
+                        onChange={(event) => onTopTextChange(event.target.value)}
+                        placeholder="Финальный TOP для рендера"
+                      />
+                    </label>
+                    <label className="field-stack">
+                      <span className="field-label">BOTTOM</span>
+                      <textarea
+                        className="text-area stage3-caption-textarea"
+                        rows={4}
+                        value={bottomText}
+                        onChange={(event) => onBottomTextChange(event.target.value)}
+                        placeholder="Финальный BOTTOM для рендера"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="control-actions stage3-caption-editor-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => onResetCaptionText("all")}
+                      disabled={!handoffSummary?.canResetToSelectedCaption}
+                    >
+                      Сбросить к выбранному варианту
+                    </button>
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      onClick={onClearBackground}
-                      disabled={isUploadingBackground}
+                      onClick={() => onResetCaptionText("top")}
+                      disabled={!selectedCaptionSource || handoffSummary?.topText === selectedCaptionSource.top}
                     >
-                      Clear
+                      Сбросить TOP
                     </button>
-                  ) : null}
-                </div>
-                <p className="subtle-text">
-                  {backgroundMode === "custom"
-                    ? `Кастомный фон: ${(backgroundAssetMimeType ?? "asset").toLowerCase()}`
-                    : backgroundMode === "source-blur"
-                      ? "Фон по умолчанию: blur исходного видео."
-                      : backgroundMode === "built-in"
-                        ? "Сейчас используется встроенный backdrop шаблона."
-                        : "Источник фона недоступен, используется fallback."}
-                </p>
-              </div>
-
-              <div className="asset-card">
-                <div className="quick-edit-label-row">
-                  <span className="field-label">Музыка</span>
-                  <span className="quick-edit-value">{audioModeLabel}</span>
-                </div>
-                <div className="background-upload-row">
-                  <label className="btn btn-ghost background-upload-btn">
-                    <input
-                      type="file"
-                      accept="audio/*"
-                      className="background-upload-input"
-                      disabled={isUploadingBackground}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (!file) {
-                          return;
-                        }
-                        void onUploadMusic(file);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                    Upload
-                  </label>
-                  <select
-                    className="text-input"
-                    value={selectedMusicAssetId ?? ""}
-                    onChange={(event) => onSelectMusicAssetId(event.target.value || null)}
-                  >
-                    <option value="">Без музыки</option>
-                    {musicOptions.map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.originalName}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedMusicAssetId ? (
-                    <button type="button" className="btn btn-ghost" onClick={onClearMusic}>
-                      Clear
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => onResetCaptionText("bottom")}
+                      disabled={!selectedCaptionSource || handoffSummary?.bottomText === selectedCaptionSource.bottom}
+                    >
+                      Сбросить BOTTOM
                     </button>
-                  ) : null}
-                </div>
-                <label className="field-label fragment-toggle">
-                  <input
-                    type="checkbox"
-                    checked={sourceAudioEnabled}
-                    onChange={(event) => onSourceAudioEnabledChange(event.target.checked)}
-                  />
-                  <span>Оставить звук исходника</span>
-                </label>
-                <p className="subtle-text">
-                  Если отключить, из preview и финального render убирается звук исходника. Без музыки клип будет беззвучным.
-                </p>
-                <div className="slider-field">
-                  <div className="quick-edit-label-row">
-                    <label className="field-label" htmlFor="musicGainRange">
-                      Громкость музыки
-                    </label>
-                    <span className="quick-edit-value">{Math.round(localMusicGain * 100)}%</span>
                   </div>
-                  <input
-                    id="musicGainRange"
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={localMusicGain}
-                    onChange={(event) => scheduleMusicGainCommit(Number.parseFloat(event.target.value))}
-                    onMouseUp={() => flushMusicGainCommit(localMusicGain)}
-                    onTouchEnd={() => flushMusicGainCommit(localMusicGain)}
-                    onBlur={() => flushMusicGainCommit(localMusicGain)}
-                  />
-                  <div className="preset-row">
-                    {[0, 0.2, 0.35, 0.5].map((value) => (
-                      <button
-                        key={`music-${value}`}
-                        type="button"
-                        className="preset-chip"
-                        onClick={() => applyMusicGainImmediate(value)}
-                      >
-                        {Math.round(value * 100)}%
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
 
-          <details className="advanced-block">
-            <summary>Advanced: AI redactor, versions, редкие действия</summary>
-            <div className="advanced-content">
-              <section className="control-card control-card-subtle">
-                <div className="agent-chat-header">
-                  <div>
-                    <label className="field-label" htmlFor="agentPrompt">
-                      AI redactor
-                    </label>
-                    <p className="subtle-text">
-                      Автономные итерации и timeline версий. Убрано ниже, чтобы не тормозить ручной цикл.
-                    </p>
-                  </div>
-                  {agentSession ? (
-                    <div className="agent-session-badges">
-                      <span className="agent-badge">{formatSessionStatus(agentSession.status)}</span>
-                      <span className="agent-badge">оценка {formatScore(agentCurrentScore)}</span>
-                    </div>
-                  ) : null}
-                </div>
-
-                {agentSession ? (
-                  <div className="agent-session-summary">
-                    <span>цель: {agentSession.goalType}</span>
-                    <span>цель {agentSession.targetScore.toFixed(2)}</span>
-                    <span>макс. итераций: {agentSession.maxIterations}</span>
-                    <span>бюджет: {agentSession.operationBudget} оп.</span>
-                    <span>
-                      текущая {currentSessionVersion ? `v${currentSessionVersion.versionNo}` : "н/д"}
-                    </span>
-                    <span>лучшая {bestSessionVersion ? `v${bestSessionVersion.versionNo}` : "н/д"}</span>
-                  </div>
-                ) : null}
-
-                <div className="agent-chat-shell" aria-live="polite">
-                  {isAgentTimelineLoading ? (
-                    <p className="subtle-text">Загружаю timeline сессии...</p>
-                  ) : null}
-
-                  {!agentMessages.length && !isAgentTimelineLoading ? (
-                    <div className="agent-empty-state">
-                      <strong>Чат появится после первого запуска.</strong>
-                      <p>
-                        Напишите общую цель вроде &quot;собери так, чтобы было видно только модель&quot;,
-                        затем агент сам применит несколько итераций и опишет фактические изменения.
-                      </p>
+                  {captionSources.length > 0 ? (
+                    <div className="stage3-caption-source-list">
+                      {captionSources.map((option) => {
+                        const isSelectedSource = option.option === selectedCaptionOption;
+                        return (
+                          <article
+                            key={`stage3-caption-source-${option.option}`}
+                            className={`stage3-caption-source-card ${isSelectedSource ? "selected" : ""}`}
+                          >
+                            <div className="stage3-caption-source-head">
+                              <div className="option-title-row">
+                                <strong>Option {option.option}</strong>
+                                {isSelectedSource ? <span className="badge muted">Выбран</span> : null}
+                              </div>
+                              <div className="stage3-caption-source-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  onClick={() => onApplyCaptionSource(option.option, "all")}
+                                >
+                                  Взять всё
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={() => onApplyCaptionSource(option.option, "top")}
+                                >
+                                  Взять TOP
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={() => onApplyCaptionSource(option.option, "bottom")}
+                                >
+                                  Взять BOTTOM
+                                </button>
+                              </div>
+                            </div>
+                            <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
+                            <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>
+                          </article>
+                        );
+                      })}
                     </div>
                   ) : (
-                    agentMessages.map((message) => (
-                      <article
-                        key={message.id}
-                        className={`agent-message agent-message-${message.role} agent-tone-${message.tone ?? "neutral"}`}
-                      >
-                        <div className="agent-message-head">
-                          <strong>{message.title}</strong>
-                          <span>{formatDateShort(message.createdAt)}</span>
-                        </div>
-                        <p>{sanitizeDisplayText(message.text)}</p>
-                        {message.meta.length ? (
-                          <div className="agent-message-meta">
-                            {message.meta.map((meta, index) => (
-                              <span key={`${message.id}-meta-${index}`}>{meta}</span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </article>
-                    ))
+                    <p className="subtle-text">
+                      Источник вариантов Stage 2 пока недоступен. Редактор всё равно работает по текущему draft.
+                    </p>
                   )}
+                </section>
+
+                <section className="control-card">
+                  <div className="control-section-head">
+                    <div>
+                      <h3>Типографика</h3>
+                      <p className="subtle-text">
+                        Масштаб текста применяется к финальному preview и render, без ручного монтажа камеры.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="quick-edit-grid">
+                    <div className="quick-edit-card slider-field">
+                      <div className="quick-edit-label-row">
+                        <label className="field-label" htmlFor="topFontScaleRange">
+                          Размер верхнего текста
+                        </label>
+                        <span className="quick-edit-value">{Math.round(localTopFontScale * 100)}%</span>
+                      </div>
+                      <input
+                        id="topFontScaleRange"
+                        type="range"
+                        min={STAGE3_TEXT_SCALE_UI_MIN}
+                        max={STAGE3_TEXT_SCALE_UI_MAX}
+                        step={0.01}
+                        value={localTopFontScale}
+                        onChange={(event) => scheduleTopFontScaleCommit(Number.parseFloat(event.target.value))}
+                        onMouseUp={() => flushTopFontScaleCommit(localTopFontScale)}
+                        onTouchEnd={() => flushTopFontScaleCommit(localTopFontScale)}
+                        onBlur={() => flushTopFontScaleCommit(localTopFontScale)}
+                      />
+                      <div className="preset-row">
+                        {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
+                          <button
+                            key={`top-font-${value}`}
+                            type="button"
+                            className="preset-chip"
+                            onClick={() => applyTopFontScaleImmediate(value)}
+                          >
+                            {Math.round(value * 100)}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="quick-edit-card slider-field">
+                      <div className="quick-edit-label-row">
+                        <label className="field-label" htmlFor="bottomFontScaleRange">
+                          Размер нижнего текста
+                        </label>
+                        <span className="quick-edit-value">{Math.round(localBottomFontScale * 100)}%</span>
+                      </div>
+                      <input
+                        id="bottomFontScaleRange"
+                        type="range"
+                        min={STAGE3_TEXT_SCALE_UI_MIN}
+                        max={STAGE3_TEXT_SCALE_UI_MAX}
+                        step={0.01}
+                        value={localBottomFontScale}
+                        onChange={(event) => scheduleBottomFontScaleCommit(Number.parseFloat(event.target.value))}
+                        onMouseUp={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                        onTouchEnd={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                        onBlur={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                      />
+                      <div className="preset-row">
+                        {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
+                          <button
+                            key={`bottom-font-${value}`}
+                            type="button"
+                            className="preset-chip"
+                            onClick={() => applyBottomFontScaleImmediate(value)}
+                          >
+                            {Math.round(value * 100)}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="control-card">
+                  <div className="control-section-head">
+                    <div>
+                      <h3>Фон и звук</h3>
+                      <p className="subtle-text">
+                        Финальные настройки фона и звука, которые пойдут в экспорт.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="asset-grid">
+                    <div className="asset-card">
+                      <div className="quick-edit-label-row">
+                        <span className="field-label">Фон</span>
+                        <span className="quick-edit-value">{backgroundModeLabel}</span>
+                      </div>
+                      <div className="background-upload-row">
+                        <label className="btn btn-ghost background-upload-btn">
+                          <input
+                            type="file"
+                            accept="image/*,video/*"
+                            className="background-upload-input"
+                            disabled={isUploadingBackground}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (!file) {
+                                return;
+                              }
+                              void onUploadBackground(file);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                          {isUploadingBackground ? "Загрузка..." : "Upload"}
+                        </label>
+                        <select
+                          className="text-input"
+                          value={selectedBackgroundAssetId ?? ""}
+                          onChange={(event) => onSelectBackgroundAssetId(event.target.value || null)}
+                        >
+                          <option value="">Размытый фон из исходника</option>
+                          {backgroundOptions.map((asset) => (
+                            <option key={asset.id} value={asset.id}>
+                              {asset.originalName}
+                            </option>
+                          ))}
+                        </select>
+                        {backgroundAssetUrl ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={onClearBackground}
+                            disabled={isUploadingBackground}
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                      <p className="subtle-text">
+                        {backgroundMode === "custom"
+                          ? `Кастомный фон: ${(backgroundAssetMimeType ?? "asset").toLowerCase()}`
+                          : backgroundMode === "source-blur"
+                            ? "Фон по умолчанию: blur исходного видео."
+                            : backgroundMode === "built-in"
+                              ? "Сейчас используется встроенный backdrop шаблона."
+                              : "Источник фона недоступен, используется fallback."}
+                      </p>
+                    </div>
+
+                    <div className="asset-card">
+                      <div className="quick-edit-label-row">
+                        <span className="field-label">Музыка</span>
+                        <span className="quick-edit-value">{audioModeLabel}</span>
+                      </div>
+                      <div className="background-upload-row">
+                        <label className="btn btn-ghost background-upload-btn">
+                          <input
+                            type="file"
+                            accept="audio/*"
+                            className="background-upload-input"
+                            disabled={isUploadingBackground}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (!file) {
+                                return;
+                              }
+                              void onUploadMusic(file);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                          Upload
+                        </label>
+                        <select
+                          className="text-input"
+                          value={selectedMusicAssetId ?? ""}
+                          onChange={(event) => onSelectMusicAssetId(event.target.value || null)}
+                        >
+                          <option value="">Без музыки</option>
+                          {musicOptions.map((asset) => (
+                            <option key={asset.id} value={asset.id}>
+                              {asset.originalName}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedMusicAssetId ? (
+                          <button type="button" className="btn btn-ghost" onClick={onClearMusic}>
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                      <label className="field-label fragment-toggle">
+                        <input
+                          type="checkbox"
+                          checked={sourceAudioEnabled}
+                          onChange={(event) => onSourceAudioEnabledChange(event.target.checked)}
+                        />
+                        <span>Оставить звук исходника</span>
+                      </label>
+                      <p className="subtle-text">
+                        Если отключить, из preview и финального render убирается звук исходника. Без музыки клип будет беззвучным.
+                      </p>
+                      <div className="slider-field">
+                        <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="musicGainRange">
+                            Громкость музыки
+                          </label>
+                          <span className="quick-edit-value">{Math.round(localMusicGain * 100)}%</span>
+                        </div>
+                        <input
+                          id="musicGainRange"
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={localMusicGain}
+                          onChange={(event) => scheduleMusicGainCommit(Number.parseFloat(event.target.value))}
+                          onMouseUp={() => flushMusicGainCommit(localMusicGain)}
+                          onTouchEnd={() => flushMusicGainCommit(localMusicGain)}
+                          onBlur={() => flushMusicGainCommit(localMusicGain)}
+                        />
+                        <div className="preset-row">
+                          {[0, 0.2, 0.35, 0.5].map((value) => (
+                            <button
+                              key={`music-${value}`}
+                              type="button"
+                              className="preset-chip"
+                              onClick={() => applyMusicGainImmediate(value)}
+                            >
+                              {Math.round(value * 100)}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </>
+            ) : (
+              <section className="control-card control-card-priority">
+                <div className="control-section-head">
+                  <div>
+                    <h3>Тайминг и камера</h3>
+                    <p className="subtle-text">
+                      Здесь живут только ручные правки кадра и длительности: fragments, focus, zoom и keyframes.
+                    </p>
+                  </div>
+                  <div className="editing-status-row">
+                    <span className="meta-pill">
+                      {normalizedSegments.length > 0 ? `Курсор ${formatTimeSec(localClipStartSec)}` : `Старт ${formatTimeSec(localClipStartSec)}`}
+                    </span>
+                    <span className="meta-pill">{manualTimingLabel}</span>
+                    <span className="meta-pill">Фокус {cameraFocusPercent}%</span>
+                    <span className="meta-pill">Камера {cameraModeLabel}</span>
+                    <span className="meta-pill">Зум {editorZoomLabel}</span>
+                  </div>
                 </div>
 
-                <textarea
-                  id="agentPrompt"
-                  className="text-area"
-                  rows={5}
-                  value={agentPrompt}
-                  onChange={(event) => onAgentPromptChange(event.target.value)}
-                  placeholder={`Примеры:\nСожми исходное видео до 6с.\nРастяни исходное видео до 6с без резких jump cut.\nФрагменты: 1. 3-6с 2. 9-12с.\nСмонтируй так, чтобы было видно только модель.`}
-                />
-                <div className="control-actions agent-chat-actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => startTextFitAction("optimize")}
-                    disabled={!sourceUrl || isOptimizing || isRendering || isPreparingRenderText}
-                    aria-busy={isOptimizing}
-                  >
-                    {isOptimizing
-                      ? "Агент выполняет итерации..."
-                      : pendingTextFitAction?.kind === "optimize"
-                        ? "Подготавливаю текст..."
-                        : "Отправить в AI redactor"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={onResumeAgent}
-                    disabled={!canResumeAgent}
-                  >
-                    Продолжить сессию
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={onRollbackSelectedVersion}
-                    disabled={!canRollbackSelectedVersion}
-                  >
-                    Откат к версии
-                  </button>
+                <div className="quick-edit-grid">
+                  <div className="quick-edit-card quick-edit-span-2 fragment-card">
+                    <div className="fragment-toolbar">
+                      <label className="field-label fragment-toggle">
+                        <input
+                          type="checkbox"
+                          checked={compressionEnabled}
+                          onChange={(event) => commitFragments(normalizedSegments, event.target.checked)}
+                        />
+                        <span>Сжать до 6с</span>
+                      </label>
+                      <div className="fragment-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={!sourceUrl || (!compressionEnabled && remainingSegmentsDurationSec < 0.1)}
+                          onClick={createFragment}
+                        >
+                          + Фрагмент
+                        </button>
+                        {normalizedSegments.length > 0 ? (
+                          <button type="button" className="btn btn-ghost" onClick={() => commitFragments([])}>
+                            Очистить
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {normalizedSegments.length > 0 ? (
+                      <div className="fragment-list">
+                        {normalizedSegments.map((segment, index) => {
+                          const rowKey = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
+                          const draft = segmentDraftInputs[rowKey] ?? {
+                            startSec: segment.startSec.toFixed(1),
+                            endSec: (segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
+                          };
+                          const endValue = segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5;
+                          const rawDuration = Math.max(0, endValue - segment.startSec);
+                          const outputDuration = rawDuration / segment.speed;
+                          return (
+                            <article key={rowKey} className="fragment-row">
+                              <div className="fragment-row-head">
+                                <div className="fragment-row-meta">
+                                  <span className="meta-pill mono">{index + 1}</span>
+                                  <span className="meta-pill">{formatSegmentSpeed(segment.speed)}</span>
+                                  <span className="quick-edit-value">{formatTimeSec(outputDuration)}</span>
+                                  {segment.speed > 1 ? (
+                                    <span className="subtle-text">
+                                      {formatTimeSec(rawDuration)} → {formatTimeSec(outputDuration)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-danger-soft"
+                                  onClick={() => removeFragment(index)}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <div className="fragment-input-grid">
+                                <label className="field-stack">
+                                  <span className="field-label">От</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={sourceDurationSec ?? undefined}
+                                    step={0.1}
+                                    className="text-input segment-input"
+                                    value={draft.startSec}
+                                    onChange={(event) =>
+                                      setFragmentDraftField(index, segment, "startSec", event.target.value)
+                                    }
+                                    onBlur={() => commitFragmentDraft(index, segment)}
+                                  />
+                                </label>
+                                <label className="field-stack">
+                                  <span className="field-label">До</span>
+                                  <input
+                                    type="number"
+                                    min={0.1}
+                                    max={sourceDurationSec ?? undefined}
+                                    step={0.1}
+                                    className="text-input segment-input"
+                                    value={draft.endSec}
+                                    onChange={(event) =>
+                                      setFragmentDraftField(index, segment, "endSec", event.target.value)
+                                    }
+                                    onBlur={() => commitFragmentDraft(index, segment)}
+                                  />
+                                </label>
+                                <label className="field-stack">
+                                  <span className="field-label">Сжатие</span>
+                                  <select
+                                    className="text-input segment-input"
+                                    value={segment.speed}
+                                    onChange={(event) =>
+                                      updateFragmentSpeed(
+                                        index,
+                                        normalizeSegmentSpeed(Number.parseFloat(event.target.value))
+                                      )
+                                    }
+                                  >
+                                    {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
+                                      <option key={`segment-speed-${speed}`} value={speed}>
+                                        {formatSegmentSpeed(speed)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="fragment-empty subtle-text">Нет фрагментов</div>
+                    )}
+                  </div>
+
+                  <div className="quick-edit-card slider-field">
+                    <div className="quick-edit-label-row">
+                      <label className="field-label" htmlFor="clipStartRange">
+                        Начало клипа
+                      </label>
+                      <span className="quick-edit-value">
+                        {normalizedSegments.length > 0
+                          ? formatTimeSec(localClipStartSec)
+                          : `${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`}
+                      </span>
+                    </div>
+                    <input
+                      id="clipStartRange"
+                      type="range"
+                      min={0}
+                      max={Math.max(0, maxStartSec)}
+                      step={0.1}
+                      value={localClipStartSec}
+                      disabled={!sourceUrl || maxStartSec <= 0}
+                      onChange={(event) => scheduleClipCommit(Number.parseFloat(event.target.value))}
+                      onMouseUp={() => flushClipCommit(localClipStartSec)}
+                      onTouchEnd={() => flushClipCommit(localClipStartSec)}
+                      onBlur={() => flushClipCommit(localClipStartSec)}
+                    />
+                    <div className="preset-row">
+                      <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 1)}>
+                        -1.0s
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 0.25)}>
+                        -0.25s
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 0.25)}>
+                        +0.25s
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 1)}>
+                        +1.0s
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="quick-edit-card slider-field">
+                    <div className="quick-edit-label-row">
+                      <label className="field-label" htmlFor="focusRange">
+                        {selectedPositionKeyframe ? "Position Y выбранной точки" : "Базовый Position Y"}
+                      </label>
+                      <span className="quick-edit-value">{cameraFocusPercent}%</span>
+                    </div>
+                    <input
+                      id="focusRange"
+                      type="range"
+                      min={0.12}
+                      max={0.88}
+                      step={0.01}
+                      value={selectedPositionKeyframe?.focusY ?? localFocusY}
+                      onChange={(event) => scheduleFocusValue(Number.parseFloat(event.target.value))}
+                      onMouseUp={() => flushFocusValue(selectedPositionKeyframe?.focusY ?? localFocusY)}
+                      onTouchEnd={() => flushFocusValue(selectedPositionKeyframe?.focusY ?? localFocusY)}
+                      onBlur={() => flushFocusValue(selectedPositionKeyframe?.focusY ?? localFocusY)}
+                    />
+                    <div className="preset-row">
+                      <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.18)}>
+                        Верх
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.5)}>
+                        Центр
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.82)}>
+                        Низ
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="quick-edit-card">
+                    <div className="quick-edit-label-row">
+                      <span className="field-label">Отзеркаливание</span>
+                      <span className="quick-edit-value">{mirrorEnabled ? "Включено" : "Выключено"}</span>
+                    </div>
+                    <label className="field-label fragment-toggle">
+                      <input
+                        type="checkbox"
+                        checked={mirrorEnabled}
+                        onChange={(event) => onMirrorEnabledChange(event.target.checked)}
+                      />
+                      <span>Горизонтально</span>
+                    </label>
+                    <p className="subtle-text">По умолчанию включено для слота с исходным видео.</p>
+                  </div>
+
+                  <div className="quick-edit-card">
+                    <div className="quick-edit-label-row">
+                      <span className="field-label">Камера</span>
+                      <span className="quick-edit-value">{cameraModeLabel}</span>
+                    </div>
+                    <div className="preset-row">
+                      <button type="button" className="preset-chip" onClick={clearCameraTracks}>
+                        Очистить
+                      </button>
+                    </div>
+                    <div className="preset-row">
+                      <button type="button" className="preset-chip" onClick={() => applyCameraMotionPreset("top_to_bottom")}>
+                        Пресет сверху вниз
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => applyCameraMotionPreset("bottom_to_top")}>
+                        Пресет снизу вверх
+                      </button>
+                    </div>
+                    <div className="preset-row">
+                      <button type="button" className="preset-chip" onClick={() => applyZoomPreset("in")}>
+                        Пресет zoom in
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => applyZoomPreset("out")}>
+                        Пресет zoom out
+                      </button>
+                    </div>
+                    <p className="subtle-text">
+                      Поставьте playhead в нужный момент, нажмите ромб у свойства и меняйте Position Y или Scale отдельно.
+                    </p>
+                  </div>
+
+                  <div className="quick-edit-card">
+                    <div className="quick-edit-label-row">
+                      <span className="field-label">Position Y</span>
+                      <span className="quick-edit-value">{formatTrackCountLabel(normalizedLocalPositionKeyframes.length)}</span>
+                    </div>
+                    <div className="preset-row">
+                      <button type="button" className="preset-chip" onClick={() => jumpToNeighborPositionKeyframe("prev")}>
+                        ← Prev
+                      </button>
+                      <button type="button" className="preset-chip" onClick={togglePositionKeyframeAtPlayhead}>
+                        {positionKeyframeAtPlayhead ? "◇ Удалить" : "◆ Ромб"}
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => jumpToNeighborPositionKeyframe("next")}>
+                        Next →
+                      </button>
+                      <button
+                        type="button"
+                        className="preset-chip"
+                        onClick={removeSelectedPositionKeyframe}
+                        disabled={!selectedPositionKeyframe}
+                      >
+                        Удалить выбранную
+                      </button>
+                    </div>
+                    {selectedPositionKeyframe ? (
+                      <div className="field-stack">
+                        <span className="field-label">Время выбранной точки Position Y</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={clipDurationSec}
+                          step={0.01}
+                          value={selectedPositionKeyframe.timeSec}
+                          onChange={(event) =>
+                            handlePositionKeyframeTimeChange(
+                              selectedPositionKeyframe.id,
+                              Number.parseFloat(event.target.value)
+                            )
+                          }
+                        />
+                        <span className="subtle-text">{formatTimeSec(selectedPositionKeyframe.timeSec)}</span>
+                      </div>
+                    ) : (
+                      <p className="subtle-text">
+                        Drag в preview меняет `Position Y` выбранной точки, а если точка не выбрана, базовую позицию.
+                      </p>
+                    )}
+                    <p className="subtle-text">Стоп делается двумя соседними точками с одинаковым Y.</p>
+                  </div>
+
+                  <div className="quick-edit-card slider-field">
+                    <div className="quick-edit-label-row">
+                      <label className="field-label" htmlFor="videoZoomRange">
+                        {selectedScaleKeyframe ? "Scale выбранной точки" : "Базовый масштаб видео"}
+                      </label>
+                      <span className="quick-edit-value">{editorZoomLabel}</span>
+                    </div>
+                    <input
+                      id="videoZoomRange"
+                      type="range"
+                      min={1}
+                      max={STAGE3_MAX_VIDEO_ZOOM}
+                      step={0.01}
+                      value={selectedScaleKeyframe?.zoom ?? localVideoZoom}
+                      onChange={(event) => scheduleZoomValue(Number.parseFloat(event.target.value))}
+                      onMouseUp={() => flushZoomValue(selectedScaleKeyframe?.zoom ?? localVideoZoom)}
+                      onTouchEnd={() => flushZoomValue(selectedScaleKeyframe?.zoom ?? localVideoZoom)}
+                      onBlur={() => flushZoomValue(selectedScaleKeyframe?.zoom ?? localVideoZoom)}
+                    />
+                    <div className="preset-row">
+                      <button type="button" className="preset-chip" onClick={() => jumpToNeighborScaleKeyframe("prev")}>
+                        ← Prev
+                      </button>
+                      <button type="button" className="preset-chip" onClick={toggleScaleKeyframeAtPlayhead}>
+                        {scaleKeyframeAtPlayhead ? "◇ Удалить" : "◆ Ромб"}
+                      </button>
+                      <button type="button" className="preset-chip" onClick={() => jumpToNeighborScaleKeyframe("next")}>
+                        Next →
+                      </button>
+                      <button
+                        type="button"
+                        className="preset-chip"
+                        onClick={removeSelectedScaleKeyframe}
+                        disabled={!selectedScaleKeyframe}
+                      >
+                        Удалить выбранную
+                      </button>
+                    </div>
+                    {selectedScaleKeyframe ? (
+                      <div className="field-stack">
+                        <span className="field-label">Время выбранной точки Scale</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={clipDurationSec}
+                          step={0.01}
+                          value={selectedScaleKeyframe.timeSec}
+                          onChange={(event) =>
+                            handleScaleKeyframeTimeChange(
+                              selectedScaleKeyframe.id,
+                              Number.parseFloat(event.target.value)
+                            )
+                          }
+                        />
+                        <span className="subtle-text">{formatTimeSec(selectedScaleKeyframe.timeSec)}</span>
+                      </div>
+                    ) : null}
+                    <div className="preset-row">
+                      {[1, 1.1, 1.25, 1.4].map((value) => (
+                        <button
+                          key={`zoom-${value}`}
+                          type="button"
+                          className="preset-chip"
+                          onClick={() => applyVideoZoomImmediate(value)}
+                        >
+                          x{value.toFixed(2)}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="subtle-text">Стоп по масштабу делается двумя соседними точками с одинаковым Scale.</p>
+                  </div>
                 </div>
               </section>
-            </div>
-          </details>
-        </div>
+            )}
+          </div>
         }
         right={
           <Stage3LivePreviewPanel
+            editorMode={!isFinishMode}
             templateId={templateId}
             channelName={channelName}
             channelUsername={channelUsername}
@@ -3299,8 +4257,6 @@ export function Step3RenderTemplate({
             previewNotice={previewNotice ?? (isPreviewBusy ? "Обновляю предпросмотр..." : null)}
             previewTemplateSnapshot={previewTemplateSnapshot}
             onMeasuredTextFitChange={handlePreviewMeasuredTextFitChange}
-            previewTopText={previewTopText}
-            previewBottomText={previewBottomText}
             clipStartSec={localClipStartSec}
             clipDurationSec={clipDurationSec}
             sourceDurationSec={sourceDurationSec}
@@ -3309,14 +4265,29 @@ export function Step3RenderTemplate({
             renderPolicy={renderPolicy}
             focusY={localFocusY}
             cameraMotion={cameraMotion}
+            cameraKeyframes={cameraKeyframes}
+            cameraPositionKeyframes={normalizedLocalPositionKeyframes}
+            cameraScaleKeyframes={normalizedLocalScaleKeyframes}
             mirrorEnabled={mirrorEnabled}
             videoZoom={previewVideoZoom}
             topFontScale={localTopFontScale}
             bottomFontScale={localBottomFontScale}
             sourceAudioEnabled={sourceAudioEnabled}
             templateConfig={templateConfig}
+            selectedPositionKeyframeId={selectedPositionKeyframeId}
+            selectedScaleKeyframeId={selectedScaleKeyframeId}
+            requestedTimelineSec={requestedTimelineSec}
+            onRequestedTimelineHandled={() => setRequestedTimelineSec(null)}
             onSelectVersionId={onSelectVersionId}
             onSelectPassIndex={onSelectPassIndex}
+            onTimelineSecChange={(value) => {
+              previewTimelineSecRef.current = value;
+            }}
+            onSelectPositionKeyframeId={setSelectedPositionKeyframeId}
+            onSelectScaleKeyframeId={setSelectedScaleKeyframeId}
+            onPositionKeyframeTimeChange={handlePositionKeyframeTimeChange}
+            onScaleKeyframeTimeChange={handleScaleKeyframeTimeChange}
+            onCameraPreviewFocusChange={handleCameraPreviewFocusChange}
           />
         }
       />

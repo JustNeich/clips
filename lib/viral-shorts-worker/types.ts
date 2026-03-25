@@ -327,6 +327,26 @@ export type PromptPacket = {
   };
 };
 
+export type Stage2DebugMode = "summary" | "raw";
+
+export type Stage2TokenUsageStage = {
+  stageId: string;
+  promptChars: number | null;
+  estimatedInputTokens: number | null;
+  estimatedOutputTokens: number | null;
+  serializedResultBytes: number | null;
+  persistedPayloadBytes: number | null;
+};
+
+export type Stage2TokenUsage = {
+  stages: Stage2TokenUsageStage[];
+  totalPromptChars: number;
+  totalEstimatedInputTokens: number;
+  totalEstimatedOutputTokens: number;
+  totalSerializedResultBytes: number;
+  totalPersistedPayloadBytes: number;
+};
+
 export type Stage2DiagnosticsPromptStage = {
   stageId: string;
   label: string;
@@ -336,7 +356,12 @@ export type Stage2DiagnosticsPromptStage = {
   reasoningEffort: string | null;
   isCustomPrompt: boolean;
   promptText: string | null;
+  promptTextAvailable?: boolean;
   promptChars: number | null;
+  estimatedInputTokens?: number | null;
+  estimatedOutputTokens?: number | null;
+  serializedResultBytes?: number | null;
+  persistedPayloadBytes?: number | null;
   usesImages: boolean;
   summary: string;
   inputManifest?: Stage2DiagnosticsPromptStageInputManifest;
@@ -512,6 +537,138 @@ export type Stage2Diagnostics = {
     availableExamples: Stage2DiagnosticsExample[];
     selectedExamples: Stage2DiagnosticsExample[];
   };
+};
+
+export type Stage2AnalysisDigest = Pick<
+  AnalyzerOutput,
+  | "visualAnchors"
+  | "specificNouns"
+  | "visibleActions"
+  | "firstSecondsSignal"
+  | "sceneBeats"
+  | "revealMoment"
+  | "lateClipChange"
+  | "stakes"
+  | "coreTrigger"
+  | "humanStake"
+  | "narrativeFrame"
+  | "whyViewerCares"
+  | "bestBottomEnergy"
+  | "commentVibe"
+  | "commentConsensusLane"
+  | "commentJokeLane"
+  | "commentDissentLane"
+  | "commentSuspicionLane"
+  | "slangToAdapt"
+  | "commentLanguageCues"
+  | "hiddenDetail"
+  | "genericRisks"
+  | "uncertaintyNotes"
+  | "rawSummary"
+>;
+
+export type CommentCarryExpectation = "low" | "medium" | "high";
+
+export type Stage2CommentCarryProfile = {
+  expectation: CommentCarryExpectation;
+  dominantCues: string[];
+  allCues: string[];
+  summary: string | null;
+};
+
+export type Stage2WriterBriefDigest = {
+  clipType: string;
+  primaryAngle: string;
+  secondaryAngles: string[];
+  rankedAngles: RankedAngle[];
+  writerBrief: string;
+  topStrategy: string;
+  bottomEnergy: string;
+  whyViewerCares: string;
+  failureModes: string[];
+  selectedExamples: Array<{
+    id: string;
+    channelName: string;
+    title: string;
+    overlayTop: string;
+    overlayBottom: string;
+    whyItWorks: string[];
+  }>;
+  commentCarry: Stage2CommentCarryProfile;
+  userInstruction: string | null;
+};
+
+export type Stage2RegenerateBaseSnapshot = {
+  channel: {
+    id: string;
+    name: string;
+    username: string;
+    constraints: Stage2HardConstraints;
+  };
+  source: {
+    url: string;
+    title: string;
+    frameDescriptions: string[];
+    topComments: Array<{
+      author: string;
+      likes: number;
+      text: string;
+    }>;
+  };
+  analysis: {
+    whyViewerCares: string;
+    bottomEnergy: string;
+    commentVibe: string;
+    commentConsensusLane: string;
+    commentJokeLane: string;
+    commentDissentLane: string;
+    commentSuspicionLane: string;
+    commentLanguageCues: string[];
+  };
+  retrieval: {
+    retrievalConfidence: Stage2RetrievalConfidence | null;
+    examplesMode: Stage2ExamplesMode | null;
+    examplesRoleSummary: string | null;
+    primaryDriverSummary: string | null;
+    selectedExamples: Array<{
+      id: string;
+      title: string;
+      channelName: string;
+    }>;
+  };
+  selection: {
+    clipType: string;
+    primaryAngle: string;
+    secondaryAngles: string[];
+    rankedAngles: RankedAngle[];
+    writerBrief: string;
+    rationale: string | null;
+  };
+  currentOptions: Array<{
+    option: number;
+    candidateId: string;
+    angle: string;
+    top: string;
+    bottom: string;
+    topRu: string;
+    bottomRu: string;
+    title: string;
+    titleRu: string;
+    styleDirectionIds?: string[];
+    explorationMode?: Stage2ExplorationMode;
+  }>;
+  currentFinalPick: {
+    option: number;
+    reason: string;
+  };
+  userInstruction: string | null;
+};
+
+export type Stage2RunDebugArtifact = {
+  kind: "stage2-run-debug";
+  runId: string;
+  createdAt: string;
+  promptStages: Stage2DiagnosticsPromptStage[];
 };
 
 export type ViralShortsStage2Result = {

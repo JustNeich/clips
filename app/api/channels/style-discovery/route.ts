@@ -116,7 +116,7 @@ export async function POST(request: Request): Promise<Response> {
       }
     });
 
-    return Response.json({ run: serializeRun(run) }, { status: 202 });
+    return Response.json({ run: serializeRun(run) }, { status: run.status === "completed" ? 200 : 202 });
   } catch (error) {
     if (error instanceof Response) {
       return error;

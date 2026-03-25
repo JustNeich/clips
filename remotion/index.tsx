@@ -11,6 +11,11 @@ import {
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID
 } from "../lib/stage3-template";
+import type {
+  Stage3CameraKeyframe,
+  Stage3PositionKeyframe,
+  Stage3ScaleKeyframe
+} from "../lib/stage3-camera";
 
 export type ScienceCardV1Props = {
   templateId?: string;
@@ -22,6 +27,9 @@ export type ScienceCardV1Props = {
   focusY: number;
   mirrorEnabled: boolean;
   cameraMotion: "disabled" | "top_to_bottom" | "bottom_to_top";
+  cameraKeyframes: Stage3CameraKeyframe[];
+  cameraPositionKeyframes: Stage3PositionKeyframe[];
+  cameraScaleKeyframes: Stage3ScaleKeyframe[];
   videoZoom: number;
   topFontScale: number;
   bottomFontScale: number;
@@ -64,6 +72,9 @@ function buildDefaultProps(templateId: string, authorName: string, authorHandle:
     focusY: 0.5,
     mirrorEnabled: true,
     cameraMotion: "disabled",
+    cameraKeyframes: [],
+    cameraPositionKeyframes: [],
+    cameraScaleKeyframes: [],
     videoZoom: 1,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,

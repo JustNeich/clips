@@ -548,6 +548,7 @@ export function buildChatListItem(chat: ChatLike, draft: ChatDraft | null): Chat
     maxStep,
     preferredStep,
     hasDraft: meaningfulDraft,
-    exportTitle: latestRenderExport?.renderTitle ?? null
+    exportTitle: latestRenderExport?.renderTitle ?? null,
+    publication: null
   };
 }

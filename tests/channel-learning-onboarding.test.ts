@@ -894,6 +894,56 @@ test("style discovery runtime re-queues a running bootstrap analysis after resta
   });
 });
 
+test("style discovery reuses the latest completed run when the fingerprint is unchanged", async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const store = await import("../lib/channel-style-discovery-store");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Style Discovery Cache",
+      email: "owner-style-cache@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const request = {
+      channelName: "Cache Channel",
+      username: "cache_channel",
+      hardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      referenceUrls: createReferenceUrls(10)
+    };
+
+    const firstRun = store.createChannelStyleDiscoveryRun({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request
+    });
+
+    const claimed = store.claimNextQueuedChannelStyleDiscoveryRun();
+    assert.equal(claimed?.runId, firstRun.runId);
+    store.finalizeChannelStyleDiscoveryRunSuccess(
+      firstRun.runId,
+      createStyleProfile(["direction_3", "direction_7"])
+    );
+
+    const reusedRun = store.createChannelStyleDiscoveryRun({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: {
+        channelName: "Cache Channel",
+        username: "cache_channel",
+        hardConstraints: { ...DEFAULT_STAGE2_HARD_CONSTRAINTS },
+        referenceUrls: [...createReferenceUrls(10)].reverse()
+      }
+    });
+
+    assert.equal(reusedRun.runId, firstRun.runId);
+    assert.equal(reusedRun.status, "completed");
+    assert.deepEqual(reusedRun.result?.selectedDirectionIds, ["direction_3", "direction_7"]);
+    assert.equal(store.claimNextQueuedChannelStyleDiscoveryRun(), null);
+  });
+});
+
 test("channel bootstrap profile persists and regular channel edits still work afterwards", async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");

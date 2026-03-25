@@ -24,6 +24,7 @@ import {
   stringifyStage2StyleProfile,
   type Stage2StyleProfile
 } from "./stage2-channel-learning";
+import { listLatestPublicationSummariesByChatIds } from "./publication-store";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
 import { getWorkspace, getWorkspaceStage2HardConstraints } from "./team-store";
@@ -727,9 +728,13 @@ export async function listChatListItems(
     chats.map((chat) => chat.id),
     resolvedWorkspaceId
   );
+  const publicationByChatId = listLatestPublicationSummariesByChatIds(chats.map((chat) => chat.id));
 
   return chats.map((chat) => {
-    const item = buildChatListItem(chat, getChatDraftSync(chat.id, userId));
+    const item = {
+      ...buildChatListItem(chat, getChatDraftSync(chat.id, userId)),
+      publication: publicationByChatId.get(chat.id) ?? null
+    };
     const activeSourceJob = activeSourceJobsByChatId.get(chat.id);
     if (activeSourceJob) {
       const liveAction =

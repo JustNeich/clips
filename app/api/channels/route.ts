@@ -6,6 +6,7 @@ import {
 import { requireAuth } from "../../../lib/auth/guards";
 import { resolveChannelPermissions } from "../../../lib/acl";
 import { getRestrictedChannelEditError } from "../../../lib/channel-edit-permissions";
+import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../lib/publication-store";
 import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../lib/stage2-channel-learning";
@@ -47,6 +48,8 @@ export async function GET(): Promise<Response> {
         }
         return {
           ...channel,
+          publishSettings: getChannelPublishSettings(channel.id),
+          publishIntegration: getChannelPublishIntegration(channel.id),
           currentUserCanOperate: permissions.canOperate,
           currentUserCanEditSetup: permissions.canEditSetup,
           currentUserCanManageAccess: permissions.canManageAccess,

@@ -6,11 +6,14 @@ import {
   PreparedGenerationContext,
   PromptPacket,
   SelectorOutput,
+  Stage2DebugMode,
   Stage2ExamplesAssessment,
   Stage2ExampleGuidanceRole,
   Stage2Diagnostics,
   Stage2DiagnosticsExample,
   Stage2DiagnosticsPromptStage,
+  Stage2RunDebugArtifact,
+  Stage2TokenUsage,
   Stage2RuntimeChannelConfig,
   ViralShortsStage2Result,
   ViralShortsVideoContext
@@ -339,8 +342,18 @@ type StageWarning = {
 type RunPipelineResult = {
   output: ViralShortsStage2Result;
   warnings: StageWarning[];
-  promptPacket: PromptPacket;
   diagnostics: Stage2Diagnostics;
+  rawDebugArtifact: Stage2RunDebugArtifact | null;
+  tokenUsage: Stage2TokenUsage;
+};
+
+type ExecutedPromptStageRecord = {
+  stageId: Stage2PipelineStageId;
+  promptText: string;
+  usesImages?: boolean;
+  summary: string;
+  serializedResultBytes: number | null;
+  estimatedOutputTokens: number | null;
 };
 
 type PipelineProgressEvent = {
@@ -3096,12 +3109,31 @@ function normalizeTitleOptions(
   return shortlist.slice(0, 5).map((candidate, index) => buildFallbackTitleOption(candidate, index + 1));
 }
 
+function estimateTokensFromChars(chars: number | null | undefined): number | null {
+  if (typeof chars !== "number" || !Number.isFinite(chars) || chars <= 0) {
+    return null;
+  }
+  return Math.max(1, Math.ceil(chars / 4));
+}
+
+function measureSerializedBytes(value: unknown): number | null {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    return null;
+  }
+}
+
 function buildPromptStageDiagnostics(input: {
   stageId: Stage2PipelineStageId;
   promptConfig: Stage2PromptConfig | null;
   promptText: string | null;
+  includePromptText?: boolean;
   usesImages?: boolean;
   summary: string;
+  serializedResultBytes?: number | null;
+  estimatedOutputTokens?: number | null;
+  persistedPayloadBytes?: number | null;
   inputManifest?: Stage2DiagnosticsPromptStage["inputManifest"];
 }): Stage2DiagnosticsPromptStage {
   const stageMeta = STAGE2_PIPELINE_STAGES.find((stage) => stage.id === input.stageId);
@@ -3117,8 +3149,13 @@ function buildPromptStageDiagnostics(input: {
     configuredPrompt: resolved.configuredPrompt,
     reasoningEffort: resolved.reasoningEffort,
     isCustomPrompt: resolved.isCustomPrompt,
-    promptText: input.promptText,
+    promptText: input.includePromptText ? input.promptText : null,
+    promptTextAvailable: Boolean(input.promptText),
     promptChars: input.promptText ? input.promptText.length : null,
+    estimatedInputTokens: estimateTokensFromChars(input.promptText ? input.promptText.length : null),
+    estimatedOutputTokens: input.estimatedOutputTokens ?? null,
+    serializedResultBytes: input.serializedResultBytes ?? null,
+    persistedPayloadBytes: input.persistedPayloadBytes ?? null,
     usesImages: Boolean(input.usesImages),
     summary: input.summary,
     ...(input.inputManifest ? { inputManifest: input.inputManifest } : {})
@@ -3169,13 +3206,13 @@ function buildDiagnosticsExample(
   };
 }
 
-function buildRunDiagnostics(input: {
+function buildRunDiagnosticsBundle(input: {
   channelConfig: Stage2RuntimeChannelConfig;
   videoContext: ViralShortsVideoContext;
   analyzerOutput: AnalyzerOutput;
   promptConfig: Stage2PromptConfig | null;
-  promptPacket: PromptPacket;
-  titlePrompt: string;
+  debugMode: Stage2DebugMode;
+  executedPromptStages: ExecutedPromptStageRecord[];
   workspaceCorpusCount: number;
   activeExamplesCount: number;
   selectorExamples: Stage2CorpusExample[];
@@ -3192,7 +3229,11 @@ function buildRunDiagnostics(input: {
   criticScores: CriticScore[];
   rewrittenCandidates: CandidateCaption[];
   shortlist: CandidateCaption[];
-}): Stage2Diagnostics {
+}): {
+  diagnostics: Stage2Diagnostics;
+  rawDebugArtifact: Stage2RunDebugArtifact | null;
+  tokenUsage: Stage2TokenUsage;
+} {
   const selectedExampleIds = input.selectorOutput.selectedExampleIds ?? [];
   const insightById = new Map(input.exampleInsights.map((entry) => [entry.exampleId, entry]));
   const promptInputManifests = buildStage2PromptInputManifestMap({
@@ -3207,7 +3248,41 @@ function buildRunDiagnostics(input: {
     rewriteCandidates: input.rewrittenCandidates,
     shortlist: input.shortlist
   });
-  return {
+  const rawPromptStages = input.executedPromptStages.map((stage) =>
+    buildPromptStageDiagnostics({
+      stageId: stage.stageId,
+      promptConfig: input.promptConfig,
+      promptText: stage.promptText,
+      includePromptText: true,
+      usesImages: stage.usesImages,
+      summary: stage.summary,
+      serializedResultBytes: stage.serializedResultBytes,
+      estimatedOutputTokens: stage.estimatedOutputTokens,
+      inputManifest: promptInputManifests[stage.stageId]
+    })
+  );
+  const summaryPromptStages = input.executedPromptStages.map((stage) =>
+    buildPromptStageDiagnostics({
+      stageId: stage.stageId,
+      promptConfig: input.promptConfig,
+      promptText: stage.promptText,
+      includePromptText: false,
+      usesImages: stage.usesImages,
+      summary: stage.summary,
+      serializedResultBytes: stage.serializedResultBytes,
+      estimatedOutputTokens: stage.estimatedOutputTokens,
+      inputManifest: promptInputManifests[stage.stageId]
+    })
+  );
+  const tokenUsageStages = summaryPromptStages.map((stage) => ({
+    stageId: stage.stageId,
+    promptChars: stage.promptChars,
+    estimatedInputTokens: stage.estimatedInputTokens ?? null,
+    estimatedOutputTokens: stage.estimatedOutputTokens ?? null,
+    serializedResultBytes: stage.serializedResultBytes ?? null,
+    persistedPayloadBytes: stage.persistedPayloadBytes ?? null
+  }));
+  const diagnostics: Stage2Diagnostics = {
     channel: {
       channelId: input.channelConfig.channelId,
       name: input.channelConfig.name,
@@ -3260,58 +3335,7 @@ function buildRunDiagnostics(input: {
     },
     sourceContext: buildStage2SourceContextSummary(input.videoContext),
     effectivePrompting: {
-      promptStages: [
-        buildPromptStageDiagnostics({
-          stageId: "analyzer",
-          promptConfig: input.promptConfig,
-          promptText: input.promptPacket.prompts.analyzer,
-          usesImages: true,
-          summary: "LLM stage: reads frames, comments, title and description to produce the visual analysis.",
-          inputManifest: promptInputManifests.analyzer
-        }),
-        buildPromptStageDiagnostics({
-          stageId: "selector",
-          promptConfig: input.promptConfig,
-          promptText: input.promptPacket.prompts.selector,
-          summary: "LLM stage: chooses clip angle(s) and the most relevant examples from the active corpus.",
-          inputManifest: promptInputManifests.selector
-        }),
-        buildPromptStageDiagnostics({
-          stageId: "writer",
-          promptConfig: input.promptConfig,
-          promptText: input.promptPacket.prompts.writer,
-          summary: "LLM stage: drafts 20 caption options using selector-chosen examples.",
-          inputManifest: promptInputManifests.writer
-        }),
-        buildPromptStageDiagnostics({
-          stageId: "critic",
-          promptConfig: input.promptConfig,
-          promptText: input.promptPacket.prompts.critic,
-          summary: "LLM stage: scores the writer candidates and decides what survives.",
-          inputManifest: promptInputManifests.critic
-        }),
-        buildPromptStageDiagnostics({
-          stageId: "rewriter",
-          promptConfig: input.promptConfig,
-          promptText: input.promptPacket.prompts.rewriter,
-          summary: "LLM stage: rewrites the strongest candidates without dropping hard constraints.",
-          inputManifest: promptInputManifests.rewriter
-        }),
-        buildPromptStageDiagnostics({
-          stageId: "finalSelector",
-          promptConfig: input.promptConfig,
-          promptText: input.promptPacket.prompts.finalSelector,
-          summary: "LLM stage: assembles the shortlist and chooses the recommended final pick.",
-          inputManifest: promptInputManifests.finalSelector
-        }),
-        buildPromptStageDiagnostics({
-          stageId: "titles",
-          promptConfig: input.promptConfig,
-          promptText: input.titlePrompt,
-          summary: "LLM stage: generates the 5 title options for the shortlist.",
-          inputManifest: promptInputManifests.titles
-        })
-      ]
+      promptStages: summaryPromptStages
     },
     examples: {
       source: input.channelConfig.examplesSource,
@@ -3328,7 +3352,7 @@ function buildRunDiagnostics(input: {
       primaryDrivers: input.examplesAssessment.primaryDrivers,
       channelStylePriority: input.examplesAssessment.channelStylePriority,
       editorialMemoryPriority: input.examplesAssessment.editorialMemoryPriority,
-      availableExamples: input.selectorExamples.map((example) =>
+      availableExamples: input.selectorExamples.slice(0, 8).map((example) =>
         buildDiagnosticsExample(
           "available",
           example,
@@ -3337,7 +3361,7 @@ function buildRunDiagnostics(input: {
           insightById.get(example.id) ?? null
         )
       ),
-      selectedExamples: (input.selectorOutput.selectedExamples ?? []).map((example) =>
+      selectedExamples: (input.selectorOutput.selectedExamples ?? []).slice(0, 5).map((example) =>
         buildDiagnosticsExample(
           "selected",
           example,
@@ -3347,6 +3371,39 @@ function buildRunDiagnostics(input: {
         )
       )
     }
+  };
+  const tokenUsage: Stage2TokenUsage = {
+    stages: tokenUsageStages,
+    totalPromptChars: tokenUsageStages.reduce((sum, stage) => sum + (stage.promptChars ?? 0), 0),
+    totalEstimatedInputTokens: tokenUsageStages.reduce(
+      (sum, stage) => sum + (stage.estimatedInputTokens ?? 0),
+      0
+    ),
+    totalEstimatedOutputTokens: tokenUsageStages.reduce(
+      (sum, stage) => sum + (stage.estimatedOutputTokens ?? 0),
+      0
+    ),
+    totalSerializedResultBytes: tokenUsageStages.reduce(
+      (sum, stage) => sum + (stage.serializedResultBytes ?? 0),
+      0
+    ),
+    totalPersistedPayloadBytes: tokenUsageStages.reduce(
+      (sum, stage) => sum + (stage.persistedPayloadBytes ?? 0),
+      0
+    )
+  };
+  return {
+    diagnostics,
+    rawDebugArtifact:
+      input.debugMode === "raw"
+        ? {
+            kind: "stage2-run-debug",
+            runId: "pending",
+            createdAt: new Date().toISOString(),
+            promptStages: rawPromptStages
+          }
+        : null,
+    tokenUsage
   };
 }
 
@@ -3497,10 +3554,30 @@ export class ViralShortsWorkerService {
     imagePaths: string[];
     executor: JsonStageExecutor;
     promptConfig?: Stage2PromptConfig | null;
+    debugMode?: Stage2DebugMode;
     onProgress?: (event: PipelineProgressEvent) => void | Promise<void>;
   }): Promise<RunPipelineResult> {
     const warnings: StageWarning[] = [];
     const promptConfig = normalizeStage2PromptConfig(input.promptConfig);
+    const debugMode: Stage2DebugMode = input.debugMode === "raw" ? "raw" : "summary";
+    const executedPromptStages: ExecutedPromptStageRecord[] = [];
+    const recordExecutedStage = (
+      stageId: Stage2PipelineStageId,
+      promptText: string,
+      summary: string,
+      resultPayload: unknown,
+      options?: { usesImages?: boolean }
+    ) => {
+      const serializedResultBytes = measureSerializedBytes(resultPayload);
+      executedPromptStages.push({
+        stageId,
+        promptText,
+        summary,
+        usesImages: options?.usesImages,
+        serializedResultBytes,
+        estimatedOutputTokens: estimateTokensFromChars(serializedResultBytes)
+      });
+    };
     const reportProgress = async (event: PipelineProgressEvent): Promise<void> => {
       try {
         await input.onProgress?.(event);
@@ -3578,7 +3655,6 @@ export class ViralShortsWorkerService {
         detail: `Fallback used: ${message}`
       });
     }
-
     if (input.videoContext.comments.length > 0) {
       analyzerOutput = applyCommentIntelligenceBoost(
         analyzerOutput,
@@ -3592,6 +3668,13 @@ export class ViralShortsWorkerService {
           "Comments were unavailable for this run, so Stage 2 leaned on the visual sequence, transcript, title, and description instead of a real audience-comment read."
       });
     }
+    recordExecutedStage(
+      "analyzer",
+      analyzerPrompt,
+      "LLM stage: reads frames, comments, title and description to produce the visual analysis.",
+      analyzerOutput,
+      { usesImages: true }
+    );
 
     const queryText = buildCorpusQueryText(input.videoContext, analyzerOutput);
     const selectorPool = buildSelectorExamplePool({
@@ -3689,16 +3772,12 @@ export class ViralShortsWorkerService {
         detail: `Fallback used: ${message}`
       });
     }
-
-    const promptPacket = buildPromptPacket({
-      channelConfig,
-      videoContext: input.videoContext,
-      analyzerOutput,
-      selectorOutput,
-      examplesAssessment: selectorPool.assessment,
-      availableExamples: selectorPool.selectorExamples,
-      promptConfig
-    });
+    recordExecutedStage(
+      "selector",
+      selectorPrompt,
+      "LLM stage: chooses clip angle(s) and the most relevant examples from the active corpus.",
+      selectorOutput
+    );
 
     const writerPrompt = buildWriterPrompt({
       channelConfig,
@@ -3757,6 +3836,12 @@ export class ViralShortsWorkerService {
       reasoningEffort: writerReasoningEffort,
       detail: `${candidates.length} candidates drafted.`
     });
+    recordExecutedStage(
+      "writer",
+      writerPrompt,
+      "LLM stage: drafts 20 caption options using selector-chosen examples.",
+      candidates
+    );
 
     const criticPrompt = buildCriticPrompt({
       channelConfig,
@@ -3807,6 +3892,12 @@ export class ViralShortsWorkerService {
         detail: `Fallback used: ${message}`
       });
     }
+    recordExecutedStage(
+      "critic",
+      criticPrompt,
+      "LLM stage: scores the writer candidates and decides what survives.",
+      criticScores
+    );
 
     const rewriterCandidatePool = buildRewriterCandidatePool({
       candidates,
@@ -3874,6 +3965,12 @@ export class ViralShortsWorkerService {
         detail: `Fallback used: ${message}`
       });
     }
+    recordExecutedStage(
+      "rewriter",
+      rewriterPrompt,
+      "LLM stage: rewrites the strongest candidates without dropping hard constraints.",
+      rewrittenCandidates
+    );
 
     const finalSelectorPrompt = buildFinalSelectorPrompt({
       channelConfig,
@@ -3943,6 +4040,12 @@ export class ViralShortsWorkerService {
       summary: resolvedFinalSelectorState.progressSummary,
       detail: resolvedFinalSelectorState.progressDetail
     });
+    recordExecutedStage(
+      "finalSelector",
+      finalSelectorPrompt,
+      "LLM stage: assembles the shortlist and chooses the recommended final pick.",
+      finalSelector
+    );
 
     const titlePrompt = buildTitlePrompt({
       channelConfig,
@@ -3995,14 +4098,20 @@ export class ViralShortsWorkerService {
         });
         return normalizeTitleOptions({}, shortlist);
       });
+    recordExecutedStage(
+      "titles",
+      titlePrompt,
+      "LLM stage: generates the 5 title options for the shortlist.",
+      titleOptions
+    );
 
-    const diagnostics = buildRunDiagnostics({
+    const diagnosticsBundle = buildRunDiagnosticsBundle({
       channelConfig,
       videoContext: input.videoContext,
       analyzerOutput,
       promptConfig,
-      promptPacket,
-      titlePrompt,
+      debugMode,
+      executedPromptStages,
       workspaceCorpusCount,
       activeExamplesCount: availableExamples.length,
       selectorExamples: selectorPool.selectorExamples,
@@ -4091,14 +4200,15 @@ export class ViralShortsWorkerService {
           shortlistStats: shortlistResult.stats
         }
       },
-      diagnostics
+      diagnostics: diagnosticsBundle.diagnostics
     };
 
     return {
       output,
       warnings,
-      promptPacket,
-      diagnostics
+      diagnostics: diagnosticsBundle.diagnostics,
+      rawDebugArtifact: diagnosticsBundle.rawDebugArtifact,
+      tokenUsage: diagnosticsBundle.tokenUsage
     };
   }
 }
