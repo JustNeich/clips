@@ -2,11 +2,13 @@ import { requireAuth } from "../../../../lib/auth/guards";
 import { getEffectivePermissions } from "../../../../lib/team-store";
 import { getWorkspaceCodexStatus } from "../../../../lib/workspace-codex";
 import { asErrorResponse } from "../../../../lib/http";
+import { scheduleChannelPublicationProcessing } from "../../../../lib/channel-publication-runtime";
 
 export const runtime = "nodejs";
 
 export async function GET(): Promise<Response> {
   try {
+    scheduleChannelPublicationProcessing();
     const auth = await requireAuth();
     const integration = await getWorkspaceCodexStatus(auth);
     const ownerView = auth.membership.role === "owner";
