@@ -280,7 +280,7 @@ function buildRenderExportChatRef(input: {
   };
 }
 
-async function persistRenderExportCompletion(
+export async function persistRenderExportCompletion(
   initialJob: Stage3JobRecord,
   completedArtifact: {
     jobId: string;

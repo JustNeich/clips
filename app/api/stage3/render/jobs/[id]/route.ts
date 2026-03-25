@@ -1,7 +1,9 @@
 import { createReadStream, promises as fs } from "node:fs";
 import { requireAuth } from "../../../../../../lib/auth/guards";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../../lib/stage3-job-http";
-import { getStage3JobOrThrow } from "../../../../../../lib/stage3-job-runtime";
+import { getRenderExportByStage3JobId } from "../../../../../../lib/publication-store";
+import { appendStage3JobEvent } from "../../../../../../lib/stage3-job-store";
+import { getStage3JobOrThrow, persistRenderExportCompletion } from "../../../../../../lib/stage3-job-runtime";
 import { createNodeStreamResponse } from "../../../../../../lib/node-stream-response";
 
 export const runtime = "nodejs";
@@ -17,6 +19,30 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     const job = getStage3JobOrThrow(id);
     if (job.workspaceId !== auth.workspace.id || job.userId !== auth.user.id) {
       return Response.json({ error: "Stage 3 job not found." }, { status: 404 });
+    }
+    if (
+      job.kind === "render" &&
+      job.status === "completed" &&
+      job.artifact &&
+      job.artifactFilePath &&
+      !getRenderExportByStage3JobId(job.id)
+    ) {
+      await persistRenderExportCompletion(job, {
+        jobId: job.id,
+        artifactFileName: job.artifact.fileName,
+        artifactFilePath: job.artifactFilePath,
+        artifactMimeType: job.artifact.mimeType,
+        artifactSizeBytes: job.artifact.sizeBytes,
+        completedAt: job.completedAt ?? new Date().toISOString()
+      }).catch((error) => {
+        appendStage3JobEvent(
+          job.id,
+          "warn",
+          error instanceof Error
+            ? error.message
+            : "Не удалось восстановить render export и queued-публикацию."
+        );
+      });
     }
 
     const url = new URL(request.url);

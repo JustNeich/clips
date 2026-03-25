@@ -3,7 +3,8 @@ import { Readable } from "node:stream";
 import { requireStage3WorkerAuth } from "../../../../../../../lib/auth/stage3-worker";
 import { publishStage3VideoArtifactFromBuffer } from "../../../../../../../lib/stage3-job-artifacts";
 import { buildStage3JobEnvelope } from "../../../../../../../lib/stage3-job-http";
-import { completeStage3Job, getStage3Job } from "../../../../../../../lib/stage3-job-store";
+import { appendStage3JobEvent, completeStage3Job, getStage3Job } from "../../../../../../../lib/stage3-job-store";
+import { persistRenderExportCompletion } from "../../../../../../../lib/stage3-job-runtime";
 import { touchStage3WorkerHeartbeat } from "../../../../../../../lib/stage3-worker-store";
 
 export const runtime = "nodejs";
@@ -199,6 +200,25 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     touchStage3WorkerHeartbeat({
       workerId: auth.worker.id
     });
+
+    if (current.kind === "render" && artifactInput) {
+      await persistRenderExportCompletion(current, {
+        jobId: current.id,
+        artifactFileName: artifactInput.fileName,
+        artifactFilePath: artifactInput.filePath,
+        artifactMimeType: artifactInput.mimeType,
+        artifactSizeBytes: artifactInput.sizeBytes,
+        completedAt: new Date().toISOString()
+      }).catch((error) => {
+        appendStage3JobEvent(
+          current.id,
+          "warn",
+          error instanceof Error
+            ? error.message
+            : "Не удалось сохранить server-side результат Stage 3 render."
+        );
+      });
+    }
 
     const completed = completeStage3Job(id, {
       resultJson,
