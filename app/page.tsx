@@ -4469,7 +4469,8 @@ export default function HomePage() {
   ]);
 
   useEffect(() => {
-    if (currentStep !== 3 || !activeChat?.url || !stage3AccuratePreviewKey) {
+    const fastPreviewReady = stage3PreviewState === "ready" && Boolean(stage3PreviewVideoUrl);
+    if (currentStep !== 3 || !activeChat?.url || !stage3AccuratePreviewKey || !fastPreviewReady) {
       return;
     }
 
@@ -4609,7 +4610,9 @@ export default function HomePage() {
     parseError,
     stage3AccuratePreviewKey,
     stage3AgentPrompt,
-    stage3LivePreviewSnapshot
+    stage3LivePreviewSnapshot,
+    stage3PreviewState,
+    stage3PreviewVideoUrl
   ]);
 
   const steps: FlowStep[] = useMemo(
