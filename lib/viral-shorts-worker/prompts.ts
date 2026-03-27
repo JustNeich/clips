@@ -773,8 +773,20 @@ function buildCandidateReviewPayload(
   }));
 }
 
-function buildCriticScoreDigest(criticScores: CriticScore[]) {
-  return criticScores.slice(0, 8).map((score) => ({
+function buildCriticScoreDigest(
+  criticScores: CriticScore[],
+  options?: {
+    candidateIds?: string[];
+  }
+) {
+  const scoreMap = new Map(criticScores.map((score) => [score.candidateId, score] as const));
+  const orderedScores = options?.candidateIds?.length
+    ? options.candidateIds
+        .map((candidateId) => scoreMap.get(candidateId))
+        .filter((score): score is CriticScore => Boolean(score))
+    : criticScores;
+
+  return orderedScores.map((score) => ({
     candidateId: score.candidateId,
     total: score.total,
     keep: score.keep,
@@ -1160,6 +1172,7 @@ export function buildRewriterPrompt(input: {
   promptConfig?: Stage2PromptConfig | null;
 }): string {
   const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
+  const candidateIds = input.candidates.map((candidate) => candidate.candidateId);
   return renderPrompt(buildSystemPrompt("rewriter", input.promptConfig), {
     ...buildChannelPayload(input.channelConfig, "compact"),
     analysisDigest: buildAnalysisDigest(input.analyzerOutput),
@@ -1171,11 +1184,10 @@ export function buildRewriterPrompt(input: {
       userInstruction: input.userInstruction
     }),
     candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
-    criticScores: buildCriticScoreDigest(input.criticScores),
+    criticScores: buildCriticScoreDigest(input.criticScores, { candidateIds }),
     candidates: buildCandidateReviewPayload(input.candidates, {
       includeTranslations: true,
-      includeRationale: false,
-      maxItems: 8
+      includeRationale: false
     })
   });
 }

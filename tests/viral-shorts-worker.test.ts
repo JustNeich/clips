@@ -3215,6 +3215,55 @@ test("strict-length channels widen the rewriter reserve pool beyond the critic-a
   );
 });
 
+test("rewriter prompt includes every strict-length finalist kept in the expanded rewrite pool", async () => {
+  const stage2HardConstraints: Stage2HardConstraints = {
+    topLengthMin: 160,
+    topLengthMax: 180,
+    bottomLengthMin: 140,
+    bottomLengthMax: 150,
+    bannedWords: ["clip"],
+    bannedOpeners: []
+  };
+  const writerCandidates = Array.from({ length: 20 }, (_, index) =>
+    makeCandidate(`cand_${index + 1}`, index % 2 === 0 ? "shared_experience" : "payoff_reveal", index + 1)
+  );
+  const criticResponse = writerCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total: 9 - index * 0.1,
+    issues: [],
+    keep: index < 7
+  }));
+  const rewriterResponse = Array.from({ length: 12 }, (_, index) => ({
+    candidate_id: `cand_${index + 1}`,
+    angle: index % 2 === 0 ? "shared_experience" : "payoff_reveal",
+    top:
+      "The crew keeps the whole lift steady while the load swings just enough to show who actually trusts the rig and who is only pretending to stay calm under pressure.",
+    bottom:
+      "\"That is old-school control,\" and the reaction lands because nobody in frame has spare room for sloppy work once the weight starts drifting sideways.",
+    top_ru: `ru ${index + 1}`,
+    bottom_ru: `ru ${index + 1}`,
+    rationale: `strict rewrite ${index + 1}`
+  }));
+
+  const { executor } = await runSuccessfulPipeline({
+    stage2HardConstraints,
+    writerCandidates,
+    criticResponse,
+    rewriterResponse,
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_1",
+      rationale: "cand_1 is strongest."
+    }
+  });
+
+  const rewriterPrompt = executor.calls[4]?.prompt ?? "";
+  assert.equal((rewriterPrompt.match(/"topRu":/g) ?? []).length, 12);
+  assert.equal((rewriterPrompt.match(/"keep":/g) ?? []).length, 12);
+  assert.match(rewriterPrompt, /"candidateId": "cand_12"/);
+});
+
 test("internal final selector rationale is rebuilt from the actual evaluated pool and visible shortlist", async () => {
   const narrowWriterCandidates = [
     makeCandidate("cand_1", "shared_experience", 1),

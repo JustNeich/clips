@@ -3914,7 +3914,7 @@ export class ViralShortsWorkerService {
       selectorOutput,
       examplesAssessment: selectorPool.assessment,
       candidates: topCandidates,
-      criticScores: criticScores.slice(0, 8),
+      criticScores,
       userInstruction: input.videoContext.userInstruction,
       promptConfig
     });
