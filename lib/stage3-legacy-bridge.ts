@@ -29,6 +29,7 @@ function fallbackRenderPlan(): Stage3RenderPlan {
   return {
     targetDurationSec: 6,
     timingMode: "auto",
+    normalizeToTargetEnabled: false,
     audioMode: "source_only",
     sourceAudioEnabled: true,
     smoothSlowMo: false,
@@ -116,6 +117,12 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
       candidate?.timingMode === "stretch"
         ? candidate.timingMode
         : fallback.timingMode,
+    normalizeToTargetEnabled:
+      typeof candidate?.normalizeToTargetEnabled === "boolean"
+        ? candidate.normalizeToTargetEnabled
+        : candidate?.timingMode === "compress" ||
+            candidate?.timingMode === "stretch" ||
+            candidate?.policy === "full_source_normalize",
     audioMode:
       candidate?.audioMode === "source_only" || candidate?.audioMode === "source_plus_music"
         ? candidate.audioMode

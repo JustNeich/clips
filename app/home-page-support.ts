@@ -17,6 +17,7 @@ import {
   Stage3IterationStopReason,
   Stage3RenderPlan,
   Stage3Segment,
+  Stage3TimingMode,
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3SessionStatus,
   Stage3TimelineResponse,
@@ -489,6 +490,7 @@ export function fallbackRenderPlan(): Stage3RenderPlan {
   return {
     targetDurationSec: 6,
     timingMode: "auto",
+    normalizeToTargetEnabled: false,
     audioMode: "source_only",
     sourceAudioEnabled: true,
     smoothSlowMo: false,
@@ -603,14 +605,29 @@ export function trimClientSegmentsToDuration(
   return normalizeClientSegments(trimmed, sourceDurationSec);
 }
 
+export function resolveNormalizedTimingMode(params: {
+  segments: Stage3Segment[];
+  targetDurationSec: number;
+  sourceDurationSec: number | null;
+}): Stage3TimingMode {
+  const explicitDurationSec = sumClientSegmentsDuration(params.segments, params.sourceDurationSec);
+  if (explicitDurationSec <= 0.05) {
+    return "auto";
+  }
+  if (explicitDurationSec > params.targetDurationSec + 0.05) {
+    return "compress";
+  }
+  if (explicitDurationSec < params.targetDurationSec - 0.05) {
+    return "stretch";
+  }
+  return "auto";
+}
+
 export function getEditingPolicy(
   segments: Stage3Segment[],
   compressionEnabled: boolean
 ): Stage3RenderPlan["policy"] {
-  if (segments.length > 0) {
-    return "fixed_segments";
-  }
-  return compressionEnabled ? "full_source_normalize" : "fixed_segments";
+  return "fixed_segments";
 }
 
 export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
@@ -703,6 +720,12 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
       candidate?.timingMode === "stretch"
         ? candidate.timingMode
         : base.timingMode,
+    normalizeToTargetEnabled:
+      typeof candidate?.normalizeToTargetEnabled === "boolean"
+        ? candidate.normalizeToTargetEnabled
+        : candidate?.timingMode === "compress" ||
+            candidate?.timingMode === "stretch" ||
+            candidate?.policy === "full_source_normalize",
     audioMode:
       candidate?.audioMode === "source_only" || candidate?.audioMode === "source_plus_music"
         ? candidate.audioMode

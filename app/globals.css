@@ -1983,6 +1983,16 @@ select.text-input:focus {
   gap: 16px;
 }
 
+.stage3-surface-card-compact {
+  gap: 0;
+  padding-block: 12px;
+  background: var(--surface-2);
+}
+
+.stage3-surface-head-compact {
+  justify-content: flex-start;
+}
+
 .stage3-publish-card {
   gap: 12px;
 }
@@ -2182,6 +2192,97 @@ select.text-input:focus {
   justify-content: flex-end;
 }
 
+.fragment-summary-strip,
+.fragment-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fragment-summary-strip {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.fragment-summary-primary {
+  border-color: color-mix(in srgb, var(--accent) 56%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 62%, rgba(255, 255, 255, 0.04));
+  color: var(--text);
+}
+
+.fragment-source-overview {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.fragment-source-head,
+.fragment-source-badges,
+.fragment-source-scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fragment-source-head strong {
+  font-size: 14px;
+}
+
+.fragment-source-head p {
+  margin: 2px 0 0;
+}
+
+.fragment-source-track {
+  display: grid;
+  gap: 6px;
+}
+
+.fragment-source-rail {
+  position: relative;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 84%, rgba(255, 255, 255, 0.04));
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.fragment-source-selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+}
+
+.fragment-source-selection-coverage {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 80%, white 12%),
+    color-mix(in srgb, var(--accent) 52%, rgba(255, 255, 255, 0.06))
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.fragment-source-primary-pill {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 40%, rgba(255, 255, 255, 0.05));
+  color: var(--text);
+}
+
+.fragment-source-scale {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .fragment-list {
   display: grid;
   gap: 10px;
@@ -2196,11 +2297,77 @@ select.text-input:focus {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.fragment-row-head-compact {
+  justify-content: flex-end;
+  min-height: 24px;
+}
+
+.fragment-row-placeholder {
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.018);
+  opacity: 0.46;
+}
+
+.fragment-row-placeholder.disabled {
+  opacity: 0.28;
+}
+
+.fragment-row-placeholder .text-input,
+.fragment-row-placeholder .segment-input,
+.fragment-row-placeholder .meta-pill {
+  opacity: 0.68;
+}
+
+.fragment-row-placeholder .fragment-rail {
+  opacity: 0.5;
+}
+
 .fragment-row-meta {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.fragment-remove-button {
+  min-width: 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.fragment-rail {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.fragment-rail-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 68%, white 10%),
+    color-mix(in srgb, var(--accent) 42%, transparent)
+  );
+}
+
+.fragment-rail-fill.ghost {
+  background: linear-gradient(90deg, rgba(140, 185, 255, 0.32), rgba(140, 185, 255, 0.12));
+}
+
+.fragment-rail-placeholder {
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .fragment-input-grid {

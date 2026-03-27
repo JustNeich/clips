@@ -153,6 +153,7 @@ import {
   parseDownloadFileName,
   parseRetryAfterMs,
   PersistedFlowShellState,
+  resolveNormalizedTimingMode,
   responseLooksLikeHtml,
   responseLooksLikeJson,
   responseContentType,
@@ -1997,6 +1998,23 @@ export default function HomePage() {
       const effectiveRenderPlan = normalizeRenderPlan(
         {
           ...stage3RenderPlan,
+          segments: Array.isArray(draftOverrides?.segments) ? draftOverrides.segments : stage3RenderPlan.segments,
+          timingMode:
+            draftOverrides?.timingMode === "auto" ||
+            draftOverrides?.timingMode === "compress" ||
+            draftOverrides?.timingMode === "stretch"
+              ? draftOverrides.timingMode
+              : stage3RenderPlan.timingMode,
+          normalizeToTargetEnabled:
+            typeof draftOverrides?.normalizeToTargetEnabled === "boolean"
+              ? draftOverrides.normalizeToTargetEnabled
+              : stage3RenderPlan.normalizeToTargetEnabled,
+          policy:
+            draftOverrides?.renderPolicy === "adaptive_window" ||
+            draftOverrides?.renderPolicy === "full_source_normalize" ||
+            draftOverrides?.renderPolicy === "fixed_segments"
+              ? draftOverrides.renderPolicy
+              : stage3RenderPlan.policy,
           cameraKeyframes: hasTransformTrackOverride
             ? []
             : hasLegacyCameraOverride
@@ -4218,7 +4236,7 @@ export default function HomePage() {
           if (prev.prompt.trim()) {
             return prev;
           }
-          const compressionEnabled = prev.timingMode === "compress";
+          const compressionEnabled = prev.timingMode !== "auto";
           const policy = getEditingPolicy(prev.segments, compressionEnabled);
           if (prev.policy === policy) {
             return prev;
@@ -5892,7 +5910,7 @@ export default function HomePage() {
           selectedCaptionOption={selectedOption ?? visibleStage2SelectionDefaults.captionOption}
           handoffSummary={stage3HandoffSummary}
           segments={stage3RenderPlan.segments}
-          compressionEnabled={stage3RenderPlan.timingMode === "compress"}
+          compressionEnabled={stage3RenderPlan.normalizeToTargetEnabled}
           timingMode={stage3RenderPlan.timingMode}
           renderPolicy={stage3RenderPlan.policy}
           workerState={stage3WorkerPanelState}
@@ -5975,6 +5993,13 @@ export default function HomePage() {
               ? normalizedSegments
               : trimClientSegmentsToDuration(normalizedSegments, CLIP_DURATION_SEC, sourceDurationSec);
             const policy = getEditingPolicy(boundedSegments, compressionEnabled);
+            const timingMode = compressionEnabled
+              ? resolveNormalizedTimingMode({
+                  segments: boundedSegments,
+                  targetDurationSec: CLIP_DURATION_SEC,
+                  sourceDurationSec
+                })
+              : "auto";
 
             if (boundedSegments.length > 0) {
               setStage3ClipStartSec(boundedSegments[0]?.startSec ?? 0);
@@ -5985,7 +6010,8 @@ export default function HomePage() {
                 {
                   ...prev,
                   segments: boundedSegments,
-                  timingMode: compressionEnabled ? "compress" : "auto",
+                  timingMode,
+                  normalizeToTargetEnabled: compressionEnabled,
                   policy
                 },
                 fallbackRenderPlan()
@@ -6035,7 +6061,7 @@ export default function HomePage() {
               if (prev.segments.length > 0) {
                 return prev;
               }
-              const compressionEnabled = prev.timingMode === "compress";
+              const compressionEnabled = prev.timingMode !== "auto";
               const policy = getEditingPolicy(prev.segments, compressionEnabled);
               if (prev.policy === policy) {
                 return prev;

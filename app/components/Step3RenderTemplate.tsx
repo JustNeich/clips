@@ -192,6 +192,11 @@ type PendingTextFitAction = {
 
 type Stage3SurfaceMode = "finish" | "editor";
 type Stage3PreviewMediaMode = "mapped" | "linear";
+type FragmentDraftField = "startSec" | "endSec" | "speed";
+type FragmentFocusTarget = {
+  rowKey: string;
+  field: FragmentDraftField;
+};
 
 function formatTimeSec(value: number): string {
   const total = Math.max(0, value);
@@ -266,27 +271,6 @@ function formatDateShort(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   });
-}
-
-function formatPublicationStatus(status: ChannelPublication["status"]): string {
-  switch (status) {
-    case "queued":
-      return "В очереди";
-    case "uploading":
-      return "Загружается";
-    case "scheduled":
-      return "Запланировано";
-    case "published":
-      return "Опубликовано";
-    case "failed":
-      return "Ошибка";
-    case "paused":
-      return "На паузе";
-    case "canceled":
-      return "Удалено";
-    default:
-      return status;
-  }
 }
 
 function shortPrompt(value: string): string {
@@ -474,6 +458,34 @@ function sumSegmentsDuration(segments: Stage3Segment[], sourceDurationSec: numbe
     const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
     return total + Math.max(0, endSec - segment.startSec) / normalizeSegmentSpeed(segment.speed);
   }, 0);
+}
+
+function sumSegmentCoverageDuration(segments: Stage3Segment[], sourceDurationSec: number | null): number {
+  const normalized = normalizeEditorSegments(segments, sourceDurationSec);
+  if (!normalized.length) {
+    return 0;
+  }
+
+  let total = 0;
+  let cursorStart = normalized[0].startSec;
+  let cursorEnd = normalized[0].endSec ?? sourceDurationSec ?? normalized[0].startSec;
+
+  for (const segment of normalized.slice(1)) {
+    const segmentEnd = segment.endSec ?? sourceDurationSec ?? segment.startSec;
+    if (segment.startSec <= cursorEnd + 0.001) {
+      cursorEnd = Math.max(cursorEnd, segmentEnd);
+      continue;
+    }
+    total += Math.max(0, cursorEnd - cursorStart);
+    cursorStart = segment.startSec;
+    cursorEnd = segmentEnd;
+  }
+
+  return total + Math.max(0, cursorEnd - cursorStart);
+}
+
+function buildFragmentRowKey(index: number, segment: Stage3Segment): string {
+  return `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
 }
 
 function trimSegmentsToDuration(
@@ -862,6 +874,7 @@ type Stage3LivePreviewPanelProps = {
   requestedTimelineSec: number | null;
   onRequestedTimelineHandled?: () => void;
   onMeasuredTextFitChange?: (fit: Stage3TextFitSnapshot) => void;
+  onSourceDurationResolved?: (sec: number | null) => void;
   onTimelineSecChange?: (value: number) => void;
   onSelectPositionKeyframeId: (id: string | null) => void;
   onSelectScaleKeyframeId: (id: string | null) => void;
@@ -916,6 +929,7 @@ function Stage3LivePreviewPanel({
   requestedTimelineSec,
   onRequestedTimelineHandled,
   onMeasuredTextFitChange,
+  onSourceDurationResolved,
   onTimelineSecChange,
   onSelectPositionKeyframeId,
   onSelectScaleKeyframeId,
@@ -953,6 +967,14 @@ function Stage3LivePreviewPanel({
   useEffect(() => {
     setProxySourceDurationSec(sourceDurationSec);
   }, [sourceDurationSec]);
+
+  const handleSourceDurationChange = useCallback(
+    (sec: number | null) => {
+      setProxySourceDurationSec(sec);
+      onSourceDurationResolved?.(sec);
+    },
+    [onSourceDurationResolved]
+  );
 
   const previewViewport = useMemo(
     () => getTemplatePreviewViewportMetrics(templateId, "full-frame"),
@@ -1658,7 +1680,7 @@ function Stage3LivePreviewPanel({
                         isPlaying={isPlaying}
                         loopEnabled={loopEnabled}
                         onPositionChange={handlePreviewPositionChange}
-                        onSourceDurationChange={setProxySourceDurationSec}
+                        onSourceDurationChange={handleSourceDurationChange}
                         onClipEnd={handlePreviewClipEnd}
                       />
                     ) : (
@@ -1695,7 +1717,7 @@ function Stage3LivePreviewPanel({
                 />
               </Stage3TemplateViewport>
               {editorMode ? (
-                <div
+              <div
                   className={`camera-preview-overlay ${isPreviewAdjustingCamera ? "dragging" : ""}`}
                   role="button"
                   tabIndex={0}
@@ -1717,7 +1739,7 @@ function Stage3LivePreviewPanel({
                   }}
                 >
                   <span className="camera-preview-overlay-label">
-                    {selectedPositionKeyframe ? "Точка Position Y" : "База Position Y"} · Y {Math.round(cameraState.focusY * 100)}%
+                    Position Y · {Math.round(cameraState.focusY * 100)}%
                   </span>
                 </div>
               ) : null}
@@ -1767,106 +1789,6 @@ function Stage3LivePreviewPanel({
             >
               <div className="timeline-playhead" style={{ left: `${timelinePercent}%` }} />
             </div>
-            {editorMode ? (
-              <>
-                <div
-                  ref={positionTrackRef}
-                  className="timeline-track camera-track"
-                  aria-label="Дорожка keyframes position"
-                  onPointerDown={(event) => {
-                    const target = event.target as HTMLElement | null;
-                    if (target?.closest?.("[data-position-keyframe-id]")) {
-                      return;
-                    }
-                    seekTimelineAtClientX(event.clientX);
-                    onSelectPositionKeyframeId(null);
-                    onSelectScaleKeyframeId(null);
-                  }}
-                >
-                  <div className="camera-track-label">Position Y</div>
-                  {activePositionKeyframes.map((keyframe) => {
-                    const left = clamp((keyframe.timeSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
-                    const active = keyframe.id === selectedPositionKeyframeId;
-                    return (
-                      <button
-                        key={keyframe.id}
-                        type="button"
-                        data-position-keyframe-id={keyframe.id}
-                        className={`camera-keyframe ${active ? "active" : ""}`}
-                        style={{ left: `${left}%` }}
-                        aria-label={`Keyframe Position Y ${formatTimeSec(keyframe.timeSec)}`}
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          draggingTransformKeyframeIdRef.current = keyframe.id;
-                          draggingTransformTrackRef.current = "position";
-                          setIsDraggingCameraKeyframe(true);
-                          onSelectPositionKeyframeId(keyframe.id);
-                          onSelectScaleKeyframeId(null);
-                          seekTimeline(keyframe.timeSec);
-                        }}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          onSelectPositionKeyframeId(keyframe.id);
-                          onSelectScaleKeyframeId(null);
-                          seekTimeline(keyframe.timeSec);
-                        }}
-                      />
-                    );
-                  })}
-                  <div className="timeline-playhead camera-track-playhead" style={{ left: `${timelinePercent}%` }} />
-                </div>
-                <div
-                  ref={scaleTrackRef}
-                  className="timeline-track camera-track"
-                  aria-label="Дорожка keyframes scale"
-                  onPointerDown={(event) => {
-                    const target = event.target as HTMLElement | null;
-                    if (target?.closest?.("[data-scale-keyframe-id]")) {
-                      return;
-                    }
-                    seekTimelineAtClientX(event.clientX);
-                    onSelectScaleKeyframeId(null);
-                    onSelectPositionKeyframeId(null);
-                  }}
-                >
-                  <div className="camera-track-label">Scale</div>
-                  {activeScaleKeyframes.map((keyframe) => {
-                    const left = clamp((keyframe.timeSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
-                    const active = keyframe.id === selectedScaleKeyframeId;
-                    return (
-                      <button
-                        key={keyframe.id}
-                        type="button"
-                        data-scale-keyframe-id={keyframe.id}
-                        className={`camera-keyframe ${active ? "active" : ""}`}
-                        style={{ left: `${left}%` }}
-                        aria-label={`Keyframe Scale ${formatTimeSec(keyframe.timeSec)}`}
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          draggingTransformKeyframeIdRef.current = keyframe.id;
-                          draggingTransformTrackRef.current = "scale";
-                          setIsDraggingCameraKeyframe(true);
-                          onSelectScaleKeyframeId(keyframe.id);
-                          onSelectPositionKeyframeId(null);
-                          seekTimeline(keyframe.timeSec);
-                        }}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          onSelectScaleKeyframeId(keyframe.id);
-                          onSelectPositionKeyframeId(null);
-                          seekTimeline(keyframe.timeSec);
-                        }}
-                      />
-                    );
-                  })}
-                  <div className="timeline-playhead camera-track-playhead" style={{ left: `${timelinePercent}%` }} />
-                </div>
-              </>
-            ) : null}
           <div className="timeline-time">
             <span>{formatTimeSec(timelineSec)}</span>
             <span>{formatTimeSec(playbackDurationSec)}</span>
@@ -2009,6 +1931,13 @@ export function Step3RenderTemplate({
   const [segmentDraftInputs, setSegmentDraftInputs] = useState<
     Record<string, { startSec: string; endSec: string }>
   >({});
+  const didSimplifyDynamicCameraRef = useRef(false);
+  const fragmentFieldRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
+  const [activeFragmentIndex, setActiveFragmentIndex] = useState<number | null>(null);
+  const [pendingFragmentFocus, setPendingFragmentFocus] = useState<FragmentFocusTarget | null>(null);
+  const [resolvedFragmentSourceDurationSec, setResolvedFragmentSourceDurationSec] = useState<number | null>(
+    sourceDurationSec
+  );
   const [previewMeasuredFitState, setPreviewMeasuredFitState] = useState<{
     snapshotHash: string;
     fitHash: string;
@@ -2016,6 +1945,12 @@ export function Step3RenderTemplate({
     measured: boolean;
   } | null>(null);
   const [pendingTextFitAction, setPendingTextFitAction] = useState<PendingTextFitAction | null>(null);
+
+  useEffect(() => {
+    setResolvedFragmentSourceDurationSec(sourceDurationSec);
+  }, [sourceDurationSec, sourceUrl]);
+
+  const fragmentSourceDurationSec = sourceDurationSec ?? resolvedFragmentSourceDurationSec;
 
   const templateConfig = getTemplateById(templateId);
   const effectiveCameraTracks = useMemo(
@@ -2114,20 +2049,134 @@ export function Step3RenderTemplate({
     previewMeasuredFitState.fitHash === previewFitHash &&
     previewMeasuredFitState.measured;
 
-  const maxStartSec = Math.max(0, (sourceDurationSec ?? clipDurationSec) - clipDurationSec);
+  const maxStartSec = Math.max(0, (fragmentSourceDurationSec ?? clipDurationSec) - clipDurationSec);
   const clipEndSec = localClipStartSec + clipDurationSec;
   const normalizedSegments = useMemo(
-    () => normalizeEditorSegments(segments, sourceDurationSec),
-    [segments, sourceDurationSec]
+    () => normalizeEditorSegments(segments, fragmentSourceDurationSec),
+    [fragmentSourceDurationSec, segments]
   );
   const explicitSegmentsDurationSec = useMemo(
-    () => sumSegmentsDuration(normalizedSegments, sourceDurationSec),
-    [normalizedSegments, sourceDurationSec]
+    () => sumSegmentsDuration(normalizedSegments, fragmentSourceDurationSec),
+    [fragmentSourceDurationSec, normalizedSegments]
+  );
+  const fragmentPlaybackPlan = useMemo(
+    () =>
+      buildStage3PlaybackPlan({
+        segments: normalizedSegments,
+        sourceDurationSec: fragmentSourceDurationSec,
+        clipStartSec: localClipStartSec,
+        clipDurationSec,
+        targetDurationSec: clipDurationSec,
+        timingMode,
+        policy: renderPolicy
+      }),
+    [clipDurationSec, fragmentSourceDurationSec, localClipStartSec, normalizedSegments, renderPolicy, timingMode]
+  );
+  const effectiveOutputDurationSec =
+    normalizedSegments.length > 0 ? fragmentPlaybackPlan.totalOutputDurationSec : clipDurationSec;
+  const sourceSelectionDurationSec = useMemo(
+    () => sumSegmentCoverageDuration(normalizedSegments, fragmentSourceDurationSec),
+    [fragmentSourceDurationSec, normalizedSegments]
   );
   const isPreviewBusy =
     previewState === "debouncing" || previewState === "loading" || previewState === "retrying";
   const isRendering = renderState === "queued" || renderState === "rendering";
   const remainingSegmentsDurationSec = Math.max(0, clipDurationSec - explicitSegmentsDurationSec);
+  const normalizationModeLabel = compressionEnabled
+    ? fragmentPlaybackPlan.durationScale > 1.02
+      ? "Растягиваем до 6с"
+      : fragmentPlaybackPlan.durationScale < 0.98
+        ? "Сжимаем до 6с"
+        : "Ровно 6с"
+    : null;
+  const sourceDisplayDurationSec = normalizedSegments.length > 0 ? sourceSelectionDurationSec : clipDurationSec;
+  const sourceCoveragePercent =
+    fragmentSourceDurationSec && fragmentSourceDurationSec > 0
+      ? clamp((sourceDisplayDurationSec / fragmentSourceDurationSec) * 100, 0, 100)
+      : 0;
+  const unusedSourceDurationSec =
+    fragmentSourceDurationSec !== null ? Math.max(0, fragmentSourceDurationSec - sourceDisplayDurationSec) : null;
+  const sourceTimelineRanges = useMemo(() => {
+    if (fragmentSourceDurationSec === null || fragmentSourceDurationSec <= 0) {
+      return [];
+    }
+    const baseRanges =
+      normalizedSegments.length > 0
+        ? normalizedSegments.map((segment) => ({
+            startSec: segment.startSec,
+            endSec: segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5
+          }))
+        : [
+            {
+              startSec: localClipStartSec,
+              endSec: clipEndSec
+            }
+          ];
+    if (!baseRanges.length) {
+      return [];
+    }
+
+    const normalizedRanges = baseRanges
+      .map((range) => {
+        const startSec = clamp(range.startSec, 0, fragmentSourceDurationSec ?? range.startSec);
+        const endSec = clamp(
+          range.endSec,
+          startSec + 0.1,
+          fragmentSourceDurationSec ?? Math.max(startSec + 0.1, range.endSec)
+        );
+        return { startSec, endSec };
+      })
+      .sort((left, right) => left.startSec - right.startSec);
+
+    if (!normalizedRanges.length) {
+      return [];
+    }
+
+    const merged: Array<{ startSec: number; endSec: number }> = [];
+    for (const range of normalizedRanges) {
+      const lastRange = merged[merged.length - 1];
+      if (lastRange && range.startSec <= lastRange.endSec + 0.001) {
+        lastRange.endSec = Math.max(lastRange.endSec, range.endSec);
+        continue;
+      }
+      merged.push({ ...range });
+    }
+
+    return merged.map((range) => {
+      const duration = Math.max(0.1, range.endSec - range.startSec);
+      const offsetPercent =
+        fragmentSourceDurationSec && fragmentSourceDurationSec > 0
+          ? clamp((range.startSec / fragmentSourceDurationSec) * 100, 0, 100)
+          : 0;
+      const widthPercent =
+        fragmentSourceDurationSec && fragmentSourceDurationSec > 0
+          ? clamp((duration / fragmentSourceDurationSec) * 100, 1, 100 - offsetPercent)
+          : 100;
+      return {
+        ...range,
+        offsetPercent,
+        widthPercent
+      };
+    });
+  }, [clipEndSec, fragmentSourceDurationSec, localClipStartSec, normalizedSegments]);
+  const sourceTimelineScaleMarks = useMemo(() => {
+    if (fragmentSourceDurationSec === null || fragmentSourceDurationSec <= 0) {
+      return ["0с", "источник"];
+    }
+    if (fragmentSourceDurationSec <= 6.05) {
+      return ["0с", formatTimeSec(fragmentSourceDurationSec)];
+    }
+    return [
+      "0с",
+      formatTimeSec(roundToTenth(fragmentSourceDurationSec / 2)),
+      formatTimeSec(fragmentSourceDurationSec)
+    ];
+  }, [fragmentSourceDurationSec]);
+  const hasDynamicCameraState =
+    cameraMotion !== "disabled" ||
+    cameraKeyframes.length > 0 ||
+    cameraPositionKeyframes.length > 0 ||
+    cameraScaleKeyframes.length > 0;
   const normalizedLocalPositionKeyframes = useMemo(
     () =>
       normalizeStage3PositionKeyframes(localPositionKeyframes, {
@@ -2150,12 +2199,8 @@ export function Step3RenderTemplate({
   const selectedScaleKeyframe = selectedScaleKeyframeId
     ? normalizedLocalScaleKeyframes.find((keyframe) => keyframe.id === selectedScaleKeyframeId) ?? null
     : null;
-  const cameraModeLabel = formatCameraTrackLabel(
-    normalizedLocalPositionKeyframes,
-    normalizedLocalScaleKeyframes,
-    cameraMotion
-  );
-  const cameraFocusPercent = Math.round((selectedPositionKeyframe?.focusY ?? localFocusY) * 100);
+  const cameraModeLabel = "База";
+  const cameraFocusPercent = Math.round(localFocusY * 100);
   const isFinishMode = stage3Mode === "finish";
   const backgroundModeLabel =
     backgroundMode === "custom"
@@ -2174,9 +2219,84 @@ export function Step3RenderTemplate({
       : "Без звука";
   const manualTimingLabel =
     normalizedSegments.length > 0
-      ? `Фрагменты ${normalizedSegments.length} · ${formatTimeSec(explicitSegmentsDurationSec)}`
+      ? `Фрагменты ${normalizedSegments.length} · выход ${formatTimeSec(effectiveOutputDurationSec)}`
       : `Окно ${formatTimeSec(clipDurationSec)}`;
-  const editorZoomLabel = `x${(selectedScaleKeyframe?.zoom ?? localVideoZoom).toFixed(2)}`;
+  const editorZoomLabel = `x${localVideoZoom.toFixed(2)}`;
+  const nextFragmentSuggestion = useMemo(() => {
+    if (!sourceUrl) {
+      return null;
+    }
+    if (!compressionEnabled && remainingSegmentsDurationSec < 0.1) {
+      return null;
+    }
+
+    const defaultDuration = compressionEnabled
+      ? 1
+      : Math.min(1, Math.max(0.1, remainingSegmentsDurationSec));
+    const lastSegment = normalizedSegments[normalizedSegments.length - 1] ?? null;
+    const suggestedStart = lastSegment?.endSec ?? localClipStartSec;
+    const sourceMaxStart =
+      fragmentSourceDurationSec !== null ? Math.max(0, fragmentSourceDurationSec - 0.1) : suggestedStart;
+    const startSec = roundToTenth(clamp(suggestedStart, 0, sourceMaxStart));
+    const endSec = roundToTenth(
+      clamp(
+        startSec + defaultDuration,
+        startSec + 0.1,
+        fragmentSourceDurationSec ?? startSec + defaultDuration
+      )
+    );
+
+    return {
+      startSec,
+      endSec,
+      speed: 1 as Stage3Segment["speed"]
+    };
+  }, [
+    compressionEnabled,
+    localClipStartSec,
+    normalizedSegments,
+    remainingSegmentsDurationSec,
+    fragmentSourceDurationSec,
+    sourceUrl
+  ]);
+  const canAppendFragment = Boolean(nextFragmentSuggestion);
+  const fragmentRows = useMemo(
+    () =>
+      normalizedSegments.map((segment, index) => {
+        const rowKey = buildFragmentRowKey(index, segment);
+        const draft = segmentDraftInputs[rowKey] ?? {
+          startSec: segment.startSec.toFixed(1),
+          endSec: (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
+        };
+        const endValue = segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5;
+        const rawDuration = Math.max(0, endValue - segment.startSec);
+        const playbackSegment = fragmentPlaybackPlan.segments[index] ?? null;
+        const outputDuration = playbackSegment?.outputDurationSec ?? rawDuration / segment.speed;
+        const outputStartSec = playbackSegment?.outputStartSec ?? 0;
+        const sourceOffsetPercent =
+          fragmentSourceDurationSec && fragmentSourceDurationSec > 0
+            ? clamp((segment.startSec / fragmentSourceDurationSec) * 100, 0, 100)
+            : 0;
+        const sourceWidthPercent =
+          fragmentSourceDurationSec && fragmentSourceDurationSec > 0
+            ? clamp((rawDuration / fragmentSourceDurationSec) * 100, 1, 100 - sourceOffsetPercent)
+            : 0;
+
+        return {
+          index,
+          rowKey,
+          draft,
+          endValue,
+          rawDuration,
+          outputDuration,
+          outputStartSec,
+          sourceOffsetPercent,
+          sourceWidthPercent,
+          segment
+        };
+      }),
+    [fragmentPlaybackPlan.segments, fragmentSourceDurationSec, normalizedSegments, segmentDraftInputs]
+  );
   const handlePreviewMeasuredTextFitChange = useCallback(
     (nextFit: Stage3TextFitSnapshot) => {
       setPreviewMeasuredFitState((current) => {
@@ -2272,6 +2392,28 @@ export function Step3RenderTemplate({
   }, [effectiveCameraTracks]);
 
   useEffect(() => {
+    if (!hasDynamicCameraState) {
+      didSimplifyDynamicCameraRef.current = false;
+      return;
+    }
+    if (didSimplifyDynamicCameraRef.current) {
+      return;
+    }
+
+    didSimplifyDynamicCameraRef.current = true;
+    setSelectedPositionKeyframeId(null);
+    setSelectedScaleKeyframeId(null);
+    setLocalPositionKeyframes([]);
+    setLocalScaleKeyframes([]);
+    onCameraPositionKeyframesChange([]);
+    onCameraScaleKeyframesChange([]);
+  }, [
+    hasDynamicCameraState,
+    onCameraPositionKeyframesChange,
+    onCameraScaleKeyframesChange
+  ]);
+
+  useEffect(() => {
     setSelectedPositionKeyframeId((current) => {
       if (!normalizedLocalPositionKeyframes.length) {
         return null;
@@ -2318,10 +2460,10 @@ export function Step3RenderTemplate({
       const next: Record<string, { startSec: string; endSec: string }> = {};
       let changed = false;
       normalizedSegments.forEach((segment, index) => {
-        const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
+        const key = buildFragmentRowKey(index, segment);
         const fallbackDraft = {
           startSec: segment.startSec.toFixed(1),
-          endSec: (segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
+          endSec: (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
         };
         next[key] = prev[key] ?? fallbackDraft;
         if (
@@ -2337,7 +2479,44 @@ export function Step3RenderTemplate({
       }
       return next;
     });
-  }, [normalizedSegments, sourceDurationSec]);
+  }, [fragmentSourceDurationSec, normalizedSegments]);
+
+  useEffect(() => {
+    if (activeFragmentIndex === null) {
+      return;
+    }
+    if (fragmentRows.length === 0) {
+      setActiveFragmentIndex(null);
+      return;
+    }
+    if (activeFragmentIndex < fragmentRows.length) {
+      return;
+    }
+    setActiveFragmentIndex(fragmentRows.length - 1);
+  }, [activeFragmentIndex, fragmentRows]);
+
+  useEffect(() => {
+    if (!pendingFragmentFocus) {
+      return;
+    }
+
+    const target = fragmentFieldRefs.current[`${pendingFragmentFocus.rowKey}:${pendingFragmentFocus.field}`];
+    if (!target) {
+      return;
+    }
+
+    target.focus();
+    if (
+      target instanceof HTMLInputElement &&
+      ["text", "search", "tel", "url", "password"].includes(target.type)
+    ) {
+      const caretPosition = target.value.length;
+      window.requestAnimationFrame(() => {
+        target.setSelectionRange(caretPosition, caretPosition);
+      });
+    }
+    setPendingFragmentFocus(null);
+  }, [fragmentRows, pendingFragmentFocus]);
 
   useEffect(() => {
     return () => {
@@ -2574,13 +2753,18 @@ export function Step3RenderTemplate({
         ];
 
   const commitAdvancedControls = (): Stage3EditorDraftOverrides => {
+    const fragmentOverrides = commitPendingFragmentDrafts();
     const overrides: Stage3EditorDraftOverrides = {
       clipStartSec: clamp(localClipStartSec, 0, maxStartSec),
       focusY: clampStage3FocusY(localFocusY),
       videoZoom: clampStage3CameraZoom(localVideoZoom),
       cameraKeyframes: [],
-      cameraPositionKeyframes: normalizedLocalPositionKeyframes,
-      cameraScaleKeyframes: normalizedLocalScaleKeyframes,
+      cameraPositionKeyframes: [],
+      cameraScaleKeyframes: [],
+      segments: fragmentOverrides.segments,
+      timingMode: fragmentOverrides.timingMode,
+      renderPolicy: fragmentOverrides.renderPolicy,
+      normalizeToTargetEnabled: fragmentOverrides.normalizeToTargetEnabled,
       topFontScale: clampStage3TextScaleUi(localTopFontScale),
       bottomFontScale: clampStage3TextScaleUi(localBottomFontScale),
       musicGain: clamp(localMusicGain, 0, 1)
@@ -2845,13 +3029,6 @@ export function Step3RenderTemplate({
 
   const handleCameraPreviewFocusChange = (value: number) => {
     const next = clampStage3FocusY(value);
-    if (selectedPositionKeyframe) {
-      updateSelectedPositionKeyframe((keyframe) => ({
-        ...keyframe,
-        focusY: next
-      }));
-      return;
-    }
     scheduleFocusCommit(next);
   };
 
@@ -2885,55 +3062,21 @@ export function Step3RenderTemplate({
 
   const scheduleFocusValue = (value: number) => {
     const next = clampStage3FocusY(value);
-    if (selectedPositionKeyframe) {
-      updateSelectedPositionKeyframe((keyframe) => ({
-        ...keyframe,
-        focusY: next
-      }));
-      return;
-    }
     scheduleFocusCommit(next);
   };
 
   const flushFocusValue = (value: number) => {
     const next = clampStage3FocusY(value);
-    if (selectedPositionKeyframe) {
-      updateSelectedPositionKeyframe(
-        (keyframe) => ({
-          ...keyframe,
-          focusY: next
-        }),
-        { immediate: true }
-      );
-      return;
-    }
     flushFocusCommit(next);
   };
 
   const scheduleZoomValue = (value: number) => {
     const next = clampStage3CameraZoom(value);
-    if (selectedScaleKeyframe) {
-      updateSelectedScaleKeyframe((keyframe) => ({
-        ...keyframe,
-        zoom: next
-      }));
-      return;
-    }
     scheduleVideoZoomCommit(next);
   };
 
   const flushZoomValue = (value: number) => {
     const next = clampStage3CameraZoom(value);
-    if (selectedScaleKeyframe) {
-      updateSelectedScaleKeyframe(
-        (keyframe) => ({
-          ...keyframe,
-          zoom: next
-        }),
-        { immediate: true }
-      );
-      return;
-    }
     flushVideoZoomCommit(next);
   };
 
@@ -2945,32 +3088,12 @@ export function Step3RenderTemplate({
 
   const applyFocusImmediate = (value: number) => {
     const next = clampStage3FocusY(value);
-    if (selectedPositionKeyframe) {
-      updateSelectedPositionKeyframe(
-        (keyframe) => ({
-          ...keyframe,
-          focusY: next
-        }),
-        { immediate: true }
-      );
-      return;
-    }
     setLocalFocusY(next);
     flushFocusCommit(next);
   };
 
   const applyVideoZoomImmediate = (value: number) => {
     const next = clampStage3CameraZoom(value);
-    if (selectedScaleKeyframe) {
-      updateSelectedScaleKeyframe(
-        (keyframe) => ({
-          ...keyframe,
-          zoom: next
-        }),
-        { immediate: true }
-      );
-      return;
-    }
     setLocalVideoZoom(next);
     flushVideoZoomCommit(next);
   };
@@ -3212,66 +3335,200 @@ export function Step3RenderTemplate({
 
   const commitFragments = useCallback(
     (nextSegments: Stage3Segment[], nextCompressionEnabled = compressionEnabled) => {
-      const normalized = normalizeEditorSegments(nextSegments, sourceDurationSec);
+      const normalized = normalizeEditorSegments(nextSegments, fragmentSourceDurationSec);
       const bounded = nextCompressionEnabled
         ? normalized
-        : trimSegmentsToDuration(normalized, clipDurationSec, sourceDurationSec);
+        : trimSegmentsToDuration(normalized, clipDurationSec, fragmentSourceDurationSec);
       onFragmentStateChange({
         segments: bounded,
         compressionEnabled: nextCompressionEnabled
       });
     },
-    [clipDurationSec, compressionEnabled, onFragmentStateChange, sourceDurationSec]
+    [clipDurationSec, compressionEnabled, fragmentSourceDurationSec, onFragmentStateChange]
   );
 
-  const createFragment = useCallback(() => {
-    if (!compressionEnabled && remainingSegmentsDurationSec < 0.1) {
-      return;
+  const buildCommittedSegmentsFromDrafts = useCallback((): Stage3Segment[] => {
+    const draftedSegments = normalizedSegments.map((segment, index) => {
+      const key = buildFragmentRowKey(index, segment);
+      const draft = segmentDraftInputs[key];
+      const parsedStart = Number.parseFloat(draft?.startSec ?? "");
+      const parsedEnd = Number.parseFloat(draft?.endSec ?? "");
+      const nextStart = roundToTenth(
+        clamp(
+          Number.isFinite(parsedStart) ? parsedStart : segment.startSec,
+          0,
+          fragmentSourceDurationSec ?? (Number.isFinite(parsedStart) ? parsedStart : segment.startSec)
+        )
+      );
+      const sourceMaxEnd =
+        fragmentSourceDurationSec ??
+        (Number.isFinite(parsedEnd) ? parsedEnd : segment.endSec ?? segment.startSec + 0.5);
+      const nextEnd = roundToTenth(
+        clamp(
+          Number.isFinite(parsedEnd) ? parsedEnd : segment.endSec ?? sourceMaxEnd,
+          nextStart + 0.1,
+          sourceMaxEnd
+        )
+      );
+      return {
+        ...segment,
+        startSec: nextStart,
+        endSec: nextEnd
+      };
+    });
+
+    const normalized = normalizeEditorSegments(draftedSegments, fragmentSourceDurationSec);
+    return compressionEnabled
+      ? normalized
+      : trimSegmentsToDuration(normalized, clipDurationSec, fragmentSourceDurationSec);
+  }, [clipDurationSec, compressionEnabled, fragmentSourceDurationSec, normalizedSegments, segmentDraftInputs]);
+
+  const commitPendingFragmentDrafts = useCallback(() => {
+    const committedSegments = buildCommittedSegmentsFromDrafts();
+    const hasChanges = JSON.stringify(committedSegments) !== JSON.stringify(normalizedSegments);
+    const nextTimingMode =
+      compressionEnabled
+        ? committedSegments.length === 0
+          ? "auto"
+          : (() => {
+              const explicitDurationSec = sumSegmentsDuration(committedSegments, fragmentSourceDurationSec);
+              if (explicitDurationSec > clipDurationSec + 0.05) {
+                return "compress" as const;
+              }
+              if (explicitDurationSec < clipDurationSec - 0.05) {
+                return "stretch" as const;
+              }
+              return "auto" as const;
+            })()
+        : "auto";
+    const nextRenderPolicy: Stage3RenderPolicy =
+      committedSegments.length > 0 ? "fixed_segments" : compressionEnabled ? "full_source_normalize" : "fixed_segments";
+
+    if (hasChanges) {
+      commitFragments(committedSegments, compressionEnabled);
     }
 
-    const defaultDuration = compressionEnabled
-      ? 1
-      : Math.min(1, Math.max(0.1, remainingSegmentsDurationSec));
-    const lastSegment = normalizedSegments[normalizedSegments.length - 1] ?? null;
-    const suggestedStart = lastSegment?.endSec ?? localClipStartSec;
-    const sourceMaxStart =
-      sourceDurationSec !== null ? Math.max(0, sourceDurationSec - 0.1) : suggestedStart;
-    const startSec = roundToTenth(clamp(suggestedStart, 0, sourceMaxStart));
-    const endSec = roundToTenth(
-      clamp(
-        startSec + defaultDuration,
-        startSec + 0.1,
-        sourceDurationSec ?? startSec + defaultDuration
-      )
-    );
-
-    commitFragments([
-      ...normalizedSegments,
-      {
-        startSec,
-        endSec,
-        label: `Фрагмент ${normalizedSegments.length + 1}`,
-        speed: 1
-      }
-    ]);
+    return {
+      segments: committedSegments,
+      timingMode: nextTimingMode,
+      renderPolicy: nextRenderPolicy,
+      normalizeToTargetEnabled: compressionEnabled
+    };
   }, [
+    buildCommittedSegmentsFromDrafts,
+    clipDurationSec,
     commitFragments,
     compressionEnabled,
-    localClipStartSec,
     normalizedSegments,
-    remainingSegmentsDurationSec,
-    sourceDurationSec
+    fragmentSourceDurationSec
   ]);
+
+  const appendFragmentFromDraft = useCallback(
+    (field: FragmentDraftField, value: string) => {
+      if (!nextFragmentSuggestion) {
+        return;
+      }
+      if (field !== "speed" && !Number.isFinite(Number.parseFloat(value))) {
+        return;
+      }
+
+      const nextSpeed =
+        field === "speed"
+          ? normalizeSegmentSpeed(Number.parseFloat(value))
+          : nextFragmentSuggestion.speed;
+      const nextStartInput =
+        field === "startSec" ? value : nextFragmentSuggestion.startSec.toFixed(1);
+      const nextEndInput = field === "endSec" ? value : nextFragmentSuggestion.endSec.toFixed(1);
+      const parsedStart = Number.parseFloat(nextStartInput);
+      const parsedEnd = Number.parseFloat(nextEndInput);
+      const nextStart = roundToTenth(
+        clamp(
+          Number.isFinite(parsedStart) ? parsedStart : nextFragmentSuggestion.startSec,
+          0,
+          fragmentSourceDurationSec ??
+            (Number.isFinite(parsedStart) ? parsedStart : nextFragmentSuggestion.startSec)
+        )
+      );
+      const sourceMaxEnd = fragmentSourceDurationSec ?? nextFragmentSuggestion.endSec;
+      const maxOwnDuration = compressionEnabled
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0.1, remainingSegmentsDurationSec * nextSpeed);
+      const nextEnd = roundToTenth(
+        clamp(
+          Number.isFinite(parsedEnd) ? parsedEnd : nextFragmentSuggestion.endSec,
+          nextStart + 0.1,
+          Math.min(sourceMaxEnd, nextStart + maxOwnDuration)
+        )
+      );
+      const nextSegments = normalizeEditorSegments(
+        [
+          ...normalizedSegments,
+          {
+            startSec: nextStart,
+            endSec: nextEnd,
+            label: `Фрагмент ${normalizedSegments.length + 1}`,
+            speed: nextSpeed
+          }
+        ],
+        fragmentSourceDurationSec
+      );
+      const boundedSegments = compressionEnabled
+        ? nextSegments
+        : trimSegmentsToDuration(nextSegments, clipDurationSec, fragmentSourceDurationSec);
+      const nextIndex = boundedSegments.findIndex(
+        (segment) =>
+          Math.abs(segment.startSec - nextStart) <= 0.001 &&
+          Math.abs((segment.endSec ?? nextEnd) - nextEnd) <= 0.001 &&
+          segment.speed === nextSpeed
+      );
+      const focusedIndex = nextIndex >= 0 ? nextIndex : boundedSegments.length - 1;
+      const focusedSegment = boundedSegments[focusedIndex];
+      if (!focusedSegment) {
+        return;
+      }
+      const rowKey = buildFragmentRowKey(focusedIndex, focusedSegment);
+
+      setSegmentDraftInputs((prev) => ({
+        ...prev,
+        [rowKey]: {
+          startSec:
+            field === "startSec" && value.trim() ? value : focusedSegment.startSec.toFixed(1),
+          endSec:
+            field === "endSec" && value.trim()
+              ? value
+              : (focusedSegment.endSec ?? fragmentSourceDurationSec ?? focusedSegment.startSec + 0.5).toFixed(1)
+        }
+      }));
+      setActiveFragmentIndex(focusedIndex);
+      setPendingFragmentFocus({
+        rowKey,
+        field
+      });
+      commitFragments(boundedSegments);
+    },
+    [
+      clipDurationSec,
+      commitFragments,
+      compressionEnabled,
+      nextFragmentSuggestion,
+      normalizedSegments,
+      remainingSegmentsDurationSec,
+      fragmentSourceDurationSec
+    ]
+  );
 
   const removeFragment = useCallback(
     (index: number) => {
-      commitFragments(normalizedSegments.filter((_, itemIndex) => itemIndex !== index));
+      const nextSegments = normalizedSegments.filter((_, itemIndex) => itemIndex !== index);
+      setActiveFragmentIndex(nextSegments.length > 0 ? Math.min(index, nextSegments.length - 1) : null);
+      commitFragments(nextSegments);
     },
     [commitFragments, normalizedSegments]
   );
 
   const updateFragmentSpeed = useCallback(
     (index: number, speed: Stage3Segment["speed"]) => {
+      setActiveFragmentIndex(index);
       commitFragments(
         normalizedSegments.map((segment, itemIndex) =>
           itemIndex === index
@@ -3292,7 +3549,7 @@ export function Step3RenderTemplate({
     field: "startSec" | "endSec",
     value: string
   ) => {
-    const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
+    const key = buildFragmentRowKey(index, segment);
     setSegmentDraftInputs((prev) => ({
       ...prev,
       [key]: {
@@ -3300,13 +3557,14 @@ export function Step3RenderTemplate({
         endSec:
           field === "endSec"
             ? value
-            : (prev[key]?.endSec ?? (segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5).toFixed(1))
+            : (prev[key]?.endSec ??
+                (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1))
       }
     }));
   };
 
   const commitFragmentDraft = (index: number, segment: Stage3Segment) => {
-    const key = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
+    const key = buildFragmentRowKey(index, segment);
     const draft = segmentDraftInputs[key];
     if (!draft) {
       return;
@@ -3319,16 +3577,16 @@ export function Step3RenderTemplate({
         ...prev,
         [key]: {
           startSec: segment.startSec.toFixed(1),
-          endSec: (segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
+          endSec: (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
         }
       }));
       return;
     }
 
-    const nextStart = roundToTenth(clamp(parsedStart, 0, sourceDurationSec ?? parsedStart));
-    const sourceMaxEnd = sourceDurationSec ?? parsedEnd;
+    const nextStart = roundToTenth(clamp(parsedStart, 0, fragmentSourceDurationSec ?? parsedStart));
+    const sourceMaxEnd = fragmentSourceDurationSec ?? parsedEnd;
     const otherSegments = normalizedSegments.filter((_, itemIndex) => itemIndex !== index);
-    const otherDuration = sumSegmentsDuration(otherSegments, sourceDurationSec);
+    const otherDuration = sumSegmentsDuration(otherSegments, fragmentSourceDurationSec);
     const maxOwnDuration = compressionEnabled
       ? Number.POSITIVE_INFINITY
       : Math.max(0.1, (clipDurationSec - otherDuration) * segment.speed);
@@ -3337,7 +3595,7 @@ export function Step3RenderTemplate({
       clamp(requestedEnd, nextStart + 0.1, Math.min(sourceMaxEnd, nextStart + maxOwnDuration))
     );
 
-  const nextSegments = normalizedSegments.map((item, itemIndex) =>
+    const nextSegments = normalizedSegments.map((item, itemIndex) =>
       itemIndex === index
         ? {
             ...item,
@@ -3346,8 +3604,17 @@ export function Step3RenderTemplate({
           }
         : item
     );
-
-    commitFragments(nextSegments);
+    const boundedSegments = compressionEnabled
+      ? normalizeEditorSegments(nextSegments, fragmentSourceDurationSec)
+      : trimSegmentsToDuration(nextSegments, clipDurationSec, fragmentSourceDurationSec);
+    const nextIndex = boundedSegments.findIndex(
+      (item) =>
+        Math.abs(item.startSec - nextStart) <= 0.001 &&
+        Math.abs((item.endSec ?? nextEnd) - nextEnd) <= 0.001 &&
+        item.speed === segment.speed
+    );
+    setActiveFragmentIndex(nextIndex >= 0 ? nextIndex : Math.min(index, Math.max(0, boundedSegments.length - 1)));
+    commitFragments(boundedSegments);
   };
 
   const startTextFitAction = (kind: PendingTextFitAction["kind"]) => {
@@ -3374,6 +3641,126 @@ export function Step3RenderTemplate({
   };
 
   const isPreparingRenderText = Boolean(pendingTextFitAction);
+
+  const finishCaptionEditorCard = (
+    <section className="control-card control-card-priority stage3-caption-editor-card">
+      <div className="control-section-head">
+        <div>
+          <h3>Финальный текст</h3>
+          <p className="subtle-text">
+            Здесь редактируется итоговый TOP/BOTTOM, который реально уйдет в preview и render.
+          </p>
+        </div>
+        <div className="editing-status-row">
+          <span className="meta-pill">TOP: {topTextSourceLabel}</span>
+          <span className="meta-pill">BOTTOM: {bottomTextSourceLabel}</span>
+          {selectedCaptionSource ? (
+            <span className="subtle-text">База сейчас: option {selectedCaptionSource.option}</span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="stage3-caption-editor-grid">
+        <label className="field-stack">
+          <span className="field-label">TOP</span>
+          <textarea
+            className="text-area stage3-caption-textarea"
+            rows={4}
+            value={topText}
+            onChange={(event) => onTopTextChange(event.target.value)}
+            placeholder="Финальный TOP для рендера"
+          />
+        </label>
+        <label className="field-stack">
+          <span className="field-label">BOTTOM</span>
+          <textarea
+            className="text-area stage3-caption-textarea"
+            rows={4}
+            value={bottomText}
+            onChange={(event) => onBottomTextChange(event.target.value)}
+            placeholder="Финальный BOTTOM для рендера"
+          />
+        </label>
+      </div>
+
+      <div className="control-actions stage3-caption-editor-actions">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => onResetCaptionText("all")}
+          disabled={!handoffSummary?.canResetToSelectedCaption}
+        >
+          Сбросить к выбранному варианту
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => onResetCaptionText("top")}
+          disabled={!selectedCaptionSource || handoffSummary?.topText === selectedCaptionSource.top}
+        >
+          Сбросить TOP
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => onResetCaptionText("bottom")}
+          disabled={!selectedCaptionSource || handoffSummary?.bottomText === selectedCaptionSource.bottom}
+        >
+          Сбросить BOTTOM
+        </button>
+      </div>
+
+      {captionSources.length > 0 ? (
+        <div className="stage3-caption-source-list">
+          {captionSources.map((option) => {
+            const isSelectedSource = option.option === selectedCaptionOption;
+            return (
+              <article
+                key={`stage3-caption-source-${option.option}`}
+                className={`stage3-caption-source-card ${isSelectedSource ? "selected" : ""}`}
+              >
+                <div className="stage3-caption-source-head">
+                  <div className="option-title-row">
+                    <strong>Option {option.option}</strong>
+                    {isSelectedSource ? <span className="badge muted">Выбран</span> : null}
+                  </div>
+                  <div className="stage3-caption-source-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => onApplyCaptionSource(option.option, "all")}
+                    >
+                      Взять всё
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => onApplyCaptionSource(option.option, "top")}
+                    >
+                      Взять TOP
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => onApplyCaptionSource(option.option, "bottom")}
+                    >
+                      Взять BOTTOM
+                    </button>
+                  </div>
+                </div>
+                <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
+                <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="subtle-text">
+          Источник вариантов Stage 2 пока недоступен. Редактор всё равно работает по текущему draft.
+        </p>
+      )}
+    </section>
+  );
 
   const finishFooter = (
     <div className="sticky-action-bar">
@@ -3448,7 +3835,7 @@ export function Step3RenderTemplate({
                   {channelName} (@{channelUsername})
                 </span>
                 <span className="meta-pill">
-                  Исходник {sourceDurationSec ? formatTimeSec(sourceDurationSec) : "н/д"}
+                  Исходник {fragmentSourceDurationSec ? formatTimeSec(fragmentSourceDurationSec) : "н/д"}
                 </span>
                 <span className="meta-pill">Версий {displayVersions.length}</span>
               </div>
@@ -3475,16 +3862,16 @@ export function Step3RenderTemplate({
               ) : null}
             </header>
 
-            <section className="control-card control-card-priority stage3-surface-card">
-              <div className="control-section-head">
-                <div>
-                  <h3>{isFinishMode ? "Финал" : "Ручной редактор"}</h3>
-                  <p className="subtle-text">
-                    {isFinishMode
-                      ? "Основной путь: финальный TOP/BOTTOM, звук, фон, версии и экспорт."
-                      : "Здесь живут только тайминг и камера: fragments, фокус, zoom и keyframes."}
-                  </p>
-                </div>
+            <section
+              className={`control-card stage3-surface-card ${isFinishMode ? "control-card-priority" : "stage3-surface-card-compact"}`}
+            >
+              <div className={`control-section-head ${isFinishMode ? "" : "stage3-surface-head-compact"}`}>
+                {isFinishMode ? (
+                  <div>
+                    <h3>Финал</h3>
+                    <p className="subtle-text">Основной путь: финальный TOP/BOTTOM, звук, фон, версии и экспорт.</p>
+                  </div>
+                ) : null}
                 <div className="stage3-surface-switch" role="tablist" aria-label="Режим Step 3">
                   <button
                     type="button"
@@ -3507,9 +3894,9 @@ export function Step3RenderTemplate({
                 </div>
               </div>
 
-              <div className="editing-status-row">
-                {isFinishMode ? (
-                  <>
+              {isFinishMode ? (
+                <>
+                  <div className="editing-status-row">
                     {selectedCaptionOption ? (
                       <span className="meta-pill">Stage 2 option {selectedCaptionOption}</span>
                     ) : (
@@ -3520,200 +3907,22 @@ export function Step3RenderTemplate({
                     </span>
                     <span className="meta-pill">Фон {backgroundModeLabel}</span>
                     <span className="meta-pill">Звук {audioModeLabel}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="meta-pill">
-                      {normalizedSegments.length > 0
-                        ? `Курсор ${formatTimeSec(localClipStartSec)}`
-                        : `Старт ${formatTimeSec(localClipStartSec)}`}
-                    </span>
-                    <span className="meta-pill">{manualTimingLabel}</span>
-                    <span className="meta-pill">Фокус {cameraFocusPercent}%</span>
-                    <span className="meta-pill">Камера {cameraModeLabel}</span>
-                    <span className="meta-pill">Зум {editorZoomLabel}</span>
-                  </>
-                )}
-              </div>
-
-              <div className="stage3-surface-actions">
-                <p className="subtle-text">
-                  {isFinishMode
-                    ? "Открывайте редактор только когда нужно вручную подвинуть тайминг или нарисовать движение камеры."
-                    : "Фон, музыка, текст и export остаются в режиме финализации."}
-                </p>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setStage3Mode(isFinishMode ? "editor" : "finish")}
-                >
-                  {isFinishMode ? "Открыть редактор" : "Назад к финализации"}
-                </button>
-              </div>
-            </section>
-
-            <section className="control-card stage3-publish-card">
-              <div className="control-section-head">
-                <div>
-                  <h3>Публикация</h3>
-                  <p className="subtle-text">
-                    После успешного render сервер создаёт или обновляет queued-публикацию для этого ролика.
-                  </p>
-                </div>
-                <button type="button" className="btn btn-secondary" onClick={onOpenPlanner}>
-                  Открыть planner
-                </button>
-              </div>
-
-              {publication ? (
-                <div className="publishing-inline-summary">
-                  <div className="editing-status-row">
-                    <span className={`meta-pill ${publication.status === "scheduled" ? "ok" : publication.status === "failed" ? "warn" : ""}`}>
-                      {formatPublicationStatus(publication.status)}
-                    </span>
-                    <span className="meta-pill">{formatDateShort(publication.scheduledAt)}</span>
-                    {publication.needsReview ? <span className="meta-pill warn">needs review</span> : null}
                   </div>
-                  <p className="publishing-inline-title">{publication.title}</p>
-                  {publication.description ? <p className="subtle-text publishing-inline-description">{publication.description}</p> : null}
-                  {publication.tags.length > 0 ? (
-                    <div className="publishing-tag-row">
-                      {publication.tags.map((tag) => (
-                        <span key={`${publication.id}:${tag}`} className="meta-pill">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {publication.lastError ? <p className="danger-text subtle-text">{publication.lastError}</p> : null}
-                </div>
-              ) : (
-                <p className="subtle-text">
-                  Здесь появится draft публикации после первого успешного render, если для канала включён auto-queue.
-                </p>
-              )}
+
+                  <div className="stage3-surface-actions">
+                    <p className="subtle-text">
+                      Открывайте редактор только когда нужно вручную подвинуть тайминг или поправить общий кадр.
+                    </p>
+                    <button type="button" className="btn btn-secondary" onClick={() => setStage3Mode("editor")}>
+                      Открыть редактор
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </section>
 
             {isFinishMode ? (
               <>
-                <section className="control-card control-card-priority stage3-caption-editor-card">
-                  <div className="control-section-head">
-                    <div>
-                      <h3>Финальный текст</h3>
-                      <p className="subtle-text">
-                        Здесь редактируется итоговый TOP/BOTTOM, который реально уйдет в preview и render.
-                      </p>
-                    </div>
-                    <div className="editing-status-row">
-                      <span className="meta-pill">TOP: {topTextSourceLabel}</span>
-                      <span className="meta-pill">BOTTOM: {bottomTextSourceLabel}</span>
-                      {selectedCaptionSource ? (
-                        <span className="subtle-text">База сейчас: option {selectedCaptionSource.option}</span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="stage3-caption-editor-grid">
-                    <label className="field-stack">
-                      <span className="field-label">TOP</span>
-                      <textarea
-                        className="text-area stage3-caption-textarea"
-                        rows={4}
-                        value={topText}
-                        onChange={(event) => onTopTextChange(event.target.value)}
-                        placeholder="Финальный TOP для рендера"
-                      />
-                    </label>
-                    <label className="field-stack">
-                      <span className="field-label">BOTTOM</span>
-                      <textarea
-                        className="text-area stage3-caption-textarea"
-                        rows={4}
-                        value={bottomText}
-                        onChange={(event) => onBottomTextChange(event.target.value)}
-                        placeholder="Финальный BOTTOM для рендера"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="control-actions stage3-caption-editor-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => onResetCaptionText("all")}
-                      disabled={!handoffSummary?.canResetToSelectedCaption}
-                    >
-                      Сбросить к выбранному варианту
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => onResetCaptionText("top")}
-                      disabled={!selectedCaptionSource || handoffSummary?.topText === selectedCaptionSource.top}
-                    >
-                      Сбросить TOP
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => onResetCaptionText("bottom")}
-                      disabled={!selectedCaptionSource || handoffSummary?.bottomText === selectedCaptionSource.bottom}
-                    >
-                      Сбросить BOTTOM
-                    </button>
-                  </div>
-
-                  {captionSources.length > 0 ? (
-                    <div className="stage3-caption-source-list">
-                      {captionSources.map((option) => {
-                        const isSelectedSource = option.option === selectedCaptionOption;
-                        return (
-                          <article
-                            key={`stage3-caption-source-${option.option}`}
-                            className={`stage3-caption-source-card ${isSelectedSource ? "selected" : ""}`}
-                          >
-                            <div className="stage3-caption-source-head">
-                              <div className="option-title-row">
-                                <strong>Option {option.option}</strong>
-                                {isSelectedSource ? <span className="badge muted">Выбран</span> : null}
-                              </div>
-                              <div className="stage3-caption-source-actions">
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary"
-                                  onClick={() => onApplyCaptionSource(option.option, "all")}
-                                >
-                                  Взять всё
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  onClick={() => onApplyCaptionSource(option.option, "top")}
-                                >
-                                  Взять TOP
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  onClick={() => onApplyCaptionSource(option.option, "bottom")}
-                                >
-                                  Взять BOTTOM
-                                </button>
-                              </div>
-                            </div>
-                            <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
-                            <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="subtle-text">
-                      Источник вариантов Stage 2 пока недоступен. Редактор всё равно работает по текущему draft.
-                    </p>
-                  )}
-                </section>
-
                 <section className="control-card">
                   <div className="control-section-head">
                     <div>
@@ -3948,24 +4157,14 @@ export function Step3RenderTemplate({
                     </div>
                   </div>
                 </section>
+                {finishCaptionEditorCard}
               </>
             ) : (
               <section className="control-card control-card-priority">
                 <div className="control-section-head">
                   <div>
                     <h3>Тайминг и камера</h3>
-                    <p className="subtle-text">
-                      Здесь живут только ручные правки кадра и длительности: fragments, focus, zoom и keyframes.
-                    </p>
-                  </div>
-                  <div className="editing-status-row">
-                    <span className="meta-pill">
-                      {normalizedSegments.length > 0 ? `Курсор ${formatTimeSec(localClipStartSec)}` : `Старт ${formatTimeSec(localClipStartSec)}`}
-                    </span>
-                    <span className="meta-pill">{manualTimingLabel}</span>
-                    <span className="meta-pill">Фокус {cameraFocusPercent}%</span>
-                    <span className="meta-pill">Камера {cameraModeLabel}</span>
-                    <span className="meta-pill">Зум {editorZoomLabel}</span>
+                    <p className="subtle-text">Соберите фрагменты и при необходимости поправьте общий кадр клипа.</p>
                   </div>
                 </div>
 
@@ -3976,163 +4175,336 @@ export function Step3RenderTemplate({
                         <input
                           type="checkbox"
                           checked={compressionEnabled}
-                          onChange={(event) => commitFragments(normalizedSegments, event.target.checked)}
+                          onChange={(event) => {
+                            if (normalizedSegments.length > 0) {
+                              setActiveFragmentIndex((current) =>
+                                current === null ? 0 : Math.min(current, normalizedSegments.length - 1)
+                              );
+                            }
+                            commitFragments(normalizedSegments, event.target.checked);
+                          }}
                         />
-                        <span>Сжать до 6с</span>
+                        <span>Подогнать к 6с</span>
                       </label>
-                      <div className="fragment-actions">
+                      {normalizedSegments.length > 0 ? (
                         <button
                           type="button"
-                          className="btn btn-secondary"
-                          disabled={!sourceUrl || (!compressionEnabled && remainingSegmentsDurationSec < 0.1)}
-                          onClick={createFragment}
+                          className="btn btn-ghost"
+                          onClick={() => {
+                            setActiveFragmentIndex(null);
+                            commitFragments([]);
+                          }}
                         >
-                          + Фрагмент
+                          Вернуть цельный клип
                         </button>
-                        {normalizedSegments.length > 0 ? (
-                          <button type="button" className="btn btn-ghost" onClick={() => commitFragments([])}>
-                            Очистить
-                          </button>
-                        ) : null}
-                      </div>
+                      ) : null}
                     </div>
 
-                    {normalizedSegments.length > 0 ? (
-                      <div className="fragment-list">
-                        {normalizedSegments.map((segment, index) => {
-                          const rowKey = `${index}:${segment.startSec}:${segment.endSec ?? "end"}:${segment.speed}`;
-                          const draft = segmentDraftInputs[rowKey] ?? {
-                            startSec: segment.startSec.toFixed(1),
-                            endSec: (segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
-                          };
-                          const endValue = segment.endSec ?? sourceDurationSec ?? segment.startSec + 0.5;
-                          const rawDuration = Math.max(0, endValue - segment.startSec);
-                          const outputDuration = rawDuration / segment.speed;
-                          return (
-                            <article key={rowKey} className="fragment-row">
-                              <div className="fragment-row-head">
-                                <div className="fragment-row-meta">
-                                  <span className="meta-pill mono">{index + 1}</span>
-                                  <span className="meta-pill">{formatSegmentSpeed(segment.speed)}</span>
-                                  <span className="quick-edit-value">{formatTimeSec(outputDuration)}</span>
-                                  {segment.speed > 1 ? (
-                                    <span className="subtle-text">
-                                      {formatTimeSec(rawDuration)} → {formatTimeSec(outputDuration)}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-danger-soft"
-                                  onClick={() => removeFragment(index)}
-                                >
-                                  ×
-                                </button>
-                              </div>
-                              <div className="fragment-input-grid">
-                                <label className="field-stack">
-                                  <span className="field-label">От</span>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={sourceDurationSec ?? undefined}
-                                    step={0.1}
-                                    className="text-input segment-input"
-                                    value={draft.startSec}
-                                    onChange={(event) =>
-                                      setFragmentDraftField(index, segment, "startSec", event.target.value)
-                                    }
-                                    onBlur={() => commitFragmentDraft(index, segment)}
-                                  />
-                                </label>
-                                <label className="field-stack">
-                                  <span className="field-label">До</span>
-                                  <input
-                                    type="number"
-                                    min={0.1}
-                                    max={sourceDurationSec ?? undefined}
-                                    step={0.1}
-                                    className="text-input segment-input"
-                                    value={draft.endSec}
-                                    onChange={(event) =>
-                                      setFragmentDraftField(index, segment, "endSec", event.target.value)
-                                    }
-                                    onBlur={() => commitFragmentDraft(index, segment)}
-                                  />
-                                </label>
-                                <label className="field-stack">
-                                  <span className="field-label">Сжатие</span>
-                                  <select
-                                    className="text-input segment-input"
-                                    value={segment.speed}
-                                    onChange={(event) =>
-                                      updateFragmentSpeed(
-                                        index,
-                                        normalizeSegmentSpeed(Number.parseFloat(event.target.value))
-                                      )
-                                    }
-                                  >
-                                    {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
-                                      <option key={`segment-speed-${speed}`} value={speed}>
-                                        {formatSegmentSpeed(speed)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="fragment-empty subtle-text">Нет фрагментов</div>
-                    )}
-                  </div>
-
-                  <div className="quick-edit-card slider-field">
-                    <div className="quick-edit-label-row">
-                      <label className="field-label" htmlFor="clipStartRange">
-                        Начало клипа
-                      </label>
-                      <span className="quick-edit-value">
-                        {normalizedSegments.length > 0
-                          ? formatTimeSec(localClipStartSec)
-                          : `${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`}
+                    <div className="fragment-summary-strip">
+                      <span className="meta-pill">{normalizedSegments.length > 0 ? `${normalizedSegments.length} фрагм.` : "Цельное окно"}</span>
+                      <span className="meta-pill fragment-summary-primary">
+                        Выход {formatTimeSec(effectiveOutputDurationSec)} / {formatTimeSec(clipDurationSec)}
+                      </span>
+                      {fragmentSourceDurationSec !== null ? (
+                        <span className="meta-pill">Исходник {formatTimeSec(fragmentSourceDurationSec)}</span>
+                      ) : null}
+                      <span className="meta-pill">Выбрано {formatTimeSec(sourceDisplayDurationSec)}</span>
+                      {unusedSourceDurationSec !== null ? (
+                        <span className="meta-pill">Свободно {formatTimeSec(unusedSourceDurationSec)}</span>
+                      ) : null}
+                      <span className="meta-pill">
+                        {compressionEnabled
+                          ? normalizationModeLabel ?? "Подгоняем к 6с"
+                          : `Осталось ${formatTimeSec(remainingSegmentsDurationSec)}`}
                       </span>
                     </div>
-                    <input
-                      id="clipStartRange"
-                      type="range"
-                      min={0}
-                      max={Math.max(0, maxStartSec)}
-                      step={0.1}
-                      value={localClipStartSec}
-                      disabled={!sourceUrl || maxStartSec <= 0}
-                      onChange={(event) => scheduleClipCommit(Number.parseFloat(event.target.value))}
-                      onMouseUp={() => flushClipCommit(localClipStartSec)}
-                      onTouchEnd={() => flushClipCommit(localClipStartSec)}
-                      onBlur={() => flushClipCommit(localClipStartSec)}
-                    />
-                    <div className="preset-row">
-                      <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 1)}>
-                        -1.0s
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 0.25)}>
-                        -0.25s
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 0.25)}>
-                        +0.25s
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 1)}>
-                        +1.0s
-                      </button>
+
+                    <section className="fragment-source-overview">
+                      <div className="fragment-source-head">
+                        <div>
+                          <strong>Лента исходника</strong>
+                          <p className="subtle-text">
+                            {fragmentSourceDurationSec !== null
+                              ? "Лента показывает весь MP4-источник: синие участки задействованы, тёмные будут пропущены."
+                              : "Длительность исходника появится, когда источник полностью определится."}
+                          </p>
+                        </div>
+                        <div className="fragment-source-badges">
+                          {fragmentSourceDurationSec !== null ? (
+                            <span className="meta-pill fragment-source-primary-pill">
+                              Исходник {formatTimeSec(fragmentSourceDurationSec)}
+                            </span>
+                          ) : null}
+                          {fragmentSourceDurationSec !== null ? (
+                            <span className="meta-pill">Использовано {Math.round(sourceCoveragePercent)}%</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="fragment-source-track">
+                        <div className="fragment-source-rail" aria-label="Весь исходный ролик">
+                          {sourceTimelineRanges.map((range, index) => (
+                            <span
+                              key={`source-coverage-${index}`}
+                              className="fragment-source-selection fragment-source-selection-coverage"
+                              style={{
+                                left: `${range.offsetPercent}%`,
+                                width: `${range.widthPercent}%`
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="fragment-source-scale">
+                        {sourceTimelineScaleMarks.map((label) => (
+                          <span key={`source-mark-${label}`}>{label}</span>
+                        ))}
+                      </div>
+                    </section>
+
+                    <div className="fragment-list">
+                      {fragmentRows.map((row) => (
+                        <article key={row.rowKey} className="fragment-row">
+                          <div className="fragment-row-head fragment-row-head-compact">
+                            <div className="fragment-row-actions">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-danger-soft fragment-remove-button"
+                                aria-label={`Удалить фрагмент ${row.index + 1}`}
+                                title="Удалить фрагмент"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  removeFragment(row.index);
+                                }}
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          </div>
+                          <div className="fragment-rail" aria-hidden="true">
+                            <span
+                              className="fragment-rail-fill"
+                              style={{
+                                left: `${row.sourceOffsetPercent}%`,
+                                width: `${row.sourceWidthPercent}%`
+                              }}
+                            />
+                          </div>
+                          <div className="fragment-input-grid">
+                            <label className="field-stack">
+                              <span className="field-label">От</span>
+                              <input
+                                ref={(node) => {
+                                  fragmentFieldRefs.current[`${row.rowKey}:startSec`] = node;
+                                }}
+                                type="number"
+                                min={0}
+                                max={fragmentSourceDurationSec ?? undefined}
+                                step={0.1}
+                                className="text-input segment-input"
+                                value={row.draft.startSec}
+                                onFocus={() => setActiveFragmentIndex(row.index)}
+                                onChange={(event) =>
+                                  setFragmentDraftField(row.index, row.segment, "startSec", event.target.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                onBlur={() => commitFragmentDraft(row.index, row.segment)}
+                              />
+                            </label>
+                            <label className="field-stack">
+                              <span className="field-label">До</span>
+                              <input
+                                ref={(node) => {
+                                  fragmentFieldRefs.current[`${row.rowKey}:endSec`] = node;
+                                }}
+                                type="number"
+                                min={0.1}
+                                max={fragmentSourceDurationSec ?? undefined}
+                                step={0.1}
+                                className="text-input segment-input"
+                                value={row.draft.endSec}
+                                onFocus={() => setActiveFragmentIndex(row.index)}
+                                onChange={(event) =>
+                                  setFragmentDraftField(row.index, row.segment, "endSec", event.target.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                onBlur={() => commitFragmentDraft(row.index, row.segment)}
+                              />
+                            </label>
+                            <label className="field-stack">
+                              <span className="field-label">Сжатие</span>
+                              <select
+                                ref={(node) => {
+                                  fragmentFieldRefs.current[`${row.rowKey}:speed`] = node;
+                                }}
+                                className="text-input segment-input"
+                                value={row.segment.speed}
+                                onFocus={() => setActiveFragmentIndex(row.index)}
+                                onChange={(event) =>
+                                  updateFragmentSpeed(
+                                    row.index,
+                                    normalizeSegmentSpeed(Number.parseFloat(event.target.value))
+                                  )
+                                }
+                              >
+                                {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
+                                  <option key={`segment-speed-${speed}`} value={speed}>
+                                    {formatSegmentSpeed(speed)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                        </article>
+                      ))}
+
+                      <article
+                        className={`fragment-row fragment-row-placeholder ${canAppendFragment ? "" : "disabled"}`}
+                      >
+                        <div className="fragment-row-head">
+                          <div className="fragment-row-meta">
+                            <span className="meta-pill mono">{normalizedSegments.length + 1}</span>
+                            <span className="meta-pill">Следующий</span>
+                            <span className="subtle-text">
+                              {canAppendFragment && nextFragmentSuggestion
+                                ? `По умолчанию ${formatTimeSec(nextFragmentSuggestion.startSec)} → ${formatTimeSec(nextFragmentSuggestion.endSec)}`
+                                : "Лимит заполнен"}
+                            </span>
+                          </div>
+                          <span className="subtle-text">
+                            {canAppendFragment
+                              ? "Начните вводить время, и строка сразу станет активной."
+                              : "Удалите один фрагмент или включите подгонку к 6с, чтобы добавить новый."}
+                          </span>
+                        </div>
+                        <div className="fragment-rail fragment-rail-placeholder" aria-hidden="true">
+                          {nextFragmentSuggestion ? (
+                            <span
+                              className="fragment-rail-fill ghost"
+                              style={{
+                                left: `${
+                                  (fragmentSourceDurationSec ?? 0) > 0
+                                    ? clamp(
+                                        (nextFragmentSuggestion.startSec / (fragmentSourceDurationSec ?? 1)) * 100,
+                                        0,
+                                        100
+                                      )
+                                    : 0
+                                }%`,
+                                width: `${
+                                  (fragmentSourceDurationSec ?? 0) > 0
+                                    ? clamp(
+                                        ((nextFragmentSuggestion.endSec - nextFragmentSuggestion.startSec) /
+                                          (fragmentSourceDurationSec ?? 1)) *
+                                          100,
+                                        1,
+                                        100
+                                      )
+                                    : 0
+                                }%`
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                        <div className="fragment-input-grid">
+                          <label className="field-stack">
+                            <span className="field-label">От</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={fragmentSourceDurationSec ?? undefined}
+                              step={0.1}
+                              className="text-input segment-input"
+                              value=""
+                              disabled={!canAppendFragment}
+                              placeholder={nextFragmentSuggestion ? nextFragmentSuggestion.startSec.toFixed(1) : ""}
+                              onChange={(event) => appendFragmentFromDraft("startSec", event.target.value)}
+                            />
+                          </label>
+                          <label className="field-stack">
+                            <span className="field-label">До</span>
+                            <input
+                              type="number"
+                              min={0.1}
+                              max={fragmentSourceDurationSec ?? undefined}
+                              step={0.1}
+                              className="text-input segment-input"
+                              value=""
+                              disabled={!canAppendFragment}
+                              placeholder={nextFragmentSuggestion ? nextFragmentSuggestion.endSec.toFixed(1) : ""}
+                              onChange={(event) => appendFragmentFromDraft("endSec", event.target.value)}
+                            />
+                          </label>
+                          <label className="field-stack">
+                            <span className="field-label">Сжатие</span>
+                            <select
+                              className="text-input segment-input"
+                              value=""
+                              disabled={!canAppendFragment}
+                              onChange={(event) => appendFragmentFromDraft("speed", event.target.value)}
+                            >
+                              <option value="">По умолчанию</option>
+                              {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
+                                <option key={`placeholder-segment-speed-${speed}`} value={speed}>
+                                  {formatSegmentSpeed(speed)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </article>
                     </div>
                   </div>
+
+                  {normalizedSegments.length === 0 ? (
+                    <div className="quick-edit-card slider-field">
+                      <div className="quick-edit-label-row">
+                        <label className="field-label" htmlFor="clipStartRange">
+                          Начало клипа
+                        </label>
+                        <span className="quick-edit-value">{`${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`}</span>
+                      </div>
+                      <input
+                        id="clipStartRange"
+                        type="range"
+                        min={0}
+                        max={Math.max(0, maxStartSec)}
+                        step={0.1}
+                        value={localClipStartSec}
+                        disabled={!sourceUrl || maxStartSec <= 0}
+                        onChange={(event) => scheduleClipCommit(Number.parseFloat(event.target.value))}
+                        onMouseUp={() => flushClipCommit(localClipStartSec)}
+                        onTouchEnd={() => flushClipCommit(localClipStartSec)}
+                        onBlur={() => flushClipCommit(localClipStartSec)}
+                      />
+                      <div className="preset-row">
+                        <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 1)}>
+                          -1.0s
+                        </button>
+                        <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 0.25)}>
+                          -0.25s
+                        </button>
+                        <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 0.25)}>
+                          +0.25s
+                        </button>
+                        <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 1)}>
+                          +1.0s
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="quick-edit-card slider-field">
                     <div className="quick-edit-label-row">
                       <label className="field-label" htmlFor="focusRange">
-                        {selectedPositionKeyframe ? "Position Y выбранной точки" : "Базовый Position Y"}
+                        Position Y
                       </label>
                       <span className="quick-edit-value">{cameraFocusPercent}%</span>
                     </div>
@@ -4142,11 +4514,11 @@ export function Step3RenderTemplate({
                       min={0.12}
                       max={0.88}
                       step={0.01}
-                      value={selectedPositionKeyframe?.focusY ?? localFocusY}
+                      value={localFocusY}
                       onChange={(event) => scheduleFocusValue(Number.parseFloat(event.target.value))}
-                      onMouseUp={() => flushFocusValue(selectedPositionKeyframe?.focusY ?? localFocusY)}
-                      onTouchEnd={() => flushFocusValue(selectedPositionKeyframe?.focusY ?? localFocusY)}
-                      onBlur={() => flushFocusValue(selectedPositionKeyframe?.focusY ?? localFocusY)}
+                      onMouseUp={() => flushFocusValue(localFocusY)}
+                      onTouchEnd={() => flushFocusValue(localFocusY)}
+                      onBlur={() => flushFocusValue(localFocusY)}
                     />
                     <div className="preset-row">
                       <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.18)}>
@@ -4177,91 +4549,10 @@ export function Step3RenderTemplate({
                     <p className="subtle-text">По умолчанию включено для слота с исходным видео.</p>
                   </div>
 
-                  <div className="quick-edit-card">
-                    <div className="quick-edit-label-row">
-                      <span className="field-label">Камера</span>
-                      <span className="quick-edit-value">{cameraModeLabel}</span>
-                    </div>
-                    <div className="preset-row">
-                      <button type="button" className="preset-chip" onClick={clearCameraTracks}>
-                        Очистить
-                      </button>
-                    </div>
-                    <div className="preset-row">
-                      <button type="button" className="preset-chip" onClick={() => applyCameraMotionPreset("top_to_bottom")}>
-                        Пресет сверху вниз
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => applyCameraMotionPreset("bottom_to_top")}>
-                        Пресет снизу вверх
-                      </button>
-                    </div>
-                    <div className="preset-row">
-                      <button type="button" className="preset-chip" onClick={() => applyZoomPreset("in")}>
-                        Пресет zoom in
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => applyZoomPreset("out")}>
-                        Пресет zoom out
-                      </button>
-                    </div>
-                    <p className="subtle-text">
-                      Поставьте playhead в нужный момент, нажмите ромб у свойства и меняйте Position Y или Scale отдельно.
-                    </p>
-                  </div>
-
-                  <div className="quick-edit-card">
-                    <div className="quick-edit-label-row">
-                      <span className="field-label">Position Y</span>
-                      <span className="quick-edit-value">{formatTrackCountLabel(normalizedLocalPositionKeyframes.length)}</span>
-                    </div>
-                    <div className="preset-row">
-                      <button type="button" className="preset-chip" onClick={() => jumpToNeighborPositionKeyframe("prev")}>
-                        ← Prev
-                      </button>
-                      <button type="button" className="preset-chip" onClick={togglePositionKeyframeAtPlayhead}>
-                        {positionKeyframeAtPlayhead ? "◇ Удалить" : "◆ Ромб"}
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => jumpToNeighborPositionKeyframe("next")}>
-                        Next →
-                      </button>
-                      <button
-                        type="button"
-                        className="preset-chip"
-                        onClick={removeSelectedPositionKeyframe}
-                        disabled={!selectedPositionKeyframe}
-                      >
-                        Удалить выбранную
-                      </button>
-                    </div>
-                    {selectedPositionKeyframe ? (
-                      <div className="field-stack">
-                        <span className="field-label">Время выбранной точки Position Y</span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={clipDurationSec}
-                          step={0.01}
-                          value={selectedPositionKeyframe.timeSec}
-                          onChange={(event) =>
-                            handlePositionKeyframeTimeChange(
-                              selectedPositionKeyframe.id,
-                              Number.parseFloat(event.target.value)
-                            )
-                          }
-                        />
-                        <span className="subtle-text">{formatTimeSec(selectedPositionKeyframe.timeSec)}</span>
-                      </div>
-                    ) : (
-                      <p className="subtle-text">
-                        Drag в preview меняет `Position Y` выбранной точки, а если точка не выбрана, базовую позицию.
-                      </p>
-                    )}
-                    <p className="subtle-text">Стоп делается двумя соседними точками с одинаковым Y.</p>
-                  </div>
-
                   <div className="quick-edit-card slider-field">
                     <div className="quick-edit-label-row">
                       <label className="field-label" htmlFor="videoZoomRange">
-                        {selectedScaleKeyframe ? "Scale выбранной точки" : "Базовый масштаб видео"}
+                        Zoom
                       </label>
                       <span className="quick-edit-value">{editorZoomLabel}</span>
                     </div>
@@ -4271,50 +4562,12 @@ export function Step3RenderTemplate({
                       min={1}
                       max={STAGE3_MAX_VIDEO_ZOOM}
                       step={0.01}
-                      value={selectedScaleKeyframe?.zoom ?? localVideoZoom}
+                      value={localVideoZoom}
                       onChange={(event) => scheduleZoomValue(Number.parseFloat(event.target.value))}
-                      onMouseUp={() => flushZoomValue(selectedScaleKeyframe?.zoom ?? localVideoZoom)}
-                      onTouchEnd={() => flushZoomValue(selectedScaleKeyframe?.zoom ?? localVideoZoom)}
-                      onBlur={() => flushZoomValue(selectedScaleKeyframe?.zoom ?? localVideoZoom)}
+                      onMouseUp={() => flushZoomValue(localVideoZoom)}
+                      onTouchEnd={() => flushZoomValue(localVideoZoom)}
+                      onBlur={() => flushZoomValue(localVideoZoom)}
                     />
-                    <div className="preset-row">
-                      <button type="button" className="preset-chip" onClick={() => jumpToNeighborScaleKeyframe("prev")}>
-                        ← Prev
-                      </button>
-                      <button type="button" className="preset-chip" onClick={toggleScaleKeyframeAtPlayhead}>
-                        {scaleKeyframeAtPlayhead ? "◇ Удалить" : "◆ Ромб"}
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => jumpToNeighborScaleKeyframe("next")}>
-                        Next →
-                      </button>
-                      <button
-                        type="button"
-                        className="preset-chip"
-                        onClick={removeSelectedScaleKeyframe}
-                        disabled={!selectedScaleKeyframe}
-                      >
-                        Удалить выбранную
-                      </button>
-                    </div>
-                    {selectedScaleKeyframe ? (
-                      <div className="field-stack">
-                        <span className="field-label">Время выбранной точки Scale</span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={clipDurationSec}
-                          step={0.01}
-                          value={selectedScaleKeyframe.timeSec}
-                          onChange={(event) =>
-                            handleScaleKeyframeTimeChange(
-                              selectedScaleKeyframe.id,
-                              Number.parseFloat(event.target.value)
-                            )
-                          }
-                        />
-                        <span className="subtle-text">{formatTimeSec(selectedScaleKeyframe.timeSec)}</span>
-                      </div>
-                    ) : null}
                     <div className="preset-row">
                       {[1, 1.1, 1.25, 1.4].map((value) => (
                         <button
@@ -4327,7 +4580,7 @@ export function Step3RenderTemplate({
                         </button>
                       ))}
                     </div>
-                    <p className="subtle-text">Стоп по масштабу делается двумя соседними точками с одинаковым Scale.</p>
+                    <p className="subtle-text">Масштаб применяется ко всему клипу целиком.</p>
                   </div>
                 </div>
               </section>
@@ -4360,34 +4613,35 @@ export function Step3RenderTemplate({
             onMeasuredTextFitChange={handlePreviewMeasuredTextFitChange}
             clipStartSec={localClipStartSec}
             clipDurationSec={clipDurationSec}
-            sourceDurationSec={sourceDurationSec}
+            sourceDurationSec={fragmentSourceDurationSec}
             segments={normalizedSegments}
             timingMode={timingMode}
             renderPolicy={renderPolicy}
             focusY={localFocusY}
-            cameraMotion={cameraMotion}
-            cameraKeyframes={cameraKeyframes}
-            cameraPositionKeyframes={normalizedLocalPositionKeyframes}
-            cameraScaleKeyframes={normalizedLocalScaleKeyframes}
+            cameraMotion="disabled"
+            cameraKeyframes={[]}
+            cameraPositionKeyframes={[]}
+            cameraScaleKeyframes={[]}
             mirrorEnabled={mirrorEnabled}
             videoZoom={previewVideoZoom}
             topFontScale={localTopFontScale}
             bottomFontScale={localBottomFontScale}
             sourceAudioEnabled={sourceAudioEnabled}
             templateConfig={templateConfig}
-            selectedPositionKeyframeId={selectedPositionKeyframeId}
-            selectedScaleKeyframeId={selectedScaleKeyframeId}
+            selectedPositionKeyframeId={null}
+            selectedScaleKeyframeId={null}
             requestedTimelineSec={requestedTimelineSec}
             onRequestedTimelineHandled={() => setRequestedTimelineSec(null)}
+            onSourceDurationResolved={setResolvedFragmentSourceDurationSec}
             onSelectVersionId={onSelectVersionId}
             onSelectPassIndex={onSelectPassIndex}
             onTimelineSecChange={(value) => {
               previewTimelineSecRef.current = value;
             }}
-            onSelectPositionKeyframeId={setSelectedPositionKeyframeId}
-            onSelectScaleKeyframeId={setSelectedScaleKeyframeId}
-            onPositionKeyframeTimeChange={handlePositionKeyframeTimeChange}
-            onScaleKeyframeTimeChange={handleScaleKeyframeTimeChange}
+            onSelectPositionKeyframeId={() => undefined}
+            onSelectScaleKeyframeId={() => undefined}
+            onPositionKeyframeTimeChange={() => undefined}
+            onScaleKeyframeTimeChange={() => undefined}
             onCameraPreviewFocusChange={handleCameraPreviewFocusChange}
           />
         }

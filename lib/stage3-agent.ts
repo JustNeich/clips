@@ -660,6 +660,7 @@ function createDefaultRenderPlan(
   return {
     targetDurationSec: TARGET_DURATION_SEC,
     timingMode: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC ? "stretch" : "auto",
+    normalizeToTargetEnabled: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC,
     audioMode: "source_only",
     sourceAudioEnabled: true,
     smoothSlowMo: false,
@@ -721,6 +722,13 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       timingMode === "auto" || timingMode === "compress" || timingMode === "stretch"
         ? timingMode
         : defaultPlan.timingMode,
+    normalizeToTargetEnabled:
+      typeof input?.normalizeToTargetEnabled === "boolean"
+        ? input.normalizeToTargetEnabled
+        : input?.timingMode === "compress" ||
+            input?.timingMode === "stretch" ||
+            input?.policy === "full_source_normalize" ||
+            defaultPlan.normalizeToTargetEnabled,
     audioMode:
       audioMode === "source_only" || audioMode === "source_plus_music"
         ? audioMode

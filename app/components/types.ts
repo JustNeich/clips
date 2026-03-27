@@ -330,6 +330,10 @@ export type Stage3EditorDraftOverrides = {
   cameraKeyframes: Stage3CameraKeyframe[];
   cameraPositionKeyframes: Stage3PositionKeyframe[];
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
+  segments: Stage3Segment[];
+  timingMode: Stage3TimingMode;
+  renderPolicy: Stage3RenderPolicy;
+  normalizeToTargetEnabled: boolean;
   topFontScale: number;
   bottomFontScale: number;
   musicGain: number;
@@ -465,6 +469,7 @@ export type Stage3Operation =
 export type Stage3RenderPlan = {
   targetDurationSec: 6;
   timingMode: Stage3TimingMode;
+  normalizeToTargetEnabled: boolean;
   audioMode: Stage3AudioMode;
   sourceAudioEnabled: boolean;
   smoothSlowMo: boolean;

@@ -209,6 +209,12 @@ function normalizeRenderPlan(
       rawPlan?.timingMode === "compress" || rawPlan?.timingMode === "stretch" || rawPlan?.timingMode === "auto"
         ? rawPlan.timingMode
         : "auto",
+    normalizeToTargetEnabled:
+      typeof rawPlan?.normalizeToTargetEnabled === "boolean"
+        ? rawPlan.normalizeToTargetEnabled
+        : rawPlan?.timingMode === "compress" ||
+            rawPlan?.timingMode === "stretch" ||
+            rawPlan?.policy === "full_source_normalize",
     audioMode:
       rawPlan?.audioMode === "source_only" || rawPlan?.audioMode === "source_plus_music"
         ? rawPlan.audioMode
