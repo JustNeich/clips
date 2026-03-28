@@ -10,7 +10,8 @@ export const DEFAULT_CHANNEL_PUBLISH_SETTINGS: ChannelPublishSettings = {
   dailySlotCount: 4,
   slotIntervalMinutes: 15,
   autoQueueEnabled: true,
-  uploadLeadMinutes: 120
+  uploadLeadMinutes: 120,
+  notifySubscribersByDefault: true
 };
 
 export type PublicationSlotCandidate = {
@@ -187,7 +188,11 @@ export function normalizeChannelPublishSettings(
       DEFAULT_CHANNEL_PUBLISH_SETTINGS.uploadLeadMinutes,
       5,
       24 * 60
-    )
+    ),
+    notifySubscribersByDefault:
+      typeof value?.notifySubscribersByDefault === "boolean"
+        ? value.notifySubscribersByDefault
+        : DEFAULT_CHANNEL_PUBLISH_SETTINGS.notifySubscribersByDefault
   };
 }
 

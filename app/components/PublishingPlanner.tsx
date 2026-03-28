@@ -31,6 +31,7 @@ type PublishingPlannerProps = {
       tags: string[];
       slotDate: string;
       slotIndex: number;
+      notifySubscribers: boolean;
     }>
   ) => Promise<void>;
   onRunAction: (publicationId: string, action: PublicationAction) => Promise<void>;
@@ -124,7 +125,8 @@ function buildSlotLabels(settings: ChannelPublishSettings | null | undefined): s
     dailySlotCount: 4,
     slotIntervalMinutes: 15,
     autoQueueEnabled: true,
-    uploadLeadMinutes: 120
+    uploadLeadMinutes: 120,
+    notifySubscribersByDefault: true
   };
   const [hourString, minuteString] = resolved.firstSlotLocalTime.split(":");
   const baseHour = Number.parseInt(hourString ?? "21", 10);
@@ -189,6 +191,10 @@ function getPublicationMoveBusyKey(publicationId: string, move: PublicationMoveR
     return `shift:${publicationId}:${move.axis}:${move.direction}`;
   }
   return `shift:${publicationId}:target:${move.slotDate}:${move.slotIndex}`;
+}
+
+function formatSubscriptionFeedLabel(notifySubscribers: boolean): string {
+  return notifySubscribers ? "Фид подписок: вкл" : "Фид подписок: выкл";
 }
 
 function sortPublicationsForPlanner(
@@ -257,6 +263,7 @@ export function PublishingPlanner({
     tags: string;
     slotDate: string;
     slotIndex: number;
+    notifySubscribers: boolean;
   } | null>(null);
 
   const timeZone = settings?.timezone ?? "Europe/Moscow";
@@ -274,7 +281,8 @@ export function PublishingPlanner({
       description: publication.description,
       tags: publication.tags.join(", "),
       slotDate: publication.slotDate,
-      slotIndex: publication.slotIndex
+      slotIndex: publication.slotIndex,
+      notifySubscribers: publication.notifySubscribers
     });
   };
 
@@ -299,7 +307,8 @@ export function PublishingPlanner({
         description: draft.description,
         tags: splitTags(draft.tags),
         slotDate: draft.slotDate,
-        slotIndex: draft.slotIndex
+        slotIndex: draft.slotIndex,
+        notifySubscribers: draft.notifySubscribers
       });
       cancelEdit();
     } finally {
@@ -436,6 +445,7 @@ export function PublishingPlanner({
     const slotLabel =
       slotLabels[publication.slotIndex] ?? formatScheduledTime(publication.scheduledAt, timeZone);
     const compactDescription = publication.description.trim();
+    const notifySubscribersLocked = Boolean(publication.youtubeVideoId);
 
     return (
       <article
@@ -466,6 +476,9 @@ export function PublishingPlanner({
               {publication.needsReview ? (
                 <span className="publishing-status-pill tone-muted">Нужна проверка</span>
               ) : null}
+              <span className="publishing-status-pill tone-muted">
+                {formatSubscriptionFeedLabel(publication.notifySubscribers)}
+              </span>
               {activeChatId === publication.chatId ? (
                 <span className="publishing-status-pill tone-muted">Текущий чат</span>
               ) : null}
@@ -524,6 +537,7 @@ export function PublishingPlanner({
                 Описание пока пустое.
               </p>
             )}
+            <p className="subtle-text">{formatSubscriptionFeedLabel(publication.notifySubscribers)}</p>
             {publication.tags.length > 0 ? (
               <div className="publishing-tag-row">
                 {publication.tags.map((tag) => (
@@ -614,6 +628,24 @@ export function PublishingPlanner({
                 </select>
               </label>
             </div>
+            <label className="field-label fragment-toggle publishing-manager-toggle">
+              <input
+                type="checkbox"
+                checked={draft.notifySubscribers}
+                disabled={notifySubscribersLocked}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current ? { ...current, notifySubscribers: event.target.checked } : current
+                  )
+                }
+              />
+              <span>Публиковать в фид подписок и уведомлять подписчиков</span>
+            </label>
+            <p className="subtle-text">
+              {notifySubscribersLocked
+                ? "После первой загрузки YouTube API уже не даёт надёжно поменять этот флаг. Для такого ролика правьте его вручную в Studio."
+                : "Это значение будет применено при первой загрузке ролика в YouTube."}
+            </p>
             <div className="control-actions">
               <button
                 type="button"

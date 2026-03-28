@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildChannelPublicationMetadata,
   buildPublicationSlotCandidateFromDateAndIndex,
+  normalizeChannelPublishSettings,
   pickNextPublicationSlot,
   type PublicationSlotCandidate,
   DEFAULT_CHANNEL_PUBLISH_SETTINGS
@@ -150,4 +151,13 @@ test("buildChannelPublicationMetadata falls back when SEO is missing", () => {
     tags: [],
     needsReview: true
   });
+});
+
+test("normalizeChannelPublishSettings preserves notifySubscribersByDefault overrides", () => {
+  const settings = normalizeChannelPublishSettings({
+    notifySubscribersByDefault: false
+  });
+
+  assert.equal(settings.notifySubscribersByDefault, false);
+  assert.equal(settings.autoQueueEnabled, DEFAULT_CHANNEL_PUBLISH_SETTINGS.autoQueueEnabled);
 });

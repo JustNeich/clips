@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildStage3EditingProxyDedupeKey } from "../lib/stage3-editing-proxy-service";
 import {
+  buildStage3PlaybackTimingKey,
   buildStage3PlaybackPlan,
   resolveStage3PlaybackPosition,
   resolveStage3PlaybackTransformState
@@ -141,6 +142,72 @@ test("segment transform overrides follow the active playback fragment", () => {
   assert.equal(second.focusY, 0.76);
   assert.equal(second.videoZoom, 1.34);
   assert.equal(second.mirrorEnabled, true);
+});
+
+test("playback timing key ignores transform-only fragment overrides", () => {
+  const basePlan = buildStage3PlaybackPlan({
+    segments: [
+      { startSec: 0, endSec: 4.5, speed: 1, label: "A" },
+      { startSec: 8, endSec: 9.5, speed: 1, label: "B" }
+    ],
+    sourceDurationSec: 20,
+    clipStartSec: 0,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+  const overridePlan = buildStage3PlaybackPlan({
+    segments: [
+      { startSec: 0, endSec: 4.5, speed: 1, label: "A" },
+      {
+        startSec: 8,
+        endSec: 9.5,
+        speed: 1,
+        label: "B",
+        focusY: 0.73,
+        videoZoom: 1.28,
+        mirrorEnabled: true
+      }
+    ],
+    sourceDurationSec: 20,
+    clipStartSec: 0,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+
+  assert.equal(buildStage3PlaybackTimingKey(basePlan), buildStage3PlaybackTimingKey(overridePlan));
+});
+
+test("playback timing key changes when fragment timing changes", () => {
+  const basePlan = buildStage3PlaybackPlan({
+    segments: [
+      { startSec: 0, endSec: 4.5, speed: 1, label: "A" },
+      { startSec: 8, endSec: 9.5, speed: 1, label: "B" }
+    ],
+    sourceDurationSec: 20,
+    clipStartSec: 0,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+  const retimedPlan = buildStage3PlaybackPlan({
+    segments: [
+      { startSec: 0, endSec: 4, speed: 1, label: "A" },
+      { startSec: 8, endSec: 10, speed: 1, label: "B" }
+    ],
+    sourceDurationSec: 20,
+    clipStartSec: 0,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+
+  assert.notEqual(buildStage3PlaybackTimingKey(basePlan), buildStage3PlaybackTimingKey(retimedPlan));
 });
 
 test("buildStage3EditingProxyDedupeKey is stable for the same scoped source", async () => {

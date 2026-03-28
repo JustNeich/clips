@@ -29,6 +29,7 @@ type EditingProxyProfile = {
   threads: string;
   maxDimensionPx: number;
   fps: number;
+  keyframeIntervalFrames: number;
 };
 
 export type VideoDimensions = {
@@ -95,8 +96,50 @@ function getEditingProxyProfile(): EditingProxyProfile {
     crf: "34",
     threads: constrained ? "1" : "2",
     maxDimensionPx: constrained ? 720 : 960,
-    fps: 30
+    fps: 30,
+    keyframeIntervalFrames: 3
   };
+}
+
+export function buildStage3EditingProxyFfmpegArgs(params: {
+  sourcePath: string;
+  outputPath: string;
+  profile: EditingProxyProfile;
+}): string[] {
+  return [
+    "-y",
+    "-i",
+    params.sourcePath,
+    "-vf",
+    `fps=${params.profile.fps},scale=${params.profile.maxDimensionPx}:-2:force_original_aspect_ratio=decrease,setsar=1`,
+    "-c:v",
+    "libx264",
+    "-preset",
+    params.profile.preset,
+    "-crf",
+    params.profile.crf,
+    "-threads",
+    params.profile.threads,
+    "-g",
+    String(params.profile.keyframeIntervalFrames),
+    "-keyint_min",
+    String(params.profile.keyframeIntervalFrames),
+    "-sc_threshold",
+    "0",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k",
+    "-ar",
+    "48000",
+    "-ac",
+    "2",
+    params.outputPath
+  ];
 }
 
 function parseNumeric(value: unknown): number | null {
@@ -1158,34 +1201,11 @@ export async function prepareStage3EditingProxy(params: {
 
   await execFileAsync(
     "ffmpeg",
-    [
-      "-y",
-      "-i",
-      params.sourcePath,
-      "-vf",
-      `fps=${profile.fps},scale=${profile.maxDimensionPx}:-2:force_original_aspect_ratio=decrease,setsar=1`,
-      "-c:v",
-      "libx264",
-      "-preset",
-      profile.preset,
-      "-crf",
-      profile.crf,
-      "-threads",
-      profile.threads,
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "96k",
-      "-ar",
-      "48000",
-      "-ac",
-      "2",
-      output
-    ],
+    buildStage3EditingProxyFfmpegArgs({
+      sourcePath: params.sourcePath,
+      outputPath: output,
+      profile
+    }),
     { timeout: 10 * 60_000, maxBuffer: 1024 * 1024 * 16 }
   );
 

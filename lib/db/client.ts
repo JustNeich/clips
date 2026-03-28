@@ -181,6 +181,18 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "stage3_jobs", "attempt_group", "TEXT");
   addColumnIfMissing(
     db,
+    "channel_publish_settings",
+    "notify_subscribers_default",
+    "INTEGER NOT NULL DEFAULT 1"
+  );
+  addColumnIfMissing(
+    db,
+    "channel_publications",
+    "notify_subscribers",
+    "INTEGER NOT NULL DEFAULT 1"
+  );
+  addColumnIfMissing(
+    db,
     "channel_editorial_feedback_events",
     "scope",
     "TEXT NOT NULL DEFAULT 'option'"

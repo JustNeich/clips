@@ -13,6 +13,7 @@ type PatchBody = Partial<{
   tags: string[];
   slotDate: string;
   slotIndex: number;
+  notifySubscribers: boolean;
 }>;
 
 export async function PATCH(request: Request, context: Context): Promise<Response> {
@@ -45,4 +46,3 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
     );
   }
 }
-

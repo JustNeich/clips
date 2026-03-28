@@ -786,6 +786,7 @@ export type ChannelPublishSettings = {
   slotIntervalMinutes: number;
   autoQueueEnabled: boolean;
   uploadLeadMinutes: number;
+  notifySubscribersByDefault: boolean;
 };
 
 export type ChannelPublishIntegrationOption = {
@@ -840,6 +841,7 @@ export type ChannelPublication = {
   title: string;
   description: string;
   tags: string[];
+  notifySubscribers: boolean;
   needsReview: boolean;
   titleManual: boolean;
   descriptionManual: boolean;

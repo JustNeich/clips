@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getAppDataDir } from "./app-paths";
+import { STAGE3_EDITING_PROXY_CACHE_VERSION } from "./stage3-editing-proxy-contract";
 import { prepareStage3EditingProxy as buildStage3EditingProxy } from "./stage3-media-agent";
 import {
   ensureStage3SourceCached,
@@ -13,7 +14,6 @@ import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } f
 export const EDITING_PROXY_WAIT_TIMEOUT_MS = 20_000;
 const EDITING_PROXY_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
 const EDITING_PROXY_CACHE_DIR = path.join(EDITING_PROXY_CACHE_ROOT, "editing-proxies");
-const EDITING_PROXY_CACHE_VERSION = "v2";
 const editingProxyInflight = new Map<string, Promise<void>>();
 
 export type Stage3EditingProxyRequestBody = {
@@ -100,9 +100,9 @@ export async function buildStage3EditingProxyDedupeKey(
   const userId = scope?.userId?.trim() ?? "";
   const sourceKey = hashKey(sourceUrl);
   if (!workspaceId || !userId) {
-    return `editing-proxy:${EDITING_PROXY_CACHE_VERSION}:global:${sourceKey}`;
+    return `editing-proxy:${STAGE3_EDITING_PROXY_CACHE_VERSION}:global:${sourceKey}`;
   }
-  return `editing-proxy:${EDITING_PROXY_CACHE_VERSION}:${workspaceId}:${userId}:${sourceKey}`;
+  return `editing-proxy:${STAGE3_EDITING_PROXY_CACHE_VERSION}:${workspaceId}:${userId}:${sourceKey}`;
 }
 
 export async function prepareStage3EditingProxy(
@@ -119,7 +119,7 @@ export async function prepareStage3EditingProxy(
     waitTimeoutMs
   });
   await fs.mkdir(EDITING_PROXY_CACHE_DIR, { recursive: true });
-  const proxyKey = `${source.sourceKey}-${EDITING_PROXY_CACHE_VERSION}`;
+  const proxyKey = `${source.sourceKey}-${STAGE3_EDITING_PROXY_CACHE_VERSION}`;
   const proxyPath = path.join(EDITING_PROXY_CACHE_DIR, `${proxyKey}.mp4`);
 
   if (await pathExists(proxyPath)) {

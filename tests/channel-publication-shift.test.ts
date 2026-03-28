@@ -9,12 +9,16 @@ import {
   buildPublicationSlotCandidateFromDateAndIndex,
   DEFAULT_CHANNEL_PUBLISH_SETTINGS
 } from "../lib/channel-publishing";
-import { moveChannelPublicationToSlot } from "../lib/channel-publication-service";
+import {
+  moveChannelPublicationToSlot,
+  updateChannelPublicationFromEditor
+} from "../lib/channel-publication-service";
 import { getDb, newId, nowIso } from "../lib/db/client";
 import {
   createChannelPublication,
   createRenderExport,
-  listChannelPublications
+  listChannelPublications,
+  markChannelPublicationScheduled
 } from "../lib/publication-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -126,6 +130,7 @@ async function seedChannelPublicationScenario(slotIndexes: number[]): Promise<{
       title: `Publication ${slotIndex}`,
       description: "",
       tags: [],
+      notifySubscribers: true,
       needsReview: false,
       createdByUserId: userId
     });
@@ -188,5 +193,46 @@ test("moveChannelPublicationToSlot swaps publications when the target slot is oc
     const publications = listChannelPublications(scenario.channelId);
     assert.equal(publications.find((item) => item.id === firstPublicationId)?.slotIndex, 1);
     assert.equal(publications.find((item) => item.id === secondPublicationId)?.slotIndex, 0);
+  });
+});
+
+test("updateChannelPublicationFromEditor persists notifySubscribers for queued publications", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    const publicationId = scenario.publications[0]!.id;
+
+    const updated = await updateChannelPublicationFromEditor({
+      publicationId,
+      patch: {
+        notifySubscribers: false
+      }
+    });
+
+    assert.equal(updated.notifySubscribers, false);
+    assert.equal(listChannelPublications(scenario.channelId)[0]?.notifySubscribers, false);
+  });
+});
+
+test("updateChannelPublicationFromEditor blocks notifySubscribers changes after the video is already uploaded", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    const publicationId = scenario.publications[0]!.id;
+
+    markChannelPublicationScheduled({
+      publicationId,
+      youtubeVideoId: "youtube-video-1",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-1"
+    });
+
+    await assert.rejects(
+      () =>
+        updateChannelPublicationFromEditor({
+          publicationId,
+          patch: {
+            notifySubscribers: false
+          }
+        }),
+      /только при первой загрузке видео/i
+    );
   });
 });

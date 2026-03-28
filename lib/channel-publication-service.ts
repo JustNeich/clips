@@ -44,6 +44,7 @@ type PublicationEditorPatch = Partial<{
   tags: string[];
   slotDate: string;
   slotIndex: number;
+  notifySubscribers: boolean;
 }>;
 
 export type PublicationShiftAxis = "slot" | "day";
@@ -367,6 +368,7 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
     title: defaults.title,
     description: defaults.description,
     tags: defaults.tags,
+    notifySubscribers: settings.notifySubscribersByDefault,
     needsReview: defaults.needsReview,
     createdByUserId: input.createdByUserId
   });
@@ -454,6 +456,15 @@ export async function updateChannelPublicationFromEditor(input: {
   if (!current) {
     throw new Error("Публикация не найдена.");
   }
+  if (
+    current.youtubeVideoId &&
+    typeof input.patch.notifySubscribers === "boolean" &&
+    input.patch.notifySubscribers !== current.notifySubscribers
+  ) {
+    throw new Error(
+      "Этот флаг YouTube применяет только при первой загрузке видео. Для уже загруженного ролика измените его вручную в Studio."
+    );
+  }
 
   let scheduledPatch:
     | {
@@ -490,6 +501,7 @@ export async function updateChannelPublicationFromEditor(input: {
     titleManual: typeof input.patch.title === "string",
     descriptionManual: typeof input.patch.description === "string",
     tagsManual: Array.isArray(input.patch.tags),
+    notifySubscribers: input.patch.notifySubscribers,
     scheduledAt: scheduledPatch?.scheduledAt,
     uploadReadyAt: scheduledPatch?.uploadReadyAt,
     slotDate: scheduledPatch?.slotDate,
@@ -596,6 +608,7 @@ export async function processQueuedChannelPublication(publication: ChannelPublic
       title: latest.title,
       description: latest.description,
       tags: latest.tags,
+      notifySubscribers: latest.notifySubscribers,
       publishAt: latest.scheduledAt
     });
     return markChannelPublicationScheduled({

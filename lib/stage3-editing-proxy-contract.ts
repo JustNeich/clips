@@ -1,0 +1,1 @@
+export const STAGE3_EDITING_PROXY_CACHE_VERSION = "v3";

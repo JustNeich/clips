@@ -42,6 +42,10 @@ export type Stage3PlaybackPosition = {
   segment: Stage3PlaybackSegment;
 };
 
+function formatTimingKeyNumber(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(4) : "nan";
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -270,6 +274,25 @@ export function buildStage3PlaybackPlan(params: {
     durationScale,
     segments
   };
+}
+
+export function buildStage3PlaybackTimingKey(plan: Stage3PlaybackPlan): string {
+  return [
+    formatTimingKeyNumber(plan.targetDurationSec),
+    formatTimingKeyNumber(plan.totalOutputDurationSec),
+    formatTimingKeyNumber(plan.durationScale),
+    ...plan.segments.map((segment) =>
+      [
+        formatTimingKeyNumber(segment.sourceStartSec),
+        formatTimingKeyNumber(segment.sourceEndSec),
+        formatTimingKeyNumber(segment.speed),
+        formatTimingKeyNumber(segment.outputStartSec),
+        formatTimingKeyNumber(segment.outputEndSec),
+        formatTimingKeyNumber(segment.outputDurationSec),
+        formatTimingKeyNumber(segment.playbackRate)
+      ].join(":")
+    )
+  ].join("|");
 }
 
 export function resolveStage3PlaybackPosition(

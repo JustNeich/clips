@@ -70,6 +70,7 @@ import { getStage3DesignLabLabel } from "../../lib/stage3-design-lab";
 import { sanitizeDisplayText } from "../../lib/ui-error";
 import {
   applyStage3PlaybackPositionToVideo,
+  buildStage3PlaybackTimingKey,
   buildStage3PlaybackPlan,
   mapStage3SourceTimeToOutputTime,
   resolveStage3PlaybackPosition,
@@ -603,6 +604,7 @@ function PreviewClipVideo({
   sourceUrl,
   playbackDurationSec,
   playbackPlan,
+  playbackTimingKey,
   mediaMode,
   className,
   objectPosition,
@@ -619,6 +621,7 @@ function PreviewClipVideo({
   sourceUrl: string;
   playbackDurationSec: number;
   playbackPlan: ReturnType<typeof buildStage3PlaybackPlan>;
+  playbackTimingKey: string;
   mediaMode: Stage3PreviewMediaMode;
   className: string;
   objectPosition?: string;
@@ -635,6 +638,12 @@ function PreviewClipVideo({
   const frameLoopTokenRef = useRef<number | null>(null);
   const activeSegmentIndexRef = useRef(0);
   const lastPublishedOutputRef = useRef(0);
+  const playbackPlanRef = useRef(playbackPlan);
+
+  useEffect(() => {
+    // Keep transport math current without treating transform-only overrides as a new playback session.
+    playbackPlanRef.current = playbackPlan;
+  }, [playbackPlan]);
 
   const seekToOutputTime = useCallback(
     (outputSec: number, toleranceSec = 0.04) => {
@@ -652,7 +661,7 @@ function PreviewClipVideo({
           sourceTimeSec: nextSec
         };
       }
-      const position = resolveStage3PlaybackPosition(playbackPlan, outputSec);
+      const position = resolveStage3PlaybackPosition(playbackPlanRef.current, outputSec);
       if (!position) {
         return null;
       }
@@ -662,7 +671,7 @@ function PreviewClipVideo({
       onPositionChange?.(position.outputTimeSec, position.sourceTimeSec);
       return position;
     },
-    [mediaMode, onPositionChange, playbackDurationSec, playbackPlan, videoRef]
+    [mediaMode, onPositionChange, playbackDurationSec, videoRef]
   );
 
   useEffect(() => {
@@ -671,37 +680,39 @@ function PreviewClipVideo({
       return;
     }
 
-    const seekToStart = () => {
+    const seekToPlaybackAnchor = () => {
       const mediaDurationSec =
         Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
       onSourceDurationChange?.(mediaDurationSec);
-      const initialPosition = seekToOutputTime(0, 0);
+      const anchorOutputSec = clamp(lastPublishedOutputRef.current, 0, playbackDurationSec);
+      const initialPosition = seekToOutputTime(anchorOutputSec, 0);
       if (isPlaying) {
         void video.play().catch(() => undefined);
       } else {
         video.pause();
       }
       if (!initialPosition) {
-        video.currentTime = 0;
-        onPositionChange?.(0, 0);
+        video.currentTime = anchorOutputSec;
+        onPositionChange?.(anchorOutputSec, anchorOutputSec);
       }
     };
 
     if (video.readyState >= 1) {
-      seekToStart();
+      seekToPlaybackAnchor();
       return;
     }
 
-    video.addEventListener("loadedmetadata", seekToStart, { once: true });
+    video.addEventListener("loadedmetadata", seekToPlaybackAnchor, { once: true });
     return () => {
-      video.removeEventListener("loadedmetadata", seekToStart);
+      video.removeEventListener("loadedmetadata", seekToPlaybackAnchor);
     };
   }, [
     isPlaying,
     mediaMode,
     onPositionChange,
     onSourceDurationChange,
-    playbackPlan,
+    playbackDurationSec,
+    playbackTimingKey,
     seekToOutputTime,
     sourceUrl,
     videoRef
@@ -759,7 +770,9 @@ function PreviewClipVideo({
       }
       return true;
     }
-    const segment = playbackPlan.segments[activeSegmentIndexRef.current] ?? playbackPlan.segments[0];
+    const currentPlaybackPlan = playbackPlanRef.current;
+    const segment =
+      currentPlaybackPlan.segments[activeSegmentIndexRef.current] ?? currentPlaybackPlan.segments[0];
     if (!segment) {
       return false;
     }
@@ -767,9 +780,9 @@ function PreviewClipVideo({
     const transitionThresholdSec = 0.02;
 
     if (currentTime >= segment.sourceEndSec - transitionThresholdSec) {
-      const nextSegment = playbackPlan.segments[activeSegmentIndexRef.current + 1];
+      const nextSegment = currentPlaybackPlan.segments[activeSegmentIndexRef.current + 1];
       if (nextSegment) {
-        const nextPosition = resolveStage3PlaybackPosition(playbackPlan, nextSegment.outputStartSec);
+        const nextPosition = resolveStage3PlaybackPosition(currentPlaybackPlan, nextSegment.outputStartSec);
         if (nextPosition) {
           activeSegmentIndexRef.current = nextPosition.segmentIndex;
           lastPublishedOutputRef.current = nextPosition.outputTimeSec;
@@ -811,7 +824,6 @@ function PreviewClipVideo({
     onClipEnd,
     onPositionChange,
     playbackDurationSec,
-    playbackPlan,
     seekToOutputTime,
     videoRef
   ]);
@@ -1081,6 +1093,8 @@ function Stage3LivePreviewPanel({
   );
   const playbackDurationSec =
     playbackPlan.totalOutputDurationSec > 0 ? playbackPlan.totalOutputDurationSec : clipDurationSec;
+  // Preview transport should react only to timing changes, not per-fragment framing overrides.
+  const playbackTimingKey = useMemo(() => buildStage3PlaybackTimingKey(playbackPlan), [playbackPlan]);
   const layoutScale = fitScale * previewScaleMultiplier;
   const playbackTransformState = useMemo(
     () =>
@@ -1729,6 +1743,7 @@ function Stage3LivePreviewPanel({
                         sourceUrl={activePreviewVideoUrl}
                         playbackDurationSec={playbackDurationSec}
                         playbackPlan={playbackPlan}
+                        playbackTimingKey={playbackTimingKey}
                         mediaMode={activePreviewMediaMode}
                         className="preview-slot-video"
                         objectPosition={objectPosition}

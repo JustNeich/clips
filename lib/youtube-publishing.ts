@@ -304,6 +304,7 @@ export async function uploadYouTubeVideo(input: {
   title: string;
   description: string;
   tags: string[];
+  notifySubscribers: boolean;
   publishAt: string;
 }): Promise<{
   videoId: string;
@@ -312,7 +313,7 @@ export async function uploadYouTubeVideo(input: {
   const bytes = await fs.readFile(input.filePath);
   const startResponse = await runWithRetry(async () => {
     const response = await fetch(
-      `${YOUTUBE_UPLOAD_BASE_URL}?uploadType=resumable&part=snippet,status`,
+      `${YOUTUBE_UPLOAD_BASE_URL}?uploadType=resumable&part=snippet,status&notifySubscribers=${input.notifySubscribers ? "true" : "false"}`,
       {
         method: "POST",
         headers: {

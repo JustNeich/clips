@@ -164,6 +164,7 @@ import {
   triggerUrlDownload,
   trimClientSegmentsToDuration
 } from "./home-page-support";
+import { STAGE3_EDITING_PROXY_CACHE_VERSION } from "../lib/stage3-editing-proxy-contract";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
@@ -2125,7 +2126,10 @@ export default function HomePage() {
     () => makeLiveSnapshot(),
     [makeLiveSnapshot]
   );
-  const stage3EditingProxyKey = useMemo(() => activeChat?.url ?? "", [activeChat?.url]);
+  const stage3EditingProxyKey = useMemo(
+    () => (activeChat?.url ? `${STAGE3_EDITING_PROXY_CACHE_VERSION}:${activeChat.url}` : ""),
+    [activeChat?.url]
+  );
   const stage3AccuratePreviewKey = useMemo(() => {
     if (!activeChat?.url) {
       return "";
@@ -5264,6 +5268,7 @@ export default function HomePage() {
       tags: string[];
       slotDate: string;
       slotIndex: number;
+      notifySubscribers: boolean;
     }>
   ): Promise<void> => {
     const response = await fetch(`/api/publications/${publicationId}`, {

@@ -18,7 +18,8 @@ const FALLBACK_PUBLISH_SETTINGS: ChannelPublishSettings = {
   dailySlotCount: 4,
   slotIntervalMinutes: 15,
   autoQueueEnabled: true,
-  uploadLeadMinutes: 120
+  uploadLeadMinutes: 120,
+  notifySubscribersByDefault: true
 };
 
 function buildSlotPreview(settings: ChannelPublishSettings): string[] {
@@ -304,6 +305,25 @@ export function ChannelManagerPublishingTab({
             </span>
           ))}
         </div>
+
+        <label className="field-label fragment-toggle publishing-manager-toggle">
+          <input
+            type="checkbox"
+            checked={settingsDraft.notifySubscribersByDefault}
+            disabled={!canEditSetup}
+            onChange={(event) =>
+              setSettingsDraft((current) => ({
+                ...current,
+                notifySubscribersByDefault: event.target.checked
+              }))
+            }
+          />
+          <span>По умолчанию публиковать в фид подписок и уведомлять подписчиков</span>
+        </label>
+        <p className="subtle-text">
+          Это значение наследуют новые ролики при постановке в очередь. Для конкретной публикации
+          его можно переопределить отдельно в planner.
+        </p>
 
         <div className="control-actions">
           <button

@@ -34,6 +34,7 @@ type PublishSettingsRow = {
   slot_interval_minutes: number;
   auto_queue_enabled: number;
   upload_lead_minutes: number;
+  notify_subscribers_default: number;
   created_at: string;
   updated_at: string;
 };
@@ -101,6 +102,7 @@ type ChannelPublicationRow = {
   title: string;
   description: string;
   tags_json: string;
+  notify_subscribers: number;
   needs_review: number;
   title_manual: number;
   description_manual: number;
@@ -208,7 +210,8 @@ function mapPublishSettingsRow(row: PublishSettingsRow | null): ChannelPublishSe
     slotIntervalMinutes:
       Number(row.slot_interval_minutes) || DEFAULT_CHANNEL_PUBLISH_SETTINGS.slotIntervalMinutes,
     autoQueueEnabled: Boolean(row.auto_queue_enabled),
-    uploadLeadMinutes: Number(row.upload_lead_minutes) || DEFAULT_CHANNEL_PUBLISH_SETTINGS.uploadLeadMinutes
+    uploadLeadMinutes: Number(row.upload_lead_minutes) || DEFAULT_CHANNEL_PUBLISH_SETTINGS.uploadLeadMinutes,
+    notifySubscribersByDefault: Boolean(row.notify_subscribers_default)
   });
 }
 
@@ -296,6 +299,7 @@ function mapChannelPublicationRow(
     title: row.title,
     description: row.description,
     tags: parseChannelPublicationTagsJson(row.tags_json),
+    notifySubscribers: Boolean(row.notify_subscribers),
     needsReview: Boolean(row.needs_review),
     titleManual: Boolean(row.title_manual),
     descriptionManual: Boolean(row.description_manual),
@@ -358,8 +362,8 @@ export function ensureChannelPublishSettings(input: {
   const db = getDb();
   db.prepare(
     `INSERT INTO channel_publish_settings
-      (id, workspace_id, channel_id, timezone, first_slot_local_time, daily_slot_count, slot_interval_minutes, auto_queue_enabled, upload_lead_minutes, created_at, updated_at, updated_by_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, workspace_id, channel_id, timezone, first_slot_local_time, daily_slot_count, slot_interval_minutes, auto_queue_enabled, upload_lead_minutes, notify_subscribers_default, created_at, updated_at, updated_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     newId(),
     input.workspaceId,
@@ -370,6 +374,7 @@ export function ensureChannelPublishSettings(input: {
     DEFAULT_CHANNEL_PUBLISH_SETTINGS.slotIntervalMinutes,
     DEFAULT_CHANNEL_PUBLISH_SETTINGS.autoQueueEnabled ? 1 : 0,
     DEFAULT_CHANNEL_PUBLISH_SETTINGS.uploadLeadMinutes,
+    DEFAULT_CHANNEL_PUBLISH_SETTINGS.notifySubscribersByDefault ? 1 : 0,
     now,
     now,
     input.userId ?? null
@@ -398,6 +403,7 @@ export function upsertChannelPublishSettings(input: {
             slot_interval_minutes = ?,
             auto_queue_enabled = ?,
             upload_lead_minutes = ?,
+            notify_subscribers_default = ?,
             updated_at = ?,
             updated_by_user_id = ?
       WHERE channel_id = ?`
@@ -408,6 +414,7 @@ export function upsertChannelPublishSettings(input: {
     next.slotIntervalMinutes,
     next.autoQueueEnabled ? 1 : 0,
     next.uploadLeadMinutes,
+    next.notifySubscribersByDefault ? 1 : 0,
     now,
     input.userId,
     input.channelId
@@ -849,6 +856,7 @@ export function createChannelPublication(input: {
   title: string;
   description: string;
   tags: string[];
+  notifySubscribers: boolean;
   needsReview: boolean;
   titleManual?: boolean;
   descriptionManual?: boolean;
@@ -861,8 +869,8 @@ export function createChannelPublication(input: {
   const db = getDb();
   db.prepare(
     `INSERT INTO channel_publications
-      (id, workspace_id, channel_id, chat_id, render_export_id, provider, status, scheduled_at, upload_ready_at, slot_date, slot_index, title, description, tags_json, needs_review, title_manual, description_manual, tags_manual, schedule_manual, created_by_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'youtube', 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, workspace_id, channel_id, chat_id, render_export_id, provider, status, scheduled_at, upload_ready_at, slot_date, slot_index, title, description, tags_json, notify_subscribers, needs_review, title_manual, description_manual, tags_manual, schedule_manual, created_by_user_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'youtube', 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     publicationId,
     input.workspaceId,
@@ -876,6 +884,7 @@ export function createChannelPublication(input: {
     input.title,
     input.description,
     stringifyChannelPublicationTags(input.tags),
+    input.notifySubscribers ? 1 : 0,
     input.needsReview ? 1 : 0,
     input.titleManual ? 1 : 0,
     input.descriptionManual ? 1 : 0,
@@ -894,6 +903,7 @@ export function updateChannelPublicationDraft(input: {
   title?: string;
   description?: string;
   tags?: string[];
+  notifySubscribers?: boolean;
   needsReview?: boolean;
   titleManual?: boolean;
   descriptionManual?: boolean;
@@ -917,6 +927,7 @@ export function updateChannelPublicationDraft(input: {
             title = ?,
             description = ?,
             tags_json = ?,
+            notify_subscribers = ?,
             needs_review = ?,
             title_manual = ?,
             description_manual = ?,
@@ -939,6 +950,9 @@ export function updateChannelPublicationDraft(input: {
     input.title ?? current.title,
     input.description ?? current.description,
     stringifyChannelPublicationTags(input.tags ?? current.tags),
+    typeof input.notifySubscribers === "boolean"
+      ? input.notifySubscribers ? 1 : 0
+      : current.notifySubscribers ? 1 : 0,
     typeof input.needsReview === "boolean" ? (input.needsReview ? 1 : 0) : current.needsReview ? 1 : 0,
     typeof input.titleManual === "boolean" ? (input.titleManual ? 1 : 0) : current.titleManual ? 1 : 0,
     typeof input.descriptionManual === "boolean"

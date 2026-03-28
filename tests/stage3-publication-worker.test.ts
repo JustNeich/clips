@@ -7,7 +7,11 @@ import test from "node:test";
 import { POST as completeWorkerStage3Job } from "../app/api/stage3/worker/jobs/[id]/complete/route";
 import { createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import { getDb, newId, nowIso } from "../lib/db/client";
-import { getRenderExportByStage3JobId, listChannelPublications } from "../lib/publication-store";
+import {
+  getRenderExportByStage3JobId,
+  listChannelPublications,
+  upsertChannelPublishSettings
+} from "../lib/publication-store";
 import { enqueueStage3Job, claimNextQueuedStage3JobForWorker } from "../lib/stage3-job-store";
 import {
   exchangeStage3WorkerPairingToken,
@@ -63,6 +67,14 @@ test("local worker render completion creates a render export and queued publicat
       creatorUserId: userId,
       name: "Daily Dopamine",
       username: "dailydopamine"
+    });
+    upsertChannelPublishSettings({
+      workspaceId,
+      channelId: channel.id,
+      userId,
+      patch: {
+        notifySubscribersByDefault: false
+      }
     });
     const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=abc123", channel.id);
 
@@ -121,5 +133,6 @@ test("local worker render completion creates a render export and queued publicat
     assert.equal(publications[0]?.renderExportId, renderExport?.id);
     assert.equal(publications[0]?.title, "Rendered title");
     assert.equal(publications[0]?.chatId, chat.id);
+    assert.equal(publications[0]?.notifySubscribers, false);
   });
 });
