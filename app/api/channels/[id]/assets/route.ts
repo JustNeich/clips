@@ -12,6 +12,10 @@ import {
   validateChannelAssetMime
 } from "../../../../../lib/channel-assets";
 import {
+  MultipartUploadError,
+  parseMultipartSingleFileRequest
+} from "../../../../../lib/multipart-upload";
+import {
   requireAuth,
   requireChannelSetupEdit,
   requireChannelVisibility
@@ -74,29 +78,44 @@ export async function GET(request: Request, context: Context): Promise<Response>
 
 export async function POST(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
-  const formData = await request.formData().catch(() => null);
-  const file = formData?.get("file");
-  const kind = parseKind(String(formData?.get("kind") ?? ""));
+  let parsedUpload: Awaited<ReturnType<typeof parseMultipartSingleFileRequest>>;
+  try {
+    parsedUpload = await parseMultipartSingleFileRequest(request, {
+      fileFieldName: "file",
+      maxFileBytes: MAX_MUSIC_BYTES,
+      parseErrorMessage: "Не удалось разобрать upload ассета. Повторите загрузку файла.",
+      missingBodyMessage: "Передайте multipart/form-data с полями file и kind."
+    });
+  } catch (error) {
+    const message =
+      error instanceof MultipartUploadError
+        ? error.message
+        : "Не удалось разобрать upload ассета. Повторите загрузку файла.";
+    return Response.json({ error: message }, { status: 400 });
+  }
 
-  if (!(file instanceof File)) {
+  const file = parsedUpload.file;
+  const kind = parseKind(parsedUpload.fields.kind ?? null);
+
+  if (!file) {
     return Response.json({ error: "Передайте файл в поле file." }, { status: 400 });
   }
   if (!kind) {
     return Response.json({ error: "Передайте kind: avatar|background|music." }, { status: 400 });
   }
-  if (file.size <= 0) {
+  if (file.sizeBytes <= 0) {
     return Response.json({ error: "Файл пустой." }, { status: 400 });
   }
 
   const maxBytes = maxSizeByKind(kind);
-  if (file.size > maxBytes) {
+  if (file.sizeBytes > maxBytes) {
     return Response.json(
       { error: `Файл слишком большой. Максимум ${Math.round(maxBytes / (1024 * 1024))} MB.` },
       { status: 400 }
     );
   }
 
-  const mimeType = file.type?.trim().toLowerCase() ?? "";
+  const mimeType = file.mimeType.trim().toLowerCase();
   if (!validateChannelAssetMime(kind, mimeType)) {
     return Response.json({ error: "Неподдерживаемый тип файла для выбранного kind." }, { status: 400 });
   }
@@ -105,7 +124,7 @@ export async function POST(request: Request, context: Context): Promise<Response
     const auth = await requireAuth();
     await requireChannelSetupEdit(auth, id);
     const assetId = randomUUID().replace(/-/g, "");
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = Buffer.from(file.bytes);
     const saved = await saveChannelAssetFile({
       channelId: id,
       assetId,
@@ -120,7 +139,7 @@ export async function POST(request: Request, context: Context): Promise<Response
       fileName: saved.fileName,
       originalName: file.name || `${kind}-asset`,
       mimeType,
-      sizeBytes: file.size
+      sizeBytes: file.sizeBytes
     });
 
     if (kind === "avatar") {
