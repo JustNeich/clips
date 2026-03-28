@@ -39,6 +39,11 @@ import {
   Stage3VariationManifest,
   Stage3VariationProfile
 } from "./stage3-render-variation";
+import {
+  normalizeStage3SegmentFocusOverride,
+  normalizeStage3SegmentMirrorOverride,
+  normalizeStage3SegmentZoomOverride
+} from "./stage3-segment-transforms";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -368,6 +373,8 @@ async function runRemotionRender(params: {
   clipDurationSec: number;
   focusY: number;
   mirrorEnabled: boolean;
+  timingMode: Stage3RenderPlan["timingMode"];
+  segments: Stage3RenderPlan["segments"];
   cameraMotion: Stage3RenderPlan["cameraMotion"];
   cameraKeyframes: Stage3RenderPlan["cameraKeyframes"];
   cameraPositionKeyframes: Stage3RenderPlan["cameraPositionKeyframes"];
@@ -406,6 +413,8 @@ async function runRemotionRender(params: {
     clipDurationSec: params.clipDurationSec,
     focusY: params.focusY,
     mirrorEnabled: params.mirrorEnabled,
+    timingMode: params.timingMode,
+    segments: params.segments,
     cameraMotion: params.cameraMotion,
     cameraKeyframes: params.cameraKeyframes,
     cameraPositionKeyframes: params.cameraPositionKeyframes,
@@ -614,7 +623,10 @@ function normalizeRenderPlan(
               startSec: start,
               endSec: end,
               speed: normalizeSegmentSpeed((segment as { speed?: unknown }).speed),
-              label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`
+              label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`,
+              focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
+              videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
+              mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
             };
           })
           .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
@@ -901,6 +913,8 @@ export async function renderStage3Video(
           clipDurationSec: prepared.clipDurationSec,
           focusY,
           mirrorEnabled: renderPlan.mirrorEnabled,
+          timingMode: renderPlan.timingMode,
+          segments: renderPlan.segments,
           cameraMotion: renderPlan.cameraMotion,
           cameraKeyframes: renderPlan.cameraKeyframes,
           cameraPositionKeyframes: renderPlan.cameraPositionKeyframes,

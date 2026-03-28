@@ -22,6 +22,23 @@ import type {
   Stage3ScaleKeyframe
 } from "../lib/stage3-camera";
 
+type RemotionStage3TimingMode = "auto" | "compress" | "stretch";
+type RemotionStage3Segment = {
+  startSec: number;
+  endSec: number | null;
+  label: string;
+  speed: number;
+  focusY?: number | null;
+  videoZoom?: number | null;
+  mirrorEnabled?: boolean | null;
+};
+
+type RemotionSegmentTransformState = {
+  focusY: number;
+  videoZoom: number;
+  mirrorEnabled: boolean;
+};
+
 type ScienceCardV1Props = {
   templateId?: string;
   sourceVideoFileName?: string | null;
@@ -31,6 +48,8 @@ type ScienceCardV1Props = {
   clipDurationSec: number;
   focusY: number;
   mirrorEnabled: boolean;
+  timingMode: RemotionStage3TimingMode;
+  segments: RemotionStage3Segment[];
   cameraMotion: "disabled" | "top_to_bottom" | "bottom_to_top";
   cameraKeyframes: Stage3CameraKeyframe[];
   cameraPositionKeyframes: Stage3PositionKeyframe[];
@@ -57,6 +76,127 @@ type ScienceCardV1Props = {
   variationProfile?: Stage3VariationProfile | null;
 };
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function resolveDurationScale(
+  totalOutputDurationSec: number,
+  targetDurationSec: number,
+  timingMode: RemotionStage3TimingMode
+): number {
+  if (Math.abs(totalOutputDurationSec - targetDurationSec) <= 0.005) {
+    return 1;
+  }
+  const requiresCompression = totalOutputDurationSec > targetDurationSec + 0.005;
+  const requiresStretch = totalOutputDurationSec < targetDurationSec - 0.005;
+  if (timingMode === "compress" && !requiresCompression) {
+    return 1;
+  }
+  if (timingMode === "stretch" && !requiresStretch) {
+    return 1;
+  }
+  return targetDurationSec / Math.max(0.05, totalOutputDurationSec);
+}
+
+function resolveSegmentTransformAtOutputTime(params: {
+  segments: RemotionStage3Segment[];
+  clipDurationSec: number;
+  timingMode: RemotionStage3TimingMode;
+  outputTimeSec: number;
+  fallbackFocusY: number;
+  fallbackVideoZoom: number;
+  fallbackMirrorEnabled: boolean;
+}): RemotionSegmentTransformState {
+  if (!params.segments.length) {
+    return {
+      focusY: params.fallbackFocusY,
+      videoZoom: params.fallbackVideoZoom,
+      mirrorEnabled: params.fallbackMirrorEnabled
+    };
+  }
+
+  const normalizedSegments = params.segments
+    .map((segment) => {
+      const startSec =
+        typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
+          ? Math.max(0, segment.startSec)
+          : null;
+      if (startSec === null) {
+        return null;
+      }
+      const endRaw =
+        segment.endSec === null
+          ? startSec + 0.5
+          : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
+            ? segment.endSec
+            : startSec + 0.5;
+      const endSec = roundToTenth(Math.max(startSec + 0.1, endRaw));
+      const speed =
+        typeof segment.speed === "number" && Number.isFinite(segment.speed) && segment.speed > 0
+          ? segment.speed
+          : 1;
+      return {
+        ...segment,
+        startSec: roundToTenth(startSec),
+        endSec,
+        speed
+      };
+    })
+    .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
+    .sort((left, right) => left.startSec - right.startSec);
+
+  if (!normalizedSegments.length) {
+    return {
+      focusY: params.fallbackFocusY,
+      videoZoom: params.fallbackVideoZoom,
+      mirrorEnabled: params.fallbackMirrorEnabled
+    };
+  }
+
+  const totalOutputDurationSec = normalizedSegments.reduce((total, segment) => {
+    return total + Math.max(0.05, segment.endSec - segment.startSec) / Math.max(0.1, segment.speed);
+  }, 0);
+  const durationScale = resolveDurationScale(totalOutputDurationSec, params.clipDurationSec, params.timingMode);
+  const outputTimeSec = clamp(params.outputTimeSec, 0, Math.max(params.clipDurationSec, totalOutputDurationSec));
+
+  let cursor = 0;
+  for (const segment of normalizedSegments) {
+    const sourceDurationSec = Math.max(0.05, segment.endSec - segment.startSec);
+    const outputDurationSec = (sourceDurationSec / Math.max(0.1, segment.speed)) * durationScale;
+    const outputEndSec = cursor + outputDurationSec;
+    const isActive =
+      segment === normalizedSegments[normalizedSegments.length - 1]
+        ? outputTimeSec <= outputEndSec + 0.001
+        : outputTimeSec >= cursor && outputTimeSec < outputEndSec;
+    if (isActive) {
+      return {
+        focusY:
+          typeof segment.focusY === "number" && Number.isFinite(segment.focusY)
+            ? clamp(segment.focusY, 0.12, 0.88)
+            : params.fallbackFocusY,
+        videoZoom:
+          typeof segment.videoZoom === "number" && Number.isFinite(segment.videoZoom)
+            ? clamp(segment.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM)
+            : params.fallbackVideoZoom,
+        mirrorEnabled:
+          typeof segment.mirrorEnabled === "boolean" ? segment.mirrorEnabled : params.fallbackMirrorEnabled
+      };
+    }
+    cursor = outputEndSec;
+  }
+
+  return {
+    focusY: params.fallbackFocusY,
+    videoZoom: params.fallbackVideoZoom,
+    mirrorEnabled: params.fallbackMirrorEnabled
+  };
+}
+
 export function ScienceCardV1({
   templateId,
   topText,
@@ -71,6 +211,8 @@ export function ScienceCardV1({
   authorHandle,
   sourceVideoFileName,
   mirrorEnabled,
+  timingMode,
+  segments,
   cameraMotion,
   cameraKeyframes,
   cameraPositionKeyframes,
@@ -101,6 +243,19 @@ export function ScienceCardV1({
   const clipFrames = Math.max(1, Math.round(clipDurationSec * fps));
   const endAt = startFrom + clipFrames;
   const currentTimeSec = clipFrames <= 1 ? 0 : frameNumber / fps;
+  const segmentTransform = React.useMemo(
+    () =>
+      resolveSegmentTransformAtOutputTime({
+        segments,
+        clipDurationSec,
+        timingMode,
+        outputTimeSec: currentTimeSec,
+        fallbackFocusY: focusY,
+        fallbackVideoZoom: videoZoom,
+        fallbackMirrorEnabled: mirrorEnabled
+      }),
+    [clipDurationSec, currentTimeSec, focusY, mirrorEnabled, segments, timingMode, videoZoom]
+  );
   const cameraState = resolveCameraStateAtTime({
     timeSec: currentTimeSec,
     cameraPositionKeyframes,
@@ -108,8 +263,8 @@ export function ScienceCardV1({
     cameraKeyframes,
     cameraMotion,
     clipDurationSec,
-    baseFocusY: focusY,
-    baseZoom: videoZoom
+    baseFocusY: segmentTransform.focusY,
+    baseZoom: segmentTransform.videoZoom
   });
   const animatedFocus = cameraState.focusY;
   const objectPosition = `50% ${(Math.min(88, Math.max(12, animatedFocus * 100))).toFixed(3)}%`;
@@ -133,10 +288,10 @@ export function ScienceCardV1({
     },
     fitOverride: textFit ?? undefined
   });
-  const mirroredScale = mirrorEnabled ? -normalizedZoom : normalizedZoom;
+  const mirroredScale = segmentTransform.mirrorEnabled ? -normalizedZoom : normalizedZoom;
   const slotTransform = `scale(${mirroredScale.toFixed(3)}, ${normalizedZoom.toFixed(3)})`;
   const backgroundScale = 1.08;
-  const bgTransform = mirrorEnabled
+  const bgTransform = segmentTransform.mirrorEnabled
     ? `scale(${(-backgroundScale).toFixed(3)}, ${backgroundScale.toFixed(3)})`
     : `scale(${backgroundScale.toFixed(3)})`;
   const backgroundMode = resolveStage3BackgroundMode(resolvedTemplateId, {

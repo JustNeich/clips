@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { buildStage3EditingProxyDedupeKey } from "../lib/stage3-editing-proxy-service";
 import {
   buildStage3PlaybackPlan,
-  resolveStage3PlaybackPosition
+  resolveStage3PlaybackPosition,
+  resolveStage3PlaybackTransformState
 } from "../lib/stage3-preview-playback";
 
 test("buildStage3PlaybackPlan uses clip window when there are no explicit segments", () => {
@@ -21,6 +22,24 @@ test("buildStage3PlaybackPlan uses clip window when there are no explicit segmen
   assert.equal(plan.segments[0]?.sourceStartSec, 12);
   assert.equal(plan.segments[0]?.sourceEndSec, 18);
   assert.equal(plan.totalOutputDurationSec, 6);
+});
+
+test("buildStage3PlaybackPlan compresses the full source when normalize mode is active without explicit fragments", () => {
+  const plan = buildStage3PlaybackPlan({
+    segments: [],
+    sourceDurationSec: 11.9,
+    clipStartSec: 5,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "compress",
+    policy: "full_source_normalize"
+  });
+
+  assert.equal(plan.segments.length, 1);
+  assert.equal(plan.segments[0]?.sourceStartSec, 0);
+  assert.equal(plan.segments[0]?.sourceEndSec, 11.9);
+  assert.equal(Number(plan.totalOutputDurationSec.toFixed(3)), 6);
+  assert.equal(Number(plan.segments[0]!.playbackRate.toFixed(3)), Number((11.9 / 6).toFixed(3)));
 });
 
 test("buildStage3PlaybackPlan maps multi-segment auto timing into a 6 second editor timeline", () => {
@@ -67,6 +86,61 @@ test("compress mode preserves shorter segment output instead of stretching it", 
   assert.ok(position);
   assert.equal(position?.segment.label, "B");
   assert.equal(Number(position?.sourceTimeSec.toFixed(3)), 9.5);
+});
+
+test("segment transform overrides follow the active playback fragment", () => {
+  const plan = buildStage3PlaybackPlan({
+    segments: [
+      {
+        startSec: 0,
+        endSec: 2,
+        speed: 1,
+        label: "A",
+        focusY: 0.22,
+        videoZoom: 1.18,
+        mirrorEnabled: false
+      },
+      {
+        startSec: 4,
+        endSec: 5,
+        speed: 1,
+        label: "B",
+        focusY: 0.76,
+        videoZoom: 1.34,
+        mirrorEnabled: true
+      }
+    ],
+    sourceDurationSec: 12,
+    clipStartSec: 0,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+
+  const first = resolveStage3PlaybackTransformState({
+    plan,
+    outputTimeSec: 1,
+    fallbackFocusY: 0.5,
+    fallbackVideoZoom: 1,
+    fallbackMirrorEnabled: true
+  });
+  const second = resolveStage3PlaybackTransformState({
+    plan,
+    outputTimeSec: 5,
+    fallbackFocusY: 0.5,
+    fallbackVideoZoom: 1,
+    fallbackMirrorEnabled: false
+  });
+
+  assert.equal(first.segmentIndex, 0);
+  assert.equal(first.focusY, 0.22);
+  assert.equal(first.videoZoom, 1.18);
+  assert.equal(first.mirrorEnabled, false);
+  assert.equal(second.segmentIndex, 1);
+  assert.equal(second.focusY, 0.76);
+  assert.equal(second.videoZoom, 1.34);
+  assert.equal(second.mirrorEnabled, true);
 });
 
 test("buildStage3EditingProxyDedupeKey is stable for the same scoped source", async () => {

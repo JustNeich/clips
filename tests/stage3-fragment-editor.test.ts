@@ -1,10 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getEditingPolicy, resolveNormalizedTimingMode } from "../app/home-page-support";
+import {
+  fallbackRenderPlan,
+  getEditingPolicy,
+  normalizeClientSegments,
+  normalizeRenderPlan,
+  resolveNormalizedTimingMode,
+  trimClientSegmentsToDuration
+} from "../app/home-page-support";
 
-test("empty fragment editor state keeps fixed_segments policy even when normalize toggle is on", () => {
-  assert.equal(getEditingPolicy([], true), "fixed_segments");
+test("empty fragment editor state switches to full_source_normalize when normalize toggle is on", () => {
+  assert.equal(getEditingPolicy([], true), "full_source_normalize");
   assert.equal(getEditingPolicy([], false), "fixed_segments");
+});
+
+test("normalizeRenderPlan canonicalizes stale no-fragment normalize state on init", () => {
+  const normalized = normalizeRenderPlan(
+    {
+      ...fallbackRenderPlan(),
+      normalizeToTargetEnabled: true,
+      timingMode: "auto",
+      policy: "fixed_segments",
+      segments: []
+    },
+    fallbackRenderPlan()
+  );
+
+  assert.equal(normalized.normalizeToTargetEnabled, true);
+  assert.equal(normalized.policy, "full_source_normalize");
 });
 
 test("multi-fragment normalize mode resolves to compress when total source exceeds 6 seconds", () => {
@@ -18,4 +41,60 @@ test("multi-fragment normalize mode resolves to compress when total source excee
   });
 
   assert.equal(timingMode, "compress");
+});
+
+test("client fragment normalization preserves per-fragment framing overrides", () => {
+  const normalized = normalizeClientSegments(
+    [
+      {
+        startSec: 0,
+        endSec: 1.6,
+        speed: 1,
+        label: "A",
+        focusY: 0.21,
+        videoZoom: 1.22,
+        mirrorEnabled: false
+      }
+    ],
+    12
+  );
+
+  assert.equal(normalized[0]?.focusY, 0.21);
+  assert.equal(normalized[0]?.videoZoom, 1.22);
+  assert.equal(normalized[0]?.mirrorEnabled, false);
+});
+
+test("trimClientSegmentsToDuration keeps fragment framing overrides on surviving segments", () => {
+  const trimmed = trimClientSegmentsToDuration(
+    [
+      {
+        startSec: 0,
+        endSec: 5,
+        speed: 1,
+        label: "A",
+        focusY: 0.24,
+        videoZoom: 1.28,
+        mirrorEnabled: true
+      },
+      {
+        startSec: 8,
+        endSec: 11,
+        speed: 1,
+        label: "B",
+        focusY: 0.74,
+        videoZoom: 1.36,
+        mirrorEnabled: false
+      }
+    ],
+    6,
+    12
+  );
+
+  assert.equal(trimmed.length, 2);
+  assert.equal(trimmed[0]?.focusY, 0.24);
+  assert.equal(trimmed[0]?.videoZoom, 1.28);
+  assert.equal(trimmed[0]?.mirrorEnabled, true);
+  assert.equal(trimmed[1]?.focusY, 0.74);
+  assert.equal(trimmed[1]?.videoZoom, 1.36);
+  assert.equal(trimmed[1]?.mirrorEnabled, false);
 });

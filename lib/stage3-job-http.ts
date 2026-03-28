@@ -41,6 +41,7 @@ export function buildStage3JobEnvelope(
     recoverable: job.recoverable,
     errorCode: job.errorCode,
     errorMessage: job.errorMessage,
+    resultJson: job.resultJson,
     artifact
   };
 

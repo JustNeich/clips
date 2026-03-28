@@ -38,6 +38,11 @@ import { normalizeStage3SessionStatus } from "../lib/stage3-legacy-bridge";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { clampStage3TextScaleUi } from "../lib/stage3-text-fit";
 import { sanitizeDisplayText } from "../lib/ui-error";
+import {
+  normalizeStage3SegmentFocusOverride,
+  normalizeStage3SegmentMirrorOverride,
+  normalizeStage3SegmentZoomOverride
+} from "../lib/stage3-segment-transforms";
 
 const DEFAULT_TEXT_SCALE = 1.25;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -558,7 +563,10 @@ export function normalizeClientSegments(
         label:
           typeof segment.label === "string" && segment.label.trim()
             ? segment.label.trim()
-            : `Фрагмент ${index + 1}`
+            : `Фрагмент ${index + 1}`,
+        focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
+        videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
+        mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
       };
     })
     .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
@@ -627,7 +635,10 @@ export function getEditingPolicy(
   segments: Stage3Segment[],
   compressionEnabled: boolean
 ): Stage3RenderPlan["policy"] {
-  return "fixed_segments";
+  if (segments.length > 0) {
+    return "fixed_segments";
+  }
+  return compressionEnabled ? "full_source_normalize" : "fixed_segments";
 }
 
 export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
@@ -701,16 +712,34 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
             label:
               typeof segment.label === "string" && segment.label.trim()
                 ? segment.label
-                : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`
+                : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`,
+            focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
+            videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
+            mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
           };
         })
-        .filter(
-          (
-            segment
-          ): segment is { startSec: number; endSec: number | null; speed: Stage3Segment["speed"]; label: string } =>
-            Boolean(segment)
-        )
+        .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
     : base.segments;
+  const normalizeToTargetEnabled =
+    typeof candidate?.normalizeToTargetEnabled === "boolean"
+      ? candidate.normalizeToTargetEnabled
+      : candidate?.timingMode === "compress" ||
+          candidate?.timingMode === "stretch" ||
+          candidate?.policy === "full_source_normalize";
+  const requestedPolicy =
+    candidate?.policy === "adaptive_window" ||
+    candidate?.policy === "full_source_normalize" ||
+    candidate?.policy === "fixed_segments"
+      ? candidate.policy
+      : base.policy;
+  const policy =
+    segments.length > 0
+      ? "fixed_segments"
+      : normalizeToTargetEnabled
+        ? "full_source_normalize"
+        : requestedPolicy === "adaptive_window"
+          ? "adaptive_window"
+          : "fixed_segments";
 
   return {
     targetDurationSec: 6,
@@ -720,12 +749,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
       candidate?.timingMode === "stretch"
         ? candidate.timingMode
         : base.timingMode,
-    normalizeToTargetEnabled:
-      typeof candidate?.normalizeToTargetEnabled === "boolean"
-        ? candidate.normalizeToTargetEnabled
-        : candidate?.timingMode === "compress" ||
-            candidate?.timingMode === "stretch" ||
-            candidate?.policy === "full_source_normalize",
+    normalizeToTargetEnabled,
     audioMode:
       candidate?.audioMode === "source_only" || candidate?.audioMode === "source_plus_music"
         ? candidate.audioMode
@@ -766,12 +790,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
         ? candidate.textPolicy
         : base.textPolicy,
     segments,
-    policy:
-      candidate?.policy === "adaptive_window" ||
-      candidate?.policy === "full_source_normalize" ||
-      candidate?.policy === "fixed_segments"
-        ? candidate.policy
-        : base.policy,
+    policy,
     backgroundAssetId:
       typeof candidate?.backgroundAssetId === "string" && candidate.backgroundAssetId.trim()
         ? candidate.backgroundAssetId.trim()

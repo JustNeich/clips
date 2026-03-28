@@ -393,6 +393,7 @@ export type Stage3JobSummary = {
   recoverable: boolean;
   errorCode: string | null;
   errorMessage: string | null;
+  resultJson?: string | null;
   artifact: Stage3JobArtifact | null;
 };
 
@@ -447,6 +448,9 @@ export type Stage3Segment = {
   endSec: number | null;
   label: string;
   speed: Stage3SegmentSpeed;
+  focusY?: number | null;
+  videoZoom?: number | null;
+  mirrorEnabled?: boolean | null;
 };
 
 export type Stage3Operation =

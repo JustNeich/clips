@@ -242,6 +242,7 @@ const HistoryCard = memo(function HistoryCard({
   const publicationSlotTime = item.publication
     ? formatHistoryTime(item.publication.scheduledAt)
     : null;
+  const showProgressBadge = item.publication?.status !== "published";
   const handleOpen = useCallback(() => {
     onOpen(item.id);
   }, [item.id, onOpen]);
@@ -262,20 +263,15 @@ const HistoryCard = memo(function HistoryCard({
       >
         <span className="history-row-main">
           <span className="history-title clamp-1">{item.title}</span>
-          <span className="history-meta-line">
-            <span>
-              {item.publication
-                ? `Слот ${publicationSlotTime}`
-                : `Обновлён ${formatHistoryTime(item.updatedAt)}`}
+          {!item.publication ? (
+            <span className="history-meta-line">
+              <span>Обновлён {formatHistoryTime(item.updatedAt)}</span>
             </span>
-          </span>
+          ) : null}
           {item.exportTitle ? <span className="history-export-line">Экспорт: {item.exportTitle}</span> : null}
-          {item.publication ? (
+          {item.publication && (publicationSlotTime || item.publication.needsReview) ? (
             <span className="history-publication-line">
-              <span className={`history-publication-pill ${getPublicationToneClass(item.publication.status)}`}>
-                {formatPublicationStatusLabel(item.publication.status)}
-              </span>
-              <span className="history-slot-pill">{publicationSlotTime}</span>
+              {publicationSlotTime ? <span className="history-slot-pill">{publicationSlotTime}</span> : null}
               {item.publication.needsReview ? (
                 <span className="history-publication-pill tone-muted">Нужна проверка</span>
               ) : null}
@@ -287,7 +283,9 @@ const HistoryCard = memo(function HistoryCard({
         <span className={`history-status-chip ${item.liveAction ? "status-live" : `status-${item.status}`}`}>
           {primaryStatusLabel}
         </span>
-        <span className={`history-step-pill tone-${progressBadge.tone}`}>{progressBadge.label}</span>
+        {showProgressBadge ? (
+          <span className={`history-step-pill tone-${progressBadge.tone}`}>{progressBadge.label}</span>
+        ) : null}
         <button
           type="button"
           className="history-remove"
@@ -402,13 +400,19 @@ export function AppShell({
   const [historyQuery, setHistoryQuery] = useState("");
   const [codexPanelOpen, setCodexPanelOpen] = useState(false);
   const [channelMenuOpen, setChannelMenuOpen] = useState(false);
+  const [headerOverflowOpen, setHeaderOverflowOpen] = useState(false);
+  const [workspaceOverflowOpen, setWorkspaceOverflowOpen] = useState(false);
   const historyPopoverRef = useRef<HTMLDivElement | null>(null);
   const channelMenuRef = useRef<HTMLDivElement | null>(null);
+  const headerOverflowRef = useRef<HTMLDivElement | null>(null);
+  const workspaceOverflowRef = useRef<HTMLDivElement | null>(null);
   const historyCloseTimerRef = useRef<number | null>(null);
   const selectedChannel = useMemo(
     () => channels.find((channel) => channel.id === activeChannelId) ?? channels[0] ?? null,
     [activeChannelId, channels]
   );
+  const showHeaderOverflow = Boolean(canManageChannels || canManageTeam || headerActions);
+  const showWorkspaceOverflow = Boolean(canManageCodex || currentUserName || currentUserRole || onLogout);
 
   const visibleHistoryItems = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
@@ -459,6 +463,10 @@ export function AppShell({
   const showCodexPanel = Boolean(
     canManageCodex && (showDeviceAuthDetails || (codexPanelOpen && !codexConnected))
   );
+  const closeOverflowMenus = useCallback(() => {
+    setHeaderOverflowOpen(false);
+    setWorkspaceOverflowOpen(false);
+  }, []);
   const clearHistoryCloseTimer = useCallback(() => {
     if (typeof window === "undefined" || historyCloseTimerRef.current === null) {
       return;
@@ -589,6 +597,36 @@ export function AppShell({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [channelMenuOpen]);
+
+  useEffect(() => {
+    if ((!headerOverflowOpen && !workspaceOverflowOpen) || typeof window === "undefined") {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (headerOverflowOpen && headerOverflowRef.current?.contains(target)) {
+        return;
+      }
+      if (workspaceOverflowOpen && workspaceOverflowRef.current?.contains(target)) {
+        return;
+      }
+      closeOverflowMenus();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeOverflowMenus();
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeOverflowMenus, headerOverflowOpen, workspaceOverflowOpen]);
 
   return (
     <main className="app-layout">
@@ -817,17 +855,61 @@ export function AppShell({
                     </div>
                   ) : null}
                 </div>
-                {canManageChannels ? (
-                  <button type="button" className="btn btn-secondary" onClick={onManageChannels}>
-                    Каналы
-                  </button>
+                {showHeaderOverflow ? (
+                  <div ref={headerOverflowRef} className="topbar-inline-details">
+                    <button
+                      type="button"
+                      className={`topbar-inline-trigger ${headerOverflowOpen ? "active" : ""}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={headerOverflowOpen}
+                      onClick={() => {
+                        setHeaderOverflowOpen((prev) => {
+                          const next = !prev;
+                          if (next) {
+                            setWorkspaceOverflowOpen(false);
+                            setChannelMenuOpen(false);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      Еще
+                    </button>
+                    {headerOverflowOpen ? (
+                      <div className="topbar-inline-details-content">
+                      {canManageChannels ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            closeOverflowMenus();
+                            onManageChannels();
+                          }}
+                        >
+                          Каналы
+                        </button>
+                      ) : null}
+                      {canManageTeam ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => {
+                            closeOverflowMenus();
+                            onOpenTeam();
+                          }}
+                        >
+                          Команда
+                        </button>
+                      ) : null}
+                      {headerActions ? (
+                        <div className="topbar-inline-action" onClickCapture={closeOverflowMenus}>
+                          {headerActions}
+                        </div>
+                      ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
-                {canManageTeam ? (
-                  <button type="button" className="btn btn-ghost" onClick={onOpenTeam}>
-                    Команда
-                  </button>
-                ) : null}
-                {headerActions}
               </div>
             </div>
           </div>
@@ -845,48 +927,97 @@ export function AppShell({
                 </div>
               </div>
 
-              <div className="workspace-card-actions">
-                {canManageCodex ? (
-                  <>
+              {showWorkspaceOverflow ? (
+                <div className="workspace-card-actions">
+                  <div ref={workspaceOverflowRef} className="topbar-inline-details topbar-inline-details-right">
                     <button
                       type="button"
-                      className="btn btn-secondary"
-                      onClick={onConnectCodex}
-                      aria-busy={codexBusyConnect}
-                      disabled={codexBusyConnect || !canConnectCodex}
-                      title={!canConnectCodex ? codexConnectBlockedReason ?? undefined : undefined}
+                      className={`topbar-inline-trigger ${workspaceOverflowOpen ? "active" : ""}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={workspaceOverflowOpen}
+                      onClick={() => {
+                        setWorkspaceOverflowOpen((prev) => {
+                          const next = !prev;
+                          if (next) {
+                            setHeaderOverflowOpen(false);
+                            setChannelMenuOpen(false);
+                          }
+                          return next;
+                        });
+                      }}
                     >
-                      {codexBusyConnect ? "Подключение..." : codexActionLabel ?? "Подключить"}
+                      Управление
                     </button>
-                    {codexSecondaryActionLabel && onSecondaryCodexAction ? (
-                      <button type="button" className="btn btn-ghost" onClick={onSecondaryCodexAction}>
-                        {codexSecondaryActionLabel}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={onRefreshCodex}
-                      aria-busy={codexBusyRefresh}
-                      disabled={codexBusyRefresh}
-                    >
-                      {codexBusyRefresh ? "Обновление..." : "Обновить"}
-                    </button>
-                    {showCodexDetailsToggle && (
+                    {workspaceOverflowOpen ? (
+                      <div className="topbar-inline-details-content">
+                      {canManageCodex ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              closeOverflowMenus();
+                              onConnectCodex();
+                            }}
+                            aria-busy={codexBusyConnect}
+                            disabled={codexBusyConnect || !canConnectCodex}
+                            title={!canConnectCodex ? codexConnectBlockedReason ?? undefined : undefined}
+                          >
+                            {codexBusyConnect ? "Подключение..." : codexActionLabel ?? "Подключить"}
+                          </button>
+                          {codexSecondaryActionLabel && onSecondaryCodexAction ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => {
+                                closeOverflowMenus();
+                                onSecondaryCodexAction();
+                              }}
+                            >
+                              {codexSecondaryActionLabel}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                              closeOverflowMenus();
+                              onRefreshCodex();
+                            }}
+                            aria-busy={codexBusyRefresh}
+                            disabled={codexBusyRefresh}
+                          >
+                            {codexBusyRefresh ? "Обновление..." : "Обновить"}
+                          </button>
+                          {showCodexDetailsToggle && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => {
+                                closeOverflowMenus();
+                                setCodexPanelOpen((prev) => !prev);
+                              }}
+                            >
+                              {codexPanelOpen ? "Скрыть детали" : "Показать детали"}
+                            </button>
+                          )}
+                        </>
+                      ) : null}
                       <button
                         type="button"
                         className="btn btn-ghost"
-                        onClick={() => setCodexPanelOpen((prev) => !prev)}
+                        onClick={() => {
+                          closeOverflowMenus();
+                          onLogout();
+                        }}
                       >
-                        {codexPanelOpen ? "Скрыть детали" : "Показать детали"}
+                        Выйти
                       </button>
-                    )}
-                  </>
-                ) : null}
-                <button type="button" className="btn btn-ghost" onClick={onLogout}>
-                  Выйти
-                </button>
-              </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             {showCodexPanel ? (

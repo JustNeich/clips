@@ -61,8 +61,8 @@ export function DetailsDrawer({
   return (
     <details className="details-drawer">
       <summary>
-        <span>Подробности</span>
-        <small>Логи, комментарии, диагностика</small>
+        <span>Логи и комментарии</span>
+        <small>редко нужно в ежедневном цикле</small>
       </summary>
 
       <div className="details-content">

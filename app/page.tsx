@@ -306,6 +306,7 @@ export default function HomePage() {
   const [stage3AccuratePreviewVideoUrl, setStage3AccuratePreviewVideoUrl] = useState<string | null>(null);
   const [stage3AccuratePreviewState, setStage3AccuratePreviewState] = useState<Stage3PreviewState>("idle");
   const [stage3AccuratePreviewNotice, setStage3AccuratePreviewNotice] = useState<string | null>(null);
+  const [stage3SurfaceMode, setStage3SurfaceMode] = useState<"finish" | "editor">("finish");
   const [stage3Workers, setStage3Workers] = useState<Stage3WorkerSummary[]>([]);
   const [stage3WorkerPairing, setStage3WorkerPairing] = useState<Stage3WorkerPairingResponse | null>(null);
   const [isStage3WorkerPairing, setIsStage3WorkerPairing] = useState(false);
@@ -1952,6 +1953,7 @@ export default function HomePage() {
     setStage3AccuratePreviewVideoUrl(null);
     setStage3AccuratePreviewState("idle");
     setStage3AccuratePreviewNotice(null);
+    setStage3SurfaceMode("finish");
     setStage3RenderState("idle");
     setStage3RenderJobId(null);
   }, [activeChat?.id]);
@@ -4211,7 +4213,7 @@ export default function HomePage() {
   ]);
 
   useEffect(() => {
-    if (currentStep !== 3 || !activeChat?.url || stage3RenderInProgress) {
+    if (currentStep !== 3 || !activeChat?.url || stage3RenderInProgress || sourceDurationSec !== null) {
       return;
     }
 
@@ -4236,7 +4238,7 @@ export default function HomePage() {
           if (prev.prompt.trim()) {
             return prev;
           }
-          const compressionEnabled = prev.timingMode !== "auto";
+          const compressionEnabled = prev.normalizeToTargetEnabled;
           const policy = getEditingPolicy(prev.segments, compressionEnabled);
           if (prev.policy === policy) {
             return prev;
@@ -4264,7 +4266,7 @@ export default function HomePage() {
     })();
 
     return () => controller.abort();
-  }, [activeChat?.url, currentStep, parseError, stage3RenderInProgress]);
+  }, [activeChat?.url, currentStep, parseError, sourceDurationSec, stage3RenderInProgress]);
 
   useEffect(() => {
     if (currentStep !== 3 || !activeChat?.url) {
@@ -4311,6 +4313,24 @@ export default function HomePage() {
       setStage3PreviewNotice(null);
     };
 
+    const rememberSourceDuration = (job: Stage3JobEnvelope["job"]) => {
+      if (!job.resultJson) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(job.resultJson) as { sourceDurationSec?: unknown };
+        const duration =
+          typeof parsed.sourceDurationSec === "number" && Number.isFinite(parsed.sourceDurationSec)
+            ? parsed.sourceDurationSec
+            : null;
+        if (duration !== null) {
+          setSourceDurationSec(duration);
+        }
+      } catch {
+        // Ignore malformed job metadata and keep the /api/video/meta fallback.
+      }
+    };
+
     const scheduleRetry = (message: string, delayMs: number) => {
       if (isStale()) {
         return;
@@ -4333,6 +4353,7 @@ export default function HomePage() {
       while (!isStale()) {
         setStage3PreviewJobId(job.id);
         if (job.status === "completed" && job.artifact?.downloadUrl) {
+          rememberSourceDuration(job);
           rememberPreviewUrl(job.artifact.downloadUrl);
           return;
         }
@@ -4405,7 +4426,6 @@ export default function HomePage() {
       if (isStale()) {
         return;
       }
-      setStage3PreviewVideoUrl(null);
       setStage3PreviewJobId(null);
       setStage3PreviewState("loading");
       setStage3PreviewNotice("Подготавливаю proxy-видео...");
@@ -4488,7 +4508,13 @@ export default function HomePage() {
 
   useEffect(() => {
     const fastPreviewReady = stage3PreviewState === "ready" && Boolean(stage3PreviewVideoUrl);
-    if (currentStep !== 3 || !activeChat?.url || !stage3AccuratePreviewKey || !fastPreviewReady) {
+    if (
+      currentStep !== 3 ||
+      stage3SurfaceMode !== "finish" ||
+      !activeChat?.url ||
+      !stage3AccuratePreviewKey ||
+      !fastPreviewReady
+    ) {
       return;
     }
 
@@ -4550,7 +4576,6 @@ export default function HomePage() {
       if (isStale()) {
         return;
       }
-      setStage3AccuratePreviewVideoUrl(null);
       setStage3AccuratePreviewState("loading");
       setStage3AccuratePreviewNotice("Собираю точный clip-preview...");
 
@@ -4601,7 +4626,6 @@ export default function HomePage() {
       }
     };
 
-    setStage3AccuratePreviewVideoUrl(null);
     setStage3AccuratePreviewState("debouncing");
     setStage3AccuratePreviewNotice("Подготавливаю точный clip-preview...");
     debounceTimer = window.setTimeout(() => {
@@ -4628,6 +4652,7 @@ export default function HomePage() {
     parseError,
     stage3AccuratePreviewKey,
     stage3AgentPrompt,
+    stage3SurfaceMode,
     stage3LivePreviewSnapshot,
     stage3PreviewState,
     stage3PreviewVideoUrl
@@ -5271,10 +5296,15 @@ export default function HomePage() {
 
   const handleShiftPublication = useCallback(async (
     publicationId: string,
-    move: {
-      axis: "slot" | "day";
-      direction: "prev" | "next";
-    }
+    move:
+      | {
+          axis: "slot" | "day";
+          direction: "prev" | "next";
+        }
+      | {
+          slotDate: string;
+          slotIndex: number;
+        }
   ): Promise<void> => {
     const response = await fetch(`/api/publications/${publicationId}/shift`, {
       method: "POST",
@@ -5813,7 +5843,15 @@ export default function HomePage() {
       }
       afterDetails={
         currentStep === 2 ? (
-          <Stage2RunDiagnosticsPanels diagnostics={visibleStage2Diagnostics} stage2Result={visibleStage2Result} />
+          <details className="advanced-block">
+            <summary>Диагностика Stage 2</summary>
+            <div className="advanced-content">
+              <Stage2RunDiagnosticsPanels
+                diagnostics={visibleStage2Diagnostics}
+                stage2Result={visibleStage2Result}
+              />
+            </div>
+          </details>
         ) : currentStep === 3 && activeChannel ? (
           <div ref={publishingPlannerRef}>
             <PublishingPlanner
@@ -6094,7 +6132,7 @@ export default function HomePage() {
               if (prev.segments.length > 0) {
                 return prev;
               }
-              const compressionEnabled = prev.timingMode !== "auto";
+              const compressionEnabled = prev.normalizeToTargetEnabled;
               const policy = getEditingPolicy(prev.segments, compressionEnabled);
               if (prev.policy === policy) {
                 return prev;
@@ -6204,6 +6242,7 @@ export default function HomePage() {
           onCreateWorkerPairing={() => {
             void createStage3WorkerPairing();
           }}
+          onSurfaceModeChange={setStage3SurfaceMode}
           onOpenPlanner={handleOpenPublishingPlanner}
           onExport={handleExportTemplate}
         />

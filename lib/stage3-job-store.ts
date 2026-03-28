@@ -433,7 +433,17 @@ export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
     const row =
       (db
         .prepare(
-          "SELECT * FROM stage3_jobs WHERE execution_target = 'host' AND status = 'queued' ORDER BY created_at ASC LIMIT 1"
+          `SELECT *
+             FROM stage3_jobs
+            WHERE execution_target = 'host'
+              AND status = 'queued'
+            ORDER BY
+              CASE
+                WHEN kind = 'preview' THEN 1
+                ELSE 0
+              END ASC,
+              created_at ASC
+            LIMIT 1`
         )
         .get() as JobRow | undefined) ?? null;
     if (!row) {

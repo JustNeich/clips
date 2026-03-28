@@ -1,11 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type DragEvent } from "react";
 import type { ChannelPublication, ChannelPublishIntegration, ChannelPublishSettings } from "./types";
 
 type PublicationAction = "pause" | "resume" | "retry" | "publish-now" | "delete";
 type PublicationShiftAxis = "slot" | "day";
 type PublicationShiftDirection = "prev" | "next";
+type PublicationMoveRequest =
+  | {
+      axis: PublicationShiftAxis;
+      direction: PublicationShiftDirection;
+    }
+  | {
+      slotDate: string;
+      slotIndex: number;
+    };
 
 type PublishingPlannerProps = {
   channelName: string | null;
@@ -27,10 +36,7 @@ type PublishingPlannerProps = {
   onRunAction: (publicationId: string, action: PublicationAction) => Promise<void>;
   onShiftPublication: (
     publicationId: string,
-    move: {
-      axis: PublicationShiftAxis;
-      direction: PublicationShiftDirection;
-    }
+    move: PublicationMoveRequest
   ) => Promise<void>;
   onOpenPublishingSettings: () => void;
 };
@@ -49,6 +55,17 @@ type PublicationStatusTone =
   | "error"
   | "paused"
   | "muted";
+
+type PublicationDragState = {
+  publicationId: string;
+  slotDate: string;
+  slotIndex: number;
+};
+
+type PublicationDropTarget = {
+  slotDate: string;
+  slotIndex: number;
+};
 
 function formatDateKey(value: Date, timeZone: string): string {
   return value.toLocaleDateString("en-CA", { timeZone });
@@ -167,6 +184,13 @@ function splitTags(value: string): string[] {
     .filter(Boolean);
 }
 
+function getPublicationMoveBusyKey(publicationId: string, move: PublicationMoveRequest): string {
+  if ("axis" in move) {
+    return `shift:${publicationId}:${move.axis}:${move.direction}`;
+  }
+  return `shift:${publicationId}:target:${move.slotDate}:${move.slotIndex}`;
+}
+
 function sortPublicationsForPlanner(
   publications: ChannelPublication[],
   todayKey: string
@@ -225,6 +249,8 @@ export function PublishingPlanner({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<PublicationDragState | null>(null);
+  const [dropTarget, setDropTarget] = useState<PublicationDropTarget | null>(null);
   const [draft, setDraft] = useState<{
     title: string;
     description: string;
@@ -255,6 +281,11 @@ export function PublishingPlanner({
   const cancelEdit = () => {
     setEditingId(null);
     setDraft(null);
+  };
+
+  const clearDragState = () => {
+    setDragState(null);
+    setDropTarget(null);
   };
 
   const saveEdit = async (publicationId: string) => {
@@ -290,17 +321,105 @@ export function PublishingPlanner({
 
   const runShift = async (
     publicationId: string,
-    move: {
-      axis: PublicationShiftAxis;
-      direction: PublicationShiftDirection;
-    }
+    move: PublicationMoveRequest
   ) => {
-    setBusyKey(`shift:${publicationId}:${move.axis}:${move.direction}`);
+    setBusyKey(getPublicationMoveBusyKey(publicationId, move));
     try {
       await onShiftPublication(publicationId, move);
     } finally {
       setBusyKey(null);
+      clearDragState();
     }
+  };
+
+  const canDropIntoSlot = (
+    targetSlotDate: string,
+    targetSlotIndex: number,
+    targetPublication: ChannelPublication | null
+  ): boolean => {
+    if (!dragState || busyKey !== null) {
+      return false;
+    }
+    if (dragState.slotDate !== targetSlotDate) {
+      return false;
+    }
+    if (dragState.slotDate === targetSlotDate && dragState.slotIndex === targetSlotIndex) {
+      return false;
+    }
+    if (
+      targetPublication?.status === "published" ||
+      targetPublication?.status === "canceled"
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const markDropTarget = (slotDate: string, slotIndex: number) => {
+    setDropTarget((current) =>
+      current?.slotDate === slotDate && current.slotIndex === slotIndex
+        ? current
+        : { slotDate, slotIndex }
+    );
+  };
+
+  const handlePublicationDragStart = (
+    event: DragEvent<HTMLElement>,
+    publication: ChannelPublication
+  ) => {
+    if (
+      busyKey !== null ||
+      editingId === publication.id ||
+      publication.status === "published" ||
+      publication.status === "canceled"
+    ) {
+      event.preventDefault();
+      return;
+    }
+    setDragState({
+      publicationId: publication.id,
+      slotDate: publication.slotDate,
+      slotIndex: publication.slotIndex
+    });
+    setDropTarget(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", publication.id);
+  };
+
+  const handlePublicationDragEnd = () => {
+    clearDragState();
+  };
+
+  const handleSlotDragOver = (
+    event: DragEvent<HTMLElement>,
+    slotDate: string,
+    slotIndex: number,
+    targetPublication: ChannelPublication | null
+  ) => {
+    if (!canDropIntoSlot(slotDate, slotIndex, targetPublication)) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    markDropTarget(slotDate, slotIndex);
+  };
+
+  const handleSlotDrop = async (
+    event: DragEvent<HTMLElement>,
+    slotDate: string,
+    slotIndex: number,
+    targetPublication: ChannelPublication | null
+  ) => {
+    event.preventDefault();
+    if (!dragState || !canDropIntoSlot(slotDate, slotIndex, targetPublication)) {
+      clearDragState();
+      return;
+    }
+    const publicationId = dragState.publicationId;
+    await runShift(publicationId, {
+      slotDate,
+      slotIndex
+    });
   };
 
   const renderPublicationCard = (publication: ChannelPublication) => {
@@ -310,6 +429,10 @@ export function PublishingPlanner({
     const isMovable =
       publication.status !== "published" &&
       publication.status !== "canceled";
+    const isDragging = dragState?.publicationId === publication.id;
+    const isDropTarget =
+      dropTarget?.slotDate === publication.slotDate &&
+      dropTarget.slotIndex === publication.slotIndex;
     const slotLabel =
       slotLabels[publication.slotIndex] ?? formatScheduledTime(publication.scheduledAt, timeZone);
     const compactDescription = publication.description.trim();
@@ -317,12 +440,26 @@ export function PublishingPlanner({
     return (
       <article
         key={publication.id}
-        className={`publishing-card status-${statusTone} ${activeChatId === publication.chatId ? "active-chat" : ""}`}
+        className={`publishing-card status-${statusTone} ${activeChatId === publication.chatId ? "active-chat" : ""} ${isDragging ? "is-dragging" : ""} ${isDropTarget ? "is-drop-target" : ""}`}
+        onDragOver={(event) =>
+          handleSlotDragOver(event, publication.slotDate, publication.slotIndex, publication)
+        }
+        onDrop={(event) =>
+          void handleSlotDrop(event, publication.slotDate, publication.slotIndex, publication)
+        }
       >
         <div className="publishing-card-head">
           <div className="publishing-card-main">
             <div className="publishing-card-pill-row">
-              <span className="publishing-slot-pill">{slotLabel}</span>
+              <span
+                className={`publishing-slot-pill ${isMovable && !isEditing && busyKey === null ? "is-draggable" : ""}`}
+                draggable={isMovable && !isEditing && busyKey === null}
+                onDragStart={(event) => handlePublicationDragStart(event, publication)}
+                onDragEnd={handlePublicationDragEnd}
+                title={isMovable ? "Перетащите в другой слот внутри этого дня" : undefined}
+              >
+                {slotLabel}
+              </span>
               <span className={`publishing-status-pill tone-${statusTone}`}>
                 {formatPublicationStatus(publication.status)}
               </span>
@@ -609,8 +746,8 @@ export function PublishingPlanner({
           <p className="kicker">Publishing</p>
           <h3>{channelName ? `План публикаций для ${channelName}` : "План публикаций"}</h3>
           <p className="subtle-text">
-            Дни и слоты считаются по {timeZone}. Карточки стали компактнее, а быстрые
-            переносы работают прямо из списка.
+            Дни и слоты считаются по {timeZone}. Карточки можно перетаскивать между
+            слотами внутри дня, а кнопки быстрых переносов остаются резервным способом.
           </p>
         </div>
         <div className="control-actions">
@@ -648,10 +785,23 @@ export function PublishingPlanner({
                   <div className="publishing-day-slots" aria-label={`Слоты на ${group.label}`}>
                     {slotLabels.map((label, slotIndex) => {
                       const slotItem = itemsBySlot.get(slotIndex) ?? null;
+                      const isSlotDropTarget =
+                        dropTarget?.slotDate === group.id && dropTarget.slotIndex === slotIndex;
                       return (
                         <span
                           key={`${group.id}:${label}`}
-                          className={`publishing-day-slot ${slotItem ? `tone-${getPublicationStatusTone(slotItem.status)}` : "tone-empty"}`}
+                          className={`publishing-day-slot ${slotItem ? `tone-${getPublicationStatusTone(slotItem.status)}` : "tone-empty"} ${isSlotDropTarget ? "is-drop-target" : ""}`}
+                          onDragOver={(event) =>
+                            handleSlotDragOver(event, group.id, slotIndex, slotItem)
+                          }
+                          onDrop={(event) =>
+                            void handleSlotDrop(event, group.id, slotIndex, slotItem)
+                          }
+                          title={
+                            slotItem
+                              ? "Перетащите сюда, чтобы поменять ролики местами"
+                              : "Перетащите сюда, чтобы занять этот слот"
+                          }
                         >
                           {label}
                         </span>

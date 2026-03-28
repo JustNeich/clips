@@ -4,6 +4,12 @@ import {
   STAGE3_SEGMENT_SPEED_OPTIONS,
   Stage3TimingMode
 } from "../app/components/types";
+import {
+  normalizeStage3SegmentFocusOverride,
+  normalizeStage3SegmentMirrorOverride,
+  normalizeStage3SegmentZoomOverride,
+  resolveStage3SegmentTransformState
+} from "./stage3-segment-transforms";
 
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
@@ -12,6 +18,9 @@ export type Stage3PlaybackSegment = {
   sourceStartSec: number;
   sourceEndSec: number;
   speed: number;
+  focusYOverride: number | null;
+  videoZoomOverride: number | null;
+  mirrorEnabledOverride: boolean | null;
   outputStartSec: number;
   outputEndSec: number;
   outputDurationSec: number;
@@ -58,7 +67,15 @@ function clampClipStart(rawStartSec: number, sourceDurationSec: number | null, c
 function normalizeExplicitSegments(
   segments: Stage3Segment[],
   sourceDurationSec: number | null
-): Array<{ label: string; startSec: number; endSec: number; speed: number }> {
+): Array<{
+  label: string;
+  startSec: number;
+  endSec: number;
+  speed: number;
+  focusYOverride: number | null;
+  videoZoomOverride: number | null;
+  mirrorEnabledOverride: boolean | null;
+}> {
   return segments
     .map((segment, index) => {
       const startSec =
@@ -83,7 +100,10 @@ function normalizeExplicitSegments(
             : `Фрагмент ${index + 1}`,
         startSec: roundToTenth(startSec),
         endSec: roundToTenth(Math.max(startSec + 0.1, cappedEnd)),
-        speed: normalizeSegmentSpeed(segment.speed)
+        speed: normalizeSegmentSpeed(segment.speed),
+        focusYOverride: normalizeStage3SegmentFocusOverride(segment.focusY),
+        videoZoomOverride: normalizeStage3SegmentZoomOverride(segment.videoZoom),
+        mirrorEnabledOverride: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
       };
     })
     .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
@@ -97,13 +117,29 @@ function resolveBaseSegments(params: {
   clipStartSec: number;
   clipDurationSec: number;
   policy: Stage3RenderPolicy;
-}): Array<{ label: string; startSec: number; endSec: number; speed: number }> {
+}): Array<{
+  label: string;
+  startSec: number;
+  endSec: number;
+  speed: number;
+  focusYOverride: number | null;
+  videoZoomOverride: number | null;
+  mirrorEnabledOverride: boolean | null;
+}> {
   const explicit = normalizeExplicitSegments(params.segments, params.sourceDurationSec);
   if (explicit.length > 0) {
     return explicit;
   }
 
-  const fallbackWindow = (): Array<{ label: string; startSec: number; endSec: number; speed: number }> => {
+  const fallbackWindow = (): Array<{
+    label: string;
+    startSec: number;
+    endSec: number;
+    speed: number;
+    focusYOverride: number | null;
+    videoZoomOverride: number | null;
+    mirrorEnabledOverride: boolean | null;
+  }> => {
     const startSec = clampClipStart(params.clipStartSec, params.sourceDurationSec, params.clipDurationSec);
     const endSec = params.sourceDurationSec
       ? Math.min(params.sourceDurationSec, startSec + params.clipDurationSec)
@@ -113,7 +149,10 @@ function resolveBaseSegments(params: {
         label: "Основной фрагмент",
         startSec,
         endSec: Math.max(startSec + 0.05, endSec),
-        speed: 1
+        speed: 1,
+        focusYOverride: null,
+        videoZoomOverride: null,
+        mirrorEnabledOverride: null
       }
     ];
   };
@@ -125,7 +164,10 @@ function resolveBaseSegments(params: {
           label: "Полный исходник",
           startSec: 0,
           endSec: params.sourceDurationSec,
-          speed: 1
+          speed: 1,
+          focusYOverride: null,
+          videoZoomOverride: null,
+          mirrorEnabledOverride: null
         }
       ];
     }
@@ -151,7 +193,10 @@ function resolveBaseSegments(params: {
         label: "Адаптивное окно",
         startSec,
         endSec: startSec + windowDuration,
-        speed: 1
+        speed: 1,
+        focusYOverride: null,
+        videoZoomOverride: null,
+        mirrorEnabledOverride: null
       }
     ];
   }
@@ -209,6 +254,9 @@ export function buildStage3PlaybackPlan(params: {
       sourceStartSec: segment.startSec,
       sourceEndSec: segment.endSec,
       speed: segment.speed,
+      focusYOverride: segment.focusYOverride,
+      videoZoomOverride: segment.videoZoomOverride,
+      mirrorEnabledOverride: segment.mirrorEnabledOverride,
       outputStartSec,
       outputEndSec,
       outputDurationSec: normalizedOutputDurationSec,
@@ -255,6 +303,37 @@ export function resolveStage3PlaybackPosition(
     sourceTimeSec,
     playbackRate: clamp(segment.playbackRate, 0.1, 16),
     segment
+  };
+}
+
+export function resolveStage3PlaybackTransformState(params: {
+  plan: Stage3PlaybackPlan;
+  outputTimeSec: number;
+  fallbackFocusY: number;
+  fallbackVideoZoom: number;
+  fallbackMirrorEnabled: boolean;
+}): {
+  segmentIndex: number | null;
+  focusY: number;
+  videoZoom: number;
+  mirrorEnabled: boolean;
+} {
+  const position = resolveStage3PlaybackPosition(params.plan, params.outputTimeSec);
+  const effective = resolveStage3SegmentTransformState({
+    segment: position?.segment
+      ? {
+          focusY: position.segment.focusYOverride,
+          videoZoom: position.segment.videoZoomOverride,
+          mirrorEnabled: position.segment.mirrorEnabledOverride
+        }
+      : null,
+    fallbackFocusY: params.fallbackFocusY,
+    fallbackVideoZoom: params.fallbackVideoZoom,
+    fallbackMirrorEnabled: params.fallbackMirrorEnabled
+  });
+  return {
+    segmentIndex: position?.segmentIndex ?? null,
+    ...effective
   };
 }
 

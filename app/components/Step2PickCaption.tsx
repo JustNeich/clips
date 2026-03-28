@@ -1157,6 +1157,8 @@ export function Step2PickCaption({
   onCopy
 }: Step2PickCaptionProps) {
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [regenerationDetailsOpen, setRegenerationDetailsOpen] = useState(false);
+  const [runStatusOpen, setRunStatusOpen] = useState(false);
   const [feedbackDraft, setFeedbackDraft] = useState<{
     option: number;
     scope: "option" | "top" | "bottom";
@@ -1285,10 +1287,52 @@ export function Step2PickCaption({
   const inlineRunMessage = isAttachedStage2Run
     ? "Stage 2 уже выполняется в фоне. Ниже показан текущий подключённый запуск."
     : runBlockedReason ?? null;
+  const activeRunSummary = useMemo(() => {
+    if (!selectedRun) {
+      return null;
+    }
+    return {
+      title: `Запуск ${selectedRun.runId.slice(0, 8)}`,
+      detail: `${formatRunStatusLabel(selectedRun.status)} · ${formatRunModeLabel(selectedRun.mode)} · ${formatDate(selectedRun.createdAt)}${
+        currentRunError ? ` · ${currentRunError}` : ""
+      }`
+    };
+  }, [currentRunError, selectedRun]);
+  const activeProgressSummary = useMemo(() => {
+    if (isRunning || hasActiveRunWithoutResult) {
+      return activeProgressStep
+        ? `Сейчас идёт ${activeProgressStep.shortLabel.toLowerCase()}.`
+        : "Stage 2 выполняется в фоне.";
+    }
+    if (visibleProgress?.status === "failed") {
+      return "Последний запуск остановился с ошибкой. Детали ниже в истории запуска.";
+    }
+    if (visibleProgress?.status === "completed") {
+      return "Последний запуск Stage 2 завершился успешно.";
+    }
+    return null;
+  }, [activeProgressStep, hasActiveRunWithoutResult, isRunning, visibleProgress]);
 
   useEffect(() => {
     setFeedbackDraft(null);
   }, [stage2?.stage2Run?.runId]);
+
+  useEffect(() => {
+    if (instruction.trim() || pendingFeedbackSummary) {
+      setRegenerationDetailsOpen(true);
+    }
+  }, [instruction, pendingFeedbackSummary]);
+
+  useEffect(() => {
+    if (
+      isRunning ||
+      hasActiveRunWithoutResult ||
+      currentRunStatus === "failed" ||
+      visibleProgress?.status === "failed"
+    ) {
+      setRunStatusOpen(true);
+    }
+  }, [currentRunStatus, hasActiveRunWithoutResult, isRunning, visibleProgress]);
 
   const openFeedbackComposer = (
     option: number,
@@ -1370,49 +1414,68 @@ export function Step2PickCaption({
           <header className="step-head">
             <p className="kicker">Шаг 2</p>
             <h2>Выбор</h2>
-            <p>Сгенерируйте варианты подписей, сравните их рядом и затем выберите один для рендера.</p>
-            <p className="subtle-text">
-              Итоговую ручную правку TOP/BOTTOM теперь лучше делать на шаге 3: там есть финальный editor и быстрый mix из вариантов ниже.
+            <p>
+              Сгенерируйте варианты, быстро сравните их и выберите основу для рендера. Финальную ручную
+              правку TOP/BOTTOM лучше делать уже на шаге 3.
             </p>
-            {channelName ? (
-              <p className="subtle-text">
-                Канал: <strong>{channelName}</strong>
-                {channelUsername ? ` (@${channelUsername})` : ""}
-              </p>
-            ) : null}
-            {stageCreatedAt ? (
-              <p className="subtle-text">Обновлено: {formatDate(stageCreatedAt)}</p>
-            ) : null}
-            {sourceProviderLabel ? (
-              <p className="subtle-text">Источник медиа: {sourceProviderLabel}</p>
-            ) : null}
-            {commentsAcquisitionLabel ? (
-              <p className="subtle-text">Комментарии: {commentsAcquisitionLabel}</p>
-            ) : null}
-            {!commentsAvailable ? (
-              <p className="subtle-text">
-                Комментарии недоступны на этом сервере. Второй этап использует только видеоконтекст.
-              </p>
+            {channelName ||
+            stageCreatedAt ||
+            sourceProviderLabel ||
+            commentsAcquisitionLabel ||
+            !commentsAvailable ? (
+              <details className="advanced-block">
+                <summary>Контекст запуска</summary>
+                <div className="advanced-content">
+                  {channelName ? (
+                    <p className="subtle-text">
+                      Канал: <strong>{channelName}</strong>
+                      {channelUsername ? ` (@${channelUsername})` : ""}
+                    </p>
+                  ) : null}
+                  {stageCreatedAt ? (
+                    <p className="subtle-text">Обновлено: {formatDate(stageCreatedAt)}</p>
+                  ) : null}
+                  {sourceProviderLabel ? (
+                    <p className="subtle-text">Источник медиа: {sourceProviderLabel}</p>
+                  ) : null}
+                  {commentsAcquisitionLabel ? (
+                    <p className="subtle-text">Комментарии: {commentsAcquisitionLabel}</p>
+                  ) : null}
+                  {!commentsAvailable ? (
+                    <p className="subtle-text">
+                      Комментарии недоступны на этом сервере. Второй этап использует только видеоконтекст.
+                    </p>
+                  ) : null}
+                </div>
+              </details>
             ) : null}
           </header>
 
           <section className="control-card">
-            <label className="field-label" htmlFor="instruction">
-              Инструкция для перегенерации (необязательно)
-            </label>
-            <textarea
-              id="instruction"
-              className="text-area"
-              rows={3}
-              value={instruction}
-              onChange={(event) => onInstructionChange(event.target.value.slice(0, 2000))}
-              placeholder="Например: сделай короче, добавь одну сухую шутку, избегай сленга."
-            />
-            <p className="subtle-text">Используйте это, если модель неверно поняла контекст или тон.</p>
+            <div className="control-section-head">
+              <div>
+                <h3>Перегенерация</h3>
+                <p className="subtle-text">
+                  На поверхности только перезапуск. Все пояснения и тонкие настройки спрятаны ниже.
+                </p>
+              </div>
+            </div>
             {pendingFeedbackSummary ? (
               <div className="stage2-feedback-delta" aria-live="polite">
                 <span className="stage2-feedback-delta-badge">{pendingFeedbackSummary.title}</span>
                 <span className="subtle-text">{pendingFeedbackSummary.detail}</span>
+              </div>
+            ) : null}
+            {activeRunSummary || activeProgressSummary ? (
+              <div className="stage2-feedback-delta" aria-live="polite">
+                {activeRunSummary ? (
+                  <span className="stage2-feedback-delta-badge">{activeRunSummary.title}</span>
+                ) : null}
+                <span className="subtle-text">
+                  {activeRunSummary?.detail}
+                  {activeRunSummary && activeProgressSummary ? " · " : ""}
+                  {activeProgressSummary}
+                </span>
               </div>
             ) : null}
             <div className="control-actions">
@@ -1455,127 +1518,170 @@ export function Step2PickCaption({
                 </span>
               </button>
             </div>
-            <p className="subtle-text">
-              Быстрая перегенерация использует текущий выбранный запуск как базу. Полный прогон
-              заново проходит весь пайплайн Stage 2.
-            </p>
-            <section className="stage2-timing-card" aria-live="polite">
-              <div className="stage2-timing-row">
-                <span className="field-label">Обычно занимает</span>
-                <strong>{formatDurationMs(expectedDurationMs)}</strong>
-              </div>
-              <div className="stage2-timing-row">
-                <span className="field-label">{isRunning ? "Прошло" : "Последний ориентир"}</span>
-                <strong>{formatDurationMs(isRunning ? elapsedMs : expectedDurationMs)}</strong>
-              </div>
-              <div className="stage2-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressRatio * 100)}>
-                <div className="stage2-progress-fill" style={{ width: `${(progressRatio * 100).toFixed(1)}%` }} />
-              </div>
-              <p className="subtle-text">
-                {isRunning
-                  ? elapsedMs > expectedDurationMs
-                    ? "Уже дольше обычного, но процесс продолжается."
-                    : activeProgressStep
-                      ? `Сейчас: ${activeProgressStep.shortLabel}.`
-                      : "Идет генерация. Оценка основана на предыдущем успешном запуске."
-                  : visibleProgress?.status === "failed"
-                    ? "Последний запуск остановился на этапе, отмеченном ниже."
-                  : visibleProgress?.status === "completed"
-                    ? "Последний запуск завершился по шагам ниже."
-                    : "Оценка обновляется после каждого успешного запуска второго этапа."}
-              </p>
-              {selectedRun ? (
-                <p className={`subtle-text ${currentRunStatus === "failed" ? "danger-text" : ""}`}>
-                  Запуск {selectedRun.runId.slice(0, 8)} · {formatRunStatusLabel(selectedRun.status)}
-                  {` · ${formatRunModeLabel(selectedRun.mode)}`}
-                  {currentRunError ? ` · ${currentRunError}` : ""}
+            <details
+              className="advanced-block"
+              open={regenerationDetailsOpen}
+              onToggle={(event) => setRegenerationDetailsOpen(event.currentTarget.open)}
+            >
+              <summary>Тонкая настройка</summary>
+              <div className="advanced-content">
+                <label className="field-label" htmlFor="instruction">
+                  Инструкция для перегенерации
+                </label>
+                <textarea
+                  id="instruction"
+                  className="text-area"
+                  rows={3}
+                  value={instruction}
+                  onChange={(event) => onInstructionChange(event.target.value.slice(0, 2000))}
+                  placeholder="Например: сделай короче, добавь одну сухую шутку, избегай сленга."
+                />
+                <p className="subtle-text">
+                  Быстрая перегенерация использует текущий выбранный запуск как базу. Полный прогон
+                  заново проходит весь пайплайн Stage 2.
                 </p>
-              ) : null}
-              {visibleProgress ? (
-                <ol className="stage2-stage-list" aria-label="Прогресс пайплайна Stage 2">
-                  {visibleProgress.steps.map((step, index) => {
-                    const isActive = visibleProgress.activeStageId === step.id || step.state === "running";
-                    const blockedAfterFailure =
-                      visibleProgress.status === "failed" &&
-                      failedProgressStepIndex >= 0 &&
-                      index > failedProgressStepIndex &&
-                      step.state === "pending";
-                    const displayState = blockedAfterFailure ? "blocked" : step.state;
-                    const displayStatusLabel = formatStageProgressStatusLabel({
-                      stepState: step.state,
-                      progressStatus: visibleProgress.status,
-                      blockedAfterFailure
-                    });
-                    const displayDetail = blockedAfterFailure
-                      ? "Этот этап не запускался, потому что запуск завершился ошибкой на предыдущем шаге."
-                      : step.detail;
-                    return (
-                      <li
-                        key={step.id}
-                        className={`stage2-stage-item state-${displayState} ${isActive ? "is-active" : ""}`}
-                        aria-current={isActive ? "step" : undefined}
-                      >
-                        <div className="stage2-stage-index">{index + 1}</div>
-                        <div className="stage2-stage-body">
-                          <div className="stage2-stage-head">
-                            <strong>{step.shortLabel}</strong>
-                            <span className="subtle-text">{displayStatusLabel}</span>
-                          </div>
-                          <p className="subtle-text">{step.description}</p>
-                          {step.summary &&
-                          step.summary !== step.description &&
-                          step.summary !== displayDetail ? (
-                            <p className="subtle-text">{step.summary}</p>
-                          ) : null}
-                          {displayDetail && displayDetail !== step.description ? (
-                            isVerboseStageDetail(displayDetail) ? (
-                              <details className="stage2-stage-detail-toggle">
-                                <summary>
-                                  <span>
-                                    {step.state === "failed" ? "Показать лог ошибки" : "Показать детали этапа"}
-                                  </span>
-                                  {summarizeStageDetail(displayDetail) ? (
-                                    <small>{summarizeStageDetail(displayDetail)}</small>
-                                  ) : null}
-                                </summary>
-                                <div className="stage2-stage-detail-panel">
-                                  <pre className="stage2-stage-detail-log">{displayDetail}</pre>
-                                </div>
-                              </details>
-                            ) : (
-                              <p className="subtle-text">{displayDetail}</p>
-                            )
-                          ) : null}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : null}
-            </section>
-            {runs.length > 0 ? (
-              <section className="stage2-run-picker" aria-label="История запусков Stage 2">
-                <div className="stage2-run-picker-head">
-                  <span className="field-label">Запуски</span>
-                  <span className="subtle-text">
-                    Текущий экран привязан к устойчивому состоянию запуска, а не к просто
-                    открытой вкладке.
-                  </span>
-                </div>
-                <div className="stage2-run-pill-list">
-                  {runs.map((run) => (
-                    <button
-                      key={run.runId}
-                      type="button"
-                      className={`stage2-run-pill ${selectedRunId === run.runId ? "is-active" : ""} status-${run.status}`}
-                      onClick={() => onSelectRun(run.runId)}
+              </div>
+            </details>
+            {visibleProgress || runs.length > 0 || inlineRunMessage ? (
+              <details
+                className="advanced-block"
+                open={runStatusOpen}
+                onToggle={(event) => setRunStatusOpen(event.currentTarget.open)}
+              >
+                <summary>Статус и история запусков</summary>
+                <div className="advanced-content">
+                  <section className="stage2-timing-card" aria-live="polite">
+                    <div className="stage2-timing-row">
+                      <span className="field-label">Обычно занимает</span>
+                      <strong>{formatDurationMs(expectedDurationMs)}</strong>
+                    </div>
+                    <div className="stage2-timing-row">
+                      <span className="field-label">{isRunning ? "Прошло" : "Последний ориентир"}</span>
+                      <strong>{formatDurationMs(isRunning ? elapsedMs : expectedDurationMs)}</strong>
+                    </div>
+                    <div
+                      className="stage2-progress"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(progressRatio * 100)}
                     >
-                      <strong>{formatRunStatusLabel(run.status)} · {formatRunModeLabel(run.mode)}</strong>
-                      <span>{formatDate(run.createdAt)}</span>
-                    </button>
-                  ))}
+                      <div
+                        className="stage2-progress-fill"
+                        style={{ width: `${(progressRatio * 100).toFixed(1)}%` }}
+                      />
+                    </div>
+                    <p className="subtle-text">
+                      {isRunning
+                        ? elapsedMs > expectedDurationMs
+                          ? "Уже дольше обычного, но процесс продолжается."
+                          : activeProgressStep
+                            ? `Сейчас: ${activeProgressStep.shortLabel}.`
+                            : "Идет генерация. Оценка основана на предыдущем успешном запуске."
+                        : visibleProgress?.status === "failed"
+                          ? "Последний запуск остановился на этапе, отмеченном ниже."
+                          : visibleProgress?.status === "completed"
+                            ? "Последний запуск завершился по шагам ниже."
+                            : "Оценка обновляется после каждого успешного запуска второго этапа."}
+                    </p>
+                    {selectedRun ? (
+                      <p className={`subtle-text ${currentRunStatus === "failed" ? "danger-text" : ""}`}>
+                        Запуск {selectedRun.runId.slice(0, 8)} · {formatRunStatusLabel(selectedRun.status)}
+                        {` · ${formatRunModeLabel(selectedRun.mode)}`}
+                        {currentRunError ? ` · ${currentRunError}` : ""}
+                      </p>
+                    ) : null}
+                    {visibleProgress ? (
+                      <ol className="stage2-stage-list" aria-label="Прогресс пайплайна Stage 2">
+                        {visibleProgress.steps.map((step, index) => {
+                          const isActive =
+                            visibleProgress.activeStageId === step.id || step.state === "running";
+                          const blockedAfterFailure =
+                            visibleProgress.status === "failed" &&
+                            failedProgressStepIndex >= 0 &&
+                            index > failedProgressStepIndex &&
+                            step.state === "pending";
+                          const displayState = blockedAfterFailure ? "blocked" : step.state;
+                          const displayStatusLabel = formatStageProgressStatusLabel({
+                            stepState: step.state,
+                            progressStatus: visibleProgress.status,
+                            blockedAfterFailure
+                          });
+                          const displayDetail = blockedAfterFailure
+                            ? "Этот этап не запускался, потому что запуск завершился ошибкой на предыдущем шаге."
+                            : step.detail;
+                          return (
+                            <li
+                              key={step.id}
+                              className={`stage2-stage-item state-${displayState} ${isActive ? "is-active" : ""}`}
+                              aria-current={isActive ? "step" : undefined}
+                            >
+                              <div className="stage2-stage-index">{index + 1}</div>
+                              <div className="stage2-stage-body">
+                                <div className="stage2-stage-head">
+                                  <strong>{step.shortLabel}</strong>
+                                  <span className="subtle-text">{displayStatusLabel}</span>
+                                </div>
+                                <p className="subtle-text">{step.description}</p>
+                                {step.summary &&
+                                step.summary !== step.description &&
+                                step.summary !== displayDetail ? (
+                                  <p className="subtle-text">{step.summary}</p>
+                                ) : null}
+                                {displayDetail && displayDetail !== step.description ? (
+                                  isVerboseStageDetail(displayDetail) ? (
+                                    <details className="stage2-stage-detail-toggle">
+                                      <summary>
+                                        <span>
+                                          {step.state === "failed"
+                                            ? "Показать лог ошибки"
+                                            : "Показать детали этапа"}
+                                        </span>
+                                        {summarizeStageDetail(displayDetail) ? (
+                                          <small>{summarizeStageDetail(displayDetail)}</small>
+                                        ) : null}
+                                      </summary>
+                                      <div className="stage2-stage-detail-panel">
+                                        <pre className="stage2-stage-detail-log">{displayDetail}</pre>
+                                      </div>
+                                    </details>
+                                  ) : (
+                                    <p className="subtle-text">{displayDetail}</p>
+                                  )
+                                ) : null}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    ) : null}
+                  </section>
+                  {runs.length > 0 ? (
+                    <section className="stage2-run-picker" aria-label="История запусков Stage 2">
+                      <div className="stage2-run-picker-head">
+                        <span className="field-label">Запуски</span>
+                        <span className="subtle-text">
+                          Текущий экран привязан к устойчивому состоянию запуска, а не к просто
+                          открытой вкладке.
+                        </span>
+                      </div>
+                      <div className="stage2-run-pill-list">
+                        {runs.map((run) => (
+                          <button
+                            key={run.runId}
+                            type="button"
+                            className={`stage2-run-pill ${selectedRunId === run.runId ? "is-active" : ""} status-${run.status}`}
+                            onClick={() => onSelectRun(run.runId)}
+                          >
+                            <strong>{formatRunStatusLabel(run.status)} · {formatRunModeLabel(run.mode)}</strong>
+                            <span>{formatDate(run.createdAt)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
                 </div>
-              </section>
+              </details>
             ) : null}
             {!canRunStage2 && inlineRunMessage ? (
               <p className={`subtle-text${isAttachedStage2Run ? "" : " danger-text"}`}>{inlineRunMessage}</p>
@@ -1900,112 +2006,119 @@ export function Step2PickCaption({
                 </div>
               </section>
 
-              {stage2.seo?.description ? (
-                <section className="control-card seo-card">
-                  <div className="option-card-head">
-                    <div>
-                      <h3 className="seo-card-title">Описание ролика</h3>
-                      <p className="subtle-text">Сгенерировано отдельным SEO-запросом после опций.</p>
-                    </div>
-                    <div className="option-actions">
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => onCopy(stage2.seo?.description ?? "", "Описание скопировано.")}
-                      >
-                        Копировать описание
-                      </button>
-                      {stage2.seo?.tags ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => onCopy(stage2.seo?.tags ?? "", "Tags скопированы.")}
-                        >
-                          Копировать теги
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                  <pre className="seo-description-view">{stage2.seo.description}</pre>
-                  {stage2.seo.tags ? (
-                    <div className="translation-row">
-                      <span className="field-label">Теги</span>
-                      <p className="text-block seo-tags-view">{stage2.seo.tags}</p>
-                    </div>
-                  ) : null}
-                </section>
-              ) : null}
-
-              {stage2.warnings.length > 0 ? (
-                <section className="control-card control-card-subtle">
-                  <div className="option-card-head">
-                    <div>
-                      <h3>Run warnings</h3>
-                      <p className="subtle-text">
-                        Диагностика рантайма и degraded states. Основной рабочий выбор уже выше.
-                      </p>
-                    </div>
-                  </div>
-                  <ul className="stage2-example-list">
-                    {stage2.warnings.map((warning, index) => (
-                      <li key={`${warning.field}-${index}`} className="stage2-example-card">
-                        <strong>{warning.field}</strong>
-                        <p className="subtle-text">{warning.message}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-
-              <section className="control-card control-card-subtle">
-                <div className="option-card-head">
-                  <div>
-                    <h3>Последние реакции канала</h3>
-                    <p className="subtle-text">
-                      Здесь видны только явные лайки и дизлайки по whole option, TOP или BOTTOM. Автосигнал от простого выбора варианта в эту историю не попадает.
-                    </p>
-                  </div>
-                </div>
-                {feedbackHistoryLoading ? (
-                  <p className="subtle-text">Загружаем историю реакций…</p>
-                ) : feedbackHistory.length > 0 ? (
-                  <div className="stage2-example-list">
-                    {feedbackHistory.map((event) => (
-                      <article key={event.id} className="stage2-example-card">
-                        <div className="quick-edit-label-row">
-                          <strong>
-                            {event.kind === "more_like_this" ? "👍" : "👎"} {formatFeedbackScopeLabel(event.scope)}
-                          </strong>
-                          <div className="history-item-actions">
-                            <span className="subtle-text">{formatFeedbackHistoryTimestamp(event.createdAt)}</span>
-                            {canSubmitFeedback && onDeleteFeedbackEvent ? (
-                              <button
-                                type="button"
-                                className="btn btn-ghost history-delete-btn"
-                                aria-label={`Удалить реакцию ${event.id}`}
-                                title="Удалить реакцию"
-                                disabled={deletingFeedbackEventId === event.id}
-                                onClick={() => {
-                                  void onDeleteFeedbackEvent(event.id);
-                                }}
-                              >
-                                {deletingFeedbackEventId === event.id ? "Удаляем…" : "Удалить"}
-                              </button>
-                            ) : null}
-                          </div>
+              <details className="advanced-block">
+                <summary>SEO, память канала и диагностика</summary>
+                <div className="advanced-content">
+                  {stage2.seo?.description ? (
+                    <section className="control-card seo-card">
+                      <div className="option-card-head">
+                        <div>
+                          <h3 className="seo-card-title">Описание ролика</h3>
+                          <p className="subtle-text">Сгенерировано отдельным SEO-запросом после опций.</p>
                         </div>
-                        <p className="subtle-text">Режим: {formatFeedbackNoteModeLabel(event.noteMode)}</p>
-                        <p className="subtle-text">{getFeedbackHistorySnippet(event)}</p>
-                        {event.note ? <p className="subtle-text">Заметка: {event.note}</p> : null}
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="subtle-text">
-                    Явных реакций ещё нет. Канал пока больше опирается на bootstrap prior и текущий выбор редактора.
-                  </p>
-                )}
-              </section>
+                        <div className="option-actions">
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => onCopy(stage2.seo?.description ?? "", "Описание скопировано.")}
+                          >
+                            Копировать описание
+                          </button>
+                          {stage2.seo?.tags ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => onCopy(stage2.seo?.tags ?? "", "Tags скопированы.")}
+                            >
+                              Копировать теги
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <pre className="seo-description-view">{stage2.seo.description}</pre>
+                      {stage2.seo.tags ? (
+                        <div className="translation-row">
+                          <span className="field-label">Теги</span>
+                          <p className="text-block seo-tags-view">{stage2.seo.tags}</p>
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
+
+                  {stage2.warnings.length > 0 ? (
+                    <section className="control-card control-card-subtle">
+                      <div className="option-card-head">
+                        <div>
+                          <h3>Run warnings</h3>
+                          <p className="subtle-text">
+                            Диагностика рантайма и degraded states. Основной рабочий выбор уже выше.
+                          </p>
+                        </div>
+                      </div>
+                      <ul className="stage2-example-list">
+                        {stage2.warnings.map((warning, index) => (
+                          <li key={`${warning.field}-${index}`} className="stage2-example-card">
+                            <strong>{warning.field}</strong>
+                            <p className="subtle-text">{warning.message}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
+
+                  <section className="control-card control-card-subtle">
+                    <div className="option-card-head">
+                      <div>
+                        <h3>Последние реакции канала</h3>
+                        <p className="subtle-text">
+                          Здесь видны только явные лайки и дизлайки по whole option, TOP или BOTTOM.
+                          Автосигнал от простого выбора варианта в эту историю не попадает.
+                        </p>
+                      </div>
+                    </div>
+                    {feedbackHistoryLoading ? (
+                      <p className="subtle-text">Загружаем историю реакций…</p>
+                    ) : feedbackHistory.length > 0 ? (
+                      <div className="stage2-example-list">
+                        {feedbackHistory.map((event) => (
+                          <article key={event.id} className="stage2-example-card">
+                            <div className="quick-edit-label-row">
+                              <strong>
+                                {event.kind === "more_like_this" ? "👍" : "👎"} {formatFeedbackScopeLabel(event.scope)}
+                              </strong>
+                              <div className="history-item-actions">
+                                <span className="subtle-text">{formatFeedbackHistoryTimestamp(event.createdAt)}</span>
+                                {canSubmitFeedback && onDeleteFeedbackEvent ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost history-delete-btn"
+                                    aria-label={`Удалить реакцию ${event.id}`}
+                                    title="Удалить реакцию"
+                                    disabled={deletingFeedbackEventId === event.id}
+                                    onClick={() => {
+                                      void onDeleteFeedbackEvent(event.id);
+                                    }}
+                                  >
+                                    {deletingFeedbackEventId === event.id ? "Удаляем…" : "Удалить"}
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                            <p className="subtle-text">Режим: {formatFeedbackNoteModeLabel(event.noteMode)}</p>
+                            <p className="subtle-text">{getFeedbackHistorySnippet(event)}</p>
+                            {event.note ? <p className="subtle-text">Заметка: {event.note}</p> : null}
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="subtle-text">
+                        Явных реакций ещё нет. Канал пока больше опирается на bootstrap prior и текущий
+                        выбор редактора.
+                      </p>
+                    )}
+                  </section>
+                </div>
+              </details>
             </>
           )}
 

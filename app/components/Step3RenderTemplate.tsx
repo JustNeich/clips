@@ -72,8 +72,15 @@ import {
   applyStage3PlaybackPositionToVideo,
   buildStage3PlaybackPlan,
   mapStage3SourceTimeToOutputTime,
-  resolveStage3PlaybackPosition
+  resolveStage3PlaybackPosition,
+  resolveStage3PlaybackTransformState
 } from "../../lib/stage3-preview-playback";
+import {
+  normalizeStage3SegmentFocusOverride,
+  normalizeStage3SegmentMirrorOverride,
+  normalizeStage3SegmentZoomOverride,
+  resolveStage3SegmentTransformState
+} from "../../lib/stage3-segment-transforms";
 import type {
   Stage2ToStage3HandoffSummary,
   Stage3CaptionApplyMode
@@ -173,6 +180,7 @@ type Step3RenderTemplateProps = {
   onMusicGainChange: (value: number) => void;
   onCreateWorkerPairing: () => void;
   onOpenPlanner?: () => void;
+  onSurfaceModeChange?: (mode: Stage3SurfaceMode) => void;
 };
 
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -192,11 +200,36 @@ type PendingTextFitAction = {
 
 type Stage3SurfaceMode = "finish" | "editor";
 type Stage3PreviewMediaMode = "mapped" | "linear";
-type FragmentDraftField = "startSec" | "endSec" | "speed";
+type FragmentDraftField = "startSec" | "endSec" | "speed" | "focusY" | "videoZoom";
+type FragmentDraftInputs = {
+  startSec: string;
+  endSec: string;
+  focusY: string;
+  videoZoom: string;
+};
 type FragmentFocusTarget = {
   rowKey: string;
   field: FragmentDraftField;
 };
+type FragmentTimelineDragMode = "move" | "resize-start" | "resize-end";
+type FragmentTimelineDragState =
+  | {
+      target: "fragment";
+      index: number;
+      mode: FragmentTimelineDragMode;
+      startSec: number;
+      endSec: number;
+      durationSec: number;
+      speed: Stage3Segment["speed"];
+      pointerOffsetSec: number;
+    }
+  | {
+      target: "window";
+      startSec: number;
+      endSec: number;
+      durationSec: number;
+      pointerOffsetSec: number;
+    };
 
 function formatTimeSec(value: number): string {
   const total = Math.max(0, value);
@@ -378,6 +411,34 @@ function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function formatFragmentFocusPercent(value: number): string {
+  return String(Math.round(clampStage3FocusY(value) * 100));
+}
+
+function formatFragmentVideoZoom(value: number): string {
+  return clampStage3CameraZoom(value).toFixed(2);
+}
+
+function buildFragmentDraftInputs(params: {
+  segment: Stage3Segment;
+  sourceDurationSec: number | null;
+  fallbackFocusY: number;
+  fallbackVideoZoom: number;
+}): FragmentDraftInputs {
+  const resolvedTransform = resolveStage3SegmentTransformState({
+    segment: params.segment,
+    fallbackFocusY: params.fallbackFocusY,
+    fallbackVideoZoom: params.fallbackVideoZoom,
+    fallbackMirrorEnabled: true
+  });
+  return {
+    startSec: params.segment.startSec.toFixed(1),
+    endSec: (params.segment.endSec ?? params.sourceDurationSec ?? params.segment.startSec + 0.5).toFixed(1),
+    focusY: formatFragmentFocusPercent(resolvedTransform.focusY),
+    videoZoom: formatFragmentVideoZoom(resolvedTransform.videoZoom)
+  };
+}
+
 function normalizeSegmentSpeed(value: unknown): Stage3Segment["speed"] {
   if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
     return value as Stage3Segment["speed"];
@@ -440,7 +501,10 @@ function normalizeEditorSegments(
         label:
           typeof segment.label === "string" && segment.label.trim()
             ? segment.label.trim()
-            : `Фрагмент ${index + 1}`
+            : `Фрагмент ${index + 1}`,
+        focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
+        videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
+        mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
       };
     })
     .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
@@ -1018,6 +1082,17 @@ function Stage3LivePreviewPanel({
   const playbackDurationSec =
     playbackPlan.totalOutputDurationSec > 0 ? playbackPlan.totalOutputDurationSec : clipDurationSec;
   const layoutScale = fitScale * previewScaleMultiplier;
+  const playbackTransformState = useMemo(
+    () =>
+      resolveStage3PlaybackTransformState({
+        plan: playbackPlan,
+        outputTimeSec: timelineSec,
+        fallbackFocusY: focusY,
+        fallbackVideoZoom: videoZoom,
+        fallbackMirrorEnabled: mirrorEnabled
+      }),
+    [focusY, mirrorEnabled, playbackPlan, timelineSec, videoZoom]
+  );
   const cameraState = useMemo(
     () =>
       resolveCameraStateAtTime({
@@ -1027,18 +1102,18 @@ function Stage3LivePreviewPanel({
         cameraKeyframes,
         cameraMotion,
         clipDurationSec: playbackDurationSec,
-        baseFocusY: focusY,
-        baseZoom: videoZoom
+        baseFocusY: playbackTransformState.focusY,
+        baseZoom: playbackTransformState.videoZoom
       }),
     [
       cameraKeyframes,
       cameraMotion,
       cameraPositionKeyframes,
       cameraScaleKeyframes,
-      focusY,
       playbackDurationSec,
-      timelineSec,
-      videoZoom
+      playbackTransformState.focusY,
+      playbackTransformState.videoZoom,
+      timelineSec
     ]
   );
   const objectPosition = `50% ${(cameraState.focusY * 100).toFixed(3)}%`;
@@ -1067,24 +1142,8 @@ function Stage3LivePreviewPanel({
   const activePreviewMediaMode: Stage3PreviewMediaMode = !editorMode && accuratePreviewReady ? "linear" : "mapped";
   const activePreviewVideoUrl =
     activePreviewMediaMode === "linear" ? accuratePreviewVideoUrl : previewVideoUrl;
-  const previewBackgroundMode = useMemo(() => {
-    if (backgroundMode !== "source-blur") {
-      return backgroundMode;
-    }
-    if (editorMode) {
-      return resolveStage3BackgroundMode(templateId, {
-        hasCustomBackground: Boolean(backgroundAssetUrl),
-        hasSourceVideo: false
-      });
-    }
-    return backgroundMode;
-  }, [backgroundAssetUrl, backgroundMode, editorMode, templateId]);
-  const effectivePreviewNotice =
-    editorMode && backgroundMode === "source-blur" && !previewNotice
-      ? "Быстрый preview использует лёгкий backdrop вместо blur-фона. Финальный export не меняется."
-      : !editorMode
-        ? accuratePreviewNotice ?? previewNotice
-        : previewNotice;
+  const previewBackgroundMode = backgroundMode;
+  const effectivePreviewNotice = !editorMode ? accuratePreviewNotice ?? previewNotice : previewNotice;
   const effectivePreviewState = !editorMode ? accuratePreviewState : previewState;
   const overlayTint = useMemo(() => resolveTemplateOverlayTint(templateId), [templateId]);
   const summaryLine = summaryLines[0] ?? "Используется текущий live draft без сохраненной версии.";
@@ -1203,7 +1262,7 @@ function Stage3LivePreviewPanel({
     } else {
       bg.pause();
     }
-  }, [activePreviewVideoUrl, backgroundAssetUrl, isPlaying]);
+  }, [activePreviewVideoUrl, backgroundAssetUrl, isPlaying, previewBackgroundMode]);
 
   const seekTimeline = useCallback(
     (value: number) => {
@@ -1631,11 +1690,11 @@ function Stage3LivePreviewPanel({
                               loop
                               playsInline
                               preload="metadata"
-                              style={{
-                                objectPosition,
-                                transform: mirrorEnabled ? "scaleX(-1)" : undefined,
-                                transformOrigin: "center center"
-                              }}
+                                style={{
+                                  objectPosition,
+                                  transform: playbackTransformState.mirrorEnabled ? "scaleX(-1)" : undefined,
+                                  transformOrigin: "center center"
+                                }}
                               onLoadedMetadata={() => {
                                 const position = resolveStage3PlaybackPosition(playbackPlan, timelineSec);
                                 syncBackgroundTo(
@@ -1674,7 +1733,7 @@ function Stage3LivePreviewPanel({
                         className="preview-slot-video"
                         objectPosition={objectPosition}
                         videoZoom={cameraState.zoom}
-                        mirrorEnabled={mirrorEnabled}
+                        mirrorEnabled={playbackTransformState.mirrorEnabled}
                         muted={isMuted || !sourceAudioEnabled}
                         videoRef={slotPreviewRef}
                         isPlaying={isPlaying}
@@ -1902,7 +1961,8 @@ export function Step3RenderTemplate({
   onSourceAudioEnabledChange,
   onMusicGainChange,
   onCreateWorkerPairing,
-  onOpenPlanner = () => undefined
+  onOpenPlanner = () => undefined,
+  onSurfaceModeChange
 }: Step3RenderTemplateProps) {
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
@@ -1928,12 +1988,13 @@ export function Step3RenderTemplate({
   const [workerGuidePlatform, setWorkerGuidePlatform] = useState<WorkerGuidePlatform>(() => detectWorkerGuidePlatform());
   const [workerCopyState, setWorkerCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [workerInstallCopyState, setWorkerInstallCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const [segmentDraftInputs, setSegmentDraftInputs] = useState<
-    Record<string, { startSec: string; endSec: string }>
-  >({});
+  const [segmentDraftInputs, setSegmentDraftInputs] = useState<Record<string, FragmentDraftInputs>>({});
   const didSimplifyDynamicCameraRef = useRef(false);
   const fragmentFieldRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
+  const fragmentSourceRailRef = useRef<HTMLDivElement | null>(null);
+  const fragmentTimelineDragRef = useRef<FragmentTimelineDragState | null>(null);
   const [activeFragmentIndex, setActiveFragmentIndex] = useState<number | null>(null);
+  const [isFragmentTimelineDragging, setIsFragmentTimelineDragging] = useState(false);
   const [pendingFragmentFocus, setPendingFragmentFocus] = useState<FragmentFocusTarget | null>(null);
   const [resolvedFragmentSourceDurationSec, setResolvedFragmentSourceDurationSec] = useState<number | null>(
     sourceDurationSec
@@ -2007,9 +2068,9 @@ export function Step3RenderTemplate({
     () =>
       resolveStage3BackgroundMode(templateId, {
         hasCustomBackground: Boolean(backgroundAssetUrl),
-        hasSourceVideo: Boolean(previewVideoUrl)
+        hasSourceVideo: Boolean(previewVideoUrl || accuratePreviewVideoUrl)
       }),
-    [backgroundAssetUrl, previewVideoUrl, templateId]
+    [accuratePreviewVideoUrl, backgroundAssetUrl, previewVideoUrl, templateId]
   );
 
   const displayVersions = useMemo(
@@ -2078,6 +2139,16 @@ export function Step3RenderTemplate({
     () => sumSegmentCoverageDuration(normalizedSegments, fragmentSourceDurationSec),
     [fragmentSourceDurationSec, normalizedSegments]
   );
+  const playbackPlanSourceDurationSec = useMemo(
+    () =>
+      fragmentPlaybackPlan.segments.reduce((total, segment) => {
+        return total + Math.max(0.05, segment.sourceEndSec - segment.sourceStartSec);
+      }, 0),
+    [fragmentPlaybackPlan.segments]
+  );
+  const hasFragmentSourceTimelineData = fragmentSourceDurationSec !== null && fragmentSourceDurationSec > 0;
+  const isFragmentTimelineLoading =
+    !hasFragmentSourceTimelineData && (Boolean(sourceUrl) || normalizedSegments.length > 0 || compressionEnabled);
   const isPreviewBusy =
     previewState === "debouncing" || previewState === "loading" || previewState === "retrying";
   const isRendering = renderState === "queued" || renderState === "rendering";
@@ -2089,7 +2160,16 @@ export function Step3RenderTemplate({
         ? "Сжимаем до 6с"
         : "Ровно 6с"
     : null;
-  const sourceDisplayDurationSec = normalizedSegments.length > 0 ? sourceSelectionDurationSec : clipDurationSec;
+  const sourceDisplayDurationSec =
+    normalizedSegments.length > 0
+      ? sourceSelectionDurationSec
+      : playbackPlanSourceDurationSec > 0
+        ? playbackPlanSourceDurationSec
+        : clipDurationSec;
+  const wholeClipWindowLabel =
+    normalizedSegments.length === 0 && renderPolicy === "fixed_segments"
+      ? `${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`
+      : null;
   const sourceCoveragePercent =
     fragmentSourceDurationSec && fragmentSourceDurationSec > 0
       ? clamp((sourceDisplayDurationSec / fragmentSourceDurationSec) * 100, 0, 100)
@@ -2106,12 +2186,17 @@ export function Step3RenderTemplate({
             startSec: segment.startSec,
             endSec: segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5
           }))
-        : [
-            {
-              startSec: localClipStartSec,
-              endSec: clipEndSec
-            }
-          ];
+        : fragmentPlaybackPlan.segments.length > 0
+          ? fragmentPlaybackPlan.segments.map((segment) => ({
+              startSec: segment.sourceStartSec,
+              endSec: segment.sourceEndSec
+            }))
+          : [
+              {
+                startSec: localClipStartSec,
+                endSec: clipEndSec
+              }
+            ];
     if (!baseRanges.length) {
       return [];
     }
@@ -2158,7 +2243,10 @@ export function Step3RenderTemplate({
         widthPercent
       };
     });
-  }, [clipEndSec, fragmentSourceDurationSec, localClipStartSec, normalizedSegments]);
+  }, [clipEndSec, fragmentPlaybackPlan.segments, fragmentSourceDurationSec, localClipStartSec, normalizedSegments]);
+  const wholeClipWindowRange =
+    normalizedSegments.length === 0 && renderPolicy === "fixed_segments" ? sourceTimelineRanges[0] ?? null : null;
+  const canDragWholeClipWindow = Boolean(wholeClipWindowRange && maxStartSec > 0 && hasFragmentSourceTimelineData);
   const sourceTimelineScaleMarks = useMemo(() => {
     if (fragmentSourceDurationSec === null || fragmentSourceDurationSec <= 0) {
       return ["0с", "источник"];
@@ -2202,6 +2290,9 @@ export function Step3RenderTemplate({
   const cameraModeLabel = "База";
   const cameraFocusPercent = Math.round(localFocusY * 100);
   const isFinishMode = stage3Mode === "finish";
+  useEffect(() => {
+    onSurfaceModeChange?.(stage3Mode);
+  }, [onSurfaceModeChange, stage3Mode]);
   const backgroundModeLabel =
     backgroundMode === "custom"
       ? "Custom"
@@ -2217,6 +2308,11 @@ export function Step3RenderTemplate({
     : sourceAudioEnabled
       ? "Только исходник"
       : "Без звука";
+  const finishTextStatusLabel = hasManualCaptionOverride
+    ? "Текст: manual draft"
+    : selectedCaptionOption
+      ? `Текст: option ${selectedCaptionOption}`
+      : "Текст: вручную";
   const manualTimingLabel =
     normalizedSegments.length > 0
       ? `Фрагменты ${normalizedSegments.length} · выход ${formatTimeSec(effectiveOutputDurationSec)}`
@@ -2264,15 +2360,39 @@ export function Step3RenderTemplate({
     () =>
       normalizedSegments.map((segment, index) => {
         const rowKey = buildFragmentRowKey(index, segment);
-        const draft = segmentDraftInputs[rowKey] ?? {
-          startSec: segment.startSec.toFixed(1),
-          endSec: (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
-        };
+        const resolvedTransform = resolveStage3SegmentTransformState({
+          segment,
+          fallbackFocusY: localFocusY,
+          fallbackVideoZoom: localVideoZoom,
+          fallbackMirrorEnabled: mirrorEnabled
+        });
+        const draft =
+          segmentDraftInputs[rowKey] ??
+          buildFragmentDraftInputs({
+            segment,
+            sourceDurationSec: fragmentSourceDurationSec,
+            fallbackFocusY: localFocusY,
+            fallbackVideoZoom: localVideoZoom
+          });
         const endValue = segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5;
         const rawDuration = Math.max(0, endValue - segment.startSec);
         const playbackSegment = fragmentPlaybackPlan.segments[index] ?? null;
         const outputDuration = playbackSegment?.outputDurationSec ?? rawDuration / segment.speed;
         const outputStartSec = playbackSegment?.outputStartSec ?? 0;
+        const draftFocusPercent = clamp(
+          Number.isFinite(Number.parseFloat(draft.focusY))
+            ? Number.parseFloat(draft.focusY)
+            : Math.round(resolvedTransform.focusY * 100),
+          12,
+          88
+        );
+        const draftVideoZoom = clamp(
+          Number.isFinite(Number.parseFloat(draft.videoZoom))
+            ? Number.parseFloat(draft.videoZoom)
+            : resolvedTransform.videoZoom,
+          STAGE3_MIN_VIDEO_ZOOM,
+          STAGE3_MAX_VIDEO_ZOOM
+        );
         const sourceOffsetPercent =
           fragmentSourceDurationSec && fragmentSourceDurationSec > 0
             ? clamp((segment.startSec / fragmentSourceDurationSec) * 100, 0, 100)
@@ -2290,12 +2410,23 @@ export function Step3RenderTemplate({
           rawDuration,
           outputDuration,
           outputStartSec,
+          draftFocusPercent,
+          draftVideoZoom,
           sourceOffsetPercent,
           sourceWidthPercent,
+          resolvedTransform,
           segment
         };
       }),
-    [fragmentPlaybackPlan.segments, fragmentSourceDurationSec, normalizedSegments, segmentDraftInputs]
+    [
+      fragmentPlaybackPlan.segments,
+      fragmentSourceDurationSec,
+      localFocusY,
+      localVideoZoom,
+      mirrorEnabled,
+      normalizedSegments,
+      segmentDraftInputs
+    ]
   );
   const handlePreviewMeasuredTextFitChange = useCallback(
     (nextFit: Stage3TextFitSnapshot) => {
@@ -2457,20 +2588,18 @@ export function Step3RenderTemplate({
 
   useEffect(() => {
     setSegmentDraftInputs((prev) => {
-      const next: Record<string, { startSec: string; endSec: string }> = {};
+      const next: Record<string, FragmentDraftInputs> = {};
       let changed = false;
       normalizedSegments.forEach((segment, index) => {
         const key = buildFragmentRowKey(index, segment);
-        const fallbackDraft = {
-          startSec: segment.startSec.toFixed(1),
-          endSec: (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
-        };
+        const fallbackDraft = buildFragmentDraftInputs({
+          segment,
+          sourceDurationSec: fragmentSourceDurationSec,
+          fallbackFocusY: localFocusY,
+          fallbackVideoZoom: localVideoZoom
+        });
         next[key] = prev[key] ?? fallbackDraft;
-        if (
-          !prev[key] ||
-          prev[key].startSec !== next[key]?.startSec ||
-          prev[key].endSec !== next[key]?.endSec
-        ) {
+        if (!prev[key] || JSON.stringify(prev[key]) !== JSON.stringify(next[key])) {
           changed = true;
         }
       });
@@ -2479,7 +2608,7 @@ export function Step3RenderTemplate({
       }
       return next;
     });
-  }, [fragmentSourceDurationSec, normalizedSegments]);
+  }, [fragmentSourceDurationSec, localFocusY, localVideoZoom, normalizedSegments]);
 
   useEffect(() => {
     if (activeFragmentIndex === null) {
@@ -2547,13 +2676,16 @@ export function Step3RenderTemplate({
     };
   }, []);
 
-  const flushClipCommit = (value: number) => {
-    if (clipCommitTimerRef.current !== null) {
-      window.clearTimeout(clipCommitTimerRef.current);
-      clipCommitTimerRef.current = null;
-    }
-    onClipStartChange(clamp(value, 0, maxStartSec));
-  };
+  const flushClipCommit = useCallback(
+    (value: number) => {
+      if (clipCommitTimerRef.current !== null) {
+        window.clearTimeout(clipCommitTimerRef.current);
+        clipCommitTimerRef.current = null;
+      }
+      onClipStartChange(clamp(value, 0, maxStartSec));
+    },
+    [maxStartSec, onClipStartChange]
+  );
 
   const flushFocusCommit = (value: number) => {
     if (focusCommitTimerRef.current !== null) {
@@ -2563,17 +2695,20 @@ export function Step3RenderTemplate({
     onFocusYChange(clamp(value, 0.12, 0.88));
   };
 
-  const scheduleClipCommit = (value: number) => {
-    const next = clamp(value, 0, maxStartSec);
-    setLocalClipStartSec(next);
-    if (clipCommitTimerRef.current !== null) {
-      window.clearTimeout(clipCommitTimerRef.current);
-    }
-    clipCommitTimerRef.current = window.setTimeout(() => {
-      onClipStartChange(next);
-      clipCommitTimerRef.current = null;
-    }, 450);
-  };
+  const scheduleClipCommit = useCallback(
+    (value: number) => {
+      const next = clamp(value, 0, maxStartSec);
+      setLocalClipStartSec(next);
+      if (clipCommitTimerRef.current !== null) {
+        window.clearTimeout(clipCommitTimerRef.current);
+      }
+      clipCommitTimerRef.current = window.setTimeout(() => {
+        onClipStartChange(next);
+        clipCommitTimerRef.current = null;
+      }, 450);
+    },
+    [maxStartSec, onClipStartChange]
+  );
 
   const scheduleFocusCommit = (value: number) => {
     const next = clamp(value, 0.12, 0.88);
@@ -3080,12 +3215,6 @@ export function Step3RenderTemplate({
     flushVideoZoomCommit(next);
   };
 
-  const applyClipStartImmediate = (value: number) => {
-    const next = clamp(value, 0, maxStartSec);
-    setLocalClipStartSec(next);
-    flushClipCommit(next);
-  };
-
   const applyFocusImmediate = (value: number) => {
     const next = clampStage3FocusY(value);
     setLocalFocusY(next);
@@ -3353,6 +3482,8 @@ export function Step3RenderTemplate({
       const draft = segmentDraftInputs[key];
       const parsedStart = Number.parseFloat(draft?.startSec ?? "");
       const parsedEnd = Number.parseFloat(draft?.endSec ?? "");
+      const parsedFocusPercent = Number.parseFloat(draft?.focusY ?? "");
+      const parsedVideoZoom = Number.parseFloat(draft?.videoZoom ?? "");
       const nextStart = roundToTenth(
         clamp(
           Number.isFinite(parsedStart) ? parsedStart : segment.startSec,
@@ -3373,7 +3504,13 @@ export function Step3RenderTemplate({
       return {
         ...segment,
         startSec: nextStart,
-        endSec: nextEnd
+        endSec: nextEnd,
+        focusY: normalizeStage3SegmentFocusOverride(
+          Number.isFinite(parsedFocusPercent) ? parsedFocusPercent / 100 : segment.focusY
+        ),
+        videoZoom: normalizeStage3SegmentZoomOverride(
+          Number.isFinite(parsedVideoZoom) ? parsedVideoZoom : segment.videoZoom
+        )
       };
     });
 
@@ -3467,7 +3604,10 @@ export function Step3RenderTemplate({
             startSec: nextStart,
             endSec: nextEnd,
             label: `Фрагмент ${normalizedSegments.length + 1}`,
-            speed: nextSpeed
+            speed: nextSpeed,
+            focusY: localFocusY,
+            videoZoom: localVideoZoom,
+            mirrorEnabled
           }
         ],
         fragmentSourceDurationSec
@@ -3496,7 +3636,13 @@ export function Step3RenderTemplate({
           endSec:
             field === "endSec" && value.trim()
               ? value
-              : (focusedSegment.endSec ?? fragmentSourceDurationSec ?? focusedSegment.startSec + 0.5).toFixed(1)
+              : (focusedSegment.endSec ?? fragmentSourceDurationSec ?? focusedSegment.startSec + 0.5).toFixed(1),
+          focusY: formatFragmentFocusPercent(
+            normalizeStage3SegmentFocusOverride(focusedSegment.focusY) ?? localFocusY
+          ),
+          videoZoom: formatFragmentVideoZoom(
+            normalizeStage3SegmentZoomOverride(focusedSegment.videoZoom) ?? localVideoZoom
+          )
         }
       }));
       setActiveFragmentIndex(focusedIndex);
@@ -3513,7 +3659,10 @@ export function Step3RenderTemplate({
       nextFragmentSuggestion,
       normalizedSegments,
       remainingSegmentsDurationSec,
-      fragmentSourceDurationSec
+      fragmentSourceDurationSec,
+      localFocusY,
+      localVideoZoom,
+      mirrorEnabled
     ]
   );
 
@@ -3543,22 +3692,74 @@ export function Step3RenderTemplate({
     [commitFragments, normalizedSegments]
   );
 
+  const updateFragmentTransform = useCallback(
+    (
+      index: number,
+      updates: {
+        focusY?: number | null;
+        videoZoom?: number | null;
+        mirrorEnabled?: boolean | null;
+      }
+    ) => {
+      setActiveFragmentIndex(index);
+      commitFragments(
+        normalizedSegments.map((segment, itemIndex) =>
+          itemIndex === index
+            ? {
+                ...segment,
+                focusY:
+                  updates.focusY === undefined
+                    ? segment.focusY ?? null
+                    : normalizeStage3SegmentFocusOverride(updates.focusY),
+                videoZoom:
+                  updates.videoZoom === undefined
+                    ? segment.videoZoom ?? null
+                    : normalizeStage3SegmentZoomOverride(updates.videoZoom),
+                mirrorEnabled:
+                  updates.mirrorEnabled === undefined
+                    ? segment.mirrorEnabled ?? null
+                    : normalizeStage3SegmentMirrorOverride(updates.mirrorEnabled)
+              }
+            : segment
+        )
+      );
+    },
+    [commitFragments, normalizedSegments]
+  );
+
   const setFragmentDraftField = (
     index: number,
     segment: Stage3Segment,
-    field: "startSec" | "endSec",
+    field: "startSec" | "endSec" | "focusY" | "videoZoom",
     value: string
   ) => {
     const key = buildFragmentRowKey(index, segment);
     setSegmentDraftInputs((prev) => ({
       ...prev,
       [key]: {
-        startSec: field === "startSec" ? value : (prev[key]?.startSec ?? segment.startSec.toFixed(1)),
+        startSec:
+          field === "startSec"
+            ? value
+            : (prev[key]?.startSec ?? segment.startSec.toFixed(1)),
         endSec:
           field === "endSec"
             ? value
             : (prev[key]?.endSec ??
-                (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1))
+                (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1)),
+        focusY:
+          field === "focusY"
+            ? value
+            : (prev[key]?.focusY ??
+                formatFragmentFocusPercent(
+                  normalizeStage3SegmentFocusOverride(segment.focusY) ?? localFocusY
+                )),
+        videoZoom:
+          field === "videoZoom"
+            ? value
+            : (prev[key]?.videoZoom ??
+                formatFragmentVideoZoom(
+                  normalizeStage3SegmentZoomOverride(segment.videoZoom) ?? localVideoZoom
+                ))
       }
     }));
   };
@@ -3572,13 +3773,22 @@ export function Step3RenderTemplate({
 
     const parsedStart = Number.parseFloat(draft.startSec);
     const parsedEnd = Number.parseFloat(draft.endSec);
-    if (!Number.isFinite(parsedStart) || !Number.isFinite(parsedEnd)) {
+    const parsedFocusPercent = Number.parseFloat(draft.focusY);
+    const parsedVideoZoom = Number.parseFloat(draft.videoZoom);
+    if (
+      !Number.isFinite(parsedStart) ||
+      !Number.isFinite(parsedEnd) ||
+      !Number.isFinite(parsedFocusPercent) ||
+      !Number.isFinite(parsedVideoZoom)
+    ) {
       setSegmentDraftInputs((prev) => ({
         ...prev,
-        [key]: {
-          startSec: segment.startSec.toFixed(1),
-          endSec: (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1)
-        }
+        [key]: buildFragmentDraftInputs({
+          segment,
+          sourceDurationSec: fragmentSourceDurationSec,
+          fallbackFocusY: localFocusY,
+          fallbackVideoZoom: localVideoZoom
+        })
       }));
       return;
     }
@@ -3600,7 +3810,9 @@ export function Step3RenderTemplate({
         ? {
             ...item,
             startSec: nextStart,
-            endSec: nextEnd
+            endSec: nextEnd,
+            focusY: normalizeStage3SegmentFocusOverride(parsedFocusPercent / 100),
+            videoZoom: normalizeStage3SegmentZoomOverride(parsedVideoZoom)
           }
         : item
     );
@@ -3616,6 +3828,173 @@ export function Step3RenderTemplate({
     setActiveFragmentIndex(nextIndex >= 0 ? nextIndex : Math.min(index, Math.max(0, boundedSegments.length - 1)));
     commitFragments(boundedSegments);
   };
+
+  const updateFragmentTimelineFromClientX = useCallback(
+    (clientX: number, commitMode: "schedule" | "flush" = "schedule") => {
+      const dragState = fragmentTimelineDragRef.current;
+      const rail = fragmentSourceRailRef.current;
+      if (!dragState || !rail || !fragmentSourceDurationSec || fragmentSourceDurationSec <= 0) {
+        return;
+      }
+      const rect = rail.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+      const pointerRatio = clamp((clientX - rect.left) / rect.width, 0, 1);
+      const pointerSec = pointerRatio * fragmentSourceDurationSec;
+      if (dragState.target === "window") {
+        const nextStart = roundToTenth(
+          clamp(pointerSec - dragState.pointerOffsetSec, 0, Math.max(0, fragmentSourceDurationSec - dragState.durationSec))
+        );
+        setLocalClipStartSec(nextStart);
+        if (commitMode === "flush") {
+          flushClipCommit(nextStart);
+        } else {
+          scheduleClipCommit(nextStart);
+        }
+        return;
+      }
+      const otherSegments = normalizedSegments.filter((_, itemIndex) => itemIndex !== dragState.index);
+      const otherDuration = sumSegmentsDuration(otherSegments, fragmentSourceDurationSec);
+      const maxOwnDuration = compressionEnabled
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0.1, (clipDurationSec - otherDuration) * dragState.speed);
+
+      let nextStart = dragState.startSec;
+      let nextEnd = dragState.endSec;
+
+      if (dragState.mode === "move") {
+        nextStart = clamp(pointerSec - dragState.pointerOffsetSec, 0, fragmentSourceDurationSec - dragState.durationSec);
+        nextEnd = nextStart + dragState.durationSec;
+      } else if (dragState.mode === "resize-start") {
+        const minStartByDuration = dragState.endSec - maxOwnDuration;
+        nextStart = clamp(pointerSec, Math.max(0, minStartByDuration), dragState.endSec - 0.1);
+      } else {
+        nextEnd = clamp(pointerSec, dragState.startSec + 0.1, fragmentSourceDurationSec);
+        nextEnd = Math.min(nextEnd, dragState.startSec + maxOwnDuration);
+      }
+
+      nextStart = roundToTenth(nextStart);
+      nextEnd = roundToTenth(nextEnd);
+      if (nextEnd <= nextStart) {
+        nextEnd = roundToTenth(nextStart + 0.1);
+      }
+
+      commitFragments(
+        normalizedSegments.map((segment, itemIndex) =>
+          itemIndex === dragState.index
+            ? {
+                ...segment,
+                startSec: nextStart,
+                endSec: nextEnd
+              }
+            : segment
+        )
+      );
+    },
+    [
+      clipDurationSec,
+      commitFragments,
+      compressionEnabled,
+      fragmentSourceDurationSec,
+      normalizedSegments,
+      flushClipCommit,
+      scheduleClipCommit
+    ]
+  );
+
+  useEffect(() => {
+    if (!isFragmentTimelineDragging) {
+      return;
+    }
+
+    const handleMove = (event: PointerEvent) => {
+      updateFragmentTimelineFromClientX(event.clientX, "schedule");
+    };
+    const handleEnd = (event: PointerEvent) => {
+      updateFragmentTimelineFromClientX(event.clientX, "flush");
+      fragmentTimelineDragRef.current = null;
+      setIsFragmentTimelineDragging(false);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+    };
+  }, [isFragmentTimelineDragging, updateFragmentTimelineFromClientX]);
+
+  const startFragmentTimelineDrag = useCallback(
+    (
+      event: React.PointerEvent<HTMLElement>,
+      row: (typeof fragmentRows)[number],
+      mode: FragmentTimelineDragMode
+    ) => {
+      if (!fragmentSourceDurationSec || fragmentSourceDurationSec <= 0) {
+        return;
+      }
+      const rail = fragmentSourceRailRef.current;
+      if (!rail) {
+        return;
+      }
+      const rect = rail.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const pointerRatio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const pointerSec = pointerRatio * fragmentSourceDurationSec;
+      const startSec = row.segment.startSec;
+      const endSec = row.endValue;
+      setActiveFragmentIndex(row.index);
+      fragmentTimelineDragRef.current = {
+        target: "fragment",
+        index: row.index,
+        mode,
+        startSec,
+        endSec,
+        durationSec: Math.max(0.1, endSec - startSec),
+        speed: row.segment.speed,
+        pointerOffsetSec: clamp(pointerSec - startSec, 0, Math.max(0.1, endSec - startSec))
+      };
+      setIsFragmentTimelineDragging(true);
+    },
+    [fragmentSourceDurationSec]
+  );
+
+  const startWholeClipWindowDrag = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (!fragmentSourceDurationSec || fragmentSourceDurationSec <= 0 || maxStartSec <= 0) {
+        return;
+      }
+      const rail = fragmentSourceRailRef.current;
+      if (!rail) {
+        return;
+      }
+      const rect = rail.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const pointerRatio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const pointerSec = pointerRatio * fragmentSourceDurationSec;
+      fragmentTimelineDragRef.current = {
+        target: "window",
+        startSec: localClipStartSec,
+        endSec: clipEndSec,
+        durationSec: clipDurationSec,
+        pointerOffsetSec: clamp(pointerSec - localClipStartSec, 0, clipDurationSec)
+      };
+      setIsFragmentTimelineDragging(true);
+    },
+    [clipDurationSec, clipEndSec, fragmentSourceDurationSec, localClipStartSec, maxStartSec]
+  );
 
   const startTextFitAction = (kind: PendingTextFitAction["kind"]) => {
     const overrides = commitAdvancedControls();
@@ -3650,13 +4029,6 @@ export function Step3RenderTemplate({
           <p className="subtle-text">
             Здесь редактируется итоговый TOP/BOTTOM, который реально уйдет в preview и render.
           </p>
-        </div>
-        <div className="editing-status-row">
-          <span className="meta-pill">TOP: {topTextSourceLabel}</span>
-          <span className="meta-pill">BOTTOM: {bottomTextSourceLabel}</span>
-          {selectedCaptionSource ? (
-            <span className="subtle-text">База сейчас: option {selectedCaptionSource.option}</span>
-          ) : null}
         </div>
       </div>
 
@@ -3710,55 +4082,67 @@ export function Step3RenderTemplate({
         </button>
       </div>
 
-      {captionSources.length > 0 ? (
-        <div className="stage3-caption-source-list">
-          {captionSources.map((option) => {
-            const isSelectedSource = option.option === selectedCaptionOption;
-            return (
-              <article
-                key={`stage3-caption-source-${option.option}`}
-                className={`stage3-caption-source-card ${isSelectedSource ? "selected" : ""}`}
-              >
-                <div className="stage3-caption-source-head">
-                  <div className="option-title-row">
-                    <strong>Option {option.option}</strong>
-                    {isSelectedSource ? <span className="badge muted">Выбран</span> : null}
-                  </div>
-                  <div className="stage3-caption-source-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => onApplyCaptionSource(option.option, "all")}
-                    >
-                      Взять всё
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => onApplyCaptionSource(option.option, "top")}
-                    >
-                      Взять TOP
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => onApplyCaptionSource(option.option, "bottom")}
-                    >
-                      Взять BOTTOM
-                    </button>
-                  </div>
-                </div>
-                <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
-                <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>
-              </article>
-            );
-          })}
+      <details className="advanced-block">
+        <summary>Источники и быстрый mix</summary>
+        <div className="advanced-content">
+          <div className="editing-status-row">
+            <span className="meta-pill">TOP: {topTextSourceLabel}</span>
+            <span className="meta-pill">BOTTOM: {bottomTextSourceLabel}</span>
+            {selectedCaptionSource ? (
+              <span className="subtle-text">База сейчас: option {selectedCaptionSource.option}</span>
+            ) : null}
+          </div>
+          {captionSources.length > 0 ? (
+            <div className="stage3-caption-source-list">
+              {captionSources.map((option) => {
+                const isSelectedSource = option.option === selectedCaptionOption;
+                return (
+                  <article
+                    key={`stage3-caption-source-${option.option}`}
+                    className={`stage3-caption-source-card ${isSelectedSource ? "selected" : ""}`}
+                  >
+                    <div className="stage3-caption-source-head">
+                      <div className="option-title-row">
+                        <strong>Option {option.option}</strong>
+                        {isSelectedSource ? <span className="badge muted">Выбран</span> : null}
+                      </div>
+                      <div className="stage3-caption-source-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => onApplyCaptionSource(option.option, "all")}
+                        >
+                          Взять всё
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => onApplyCaptionSource(option.option, "top")}
+                        >
+                          Взять TOP
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => onApplyCaptionSource(option.option, "bottom")}
+                        >
+                          Взять BOTTOM
+                        </button>
+                      </div>
+                    </div>
+                    <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
+                    <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="subtle-text">
+              Источник вариантов Stage 2 пока недоступен. Редактор всё равно работает по текущему draft.
+            </p>
+          )}
         </div>
-      ) : (
-        <p className="subtle-text">
-          Источник вариантов Stage 2 пока недоступен. Редактор всё равно работает по текущему draft.
-        </p>
-      )}
+      </details>
     </section>
   );
 
@@ -3825,30 +4209,16 @@ export function Step3RenderTemplate({
               <h2>{isFinishMode ? "Финализация" : "Редактор"}</h2>
               <p>
                 {isFinishMode
-                  ? "Проверьте итоговый текст, фон и звук, затем отрендерите mp4 из выбранной версии."
+                  ? "Проверьте итоговый текст и быстро доведите ролик до рендера. Редкие настройки и контекст спрятаны ниже."
                   : "Ручной монтаж тайминга и камеры. Вернитесь в финализацию, когда кадр и движение готовы."}
               </p>
-              <div className="render-meta-strip">
-                <span className="meta-pill">{getStage3DesignLabLabel(templateId)}</span>
-                <span className="meta-pill mono">{templateId}</span>
-                <span className="meta-pill">
-                  {channelName} (@{channelUsername})
-                </span>
-                <span className="meta-pill">
-                  Исходник {fragmentSourceDurationSec ? formatTimeSec(fragmentSourceDurationSec) : "н/д"}
-                </span>
-                <span className="meta-pill">Версий {displayVersions.length}</span>
-              </div>
               {showWorkerControls ? (
-                <div className="executor-summary-row">
+                <div className="executor-summary-row executor-summary-row-compact">
                   <div className="executor-summary-copy">
-                    <span className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}>
+                    <span
+                      className={`meta-pill ${workerState === "online" ? "ok" : workerState === "busy" ? "warn" : ""}`}
+                    >
                       Executor: {workerStatusLabel}
-                    </span>
-                    <span className="subtle-text">
-                      {workerState === "not_paired"
-                        ? "Подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
-                        : workerStatusDescription}
                     </span>
                   </div>
                   <button
@@ -3860,6 +4230,29 @@ export function Step3RenderTemplate({
                   </button>
                 </div>
               ) : null}
+              <details className="advanced-block">
+                <summary>Контекст шага</summary>
+                <div className="advanced-content">
+                  <div className="render-meta-strip">
+                    <span className="meta-pill">{getStage3DesignLabLabel(templateId)}</span>
+                    <span className="meta-pill mono">{templateId}</span>
+                    <span className="meta-pill">
+                      {channelName} (@{channelUsername})
+                    </span>
+                    <span className="meta-pill">
+                      Исходник {fragmentSourceDurationSec ? formatTimeSec(fragmentSourceDurationSec) : "н/д"}
+                    </span>
+                    <span className="meta-pill">Версий {displayVersions.length}</span>
+                  </div>
+                  {showWorkerControls ? (
+                    <p className="subtle-text">
+                      {workerState === "not_paired"
+                        ? "Executor подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
+                        : workerStatusDescription}
+                    </p>
+                  ) : null}
+                </div>
+              </details>
             </header>
 
             <section
@@ -3897,22 +4290,13 @@ export function Step3RenderTemplate({
               {isFinishMode ? (
                 <>
                   <div className="editing-status-row">
-                    {selectedCaptionOption ? (
-                      <span className="meta-pill">Stage 2 option {selectedCaptionOption}</span>
-                    ) : (
-                      <span className="meta-pill">Финальный текст вручную</span>
-                    )}
-                    <span className={`meta-pill ${hasManualCaptionOverride ? "warn" : ""}`}>
-                      {hasManualCaptionOverride ? "Используется manual draft" : "Без ручных переопределений"}
-                    </span>
+                    <span className={`meta-pill ${hasManualCaptionOverride ? "warn" : ""}`}>{finishTextStatusLabel}</span>
                     <span className="meta-pill">Фон {backgroundModeLabel}</span>
                     <span className="meta-pill">Звук {audioModeLabel}</span>
                   </div>
 
                   <div className="stage3-surface-actions">
-                    <p className="subtle-text">
-                      Открывайте редактор только когда нужно вручную подвинуть тайминг или поправить общий кадр.
-                    </p>
+                    <p className="subtle-text">Редактор открывайте только для ручного монтажа тайминга и кадра.</p>
                     <button type="button" className="btn btn-secondary" onClick={() => setStage3Mode("editor")}>
                       Открыть редактор
                     </button>
@@ -3923,240 +4307,246 @@ export function Step3RenderTemplate({
 
             {isFinishMode ? (
               <>
-                <section className="control-card">
-                  <div className="control-section-head">
-                    <div>
-                      <h3>Типографика</h3>
-                      <p className="subtle-text">
-                        Масштаб текста применяется к финальному preview и render, без ручного монтажа камеры.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="quick-edit-grid">
-                    <div className="quick-edit-card slider-field">
-                      <div className="quick-edit-label-row">
-                        <label className="field-label" htmlFor="topFontScaleRange">
-                          Размер верхнего текста
-                        </label>
-                        <span className="quick-edit-value">{Math.round(localTopFontScale * 100)}%</span>
-                      </div>
-                      <input
-                        id="topFontScaleRange"
-                        type="range"
-                        min={STAGE3_TEXT_SCALE_UI_MIN}
-                        max={STAGE3_TEXT_SCALE_UI_MAX}
-                        step={0.01}
-                        value={localTopFontScale}
-                        onChange={(event) => scheduleTopFontScaleCommit(Number.parseFloat(event.target.value))}
-                        onMouseUp={() => flushTopFontScaleCommit(localTopFontScale)}
-                        onTouchEnd={() => flushTopFontScaleCommit(localTopFontScale)}
-                        onBlur={() => flushTopFontScaleCommit(localTopFontScale)}
-                      />
-                      <div className="preset-row">
-                        {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
-                          <button
-                            key={`top-font-${value}`}
-                            type="button"
-                            className="preset-chip"
-                            onClick={() => applyTopFontScaleImmediate(value)}
-                          >
-                            {Math.round(value * 100)}%
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="quick-edit-card slider-field">
-                      <div className="quick-edit-label-row">
-                        <label className="field-label" htmlFor="bottomFontScaleRange">
-                          Размер нижнего текста
-                        </label>
-                        <span className="quick-edit-value">{Math.round(localBottomFontScale * 100)}%</span>
-                      </div>
-                      <input
-                        id="bottomFontScaleRange"
-                        type="range"
-                        min={STAGE3_TEXT_SCALE_UI_MIN}
-                        max={STAGE3_TEXT_SCALE_UI_MAX}
-                        step={0.01}
-                        value={localBottomFontScale}
-                        onChange={(event) => scheduleBottomFontScaleCommit(Number.parseFloat(event.target.value))}
-                        onMouseUp={() => flushBottomFontScaleCommit(localBottomFontScale)}
-                        onTouchEnd={() => flushBottomFontScaleCommit(localBottomFontScale)}
-                        onBlur={() => flushBottomFontScaleCommit(localBottomFontScale)}
-                      />
-                      <div className="preset-row">
-                        {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
-                          <button
-                            key={`bottom-font-${value}`}
-                            type="button"
-                            className="preset-chip"
-                            onClick={() => applyBottomFontScaleImmediate(value)}
-                          >
-                            {Math.round(value * 100)}%
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="control-card">
-                  <div className="control-section-head">
-                    <div>
-                      <h3>Фон и звук</h3>
-                      <p className="subtle-text">
-                        Финальные настройки фона и звука, которые пойдут в экспорт.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="asset-grid">
-                    <div className="asset-card">
-                      <div className="quick-edit-label-row">
-                        <span className="field-label">Фон</span>
-                        <span className="quick-edit-value">{backgroundModeLabel}</span>
-                      </div>
-                      <div className="background-upload-row">
-                        <label className="btn btn-ghost background-upload-btn">
-                          <input
-                            type="file"
-                            accept="image/*,video/*"
-                            className="background-upload-input"
-                            disabled={isUploadingBackground}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (!file) {
-                                return;
-                              }
-                              void onUploadBackground(file);
-                              event.currentTarget.value = "";
-                            }}
-                          />
-                          {isUploadingBackground ? "Загрузка..." : "Upload"}
-                        </label>
-                        <select
-                          className="text-input"
-                          value={selectedBackgroundAssetId ?? ""}
-                          onChange={(event) => onSelectBackgroundAssetId(event.target.value || null)}
-                        >
-                          <option value="">Размытый фон из исходника</option>
-                          {backgroundOptions.map((asset) => (
-                            <option key={asset.id} value={asset.id}>
-                              {asset.originalName}
-                            </option>
-                          ))}
-                        </select>
-                        {backgroundAssetUrl ? (
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={onClearBackground}
-                            disabled={isUploadingBackground}
-                          >
-                            Clear
-                          </button>
-                        ) : null}
-                      </div>
-                      <p className="subtle-text">
-                        {backgroundMode === "custom"
-                          ? `Кастомный фон: ${(backgroundAssetMimeType ?? "asset").toLowerCase()}`
-                          : backgroundMode === "source-blur"
-                            ? "Фон по умолчанию: blur исходного видео."
-                            : backgroundMode === "built-in"
-                              ? "Сейчас используется встроенный backdrop шаблона."
-                              : "Источник фона недоступен, используется fallback."}
-                      </p>
-                    </div>
-
-                    <div className="asset-card">
-                      <div className="quick-edit-label-row">
-                        <span className="field-label">Музыка</span>
-                        <span className="quick-edit-value">{audioModeLabel}</span>
-                      </div>
-                      <div className="background-upload-row">
-                        <label className="btn btn-ghost background-upload-btn">
-                          <input
-                            type="file"
-                            accept="audio/*"
-                            className="background-upload-input"
-                            disabled={isUploadingBackground}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (!file) {
-                                return;
-                              }
-                              void onUploadMusic(file);
-                              event.currentTarget.value = "";
-                            }}
-                          />
-                          Upload
-                        </label>
-                        <select
-                          className="text-input"
-                          value={selectedMusicAssetId ?? ""}
-                          onChange={(event) => onSelectMusicAssetId(event.target.value || null)}
-                        >
-                          <option value="">Без музыки</option>
-                          {musicOptions.map((asset) => (
-                            <option key={asset.id} value={asset.id}>
-                              {asset.originalName}
-                            </option>
-                          ))}
-                        </select>
-                        {selectedMusicAssetId ? (
-                          <button type="button" className="btn btn-ghost" onClick={onClearMusic}>
-                            Clear
-                          </button>
-                        ) : null}
-                      </div>
-                      <label className="field-label fragment-toggle">
-                        <input
-                          type="checkbox"
-                          checked={sourceAudioEnabled}
-                          onChange={(event) => onSourceAudioEnabledChange(event.target.checked)}
-                        />
-                        <span>Оставить звук исходника</span>
-                      </label>
-                      <p className="subtle-text">
-                        Если отключить, из preview и финального render убирается звук исходника. Без музыки клип будет беззвучным.
-                      </p>
-                      <div className="slider-field">
-                        <div className="quick-edit-label-row">
-                          <label className="field-label" htmlFor="musicGainRange">
-                            Громкость музыки
-                          </label>
-                          <span className="quick-edit-value">{Math.round(localMusicGain * 100)}%</span>
+                <details className="advanced-block">
+                  <summary>Оформление и звук</summary>
+                  <div className="advanced-content stage3-secondary-stack">
+                    <section className="stage3-secondary-panel">
+                      <div className="control-section-head">
+                        <div>
+                          <h3>Типографика</h3>
+                          <p className="subtle-text">
+                            Масштаб текста применяется к финальному preview и render, без ручного монтажа камеры.
+                          </p>
                         </div>
-                        <input
-                          id="musicGainRange"
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={localMusicGain}
-                          onChange={(event) => scheduleMusicGainCommit(Number.parseFloat(event.target.value))}
-                          onMouseUp={() => flushMusicGainCommit(localMusicGain)}
-                          onTouchEnd={() => flushMusicGainCommit(localMusicGain)}
-                          onBlur={() => flushMusicGainCommit(localMusicGain)}
-                        />
-                        <div className="preset-row">
-                          {[0, 0.2, 0.35, 0.5].map((value) => (
-                            <button
-                              key={`music-${value}`}
-                              type="button"
-                              className="preset-chip"
-                              onClick={() => applyMusicGainImmediate(value)}
+                      </div>
+
+                      <div className="quick-edit-grid">
+                        <div className="quick-edit-card slider-field">
+                          <div className="quick-edit-label-row">
+                            <label className="field-label" htmlFor="topFontScaleRange">
+                              Размер верхнего текста
+                            </label>
+                            <span className="quick-edit-value">{Math.round(localTopFontScale * 100)}%</span>
+                          </div>
+                          <input
+                            id="topFontScaleRange"
+                            type="range"
+                            min={STAGE3_TEXT_SCALE_UI_MIN}
+                            max={STAGE3_TEXT_SCALE_UI_MAX}
+                            step={0.01}
+                            value={localTopFontScale}
+                            onChange={(event) => scheduleTopFontScaleCommit(Number.parseFloat(event.target.value))}
+                            onMouseUp={() => flushTopFontScaleCommit(localTopFontScale)}
+                            onTouchEnd={() => flushTopFontScaleCommit(localTopFontScale)}
+                            onBlur={() => flushTopFontScaleCommit(localTopFontScale)}
+                          />
+                          <div className="preset-row">
+                            {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
+                              <button
+                                key={`top-font-${value}`}
+                                type="button"
+                                className="preset-chip"
+                                onClick={() => applyTopFontScaleImmediate(value)}
+                              >
+                                {Math.round(value * 100)}%
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="quick-edit-card slider-field">
+                          <div className="quick-edit-label-row">
+                            <label className="field-label" htmlFor="bottomFontScaleRange">
+                              Размер нижнего текста
+                            </label>
+                            <span className="quick-edit-value">{Math.round(localBottomFontScale * 100)}%</span>
+                          </div>
+                          <input
+                            id="bottomFontScaleRange"
+                            type="range"
+                            min={STAGE3_TEXT_SCALE_UI_MIN}
+                            max={STAGE3_TEXT_SCALE_UI_MAX}
+                            step={0.01}
+                            value={localBottomFontScale}
+                            onChange={(event) => scheduleBottomFontScaleCommit(Number.parseFloat(event.target.value))}
+                            onMouseUp={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                            onTouchEnd={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                            onBlur={() => flushBottomFontScaleCommit(localBottomFontScale)}
+                          />
+                          <div className="preset-row">
+                            {STAGE3_TEXT_SCALE_UI_PRESETS.map((value) => (
+                              <button
+                                key={`bottom-font-${value}`}
+                                type="button"
+                                className="preset-chip"
+                                onClick={() => applyBottomFontScaleImmediate(value)}
+                              >
+                                {Math.round(value * 100)}%
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="stage3-secondary-panel">
+                      <div className="control-section-head">
+                        <div>
+                          <h3>Фон и звук</h3>
+                          <p className="subtle-text">
+                            Финальные настройки фона и звука, которые пойдут в экспорт.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="asset-grid">
+                        <div className="asset-card">
+                          <div className="quick-edit-label-row">
+                            <span className="field-label">Фон</span>
+                            <span className="quick-edit-value">{backgroundModeLabel}</span>
+                          </div>
+                          <div className="background-upload-row">
+                            <label className="btn btn-ghost background-upload-btn">
+                              <input
+                                type="file"
+                                accept="image/*,video/*"
+                                className="background-upload-input"
+                                disabled={isUploadingBackground}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  if (!file) {
+                                    return;
+                                  }
+                                  void onUploadBackground(file);
+                                  event.currentTarget.value = "";
+                                }}
+                              />
+                              {isUploadingBackground ? "Загрузка..." : "Upload"}
+                            </label>
+                            <select
+                              className="text-input"
+                              value={selectedBackgroundAssetId ?? ""}
+                              onChange={(event) => onSelectBackgroundAssetId(event.target.value || null)}
                             >
-                              {Math.round(value * 100)}%
-                            </button>
-                          ))}
+                              <option value="">Размытый фон из исходника</option>
+                              {backgroundOptions.map((asset) => (
+                                <option key={asset.id} value={asset.id}>
+                                  {asset.originalName}
+                                </option>
+                              ))}
+                            </select>
+                            {backgroundAssetUrl ? (
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={onClearBackground}
+                                disabled={isUploadingBackground}
+                              >
+                                Clear
+                              </button>
+                            ) : null}
+                          </div>
+                          <p className="subtle-text">
+                            {backgroundMode === "custom"
+                              ? `Кастомный фон: ${(backgroundAssetMimeType ?? "asset").toLowerCase()}`
+                              : backgroundMode === "source-blur"
+                                ? "Фон по умолчанию: blur исходного видео."
+                                : backgroundMode === "built-in"
+                                  ? "Сейчас используется встроенный backdrop шаблона."
+                                  : "Источник фона недоступен, используется fallback."}
+                          </p>
+                        </div>
+
+                        <div className="asset-card">
+                          <div className="quick-edit-label-row">
+                            <span className="field-label">Музыка</span>
+                            <span className="quick-edit-value">{audioModeLabel}</span>
+                          </div>
+                          <div className="background-upload-row">
+                            <label className="btn btn-ghost background-upload-btn">
+                              <input
+                                type="file"
+                                accept="audio/*"
+                                className="background-upload-input"
+                                disabled={isUploadingBackground}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  if (!file) {
+                                    return;
+                                  }
+                                  void onUploadMusic(file);
+                                  event.currentTarget.value = "";
+                                }}
+                              />
+                              Upload
+                            </label>
+                            <select
+                              className="text-input"
+                              value={selectedMusicAssetId ?? ""}
+                              onChange={(event) => onSelectMusicAssetId(event.target.value || null)}
+                            >
+                              <option value="">Без музыки</option>
+                              {musicOptions.map((asset) => (
+                                <option key={asset.id} value={asset.id}>
+                                  {asset.originalName}
+                                </option>
+                              ))}
+                            </select>
+                            {selectedMusicAssetId ? (
+                              <button type="button" className="btn btn-ghost" onClick={onClearMusic}>
+                                Clear
+                              </button>
+                            ) : null}
+                          </div>
+                          <label className="field-label fragment-toggle">
+                            <input
+                              type="checkbox"
+                              checked={sourceAudioEnabled}
+                              onChange={(event) => onSourceAudioEnabledChange(event.target.checked)}
+                            />
+                            <span>Оставить звук исходника</span>
+                          </label>
+                          <p className="subtle-text">
+                            Если отключить, из preview и финального render убирается звук исходника. Без музыки
+                            клип будет беззвучным.
+                          </p>
+                          <div className="slider-field">
+                            <div className="quick-edit-label-row">
+                              <label className="field-label" htmlFor="musicGainRange">
+                                Громкость музыки
+                              </label>
+                              <span className="quick-edit-value">{Math.round(localMusicGain * 100)}%</span>
+                            </div>
+                            <input
+                              id="musicGainRange"
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={localMusicGain}
+                              onChange={(event) => scheduleMusicGainCommit(Number.parseFloat(event.target.value))}
+                              onMouseUp={() => flushMusicGainCommit(localMusicGain)}
+                              onTouchEnd={() => flushMusicGainCommit(localMusicGain)}
+                              onBlur={() => flushMusicGainCommit(localMusicGain)}
+                            />
+                            <div className="preset-row">
+                              {[0, 0.2, 0.35, 0.5].map((value) => (
+                                <button
+                                  key={`music-${value}`}
+                                  type="button"
+                                  className="preset-chip"
+                                  onClick={() => applyMusicGainImmediate(value)}
+                                >
+                                  {Math.round(value * 100)}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </section>
                   </div>
-                </section>
+                </details>
                 {finishCaptionEditorCard}
               </>
             ) : (
@@ -4200,11 +4590,17 @@ export function Step3RenderTemplate({
                       ) : null}
                     </div>
 
-                    <div className="fragment-summary-strip">
-                      <span className="meta-pill">{normalizedSegments.length > 0 ? `${normalizedSegments.length} фрагм.` : "Цельное окно"}</span>
-                      <span className="meta-pill fragment-summary-primary">
-                        Выход {formatTimeSec(effectiveOutputDurationSec)} / {formatTimeSec(clipDurationSec)}
-                      </span>
+	                    <div className="fragment-summary-strip">
+	                      <span className="meta-pill">
+	                        {normalizedSegments.length > 0
+	                          ? `${normalizedSegments.length} фрагм.`
+	                          : wholeClipWindowLabel
+	                            ? `Окно ${wholeClipWindowLabel}`
+	                            : "Цельное окно"}
+	                      </span>
+	                      <span className="meta-pill fragment-summary-primary">
+	                        Выход {formatTimeSec(effectiveOutputDurationSec)} / {formatTimeSec(clipDurationSec)}
+	                      </span>
                       {fragmentSourceDurationSec !== null ? (
                         <span className="meta-pill">Исходник {formatTimeSec(fragmentSourceDurationSec)}</span>
                       ) : null}
@@ -4219,16 +4615,24 @@ export function Step3RenderTemplate({
                       </span>
                     </div>
 
-                    <section className="fragment-source-overview">
-                      <div className="fragment-source-head">
-                        <div>
-                          <strong>Лента исходника</strong>
-                          <p className="subtle-text">
-                            {fragmentSourceDurationSec !== null
-                              ? "Лента показывает весь MP4-источник: синие участки задействованы, тёмные будут пропущены."
-                              : "Длительность исходника появится, когда источник полностью определится."}
-                          </p>
-                        </div>
+	                    <section className="fragment-source-overview">
+	                      <div className="fragment-source-head">
+	                        <div>
+	                          <strong>Лента исходника</strong>
+	                          <p className="subtle-text">
+	                            {isFragmentTimelineLoading
+	                              ? "Подтягиваем точную длительность исходника, после чего покажем реальное покрытие и позиции фрагментов."
+	                              : fragmentSourceDurationSec !== null
+	                                ? normalizedSegments.length === 0 && renderPolicy === "fixed_segments"
+	                                  ? canDragWholeClipWindow
+	                                    ? "Перетаскивайте синее окно по линии, чтобы быстро выбрать нужный 6-секундный диапазон."
+	                                    : "Сейчас доступен один цельный 6-секундный диапазон без смещения."
+	                                  : normalizedSegments.length === 0
+	                                    ? "Сейчас весь исходник участвует в рендере и будет подогнан под целевую длительность."
+	                                    : "Лента показывает весь MP4-источник: синие участки задействованы, тёмные будут пропущены."
+	                                : "Длительность исходника появится, когда источник полностью определится."}
+	                          </p>
+	                        </div>
                         <div className="fragment-source-badges">
                           {fragmentSourceDurationSec !== null ? (
                             <span className="meta-pill fragment-source-primary-pill">
@@ -4241,19 +4645,76 @@ export function Step3RenderTemplate({
                         </div>
                       </div>
                       <div className="fragment-source-track">
-                        <div className="fragment-source-rail" aria-label="Весь исходный ролик">
-                          {sourceTimelineRanges.map((range, index) => (
-                            <span
-                              key={`source-coverage-${index}`}
-                              className="fragment-source-selection fragment-source-selection-coverage"
-                              style={{
-                                left: `${range.offsetPercent}%`,
-                                width: `${range.widthPercent}%`
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
+	                        <div
+	                          ref={fragmentSourceRailRef}
+	                          className={`fragment-source-rail ${isFragmentTimelineDragging ? "is-dragging" : ""}`}
+	                          aria-label="Весь исходный ролик"
+	                        >
+	                          {hasFragmentSourceTimelineData ? (
+	                            <>
+	                              {(wholeClipWindowRange ? [] : sourceTimelineRanges).map((range, index) => (
+	                                <span
+	                                  key={`source-coverage-${index}`}
+	                                  className="fragment-source-selection fragment-source-selection-coverage"
+	                                  style={{
+	                                    left: `${range.offsetPercent}%`,
+	                                    width: `${range.widthPercent}%`
+	                                  }}
+	                                />
+	                              ))}
+	                              {wholeClipWindowRange ? (
+	                                <button
+	                                  type="button"
+	                                  className={`fragment-source-selection fragment-source-selection-window ${
+	                                    canDragWholeClipWindow ? "is-draggable" : ""
+	                                  }`}
+	                                  style={{
+	                                    left: `${wholeClipWindowRange.offsetPercent}%`,
+	                                    width: `${wholeClipWindowRange.widthPercent}%`
+	                                  }}
+	                                  aria-label={`Активное окно: ${wholeClipWindowLabel ?? `${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`}`}
+	                                  onPointerDown={canDragWholeClipWindow ? startWholeClipWindowDrag : undefined}
+	                                >
+	                                  <span className="fragment-source-window-grip" aria-hidden="true" />
+	                                </button>
+	                              ) : (
+	                                fragmentRows.map((row) => (
+	                                  <button
+	                                    key={`source-fragment-${row.rowKey}`}
+	                                    type="button"
+	                                    className={`fragment-source-selection fragment-source-selection-fragment ${
+	                                      activeFragmentIndex === row.index ? "active" : ""
+	                                    }`}
+	                                    style={{
+	                                      left: `${row.sourceOffsetPercent}%`,
+	                                      width: `${row.sourceWidthPercent}%`
+	                                    }}
+	                                    aria-label={`Фрагмент ${row.index + 1}: ${formatTimeSec(row.segment.startSec)} → ${formatTimeSec(row.endValue)}`}
+	                                    onClick={() => setActiveFragmentIndex(row.index)}
+	                                    onPointerDown={(event) => startFragmentTimelineDrag(event, row, "move")}
+	                                  >
+	                                    <span
+	                                      className="fragment-source-handle fragment-source-handle-start"
+	                                      onPointerDown={(event) => startFragmentTimelineDrag(event, row, "resize-start")}
+	                                    />
+	                                    <span className="fragment-source-selection-label">{row.index + 1}</span>
+	                                    <span
+	                                      className="fragment-source-handle fragment-source-handle-end"
+	                                      onPointerDown={(event) => startFragmentTimelineDrag(event, row, "resize-end")}
+	                                    />
+	                                  </button>
+	                                ))
+	                              )}
+	                            </>
+	                          ) : isFragmentTimelineLoading ? (
+	                            <div className="fragment-source-loading" aria-hidden="true">
+	                              <span className="fragment-source-loading-bar fragment-source-loading-bar-wide" />
+	                              <span className="fragment-source-loading-bar fragment-source-loading-bar-mid" />
+	                              <span className="fragment-source-loading-bar fragment-source-loading-bar-short" />
+	                            </div>
+	                          ) : null}
+	                        </div>
+	                      </div>
                       <div className="fragment-source-scale">
                         {sourceTimelineScaleMarks.map((label) => (
                           <span key={`source-mark-${label}`}>{label}</span>
@@ -4261,109 +4722,211 @@ export function Step3RenderTemplate({
                       </div>
                     </section>
 
-                    <div className="fragment-list">
-                      {fragmentRows.map((row) => (
-                        <article key={row.rowKey} className="fragment-row">
-                          <div className="fragment-row-head fragment-row-head-compact">
-                            <div className="fragment-row-actions">
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-danger-soft fragment-remove-button"
-                                aria-label={`Удалить фрагмент ${row.index + 1}`}
-                                title="Удалить фрагмент"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  removeFragment(row.index);
-                                }}
-                              >
-                                &times;
-                              </button>
-                            </div>
-                          </div>
-                          <div className="fragment-rail" aria-hidden="true">
-                            <span
-                              className="fragment-rail-fill"
-                              style={{
-                                left: `${row.sourceOffsetPercent}%`,
-                                width: `${row.sourceWidthPercent}%`
-                              }}
-                            />
-                          </div>
-                          <div className="fragment-input-grid">
-                            <label className="field-stack">
-                              <span className="field-label">От</span>
-                              <input
-                                ref={(node) => {
-                                  fragmentFieldRefs.current[`${row.rowKey}:startSec`] = node;
-                                }}
-                                type="number"
-                                min={0}
-                                max={fragmentSourceDurationSec ?? undefined}
-                                step={0.1}
-                                className="text-input segment-input"
-                                value={row.draft.startSec}
-                                onFocus={() => setActiveFragmentIndex(row.index)}
-                                onChange={(event) =>
-                                  setFragmentDraftField(row.index, row.segment, "startSec", event.target.value)
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.currentTarget.blur();
-                                  }
-                                }}
-                                onBlur={() => commitFragmentDraft(row.index, row.segment)}
-                              />
-                            </label>
-                            <label className="field-stack">
-                              <span className="field-label">До</span>
-                              <input
-                                ref={(node) => {
-                                  fragmentFieldRefs.current[`${row.rowKey}:endSec`] = node;
-                                }}
-                                type="number"
-                                min={0.1}
-                                max={fragmentSourceDurationSec ?? undefined}
-                                step={0.1}
-                                className="text-input segment-input"
-                                value={row.draft.endSec}
-                                onFocus={() => setActiveFragmentIndex(row.index)}
-                                onChange={(event) =>
-                                  setFragmentDraftField(row.index, row.segment, "endSec", event.target.value)
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.currentTarget.blur();
-                                  }
-                                }}
-                                onBlur={() => commitFragmentDraft(row.index, row.segment)}
-                              />
-                            </label>
-                            <label className="field-stack">
-                              <span className="field-label">Сжатие</span>
-                              <select
-                                ref={(node) => {
-                                  fragmentFieldRefs.current[`${row.rowKey}:speed`] = node;
-                                }}
-                                className="text-input segment-input"
-                                value={row.segment.speed}
-                                onFocus={() => setActiveFragmentIndex(row.index)}
-                                onChange={(event) =>
-                                  updateFragmentSpeed(
-                                    row.index,
-                                    normalizeSegmentSpeed(Number.parseFloat(event.target.value))
-                                  )
-                                }
-                              >
-                                {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
-                                  <option key={`segment-speed-${speed}`} value={speed}>
-                                    {formatSegmentSpeed(speed)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                        </article>
-                      ))}
+	                    <div className="fragment-list">
+	                      {fragmentRows.map((row) => (
+	                        <article
+	                          key={row.rowKey}
+	                          className={`fragment-row ${activeFragmentIndex === row.index ? "active" : ""}`}
+	                          onClick={() => setActiveFragmentIndex(row.index)}
+	                        >
+	                          <div className={`fragment-rail ${hasFragmentSourceTimelineData ? "" : "is-loading"}`} aria-hidden="true">
+	                            {hasFragmentSourceTimelineData ? (
+	                              <span
+	                                className="fragment-rail-fill"
+	                                style={{
+	                                  left: `${row.sourceOffsetPercent}%`,
+	                                  width: `${row.sourceWidthPercent}%`
+	                                }}
+	                              />
+	                            ) : (
+	                              <span
+	                                className="fragment-rail-fill fragment-rail-fill-loading"
+	                                style={{
+	                                  left: `${10 + (row.index % 3) * 12}%`,
+	                                  width: `${28 + (row.index % 2) * 10}%`
+	                                }}
+	                              />
+	                            )}
+	                          </div>
+	                          <div className="fragment-row-top">
+	                            <div className="fragment-row-meta">
+	                              <span className="meta-pill mono">{row.index + 1}</span>
+	                              <span className="meta-pill fragment-summary-primary">
+	                                {formatTimeSec(row.segment.startSec)} → {formatTimeSec(row.endValue)}
+	                              </span>
+	                              <span className="meta-pill">Выход {formatTimeSec(row.outputDuration)}</span>
+	                            </div>
+	                            <div className="fragment-row-top-actions">
+	                              <button
+	                                type="button"
+	                                className={`btn btn-ghost segment-toggle-btn fragment-toggle-chip ${
+	                                  row.resolvedTransform.mirrorEnabled ? "is-active" : ""
+	                                }`}
+	                                aria-pressed={row.resolvedTransform.mirrorEnabled}
+	                                onClick={(event) => {
+	                                  event.stopPropagation();
+	                                  updateFragmentTransform(row.index, {
+	                                    mirrorEnabled: !row.resolvedTransform.mirrorEnabled
+	                                  });
+	                                }}
+	                              >
+	                                Mirror
+	                              </button>
+	                              <button
+	                                type="button"
+	                                className="btn fragment-remove-button"
+	                                aria-label={`Удалить фрагмент ${row.index + 1}`}
+	                                title="Удалить фрагмент"
+	                                onClick={(event) => {
+	                                  event.stopPropagation();
+	                                  removeFragment(row.index);
+	                                }}
+	                              >
+	                                <span className="fragment-remove-icon" aria-hidden="true">
+	                                  ✕
+	                                </span>
+	                              </button>
+	                            </div>
+	                          </div>
+	                          <div className="fragment-control-grid">
+	                            <section className="fragment-control-card fragment-control-timing">
+	                              <div className="fragment-control-card-head">
+	                                <span className="field-label">Тайминг</span>
+	                                <span className="subtle-text">
+	                                  {formatTimeSec(row.segment.startSec)} → {formatTimeSec(row.endValue)}
+	                                </span>
+	                              </div>
+	                              <div className="fragment-control-fields">
+	                                <label className="field-stack">
+	                                  <span className="field-label">От</span>
+	                                  <input
+	                                    ref={(node) => {
+	                                      fragmentFieldRefs.current[`${row.rowKey}:startSec`] = node;
+	                                    }}
+	                                    type="number"
+	                                    min={0}
+	                                    max={fragmentSourceDurationSec ?? undefined}
+	                                    step={0.1}
+	                                    className="text-input segment-input"
+	                                    value={row.draft.startSec}
+	                                    onFocus={() => setActiveFragmentIndex(row.index)}
+	                                    onChange={(event) =>
+	                                      setFragmentDraftField(row.index, row.segment, "startSec", event.target.value)
+	                                    }
+	                                    onKeyDown={(event) => {
+	                                      if (event.key === "Enter") {
+	                                        event.currentTarget.blur();
+	                                      }
+	                                    }}
+	                                    onBlur={() => commitFragmentDraft(row.index, row.segment)}
+	                                  />
+	                                </label>
+	                                <label className="field-stack">
+	                                  <span className="field-label">До</span>
+	                                  <input
+	                                    ref={(node) => {
+	                                      fragmentFieldRefs.current[`${row.rowKey}:endSec`] = node;
+	                                    }}
+	                                    type="number"
+	                                    min={0.1}
+	                                    max={fragmentSourceDurationSec ?? undefined}
+	                                    step={0.1}
+	                                    className="text-input segment-input"
+	                                    value={row.draft.endSec}
+	                                    onFocus={() => setActiveFragmentIndex(row.index)}
+	                                    onChange={(event) =>
+	                                      setFragmentDraftField(row.index, row.segment, "endSec", event.target.value)
+	                                    }
+	                                    onKeyDown={(event) => {
+	                                      if (event.key === "Enter") {
+	                                        event.currentTarget.blur();
+	                                      }
+	                                    }}
+	                                    onBlur={() => commitFragmentDraft(row.index, row.segment)}
+	                                  />
+	                                </label>
+	                                <label className="field-stack">
+	                                  <span className="field-label">Сжатие</span>
+	                                  <select
+	                                    ref={(node) => {
+	                                      fragmentFieldRefs.current[`${row.rowKey}:speed`] = node;
+	                                    }}
+	                                    className="text-input segment-input"
+	                                    value={row.segment.speed}
+	                                    onFocus={() => setActiveFragmentIndex(row.index)}
+	                                    onChange={(event) =>
+	                                      updateFragmentSpeed(
+	                                        row.index,
+	                                        normalizeSegmentSpeed(Number.parseFloat(event.target.value))
+	                                      )
+	                                    }
+	                                  >
+	                                    {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
+	                                      <option key={`segment-speed-${speed}`} value={speed}>
+	                                        {formatSegmentSpeed(speed)}
+	                                      </option>
+	                                    ))}
+	                                  </select>
+	                                </label>
+	                              </div>
+	                            </section>
+	                            <section className="fragment-control-card fragment-control-framing">
+	                              <div className="fragment-control-card-head">
+	                                <span className="field-label">Кадрирование</span>
+	                                <span className="subtle-text">Индивидуально для этого фрагмента</span>
+	                              </div>
+	                              <div className="fragment-slider-stack">
+	                                <label className="slider-field fragment-slider-card">
+	                                  <div className="quick-edit-label-row">
+	                                    <span className="field-label">Position Y</span>
+	                                    <span className="quick-edit-value">{row.draftFocusPercent}%</span>
+	                                  </div>
+	                                  <input
+	                                    ref={(node) => {
+	                                      fragmentFieldRefs.current[`${row.rowKey}:focusY`] = node;
+	                                    }}
+	                                    type="range"
+	                                    min={12}
+	                                    max={88}
+	                                    step={1}
+	                                    value={row.draftFocusPercent}
+	                                    onFocus={() => setActiveFragmentIndex(row.index)}
+	                                    onChange={(event) =>
+	                                      setFragmentDraftField(row.index, row.segment, "focusY", event.target.value)
+	                                    }
+	                                    onMouseUp={() => commitFragmentDraft(row.index, row.segment)}
+	                                    onTouchEnd={() => commitFragmentDraft(row.index, row.segment)}
+	                                    onBlur={() => commitFragmentDraft(row.index, row.segment)}
+	                                  />
+	                                </label>
+	                                <label className="slider-field fragment-slider-card">
+	                                  <div className="quick-edit-label-row">
+	                                    <span className="field-label">Zoom</span>
+	                                    <span className="quick-edit-value">x{formatFragmentVideoZoom(row.draftVideoZoom)}</span>
+	                                  </div>
+	                                  <input
+	                                    ref={(node) => {
+	                                      fragmentFieldRefs.current[`${row.rowKey}:videoZoom`] = node;
+	                                    }}
+	                                    type="range"
+	                                    min={STAGE3_MIN_VIDEO_ZOOM}
+	                                    max={STAGE3_MAX_VIDEO_ZOOM}
+	                                    step={0.01}
+	                                    value={row.draftVideoZoom}
+	                                    onFocus={() => setActiveFragmentIndex(row.index)}
+	                                    onChange={(event) =>
+	                                      setFragmentDraftField(row.index, row.segment, "videoZoom", event.target.value)
+	                                    }
+	                                    onMouseUp={() => commitFragmentDraft(row.index, row.segment)}
+	                                    onTouchEnd={() => commitFragmentDraft(row.index, row.segment)}
+	                                    onBlur={() => commitFragmentDraft(row.index, row.segment)}
+	                                  />
+	                                </label>
+	                              </div>
+	                            </section>
+	                          </div>
+	                        </article>
+	                      ))}
 
                       <article
                         className={`fragment-row fragment-row-placeholder ${canAppendFragment ? "" : "disabled"}`}
@@ -4464,124 +5027,103 @@ export function Step3RenderTemplate({
                   </div>
 
                   {normalizedSegments.length === 0 ? (
-                    <div className="quick-edit-card slider-field">
-                      <div className="quick-edit-label-row">
-                        <label className="field-label" htmlFor="clipStartRange">
-                          Начало клипа
+                    <>
+                      <div className="quick-edit-card slider-field">
+                        <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="focusRange">
+                            Position Y
+                          </label>
+                          <span className="quick-edit-value">{cameraFocusPercent}%</span>
+                        </div>
+                        <input
+                          id="focusRange"
+                          type="range"
+                          min={0.12}
+                          max={0.88}
+                          step={0.01}
+                          value={localFocusY}
+                          onChange={(event) => scheduleFocusValue(Number.parseFloat(event.target.value))}
+                          onMouseUp={() => flushFocusValue(localFocusY)}
+                          onTouchEnd={() => flushFocusValue(localFocusY)}
+                          onBlur={() => flushFocusValue(localFocusY)}
+                        />
+                        <div className="preset-row">
+                          <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.18)}>
+                            Верх
+                          </button>
+                          <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.5)}>
+                            Центр
+                          </button>
+                          <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.82)}>
+                            Низ
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="quick-edit-card">
+                        <div className="quick-edit-label-row">
+                          <span className="field-label">Отзеркаливание</span>
+                          <span className="quick-edit-value">{mirrorEnabled ? "Включено" : "Выключено"}</span>
+                        </div>
+                        <label className="field-label fragment-toggle">
+                          <input
+                            type="checkbox"
+                            checked={mirrorEnabled}
+                            onChange={(event) => onMirrorEnabledChange(event.target.checked)}
+                          />
+                          <span>Горизонтально</span>
                         </label>
-                        <span className="quick-edit-value">{`${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`}</span>
+                        <p className="subtle-text">По умолчанию включено для слота с исходным видео.</p>
                       </div>
-                      <input
-                        id="clipStartRange"
-                        type="range"
-                        min={0}
-                        max={Math.max(0, maxStartSec)}
-                        step={0.1}
-                        value={localClipStartSec}
-                        disabled={!sourceUrl || maxStartSec <= 0}
-                        onChange={(event) => scheduleClipCommit(Number.parseFloat(event.target.value))}
-                        onMouseUp={() => flushClipCommit(localClipStartSec)}
-                        onTouchEnd={() => flushClipCommit(localClipStartSec)}
-                        onBlur={() => flushClipCommit(localClipStartSec)}
-                      />
-                      <div className="preset-row">
-                        <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 1)}>
-                          -1.0s
-                        </button>
-                        <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec - 0.25)}>
-                          -0.25s
-                        </button>
-                        <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 0.25)}>
-                          +0.25s
-                        </button>
-                        <button type="button" className="preset-chip" onClick={() => applyClipStartImmediate(localClipStartSec + 1)}>
-                          +1.0s
-                        </button>
+
+                      <div className="quick-edit-card slider-field">
+                        <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="videoZoomRange">
+                            Zoom
+                          </label>
+                          <span className="quick-edit-value">{editorZoomLabel}</span>
+                        </div>
+                        <input
+                          id="videoZoomRange"
+                          type="range"
+                          min={1}
+                          max={STAGE3_MAX_VIDEO_ZOOM}
+                          step={0.01}
+                          value={localVideoZoom}
+                          onChange={(event) => scheduleZoomValue(Number.parseFloat(event.target.value))}
+                          onMouseUp={() => flushZoomValue(localVideoZoom)}
+                          onTouchEnd={() => flushZoomValue(localVideoZoom)}
+                          onBlur={() => flushZoomValue(localVideoZoom)}
+                        />
+                        <div className="preset-row">
+                          {[1, 1.1, 1.25, 1.4].map((value) => (
+                            <button
+                              key={`zoom-${value}`}
+                              type="button"
+                              className="preset-chip"
+                              onClick={() => applyVideoZoomImmediate(value)}
+                            >
+                              x{value.toFixed(2)}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="subtle-text">Масштаб применяется ко всему клипу целиком.</p>
                       </div>
+                    </>
+                  ) : (
+                    <div className="quick-edit-card quick-edit-span-2">
+                      <div className="quick-edit-label-row">
+                        <span className="field-label">Покадровый кадринг по фрагментам</span>
+                        <span className="quick-edit-value">
+                          {activeFragmentIndex === null ? "Выберите фрагмент" : `Фрагмент ${activeFragmentIndex + 1}`}
+                        </span>
+                      </div>
+                      <p className="subtle-text">
+                        Перетаскивайте и тяните фрагменты прямо на ленте исходника. Для каждого фрагмента отдельно
+                        доступны свои Y, Zoom и Mirror.
+                      </p>
                     </div>
-                  ) : null}
-
-                  <div className="quick-edit-card slider-field">
-                    <div className="quick-edit-label-row">
-                      <label className="field-label" htmlFor="focusRange">
-                        Position Y
-                      </label>
-                      <span className="quick-edit-value">{cameraFocusPercent}%</span>
-                    </div>
-                    <input
-                      id="focusRange"
-                      type="range"
-                      min={0.12}
-                      max={0.88}
-                      step={0.01}
-                      value={localFocusY}
-                      onChange={(event) => scheduleFocusValue(Number.parseFloat(event.target.value))}
-                      onMouseUp={() => flushFocusValue(localFocusY)}
-                      onTouchEnd={() => flushFocusValue(localFocusY)}
-                      onBlur={() => flushFocusValue(localFocusY)}
-                    />
-                    <div className="preset-row">
-                      <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.18)}>
-                        Верх
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.5)}>
-                        Центр
-                      </button>
-                      <button type="button" className="preset-chip" onClick={() => applyFocusImmediate(0.82)}>
-                        Низ
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="quick-edit-card">
-                    <div className="quick-edit-label-row">
-                      <span className="field-label">Отзеркаливание</span>
-                      <span className="quick-edit-value">{mirrorEnabled ? "Включено" : "Выключено"}</span>
-                    </div>
-                    <label className="field-label fragment-toggle">
-                      <input
-                        type="checkbox"
-                        checked={mirrorEnabled}
-                        onChange={(event) => onMirrorEnabledChange(event.target.checked)}
-                      />
-                      <span>Горизонтально</span>
-                    </label>
-                    <p className="subtle-text">По умолчанию включено для слота с исходным видео.</p>
-                  </div>
-
-                  <div className="quick-edit-card slider-field">
-                    <div className="quick-edit-label-row">
-                      <label className="field-label" htmlFor="videoZoomRange">
-                        Zoom
-                      </label>
-                      <span className="quick-edit-value">{editorZoomLabel}</span>
-                    </div>
-                    <input
-                      id="videoZoomRange"
-                      type="range"
-                      min={1}
-                      max={STAGE3_MAX_VIDEO_ZOOM}
-                      step={0.01}
-                      value={localVideoZoom}
-                      onChange={(event) => scheduleZoomValue(Number.parseFloat(event.target.value))}
-                      onMouseUp={() => flushZoomValue(localVideoZoom)}
-                      onTouchEnd={() => flushZoomValue(localVideoZoom)}
-                      onBlur={() => flushZoomValue(localVideoZoom)}
-                    />
-                    <div className="preset-row">
-                      {[1, 1.1, 1.25, 1.4].map((value) => (
-                        <button
-                          key={`zoom-${value}`}
-                          type="button"
-                          className="preset-chip"
-                          onClick={() => applyVideoZoomImmediate(value)}
-                        >
-                          x{value.toFixed(2)}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="subtle-text">Масштаб применяется ко всему клипу целиком.</p>
-                  </div>
+                  )}
                 </div>
               </section>
             )}

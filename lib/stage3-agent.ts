@@ -23,6 +23,11 @@ import {
   normalizeStage3CameraMotion,
   resolveStage3EffectiveCameraTracks
 } from "./stage3-camera";
+import {
+  normalizeStage3SegmentFocusOverride,
+  normalizeStage3SegmentMirrorOverride,
+  normalizeStage3SegmentZoomOverride
+} from "./stage3-segment-transforms";
 
 export type {
   Stage3RenderPlan,
@@ -359,7 +364,10 @@ function normalizeSegment(
     label:
       typeof segment.label === "string" && segment.label.trim()
         ? segment.label.trim()
-        : `${start.toFixed(2)}-${end === null ? "end" : end.toFixed(2)}`
+        : `${start.toFixed(2)}-${end === null ? "end" : end.toFixed(2)}`,
+    focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
+    videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
+    mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
   };
 }
 

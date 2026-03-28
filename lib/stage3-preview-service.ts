@@ -25,6 +25,11 @@ import {
   ensureStage3SourceCached,
   runHostedStage3HeavyJob
 } from "./stage3-server-control";
+import {
+  normalizeStage3SegmentFocusOverride,
+  normalizeStage3SegmentMirrorOverride,
+  normalizeStage3SegmentZoomOverride
+} from "./stage3-segment-transforms";
 
 const PREVIEW_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
@@ -272,7 +277,10 @@ function normalizeRenderPlan(
               startSec: start,
               endSec: end,
               speed: normalizeSegmentSpeed((segment as { speed?: unknown }).speed),
-              label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`
+              label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`,
+              focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
+              videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
+              mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
             };
           })
           .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))

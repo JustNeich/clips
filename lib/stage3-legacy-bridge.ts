@@ -12,6 +12,11 @@ import {
   normalizeStage3CameraMotion,
   resolveStage3EffectiveCameraTracks
 } from "./stage3-camera";
+import {
+  normalizeStage3SegmentFocusOverride,
+  normalizeStage3SegmentMirrorOverride,
+  normalizeStage3SegmentZoomOverride
+} from "./stage3-segment-transforms";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
 
 const CLIP_DURATION_SEC = 6;
@@ -103,7 +108,10 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
             label:
               typeof segment.label === "string" && segment.label.trim()
                 ? segment.label
-                : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`
+                : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`,
+            focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
+            videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
+            mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
           };
         })
         .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))

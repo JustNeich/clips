@@ -17,6 +17,17 @@ import type {
   Stage3ScaleKeyframe
 } from "../lib/stage3-camera";
 
+type RemotionStage3TimingMode = "auto" | "compress" | "stretch";
+type RemotionStage3Segment = {
+  startSec: number;
+  endSec: number | null;
+  label: string;
+  speed: number;
+  focusY?: number | null;
+  videoZoom?: number | null;
+  mirrorEnabled?: boolean | null;
+};
+
 export type ScienceCardV1Props = {
   templateId?: string;
   sourceVideoFileName?: string | null;
@@ -26,6 +37,8 @@ export type ScienceCardV1Props = {
   clipDurationSec: number;
   focusY: number;
   mirrorEnabled: boolean;
+  timingMode: RemotionStage3TimingMode;
+  segments: RemotionStage3Segment[];
   cameraMotion: "disabled" | "top_to_bottom" | "bottom_to_top";
   cameraKeyframes: Stage3CameraKeyframe[];
   cameraPositionKeyframes: Stage3PositionKeyframe[];
@@ -71,6 +84,8 @@ function buildDefaultProps(templateId: string, authorName: string, authorHandle:
     clipDurationSec: 6,
     focusY: 0.5,
     mirrorEnabled: true,
+    timingMode: "auto",
+    segments: [],
     cameraMotion: "disabled",
     cameraKeyframes: [],
     cameraPositionKeyframes: [],
