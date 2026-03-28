@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import type { ChannelPublication, ChannelPublishIntegration, ChannelPublishSettings } from "./types";
 
 type PublicationAction = "pause" | "resume" | "retry" | "publish-now" | "delete";
+type PublicationShiftAxis = "slot" | "day";
+type PublicationShiftDirection = "prev" | "next";
 
 type PublishingPlannerProps = {
   channelName: string | null;
@@ -23,12 +25,46 @@ type PublishingPlannerProps = {
     }>
   ) => Promise<void>;
   onRunAction: (publicationId: string, action: PublicationAction) => Promise<void>;
+  onShiftPublication: (
+    publicationId: string,
+    move: {
+      axis: PublicationShiftAxis;
+      direction: PublicationShiftDirection;
+    }
+  ) => Promise<void>;
   onOpenPublishingSettings: () => void;
 };
 
-function formatSlotTime(iso: string): string {
+type PublicationDayGroup = {
+  id: string;
+  label: string;
+  items: ChannelPublication[];
+};
+
+type PublicationStatusTone =
+  | "queued"
+  | "running"
+  | "scheduled"
+  | "published"
+  | "error"
+  | "paused"
+  | "muted";
+
+function formatDateKey(value: Date, timeZone: string): string {
+  return value.toLocaleDateString("en-CA", { timeZone });
+}
+
+function formatScheduledTime(iso: string, timeZone: string): string {
+  return new Date(iso).toLocaleTimeString("ru-RU", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatScheduledMoment(iso: string, timeZone: string): string {
   return new Date(iso).toLocaleString("ru-RU", {
-    timeZone: "Europe/Moscow",
+    timeZone,
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -36,9 +72,31 @@ function formatSlotTime(iso: string): string {
   });
 }
 
-function formatDateKey(value: Date): string {
-  return value.toLocaleDateString("en-CA", {
-    timeZone: "Europe/Moscow"
+function formatSlotDateLabel(slotDate: string, timeZone: string, now = new Date()): string {
+  const todayKey = formatDateKey(now, timeZone);
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = formatDateKey(tomorrow, timeZone);
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = formatDateKey(yesterday, timeZone);
+
+  if (slotDate === todayKey) {
+    return "Сегодня";
+  }
+  if (slotDate === tomorrowKey) {
+    return "Завтра";
+  }
+  if (slotDate === yesterdayKey) {
+    return "Вчера";
+  }
+
+  const displayDate = new Date(`${slotDate}T12:00:00.000Z`);
+  return displayDate.toLocaleDateString("ru-RU", {
+    timeZone: "UTC",
+    day: "numeric",
+    month: "long",
+    ...(displayDate.getUTCFullYear() !== now.getFullYear() ? { year: "numeric" } : {})
   });
 }
 
@@ -65,7 +123,7 @@ function buildSlotLabels(settings: ChannelPublishSettings | null | undefined): s
 function formatPublicationStatus(status: ChannelPublication["status"]): string {
   switch (status) {
     case "queued":
-      return "В очереди";
+      return "Ожидает";
     case "uploading":
       return "Загрузка";
     case "scheduled":
@@ -83,11 +141,73 @@ function formatPublicationStatus(status: ChannelPublication["status"]): string {
   }
 }
 
+function getPublicationStatusTone(status: ChannelPublication["status"]): PublicationStatusTone {
+  switch (status) {
+    case "queued":
+      return "queued";
+    case "uploading":
+      return "running";
+    case "scheduled":
+      return "scheduled";
+    case "published":
+      return "published";
+    case "failed":
+      return "error";
+    case "paused":
+      return "paused";
+    default:
+      return "muted";
+  }
+}
+
 function splitTags(value: string): string[] {
   return value
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function sortPublicationsForPlanner(
+  publications: ChannelPublication[],
+  todayKey: string
+): ChannelPublication[] {
+  return [...publications].sort((left, right) => {
+    const leftFuture = left.slotDate >= todayKey;
+    const rightFuture = right.slotDate >= todayKey;
+    if (leftFuture !== rightFuture) {
+      return leftFuture ? -1 : 1;
+    }
+
+    const leftTimestamp = new Date(left.scheduledAt).getTime();
+    const rightTimestamp = new Date(right.scheduledAt).getTime();
+    if (leftFuture) {
+      return leftTimestamp - rightTimestamp;
+    }
+    return rightTimestamp - leftTimestamp;
+  });
+}
+
+function buildPublicationDayGroups(
+  publications: ChannelPublication[],
+  timeZone: string
+): PublicationDayGroup[] {
+  const todayKey = formatDateKey(new Date(), timeZone);
+  const groups = new Map<string, PublicationDayGroup>();
+
+  sortPublicationsForPlanner(publications, todayKey).forEach((publication) => {
+    const existing = groups.get(publication.slotDate);
+    if (existing) {
+      existing.items.push(publication);
+      return;
+    }
+    groups.set(publication.slotDate, {
+      id: publication.slotDate,
+      label: formatSlotDateLabel(publication.slotDate, timeZone),
+      items: [publication]
+    });
+  });
+
+  return Array.from(groups.values());
 }
 
 export function PublishingPlanner({
@@ -99,9 +219,11 @@ export function PublishingPlanner({
   loading,
   onSavePublication,
   onRunAction,
+  onShiftPublication,
   onOpenPublishingSettings
 }: PublishingPlannerProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<{
     title: string;
@@ -111,21 +233,15 @@ export function PublishingPlanner({
     slotIndex: number;
   } | null>(null);
 
+  const timeZone = settings?.timezone ?? "Europe/Moscow";
   const slotLabels = useMemo(() => buildSlotLabels(settings), [settings]);
-  const todayKey = formatDateKey(new Date());
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowKey = formatDateKey(tomorrow);
-  const grouped = useMemo(
-    () => ({
-      today: publications.filter((item) => item.slotDate === todayKey),
-      tomorrow: publications.filter((item) => item.slotDate === tomorrowKey),
-      later: publications.filter((item) => item.slotDate !== todayKey && item.slotDate !== tomorrowKey)
-    }),
-    [publications, todayKey, tomorrowKey]
+  const dayGroups = useMemo(
+    () => buildPublicationDayGroups(publications, timeZone),
+    [publications, timeZone]
   );
 
   const startEdit = (publication: ChannelPublication) => {
+    setExpandedId(publication.id);
     setEditingId(publication.id);
     setDraft({
       title: publication.title,
@@ -134,6 +250,11 @@ export function PublishingPlanner({
       slotDate: publication.slotDate,
       slotIndex: publication.slotIndex
     });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraft(null);
   };
 
   const saveEdit = async (publicationId: string) => {
@@ -149,8 +270,7 @@ export function PublishingPlanner({
         slotDate: draft.slotDate,
         slotIndex: draft.slotIndex
       });
-      setEditingId(null);
-      setDraft(null);
+      cancelEdit();
     } finally {
       setBusyKey(null);
     }
@@ -168,44 +288,105 @@ export function PublishingPlanner({
     }
   };
 
+  const runShift = async (
+    publicationId: string,
+    move: {
+      axis: PublicationShiftAxis;
+      direction: PublicationShiftDirection;
+    }
+  ) => {
+    setBusyKey(`shift:${publicationId}:${move.axis}:${move.direction}`);
+    try {
+      await onShiftPublication(publicationId, move);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const renderPublicationCard = (publication: ChannelPublication) => {
     const isEditing = editingId === publication.id && draft;
+    const isExpanded = expandedId === publication.id || Boolean(isEditing);
+    const statusTone = getPublicationStatusTone(publication.status);
+    const isMovable =
+      publication.status !== "published" &&
+      publication.status !== "canceled";
+    const slotLabel =
+      slotLabels[publication.slotIndex] ?? formatScheduledTime(publication.scheduledAt, timeZone);
+    const compactDescription = publication.description.trim();
+
     return (
       <article
         key={publication.id}
-        className={`publishing-card ${activeChatId === publication.chatId ? "active-chat" : ""}`}
+        className={`publishing-card status-${statusTone} ${activeChatId === publication.chatId ? "active-chat" : ""}`}
       >
         <div className="publishing-card-head">
-          <div>
-            <div className="publishing-card-title-row">
-              <strong>{publication.chatTitle || publication.title}</strong>
-              {publication.needsReview ? <span className="badge muted">needs review</span> : null}
-              {activeChatId === publication.chatId ? <span className="badge">текущий чат</span> : null}
+          <div className="publishing-card-main">
+            <div className="publishing-card-pill-row">
+              <span className="publishing-slot-pill">{slotLabel}</span>
+              <span className={`publishing-status-pill tone-${statusTone}`}>
+                {formatPublicationStatus(publication.status)}
+              </span>
+              {publication.needsReview ? (
+                <span className="publishing-status-pill tone-muted">Нужна проверка</span>
+              ) : null}
+              {activeChatId === publication.chatId ? (
+                <span className="publishing-status-pill tone-muted">Текущий чат</span>
+              ) : null}
             </div>
-            <p className="subtle-text">
-              {formatSlotTime(publication.scheduledAt)} · {formatPublicationStatus(publication.status)}
+            <strong className="publishing-card-chat-title">
+              {publication.chatTitle || publication.title}
+            </strong>
+            {publication.title && publication.title !== publication.chatTitle ? (
+              <p className="publishing-card-primary-line">{publication.title}</p>
+            ) : null}
+            <p className="subtle-text publishing-card-meta-line">
+              {formatScheduledMoment(publication.scheduledAt, timeZone)}
             </p>
           </div>
-          <div className="publishing-card-links">
+
+          <div className="publishing-card-top-actions">
             {publication.youtubeVideoUrl ? (
-              <a href={publication.youtubeVideoUrl} target="_blank" rel="noreferrer" className="btn btn-ghost">
+              <a
+                href={publication.youtubeVideoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-ghost"
+              >
                 YouTube
               </a>
             ) : null}
             <button
               type="button"
               className="btn btn-ghost"
-              onClick={() => (isEditing ? (setEditingId(null), setDraft(null)) : startEdit(publication))}
+              onClick={() =>
+                setExpandedId((current) => (current === publication.id ? null : publication.id))
+              }
             >
-              {isEditing ? "Свернуть" : "Редактировать"}
+              {isExpanded ? "Скрыть" : "Show more"}
             </button>
+            {publication.status !== "published" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() =>
+                  isEditing ? cancelEdit() : startEdit(publication)
+                }
+              >
+                {isEditing ? "Закрыть редактор" : "Редактировать"}
+              </button>
+            ) : null}
           </div>
         </div>
 
-        {!isEditing ? (
-          <>
-            <p className="publishing-card-primary-line">{publication.title}</p>
-            {publication.description ? <p className="subtle-text publishing-card-description">{publication.description}</p> : null}
+        {isExpanded && !isEditing ? (
+          <div className="publishing-card-details">
+            {compactDescription ? (
+              <p className="publishing-card-description">{compactDescription}</p>
+            ) : (
+              <p className="subtle-text publishing-card-description">
+                Описание пока пустое.
+              </p>
+            )}
             {publication.tags.length > 0 ? (
               <div className="publishing-tag-row">
                 {publication.tags.map((tag) => (
@@ -215,32 +396,46 @@ export function PublishingPlanner({
                 ))}
               </div>
             ) : null}
-          </>
-        ) : (
+          </div>
+        ) : null}
+
+        {isEditing ? (
           <div className="field-stack publishing-edit-form">
             <label className="field-stack">
-              <span className="field-label">Title</span>
+              <span className="field-label">Заголовок</span>
               <input
                 className="text-input"
                 value={draft.title}
-                onChange={(event) => setDraft((current) => current ? { ...current, title: event.target.value } : current)}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current ? { ...current, title: event.target.value } : current
+                  )
+                }
               />
             </label>
             <label className="field-stack">
-              <span className="field-label">Description</span>
+              <span className="field-label">Описание</span>
               <textarea
                 className="text-area"
-                rows={5}
+                rows={4}
                 value={draft.description}
-                onChange={(event) => setDraft((current) => current ? { ...current, description: event.target.value } : current)}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current ? { ...current, description: event.target.value } : current
+                  )
+                }
               />
             </label>
             <label className="field-stack">
-              <span className="field-label">Tags</span>
+              <span className="field-label">Теги</span>
               <input
                 className="text-input"
                 value={draft.tags}
-                onChange={(event) => setDraft((current) => current ? { ...current, tags: event.target.value } : current)}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current ? { ...current, tags: event.target.value } : current
+                  )
+                }
                 placeholder="tag1, tag2, tag3"
               />
             </label>
@@ -251,7 +446,11 @@ export function PublishingPlanner({
                   className="text-input"
                   type="date"
                   value={draft.slotDate}
-                  onChange={(event) => setDraft((current) => current ? { ...current, slotDate: event.target.value } : current)}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current ? { ...current, slotDate: event.target.value } : current
+                    )
+                  }
                 />
               </label>
               <label className="field-stack">
@@ -262,7 +461,10 @@ export function PublishingPlanner({
                   onChange={(event) =>
                     setDraft((current) =>
                       current
-                        ? { ...current, slotIndex: Number.parseInt(event.target.value || "0", 10) }
+                        ? {
+                            ...current,
+                            slotIndex: Number.parseInt(event.target.value || "0", 10)
+                          }
                         : current
                     )
                   }
@@ -286,38 +488,116 @@ export function PublishingPlanner({
               >
                 Сохранить
               </button>
+              <button type="button" className="btn btn-ghost" onClick={cancelEdit}>
+                Отмена
+              </button>
             </div>
           </div>
-        )}
+        ) : null}
 
-        <div className="control-actions publishing-card-actions">
-          {publication.status === "paused" ? (
-            <button type="button" className="btn btn-secondary" disabled={busyKey === `resume:${publication.id}`} onClick={() => void runAction(publication.id, "resume")}>
-              Возобновить
-            </button>
-          ) : publication.status !== "published" ? (
-            <button type="button" className="btn btn-ghost" disabled={busyKey === `pause:${publication.id}`} onClick={() => void runAction(publication.id, "pause")}>
-              Пауза
-            </button>
+        <div className="publishing-card-footer">
+          {isMovable ? (
+            <div className="publishing-quick-move-row">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyKey === `shift:${publication.id}:slot:prev`}
+                onClick={() => {
+                  void runShift(publication.id, { axis: "slot", direction: "prev" });
+                }}
+              >
+                - слот
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyKey === `shift:${publication.id}:slot:next`}
+                onClick={() => {
+                  void runShift(publication.id, { axis: "slot", direction: "next" });
+                }}
+              >
+                + слот
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyKey === `shift:${publication.id}:day:prev`}
+                onClick={() => {
+                  void runShift(publication.id, { axis: "day", direction: "prev" });
+                }}
+              >
+                - день
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyKey === `shift:${publication.id}:day:next`}
+                onClick={() => {
+                  void runShift(publication.id, { axis: "day", direction: "next" });
+                }}
+              >
+                + день
+              </button>
+            </div>
           ) : null}
-          {publication.status === "failed" ? (
-            <button type="button" className="btn btn-secondary" disabled={busyKey === `retry:${publication.id}`} onClick={() => void runAction(publication.id, "retry")}>
-              Retry
-            </button>
-          ) : null}
-          {publication.status !== "published" && publication.status !== "canceled" ? (
-            <button type="button" className="btn btn-secondary" disabled={busyKey === `publish-now:${publication.id}`} onClick={() => void runAction(publication.id, "publish-now")}>
-              Publish now
-            </button>
-          ) : null}
-          {publication.status !== "published" ? (
-            <button type="button" className="btn btn-ghost" disabled={busyKey === `delete:${publication.id}`} onClick={() => void runAction(publication.id, "delete")}>
-              Удалить
-            </button>
-          ) : null}
+
+          <div className="publishing-card-actions">
+            {publication.status === "paused" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busyKey === `resume:${publication.id}`}
+                onClick={() => void runAction(publication.id, "resume")}
+              >
+                Возобновить
+              </button>
+            ) : publication.status !== "published" ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyKey === `pause:${publication.id}`}
+                onClick={() => void runAction(publication.id, "pause")}
+              >
+                Пауза
+              </button>
+            ) : null}
+            {publication.status === "failed" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busyKey === `retry:${publication.id}`}
+                onClick={() => void runAction(publication.id, "retry")}
+              >
+                Retry
+              </button>
+            ) : null}
+            {publication.status !== "published" &&
+            publication.status !== "canceled" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busyKey === `publish-now:${publication.id}`}
+                onClick={() => void runAction(publication.id, "publish-now")}
+              >
+                Publish now
+              </button>
+            ) : null}
+            {publication.status !== "published" ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busyKey === `delete:${publication.id}`}
+                onClick={() => void runAction(publication.id, "delete")}
+              >
+                Удалить
+              </button>
+            ) : null}
+          </div>
         </div>
 
-        {publication.lastError ? <p className="danger-text subtle-text">{publication.lastError}</p> : null}
+        {publication.lastError ? (
+          <p className="danger-text subtle-text">{publication.lastError}</p>
+        ) : null}
       </article>
     );
   };
@@ -329,11 +609,16 @@ export function PublishingPlanner({
           <p className="kicker">Publishing</p>
           <h3>{channelName ? `План публикаций для ${channelName}` : "План публикаций"}</h3>
           <p className="subtle-text">
-            Слоты считаются по {settings?.timezone ?? "Europe/Moscow"} и автоматически забирают новые render-экспорты.
+            Дни и слоты считаются по {timeZone}. Карточки стали компактнее, а быстрые
+            переносы работают прямо из списка.
           </p>
         </div>
         <div className="control-actions">
-          <button type="button" className="btn btn-secondary" onClick={onOpenPublishingSettings}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onOpenPublishingSettings}
+          >
             Настроить канал
           </button>
         </div>
@@ -347,38 +632,49 @@ export function PublishingPlanner({
 
       {loading ? <p className="subtle-text">Загружаем очередь публикаций…</p> : null}
 
-      <div className="publishing-slot-summary">
-        {slotLabels.map((slot) => (
-          <span key={slot} className="meta-pill">
-            {slot}
-          </span>
-        ))}
-      </div>
+      {!loading && dayGroups.length > 0 ? (
+        <div className="publishing-day-list">
+          {dayGroups.map((group) => {
+            const itemsBySlot = new Map(group.items.map((item) => [item.slotIndex, item]));
+            return (
+              <section key={group.id} className="publishing-day-group">
+                <div className="publishing-day-head">
+                  <div>
+                    <h4>{group.label}</h4>
+                    <p className="subtle-text">
+                      {group.items.length} ролик{group.items.length === 1 ? "" : group.items.length < 5 ? "а" : "ов"}
+                    </p>
+                  </div>
+                  <div className="publishing-day-slots" aria-label={`Слоты на ${group.label}`}>
+                    {slotLabels.map((label, slotIndex) => {
+                      const slotItem = itemsBySlot.get(slotIndex) ?? null;
+                      return (
+                        <span
+                          key={`${group.id}:${label}`}
+                          className={`publishing-day-slot ${slotItem ? `tone-${getPublicationStatusTone(slotItem.status)}` : "tone-empty"}`}
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
 
-      {grouped.today.length > 0 ? (
-        <div className="publishing-group">
-          <h4>Сегодня</h4>
-          <div className="publishing-card-list">{grouped.today.map(renderPublicationCard)}</div>
-        </div>
-      ) : null}
-
-      {grouped.tomorrow.length > 0 ? (
-        <div className="publishing-group">
-          <h4>Завтра</h4>
-          <div className="publishing-card-list">{grouped.tomorrow.map(renderPublicationCard)}</div>
-        </div>
-      ) : null}
-
-      {grouped.later.length > 0 ? (
-        <div className="publishing-group">
-          <h4>Позже</h4>
-          <div className="publishing-card-list">{grouped.later.map(renderPublicationCard)}</div>
+                <div className="publishing-card-list">
+                  {group.items.map(renderPublicationCard)}
+                </div>
+              </section>
+            );
+          })}
         </div>
       ) : null}
 
       {!loading && publications.length === 0 ? (
         <div className="publishing-empty-state">
-          <p>Пока нет queued видео. После первого успешного render они появятся здесь автоматически.</p>
+          <p>
+            Пока нет queued видео. После первого успешного render они появятся здесь
+            автоматически.
+          </p>
         </div>
       ) : null}
     </section>

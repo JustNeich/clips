@@ -6155,6 +6155,16 @@ test("regenerate runs persist baseRunId and use lightweight progress stages", { 
 
 test("quick regenerate result preserves base shortlist structure and only rewrites visible options", () => {
   const baseStage2 = makeRuntimeStage2Response("run_base_quick", "base");
+  const liveStyleProfile = normalizeStage2StyleProfile(undefined);
+  const liveEditorialMemory = {
+    ...createEmptyStage2EditorialMemorySummary(liveStyleProfile),
+    recentFeedbackCount: 3,
+    recentSelectionCount: 2,
+    activeHardRuleCount: 1,
+    promptSummary: "Recent explicit feedback: keep the dryer tone and avoid grandstanding.",
+    recentNotes: ["keep the dryer tone"],
+    hardRuleNotes: ["avoid grandstanding"]
+  };
   const channelConstraints: Stage2HardConstraints = {
     topLengthMin: 5,
     topLengthMax: 120,
@@ -6349,7 +6359,9 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
       id: "channel_quick",
       name: "Quick Channel",
       username: "quick_channel",
-      stage2HardConstraints: channelConstraints
+      stage2HardConstraints: channelConstraints,
+      stage2StyleProfile: liveStyleProfile,
+      editorialMemory: liveEditorialMemory
     },
     userInstruction: "make it shorter and sneak in one dry joke"
   });
@@ -6363,7 +6375,9 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
       id: "channel_quick",
       name: "Quick Channel",
       username: "quick_channel",
-      stage2HardConstraints: channelConstraints
+      stage2HardConstraints: channelConstraints,
+      stage2StyleProfile: liveStyleProfile,
+      editorialMemory: liveEditorialMemory
     },
     userInstruction: "make it shorter and sneak in one dry joke",
     promptText,
@@ -6417,6 +6431,8 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
   assert.match(promptText, /Remove stock tails like 'the reaction basically writes itself'/i);
   assert.match(promptText, /"retrieval":/);
   assert.match(promptText, /"analysis":/);
+  assert.match(promptText, /"channelLearning":/);
+  assert.match(promptText, /keep the dryer tone/i);
   assert.ok(
     result.diagnostics?.effectivePrompting.promptStages.some((stage) => stage.stageId === "regenerate")
   );
@@ -6427,6 +6443,14 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
   assert.deepEqual(regenerateStage?.inputManifest?.comments?.passedCommentIds, ["quick-1"]);
   assert.equal(regenerateStage?.inputManifest?.examples?.passedCount, 1);
   assert.deepEqual(regenerateStage?.inputManifest?.examples?.passedExampleIds, ["example_1"]);
+  assert.equal(regenerateStage?.inputManifest?.channelLearning?.recentFeedbackCount, 3);
+  assert.match(regenerateStage?.inputManifest?.channelLearning?.promptSummary ?? "", /keep the dryer tone/i);
+  assert.equal(result.diagnostics?.channel.editorialMemory?.recentFeedbackCount, 3);
+  assert.match(result.diagnostics?.channel.editorialMemory?.promptSummary ?? "", /keep the dryer tone/i);
+  assert.match(
+    result.warnings.map((warning) => warning.message).join(" "),
+    /latest channel feedback collected after the base run/i
+  );
   assert.equal(pipeline.mode, "regenerate");
 });
 

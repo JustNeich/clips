@@ -144,6 +144,30 @@ function formatFeedbackNoteModeHelp(mode: ChannelEditorialFeedbackNoteMode): str
   return "Базовый режим: мягко влияет на будущие варианты и живёт внутри окна последних 30 реакций.";
 }
 
+function formatRussianCount(
+  count: number,
+  one: string,
+  few: string,
+  many: string
+): string {
+  const abs = Math.abs(count) % 100;
+  const modTen = abs % 10;
+  if (abs > 10 && abs < 20) {
+    return many;
+  }
+  if (modTen === 1) {
+    return one;
+  }
+  if (modTen >= 2 && modTen <= 4) {
+    return few;
+  }
+  return many;
+}
+
+function formatReactionCountLabel(count: number): string {
+  return `${count} ${formatRussianCount(count, "реакция", "реакции", "реакций")}`;
+}
+
 function getFeedbackHistorySnippet(
   event: ChannelFeedbackResponse["historyEvents"][number]
 ): string {
@@ -1186,6 +1210,47 @@ export function Step2PickCaption({
   }, [selectedTitleOption, stage2]);
   const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
   const commentsAcquisitionLabel = formatCommentsAcquisitionLabel(stage2?.source ?? null);
+  const pendingFeedbackSinceVisibleRun = useMemo(() => {
+    if (!stage2 || feedbackHistory.length === 0) {
+      return [];
+    }
+    const baselineValue = stageCreatedAt ?? stage2.stage2Run?.createdAt ?? null;
+    const baselineTs = baselineValue ? Date.parse(baselineValue) : Number.NaN;
+    if (!Number.isFinite(baselineTs)) {
+      return [];
+    }
+    return feedbackHistory.filter((event) => {
+      const createdAtTs = Date.parse(event.createdAt);
+      return Number.isFinite(createdAtTs) && createdAtTs > baselineTs;
+    });
+  }, [feedbackHistory, stage2, stageCreatedAt]);
+  const pendingFeedbackSummary = useMemo(() => {
+    if (pendingFeedbackSinceVisibleRun.length === 0) {
+      return null;
+    }
+    const positiveCount = pendingFeedbackSinceVisibleRun.filter(
+      (event) => event.kind === "more_like_this"
+    ).length;
+    const negativeCount = pendingFeedbackSinceVisibleRun.filter(
+      (event) => event.kind === "less_like_this"
+    ).length;
+    const noteCount = pendingFeedbackSinceVisibleRun.filter(
+      (event) => Boolean(event.note?.trim())
+    ).length;
+    const countLabel = formatReactionCountLabel(pendingFeedbackSinceVisibleRun.length);
+    const noteLabel =
+      noteCount > 0
+        ? ` · ${noteCount} ${formatRussianCount(noteCount, "с заметкой", "с заметками", "с заметками")}`
+        : "";
+    return {
+      count: pendingFeedbackSinceVisibleRun.length,
+      badgeLabel: `+${pendingFeedbackSinceVisibleRun.length}`,
+      title: `Новые реакции: ${countLabel}`,
+      detail:
+        `Новые редакторские сигналы с последнего запуска: ${countLabel} (${positiveCount} 👍 / ${negativeCount} 👎)` +
+        `${noteLabel}. Быстрая перегенерация и полный прогон Stage 2 учтут их в следующем запуске.`
+    };
+  }, [pendingFeedbackSinceVisibleRun]);
   const visibleProgress = progress ?? stage2?.progress ?? null;
   const activeProgressStep = useMemo(() => {
     if (!visibleProgress) {
@@ -1344,6 +1409,12 @@ export function Step2PickCaption({
               placeholder="Например: сделай короче, добавь одну сухую шутку, избегай сленга."
             />
             <p className="subtle-text">Используйте это, если модель неверно поняла контекст или тон.</p>
+            {pendingFeedbackSummary ? (
+              <div className="stage2-feedback-delta" aria-live="polite">
+                <span className="stage2-feedback-delta-badge">{pendingFeedbackSummary.title}</span>
+                <span className="subtle-text">{pendingFeedbackSummary.detail}</span>
+              </div>
+            ) : null}
             <div className="control-actions">
               <button
                 type="button"
@@ -1357,7 +1428,14 @@ export function Step2PickCaption({
                     : undefined
                 }
               >
-                {isLaunching ? "Запускаем..." : "Перегенерировать варианты"}
+                <span className="btn-inline-content">
+                  <span>{isLaunching ? "Запускаем..." : "Перегенерировать варианты"}</span>
+                  {pendingFeedbackSummary && !isLaunching ? (
+                    <span className="stage2-feedback-button-badge" aria-hidden="true">
+                      {pendingFeedbackSummary.badgeLabel}
+                    </span>
+                  ) : null}
+                </span>
               </button>
               <button
                 type="button"
@@ -1367,7 +1445,14 @@ export function Step2PickCaption({
                 aria-busy={isLaunching}
                 title={!canRunStage2 && !isAttachedStage2Run ? runBlockedReason ?? undefined : undefined}
               >
-                {isLaunching ? "Запускаем..." : "Полный прогон Stage 2"}
+                <span className="btn-inline-content">
+                  <span>{isLaunching ? "Запускаем..." : "Полный прогон Stage 2"}</span>
+                  {pendingFeedbackSummary && !isLaunching ? (
+                    <span className="stage2-feedback-button-badge" aria-hidden="true">
+                      {pendingFeedbackSummary.badgeLabel}
+                    </span>
+                  ) : null}
+                </span>
               </button>
             </div>
             <p className="subtle-text">

@@ -5269,6 +5269,38 @@ export default function HomePage() {
     }
   }, [activeChannelId, parseError, refreshChannelPublications, refreshChats]);
 
+  const handleShiftPublication = useCallback(async (
+    publicationId: string,
+    move: {
+      axis: "slot" | "day";
+      direction: "prev" | "next";
+    }
+  ): Promise<void> => {
+    const response = await fetch(`/api/publications/${publicationId}/shift`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(move)
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось перенести публикацию."));
+    }
+    const body = (await response.json()) as { mode?: "moved" | "swapped" };
+    if (activeChannelId) {
+      await Promise.all([refreshChannelPublications(activeChannelId), refreshChats()]);
+    }
+    setStatusType("ok");
+    setStatus(
+      body.mode === "swapped"
+        ? "Публикации переставлены местами."
+        : "Слот публикации обновлён."
+    );
+  }, [
+    activeChannelId,
+    parseError,
+    refreshChannelPublications,
+    refreshChats
+  ]);
+
   const handleSaveWorkspaceStage2Defaults = async (
     patch: Partial<{
       stage2ExamplesCorpusJson: string;
@@ -5793,6 +5825,7 @@ export default function HomePage() {
               loading={isChannelPublicationsLoading}
               onSavePublication={handleSavePublication}
               onRunAction={handlePublicationAction}
+              onShiftPublication={handleShiftPublication}
               onOpenPublishingSettings={() => openChannelManagerTab("publishing")}
             />
           </div>

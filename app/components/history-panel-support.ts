@@ -43,6 +43,10 @@ function getHistoryTimestamp(value: string): number {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+export function getHistoryGroupingValue(item: ChatListItem): string {
+  return item.publication?.scheduledAt ?? item.updatedAt;
+}
+
 export function isWorkingHistoryStatus(status: ChatWorkflowStatus): boolean {
   return WORKING_STATUSES.has(status);
 }
@@ -57,6 +61,20 @@ export function compareHistoryItemsByMeaningfulUpdate(left: ChatListItem, right:
 
 export function sortHistoryItemsByMeaningfulUpdate(items: ChatListItem[]): ChatListItem[] {
   return [...items].sort(compareHistoryItemsByMeaningfulUpdate);
+}
+
+export function compareHistoryItemsByPublishingMoment(left: ChatListItem, right: ChatListItem): number {
+  const timestampDelta =
+    getHistoryTimestamp(getHistoryGroupingValue(right)) -
+    getHistoryTimestamp(getHistoryGroupingValue(left));
+  if (timestampDelta !== 0) {
+    return timestampDelta;
+  }
+  return compareHistoryItemsByMeaningfulUpdate(left, right);
+}
+
+export function sortHistoryItemsByPublishingMoment(items: ChatListItem[]): ChatListItem[] {
+  return [...items].sort(compareHistoryItemsByPublishingMoment);
 }
 
 function buildHistoryDayKey(value: string): string {
@@ -94,8 +112,9 @@ export function formatHistoryDayLabel(value: string, now = new Date()): string {
 export function groupHistoryItemsByDay(items: ChatListItem[], now = new Date()): HistoryDayGroup[] {
   const groups = new Map<string, HistoryDayGroup>();
 
-  sortHistoryItemsByMeaningfulUpdate(items).forEach((item) => {
-    const key = buildHistoryDayKey(item.updatedAt);
+  sortHistoryItemsByPublishingMoment(items).forEach((item) => {
+    const groupingValue = getHistoryGroupingValue(item);
+    const key = buildHistoryDayKey(groupingValue);
     const existing = groups.get(key);
     if (existing) {
       existing.items.push(item);
@@ -103,7 +122,7 @@ export function groupHistoryItemsByDay(items: ChatListItem[], now = new Date()):
     }
     groups.set(key, {
       id: key,
-      label: formatHistoryDayLabel(item.updatedAt, now),
+      label: formatHistoryDayLabel(groupingValue, now),
       items: [item]
     });
   });

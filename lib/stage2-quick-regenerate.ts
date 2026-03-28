@@ -3,8 +3,11 @@ import type { Stage2HardConstraints } from "./stage2-channel-config";
 import { validateStage2Output } from "./stage2-output-validation";
 import { buildStage2Spec } from "./stage2-spec";
 import {
-  createEmptyStage2EditorialMemorySummary,
-  DEFAULT_STAGE2_STYLE_PROFILE
+  buildStage2LearningPromptContext,
+  normalizeStage2EditorialMemorySummary,
+  normalizeStage2StyleProfile,
+  type Stage2EditorialMemorySummary,
+  type Stage2StyleProfile
 } from "./stage2-channel-learning";
 import type { JsonStageExecutor } from "./viral-shorts-worker/executor";
 import {
@@ -126,6 +129,15 @@ type QuickRegenerateBaseOption = {
   explorationMode: "aligned" | "exploratory";
 };
 
+type QuickRegenerateChannelContext = {
+  id: string;
+  name: string;
+  username: string;
+  stage2HardConstraints: Stage2HardConstraints;
+  stage2StyleProfile?: Stage2StyleProfile;
+  editorialMemory?: Stage2EditorialMemorySummary;
+};
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
@@ -211,16 +223,16 @@ function buildBaseOptions(stage2: Stage2Response): QuickRegenerateBaseOption[] {
 
 function buildQuickRegeneratePromptPayload(
   stage2: Stage2Response,
-  channel: {
-    id: string;
-    name: string;
-    username: string;
-    stage2HardConstraints: Stage2HardConstraints;
-  },
+  channel: QuickRegenerateChannelContext,
   baseOptions: QuickRegenerateBaseOption[],
   userInstruction: string | null
 ): Stage2RegenerateBaseSnapshot {
   const selectorOutput = buildFallbackSelectorOutput(stage2, baseOptions);
+  const channelLearning = buildStage2LearningPromptContext({
+    profile: channel.stage2StyleProfile,
+    editorialMemory: channel.editorialMemory,
+    detail: "minimal"
+  });
   return {
     channel: {
       id: channel.id,
@@ -228,6 +240,7 @@ function buildQuickRegeneratePromptPayload(
       username: channel.username,
       constraints: channel.stage2HardConstraints
     },
+    channelLearning,
     source: {
       url: stage2.source.url,
       title: stage2.source.title,
@@ -278,12 +291,7 @@ function buildQuickRegeneratePromptPayload(
 
 export function buildQuickRegeneratePrompt(input: {
   stage2: Stage2Response;
-  channel: {
-    id: string;
-    name: string;
-    username: string;
-    stage2HardConstraints: Stage2HardConstraints;
-  };
+  channel: QuickRegenerateChannelContext;
   userInstruction: string | null;
 }): string {
   const baseOptions = buildBaseOptions(input.stage2);
@@ -307,6 +315,7 @@ export function buildQuickRegeneratePrompt(input: {
 
 function buildQuickPromptStageDiagnostics(input: {
   baseResult: Stage2Response;
+  channel: QuickRegenerateChannelContext;
   promptText: string;
   reasoningEffort: string | null;
   includePromptText?: boolean;
@@ -315,6 +324,11 @@ function buildQuickPromptStageDiagnostics(input: {
   const passedQuickComments = input.baseResult.source.topComments.slice(0, 6);
   const selectedQuickExamples = (input.baseResult.diagnostics?.examples?.selectedExamples ?? []).slice(0, 4);
   const availablePromptPoolCount = input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0;
+  const channelLearning = buildStage2LearningPromptContext({
+    profile: input.channel.stage2StyleProfile,
+    editorialMemory: input.channel.editorialMemory,
+    detail: "minimal"
+  });
   return {
     stageId: "regenerate",
     label: "Quick regenerate",
@@ -371,17 +385,17 @@ function buildQuickPromptStageDiagnostics(input: {
       },
       channelLearning: {
         detail: "minimal",
-        selectedDirectionCount:
-          input.baseResult.diagnostics?.channel?.styleProfile?.selectedDirectionIds?.length ?? 0,
-        highlightedDirectionIds:
-          input.baseResult.diagnostics?.channel?.styleProfile?.selectedDirectionIds?.slice(0, 4) ?? [],
+        selectedDirectionCount: channelLearning.bootstrap.selectedDirectionCount,
+        highlightedDirectionIds: channelLearning.bootstrap.directionHighlights
+          .map((direction) => direction.id)
+          .slice(0, 4),
         explorationShare:
-          input.baseResult.diagnostics?.channel?.editorialMemory?.explorationShare ??
-          input.baseResult.diagnostics?.channel?.styleProfile?.explorationShare ??
+          channelLearning.editorialMemory.normalizedAxes?.exploration ??
+          channelLearning.bootstrap.explorationShare ??
           null,
-        recentFeedbackCount: input.baseResult.diagnostics?.channel?.editorialMemory?.recentFeedbackCount ?? 0,
-        recentSelectionCount: input.baseResult.diagnostics?.channel?.editorialMemory?.recentSelectionCount ?? 0,
-        promptSummary: input.baseResult.diagnostics?.channel?.editorialMemory?.promptSummary ?? null
+        recentFeedbackCount: channelLearning.editorialMemory.recentFeedbackCount,
+        recentSelectionCount: channelLearning.editorialMemory.recentSelectionCount,
+        promptSummary: channelLearning.editorialMemory.promptSummary
       },
       candidates: {
         passedCount: visibleOptions.length,
@@ -400,19 +414,20 @@ function buildQuickPromptStageDiagnostics(input: {
 
 function buildQuickDiagnostics(input: {
   baseResult: Stage2Response;
-  channel: {
-    id: string;
-    name: string;
-    username: string;
-    stage2HardConstraints: Stage2HardConstraints;
-  };
+  channel: QuickRegenerateChannelContext;
   promptText: string;
   reasoningEffort: string | null;
   selectorOutput: SelectorOutput;
   debugMode: Stage2DebugMode;
 }): Stage2Diagnostics {
+  const channelStyleProfile = normalizeStage2StyleProfile(input.channel.stage2StyleProfile);
+  const editorialMemory = normalizeStage2EditorialMemorySummary(
+    input.channel.editorialMemory,
+    channelStyleProfile
+  );
   const syntheticPromptStage = buildQuickPromptStageDiagnostics({
     baseResult: input.baseResult,
+    channel: input.channel,
     promptText: input.promptText,
     reasoningEffort: input.reasoningEffort,
     includePromptText: false
@@ -425,7 +440,9 @@ function buildQuickDiagnostics(input: {
         channelId: input.channel.id,
         name: input.channel.name,
         username: input.channel.username,
-        hardConstraints: input.channel.stage2HardConstraints
+        hardConstraints: input.channel.stage2HardConstraints,
+        styleProfile: channelStyleProfile,
+        editorialMemory
       },
       selection: input.baseResult.diagnostics.selection ?? {
         ...input.selectorOutput,
@@ -474,17 +491,17 @@ function buildQuickDiagnostics(input: {
   }
 
   return {
-    channel: {
-      channelId: input.channel.id,
-      name: input.channel.name,
-      username: input.channel.username,
-      examplesSource: "workspace_default",
-      hardConstraints: input.channel.stage2HardConstraints,
-      styleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
-      editorialMemory: createEmptyStage2EditorialMemorySummary(DEFAULT_STAGE2_STYLE_PROFILE),
-      workspaceCorpusCount: 0,
-      activeCorpusCount: 0
-    },
+      channel: {
+        channelId: input.channel.id,
+        name: input.channel.name,
+        username: input.channel.username,
+        examplesSource: "workspace_default",
+        hardConstraints: input.channel.stage2HardConstraints,
+        styleProfile: channelStyleProfile,
+        editorialMemory,
+        workspaceCorpusCount: 0,
+        activeCorpusCount: 0
+      },
     selection: {
       clipType: input.selectorOutput.clipType,
       primaryAngle: input.selectorOutput.primaryAngle,
@@ -589,12 +606,7 @@ export function buildQuickRegenerateResult(input: {
   mode: "regenerate";
   baseRunId: string;
   baseResult: Stage2Response;
-  channel: {
-    id: string;
-    name: string;
-    username: string;
-    stage2HardConstraints: Stage2HardConstraints;
-  };
+  channel: QuickRegenerateChannelContext;
   userInstruction: string | null;
   promptText: string;
   reasoningEffort: string | null;
@@ -608,12 +620,29 @@ export function buildQuickRegenerateResult(input: {
 } {
   const baseOptions = buildBaseOptions(input.baseResult);
   const rawEntries = sanitizeModelEntries(input.rawOutput);
+  const currentEditorialMemory = normalizeStage2EditorialMemorySummary(
+    input.channel.editorialMemory,
+    input.channel.stage2StyleProfile
+  );
+  const baseEditorialMemory = normalizeStage2EditorialMemorySummary(
+    input.baseResult.diagnostics?.channel?.editorialMemory,
+    input.baseResult.diagnostics?.channel?.styleProfile
+  );
   const warnings: Stage2Response["warnings"] = [
     {
       field: "regenerate",
       message: "Quick regenerate reused analyzer/selector/examples from the saved base run."
     }
   ];
+  if (
+    currentEditorialMemory.recentFeedbackCount > baseEditorialMemory.recentFeedbackCount ||
+    currentEditorialMemory.activeHardRuleCount > baseEditorialMemory.activeHardRuleCount
+  ) {
+    warnings.push({
+      field: "regenerate",
+      message: "Quick regenerate also applied the latest channel feedback collected after the base run."
+    });
+  }
   if (input.baseResult.seo) {
     warnings.push({
       field: "seo",
@@ -860,12 +889,7 @@ export function buildQuickRegenerateResult(input: {
 
 export async function runQuickRegenerateModel(input: {
   stage2: Stage2Response;
-  channel: {
-    id: string;
-    name: string;
-    username: string;
-    stage2HardConstraints: Stage2HardConstraints;
-  };
+  channel: QuickRegenerateChannelContext;
   userInstruction: string | null;
   executor: JsonStageExecutor;
   reasoningEffort: string | null;

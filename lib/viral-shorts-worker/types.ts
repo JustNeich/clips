@@ -605,6 +605,22 @@ export type Stage2RegenerateBaseSnapshot = {
     username: string;
     constraints: Stage2HardConstraints;
   };
+  channelLearning: {
+    bootstrap: Record<string, unknown>;
+    editorialMemory: {
+      recentFeedbackCount: number;
+      recentSelectionCount: number;
+      activeHardRuleCount: number;
+      promptSummary: string;
+      directionScores: Array<{ label: string; score: number }>;
+      angleScores: Array<{ label: string; score: number }>;
+      preferredTextCues: string[];
+      discouragedTextCues: string[];
+      hardRuleNotes: string[];
+      recentNotes: string[];
+      normalizedAxes?: Record<string, number>;
+    };
+  };
   source: {
     url: string;
     title: string;

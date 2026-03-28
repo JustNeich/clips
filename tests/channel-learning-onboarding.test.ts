@@ -1708,6 +1708,8 @@ test("Step2PickCaption renders Russian feedback controls for lighter editorial l
 
   assert.match(markup, /Лайкнуть вариант 1/);
   assert.match(markup, /Дизлайкнуть TOP варианта 1/);
+  assert.match(markup, /Новые реакции: 1 реакция/);
+  assert.match(markup, /Новые редакторские сигналы с последнего запуска: 1 реакция \(1 👍 \/ 0 👎\)/);
   assert.match(markup, /Последние реакции канала/);
   assert.match(markup, /Режим: Hard rule/);
   assert.match(markup, /Оставить этот сухой TOP/);

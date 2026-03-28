@@ -4,10 +4,8 @@ import React, { memo, ReactNode, useCallback, useEffect, useMemo, useRef, useSta
 import { sanitizeDisplayText } from "../../lib/ui-error";
 import type { ChatListItem, ChatWorkflowStatus, CodexDeviceAuth } from "./types";
 import {
-  buildHistorySections,
   getHistoryProgressBadge,
-  matchesHistoryFilter,
-  type HistoryFilter
+  groupHistoryItemsByDay
 } from "./history-panel-support";
 
 export { formatHistoryDayLabel, groupHistoryItemsByDay } from "./history-panel-support";
@@ -187,21 +185,40 @@ function formatHistoryLiveAction(liveAction: NonNullable<ChatListItem["liveActio
 function formatPublicationStatusLabel(status: NonNullable<ChatListItem["publication"]>["status"]): string {
   switch (status) {
     case "queued":
-      return "Queued";
+      return "Ожидает";
     case "uploading":
-      return "Uploading";
+      return "Загрузка";
     case "scheduled":
-      return "Scheduled";
+      return "Запланировано";
     case "published":
-      return "Published";
+      return "Опубликовано";
     case "failed":
-      return "Failed";
+      return "Ошибка";
     case "paused":
-      return "Paused";
+      return "На паузе";
     case "canceled":
-      return "Canceled";
+      return "Удалено";
     default:
       return status;
+  }
+}
+
+function getPublicationToneClass(status: NonNullable<ChatListItem["publication"]>["status"]): string {
+  switch (status) {
+    case "queued":
+      return "tone-queued";
+    case "uploading":
+      return "tone-running";
+    case "scheduled":
+      return "tone-scheduled";
+    case "published":
+      return "tone-published";
+    case "failed":
+      return "tone-error";
+    case "paused":
+      return "tone-paused";
+    default:
+      return "tone-muted";
   }
 }
 
@@ -222,6 +239,9 @@ const HistoryCard = memo(function HistoryCard({
       ? formatPublicationStatusLabel(item.publication.status)
       : formatHistoryStatusLabel(item.status);
   const progressBadge = getHistoryProgressBadge(item);
+  const publicationSlotTime = item.publication
+    ? formatHistoryTime(item.publication.scheduledAt)
+    : null;
   const handleOpen = useCallback(() => {
     onOpen(item.id);
   }, [item.id, onOpen]);
@@ -243,13 +263,22 @@ const HistoryCard = memo(function HistoryCard({
         <span className="history-row-main">
           <span className="history-title clamp-1">{item.title}</span>
           <span className="history-meta-line">
-            <span>Обновлён {formatHistoryTime(item.updatedAt)}</span>
+            <span>
+              {item.publication
+                ? `Слот ${publicationSlotTime}`
+                : `Обновлён ${formatHistoryTime(item.updatedAt)}`}
+            </span>
           </span>
           {item.exportTitle ? <span className="history-export-line">Экспорт: {item.exportTitle}</span> : null}
           {item.publication ? (
             <span className="history-publication-line">
-              Публикация: {formatPublicationStatusLabel(item.publication.status)} · {formatHistoryTime(item.publication.scheduledAt)}
-              {item.publication.needsReview ? " · needs review" : ""}
+              <span className={`history-publication-pill ${getPublicationToneClass(item.publication.status)}`}>
+                {formatPublicationStatusLabel(item.publication.status)}
+              </span>
+              <span className="history-slot-pill">{publicationSlotTime}</span>
+              {item.publication.needsReview ? (
+                <span className="history-publication-pill tone-muted">Нужна проверка</span>
+              ) : null}
             </span>
           ) : null}
         </span>
@@ -273,52 +302,36 @@ const HistoryCard = memo(function HistoryCard({
 });
 
 const HistoryPanel = memo(function HistoryPanel({
-  allItems,
   visibleItems,
   activeHistoryId,
-  recentHistoryIds,
-  filter,
   compact = false,
   emptyText,
   onOpen,
   onDelete
 }: {
-  allItems: ChatListItem[];
   visibleItems: ChatListItem[];
   activeHistoryId: string | null;
-  recentHistoryIds: string[];
-  filter: HistoryFilter;
   compact?: boolean;
   emptyText: string;
   onOpen: (id: string, step?: 1 | 2 | 3) => void;
   onDelete: (id: string) => void;
 }) {
-  const sections = useMemo(
-    () =>
-      buildHistorySections({
-        allItems,
-        visibleItems,
-        activeHistoryId,
-        recentHistoryIds,
-        filter
-      }),
-    [activeHistoryId, allItems, filter, recentHistoryIds, visibleItems]
-  );
+  const dayGroups = useMemo(() => groupHistoryItemsByDay(visibleItems), [visibleItems]);
 
-  if (sections.length === 0) {
+  if (dayGroups.length === 0) {
     return <p className="empty-box">{emptyText}</p>;
   }
 
   return (
     <div className={`history-panel ${compact ? "compact" : ""}`}>
-      {sections.map((section) => (
-        <section key={section.id} className="history-section">
+      {dayGroups.map((group) => (
+        <section key={group.id} className="history-section">
           <div className="history-section-head">
-            <h3>{section.title}</h3>
-            <span>{section.items.length}</span>
+            <h3>{group.label}</h3>
+            <span>{group.items.length}</span>
           </div>
           <ul className={`history-list ${compact ? "compact" : ""}`}>
-            {section.items.map((item) => {
+            {group.items.map((item) => {
               const active = item.id === activeHistoryId;
               return (
                 <li key={item.id} className="history-row">
@@ -387,16 +400,11 @@ export function AppShell({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyPinned, setHistoryPinned] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
-  const [recentHistoryIds, setRecentHistoryIds] = useState<string[]>([]);
   const [codexPanelOpen, setCodexPanelOpen] = useState(false);
   const [channelMenuOpen, setChannelMenuOpen] = useState(false);
   const historyPopoverRef = useRef<HTMLDivElement | null>(null);
   const channelMenuRef = useRef<HTMLDivElement | null>(null);
   const historyCloseTimerRef = useRef<number | null>(null);
-  const historyRecentStorageKey = activeChannelId
-    ? `clips:history-recents:${activeChannelId}`
-    : "clips:history-recents:all";
   const selectedChannel = useMemo(
     () => channels.find((channel) => channel.id === activeChannelId) ?? channels[0] ?? null,
     [activeChannelId, channels]
@@ -405,60 +413,24 @@ export function AppShell({
   const visibleHistoryItems = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
     return historyItems.filter((item) => {
-      if (!matchesHistoryFilter(item, historyFilter)) {
-        return false;
-      }
       if (!query) {
         return true;
       }
       const title = item.title.toLowerCase();
       const exportTitle = item.exportTitle?.toLowerCase() ?? "";
       const status = formatHistoryStatusLabel(item.status).toLowerCase();
+      const publicationStatus = item.publication
+        ? formatPublicationStatusLabel(item.publication.status).toLowerCase()
+        : "";
       return (
         title.includes(query) ||
         exportTitle.includes(query) ||
         item.url.toLowerCase().includes(query) ||
-        status.includes(query)
+        status.includes(query) ||
+        publicationStatus.includes(query)
       );
     });
-  }, [historyFilter, historyItems, historyQuery]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(historyRecentStorageKey) ?? "[]");
-      setRecentHistoryIds(
-        Array.isArray(parsed)
-          ? parsed.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-          : []
-      );
-    } catch {
-      setRecentHistoryIds([]);
-    }
-  }, [historyRecentStorageKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      window.localStorage.setItem(
-        historyRecentStorageKey,
-        JSON.stringify(recentHistoryIds.slice(0, 8))
-      );
-    } catch {
-      // Persist recent open ids best-effort only.
-    }
-  }, [historyRecentStorageKey, recentHistoryIds]);
-
-  useEffect(() => {
-    if (!activeHistoryId) {
-      return;
-    }
-    setRecentHistoryIds((current) => [activeHistoryId, ...current.filter((id) => id !== activeHistoryId)].slice(0, 8));
-  }, [activeHistoryId]);
+  }, [historyItems, historyQuery]);
 
   const hasCodexDeviceAuthDetails = Boolean(
     canManageCodex &&
@@ -744,32 +716,10 @@ export function AppShell({
                       aria-label="Поиск по истории"
                     />
 
-                    <div className="history-filter-row">
-                      {(["all", "working", "archive", "error"] as const).map((filter) => (
-                        <button
-                          key={filter}
-                          type="button"
-                          className={`history-filter-chip ${historyFilter === filter ? "active" : ""}`}
-                          onClick={() => setHistoryFilter(filter)}
-                        >
-                          {filter === "all"
-                            ? "Все"
-                            : filter === "working"
-                              ? "В работе"
-                              : filter === "archive"
-                                ? "Архив"
-                                : "С ошибкой"}
-                        </button>
-                      ))}
-                    </div>
-
                     <div className="history-popover-scroll">
                       <HistoryPanel
-                        allItems={historyItems}
                         visibleItems={visibleHistoryItems}
                         activeHistoryId={activeHistoryId}
-                        recentHistoryIds={recentHistoryIds}
-                        filter={historyFilter}
                         compact
                         emptyText={historyItems.length > 0 ? "Ничего не найдено." : "Роликов пока нет."}
                         onOpen={handleHistoryOpenAndClose}

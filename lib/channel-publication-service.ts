@@ -15,6 +15,7 @@ import {
   getChannelPublishSettings,
   getRenderExportById,
   getStoredChannelPublishCredential,
+  listChannelPublications,
   listFutureActivePublicationsForChannel,
   markChannelPublicationFailed,
   markChannelPublishIntegrationReauthRequired,
@@ -35,6 +36,7 @@ import {
   uploadYouTubeVideo,
   YouTubePublishError
 } from "./youtube-publishing";
+import { runInTransaction } from "./db/client";
 
 type PublicationEditorPatch = Partial<{
   title: string;
@@ -44,11 +46,70 @@ type PublicationEditorPatch = Partial<{
   slotIndex: number;
 }>;
 
+export type PublicationShiftAxis = "slot" | "day";
+export type PublicationShiftDirection = "prev" | "next";
+
 function normalizeEditorText(value: string | undefined): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
   return value.trim();
+}
+
+function addDaysToSlotDate(slotDate: string, deltaDays: number): string {
+  const date = new Date(`${slotDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Некорректная дата слота.");
+  }
+  date.setUTCDate(date.getUTCDate() + deltaDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function resolveShiftTargetSlot(input: {
+  slotDate: string;
+  slotIndex: number;
+  settings: ReturnType<typeof getChannelPublishSettings>;
+  axis: PublicationShiftAxis;
+  direction: PublicationShiftDirection;
+}): {
+  slotDate: string;
+  slotIndex: number;
+} {
+  const directionValue = input.direction === "next" ? 1 : -1;
+  if (input.axis === "day") {
+    return {
+      slotDate: addDaysToSlotDate(input.slotDate, directionValue),
+      slotIndex: input.slotIndex
+    };
+  }
+
+  const lastSlotIndex = Math.max(0, input.settings.dailySlotCount - 1);
+  let nextSlotDate = input.slotDate;
+  let nextSlotIndex = input.slotIndex + directionValue;
+
+  if (nextSlotIndex < 0) {
+    nextSlotDate = addDaysToSlotDate(input.slotDate, -1);
+    nextSlotIndex = lastSlotIndex;
+  } else if (nextSlotIndex > lastSlotIndex) {
+    nextSlotDate = addDaysToSlotDate(input.slotDate, 1);
+    nextSlotIndex = 0;
+  }
+
+  return {
+    slotDate: nextSlotDate,
+    slotIndex: nextSlotIndex
+  };
+}
+
+async function syncScheduledPublicationIfNeeded(publicationId: string): Promise<ChannelPublication> {
+  const publication = getChannelPublicationById(publicationId);
+  if (!publication) {
+    throw new Error("Публикация не найдена.");
+  }
+  if (publication.status === "scheduled" && publication.youtubeVideoId) {
+    return syncScheduledPublicationToYouTube(publication.id);
+  }
+  return publication;
 }
 
 async function ensureFreshYouTubeCredential(channelId: string): Promise<{
@@ -305,6 +366,130 @@ export async function updateChannelPublicationFromEditor(input: {
     return syncScheduledPublicationToYouTube(updated.id);
   }
   return updated;
+}
+
+export async function shiftChannelPublicationSlot(input: {
+  publicationId: string;
+  axis: PublicationShiftAxis;
+  direction: PublicationShiftDirection;
+}): Promise<{
+  publication: ChannelPublication;
+  swappedPublication: ChannelPublication | null;
+  mode: "moved" | "swapped";
+}> {
+  const current = getChannelPublicationById(input.publicationId);
+  if (!current) {
+    throw new Error("Публикация не найдена.");
+  }
+  if (current.status === "published" || current.status === "canceled") {
+    throw new Error("Эту публикацию больше нельзя переносить по слотам.");
+  }
+
+  const settings = getChannelPublishSettings(current.channelId);
+  const targetSlot = resolveShiftTargetSlot({
+    slotDate: current.slotDate,
+    slotIndex: current.slotIndex,
+    settings,
+    axis: input.axis,
+    direction: input.direction
+  });
+  const targetSchedule = buildPublicationSlotCandidateFromDateAndIndex({
+    settings,
+    slotDate: targetSlot.slotDate,
+    slotIndex: targetSlot.slotIndex
+  });
+
+  if (new Date(targetSchedule.scheduledAt).getTime() <= Date.now()) {
+    throw new Error("Нельзя перенести ролик в уже прошедший слот.");
+  }
+
+  const conflicting = listChannelPublications(current.channelId).find(
+    (item) =>
+      item.id !== current.id &&
+      item.status !== "canceled" &&
+      item.slotDate === targetSlot.slotDate &&
+      item.slotIndex === targetSlot.slotIndex
+  );
+
+  if (!conflicting) {
+    const updated = updateChannelPublicationDraft({
+      publicationId: current.id,
+      scheduledAt: targetSchedule.scheduledAt,
+      uploadReadyAt: targetSchedule.uploadReadyAt,
+      slotDate: targetSchedule.slotDate,
+      slotIndex: targetSchedule.slotIndex,
+      scheduleManual: true,
+      clearLastError: true
+    });
+    appendChannelPublicationEvent(
+      updated.id,
+      "info",
+      `Слот обновлён: ${current.slotDate} #${current.slotIndex + 1} → ${targetSchedule.slotDate} #${targetSchedule.slotIndex + 1}.`
+    );
+    return {
+      publication: await syncScheduledPublicationIfNeeded(updated.id),
+      swappedPublication: null,
+      mode: "moved"
+    };
+  }
+
+  if (conflicting.status === "published") {
+    throw new Error("Этот слот уже занят опубликованным роликом. Свап недоступен.");
+  }
+
+  const currentSchedule = buildPublicationSlotCandidateFromDateAndIndex({
+    settings,
+    slotDate: current.slotDate,
+    slotIndex: current.slotIndex
+  });
+
+  runInTransaction(() => {
+    updateChannelPublicationDraft({
+      publicationId: current.id,
+      scheduledAt: targetSchedule.scheduledAt,
+      uploadReadyAt: targetSchedule.uploadReadyAt,
+      slotDate: targetSchedule.slotDate,
+      slotIndex: targetSchedule.slotIndex,
+      scheduleManual: true,
+      clearLastError: true
+    });
+    updateChannelPublicationDraft({
+      publicationId: conflicting.id,
+      scheduledAt: currentSchedule.scheduledAt,
+      uploadReadyAt: currentSchedule.uploadReadyAt,
+      slotDate: currentSchedule.slotDate,
+      slotIndex: currentSchedule.slotIndex,
+      scheduleManual: true,
+      clearLastError: true
+    });
+  });
+
+  const updatedCurrent = getChannelPublicationById(current.id);
+  const updatedConflicting = getChannelPublicationById(conflicting.id);
+
+  if (!updatedCurrent || !updatedConflicting) {
+    throw new Error("Не удалось переставить публикации местами.");
+  }
+
+  appendChannelPublicationEvent(
+    updatedCurrent.id,
+    "info",
+    `Слот обменян с публикацией "${conflicting.chatTitle || conflicting.title}".`
+  );
+  appendChannelPublicationEvent(
+    updatedConflicting.id,
+    "info",
+    `Слот обменян с публикацией "${current.chatTitle || current.title}".`
+  );
+
+  const syncedCurrent = await syncScheduledPublicationIfNeeded(updatedCurrent.id);
+  const syncedConflicting = await syncScheduledPublicationIfNeeded(updatedConflicting.id);
+
+  return {
+    publication: syncedCurrent,
+    swappedPublication: syncedConflicting,
+    mode: "swapped"
+  };
 }
 
 export async function processQueuedChannelPublication(publication: ChannelPublication): Promise<ChannelPublication> {
