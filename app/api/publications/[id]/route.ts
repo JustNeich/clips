@@ -11,6 +11,8 @@ type PatchBody = Partial<{
   title: string;
   description: string;
   tags: string[];
+  scheduleMode: "slot" | "custom";
+  scheduledAtLocal: string;
   slotDate: string;
   slotIndex: number;
   notifySubscribers: boolean;

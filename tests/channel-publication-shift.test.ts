@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import {
+  buildCustomPublicationCandidateFromLocalDateTime,
   buildPublicationSlotCandidateFromDateAndIndex,
   DEFAULT_CHANNEL_PUBLISH_SETTINGS
 } from "../lib/channel-publishing";
@@ -123,6 +124,7 @@ async function seedChannelPublicationScenario(slotIndexes: number[]): Promise<{
       channelId: channel.id,
       chatId: chat.id,
       renderExportId: renderExport.id,
+      scheduleMode: "slot",
       scheduledAt: slot.scheduledAt,
       uploadReadyAt: slot.uploadReadyAt,
       slotDate: slot.slotDate,
@@ -233,6 +235,79 @@ test("updateChannelPublicationFromEditor blocks notifySubscribers changes after 
           }
         }),
       /только при первой загрузке видео/i
+    );
+  });
+});
+
+test("updateChannelPublicationFromEditor persists a custom exact publication time", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    const publicationId = scenario.publications[0]!.id;
+    const customSchedule = buildCustomPublicationCandidateFromLocalDateTime({
+      settings: DEFAULT_CHANNEL_PUBLISH_SETTINGS,
+      localDateTime: "2040-05-05T21:07"
+    });
+
+    const updated = await updateChannelPublicationFromEditor({
+      publicationId,
+      patch: {
+        scheduleMode: "custom",
+        scheduledAtLocal: "2040-05-05T21:07"
+      }
+    });
+
+    assert.equal(updated.scheduleMode, "custom");
+    assert.equal(updated.scheduledAt, customSchedule.scheduledAt);
+    assert.equal(updated.uploadReadyAt, customSchedule.uploadReadyAt);
+    assert.equal(updated.slotDate, "2040-05-05");
+    assert.equal(updated.slotIndex, -1);
+
+    const stored = listChannelPublications(scenario.channelId).find((item) => item.id === publicationId);
+    assert.equal(stored?.scheduleMode, "custom");
+    assert.equal(stored?.slotIndex, -1);
+  });
+});
+
+test("moveChannelPublicationToSlot blocks drag-style moves for custom publications", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    const publicationId = scenario.publications[0]!.id;
+
+    await updateChannelPublicationFromEditor({
+      publicationId,
+      patch: {
+        scheduleMode: "custom",
+        scheduledAtLocal: "2040-05-05T21:07"
+      }
+    });
+
+    await assert.rejects(
+      () =>
+        moveChannelPublicationToSlot({
+          publicationId,
+          slotDate: scenario.slotDate,
+          slotIndex: 1
+        }),
+      /кастомное время/i
+    );
+  });
+});
+
+test("updateChannelPublicationFromEditor rejects an exact time that is already occupied", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0, 1]);
+    const secondPublicationId = scenario.publications[1]!.id;
+
+    await assert.rejects(
+      () =>
+        updateChannelPublicationFromEditor({
+          publicationId: secondPublicationId,
+          patch: {
+            scheduleMode: "custom",
+            scheduledAtLocal: "2040-05-05T21:00"
+          }
+        }),
+      /время уже занято/i
     );
   });
 });

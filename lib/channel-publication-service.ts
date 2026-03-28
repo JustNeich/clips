@@ -1,5 +1,6 @@
-import type { ChannelPublication, Stage2Response } from "../app/components/types";
+import type { ChannelPublication, ChannelPublicationScheduleMode, Stage2Response } from "../app/components/types";
 import {
+  buildCustomPublicationCandidateFromLocalDateTime,
   buildChannelPublicationMetadata,
   buildPublicationSlotCandidateFromDateAndIndex,
   pickNextPublicationSlot
@@ -42,6 +43,8 @@ type PublicationEditorPatch = Partial<{
   title: string;
   description: string;
   tags: string[];
+  scheduleMode: ChannelPublicationScheduleMode;
+  scheduledAtLocal: string;
   slotDate: string;
   slotIndex: number;
   notifySubscribers: boolean;
@@ -110,12 +113,32 @@ function assertPublicationCanMove(publication: ChannelPublication): void {
   if (publication.status === "published" || publication.status === "canceled") {
     throw new Error("Эту публикацию больше нельзя переносить по слотам.");
   }
+  if (publication.scheduleMode === "custom") {
+    throw new Error("Кастомное время не переносится по слотам. Откройте редактор публикации.");
+  }
 }
 
 function assertSlotIndexInRange(slotIndex: number, dailySlotCount: number): void {
   if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= dailySlotCount) {
     throw new Error("Некорректный слот публикации.");
   }
+}
+
+function findFuturePublicationTimeConflict(input: {
+  channelId: string;
+  excludePublicationId: string;
+  scheduledAt: string;
+  excludeMatchedPublicationId?: string | null;
+}): ChannelPublication | null {
+  return (
+    listFutureActivePublicationsForChannel(input.channelId).find(
+      (item) =>
+        item.id !== input.excludePublicationId &&
+        item.id !== input.excludeMatchedPublicationId &&
+        item.status !== "canceled" &&
+        item.scheduledAt === input.scheduledAt
+    ) ?? null
+  );
 }
 
 async function moveChannelPublicationIntoSlot(input: {
@@ -160,6 +183,16 @@ async function moveChannelPublicationIntoSlot(input: {
       item.slotDate === targetSchedule.slotDate &&
       item.slotIndex === targetSchedule.slotIndex
   );
+
+  const timeConflict = findFuturePublicationTimeConflict({
+    channelId: current.channelId,
+    excludePublicationId: current.id,
+    scheduledAt: targetSchedule.scheduledAt,
+    excludeMatchedPublicationId: conflicting?.id ?? null
+  });
+  if (timeConflict) {
+    throw new Error("Это время уже занято другой публикацией.");
+  }
 
   if (!conflicting) {
     const updated = updateChannelPublicationDraft({
@@ -361,6 +394,7 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
     channelId: input.channelId,
     chatId: input.chatId,
     renderExportId: input.renderExport.id,
+    scheduleMode: slot.scheduleMode,
     scheduledAt: slot.scheduledAt,
     uploadReadyAt: slot.uploadReadyAt,
     slotDate: slot.slotDate,
@@ -468,17 +502,37 @@ export async function updateChannelPublicationFromEditor(input: {
 
   let scheduledPatch:
     | {
+        scheduleMode: ChannelPublicationScheduleMode;
         scheduledAt: string;
         uploadReadyAt: string;
         slotDate: string;
         slotIndex: number;
       }
     | undefined;
-  if (input.patch.slotDate && typeof input.patch.slotIndex === "number") {
+  if (input.patch.scheduleMode === "custom") {
+    if (!input.patch.scheduledAtLocal?.trim()) {
+      throw new Error("Для кастомной публикации укажите дату и время.");
+    }
+    const settings = getChannelPublishSettings(current.channelId);
+    scheduledPatch = buildCustomPublicationCandidateFromLocalDateTime({
+      settings,
+      localDateTime: input.patch.scheduledAtLocal
+    });
+    if (new Date(scheduledPatch.scheduledAt).getTime() <= Date.now()) {
+      throw new Error("Кастомное время уже в прошлом. Выберите будущее время или нажмите Publish now.");
+    }
+  } else if (
+    input.patch.scheduleMode === "slot" ||
+    (input.patch.slotDate && typeof input.patch.slotIndex === "number")
+  ) {
+    if (!input.patch.slotDate || typeof input.patch.slotIndex !== "number") {
+      throw new Error("Для слот-публикации передайте slotDate и slotIndex.");
+    }
     const settings = getChannelPublishSettings(current.channelId);
     const conflicting = listFutureActivePublicationsForChannel(current.channelId).find(
       (item) =>
         item.id !== current.id &&
+        item.scheduleMode === "slot" &&
         item.slotDate === input.patch.slotDate &&
         item.slotIndex === input.patch.slotIndex &&
         item.status !== "canceled"
@@ -491,6 +545,20 @@ export async function updateChannelPublicationFromEditor(input: {
       slotDate: input.patch.slotDate,
       slotIndex: input.patch.slotIndex
     });
+    if (new Date(scheduledPatch.scheduledAt).getTime() <= Date.now()) {
+      throw new Error("Нельзя перенести ролик в уже прошедший слот.");
+    }
+  }
+
+  if (scheduledPatch) {
+    const timeConflict = findFuturePublicationTimeConflict({
+      channelId: current.channelId,
+      excludePublicationId: current.id,
+      scheduledAt: scheduledPatch.scheduledAt
+    });
+    if (timeConflict) {
+      throw new Error("Это время уже занято другой публикацией.");
+    }
   }
 
   const updated = updateChannelPublicationDraft({
@@ -502,6 +570,7 @@ export async function updateChannelPublicationFromEditor(input: {
     descriptionManual: typeof input.patch.description === "string",
     tagsManual: Array.isArray(input.patch.tags),
     notifySubscribers: input.patch.notifySubscribers,
+    scheduleMode: scheduledPatch?.scheduleMode,
     scheduledAt: scheduledPatch?.scheduledAt,
     uploadReadyAt: scheduledPatch?.uploadReadyAt,
     slotDate: scheduledPatch?.slotDate,

@@ -197,7 +197,8 @@ export function ChannelManagerPublishingTab({
       <section className="details-section publishing-manager-section">
         <h3>Слоты публикации</h3>
         <p className="subtle-text">
-          После успешного render ролик автоматически попадёт в ближайший свободный слот.
+          После успешного render ролик автоматически попадёт в ближайший свободный слот. При необходимости
+          конкретную публикацию потом можно перевести на точную дату и время прямо в planner.
         </p>
         <div className="compact-grid publishing-manager-grid">
           <label className="field-stack">

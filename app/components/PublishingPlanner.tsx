@@ -1,7 +1,12 @@
 "use client";
 
 import { useMemo, useState, type DragEvent } from "react";
-import type { ChannelPublication, ChannelPublishIntegration, ChannelPublishSettings } from "./types";
+import type {
+  ChannelPublication,
+  ChannelPublicationScheduleMode,
+  ChannelPublishIntegration,
+  ChannelPublishSettings
+} from "./types";
 
 type PublicationAction = "pause" | "resume" | "retry" | "publish-now" | "delete";
 type PublicationShiftAxis = "slot" | "day";
@@ -29,6 +34,8 @@ type PublishingPlannerProps = {
       title: string;
       description: string;
       tags: string[];
+      scheduleMode: ChannelPublicationScheduleMode;
+      scheduledAtLocal: string;
       slotDate: string;
       slotIndex: number;
       notifySubscribers: boolean;
@@ -88,6 +95,62 @@ function formatScheduledMoment(iso: string, timeZone: string): string {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function formatDateTimeLocalValue(iso: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(new Date(iso));
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+function buildLocalDateTimeValue(date: string, timeLabel: string): string {
+  const safeDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "1970-01-01";
+  const safeTime = /^\d{2}:\d{2}$/.test(timeLabel) ? timeLabel : "00:00";
+  return `${safeDate}T${safeTime}`;
+}
+
+function parseTimeLabel(value: string): number | null {
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  const hour = Number.parseInt(match[1] ?? "", 10);
+  const minute = Number.parseInt(match[2] ?? "", 10);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return null;
+  }
+  return hour * 60 + minute;
+}
+
+function findClosestSlotIndex(timeLabel: string, slotLabels: string[]): number {
+  const targetMinutes = parseTimeLabel(timeLabel);
+  if (targetMinutes === null || slotLabels.length === 0) {
+    return 0;
+  }
+
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  slotLabels.forEach((label, index) => {
+    const candidateMinutes = parseTimeLabel(label);
+    if (candidateMinutes === null) {
+      return;
+    }
+    const delta = Math.abs(candidateMinutes - targetMinutes);
+    const wrappedDelta = Math.min(delta, 24 * 60 - delta);
+    if (wrappedDelta < bestDistance) {
+      bestDistance = wrappedDelta;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
 }
 
 function formatSlotDateLabel(slotDate: string, timeZone: string, now = new Date()): string {
@@ -261,6 +324,8 @@ export function PublishingPlanner({
     title: string;
     description: string;
     tags: string;
+    scheduleMode: ChannelPublicationScheduleMode;
+    scheduledAtLocal: string;
     slotDate: string;
     slotIndex: number;
     notifySubscribers: boolean;
@@ -274,14 +339,20 @@ export function PublishingPlanner({
   );
 
   const startEdit = (publication: ChannelPublication) => {
+    const scheduledAtLocal = formatDateTimeLocalValue(publication.scheduledAt, timeZone);
     setExpandedId(publication.id);
     setEditingId(publication.id);
     setDraft({
       title: publication.title,
       description: publication.description,
       tags: publication.tags.join(", "),
+      scheduleMode: publication.scheduleMode,
+      scheduledAtLocal,
       slotDate: publication.slotDate,
-      slotIndex: publication.slotIndex,
+      slotIndex:
+        publication.scheduleMode === "slot"
+          ? publication.slotIndex
+          : findClosestSlotIndex(scheduledAtLocal.slice(11, 16), slotLabels),
       notifySubscribers: publication.notifySubscribers
     });
   };
@@ -302,14 +373,29 @@ export function PublishingPlanner({
     }
     setBusyKey(`save:${publicationId}`);
     try {
-      await onSavePublication(publicationId, {
+      const patch: Partial<{
+        title: string;
+        description: string;
+        tags: string[];
+        scheduleMode: ChannelPublicationScheduleMode;
+        scheduledAtLocal: string;
+        slotDate: string;
+        slotIndex: number;
+        notifySubscribers: boolean;
+      }> = {
         title: draft.title,
         description: draft.description,
         tags: splitTags(draft.tags),
-        slotDate: draft.slotDate,
-        slotIndex: draft.slotIndex,
+        scheduleMode: draft.scheduleMode,
         notifySubscribers: draft.notifySubscribers
-      });
+      };
+      if (draft.scheduleMode === "custom") {
+        patch.scheduledAtLocal = draft.scheduledAtLocal;
+      } else {
+        patch.slotDate = draft.slotDate;
+        patch.slotIndex = draft.slotIndex;
+      }
+      await onSavePublication(publicationId, patch);
       cancelEdit();
     } finally {
       setBusyKey(null);
@@ -349,6 +435,9 @@ export function PublishingPlanner({
     if (!dragState || busyKey !== null) {
       return false;
     }
+    if (targetSlotIndex < 0 || dragState.slotIndex < 0) {
+      return false;
+    }
     if (dragState.slotDate !== targetSlotDate) {
       return false;
     }
@@ -379,6 +468,7 @@ export function PublishingPlanner({
     if (
       busyKey !== null ||
       editingId === publication.id ||
+      publication.scheduleMode !== "slot" ||
       publication.status === "published" ||
       publication.status === "canceled"
     ) {
@@ -436,6 +526,7 @@ export function PublishingPlanner({
     const isExpanded = expandedId === publication.id || Boolean(isEditing);
     const statusTone = getPublicationStatusTone(publication.status);
     const isMovable =
+      publication.scheduleMode === "slot" &&
       publication.status !== "published" &&
       publication.status !== "canceled";
     const isDragging = dragState?.publicationId === publication.id;
@@ -443,7 +534,9 @@ export function PublishingPlanner({
       dropTarget?.slotDate === publication.slotDate &&
       dropTarget.slotIndex === publication.slotIndex;
     const slotLabel =
-      slotLabels[publication.slotIndex] ?? formatScheduledTime(publication.scheduledAt, timeZone);
+      publication.scheduleMode === "slot"
+        ? slotLabels[publication.slotIndex] ?? formatScheduledTime(publication.scheduledAt, timeZone)
+        : formatScheduledTime(publication.scheduledAt, timeZone);
     const compactDescription = publication.description.trim();
     const notifySubscribersLocked = Boolean(publication.youtubeVideoId);
 
@@ -466,7 +559,13 @@ export function PublishingPlanner({
                 draggable={isMovable && !isEditing && busyKey === null}
                 onDragStart={(event) => handlePublicationDragStart(event, publication)}
                 onDragEnd={handlePublicationDragEnd}
-                title={isMovable ? "Перетащите в другой слот внутри этого дня" : undefined}
+                title={
+                  isMovable
+                    ? "Перетащите в другой слот внутри этого дня"
+                    : publication.scheduleMode === "custom"
+                      ? "Точное время публикации"
+                      : undefined
+                }
               >
                 {slotLabel}
               </span>
@@ -475,6 +574,9 @@ export function PublishingPlanner({
               </span>
               {publication.needsReview ? (
                 <span className="publishing-status-pill tone-muted">Нужна проверка</span>
+              ) : null}
+              {publication.scheduleMode === "custom" ? (
+                <span className="publishing-status-pill tone-muted">Кастомное время</span>
               ) : null}
               <span className="publishing-status-pill tone-muted">
                 {formatSubscriptionFeedLabel(publication.notifySubscribers)}
@@ -512,7 +614,7 @@ export function PublishingPlanner({
                 setExpandedId((current) => (current === publication.id ? null : publication.id))
               }
             >
-              {isExpanded ? "Скрыть" : "Show more"}
+              {isExpanded ? "Скрыть" : "Подробнее"}
             </button>
             {publication.status !== "published" ? (
               <button
@@ -538,6 +640,11 @@ export function PublishingPlanner({
               </p>
             )}
             <p className="subtle-text">{formatSubscriptionFeedLabel(publication.notifySubscribers)}</p>
+            {publication.scheduleMode === "custom" ? (
+              <p className="subtle-text">
+                Эта публикация идёт по точному времени и не участвует в слот-перестановках.
+              </p>
+            ) : null}
             {publication.tags.length > 0 ? (
               <div className="publishing-tag-row">
                 {publication.tags.map((tag) => (
@@ -590,44 +697,136 @@ export function PublishingPlanner({
                 placeholder="tag1, tag2, tag3"
               />
             </label>
-            <div className="compact-grid publishing-edit-grid">
-              <label className="field-stack">
-                <span className="field-label">Дата</span>
-                <input
-                  className="text-input"
-                  type="date"
-                  value={draft.slotDate}
-                  onChange={(event) =>
-                    setDraft((current) =>
-                      current ? { ...current, slotDate: event.target.value } : current
-                    )
+            <div className="field-stack">
+              <span className="field-label">Режим публикации</span>
+              <div className="publishing-schedule-mode" role="tablist" aria-label="Режим времени публикации">
+                <button
+                  type="button"
+                  className={`btn ${draft.scheduleMode === "slot" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() =>
+                    setDraft((current) => {
+                      if (!current) {
+                        return current;
+                      }
+                      const nextSlotDate = current.scheduledAtLocal.slice(0, 10) || current.slotDate;
+                      const nextSlotIndex = findClosestSlotIndex(
+                        current.scheduledAtLocal.slice(11, 16),
+                        slotLabels
+                      );
+                      return {
+                        ...current,
+                        scheduleMode: "slot",
+                        slotDate: nextSlotDate,
+                        slotIndex: nextSlotIndex
+                      };
+                    })
                   }
-                />
-              </label>
-              <label className="field-stack">
-                <span className="field-label">Слот</span>
-                <select
-                  className="text-input"
-                  value={draft.slotIndex}
-                  onChange={(event) =>
+                >
+                  По слотам
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${draft.scheduleMode === "custom" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() =>
                     setDraft((current) =>
                       current
                         ? {
                             ...current,
-                            slotIndex: Number.parseInt(event.target.value || "0", 10)
+                            scheduleMode: "custom",
+                            scheduledAtLocal: buildLocalDateTimeValue(
+                              current.slotDate,
+                              slotLabels[current.slotIndex] ?? slotLabels[0] ?? "00:00"
+                            )
                           }
                         : current
                     )
                   }
                 >
-                  {slotLabels.map((label, index) => (
-                    <option key={`${publication.id}:slot:${index}`} value={index}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  Точное время
+                </button>
+              </div>
+              <p className="subtle-text">
+                Автопланировщик живёт по слотам, но любой ролик можно перевести на точную дату и время.
+              </p>
             </div>
+            {draft.scheduleMode === "slot" ? (
+              <div className="compact-grid publishing-edit-grid">
+                <label className="field-stack">
+                  <span className="field-label">Дата</span>
+                  <input
+                    className="text-input"
+                    type="date"
+                    value={draft.slotDate}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              slotDate: event.target.value,
+                              scheduledAtLocal: buildLocalDateTimeValue(
+                                event.target.value,
+                                slotLabels[current.slotIndex] ?? slotLabels[0] ?? "00:00"
+                              )
+                            }
+                          : current
+                      )
+                    }
+                  />
+                </label>
+                <label className="field-stack">
+                  <span className="field-label">Слот</span>
+                  <select
+                    className="text-input"
+                    value={draft.slotIndex}
+                    onChange={(event) =>
+                      setDraft((current) => {
+                        if (!current) {
+                          return current;
+                        }
+                        const nextSlotIndex = Number.parseInt(event.target.value || "0", 10);
+                        return {
+                          ...current,
+                          slotIndex: nextSlotIndex,
+                          scheduledAtLocal: buildLocalDateTimeValue(
+                            current.slotDate,
+                            slotLabels[nextSlotIndex] ?? slotLabels[0] ?? "00:00"
+                          )
+                        };
+                      })
+                    }
+                  >
+                    {slotLabels.map((label, index) => (
+                      <option key={`${publication.id}:slot:${index}`} value={index}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : (
+              <label className="field-stack">
+                <span className="field-label">Дата и время ({timeZone})</span>
+                <input
+                  className="text-input"
+                  type="datetime-local"
+                  value={draft.scheduledAtLocal}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            scheduledAtLocal: event.target.value,
+                            slotDate: event.target.value.slice(0, 10) || current.slotDate
+                          }
+                        : current
+                    )
+                  }
+                />
+                <span className="subtle-text">
+                  Сервер сохранит именно это локальное время канала и синхронизирует его с YouTube.
+                </span>
+              </label>
+            )}
             <label className="field-label fragment-toggle publishing-manager-toggle">
               <input
                 type="checkbox"
@@ -708,6 +907,10 @@ export function PublishingPlanner({
                 + день
               </button>
             </div>
+          ) : publication.scheduleMode === "custom" ? (
+            <p className="subtle-text publishing-custom-hint">
+              Точное время не двигается по слотам. Если нужно сдвинуть публикацию, откройте редактор.
+            </p>
           ) : null}
 
           <div className="publishing-card-actions">
@@ -737,7 +940,7 @@ export function PublishingPlanner({
                 disabled={busyKey === `retry:${publication.id}`}
                 onClick={() => void runAction(publication.id, "retry")}
               >
-                Retry
+                Повторить
               </button>
             ) : null}
             {publication.status !== "published" &&
@@ -748,7 +951,7 @@ export function PublishingPlanner({
                 disabled={busyKey === `publish-now:${publication.id}`}
                 onClick={() => void runAction(publication.id, "publish-now")}
               >
-                Publish now
+                Опубликовать сейчас
               </button>
             ) : null}
             {publication.status !== "published" ? (
@@ -775,11 +978,12 @@ export function PublishingPlanner({
     <section className="publishing-planner-panel">
       <div className="publishing-planner-head">
         <div>
-          <p className="kicker">Publishing</p>
+          <p className="kicker">Публикация</p>
           <h3>{channelName ? `План публикаций для ${channelName}` : "План публикаций"}</h3>
           <p className="subtle-text">
-            Дни и слоты считаются по {timeZone}. Карточки можно перетаскивать между
-            слотами внутри дня, а кнопки быстрых переносов остаются резервным способом.
+            Автопланировщик использует слот-сетку по {timeZone}, но любую отдельную публикацию
+            можно перевести на точное время. Карточки со слотами можно перетаскивать внутри дня,
+            а кастомные публикации редактируются прямо в карточке.
           </p>
         </div>
         <div className="control-actions">
@@ -804,7 +1008,13 @@ export function PublishingPlanner({
       {!loading && dayGroups.length > 0 ? (
         <div className="publishing-day-list">
           {dayGroups.map((group) => {
-            const itemsBySlot = new Map(group.items.map((item) => [item.slotIndex, item]));
+            const itemsBySlot = new Map(
+              group.items
+                .filter((item) => item.scheduleMode === "slot")
+                .map((item) => [item.slotIndex, item])
+            );
+            const customCount = group.items.filter((item) => item.scheduleMode === "custom").length;
+            const slotCount = group.items.length - customCount;
             return (
               <section key={group.id} className="publishing-day-group">
                 <div className="publishing-day-head">
@@ -812,6 +1022,7 @@ export function PublishingPlanner({
                     <h4>{group.label}</h4>
                     <p className="subtle-text">
                       {group.items.length} ролик{group.items.length === 1 ? "" : group.items.length < 5 ? "а" : "ов"}
+                      {customCount > 0 ? ` · слоты ${slotCount}, точное время ${customCount}` : ""}
                     </p>
                   </div>
                   <div className="publishing-day-slots" aria-label={`Слоты на ${group.label}`}>

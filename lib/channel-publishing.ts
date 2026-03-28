@@ -1,5 +1,6 @@
 import type {
   ChannelPublication,
+  ChannelPublicationScheduleMode,
   ChannelPublishSettings,
   Stage2Response
 } from "../app/components/types";
@@ -15,11 +16,14 @@ export const DEFAULT_CHANNEL_PUBLISH_SETTINGS: ChannelPublishSettings = {
 };
 
 export type PublicationSlotCandidate = {
+  scheduleMode: ChannelPublicationScheduleMode;
   scheduledAt: string;
   uploadReadyAt: string;
   slotDate: string;
   slotIndex: number;
 };
+
+export const CUSTOM_PUBLICATION_SLOT_INDEX = -1;
 
 type DateParts = {
   year: number;
@@ -151,6 +155,20 @@ function parseSlotDate(value: string): DateParts {
   };
 }
 
+function parseLocalDateTime(value: string): DateParts & { hour: number; minute: number } {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) {
+    throw new Error("Некорректная дата и время публикации.");
+  }
+  return {
+    year: Number.parseInt(match[1] ?? "", 10),
+    month: Number.parseInt(match[2] ?? "", 10),
+    day: Number.parseInt(match[3] ?? "", 10),
+    hour: Number.parseInt(match[4] ?? "", 10),
+    minute: Number.parseInt(match[5] ?? "", 10)
+  };
+}
+
 function parseFirstSlotMinutes(value: string): number {
   const [hourRaw = "21", minuteRaw = "00"] = value.split(":");
   const hour = Number.parseInt(hourRaw, 10);
@@ -261,6 +279,7 @@ export function buildPublicationSlotCandidates(input: {
         scheduledDate.getTime() - settings.uploadLeadMinutes * 60_000
       ).toISOString();
       candidates.push({
+        scheduleMode: "slot",
         scheduledAt,
         uploadReadyAt,
         slotDate: formatSlotDate(dayAdjusted),
@@ -288,12 +307,47 @@ export function buildPublicationSlotCandidateFromDateAndIndex(input: {
   const slotMinute = minuteOfDay % 60;
   const scheduledAt = zonedLocalDateTimeToUtcIso(dayAdjusted, slotHour, slotMinute, settings.timezone);
   return {
+    scheduleMode: "slot",
     scheduledAt,
     uploadReadyAt: new Date(
       new Date(scheduledAt).getTime() - settings.uploadLeadMinutes * 60_000
     ).toISOString(),
     slotDate: formatSlotDate(dayAdjusted),
     slotIndex: input.slotIndex
+  };
+}
+
+export function buildCustomPublicationCandidateFromLocalDateTime(input: {
+  settings: ChannelPublishSettings;
+  localDateTime: string;
+}): PublicationSlotCandidate {
+  const settings = normalizeChannelPublishSettings(input.settings);
+  const parts = parseLocalDateTime(input.localDateTime);
+  const scheduledAt = zonedLocalDateTimeToUtcIso(parts, parts.hour, parts.minute, settings.timezone);
+  return buildCustomPublicationCandidateFromUtcIso({
+    settings,
+    scheduledAt
+  });
+}
+
+export function buildCustomPublicationCandidateFromUtcIso(input: {
+  settings: ChannelPublishSettings;
+  scheduledAt: string;
+}): PublicationSlotCandidate {
+  const settings = normalizeChannelPublishSettings(input.settings);
+  const scheduledDate = new Date(input.scheduledAt);
+  if (Number.isNaN(scheduledDate.getTime())) {
+    throw new Error("Некорректное время публикации.");
+  }
+  const localParts = getTimeZoneDateParts(scheduledDate, settings.timezone);
+  return {
+    scheduleMode: "custom",
+    scheduledAt: scheduledDate.toISOString(),
+    uploadReadyAt: new Date(
+      scheduledDate.getTime() - settings.uploadLeadMinutes * 60_000
+    ).toISOString(),
+    slotDate: formatSlotDate(localParts),
+    slotIndex: CUSTOM_PUBLICATION_SLOT_INDEX
   };
 }
 
@@ -309,12 +363,25 @@ export function pickNextPublicationSlot(input: {
       .filter((item) => item.status !== "canceled")
       .map((item) => buildPublicationSlotKey(item.slotDate, item.slotIndex))
   );
+  const occupiedMoments = new Set(
+    input.existingPublications
+      .filter((item) => item.status !== "canceled")
+      .map((item) => {
+        const scheduledAt = new Date(item.scheduledAt);
+        return Number.isNaN(scheduledAt.getTime()) ? null : scheduledAt.toISOString();
+      })
+      .filter((item): item is string => Boolean(item))
+  );
   const candidates = buildPublicationSlotCandidates({
     settings: input.settings,
     now: input.now,
     daysToScan: 60
   });
-  const next = candidates.find((candidate) => !occupied.has(buildPublicationSlotKey(candidate.slotDate, candidate.slotIndex)));
+  const next = candidates.find(
+    (candidate) =>
+      !occupied.has(buildPublicationSlotKey(candidate.slotDate, candidate.slotIndex)) &&
+      !occupiedMoments.has(candidate.scheduledAt)
+  );
   if (!next) {
     throw new Error("Не удалось подобрать ближайший слот публикации.");
   }

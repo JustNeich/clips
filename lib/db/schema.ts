@@ -396,6 +396,7 @@ CREATE TABLE IF NOT EXISTS channel_publications (
   render_export_id TEXT NOT NULL,
   provider TEXT NOT NULL,
   status TEXT NOT NULL,
+  schedule_mode TEXT NOT NULL DEFAULT 'slot',
   scheduled_at TEXT NOT NULL,
   upload_ready_at TEXT NOT NULL,
   slot_date TEXT NOT NULL,

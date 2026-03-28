@@ -9,6 +9,7 @@ import type {
 } from "../app/components/types";
 import { decryptJsonPayload, encryptJsonPayload } from "./app-crypto";
 import {
+  buildCustomPublicationCandidateFromUtcIso,
   DEFAULT_CHANNEL_PUBLISH_SETTINGS,
   normalizeChannelPublishSettings,
   parseChannelPublicationTagsJson,
@@ -95,6 +96,7 @@ type ChannelPublicationRow = {
   render_export_id: string;
   provider: string;
   status: string;
+  schedule_mode: string;
   scheduled_at: string;
   upload_ready_at: string;
   slot_date: string;
@@ -292,6 +294,7 @@ function mapChannelPublicationRow(
       row.status === "canceled"
         ? row.status
         : "queued",
+    scheduleMode: row.schedule_mode === "custom" ? "custom" : "slot",
     scheduledAt: row.scheduled_at,
     uploadReadyAt: row.upload_ready_at,
     slotDate: row.slot_date,
@@ -849,6 +852,7 @@ export function createChannelPublication(input: {
   channelId: string;
   chatId: string;
   renderExportId: string;
+  scheduleMode: ChannelPublication["scheduleMode"];
   scheduledAt: string;
   uploadReadyAt: string;
   slotDate: string;
@@ -869,14 +873,15 @@ export function createChannelPublication(input: {
   const db = getDb();
   db.prepare(
     `INSERT INTO channel_publications
-      (id, workspace_id, channel_id, chat_id, render_export_id, provider, status, scheduled_at, upload_ready_at, slot_date, slot_index, title, description, tags_json, notify_subscribers, needs_review, title_manual, description_manual, tags_manual, schedule_manual, created_by_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'youtube', 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, workspace_id, channel_id, chat_id, render_export_id, provider, status, schedule_mode, scheduled_at, upload_ready_at, slot_date, slot_index, title, description, tags_json, notify_subscribers, needs_review, title_manual, description_manual, tags_manual, schedule_manual, created_by_user_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'youtube', 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     publicationId,
     input.workspaceId,
     input.channelId,
     input.chatId,
     input.renderExportId,
+    input.scheduleMode,
     input.scheduledAt,
     input.uploadReadyAt,
     input.slotDate,
@@ -908,6 +913,7 @@ export function updateChannelPublicationDraft(input: {
   titleManual?: boolean;
   descriptionManual?: boolean;
   tagsManual?: boolean;
+  scheduleMode?: ChannelPublication["scheduleMode"];
   scheduledAt?: string;
   uploadReadyAt?: string;
   slotDate?: string;
@@ -932,6 +938,7 @@ export function updateChannelPublicationDraft(input: {
             title_manual = ?,
             description_manual = ?,
             tags_manual = ?,
+            schedule_mode = ?,
             scheduled_at = ?,
             upload_ready_at = ?,
             slot_date = ?,
@@ -959,6 +966,7 @@ export function updateChannelPublicationDraft(input: {
       ? input.descriptionManual ? 1 : 0
       : current.descriptionManual ? 1 : 0,
     typeof input.tagsManual === "boolean" ? (input.tagsManual ? 1 : 0) : current.tagsManual ? 1 : 0,
+    input.scheduleMode ?? current.scheduleMode,
     input.scheduledAt ?? current.scheduledAt,
     input.uploadReadyAt ?? current.uploadReadyAt,
     input.slotDate ?? current.slotDate,
@@ -1036,12 +1044,24 @@ export function cancelChannelPublication(publicationId: string): ChannelPublicat
 }
 
 export function publishNowChannelPublication(publicationId: string): ChannelPublication {
+  const current = getChannelPublicationById(publicationId);
+  if (!current) {
+    throw new Error("Публикация не найдена.");
+  }
   const now = nowIso();
+  const settings = getChannelPublishSettings(current.channelId) ?? DEFAULT_CHANNEL_PUBLISH_SETTINGS;
+  const schedule = buildCustomPublicationCandidateFromUtcIso({
+    settings,
+    scheduledAt: now
+  });
   const db = getDb();
   db.prepare(
     `UPDATE channel_publications
-        SET scheduled_at = ?,
+        SET schedule_mode = ?,
+            scheduled_at = ?,
             upload_ready_at = ?,
+            slot_date = ?,
+            slot_index = ?,
             schedule_manual = 1,
             status = 'queued',
             last_error = NULL,
@@ -1049,7 +1069,15 @@ export function publishNowChannelPublication(publicationId: string): ChannelPubl
             lease_token = NULL,
             lease_expires_at = NULL
       WHERE id = ?`
-  ).run(now, now, now, publicationId);
+  ).run(
+    schedule.scheduleMode,
+    schedule.scheduledAt,
+    schedule.uploadReadyAt,
+    schedule.slotDate,
+    schedule.slotIndex,
+    now,
+    publicationId
+  );
   appendChannelPublicationEvent(publicationId, "info", "Публикация переведена в publish now.");
   return getChannelPublicationById(publicationId)!;
 }

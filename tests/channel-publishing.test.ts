@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCustomPublicationCandidateFromLocalDateTime,
   buildChannelPublicationMetadata,
   buildPublicationSlotCandidateFromDateAndIndex,
   normalizeChannelPublishSettings,
@@ -95,6 +96,22 @@ test("pickNextPublicationSlot skips past slots and selects the next free one tod
   assert.equal(slot.scheduledAt, "2026-03-25T18:30:00.000Z");
 });
 
+test("pickNextPublicationSlot skips a slot whose exact time is already occupied by a custom publication", () => {
+  const slot = pickNextPublicationSlot({
+    settings: DEFAULT_CHANNEL_PUBLISH_SETTINGS,
+    existingPublications: [
+      publicationStub("2026-03-25", -1, {
+        scheduledAt: "2026-03-25T18:00:00.000Z"
+      })
+    ],
+    now: new Date("2026-03-25T17:40:00.000Z")
+  });
+
+  assert.equal(slot.slotDate, "2026-03-25");
+  assert.equal(slot.slotIndex, 1);
+  assert.equal(slot.scheduledAt, "2026-03-25T18:15:00.000Z");
+});
+
 test("buildPublicationSlotCandidateFromDateAndIndex preserves stable slot mapping", () => {
   const slot: PublicationSlotCandidate = buildPublicationSlotCandidateFromDateAndIndex({
     settings: DEFAULT_CHANNEL_PUBLISH_SETTINGS,
@@ -106,6 +123,19 @@ test("buildPublicationSlotCandidateFromDateAndIndex preserves stable slot mappin
   assert.equal(slot.slotIndex, 3);
   assert.equal(slot.scheduledAt, "2026-03-27T18:45:00.000Z");
   assert.equal(slot.uploadReadyAt, "2026-03-27T16:45:00.000Z");
+});
+
+test("buildCustomPublicationCandidateFromLocalDateTime keeps custom mode and channel-local date", () => {
+  const slot = buildCustomPublicationCandidateFromLocalDateTime({
+    settings: DEFAULT_CHANNEL_PUBLISH_SETTINGS,
+    localDateTime: "2026-03-27T21:07"
+  });
+
+  assert.equal(slot.scheduleMode, "custom");
+  assert.equal(slot.slotDate, "2026-03-27");
+  assert.equal(slot.slotIndex, -1);
+  assert.equal(slot.scheduledAt, "2026-03-27T18:07:00.000Z");
+  assert.equal(slot.uploadReadyAt, "2026-03-27T16:07:00.000Z");
 });
 
 test("buildChannelPublicationMetadata prefers render title and stage2 SEO fields", () => {

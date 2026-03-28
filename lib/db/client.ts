@@ -193,6 +193,12 @@ function applyDbMigrations(db: DatabaseSync): void {
   );
   addColumnIfMissing(
     db,
+    "channel_publications",
+    "schedule_mode",
+    "TEXT NOT NULL DEFAULT 'slot'"
+  );
+  addColumnIfMissing(
+    db,
     "channel_editorial_feedback_events",
     "scope",
     "TEXT NOT NULL DEFAULT 'option'"

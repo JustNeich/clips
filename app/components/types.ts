@@ -819,6 +819,8 @@ export type ChannelPublicationStatus =
   | "paused"
   | "canceled";
 
+export type ChannelPublicationScheduleMode = "slot" | "custom";
+
 export type ChannelPublicationEvent = {
   id: string;
   publicationId: string;
@@ -834,6 +836,7 @@ export type ChannelPublication = {
   chatId: string;
   renderExportId: string;
   status: ChannelPublicationStatus;
+  scheduleMode: ChannelPublicationScheduleMode;
   scheduledAt: string;
   uploadReadyAt: string;
   slotDate: string;

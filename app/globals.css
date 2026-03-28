@@ -4942,6 +4942,16 @@ select.text-input:focus {
   border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
 }
 
+.publishing-schedule-mode {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.publishing-schedule-mode .btn {
+  min-width: 140px;
+}
+
 .publishing-edit-grid {
   align-items: end;
 }
@@ -4949,6 +4959,11 @@ select.text-input:focus {
 .publishing-card-footer {
   align-items: center;
   justify-content: space-between;
+}
+
+.publishing-custom-hint {
+  margin: 0;
+  max-width: 520px;
 }
 
 .publishing-empty-state {
