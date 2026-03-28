@@ -389,10 +389,7 @@ function buildQuickPromptStageDiagnostics(input: {
         highlightedDirectionIds: channelLearning.bootstrap.directionHighlights
           .map((direction) => direction.id)
           .slice(0, 4),
-        explorationShare:
-          channelLearning.editorialMemory.normalizedAxes?.exploration ??
-          channelLearning.bootstrap.explorationShare ??
-          null,
+        explorationShare: channelLearning.bootstrap.explorationShare ?? null,
         recentFeedbackCount: channelLearning.editorialMemory.recentFeedbackCount,
         recentSelectionCount: channelLearning.editorialMemory.recentSelectionCount,
         promptSummary: channelLearning.editorialMemory.promptSummary
@@ -817,6 +814,7 @@ export function buildQuickRegenerateResult(input: {
           promptStages: [
             buildQuickPromptStageDiagnostics({
               baseResult: input.baseResult,
+              channel: input.channel,
               promptText: input.promptText,
               reasoningEffort: input.reasoningEffort,
               includePromptText: true
