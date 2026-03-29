@@ -11,6 +11,10 @@ import {
 } from "../stage2-channel-config";
 import { stringifyStage2PromptConfig, DEFAULT_STAGE2_PROMPT_CONFIG } from "../stage2-pipeline";
 import {
+  DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
+  stringifyWorkspaceCodexModelConfig
+} from "../workspace-codex-models";
+import {
   DEFAULT_STAGE2_STYLE_PROFILE,
   stringifyStage2StyleProfile
 } from "../stage2-channel-learning";
@@ -145,6 +149,7 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "workspaces", "stage2_examples_corpus_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_hard_constraints_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_prompt_config_json", "TEXT");
+  addColumnIfMissing(db, "workspaces", "workspace_codex_model_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_worker_profile_id", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_examples_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_hard_constraints_json", "TEXT");
@@ -228,6 +233,12 @@ function applyDbMigrations(db: DatabaseSync): void {
          OR trim(stage2_prompt_config_json) = ''`
   ).run(stringifyStage2PromptConfig(DEFAULT_STAGE2_PROMPT_CONFIG));
   db.prepare(
+    `UPDATE workspaces
+        SET workspace_codex_model_config_json = ?
+      WHERE workspace_codex_model_config_json IS NULL
+         OR trim(workspace_codex_model_config_json) = ''`
+  ).run(stringifyWorkspaceCodexModelConfig(DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG));
+  db.prepare(
     `UPDATE channels
         SET stage2_style_profile_json = ?
       WHERE stage2_style_profile_json IS NULL
@@ -266,6 +277,10 @@ function applyDbMigrations(db: DatabaseSync): void {
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_channel_style_discovery_runs_creator_fingerprint ON channel_style_discovery_runs(workspace_id, creator_user_id, request_fingerprint, created_at DESC)"
+  );
+  db.exec("DROP INDEX IF EXISTS idx_stage3_jobs_kind_dedupe");
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_stage3_jobs_kind_target_dedupe ON stage3_jobs(kind, execution_target, dedupe_key) WHERE dedupe_key IS NOT NULL"
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage3_jobs_execution ON stage3_jobs(execution_target, status, created_at ASC)"

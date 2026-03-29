@@ -1,0 +1,194 @@
+{
+  "id": "hedges-of-honor-v1",
+  "createdAt": "2026-03-29T10:46:31.392Z",
+  "updatedAt": "2026-03-29T12:04:37.063Z",
+  "versions": [],
+  "name": "Hedges of Honor",
+  "description": "Референсная версия белой ScienceCard с чёрной рамкой. Геометрию сохраняем той же, но добавляем больше физичности через внутреннюю тень и небесный backdrop на весь кадр.",
+  "baseTemplateId": "hedges-of-honor-v1",
+  "content": {
+    "topText": "A Drill Sergeant is testing a new soldier's balance by throwing extra gear at him while he is already struggling to hold two rucksacks and a pair of overstuffed duffels.",
+    "bottomText": "She is going full ham with that campaign hat on. That poor man is carrying enough weight to sink a boat and he still has to catch whatever she throws next.",
+    "channelName": "Echoes Of Honor",
+    "channelHandle": "@EchoesOfHonor50",
+    "topHighlightPhrases": [],
+    "topFontScale": 1,
+    "bottomFontScale": 1,
+    "previewScale": 0.37,
+    "mediaAsset": null,
+    "backgroundAsset": null,
+    "avatarAsset": null
+  },
+  "templateConfig": {
+    "frame": {
+      "width": 1080,
+      "height": 1920
+    },
+    "card": {
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 1461,
+      "radius": 31,
+      "borderWidth": 6,
+      "borderColor": "#000000",
+      "fill": "#ffffff",
+      "shadow": "inset 0px 0px 18px 0px rgba(17, 25, 34, 0.04), inset 0px 4px 10px 0px rgba(17, 25, 34, 0.07), inset 0px -7px 14px 0px rgba(17, 25, 34, 0.10), 0px 14px 32px 0px rgba(0, 0, 0, 0.24), 0px 14px 32px 0px rgba(0, 0, 0, 0.24), 0px 14px 32px 0px rgba(0, 0, 0, 0.24), 0px 14px 32px 0px rgba(0, 0, 0, 0.24)"
+    },
+    "slot": {
+      "topHeight": 419,
+      "bottomHeight": 292,
+      "topPaddingX": 6,
+      "topPaddingY": 15,
+      "topPaddingTop": 15,
+      "topPaddingBottom": 15,
+      "bottomMetaHeight": 132,
+      "bottomMetaPaddingX": 23,
+      "bottomMetaPaddingY": 0,
+      "bottomTextPaddingX": 23,
+      "bottomTextPaddingY": 0,
+      "bottomTextPaddingTop": 0,
+      "bottomTextPaddingBottom": 0,
+      "bottomTextPaddingLeft": 23,
+      "bottomTextPaddingRight": 46
+    },
+    "author": {
+      "name": "Echoes Of Honor",
+      "handle": "@EchoesOfHonor50",
+      "avatarSize": 101,
+      "avatarBorder": 0,
+      "checkSize": 54,
+      "gap": 8,
+      "copyGap": 0,
+      "nameCheckGap": 10,
+      "checkAssetPath": "/stage3-template-badges/honor-verified-badge.svg"
+    },
+    "typography": {
+      "top": {
+        "min": 40,
+        "max": 56,
+        "softLimit": 220,
+        "penalty": 0.14,
+        "lineHeight": 0.938,
+        "maxLines": 7,
+        "maxChars": 420,
+        "horizontalSafety": 0.975,
+        "glyphFactor": 0.53,
+        "fillTargetMin": 0.9,
+        "fillTargetMax": 0.95,
+        "weight": 900,
+        "letterSpacing": "-0.04em"
+      },
+      "bottom": {
+        "min": 24,
+        "max": 34,
+        "softLimit": 190,
+        "penalty": 0.16,
+        "lineHeight": 1.08,
+        "maxLines": 4,
+        "maxChars": 320,
+        "fillTargetMin": 0.8,
+        "fillTargetMax": 0.88,
+        "weight": 500,
+        "letterSpacing": "-0.01em",
+        "fontStyle": "normal"
+      },
+      "authorName": {
+        "font": 40,
+        "lineHeight": 1,
+        "weight": 800,
+        "letterSpacing": "-0.03em"
+      },
+      "authorHandle": {
+        "font": 34,
+        "lineHeight": 1,
+        "weight": 300,
+        "letterSpacing": "-0.022em"
+      }
+    },
+    "palette": {
+      "cardFill": "#ffffff",
+      "topSectionFill": "#ffffff",
+      "bottomSectionFill": "#ffffff",
+      "topTextColor": "#0d0f12",
+      "bottomTextColor": "#17191d",
+      "authorNameColor": "#0c0f13",
+      "authorHandleColor": "#7c8085",
+      "checkBadgeColor": "#33a9eb",
+      "borderColor": "#000000",
+      "accentColor": "#0d0f12"
+    }
+  },
+  "shadowLayers": [
+    {
+      "id": "shadow-f7yhyxpm",
+      "offsetX": 0,
+      "offsetY": 0,
+      "blur": 18,
+      "spread": 0,
+      "opacity": 0.045,
+      "color": "#111922",
+      "inset": true
+    },
+    {
+      "id": "shadow-5ato9vnr",
+      "offsetX": 0,
+      "offsetY": 4,
+      "blur": 10,
+      "spread": 0,
+      "opacity": 0.075,
+      "color": "#111922",
+      "inset": true
+    },
+    {
+      "id": "shadow-0druw3im",
+      "offsetX": 0,
+      "offsetY": -7,
+      "blur": 14,
+      "spread": 0,
+      "opacity": 0.095,
+      "color": "#111922",
+      "inset": true
+    },
+    {
+      "id": "shadow-0vx5alay",
+      "offsetX": 0,
+      "offsetY": 14,
+      "blur": 32,
+      "spread": 0,
+      "opacity": 0.24,
+      "color": "#000000",
+      "inset": false
+    },
+    {
+      "id": "shadow-7o3occbk",
+      "offsetX": 0,
+      "offsetY": 14,
+      "blur": 32,
+      "spread": 0,
+      "opacity": 0.24,
+      "color": "#000000",
+      "inset": false
+    },
+    {
+      "id": "shadow-z9wkyrke",
+      "offsetX": 0,
+      "offsetY": 14,
+      "blur": 32,
+      "spread": 0,
+      "opacity": 0.24,
+      "color": "#000000",
+      "inset": false
+    },
+    {
+      "id": "shadow-4bj7dl4m",
+      "offsetX": 0,
+      "offsetY": 14,
+      "blur": 32,
+      "spread": 0,
+      "opacity": 0.24,
+      "color": "#000000",
+      "inset": false
+    }
+  ]
+}

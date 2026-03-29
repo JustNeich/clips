@@ -25,10 +25,10 @@ export type Stage3DesignLabPreset = {
 };
 
 export const STAGE3_DESIGN_LAB_STATUS_LABELS: Record<Stage3DesignLabStatus, string> = {
-  queued: "Queue",
-  "in-progress": "In Progress",
-  review: "Review",
-  approved: "Approved"
+  queued: "В очереди",
+  "in-progress": "В работе",
+  review: "На проверке",
+  approved: "Утверждено"
 };
 
 function createScienceCardBorderPreset(input: {
@@ -66,7 +66,7 @@ export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
     bottomText:
       "You can watch the wound knit together, the fluids reroute, and the whole graft behave like the plant decided the surgery was always part of the plan.",
     note:
-      "Reference-friendly editorial card. Best for clearer hierarchy, sharper article feel and calm scientific authority.",
+      "Спокойная editorial-карточка, удобная для чистой иерархии, журнального ощущения и сдержанного научного тона.",
     defaultPreviewScale: 0.34,
     initialStatus: "approved",
     checklist: [
@@ -85,7 +85,7 @@ export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
     bottomText:
       "It is like his brain just short circuited from pure joy. He is definitely not moving until that stick goes away for good.",
     note:
-      "Dark news-card shell with a gold border, bright headline copy, and a source-blur backdrop. The card should feel like a social-news explainer, not a science magazine panel.",
+      "Тёмная news-card оболочка с золотой рамкой, ярким заголовком и размытым новостным фоном. Должна ощущаться как social-news explainer, а не как научная журнальная карточка.",
     defaultPreviewScale: 0.3,
     initialStatus: "queued",
     checklist: [
@@ -96,15 +96,18 @@ export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
   },
   createScienceCardBorderPreset({
     templateId: SCIENCE_CARD_BLUE_TEMPLATE_ID,
-    note: "Blue-border variant of the base Science Card with a thicker shell outline and otherwise identical card geometry."
+    note:
+      "Синяя версия базового Science Card: более заметная рамка, но та же геометрия карточки и те же внутренние пропорции."
   }),
   createScienceCardBorderPreset({
     templateId: SCIENCE_CARD_RED_TEMPLATE_ID,
-    note: "Red-border variant of the base Science Card with the same editorial shell, spacing, and typography."
+    note:
+      "Красная версия базового Science Card: тот же editorial-характер, те же отступы и типографика, но с более агрессивным рамочным акцентом."
   }),
   createScienceCardBorderPreset({
     templateId: SCIENCE_CARD_GREEN_TEMPLATE_ID,
-    note: "Green-border variant of the base Science Card with the same proportions and a more aggressive frame accent."
+    note:
+      "Зелёная версия базового Science Card: те же пропорции, но более жёсткий цветовой акцент по рамке."
   }),
   {
     templateId: SCIENCE_CARD_V7_TEMPLATE_ID,
@@ -116,7 +119,7 @@ export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
     bottomText:
       "You have to cover your nose and cross your arms or that water will hit you like a brick. It is a confidence builder that every new recruit has to pass to be ready.",
     note:
-      "Reference-first maritime meme/news card with large white shell, rounded black headline, thin gray border and a hard offset shadow on top of a sky backdrop.",
+      "Морская meme/news карточка с крупной белой оболочкой, тяжёлым округлым заголовком, тонкой серой рамкой и жёсткой смещённой тенью на фоне неба.",
     defaultPreviewScale: 0.28,
     initialStatus: "in-progress",
     checklist: [
@@ -135,7 +138,7 @@ export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
     bottomText:
       "She is going full ham with that campaign hat on. That poor man is carrying enough weight to sink a boat and he still has to catch whatever she throws next.",
     note:
-      "Black-border reference version of the white ScienceCard shell. Keep the same geometry, but make the card feel more physical with the inner shadow and full-frame sky backdrop.",
+      "Референсная версия белой ScienceCard с чёрной рамкой. Геометрию сохраняем той же, но добавляем больше физичности через внутреннюю тень и небесный backdrop на весь кадр.",
     defaultPreviewScale: 0.28,
     initialStatus: "review",
     checklist: [

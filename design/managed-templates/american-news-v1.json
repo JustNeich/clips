@@ -1,0 +1,134 @@
+{
+  "id": "american-news-v1",
+  "createdAt": "2026-03-29T10:46:31.392Z",
+  "updatedAt": "2026-03-29T11:04:06.659Z",
+  "versions": [],
+  "name": "American News",
+  "description": "Тёмная news-card оболочка с золотой рамкой, ярким заголовком и размытым новостным фоном. Должна ощущаться как social-news explainer, а не как научная журнальная карточка.",
+  "baseTemplateId": "american-news-v1",
+  "content": {
+    "topText": "This baby capybara just discovered his off switch. Someone found the exact pressure point on his side and now he goes into a total trance for the entire afternoon.",
+    "bottomText": "It is like his brain just short circuited from pure joy. He is definitely not moving until that stick goes away for good.",
+    "channelName": "American News",
+    "channelHandle": "@amnnews9",
+    "topHighlightPhrases": [],
+    "topFontScale": 1,
+    "bottomFontScale": 1,
+    "previewScale": 0.3,
+    "mediaAsset": null,
+    "backgroundAsset": null,
+    "avatarAsset": null
+  },
+  "templateConfig": {
+    "frame": {
+      "width": 1080,
+      "height": 1920
+    },
+    "card": {
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 1461,
+      "radius": 0,
+      "borderWidth": 4,
+      "borderColor": "#f3b31f",
+      "fill": "#121820",
+      "shadow": "0px 10px 24px 0px rgba(0, 0, 0, 0.22)"
+    },
+    "slot": {
+      "topHeight": 419,
+      "bottomHeight": 292,
+      "topPaddingX": 26,
+      "topPaddingY": 22,
+      "topPaddingTop": 22,
+      "topPaddingBottom": 18,
+      "bottomMetaHeight": 132,
+      "bottomMetaPaddingX": 23,
+      "bottomMetaPaddingY": 0,
+      "bottomTextPaddingX": 22,
+      "bottomTextPaddingY": 0,
+      "bottomTextPaddingTop": 0,
+      "bottomTextPaddingBottom": 0,
+      "bottomTextPaddingLeft": 22,
+      "bottomTextPaddingRight": 22
+    },
+    "author": {
+      "name": "American News",
+      "handle": "@amnnews9",
+      "avatarSize": 101,
+      "avatarBorder": 0,
+      "checkSize": 54,
+      "gap": 8,
+      "copyGap": 0,
+      "nameCheckGap": 10,
+      "checkAssetPath": "/stage3-template-badges/american-news-badge.svg"
+    },
+    "typography": {
+      "top": {
+        "min": 38,
+        "max": 58,
+        "softLimit": 260,
+        "penalty": 0.16,
+        "lineHeight": 0.96,
+        "maxLines": 7,
+        "maxChars": 360,
+        "horizontalSafety": 0.985,
+        "glyphFactor": 0.51,
+        "fillTargetMin": 0.9,
+        "fillTargetMax": 0.96,
+        "weight": 700,
+        "letterSpacing": "-0.025em"
+      },
+      "bottom": {
+        "min": 26,
+        "max": 38,
+        "softLimit": 220,
+        "penalty": 0.18,
+        "lineHeight": 1.02,
+        "maxLines": 4,
+        "maxChars": 260,
+        "fillTargetMin": 0.84,
+        "fillTargetMax": 0.92,
+        "weight": 500,
+        "letterSpacing": "-0.015em",
+        "fontStyle": "italic"
+      },
+      "authorName": {
+        "font": 40,
+        "lineHeight": 1,
+        "weight": 800,
+        "letterSpacing": "-0.03em"
+      },
+      "authorHandle": {
+        "font": 34,
+        "lineHeight": 1,
+        "weight": 700,
+        "letterSpacing": "-0.015em"
+      }
+    },
+    "palette": {
+      "cardFill": "#121820",
+      "topSectionFill": "#121820",
+      "bottomSectionFill": "#121820",
+      "topTextColor": "#f7f8fb",
+      "bottomTextColor": "#f4f6fb",
+      "authorNameColor": "#f7f8fb",
+      "authorHandleColor": "#c3c8d1",
+      "checkBadgeColor": "#f3b31f",
+      "borderColor": "#f3b31f",
+      "accentColor": "#f3b31f"
+    }
+  },
+  "shadowLayers": [
+    {
+      "id": "shadow-ih7z449p",
+      "offsetX": 0,
+      "offsetY": 10,
+      "blur": 24,
+      "spread": 0,
+      "opacity": 0.22,
+      "color": "#000000",
+      "inset": false
+    }
+  ]
+}

@@ -11,10 +11,19 @@ import {
   tryCreateStage3PreviewResponse
 } from "../../../../lib/stage3-preview-service";
 import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
+import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
 
 const PREVIEW_BUSY_RETRY_AFTER_SEC = "6";
+
+function isPreviewInputError(message: string): boolean {
+  return (
+    message.includes("sourceUrl") ||
+    message.includes("Проверьте ссылку") ||
+    message.includes("предпросмотра")
+  );
+}
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Stage3PreviewRequestBody | null;
@@ -24,6 +33,23 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
+    const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
+    if (!sourceUrl) {
+      return Response.json({ error: "Передайте sourceUrl в теле запроса." }, { status: 400 });
+    }
+    if (!isSupportedUrl(sourceUrl)) {
+      return Response.json(
+        {
+          error: "Не удалось подготовить исходное видео для предпросмотра. Проверьте ссылку на ролик из Шага 1."
+        },
+        { status: 400 }
+      );
+    }
+
+    const normalizedBody = {
+      ...(body ?? {}),
+      sourceUrl
+    } satisfies Stage3PreviewRequestBody;
     const executionTarget = resolveStage3ExecutionTarget("host");
     if (executionTarget === "local") {
       const readiness = await resolveStage3LocalWorkerReadiness({
@@ -56,8 +82,8 @@ export async function POST(request: Request): Promise<Response> {
       userId: auth.user.id,
       kind: "preview",
       executionTarget,
-      payloadJson: JSON.stringify(body ?? {}),
-      dedupeKey: await buildStage3PreviewDedupeKey(body ?? {}, {
+      payloadJson: JSON.stringify(normalizedBody),
+      dedupeKey: await buildStage3PreviewDedupeKey(normalizedBody, {
         workspaceId: auth.workspace.id,
         userId: auth.user.id
       })
@@ -112,16 +138,19 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof DOMException && error.name === "AbortError") {
       return new Response(null, { status: 204 });
     }
+    const message = error instanceof Error ? error.message : "Не удалось загрузить предпросмотр Stage 3.";
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "Не удалось загрузить предпросмотр Stage 3."
+        error: message
       },
       {
-        status: 503,
-        headers: {
-          "Retry-After": PREVIEW_BUSY_RETRY_AFTER_SEC,
-          "x-stage3-busy": "1"
-        }
+        status: isPreviewInputError(message) ? 400 : 503,
+        headers: isPreviewInputError(message)
+          ? undefined
+          : {
+              "Retry-After": PREVIEW_BUSY_RETRY_AFTER_SEC,
+              "x-stage3-busy": "1"
+            }
       }
     );
   }

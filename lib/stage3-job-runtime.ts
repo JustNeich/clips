@@ -38,6 +38,11 @@ type Stage3RuntimeGlobal = typeof globalThis & {
   __clipsStage3JobRuntimeState__?: Stage3RuntimeState;
 };
 
+type RenderExportCompletionState = {
+  renderExport: ReturnType<typeof completeRenderExportAndMaybeQueue>["renderExport"];
+  publication: ReturnType<typeof completeRenderExportAndMaybeQueue>["publication"];
+};
+
 type EnqueueJobInput = {
   workspaceId: string;
   userId: string;
@@ -280,7 +285,11 @@ function buildRenderExportChatRef(input: {
   };
 }
 
-export async function persistRenderExportCompletion(
+function shouldScheduleRecoveredPublication(publication: RenderExportCompletionState["publication"]): boolean {
+  return Boolean(publication && (publication.status === "queued" || publication.status === "uploading"));
+}
+
+async function ensureRenderExportCompletionState(
   initialJob: Stage3JobRecord,
   completedArtifact: {
     jobId: string;
@@ -290,16 +299,20 @@ export async function persistRenderExportCompletion(
     artifactSizeBytes: number;
     completedAt: string;
   }
-): Promise<void> {
+): Promise<{
+  chatId: string;
+  payload: Stage3RenderRequestBody;
+  completion: RenderExportCompletionState;
+} | null> {
   const payload = JSON.parse(initialJob.payloadJson) as Stage3RenderRequestBody;
   const chatId = payload.chatId?.trim() ?? "";
   if (!chatId) {
-    return;
+    return null;
   }
 
   const chat = await getChatById(chatId);
   if (!chat || chat.workspaceId !== initialJob.workspaceId) {
-    return;
+    return null;
   }
 
   const stage2Result = findLatestStage2Event(chat)?.payload ?? null;
@@ -320,27 +333,79 @@ export async function persistRenderExportCompletion(
     stage2Result: (stage2Result ?? null) as Stage2Response | null
   });
 
+  return {
+    chatId: chat.id,
+    payload,
+    completion
+  };
+}
+
+export async function recoverRenderExportCompletion(
+  initialJob: Stage3JobRecord,
+  completedArtifact: {
+    jobId: string;
+    artifactFileName: string;
+    artifactFilePath: string;
+    artifactMimeType: string;
+    artifactSizeBytes: number;
+    completedAt: string;
+  }
+): Promise<void> {
+  const state = await ensureRenderExportCompletionState(initialJob, completedArtifact);
+  if (!state) {
+    return;
+  }
+  if (shouldScheduleRecoveredPublication(state.completion.publication)) {
+    scheduleChannelPublicationProcessing();
+  }
+}
+
+export async function persistRenderExportCompletion(
+  initialJob: Stage3JobRecord,
+  completedArtifact: {
+    jobId: string;
+    artifactFileName: string;
+    artifactFilePath: string;
+    artifactMimeType: string;
+    artifactSizeBytes: number;
+    completedAt: string;
+  }
+): Promise<void> {
+  const state = await ensureRenderExportCompletionState(initialJob, completedArtifact);
+  if (!state) {
+    return;
+  }
+  const { chatId, payload, completion } = state;
+
+  if (shouldScheduleRecoveredPublication(completion.publication)) {
+    scheduleChannelPublicationProcessing();
+  }
+
   const exportRef = buildRenderExportChatRef({
     completedAt: completedArtifact.completedAt,
     fileName: completedArtifact.artifactFileName,
     renderTitle: payload.renderTitle?.trim() || null,
     payload
   });
-  await appendChatEvent(chat.id, {
-    role: "assistant",
-    type: "note",
-    text: `Stage 3 export finished: ${exportRef.fileName} (title ${exportRef.renderTitle ?? "n/a"}, clip ${exportRef.clipStartSec?.toFixed(1) ?? "n/a"}-${exportRef.clipEndSec?.toFixed(1) ?? "n/a"}s, focus ${exportRef.focusY === null ? "n/a" : Math.round(exportRef.focusY * 100)}%)`,
-    data: {
-      ...exportRef,
-      renderExportId: completion.renderExport.id,
-      publicationId: completion.publication?.id ?? null,
-      publicationStatus: completion.publication?.status ?? null,
-      publicationScheduledAt: completion.publication?.scheduledAt ?? null
-    }
-  });
-
-  if (completion.publication) {
-    scheduleChannelPublicationProcessing();
+  try {
+    await appendChatEvent(chatId, {
+      role: "assistant",
+      type: "note",
+      text: `Stage 3 export finished: ${exportRef.fileName} (title ${exportRef.renderTitle ?? "n/a"}, clip ${exportRef.clipStartSec?.toFixed(1) ?? "n/a"}-${exportRef.clipEndSec?.toFixed(1) ?? "n/a"}s, focus ${exportRef.focusY === null ? "n/a" : Math.round(exportRef.focusY * 100)}%)`,
+      data: {
+        ...exportRef,
+        renderExportId: completion.renderExport.id,
+        publicationId: completion.publication?.id ?? null,
+        publicationStatus: completion.publication?.status ?? null,
+        publicationScheduledAt: completion.publication?.scheduledAt ?? null
+      }
+    });
+  } catch (error) {
+    appendStage3JobEvent(
+      initialJob.id,
+      "warn",
+      error instanceof Error ? error.message : "Не удалось записать событие о завершении Stage 3 render в чат."
+    );
   }
 }
 

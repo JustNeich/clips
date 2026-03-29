@@ -2,6 +2,7 @@ import { requireAuth, requireChannelVisibility } from "../../../../../lib/auth/g
 import { resolveStage3ExecutionTarget } from "../../../../../lib/stage3-execution";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../lib/stage3-job-http";
 import { enqueueAndScheduleStage3Job } from "../../../../../lib/stage3-job-runtime";
+import { buildStage3RenderRequestDedupeKey } from "../../../../../lib/stage3-render-request";
 import { Stage3RenderRequestBody } from "../../../../../lib/stage3-render-service";
 import { resolveStage3LocalWorkerReadiness } from "../../../../../lib/stage3-worker-readiness";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
@@ -76,6 +77,10 @@ export async function POST(request: Request): Promise<Response> {
       userId: auth.user.id,
       kind: "render",
       executionTarget,
+      dedupeKey: buildStage3RenderRequestDedupeKey(body ?? {}, {
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      }),
       payloadJson: JSON.stringify({
         ...(body ?? {}),
         sourceUrl

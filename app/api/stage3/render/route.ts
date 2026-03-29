@@ -11,10 +11,16 @@ import {
   RENDER_WAIT_TIMEOUT_MS,
   Stage3RenderRequestBody
 } from "../../../../lib/stage3-render-service";
+import { buildStage3RenderRequestDedupeKey } from "../../../../lib/stage3-render-request";
+import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
 
 const RENDER_BUSY_RETRY_AFTER_SEC = "10";
+
+function isRenderInputError(message: string): boolean {
+  return message.includes("sourceUrl") || message.includes("Проверьте ссылку");
+}
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Stage3RenderRequestBody | null;
@@ -24,6 +30,23 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
+    const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
+    if (!sourceUrl) {
+      return Response.json({ error: "Передайте sourceUrl в теле запроса." }, { status: 400 });
+    }
+    if (!isSupportedUrl(sourceUrl)) {
+      return Response.json(
+        {
+          error: "Не удалось подготовить исходное видео для рендера. Проверьте ссылку на ролик из Шага 1."
+        },
+        { status: 400 }
+      );
+    }
+
+    const normalizedBody = {
+      ...(body ?? {}),
+      sourceUrl
+    } satisfies Stage3RenderRequestBody;
     const executionTarget = resolveStage3ExecutionTarget();
     if (executionTarget === "local") {
       const readiness = await resolveStage3LocalWorkerReadiness({
@@ -56,7 +79,11 @@ export async function POST(request: Request): Promise<Response> {
       userId: auth.user.id,
       kind: "render",
       executionTarget,
-      payloadJson: JSON.stringify(body ?? {})
+      dedupeKey: buildStage3RenderRequestDedupeKey(normalizedBody, {
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id
+      }),
+      payloadJson: JSON.stringify(normalizedBody)
     });
     const resolved =
       job.status === "completed"
@@ -106,16 +133,19 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof DOMException && error.name === "AbortError") {
       return new Response(null, { status: 204 });
     }
+    const message = error instanceof Error ? error.message : "Render export failed.";
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "Render export failed."
+        error: message
       },
       {
-        status: 503,
-        headers: {
-          "Retry-After": RENDER_BUSY_RETRY_AFTER_SEC,
-          "x-stage3-busy": "1"
-        }
+        status: isRenderInputError(message) ? 400 : 503,
+        headers: isRenderInputError(message)
+          ? undefined
+          : {
+              "Retry-After": RENDER_BUSY_RETRY_AFTER_SEC,
+              "x-stage3-busy": "1"
+            }
       }
     );
   }

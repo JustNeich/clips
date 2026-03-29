@@ -11,15 +11,19 @@ import {
   DEFAULT_CHANNEL_PUBLISH_SETTINGS
 } from "../lib/channel-publishing";
 import {
+  completeRenderExportAndMaybeQueue,
   moveChannelPublicationToSlot,
   updateChannelPublicationFromEditor
 } from "../lib/channel-publication-service";
 import { getDb, newId, nowIso } from "../lib/db/client";
 import {
+  claimNextReadyChannelPublication,
   createChannelPublication,
   createRenderExport,
+  findLatestPublicationForRenderExport,
   listChannelPublications,
-  markChannelPublicationScheduled
+  markChannelPublicationScheduled,
+  publishNowChannelPublication
 } from "../lib/publication-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -265,6 +269,177 @@ test("updateChannelPublicationFromEditor persists a custom exact publication tim
     const stored = listChannelPublications(scenario.channelId).find((item) => item.id === publicationId);
     assert.equal(stored?.scheduleMode, "custom");
     assert.equal(stored?.slotIndex, -1);
+  });
+});
+
+test("stale publication lease cannot overwrite a newer queued state", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    const publicationId = scenario.publications[0]!.id;
+    const readyAt = nowIso();
+    getDb()
+      .prepare("UPDATE channel_publications SET scheduled_at = ?, upload_ready_at = ?, updated_at = ? WHERE id = ?")
+      .run(readyAt, readyAt, readyAt, publicationId);
+
+    const claimed = claimNextReadyChannelPublication({});
+    assert.ok(claimed, "expected a queued publication to be claimed");
+    assert.equal(claimed?.publication.id, publicationId);
+
+    const publishNow = publishNowChannelPublication(publicationId);
+    assert.equal(publishNow.status, "queued");
+
+    const result = markChannelPublicationScheduled({
+      publicationId,
+      youtubeVideoId: "youtube-video-1",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-1",
+      expectedLeaseToken: claimed?.leaseToken
+    });
+
+    assert.equal(result.status, "queued");
+    assert.equal(result.youtubeVideoId, null);
+    assert.equal(result.youtubeVideoUrl, null);
+  });
+});
+
+test("completeRenderExportAndMaybeQueue recreates a queued publication when render export already exists", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([]);
+    const workspaceId = "w1";
+    const userId = "u1";
+    const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=recover123", scenario.channelId);
+    const stage3JobId = newId();
+    const stamp = nowIso();
+    getDb()
+      .prepare(
+        `INSERT INTO stage3_jobs
+          (id, workspace_id, user_id, kind, status, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, created_at, updated_at, started_at, completed_at)
+          VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
+      )
+      .run(
+        stage3JobId,
+        workspaceId,
+        userId,
+        "render",
+        "completed",
+        JSON.stringify({ chatId: chat.id, channelId: scenario.channelId }),
+        1,
+        0,
+        stamp,
+        stamp
+      );
+    const renderExport = createRenderExport({
+      workspaceId,
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      stage3JobId,
+      artifactFileName: "recover.mp4",
+      artifactFilePath: "/tmp/recover.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Recovered",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId
+    });
+
+    const completion = completeRenderExportAndMaybeQueue({
+      workspaceId,
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      chatTitle: "Recovered chat",
+      stage3JobId,
+      artifactFileName: "recover.mp4",
+      artifactFilePath: "/tmp/recover.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Recovered",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId,
+      stage2Result: null
+    });
+
+    const publication = findLatestPublicationForRenderExport(renderExport.id);
+    assert.equal(completion.renderExport.id, renderExport.id);
+    assert.ok(completion.publication, "expected queued publication to be recreated");
+    assert.equal(completion.publication?.id, publication?.id);
+    assert.equal(publication?.status, "queued");
+    assert.equal(listChannelPublications(scenario.channelId).length, 1);
+  });
+});
+
+test("completeRenderExportAndMaybeQueue does not duplicate a scheduled publication for the same render export", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([]);
+    const workspaceId = "w1";
+    const userId = "u1";
+    const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=stable123", scenario.channelId);
+    const stage3JobId = newId();
+    const stamp = nowIso();
+    getDb()
+      .prepare(
+        `INSERT INTO stage3_jobs
+          (id, workspace_id, user_id, kind, status, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, created_at, updated_at, started_at, completed_at)
+          VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
+      )
+      .run(
+        stage3JobId,
+        workspaceId,
+        userId,
+        "render",
+        "completed",
+        JSON.stringify({ chatId: chat.id, channelId: scenario.channelId }),
+        1,
+        0,
+        stamp,
+        stamp
+      );
+
+    const first = completeRenderExportAndMaybeQueue({
+      workspaceId,
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      chatTitle: "Stable chat",
+      stage3JobId,
+      artifactFileName: "stable.mp4",
+      artifactFilePath: "/tmp/stable.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Stable",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId,
+      stage2Result: null
+    });
+    assert.ok(first.publication, "expected initial publication to exist");
+
+    markChannelPublicationScheduled({
+      publicationId: first.publication!.id,
+      youtubeVideoId: "youtube-video-stable",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-stable"
+    });
+
+    const second = completeRenderExportAndMaybeQueue({
+      workspaceId,
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      chatTitle: "Stable chat",
+      stage3JobId,
+      artifactFileName: "stable.mp4",
+      artifactFilePath: "/tmp/stable.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Stable",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId,
+      stage2Result: null
+    });
+
+    assert.equal(second.renderExport.id, first.renderExport.id);
+    assert.equal(second.publication?.id, first.publication?.id);
+    assert.equal(second.publication?.status, "scheduled");
+    assert.equal(listChannelPublications(scenario.channelId).length, 1);
   });
 });
 

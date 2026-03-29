@@ -33,7 +33,7 @@ import {
 } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
-import { getTemplateById } from "../../lib/stage3-template";
+import { getTemplateById, type Stage3TemplateConfig } from "../../lib/stage3-template";
 import {
   TemplateRenderSnapshot,
   buildTemplateRenderSnapshot
@@ -68,12 +68,13 @@ import {
 } from "../../lib/stage3-camera";
 import { getStage3DesignLabLabel } from "../../lib/stage3-design-lab";
 import { sanitizeDisplayText } from "../../lib/ui-error";
+import { subscribeManagedTemplateSync } from "../../lib/managed-template-sync";
 import {
   applyStage3PlaybackPositionToVideo,
   buildStage3PlaybackTimingKey,
   buildStage3PlaybackPlan,
-  mapStage3SourceTimeToOutputTime,
   resolveStage3PlaybackPosition,
+  resolveStage3PlaybackSyncAction,
   resolveStage3PlaybackTransformState
 } from "../../lib/stage3-preview-playback";
 import {
@@ -82,10 +83,19 @@ import {
   normalizeStage3SegmentZoomOverride,
   resolveStage3SegmentTransformState
 } from "../../lib/stage3-segment-transforms";
+import type { ManagedTemplate } from "../../lib/managed-template-types";
 import type {
   Stage2ToStage3HandoffSummary,
   Stage3CaptionApplyMode
 } from "../../lib/stage2-stage3-handoff";
+
+export type Step3ManagedTemplateState = {
+  managedId: string;
+  name: string;
+  baseTemplateId: string;
+  templateConfig: Stage3TemplateConfig;
+  updatedAt: string | null;
+};
 
 type Step3RenderTemplateProps = {
   sourceUrl: string | null;
@@ -182,6 +192,7 @@ type Step3RenderTemplateProps = {
   onCreateWorkerPairing: () => void;
   onOpenPlanner?: () => void;
   onSurfaceModeChange?: (mode: Stage3SurfaceMode) => void;
+  onManagedTemplateStateChange?: (value: Step3ManagedTemplateState) => void;
 };
 
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -231,6 +242,13 @@ type FragmentTimelineDragState =
       durationSec: number;
       pointerOffsetSec: number;
     };
+
+type PreviewClipVideoController = {
+  seekToOutputTime: (outputSec: number, toleranceSec?: number) => {
+    outputTimeSec: number;
+    sourceTimeSec: number;
+  } | null;
+};
 
 function formatTimeSec(value: number): string {
   const total = Math.max(0, value);
@@ -616,7 +634,8 @@ function PreviewClipVideo({
   loopEnabled,
   onPositionChange,
   onSourceDurationChange,
-  onClipEnd
+  onClipEnd,
+  controllerRef
 }: {
   sourceUrl: string;
   playbackDurationSec: number;
@@ -634,6 +653,7 @@ function PreviewClipVideo({
   onPositionChange?: (outputSec: number, sourceSec: number) => void;
   onSourceDurationChange?: (sec: number | null) => void;
   onClipEnd?: () => void;
+  controllerRef?: MutableRefObject<PreviewClipVideoController | null>;
 }) {
   const frameLoopTokenRef = useRef<number | null>(null);
   const activeSegmentIndexRef = useRef(0);
@@ -673,6 +693,20 @@ function PreviewClipVideo({
     },
     [mediaMode, onPositionChange, playbackDurationSec, videoRef]
   );
+
+  useEffect(() => {
+    if (!controllerRef) {
+      return;
+    }
+    controllerRef.current = {
+      seekToOutputTime
+    };
+    return () => {
+      if (controllerRef.current?.seekToOutputTime === seekToOutputTime) {
+        controllerRef.current = null;
+      }
+    };
+  }, [controllerRef, seekToOutputTime]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -771,52 +805,52 @@ function PreviewClipVideo({
       return true;
     }
     const currentPlaybackPlan = playbackPlanRef.current;
-    const segment =
-      currentPlaybackPlan.segments[activeSegmentIndexRef.current] ?? currentPlaybackPlan.segments[0];
-    if (!segment) {
+    const syncAction = resolveStage3PlaybackSyncAction({
+      plan: currentPlaybackPlan,
+      sourceTimeSec: video.currentTime,
+      preferredSegmentIndex: activeSegmentIndexRef.current
+    });
+    if (!syncAction) {
       return false;
     }
-    const currentTime = video.currentTime;
-    const transitionThresholdSec = 0.02;
-
-    if (currentTime >= segment.sourceEndSec - transitionThresholdSec) {
-      const nextSegment = currentPlaybackPlan.segments[activeSegmentIndexRef.current + 1];
-      if (nextSegment) {
-        const nextPosition = resolveStage3PlaybackPosition(currentPlaybackPlan, nextSegment.outputStartSec);
-        if (nextPosition) {
-          activeSegmentIndexRef.current = nextPosition.segmentIndex;
-          lastPublishedOutputRef.current = nextPosition.outputTimeSec;
-          applyStage3PlaybackPositionToVideo(video, nextPosition, 0);
-          onPositionChange?.(nextPosition.outputTimeSec, nextPosition.sourceTimeSec);
-          return true;
-        }
+    if (syncAction.kind === "position") {
+      activeSegmentIndexRef.current = syncAction.position.segmentIndex;
+      lastPublishedOutputRef.current = syncAction.position.outputTimeSec;
+      if (Math.abs(video.playbackRate - syncAction.position.playbackRate) > 0.001) {
+        video.playbackRate = syncAction.position.playbackRate;
       }
+      onPositionChange?.(syncAction.position.outputTimeSec, syncAction.position.sourceTimeSec);
 
-      if (loopEnabled && isPlaying) {
-        const restartPosition = seekToOutputTime(0, 0);
-        if (restartPosition) {
-          void video.play().catch(() => undefined);
-          return true;
-        }
+      if (!loopEnabled && syncAction.position.outputTimeSec >= playbackDurationSec - 0.02) {
+        video.pause();
+        onClipEnd?.();
+        return false;
       }
-
-      video.pause();
-      lastPublishedOutputRef.current = playbackDurationSec;
-      onPositionChange?.(playbackDurationSec, segment.sourceEndSec);
-      onClipEnd?.();
-      return false;
+      return true;
     }
 
-    const outputSec = mapStage3SourceTimeToOutputTime(segment, currentTime);
-    lastPublishedOutputRef.current = outputSec;
-    onPositionChange?.(outputSec, currentTime);
-
-    if (!loopEnabled && outputSec >= playbackDurationSec - 0.02) {
-      video.pause();
-      onClipEnd?.();
-      return false;
+    if (syncAction.kind === "seek") {
+      activeSegmentIndexRef.current = syncAction.position.segmentIndex;
+      lastPublishedOutputRef.current = syncAction.position.outputTimeSec;
+      applyStage3PlaybackPositionToVideo(video, syncAction.position, 0);
+      onPositionChange?.(syncAction.position.outputTimeSec, syncAction.position.sourceTimeSec);
+      return true;
     }
-    return true;
+
+    if (loopEnabled && isPlaying) {
+      const restartPosition = seekToOutputTime(0, 0);
+      if (restartPosition) {
+        void video.play().catch(() => undefined);
+        return true;
+      }
+    }
+
+    video.pause();
+    activeSegmentIndexRef.current = syncAction.position.segmentIndex;
+    lastPublishedOutputRef.current = syncAction.position.outputTimeSec;
+    onPositionChange?.(syncAction.position.outputTimeSec, syncAction.position.sourceTimeSec);
+    onClipEnd?.();
+    return false;
   }, [
     isPlaying,
     loopEnabled,
@@ -1019,6 +1053,7 @@ function Stage3LivePreviewPanel({
   const backgroundPreviewRef = useRef<HTMLVideoElement | null>(null);
   const previewCanvasRef = useRef<HTMLDivElement | null>(null);
   const previewSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const previewTransportRef = useRef<PreviewClipVideoController | null>(null);
   const timelineTrackRef = useRef<HTMLDivElement | null>(null);
   const positionTrackRef = useRef<HTMLDivElement | null>(null);
   const scaleTrackRef = useRef<HTMLDivElement | null>(null);
@@ -1282,23 +1317,14 @@ function Stage3LivePreviewPanel({
     (value: number) => {
       const clamped = clamp(value, 0, playbackDurationSec);
       setTimelineSec(clamped);
-      const video = slotPreviewRef.current;
-      if (video) {
-        if (activePreviewMediaMode === "linear") {
-          video.currentTime = clamped;
-          syncBackgroundTo(clamped, clamped);
-          return;
-        }
-        const position = resolveStage3PlaybackPosition(playbackPlan, clamped);
-        if (position) {
-          applyStage3PlaybackPositionToVideo(video, position, 0);
-          syncBackgroundTo(position.outputTimeSec, position.sourceTimeSec);
-          return;
-        }
+      const position = previewTransportRef.current?.seekToOutputTime(clamped, 0);
+      if (position) {
+        syncBackgroundTo(position.outputTimeSec, position.sourceTimeSec);
+        return;
       }
       syncBackgroundTo(clamped, clamped);
     },
-    [activePreviewMediaMode, playbackDurationSec, playbackPlan, syncBackgroundTo]
+    [playbackDurationSec, syncBackgroundTo]
   );
 
   const seekTimelineAtClientX = useCallback(
@@ -1655,6 +1681,7 @@ function Stage3LivePreviewPanel({
                   templateId={templateId}
                   content={sceneContent}
                   snapshot={previewTemplateSnapshot}
+                  templateConfigOverride={templateConfig}
                   onComputedChange={(nextComputed) => {
                     handleMeasuredTextFitChange(toTextFitSnapshot(nextComputed, previewTemplateSnapshot));
                   }}
@@ -1756,6 +1783,7 @@ function Stage3LivePreviewPanel({
                         onPositionChange={handlePreviewPositionChange}
                         onSourceDurationChange={handleSourceDurationChange}
                         onClipEnd={handlePreviewClipEnd}
+                        controllerRef={previewTransportRef}
                       />
                     ) : (
                       <div
@@ -1977,7 +2005,8 @@ export function Step3RenderTemplate({
   onMusicGainChange,
   onCreateWorkerPairing,
   onOpenPlanner = () => undefined,
-  onSurfaceModeChange
+  onSurfaceModeChange,
+  onManagedTemplateStateChange
 }: Step3RenderTemplateProps) {
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
@@ -2021,14 +2050,95 @@ export function Step3RenderTemplate({
     measured: boolean;
   } | null>(null);
   const [pendingTextFitAction, setPendingTextFitAction] = useState<PendingTextFitAction | null>(null);
+  const managedTemplateLoadRequestIdRef = useRef(0);
+  const buildFallbackManagedTemplateState = useCallback(
+    () => ({
+      managedId: templateId,
+      name: getStage3DesignLabLabel(templateId),
+      baseTemplateId: templateId,
+      templateConfig: getTemplateById(templateId),
+      updatedAt: null as string | null
+    }),
+    [templateId]
+  );
+  const [managedTemplateState, setManagedTemplateState] = useState<Step3ManagedTemplateState>(() =>
+    buildFallbackManagedTemplateState()
+  );
+  const managedTemplateUpdatedAtRef = useRef<string | null>(managedTemplateState.updatedAt);
+  managedTemplateUpdatedAtRef.current = managedTemplateState.updatedAt;
+
+  const loadManagedTemplate = useCallback(async () => {
+    const requestId = managedTemplateLoadRequestIdRef.current + 1;
+    managedTemplateLoadRequestIdRef.current = requestId;
+
+    try {
+      const response = await fetch(`/api/design/templates/${encodeURIComponent(templateId)}`, {
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        throw new Error(`Managed template failed: ${response.status}`);
+      }
+      const payload = (await response.json()) as { template?: ManagedTemplate };
+      const managedTemplate = payload.template;
+      if (!managedTemplate || requestId !== managedTemplateLoadRequestIdRef.current) {
+        return;
+      }
+      setManagedTemplateState({
+        managedId: managedTemplate.id,
+        name: managedTemplate.name,
+        baseTemplateId: managedTemplate.baseTemplateId,
+        templateConfig: managedTemplate.templateConfig,
+        updatedAt: managedTemplate.updatedAt
+      });
+    } catch {
+      if (requestId !== managedTemplateLoadRequestIdRef.current) {
+        return;
+      }
+      setManagedTemplateState(buildFallbackManagedTemplateState());
+    }
+  }, [buildFallbackManagedTemplateState, templateId]);
 
   useEffect(() => {
     setResolvedFragmentSourceDurationSec(sourceDurationSec);
   }, [sourceDurationSec, sourceUrl]);
 
+  useEffect(() => {
+    onManagedTemplateStateChange?.(managedTemplateState);
+  }, [managedTemplateState, onManagedTemplateStateChange]);
+
+  useEffect(() => {
+    void loadManagedTemplate();
+    function handleWindowFocus() {
+      void loadManagedTemplate();
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void loadManagedTemplate();
+      }
+    }
+    const unsubscribeManagedTemplateSync = subscribeManagedTemplateSync((message) => {
+      if (
+        message.templateId === templateId &&
+        managedTemplateUpdatedAtRef.current !== message.updatedAt
+      ) {
+        void loadManagedTemplate();
+      }
+    });
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      unsubscribeManagedTemplateSync();
+    };
+  }, [loadManagedTemplate, templateId]);
+
   const fragmentSourceDurationSec = sourceDurationSec ?? resolvedFragmentSourceDurationSec;
 
-  const templateConfig = getTemplateById(templateId);
+  const runtimeTemplateId = managedTemplateState.baseTemplateId;
+  const templateConfig = managedTemplateState.templateConfig;
+  const templateLabel = managedTemplateState.name;
   const effectiveCameraTracks = useMemo(
     () =>
       resolveStage3EffectiveCameraTracks({
@@ -2051,7 +2161,8 @@ export function Step3RenderTemplate({
   const previewTemplateSnapshot = useMemo(
     () =>
       buildTemplateRenderSnapshot({
-        templateId,
+        templateId: runtimeTemplateId,
+        templateConfigOverride: templateConfig,
         content: {
           topText,
           bottomText,
@@ -2074,18 +2185,19 @@ export function Step3RenderTemplate({
       localBottomFontScale,
       localTopFontScale,
       previewVideoUrl,
-      templateId,
+      runtimeTemplateId,
+      templateConfig,
       topText
     ]
   );
   const computed = previewTemplateSnapshot.computed;
   const backgroundMode = useMemo(
     () =>
-      resolveStage3BackgroundMode(templateId, {
+      resolveStage3BackgroundMode(runtimeTemplateId, {
         hasCustomBackground: Boolean(backgroundAssetUrl),
         hasSourceVideo: Boolean(previewVideoUrl || accuratePreviewVideoUrl)
       }),
-    [accuratePreviewVideoUrl, backgroundAssetUrl, previewVideoUrl, templateId]
+    [accuratePreviewVideoUrl, backgroundAssetUrl, previewVideoUrl, runtimeTemplateId]
   );
 
   const displayVersions = useMemo(
@@ -4249,8 +4361,9 @@ export function Step3RenderTemplate({
                 <summary>Контекст шага</summary>
                 <div className="advanced-content">
                   <div className="render-meta-strip">
-                    <span className="meta-pill">{getStage3DesignLabLabel(templateId)}</span>
+                    <span className="meta-pill">{templateLabel}</span>
                     <span className="meta-pill mono">{templateId}</span>
+                    <span className="meta-pill mono">База {runtimeTemplateId}</span>
                     <span className="meta-pill">
                       {channelName} (@{channelUsername})
                     </span>
@@ -5147,7 +5260,7 @@ export function Step3RenderTemplate({
         right={
           <Stage3LivePreviewPanel
             editorMode={!isFinishMode}
-            templateId={templateId}
+            templateId={runtimeTemplateId}
             channelName={channelName}
             channelUsername={channelUsername}
             avatarUrl={avatarUrl}

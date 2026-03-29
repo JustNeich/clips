@@ -10,6 +10,7 @@ import {
   cancelChannelPublication,
   createChannelPublication,
   createRenderExport,
+  findLatestPublicationForRenderExport,
   findLatestReusablePublicationForChat,
   getChannelPublicationById,
   getChannelPublishIntegration,
@@ -374,6 +375,24 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
     chatTitle: input.chatTitle,
     stage2Result: input.stage2Result
   });
+  const existingForRenderExport = findLatestPublicationForRenderExport(input.renderExport.id);
+  if (existingForRenderExport) {
+    if (
+      existingForRenderExport.status === "queued" ||
+      existingForRenderExport.status === "paused" ||
+      existingForRenderExport.status === "failed"
+    ) {
+      const updated = mergeQueuedPublicationDefaults({
+        current: existingForRenderExport,
+        renderExport: input.renderExport,
+        defaults
+      });
+      appendChannelPublicationEvent(updated.id, "info", "Рендер повторно синхронизирован с текущей публикацией.");
+      return updated;
+    }
+    return existingForRenderExport.status === "canceled" ? null : existingForRenderExport;
+  }
+
   const existing = findLatestReusablePublicationForChat(input.chatId);
   if (existing) {
     const updated = mergeQueuedPublicationDefaults({
@@ -639,10 +658,14 @@ export async function moveChannelPublicationToSlot(input: {
   });
 }
 
-export async function processQueuedChannelPublication(publication: ChannelPublication): Promise<ChannelPublication> {
+export async function processQueuedChannelPublication(
+  publication: ChannelPublication,
+  options?: { leaseToken?: string | null }
+): Promise<ChannelPublication> {
   if (publication.status !== "uploading" && publication.status !== "queued") {
     return publication;
   }
+  const expectedLeaseToken = options?.leaseToken?.trim() || null;
 
   try {
     const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
@@ -658,7 +681,8 @@ export async function processQueuedChannelPublication(publication: ChannelPublic
       return markChannelPublicationScheduled({
         publicationId: publication.id,
         youtubeVideoId: publication.youtubeVideoId,
-        youtubeVideoUrl: publication.youtubeVideoUrl
+        youtubeVideoUrl: publication.youtubeVideoUrl,
+        expectedLeaseToken
       });
     }
 
@@ -683,7 +707,8 @@ export async function processQueuedChannelPublication(publication: ChannelPublic
     return markChannelPublicationScheduled({
       publicationId: publication.id,
       youtubeVideoId: remote.videoId,
-      youtubeVideoUrl: remote.videoUrl
+      youtubeVideoUrl: remote.videoUrl,
+      expectedLeaseToken
     });
   } catch (error) {
     if (error instanceof YouTubePublishError && error.reauthRequired) {
@@ -691,7 +716,10 @@ export async function processQueuedChannelPublication(publication: ChannelPublic
     }
     return markChannelPublicationFailed(
       publication.id,
-      error instanceof Error ? error.message : "Не удалось опубликовать видео в YouTube."
+      error instanceof Error ? error.message : "Не удалось опубликовать видео в YouTube.",
+      {
+        expectedLeaseToken
+      }
     );
   }
 }

@@ -569,6 +569,27 @@ export async function updateChannelById(
   return next;
 }
 
+export async function reassignChannelsTemplateId(
+  fromTemplateId: string,
+  toTemplateId: string
+): Promise<number> {
+  const sourceTemplateId = sanitizeName(fromTemplateId, "").trim();
+  const targetTemplateId = sanitizeName(toTemplateId, "").trim();
+  if (!sourceTemplateId || !targetTemplateId || sourceTemplateId === targetTemplateId) {
+    return 0;
+  }
+
+  const db = getDb();
+  const result = db
+    .prepare(
+      `UPDATE channels
+       SET template_id = ?, updated_at = ?
+       WHERE template_id = ?`
+    )
+    .run(targetTemplateId, nowIso(), sourceTemplateId);
+  return Number(result.changes ?? 0);
+}
+
 export async function deleteChannelById(channelId: string): Promise<{
   deleted: boolean;
   removedAssets: ChannelAsset[];

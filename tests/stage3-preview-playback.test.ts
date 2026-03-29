@@ -5,6 +5,7 @@ import {
   buildStage3PlaybackTimingKey,
   buildStage3PlaybackPlan,
   resolveStage3PlaybackPosition,
+  resolveStage3PlaybackSyncAction,
   resolveStage3PlaybackTransformState
 } from "../lib/stage3-preview-playback";
 
@@ -226,4 +227,82 @@ test("buildStage3EditingProxyDedupeKey is stable for the same scoped source", as
 
   assert.equal(keyA, keyB);
   assert.notEqual(keyA, keyOtherUser);
+});
+
+test("resolveStage3PlaybackSyncAction re-seeks to the selected late window instead of publishing preroll", () => {
+  const plan = buildStage3PlaybackPlan({
+    segments: [],
+    sourceDurationSec: 13,
+    clipStartSec: 7,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+
+  const action = resolveStage3PlaybackSyncAction({
+    plan,
+    sourceTimeSec: 0.4,
+    preferredSegmentIndex: 0
+  });
+
+  assert.ok(action);
+  assert.equal(action?.kind, "seek");
+  assert.equal(action?.position.segmentIndex, 0);
+  assert.equal(action?.position.outputTimeSec, 0);
+  assert.equal(action?.position.sourceTimeSec, 7);
+});
+
+test("resolveStage3PlaybackSyncAction skips gaps between selected fragments", () => {
+  const plan = buildStage3PlaybackPlan({
+    segments: [
+      { startSec: 0, endSec: 1, speed: 1, label: "A" },
+      { startSec: 10, endSec: 11, speed: 1, label: "B" }
+    ],
+    sourceDurationSec: 15,
+    clipStartSec: 0,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+
+  const action = resolveStage3PlaybackSyncAction({
+    plan,
+    sourceTimeSec: 4,
+    preferredSegmentIndex: 0
+  });
+
+  assert.ok(action);
+  assert.equal(action?.kind, "seek");
+  assert.equal(action?.position.segmentIndex, 1);
+  assert.equal(action?.position.outputTimeSec, 3);
+  assert.equal(action?.position.sourceTimeSec, 10);
+});
+
+test("resolveStage3PlaybackSyncAction publishes the matching later fragment when source lands inside it", () => {
+  const plan = buildStage3PlaybackPlan({
+    segments: [
+      { startSec: 0, endSec: 1, speed: 1, label: "A" },
+      { startSec: 10, endSec: 11, speed: 1, label: "B" }
+    ],
+    sourceDurationSec: 15,
+    clipStartSec: 0,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+
+  const action = resolveStage3PlaybackSyncAction({
+    plan,
+    sourceTimeSec: 10.5,
+    preferredSegmentIndex: 0
+  });
+
+  assert.ok(action);
+  assert.equal(action?.kind, "position");
+  assert.equal(action?.position.segmentIndex, 1);
+  assert.equal(Number(action?.position.outputTimeSec.toFixed(3)), 4.5);
+  assert.equal(action?.position.sourceTimeSec, 10.5);
 });

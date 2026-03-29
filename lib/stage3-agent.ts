@@ -13,10 +13,12 @@ import {
   Stage3Version
 } from "../app/components/types";
 import {
-  SCIENCE_CARD_TEMPLATE_ID,
-  getTemplateById,
-  getTemplateComputed
+  SCIENCE_CARD_TEMPLATE_ID
 } from "./stage3-template";
+import {
+  computeManagedTemplateTextFit,
+  resolveManagedTemplateRuntimeSync
+} from "./managed-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import {
   normalizeStage3CameraKeyframes,
@@ -28,6 +30,10 @@ import {
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
 } from "./stage3-segment-transforms";
+import {
+  normalizeStage3RenderPlanSegments,
+  resolveCanonicalStage3RenderPolicy
+} from "./stage3-render-plan";
 
 export type {
   Stage3RenderPlan,
@@ -664,7 +670,7 @@ function createDefaultRenderPlan(
   templateId?: string
 ): Stage3RenderPlan {
   const resolvedTemplateId = templateId?.trim() || SCIENCE_CARD_TEMPLATE_ID;
-  const templateConfig = getTemplateById(resolvedTemplateId);
+  const templateConfig = resolveManagedTemplateRuntimeSync(resolvedTemplateId).templateConfig;
   return {
     targetDurationSec: TARGET_DURATION_SEC,
     timingMode: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC ? "stretch" : "auto",
@@ -719,10 +725,19 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
     baseZoom: videoZoom
   });
   const segments = Array.isArray(input?.segments)
-    ? input.segments
-        .map((segment) => normalizeSegment(segment, sourceDurationSec))
-        .filter((segment): segment is Stage3Segment => Boolean(segment))
+    ? normalizeStage3RenderPlanSegments(
+        input.segments
+          .map((segment) => normalizeSegment(segment, sourceDurationSec))
+          .filter((segment): segment is Stage3Segment => Boolean(segment))
+      )
     : [];
+  const normalizeToTargetEnabled =
+    typeof input?.normalizeToTargetEnabled === "boolean"
+      ? input.normalizeToTargetEnabled
+      : input?.timingMode === "compress" ||
+          input?.timingMode === "stretch" ||
+          input?.policy === "full_source_normalize" ||
+          defaultPlan.normalizeToTargetEnabled;
 
   return {
     targetDurationSec: TARGET_DURATION_SEC,
@@ -730,13 +745,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       timingMode === "auto" || timingMode === "compress" || timingMode === "stretch"
         ? timingMode
         : defaultPlan.timingMode,
-    normalizeToTargetEnabled:
-      typeof input?.normalizeToTargetEnabled === "boolean"
-        ? input.normalizeToTargetEnabled
-        : input?.timingMode === "compress" ||
-            input?.timingMode === "stretch" ||
-            input?.policy === "full_source_normalize" ||
-            defaultPlan.normalizeToTargetEnabled,
+    normalizeToTargetEnabled,
     audioMode:
       audioMode === "source_only" || audioMode === "source_plus_music"
         ? audioMode
@@ -770,10 +779,14 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
         ? textPolicy
         : defaultPlan.textPolicy,
     segments,
-    policy:
-      policy === "adaptive_window" || policy === "full_source_normalize" || policy === "fixed_segments"
-        ? policy
-        : defaultPlan.policy,
+    policy: resolveCanonicalStage3RenderPolicy({
+      segments,
+      normalizeToTargetEnabled,
+      requestedPolicy:
+        policy === "adaptive_window" || policy === "full_source_normalize" || policy === "fixed_segments"
+          ? policy
+          : defaultPlan.policy
+    }),
     backgroundAssetId:
       typeof input?.backgroundAssetId === "string" && input.backgroundAssetId.trim()
         ? input.backgroundAssetId.trim()
@@ -823,7 +836,10 @@ function computeTextFit(
   topText: string;
   bottomText: string;
 } {
-  const computed = getTemplateComputed(templateId, topText, bottomText, {
+  const computed = computeManagedTemplateTextFit({
+    templateId,
+    topText,
+    bottomText,
     topFontScale: renderPlan.topFontScale,
     bottomFontScale: renderPlan.bottomFontScale
   });
@@ -1015,16 +1031,14 @@ export function evaluateScore(snapshot: Stage3StateSnapshot, context: Stage3Eval
   const durationError = (Math.abs(durationOut - TARGET_DURATION_SEC) / TARGET_DURATION_SEC) * 28;
 
   let textReadability = 0;
-  const computed = getTemplateComputed(
-    snapshot.renderPlan.templateId,
-    snapshot.topText,
-    snapshot.bottomText,
-    {
-      topFontScale: snapshot.renderPlan.topFontScale,
-      bottomFontScale: snapshot.renderPlan.bottomFontScale
-    }
-  );
-  const typography = getTemplateById(snapshot.renderPlan.templateId).typography;
+  const computed = computeManagedTemplateTextFit({
+    templateId: snapshot.renderPlan.templateId,
+    topText: snapshot.topText,
+    bottomText: snapshot.bottomText,
+    topFontScale: snapshot.renderPlan.topFontScale,
+    bottomFontScale: snapshot.renderPlan.bottomFontScale
+  });
+  const typography = resolveManagedTemplateRuntimeSync(snapshot.renderPlan.templateId).templateConfig.typography;
   if (snapshot.textFit.topCompacted) {
     textReadability += 7;
   }
@@ -1366,16 +1380,16 @@ export function inferHeuristicOperations(input: {
   const promptLower = promptNorm.toLowerCase();
   const fullSourceRequested = hasFullSourceCue(promptLower);
   const explicitSegments = normalizeSegmentsForPlan(input.intent.segments, input.sourceDurationSec);
-  const computed = getTemplateComputed(
-    input.snapshot.renderPlan.templateId,
-    input.snapshot.topText,
-    input.snapshot.bottomText,
-    {
-      topFontScale: input.snapshot.renderPlan.topFontScale,
-      bottomFontScale: input.snapshot.renderPlan.bottomFontScale
-    }
-  );
-  const typography = getTemplateById(input.snapshot.renderPlan.templateId).typography;
+  const computed = computeManagedTemplateTextFit({
+    templateId: input.snapshot.renderPlan.templateId,
+    topText: input.snapshot.topText,
+    bottomText: input.snapshot.bottomText,
+    topFontScale: input.snapshot.renderPlan.topFontScale,
+    bottomFontScale: input.snapshot.renderPlan.bottomFontScale
+  });
+  const typography = resolveManagedTemplateRuntimeSync(
+    input.snapshot.renderPlan.templateId
+  ).templateConfig.typography;
   const topFillRatio = clamp(
     (computed.topLines * computed.topFont * computed.topLineHeight) /
       Math.max(1, computed.topBlockHeight),

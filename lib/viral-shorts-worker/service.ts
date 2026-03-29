@@ -351,10 +351,16 @@ type ExecutedPromptStageRecord = {
   stageId: Stage2PipelineStageId;
   promptText: string;
   usesImages?: boolean;
+  model?: string | null;
   summary: string;
   serializedResultBytes: number | null;
   estimatedOutputTokens: number | null;
 };
+
+type Stage2PipelineModelMap = Record<
+  Exclude<Stage2PromptConfigStageId, "seo">,
+  string | null
+>;
 
 type PipelineProgressEvent = {
   stageId: Stage2PipelineStageId;
@@ -3130,6 +3136,7 @@ function buildPromptStageDiagnostics(input: {
   promptText: string | null;
   includePromptText?: boolean;
   usesImages?: boolean;
+  model?: string | null;
   summary: string;
   serializedResultBytes?: number | null;
   estimatedOutputTokens?: number | null;
@@ -3147,6 +3154,7 @@ function buildPromptStageDiagnostics(input: {
     stageType: "llm_prompt",
     defaultPrompt: resolved.defaultPrompt,
     configuredPrompt: resolved.configuredPrompt,
+    model: input.model ?? null,
     reasoningEffort: resolved.reasoningEffort,
     isCustomPrompt: resolved.isCustomPrompt,
     promptText: input.includePromptText ? input.promptText : null,
@@ -3255,6 +3263,7 @@ function buildRunDiagnosticsBundle(input: {
       promptText: stage.promptText,
       includePromptText: true,
       usesImages: stage.usesImages,
+      model: stage.model,
       summary: stage.summary,
       serializedResultBytes: stage.serializedResultBytes,
       estimatedOutputTokens: stage.estimatedOutputTokens,
@@ -3268,6 +3277,7 @@ function buildRunDiagnosticsBundle(input: {
       promptText: stage.promptText,
       includePromptText: false,
       usesImages: stage.usesImages,
+      model: stage.model,
       summary: stage.summary,
       serializedResultBytes: stage.serializedResultBytes,
       estimatedOutputTokens: stage.estimatedOutputTokens,
@@ -3553,6 +3563,7 @@ export class ViralShortsWorkerService {
     videoContext: ViralShortsVideoContext;
     imagePaths: string[];
     executor: JsonStageExecutor;
+    stageModels?: Partial<Stage2PipelineModelMap>;
     promptConfig?: Stage2PromptConfig | null;
     debugMode?: Stage2DebugMode;
     onProgress?: (event: PipelineProgressEvent) => void | Promise<void>;
@@ -3566,7 +3577,7 @@ export class ViralShortsWorkerService {
       promptText: string,
       summary: string,
       resultPayload: unknown,
-      options?: { usesImages?: boolean }
+      options?: { usesImages?: boolean; model?: string | null }
     ) => {
       const serializedResultBytes = measureSerializedBytes(resultPayload);
       executedPromptStages.push({
@@ -3574,6 +3585,7 @@ export class ViralShortsWorkerService {
         promptText,
         summary,
         usesImages: options?.usesImages,
+        model: options?.model ?? null,
         serializedResultBytes,
         estimatedOutputTokens: estimateTokensFromChars(serializedResultBytes)
       });
@@ -3629,6 +3641,7 @@ export class ViralShortsWorkerService {
         prompt: analyzerPrompt,
         schema: ANALYZER_SCHEMA,
         imagePaths: input.imagePaths,
+        model: input.stageModels?.analyzer ?? null,
         reasoningEffort: analyzerReasoningEffort
       });
       analyzerOutput = normalizeAnalyzerOutput(analyzerRaw, heuristicOutput);
@@ -3673,7 +3686,7 @@ export class ViralShortsWorkerService {
       analyzerPrompt,
       "LLM stage: reads frames, comments, title and description to produce the visual analysis.",
       analyzerOutput,
-      { usesImages: true }
+      { usesImages: true, model: input.stageModels?.analyzer ?? null }
     );
 
     const queryText = buildCorpusQueryText(input.videoContext, analyzerOutput);
@@ -3736,6 +3749,7 @@ export class ViralShortsWorkerService {
       const selectorRaw = await input.executor.runJson<unknown>({
         prompt: selectorPrompt,
         schema: SELECTOR_SCHEMA,
+        model: input.stageModels?.selector ?? null,
         reasoningEffort: selectorReasoningEffort
       });
       selectorOutput = applyExamplesAssessmentToSelectorOutput(
@@ -3776,7 +3790,8 @@ export class ViralShortsWorkerService {
       "selector",
       selectorPrompt,
       "LLM stage: chooses clip angle(s) and the most relevant examples from the active corpus.",
-      selectorOutput
+      selectorOutput,
+      { model: input.stageModels?.selector ?? null }
     );
 
     const writerPrompt = buildWriterPrompt({
@@ -3801,6 +3816,7 @@ export class ViralShortsWorkerService {
       writerRaw = await input.executor.runJson<unknown>({
         prompt: writerPrompt,
         schema: CANDIDATES_SCHEMA,
+        model: input.stageModels?.writer ?? null,
         reasoningEffort: writerReasoningEffort
       });
     } catch (error) {
@@ -3840,7 +3856,8 @@ export class ViralShortsWorkerService {
       "writer",
       writerPrompt,
       "LLM stage: drafts 20 caption options using selector-chosen examples.",
-      candidates
+      candidates,
+      { model: input.stageModels?.writer ?? null }
     );
 
     const criticPrompt = buildCriticPrompt({
@@ -3865,6 +3882,7 @@ export class ViralShortsWorkerService {
       const criticRaw = await input.executor.runJson<unknown>({
         prompt: criticPrompt,
         schema: CRITIC_SCHEMA,
+        model: input.stageModels?.critic ?? null,
         reasoningEffort: criticReasoningEffort
       });
       criticScores = normalizeCriticScores(criticRaw, candidates);
@@ -3896,7 +3914,8 @@ export class ViralShortsWorkerService {
       "critic",
       criticPrompt,
       "LLM stage: scores the writer candidates and decides what survives.",
-      criticScores
+      criticScores,
+      { model: input.stageModels?.critic ?? null }
     );
 
     const rewriterCandidatePool = buildRewriterCandidatePool({
@@ -3931,6 +3950,7 @@ export class ViralShortsWorkerService {
       const rewriterRaw = await input.executor.runJson<unknown>({
         prompt: rewriterPrompt,
         schema: CANDIDATES_SCHEMA,
+        model: input.stageModels?.rewriter ?? null,
         reasoningEffort: rewriterReasoningEffort
       });
       const normalizedRewrites = normalizeCandidates(rewriterRaw, selectorOutput);
@@ -3969,7 +3989,8 @@ export class ViralShortsWorkerService {
       "rewriter",
       rewriterPrompt,
       "LLM stage: rewrites the strongest candidates without dropping hard constraints.",
-      rewrittenCandidates
+      rewrittenCandidates,
+      { model: input.stageModels?.rewriter ?? null }
     );
 
     const finalSelectorPrompt = buildFinalSelectorPrompt({
@@ -3994,6 +4015,7 @@ export class ViralShortsWorkerService {
       const finalRaw = await input.executor.runJson<unknown>({
         prompt: finalSelectorPrompt,
         schema: FINAL_SELECTOR_SCHEMA,
+        model: input.stageModels?.finalSelector ?? null,
         reasoningEffort: finalSelectorReasoningEffort
       });
       finalSelector = normalizeFinalSelector(finalRaw, rewrittenCandidates);
@@ -4044,7 +4066,8 @@ export class ViralShortsWorkerService {
       "finalSelector",
       finalSelectorPrompt,
       "LLM stage: assembles the shortlist and chooses the recommended final pick.",
-      finalSelector
+      finalSelector,
+      { model: input.stageModels?.finalSelector ?? null }
     );
 
     const titlePrompt = buildTitlePrompt({
@@ -4069,6 +4092,7 @@ export class ViralShortsWorkerService {
       .runJson<unknown>({
         prompt: titlePrompt,
         schema: TITLE_SCHEMA,
+        model: input.stageModels?.titles ?? null,
         reasoningEffort: titleReasoningEffort
       })
       .then(async (raw) => {
@@ -4102,7 +4126,8 @@ export class ViralShortsWorkerService {
       "titles",
       titlePrompt,
       "LLM stage: generates the 5 title options for the shortlist.",
-      titleOptions
+      titleOptions,
+      { model: input.stageModels?.titles ?? null }
     );
 
     const diagnosticsBundle = buildRunDiagnosticsBundle({

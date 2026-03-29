@@ -6302,6 +6302,576 @@ select.text-input:focus {
   z-index: -1;
 }
 
+.template-road-editor-page {
+  min-height: 100vh;
+  height: 100vh;
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 520px);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(219, 153, 64, 0.13), transparent 24%),
+    radial-gradient(circle at 82% 18%, rgba(80, 176, 211, 0.14), transparent 20%),
+    linear-gradient(180deg, #0a1017 0%, #09121d 52%, #071018 100%);
+}
+
+.template-road-editor-canvas-column {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px 18px 24px 28px;
+}
+
+.template-road-editor-canvas-sticky {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  min-height: 100%;
+  gap: 14px;
+}
+
+.template-road-editor-canvas-head {
+  display: grid;
+  gap: 12px;
+}
+
+.template-road-editor-canvas-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.template-road-editor-canvas-title,
+.template-road-editor-header-title,
+.template-road-editor-section-title {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.template-road-editor-canvas-text,
+.template-road-editor-header-copy,
+.template-road-editor-section-copy {
+  max-width: 64ch;
+}
+
+.template-road-editor-pill-row,
+.template-road-editor-meta-strip,
+.template-road-editor-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.meta-pill.is-accent {
+  background: color-mix(in srgb, var(--accent-soft) 80%, rgba(255, 255, 255, 0.04));
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  color: #dfeaff;
+}
+
+.template-road-editor-canvas-shell {
+  display: grid;
+  min-height: 0;
+  height: min(95dvh, 1120px);
+  min-height: min(95dvh, 1120px);
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    rgba(7, 11, 17, 0.78);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+}
+
+.template-road-editor-canvas-stage {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 52% 18%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 24%),
+    linear-gradient(180deg, rgba(19, 32, 48, 0.82), rgba(8, 14, 22, 0.98));
+}
+
+.template-road-editor-canvas-frame {
+  display: grid;
+  place-items: start;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.template-road-editor-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-road-editor-summary-grid.compact-single {
+  grid-template-columns: 1fr;
+}
+
+.template-road-editor-summary-card {
+  min-height: 100%;
+  gap: 10px;
+}
+
+.template-road-editor-summary-text {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.template-road-editor-summary-stats {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.template-road-editor-controls-column {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+    rgba(6, 10, 16, 0.86);
+  backdrop-filter: blur(14px);
+}
+
+.template-road-editor-controls-scroll {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 26px 24px 40px;
+  display: grid;
+  gap: 14px;
+  scroll-padding-top: 18px;
+}
+
+.template-road-editor-header {
+  display: grid;
+  gap: 12px;
+}
+
+.template-road-editor-command-bar {
+  position: static;
+  gap: 12px;
+  box-shadow: none;
+}
+
+.template-road-editor-command-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.template-road-editor-command-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.template-road-editor-nav-card {
+  gap: 12px;
+}
+
+.template-road-editor-quick-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-road-editor-nav-chip {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.template-road-editor-card {
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.032), rgba(255, 255, 255, 0.015)),
+    rgba(14, 19, 28, 0.92);
+}
+
+.template-road-editor-card.is-collapsed {
+  gap: 10px;
+}
+
+.template-road-editor-section-toggle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  cursor: pointer;
+}
+
+.template-road-editor-section-title,
+.template-road-editor-section-copy {
+  margin: 0;
+}
+
+.template-road-editor-section-chevron {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.template-road-editor-section-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-road-editor-section-head {
+  display: grid;
+  gap: 6px;
+}
+
+.template-road-editor-page[data-show-hints="0"] .template-road-editor-field-hint {
+  display: none;
+}
+
+.template-road-editor-page[data-show-hints="0"] .template-road-editor-section-copy {
+  display: none;
+}
+
+.template-road-editor-library-links {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.template-road-editor-link {
+  color: #d8e9ff;
+  text-decoration: none;
+}
+
+.template-road-editor-link:hover {
+  text-decoration: underline;
+}
+
+.template-road-editor-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.template-road-editor-grid.two-up {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.template-road-editor-grid.three-up {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.template-road-editor-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.template-road-editor-field-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.template-road-editor-value {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.template-road-editor-range-labels {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.template-road-editor-range-field {
+  align-content: start;
+}
+
+.template-road-editor-range-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.template-road-editor-range-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: 10px;
+  align-items: center;
+}
+
+.template-road-editor-color-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.template-road-editor-color-input {
+  width: 48px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  background: var(--surface-2);
+}
+
+.template-road-editor-range {
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.template-road-editor-range::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(240, 195, 107, 0.92), rgba(240, 195, 107, 0.3));
+}
+
+.template-road-editor-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  margin-top: -5px;
+  border: 2px solid rgba(10, 16, 23, 0.96);
+  background: #f7d07d;
+  box-shadow: 0 4px 18px rgba(240, 195, 107, 0.35);
+}
+
+.template-road-editor-range::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(240, 195, 107, 0.92), rgba(240, 195, 107, 0.3));
+}
+
+.template-road-editor-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(10, 16, 23, 0.96);
+  background: #f7d07d;
+  box-shadow: 0 4px 18px rgba(240, 195, 107, 0.35);
+}
+
+.template-road-editor-stepper {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 18px;
+}
+
+.template-road-editor-number-input {
+  width: 88px;
+  min-width: 88px;
+  text-align: right;
+}
+
+.template-road-editor-textarea {
+  min-height: 92px;
+}
+
+.template-road-editor-shadow-head,
+.template-road-editor-shadow-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.template-road-editor-shadow-empty {
+  border: 1px dashed color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 14px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface-2) 90%, black);
+}
+
+.template-road-editor-shadow-list {
+  display: grid;
+  gap: 12px;
+}
+
+.template-road-editor-shadow-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.012)),
+    rgba(8, 12, 18, 0.72);
+}
+
+.template-road-editor-shadow-snippet {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.template-road-editor-shadow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-road-editor-service-drawer {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0 12px 12px;
+}
+
+.template-road-editor-service-drawer summary {
+  padding: 12px 0 10px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+  list-style: none;
+}
+
+.template-road-editor-service-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.template-road-editor-history-toggle {
+  justify-self: start;
+}
+
+.template-road-editor-checkbox-field {
+  align-content: start;
+}
+
+.template-road-editor-checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  color: var(--text);
+}
+
+@media (max-width: 1180px) {
+  .template-road-editor-page {
+    height: auto;
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .template-road-editor-canvas-column {
+    height: auto;
+    overflow: visible;
+    padding: 18px 18px 12px;
+  }
+
+  .template-road-editor-canvas-sticky {
+    grid-template-rows: auto auto auto;
+    height: auto;
+    min-height: 0;
+  }
+
+  .template-road-editor-canvas-stage {
+    min-height: auto;
+    height: auto;
+  }
+
+  .template-road-editor-controls-column {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .template-road-editor-controls-scroll {
+    height: auto;
+    overflow: visible;
+    padding: 16px 18px 28px;
+  }
+
+  .template-road-editor-command-bar {
+    position: static;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .template-road-editor-canvas-column {
+    padding: 14px 14px 10px;
+  }
+
+  .template-road-editor-canvas-stage {
+    padding: 16px;
+  }
+
+  .template-road-editor-summary-grid,
+  .template-road-editor-grid.two-up,
+  .template-road-editor-grid.three-up {
+    grid-template-columns: 1fr;
+  }
+
+  .template-road-editor-shadow-head,
+  .template-road-editor-shadow-card-head {
+    display: grid;
+  }
+
+  .template-road-editor-range-row {
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+    gap: 8px;
+  }
+
+  .template-road-editor-stepper {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .template-road-editor-number-input {
+    width: 76px;
+    min-width: 76px;
+  }
+
+  .template-road-editor-canvas-title,
+  .template-road-editor-header-title,
+  .template-road-editor-section-title {
+    font-size: 22px;
+  }
+}
+
 @media (max-width: 1320px) {
   .template-lab-grid {
     grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);

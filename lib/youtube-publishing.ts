@@ -1,4 +1,5 @@
-import { promises as fs } from "node:fs";
+import { createReadStream, promises as fs } from "node:fs";
+import { Readable } from "node:stream";
 import { resolvePublicAppOrigin } from "./public-app-origin";
 import type { ChannelPublishIntegrationOption } from "../app/components/types";
 import type { StoredYoutubeCredential } from "./publication-store";
@@ -310,7 +311,7 @@ export async function uploadYouTubeVideo(input: {
   videoId: string;
   videoUrl: string;
 }> {
-  const bytes = await fs.readFile(input.filePath);
+  const fileStat = await fs.stat(input.filePath);
   const startResponse = await runWithRetry(async () => {
     const response = await fetch(
       `${YOUTUBE_UPLOAD_BASE_URL}?uploadType=resumable&part=snippet,status&notifySubscribers=${input.notifySubscribers ? "true" : "false"}`,
@@ -319,7 +320,7 @@ export async function uploadYouTubeVideo(input: {
         headers: {
           Authorization: `Bearer ${input.accessToken}`,
           "Content-Type": "application/json; charset=UTF-8",
-          "X-Upload-Content-Length": String(bytes.byteLength),
+          "X-Upload-Content-Length": String(fileStat.size),
           "X-Upload-Content-Type": input.mimeType
         },
         body: JSON.stringify({
@@ -356,15 +357,17 @@ export async function uploadYouTubeVideo(input: {
   }
 
   const uploadPayload = await runWithRetry(async () => {
+    const stream = Readable.toWeb(createReadStream(input.filePath)) as ReadableStream<Uint8Array>;
     const response = await fetch(sessionUrl, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
-        "Content-Length": String(bytes.byteLength),
+        "Content-Length": String(fileStat.size),
         "Content-Type": input.mimeType
       },
-      body: bytes
-    });
+      body: stream,
+      duplex: "half"
+    } as RequestInit & { duplex: "half" });
     const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
     if (!response.ok) {
       const message = extractGoogleApiErrorMessage(payload) ?? `Не удалось загрузить видео в YouTube (${response.status}).`;

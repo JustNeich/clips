@@ -1,7 +1,11 @@
+import { createWriteStream, promises as fs } from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
+import path from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { requireStage3WorkerAuth } from "../../../../../../../lib/auth/stage3-worker";
-import { publishStage3VideoArtifactFromBuffer } from "../../../../../../../lib/stage3-job-artifacts";
+import { publishStage3VideoArtifact } from "../../../../../../../lib/stage3-job-artifacts";
 import { buildStage3JobEnvelope } from "../../../../../../../lib/stage3-job-http";
 import { appendStage3JobEvent, completeStage3Job, getStage3Job } from "../../../../../../../lib/stage3-job-store";
 import { persistRenderExportCompletion } from "../../../../../../../lib/stage3-job-runtime";
@@ -19,7 +23,19 @@ const Busboy = require("next/dist/compiled/busboy") as (options: {
 }) => {
   on(event: string, listener: (...args: any[]) => void): void;
   emit(event: string, ...args: any[]): boolean;
-};
+    };
+
+async function createWorkerArtifactTempFile(source: NodeJS.ReadableStream): Promise<{ filePath: string; cleanupDir: string }> {
+  const cleanupDir = await fs.mkdtemp(path.join(os.tmpdir(), "clips-stage3-worker-artifact-"));
+  const filePath = path.join(cleanupDir, "artifact.mp4");
+  try {
+    await pipeline(source, createWriteStream(filePath));
+    return { filePath, cleanupDir };
+  } catch (error) {
+    await fs.rm(cleanupDir, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+}
 
 async function parseWorkerCompletionMultipart(request: Request): Promise<{
   resultJson: string | null;
@@ -27,7 +43,8 @@ async function parseWorkerCompletionMultipart(request: Request): Promise<{
     | {
         name: string;
         mimeType: string;
-        bytes: Uint8Array;
+        filePath: string;
+        cleanupDir: string;
       }
     | null;
 }> {
@@ -48,7 +65,8 @@ async function parseWorkerCompletionMultipart(request: Request): Promise<{
       | {
           name: string;
           mimeType: string;
-          bytes: Uint8Array;
+          filePath: string;
+          cleanupDir: string;
         }
       | null = null;
     const pendingFiles: Array<Promise<void>> = [];
@@ -71,22 +89,15 @@ async function parseWorkerCompletionMultipart(request: Request): Promise<{
           : null;
       const fileName = meta?.filename?.trim() || "artifact.mp4";
       const mimeType = meta?.mimeType?.trim() || legacyMime?.trim() || "video/mp4";
-      const chunks: Buffer[] = [];
 
       pendingFiles.push(
-        new Promise<void>((fileResolve, fileReject) => {
-          stream.on("data", (chunk: Buffer | Uint8Array) => {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-          });
-          stream.on("end", () => {
-            artifactFile = {
-              name: fileName,
-              mimeType,
-              bytes: new Uint8Array(Buffer.concat(chunks))
-            };
-            fileResolve();
-          });
-          stream.on("error", fileReject);
+        createWorkerArtifactTempFile(stream).then(({ filePath, cleanupDir }) => {
+          artifactFile = {
+            name: fileName,
+            mimeType,
+            filePath,
+            cleanupDir
+          };
         })
       );
     });
@@ -149,7 +160,8 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       | {
           name: string;
           mimeType: string;
-          bytes: Uint8Array;
+          filePath: string;
+          cleanupDir: string;
         }
       | null = null;
 
@@ -158,14 +170,18 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       resultJson = parsed.resultJson;
       artifactFile = parsed.artifactFile;
     } else if (request.headers.get("x-stage3-artifact-name")) {
-      const bytes = new Uint8Array(await request.arrayBuffer());
+      if (!request.body) {
+        return Response.json({ error: "Artifact request body is missing." }, { status: 400 });
+      }
+      const storedArtifact = await createWorkerArtifactTempFile(Readable.fromWeb(request.body as any));
       artifactFile = {
         name: decodeHeaderValue(request.headers.get("x-stage3-artifact-name")) || `${current.id}.mp4`,
         mimeType:
           decodeHeaderValue(request.headers.get("x-stage3-artifact-mime-type")) ||
           contentType.split(";")[0]?.trim() ||
           "video/mp4",
-        bytes
+        filePath: storedArtifact.filePath,
+        cleanupDir: storedArtifact.cleanupDir
       };
       resultJson = decodeResultJsonHeader(request.headers.get("x-stage3-result-json"));
     } else if (contentType.includes("application/json")) {
@@ -184,17 +200,21 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       | null = null;
 
     if (artifactFile) {
-      if (current.kind !== "preview" && current.kind !== "render" && current.kind !== "editing-proxy") {
-        return Response.json({ error: "Artifacts are only supported for preview/render/proxy jobs." }, { status: 400 });
+      try {
+        if (current.kind !== "preview" && current.kind !== "render" && current.kind !== "editing-proxy") {
+          return Response.json({ error: "Artifacts are only supported for preview/render/proxy jobs." }, { status: 400 });
+        }
+        const published = await publishStage3VideoArtifact(current.kind, current.id, artifactFile.filePath);
+        artifactInput = {
+          kind: "video",
+          fileName: artifactFile.name || `${current.id}.mp4`,
+          mimeType: artifactFile.mimeType || "video/mp4",
+          filePath: published.filePath,
+          sizeBytes: published.sizeBytes
+        };
+      } finally {
+        await fs.rm(artifactFile.cleanupDir, { recursive: true, force: true }).catch(() => undefined);
       }
-      const published = await publishStage3VideoArtifactFromBuffer(current.kind, current.id, artifactFile.bytes);
-      artifactInput = {
-        kind: "video",
-        fileName: artifactFile.name || `${current.id}.mp4`,
-        mimeType: artifactFile.mimeType || "video/mp4",
-        filePath: published.filePath,
-        sizeBytes: published.sizeBytes
-      };
     }
 
     touchStage3WorkerHeartbeat({

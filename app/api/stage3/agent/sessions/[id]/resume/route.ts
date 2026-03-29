@@ -5,6 +5,8 @@ import { resolveStage3ExecutionTarget } from "../../../../../../../lib/stage3-ex
 import { isStage3HostedBusyError } from "../../../../../../../lib/stage3-server-control";
 import { summarizeUserFacingError } from "../../../../../../../lib/ui-error";
 import { getChatById } from "../../../../../../../lib/chat-history";
+import { getWorkspaceCodexModelConfig } from "../../../../../../../lib/team-store";
+import { resolveWorkspaceCodexModelConfig } from "../../../../../../../lib/workspace-codex-models";
 import {
   requireAuth,
   requireChannelOperate,
@@ -61,6 +63,12 @@ export async function POST(
     }
     await requireChannelOperate(auth, chat.channelId);
     requireSharedCodexAvailable(auth.workspace.id);
+    const resolvedWorkspaceCodexModels = resolveWorkspaceCodexModelConfig({
+      config: getWorkspaceCodexModelConfig(auth.workspace.id),
+      deployStage2Model: process.env.CODEX_STAGE2_MODEL,
+      deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
+      deployStage3Model: process.env.CODEX_STAGE3_MODEL
+    });
 
     const mediaId = body?.mediaId?.trim() || session.mediaId;
     if (!mediaId) {
@@ -81,7 +89,7 @@ export async function POST(
       tuning.options,
       body?.sourceUrl,
       requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
-      body?.plannerModel,
+      body?.plannerModel?.trim() || resolvedWorkspaceCodexModels.stage3Planner,
       tuning.plannerReasoningEffort,
       tuning.plannerTimeoutMs,
       resolveStage3ExecutionTarget()

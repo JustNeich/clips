@@ -11,6 +11,7 @@ import {
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID
 } from "../lib/stage3-template";
+import type { Stage3TemplateConfig } from "../lib/stage3-template";
 import type {
   Stage3CameraKeyframe,
   Stage3PositionKeyframe,
@@ -30,6 +31,7 @@ type RemotionStage3Segment = {
 
 export type ScienceCardV1Props = {
   templateId?: string;
+  templateConfigOverride?: Stage3TemplateConfig | null;
   sourceVideoFileName?: string | null;
   topText: string;
   bottomText: string;
@@ -77,6 +79,7 @@ const DEFAULT_TEXT_SCALE = 1.25;
 function buildDefaultProps(templateId: string, authorName: string, authorHandle: string): ScienceCardV1Props {
   return {
     templateId,
+    templateConfigOverride: null,
     sourceVideoFileName: "source.mp4",
     topText: "",
     bottomText: "",

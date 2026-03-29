@@ -9,6 +9,8 @@ import { runAutonomousOptimization } from "../../../../lib/stage3-agent-autonomo
 import { resolveStage3ExecutionTarget } from "../../../../lib/stage3-execution";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChatById } from "../../../../lib/chat-history";
+import { getWorkspaceCodexModelConfig } from "../../../../lib/team-store";
+import { resolveWorkspaceCodexModelConfig } from "../../../../lib/workspace-codex-models";
 import { requireAuth, requireChannelOperate, requireSharedCodexAvailable } from "../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
@@ -145,6 +147,12 @@ export async function POST(request: Request): Promise<Response> {
     }
     await requireChannelOperate(auth, chat.channelId);
     const integration = requireSharedCodexAvailable(auth.workspace.id);
+    const resolvedWorkspaceCodexModels = resolveWorkspaceCodexModelConfig({
+      config: getWorkspaceCodexModelConfig(auth.workspace.id),
+      deployStage2Model: process.env.CODEX_STAGE2_MODEL,
+      deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
+      deployStage3Model: process.env.CODEX_STAGE3_MODEL
+    });
     const requestIdempotencyKey = request.headers.get("idempotency-key");
     const mergedSnapshot = buildCurrentSnapshotFromLegacyInput(body ?? {});
 
@@ -165,7 +173,8 @@ export async function POST(request: Request): Promise<Response> {
       autoFocusY: parseFiniteNumber(body?.autoFocusY) ?? parseFiniteNumber(body?.focusY) ?? undefined,
       idempotencyKey:
         requestIdempotencyKey?.trim() || body?.idempotencyKey?.trim() || undefined,
-      codexSessionId: integration.codexSessionId ?? undefined
+      codexSessionId: integration.codexSessionId ?? undefined,
+      plannerModel: resolvedWorkspaceCodexModels.stage3Planner
     });
 
     const latestVersions = await listVersions(result.sessionId);

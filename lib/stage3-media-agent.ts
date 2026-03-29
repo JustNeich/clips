@@ -6,7 +6,7 @@ import { STAGE3_SEGMENT_SPEED_OPTIONS } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { downloadSourceMedia } from "./source-acquisition";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
-import { getTemplateComputed } from "./stage3-template";
+import { computeManagedTemplateTextFit } from "./managed-template-runtime";
 import { sanitizeFileName } from "./ytdlp";
 
 const execFileAsync = promisify(execFile);
@@ -265,15 +265,13 @@ function computeViewportBox(
   snapshot: Stage3StateSnapshot,
   sourceDimensions: VideoDimensions
 ): Stage3ViewportBox {
-  const computed = getTemplateComputed(
-    snapshot.renderPlan.templateId,
-    snapshot.topText,
-    snapshot.bottomText,
-    {
-      topFontScale: snapshot.renderPlan.topFontScale,
-      bottomFontScale: snapshot.renderPlan.bottomFontScale
-    }
-  );
+  const computed = computeManagedTemplateTextFit({
+    templateId: snapshot.renderPlan.templateId,
+    topText: snapshot.topText,
+    bottomText: snapshot.bottomText,
+    topFontScale: snapshot.renderPlan.topFontScale,
+    bottomFontScale: snapshot.renderPlan.bottomFontScale
+  });
 
   const slotAspect = computed.videoWidth / Math.max(1, computed.videoHeight);
   const sourceAspect = sourceDimensions.width / Math.max(1, sourceDimensions.height);
@@ -759,6 +757,20 @@ async function probeHasAudio(videoPath: string): Promise<boolean> {
   }
 }
 
+function sortPreparedSegments(
+  segments: Array<{ startSec: number; endSec: number; speed: number }>
+): Array<{ startSec: number; endSec: number; speed: number }> {
+  return [...segments].sort((left, right) => {
+    if (left.startSec !== right.startSec) {
+      return left.startSec - right.startSec;
+    }
+    if (left.endSec !== right.endSec) {
+      return left.endSec - right.endSec;
+    }
+    return left.speed - right.speed;
+  });
+}
+
 function normalizeSegments(params: {
   renderPlan: Stage3RenderPlan;
   sourceDurationSec: number | null;
@@ -791,7 +803,7 @@ function normalizeSegments(params: {
   }
 
   if (normalized.length > 0) {
-    return normalized;
+    return sortPreparedSegments(normalized);
   }
 
   if (params.renderPlan.policy === "full_source_normalize") {

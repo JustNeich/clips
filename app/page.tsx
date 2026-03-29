@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, FlowStep } from "./components/AppShell";
 import { PublishingPlanner } from "./components/PublishingPlanner";
+import type { Step3ManagedTemplateState } from "./components/Step3RenderTemplate";
 import { upsertHistoryItemByMeaningfulUpdate } from "./components/history-panel-support";
 import {
   normalizeStage2DiagnosticsForView,
@@ -65,6 +66,13 @@ import {
   type Stage2ExamplesConfig,
   type Stage2HardConstraints
 } from "../lib/stage2-channel-config";
+import {
+  DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
+  normalizeWorkspaceCodexModelConfig,
+  resolveWorkspaceCodexModelConfig,
+  type ResolvedWorkspaceCodexModelConfig,
+  type WorkspaceCodexModelConfig
+} from "../lib/workspace-codex-models";
 import type { ChannelStyleDiscoveryRunDetail } from "../lib/channel-style-discovery-types";
 import {
   issueScopedRequestVersion,
@@ -269,6 +277,14 @@ export default function HomePage() {
   const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
     DEFAULT_STAGE2_PROMPT_CONFIG
   );
+  const [workspaceCodexModelConfig, setWorkspaceCodexModelConfig] =
+    useState<WorkspaceCodexModelConfig>(DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG);
+  const [workspaceResolvedCodexModelConfig, setWorkspaceResolvedCodexModelConfig] =
+    useState<ResolvedWorkspaceCodexModelConfig>(() =>
+      resolveWorkspaceCodexModelConfig({
+        config: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG
+      })
+    );
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelAssets, setChannelAssets] = useState<ChannelAsset[]>([]);
   const [channelPublications, setChannelPublications] = useState<ChannelPublication[]>([]);
@@ -299,6 +315,9 @@ export default function HomePage() {
   const [stage3ClipStartSec, setStage3ClipStartSec] = useState(0);
   const [stage3FocusY, setStage3FocusY] = useState(0.5);
   const [stage3RenderPlan, setStage3RenderPlan] = useState<Stage3RenderPlan>(fallbackRenderPlan());
+  const [stage3ManagedTemplateState, setStage3ManagedTemplateState] = useState<Step3ManagedTemplateState | null>(
+    null
+  );
   const [sourceDurationSec, setSourceDurationSec] = useState<number | null>(null);
   const [stage3PreviewVideoUrl, setStage3PreviewVideoUrl] = useState<string | null>(null);
   const [stage3PreviewState, setStage3PreviewState] = useState<Stage3PreviewState>("idle");
@@ -946,13 +965,25 @@ export default function HomePage() {
       workspaceStage2ExamplesCorpusJson?: string;
       workspaceStage2HardConstraints?: Stage2HardConstraints;
       workspaceStage2PromptConfig?: Stage2PromptConfig;
+      workspaceCodexModelConfig?: WorkspaceCodexModelConfig;
+      workspaceResolvedCodexModelConfig?: ResolvedWorkspaceCodexModelConfig;
     };
     const nextChannels = body.channels ?? [];
+    const nextWorkspaceCodexModelConfig = normalizeWorkspaceCodexModelConfig(
+      body.workspaceCodexModelConfig
+    );
     setWorkspaceStage2ExamplesCorpusJson(body.workspaceStage2ExamplesCorpusJson ?? "[]");
     setWorkspaceStage2HardConstraints(
       normalizeStage2HardConstraints(body.workspaceStage2HardConstraints)
     );
     setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.workspaceStage2PromptConfig));
+    setWorkspaceCodexModelConfig(nextWorkspaceCodexModelConfig);
+    setWorkspaceResolvedCodexModelConfig(
+      body.workspaceResolvedCodexModelConfig ??
+        resolveWorkspaceCodexModelConfig({
+          config: nextWorkspaceCodexModelConfig
+        })
+    );
     setChannels(nextChannels);
     setActiveChannelId((prev) => {
       if (prev && nextChannels.some((channel) => channel.id === prev)) {
@@ -2051,8 +2082,16 @@ export default function HomePage() {
         },
         fallbackRenderPlan()
       );
+      const activeManagedTemplateState =
+        stage3ManagedTemplateState?.managedId === effectiveRenderPlan.templateId
+          ? stage3ManagedTemplateState
+          : null;
       const templateSnapshot = buildTemplateRenderSnapshot({
-        templateId: effectiveRenderPlan.templateId || STAGE3_TEMPLATE_ID,
+        templateId:
+          activeManagedTemplateState?.baseTemplateId ??
+          effectiveRenderPlan.templateId ??
+          STAGE3_TEMPLATE_ID,
+        templateConfigOverride: activeManagedTemplateState?.templateConfig,
         content: {
           topText: stage3TopText,
           bottomText: stage3BottomText,
@@ -2117,6 +2156,7 @@ export default function HomePage() {
       stage3BottomText,
       stage3ClipStartSec,
       stage3FocusY,
+      stage3ManagedTemplateState,
       stage3RenderPlan,
       stage3TopText
     ]
@@ -2141,9 +2181,14 @@ export default function HomePage() {
       bottomText: stage3LivePreviewSnapshot.bottomText,
       clipStartSec: stage3LivePreviewSnapshot.clipStartSec,
       focusY: stage3LivePreviewSnapshot.focusY,
-      renderPlan: stage3LivePreviewSnapshot.renderPlan
+      renderPlan: stage3LivePreviewSnapshot.renderPlan,
+      templateSnapshotHash: stage3LivePreviewSnapshot.templateSnapshot?.snapshotHash ?? null,
+      templateRevision:
+        stage3ManagedTemplateState?.managedId === stage3LivePreviewSnapshot.renderPlan.templateId
+          ? stage3ManagedTemplateState.updatedAt
+          : null
     });
-  }, [activeChannelId, activeChat?.url, stage3LivePreviewSnapshot]);
+  }, [activeChannelId, activeChat?.url, stage3LivePreviewSnapshot, stage3ManagedTemplateState]);
 
   const applyTimelineVersion = (
     timeline: Stage3TimelineResponse,
@@ -2740,6 +2785,10 @@ export default function HomePage() {
     setStage3RenderJobId(null);
     setStatus("");
     setStatusType("");
+    const renderRequestId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     try {
       const baseSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride);
@@ -2780,6 +2829,7 @@ export default function HomePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            requestId: renderRequestId,
             sourceUrl: chat.url,
             channelId: activeChannelId,
             chatId: chat.id,
@@ -5343,6 +5393,7 @@ export default function HomePage() {
       stage2ExamplesCorpusJson: string;
       stage2HardConstraints: Stage2HardConstraints;
       stage2PromptConfig: Stage2PromptConfig;
+      codexModelConfig: WorkspaceCodexModelConfig;
     }>
   ): Promise<void> => {
     setBusyAction("channel-save");
@@ -5353,12 +5404,14 @@ export default function HomePage() {
         body: JSON.stringify(patch)
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Не удалось сохранить общие настройки Stage 2."));
+        throw new Error(await parseError(response, "Не удалось сохранить общие AI-настройки."));
       }
       const body = (await response.json()) as {
         stage2ExamplesCorpusJson?: string;
         stage2HardConstraints?: Stage2HardConstraints;
         stage2PromptConfig?: Stage2PromptConfig;
+        codexModelConfig?: WorkspaceCodexModelConfig;
+        resolvedCodexModelConfig?: ResolvedWorkspaceCodexModelConfig;
       };
       if (typeof body.stage2ExamplesCorpusJson === "string") {
         setWorkspaceStage2ExamplesCorpusJson(body.stage2ExamplesCorpusJson);
@@ -5368,6 +5421,18 @@ export default function HomePage() {
       }
       if (body.stage2PromptConfig) {
         setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.stage2PromptConfig));
+      }
+      if (body.codexModelConfig) {
+        const nextWorkspaceCodexModelConfig = normalizeWorkspaceCodexModelConfig(
+          body.codexModelConfig
+        );
+        setWorkspaceCodexModelConfig(nextWorkspaceCodexModelConfig);
+        setWorkspaceResolvedCodexModelConfig(
+          body.resolvedCodexModelConfig ??
+            resolveWorkspaceCodexModelConfig({
+              config: nextWorkspaceCodexModelConfig
+            })
+        );
       }
     } finally {
       setBusyAction("");
@@ -6250,6 +6315,7 @@ export default function HomePage() {
             void createStage3WorkerPairing();
           }}
           onSurfaceModeChange={setStage3SurfaceMode}
+          onManagedTemplateStateChange={setStage3ManagedTemplateState}
           onOpenPlanner={handleOpenPublishingPlanner}
           onExport={handleExportTemplate}
         />
@@ -6263,6 +6329,8 @@ export default function HomePage() {
           workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
           workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+          workspaceCodexModelConfig={workspaceCodexModelConfig}
+          workspaceResolvedCodexModelConfig={workspaceResolvedCodexModelConfig}
           activeChannelId={activeChannelId}
           assets={channelAssets}
           currentUserRole={authState?.membership.role ?? null}

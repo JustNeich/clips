@@ -115,6 +115,16 @@ function normalizeJobStatus(value: string): Stage3JobStatus {
   return "failed";
 }
 
+function buildStage3JobPrioritySql(column = "kind"): string {
+  return `CASE
+    WHEN ${column} = 'editing-proxy' THEN 0
+    WHEN ${column} = 'preview' THEN 1
+    WHEN ${column} = 'source-download' THEN 2
+    WHEN ${column} = 'agent-media-step' THEN 3
+    ELSE 4
+  END`;
+}
+
 function readWorkerLabel(workerId: string | null | undefined): string | null {
   if (!workerId) {
     return null;
@@ -285,8 +295,8 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
     if (dedupeKey) {
       const existingRow =
         (db
-          .prepare("SELECT * FROM stage3_jobs WHERE kind = ? AND dedupe_key = ? LIMIT 1")
-          .get(input.kind, dedupeKey) as JobRow | undefined) ?? null;
+          .prepare("SELECT * FROM stage3_jobs WHERE kind = ? AND execution_target = ? AND dedupe_key = ? LIMIT 1")
+          .get(input.kind, executionTarget, dedupeKey) as JobRow | undefined) ?? null;
       const existing = mapJobRow(existingRow);
       if (existing) {
         if (
@@ -438,10 +448,7 @@ export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
             WHERE execution_target = 'host'
               AND status = 'queued'
             ORDER BY
-              CASE
-                WHEN kind = 'preview' THEN 1
-                ELSE 0
-              END ASC,
+              ${buildStage3JobPrioritySql("kind")} ASC,
               created_at ASC
             LIMIT 1`
         )
@@ -486,14 +493,14 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
             AND user_id = ?
             AND status = 'queued'
             AND kind IN (${kinds.map(() => "?").join(", ")})
-          ORDER BY created_at ASC
+          ORDER BY ${buildStage3JobPrioritySql("kind")} ASC, created_at ASC
           LIMIT 1`
       : `SELECT * FROM stage3_jobs
           WHERE execution_target = 'local'
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
-          ORDER BY created_at ASC
+          ORDER BY ${buildStage3JobPrioritySql("kind")} ASC, created_at ASC
           LIMIT 1`;
     const params = kinds
       ? [input.workspaceId, input.userId, ...kinds]

@@ -43,6 +43,10 @@ import {
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
 } from "../lib/stage3-segment-transforms";
+import {
+  normalizeStage3RenderPlanSegments,
+  resolveCanonicalStage3RenderPolicy
+} from "../lib/stage3-render-plan";
 
 const DEFAULT_TEXT_SCALE = 1.25;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -687,38 +691,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
     baseZoom: videoZoom
   });
   const segments = Array.isArray(candidate?.segments)
-    ? candidate.segments
-        .map((segment) => {
-          if (!segment || typeof segment !== "object") {
-            return null;
-          }
-          const startSec =
-            typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
-              ? segment.startSec
-              : null;
-          const endSec =
-            segment.endSec === null
-              ? null
-              : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
-                ? segment.endSec
-                : null;
-          if (startSec === null) {
-            return null;
-          }
-          return {
-            startSec,
-            endSec,
-            speed: normalizeStage3SegmentSpeed(segment.speed),
-            label:
-              typeof segment.label === "string" && segment.label.trim()
-                ? segment.label
-                : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`,
-            focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
-            videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
-            mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
-          };
-        })
-        .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
+    ? normalizeStage3RenderPlanSegments(candidate.segments)
     : base.segments;
   const normalizeToTargetEnabled =
     typeof candidate?.normalizeToTargetEnabled === "boolean"
@@ -732,14 +705,11 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
     candidate?.policy === "fixed_segments"
       ? candidate.policy
       : base.policy;
-  const policy =
-    segments.length > 0
-      ? "fixed_segments"
-      : normalizeToTargetEnabled
-        ? "full_source_normalize"
-        : requestedPolicy === "adaptive_window"
-          ? "adaptive_window"
-          : "fixed_segments";
+  const policy = resolveCanonicalStage3RenderPolicy({
+    segments,
+    normalizeToTargetEnabled,
+    requestedPolicy
+  });
 
   return {
     targetDurationSec: 6,

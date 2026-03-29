@@ -8,10 +8,10 @@ import {
   SCIENCE_CARD_RED_TEMPLATE_ID,
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
-  HEDGES_OF_HONOR_TEMPLATE_ID,
-  getTemplateById
+  HEDGES_OF_HONOR_TEMPLATE_ID
 } from "../../../lib/stage3-template";
 import { buildTemplateRenderSnapshot } from "../../../lib/stage3-template-core";
+import { resolveManagedTemplateRuntime } from "../../../lib/managed-template-runtime";
 import {
   resolveTemplateAvatarBorderColorNode,
   resolveTemplateBackdropNode
@@ -446,20 +446,38 @@ function renderMediaPlaceholder(templateId: string) {
 
 export default async function ScienceCardDesignPage({ searchParams }: ScienceCardDesignPageProps) {
   const params = (await searchParams) ?? {};
-  const templateId = resolveTemplateId(params.template);
+  const managedTemplate = await resolveManagedTemplateRuntime(params.template);
+  const templateId = resolveTemplateId(managedTemplate.baseTemplateId);
   const exportMode = params.export === "1";
-  const scale = exportMode ? normalizeExportScale(params.scale) : normalizeScale(params.scale);
-  const topScale = normalizeFontScale(params.topScale);
-  const bottomScale = normalizeFontScale(params.bottomScale);
+  const managedScale = String(managedTemplate.content.previewScale);
+  const managedTopScale = String(managedTemplate.content.topFontScale);
+  const managedBottomScale = String(managedTemplate.content.bottomFontScale);
+  const scale = exportMode
+    ? normalizeExportScale(params.scale ?? managedScale)
+    : normalizeScale(params.scale ?? managedScale);
+  const topScale = normalizeFontScale(params.topScale ?? managedTopScale);
+  const bottomScale = normalizeFontScale(params.bottomScale ?? managedBottomScale);
   const defaultTexts = resolveDefaultTexts(templateId);
-  const topText = params.top?.trim() || defaultTexts.topText;
-  const bottomText = params.bottom?.trim() || defaultTexts.bottomText;
-  const channelName = normalizeOptionalText(params.name);
-  const channelHandle = normalizeOptionalText(params.handle);
-  const mediaUrl = normalizeOptionalText(params.media);
-  const backgroundUrl = normalizeOptionalText(params.background);
-  const avatarUrl = normalizeOptionalText(params.avatar);
-  const highlightPhrases = parseHighlightPhrases(params.highlights);
+  const templateContent = managedTemplate.content;
+  const topText = params.top?.trim() || templateContent.topText || defaultTexts.topText;
+  const bottomText = params.bottom?.trim() || templateContent.bottomText || defaultTexts.bottomText;
+  const channelName = normalizeOptionalText(params.name) ?? templateContent.channelName ?? undefined;
+  const channelHandle =
+    normalizeOptionalText(params.handle) ?? templateContent.channelHandle ?? undefined;
+  const mediaUrl =
+    normalizeOptionalText(params.media) ??
+    (typeof templateContent.mediaAsset === "string" ? templateContent.mediaAsset : undefined);
+  const backgroundUrl =
+    normalizeOptionalText(params.background) ??
+    (typeof templateContent.backgroundAsset === "string" ? templateContent.backgroundAsset : undefined);
+  const avatarUrl =
+    normalizeOptionalText(params.avatar) ??
+    (typeof templateContent.avatarAsset === "string" ? templateContent.avatarAsset : undefined);
+  const highlightPhrases =
+    parseHighlightPhrases(params.highlights) ??
+    (Array.isArray(templateContent.topHighlightPhrases)
+      ? templateContent.topHighlightPhrases
+      : undefined);
   const badgeColor = normalizeOptionalText(params.badgeColor);
   const badgeTextColor = normalizeOptionalText(params.badgeTextColor);
   const badgeGlyph = normalizeOptionalText(params.badgeGlyph);
@@ -470,9 +488,10 @@ export default async function ScienceCardDesignPage({ searchParams }: ScienceCar
   const viewport = exportMode
     ? getTemplatePreviewViewportMetrics(exportViewportTemplateId, exportViewportMode)
     : getTemplatePreviewViewportMetrics(templateId, "full-frame");
-  const templateConfig = getTemplateById(templateId);
+  const templateConfig = managedTemplate.templateConfig;
   const renderSnapshot = buildTemplateRenderSnapshot({
     templateId,
+    templateConfigOverride: templateConfig,
     content: {
       channelName: channelName ?? templateConfig.author.name,
       channelHandle: channelHandle ?? templateConfig.author.handle,
@@ -566,6 +585,7 @@ export default async function ScienceCardDesignPage({ searchParams }: ScienceCar
               templateId={templateId}
               content={renderSnapshot.content}
               snapshot={renderSnapshot}
+              templateConfigOverride={templateConfig}
               runtime={{
                 backgroundNode: resolveTemplateBackdropNode(templateId, backgroundUrl ?? null),
                 mediaNode: mediaUrl ? renderRuntimeImage(mediaUrl, "Media") : renderMediaPlaceholder(templateId),

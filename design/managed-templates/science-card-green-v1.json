@@ -1,0 +1,122 @@
+{
+  "id": "science-card-green-v1",
+  "createdAt": "2026-03-29T10:46:31.392Z",
+  "updatedAt": "2026-03-29T10:46:31.392Z",
+  "versions": [],
+  "name": "Science Card Green",
+  "description": "Зелёная версия базового Science Card: те же пропорции, но более жёсткий цветовой акцент по рамке.",
+  "baseTemplateId": "science-card-green-v1",
+  "content": {
+    "topText": "Scientists found a way to splice two living plant stems, and the joined tissue starts acting like a single working system almost immediately.",
+    "bottomText": "You can watch the wound knit together, the fluids reroute, and the whole graft behave like the plant decided the surgery was always part of the plan.",
+    "channelName": "Science Snack",
+    "channelHandle": "@Science_Snack_1",
+    "topHighlightPhrases": [],
+    "topFontScale": 1,
+    "bottomFontScale": 1,
+    "previewScale": 0.34,
+    "mediaAsset": null,
+    "backgroundAsset": null,
+    "avatarAsset": null
+  },
+  "templateConfig": {
+    "frame": {
+      "width": 1080,
+      "height": 1920
+    },
+    "card": {
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 1461,
+      "radius": 12,
+      "borderWidth": 16,
+      "borderColor": "#20a35a",
+      "fill": "#ffffff",
+      "shadow": "0 4px 4px rgba(0,0,0,0.25)"
+    },
+    "slot": {
+      "topHeight": 419,
+      "bottomHeight": 292,
+      "topPaddingX": 6,
+      "topPaddingY": 15,
+      "topPaddingTop": 15,
+      "topPaddingBottom": 15,
+      "bottomMetaHeight": 132,
+      "bottomMetaPaddingX": 23,
+      "bottomMetaPaddingY": 0,
+      "bottomTextPaddingX": 23,
+      "bottomTextPaddingY": 0,
+      "bottomTextPaddingTop": 0,
+      "bottomTextPaddingBottom": 0,
+      "bottomTextPaddingLeft": 23,
+      "bottomTextPaddingRight": 46
+    },
+    "author": {
+      "name": "Science Snack",
+      "handle": "@Science_Snack_1",
+      "avatarSize": 101,
+      "avatarBorder": 0,
+      "checkSize": 54,
+      "gap": 8,
+      "copyGap": 0,
+      "nameCheckGap": 2,
+      "checkAssetPath": "/stage3-template-badges/science-card-v1-check.png"
+    },
+    "typography": {
+      "top": {
+        "min": 40,
+        "max": 56,
+        "softLimit": 220,
+        "penalty": 0.14,
+        "lineHeight": 0.938,
+        "maxLines": 7,
+        "maxChars": 420,
+        "horizontalSafety": 0.975,
+        "glyphFactor": 0.53,
+        "fillTargetMin": 0.9,
+        "fillTargetMax": 0.95,
+        "weight": 900,
+        "letterSpacing": "-0.04em"
+      },
+      "bottom": {
+        "min": 24,
+        "max": 34,
+        "softLimit": 190,
+        "penalty": 0.16,
+        "lineHeight": 1.08,
+        "maxLines": 4,
+        "maxChars": 320,
+        "fillTargetMin": 0.8,
+        "fillTargetMax": 0.88,
+        "weight": 500,
+        "letterSpacing": "-0.01em",
+        "fontStyle": "normal"
+      },
+      "authorName": {
+        "font": 40,
+        "lineHeight": 1,
+        "weight": 800,
+        "letterSpacing": "-0.03em"
+      },
+      "authorHandle": {
+        "font": 34,
+        "lineHeight": 1,
+        "weight": 300,
+        "letterSpacing": "-0.022em"
+      }
+    },
+    "palette": {
+      "cardFill": "#ffffff",
+      "topSectionFill": "#ffffff",
+      "bottomSectionFill": "#ffffff",
+      "topTextColor": "#000000",
+      "bottomTextColor": "#0b0d10",
+      "authorNameColor": "#000000",
+      "authorHandleColor": "#acacac",
+      "checkBadgeColor": "#e985d6",
+      "borderColor": "#20a35a"
+    }
+  },
+  "shadowLayers": []
+}

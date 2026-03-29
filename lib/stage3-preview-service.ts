@@ -12,7 +12,7 @@ import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } f
 import { Stage3RenderPlan } from "./stage3-agent";
 import { Stage3StateSnapshot } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
-import { STAGE3_TEMPLATE_ID, getTemplateById } from "./stage3-template";
+import { STAGE3_TEMPLATE_ID } from "./stage3-template";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
   normalizeStage3CameraKeyframes,
@@ -30,6 +30,11 @@ import {
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
 } from "./stage3-segment-transforms";
+import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
+import {
+  normalizeStage3RenderPlanSegments,
+  resolveCanonicalStage3RenderPolicy
+} from "./stage3-render-plan";
 
 const PREVIEW_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
@@ -193,7 +198,7 @@ function normalizeRenderPlan(
     typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
       ? rawPlan.templateId.trim()
       : STAGE3_TEMPLATE_ID;
-  const template = getTemplateById(templateId);
+  const template = resolveManagedTemplateRuntimeSync(templateId).templateConfig;
   const videoZoom =
     typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
@@ -208,18 +213,21 @@ function normalizeRenderPlan(
     baseZoom: videoZoom
   });
 
+  const segments = normalizeStage3RenderPlanSegments(rawPlan?.segments);
+  const normalizeToTargetEnabled =
+    typeof rawPlan?.normalizeToTargetEnabled === "boolean"
+      ? rawPlan.normalizeToTargetEnabled
+      : rawPlan?.timingMode === "compress" ||
+          rawPlan?.timingMode === "stretch" ||
+          rawPlan?.policy === "full_source_normalize";
+
   return {
     targetDurationSec: 6,
     timingMode:
       rawPlan?.timingMode === "compress" || rawPlan?.timingMode === "stretch" || rawPlan?.timingMode === "auto"
         ? rawPlan.timingMode
         : "auto",
-    normalizeToTargetEnabled:
-      typeof rawPlan?.normalizeToTargetEnabled === "boolean"
-        ? rawPlan.normalizeToTargetEnabled
-        : rawPlan?.timingMode === "compress" ||
-            rawPlan?.timingMode === "stretch" ||
-            rawPlan?.policy === "full_source_normalize",
+    normalizeToTargetEnabled,
     audioMode:
       rawPlan?.audioMode === "source_only" || rawPlan?.audioMode === "source_plus_music"
         ? rawPlan.audioMode
@@ -254,43 +262,17 @@ function normalizeRenderPlan(
       rawPlan?.textPolicy === "aggressive_compact"
         ? rawPlan.textPolicy
         : "strict_fit",
-    segments: Array.isArray(rawPlan?.segments)
-      ? rawPlan.segments
-          .map((segment) => {
-            if (!segment || typeof segment !== "object") {
-              return null;
-            }
-            const start =
-              typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
-                ? segment.startSec
-                : null;
-            const end =
-              segment.endSec === null
-                ? null
-                : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
-                  ? segment.endSec
-                  : null;
-            if (start === null) {
-              return null;
-            }
-            return {
-              startSec: start,
-              endSec: end,
-              speed: normalizeSegmentSpeed((segment as { speed?: unknown }).speed),
-              label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`,
-              focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
-              videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
-              mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
-            };
-          })
-          .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
-      : [],
-    policy:
-      rawPlan?.policy === "adaptive_window" ||
-      rawPlan?.policy === "full_source_normalize" ||
-      rawPlan?.policy === "fixed_segments"
-        ? rawPlan.policy
-        : policyFallback,
+    segments,
+    policy: resolveCanonicalStage3RenderPolicy({
+      segments,
+      normalizeToTargetEnabled,
+      requestedPolicy:
+        rawPlan?.policy === "adaptive_window" ||
+        rawPlan?.policy === "full_source_normalize" ||
+        rawPlan?.policy === "fixed_segments"
+          ? rawPlan.policy
+          : policyFallback
+    }),
     backgroundAssetId:
       typeof rawPlan?.backgroundAssetId === "string" && rawPlan.backgroundAssetId.trim()
         ? rawPlan.backgroundAssetId.trim()
@@ -343,12 +325,14 @@ function buildPreviewCacheKey(params: {
   sourceKey: string;
   clipStartSec: number;
   renderPlan: Stage3RenderPlan;
+  templateRevision: string;
 }): string {
   return hashKey(
     JSON.stringify({
       sourceKey: params.sourceKey,
       clipStartSec: Number(params.clipStartSec.toFixed(3)),
       clipDurationSec: params.renderPlan.targetDurationSec,
+      templateRevision: params.templateRevision,
       renderPlan: params.renderPlan,
       musicAssetId: params.renderPlan.musicAssetId,
       musicGain: Number(params.renderPlan.musicGain.toFixed(3))
@@ -364,10 +348,12 @@ export async function buildStage3PreviewDedupeKey(
   const snapshot = body.snapshot;
   const clipStartSec = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
   const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, null);
+  const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(renderPlan.templateId);
   const previewKey = buildPreviewCacheKey({
     sourceKey: hashKey(sourceUrl),
     clipStartSec,
-    renderPlan
+    renderPlan,
+    templateRevision: managedTemplateRuntime.updatedAt
   });
   const workspaceId = scope?.workspaceId?.trim() ?? "";
   const userId = scope?.userId?.trim() ?? "";
@@ -399,6 +385,7 @@ export async function prepareStage3Preview(
   const clipStartSec = clampClipStart(clipStartCandidate, source.sourceDurationSec, clipDurationSec);
   const rawPlan = snapshot?.renderPlan ?? body.renderPlan;
   const renderPlan = normalizeRenderPlan(rawPlan, source.sourceDurationSec);
+  const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(renderPlan.templateId);
   const assetTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-assets-"));
   let musicFilePath: string | null = null;
   try {
@@ -416,7 +403,8 @@ export async function prepareStage3Preview(
     const previewKey = buildPreviewCacheKey({
       sourceKey: source.sourceKey,
       clipStartSec,
-      renderPlan
+      renderPlan,
+      templateRevision: managedTemplateRuntime.updatedAt
     });
     const previewPath = path.join(PREVIEW_CACHE_DIR, `${previewKey}.mp4`);
 

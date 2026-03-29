@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   stage2_examples_corpus_json TEXT,
   stage2_hard_constraints_json TEXT,
   stage2_prompt_config_json TEXT,
+  workspace_codex_model_config_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -329,6 +330,10 @@ CREATE TABLE IF NOT EXISTS stage3_jobs (
   user_id TEXT NOT NULL,
   kind TEXT NOT NULL,
   status TEXT NOT NULL,
+  execution_target TEXT NOT NULL DEFAULT 'local',
+  assigned_worker_id TEXT,
+  lease_expires_at TEXT,
+  heartbeat_at TEXT,
   dedupe_key TEXT,
   payload_json TEXT NOT NULL,
   result_json TEXT,
@@ -336,6 +341,8 @@ CREATE TABLE IF NOT EXISTS stage3_jobs (
   error_message TEXT,
   recoverable INTEGER NOT NULL DEFAULT 1,
   attempts INTEGER NOT NULL DEFAULT 0,
+  attempt_limit INTEGER NOT NULL DEFAULT 3,
+  attempt_group TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   started_at TEXT,
@@ -519,8 +526,8 @@ CREATE INDEX IF NOT EXISTS idx_stage3_jobs_status
 CREATE INDEX IF NOT EXISTS idx_stage3_jobs_workspace
   ON stage3_jobs(workspace_id, created_at DESC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_stage3_jobs_kind_dedupe
-  ON stage3_jobs(kind, dedupe_key)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stage3_jobs_kind_target_dedupe
+  ON stage3_jobs(kind, execution_target, dedupe_key)
   WHERE dedupe_key IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_stage2_runs_chat_created

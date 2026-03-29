@@ -97,6 +97,13 @@ function formatScheduledMoment(iso: string, timeZone: string): string {
   });
 }
 
+export function getPublicationDisplayDayKey(
+  publication: Pick<ChannelPublication, "scheduledAt">,
+  timeZone: string
+): string {
+  return formatDateKey(new Date(publication.scheduledAt), timeZone);
+}
+
 function formatDateTimeLocalValue(iso: string, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -151,6 +158,37 @@ function findClosestSlotIndex(timeLabel: string, slotLabels: string[]): number {
     }
   });
   return bestIndex;
+}
+
+export function getPublicationDisplaySlotIndex(
+  publication: Pick<ChannelPublication, "scheduleMode" | "scheduledAt">,
+  slotLabels: string[],
+  timeZone: string
+): number | null {
+  if (publication.scheduleMode !== "slot") {
+    return null;
+  }
+  const scheduledLabel = formatScheduledTime(publication.scheduledAt, timeZone);
+  const slotIndex = slotLabels.findIndex((label) => label === scheduledLabel);
+  return slotIndex >= 0 ? slotIndex : null;
+}
+
+export function isPublicationSlotSynchronized(
+  publication: Pick<ChannelPublication, "scheduleMode" | "scheduledAt" | "slotDate" | "slotIndex">,
+  slotLabels: string[],
+  timeZone: string
+): boolean {
+  if (publication.scheduleMode !== "slot") {
+    return true;
+  }
+  const displaySlotIndex = getPublicationDisplaySlotIndex(publication, slotLabels, timeZone);
+  if (displaySlotIndex === null) {
+    return false;
+  }
+  return (
+    publication.slotDate === getPublicationDisplayDayKey(publication, timeZone) &&
+    publication.slotIndex === displaySlotIndex
+  );
 }
 
 function formatSlotDateLabel(slotDate: string, timeZone: string, now = new Date()): string {
@@ -262,11 +300,12 @@ function formatSubscriptionFeedLabel(notifySubscribers: boolean): string {
 
 function sortPublicationsForPlanner(
   publications: ChannelPublication[],
-  todayKey: string
+  todayKey: string,
+  timeZone: string
 ): ChannelPublication[] {
   return [...publications].sort((left, right) => {
-    const leftFuture = left.slotDate >= todayKey;
-    const rightFuture = right.slotDate >= todayKey;
+    const leftFuture = getPublicationDisplayDayKey(left, timeZone) >= todayKey;
+    const rightFuture = getPublicationDisplayDayKey(right, timeZone) >= todayKey;
     if (leftFuture !== rightFuture) {
       return leftFuture ? -1 : 1;
     }
@@ -280,22 +319,23 @@ function sortPublicationsForPlanner(
   });
 }
 
-function buildPublicationDayGroups(
+export function buildPublicationDayGroups(
   publications: ChannelPublication[],
   timeZone: string
 ): PublicationDayGroup[] {
   const todayKey = formatDateKey(new Date(), timeZone);
   const groups = new Map<string, PublicationDayGroup>();
 
-  sortPublicationsForPlanner(publications, todayKey).forEach((publication) => {
-    const existing = groups.get(publication.slotDate);
+  sortPublicationsForPlanner(publications, todayKey, timeZone).forEach((publication) => {
+    const dayKey = getPublicationDisplayDayKey(publication, timeZone);
+    const existing = groups.get(dayKey);
     if (existing) {
       existing.items.push(publication);
       return;
     }
-    groups.set(publication.slotDate, {
-      id: publication.slotDate,
-      label: formatSlotDateLabel(publication.slotDate, timeZone),
+    groups.set(dayKey, {
+      id: dayKey,
+      label: formatSlotDateLabel(dayKey, timeZone),
       items: [publication]
     });
   });
@@ -340,6 +380,7 @@ export function PublishingPlanner({
 
   const startEdit = (publication: ChannelPublication) => {
     const scheduledAtLocal = formatDateTimeLocalValue(publication.scheduledAt, timeZone);
+    const displaySlotIndex = getPublicationDisplaySlotIndex(publication, slotLabels, timeZone);
     setExpandedId(publication.id);
     setEditingId(publication.id);
     setDraft({
@@ -348,10 +389,10 @@ export function PublishingPlanner({
       tags: publication.tags.join(", "),
       scheduleMode: publication.scheduleMode,
       scheduledAtLocal,
-      slotDate: publication.slotDate,
+      slotDate: getPublicationDisplayDayKey(publication, timeZone),
       slotIndex:
         publication.scheduleMode === "slot"
-          ? publication.slotIndex
+          ? (displaySlotIndex ?? 0)
           : findClosestSlotIndex(scheduledAtLocal.slice(11, 16), slotLabels),
       notifySubscribers: publication.notifySubscribers
     });
@@ -525,17 +566,24 @@ export function PublishingPlanner({
     const isEditing = editingId === publication.id && draft;
     const isExpanded = expandedId === publication.id || Boolean(isEditing);
     const statusTone = getPublicationStatusTone(publication.status);
+    const displayDayKey = getPublicationDisplayDayKey(publication, timeZone);
+    const displaySlotIndex = getPublicationDisplaySlotIndex(publication, slotLabels, timeZone);
+    const slotSynchronized = isPublicationSlotSynchronized(publication, slotLabels, timeZone);
     const isMovable =
       publication.scheduleMode === "slot" &&
+      slotSynchronized &&
       publication.status !== "published" &&
       publication.status !== "canceled";
     const isDragging = dragState?.publicationId === publication.id;
     const isDropTarget =
-      dropTarget?.slotDate === publication.slotDate &&
-      dropTarget.slotIndex === publication.slotIndex;
+      displaySlotIndex !== null &&
+      dropTarget?.slotDate === displayDayKey &&
+      dropTarget.slotIndex === displaySlotIndex;
     const slotLabel =
       publication.scheduleMode === "slot"
-        ? slotLabels[publication.slotIndex] ?? formatScheduledTime(publication.scheduledAt, timeZone)
+        ? (displaySlotIndex !== null
+            ? slotLabels[displaySlotIndex]
+            : formatScheduledTime(publication.scheduledAt, timeZone))
         : formatScheduledTime(publication.scheduledAt, timeZone);
     const compactDescription = publication.description.trim();
     const notifySubscribersLocked = Boolean(publication.youtubeVideoId);
@@ -545,10 +593,14 @@ export function PublishingPlanner({
         key={publication.id}
         className={`publishing-card status-${statusTone} ${activeChatId === publication.chatId ? "active-chat" : ""} ${isDragging ? "is-dragging" : ""} ${isDropTarget ? "is-drop-target" : ""}`}
         onDragOver={(event) =>
-          handleSlotDragOver(event, publication.slotDate, publication.slotIndex, publication)
+          displaySlotIndex === null
+            ? undefined
+            : handleSlotDragOver(event, displayDayKey, displaySlotIndex, publication)
         }
         onDrop={(event) =>
-          void handleSlotDrop(event, publication.slotDate, publication.slotIndex, publication)
+          displaySlotIndex === null
+            ? undefined
+            : void handleSlotDrop(event, displayDayKey, displaySlotIndex, publication)
         }
       >
         <div className="publishing-card-head">
@@ -643,6 +695,11 @@ export function PublishingPlanner({
             {publication.scheduleMode === "custom" ? (
               <p className="subtle-text">
                 Эта публикация идёт по точному времени и не участвует в слот-перестановках.
+              </p>
+            ) : !slotSynchronized ? (
+              <p className="subtle-text">
+                Эта слот-публикация больше не совпадает с текущей сеткой канала. Для переноса
+                откройте редактор и сохраните новую дату или слот.
               </p>
             ) : null}
             {publication.tags.length > 0 ? (
@@ -911,6 +968,11 @@ export function PublishingPlanner({
             <p className="subtle-text publishing-custom-hint">
               Точное время не двигается по слотам. Если нужно сдвинуть публикацию, откройте редактор.
             </p>
+          ) : !slotSynchronized ? (
+            <p className="subtle-text publishing-custom-hint">
+              Сетка канала изменилась после постановки в очередь. Откройте редактор, чтобы
+              перепривязать ролик к текущему дню или слоту.
+            </p>
           ) : null}
 
           <div className="publishing-card-actions">
@@ -1010,8 +1072,11 @@ export function PublishingPlanner({
           {dayGroups.map((group) => {
             const itemsBySlot = new Map(
               group.items
-                .filter((item) => item.scheduleMode === "slot")
-                .map((item) => [item.slotIndex, item])
+                .map((item) => {
+                  const slotIndex = getPublicationDisplaySlotIndex(item, slotLabels, timeZone);
+                  return slotIndex === null ? null : [slotIndex, item] as const;
+                })
+                .filter((entry): entry is readonly [number, ChannelPublication] => Boolean(entry))
             );
             const customCount = group.items.filter((item) => item.scheduleMode === "custom").length;
             const slotCount = group.items.length - customCount;

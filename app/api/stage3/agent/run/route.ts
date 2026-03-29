@@ -6,6 +6,8 @@ import { isStage3HostedBusyError } from "../../../../../lib/stage3-server-contro
 import { summarizeUserFacingError } from "../../../../../lib/ui-error";
 import { Stage3StateSnapshot } from "../../../../../app/components/types";
 import { getChatById } from "../../../../../lib/chat-history";
+import { getWorkspaceCodexModelConfig } from "../../../../../lib/team-store";
+import { resolveWorkspaceCodexModelConfig } from "../../../../../lib/workspace-codex-models";
 import { requireAuth, requireChannelOperate, requireSharedCodexAvailable } from "../../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
@@ -120,6 +122,12 @@ export async function POST(request: Request): Promise<Response> {
     }
     await requireChannelOperate(auth, chat.channelId);
     const integration = requireSharedCodexAvailable(auth.workspace.id);
+    const resolvedWorkspaceCodexModels = resolveWorkspaceCodexModelConfig({
+      config: getWorkspaceCodexModelConfig(auth.workspace.id),
+      deployStage2Model: process.env.CODEX_STAGE2_MODEL,
+      deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
+      deployStage3Model: process.env.CODEX_STAGE3_MODEL
+    });
     const result = await runAutonomousOptimization({
       sessionId: body.sessionId?.trim() || undefined,
       projectId: payload.projectId,
@@ -136,7 +144,7 @@ export async function POST(request: Request): Promise<Response> {
       options: payload.options,
       idempotencyKey: payload.idempotencyKey,
       codexSessionId: integration.codexSessionId ?? undefined,
-      plannerModel: payload.plannerModel,
+      plannerModel: payload.plannerModel?.trim() || resolvedWorkspaceCodexModels.stage3Planner,
       plannerReasoningEffort: payload.plannerReasoningEffort,
       plannerTimeoutMs: payload.plannerTimeoutMs
     });

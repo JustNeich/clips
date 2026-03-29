@@ -439,6 +439,7 @@ export type Stage3TemplateConfig = {
       weight?: number;
       letterSpacing?: string;
       fontStyle?: "normal" | "italic";
+      fontFamily?: string;
     };
     bottom: {
       min: number;
@@ -455,18 +456,21 @@ export type Stage3TemplateConfig = {
       weight?: number;
       letterSpacing?: string;
       fontStyle?: "normal" | "italic";
+      fontFamily?: string;
     };
     authorName: {
       font: number;
       lineHeight: number;
       weight?: number;
       letterSpacing?: string;
+      fontFamily?: string;
     };
     authorHandle: {
       font: number;
       lineHeight: number;
       weight?: number;
       letterSpacing?: string;
+      fontFamily?: string;
     };
   };
   palette: {

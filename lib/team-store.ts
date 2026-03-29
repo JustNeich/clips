@@ -18,6 +18,12 @@ import {
   stringifyStage2PromptConfig,
   type Stage2PromptConfig
 } from "./stage2-pipeline";
+import {
+  DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
+  parseWorkspaceCodexModelConfigJson,
+  stringifyWorkspaceCodexModelConfig,
+  type WorkspaceCodexModelConfig
+} from "./workspace-codex-models";
 
 export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
 export type WorkspaceCodexStatus = "connected" | "disconnected" | "connecting" | "error";
@@ -30,6 +36,7 @@ export type WorkspaceRecord = {
   stage2ExamplesCorpusJson: string;
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
+  codexModelConfig: WorkspaceCodexModelConfig;
   createdAt: string;
   updatedAt: string;
 };
@@ -190,6 +197,9 @@ function mapWorkspace(row: Record<string, unknown>): WorkspaceRecord {
     stage2PromptConfig: normalizeWorkspaceStage2PromptConfig(
       row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null
     ),
+    codexModelConfig: normalizeWorkspaceCodexModelConfig(
+      row.workspace_codex_model_config_json ? String(row.workspace_codex_model_config_json) : null
+    ),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
@@ -223,6 +233,10 @@ function normalizeWorkspaceStage2HardConstraints(
 
 function normalizeWorkspaceStage2PromptConfig(value: string | null | undefined): Stage2PromptConfig {
   return parseStage2PromptConfigJson(value);
+}
+
+function normalizeWorkspaceCodexModelConfig(value: string | null | undefined): WorkspaceCodexModelConfig {
+  return parseWorkspaceCodexModelConfigJson(value);
 }
 
 function mapUser(row: Record<string, unknown>): UserRecord {
@@ -378,6 +392,31 @@ export function getWorkspaceStage2PromptConfig(workspaceId: string): Stage2Promp
   return normalized;
 }
 
+export function getWorkspaceCodexModelConfig(workspaceId: string): WorkspaceCodexModelConfig {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT workspace_codex_model_config_json FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  const normalized = normalizeWorkspaceCodexModelConfig(
+    row.workspace_codex_model_config_json ? String(row.workspace_codex_model_config_json) : null
+  );
+  const serialized = stringifyWorkspaceCodexModelConfig(normalized);
+  if (
+    (row.workspace_codex_model_config_json
+      ? String(row.workspace_codex_model_config_json)
+      : null) !== serialized
+  ) {
+    db.prepare("UPDATE workspaces SET workspace_codex_model_config_json = ? WHERE id = ?").run(
+      serialized,
+      workspaceId
+    );
+  }
+  return normalized;
+}
+
 export function updateWorkspaceStage2ExamplesCorpusJson(
   workspaceId: string,
   rawJson: string
@@ -442,6 +481,25 @@ export function updateWorkspaceStage2PromptConfig(
   const db = getDb();
   db.prepare(
     "UPDATE workspaces SET stage2_prompt_config_json = ?, updated_at = ? WHERE id = ?"
+  ).run(serialized, updatedAt, workspaceId);
+  const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  return mapWorkspace(row);
+}
+
+export function updateWorkspaceCodexModelConfig(
+  workspaceId: string,
+  codexModelConfig: WorkspaceCodexModelConfig
+): WorkspaceRecord {
+  const serialized = stringifyWorkspaceCodexModelConfig(codexModelConfig);
+  const updatedAt = nowIso();
+  const db = getDb();
+  db.prepare(
+    "UPDATE workspaces SET workspace_codex_model_config_json = ?, updated_at = ? WHERE id = ?"
   ).run(serialized, updatedAt, workspaceId);
   const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
     | Record<string, unknown>
@@ -577,6 +635,7 @@ export async function bootstrapOwner(input: {
     stage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
     stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
     stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+    codexModelConfig: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
     createdAt: now,
     updatedAt: now
   };
@@ -601,7 +660,7 @@ export async function bootstrapOwner(input: {
 
   runInTransaction((db) => {
     db.prepare(
-      "INSERT INTO workspaces (id, name, slug, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO workspaces (id, name, slug, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       workspace.id,
       workspace.name,
@@ -609,6 +668,7 @@ export async function bootstrapOwner(input: {
       workspace.stage2ExamplesCorpusJson,
       stringifyStage2HardConstraints(workspace.stage2HardConstraints),
       stringifyStage2PromptConfig(workspace.stage2PromptConfig),
+      stringifyWorkspaceCodexModelConfig(workspace.codexModelConfig),
       workspace.createdAt,
       workspace.updatedAt
     );
@@ -943,6 +1003,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
       stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(String(row.workspace_id)),
       stage2HardConstraints: getWorkspaceStage2HardConstraints(String(row.workspace_id)),
       stage2PromptConfig: getWorkspaceStage2PromptConfig(String(row.workspace_id)),
+      codexModelConfig: getWorkspaceCodexModelConfig(String(row.workspace_id)),
       createdAt: String(row.workspace_created_at),
       updatedAt: String(row.workspace_updated_at)
     },

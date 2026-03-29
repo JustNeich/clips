@@ -98,3 +98,22 @@ test("trimClientSegmentsToDuration keeps fragment framing overrides on surviving
   assert.equal(trimmed[1]?.videoZoom, 1.36);
   assert.equal(trimmed[1]?.mirrorEnabled, false);
 });
+
+test("normalizeRenderPlan sorts fragments by time so preview and render use the same order", () => {
+  const normalized = normalizeRenderPlan(
+    {
+      ...fallbackRenderPlan(),
+      segments: [
+        { startSec: 9, endSec: 10, speed: 1, label: "B" },
+        { startSec: 2, endSec: 3, speed: 1, label: "A" }
+      ],
+      policy: "full_source_normalize"
+    },
+    fallbackRenderPlan()
+  );
+
+  assert.equal(normalized.segments.length, 2);
+  assert.equal(normalized.segments[0]?.label, "A");
+  assert.equal(normalized.segments[1]?.label, "B");
+  assert.equal(normalized.policy, "fixed_segments");
+});

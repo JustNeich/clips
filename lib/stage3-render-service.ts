@@ -6,8 +6,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   STAGE3_TEMPLATE_ID,
-  getTemplateById
+  type Stage3TemplateConfig
 } from "./stage3-template";
+import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
 import { buildTemplateRenderSnapshot } from "./stage3-template-core";
 import { buildStage3TextFitHash, clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
@@ -44,6 +45,10 @@ import {
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
 } from "./stage3-segment-transforms";
+import {
+  normalizeStage3RenderPlanSegments,
+  resolveCanonicalStage3RenderPolicy
+} from "./stage3-render-plan";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -75,6 +80,7 @@ function resolveStage3ExecutionRoot(): string {
 }
 
 export type Stage3RenderRequestBody = {
+  requestId?: string;
   sourceUrl?: string;
   channelId?: string;
   chatId?: string;
@@ -365,6 +371,7 @@ async function finalizeRenderedOutput(params: {
 async function runRemotionRender(params: {
   serveUrl: string;
   templateId: string;
+  templateConfigOverride: Stage3TemplateConfig;
   outputPath: string;
   sourceVideoFileName: string;
   topText: string;
@@ -406,6 +413,7 @@ async function runRemotionRender(params: {
 
   const buildInputProps = (variationProfile: Stage3VariationProfile) => ({
     templateId: params.templateId,
+    templateConfigOverride: params.templateConfigOverride,
     sourceVideoFileName: params.sourceVideoFileName,
     topText: params.topText,
     bottomText: params.bottomText,
@@ -538,7 +546,7 @@ function normalizeRenderPlan(
   fallbackTemplateId: string,
   agentPrompt: string | undefined
 ): Stage3RenderPlan {
-  const template = getTemplateById(fallbackTemplateId);
+  const template = resolveManagedTemplateRuntimeSync(fallbackTemplateId).templateConfig;
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
   const videoZoom =
@@ -554,18 +562,20 @@ function normalizeRenderPlan(
     baseFocusY: 0.5,
     baseZoom: videoZoom
   });
+  const segments = normalizeStage3RenderPlanSegments(rawPlan?.segments);
+  const normalizeToTargetEnabled =
+    typeof rawPlan?.normalizeToTargetEnabled === "boolean"
+      ? rawPlan.normalizeToTargetEnabled
+      : rawPlan?.timingMode === "compress" ||
+          rawPlan?.timingMode === "stretch" ||
+          rawPlan?.policy === "full_source_normalize";
   return {
     targetDurationSec: 6,
     timingMode:
       rawPlan?.timingMode === "compress" || rawPlan?.timingMode === "stretch" || rawPlan?.timingMode === "auto"
         ? rawPlan.timingMode
         : "auto",
-    normalizeToTargetEnabled:
-      typeof rawPlan?.normalizeToTargetEnabled === "boolean"
-        ? rawPlan.normalizeToTargetEnabled
-        : rawPlan?.timingMode === "compress" ||
-            rawPlan?.timingMode === "stretch" ||
-            rawPlan?.policy === "full_source_normalize",
+    normalizeToTargetEnabled,
     audioMode:
       rawPlan?.audioMode === "source_only" || rawPlan?.audioMode === "source_plus_music"
         ? rawPlan.audioMode
@@ -600,43 +610,17 @@ function normalizeRenderPlan(
       rawPlan?.textPolicy === "aggressive_compact"
         ? rawPlan.textPolicy
         : "strict_fit",
-    segments: Array.isArray(rawPlan?.segments)
-      ? rawPlan.segments
-          .map((segment) => {
-            if (!segment || typeof segment !== "object") {
-              return null;
-            }
-            const start =
-              typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
-                ? segment.startSec
-                : null;
-            const end =
-              segment.endSec === null
-                ? null
-                : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
-                  ? segment.endSec
-                  : null;
-            if (start === null) {
-              return null;
-            }
-            return {
-              startSec: start,
-              endSec: end,
-              speed: normalizeSegmentSpeed((segment as { speed?: unknown }).speed),
-              label: typeof segment.label === "string" ? segment.label : `${start.toFixed(1)}-${end ?? "end"}`,
-              focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
-              videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
-              mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
-            };
-          })
-          .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
-      : [],
-    policy:
-      rawPlan?.policy === "adaptive_window" ||
-      rawPlan?.policy === "full_source_normalize" ||
-      rawPlan?.policy === "fixed_segments"
-        ? rawPlan.policy
-        : policyFallback,
+    segments,
+    policy: resolveCanonicalStage3RenderPolicy({
+      segments,
+      normalizeToTargetEnabled,
+      requestedPolicy:
+        rawPlan?.policy === "adaptive_window" ||
+        rawPlan?.policy === "full_source_normalize" ||
+        rawPlan?.policy === "fixed_segments"
+          ? rawPlan.policy
+          : policyFallback
+    }),
     backgroundAssetId:
       typeof rawPlan?.backgroundAssetId === "string" && rawPlan.backgroundAssetId.trim()
         ? rawPlan.backgroundAssetId.trim()
@@ -751,8 +735,10 @@ export async function renderStage3Video(
           ? body.renderPlan.templateId.trim()
           : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
     const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, sourceDurationSec, templateIdFromInput, body.agentPrompt);
+    const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(renderPlan.templateId);
     const templateSnapshot = buildTemplateRenderSnapshot({
-      templateId: renderPlan.templateId,
+      templateId: managedTemplateRuntime.baseTemplateId,
+      templateConfigOverride: managedTemplateRuntime.templateConfig,
       content: {
         topText: snapshot?.topText ?? body.topText ?? "",
         bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
@@ -904,7 +890,8 @@ export async function renderStage3Video(
 
         const appliedVariationProfile = await runRemotionRender({
           serveUrl,
-          templateId: renderPlan.templateId || STAGE3_TEMPLATE_ID,
+          templateId: managedTemplateRuntime.baseTemplateId,
+          templateConfigOverride: managedTemplateRuntime.templateConfig,
           outputPath: remotionOutputPath,
           sourceVideoFileName,
           topText: templateSnapshot.content.topText,

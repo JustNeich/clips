@@ -42,6 +42,22 @@ export type Stage3PlaybackPosition = {
   segment: Stage3PlaybackSegment;
 };
 
+export type Stage3PlaybackSyncAction =
+  | {
+      kind: "position";
+      position: Stage3PlaybackPosition;
+    }
+  | {
+      kind: "seek";
+      position: Stage3PlaybackPosition;
+      reason: "before_segment" | "between_segments";
+    }
+  | {
+      kind: "complete";
+      position: Stage3PlaybackPosition;
+      reason: "plan_end";
+    };
+
 function formatTimingKeyNumber(value: number): string {
   return Number.isFinite(value) ? value.toFixed(4) : "nan";
 }
@@ -327,6 +343,129 @@ export function resolveStage3PlaybackPosition(
     playbackRate: clamp(segment.playbackRate, 0.1, 16),
     segment
   };
+}
+
+function buildStage3PlaybackPositionFromSourceTime(
+  plan: Stage3PlaybackPlan,
+  segmentIndex: number,
+  rawSourceTimeSec: number
+): Stage3PlaybackPosition | null {
+  const segment = plan.segments[segmentIndex];
+  if (!segment) {
+    return null;
+  }
+  const sourceTimeSec = clamp(rawSourceTimeSec, segment.sourceStartSec, segment.sourceEndSec);
+  return {
+    segmentIndex,
+    outputTimeSec: mapStage3SourceTimeToOutputTime(segment, sourceTimeSec),
+    sourceTimeSec,
+    playbackRate: clamp(segment.playbackRate, 0.1, 16),
+    segment
+  };
+}
+
+function findStage3PlaybackSegmentIndexForSourceTime(params: {
+  plan: Stage3PlaybackPlan;
+  sourceTimeSec: number;
+  preferredSegmentIndex: number;
+  driftToleranceSec: number;
+  transitionThresholdSec: number;
+}): number {
+  const clampedPreferredIndex = clamp(
+    params.preferredSegmentIndex,
+    0,
+    Math.max(0, params.plan.segments.length - 1)
+  );
+  const preferredSegment = params.plan.segments[clampedPreferredIndex];
+  const isWithinSegment = (segment: Stage3PlaybackSegment) =>
+    params.sourceTimeSec >= segment.sourceStartSec - params.driftToleranceSec &&
+    params.sourceTimeSec < segment.sourceEndSec - params.transitionThresholdSec;
+
+  if (preferredSegment && isWithinSegment(preferredSegment)) {
+    return clampedPreferredIndex;
+  }
+
+  return params.plan.segments.findIndex((segment) => isWithinSegment(segment));
+}
+
+export function resolveStage3PlaybackSyncAction(params: {
+  plan: Stage3PlaybackPlan;
+  sourceTimeSec: number;
+  preferredSegmentIndex: number;
+  driftToleranceSec?: number;
+  transitionThresholdSec?: number;
+}): Stage3PlaybackSyncAction | null {
+  if (params.plan.segments.length === 0) {
+    return null;
+  }
+
+  const driftToleranceSec = clamp(params.driftToleranceSec ?? 0.08, 0, 0.5);
+  const transitionThresholdSec = clamp(params.transitionThresholdSec ?? 0.02, 0.001, 0.25);
+  const sourceTimeSec = Math.max(0, Number.isFinite(params.sourceTimeSec) ? params.sourceTimeSec : 0);
+  const preferredSegmentIndex = clamp(
+    params.preferredSegmentIndex,
+    0,
+    Math.max(0, params.plan.segments.length - 1)
+  );
+  const preferredSegment = params.plan.segments[preferredSegmentIndex] ?? params.plan.segments[0];
+  const containingSegmentIndex = findStage3PlaybackSegmentIndexForSourceTime({
+    plan: params.plan,
+    sourceTimeSec,
+    preferredSegmentIndex,
+    driftToleranceSec,
+    transitionThresholdSec
+  });
+
+  if (containingSegmentIndex >= 0) {
+    const position = buildStage3PlaybackPositionFromSourceTime(
+      params.plan,
+      containingSegmentIndex,
+      sourceTimeSec
+    );
+    return position
+      ? {
+          kind: "position",
+          position
+        }
+      : null;
+  }
+
+  if (sourceTimeSec < preferredSegment.sourceStartSec - driftToleranceSec) {
+    const position = resolveStage3PlaybackPosition(params.plan, preferredSegment.outputStartSec);
+    return position
+      ? {
+          kind: "seek",
+          position,
+          reason: "before_segment"
+        }
+      : null;
+  }
+
+  const nextSegmentIndex = params.plan.segments.findIndex(
+    (segment) => sourceTimeSec < segment.sourceStartSec - driftToleranceSec
+  );
+  if (nextSegmentIndex >= 0) {
+    const position = resolveStage3PlaybackPosition(
+      params.plan,
+      params.plan.segments[nextSegmentIndex]?.outputStartSec ?? 0
+    );
+    return position
+      ? {
+          kind: "seek",
+          position,
+          reason: "between_segments"
+        }
+      : null;
+  }
+
+  const position = resolveStage3PlaybackPosition(params.plan, params.plan.totalOutputDurationSec);
+  return position
+    ? {
+        kind: "complete",
+        position,
+        reason: "plan_end"
+      }
+    : null;
 }
 
 export function resolveStage3PlaybackTransformState(params: {

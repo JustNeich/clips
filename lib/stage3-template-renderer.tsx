@@ -6,6 +6,7 @@ import type {
   TemplateLayoutOutput,
   TemplateRenderSnapshot
 } from "./stage3-template-core";
+import type { Stage3TemplateConfig } from "./stage3-template";
 
 export type { TemplateLayoutInput, TemplateLayoutOutput };
 export type { TemplateRenderSnapshot };
@@ -29,6 +30,7 @@ export type TemplateRendererProps = {
   templateId: TemplateSceneProps["templateId"];
   content: TemplateSceneProps["content"];
   snapshot?: TemplateRenderSnapshot;
+  templateConfigOverride?: Stage3TemplateConfig;
   onComputedChange?: TemplateSceneProps["onComputedChange"];
   runtime?: TemplateRuntimeBridge;
 };
@@ -37,6 +39,7 @@ export function Stage3TemplateRenderer({
   templateId,
   content,
   snapshot,
+  templateConfigOverride,
   onComputedChange,
   runtime
 }: TemplateRendererProps): React.JSX.Element {
@@ -45,6 +48,7 @@ export function Stage3TemplateRenderer({
       templateId={templateId}
       content={content}
       snapshot={snapshot}
+      templateConfigOverride={templateConfigOverride}
       onComputedChange={onComputedChange}
       backgroundNode={runtime?.backgroundNode}
       mediaNode={runtime?.mediaNode}

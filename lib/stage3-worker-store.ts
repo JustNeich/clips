@@ -27,6 +27,7 @@ type WorkerRow = {
   revoked_at: string | null;
   created_at: string;
   updated_at: string;
+  current_job_id?: string | null;
 };
 
 type WorkerTokenRow = {
@@ -98,7 +99,10 @@ function mapWorkerRow(row: WorkerRow | null): Stage3WorkerRecord | null {
   if (!row) {
     return null;
   }
-  const currentJobId = getCurrentJobId(String(row.id));
+  const currentJobId =
+    typeof row.current_job_id === "string" || row.current_job_id === null
+      ? row.current_job_id
+      : getCurrentJobId(String(row.id));
   return {
     id: String(row.id),
     workspaceId: String(row.workspace_id),
@@ -309,11 +313,20 @@ export function listStage3Workers(input: { workspaceId: string; userId: string }
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT * FROM stage3_workers
-        WHERE workspace_id = ?
-          AND user_id = ?
-          AND revoked_at IS NULL
-        ORDER BY updated_at DESC`
+      `SELECT w.*,
+              (
+                SELECT j.id
+                  FROM stage3_jobs j
+                 WHERE j.assigned_worker_id = w.id
+                   AND j.status = 'running'
+                 ORDER BY j.updated_at DESC
+                 LIMIT 1
+              ) AS current_job_id
+         FROM stage3_workers w
+        WHERE w.workspace_id = ?
+          AND w.user_id = ?
+          AND w.revoked_at IS NULL
+        ORDER BY w.updated_at DESC`
     )
     .all(input.workspaceId, input.userId) as WorkerRow[];
   return rows

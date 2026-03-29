@@ -16,7 +16,7 @@ import {
   UserRecord
 } from "./types";
 import { STAGE3_TEMPLATE_ID } from "../../lib/stage3-template";
-import { listStage3DesignLabPresets } from "../../lib/stage3-design-lab";
+import type { ManagedTemplateSummary } from "../../lib/managed-template-types";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   listStage2PromptConfigStages,
@@ -39,6 +39,11 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../../lib/stage2-channel-config";
+import {
+  normalizeWorkspaceCodexModelConfig,
+  type ResolvedWorkspaceCodexModelConfig,
+  type WorkspaceCodexModelConfig
+} from "../../lib/workspace-codex-models";
 import {
   applyChannelStyleProfileEditorDiscoveryResult,
   buildChannelStyleProfileFromEditorDraft,
@@ -89,6 +94,10 @@ type ChannelSavePatch = Partial<{
   defaultMusicAssetId: string | null;
 }>;
 
+type ManagedTemplateListResponse = {
+  templates?: ManagedTemplateSummary[];
+};
+
 export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
   saving: string;
   saved: string;
@@ -136,6 +145,8 @@ type ChannelManagerProps = {
   workspaceStage2ExamplesCorpusJson: string;
   workspaceStage2HardConstraints: Stage2HardConstraints;
   workspaceStage2PromptConfig: Stage2PromptConfig;
+  workspaceCodexModelConfig: WorkspaceCodexModelConfig;
+  workspaceResolvedCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
   activeChannelId: string | null;
   assets: ChannelAsset[];
   currentUserRole: AppRole | null;
@@ -175,6 +186,7 @@ type ChannelManagerProps = {
       stage2ExamplesCorpusJson: string;
       stage2HardConstraints: Stage2HardConstraints;
       stage2PromptConfig: Stage2PromptConfig;
+      codexModelConfig: WorkspaceCodexModelConfig;
     }>
   ) => Promise<void>;
   onUploadAsset: (kind: ChannelAssetKind, file: File) => void;
@@ -199,6 +211,8 @@ export function ChannelManager({
   workspaceStage2ExamplesCorpusJson,
   workspaceStage2HardConstraints: workspaceStage2HardConstraintsProp,
   workspaceStage2PromptConfig: workspaceStage2PromptConfigProp,
+  workspaceCodexModelConfig: workspaceCodexModelConfigProp,
+  workspaceResolvedCodexModelConfig,
   activeChannelId,
   assets,
   currentUserRole,
@@ -277,7 +291,12 @@ export function ChannelManager({
   const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
     normalizeStage2PromptConfig(workspaceStage2PromptConfigProp)
   );
+  const [workspaceCodexModelConfig, setWorkspaceCodexModelConfig] =
+    useState<WorkspaceCodexModelConfig>(
+      normalizeWorkspaceCodexModelConfig(workspaceCodexModelConfigProp)
+    );
   const [templateId, setTemplateId] = useState(STAGE3_TEMPLATE_ID);
+  const [managedTemplates, setManagedTemplates] = useState<ManagedTemplateSummary[]>([]);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>({
     brand: { status: "idle", message: null },
     stage2: { status: "idle", message: null },
@@ -286,12 +305,29 @@ export function ChannelManager({
   });
   const stage2PromptStages = useMemo(() => listStage2PromptConfigStages(), []);
   const renderTemplateOptions = useMemo(
-    () =>
-      listStage3DesignLabPresets().map((preset) => ({
-        value: preset.templateId,
-        label: preset.label
-      })),
-    []
+    () => {
+      const options = managedTemplates.map((template) => ({
+        value: template.id,
+        label: template.name
+      }));
+      if (templateId && !options.some((option) => option.value === templateId)) {
+        options.unshift({
+          value: templateId,
+          label:
+            templateId === STAGE3_TEMPLATE_ID
+              ? "Текущий: шаблон по умолчанию"
+              : `Текущий недоступный шаблон (${templateId})`
+        });
+      }
+      if (options.length === 0) {
+        options.push({
+          value: STAGE3_TEMPLATE_ID,
+          label: "Шаблон по умолчанию"
+        });
+      }
+      return options;
+    },
+    [managedTemplates, templateId]
   );
   const skipAutosaveRef = useRef<Record<AutosaveScope, boolean>>({
     brand: true,
@@ -356,18 +392,19 @@ export function ChannelManager({
         stage2ExamplesCorpusJson: string;
         stage2HardConstraints: Stage2HardConstraints;
         stage2PromptConfig: Stage2PromptConfig;
+        codexModelConfig: WorkspaceCodexModelConfig;
       }>
     ): Promise<void> => {
-      showManagerSaveNotice("neutral", "Сохраняем общие настройки Stage 2…");
+      showManagerSaveNotice("neutral", "Сохраняем общие AI-настройки…");
       try {
         await onSaveWorkspaceStage2Defaults(patch);
-        showManagerSaveNotice("success", "Общие настройки Stage 2 сохранены.", true);
+        showManagerSaveNotice("success", "Общие AI-настройки сохранены.", true);
       } catch (error) {
         showManagerSaveNotice(
           "error",
           error instanceof Error && error.message
             ? error.message
-            : "Не удалось сохранить общие настройки Stage 2."
+            : "Не удалось сохранить общие AI-настройки."
         );
         throw error;
       }
@@ -384,6 +421,40 @@ export function ChannelManager({
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadManagedTemplates() {
+      try {
+        const response = await fetch("/api/design/templates", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Templates failed: ${response.status}`);
+        }
+        const payload = (await response.json()) as ManagedTemplateListResponse;
+        if (cancelled) {
+          return;
+        }
+        setManagedTemplates(Array.isArray(payload.templates) ? payload.templates : []);
+      } catch {
+        if (!cancelled) {
+          setManagedTemplates([]);
+        }
+      }
+    }
+
+    void loadManagedTemplates();
+
+    function handleWindowFocus() {
+      void loadManagedTemplates();
+    }
+
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", handleWindowFocus);
+    };
   }, []);
 
   useEffect(() => {
@@ -545,12 +616,14 @@ export function ChannelManager({
   const buildStage2DefaultsSnapshot = (
     nextWorkspaceExamplesJson: string,
     nextHardConstraints: Stage2HardConstraints,
-    nextPromptConfig: Stage2PromptConfig
+    nextPromptConfig: Stage2PromptConfig,
+    nextCodexModelConfig: WorkspaceCodexModelConfig
   ): string =>
     JSON.stringify({
       workspaceStage2ExamplesCorpusJson: nextWorkspaceExamplesJson,
       workspaceStage2HardConstraints: nextHardConstraints,
-      workspaceStage2PromptConfig: nextPromptConfig
+      workspaceStage2PromptConfig: nextPromptConfig,
+      workspaceCodexModelConfig: nextCodexModelConfig
     });
 
   const buildRenderSnapshot = (nextTemplateId: string): string =>
@@ -561,18 +634,23 @@ export function ChannelManager({
   useEffect(() => {
     const normalizedHardConstraints = normalizeStage2HardConstraints(workspaceStage2HardConstraintsProp);
     const normalizedPromptConfig = normalizeStage2PromptConfig(workspaceStage2PromptConfigProp);
+    const normalizedCodexModelConfig = normalizeWorkspaceCodexModelConfig(
+      workspaceCodexModelConfigProp
+    );
     setStage2HardConstraints(normalizedHardConstraints);
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedWords));
     setBannedOpenersInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedOpeners));
     setWorkspaceExamplesJson(workspaceStage2ExamplesCorpusJson);
     setWorkspaceExamplesError(null);
     setWorkspaceStage2PromptConfig(normalizedPromptConfig);
+    setWorkspaceCodexModelConfig(normalizedCodexModelConfig);
     clearAutosaveReset("stage2Defaults");
 
     persistedSnapshotRef.current.stage2Defaults = buildStage2DefaultsSnapshot(
       workspaceStage2ExamplesCorpusJson,
       normalizedHardConstraints,
-      normalizedPromptConfig
+      normalizedPromptConfig,
+      normalizedCodexModelConfig
     );
     skipAutosaveRef.current.stage2Defaults = true;
 
@@ -611,7 +689,8 @@ export function ChannelManager({
       stage2Defaults: buildStage2DefaultsSnapshot(
         workspaceStage2ExamplesCorpusJson,
         normalizedHardConstraints,
-        normalizedPromptConfig
+        normalizedPromptConfig,
+        normalizedCodexModelConfig
       ),
       render: buildRenderSnapshot(activeChannel.templateId)
     };
@@ -635,7 +714,8 @@ export function ChannelManager({
     isWorkspaceDefaultsSelection,
     workspaceStage2ExamplesCorpusJson,
     workspaceStage2HardConstraintsProp,
-    workspaceStage2PromptConfigProp
+    workspaceStage2PromptConfigProp,
+    workspaceCodexModelConfigProp
   ]);
 
   useEffect(() => {
@@ -797,14 +877,15 @@ export function ChannelManager({
       setAutosaveFeedback(
         "stage2Defaults",
         "error",
-        "Исправьте JSON общего корпуса, чтобы сохранить общие настройки."
+        "Исправьте JSON общего корпуса, чтобы сохранить общие AI-настройки."
       );
       return;
     }
     const nextSnapshot = buildStage2DefaultsSnapshot(
       workspaceExamplesJson,
       stage2HardConstraints,
-      workspaceStage2PromptConfig
+      workspaceStage2PromptConfig,
+      workspaceCodexModelConfig
     );
     if (nextSnapshot === persistedSnapshotRef.current.stage2Defaults) {
       if (autosaveState.stage2Defaults.status !== "idle") {
@@ -813,28 +894,29 @@ export function ChannelManager({
       return;
     }
     clearAutosaveReset("stage2Defaults");
-    setAutosaveFeedback("stage2Defaults", "pending", "Сохраним общие настройки второго этапа автоматически.");
+    setAutosaveFeedback("stage2Defaults", "pending", "Сохраним общие AI-настройки автоматически.");
     const revision = ++autosaveRevisionRef.current.stage2Defaults;
     const timerId = window.setTimeout(() => {
-      setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем общие настройки второго этапа…");
+      setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем общие AI-настройки…");
       void saveWorkspaceStage2DefaultsRef.current({
         stage2ExamplesCorpusJson: workspaceExamplesJson,
         stage2HardConstraints,
-        stage2PromptConfig: workspaceStage2PromptConfig
+        stage2PromptConfig: workspaceStage2PromptConfig,
+        codexModelConfig: workspaceCodexModelConfig
       })
         .then(() => {
           if (autosaveRevisionRef.current.stage2Defaults !== revision) {
             return;
           }
           persistedSnapshotRef.current.stage2Defaults = nextSnapshot;
-          setAutosaveFeedback("stage2Defaults", "saved", "Общие настройки второго этапа сохранены.");
+          setAutosaveFeedback("stage2Defaults", "saved", "Общие AI-настройки сохранены.");
           scheduleAutosaveReset("stage2Defaults");
         })
         .catch(() => {
           if (autosaveRevisionRef.current.stage2Defaults !== revision) {
             return;
           }
-          setAutosaveFeedback("stage2Defaults", "error", "Не удалось сохранить общие настройки второго этапа.");
+          setAutosaveFeedback("stage2Defaults", "error", "Не удалось сохранить общие AI-настройки.");
         });
     }, 900);
 
@@ -847,7 +929,8 @@ export function ChannelManager({
     workspaceExamplesError,
     workspaceExamplesJson,
     stage2HardConstraints,
-    workspaceStage2PromptConfig
+    workspaceStage2PromptConfig,
+    workspaceCodexModelConfig
   ]);
 
   useEffect(() => {
@@ -1376,6 +1459,8 @@ export function ChannelManager({
                 bannedWordsInput={bannedWordsInput}
                 bannedOpenersInput={bannedOpenersInput}
                 workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+                workspaceCodexModelConfig={workspaceCodexModelConfig}
+                resolvedWorkspaceCodexModelConfig={workspaceResolvedCodexModelConfig}
                 stage2PromptStages={stage2PromptStages}
                 autosaveState={autosaveState}
                 canEditWorkspaceDefaults={canEditWorkspaceDefaults}
@@ -1441,6 +1526,12 @@ export function ChannelManager({
                 updateStage2PromptTemplate={updateStage2PromptTemplate}
                 updateStage2PromptReasoning={updateStage2PromptReasoning}
                 resetStage2PromptStage={resetStage2PromptStage}
+                updateWorkspaceCodexModelSetting={(stageId, value) =>
+                  setWorkspaceCodexModelConfig((current) => ({
+                    ...current,
+                    [stageId]: value
+                  }))
+                }
               />
             ) : null}
 
@@ -1459,6 +1550,15 @@ export function ChannelManager({
                     </option>
                   ))}
                 </select>
+                <p className="subtle-text">
+                  {managedTemplates.length > 0
+                    ? "Новый шаблон из `Template Road` появится здесь автоматически."
+                    : "Пока у тебя нет доступных шаблонов. Сначала создай свой шаблон в `Template Road`, и он сразу появится здесь."}{" "}
+                  Редактор:{" "}
+                  <a href="/design/template-road" target="_blank" rel="noreferrer">
+                    открыть Template Road
+                  </a>
+                </p>
                 <div className="compact-grid">
                   <div className="compact-field">
                     <label className="field-label">Фон по умолчанию</label>
@@ -1473,7 +1573,7 @@ export function ChannelManager({
                           : undefined
                       }
                     >
-                      <option value="">None</option>
+                      <option value="">Нет</option>
                       {backgrounds.map((asset) => (
                         <option key={asset.id} value={asset.id}>
                           {asset.originalName}
@@ -1494,7 +1594,7 @@ export function ChannelManager({
                           : undefined
                       }
                     >
-                      <option value="">None</option>
+                      <option value="">Нет</option>
                       {music.map((asset) => (
                         <option key={asset.id} value={asset.id}>
                           {asset.originalName}

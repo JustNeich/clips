@@ -5,7 +5,8 @@ import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import type { Stage3VariationProfile } from "../lib/stage3-render-variation";
 import {
   SCIENCE_CARD_TEMPLATE_ID,
-  getTemplateById
+  getTemplateById,
+  type Stage3TemplateConfig
 } from "../lib/stage3-template";
 import {
   resolveTemplateAvatarBorderColor,
@@ -41,6 +42,7 @@ type RemotionSegmentTransformState = {
 
 type ScienceCardV1Props = {
   templateId?: string;
+  templateConfigOverride?: Stage3TemplateConfig | null;
   sourceVideoFileName?: string | null;
   topText: string;
   bottomText: string;
@@ -199,6 +201,7 @@ function resolveSegmentTransformAtOutputTime(params: {
 
 export function ScienceCardV1({
   templateId,
+  templateConfigOverride,
   topText,
   bottomText,
   clipStartSec,
@@ -225,7 +228,7 @@ export function ScienceCardV1({
   variationProfile
 }: ScienceCardV1Props): React.JSX.Element {
   const resolvedTemplateId = templateId ?? SCIENCE_CARD_TEMPLATE_ID;
-  const templateConfig = getTemplateById(resolvedTemplateId);
+  const templateConfig = templateConfigOverride ?? getTemplateById(resolvedTemplateId);
   const frameNumber = useCurrentFrame();
   const frame = templateConfig.frame;
   const sourceUrl = sourceVideoFileName ? staticFile(sourceVideoFileName) : "";
@@ -274,6 +277,7 @@ export function ScienceCardV1({
   );
   const renderSnapshot = buildTemplateRenderSnapshot({
     templateId: resolvedTemplateId,
+    templateConfigOverride: templateConfig,
     content: {
       topText,
       bottomText,
@@ -410,6 +414,7 @@ export function ScienceCardV1({
         templateId={resolvedTemplateId}
         content={renderSnapshot.content}
         snapshot={renderSnapshot}
+        templateConfigOverride={templateConfig}
         runtime={{
           backgroundNode,
           mediaNode,

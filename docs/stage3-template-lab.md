@@ -12,27 +12,39 @@
 - `/design/template-road`
 - `/design/template-lab`
 
-Оба route используют один и тот же lab-компонент. `template-road` оставлен как более понятный адрес для ежедневной работы.
+Теперь это два разных инструмента:
+- `template-road` — style editor: фиксированный canvas слева, scrollable inspector справа. Нужен для быстрой настройки chrome, palette, typography и spacing.
+- `template-lab` — calibration lab: reference/diff/artifacts и проходы до визуального совпадения.
 
 ## Как использовать
 
-1. Открыть `template-road` в браузере и держать вкладку открытой.
-2. Выбрать шаблон в левой колонке.
-3. Подгрузить reference image или вставить URL.
-4. При необходимости поправить copy, channel name, font scale и preview scale прямо в lab.
-5. Во время прохода через Playwright смотреть только на live preview и reference side-by-side.
-6. После завершения pass поменять статус шаблона:
+1. Для style-прохода открыть `template-road` и выбрать базовый шаблон.
+2. Справа через inspector крутить radius, border, fill, shadow, font stacks, weights, colors и внутренние отступы.
+3. Слева смотреть только на live canvas и оценивать hierarchy / breathing room без reference diff.
+4. Когда нужна именно калибровка под референс, открыть `template-lab`.
+5. В `template-lab` подгрузить reference image или URL и провести diff-pass.
+6. После завершения calibration-pass поменять статус шаблона:
    - `Queue`
    - `In Progress`
    - `Review`
    - `Approved`
 7. Зафиксировать следующие шаги в `Заметки по проходу`.
 
+## Preset workflow
+
+1. В `template-road` нажать `New draft`, если хотите начать новый стиль поверх базового шаблона.
+2. После правок нажать `Create preset` или `Save as new`.
+3. Preset сохраняется как JSON в `design/template-style-presets/<preset-id>.json`.
+4. Чтобы вернуться к нему позже, открыть `template-road?preset=<preset-id>`.
+5. Чтобы применить тот же стиль в render/view route, открыть `science-card?preset=<preset-id>`.
+6. Для обновления существующего preset выбрать его в `Saved presets` и нажать `Save preset`.
+7. Для удаления использовать `Delete` в library-секции.
+
 ## Где "поднимать" reference
 
-`template-road` и `template-lab` берут `reference`/`media`/`background`/`avatar` только с того host, который у вас открыт в браузере.
+`template-lab` берет `reference`/`media`/`background`/`avatar` только с того host, который у вас открыт в браузере. `template-road` теперь не является reference-менеджером и работает как локальный style inspector.
 
-- Если вы открываете `template-road` на `localhost:3000`, файлы лежат в вашей локальной версии репозитория (`design/templates/<template-id>/`).
+- Если вы открываете `template-lab` на `localhost:3000`, файлы лежат в вашей локальной версии репозитория (`design/templates/<template-id>/`).
 - Если открываете на staging/production, reference должен существовать на этом host.
 - В текущей реализации `production` design-API (`/api/design/template-sessions/*`) не открыт, поэтому reference management через UI доступен только в non-production окружении.
 
@@ -45,7 +57,7 @@
    - `design/templates/<template-id>/avatar.png` (опционально)
    - `design/templates/<template-id>/content.json` (текст и channel fields)
 2. Проверьте, что хост, куда вы идете в браузере, видит эту папку.
-3. Откройте `template-road?template=<template-id>` на этом же хосте и нажмите `Reference`.
+3. Откройте `template-lab?template=<template-id>` на этом же хосте и нажмите `Reference`.
 
 ## Почему это лучше обычной доработки через Editor
 
@@ -59,7 +71,7 @@
 
 1. Добавить шаблон в `lib/stage3-design-lab.ts`
 2. Подключить его визуальную отрисовку в `app/components/Stage3TemplateLab.tsx`
-3. Открыть `template-road?template=<template-id>`
+3. Открыть `template-road?template=<template-id>` для style-pass, затем `template-lab?template=<template-id>` для калибровки с reference.
 4. Провести несколько Playwright-pass до визуального совпадения с reference
 5. Перевести шаблон в `Review`
 6. После ручного approve перевести в `Approved`

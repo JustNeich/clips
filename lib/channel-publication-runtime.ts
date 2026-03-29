@@ -103,10 +103,11 @@ async function runChannelPublicationLoop(): Promise<void> {
   sweepPublishedChannelPublications();
 
   while (true) {
-    const publication = claimNextReadyChannelPublication({});
-    if (!publication) {
+    const claimed = claimNextReadyChannelPublication({});
+    if (!claimed) {
       break;
     }
+    const { publication, leaseToken } = claimed;
 
     logPublicationRuntime("publication_claimed", {
       publicationId: publication.id,
@@ -115,7 +116,9 @@ async function runChannelPublicationLoop(): Promise<void> {
     });
 
     try {
-      const result = await processQueuedChannelPublication(publication);
+      const result = await processQueuedChannelPublication(publication, {
+        leaseToken
+      });
       logPublicationRuntime("publication_processed", {
         publicationId: result.id,
         status: result.status,
@@ -146,4 +149,3 @@ export function scheduleChannelPublicationProcessing(): void {
       scheduleNextWake();
     });
 }
-

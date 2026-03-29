@@ -1589,7 +1589,7 @@ export async function discoverStage2StyleProfile(input: {
       referenceLinks,
       imagePaths: collectedReferences.flatMap((reference) => reference.frameImagePaths),
       evidence,
-      model: executorContext.model,
+      model: executorContext.resolvedCodexModelConfig.styleDiscovery,
       reasoningEffort: executorContext.reasoningEffort
     });
   } finally {

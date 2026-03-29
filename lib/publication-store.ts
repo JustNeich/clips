@@ -151,6 +151,12 @@ export type RenderExportRecord = {
   createdAt: string;
 };
 
+export type ClaimedChannelPublication = {
+  publication: ChannelPublication;
+  leaseToken: string;
+  leaseExpiresAt: string;
+};
+
 function hashStateToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -328,6 +334,31 @@ function readPublicationEvents(publicationId: string): ChannelPublicationEvent[]
     .prepare("SELECT * FROM channel_publication_events WHERE publication_id = ? ORDER BY created_at ASC")
     .all(publicationId) as ChannelPublicationEventRow[];
   return rows.map(mapPublicationEventRow);
+}
+
+function readPublicationEventsByPublicationIds(publicationIds: string[]): Map<string, ChannelPublicationEvent[]> {
+  const ids = Array.from(new Set(publicationIds.map((item) => item.trim()).filter(Boolean)));
+  const byPublicationId = new Map<string, ChannelPublicationEvent[]>(ids.map((id) => [id, []]));
+  if (ids.length === 0) {
+    return byPublicationId;
+  }
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT *
+         FROM channel_publication_events
+        WHERE publication_id IN (${placeholders})
+        ORDER BY created_at ASC`
+    )
+    .all(...ids) as ChannelPublicationEventRow[];
+  for (const row of rows) {
+    const events = byPublicationId.get(row.publication_id) ?? [];
+    events.push(mapPublicationEventRow(row));
+    byPublicationId.set(row.publication_id, events);
+  }
+  return byPublicationId;
 }
 
 function readPublishSettingsRow(channelId: string): PublishSettingsRow | null {
@@ -752,6 +783,22 @@ export function getChannelPublicationById(publicationId: string): ChannelPublica
   return row ? mapChannelPublicationRow(row, readPublicationEvents(publicationId)) : null;
 }
 
+export function findLatestPublicationForRenderExport(renderExportId: string): ChannelPublication | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT p.*, r.artifact_file_name as render_file_name, r.source_url as source_url, t.title as chat_title
+         FROM channel_publications p
+         JOIN render_exports r ON r.id = p.render_export_id
+         JOIN chat_threads t ON t.id = p.chat_id
+        WHERE p.render_export_id = ?
+        ORDER BY p.updated_at DESC
+        LIMIT 1`
+    )
+    .get(renderExportId) as ChannelPublicationRow | undefined;
+  return row ? mapChannelPublicationRow(row, readPublicationEvents(row.id)) : null;
+}
+
 export function listChannelPublications(channelId: string): ChannelPublication[] {
   const db = getDb();
   const rows = db
@@ -764,7 +811,8 @@ export function listChannelPublications(channelId: string): ChannelPublication[]
         ORDER BY p.scheduled_at ASC, p.created_at ASC`
     )
     .all(channelId) as ChannelPublicationRow[];
-  return rows.map((row) => mapChannelPublicationRow(row, readPublicationEvents(row.id)));
+  const eventsByPublicationId = readPublicationEventsByPublicationIds(rows.map((row) => row.id));
+  return rows.map((row) => mapChannelPublicationRow(row, eventsByPublicationId.get(row.id) ?? []));
 }
 
 export function listFutureActivePublicationsForChannel(channelId: string): ChannelPublication[] {
@@ -1129,7 +1177,7 @@ export function getNextChannelPublicationWakeAt(): string | null {
 
 export function claimNextReadyChannelPublication(input: {
   leaseDurationMs?: number;
-}): ChannelPublication | null {
+}): ClaimedChannelPublication | null {
   const leaseMs = Math.max(30_000, Math.min(15 * 60_000, input.leaseDurationMs ?? 5 * 60_000));
   const now = new Date();
   const nowString = now.toISOString();
@@ -1160,7 +1208,15 @@ export function claimNextReadyChannelPublication(input: {
               updated_at = ?
         WHERE id = ?`
     ).run(leaseToken, leaseExpiresAt, nowString, row.id);
-    return getChannelPublicationById(String(row.id));
+    const publication = getChannelPublicationById(String(row.id));
+    if (!publication) {
+      return null;
+    }
+    return {
+      publication,
+      leaseToken,
+      leaseExpiresAt
+    };
   });
 }
 
@@ -1168,34 +1224,87 @@ export function markChannelPublicationScheduled(input: {
   publicationId: string;
   youtubeVideoId: string;
   youtubeVideoUrl: string | null;
+  expectedLeaseToken?: string | null;
 }): ChannelPublication {
   const db = getDb();
-  db.prepare(
-    `UPDATE channel_publications
-        SET status = 'scheduled',
-            youtube_video_id = ?,
-            youtube_video_url = ?,
-            last_error = NULL,
-            lease_token = NULL,
-            lease_expires_at = NULL,
-            updated_at = ?
-      WHERE id = ?`
-  ).run(input.youtubeVideoId, input.youtubeVideoUrl, nowIso(), input.publicationId);
+  const stamp = nowIso();
+  const expectedLeaseToken = input.expectedLeaseToken?.trim() ?? "";
+  const result = expectedLeaseToken
+    ? db.prepare(
+        `UPDATE channel_publications
+            SET status = 'scheduled',
+                youtube_video_id = ?,
+                youtube_video_url = ?,
+                last_error = NULL,
+                lease_token = NULL,
+                lease_expires_at = NULL,
+                updated_at = ?
+          WHERE id = ?
+            AND status = 'uploading'
+            AND lease_token = ?
+            AND lease_expires_at IS NOT NULL
+            AND lease_expires_at > ?`
+      ).run(input.youtubeVideoId, input.youtubeVideoUrl, stamp, input.publicationId, expectedLeaseToken, stamp)
+    : db.prepare(
+        `UPDATE channel_publications
+            SET status = 'scheduled',
+                youtube_video_id = ?,
+                youtube_video_url = ?,
+                last_error = NULL,
+                lease_token = NULL,
+                lease_expires_at = NULL,
+                updated_at = ?
+          WHERE id = ?`
+      ).run(input.youtubeVideoId, input.youtubeVideoUrl, stamp, input.publicationId);
+  if ((result.changes ?? 0) === 0) {
+    const current = getChannelPublicationById(input.publicationId);
+    if (current) {
+      return current;
+    }
+    throw new Error("Публикация не найдена.");
+  }
   appendChannelPublicationEvent(input.publicationId, "info", "Видео загружено в YouTube и запланировано.");
   return getChannelPublicationById(input.publicationId)!;
 }
 
-export function markChannelPublicationFailed(publicationId: string, errorMessage: string): ChannelPublication {
+export function markChannelPublicationFailed(
+  publicationId: string,
+  errorMessage: string,
+  options?: { expectedLeaseToken?: string | null }
+): ChannelPublication {
   const db = getDb();
-  db.prepare(
-    `UPDATE channel_publications
-        SET status = 'failed',
-            last_error = ?,
-            lease_token = NULL,
-            lease_expires_at = NULL,
-            updated_at = ?
-      WHERE id = ?`
-  ).run(errorMessage, nowIso(), publicationId);
+  const stamp = nowIso();
+  const expectedLeaseToken = options?.expectedLeaseToken?.trim() ?? "";
+  const result = expectedLeaseToken
+    ? db.prepare(
+        `UPDATE channel_publications
+            SET status = 'failed',
+                last_error = ?,
+                lease_token = NULL,
+                lease_expires_at = NULL,
+                updated_at = ?
+          WHERE id = ?
+            AND status = 'uploading'
+            AND lease_token = ?
+            AND lease_expires_at IS NOT NULL
+            AND lease_expires_at > ?`
+      ).run(errorMessage, stamp, publicationId, expectedLeaseToken, stamp)
+    : db.prepare(
+        `UPDATE channel_publications
+            SET status = 'failed',
+                last_error = ?,
+                lease_token = NULL,
+                lease_expires_at = NULL,
+                updated_at = ?
+          WHERE id = ?`
+      ).run(errorMessage, stamp, publicationId);
+  if ((result.changes ?? 0) === 0) {
+    const current = getChannelPublicationById(publicationId);
+    if (current) {
+      return current;
+    }
+    throw new Error("Публикация не найдена.");
+  }
   appendChannelPublicationEvent(publicationId, "error", errorMessage);
   return getChannelPublicationById(publicationId)!;
 }

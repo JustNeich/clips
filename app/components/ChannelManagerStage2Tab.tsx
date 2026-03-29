@@ -15,6 +15,18 @@ import {
   type Stage2EditorialMemorySummary,
   Stage2StyleProfile
 } from "../../lib/stage2-channel-learning";
+import {
+  DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
+  getWorkspaceCodexModelOptionsForStage,
+  STAGE2_AUX_MODEL_STAGE_FIELDS,
+  STAGE2_PROMPT_MODEL_STAGE_FIELDS,
+  STAGE3_MODEL_STAGE_FIELDS,
+  WORKSPACE_CODEX_MODEL_OPTIONS,
+  type ResolvedWorkspaceCodexModelConfig,
+  type WorkspaceCodexModelConfig,
+  type WorkspaceCodexModelSetting,
+  type WorkspaceCodexModelStageId
+} from "../../lib/workspace-codex-models";
 import type { ChannelStyleProfileEditorDraft } from "./channel-onboarding-support";
 import { AutosaveState } from "./channel-manager-support";
 
@@ -41,6 +53,8 @@ type ChannelManagerStage2TabProps = {
   bannedWordsInput: string;
   bannedOpenersInput: string;
   workspaceStage2PromptConfig: Stage2PromptConfig;
+  workspaceCodexModelConfig?: WorkspaceCodexModelConfig;
+  resolvedWorkspaceCodexModelConfig?: ResolvedWorkspaceCodexModelConfig;
   stage2PromptStages: Stage2PromptStageMeta[];
   autosaveState: AutosaveState;
   canEditWorkspaceDefaults: boolean;
@@ -90,6 +104,10 @@ type ChannelManagerStage2TabProps = {
     reasoningEffort: Stage2PromptConfig["stages"][keyof Stage2PromptConfig["stages"]]["reasoningEffort"]
   ) => void;
   resetStage2PromptStage: (stageId: keyof Stage2PromptConfig["stages"]) => void;
+  updateWorkspaceCodexModelSetting?: (
+    stageId: WorkspaceCodexModelStageId,
+    value: WorkspaceCodexModelSetting
+  ) => void;
 };
 
 function formatStyleLevel(level: "low" | "medium" | "high"): string {
@@ -160,6 +178,65 @@ function getFeedbackSnippet(
   return `${optionLabel}: ${event.optionSnapshot.top} · ${event.optionSnapshot.bottom}`;
 }
 
+function formatEffectiveCodexModel(model: string | null): string {
+  if (!model) {
+    return "стандартная модель деплоя";
+  }
+  const known = WORKSPACE_CODEX_MODEL_OPTIONS.find((option) => option.value === model);
+  return known?.label ?? model;
+}
+
+function renderModelSettingField(input: {
+  field: {
+    id: WorkspaceCodexModelStageId;
+    label: string;
+    description: string;
+    allowsImages: boolean;
+  };
+  workspaceCodexModelConfig: WorkspaceCodexModelConfig;
+  resolvedWorkspaceCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
+  canEditWorkspaceDefaults: boolean;
+  updateWorkspaceCodexModelSetting: (
+    stageId: WorkspaceCodexModelStageId,
+    value: WorkspaceCodexModelSetting
+  ) => void;
+}): React.ReactNode {
+  const selectedValue = input.workspaceCodexModelConfig[input.field.id];
+  const effectiveModel = input.resolvedWorkspaceCodexModelConfig[input.field.id];
+  return (
+    <div key={input.field.id} className="compact-field">
+      <label className="field-label">{input.field.label}</label>
+      <select
+        className="text-input"
+        value={selectedValue}
+        disabled={!input.canEditWorkspaceDefaults}
+        onChange={(event) =>
+          input.updateWorkspaceCodexModelSetting(
+            input.field.id,
+            event.target.value as WorkspaceCodexModelSetting
+          )
+        }
+      >
+        <option value="deploy_default">Как на деплое</option>
+        {getWorkspaceCodexModelOptionsForStage(input.field.id).map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <p className="subtle-text">{input.field.description}</p>
+      <p className="subtle-text">
+        Сейчас применяется: <strong>{formatEffectiveCodexModel(effectiveModel)}</strong>
+      </p>
+      {input.field.allowsImages ? (
+        <p className="subtle-text">Этот маршрут мультимодальный, поэтому Spark здесь скрыт и не используется.</p>
+      ) : (
+        <p className="subtle-text">Этот маршрут текстовый, поэтому здесь можно использовать Spark.</p>
+      )}
+    </div>
+  );
+}
+
 export function ChannelManagerStage2Tab({
   isWorkspaceDefaultsSelection,
   workspaceExamplesCount,
@@ -169,6 +246,20 @@ export function ChannelManagerStage2Tab({
   bannedWordsInput,
   bannedOpenersInput,
   workspaceStage2PromptConfig,
+  workspaceCodexModelConfig = DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
+  resolvedWorkspaceCodexModelConfig = {
+    analyzer: null,
+    selector: null,
+    writer: null,
+    critic: null,
+    rewriter: null,
+    finalSelector: null,
+    titles: null,
+    seo: null,
+    regenerate: null,
+    styleDiscovery: null,
+    stage3Planner: "gpt-5.2"
+  },
   stage2PromptStages,
   autosaveState,
   canEditWorkspaceDefaults,
@@ -205,7 +296,8 @@ export function ChannelManagerStage2Tab({
   updateBannedOpenersInput,
   updateStage2PromptTemplate,
   updateStage2PromptReasoning,
-  resetStage2PromptStage
+  resetStage2PromptStage,
+  updateWorkspaceCodexModelSetting = () => undefined
 }: ChannelManagerStage2TabProps) {
   if (isWorkspaceDefaultsSelection) {
     return (
@@ -214,7 +306,7 @@ export function ChannelManagerStage2Tab({
           <p className="field-label">Общие настройки</p>
           <p className="subtle-text">
             Здесь владелец задаёт общую базу Stage 2 для всего рабочего пространства:
-            корпус примеров, ограничения и базовые промпты с уровнем рассуждений для каждого этапа.
+            корпус примеров, ограничения, базовые промпты и модели Codex для ключевых этапов.
           </p>
         </section>
 
@@ -332,6 +424,15 @@ export function ChannelManagerStage2Tab({
             <p className="subtle-text">Запрещённые начала проверяются только в начале TOP и хранятся отдельным списком.</p>
           </div>
 
+          <div className="compact-field">
+            <p className="field-label">Маршрутизация моделей Stage 2</p>
+            <p className="subtle-text">
+              Модель выбирается отдельно для каждого LLM-подэтапа. Мультимодальные шаги
+              используют только модели, которые умеют принимать изображения; Spark доступен
+              только на text-only маршрутах.
+            </p>
+          </div>
+
           <div className="stage2-config-stage-list">
             {stage2PromptStages.map((stage, index) => {
               const stageConfig = workspaceStage2PromptConfig.stages[stage.id];
@@ -339,6 +440,7 @@ export function ChannelManagerStage2Tab({
                 stageConfig.prompt === STAGE2_DEFAULT_STAGE_PROMPTS[stage.id];
               const isDefaultReasoning =
                 stageConfig.reasoningEffort === STAGE2_DEFAULT_REASONING_EFFORTS[stage.id];
+              const modelField = STAGE2_PROMPT_MODEL_STAGE_FIELDS.find((field) => field.id === stage.id);
               return (
                 <article key={stage.id} className="stage2-config-stage-card">
                   <div className="stage2-config-stage-head">
@@ -389,6 +491,15 @@ export function ChannelManagerStage2Tab({
                           ))}
                         </select>
                       </div>
+                      {modelField
+                        ? renderModelSettingField({
+                            field: modelField,
+                            workspaceCodexModelConfig,
+                            resolvedWorkspaceCodexModelConfig,
+                            canEditWorkspaceDefaults,
+                            updateWorkspaceCodexModelSetting
+                          })
+                        : null}
                       <div className="stage2-config-stage-actions">
                         <button
                           type="button"
@@ -406,11 +517,41 @@ export function ChannelManagerStage2Tab({
             })}
           </div>
 
+          <div className="compact-field">
+            <p className="field-label">Отдельные Stage 2 маршруты</p>
+            <div className="compact-grid">
+              {STAGE2_AUX_MODEL_STAGE_FIELDS.map((field) =>
+                renderModelSettingField({
+                  field,
+                  workspaceCodexModelConfig,
+                  resolvedWorkspaceCodexModelConfig,
+                  canEditWorkspaceDefaults,
+                  updateWorkspaceCodexModelSetting
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="compact-field">
+            <p className="field-label">Связанный Stage 3 маршрут</p>
+            <div className="compact-grid">
+              {STAGE3_MODEL_STAGE_FIELDS.map((field) =>
+                renderModelSettingField({
+                  field,
+                  workspaceCodexModelConfig,
+                  resolvedWorkspaceCodexModelConfig,
+                  canEditWorkspaceDefaults,
+                  updateWorkspaceCodexModelSetting
+                })
+              )}
+            </div>
+          </div>
+
           <p
             className={`subtle-text ${autosaveState.stage2Defaults.status === "error" ? "danger-text" : ""}`}
           >
             {autosaveState.stage2Defaults.message ??
-              "Общие настройки Stage 2 сохраняются автоматически."}
+              "Общие AI-настройки сохраняются автоматически."}
           </p>
         </section>
       </div>

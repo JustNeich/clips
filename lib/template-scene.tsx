@@ -51,6 +51,7 @@ export type TemplateSceneProps = {
   templateId: string;
   content: TemplateContentFixture;
   snapshot?: TemplateRenderSnapshot;
+  templateConfigOverride?: Stage3TemplateConfig;
   onComputedChange?: (computed: ReturnType<typeof getTemplateComputed>) => void;
   backgroundNode?: React.ReactNode;
   mediaNode?: React.ReactNode;
@@ -102,6 +103,20 @@ function getTopPaddingTop(templateConfig: Stage3TemplateConfig = SCIENCE_CARD): 
 
 function getTopPaddingBottom(templateConfig: Stage3TemplateConfig = SCIENCE_CARD): number {
   return templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY;
+}
+
+function resolveDefaultTopFontFamily(templateId: string): string {
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
+    return '"Arial Rounded MT Bold",".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial",sans-serif';
+  }
+  return '"Inter","Helvetica Neue",Helvetica,sans-serif';
+}
+
+function resolveDefaultBodyFontFamily(templateId: string): string {
+  if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
+    return '".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial Rounded MT Bold","Arial",sans-serif';
+  }
+  return '"Inter","Helvetica Neue",Helvetica,sans-serif';
 }
 
 const DEFAULT_TEMPLATE_PALETTE = {
@@ -266,16 +281,18 @@ export function getTemplateSceneLayout(
   templateId: string,
   content: TemplateContentFixture,
   computedOverride?: ReturnType<typeof getTemplateComputed>,
-  snapshot?: TemplateRenderSnapshot
+  snapshot?: TemplateRenderSnapshot,
+  templateConfigOverride?: Stage3TemplateConfig
 ) {
   const renderSnapshot =
     snapshot ??
     buildTemplateRenderSnapshot({
       templateId,
-      content
+      content,
+      templateConfigOverride
     });
   const computed = computedOverride ?? renderSnapshot.computed;
-  const templateConfig = getTemplateById(templateId);
+  const templateConfig = templateConfigOverride ?? getTemplateById(templateId);
   const layoutModel: TemplateLayoutModel = snapshot
     ? renderSnapshot.layout
     : buildTemplateLayoutModel(templateId, computed, templateConfig);
@@ -298,16 +315,20 @@ export function getTemplateSceneLayout(
 
 function renderDefaultAvatar(
   templateId: string,
+  templateConfig: Stage3TemplateConfig,
   channelName: string,
   sizeOverride?: number
 ): React.JSX.Element {
   const usesClassicScienceCardChrome = isClassicScienceCardTemplateId(templateId);
   const isScienceCardV7 = templateId === SCIENCE_CARD_V7_TEMPLATE_ID;
   const isHedgesOfHonor = templateId === HEDGES_OF_HONOR_TEMPLATE_ID;
-  const templateConfig = getTemplateById(templateId || STAGE3_TEMPLATE_ID);
   const author = templateConfig.author;
   const avatarSize = sizeOverride ?? author.avatarSize;
   const palette = resolvePalette(templateConfig);
+  const avatarFontFamily =
+    templateConfig.typography.authorName.fontFamily ??
+    templateConfig.typography.bottom.fontFamily ??
+    resolveDefaultBodyFontFamily(templateId || STAGE3_TEMPLATE_ID);
   let borderColor = "rgba(7, 13, 23, 0.25)";
   if (isScienceCardV7 || isHedgesOfHonor) {
     borderColor = "rgba(255,255,255,0)";
@@ -333,7 +354,7 @@ function renderDefaultAvatar(
         color: "rgba(255,255,255,0.95)",
         display: "grid",
         placeItems: "center",
-        fontFamily: '"Inter","Helvetica Neue",Helvetica,sans-serif',
+        fontFamily: avatarFontFamily,
         fontWeight: 800,
         fontSize: Math.round(avatarSize * 0.32),
         letterSpacing: "0.02em",
@@ -469,6 +490,7 @@ export function TemplateScene({
   templateId,
   content,
   snapshot,
+  templateConfigOverride,
   backgroundNode,
   mediaNode,
   avatarNode,
@@ -489,12 +511,19 @@ export function TemplateScene({
     snapshot ??
     buildTemplateRenderSnapshot({
       templateId: resolvedTemplateId,
-      content
+      content,
+      templateConfigOverride
     });
   const effectiveContent = renderSnapshot.content;
-  const layout = getTemplateSceneLayout(resolvedTemplateId, effectiveContent, computedOverride, renderSnapshot);
+  const layout = getTemplateSceneLayout(
+    resolvedTemplateId,
+    effectiveContent,
+    computedOverride,
+    renderSnapshot,
+    templateConfigOverride
+  );
   const { regions, frame, computed } = layout;
-  const templateConfig = getTemplateById(resolvedTemplateId);
+  const templateConfig = templateConfigOverride ?? getTemplateById(resolvedTemplateId);
   const usesClassicScienceCardChrome = isClassicScienceCardTemplateId(resolvedTemplateId);
   const chromeMetrics = resolveTemplateChromeMetrics(resolvedTemplateId, templateConfig, renderSnapshot.spec);
   const palette = resolvePalette(templateConfig);
@@ -503,11 +532,13 @@ export function TemplateScene({
     resolvedTemplateId === SCIENCE_CARD_V7_TEMPLATE_ID ||
     resolvedTemplateId === HEDGES_OF_HONOR_TEMPLATE_ID;
   const usesOverlayCardChrome = usesSkyframeTypography;
-  const cardRadius = usesClassicScienceCardChrome ? chromeMetrics.cardRadius : cardSpec.radius;
-  const cardBorderWidth = usesClassicScienceCardChrome ? chromeMetrics.cardBorderWidth : cardSpec.borderWidth;
-  const cardBorderColor = cardSpec.borderColor || palette.borderColor;
-  const cardFill = cardSpec.fill || palette.cardFill;
-  const cardShadow = cardSpec.shadow ?? templateConfig.card.shadow;
+  const cardRadius = usesClassicScienceCardChrome ? chromeMetrics.cardRadius : templateConfig.card.radius;
+  const cardBorderWidth = usesClassicScienceCardChrome
+    ? chromeMetrics.cardBorderWidth
+    : templateConfig.card.borderWidth;
+  const cardBorderColor = templateConfig.card.borderColor || palette.borderColor || cardSpec.borderColor;
+  const cardFill = templateConfig.card.fill || palette.cardFill || cardSpec.fill;
+  const cardShadow = templateConfig.card.shadow ?? cardSpec.shadow;
   const overlayCardInsetShadow =
     resolvedTemplateId === HEDGES_OF_HONOR_TEMPLATE_ID
       ? "inset 0 0 0 1px rgba(10, 14, 20, 0.1), inset 0 0 18px rgba(17, 25, 34, 0.05), inset 0 4px 10px rgba(17, 25, 34, 0.08), inset 0 -7px 14px rgba(17, 25, 34, 0.1)"
@@ -526,20 +557,18 @@ export function TemplateScene({
   const authorGap = templateConfig.author.gap ?? 11;
   const authorCopyGap = templateConfig.author.copyGap ?? 1;
   const authorNameCheckGap = templateConfig.author.nameCheckGap ?? 8;
-  const authorAvatarSize = regions.avatar.width;
-  const authorCheckSize = renderSnapshot.spec.typography?.badge?.size ?? templateConfig.author.checkSize;
-  const authorNameFontSize =
-    renderSnapshot.spec.typography?.authorName?.fontSize ?? templateConfig.typography.authorName.font;
-  const authorHandleFontSize =
-    renderSnapshot.spec.typography?.authorHandle?.fontSize ?? templateConfig.typography.authorHandle.font;
+  const authorAvatarSize = templateConfig.author.avatarSize;
+  const authorCheckSize = templateConfig.author.checkSize;
+  const authorNameFontSize = templateConfig.typography.authorName.font;
+  const authorHandleFontSize = templateConfig.typography.authorHandle.font;
   const topTextWeight = templateConfig.typography.top.weight ?? 800;
   const topTextLetterSpacing = templateConfig.typography.top.letterSpacing ?? "-0.015em";
-  const topTextFontFamily = usesSkyframeTypography
-    ? '"Arial Rounded MT Bold",".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial",sans-serif'
-    : '"Inter","Helvetica Neue",Helvetica,sans-serif';
-  const bodyTextFontFamily = usesSkyframeTypography
-    ? '".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial Rounded MT Bold","Arial",sans-serif'
-    : '"Inter","Helvetica Neue",Helvetica,sans-serif';
+  const topTextFontFamily =
+    templateConfig.typography.top.fontFamily ?? resolveDefaultTopFontFamily(resolvedTemplateId);
+  const bottomTextFontFamily =
+    templateConfig.typography.bottom.fontFamily ?? resolveDefaultBodyFontFamily(resolvedTemplateId);
+  const authorNameFontFamily = templateConfig.typography.authorName.fontFamily ?? bottomTextFontFamily;
+  const authorHandleFontFamily = templateConfig.typography.authorHandle.fontFamily ?? bottomTextFontFamily;
   const bottomTextWeight = templateConfig.typography.bottom.weight ?? 500;
   const bottomTextLetterSpacing = templateConfig.typography.bottom.letterSpacing ?? "-0.005em";
   const bottomTextFontStyle = templateConfig.typography.bottom.fontStyle ?? "normal";
@@ -722,14 +751,14 @@ export function TemplateScene({
                   backgroundColor: palette.bottomSectionFill
                 }}
               >
-                {avatarNode ?? renderDefaultAvatar(resolvedTemplateId, authorName, authorAvatarSize)}
+                {avatarNode ?? renderDefaultAvatar(resolvedTemplateId, templateConfig, authorName, authorAvatarSize)}
                 <div style={{ minWidth: 0, display: "grid", gap: authorCopyGap }}>
                   <div style={{ display: "flex", alignItems: "center", gap: authorNameCheckGap }}>
                     <span
                       style={{
                         color: palette.authorNameColor,
                         fontWeight: authorNameWeight,
-                        fontFamily: bodyTextFontFamily,
+                        fontFamily: authorNameFontFamily,
                         letterSpacing: authorNameLetterSpacing,
                         fontSize: authorNameFontSize,
                         lineHeight: templateConfig.typography.authorName.lineHeight,
@@ -743,7 +772,7 @@ export function TemplateScene({
                   <span
                     style={{
                       color: palette.authorHandleColor,
-                      fontFamily: bodyTextFontFamily,
+                      fontFamily: authorHandleFontFamily,
                       fontSize: authorHandleFontSize,
                       lineHeight: templateConfig.typography.authorHandle.lineHeight,
                       letterSpacing: authorHandleLetterSpacing,
@@ -770,7 +799,7 @@ export function TemplateScene({
                   style={{
                     margin: 0,
                     color: palette.bottomTextColor,
-                    fontFamily: bodyTextFontFamily,
+                    fontFamily: bottomTextFontFamily,
                     fontWeight: bottomTextWeight,
                     fontStyle: bottomTextFontStyle,
                     letterSpacing: bottomTextLetterSpacing,
@@ -918,14 +947,14 @@ export function TemplateScene({
               }}
             >
               {scienceShellVisuals.authorNode}
-              {avatarNode ?? renderDefaultAvatar(resolvedTemplateId, authorName, authorAvatarSize)}
+              {avatarNode ?? renderDefaultAvatar(resolvedTemplateId, templateConfig, authorName, authorAvatarSize)}
               <div style={{ minWidth: 0, display: "grid", gap: authorCopyGap }}>
                 <div style={{ display: "flex", alignItems: "center", gap: authorNameCheckGap }}>
                   <span
                     style={{
                       color: palette.authorNameColor,
                       fontWeight: authorNameWeight,
-                      fontFamily: bodyTextFontFamily,
+                      fontFamily: authorNameFontFamily,
                       letterSpacing: authorNameLetterSpacing,
                       fontSize: authorNameFontSize,
                       lineHeight: templateConfig.typography.authorName.lineHeight,
@@ -939,7 +968,7 @@ export function TemplateScene({
                 <span
                   style={{
                     color: palette.authorHandleColor,
-                    fontFamily: bodyTextFontFamily,
+                    fontFamily: authorHandleFontFamily,
                     fontSize: authorHandleFontSize,
                     lineHeight: templateConfig.typography.authorHandle.lineHeight,
                     letterSpacing: authorHandleLetterSpacing,
@@ -969,7 +998,7 @@ export function TemplateScene({
                 style={{
                   margin: 0,
                   color: palette.bottomTextColor,
-                  fontFamily: bodyTextFontFamily,
+                  fontFamily: bottomTextFontFamily,
                   fontWeight: bottomTextWeight,
                   fontStyle: bottomTextFontStyle,
                   letterSpacing: bottomTextLetterSpacing,

@@ -1,5 +1,10 @@
 import { ensureCodexLoggedIn } from "./codex-runner";
-import { getWorkspaceCodexIntegration } from "./team-store";
+import { getWorkspaceCodexIntegration, getWorkspaceCodexModelConfig } from "./team-store";
+import {
+  resolveWorkspaceCodexModelConfig,
+  STAGE2_PROMPT_MODEL_STAGE_IDS,
+  summarizeResolvedStage2ModelUsage
+} from "./workspace-codex-models";
 import { CodexJsonStageExecutor } from "./viral-shorts-worker/executor";
 
 function requireWorkspaceCodexIntegration(workspaceId: string) {
@@ -16,6 +21,8 @@ function requireWorkspaceCodexIntegration(workspaceId: string) {
 export async function createStage2CodexExecutorContext(workspaceId: string): Promise<{
   codexHome: string;
   model: string | null;
+  resolvedCodexModelConfig: ReturnType<typeof resolveWorkspaceCodexModelConfig>;
+  pipelineModelSummary: string | null;
   reasoningEffort: string;
   timeoutMs: number;
   executor: CodexJsonStageExecutor;
@@ -27,7 +34,17 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
   const timeoutFromEnv = Number.parseInt(process.env.CODEX_STAGE2_TIMEOUT_MS ?? "", 10);
   const timeoutMs =
     Number.isFinite(timeoutFromEnv) && timeoutFromEnv > 0 ? timeoutFromEnv : 8 * 60_000;
-  const model = process.env.CODEX_STAGE2_MODEL ?? null;
+  const resolvedCodexModelConfig = resolveWorkspaceCodexModelConfig({
+    config: getWorkspaceCodexModelConfig(workspaceId),
+    deployStage2Model: process.env.CODEX_STAGE2_MODEL,
+    deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
+    deployStage3Model: process.env.CODEX_STAGE3_MODEL
+  });
+  const model = resolvedCodexModelConfig.analyzer;
+  const pipelineModelSummary = summarizeResolvedStage2ModelUsage({
+    resolvedConfig: resolvedCodexModelConfig,
+    stageIds: STAGE2_PROMPT_MODEL_STAGE_IDS
+  });
   const isDevelopment = process.env.NODE_ENV === "development";
   const reasoningEffort =
     process.env.CODEX_STAGE2_REASONING_EFFORT ?? (isDevelopment ? "low" : "high");
@@ -35,6 +52,8 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
   return {
     codexHome,
     model,
+    resolvedCodexModelConfig,
+    pipelineModelSummary,
     reasoningEffort,
     timeoutMs,
     executor: new CodexJsonStageExecutor({

@@ -1,6 +1,10 @@
 import type { Stage2ProgressSnapshot, Stage2PromptConfig } from "../../lib/stage2-pipeline";
 import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../../lib/stage2-channel-config";
 import type {
+  ResolvedWorkspaceCodexModelConfig,
+  WorkspaceCodexModelConfig
+} from "../../lib/workspace-codex-models";
+import type {
   ChannelEditorialFeedbackEvent,
   Stage2ExplorationMode,
   Stage2EditorialMemorySummary,
@@ -1006,8 +1010,14 @@ export type WorkspaceRecord = {
   slug: string;
   stage2ExamplesCorpusJson?: string;
   stage2PromptConfig?: Stage2PromptConfig;
+  codexModelConfig?: WorkspaceCodexModelConfig;
   createdAt: string;
   updatedAt: string;
+};
+
+export type WorkspaceCodexModelConfigResponse = {
+  codexModelConfig: WorkspaceCodexModelConfig;
+  resolvedCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
 };
 
 export type UserRecord = {

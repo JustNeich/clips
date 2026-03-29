@@ -317,6 +317,7 @@ function buildQuickPromptStageDiagnostics(input: {
   baseResult: Stage2Response;
   channel: QuickRegenerateChannelContext;
   promptText: string;
+  model: string | null;
   reasoningEffort: string | null;
   includePromptText?: boolean;
 }): NonNullable<Stage2Diagnostics["effectivePrompting"]>["promptStages"][number] {
@@ -335,6 +336,7 @@ function buildQuickPromptStageDiagnostics(input: {
     stageType: "llm_prompt",
     defaultPrompt: QUICK_REGENERATE_PROMPT,
     configuredPrompt: QUICK_REGENERATE_PROMPT,
+    model: input.model,
     reasoningEffort: input.reasoningEffort,
     isCustomPrompt: false,
     promptText: input.includePromptText ? input.promptText : null,
@@ -413,6 +415,7 @@ function buildQuickDiagnostics(input: {
   baseResult: Stage2Response;
   channel: QuickRegenerateChannelContext;
   promptText: string;
+  model: string | null;
   reasoningEffort: string | null;
   selectorOutput: SelectorOutput;
   debugMode: Stage2DebugMode;
@@ -426,6 +429,7 @@ function buildQuickDiagnostics(input: {
     baseResult: input.baseResult,
     channel: input.channel,
     promptText: input.promptText,
+    model: input.model,
     reasoningEffort: input.reasoningEffort,
     includePromptText: false
   });
@@ -738,6 +742,7 @@ export function buildQuickRegenerateResult(input: {
     baseResult: input.baseResult,
     channel: input.channel,
     promptText: input.promptText,
+    model: input.model,
     reasoningEffort: input.reasoningEffort,
     selectorOutput,
     debugMode: input.debugMode === "raw" ? "raw" : "summary"
@@ -816,6 +821,7 @@ export function buildQuickRegenerateResult(input: {
               baseResult: input.baseResult,
               channel: input.channel,
               promptText: input.promptText,
+              model: input.model,
               reasoningEffort: input.reasoningEffort,
               includePromptText: true
             })
@@ -890,6 +896,7 @@ export async function runQuickRegenerateModel(input: {
   channel: QuickRegenerateChannelContext;
   userInstruction: string | null;
   executor: JsonStageExecutor;
+  model?: string | null;
   reasoningEffort: string | null;
 }): Promise<{
   promptText: string;
@@ -903,6 +910,7 @@ export async function runQuickRegenerateModel(input: {
   const rawOutput = await input.executor.runJson<QuickRegenerateModelOutput>({
     prompt: promptText,
     schema: QUICK_REGENERATE_SCHEMA,
+    model: input.model ?? null,
     reasoningEffort: input.reasoningEffort
   });
   return {

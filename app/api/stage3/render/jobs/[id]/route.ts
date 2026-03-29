@@ -1,9 +1,12 @@
 import { createReadStream, promises as fs } from "node:fs";
 import { requireAuth } from "../../../../../../lib/auth/guards";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../../lib/stage3-job-http";
-import { getRenderExportByStage3JobId } from "../../../../../../lib/publication-store";
+import {
+  findLatestPublicationForRenderExport,
+  getRenderExportByStage3JobId
+} from "../../../../../../lib/publication-store";
 import { appendStage3JobEvent } from "../../../../../../lib/stage3-job-store";
-import { getStage3JobOrThrow, persistRenderExportCompletion } from "../../../../../../lib/stage3-job-runtime";
+import { getStage3JobOrThrow, recoverRenderExportCompletion } from "../../../../../../lib/stage3-job-runtime";
 import { createNodeStreamResponse } from "../../../../../../lib/node-stream-response";
 
 export const runtime = "nodejs";
@@ -20,14 +23,10 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     if (job.workspaceId !== auth.workspace.id || job.userId !== auth.user.id) {
       return Response.json({ error: "Stage 3 job not found." }, { status: 404 });
     }
-    if (
-      job.kind === "render" &&
-      job.status === "completed" &&
-      job.artifact &&
-      job.artifactFilePath &&
-      !getRenderExportByStage3JobId(job.id)
-    ) {
-      await persistRenderExportCompletion(job, {
+    const renderExport = job.kind === "render" ? getRenderExportByStage3JobId(job.id) : null;
+    const recoveredPublication = renderExport ? findLatestPublicationForRenderExport(renderExport.id) : null;
+    if (job.kind === "render" && job.status === "completed" && job.artifact && job.artifactFilePath && (!renderExport || !recoveredPublication)) {
+      await recoverRenderExportCompletion(job, {
         jobId: job.id,
         artifactFileName: job.artifact.fileName,
         artifactFilePath: job.artifactFilePath,

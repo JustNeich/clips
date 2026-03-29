@@ -20,6 +20,7 @@ import {
 export type TemplateLayoutInput = {
   templateId: string;
   content: TemplateContentFixture;
+  templateConfigOverride?: Stage3TemplateConfig;
   fitOverride?: Partial<
     Pick<
       TemplateTextFitResult,
@@ -223,22 +224,6 @@ function buildEffectiveTemplateConfig(
   spec: TemplateFigmaSpec
 ): Stage3TemplateConfig {
   const chromeMetrics = resolveTemplateChromeMetrics(templateId, templateConfig, spec);
-  const bottomTextPaddingLeft = Math.max(0, spec.sections.bottomText.x - spec.card.x);
-  const bottomTextPaddingRight = Math.max(
-    0,
-    spec.card.x + spec.card.width - (spec.sections.bottomText.x + spec.sections.bottomText.width)
-  );
-  const bottomTextPaddingTop = Math.max(
-    0,
-    spec.sections.bottomText.y - (spec.sections.bottom.y + spec.sections.author.height)
-  );
-  const bottomTextPaddingBottom = Math.max(
-    0,
-    spec.sections.bottom.y +
-      spec.sections.bottom.height -
-      (spec.sections.bottomText.y + spec.sections.bottomText.height)
-  );
-
   return {
     ...templateConfig,
     frame: {
@@ -259,33 +244,20 @@ function buildEffectiveTemplateConfig(
       topPaddingBottom: chromeMetrics.topPaddingBottom,
       bottomHeight: spec.sections.bottom.height,
       bottomMetaHeight: spec.sections.author.height,
-      bottomMetaPaddingX: Math.max(0, spec.sections.avatar.x - spec.card.x),
+      bottomMetaPaddingX: templateConfig.slot.bottomMetaPaddingX,
       bottomMetaPaddingY: templateConfig.slot.bottomMetaPaddingY,
       bottomTextPaddingX: templateConfig.slot.bottomTextPaddingX,
       bottomTextPaddingY: templateConfig.slot.bottomTextPaddingY,
-      bottomTextPaddingTop,
-      bottomTextPaddingBottom,
-      bottomTextPaddingLeft,
-      bottomTextPaddingRight
+      bottomTextPaddingTop: templateConfig.slot.bottomTextPaddingTop,
+      bottomTextPaddingBottom: templateConfig.slot.bottomTextPaddingBottom,
+      bottomTextPaddingLeft: templateConfig.slot.bottomTextPaddingLeft,
+      bottomTextPaddingRight: templateConfig.slot.bottomTextPaddingRight
     },
     author: {
-      ...templateConfig.author,
-      avatarSize: spec.sections.avatar.width,
-      checkSize: spec.typography?.badge?.size ?? templateConfig.author.checkSize
+      ...templateConfig.author
     },
     typography: {
-      ...templateConfig.typography,
-      authorName: {
-        ...templateConfig.typography.authorName,
-        font: spec.typography?.authorName?.fontSize ?? templateConfig.typography.authorName.font,
-        weight: spec.typography?.authorName?.fontWeight ?? templateConfig.typography.authorName.weight
-      },
-      authorHandle: {
-        ...templateConfig.typography.authorHandle,
-        font: spec.typography?.authorHandle?.fontSize ?? templateConfig.typography.authorHandle.font,
-        weight:
-          spec.typography?.authorHandle?.fontWeight ?? templateConfig.typography.authorHandle.weight
-      }
+      ...templateConfig.typography
     }
   };
 }
@@ -311,14 +283,14 @@ export function buildTemplateLayoutModel(
     media: spec.sections?.media ?? fallback.media,
     bottom: spec.sections?.bottom ?? fallback.bottom,
     author: spec.sections?.author ?? fallback.author,
-    avatar: spec.sections?.avatar ?? fallback.avatar,
+    avatar: fallback.avatar,
     bottomText: spec.sections?.bottomText ?? fallback.bottomText
   };
 }
 
 export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): TemplateRenderSnapshot {
   const resolvedTemplateId = input.templateId?.trim() || STAGE3_TEMPLATE_ID;
-  const baseTemplateConfig = getTemplateById(resolvedTemplateId);
+  const baseTemplateConfig = input.templateConfigOverride ?? getTemplateById(resolvedTemplateId);
   const spec = getTemplateFigmaSpec(resolvedTemplateId);
   const effectiveTemplateConfig = buildEffectiveTemplateConfig(
     resolvedTemplateId,

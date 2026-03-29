@@ -319,6 +319,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       channel,
       userInstruction: run.userInstruction,
       executor: executorContext.executor,
+      model: executorContext.resolvedCodexModelConfig.regenerate,
       reasoningEffort: executorContext.reasoningEffort
     });
     promptText = quickResult.promptText;
@@ -352,7 +353,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     userInstruction: run.userInstruction,
     promptText,
     reasoningEffort: executorContext.reasoningEffort,
-    model: executorContext.model,
+    model: executorContext.resolvedCodexModelConfig.regenerate,
     rawOutput,
     debugMode: run.request.debugMode
   });
@@ -431,6 +432,15 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       videoContext,
       imagePaths: frames.framePaths,
       executor: executorContext.executor,
+      stageModels: {
+        analyzer: executorContext.resolvedCodexModelConfig.analyzer,
+        selector: executorContext.resolvedCodexModelConfig.selector,
+        writer: executorContext.resolvedCodexModelConfig.writer,
+        critic: executorContext.resolvedCodexModelConfig.critic,
+        rewriter: executorContext.resolvedCodexModelConfig.rewriter,
+        finalSelector: executorContext.resolvedCodexModelConfig.finalSelector,
+        titles: executorContext.resolvedCodexModelConfig.titles
+      },
       promptConfig: workspaceStage2PromptConfig,
       debugMode: run.request.debugMode,
       onProgress: async (event) => {
@@ -481,7 +491,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         userInstruction: run.userInstruction
       });
       seoPromptText = seoPrompt;
-      const seoModel = process.env.CODEX_STAGE2_DESCRIPTION_MODEL ?? executorContext.model;
+      const seoModel = executorContext.resolvedCodexModelConfig.seo;
       const seoReasoningEffort = seoTemplate.reasoningEffort;
       markStage2RunStageRunning(run.runId, "seo", {
         detail: "Генерируем описание и tags.",
@@ -543,6 +553,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       stageType: "llm_prompt" as const,
       defaultPrompt: seoTemplate.defaultPrompt,
       configuredPrompt: seoTemplate.configuredPrompt,
+      model: executorContext.resolvedCodexModelConfig.seo,
       reasoningEffort: seoTemplate.reasoningEffort,
       isCustomPrompt: seoTemplate.isCustomPrompt,
       promptText: null,
@@ -621,7 +632,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       warnings,
       diagnostics,
       progress: getStage2Run(run.runId)?.snapshot ?? null,
-      model: executorContext.model ?? "default",
+      model: executorContext.pipelineModelSummary ?? "default",
       reasoningEffort: executorContext.reasoningEffort,
       userInstructionUsed: run.userInstruction,
       debugMode: run.request.debugMode === "raw" ? "raw" : "summary",

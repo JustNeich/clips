@@ -31,7 +31,8 @@
     "next": "^15.5.14",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "remotion": "^4.0.432"
+    "remotion": "^4.0.432",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

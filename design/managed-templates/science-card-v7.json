@@ -1,0 +1,144 @@
+{
+  "id": "science-card-v7",
+  "createdAt": "2026-03-29T10:46:31.392Z",
+  "updatedAt": "2026-03-29T11:11:31.379Z",
+  "versions": [],
+  "name": "Science Card Skyframe",
+  "description": "Морская meme/news карточка с крупной белой оболочкой, тяжёлым округлым заголовком, тонкой серой рамкой и жёсткой смещённой тенью на фоне неба.",
+  "baseTemplateId": "science-card-v7",
+  "content": {
+    "topText": "This sailor is performing a mandatory abandon ship drill from the bow of hull to prove he can handle the height and keep his form tight before the unit heads back to sea.",
+    "bottomText": "You have to cover your nose and cross your arms or that water will hit you like a brick. It is a confidence builder that every new recruit has to pass to be ready.",
+    "channelName": "Echoes Of Honor",
+    "channelHandle": "@EchoesOfHonor50",
+    "topHighlightPhrases": [],
+    "topFontScale": 1,
+    "bottomFontScale": 1,
+    "previewScale": 0.28,
+    "mediaAsset": null,
+    "backgroundAsset": null,
+    "avatarAsset": null
+  },
+  "templateConfig": {
+    "frame": {
+      "width": 1080,
+      "height": 1920
+    },
+    "card": {
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 1461,
+      "radius": 33,
+      "borderWidth": 10,
+      "borderColor": "#000000",
+      "fill": "#ffffff",
+      "shadow": "4px 7px 0px 8px rgba(0, 0, 0, 1.00), inset 0px 10px 18px 0px rgba(17, 25, 34, 0.03)"
+    },
+    "slot": {
+      "topHeight": 419,
+      "bottomHeight": 292,
+      "topPaddingX": 8,
+      "topPaddingY": 8,
+      "topPaddingTop": 8,
+      "topPaddingBottom": 4,
+      "bottomMetaHeight": 132,
+      "bottomMetaPaddingX": 23,
+      "bottomMetaPaddingY": 0,
+      "bottomTextPaddingX": 23,
+      "bottomTextPaddingY": 0,
+      "bottomTextPaddingTop": 0,
+      "bottomTextPaddingBottom": 0,
+      "bottomTextPaddingLeft": 23,
+      "bottomTextPaddingRight": 46
+    },
+    "author": {
+      "name": "Echoes Of Honor",
+      "handle": "@EchoesOfHonor50",
+      "avatarSize": 101,
+      "avatarBorder": 0,
+      "checkSize": 54,
+      "gap": 8,
+      "copyGap": 0,
+      "nameCheckGap": 10,
+      "checkAssetPath": "/stage3-template-badges/honor-verified-badge.svg"
+    },
+    "typography": {
+      "top": {
+        "min": 50,
+        "max": 74,
+        "softLimit": 320,
+        "penalty": 0.2,
+        "lineHeight": 0.84,
+        "maxLines": 7,
+        "maxChars": 420,
+        "horizontalSafety": 0.985,
+        "glyphFactor": 0.54,
+        "fillTargetMin": 0.97,
+        "fillTargetMax": 0.995,
+        "weight": 900,
+        "letterSpacing": "-0.075em"
+      },
+      "bottom": {
+        "min": 24,
+        "max": 34,
+        "softLimit": 190,
+        "penalty": 0.16,
+        "lineHeight": 1.08,
+        "maxLines": 4,
+        "maxChars": 260,
+        "fillTargetMin": 0.82,
+        "fillTargetMax": 0.9,
+        "weight": 500,
+        "letterSpacing": "-0.04em",
+        "fontStyle": "normal"
+      },
+      "authorName": {
+        "font": 40,
+        "lineHeight": 1,
+        "weight": 800,
+        "letterSpacing": "-0.03em"
+      },
+      "authorHandle": {
+        "font": 34,
+        "lineHeight": 1,
+        "weight": 300,
+        "letterSpacing": "-0.022em"
+      }
+    },
+    "palette": {
+      "cardFill": "#ffffff",
+      "topSectionFill": "#ffffff",
+      "bottomSectionFill": "#ffffff",
+      "topTextColor": "#0d0f12",
+      "bottomTextColor": "#17191d",
+      "authorNameColor": "#0c0f13",
+      "authorHandleColor": "#7c8085",
+      "checkBadgeColor": "#33a9eb",
+      "borderColor": "#000000",
+      "accentColor": "#0d0f12"
+    }
+  },
+  "shadowLayers": [
+    {
+      "id": "shadow-gmr3r8jc",
+      "offsetX": 4,
+      "offsetY": 7,
+      "blur": 0,
+      "spread": 8,
+      "opacity": 1,
+      "color": "#000000",
+      "inset": false
+    },
+    {
+      "id": "shadow-fn1jo4dc",
+      "offsetX": 0,
+      "offsetY": 10,
+      "blur": 18,
+      "spread": 0,
+      "opacity": 0.028,
+      "color": "#111922",
+      "inset": true
+    }
+  ]
+}

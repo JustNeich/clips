@@ -18,6 +18,10 @@ import {
   normalizeStage3SegmentZoomOverride
 } from "./stage3-segment-transforms";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
+import {
+  normalizeStage3RenderPlanSegments,
+  resolveCanonicalStage3RenderPolicy
+} from "./stage3-render-plan";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEMPLATE_ID = "science-card-v1";
@@ -79,43 +83,14 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
     baseZoom: videoZoom
   });
   const segments = Array.isArray(candidate?.segments)
-    ? candidate.segments
-        .map((segment) => {
-          if (!segment || typeof segment !== "object") {
-            return null;
-          }
-          const startSec =
-            typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
-              ? segment.startSec
-              : null;
-          const endSec =
-            segment.endSec === null
-              ? null
-              : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
-                ? segment.endSec
-                : null;
-          if (startSec === null) {
-            return null;
-          }
-          return {
-            startSec,
-            endSec,
-            speed:
-              typeof (segment as { speed?: unknown }).speed === "number" &&
-              [1, 1.5, 2, 2.5, 3, 4, 5].includes((segment as { speed?: number }).speed ?? 0)
-                ? ((segment as { speed?: number }).speed as Stage3RenderPlan["segments"][number]["speed"])
-                : 1,
-            label:
-              typeof segment.label === "string" && segment.label.trim()
-                ? segment.label
-                : `${startSec.toFixed(1)}-${endSec === null ? "end" : endSec.toFixed(1)}`,
-            focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
-            videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
-            mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
-          };
-        })
-        .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
+    ? normalizeStage3RenderPlanSegments(candidate.segments)
     : fallback.segments;
+  const normalizeToTargetEnabled =
+    typeof candidate?.normalizeToTargetEnabled === "boolean"
+      ? candidate.normalizeToTargetEnabled
+      : candidate?.timingMode === "compress" ||
+          candidate?.timingMode === "stretch" ||
+          candidate?.policy === "full_source_normalize";
 
   return {
     targetDurationSec: 6,
@@ -125,12 +100,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
       candidate?.timingMode === "stretch"
         ? candidate.timingMode
         : fallback.timingMode,
-    normalizeToTargetEnabled:
-      typeof candidate?.normalizeToTargetEnabled === "boolean"
-        ? candidate.normalizeToTargetEnabled
-        : candidate?.timingMode === "compress" ||
-            candidate?.timingMode === "stretch" ||
-            candidate?.policy === "full_source_normalize",
+    normalizeToTargetEnabled,
     audioMode:
       candidate?.audioMode === "source_only" || candidate?.audioMode === "source_plus_music"
         ? candidate.audioMode
@@ -166,12 +136,16 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
         ? candidate.textPolicy
         : fallback.textPolicy,
     segments,
-    policy:
-      candidate?.policy === "adaptive_window" ||
-      candidate?.policy === "full_source_normalize" ||
-      candidate?.policy === "fixed_segments"
-        ? candidate.policy
-        : fallback.policy,
+    policy: resolveCanonicalStage3RenderPolicy({
+      segments,
+      normalizeToTargetEnabled,
+      requestedPolicy:
+        candidate?.policy === "adaptive_window" ||
+        candidate?.policy === "full_source_normalize" ||
+        candidate?.policy === "fixed_segments"
+          ? candidate.policy
+          : fallback.policy
+    }),
     backgroundAssetId:
       typeof candidate?.backgroundAssetId === "string" && candidate.backgroundAssetId.trim()
         ? candidate.backgroundAssetId.trim()

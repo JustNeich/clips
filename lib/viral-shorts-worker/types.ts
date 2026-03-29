@@ -353,6 +353,7 @@ export type Stage2DiagnosticsPromptStage = {
   stageType: "llm_prompt";
   defaultPrompt: string;
   configuredPrompt: string;
+  model?: string | null;
   reasoningEffort: string | null;
   isCustomPrompt: boolean;
   promptText: string | null;

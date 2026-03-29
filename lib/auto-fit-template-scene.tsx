@@ -9,6 +9,7 @@ import {
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
+  Stage3TemplateConfig,
   isClassicScienceCardTemplateId,
   getTemplateById,
   getTemplateComputed,
@@ -68,24 +69,20 @@ function normalizeScale(value: number | undefined): number {
   return clampStage3TextScaleUi(value);
 }
 
-function getBottomTextPaddingTop(templateId: string): number {
-  const template = getTemplateById(templateId);
-  return template.slot.bottomTextPaddingTop ?? template.slot.bottomTextPaddingY;
+function getBottomTextPaddingTop(templateConfig: Stage3TemplateConfig): number {
+  return templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY;
 }
 
-function getBottomTextPaddingBottom(templateId: string): number {
-  const template = getTemplateById(templateId);
-  return template.slot.bottomTextPaddingBottom ?? template.slot.bottomTextPaddingY;
+function getBottomTextPaddingBottom(templateConfig: Stage3TemplateConfig): number {
+  return templateConfig.slot.bottomTextPaddingBottom ?? templateConfig.slot.bottomTextPaddingY;
 }
 
-function getBottomTextPaddingLeft(templateId: string): number {
-  const template = getTemplateById(templateId);
-  return template.slot.bottomTextPaddingLeft ?? template.slot.bottomTextPaddingX;
+function getBottomTextPaddingLeft(templateConfig: Stage3TemplateConfig): number {
+  return templateConfig.slot.bottomTextPaddingLeft ?? templateConfig.slot.bottomTextPaddingX;
 }
 
-function getBottomTextPaddingRight(templateId: string): number {
-  const template = getTemplateById(templateId);
-  return template.slot.bottomTextPaddingRight ?? template.slot.bottomTextPaddingX;
+function getBottomTextPaddingRight(templateConfig: Stage3TemplateConfig): number {
+  return templateConfig.slot.bottomTextPaddingRight ?? templateConfig.slot.bottomTextPaddingX;
 }
 
 function getSectionBorderLosses(templateId: string): {
@@ -115,14 +112,20 @@ function getSectionBorderLosses(templateId: string): {
   };
 }
 
-function getTopFontFamily(templateId: string): string {
+function getTopFontFamily(templateId: string, templateConfig: Stage3TemplateConfig): string {
+  if (templateConfig.typography.top.fontFamily) {
+    return templateConfig.typography.top.fontFamily;
+  }
   if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
     return '"Arial Rounded MT Bold",".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial",sans-serif';
   }
   return '"Inter","Helvetica Neue",Helvetica,sans-serif';
 }
 
-function getBottomFontFamily(templateId: string): string {
+function getBottomFontFamily(templateId: string, templateConfig: Stage3TemplateConfig): string {
+  if (templateConfig.typography.bottom.fontFamily) {
+    return templateConfig.typography.bottom.fontFamily;
+  }
   if (templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID) {
     return '".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial Rounded MT Bold","Arial",sans-serif';
   }
@@ -147,27 +150,31 @@ function getScaleCeiling(scale: number, maxScaleBoost: number): number {
   return scale > 1 ? Math.min(scale, maxScaleBoost) : 1;
 }
 
-function buildCacheKey(templateId: string, content: TemplateContentFixture, baseComputed: TemplateSceneComputed): string {
-  const template = getTemplateById(templateId);
+function buildCacheKey(
+  templateId: string,
+  content: TemplateContentFixture,
+  baseComputed: TemplateSceneComputed,
+  templateConfig: Stage3TemplateConfig
+): string {
   return JSON.stringify({
-    version: "scene-autofit-v9",
+    version: "scene-autofit-v10",
     templateId,
     topText: baseComputed.top,
     bottomText: baseComputed.bottom,
     topScale: normalizeScale(content.topFontScale),
     bottomScale: normalizeScale(content.bottomFontScale),
-    topHeight: template.slot.topHeight,
-    bottomHeight: template.slot.bottomHeight,
-    bottomMetaHeight: template.slot.bottomMetaHeight,
-    topPaddingX: template.slot.topPaddingX,
-    topPaddingTop: template.slot.topPaddingTop ?? template.slot.topPaddingY,
-    topPaddingBottom: template.slot.topPaddingBottom ?? template.slot.topPaddingY,
-    bottomTextPaddingLeft: getBottomTextPaddingLeft(templateId),
-    bottomTextPaddingRight: getBottomTextPaddingRight(templateId),
-    bottomTextPaddingTop: getBottomTextPaddingTop(templateId),
-    bottomTextPaddingBottom: getBottomTextPaddingBottom(templateId),
-    topTypography: template.typography.top,
-    bottomTypography: template.typography.bottom
+    topHeight: templateConfig.slot.topHeight,
+    bottomHeight: templateConfig.slot.bottomHeight,
+    bottomMetaHeight: templateConfig.slot.bottomMetaHeight,
+    topPaddingX: templateConfig.slot.topPaddingX,
+    topPaddingTop: templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY,
+    topPaddingBottom: templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY,
+    bottomTextPaddingLeft: getBottomTextPaddingLeft(templateConfig),
+    bottomTextPaddingRight: getBottomTextPaddingRight(templateConfig),
+    bottomTextPaddingTop: getBottomTextPaddingTop(templateConfig),
+    bottomTextPaddingBottom: getBottomTextPaddingBottom(templateConfig),
+    topTypography: templateConfig.typography.top,
+    bottomTypography: templateConfig.typography.bottom
   });
 }
 
@@ -315,15 +322,15 @@ function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): 
 
 function buildMeasuredComputed(
   templateId: string,
+  templateConfig: Stage3TemplateConfig,
   content: TemplateContentFixture,
   baseComputed: TemplateSceneComputed,
   renderSnapshot: ReturnType<typeof buildTemplateRenderSnapshot>,
   topMeasureNode: HTMLParagraphElement,
   bottomMeasureNode: HTMLParagraphElement
 ): TemplateSceneComputed {
-  const template = getTemplateById(templateId);
   const templateSpec = getTemplateFigmaSpec(templateId);
-  const chromeMetrics = resolveTemplateChromeMetrics(templateId, template, templateSpec);
+  const chromeMetrics = resolveTemplateChromeMetrics(templateId, templateConfig, templateSpec);
   const fitPolicy = getStage3TemplateTextFitPolicy(templateId);
   const layout = renderSnapshot.layout;
   const topScale = normalizeScale(content.topFontScale);
@@ -348,25 +355,25 @@ function buildMeasuredComputed(
     text: baseComputed.top,
     width: layout.top.width - sectionBorderLosses.topWidth - chromeMetrics.topPaddingX * 2,
     height: layout.top.height - sectionBorderLosses.topHeight - topPaddingTop - topPaddingBottom,
-    minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(template.typography.top.min * 0.58))),
+    minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.top.min * 0.58))),
     maxFont: Math.max(
       topFigmaFont,
-      template.typography.top.max,
+      templateConfig.typography.top.max,
       snapStage3TextFontPx(
-        template.typography.top.max *
+        templateConfig.typography.top.max *
           getTopFontHeadroom(templateId) *
           getScaleCeiling(topScale, usesWideHeadlineScaling ? 1.24 : 1.18)
       )
     ),
     preferredFont: baseComputed.topFont,
-    maxLines: resolveScaledMaxLines(template.typography.top.maxLines, topScale, "top"),
+    maxLines: resolveScaledMaxLines(templateConfig.typography.top.maxLines, topScale, "top"),
     baseLineHeight: usesClassicScienceCardChrome ? scienceCardPreferredTopLineHeight : baseComputed.topLineHeight,
     fillTargetMin: fitPolicy.topFillTargetMin,
     fillTargetMax: fitPolicy.topFillTargetMax,
-    fontFamily: getTopFontFamily(templateId),
-    fontWeight: template.typography.top.weight ?? 800,
-    fontStyle: template.typography.top.fontStyle ?? "normal",
-    letterSpacing: template.typography.top.letterSpacing ?? "-0.015em",
+    fontFamily: getTopFontFamily(templateId, templateConfig),
+    fontWeight: templateConfig.typography.top.weight ?? 800,
+    fontStyle: templateConfig.typography.top.fontStyle ?? "normal",
+    letterSpacing: templateConfig.typography.top.letterSpacing ?? "-0.015em",
     textAlign: "center",
     scale: topScale,
     lineHeightFloor: Math.max(
@@ -394,25 +401,25 @@ function buildMeasuredComputed(
     text: baseComputed.bottom,
     width: layout.bottomText.width,
     height: layout.bottomText.height,
-    minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(template.typography.bottom.min * 0.58))),
+    minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.bottom.min * 0.58))),
     maxFont: Math.max(
       bottomFigmaFont,
-      template.typography.bottom.max,
+      templateConfig.typography.bottom.max,
       snapStage3TextFontPx(
-        template.typography.bottom.max *
+        templateConfig.typography.bottom.max *
           getBottomFontHeadroom(templateId) *
           getScaleCeiling(bottomScale, usesWideHeadlineScaling ? 1.4 : 1.3)
       )
     ),
     preferredFont: baseComputed.bottomFont,
-    maxLines: resolveScaledMaxLines(template.typography.bottom.maxLines, bottomScale, "bottom"),
+    maxLines: resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom"),
     baseLineHeight: usesClassicScienceCardChrome ? baseComputed.bottomLineHeight : baseComputed.bottomLineHeight,
     fillTargetMin: fitPolicy.bottomFillTargetMin,
     fillTargetMax: fitPolicy.bottomFillTargetMax,
-    fontFamily: getBottomFontFamily(templateId),
-    fontWeight: template.typography.bottom.weight ?? 500,
-    fontStyle: template.typography.bottom.fontStyle ?? "normal",
-    letterSpacing: template.typography.bottom.letterSpacing ?? "0",
+    fontFamily: getBottomFontFamily(templateId, templateConfig),
+    fontWeight: templateConfig.typography.bottom.weight ?? 500,
+    fontStyle: templateConfig.typography.bottom.fontStyle ?? "normal",
+    letterSpacing: templateConfig.typography.bottom.letterSpacing ?? "0",
     textAlign: "left",
     scale: bottomScale,
     lineHeightFloor: Math.max(
@@ -448,14 +455,20 @@ function buildMeasuredComputed(
 }
 
 export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Element {
+  const onComputedChange = props.onComputedChange;
+  const templateConfig = useMemo(
+    () => props.templateConfigOverride ?? getTemplateById(props.templateId),
+    [props.templateConfigOverride, props.templateId]
+  );
   const renderSnapshot = useMemo(
     () =>
       props.snapshot ??
       buildTemplateRenderSnapshot({
         templateId: props.templateId,
-        content: props.content
+        content: props.content,
+        templateConfigOverride: templateConfig
       }),
-    [props.content, props.snapshot, props.templateId]
+    [props.content, props.snapshot, props.templateId, templateConfig]
   );
 
   const effectiveContent = renderSnapshot.content;
@@ -465,12 +478,19 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
   );
 
   const cacheKey = useMemo(
-    () => `${renderSnapshot.snapshotHash}:${buildCacheKey(props.templateId, effectiveContent, baseComputed)}`,
+    () =>
+      `${renderSnapshot.snapshotHash}:${buildCacheKey(
+        props.templateId,
+        effectiveContent,
+        baseComputed,
+        templateConfig
+      )}`,
     [
       baseComputed,
       effectiveContent,
       props.templateId,
-      renderSnapshot.snapshotHash
+      renderSnapshot.snapshotHash,
+      templateConfig
     ]
   );
 
@@ -502,6 +522,7 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
       }
       const nextComputed = buildMeasuredComputed(
         props.templateId,
+        templateConfig,
         effectiveContent,
         baseComputed,
         renderSnapshot,
@@ -530,11 +551,12 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
     cacheKey,
     effectiveContent,
     props.templateId,
-    renderSnapshot
+    renderSnapshot,
+    templateConfig
   ]);
 
   useLayoutEffect(() => {
-    if (!ready || !props.onComputedChange) {
+    if (!ready || !onComputedChange) {
       return;
     }
     const publishedKey = JSON.stringify({
@@ -554,8 +576,8 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
       return;
     }
     publishedComputedKeyRef.current = publishedKey;
-    props.onComputedChange(computed);
-  }, [computed, props.onComputedChange]);
+    onComputedChange(computed);
+  }, [computed, onComputedChange, ready, renderSnapshot.snapshotHash]);
 
   return (
     <>
@@ -577,6 +599,7 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
         {...props}
         content={effectiveContent}
         snapshot={renderSnapshot}
+        templateConfigOverride={templateConfig}
         computedOverride={computed}
         sceneReady={ready}
       />

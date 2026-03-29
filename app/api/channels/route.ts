@@ -11,9 +11,11 @@ import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../lib/stage2-channel-learning";
 import {
+  getWorkspaceCodexModelConfig,
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints
 } from "../../../lib/team-store";
+import { resolveWorkspaceCodexModelConfig } from "../../../lib/workspace-codex-models";
 
 export const runtime = "nodejs";
 
@@ -64,7 +66,14 @@ export async function GET(): Promise<Response> {
         channels: visibleChannels.filter(Boolean),
         workspaceStage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
         workspaceStage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
-        workspaceStage2PromptConfig: auth.workspace.stage2PromptConfig
+        workspaceStage2PromptConfig: auth.workspace.stage2PromptConfig,
+        workspaceCodexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
+        workspaceResolvedCodexModelConfig: resolveWorkspaceCodexModelConfig({
+          config: getWorkspaceCodexModelConfig(auth.workspace.id),
+          deployStage2Model: process.env.CODEX_STAGE2_MODEL,
+          deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
+          deployStage3Model: process.env.CODEX_STAGE3_MODEL
+        })
       },
       { status: 200 }
     );
