@@ -965,7 +965,10 @@ export async function buildChatTraceExport(
         sanitizedCurrentStage2?.source.title ??
         latestSourceJobWithResult?.resultData?.title ??
         (chat.title !== chat.url ? chat.title : null),
-      downloadProvider: sanitizedCurrentStage2?.source.downloadProvider ?? null,
+      downloadProvider:
+        sanitizedCurrentStage2?.source.downloadProvider ??
+        latestSourceJobWithResult?.resultData?.sourceMediaProvider ??
+        null,
       commentsAvailable: exportComments.available,
       commentsError:
         rawCurrentStage2?.source.commentsAcquisitionError ??

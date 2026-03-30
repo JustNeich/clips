@@ -208,9 +208,13 @@ export function Step1PasteLink({
                     <p className="subtle-text">
                       {sourceJob.result.commentsAvailable
                         ? `Комментарии готовы: ${sourceJob.result.commentsPayload?.totalComments ?? 0}`
-                        : sourceJob.result.commentsError
-                          ? `Продолжили без комментариев: ${sourceJob.result.commentsError}`
-                          : "Продолжили без комментариев."}
+                        : sourceJob.result.sourceMediaReady
+                          ? sourceJob.result.commentsError
+                            ? `Источник проверен, продолжаем без комментариев: ${sourceJob.result.commentsError}`
+                            : "Источник проверен, продолжаем без комментариев."
+                          : sourceJob.result.commentsError
+                            ? `Комментарии недоступны: ${sourceJob.result.commentsError}`
+                            : "Комментарии для этого источника недоступны."}
                     </p>
                   ) : null}
                 </div>

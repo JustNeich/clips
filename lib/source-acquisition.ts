@@ -133,6 +133,38 @@ function createCommentsAcquisition(input?: Partial<OptionalYtDlpInfoResult["comm
   } satisfies OptionalYtDlpInfoResult["commentsAcquisition"];
 }
 
+function stripHtmlTags(value: string): string {
+  return value.replace(/<[^>]+>/g, " ");
+}
+
+function compactWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+export function summarizeProviderTextResponse(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/<(?:!doctype|html|head|body|title)\b/i.test(trimmed)) {
+    const titleMatch = trimmed.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const title = titleMatch ? compactWhitespace(stripHtmlTags(titleMatch[1] ?? "")) : "";
+    const statusMatch = title.match(/\b([45]\d\d)\b(?:[:\s-]+([A-Za-z][A-Za-z -]+))?/i);
+    if (statusMatch) {
+      const statusCode = statusMatch[1];
+      const reason = compactWhitespace(statusMatch[2] ?? "");
+      return reason ? `upstream вернул HTTP ${statusCode} (${reason}).` : `upstream вернул HTTP ${statusCode}.`;
+    }
+    if (title) {
+      return `upstream вернул HTML-страницу (${title}).`;
+    }
+    return "upstream вернул HTML-страницу вместо API-ответа.";
+  }
+
+  return compactWhitespace(trimmed).slice(0, 500);
+}
+
 function getVisolixApiKey(): string | null {
   const raw = asTrimmedString(process.env.VISOLIX_API_KEY);
   if (!raw) {
@@ -264,7 +296,7 @@ async function readJsonOrText(response: Response): Promise<Record<string, unknow
     return null;
   }
 
-  return { message: text.slice(0, 500) };
+  return { message: summarizeProviderTextResponse(text) };
 }
 
 async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse> {

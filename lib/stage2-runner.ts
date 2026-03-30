@@ -34,9 +34,9 @@ import {
   getWorkspaceStage2PromptConfig
 } from "./team-store";
 import {
-  fetchOptionalYtDlpInfo,
-  downloadSourceMedia
+  fetchOptionalYtDlpInfo
 } from "./source-acquisition";
+import { ensureSourceMediaCached } from "./source-media-cache";
 import {
   extractYtDlpErrorFromUnknown,
   sanitizeFileName
@@ -74,7 +74,7 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
     error: string | null;
   };
 }> {
-  const downloaded = await downloadSourceMedia(url, tmpDir);
+  const downloaded = await ensureSourceMediaCached(url);
   const optionalInfo = await fetchOptionalYtDlpInfo(url, tmpDir);
   const title = optionalInfo.infoJson?.title?.trim() || downloaded.title?.trim() || "video";
   const infoJson: VideoInfoJson = {

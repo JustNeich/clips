@@ -7228,6 +7228,108 @@ test("source job runtime keeps parallel jobs isolated and durable across reload-
   });
 });
 
+test("source media cache reuses a warmed download for repeat access", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const sourceMediaCache = await import("../lib/source-media-cache");
+    let downloadCalls = 0;
+
+    sourceMediaCache.setSourceMediaDownloaderForTests(async (_rawUrl, tmpDir) => {
+      downloadCalls += 1;
+      const filePath = path.join(tmpDir, "source.mp4");
+      await writeFile(filePath, "video");
+      return {
+        provider: "visolix",
+        filePath,
+        fileName: "cached-source",
+        title: "Cached Source",
+        durationSec: 12,
+        videoSizeBytes: 5
+      };
+    });
+
+    try {
+      const first = await sourceMediaCache.ensureSourceMediaCached("https://www.youtube.com/shorts/abc123XYZ89");
+      const second = await sourceMediaCache.ensureSourceMediaCached("https://www.youtube.com/shorts/abc123XYZ89");
+
+      assert.equal(downloadCalls, 1);
+      assert.equal(first.filePath, second.filePath);
+      assert.equal(second.provider, "visolix");
+      assert.equal(second.title, "Cached Source");
+    } finally {
+      sourceMediaCache.setSourceMediaDownloaderForTests(null);
+    }
+  });
+});
+
+test("source fetch fails before auto Stage 2 starts when source media is unavailable", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const runtime = await import("../lib/source-job-runtime");
+    const sourceStore = await import("../lib/source-job-store");
+    const stage2Store = await import("../lib/stage2-progress-store");
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+    const sourceMediaCache = await import("../lib/source-media-cache");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Source Validation",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    teamStore.upsertWorkspaceCodexIntegration({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      status: "connected",
+      codexHomePath: "/tmp/codex-home"
+    });
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Validation Channel",
+      username: "validation_channel"
+    });
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/shorts/abc123XYZ89",
+      channel.id
+    );
+
+    sourceMediaCache.setSourceMediaDownloaderForTests(async () => {
+      throw new Error("Visolix: YouTube API request failed");
+    });
+
+    try {
+      const job = runtime.enqueueAndScheduleSourceJob({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        request: {
+          sourceUrl: chat.url,
+          autoRunStage2: true,
+          trigger: "fetch",
+          chat: {
+            id: chat.id,
+            channelId: channel.id
+          },
+          channel: {
+            id: channel.id,
+            name: channel.name,
+            username: channel.username
+          }
+        }
+      });
+
+      await waitFor(() => sourceStore.getSourceJob(job.jobId)?.status === "failed");
+
+      const persistedJob = sourceStore.getSourceJob(job.jobId);
+      assert.equal(persistedJob?.status, "failed");
+      assert.match(persistedJob?.errorMessage ?? "", /Visolix: YouTube API request failed/);
+      assert.equal(stage2Store.listStage2RunsForChat(chat.id, owner.workspace.id).length, 0);
+    } finally {
+      sourceMediaCache.setSourceMediaDownloaderForTests(null);
+    }
+  });
+});
+
 test("stage 2 runtime keeps parallel runs isolated and durable across reload-style rereads", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const runtime = await import("../lib/stage2-run-runtime");
@@ -8217,6 +8319,7 @@ test("chat trace export remains valid when the chat has no comments, no stage 2 
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");
     const chatHistory = await import("../lib/chat-history");
+    const sourceStore = await import("../lib/source-job-store");
     const { buildChatTraceExport } = await import("../lib/chat-trace-export");
 
     const owner = await teamStore.bootstrapOwner({
@@ -8235,6 +8338,40 @@ test("chat trace export remains valid when the chat has no comments, no stage 2 
       "https://www.youtube.com/watch?v=traceExport02",
       channel.id
     );
+    const sourceJob = sourceStore.createSourceJob({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: {
+        sourceUrl: chat.url,
+        autoRunStage2: false,
+        trigger: "fetch",
+        chat: {
+          id: chat.id,
+          channelId: channel.id
+        },
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username
+        }
+      }
+    });
+    sourceStore.finalizeSourceJobSuccess(sourceJob.jobId, {
+      chatId: chat.id,
+      channelId: channel.id,
+      sourceUrl: chat.url,
+      stage1Ready: true,
+      title: "Trace Export Empty",
+      sourceMediaReady: true,
+      sourceMediaProvider: "visolix",
+      commentsAvailable: false,
+      commentsError: "Комментарии отключены.",
+      commentsPayload: null,
+      commentsAcquisitionStatus: "unavailable",
+      commentsAcquisitionProvider: null,
+      commentsAcquisitionNote: "Комментарии недоступны.",
+      autoStage2RunId: null
+    });
 
     const trace = await buildChatTraceExport({
       workspace: owner.workspace,
@@ -8249,8 +8386,10 @@ test("chat trace export remains valid when the chat has no comments, no stage 2 
     assert.equal(trace?.comments.exportUsage.includedCount, 0);
     assert.equal(trace?.stage3.handoff.stage2Available, false);
     assert.equal(trace?.stage3.handoff.topTextSource, "empty");
+    assert.equal(trace?.source.downloadProvider, "visolix");
     assert.equal(trace?.comments.items.length, 0);
-    assert.equal(trace?.sourceJobs.length, 0);
+    assert.equal(trace?.sourceJobs.length, 1);
+    assert.equal(trace?.sourceJobs[0]?.result?.sourceMediaProvider, "visolix");
     assert.equal(trace?.stage2.runs.length, 0);
     assert.equal(trace?.stage2.selectedRunId, null);
     assert.equal(trace?.stage2.stageManifests.length, 0);

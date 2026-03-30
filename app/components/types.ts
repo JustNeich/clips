@@ -206,6 +206,8 @@ export type SourceJobResult = {
   sourceUrl: string;
   stage1Ready: boolean;
   title: string | null;
+  sourceMediaReady?: boolean;
+  sourceMediaProvider?: "visolix" | "ytDlp" | null;
   commentsAvailable: boolean;
   commentsError: string | null;
   commentsPayload: CommentsPayload | null;
