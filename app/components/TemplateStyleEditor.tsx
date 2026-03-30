@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getStage3DesignLabPreset } from "../../lib/stage3-design-lab";
 import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
@@ -41,6 +42,7 @@ type ManagedTemplateListResponse = {
 
 type ComputedSnapshot = ReturnType<typeof getTemplateComputed>;
 type SaveState = "idle" | "saving" | "saved" | "error";
+type UploadState = "idle" | "uploading" | "error";
 
 type FontOption = {
   label: string;
@@ -72,6 +74,24 @@ type SelectControlProps = {
   value: string;
   options: Array<{ label: string; value: string }>;
   onChange: (value: string) => void;
+};
+
+type BadgeOption = {
+  label: string;
+  value: string;
+  previewSrc?: string;
+};
+
+type ManagedTemplateAssetUploadResponse = {
+  asset?: {
+    id: string;
+    url: string;
+    mimeType: string;
+    originalName: string;
+    sizeBytes: number;
+    createdAt: string;
+  };
+  error?: string;
 };
 
 type SectionLink = {
@@ -167,6 +187,43 @@ const BODY_FONT_OPTIONS: FontOption[] = [
   {
     label: "Американская машинка",
     value: '"American Typewriter","Courier New","Georgia",serif'
+  }
+];
+
+const BADGE_OPTIONS: BadgeOption[] = [
+  {
+    label: "Цветная галочка",
+    value: ""
+  },
+  {
+    label: "Science Card",
+    value: "/stage3-template-badges/science-card-v1-check.png",
+    previewSrc: "/stage3-template-badges/science-card-v1-check.png"
+  },
+  {
+    label: "Twitter синяя",
+    value: "/stage3-template-badges/twitter-verified-badge.png",
+    previewSrc: "/stage3-template-badges/twitter-verified-badge.png"
+  },
+  {
+    label: "Золотая glow",
+    value: "/stage3-template-badges/gold-glow-badge.png",
+    previewSrc: "/stage3-template-badges/gold-glow-badge.png"
+  },
+  {
+    label: "Розовая glow",
+    value: "/stage3-template-badges/pink-glow-badge.png",
+    previewSrc: "/stage3-template-badges/pink-glow-badge.png"
+  },
+  {
+    label: "American News",
+    value: "/stage3-template-badges/american-news-badge.svg",
+    previewSrc: "/stage3-template-badges/american-news-badge.svg"
+  },
+  {
+    label: "Hedges of Honor",
+    value: "/stage3-template-badges/honor-verified-badge.svg",
+    previewSrc: "/stage3-template-badges/honor-verified-badge.svg"
   }
 ];
 
@@ -719,6 +776,60 @@ function SelectControl({ label, hint, value, options, onChange }: SelectControlP
   );
 }
 
+function BadgeOptionPicker({
+  label,
+  hint,
+  value,
+  options,
+  fallbackColor,
+  onChange
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  options: BadgeOption[];
+  fallbackColor: string;
+  onChange: (value: string) => void;
+}) {
+  const resolvedOptions = options.some((option) => option.value === value)
+    ? options
+    : [{ label: "Свой бейдж", value, previewSrc: value || undefined }, ...options];
+
+  return (
+    <div className="template-road-editor-field">
+      <span className="field-label">{label}</span>
+      <div className="template-road-editor-badge-options">
+        {resolvedOptions.map((option) => {
+          const isActive = option.value === value;
+          return (
+            <button
+              key={`${option.label}-${option.value || "fallback"}`}
+              type="button"
+              className={`template-road-editor-badge-option ${isActive ? "is-active" : ""}`}
+              onClick={() => onChange(option.value)}
+            >
+              <span className="template-road-editor-badge-preview">
+                {option.previewSrc ? (
+                  <Image src={option.previewSrc} alt="" width={52} height={52} unoptimized />
+                ) : (
+                  <span
+                    className="template-road-editor-badge-preview-fallback"
+                    style={{ background: fallbackColor }}
+                  >
+                    ✓
+                  </span>
+                )}
+              </span>
+              <span className="template-road-editor-badge-label">{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      {hint ? <span className="template-road-editor-field-hint">{hint}</span> : null}
+    </div>
+  );
+}
+
 function EditorSection({
   id,
   eyebrow,
@@ -884,6 +995,8 @@ export function TemplateStyleEditor({
   );
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMessage, setSaveMessage] = useState<string>("");
+  const [backgroundUploadState, setBackgroundUploadState] = useState<UploadState>("idle");
+  const [backgroundUploadMessage, setBackgroundUploadMessage] = useState<string>("");
   const [lastSavedSignature, setLastSavedSignature] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [canvasStageSize, setCanvasStageSize] = useState<{ width: number; height: number }>({
@@ -895,6 +1008,7 @@ export function TemplateStyleEditor({
   const hydrationReadyRef = useRef(false);
   const isMountedRef = useRef(true);
   const canvasStageRef = useRef<HTMLDivElement | null>(null);
+  const backgroundFileInputRef = useRef<HTMLInputElement | null>(null);
   const loadTemplateRequestIdRef = useRef(0);
   const persistRequestIdRef = useRef(0);
   const persistQueueRef = useRef<Promise<ManagedTemplate | null>>(Promise.resolve(null));
@@ -962,6 +1076,8 @@ export function TemplateStyleEditor({
     templateConfig.typography.top.fontFamily ?? resolveDefaultTopFontValue(baseTemplateId);
   const currentBottomFontFamily =
     templateConfig.typography.bottom.fontFamily ?? resolveDefaultBodyFontValue(baseTemplateId);
+  const currentBadgeAssetPath = templateConfig.author.checkAssetPath ?? "";
+  const currentBadgeOption = BADGE_OPTIONS.find((option) => option.value === currentBadgeAssetPath);
   const topFontSelectOptions = useMemo(
     () =>
       TOP_FONT_OPTIONS.some((option) => option.value === currentTopFontFamily)
@@ -1006,6 +1122,8 @@ export function TemplateStyleEditor({
     setUpdatedAt(managedTemplate.updatedAt);
     setLastSavedSignature(nextState.signature);
     setComputed(null);
+    setBackgroundUploadState("idle");
+    setBackgroundUploadMessage("");
     setSaveState("idle");
     setSaveMessage("Изменения синхронизируются автоматически.");
     window.setTimeout(() => {
@@ -1515,6 +1633,8 @@ export function TemplateStyleEditor({
   function resetContent() {
     setContent(createDefaultContent(baseTemplateId));
     setComputed(null);
+    setBackgroundUploadState("idle");
+    setBackgroundUploadMessage("");
   }
 
   function updateContent<K extends keyof TemplateContentFixture>(
@@ -1686,6 +1806,44 @@ export function TemplateStyleEditor({
       .map((item) => item.trim())
       .filter(Boolean);
     updateContent("topHighlightPhrases", parts);
+  }
+
+  async function handleBackgroundFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    setBackgroundUploadState("uploading");
+    setBackgroundUploadMessage(`Загружаю фон «${file.name}»...`);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("/api/design/template-assets", {
+        method: "POST",
+        body: formData
+      });
+      const payload = (await response
+        .json()
+        .catch(() => null)) as ManagedTemplateAssetUploadResponse | null;
+      if (!response.ok || !payload?.asset?.url) {
+        throw new Error(payload?.error || `Upload failed: ${response.status}`);
+      }
+
+      updateContent("backgroundAsset", payload.asset.url);
+      setBackgroundUploadState("idle");
+      setBackgroundUploadMessage(`Фон «${payload.asset.originalName}» подключён к шаблону.`);
+    } catch (error) {
+      setBackgroundUploadState("error");
+      setBackgroundUploadMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : "Не удалось загрузить фон."
+      );
+    }
   }
 
   async function handleCreateTemplate() {
@@ -2383,6 +2541,74 @@ export function TemplateStyleEditor({
                 </span>
               </label>
             </div>
+            <div className="template-road-editor-field">
+              <span className="field-label">Фон холста</span>
+              <div className="template-road-editor-upload-card">
+                <div
+                  className={`template-road-editor-upload-preview ${
+                    content.backgroundAsset ? "has-image" : "is-empty"
+                  }`}
+                  style={
+                    content.backgroundAsset
+                      ? { backgroundImage: `url(${content.backgroundAsset})` }
+                      : undefined
+                  }
+                >
+                  {!content.backgroundAsset ? <span>Сейчас используется встроенный фон</span> : null}
+                </div>
+                <div className="template-road-editor-upload-body">
+                  <div className="template-road-editor-upload-copy">
+                    <strong>
+                      {content.backgroundAsset
+                        ? "Пользовательский фон уже подключён"
+                        : "Можно загрузить свою картинку для фона"}
+                    </strong>
+                    <p className="subtle-text">
+                      Подходит для проверки читаемости карточки на реальном фоне. Поддерживаются JPG,
+                      PNG, WebP, GIF, AVIF и SVG до 20 MB.
+                    </p>
+                  </div>
+                  <div className="template-road-editor-upload-actions">
+                    <input
+                      ref={backgroundFileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/svg+xml"
+                      hidden
+                      onChange={handleBackgroundFileChange}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => backgroundFileInputRef.current?.click()}
+                      disabled={backgroundUploadState === "uploading"}
+                    >
+                      {backgroundUploadState === "uploading" ? "Загружаем..." : "Загрузить фон"}
+                    </button>
+                    {content.backgroundAsset ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          updateContent("backgroundAsset", null);
+                          setBackgroundUploadState("idle");
+                          setBackgroundUploadMessage("Пользовательский фон убран. Возвращаемся к встроенному.");
+                        }}
+                      >
+                        Убрать фон
+                      </button>
+                    ) : null}
+                  </div>
+                  <span
+                    className={`template-road-editor-upload-note ${
+                      backgroundUploadState === "error" ? "is-error" : ""
+                    }`}
+                  >
+                    {backgroundUploadMessage ||
+                      "Фон сохраняется внутри шаблона и сразу используется в превью редактора."}
+                  </span>
+                </div>
+              </div>
+            </div>
             <div className="template-road-editor-grid two-up">
               <SliderControl
                 label="Крупность верхнего текста"
@@ -3013,9 +3239,20 @@ export function TemplateStyleEditor({
               <>
                 <span className="meta-pill">Аватар: {templateConfig.author.avatarSize}px</span>
                 <span className="meta-pill">Бейдж: {templateConfig.author.checkSize}px</span>
+                <span className="meta-pill">
+                  {currentBadgeOption?.label ?? (currentBadgeAssetPath ? "Свой бейдж" : "Цветная галочка")}
+                </span>
               </>
             }
           >
+            <BadgeOptionPicker
+              label="Вариант галочки"
+              hint="Можно выбрать один из встроенных бейджей. Выбор сразу применяется в превью и в итоговом рендере."
+              value={currentBadgeAssetPath}
+              options={BADGE_OPTIONS}
+              fallbackColor={templateConfig.palette.checkBadgeColor}
+              onChange={(value) => updateAuthor("checkAssetPath", value || undefined)}
+            />
             <div className="template-road-editor-grid three-up">
               <SliderControl
                 label="Размер аватара"

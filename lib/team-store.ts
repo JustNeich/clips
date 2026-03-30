@@ -1280,10 +1280,10 @@ export function consumeInvite(token: string): {
 
 export function canManageInviteRole(actorRole: AppRole, targetRole: AppRole): boolean {
   if (actorRole === "owner") {
-    return targetRole === "manager" || targetRole === "redactor_limited";
+    return targetRole === "manager" || targetRole === "redactor" || targetRole === "redactor_limited";
   }
   if (actorRole === "manager") {
-    return targetRole === "redactor_limited";
+    return targetRole === "redactor" || targetRole === "redactor_limited";
   }
   return false;
 }

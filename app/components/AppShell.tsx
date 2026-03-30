@@ -119,9 +119,9 @@ function formatRoleLabel(role: string | null): string | null {
     case "manager":
       return "Менеджер";
     case "redactor":
-      return "Редактор (обычный)";
+      return "Редактор";
     case "redactor_limited":
-      return "Редактор (ограниченный, по умолчанию)";
+      return "Редактор (ограниченный)";
     default:
       return role.replace(/_/g, " ");
   }

@@ -1,6 +1,7 @@
 import { createReadStream, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { requireAuth } from "../../../lib/auth/guards";
 import { downloadSourceMedia } from "../../../lib/source-acquisition";
 import { createNodeStreamResponse } from "../../../lib/node-stream-response";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../lib/ytdlp";
@@ -15,55 +16,61 @@ function scheduleDirectoryCleanup(dirPath: string): void {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as { url?: string } | null;
-  const rawUrl = body?.url?.trim();
-
-  if (!rawUrl) {
-    return Response.json({ error: "Передайте URL в теле запроса." }, { status: 400 });
-  }
-
-  const sourceUrl = normalizeSupportedUrl(rawUrl);
-
-  if (!isSupportedUrl(sourceUrl)) {
-    return Response.json(
-      {
-        error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
-      },
-      { status: 400 }
-    );
-  }
-
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-dl-"));
-  let cleanupScheduled = false;
-
   try {
-    const downloaded = await downloadSourceMedia(sourceUrl, tmpDir);
-    const fileStat = await fs.stat(downloaded.filePath);
-    const fileName = `${downloaded.fileName}.mp4`;
-    const stream = createReadStream(downloaded.filePath);
+    await requireAuth(request);
+    const body = (await request.json().catch(() => null)) as { url?: string } | null;
+    const rawUrl = body?.url?.trim();
 
-    scheduleDirectoryCleanup(tmpDir);
-    cleanupScheduled = true;
+    if (!rawUrl) {
+      return Response.json({ error: "Передайте URL в теле запроса." }, { status: 400 });
+    }
 
-    return createNodeStreamResponse({
-      stream,
-      signal: request.signal,
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Length": String(fileStat.size),
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Cache-Control": "no-store",
-        "X-Source-Provider": downloaded.provider
+    const sourceUrl = normalizeSupportedUrl(rawUrl);
+
+    if (!isSupportedUrl(sourceUrl)) {
+      return Response.json(
+        {
+          error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
+        },
+        { status: 400 }
+      );
+    }
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-dl-"));
+    let cleanupScheduled = false;
+
+    try {
+      const downloaded = await downloadSourceMedia(sourceUrl, tmpDir);
+      const fileStat = await fs.stat(downloaded.filePath);
+      const fileName = `${downloaded.fileName}.mp4`;
+      const stream = createReadStream(downloaded.filePath);
+
+      scheduleDirectoryCleanup(tmpDir);
+      cleanupScheduled = true;
+
+      return createNodeStreamResponse({
+        stream,
+        signal: request.signal,
+        headers: {
+          "Content-Type": "video/mp4",
+          "Content-Length": String(fileStat.size),
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+          "Cache-Control": "no-store",
+          "X-Source-Provider": downloaded.provider
+        }
+      });
+    } finally {
+      if (!cleanupScheduled) {
+        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
       }
-    });
+    }
   } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
     return Response.json(
       { error: error instanceof Error ? error.message : "Не удалось скачать исходное видео." },
       { status: 503 }
     );
-  } finally {
-    if (!cleanupScheduled) {
-      await fs.rm(tmpDir, { recursive: true, force: true });
-    }
   }
 }

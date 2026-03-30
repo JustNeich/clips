@@ -1,6 +1,9 @@
 import { requireAuth, requireChannelSetupEdit } from "../../../../../../../lib/auth/guards";
 import { createChannelYoutubeOAuthState } from "../../../../../../../lib/publication-store";
-import { buildYouTubeOAuthUrl } from "../../../../../../../lib/youtube-publishing";
+import {
+  assertYouTubePublishingConnectReady,
+  buildYouTubeOAuthUrl
+} from "../../../../../../../lib/youtube-publishing";
 
 export const runtime = "nodejs";
 
@@ -11,6 +14,7 @@ export async function POST(request: Request, context: Context): Promise<Response
   try {
     const auth = await requireAuth();
     await requireChannelSetupEdit(auth, id);
+    assertYouTubePublishingConnectReady();
     const state = createChannelYoutubeOAuthState({
       workspaceId: auth.workspace.id,
       channelId: id,
@@ -33,4 +37,3 @@ export async function POST(request: Request, context: Context): Promise<Response
     );
   }
 }
-

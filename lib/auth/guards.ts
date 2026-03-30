@@ -1,10 +1,10 @@
-import { getCurrentAuthContext } from "./session";
+import { getAuthContextFromRequest, getCurrentAuthContext } from "./session";
 import { AppRole, getWorkspaceCodexIntegration } from "../team-store";
 import { getChannelAccessForUser, getChannelById } from "../chat-history";
 import { resolveChannelPermissions } from "../acl";
 
-export async function requireAuth() {
-  const auth = await getCurrentAuthContext();
+export async function requireAuth(request?: Request) {
+  const auth = request ? await getAuthContextFromRequest(request) : await getCurrentAuthContext();
   if (!auth) {
     throw new Response(JSON.stringify({ error: "Требуется авторизация." }), {
       status: 401,

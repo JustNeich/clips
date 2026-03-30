@@ -329,6 +329,33 @@ export function equalChatList(left: ChatListItem[], right: ChatListItem[]): bool
   return true;
 }
 
+export function syncChatListPublicationSummaries(
+  items: ChatListItem[],
+  summaries: ReadonlyMap<string, NonNullable<ChatListItem["publication"]>>
+): ChatListItem[] {
+  let changed = false;
+  const nextItems = items.map((item) => {
+    const currentPublication = item.publication ?? null;
+    const nextPublication = summaries.get(item.id) ?? null;
+    if (
+      (currentPublication?.id ?? null) === (nextPublication?.id ?? null) &&
+      (currentPublication?.status ?? null) === (nextPublication?.status ?? null) &&
+      (currentPublication?.scheduledAt ?? null) === (nextPublication?.scheduledAt ?? null) &&
+      (currentPublication?.needsReview ?? null) === (nextPublication?.needsReview ?? null) &&
+      (currentPublication?.youtubeVideoUrl ?? null) === (nextPublication?.youtubeVideoUrl ?? null) &&
+      (currentPublication?.lastError ?? null) === (nextPublication?.lastError ?? null)
+    ) {
+      return item;
+    }
+    changed = true;
+    return {
+      ...item,
+      publication: nextPublication
+    };
+  });
+  return changed ? nextItems : items;
+}
+
 export function equalChatThread(
   left: ChatThread | null | undefined,
   right: ChatThread | null | undefined

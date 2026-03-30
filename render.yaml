@@ -10,6 +10,8 @@ services:
     envVars:
       - key: APP_BOOTSTRAP_SECRET
         sync: false
+      - key: APP_ENCRYPTION_KEY
+        sync: false
       - key: APP_DATA_DIR
         value: /var/data/app
       - key: CODEX_SESSIONS_DIR
@@ -21,6 +23,10 @@ services:
       - key: YTDLP_COOKIES_PATH
         sync: false
       - key: YOUTUBE_DATA_API_KEY
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
         sync: false
       - key: VISOLIX_API_KEY
         sync: false

@@ -1,5 +1,6 @@
 import { createReadStream, promises as fs } from "node:fs";
 import { Readable } from "node:stream";
+import { assertAppEncryptionReady } from "./app-crypto";
 import { resolvePublicAppOrigin } from "./public-app-origin";
 import type { ChannelPublishIntegrationOption } from "../app/components/types";
 import type { StoredYoutubeCredential } from "./publication-store";
@@ -47,6 +48,11 @@ function requireGoogleOAuthConfig(): {
     throw new Error("GOOGLE_OAUTH_CLIENT_ID и GOOGLE_OAUTH_CLIENT_SECRET должны быть настроены на сервере.");
   }
   return { clientId, clientSecret };
+}
+
+export function assertYouTubePublishingConnectReady(): void {
+  requireGoogleOAuthConfig();
+  assertAppEncryptionReady();
 }
 
 function buildRedirectUri(request: Request): string {
@@ -160,6 +166,7 @@ async function youtubeApiJson<T>(input: {
 }
 
 export function buildYouTubeOAuthUrl(request: Request, state: string): string {
+  assertYouTubePublishingConnectReady();
   const { clientId } = requireGoogleOAuthConfig();
   const params = new URLSearchParams({
     client_id: clientId,
@@ -182,6 +189,7 @@ export async function exchangeYouTubeOAuthCode(input: {
   googleAccountEmail: string | null;
   availableChannels: ChannelPublishIntegrationOption[];
 }> {
+  assertYouTubePublishingConnectReady();
   const { clientId, clientSecret } = requireGoogleOAuthConfig();
   const payload = await fetchGoogleToken(
     new URLSearchParams({

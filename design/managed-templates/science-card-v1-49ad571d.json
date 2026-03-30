@@ -1,10 +1,10 @@
 {
-  "id": "science-card-v1-15f03407",
+  "id": "science-card-v1-49ad571d",
   "workspaceId": "8a50a0ecf2344f4cbc99998370aa7b8c",
-  "creatorUserId": "e8f4cef1dc904b768fe80539711b4b05",
-  "creatorDisplayName": "neich",
-  "createdAt": "2026-03-29T19:16:23.653Z",
-  "updatedAt": "2026-03-30T08:26:28.394Z",
+  "creatorUserId": "00d983597c624a9984d827b9eb3fe143",
+  "creatorDisplayName": "Codex Background QA",
+  "createdAt": "2026-03-30T09:08:40.335Z",
+  "updatedAt": "2026-03-30T09:08:42.907Z",
   "versions": [],
   "name": "Science Card V1",
   "description": "",
@@ -15,11 +15,11 @@
     "channelName": "Science Snack",
     "channelHandle": "@Science_Snack_1",
     "topHighlightPhrases": [],
-    "topFontScale": 1.35,
-    "bottomFontScale": 1.2,
-    "previewScale": 0.5,
+    "topFontScale": 1,
+    "bottomFontScale": 1,
+    "previewScale": 0.34,
     "mediaAsset": null,
-    "backgroundAsset": null,
+    "backgroundAsset": "/api/design/template-assets/d64ce6e3035444a29739cb37ddf6f48a",
     "avatarAsset": null
   },
   "templateConfig": {
@@ -32,21 +32,21 @@
       "y": 192,
       "width": 907,
       "height": 1461,
-      "radius": 21,
-      "borderWidth": 17,
+      "radius": 12,
+      "borderWidth": 8,
       "borderColor": "#000000",
       "fill": "#ffffff",
-      "shadow": "14px 19px 4px 5px rgba(0, 0, 0, 0.25)"
+      "shadow": "0px 4px 4px 0px rgba(0, 0, 0, 0.25)"
     },
     "slot": {
       "topHeight": 419,
       "bottomHeight": 292,
       "topPaddingX": 6,
       "topPaddingY": 15,
-      "topPaddingTop": 0,
-      "topPaddingBottom": 0,
+      "topPaddingTop": 15,
+      "topPaddingBottom": 15,
       "bottomMetaHeight": 132,
-      "bottomMetaPaddingX": 20,
+      "bottomMetaPaddingX": 23,
       "bottomMetaPaddingY": 0,
       "bottomTextPaddingX": 23,
       "bottomTextPaddingY": 0,
@@ -105,7 +105,7 @@
       "authorHandle": {
         "font": 34,
         "lineHeight": 1,
-        "weight": 450,
+        "weight": 300,
         "letterSpacing": "-0.022em"
       }
     },
@@ -123,11 +123,11 @@
   },
   "shadowLayers": [
     {
-      "id": "shadow-t1bxp1ho",
-      "offsetX": 14,
-      "offsetY": 19,
+      "id": "shadow-ts80izgr",
+      "offsetX": 0,
+      "offsetY": 4,
       "blur": 4,
-      "spread": 5,
+      "spread": 0,
       "opacity": 0.25,
       "color": "#000000",
       "inset": false

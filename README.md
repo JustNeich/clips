@@ -24,6 +24,9 @@
   - явно перегенерировать pool направлений;
   - менять selected directions;
   - менять exploration share.
+- В Stage 3 publication planner удаление ролика из очереди не сбрасывает пользователя со страницы рендера:
+  - карточка исчезает после локальной синхронизации очереди;
+  - UI показывает success toast об удалении.
 
 ## 1. Установка зависимостей проекта
 
@@ -67,6 +70,12 @@ npm run dev
 
 Откройте:
 `http://localhost:3000`
+
+## Команда и роли
+
+- Публичная регистрация создаёт активный аккаунт редактора с ролью `redactor`.
+- В интерфейсе команды приглашение по умолчанию тоже создаётся для полного редактора (`redactor`).
+- `redactor_limited` остаётся отдельной явной ролью для случаев, когда нужно оставить доступ к работе с каналом без права менять setup.
 
 ## Как это работает
 
@@ -278,7 +287,9 @@ Primary Stage 2 control surface:
 - `STAGE3_WORKER_PAIRING_TTL_SEC` — TTL pairing token в секундах.
 - `STAGE3_WORKER_SESSION_TTL_SEC` — TTL worker session token в секундах.
 - `APP_BOOTSTRAP_SECRET` — обязателен в production и на Vercel для one-time owner bootstrap.
+- `APP_ENCRYPTION_KEY` — нужен для хранения OAuth credential payloads публикации. Для production задавайте стабильный ключ, а не dev fallback.
 - `YOUTUBE_DATA_API_KEY` — серверный API key для `YouTube Data API v3`. Это основной production path для комментариев YouTube с любых публичных каналов. Ownership/OAuth не нужны.
+- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — обязательны для подключения YouTube канала и публикации через OAuth.
 - `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для YouTube comments/media, если официальный API временно недоступен и нужно попытаться пройти через `yt-dlp`.
 
 Ограничения comments fetch для YouTube:
@@ -317,6 +328,8 @@ cp .env.example .env.local
    - `Output Directory` = пусто
 2. В `Environment Variables` добавьте:
    - `APP_BOOTSTRAP_SECRET`
+   - `APP_ENCRYPTION_KEY`, если нужен YouTube OAuth/publishing
+   - `GOOGLE_OAUTH_CLIENT_ID` и `GOOGLE_OAUTH_CLIENT_SECRET`, если нужен YouTube OAuth/publishing
    - при необходимости `APP_DATA_DIR` и `CODEX_SESSIONS_DIR`
    - при желании tuning vars из `.env.example`
 3. Не задавайте `CODEX_BIN=/Applications/...` на Vercel. Этот путь работает только локально на macOS.
@@ -338,7 +351,11 @@ cp .env.example .env.local
 3. Выберите `Starter` или выше
 4. Добавьте persistent disk на `/var/data`
 5. Добавьте `APP_BOOTSTRAP_SECRET`
-6. Если YouTube отвечает `Sign in to confirm you’re not a bot`, добавьте:
+6. Если нужен YouTube OAuth/publishing, добавьте:
+   - `APP_ENCRYPTION_KEY`
+   - `GOOGLE_OAUTH_CLIENT_ID`
+   - `GOOGLE_OAUTH_CLIENT_SECRET`
+7. Если YouTube отвечает `Sign in to confirm you’re not a bot`, добавьте:
    - `YTDLP_COOKIES_PATH=/var/data/yt-dlp/cookies.txt`
    - или `YTDLP_COOKIES` с содержимым `cookies.txt`
 

@@ -4,7 +4,63 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { uploadYouTubeVideo } from "../lib/youtube-publishing";
+import { assertYouTubePublishingConnectReady, uploadYouTubeVideo } from "../lib/youtube-publishing";
+
+function withEnv<T>(patch: Record<string, string | undefined>, run: () => T): T {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(patch)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    return run();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+test("YouTube connect readiness fails fast when OAuth client config is missing", () => {
+  assert.throws(
+    () =>
+      withEnv(
+        {
+          NODE_ENV: "production",
+          APP_ENCRYPTION_KEY: "test-encryption-key",
+          GOOGLE_OAUTH_CLIENT_ID: undefined,
+          GOOGLE_OAUTH_CLIENT_SECRET: undefined
+        },
+        () => assertYouTubePublishingConnectReady()
+      ),
+    /GOOGLE_OAUTH_CLIENT_ID/
+  );
+});
+
+test("YouTube connect readiness fails fast when credential storage encryption is unavailable", () => {
+  assert.throws(
+    () =>
+      withEnv(
+        {
+          NODE_ENV: "production",
+          APP_ENCRYPTION_KEY: undefined,
+          GOOGLE_OAUTH_CLIENT_ID: "client-id",
+          GOOGLE_OAUTH_CLIENT_SECRET: "client-secret"
+        },
+        () => assertYouTubePublishingConnectReady()
+      ),
+    /APP_ENCRYPTION_KEY is required in production/
+  );
+});
 
 test("uploadYouTubeVideo streams the artifact body instead of buffering the whole file in memory", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "clips-youtube-upload-test-"));

@@ -13,15 +13,15 @@ type MemberRow = {
 const ROLE_LABELS: Record<AppRole, string> = {
   owner: "владелец",
   manager: "менеджер",
-  redactor: "редактор (обычный)",
-  redactor_limited: "редактор (ограниченный, по умолчанию)"
+  redactor: "редактор",
+  redactor_limited: "редактор (ограниченный)"
 };
 
 export default function TeamPage() {
   const [auth, setAuth] = useState<AuthMeResponse | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<AppRole>("redactor_limited");
+  const [inviteRole, setInviteRole] = useState<AppRole>("redactor");
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -97,7 +97,9 @@ export default function TeamPage() {
   };
 
   const inviteOptions: AppRole[] =
-    auth?.membership.role === "owner" ? ["manager", "redactor_limited"] : ["redactor_limited"];
+    auth?.membership.role === "owner"
+      ? ["manager", "redactor", "redactor_limited"]
+      : ["redactor", "redactor_limited"];
 
   const getAssignableRoles = (memberRole: AppRole): AppRole[] => {
     if (!auth) {
@@ -140,8 +142,8 @@ export default function TeamPage() {
         </div>
         <p className="subtle-text">
           Управляйте ролями и создавайте приглашения. Токен приглашения показывается сразу, потому
-          что отправка писем в v1 ещё не реализована. Новые редакторы по умолчанию заходят в
-          ограниченном режиме, после чего их можно явно перевести в обычный редакторский режим.
+          что отправка писем в v1 ещё не реализована. По умолчанию приглашение создаётся для полного
+          редактора, а ограниченный режим остаётся отдельной явной опцией.
         </p>
         <section className="details-section">
           <h3>Участники</h3>

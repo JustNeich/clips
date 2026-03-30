@@ -3541,6 +3541,7 @@ test("stage 3 draft render-plan override strips channel-managed template fields"
 
   assert.deepEqual(sanitizeStage3DraftRenderPlanOverride(rawOverride), {
     timingMode: base.timingMode,
+    normalizeToTargetEnabled: base.normalizeToTargetEnabled,
     audioMode: base.audioMode,
     sourceAudioEnabled: base.sourceAudioEnabled,
     smoothSlowMo: base.smoothSlowMo,
@@ -3810,6 +3811,7 @@ test("normalizeChatDraft removes legacy template id from stage 3 render-plan ove
   assert.ok(draft);
   assert.deepEqual(draft?.stage3.renderPlan, {
     timingMode: "auto",
+    normalizeToTargetEnabled: false,
     audioMode: "source_only",
     sourceAudioEnabled: true,
     smoothSlowMo: false,
@@ -8243,67 +8245,69 @@ test("app shell renders a compact current-chat header action", () => {
     React.createElement(AppShell, shellProps)
   );
 
-  assert.match(html, /Скачать историю/);
+  assert.match(html, /Еще/);
+  assert.doesNotMatch(html, /Скачать историю/);
 });
 
 test("app shell renders app-level toasts in a dedicated top-left viewport", () => {
+  const shellProps: React.ComponentProps<typeof AppShell> = {
+    title: "Автоматизация клипов",
+    subtitle: "Subtitle",
+    steps: [
+      { id: 1, label: "Шаг 1", enabled: true },
+      { id: 2, label: "Шаг 2", enabled: true },
+      { id: 3, label: "Шаг 3", enabled: true }
+    ],
+    currentStep: 1,
+    onStepChange: () => undefined,
+    historyItems: [],
+    activeHistoryId: null,
+    onHistoryOpen: () => undefined,
+    onDeleteHistory: () => undefined,
+    onCreateNew: () => undefined,
+    channels: [],
+    activeChannelId: null,
+    onSelectChannel: () => undefined,
+    onManageChannels: () => undefined,
+    canManageChannels: false,
+    canManageTeam: false,
+    onOpenTeam: () => undefined,
+    codexConnected: false,
+    codexBusyConnect: false,
+    codexBusyRefresh: false,
+    canManageCodex: false,
+    canConnectCodex: false,
+    codexConnectBlockedReason: null,
+    codexStatusLabel: "Disconnected",
+    codexActionLabel: "Connect",
+    codexDeviceAuth: null,
+    codexSecondaryActionLabel: null,
+    onConnectCodex: () => undefined,
+    onRefreshCodex: () => undefined,
+    currentUserName: "Owner",
+    currentUserRole: "owner",
+    workspaceName: "Workspace",
+    onLogout: () => undefined,
+    statusText: "",
+    statusTone: "",
+    toasts: [
+      {
+        id: "next-chat-shortcut",
+        tone: "neutral",
+        title: "Следующий ролик",
+        message: "Источник уже получен.",
+        variant: "shortcut",
+        actionLabel: "Создать новый чат",
+        onAction: () => undefined,
+        durationMs: 5000
+      }
+    ],
+    onDismissToast: () => undefined,
+    details: React.createElement("div", null),
+    children: React.createElement("div", null, "Body")
+  };
   const html = renderToStaticMarkup(
-    React.createElement(AppShell, {
-      title: "Автоматизация клипов",
-      subtitle: "Subtitle",
-      steps: [
-        { id: 1, label: "Шаг 1", enabled: true },
-        { id: 2, label: "Шаг 2", enabled: true },
-        { id: 3, label: "Шаг 3", enabled: true }
-      ],
-      currentStep: 1,
-      onStepChange: () => undefined,
-      historyItems: [],
-      activeHistoryId: null,
-      onHistoryOpen: () => undefined,
-      onDeleteHistory: () => undefined,
-      onCreateNew: () => undefined,
-      channels: [],
-      activeChannelId: null,
-      onSelectChannel: () => undefined,
-      onManageChannels: () => undefined,
-      canManageChannels: false,
-      canManageTeam: false,
-      onOpenTeam: () => undefined,
-      codexConnected: false,
-      codexBusyConnect: false,
-      codexBusyRefresh: false,
-      canManageCodex: false,
-      canConnectCodex: false,
-      codexConnectBlockedReason: null,
-      codexStatusLabel: "Disconnected",
-      codexActionLabel: "Connect",
-      codexDeviceAuth: null,
-      codexSecondaryActionLabel: null,
-      onConnectCodex: () => undefined,
-      onRefreshCodex: () => undefined,
-      currentUserName: "Owner",
-      currentUserRole: "owner",
-      workspaceName: "Workspace",
-      onLogout: () => undefined,
-      statusText: "",
-      statusTone: "",
-      toasts: [
-        {
-          id: "next-chat-shortcut",
-          tone: "neutral",
-          title: "Следующий ролик",
-          message: "Источник уже получен.",
-          variant: "shortcut",
-          actionLabel: "Создать новый чат",
-          onAction: () => undefined,
-          durationMs: 5000
-        }
-      ],
-      onDismissToast: () => undefined,
-      details: React.createElement("div", null),
-      children: React.createElement("div", null, "Body")
-    })
+    React.createElement(AppShell, shellProps)
   );
 
   assert.match(html, /app-toast-stack/);
@@ -8326,7 +8330,7 @@ test("step 3 render template defaults to the finalization surface with stage 2 m
   assert.match(html, /Взять всё/);
   assert.match(html, /Взять TOP/);
   assert.match(html, /Взять BOTTOM/);
-  assert.match(html, /Используется manual draft/);
+  assert.match(html, /Используется текущий live draft без сохраненной версии/);
 });
 
 test("step 3 background UI reflects the actual resolved background mode", () => {

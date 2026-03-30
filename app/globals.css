@@ -6592,6 +6592,140 @@ select.text-input:focus {
   min-width: 0;
 }
 
+.template-road-editor-upload-card {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.012)),
+    rgba(10, 15, 23, 0.82);
+}
+
+.template-road-editor-upload-preview {
+  min-height: 164px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  overflow: hidden;
+  position: relative;
+}
+
+.template-road-editor-upload-preview.is-empty {
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 52% 16%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 28%),
+    linear-gradient(180deg, rgba(29, 43, 62, 0.94), rgba(12, 18, 28, 0.98));
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.template-road-editor-upload-preview.has-image::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(5, 8, 12, 0), rgba(5, 8, 12, 0.72));
+}
+
+.template-road-editor-upload-body,
+.template-road-editor-upload-copy {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.template-road-editor-upload-copy p {
+  margin: 0;
+}
+
+.template-road-editor-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-road-editor-upload-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.template-road-editor-upload-note.is-error {
+  color: #ff9c9c;
+}
+
+.template-road-editor-badge-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px;
+}
+
+.template-road-editor-badge-option {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.012)),
+    rgba(10, 15, 23, 0.88);
+  color: var(--text);
+  padding: 12px 10px;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
+  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.template-road-editor-badge-option:hover {
+  border-color: rgba(240, 195, 107, 0.42);
+  transform: translateY(-1px);
+}
+
+.template-road-editor-badge-option.is-active {
+  border-color: rgba(240, 195, 107, 0.78);
+  box-shadow: 0 0 0 1px rgba(240, 195, 107, 0.18), 0 12px 26px rgba(0, 0, 0, 0.22);
+}
+
+.template-road-editor-badge-preview {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+}
+
+.template-road-editor-badge-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.template-road-editor-badge-preview-fallback {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.template-road-editor-badge-label {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 .template-road-editor-field-hint {
   font-size: 12px;
   line-height: 1.45;
@@ -6842,6 +6976,14 @@ select.text-input:focus {
   .template-road-editor-grid.two-up,
   .template-road-editor-grid.three-up {
     grid-template-columns: 1fr;
+  }
+
+  .template-road-editor-upload-card {
+    grid-template-columns: 1fr;
+  }
+
+  .template-road-editor-upload-preview {
+    min-height: 180px;
   }
 
   .template-road-editor-shadow-head,

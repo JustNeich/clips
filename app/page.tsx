@@ -166,6 +166,7 @@ import {
   responseLooksLikeJson,
   responseContentType,
   shorten,
+  syncChatListPublicationSummaries,
   sumClientSegmentsDuration,
   toJsonDownload,
   triggerBlobDownload,
@@ -508,6 +509,9 @@ export default function HomePage() {
     }),
     [latestPublicationSummaryByChatId]
   );
+  useEffect(() => {
+    setChatList((prev) => syncChatListPublicationSummaries(prev, latestPublicationSummaryByChatId));
+  }, [latestPublicationSummaryByChatId]);
   const activeChatPublication = useMemo(() => {
     if (!activeChat?.id) {
       return null;
@@ -5332,9 +5336,9 @@ export default function HomePage() {
       throw new Error(await parseError(response, "Не удалось обновить публикацию."));
     }
     if (activeChannelId) {
-      await Promise.all([refreshChannelPublications(activeChannelId), refreshChats()]);
+      await refreshChannelPublications(activeChannelId);
     }
-  }, [activeChannelId, parseError, refreshChannelPublications, refreshChats]);
+  }, [activeChannelId, parseError, refreshChannelPublications]);
 
   const handlePublicationAction = useCallback(async (
     publicationId: string,
@@ -5347,9 +5351,21 @@ export default function HomePage() {
       throw new Error(await parseError(response, "Не удалось выполнить действие для публикации."));
     }
     if (activeChannelId) {
-      await Promise.all([refreshChannelPublications(activeChannelId), refreshChats()]);
+      await refreshChannelPublications(activeChannelId);
     }
-  }, [activeChannelId, parseError, refreshChannelPublications, refreshChats]);
+    if (action === "delete") {
+      showAppToast({
+        id: `publication-delete:${publicationId}`,
+        tone: "success",
+        title: "Публикация удалена",
+        message: "Ролик снят с очереди публикации.",
+        durationMs: 4500,
+        autoHideMs: 4500
+      });
+      setStatusType("ok");
+      setStatus("Публикация удалена.");
+    }
+  }, [activeChannelId, parseError, refreshChannelPublications, showAppToast]);
 
   const handleShiftPublication = useCallback(async (
     publicationId: string,
@@ -5373,7 +5389,7 @@ export default function HomePage() {
     }
     const body = (await response.json()) as { mode?: "moved" | "swapped" };
     if (activeChannelId) {
-      await Promise.all([refreshChannelPublications(activeChannelId), refreshChats()]);
+      await refreshChannelPublications(activeChannelId);
     }
     setStatusType("ok");
     setStatus(
@@ -5384,8 +5400,7 @@ export default function HomePage() {
   }, [
     activeChannelId,
     parseError,
-    refreshChannelPublications,
-    refreshChats
+    refreshChannelPublications
   ]);
 
   const handleSaveWorkspaceStage2Defaults = async (

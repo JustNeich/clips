@@ -23,6 +23,10 @@ function resolveEncryptionKey(): Buffer {
   return createHash("sha256").update("clips-dev-encryption-key").digest();
 }
 
+export function assertAppEncryptionReady(): void {
+  resolveEncryptionKey();
+}
+
 export function encryptJsonPayload(value: unknown): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", resolveEncryptionKey(), iv);
