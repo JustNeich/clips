@@ -1069,19 +1069,21 @@ export function upsertWorkspaceCodexIntegration(input: {
   connectedAt?: string | null;
 }): WorkspaceCodexIntegrationRecord {
   const current = getWorkspaceCodexIntegration(input.workspaceId);
+  const resolveNullable = <T>(nextValue: T | null | undefined, currentValue: T | null | undefined): T | null =>
+    nextValue === undefined ? (currentValue ?? null) : nextValue;
   const record = {
     id: current?.id ?? newId(),
     workspaceId: input.workspaceId,
     provider: "codex" as const,
     status: input.status,
     ownerUserId: input.ownerUserId,
-    codexSessionId: input.codexSessionId ?? current?.codexSessionId ?? null,
-    codexHomePath: input.codexHomePath ?? current?.codexHomePath ?? null,
-    loginStatusText: input.loginStatusText ?? current?.loginStatusText ?? null,
-    deviceAuthStatus: input.deviceAuthStatus ?? current?.deviceAuthStatus ?? null,
-    deviceAuthOutput: input.deviceAuthOutput ?? current?.deviceAuthOutput ?? null,
-    deviceAuthLoginUrl: input.deviceAuthLoginUrl ?? current?.deviceAuthLoginUrl ?? null,
-    deviceAuthUserCode: input.deviceAuthUserCode ?? current?.deviceAuthUserCode ?? null,
+    codexSessionId: resolveNullable(input.codexSessionId, current?.codexSessionId),
+    codexHomePath: resolveNullable(input.codexHomePath, current?.codexHomePath),
+    loginStatusText: resolveNullable(input.loginStatusText, current?.loginStatusText),
+    deviceAuthStatus: resolveNullable(input.deviceAuthStatus, current?.deviceAuthStatus),
+    deviceAuthOutput: resolveNullable(input.deviceAuthOutput, current?.deviceAuthOutput),
+    deviceAuthLoginUrl: resolveNullable(input.deviceAuthLoginUrl, current?.deviceAuthLoginUrl),
+    deviceAuthUserCode: resolveNullable(input.deviceAuthUserCode, current?.deviceAuthUserCode),
     connectedAt:
       input.connectedAt === undefined ? current?.connectedAt ?? null : input.connectedAt,
     updatedAt: nowIso()

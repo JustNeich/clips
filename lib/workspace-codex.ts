@@ -10,6 +10,43 @@ import {
   type WorkspaceCodexIntegrationRecord
 } from "./team-store";
 
+async function codexHomeExists(codexHomePath: string): Promise<boolean> {
+  try {
+    await fs.access(codexHomePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isMissingCodexHomeError(error: unknown, codexHomePath: string): boolean {
+  const message = error instanceof Error ? error.message : "";
+  return (
+    Boolean(message) &&
+    message.includes("CODEX_HOME points to") &&
+    message.includes(codexHomePath) &&
+    message.toLowerCase().includes("does not exist")
+  );
+}
+
+function resetWorkspaceCodexIntegration(
+  current: WorkspaceCodexIntegrationRecord
+): WorkspaceCodexIntegrationRecord {
+  return upsertWorkspaceCodexIntegration({
+    workspaceId: current.workspaceId,
+    ownerUserId: current.ownerUserId,
+    status: "disconnected",
+    codexSessionId: null,
+    codexHomePath: null,
+    loginStatusText: "Отключен",
+    deviceAuthStatus: "idle",
+    deviceAuthOutput: "",
+    deviceAuthLoginUrl: null,
+    deviceAuthUserCode: null,
+    connectedAt: null
+  });
+}
+
 export async function getWorkspaceCodexStatus(
   auth: AuthContext
 ): Promise<WorkspaceCodexIntegrationRecord | null> {
@@ -18,7 +55,20 @@ export async function getWorkspaceCodexStatus(
     return current;
   }
 
-  const state = await getCombinedCodexAuthState(current.codexSessionId, current.codexHomePath);
+  if (!(await codexHomeExists(current.codexHomePath))) {
+    return resetWorkspaceCodexIntegration(current);
+  }
+
+  let state;
+  try {
+    state = await getCombinedCodexAuthState(current.codexSessionId, current.codexHomePath);
+  } catch (error) {
+    if (isMissingCodexHomeError(error, current.codexHomePath)) {
+      return resetWorkspaceCodexIntegration(current);
+    }
+    throw error;
+  }
+
   return upsertWorkspaceCodexIntegration({
     workspaceId: auth.workspace.id,
     ownerUserId: current.ownerUserId,
@@ -119,6 +169,10 @@ export async function mutateWorkspaceCodexIntegration(input: {
 export async function requireWorkspaceCodexHome(workspaceId: string): Promise<string> {
   const integration = getWorkspaceCodexIntegration(workspaceId);
   if (!integration?.codexHomePath) {
+    throw new Error("shared_codex_unavailable");
+  }
+  if (!(await codexHomeExists(integration.codexHomePath))) {
+    resetWorkspaceCodexIntegration(integration);
     throw new Error("shared_codex_unavailable");
   }
   await ensureCodexLoggedIn(integration.codexHomePath);
