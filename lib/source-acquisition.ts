@@ -73,7 +73,31 @@ export type SourceDownloadResult = {
   title: string | null;
   durationSec: number | null;
   videoSizeBytes: number;
+  primaryProviderError: string | null;
+  downloadFallbackUsed: boolean;
 };
+
+type SourceDownloadCoreResult = Omit<
+  SourceDownloadResult,
+  "primaryProviderError" | "downloadFallbackUsed"
+>;
+
+type SourceDownloadOverride = (rawUrl: string, tmpDir: string) => Promise<SourceDownloadCoreResult>;
+
+let testVisolixDownloader: SourceDownloadOverride | null = null;
+let testYtDlpDownloader: SourceDownloadOverride | null = null;
+
+export function setSourceAcquisitionDownloadersForTests(
+  input:
+    | {
+        visolix?: SourceDownloadOverride | null;
+        ytDlp?: SourceDownloadOverride | null;
+      }
+    | null
+): void {
+  testVisolixDownloader = input?.visolix ?? null;
+  testYtDlpDownloader = input?.ytDlp ?? null;
+}
 
 export type SourceMetadataResult = {
   provider: SourceAcquisitionProvider;
@@ -442,7 +466,7 @@ function sanitizeOutputName(rawName: string | null, fallback: string): string {
   return sanitizeFileName(rawName ?? fallback) || fallback;
 }
 
-async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadResult> {
+async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadCoreResult> {
   const targetPath = path.join(tmpDir, "source.mp4");
   const initPayload = await visolixDownloadInit(rawUrl);
   const directDownloadUrl =
@@ -469,7 +493,7 @@ async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<Sourc
   };
 }
 
-async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadResult> {
+async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadCoreResult> {
   const ytDlpPath = await resolveYtDlpExecutable();
   if (!ytDlpPath) {
     throw new Error(
@@ -547,17 +571,32 @@ export async function downloadSourceMedia(
 ): Promise<SourceDownloadResult> {
   const sourceUrl = normalizeSupportedUrl(rawUrl);
   const errors: string[] = [];
+  const visolixDownloader = testVisolixDownloader ?? tryVisolixDownload;
+  const ytDlpDownloader = testYtDlpDownloader ?? tryYtDlpDownload;
+  let primaryProviderError: string | null = null;
 
   if (isVisolixConfigured()) {
     try {
-      return await tryVisolixDownload(sourceUrl, tmpDir);
+      const downloaded = await visolixDownloader(sourceUrl, tmpDir);
+      return {
+        ...downloaded,
+        primaryProviderError: null,
+        downloadFallbackUsed: false
+      };
     } catch (error) {
-      errors.push(error instanceof Error ? `Visolix: ${error.message}` : "Visolix: source fetch failed.");
+      primaryProviderError =
+        error instanceof Error ? `Visolix: ${error.message}` : "Visolix: source fetch failed.";
+      errors.push(primaryProviderError);
     }
   }
 
   try {
-    return await tryYtDlpDownload(sourceUrl, tmpDir);
+    const downloaded = await ytDlpDownloader(sourceUrl, tmpDir);
+    return {
+      ...downloaded,
+      primaryProviderError,
+      downloadFallbackUsed: Boolean(primaryProviderError)
+    };
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "yt-dlp: source fetch failed.");
   }

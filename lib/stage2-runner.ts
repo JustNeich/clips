@@ -34,9 +34,9 @@ import {
   getWorkspaceStage2PromptConfig
 } from "./team-store";
 import {
-  fetchOptionalYtDlpInfo
+  fetchOptionalYtDlpInfo,
+  downloadSourceMedia
 } from "./source-acquisition";
-import { ensureSourceMediaCached } from "./source-media-cache";
 import {
   extractYtDlpErrorFromUnknown,
   sanitizeFileName
@@ -66,6 +66,8 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   infoJson: VideoInfoJson;
   videoSizeBytes: number;
   downloadProvider: "visolix" | "ytDlp";
+  primaryProviderError: string | null;
+  downloadFallbackUsed: boolean;
   commentsExtractionFallbackUsed: boolean;
   commentsAcquisition: {
     status: "primary_success" | "fallback_success" | "unavailable";
@@ -74,7 +76,7 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
     error: string | null;
   };
 }> {
-  const downloaded = await ensureSourceMediaCached(url);
+  const downloaded = await downloadSourceMedia(url, tmpDir);
   const optionalInfo = await fetchOptionalYtDlpInfo(url, tmpDir);
   const title = optionalInfo.infoJson?.title?.trim() || downloaded.title?.trim() || "video";
   const infoJson: VideoInfoJson = {
@@ -91,6 +93,8 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
     infoJson,
     videoSizeBytes: downloaded.videoSizeBytes,
     downloadProvider: downloaded.provider,
+    primaryProviderError: downloaded.primaryProviderError,
+    downloadFallbackUsed: downloaded.downloadFallbackUsed,
     commentsExtractionFallbackUsed: optionalInfo.commentsExtractionFallbackUsed,
     commentsAcquisition: optionalInfo.commentsAcquisition
   };
@@ -601,6 +605,8 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         videoFileName: downloaded.videoFileName,
         videoSizeBytes: downloaded.videoSizeBytes,
         downloadProvider: downloaded.downloadProvider,
+        primaryProviderError: downloaded.primaryProviderError,
+        downloadFallbackUsed: downloaded.downloadFallbackUsed,
         totalComments: allComments.length,
         topComments: allComments.slice(0, 10),
         allComments,

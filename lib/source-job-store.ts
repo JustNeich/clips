@@ -417,20 +417,13 @@ export function finalizeSourceJobSuccess(
 ): SourceJobRecord | null {
   return mutateSourceJob(jobId, (record) => {
     const finishedAt = nowIso();
-    const detail = resultData.sourceMediaReady
-      ? resultData.commentsAvailable
-        ? `Источник проверен. Загружено ${resultData.commentsPayload?.totalComments ?? 0} комментариев.`
-        : "Источник проверен. Продолжаем без комментариев."
-      : resultData.commentsAvailable
-        ? `Комментарии обновлены. Загружено ${resultData.commentsPayload?.totalComments ?? 0} комментариев.`
-        : resultData.commentsError
-          ? `Комментарии недоступны: ${resultData.commentsError}`
-          : "Комментарии для этого источника недоступны.";
     const progress = {
       ...record.progress,
       status: "completed" as const,
       activeStageId: null,
-      detail,
+      detail: resultData.commentsAvailable
+        ? `Источник готов. Загружено ${resultData.commentsPayload?.totalComments ?? 0} комментариев.`
+        : "Источник готов. Продолжаем без комментариев.",
       error: null,
       updatedAt: finishedAt,
       finishedAt

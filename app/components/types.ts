@@ -104,6 +104,8 @@ export type Stage2Response = {
     videoFileName?: string;
     videoSizeBytes?: number;
     downloadProvider?: "visolix" | "ytDlp";
+    primaryProviderError?: string | null;
+    downloadFallbackUsed?: boolean;
     commentsOmittedFromPrompt?: number;
     frameDescriptions?: string[];
     commentsExtractionFallbackUsed?: boolean;
@@ -206,8 +208,6 @@ export type SourceJobResult = {
   sourceUrl: string;
   stage1Ready: boolean;
   title: string | null;
-  sourceMediaReady?: boolean;
-  sourceMediaProvider?: "visolix" | "ytDlp" | null;
   commentsAvailable: boolean;
   commentsError: string | null;
   commentsPayload: CommentsPayload | null;

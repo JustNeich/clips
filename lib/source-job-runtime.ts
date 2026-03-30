@@ -22,7 +22,6 @@ import {
   SourceJobRequest
 } from "./source-job-store";
 import { fetchCommentsForUrl } from "./source-comments";
-import { ensureSourceMediaCached } from "./source-media-cache";
 import { getWorkspaceCodexIntegration } from "./team-store";
 
 type SourceRuntimeState = {
@@ -104,13 +103,9 @@ async function appendSourceSuccessEvent(result: SourceJobResult, commentsPayload
   await appendChatEvent(result.chatId, {
     role: "assistant",
     type: "note",
-    text: result.sourceMediaReady
-      ? result.commentsError
-        ? `Источник проверен. Комментарии недоступны: ${result.commentsError}`
-        : "Источник проверен. Продолжаем без комментариев."
-      : result.commentsError
-        ? `Комментарии недоступны: ${result.commentsError}`
-        : "Комментарии для этого источника недоступны.",
+    text: result.commentsError
+      ? `Источник подготовлен. Комментарии недоступны: ${result.commentsError}`
+      : "Источник подготовлен. Продолжаем без комментариев.",
     data: {
       stage1Ready: true,
       commentsAvailable: false,
@@ -186,18 +181,6 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     throw new Error("Chat not found for source job.");
   }
 
-  let sourceMediaProvider: SourceJobResult["sourceMediaProvider"] = null;
-  let sourceMediaTitle: string | null = null;
-  let sourceMediaReady = false;
-
-  if (job.request.trigger === "fetch") {
-    markSourceJobStageRunning(job.jobId, "prepare", "Проверяем и кэшируем исходное видео.");
-    const cachedSource = await ensureSourceMediaCached(job.sourceUrl);
-    sourceMediaProvider = cachedSource.provider;
-    sourceMediaTitle = cachedSource.title;
-    sourceMediaReady = true;
-  }
-
   let commentsPayload: CommentsPayload | null = null;
   let commentsAvailable = false;
   let commentsError: string | null = null;
@@ -222,9 +205,7 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     channelId: job.channelId,
     sourceUrl: job.sourceUrl,
     stage1Ready: true,
-    title: commentsPayload?.title ?? sourceMediaTitle ?? chat.title ?? null,
-    sourceMediaReady,
-    sourceMediaProvider,
+    title: commentsPayload?.title ?? chat.title ?? null,
     commentsAvailable,
     commentsError,
     commentsPayload,

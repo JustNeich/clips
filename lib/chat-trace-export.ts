@@ -131,6 +131,8 @@ export type ChatTraceExport = {
     url: string;
     title: string | null;
     downloadProvider: Stage2Response["source"]["downloadProvider"] | null;
+    primaryProviderError: string | null;
+    downloadFallbackUsed: boolean;
     commentsAvailable: boolean;
     commentsError: string | null;
     totalComments: number;
@@ -178,6 +180,8 @@ export type ChatTraceExport = {
         commentsUsedForPrompt: number;
         commentsOmittedFromPrompt: number;
         downloadProvider: Stage2Response["source"]["downloadProvider"] | null;
+        primaryProviderError: string | null;
+        downloadFallbackUsed: boolean;
         commentsAcquisitionStatus: Stage2Response["source"]["commentsAcquisitionStatus"] | null;
         commentsAcquisitionProvider: Stage2Response["source"]["commentsAcquisitionProvider"] | null;
         commentsAcquisitionNote: string | null;
@@ -616,6 +620,8 @@ function buildStage2CausalInputs(input: {
       commentsUsedForPrompt: input.rawStage2?.source.commentsUsedForPrompt ?? 0,
       commentsOmittedFromPrompt: input.rawStage2?.source.commentsOmittedFromPrompt ?? 0,
       downloadProvider: input.rawStage2?.source.downloadProvider ?? null,
+      primaryProviderError: input.rawStage2?.source.primaryProviderError ?? null,
+      downloadFallbackUsed: input.rawStage2?.source.downloadFallbackUsed ?? false,
       commentsAcquisitionStatus: input.rawStage2?.source.commentsAcquisitionStatus ?? null,
       commentsAcquisitionProvider: input.rawStage2?.source.commentsAcquisitionProvider ?? null,
       commentsAcquisitionNote: input.rawStage2?.source.commentsAcquisitionNote ?? null,
@@ -965,10 +971,9 @@ export async function buildChatTraceExport(
         sanitizedCurrentStage2?.source.title ??
         latestSourceJobWithResult?.resultData?.title ??
         (chat.title !== chat.url ? chat.title : null),
-      downloadProvider:
-        sanitizedCurrentStage2?.source.downloadProvider ??
-        latestSourceJobWithResult?.resultData?.sourceMediaProvider ??
-        null,
+      downloadProvider: sanitizedCurrentStage2?.source.downloadProvider ?? null,
+      primaryProviderError: sanitizedCurrentStage2?.source.primaryProviderError ?? null,
+      downloadFallbackUsed: sanitizedCurrentStage2?.source.downloadFallbackUsed ?? false,
       commentsAvailable: exportComments.available,
       commentsError:
         rawCurrentStage2?.source.commentsAcquisitionError ??
