@@ -213,6 +213,8 @@ const DetailsDrawer = dynamic(
   }
 );
 
+const AUTH_REQUIRED_REDIRECT_MESSAGE = "AUTH_REQUIRED_REDIRECT";
+
 const ChannelManager = dynamic(
   () => import("./components/ChannelManager").then((mod) => mod.ChannelManager),
   {
@@ -268,6 +270,7 @@ export default function HomePage() {
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [authState, setAuthState] = useState<AuthMeResponse | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [authRecoveryMessage, setAuthRecoveryMessage] = useState<string | null>(null);
 
   const [draftUrl, setDraftUrl] = useState("");
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -737,12 +740,16 @@ export default function HomePage() {
     const response = await fetch("/api/auth/me");
     if (!response.ok) {
       if (response.status === 401) {
-        window.location.href = "/login";
+        setAuthState(null);
+        setAuthRecoveryMessage("Сессия рабочего пространства завершилась. Войдите снова, чтобы вернуть каналы и историю.");
+        window.location.replace("/login");
+        throw new Error(AUTH_REQUIRED_REDIRECT_MESSAGE);
       }
       throw new Error(await parseError(response, "Не удалось загрузить состояние авторизации."));
     }
     const body = (await response.json()) as AuthMeResponse;
     setAuthState(body);
+    setAuthRecoveryMessage(null);
     return body;
   }, [parseError]);
 
@@ -1445,8 +1452,11 @@ export default function HomePage() {
         await refreshCodexAuth({ background: true });
         await refreshChannels(restoredFlowShellState?.channelId ?? null);
       } catch (error) {
-        setStatusType("error");
-        setStatus(getUiErrorMessage(error, "Не удалось инициализировать приложение."));
+        if (!(error instanceof Error && error.message === AUTH_REQUIRED_REDIRECT_MESSAGE)) {
+          setStatusType("error");
+          setStatus(getUiErrorMessage(error, "Не удалось инициализировать приложение."));
+          setAuthRecoveryMessage("Не удалось восстановить сессию рабочего пространства. Попробуйте войти снова.");
+        }
       } finally {
         setIsAuthLoading(false);
       }
@@ -5811,7 +5821,7 @@ export default function HomePage() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } finally {
-      window.location.href = "/login";
+      window.location.replace("/login");
     }
   };
 
@@ -5822,6 +5832,35 @@ export default function HomePage() {
       <main className="app-layout">
         <section className="app-main">
           <p className="status-line ok">Загрузка рабочего пространства...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!authState) {
+    return (
+      <main className="auth-page">
+        <section className="auth-card">
+          <h1>Нужно снова войти</h1>
+          <p className="subtle-text">
+            Данные рабочего пространства не удалены. Сейчас приложение не смогло восстановить активную сессию.
+          </p>
+          {authRecoveryMessage ? <p className="status-line error">{authRecoveryMessage}</p> : null}
+          {statusType === "error" && status ? <p className="status-line error">{status}</p> : null}
+          <div className="auth-links">
+            <a className="btn btn-primary" href="/login">
+              Перейти ко входу
+            </a>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                window.location.reload();
+              }}
+            >
+              Обновить страницу
+            </button>
+          </div>
         </section>
       </main>
     );

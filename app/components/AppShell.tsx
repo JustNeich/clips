@@ -93,6 +93,10 @@ export function getOverflowActionWrapperProps(
   };
 }
 
+export function getWorkspaceLogoutLabel(): string {
+  return "Выйти из приложения";
+}
+
 function getStepState(stepId: number, currentStep: number): "completed" | "current" | "next" {
   if (stepId < currentStep) {
     return "completed";
@@ -1025,7 +1029,7 @@ export function AppShell({
                           onLogout();
                         }}
                       >
-                        Выйти
+                        {getWorkspaceLogoutLabel()}
                       </button>
                       </div>
                     ) : null}

@@ -7,6 +7,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   AppShell,
+  getWorkspaceLogoutLabel,
   getOverflowActionWrapperProps,
   type AppShellProps
 } from "../app/components/AppShell";
@@ -8597,6 +8598,10 @@ test("app shell renders app-level toasts in a dedicated top-left viewport", () =
   assert.match(html, /Создать новый чат/);
   assert.match(html, /app-toast-timer/);
   assert.match(html, /--toast-duration:5000ms/);
+});
+
+test("app shell labels the account exit action explicitly", () => {
+  assert.equal(getWorkspaceLogoutLabel(), "Выйти из приложения");
 });
 
 test("step 3 render template defaults to the finalization surface with stage 2 mix actions", () => {
