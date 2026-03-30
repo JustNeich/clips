@@ -214,6 +214,19 @@ export type ChatTraceExport = {
       rationaleRaw: string | null;
       rationaleInternalRaw: string | null;
       rationaleInternalModelRaw: string | null;
+      topSignalSummary: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              finalSelector?: {
+                shortlistStats?: {
+                  topSignalSummary?: infer U;
+                };
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
     };
     examplesRuntimeUsage: {
       source: Stage2Response["diagnostics"] extends infer T
@@ -497,7 +510,8 @@ function buildStage2Outcome(rawStage2: Stage2Response | null) {
     finalPickReason: rawStage2?.output.finalPick.reason ?? null,
     rationaleRaw: finalSelector?.rationaleRaw ?? null,
     rationaleInternalRaw: finalSelector?.rationaleInternalRaw ?? null,
-    rationaleInternalModelRaw: finalSelector?.rationaleInternalModelRaw ?? null
+    rationaleInternalModelRaw: finalSelector?.rationaleInternalModelRaw ?? null,
+    topSignalSummary: finalSelector?.shortlistStats?.topSignalSummary ?? null
   };
 }
 

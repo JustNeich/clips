@@ -469,6 +469,12 @@ Step 2 is still the place to:
 - choose the preferred caption option
 - choose the title option
 
+TOP guidance defaults:
+- `TOP` is a contextual hook and compressed setup, not a screenshot-style inventory of the paused frame.
+- Stage 2 prefers lines that land the why-care clause early while staying visually defensible.
+- For reveal-driven clips the default policy is `hint, don't fully spoil`: `TOP` should frame the normal read plus the tension or misread, without fully narrating the payoff unless that clearly improves the hook.
+- During shortlist assembly Stage 2 now applies soft penalties, not hard drops, to descriptive `TOP` anti-patterns such as comma-chained object lists, beat-by-beat camera-log narration, and hooks that arrive only in the final third of the line.
+
 Step 3 is now the official place to:
 - manually edit final `TOP` / `BOTTOM`
 - mix `TOP` from one Stage 2 option with `BOTTOM` from another
@@ -508,6 +514,7 @@ When a run looks suspicious:
    - per-stage manifests in `stage2.stageManifests`
    - active corpus vs selector prompt pool in `stage2.examplesRuntimeUsage`
    - canonical final-selector outcome in `stage2.outcome`
+   - `stage2.outcome.topSignalSummary` when debugging weak or overly descriptive `TOP` behavior
    - explicit export truncation in `stage2.exportOmissions`
    - Stage 2 -> Stage 3 handoff summary
 

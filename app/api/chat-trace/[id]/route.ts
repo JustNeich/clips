@@ -15,7 +15,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   const selectedRunId = url.searchParams.get("selectedRunId")?.trim() || null;
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const chat = await getChatById(id);
     if (!chat || chat.workspaceId !== auth.workspace.id) {
       return Response.json({ error: "Chat not found." }, { status: 404 });

@@ -83,6 +83,16 @@ export type AppShellProps = {
   afterDetails?: ReactNode;
 };
 
+export function getOverflowActionWrapperProps(
+  closeOverflowMenus: () => void
+): Pick<React.HTMLAttributes<HTMLDivElement>, "onClick"> {
+  return {
+    onClick: () => {
+      closeOverflowMenus();
+    }
+  };
+}
+
 function getStepState(stepId: number, currentStep: number): "completed" | "current" | "next" {
   if (stepId < currentStep) {
     return "completed";
@@ -902,7 +912,11 @@ export function AppShell({
                         </button>
                       ) : null}
                       {headerActions ? (
-                        <div className="topbar-inline-action" onClickCapture={closeOverflowMenus}>
+                        <div
+                          className="topbar-inline-action"
+                          // Bubble-phase close lets the nested button handler run before the menu unmounts.
+                          {...getOverflowActionWrapperProps(closeOverflowMenus)}
+                        >
                           {headerActions}
                         </div>
                       ) : null}

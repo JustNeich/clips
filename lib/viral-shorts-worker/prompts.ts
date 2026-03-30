@@ -10,6 +10,8 @@ import {
   Stage2DiagnosticsSourceContext,
   Stage2ExamplesAssessment,
   Stage2RuntimeChannelConfig,
+  Stage2TopGuidance,
+  Stage2TopQualitySignals,
   Stage2WriterBriefDigest,
   ViralShortsVideoContext
 } from "./types";
@@ -46,6 +48,75 @@ const MAX_ANALYZER_DESCRIPTION_CHARS = 1_200;
 const MAX_ANALYZER_TRANSCRIPT_CHARS = 8_000;
 const MAX_ANALYZER_COMMENT_COUNT = 20;
 const MAX_ANALYZER_COMMENT_CHARS = 280;
+const TOP_HOOK_MARKER_PATTERNS = [
+  /\bturns?\s+into\b/i,
+  /\bbecomes?\b/i,
+  /\bstops?\s+(?:sounding|reading)\b/i,
+  /\binstead of\b/i,
+  /\bwhich means\b/i,
+  /\bforces?\b/i,
+  /\bthe moment\b/i,
+  /\bthe second\b/i,
+  /\byou can tell\b/i,
+  /\balready knows?\b/i,
+  /\bthis is where\b/i,
+  /\bthat'?s where\b/i,
+  /\breads like\b/i,
+  /\bfeels?\s+like\b/i,
+  /\bmisread\b/i,
+  /\bliteral\b/i,
+  /\bpayoff\b/i,
+  /\breveal\b/i,
+  /\bjoke\b/i,
+  /\brule\b/i,
+  /\bdanger\b/i,
+  /\bpanic\b/i,
+  /\bso (?:fast|hard|wrong|weird|cleanly|clearly|unfair)\b/i,
+  /\bbefore\b.{0,18}\beven\b/i,
+  /\buntil\b/i,
+  /\bwildcard\b/i,
+  /\bcheat code\b/i
+];
+const TOP_SEQUENCE_MARKER_PATTERNS = [
+  /\bthen\b/i,
+  /\bstarts?\b/i,
+  /\bkeeps?\b/i,
+  /\bcuts?\b/i,
+  /\bappears?\b/i,
+  /\bheads?\b/i,
+  /\bmoves?\b/i,
+  /\bline says\b/i,
+  /\bscreen says\b/i,
+  /\bplayers?\s+line up\b/i,
+  /\bthe cue sets\b/i,
+  /\bthe shot keeps going\b/i,
+  /\bthe scene cuts\b/i
+];
+const TOP_BAD_OPENING_PATTERNS = [
+  /^the clip starts\b/i,
+  /^it starts\b/i,
+  /^the scene starts\b/i,
+  /^the scene cuts\b/i,
+  /^then the scene\b/i,
+  /^the camera\b/i,
+  /^players?\s+line up\b/i,
+  /^the cue sets\b/i,
+  /^screen says\b/i,
+  /^the line says\b/i,
+  /^the shot keeps going\b/i,
+  /^blue felt\b/i,
+  /^cue bridge\b/i
+];
+const REVEAL_GUIDANCE_PATTERNS = [
+  /\breveal\b/i,
+  /\bmisread\b/i,
+  /\bliteral\b/i,
+  /\bbait\b/i,
+  /\bswitch\b/i,
+  /\bpayoff\b/i,
+  /\bturn\b/i,
+  /\breinterpret/i
+];
 const GENERIC_BOTTOM_TAIL_PATTERNS = [
   /reaction basically writes itself/i,
   /whole room feels it immediately/i,
@@ -154,6 +225,24 @@ function renderTemplate(template: string, bindings: Record<string, string>): str
   return template.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_match, key: string) => bindings[key] ?? "");
 }
 
+function findFirstPatternIndex(text: string, patterns: RegExp[]): number | null {
+  let bestIndex: number | null = null;
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (typeof match?.index !== "number") {
+      continue;
+    }
+    if (bestIndex === null || match.index < bestIndex) {
+      bestIndex = match.index;
+    }
+  }
+  return bestIndex;
+}
+
+function countMatches(text: string, patterns: RegExp[]): number {
+  return patterns.reduce((count, pattern) => count + Number(pattern.test(text)), 0);
+}
+
 export function resolveStage2PromptTemplate(
   stageId: Stage2PromptConfigStageId,
   promptConfig?: Stage2PromptConfig | null
@@ -226,6 +315,182 @@ function normalizePromptTextKey(value: string): string {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function resolveTopGuidance(input: {
+  analyzerOutput: Pick<
+    AnalyzerOutput,
+    "revealMoment" | "lateClipChange" | "stakes" | "rawSummary" | "whyViewerCares"
+  >;
+  selectorOutput: Pick<
+    SelectorOutput,
+    "clipType" | "primaryAngle" | "topStrategy" | "narrativeFrame" | "humanStake" | "whyViewerCares"
+  > &
+    Partial<Stage2TopGuidance>;
+}): Stage2TopGuidance {
+  const existingAvoidPatterns = input.selectorOutput.topAvoidPatterns?.filter(Boolean) ?? [];
+  const existingMustDo = input.selectorOutput.topMustDo?.filter(Boolean) ?? [];
+  if (
+    input.selectorOutput.topHookMode &&
+    input.selectorOutput.revealPolicy &&
+    existingAvoidPatterns.length > 0 &&
+    existingMustDo.length > 0
+  ) {
+    return {
+      topHookMode: input.selectorOutput.topHookMode,
+      revealPolicy: input.selectorOutput.revealPolicy,
+      topAvoidPatterns: existingAvoidPatterns,
+      topMustDo: existingMustDo
+    };
+  }
+
+  const revealContext = [
+    input.selectorOutput.clipType,
+    input.selectorOutput.primaryAngle,
+    input.selectorOutput.topStrategy,
+    input.selectorOutput.narrativeFrame,
+    input.selectorOutput.whyViewerCares,
+    input.analyzerOutput.revealMoment,
+    input.analyzerOutput.lateClipChange,
+    input.analyzerOutput.rawSummary
+  ]
+    .join(" ")
+    .toLowerCase();
+  const stakes = input.analyzerOutput.stakes.map((stake) => stake.toLowerCase());
+  const revealDriven =
+    input.selectorOutput.primaryAngle === "payoff_reveal" ||
+    REVEAL_GUIDANCE_PATTERNS.some((pattern) => pattern.test(revealContext));
+  const insiderDriven =
+    input.selectorOutput.primaryAngle === "insider_expertise" ||
+    /insider|recognize|recognition|blue-collar|lived-in/.test(revealContext);
+  const competenceDriven =
+    input.selectorOutput.primaryAngle === "competence_process" ||
+    /competence|process|understood|right way|real use case/.test(revealContext);
+  const absurdityDriven =
+    input.selectorOutput.primaryAngle === "absurdity_chaos" ||
+    /absurd|paradox|wrong|literal/.test(revealContext);
+  const dangerDriven =
+    input.selectorOutput.primaryAngle === "tension_danger" ||
+    stakes.some((stake) => /danger|risk|panic|break|failure/.test(stake));
+
+  const topHookMode =
+    input.selectorOutput.topHookMode ??
+    (dangerDriven
+      ? "danger-first context"
+      : insiderDriven
+        ? "insider-recognition setup"
+        : competenceDriven
+          ? "competence-contrast setup"
+          : revealDriven
+            ? "reveal/misread setup"
+            : absurdityDriven
+              ? "paradox-first setup"
+              : "context-compression hook");
+  const revealPolicy =
+    input.selectorOutput.revealPolicy ??
+    (revealDriven ? "hint-don't-fully-spoil" : "no-special-reveal-guardrail");
+  const topAvoidPatterns =
+    existingAvoidPatterns.length > 0
+      ? existingAvoidPatterns
+      : [
+          "comma-chained object inventory before the hook lands",
+          "beat-by-beat narration like a camera log",
+          "openings such as 'the clip starts', 'then it cuts', 'cue sets', or 'players line up'",
+          "delaying the why-care clause until the very end",
+          ...(revealDriven ? ["fully cashing out the reveal in TOP before the visual earns it"] : [])
+        ];
+  const topMustDo =
+    existingMustDo.length > 0
+      ? existingMustDo
+      : [
+          "deliver the why-care clause early, not after a long setup list",
+          "stay visually defensible from the paused frame",
+          dangerDriven
+            ? "frame the risk or consequence fast instead of inventorying objects"
+            : insiderDriven
+              ? "signal the insider-recognition read early instead of narrating sequence"
+              : competenceDriven
+                ? "name the real competence contrast instead of listing process beats"
+                : revealDriven
+                  ? "set up the normal read plus the tension or misread without fully narrating the payoff"
+                  : absurdityDriven
+                    ? "surface the paradox or social wrongness early"
+                    : "compress context into a clean hook before listing scene details"
+        ];
+
+  return {
+    topHookMode,
+    revealPolicy,
+    topAvoidPatterns,
+    topMustDo
+  };
+}
+
+export function evaluateTopHookSignals(top: string): Stage2TopQualitySignals {
+  const normalized = String(top ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return {
+      inventoryOpening: false,
+      lateHook: false,
+      pureBeatNarration: false,
+      earlyHookPresent: false,
+      notes: [],
+      scoreAdjustment: 0
+    };
+  }
+
+  const firstClause = normalized.split(/[.!?]/)[0] ?? normalized;
+  const openingWindow = normalized.slice(0, 70);
+  const hookIndex = findFirstPatternIndex(normalized, TOP_HOOK_MARKER_PATTERNS);
+  const earlyHookPresent = hookIndex !== null && hookIndex <= Math.min(110, Math.floor(normalized.length * 0.62));
+  const lateHook =
+    hookIndex !== null &&
+    hookIndex >= Math.max(80, Math.floor((normalized.length * 2) / 3));
+  const openingCommaCount = (firstClause.match(/,/g) ?? []).length;
+  const openingChunks = firstClause
+    .split(/,|\band\b/gi)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+  const inventoryOpening =
+    !earlyHookPresent &&
+    (openingCommaCount >= 2 ||
+      openingChunks.length >= 3 ||
+      TOP_BAD_OPENING_PATTERNS.some((pattern) => pattern.test(openingWindow)));
+  const sequenceMarkerCount = countMatches(normalized, TOP_SEQUENCE_MARKER_PATTERNS);
+  const pureBeatNarration =
+    !earlyHookPresent &&
+    (sequenceMarkerCount >= 2 ||
+      TOP_BAD_OPENING_PATTERNS.some((pattern) => pattern.test(normalized)));
+
+  const notes: string[] = [];
+  let scoreAdjustment = 0;
+
+  if (inventoryOpening && !earlyHookPresent) {
+    notes.push("Inventory-style opening delays the why-care clause.");
+    scoreAdjustment -= 1.2;
+  } else if (lateHook || pureBeatNarration) {
+    if (lateHook) {
+      notes.push("The main hook arrives only in the final third of the TOP.");
+    }
+    if (pureBeatNarration) {
+      notes.push("The TOP mostly narrates sequence changes instead of framing why the clip matters.");
+    }
+    scoreAdjustment -= 0.7;
+  }
+
+  if (earlyHookPresent && !inventoryOpening && !pureBeatNarration && !lateHook) {
+    notes.push("The why-care hook lands early without abandoning visual truth.");
+    scoreAdjustment += 0.4;
+  }
+
+  return {
+    inventoryOpening,
+    lateHook,
+    pureBeatNarration,
+    earlyHookPresent,
+    notes,
+    scoreAdjustment: Number(scoreAdjustment.toFixed(2))
+  };
 }
 
 function truncateWords(value: string, maxWords: number): string {
@@ -488,6 +753,10 @@ function buildCandidateBatchSignals(
   const openingCounts = new Map<string, { count: number; candidateIds: string[] }>();
   const tailCounts = new Map<string, { count: number; candidateIds: string[] }>();
   const genericTailCandidateIds: string[] = [];
+  const inventoryOpeningCandidateIds: string[] = [];
+  const lateHookCandidateIds: string[] = [];
+  const pureBeatNarrationCandidateIds: string[] = [];
+  const earlyHookPreferredCandidateIds: string[] = [];
   const commentCarryProfile = analyzerOutput ? buildCommentCarryProfile(analyzerOutput) : null;
   const commentNativeCandidates: Array<{
     candidateId: string;
@@ -528,6 +797,19 @@ function buildCandidateBatchSignals(
 
     if (GENERIC_BOTTOM_TAIL_PATTERNS.some((pattern) => pattern.test(candidate.bottom))) {
       genericTailCandidateIds.push(candidate.candidateId);
+    }
+    const topSignals = evaluateTopHookSignals(candidate.top);
+    if (topSignals.inventoryOpening) {
+      inventoryOpeningCandidateIds.push(candidate.candidateId);
+    }
+    if (topSignals.lateHook) {
+      lateHookCandidateIds.push(candidate.candidateId);
+    }
+    if (topSignals.pureBeatNarration) {
+      pureBeatNarrationCandidateIds.push(candidate.candidateId);
+    }
+    if (topSignals.earlyHookPresent && topSignals.scoreAdjustment > 0) {
+      earlyHookPreferredCandidateIds.push(candidate.candidateId);
     }
     if (commentCarryProfile) {
       const commentCarry = evaluateCandidateCommentCarry({
@@ -572,6 +854,10 @@ function buildCandidateBatchSignals(
       .slice(0, 6)
       .map(([styleDirectionId, count]) => ({ styleDirectionId, count })),
     genericTailCandidateIds,
+    inventoryOpeningCandidateIds,
+    lateHookCandidateIds,
+    pureBeatNarrationCandidateIds,
+    earlyHookPreferredCandidateIds,
     commentCarryExpectation: commentCarryProfile?.expectation ?? "low",
     dominantAudienceCues: commentCarryProfile?.dominantCues ?? [],
     commentCarrySummary: commentCarryProfile?.summary ?? null,
@@ -630,6 +916,16 @@ function buildCompactSelectorVideoContext(videoContext: ViralShortsVideoContext)
 }
 
 function buildPromptSelectorOutputPayload(selectorOutput: SelectorOutput) {
+  const topGuidance = resolveTopGuidance({
+    analyzerOutput: {
+      revealMoment: "",
+      lateClipChange: "",
+      stakes: [],
+      rawSummary: "",
+      whyViewerCares: selectorOutput.whyViewerCares
+    },
+    selectorOutput
+  });
   return {
     clipType: selectorOutput.clipType,
     primaryAngle: selectorOutput.primaryAngle,
@@ -642,6 +938,10 @@ function buildPromptSelectorOutputPayload(selectorOutput: SelectorOutput) {
     narrativeFrame: selectorOutput.narrativeFrame,
     whyViewerCares: selectorOutput.whyViewerCares,
     topStrategy: selectorOutput.topStrategy,
+    topHookMode: topGuidance.topHookMode,
+    revealPolicy: topGuidance.revealPolicy,
+    topAvoidPatterns: topGuidance.topAvoidPatterns,
+    topMustDo: topGuidance.topMustDo,
     bottomEnergy: selectorOutput.bottomEnergy,
     whyOldV6WouldWorkHere: selectorOutput.whyOldV6WouldWorkHere,
     failureModes: selectorOutput.failureModes,
@@ -728,6 +1028,10 @@ function buildWriterBriefDigest(input: {
   selectorOutput: SelectorOutput;
   userInstruction?: string | null;
 }): Stage2WriterBriefDigest {
+  const topGuidance = resolveTopGuidance({
+    analyzerOutput: input.analyzerOutput,
+    selectorOutput: input.selectorOutput
+  });
   return {
     clipType: input.selectorOutput.clipType,
     primaryAngle: input.selectorOutput.primaryAngle,
@@ -735,6 +1039,10 @@ function buildWriterBriefDigest(input: {
     rankedAngles: input.selectorOutput.rankedAngles.slice(0, 4),
     writerBrief: input.selectorOutput.writerBrief,
     topStrategy: input.selectorOutput.topStrategy,
+    topHookMode: topGuidance.topHookMode,
+    revealPolicy: topGuidance.revealPolicy,
+    topAvoidPatterns: topGuidance.topAvoidPatterns,
+    topMustDo: topGuidance.topMustDo,
     bottomEnergy: input.selectorOutput.bottomEnergy,
     whyViewerCares: input.selectorOutput.whyViewerCares,
     failureModes: input.selectorOutput.failureModes.slice(0, 6),
@@ -749,6 +1057,7 @@ function buildCandidateReviewPayload(
   options?: {
     includeTranslations?: boolean;
     includeRationale?: boolean;
+    includeTopSignals?: boolean;
     maxItems?: number;
   }
 ) {
@@ -763,6 +1072,7 @@ function buildCandidateReviewPayload(
     bottom: candidate.bottom,
     topLength: candidate.top.length,
     bottomLength: candidate.bottom.length,
+    ...(options?.includeTopSignals ? { topHookSignals: evaluateTopHookSignals(candidate.top) } : {}),
     ...(includeTranslations
       ? {
           topRu: candidate.topRu,
@@ -1156,7 +1466,8 @@ export function buildCriticPrompt(input: {
     candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
     candidates: buildCandidateReviewPayload(input.candidates, {
       includeTranslations: false,
-      includeRationale: false
+      includeRationale: false,
+      includeTopSignals: true
     })
   });
 }
@@ -1187,7 +1498,8 @@ export function buildRewriterPrompt(input: {
     criticScores: buildCriticScoreDigest(input.criticScores, { candidateIds }),
     candidates: buildCandidateReviewPayload(input.candidates, {
       includeTranslations: true,
-      includeRationale: false
+      includeRationale: false,
+      includeTopSignals: true
     })
   });
 }
@@ -1211,7 +1523,8 @@ export function buildFinalSelectorPrompt(input: {
     candidateSetSignals: buildCandidateBatchSignals(input.candidates, input.analyzerOutput),
     candidates: buildCandidateReviewPayload(input.candidates, {
       includeTranslations: false,
-      includeRationale: false
+      includeRationale: false,
+      includeTopSignals: true
     })
   });
 }

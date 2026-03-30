@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { POST as fetchComments } from "../app/api/comments/route";
+import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
 import { POST as downloadSource } from "../app/api/download/route";
 import { GET as getRuntimeCapabilities } from "../app/api/runtime/capabilities/route";
 import { GET as readStage3Background } from "../app/api/stage3/background/[id]/route";
@@ -73,6 +74,42 @@ test("private API routes reject fake app-session cookies instead of trusting coo
       assert.equal(response.status, 401);
       assert.equal(body.error, "Требуется авторизация.");
     }
+  });
+});
+
+test("chat trace export route returns an attachment for authenticated workspace members", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Trace Route Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Trace Route Channel",
+      username: "trace_route"
+    });
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/watch?v=traceRoute01",
+      channel.id
+    );
+
+    const response = await getChatTrace(
+      new Request(`http://localhost/api/chat-trace/${chat.id}`, {
+        headers: { cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}` }
+      }),
+      { params: Promise.resolve({ id: chat.id }) }
+    );
+    const body = (await response.json()) as { version?: string; chat?: { id?: string } };
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /application\/json/i);
+    assert.match(response.headers.get("content-disposition") ?? "", /attachment; filename="clip-trace-trace_route-/);
+    assert.equal(body.version, "clip-trace-export-v2");
+    assert.equal(body.chat?.id, chat.id);
   });
 });
 

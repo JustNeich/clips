@@ -9,10 +9,13 @@ import {
   Stage2DebugMode,
   Stage2ExamplesAssessment,
   Stage2ExampleGuidanceRole,
+  Stage2CandidateTopSignalSummary,
   Stage2Diagnostics,
   Stage2DiagnosticsExample,
   Stage2DiagnosticsPromptStage,
   Stage2RunDebugArtifact,
+  Stage2TopQualitySignals,
+  Stage2TopSignalSummary,
   Stage2TokenUsage,
   Stage2RuntimeChannelConfig,
   ViralShortsStage2Result,
@@ -24,10 +27,12 @@ import {
   buildStage2PromptInputManifestMap,
   buildStage2SourceContextSummary,
   buildCriticPrompt,
+  evaluateTopHookSignals,
   evaluateCandidateCommentCarry,
   buildFinalSelectorPrompt,
   buildPromptPacket,
   buildRewriterPrompt,
+  resolveTopGuidance,
   buildSelectorPrompt,
   buildTitlePrompt,
   buildWriterPrompt,
@@ -2371,7 +2376,9 @@ type ShortlistEntry = {
   commentCarryScore: number;
   usesDominantCommentCue: boolean;
   matchedCommentCues: string[];
+  topSignals: Stage2TopQualitySignals;
   selectionScore: number;
+  valid: boolean;
 };
 
 type ShortlistStats = {
@@ -2381,6 +2388,7 @@ type ShortlistStats = {
   visibleCount: number;
   repairedCount: number;
   droppedAfterValidationCount: number;
+  topSignalSummary?: Stage2TopSignalSummary;
   invalidReasonSummary?: string | null;
 };
 
@@ -2443,6 +2451,7 @@ function computeShortlistSelectionScore(entry: {
   candidate: CandidateCaption;
   commentCarryScore: number;
   usesDominantCommentCue: boolean;
+  topSignals: Stage2TopQualitySignals;
 }): number {
   const genericTailPenalty = hasGenericBottomTail(entry.candidate.bottom)
     ? entry.constraintCheck.repaired
@@ -2460,8 +2469,143 @@ function computeShortlistSelectionScore(entry: {
           : 0;
   const dominantCueBonus = entry.usesDominantCommentCue ? 0.15 : 0;
   return Number(
-    (entry.criticTotal + commentCarryBonus + dominantCueBonus - genericTailPenalty - repairedPenalty).toFixed(3)
+    (
+      entry.criticTotal +
+      commentCarryBonus +
+      dominantCueBonus +
+      entry.topSignals.scoreAdjustment -
+      genericTailPenalty -
+      repairedPenalty
+    ).toFixed(3)
   );
+}
+
+function buildCandidateTopSignalSummary(entry: ShortlistEntry): Stage2CandidateTopSignalSummary {
+  return {
+    candidateId: entry.candidate.candidateId,
+    inventoryOpening: entry.topSignals.inventoryOpening,
+    lateHook: entry.topSignals.lateHook,
+    pureBeatNarration: entry.topSignals.pureBeatNarration,
+    earlyHookPresent: entry.topSignals.earlyHookPresent,
+    notes: entry.topSignals.notes,
+    scoreAdjustment: entry.topSignals.scoreAdjustment
+  };
+}
+
+function buildTopSignalSummary(
+  validatedEntries: ShortlistEntry[],
+  visibleEntries: ShortlistEntry[]
+): Stage2TopSignalSummary {
+  const countFlags = (entries: ShortlistEntry[]) => ({
+    inventoryOpening: entries.filter((entry) => entry.topSignals.inventoryOpening).length,
+    lateHook: entries.filter((entry) => entry.topSignals.lateHook).length,
+    pureBeatNarration: entries.filter((entry) => entry.topSignals.pureBeatNarration).length,
+    earlyHookPresent: entries.filter((entry) => entry.topSignals.earlyHookPresent).length
+  });
+
+  return {
+    validatedCounts: countFlags(validatedEntries),
+    visibleCandidateSignals: visibleEntries.map(buildCandidateTopSignalSummary)
+  };
+}
+
+function countDirectCommentCueMatches(entry: ShortlistEntry): number {
+  const normalizedText = normalizeTextKey(`${entry.candidate.top} ${entry.candidate.bottom}`);
+  return entry.matchedCommentCues.filter((cue) => {
+    const normalizedCue = normalizeTextKey(cue);
+    return Boolean(normalizedCue) && normalizedText.includes(normalizedCue);
+  }).length;
+}
+
+function compareCommentNativeStrength(left: ShortlistEntry, right: ShortlistEntry): number {
+  return (
+    countDirectCommentCueMatches(right) - countDirectCommentCueMatches(left) ||
+    right.commentCarryScore - left.commentCarryScore ||
+    right.matchedCommentCues.length - left.matchedCommentCues.length ||
+    right.criticTotal - left.criticTotal ||
+    right.selectionScore - left.selectionScore
+  );
+}
+
+function findCommentNativeUpgradeCandidate(
+  entries: ShortlistEntry[],
+  baselineEntry: ShortlistEntry,
+  excludeCandidateId?: string
+): ShortlistEntry | null {
+  return (
+    [...entries]
+      .filter(
+        (entry) =>
+          entry.candidate.candidateId !== excludeCandidateId &&
+          entry.usesDominantCommentCue &&
+          !isCompromisedShortlistEntry(entry) &&
+          entry.criticTotal >= baselineEntry.criticTotal - 0.35 &&
+          entry.selectionScore >= baselineEntry.selectionScore - 1.25
+      )
+      .sort(compareCommentNativeStrength)[0] ?? null
+  );
+}
+
+function shouldUpgradeTopHook(current: ShortlistEntry, replacement: ShortlistEntry): boolean {
+  if (replacement.candidate.candidateId === current.candidate.candidateId) {
+    return false;
+  }
+  const currentPenaltyScore =
+    Number(current.topSignals.inventoryOpening) +
+    Number(current.topSignals.lateHook) +
+    Number(current.topSignals.pureBeatNarration);
+  const replacementPenaltyScore =
+    Number(replacement.topSignals.inventoryOpening) +
+    Number(replacement.topSignals.lateHook) +
+    Number(replacement.topSignals.pureBeatNarration);
+  return (
+    replacement.selectionScore >= current.selectionScore - 0.35 &&
+    (replacement.topSignals.scoreAdjustment > current.topSignals.scoreAdjustment ||
+      replacementPenaltyScore < currentPenaltyScore ||
+      (replacement.topSignals.earlyHookPresent && !current.topSignals.earlyHookPresent))
+  );
+}
+
+function improveAcceptedTopHookEntries(
+  accepted: ShortlistEntry[],
+  remaining: ShortlistEntry[],
+  protectedFinalPickId: string
+): void {
+  while (true) {
+    const weakestHookEntry = accepted
+      .map((entry, index) => ({ entry, index }))
+      .filter(
+        ({ entry }) =>
+          (entry.candidate.candidateId !== protectedFinalPickId ||
+            entry.topSignals.scoreAdjustment < 0) &&
+          (entry.topSignals.scoreAdjustment < 0 ||
+            entry.topSignals.inventoryOpening ||
+            entry.topSignals.lateHook ||
+            entry.topSignals.pureBeatNarration)
+      )
+      .sort(
+        (left, right) =>
+          left.entry.topSignals.scoreAdjustment - right.entry.topSignals.scoreAdjustment ||
+          left.entry.selectionScore - right.entry.selectionScore
+      )[0];
+    if (!weakestHookEntry) {
+      return;
+    }
+
+    const replacementIndex = remaining.findIndex((entry) =>
+      shouldUpgradeTopHook(weakestHookEntry.entry, entry)
+    );
+    if (replacementIndex < 0) {
+      return;
+    }
+    const [replacement] = remaining.splice(replacementIndex, 1);
+    if (!replacement) {
+      return;
+    }
+    accepted.splice(weakestHookEntry.index, 1, replacement);
+    remaining.push(weakestHookEntry.entry);
+    remaining.sort((left, right) => right.selectionScore - left.selectionScore);
+  }
 }
 
 function buildRewriterCandidatePool(input: {
@@ -2687,23 +2831,57 @@ function buildResolvedFinalSelectorState(input: {
       const cleanEnough = !isCompromisedShortlistEntry(entry);
       return cleanEnough && (!requestedEntry || entry.selectionScore >= requestedEntry.selectionScore - 0.75);
     });
+  const commentNativeBaselineEntry = requestedEntry ?? fallbackFinalPickEntry;
   const strongerCommentNativeEntry =
-    input.commentCarryExpectation === "high" && requestedEntry && !requestedEntry.usesDominantCommentCue
+    input.commentCarryExpectation === "high" &&
+    commentNativeBaselineEntry &&
+    !commentNativeBaselineEntry.usesDominantCommentCue
+      ? findCommentNativeUpgradeCandidate(
+          input.visibleShortlistEntries,
+          commentNativeBaselineEntry,
+          commentNativeBaselineEntry.candidate.candidateId
+        )
+      : null;
+  const strongerTopHookEntry =
+    requestedEntry &&
+    (requestedEntry.topSignals.scoreAdjustment < 0 ||
+      requestedEntry.topSignals.inventoryOpening ||
+      requestedEntry.topSignals.lateHook ||
+      requestedEntry.topSignals.pureBeatNarration)
       ? [...input.visibleShortlistEntries]
           .filter(
             (entry) =>
-              entry.usesDominantCommentCue &&
+              entry.candidate.candidateId !== requestedEntry.candidate.candidateId &&
               !isCompromisedShortlistEntry(entry) &&
-              entry.selectionScore >= requestedEntry.selectionScore - 0.35
+              shouldUpgradeTopHook(requestedEntry, entry)
           )
-          .sort((left, right) => right.selectionScore - left.selectionScore)[0]
+          .sort(
+            (left, right) =>
+              right.topSignals.scoreAdjustment - left.topSignals.scoreAdjustment ||
+              right.selectionScore - left.selectionScore
+          )[0]
       : null;
   const resolvedRequestedEntry =
     requestedEntryCompromised
       ? fallbackFinalPickEntry
-      : strongerCommentNativeEntry ?? requestedEntry ?? fallbackFinalPickEntry;
+      : strongerCommentNativeEntry ?? strongerTopHookEntry ?? requestedEntry ?? fallbackFinalPickEntry;
+  const commentNativeFinalPickEntry =
+    input.commentCarryExpectation === "high" && resolvedRequestedEntry
+      ? findCommentNativeUpgradeCandidate(
+          input.visibleShortlistEntries,
+          resolvedRequestedEntry,
+          resolvedRequestedEntry.usesDominantCommentCue
+            ? resolvedRequestedEntry.candidate.candidateId
+            : undefined
+        )
+      : null;
+  const finalResolvedEntry =
+    commentNativeFinalPickEntry &&
+    (!resolvedRequestedEntry || !resolvedRequestedEntry.usesDominantCommentCue)
+      ? commentNativeFinalPickEntry
+      : resolvedRequestedEntry;
   const finalPickCandidateId =
-    resolvedRequestedEntry?.candidate.candidateId ??
+    finalResolvedEntry?.candidate.candidateId ??
     requestedEntry?.candidate.candidateId ??
     shortlistCandidateIds[0] ??
     input.requestedFinalPickCandidateId;
@@ -2936,6 +3114,7 @@ function buildShortlist(input: {
         candidate: repaired.candidate,
         commentCarryProfile
       });
+      const topSignals = evaluateTopHookSignals(repaired.candidate.top);
       const baseEntry = {
         candidate: repaired.candidate,
         constraintCheck,
@@ -2943,6 +3122,7 @@ function buildShortlist(input: {
         commentCarryScore: commentCarry.score,
         usesDominantCommentCue: commentCarry.usesDominantCue,
         matchedCommentCues: commentCarry.matchedCues,
+        topSignals,
         selectionScore: 0,
         valid: repaired.valid
       };
@@ -3059,7 +3239,9 @@ function buildShortlist(input: {
     accepted.push(next);
   }
 
+  improveAcceptedTopHookEntries(accepted, remaining, protectedFinalPickId);
   diversifyAcceptedShortlist();
+  improveAcceptedTopHookEntries(accepted, remaining, protectedFinalPickId);
   diversifyAcceptedBottomTails(accepted, remaining, protectedFinalPickId);
   cleanupDuplicateBottomTails(accepted, input.constraints, protectedFinalPickId);
   promoteCommentNativeShortlistEntry(
@@ -3078,6 +3260,7 @@ function buildShortlist(input: {
       visibleCount: entries.length,
       repairedCount: repairedEntries.filter((entry) => entry.constraintCheck.repaired).length,
       droppedAfterValidationCount: Math.max(0, repairedEntries.length - repairedPool.length),
+      topSignalSummary: buildTopSignalSummary(repairedPool, entries),
       invalidReasonSummary:
         invalidReasonParts.length > 0
           ? `Likely invalidation mix: ${invalidReasonParts.join(", ")}.`
@@ -3292,6 +3475,10 @@ function buildRunDiagnosticsBundle(input: {
     serializedResultBytes: stage.serializedResultBytes ?? null,
     persistedPayloadBytes: stage.persistedPayloadBytes ?? null
   }));
+  const topGuidance = resolveTopGuidance({
+    analyzerOutput: input.analyzerOutput,
+    selectorOutput: input.selectorOutput
+  });
   const diagnostics: Stage2Diagnostics = {
     channel: {
       channelId: input.channelConfig.channelId,
@@ -3314,6 +3501,10 @@ function buildRunDiagnosticsBundle(input: {
       narrativeFrame: input.selectorOutput.narrativeFrame,
       whyViewerCares: input.selectorOutput.whyViewerCares,
       topStrategy: input.selectorOutput.topStrategy,
+      topHookMode: topGuidance.topHookMode,
+      revealPolicy: topGuidance.revealPolicy,
+      topAvoidPatterns: topGuidance.topAvoidPatterns,
+      topMustDo: topGuidance.topMustDo,
       bottomEnergy: input.selectorOutput.bottomEnergy,
       whyOldV6WouldWorkHere: input.selectorOutput.whyOldV6WouldWorkHere,
       failureModes: input.selectorOutput.failureModes,

@@ -5,7 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AppShell, type AppShellProps } from "../app/components/AppShell";
+import {
+  AppShell,
+  getOverflowActionWrapperProps,
+  type AppShellProps
+} from "../app/components/AppShell";
 import {
   buildHistorySections,
   getHistoryProgressBadge,
@@ -98,6 +102,7 @@ import {
 import {
   buildAnalyzerPrompt,
   buildCriticPrompt,
+  evaluateTopHookSignals,
   buildFinalSelectorPrompt,
   buildPromptPacket,
   buildRewriterPrompt,
@@ -672,6 +677,7 @@ async function runSuccessfulPipeline(options?: {
   finalSelectorResponse?: Record<string, unknown>;
   titleResponse?: unknown;
   comments?: Array<{ author: string; likes: number; text: string }>;
+  videoContextOverrides?: Partial<Parameters<typeof buildVideoContext>[0]>;
   debugMode?: "summary" | "raw";
 }) {
   const service = new ViralShortsWorkerService();
@@ -812,12 +818,17 @@ async function runSuccessfulPipeline(options?: {
   ]);
   const progressEvents: Array<{ stageId: string; state: string; detail: string | null | undefined }> = [];
   const videoContext = buildVideoContext({
-    sourceUrl: "https://example.com/short",
-    title: "Old pickup bucks through a muddy rut",
-    description: "The axle starts twisting while the crowd sees the truck sink sideways.",
-    transcript: "The driver tries one more time and the wheel almost folds under him.",
+    sourceUrl: options?.videoContextOverrides?.sourceUrl ?? "https://example.com/short",
+    title: options?.videoContextOverrides?.title ?? "Old pickup bucks through a muddy rut",
+    description:
+      options?.videoContextOverrides?.description ??
+      "The axle starts twisting while the crowd sees the truck sink sideways.",
+    transcript:
+      options?.videoContextOverrides?.transcript ??
+      "The driver tries one more time and the wheel almost folds under him.",
     comments:
       options?.comments ??
+      options?.videoContextOverrides?.comments ??
       [
         {
           author: "user1",
@@ -825,8 +836,13 @@ async function runSuccessfulPipeline(options?: {
           text: "That axle was cooked before he even hit the rut."
         }
       ],
-    frameDescriptions: ["mud splashes around the tire", "axle leans hard to the left"],
-    userInstruction: options?.userInstruction ?? "Keep it grounded and avoid slang overload."
+    frameDescriptions:
+      options?.videoContextOverrides?.frameDescriptions ??
+      ["mud splashes around the tire", "axle leans hard to the left"],
+    userInstruction:
+      options?.videoContextOverrides?.userInstruction ??
+      options?.userInstruction ??
+      "Keep it grounded and avoid slang overload."
   });
 
   const result = await service.runPipeline({
@@ -4879,22 +4895,256 @@ test("writer, critic, rewriter, and final selector prompts carry comment lanes p
   assert.match(writerPrompt, /commentConsensusLane/);
   assert.match(writerPrompt, /commentJokeLane/);
   assert.match(writerPrompt, /commentLanguageCues/);
+  assert.match(writerPrompt, /"topHookMode":/);
+  assert.match(writerPrompt, /"revealPolicy":/);
+  assert.match(writerPrompt, /comma-chained object lists/i);
   assert.match(writerPrompt, /stock continuations/i);
   assert.match(writerPrompt, /high-like comment shorthand, acronym, or nickname/i);
   assert.match(writerPrompt, /reporting or bridge verb such as says, means, proves, shows, or tells/i);
   assert.match(criticPrompt, /"candidateSetSignals":/);
   assert.match(criticPrompt, /"genericTailCandidateIds": \[/);
+  assert.match(criticPrompt, /"inventoryOpeningCandidateIds": \[/);
+  assert.match(criticPrompt, /"topHookSignals": \{/);
   assert.match(criticPrompt, /"repeatedBottomTailSignatures": \[/);
   assert.match(criticPrompt, /"examplesMode": "style_guided"/);
   assert.match(criticPrompt, /dominant audience shorthand/i);
   assert.match(criticPrompt, /generic filler was appended after a weak or incomplete core clause/i);
+  assert.match(criticPrompt, /candidate topHookSignals are provided/i);
   assert.match(rewriterPrompt, /"candidateSetSignals":/);
   assert.match(rewriterPrompt, /"explorationMode": "exploratory"/);
+  assert.match(rewriterPrompt, /"topHookSignals": \{/);
+  assert.match(rewriterPrompt, /hint-don't-fully-spoil/i);
   assert.match(rewriterPrompt, /Never leave a sentence ending on a reporting or bridge verb/i);
   assert.match(finalSelectorPrompt, /"candidateSetSignals":/);
   assert.match(finalSelectorPrompt, /"styleDirectionIds": \[/);
   assert.match(finalSelectorPrompt, /"explorationMode": "exploratory"/);
+  assert.match(finalSelectorPrompt, /"inventoryOpeningCandidateIds": \[/);
   assert.match(finalSelectorPrompt, /needed repair and still leans on a generic bottom tail/i);
+  assert.match(finalSelectorPrompt, /candidate topHookSignals are provided/i);
+});
+
+test("evaluateTopHookSignals penalizes descriptive setup lists and rewards early hook context", () => {
+  const descriptive = evaluateTopHookSignals(
+    "Blue felt, cue bridge, white rack, and a line about bringing their own ball. The cut lands when a tiny hamster shows up near the pocket."
+  );
+  const beatNarration = evaluateTopHookSignals(
+    "Players line up, the scene cuts, then the hamster appears and the whole setup changes."
+  );
+  const hookFirst = evaluateTopHookSignals(
+    "The line about bringing your own ball stops sounding metaphorical the second the table gets a tiny live wildcard."
+  );
+
+  assert.equal(descriptive.inventoryOpening, true);
+  assert.equal(descriptive.earlyHookPresent, false);
+  assert.equal(descriptive.scoreAdjustment, -1.2);
+
+  assert.equal(beatNarration.pureBeatNarration, true);
+  assert.ok(beatNarration.scoreAdjustment <= -0.7);
+
+  assert.equal(hookFirst.earlyHookPresent, true);
+  assert.equal(hookFirst.inventoryOpening, false);
+  assert.equal(hookFirst.scoreAdjustment, 0.4);
+});
+
+test("reveal-style shortlist replaces descriptive billiards inventory tops with hook-first alternatives", async () => {
+  const hamsterCandidates = [
+    {
+      candidate_id: "cand_1",
+      angle: "absurdity_chaos",
+      top: "Blue felt, cue bridge, white rack, and a line about bringing their own ball. The scene holds like normal pool footage before the table reveals the literal joke way too late.",
+      bottom:
+        "Nobody at that table reacts like this is a trick shot. It plays like one throwaway sentence quietly rewrote the rules and everybody somehow agreed to keep a straight face.",
+      top_ru: "Синее сукно, мостик, белый ряд шаров и фраза про свой шар. Всё держится как обычный пул, пока стол слишком поздно не раскрывает буквальную шутку.",
+      bottom_ru:
+        "Никто у этого стола не реагирует так, будто это трюк. Всё выглядит так, будто одна дежурная фраза тихо переписала правила, а все решили не ломать лицо.",
+      rationale: "descriptive inventory opening"
+    },
+    {
+      candidate_id: "cand_2",
+      angle: "payoff_reveal",
+      top: "The 'bring your own ball' line hangs there just long enough to sound normal, which is exactly why the table feels one cut away from a very literal punchline.",
+      bottom:
+        "That is the kind of dumb reveal people love because nobody oversells it. The room just lets one tiny rule violation walk in and finish the sentence for them.",
+      top_ru: "Фраза про свой шар висит ровно столько, чтобы звучать нормально, и именно поэтому стол кажется в одном кадре от слишком буквального панчлайна.",
+      bottom_ru:
+        "Это тот самый глупый ривил, который люди любят именно потому, что никто его не переигрывает. Комната просто даёт крошечному нарушению правил самой закончить фразу.",
+      rationale: "hint-first reveal setup"
+    },
+    {
+      candidate_id: "cand_3",
+      angle: "shared_experience",
+      top: "The joke works because the pool-table setup stays serious long enough for your brain to lock into normal etiquette before the clip cashes out the wrong kind of substitute.",
+      bottom:
+        "Everybody instantly gets why that lands. It is not chaos for chaos's sake, it is one deadpan social read turning into the most polite foul you have ever seen.",
+      top_ru: "Шутка работает потому, что сетап бильярда остаётся серьёзным ровно столько, чтобы мозг успел поверить в нормальный этикет до неправильной замены.",
+      bottom_ru:
+        "Все сразу понимают, почему это срабатывает. Это не хаос ради хаоса, а один сухой социальный рид, который превращается в самый вежливый фол в жизни.",
+      rationale: "shared-experience hook"
+    },
+    {
+      candidate_id: "cand_4",
+      angle: "absurdity_chaos",
+      top: "Pool talk is supposed to stay metaphorical, so the whole setup gets funnier once you realize the clip is baiting you into waiting for the most literal version of that sentence.",
+      bottom:
+        "What sells it is how little anybody has to explain. The table gets one tiny live wildcard, and the joke lands like everybody already knew the house rules were doomed.",
+      top_ru: "Разговор про пул должен оставаться метафорой, поэтому сетап становится смешнее, когда понимаешь: клип заманивает тебя в максимально буквальную версию этой фразы.",
+      bottom_ru:
+        "Продаёт это именно то, как мало кому надо объяснять. Стол получает крошечный живой вайлдкард, и шутка падает так, будто правила дома уже были обречены.",
+      rationale: "paradox-first framing"
+    },
+    {
+      candidate_id: "cand_5",
+      angle: "insider_expertise",
+      top: "If you know pool language, the setup gets better fast because 'bring your own ball' should be harmless banter, not the warning sign that the clip is about to go fully literal.",
+      bottom:
+        "That is why the reaction stays so calm. Everybody there reads the foul and the punchline at the same time, and neither one needs a dramatic narrator to work.",
+      top_ru: "Если ты знаешь язык пула, сетап становится лучше очень быстро: «принеси свой шар» должен быть безобидной шуткой, а не сигналом к полному буквальному ривилу.",
+      bottom_ru:
+        "Вот почему реакция остаётся такой спокойной. Все одновременно считывают и фол, и панчлайн, и ни одному из них не нужен драматичный рассказчик.",
+      rationale: "insider-recognition setup"
+    },
+    {
+      candidate_id: "cand_6",
+      angle: "payoff_reveal",
+      top: "The 'own ball' line stops sounding metaphorical almost immediately, so the whole table starts feeling like it is waiting for one tiny live punchline to cross the felt.",
+      bottom:
+        "That is why the reveal feels so clean. Nobody has to scream, because one little wildcard turns a normal pool sentence into the most obvious joke in the room.",
+      top_ru: "Фраза про свой шар почти сразу перестаёт звучать как метафора, и весь стол начинает ждать, когда по сукну пройдёт крошечный живой панчлайн.",
+      bottom_ru:
+        "Вот почему ривил кажется таким чистым. Никому не надо кричать, потому что один маленький вайлдкард превращает обычную пуловую фразу в самую очевидную шутку в комнате.",
+      rationale: "clean early-hook replacement"
+    },
+    {
+      candidate_id: "cand_7",
+      angle: "shared_experience",
+      top: "The setup is funny because it treats a dead-serious pool phrase like something that should survive a very obvious literal reading for even one more second.",
+      bottom:
+        "The room does the exact right thing by not forcing it. They just let the literal read walk past the balls and trust the audience to catch up on its own.",
+      top_ru: "Сетап смешной именно потому, что держит предельно серьёзную фразу из пула так, будто она переживёт ещё секунду буквального прочтения.",
+      bottom_ru:
+        "Комната делает всё правильно тем, что не форсирует момент. Все просто дают буквальному прочтению пройти мимо шаров и доверяют зрителю догнаться самому.",
+      rationale: "reserve reveal option"
+    },
+    {
+      candidate_id: "cand_8",
+      angle: "absurdity_chaos",
+      top: "The normal billiards rhythm is doing all the work here, because it convinces you the line is harmless right before the clip cashes it out in the dumbest possible way.",
+      bottom:
+        "That payoff only works because nobody decorates it. The table gets one ridiculous loophole, and the joke lands with the same calm confidence as a legal break shot.",
+      top_ru: "Обычный ритм бильярда тут и делает всю работу, потому что убеждает тебя в безобидности фразы прямо перед самым глупым буквальным выходом.",
+      bottom_ru:
+        "Этот payoff работает только потому, что никто его не украшает. Стол получает одну нелепую лазейку, и шутка ложится с той же спокойной уверенностью, что и легальный брейк.",
+      rationale: "reserve absurdity option"
+    }
+  ];
+
+  const criticResponse = hamsterCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total:
+      candidate.candidate_id === "cand_1"
+        ? 9.0
+        : candidate.candidate_id === "cand_6"
+          ? 8.9
+          : 8.6 - index * 0.05,
+    issues: [],
+    keep: true
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    videoContextOverrides: {
+      sourceUrl: "https://example.com/hamster-pool",
+      title: "Someone said they'd bring their own ball to pool",
+      description: "A normal billiards setup turns into a literal joke once a white hamster hits the table.",
+      transcript: "I'm bringing my own ball. What do you mean? Wait. No way.",
+      frameDescriptions: [
+        "first-person billiards setup on blue felt",
+        "text about bringing your own ball",
+        "small white hamster appears near the pocket"
+      ],
+      userInstruction: "Keep it playful and hook-first."
+    },
+    comments: [
+      { author: "viewer_1", likes: 2100, text: "2500 code" },
+      { author: "viewer_2", likes: 1400, text: "bro really brought his own ball" },
+      { author: "viewer_3", likes: 900, text: "technically that's a foul and I respect it" }
+    ],
+    analyzerResponse: {
+      visual_anchors: ["blue billiards felt", "cue bridge over the table", "white hamster near the pocket"],
+      specific_nouns: ["cue stick", "blue table", "white hamster", "corner pocket"],
+      visible_actions: [
+        "the pool-table setup holds like a normal game",
+        "text says someone brought their own ball",
+        "a white hamster appears near the pocket"
+      ],
+      subject: "pool-table reveal gag",
+      action: "turns a pool phrase into a literal joke",
+      setting: "billiards hall",
+      first_seconds_signal: "It opens like a normal billiards POV clip with casual pool banter.",
+      scene_beats: [
+        "ordinary billiards setup with text about bringing your own ball",
+        "the normal setup holds long enough to sound harmless",
+        "the reveal lands when a white hamster appears near the pocket"
+      ],
+      reveal_moment: "the table suddenly reveals a white hamster as the supposed own ball",
+      late_clip_change: "the joke only fully locks once the hamster appears and makes the pool phrase literal",
+      stakes: ["absurdity", "shared laugh"],
+      payoff: "the phrase about bringing your own ball turns literal",
+      core_trigger: "normal pool banter flips into a literal reveal with a live hamster on the table",
+      human_stake: "viewers get the joke in one second because the setup feels normal right before the reveal goes too literal",
+      narrative_frame: "casual pool language gets turned into a literal visual punchline",
+      why_viewer_cares: "the clip makes a normal line feel safe, then cashes it out in a fast absurd reveal",
+      best_bottom_energy: "dry amused disbelief",
+      comment_vibe: "laughing approval with billiards-rule jokes",
+      slang_to_adapt: ["2500 code"],
+      comment_language_cues: ["2500 code", "brought his own ball"],
+      hidden_detail: "The audience keeps circling one compact punchline: \"2500 code\".",
+      generic_risks: ["flattening it into cute-animal randomness and missing the literal wording payoff"],
+      raw_summary: "A normal billiards setup holds just long enough before a white hamster appears as the literal own ball."
+    },
+    selectorResponse: {
+      clip_type: "POV billiards reveal gag with literal-misread punchline",
+      primary_angle: "absurdity_chaos",
+      secondary_angles: ["payoff_reveal", "shared_experience"],
+      top_strategy: "contrast-first context compression",
+      bottom_energy: "dry amused disbelief",
+      selection_rationale: "The best lines set up the normal pool read fast, then let the literal reveal do the punchline work.",
+      writer_brief:
+        "Set up the normal billiards read fast, make the literal misread feel inevitable, and do not let TOP collapse into a table inventory.",
+      confidence: 0.88
+    },
+    writerCandidates: hamsterCandidates,
+    rewrittenCandidates: hamsterCandidates,
+    criticResponse,
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_1",
+      rationale: "Candidate 1 sounds the most descriptive and grounded."
+    }
+  });
+
+  const visibleTops = result.output.captionOptions.map((option) => option.top);
+  assert.equal(
+    result.output.captionOptions.some((option) => option.candidateId === "cand_1"),
+    false
+  );
+  assert.equal(
+    result.output.captionOptions.some((option) => option.candidateId === "cand_6"),
+    true
+  );
+  assert.equal(
+    visibleTops.some((top) => /Blue felt, cue bridge, white rack/i.test(top)),
+    false
+  );
+  assert.equal(
+    visibleTops.some((top) => /stops sounding metaphorical|literal punchline|waiting for one tiny live punchline/i.test(top)),
+    true
+  );
+  assert.ok(
+    result.output.pipeline.finalSelector?.shortlistStats?.topSignalSummary?.visibleCandidateSignals.every(
+      (signal) => !(signal.inventoryOpening && !signal.earlyHookPresent)
+    )
+  );
 });
 
 test("buildPromptPacket keeps comments-aware slang and generic suspicion details in analyzer context", () => {
@@ -5402,8 +5652,11 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(selectorResolved.defaultPrompt, /why_old_v6_would_work_here/);
   assert.match(selectorResolved.defaultPrompt, /failure_modes/);
   assert.match(selectorResolved.defaultPrompt, /Comments should shape stance, not replace visual truth/);
+  assert.match(selectorResolved.defaultPrompt, /hint-don't-fully-spoil/i);
   assert.match(writerResolved.defaultPrompt, /Context Compression Rule/);
   assert.match(writerResolved.defaultPrompt, /Must explain why the viewer should care/);
+  assert.match(writerResolved.defaultPrompt, /Treat TOP as a contextual hook, not as a screenshot description/i);
+  assert.match(writerResolved.defaultPrompt, /comma-chained object lists/i);
   assert.match(writerResolved.defaultPrompt, /Quoted openers are optional/);
   assert.match(writerResolved.defaultPrompt, /stock continuations/i);
   assert.match(writerResolved.defaultPrompt, /Near misses still fail/i);
@@ -5413,14 +5666,18 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /Batch audit rules/);
   assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /strict exact-length windows/i);
   assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /polished-but-interchangeable bottoms/i);
+  assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /candidate topHookSignals are provided/i);
   assert.match(writerResolved.defaultPrompt, /top_ru/);
   assert.match(writerResolved.defaultPrompt, /bottom_ru/);
   assert.match(rewriterResolved.defaultPrompt, /top_ru/);
   assert.match(rewriterResolved.defaultPrompt, /bottom_ru/);
+  assert.match(rewriterResolved.defaultPrompt, /screenshot-style openings/i);
+  assert.match(rewriterResolved.defaultPrompt, /hint-don't-fully-spoil/i);
   assert.match(rewriterResolved.defaultPrompt, /Never leave a tightening fragment or broken truncation behind/i);
   assert.match(rewriterResolved.defaultPrompt, /The system will not auto-pad a short rewrite for you/i);
   assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /style_direction_ids/i);
   assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /exploration_mode/i);
+  assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /TOP behaves like a hook instead of a screenshot description/i);
   assert.match(titlesResolved.defaultPrompt, /title_ru/);
   assert.match(titlesResolved.defaultPrompt, /real Russian/);
   assert.match(seoResolved.defaultPrompt, /Search terms and topics covered:/);
@@ -7901,6 +8158,10 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       trace?.stage2.outcome.finalPickCandidateId,
       trace?.stage2.currentResult?.output.pipeline?.finalSelector?.finalPickCandidateId ?? null
     );
+    assert.deepEqual(
+      trace?.stage2.outcome.topSignalSummary,
+      trace?.stage2.currentResult?.output.pipeline?.finalSelector?.shortlistStats?.topSignalSummary ?? null
+    );
     assert.equal(trace?.stage2.currentResult?.output.finalPick.reason, "Final pick for selected");
     assert.equal(trace?.stage2.currentResult?.source.topComments.length, 15);
     assert.equal(trace?.stage2.currentResult?.source.allComments.length, 15);
@@ -8247,6 +8508,19 @@ test("app shell renders a compact current-chat header action", () => {
 
   assert.match(html, /Еще/);
   assert.doesNotMatch(html, /Скачать историю/);
+});
+
+test("header overflow action wrapper closes on bubble click so nested actions can run first", () => {
+  const callOrder: string[] = [];
+  const wrapperProps = getOverflowActionWrapperProps(() => {
+    callOrder.push("close");
+  });
+
+  callOrder.push("nested-action");
+  wrapperProps.onClick?.({} as React.MouseEvent<HTMLDivElement>);
+
+  assert.deepEqual(callOrder, ["nested-action", "close"]);
+  assert.equal("onClickCapture" in wrapperProps, false);
 });
 
 test("app shell renders app-level toasts in a dedicated top-left viewport", () => {

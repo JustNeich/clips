@@ -487,6 +487,10 @@ export type Stage2Diagnostics = {
     narrativeFrame: string;
     whyViewerCares: string;
     topStrategy: string;
+    topHookMode?: string;
+    revealPolicy?: string;
+    topAvoidPatterns?: string[];
+    topMustDo?: string[];
     bottomEnergy: string;
     whyOldV6WouldWorkHere: string;
     failureModes: string[];
@@ -577,6 +581,36 @@ export type Stage2CommentCarryProfile = {
   summary: string | null;
 };
 
+export type Stage2TopGuidance = {
+  topHookMode: string;
+  revealPolicy: string;
+  topAvoidPatterns: string[];
+  topMustDo: string[];
+};
+
+export type Stage2TopQualitySignals = {
+  inventoryOpening: boolean;
+  lateHook: boolean;
+  pureBeatNarration: boolean;
+  earlyHookPresent: boolean;
+  notes: string[];
+  scoreAdjustment: number;
+};
+
+export type Stage2CandidateTopSignalSummary = Stage2TopQualitySignals & {
+  candidateId: string;
+};
+
+export type Stage2TopSignalSummary = {
+  validatedCounts: {
+    inventoryOpening: number;
+    lateHook: number;
+    pureBeatNarration: number;
+    earlyHookPresent: number;
+  };
+  visibleCandidateSignals: Stage2CandidateTopSignalSummary[];
+};
+
 export type Stage2WriterBriefDigest = {
   clipType: string;
   primaryAngle: string;
@@ -584,6 +618,10 @@ export type Stage2WriterBriefDigest = {
   rankedAngles: RankedAngle[];
   writerBrief: string;
   topStrategy: string;
+  topHookMode: string;
+  revealPolicy: string;
+  topAvoidPatterns: string[];
+  topMustDo: string[];
   bottomEnergy: string;
   whyViewerCares: string;
   failureModes: string[];
@@ -745,6 +783,7 @@ export type ViralShortsStage2Result = {
         visibleCount: number;
         repairedCount: number;
         droppedAfterValidationCount: number;
+        topSignalSummary?: Stage2TopSignalSummary;
       };
     };
   };

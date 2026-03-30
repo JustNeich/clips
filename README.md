@@ -227,10 +227,12 @@ npm run stage3-worker -- start
 - если после repair/validation нельзя собрать publishable shortlist из 5 distinct options, run падает явно, а не сохраняет противоречивый partial-success.
 
 Дополнительная валидация:
-- `TOP`: диапазон задается channel hard constraints;
+- `TOP`: диапазон задается channel hard constraints; сам `TOP` трактуется как contextual hook / compressed setup, а не как буквальное описание скриншота;
 - `BOTTOM`: диапазон задается channel hard constraints;
 - сохраняются banned words / banned openers / anti-AI ограничения из worker config.
 - `BOTTOM` больше не зависит от legacy правила `bottom quote required`; quoted opener допускается только если это естественно для конкретного клипа.
+- Для reveal-клипов default policy: `hint, don't fully spoil`. `TOP` должен ввести в контекст и напряжение, а не пересказать весь payoff заранее.
+- Во время shortlist assembly worker теперь мягко штрафует screenshot-style `TOP`-ы: comma-chained object lists, beat-by-beat narration, поздний why-care hook и другие inventory-first формулировки проигрывают hook-forward альтернативам.
 
 Channel-specific mapping теперь задается через `Stage 2` в Channel Manager.
 

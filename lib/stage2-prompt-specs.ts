@@ -320,6 +320,8 @@ Examples:
 
 TOP should not merely inventory the frame.
 TOP should compress maximum useful context for a very short clip.
+TOP should land the why-care clause early instead of waiting until the final beat.
+If the clip is reveal-driven, decide whether TOP should use a hint-don't-fully-spoil setup instead of narrating the whole payoff.
 
 9. bottom_energy
 What kind of BOTTOM should win?
@@ -364,6 +366,8 @@ It should tell the writer exactly what kind of result is strong here.
 Make it operational:
 - what TOP must do
 - what BOTTOM must do
+- what top hook mode should lead the line
+- whether reveal policy should be hint-don't-fully-spoil
 - how comments should or should not shape stance
 - how retrieval mode changes example usage
 - what stock failure to avoid
@@ -542,6 +546,22 @@ TOP rules:
 - Concrete.
 - Visually true.
 - Must explain why the viewer should care, not merely what the camera is doing.
+- Treat TOP as a contextual hook, not as a screenshot description.
+- Make the why-care clause arrive early. Do not spend the first half of the line inventorying objects and only hook at the end.
+- Read writerBriefDigest.topHookMode and use it as the default opening move.
+- Read writerBriefDigest.revealPolicy. If it says hint-don't-fully-spoil, set up the normal read plus the tension or misread without fully narrating the reveal in TOP unless naming it materially improves the hook.
+- Prefer one of these TOP moves when natural:
+  - reveal/misread setup
+  - danger-first context
+  - insider-recognition setup
+  - competence contrast
+  - paradox-first framing
+- Avoid weak TOP patterns:
+  - comma-chained object lists
+  - beat-by-beat camera-log narration
+  - openings like "the clip starts", "then it cuts", "cue sets", or "players line up"
+  - dropping the why-care clause only in the last third
+- A paused-frame-safe TOP can still frame significance. "Visually true" does not mean "inventory every noun you can see."
 
 BOTTOM rules:
 - Use provided hard constraints if present; otherwise target 140-150 characters.
@@ -655,6 +675,8 @@ Definitions:
 
 Automatic penalties:
 - TOP narrates camera movement or object inventory instead of framing the event
+- TOP opens like a screenshot description or comma-chained object list before the why-care clause appears
+- TOP spends most of the line on beat-by-beat narration and lands the real hook too late
 - nouns are generic when they could be specific
 - actions are abstract instead of visible
 - BOTTOM repeats TOP
@@ -685,6 +707,7 @@ Strong preference:
 - reward lines that trigger agreement, laughter, tension, or recognition
 - reward lines with lived-in rhythm
 - reward lines that feel socially or emotionally legible
+- reward TOPs that hook early without losing paused-frame truth
 - when high-signal audience shorthand exists, reward candidates that use it naturally and visually truthfully over equally clean but more generic lines
 - protect 1-2 strong exploratory candidates when they are genuinely competitive; do not auto-delete them just because they are less familiar
 
@@ -694,6 +717,7 @@ Batch audit rules:
 - repeated tail function matters, not only repeated wording
 - if five candidates all land on the same social-read mechanic, some of them should be penalized
 - do not preserve weak diversity for its own sake, but do preserve credible exploratory alternatives when quality is close
+- when candidate topHookSignals are provided, treat them as real evidence: inventoryOpening and pureBeatNarration are negatives, earlyHookPresent is a positive tie-breaker
 
 Return strict JSON array with:
 - candidate_id
@@ -721,12 +745,13 @@ Your job:
 Rewrite priorities:
 1. Replace abstraction with visible specifics.
 2. Replace generic nouns with real nouns.
-3. Strengthen the trigger in TOP.
+3. Strengthen the trigger in TOP and move it earlier when the line hooks too late.
 4. Make BOTTOM feel more like a real person talking.
 5. Tighten rhythm.
 6. Reduce derivativeness.
 7. Preserve length and structural constraints.
 8. Remove quote-first defaults or generic tails when they make the bottom feel templated.
+9. Replace screenshot-style openings with contextual hooks.
 
 Non-negotiable:
 - Do not rewrite into a different idea unless necessary.
@@ -734,11 +759,14 @@ Non-negotiable:
 - Do not lose paused-frame truth.
 - Do not flatten the human voice.
 - Do not over-explain.
+- Do not rewrite TOP into another camera-log description.
 - If a quoted opener is not earning its place, remove it instead of polishing it.
 - If a bottom has a generic tail, replace it with a clip-specific continuation.
 - Never leave a tightening fragment or broken truncation behind.
 - If the rewrite becomes smoother but more generic, you failed the rewrite.
 - Prefer a sharper clip-specific social read over a cleaner interchangeable line.
+- If the TOP starts with comma-chained object inventory or beat-by-beat narration, rebuild the opening around the actual hook instead of polishing the list.
+- If revealPolicy says hint-don't-fully-spoil, do not "improve" the line by narrating the full reveal in TOP unless the hook genuinely gets stronger.
 - If high-like audience shorthand or acronyms are clip-safe, use them when they genuinely sharpen the line instead of sanitizing them away.
 - If the batch contains a clean comment-native candidate and a similarly strong sanitized generic candidate, prefer the comment-native one.
 - Never leave a sentence ending on a reporting or bridge verb like says, means, proves, shows, or tells.
@@ -798,9 +826,12 @@ Selection rules:
 - if quality is close, keep at least one credible exploratory alternate in the visible set so the editor can keep teaching the channel
 - if retrieval was weak, do not reward candidates that only sound polished because they borrowed semantics from another market
 - if a candidate needed repair and still leans on a generic bottom tail, do not let it win the final pick over a cleaner alternative
+- if two candidates are close, prefer the one whose TOP behaves like a hook instead of a screenshot description
+- do not preserve a comma-chained inventory TOP when a similarly strong hook-forward alternative exists
 - if a high-like audience cue or shorthand clearly sharpens one otherwise-competitive line, count that as a real strength rather than smoothing it away
 - if analyzerOutput/commentCarryProfile says shorthand pressure is high, do not let all five visible options stay sanitized
 - when quality is close, prefer one line that naturally cashes the dominant shorthand over another line that lands in generic polished commentary
+- when candidate topHookSignals are provided, treat inventoryOpening, lateHook, and pureBeatNarration as real negatives, and earlyHookPresent as a real positive tie-breaker
 
 Return strict JSON object with:
 - final_candidates

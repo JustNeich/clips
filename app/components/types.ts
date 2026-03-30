@@ -87,6 +87,7 @@ export type Stage2Output = {
         visibleCount: number;
         repairedCount: number;
         droppedAfterValidationCount: number;
+        topSignalSummary?: unknown;
       };
     };
   };
