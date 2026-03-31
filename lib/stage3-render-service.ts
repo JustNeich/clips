@@ -736,65 +736,66 @@ export async function renderStage3Video(
           : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
     const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, sourceDurationSec, templateIdFromInput, body.agentPrompt);
     const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(renderPlan.templateId);
-    const templateSnapshot = buildTemplateRenderSnapshot({
+    const templateSnapshotContent = {
+      topText: snapshot?.topText ?? body.topText ?? "",
+      bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
+      channelName: renderPlan.authorName,
+      channelHandle: renderPlan.authorHandle,
+      topFontScale: renderPlan.topFontScale,
+      bottomFontScale: renderPlan.bottomFontScale,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    };
+    const requestedTextFitOverride = snapshot?.textFit
+      ? {
+          topFontPx: snapshot.textFit.topFontPx,
+          bottomFontPx: snapshot.textFit.bottomFontPx,
+          topLineHeight: snapshot.textFit.topLineHeight,
+          bottomLineHeight: snapshot.textFit.bottomLineHeight,
+          topLines: snapshot.textFit.topLines,
+          bottomLines: snapshot.textFit.bottomLines,
+          topCompacted: snapshot.textFit.topCompacted,
+          bottomCompacted: snapshot.textFit.bottomCompacted
+        }
+      : undefined;
+    const baseTemplateSnapshot = buildTemplateRenderSnapshot({
       templateId: managedTemplateRuntime.baseTemplateId,
       templateConfigOverride: managedTemplateRuntime.templateConfig,
-      content: {
-        topText: snapshot?.topText ?? body.topText ?? "",
-        bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
-        channelName: renderPlan.authorName,
-        channelHandle: renderPlan.authorHandle,
-        topFontScale: renderPlan.topFontScale,
-        bottomFontScale: renderPlan.bottomFontScale,
-        previewScale: 1,
-        mediaAsset: null,
-        backgroundAsset: null,
-        avatarAsset: null
-      },
-      fitOverride: snapshot?.textFit
-        ? {
-            topFontPx: snapshot.textFit.topFontPx,
-            bottomFontPx: snapshot.textFit.bottomFontPx,
-            topLineHeight: snapshot.textFit.topLineHeight,
-            bottomLineHeight: snapshot.textFit.bottomLineHeight,
-            topLines: snapshot.textFit.topLines,
-            bottomLines: snapshot.textFit.bottomLines,
-            topCompacted: snapshot.textFit.topCompacted,
-            bottomCompacted: snapshot.textFit.bottomCompacted
-          }
-        : undefined
+      content: templateSnapshotContent
     });
 
     if (
       snapshot?.templateSnapshot?.snapshotHash &&
-      snapshot.templateSnapshot.snapshotHash !== templateSnapshot.snapshotHash
+      snapshot.templateSnapshot.snapshotHash !== baseTemplateSnapshot.snapshotHash
     ) {
       throw new Error("Template snapshot drift detected. Обновите preview и повторите render.");
     }
     if (
       snapshot?.templateSnapshot?.specRevision &&
-      snapshot.templateSnapshot.specRevision !== templateSnapshot.specRevision
+      snapshot.templateSnapshot.specRevision !== baseTemplateSnapshot.specRevision
     ) {
       throw new Error("Template spec revision changed. Обновите preview и повторите render.");
     }
     if (
       snapshot?.templateSnapshot?.fitRevision &&
-      snapshot.templateSnapshot.fitRevision !== templateSnapshot.fitRevision
+      snapshot.templateSnapshot.fitRevision !== baseTemplateSnapshot.fitRevision
     ) {
       throw new Error("Template fit revision changed. Обновите preview и повторите render.");
     }
     if (
       snapshot?.textFit?.snapshotHash &&
-      snapshot.textFit.snapshotHash !== templateSnapshot.snapshotHash
+      snapshot.textFit.snapshotHash !== baseTemplateSnapshot.snapshotHash
     ) {
       throw new Error("Template text fit drift detected. Обновите preview и повторите render.");
     }
     if (snapshot?.textFit?.fitHash) {
       const expectedFitHash = buildStage3TextFitHash({
-        templateId: templateSnapshot.templateId,
-        snapshotHash: templateSnapshot.snapshotHash,
-        topText: templateSnapshot.content.topText,
-        bottomText: templateSnapshot.content.bottomText,
+        templateId: baseTemplateSnapshot.templateId,
+        snapshotHash: baseTemplateSnapshot.snapshotHash,
+        topText: baseTemplateSnapshot.content.topText,
+        bottomText: baseTemplateSnapshot.content.bottomText,
         topFontScale: renderPlan.topFontScale,
         bottomFontScale: renderPlan.bottomFontScale
       });
@@ -802,6 +803,16 @@ export async function renderStage3Video(
         throw new Error("Template text fit changed. Обновите preview и повторите render.");
       }
     }
+    // The client sends templateSnapshot from the base preview model and textFit separately.
+    // Drift checks must stay anchored to the base snapshot hash, then measured text fit can be applied for render.
+    const templateSnapshot = requestedTextFitOverride
+      ? buildTemplateRenderSnapshot({
+          templateId: managedTemplateRuntime.baseTemplateId,
+          templateConfigOverride: managedTemplateRuntime.templateConfig,
+          content: templateSnapshotContent,
+          fitOverride: requestedTextFitOverride
+        })
+      : baseTemplateSnapshot;
 
     let musicFilePath: string | null = null;
     if (body.channelId && renderPlan.musicAssetId) {
