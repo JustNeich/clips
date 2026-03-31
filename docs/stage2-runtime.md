@@ -474,6 +474,7 @@ TOP guidance defaults:
 - Stage 2 prefers lines that land the why-care clause early while staying visually defensible.
 - For reveal-driven clips the default policy is `hint, don't fully spoil`: `TOP` should frame the normal read plus the tension or misread, without fully narrating the payoff unless that clearly improves the hook.
 - During shortlist assembly Stage 2 now applies soft penalties, not hard drops, to descriptive `TOP` anti-patterns such as comma-chained object lists, beat-by-beat camera-log narration, and hooks that arrive only in the final third of the line.
+- For simple social beats, Stage 2 also prefers plain spoken or comment-native phrasing over synthetic editorial English. Invented pseudo-slang or abstract summary phrasing is treated as a quality negative even when the candidate is otherwise structurally valid.
 
 Step 3 is now the official place to:
 - manually edit final `TOP` / `BOTTOM`

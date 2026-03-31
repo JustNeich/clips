@@ -9,6 +9,7 @@ import {
   Stage2DebugMode,
   Stage2ExamplesAssessment,
   Stage2ExampleGuidanceRole,
+  Stage2HumanPhrasingSignals,
   Stage2CandidateTopSignalSummary,
   Stage2Diagnostics,
   Stage2DiagnosticsExample,
@@ -27,6 +28,7 @@ import {
   buildStage2PromptInputManifestMap,
   buildStage2SourceContextSummary,
   buildCriticPrompt,
+  evaluateHumanPhrasingSignals,
   evaluateTopHookSignals,
   evaluateCandidateCommentCarry,
   buildFinalSelectorPrompt,
@@ -1328,20 +1330,23 @@ function buildModeAwareWriterBrief(input: {
 }): string {
   const diversityGuardrail =
     "Keep the batch varied in bottom openings and continuation logic, and avoid stock tails that could fit unrelated clips.";
+  const plainLanguageGuardrail =
+    "Keep it plain. If the clip/comments sound simple, stay simple. No pseudo-slang.";
   const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
+  const dominantCuePreview = commentCarryProfile.dominantCues.slice(0, 2).join(" | ");
   const commentCarryGuardrail =
     commentCarryProfile.expectation === "high"
-      ? ` High-signal audience shorthand is available (${commentCarryProfile.dominantCues.join(" | ")}). Keep at least 2 candidates where the bottom cashes one of those cues in naturally and clip-safely instead of sanding everything into generic reaction English.`
+      ? ` High-signal shorthand is available (${dominantCuePreview}). Keep at least 2 candidates cashing one cue in naturally instead of sanding everything into generic reaction English.`
       : commentCarryProfile.expectation === "medium"
-        ? ` There is usable audience shorthand (${commentCarryProfile.dominantCues.join(" | ")}). Let at least 1 candidate carry that language naturally when it sharpens the bottom.`
+        ? ` Usable shorthand is available (${dominantCuePreview}). Let at least 1 candidate carry it naturally when it sharpens the bottom.`
         : "";
   if (input.assessment.examplesMode === "domain_guided") {
-    return `${input.baseBrief} The retrieval pool is domain-near enough to help with framing and trigger logic, but clip truth still outranks example mimicry. ${diversityGuardrail}${commentCarryGuardrail}`;
+    return `${input.baseBrief} The retrieval pool is domain-near enough to help with framing and trigger logic, but clip truth still outranks example mimicry. ${plainLanguageGuardrail} ${diversityGuardrail}${commentCarryGuardrail}`;
   }
   if (input.assessment.examplesMode === "form_guided") {
-    return `${input.baseBrief} Examples are for form guidance only: use them for rhythm, density, and top/bottom construction, not for borrowed nouns or domain assumptions. ${diversityGuardrail}${commentCarryGuardrail}`;
+    return `${input.baseBrief} Examples are for form guidance only: use them for rhythm, density, and top/bottom construction, not for borrowed nouns or domain assumptions. ${plainLanguageGuardrail} ${diversityGuardrail}${commentCarryGuardrail}`;
   }
-  return `${input.baseBrief} Retrieval is weak here, so let the clip, bootstrap style directions, and editorial memory drive the narrative. Examples are weak support only. ${diversityGuardrail}${commentCarryGuardrail}`;
+  return `${input.baseBrief} Retrieval is weak here, so let the clip, bootstrap style directions, and editorial memory drive the narrative. Examples are weak support only. ${plainLanguageGuardrail} ${diversityGuardrail}${commentCarryGuardrail}`;
 }
 
 function isSupportedSelectorAngle(value: string): boolean {
@@ -2377,6 +2382,7 @@ type ShortlistEntry = {
   usesDominantCommentCue: boolean;
   matchedCommentCues: string[];
   topSignals: Stage2TopQualitySignals;
+  humanPhrasingSignals: Stage2HumanPhrasingSignals;
   selectionScore: number;
   valid: boolean;
 };
@@ -2452,6 +2458,7 @@ function computeShortlistSelectionScore(entry: {
   commentCarryScore: number;
   usesDominantCommentCue: boolean;
   topSignals: Stage2TopQualitySignals;
+  humanPhrasingSignals: Stage2HumanPhrasingSignals;
 }): number {
   const genericTailPenalty = hasGenericBottomTail(entry.candidate.bottom)
     ? entry.constraintCheck.repaired
@@ -2473,7 +2480,8 @@ function computeShortlistSelectionScore(entry: {
       entry.criticTotal +
       commentCarryBonus +
       dominantCueBonus +
-      entry.topSignals.scoreAdjustment -
+      entry.topSignals.scoreAdjustment +
+      entry.humanPhrasingSignals.scoreAdjustment -
       genericTailPenalty -
       repairedPenalty
     ).toFixed(3)
@@ -2563,6 +2571,23 @@ function shouldUpgradeTopHook(current: ShortlistEntry, replacement: ShortlistEnt
     (replacement.topSignals.scoreAdjustment > current.topSignals.scoreAdjustment ||
       replacementPenaltyScore < currentPenaltyScore ||
       (replacement.topSignals.earlyHookPresent && !current.topSignals.earlyHookPresent))
+  );
+}
+
+function shouldUpgradeHumanPhrasing(current: ShortlistEntry, replacement: ShortlistEntry): boolean {
+  if (replacement.candidate.candidateId === current.candidate.candidateId) {
+    return false;
+  }
+  const currentPenaltyScore =
+    Number(current.humanPhrasingSignals.syntheticPhrasing) * 2 +
+    Number(current.humanPhrasingSignals.inventedCompound);
+  const replacementPenaltyScore =
+    Number(replacement.humanPhrasingSignals.syntheticPhrasing) * 2 +
+    Number(replacement.humanPhrasingSignals.inventedCompound);
+  return (
+    replacement.selectionScore >= current.selectionScore - 0.45 &&
+    (replacement.humanPhrasingSignals.scoreAdjustment > current.humanPhrasingSignals.scoreAdjustment ||
+      replacementPenaltyScore < currentPenaltyScore)
   );
 }
 
@@ -2861,10 +2886,31 @@ function buildResolvedFinalSelectorState(input: {
               right.selectionScore - left.selectionScore
           )[0]
       : null;
+  const strongerPlainLanguageEntry =
+    requestedEntry &&
+    (requestedEntry.humanPhrasingSignals.syntheticPhrasing ||
+      requestedEntry.humanPhrasingSignals.inventedCompound)
+      ? [...input.visibleShortlistEntries]
+          .filter(
+            (entry) =>
+              entry.candidate.candidateId !== requestedEntry.candidate.candidateId &&
+              !isCompromisedShortlistEntry(entry) &&
+              shouldUpgradeHumanPhrasing(requestedEntry, entry)
+          )
+          .sort(
+            (left, right) =>
+              right.humanPhrasingSignals.scoreAdjustment - left.humanPhrasingSignals.scoreAdjustment ||
+              right.selectionScore - left.selectionScore
+          )[0]
+      : null;
   const resolvedRequestedEntry =
     requestedEntryCompromised
       ? fallbackFinalPickEntry
-      : strongerCommentNativeEntry ?? strongerTopHookEntry ?? requestedEntry ?? fallbackFinalPickEntry;
+      : strongerCommentNativeEntry ??
+        strongerPlainLanguageEntry ??
+        strongerTopHookEntry ??
+        requestedEntry ??
+        fallbackFinalPickEntry;
   const commentNativeFinalPickEntry =
     input.commentCarryExpectation === "high" && resolvedRequestedEntry
       ? findCommentNativeUpgradeCandidate(
@@ -3115,6 +3161,7 @@ function buildShortlist(input: {
         commentCarryProfile
       });
       const topSignals = evaluateTopHookSignals(repaired.candidate.top);
+      const humanPhrasingSignals = evaluateHumanPhrasingSignals(repaired.candidate);
       const baseEntry = {
         candidate: repaired.candidate,
         constraintCheck,
@@ -3123,6 +3170,7 @@ function buildShortlist(input: {
         usesDominantCommentCue: commentCarry.usesDominantCue,
         matchedCommentCues: commentCarry.matchedCues,
         topSignals,
+        humanPhrasingSignals,
         selectionScore: 0,
         valid: repaired.valid
       };

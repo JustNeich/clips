@@ -103,6 +103,7 @@ import {
 import {
   buildAnalyzerPrompt,
   buildCriticPrompt,
+  evaluateHumanPhrasingSignals,
   evaluateTopHookSignals,
   buildFinalSelectorPrompt,
   buildPromptPacket,
@@ -2759,6 +2760,124 @@ test("final pick can override a sanitized winner when a strong comment-native op
   assert.equal(result.output.pipeline.finalSelector?.finalPickCandidateId, "cand_6");
 });
 
+test("final pick prefers plain spoken social captions over synthetic editorial phrasing when scores are close", async () => {
+  const stage2HardConstraints: Stage2HardConstraints = {
+    topLengthMin: 40,
+    topLengthMax: 180,
+    bottomLengthMin: 40,
+    bottomLengthMax: 150,
+    bannedWords: [],
+    bannedOpeners: []
+  };
+  const writerCandidates = [
+    {
+      candidate_id: "cand_1",
+      angle: "payoff_reveal",
+      top: "The fan throws the Spider-Man sign at the wall and Caleb's half-second pause becomes the whole social question in the room.",
+      bottom: "That pause made everyone do instant social math: stay PR-safe or mirror her, then the shared-room nod lands.",
+      top_ru: "ru 1",
+      bottom_ru: "ru 1",
+      rationale: "synthetic editorial winner"
+    },
+    {
+      candidate_id: "cand_2",
+      angle: "shared_experience",
+      top: "Fan hits him with the Spider-Man sign at the wall and he freezes for a sec like he already knows this could get clipped everywhere.",
+      bottom: "Pure \"right now I can't\" for one beat, then he loosens up and matches enough to keep it cute.",
+      top_ru: "ru 2",
+      bottom_ru: "ru 2",
+      rationale: "plain spoken social read"
+    },
+    {
+      candidate_id: "cand_3",
+      angle: "shared_experience",
+      top: "The whole thing is one tiny fan-service gamble: she throws the sign, he pauses, and the room waits to see how careful he wants to be.",
+      bottom: "He buys himself one second, then gives her just enough back to keep the moment sweet instead of awkward.",
+      top_ru: "ru 3",
+      bottom_ru: "ru 3",
+      rationale: "reserve"
+    },
+    {
+      candidate_id: "cand_4",
+      angle: "payoff_reveal",
+      top: "What makes the clip work is how fast that normal photo-wall beat turns into a tiny 'can he do that?' moment without anybody forcing it.",
+      bottom: "The pause is the joke. Everybody can see him doing the risk check in real time before he lets the pose happen.",
+      top_ru: "ru 4",
+      bottom_ru: "ru 4",
+      rationale: "reserve 2"
+    },
+    {
+      candidate_id: "cand_5",
+      angle: "insider nerd confirmation meme",
+      top: "She throws him a Spider-Man pose and half the room instantly starts acting like they just caught a casting leak in public.",
+      bottom: "Nobody can prove anything, but you can feel the Miles crowd clocking that pause like rent is due.",
+      top_ru: "ru 5",
+      bottom_ru: "ru 5",
+      rationale: "comment lane"
+    },
+    {
+      candidate_id: "cand_6",
+      angle: "shared_experience",
+      top: "It is such a small moment, but the pause matters because everybody knows fan requests only stay cute until the celebrity says no out loud.",
+      bottom: "He never has to make it weird. One beat, one half-smile, and the room gets what it came for.",
+      top_ru: "ru 6",
+      bottom_ru: "ru 6",
+      rationale: "reserve 3"
+    }
+  ];
+  const criticResponse = writerCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total:
+      candidate.candidate_id === "cand_1"
+        ? 8.95
+        : candidate.candidate_id === "cand_2"
+          ? 8.85
+          : 8.25 - index * 0.05,
+    issues: [],
+    keep: true
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    stage2HardConstraints,
+    videoContextOverrides: {
+      sourceUrl: "https://example.com/spider-sign",
+      title: "Caleb's Spider-Sense is tingling too hard",
+      description: "A fan asks Caleb to do the Spider-Man sign at a photo wall and he hesitates before matching her.",
+      transcript: "",
+      frameDescriptions: [
+        "photo-op wall with Stranger Fan Meet and PeopleCon branding",
+        "fan in white throws a Spider-Man hand sign",
+        "Caleb pauses, then loosens up and mirrors the pose"
+      ],
+      userInstruction: "Keep it simple, social, and meme-native."
+    },
+    comments: [
+      { author: "viewer_1", likes: 188, text: "He needs to be miles morales. Hes the only one" },
+      { author: "viewer_2", likes: 20, text: "Yo this is miles morales!!" },
+      { author: "viewer_3", likes: 7, text: "Read his lips \"Right now I can't.\"" }
+    ],
+    analyzerResponse: {
+      comment_vibe: "playful approving rumor talk",
+      comment_consensus_lane: "People keep reading the pause as actor caution plus fan-service.",
+      comment_joke_lane: "Joke lane keeps saying miles morales and right now I can't.",
+      slang_to_adapt: ["miles morales", "right now I can't"],
+      comment_language_cues: ["miles morales", "right now I can't"],
+      hidden_detail: "The room only needs one tiny pause to start treating the moment like soft confirmation bait."
+    },
+    writerCandidates,
+    rewrittenCandidates: writerCandidates,
+    criticResponse,
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_1",
+      rationale: "cand_1 feels the most polished."
+    }
+  });
+
+  assert.equal(result.output.pipeline.finalSelector?.finalPickCandidateId, "cand_2");
+});
+
 test("selector normalization keeps the primary angle inside ranked angles and mirrors it into diagnostics", async () => {
   const { result } = await runSuccessfulPipeline({
     selectorResponse: {
@@ -4899,6 +5018,8 @@ test("writer, critic, rewriter, and final selector prompts carry comment lanes p
   assert.match(writerPrompt, /"topHookMode":/);
   assert.match(writerPrompt, /"revealPolicy":/);
   assert.match(writerPrompt, /comma-chained object lists/i);
+  assert.match(writerPrompt, /plain spoken English/i);
+  assert.match(writerPrompt, /pseudo-slang/i);
   assert.match(writerPrompt, /stock continuations/i);
   assert.match(writerPrompt, /high-like comment shorthand, acronym, or nickname/i);
   assert.match(writerPrompt, /reporting or bridge verb such as says, means, proves, shows, or tells/i);
@@ -4906,22 +5027,28 @@ test("writer, critic, rewriter, and final selector prompts carry comment lanes p
   assert.match(criticPrompt, /"genericTailCandidateIds": \[/);
   assert.match(criticPrompt, /"inventoryOpeningCandidateIds": \[/);
   assert.match(criticPrompt, /"topHookSignals": \{/);
+  assert.match(criticPrompt, /"humanPhrasingSignals": \{/);
   assert.match(criticPrompt, /"repeatedBottomTailSignatures": \[/);
   assert.match(criticPrompt, /"examplesMode": "style_guided"/);
   assert.match(criticPrompt, /dominant audience shorthand/i);
   assert.match(criticPrompt, /generic filler was appended after a weak or incomplete core clause/i);
   assert.match(criticPrompt, /candidate topHookSignals are provided/i);
+  assert.match(criticPrompt, /candidate humanPhrasingSignals are provided/i);
   assert.match(rewriterPrompt, /"candidateSetSignals":/);
   assert.match(rewriterPrompt, /"explorationMode": "exploratory"/);
   assert.match(rewriterPrompt, /"topHookSignals": \{/);
+  assert.match(rewriterPrompt, /"humanPhrasingSignals": \{/);
   assert.match(rewriterPrompt, /hint-don't-fully-spoil/i);
+  assert.match(rewriterPrompt, /synthetic editorial English/i);
   assert.match(rewriterPrompt, /Never leave a sentence ending on a reporting or bridge verb/i);
   assert.match(finalSelectorPrompt, /"candidateSetSignals":/);
   assert.match(finalSelectorPrompt, /"styleDirectionIds": \[/);
   assert.match(finalSelectorPrompt, /"explorationMode": "exploratory"/);
   assert.match(finalSelectorPrompt, /"inventoryOpeningCandidateIds": \[/);
+  assert.match(finalSelectorPrompt, /"syntheticPhrasingCandidateIds": \[/);
   assert.match(finalSelectorPrompt, /needed repair and still leans on a generic bottom tail/i);
   assert.match(finalSelectorPrompt, /candidate topHookSignals are provided/i);
+  assert.match(finalSelectorPrompt, /candidate humanPhrasingSignals are provided/i);
 });
 
 test("evaluateTopHookSignals penalizes descriptive setup lists and rewards early hook context", () => {
@@ -4945,6 +5072,26 @@ test("evaluateTopHookSignals penalizes descriptive setup lists and rewards early
   assert.equal(hookFirst.earlyHookPresent, true);
   assert.equal(hookFirst.inventoryOpening, false);
   assert.equal(hookFirst.scoreAdjustment, 0.4);
+});
+
+test("evaluateHumanPhrasingSignals penalizes synthetic editorial phrasing and leaves plain spoken lines alone", () => {
+  const synthetic = evaluateHumanPhrasingSignals({
+    top: "The fan asks for the Spider-Man sign and that half-second pause becomes the whole social question in the room.",
+    bottom:
+      "That half-second made everyone do instant social math, then the shared-room nod landed like a full rumor wave."
+  });
+  const plainSpoken = evaluateHumanPhrasingSignals({
+    top: "Fan throws the Spider-Man sign at him and he freezes for a sec before deciding what to do.",
+    bottom: "It is pure \"right now i can't\" for one beat, then he softens it and keeps the whole thing cute."
+  });
+
+  assert.equal(synthetic.syntheticPhrasing, true);
+  assert.ok(synthetic.suspiciousPhrases.some((phrase) => /social math|shared-room|social question|rumor wave/i.test(phrase)));
+  assert.equal(synthetic.scoreAdjustment, -0.9);
+
+  assert.equal(plainSpoken.syntheticPhrasing, false);
+  assert.equal(plainSpoken.inventedCompound, false);
+  assert.equal(plainSpoken.scoreAdjustment, 0);
 });
 
 test("reveal-style shortlist replaces descriptive billiards inventory tops with hook-first alternatives", async () => {
@@ -5658,6 +5805,8 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(writerResolved.defaultPrompt, /Must explain why the viewer should care/);
   assert.match(writerResolved.defaultPrompt, /Treat TOP as a contextual hook, not as a screenshot description/i);
   assert.match(writerResolved.defaultPrompt, /comma-chained object lists/i);
+  assert.match(writerResolved.defaultPrompt, /plain spoken English/i);
+  assert.match(writerResolved.defaultPrompt, /pseudo-slang/i);
   assert.match(writerResolved.defaultPrompt, /Quoted openers are optional/);
   assert.match(writerResolved.defaultPrompt, /stock continuations/i);
   assert.match(writerResolved.defaultPrompt, /Near misses still fail/i);
@@ -5668,17 +5817,20 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /strict exact-length windows/i);
   assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /polished-but-interchangeable bottoms/i);
   assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /candidate topHookSignals are provided/i);
+  assert.match(resolveStage2PromptTemplate("critic", normalizeStage2PromptConfig({})).defaultPrompt, /candidate humanPhrasingSignals are provided/i);
   assert.match(writerResolved.defaultPrompt, /top_ru/);
   assert.match(writerResolved.defaultPrompt, /bottom_ru/);
   assert.match(rewriterResolved.defaultPrompt, /top_ru/);
   assert.match(rewriterResolved.defaultPrompt, /bottom_ru/);
   assert.match(rewriterResolved.defaultPrompt, /screenshot-style openings/i);
   assert.match(rewriterResolved.defaultPrompt, /hint-don't-fully-spoil/i);
+  assert.match(rewriterResolved.defaultPrompt, /synthetic editorial English/i);
   assert.match(rewriterResolved.defaultPrompt, /Never leave a tightening fragment or broken truncation behind/i);
   assert.match(rewriterResolved.defaultPrompt, /The system will not auto-pad a short rewrite for you/i);
   assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /style_direction_ids/i);
   assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /exploration_mode/i);
   assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /TOP behaves like a hook instead of a screenshot description/i);
+  assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /candidate humanPhrasingSignals are provided/i);
   assert.match(titlesResolved.defaultPrompt, /title_ru/);
   assert.match(titlesResolved.defaultPrompt, /real Russian/);
   assert.match(seoResolved.defaultPrompt, /Search terms and topics covered:/);

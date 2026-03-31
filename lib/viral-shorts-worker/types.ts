@@ -597,6 +597,14 @@ export type Stage2TopQualitySignals = {
   scoreAdjustment: number;
 };
 
+export type Stage2HumanPhrasingSignals = {
+  syntheticPhrasing: boolean;
+  inventedCompound: boolean;
+  suspiciousPhrases: string[];
+  notes: string[];
+  scoreAdjustment: number;
+};
+
 export type Stage2CandidateTopSignalSummary = Stage2TopQualitySignals & {
   candidateId: string;
 };

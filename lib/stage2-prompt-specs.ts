@@ -368,6 +368,7 @@ Make it operational:
 - what BOTTOM must do
 - what top hook mode should lead the line
 - whether reveal policy should be hint-don't-fully-spoil
+- whether the language should stay plain and quote-native instead of editorialized
 - how comments should or should not shape stance
 - how retrieval mode changes example usage
 - what stock failure to avoid
@@ -535,7 +536,6 @@ Preferred structures when natural:
 - "That's not [X], that's [Y]."
 - "You can tell he's..."
 - "This guy..."
-- "That is not [X], that is [Y]."
 
 TOP rules:
 - Use provided hard constraints if present; otherwise target 175-180 characters.
@@ -548,8 +548,9 @@ TOP rules:
 - Must explain why the viewer should care, not merely what the camera is doing.
 - Treat TOP as a contextual hook, not as a screenshot description.
 - Make the why-care clause arrive early. Do not spend the first half of the line inventorying objects and only hook at the end.
+- If the clip's native language is simple, keep it simple. Prefer plain spoken English over smart summary phrasing.
 - Read writerBriefDigest.topHookMode and use it as the default opening move.
-- Read writerBriefDigest.revealPolicy. If it says hint-don't-fully-spoil, set up the normal read plus the tension or misread without fully narrating the reveal in TOP unless naming it materially improves the hook.
+- Read writerBriefDigest.revealPolicy. If it says hint-don't-fully-spoil, set up the normal read plus the tension or misread without fully narrating the reveal unless naming it clearly improves the hook.
 - Prefer one of these TOP moves when natural:
   - reveal/misread setup
   - danger-first context
@@ -561,6 +562,7 @@ TOP rules:
   - beat-by-beat camera-log narration
   - openings like "the clip starts", "then it cuts", "cue sets", or "players line up"
   - dropping the why-care clause only in the last third
+  - invented pseudo-slang or summary wording the audience never used
 - A paused-frame-safe TOP can still frame significance. "Visually true" does not mean "inventory every noun you can see."
 
 BOTTOM rules:
@@ -579,11 +581,12 @@ BOTTOM rules:
   - insider aside
   - dry one-liner
   - quoted observation only when it genuinely sounds natural
-- If a bottom opens with a quote, the continuation must stay clip-specific and conversational. Do not tack on a generic tail that could fit a different video.
-- If audience language from comments is worth using, adapt it like lived-in phrasing, not like pasted meme text.
-- If a high-like comment shorthand, acronym, or nickname is obviously useful and clip-safe, do not sand it down into generic wording. Some candidates should use that audience language naturally.
+- If a bottom opens with a quote, keep the continuation clip-specific and conversational. No generic tail that could fit another video.
+- If audience language from comments is worth using, adapt it like lived-in phrasing, not pasted meme text.
+- If you do not have a natural comment-native phrase to borrow, choose plain conversational English over invented slang.
+- If a high-like comment shorthand, acronym, or nickname is useful and clip-safe, use it naturally.
 - If analyzerOutput/commentCarryProfile shows high-signal shorthand, at least 2 candidates must cash one of those cues in naturally, preferably in the bottom.
-- Do not hide every strong audience phrase behind safer editorial English if a clip-safe native version is available.
+- Do not sand every strong audience phrase into safer editorial English if a clip-safe native version exists.
 - Never default to stock continuations like:
   - the reaction basically writes itself
   - the whole room feels it immediately
@@ -592,7 +595,7 @@ BOTTOM rules:
 - If a continuation could fit five unrelated videos, it is too generic for this batch.
 - Never end the core clause on a reporting or bridge verb such as says, means, proves, shows, or tells and then try to save the line with filler.
 - If a line would need generic filler to hit length, rewrite the thought earlier instead of padding the ending.
-- The system will not rescue a too-short line with hidden filler. If the idea is short, expand it with one more clip-specific clause.
+- The system will not rescue a too-short line with hidden filler. If the idea is short, add one more clip-specific clause.
 
 Task:
 Write 20 candidates.
@@ -677,6 +680,8 @@ Automatic penalties:
 - TOP narrates camera movement or object inventory instead of framing the event
 - TOP opens like a screenshot description or comma-chained object list before the why-care clause appears
 - TOP spends most of the line on beat-by-beat narration and lands the real hook too late
+- candidate sounds like it is summarizing social dynamics in editor language instead of reacting in plain spoken English
+- candidate invents pseudo-colloquial phrases or compounds the audience never used
 - nouns are generic when they could be specific
 - actions are abstract instead of visible
 - BOTTOM repeats TOP
@@ -708,6 +713,7 @@ Strong preference:
 - reward lines with lived-in rhythm
 - reward lines that feel socially or emotionally legible
 - reward TOPs that hook early without losing paused-frame truth
+- reward plain, quote-native, comment-native phrasing over overwritten "editorial English"
 - when high-signal audience shorthand exists, reward candidates that use it naturally and visually truthfully over equally clean but more generic lines
 - protect 1-2 strong exploratory candidates when they are genuinely competitive; do not auto-delete them just because they are less familiar
 
@@ -718,6 +724,7 @@ Batch audit rules:
 - if five candidates all land on the same social-read mechanic, some of them should be penalized
 - do not preserve weak diversity for its own sake, but do preserve credible exploratory alternatives when quality is close
 - when candidate topHookSignals are provided, treat them as real evidence: inventoryOpening and pureBeatNarration are negatives, earlyHookPresent is a positive tie-breaker
+- when candidate humanPhrasingSignals are provided, treat syntheticPhrasing and inventedCompound as real negatives
 
 Return strict JSON array with:
 - candidate_id
@@ -760,12 +767,14 @@ Non-negotiable:
 - Do not flatten the human voice.
 - Do not over-explain.
 - Do not rewrite TOP into another camera-log description.
+- Do not "improve" a line by making it sound more editorial, more theory-heavy, or more pseudo-slang than a real comment would.
 - If a quoted opener is not earning its place, remove it instead of polishing it.
 - If a bottom has a generic tail, replace it with a clip-specific continuation.
 - Never leave a tightening fragment or broken truncation behind.
 - If the rewrite becomes smoother but more generic, you failed the rewrite.
 - Prefer a sharper clip-specific social read over a cleaner interchangeable line.
 - If the TOP starts with comma-chained object inventory or beat-by-beat narration, rebuild the opening around the actual hook instead of polishing the list.
+- If a phrase sounds like synthetic editorial English ("social math", "human move", "shared-room" wording), replace it with plain conversational language.
 - If revealPolicy says hint-don't-fully-spoil, do not "improve" the line by narrating the full reveal in TOP unless the hook genuinely gets stronger.
 - If high-like audience shorthand or acronyms are clip-safe, use them when they genuinely sharpen the line instead of sanitizing them away.
 - If the batch contains a clean comment-native candidate and a similarly strong sanitized generic candidate, prefer the comment-native one.
@@ -828,10 +837,12 @@ Selection rules:
 - if a candidate needed repair and still leans on a generic bottom tail, do not let it win the final pick over a cleaner alternative
 - if two candidates are close, prefer the one whose TOP behaves like a hook instead of a screenshot description
 - do not preserve a comma-chained inventory TOP when a similarly strong hook-forward alternative exists
+- if two candidates are close, prefer the one using plain spoken or comment-native language over the one inventing synthetic pseudo-slang
 - if a high-like audience cue or shorthand clearly sharpens one otherwise-competitive line, count that as a real strength rather than smoothing it away
 - if analyzerOutput/commentCarryProfile says shorthand pressure is high, do not let all five visible options stay sanitized
 - when quality is close, prefer one line that naturally cashes the dominant shorthand over another line that lands in generic polished commentary
 - when candidate topHookSignals are provided, treat inventoryOpening, lateHook, and pureBeatNarration as real negatives, and earlyHookPresent as a real positive tie-breaker
+- when candidate humanPhrasingSignals are provided, treat syntheticPhrasing and inventedCompound as real negatives, especially when the clip itself is socially simple
 
 Return strict JSON object with:
 - final_candidates

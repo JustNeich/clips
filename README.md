@@ -233,6 +233,7 @@ npm run stage3-worker -- start
 - `BOTTOM` больше не зависит от legacy правила `bottom quote required`; quoted opener допускается только если это естественно для конкретного клипа.
 - Для reveal-клипов default policy: `hint, don't fully spoil`. `TOP` должен ввести в контекст и напряжение, а не пересказать весь payoff заранее.
 - Во время shortlist assembly worker теперь мягко штрафует screenshot-style `TOP`-ы: comma-chained object lists, beat-by-beat narration, поздний why-care hook и другие inventory-first формулировки проигрывают hook-forward альтернативам.
+- На social / meme clips Stage 2 теперь дополнительно предпочитает plain spoken / comment-native phrasing вместо synthetic editorial English. Псевдо-сленг и сконструированные выражения вроде `social math`, `human move`, `shared-room` и похожие конструкции получают мягкий penalty на shortlist.
 
 Channel-specific mapping теперь задается через `Stage 2` в Channel Manager.
 

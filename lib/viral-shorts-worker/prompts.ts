@@ -9,6 +9,7 @@ import {
   Stage2DiagnosticsPromptStageInputManifest,
   Stage2DiagnosticsSourceContext,
   Stage2ExamplesAssessment,
+  Stage2HumanPhrasingSignals,
   Stage2RuntimeChannelConfig,
   Stage2TopGuidance,
   Stage2TopQualitySignals,
@@ -107,6 +108,23 @@ const TOP_BAD_OPENING_PATTERNS = [
   /^blue felt\b/i,
   /^cue bridge\b/i
 ];
+const SYNTHETIC_EDITORIAL_PHRASE_PATTERNS = [
+  /\binstant social math\b/i,
+  /\bsocial question\b/i,
+  /\bhuman move\b/i,
+  /\bshared(?:-|\s)room\b/i,
+  /\bfan(?:-|\s)room\b/i,
+  /\bfan(?:-|\s)room etiquette\b/i,
+  /\brumou?r wave\b/i,
+  /\bshared tone\b/i,
+  /\bold(?:-|\s)to(?:-|\s)play\b/i,
+  /\bmeme wink\b/i,
+  /\bturns?\s+pr\s+into\b/i,
+  /\bturns?\s+(?:distance|formality|reserve)\s+into\b/i,
+  /\binto permission\b/i
+];
+const SYNTHETIC_COMPOUND_PATTERN =
+  /\b(?:social|shared|fan|room|meme|rumou?r|micro|instant|human|old|pr)-[a-z]+(?:-[a-z]+)?\b/gi;
 const REVEAL_GUIDANCE_PATTERNS = [
   /\breveal\b/i,
   /\bmisread\b/i,
@@ -493,6 +511,58 @@ export function evaluateTopHookSignals(top: string): Stage2TopQualitySignals {
   };
 }
 
+export function evaluateHumanPhrasingSignals(input: Pick<CandidateCaption, "top" | "bottom">): Stage2HumanPhrasingSignals {
+  const text = `${String(input.top ?? "").trim()} ${String(input.bottom ?? "").trim()}`
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) {
+    return {
+      syntheticPhrasing: false,
+      inventedCompound: false,
+      suspiciousPhrases: [],
+      notes: [],
+      scoreAdjustment: 0
+    };
+  }
+
+  const suspiciousPhrases = Array.from(
+    new Set(
+      SYNTHETIC_EDITORIAL_PHRASE_PATTERNS.flatMap((pattern) => {
+        const globalPattern = new RegExp(
+          pattern.source,
+          pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`
+        );
+        return Array.from(text.matchAll(globalPattern)).map((match) =>
+          String(match[0] ?? "").trim()
+        );
+      }).filter(Boolean)
+    )
+  );
+  const inventedCompounds = Array.from(
+    new Set(Array.from(text.matchAll(SYNTHETIC_COMPOUND_PATTERN)).map((match) => String(match[0] ?? "").trim()))
+  );
+  const syntheticPhrasing = suspiciousPhrases.length > 0;
+  const inventedCompound = inventedCompounds.length > 0;
+  const notes: string[] = [];
+  let scoreAdjustment = 0;
+
+  if (syntheticPhrasing) {
+    notes.push("The line leans on synthetic editorial phrasing instead of plain spoken English.");
+    scoreAdjustment -= 0.9;
+  } else if (inventedCompound) {
+    notes.push("The line invents pseudo-colloquial compounds that do not sound naturally spoken.");
+    scoreAdjustment -= 0.45;
+  }
+
+  return {
+    syntheticPhrasing,
+    inventedCompound,
+    suspiciousPhrases: syntheticPhrasing ? suspiciousPhrases : inventedCompounds,
+    notes,
+    scoreAdjustment: Number(scoreAdjustment.toFixed(2))
+  };
+}
+
 function truncateWords(value: string, maxWords: number): string {
   return value
     .trim()
@@ -757,6 +827,8 @@ function buildCandidateBatchSignals(
   const lateHookCandidateIds: string[] = [];
   const pureBeatNarrationCandidateIds: string[] = [];
   const earlyHookPreferredCandidateIds: string[] = [];
+  const syntheticPhrasingCandidateIds: string[] = [];
+  const inventedCompoundCandidateIds: string[] = [];
   const commentCarryProfile = analyzerOutput ? buildCommentCarryProfile(analyzerOutput) : null;
   const commentNativeCandidates: Array<{
     candidateId: string;
@@ -811,6 +883,13 @@ function buildCandidateBatchSignals(
     if (topSignals.earlyHookPresent && topSignals.scoreAdjustment > 0) {
       earlyHookPreferredCandidateIds.push(candidate.candidateId);
     }
+    const humanPhrasingSignals = evaluateHumanPhrasingSignals(candidate);
+    if (humanPhrasingSignals.syntheticPhrasing) {
+      syntheticPhrasingCandidateIds.push(candidate.candidateId);
+    }
+    if (humanPhrasingSignals.inventedCompound) {
+      inventedCompoundCandidateIds.push(candidate.candidateId);
+    }
     if (commentCarryProfile) {
       const commentCarry = evaluateCandidateCommentCarry({
         candidate,
@@ -858,6 +937,8 @@ function buildCandidateBatchSignals(
     lateHookCandidateIds,
     pureBeatNarrationCandidateIds,
     earlyHookPreferredCandidateIds,
+    syntheticPhrasingCandidateIds,
+    inventedCompoundCandidateIds,
     commentCarryExpectation: commentCarryProfile?.expectation ?? "low",
     dominantAudienceCues: commentCarryProfile?.dominantCues ?? [],
     commentCarrySummary: commentCarryProfile?.summary ?? null,
@@ -1058,6 +1139,7 @@ function buildCandidateReviewPayload(
     includeTranslations?: boolean;
     includeRationale?: boolean;
     includeTopSignals?: boolean;
+    includeHumanPhrasingSignals?: boolean;
     maxItems?: number;
   }
 ) {
@@ -1073,6 +1155,9 @@ function buildCandidateReviewPayload(
     topLength: candidate.top.length,
     bottomLength: candidate.bottom.length,
     ...(options?.includeTopSignals ? { topHookSignals: evaluateTopHookSignals(candidate.top) } : {}),
+    ...(options?.includeHumanPhrasingSignals
+      ? { humanPhrasingSignals: evaluateHumanPhrasingSignals(candidate) }
+      : {}),
     ...(includeTranslations
       ? {
           topRu: candidate.topRu,
@@ -1467,7 +1552,8 @@ export function buildCriticPrompt(input: {
     candidates: buildCandidateReviewPayload(input.candidates, {
       includeTranslations: false,
       includeRationale: false,
-      includeTopSignals: true
+      includeTopSignals: true,
+      includeHumanPhrasingSignals: true
     })
   });
 }
@@ -1499,7 +1585,8 @@ export function buildRewriterPrompt(input: {
     candidates: buildCandidateReviewPayload(input.candidates, {
       includeTranslations: true,
       includeRationale: false,
-      includeTopSignals: true
+      includeTopSignals: true,
+      includeHumanPhrasingSignals: true
     })
   });
 }
@@ -1524,7 +1611,8 @@ export function buildFinalSelectorPrompt(input: {
     candidates: buildCandidateReviewPayload(input.candidates, {
       includeTranslations: false,
       includeRationale: false,
-      includeTopSignals: true
+      includeTopSignals: true,
+      includeHumanPhrasingSignals: true
     })
   });
 }
