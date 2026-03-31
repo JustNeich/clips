@@ -4,7 +4,10 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, FlowStep } from "./components/AppShell";
 import { PublishingPlanner } from "./components/PublishingPlanner";
-import type { Step3ManagedTemplateState } from "./components/Step3RenderTemplate";
+import type {
+  Step3AuthoritativePreviewSnapshot,
+  Step3ManagedTemplateState
+} from "./components/Step3RenderTemplate";
 import { upsertHistoryItemByMeaningfulUpdate } from "./components/history-panel-support";
 import {
   normalizeStage2DiagnosticsForView,
@@ -178,7 +181,10 @@ import {
   normalizeStage3EditorPreviewNotice,
   normalizeStage3SourceFailureNotice
 } from "../lib/stage3-preview-notice";
-import { resolveStage3SnapshotManagedTemplateState } from "../lib/stage3-snapshot-managed-template";
+import {
+  applyStage3AuthoritativePreviewContent,
+  resolveStage3SnapshotManagedTemplateState
+} from "../lib/stage3-snapshot-managed-template";
 import { resolveStage3WorkerRefreshIntervalMs } from "../lib/stage3-worker-polling";
 
 const CLIP_DURATION_SEC = 6;
@@ -2083,13 +2089,13 @@ export default function HomePage() {
     (
       draftOverrides?: Partial<Stage3EditorDraftOverrides>,
       textFitOverride?: Stage3TextFitSnapshot | null,
-      managedTemplateStateOverride?: Step3ManagedTemplateState | null
+      authoritativePreviewSnapshot?: Step3AuthoritativePreviewSnapshot | null
     ): Stage3StateSnapshot => {
       const hasLegacyCameraOverride = Array.isArray(draftOverrides?.cameraKeyframes);
       const hasPositionTrackOverride = Array.isArray(draftOverrides?.cameraPositionKeyframes);
       const hasScaleTrackOverride = Array.isArray(draftOverrides?.cameraScaleKeyframes);
       const hasTransformTrackOverride = hasPositionTrackOverride || hasScaleTrackOverride;
-      const effectiveRenderPlan = normalizeRenderPlan(
+      const normalizedRenderPlan = normalizeRenderPlan(
         {
           ...stage3RenderPlan,
           segments: Array.isArray(draftOverrides?.segments) ? draftOverrides.segments : stage3RenderPlan.segments,
@@ -2142,31 +2148,39 @@ export default function HomePage() {
         },
         fallbackRenderPlan()
       );
+      const authoritativeTemplateSnapshot = authoritativePreviewSnapshot?.templateSnapshot ?? null;
+      const authoritativeManagedTemplateState = authoritativePreviewSnapshot?.managedTemplateState ?? null;
+      const effectiveTextFitOverride = authoritativePreviewSnapshot?.textFit ?? textFitOverride ?? null;
+      const effectiveRenderPlan = applyStage3AuthoritativePreviewContent(normalizedRenderPlan, {
+        templateSnapshot: authoritativeTemplateSnapshot
+      });
       const activeManagedTemplateState = resolveStage3SnapshotManagedTemplateState({
         templateId: effectiveRenderPlan.templateId,
         pageState: stage3ManagedTemplateState,
-        previewState: managedTemplateStateOverride
+        previewState: authoritativeManagedTemplateState
       });
-      const templateSnapshot = buildTemplateRenderSnapshot({
-        templateId:
-          activeManagedTemplateState?.baseTemplateId ??
-          effectiveRenderPlan.templateId ??
-          STAGE3_TEMPLATE_ID,
-        templateConfigOverride: activeManagedTemplateState?.templateConfig,
-        content: {
-          topText: stage3TopText,
-          bottomText: stage3BottomText,
-          channelName: effectiveRenderPlan.authorName,
-          channelHandle: effectiveRenderPlan.authorHandle,
-          topFontScale: effectiveRenderPlan.topFontScale,
-          bottomFontScale: effectiveRenderPlan.bottomFontScale,
-          previewScale: 1,
-          mediaAsset: null,
-          backgroundAsset: null,
-          avatarAsset: null
-        },
-        fitOverride: textFitOverride ?? undefined
-      });
+      const templateSnapshot =
+        authoritativeTemplateSnapshot ??
+        buildTemplateRenderSnapshot({
+          templateId:
+            activeManagedTemplateState?.baseTemplateId ??
+            effectiveRenderPlan.templateId ??
+            STAGE3_TEMPLATE_ID,
+          templateConfigOverride: activeManagedTemplateState?.templateConfig,
+          content: {
+            topText: stage3TopText,
+            bottomText: stage3BottomText,
+            channelName: effectiveRenderPlan.authorName,
+            channelHandle: effectiveRenderPlan.authorHandle,
+            topFontScale: effectiveRenderPlan.topFontScale,
+            bottomFontScale: effectiveRenderPlan.bottomFontScale,
+            previewScale: 1,
+            mediaAsset: null,
+            backgroundAsset: null,
+            avatarAsset: null
+          },
+          fitOverride: effectiveTextFitOverride ?? undefined
+        });
       const snapshotClipStart =
         typeof draftOverrides?.clipStartSec === "number" && Number.isFinite(draftOverrides.clipStartSec)
           ? Math.max(0, draftOverrides.clipStartSec)
@@ -2195,18 +2209,18 @@ export default function HomePage() {
             snapshotHash: templateSnapshot.snapshotHash,
             topText: templateSnapshot.content.topText,
             bottomText: templateSnapshot.content.bottomText,
-            topFontScale: effectiveRenderPlan.topFontScale,
-            bottomFontScale: effectiveRenderPlan.bottomFontScale
+            topFontScale: templateSnapshot.content.topFontScale,
+            bottomFontScale: templateSnapshot.content.bottomFontScale
           },
           {
-            topFontPx: templateSnapshot.fit.topFontPx,
-            bottomFontPx: templateSnapshot.fit.bottomFontPx,
-            topLineHeight: templateSnapshot.fit.topLineHeight,
-            bottomLineHeight: templateSnapshot.fit.bottomLineHeight,
-            topLines: templateSnapshot.fit.topLines,
-            bottomLines: templateSnapshot.fit.bottomLines,
-            topCompacted: templateSnapshot.fit.topCompacted,
-            bottomCompacted: templateSnapshot.fit.bottomCompacted
+            topFontPx: effectiveTextFitOverride?.topFontPx ?? templateSnapshot.fit.topFontPx,
+            bottomFontPx: effectiveTextFitOverride?.bottomFontPx ?? templateSnapshot.fit.bottomFontPx,
+            topLineHeight: effectiveTextFitOverride?.topLineHeight ?? templateSnapshot.fit.topLineHeight,
+            bottomLineHeight: effectiveTextFitOverride?.bottomLineHeight ?? templateSnapshot.fit.bottomLineHeight,
+            topLines: effectiveTextFitOverride?.topLines ?? templateSnapshot.fit.topLines,
+            bottomLines: effectiveTextFitOverride?.bottomLines ?? templateSnapshot.fit.bottomLines,
+            topCompacted: effectiveTextFitOverride?.topCompacted ?? templateSnapshot.fit.topCompacted,
+            bottomCompacted: effectiveTextFitOverride?.bottomCompacted ?? templateSnapshot.fit.bottomCompacted
           }
         )
       };
@@ -2828,7 +2842,7 @@ export default function HomePage() {
   const handleRenderVideo = async (
     draftOverrides?: Partial<Stage3EditorDraftOverrides>,
     textFitOverride?: Stage3TextFitSnapshot | null,
-    managedTemplateStateOverride?: Step3ManagedTemplateState | null
+    authoritativePreviewSnapshot?: Step3AuthoritativePreviewSnapshot | null
   ): Promise<void> => {
     const chat = requireActiveChat();
     if (!chat) {
@@ -2853,7 +2867,7 @@ export default function HomePage() {
         : `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     try {
-      const baseSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, managedTemplateStateOverride);
+      const baseSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, authoritativePreviewSnapshot);
       const renderSnapshot: Stage3StateSnapshot = {
         ...baseSnapshot,
         renderPlan: normalizeRenderPlan(
@@ -2865,9 +2879,6 @@ export default function HomePage() {
             musicAssetMimeType: stage3RenderPlan.musicAssetMimeType,
             avatarAssetId: stage3RenderPlan.avatarAssetId,
             avatarAssetMimeType: stage3RenderPlan.avatarAssetMimeType,
-            authorName: stage3RenderPlan.authorName,
-            authorHandle: stage3RenderPlan.authorHandle,
-            templateId: stage3RenderPlan.templateId,
             prompt: stage3AgentPrompt.trim() || baseSnapshot.renderPlan.prompt
           },
           fallbackRenderPlan()
@@ -3112,7 +3123,7 @@ export default function HomePage() {
   const handleOptimizeStage3 = async (
     draftOverrides?: Partial<Stage3EditorDraftOverrides>,
     textFitOverride?: Stage3TextFitSnapshot | null,
-    managedTemplateStateOverride?: Step3ManagedTemplateState | null
+    authoritativePreviewSnapshot?: Step3AuthoritativePreviewSnapshot | null
   ): Promise<void> => {
     const chat = requireActiveChat();
     if (!chat) {
@@ -3133,7 +3144,7 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const currentSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, managedTemplateStateOverride);
+      const currentSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, authoritativePreviewSnapshot);
       const response = await fetch("/api/stage3/agent/run", {
         method: "POST",
         headers: {

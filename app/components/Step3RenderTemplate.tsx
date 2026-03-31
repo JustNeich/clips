@@ -97,6 +97,12 @@ export type Step3ManagedTemplateState = {
   updatedAt: string | null;
 };
 
+export type Step3AuthoritativePreviewSnapshot = {
+  templateSnapshot: TemplateRenderSnapshot;
+  textFit: Stage3TextFitSnapshot;
+  managedTemplateState: Step3ManagedTemplateState | null;
+};
+
 type Step3RenderTemplateProps = {
   sourceUrl: string | null;
   templateId: string;
@@ -162,13 +168,13 @@ type Step3RenderTemplateProps = {
   onRender: (
     overrides?: Stage3EditorDraftOverrides,
     textFitOverride?: Stage3TextFitSnapshot | null,
-    managedTemplateStateOverride?: Step3ManagedTemplateState | null
+    authoritativePreviewSnapshot?: Step3AuthoritativePreviewSnapshot | null
   ) => void;
   onExport: () => void;
   onOptimize: (
     overrides?: Stage3EditorDraftOverrides,
     textFitOverride?: Stage3TextFitSnapshot | null,
-    managedTemplateStateOverride?: Step3ManagedTemplateState | null
+    authoritativePreviewSnapshot?: Step3AuthoritativePreviewSnapshot | null
   ) => void;
   onResumeAgent: () => void;
   onRollbackSelectedVersion: () => void;
@@ -2624,7 +2630,7 @@ export function Step3RenderTemplate({
         measured: false
       };
     });
-  }, [previewFitHash, previewTemplateSnapshot.computed, previewTemplateSnapshot.snapshotHash]);
+  }, [previewFitHash, previewTemplateSnapshot]);
 
   useEffect(() => {
     if (!pendingTextFitAction) {
@@ -2642,10 +2648,15 @@ export function Step3RenderTemplate({
     }
 
     const timer = window.setTimeout(() => {
+      const authoritativePreviewSnapshot: Step3AuthoritativePreviewSnapshot = {
+        templateSnapshot: previewTemplateSnapshot,
+        textFit: activePreviewTextFit,
+        managedTemplateState
+      };
       if (pendingTextFitAction.kind === "optimize") {
-        onOptimize(pendingTextFitAction.overrides, activePreviewTextFit, managedTemplateState);
+        onOptimize(pendingTextFitAction.overrides, activePreviewTextFit, authoritativePreviewSnapshot);
       } else {
-        onRender(pendingTextFitAction.overrides, activePreviewTextFit, managedTemplateState);
+        onRender(pendingTextFitAction.overrides, activePreviewTextFit, authoritativePreviewSnapshot);
       }
       setPendingTextFitAction(null);
     }, 0);
@@ -2661,7 +2672,7 @@ export function Step3RenderTemplate({
     onRender,
     pendingTextFitAction,
     previewFitHash,
-    previewTemplateSnapshot.snapshotHash
+    previewTemplateSnapshot
   ]);
 
   useEffect(() => {
@@ -4162,10 +4173,15 @@ export function Step3RenderTemplate({
 
     if (isPreviewTextFitReady) {
       window.setTimeout(() => {
+        const authoritativePreviewSnapshot: Step3AuthoritativePreviewSnapshot = {
+          templateSnapshot: previewTemplateSnapshot,
+          textFit: activePreviewTextFit,
+          managedTemplateState
+        };
         if (kind === "optimize") {
-          onOptimize(overrides, activePreviewTextFit, managedTemplateState);
+          onOptimize(overrides, activePreviewTextFit, authoritativePreviewSnapshot);
         } else {
-          onRender(overrides, activePreviewTextFit, managedTemplateState);
+          onRender(overrides, activePreviewTextFit, authoritativePreviewSnapshot);
         }
       }, 0);
       return;
