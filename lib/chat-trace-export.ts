@@ -29,7 +29,16 @@ import {
 } from "./team-store";
 import { listSourceJobsForChat, type SourceJobRecord } from "./source-job-store";
 import { listStage2RunsForChat, type Stage2RunRecord } from "./stage2-progress-store";
-import type { Stage2DiagnosticsPromptStage } from "./viral-shorts-worker/types";
+import type { Stage2DiagnosticsPromptStage, Stage2PipelineExecution } from "./viral-shorts-worker/types";
+import type {
+  CandidateLineageRecord,
+  ExampleRoutingDecision,
+  Stage2PipelineVersion,
+  Stage2VNextCanonicalCounters,
+  Stage2VNextCriticGate,
+  Stage2VNextFeatureFlagSnapshot,
+  Stage2VNextWorkerBuild
+} from "./stage2-vnext/contracts";
 import { MAX_EXPORTED_COMMENTS, TRACE_EXPORT_VERSION } from "./chat-trace-export-shared";
 
 export type ChatTraceExportComments = {
@@ -74,12 +83,26 @@ type ChatTraceExportTraceContract = {
   canonicalSections: {
     stage2CausalInputs: string;
     stage2StageManifests: string;
+    stage2Execution: string;
     stage2Outcome: string;
+    stage2VNext: string;
+    stage2VNextExampleRouting: string;
+    stage2VNextCanonicalCounters: string;
+    stage2VNextValidation: string;
+    stage2VNextCandidateLineage: string;
+    stage2VNextCriticGate: string;
     commentsUsage: string;
     examplesUsage: string;
+    stage2ConsistencyChecks: string;
   };
   convenienceMirrors: string[];
   note: string;
+};
+
+type ChatTraceExportConsistencyCheck = {
+  id: string;
+  ok: boolean;
+  details: string;
 };
 
 type ChatTraceExportStageManifest = {
@@ -196,6 +219,15 @@ export type ChatTraceExport = {
       };
       notes: string[];
     };
+    execution: {
+      exporterVersion: string;
+      resolvedAt: string | null;
+      pipelineVersion: Stage2PipelineVersion | null;
+      stageChainVersion: string | null;
+      featureFlags: Stage2VNextFeatureFlagSnapshot | null;
+      workerBuild: Stage2VNextWorkerBuild | null;
+      legacyFallbackReason: string | null;
+    };
     outcome: {
       retrievalConfidence: Stage2Response["diagnostics"] extends infer T
         ? T extends { examples?: { retrievalConfidence?: infer U } }
@@ -275,6 +307,27 @@ export type ChatTraceExport = {
         weakSupportIds: string[];
       };
     };
+    vnext: {
+      present: boolean;
+      phase: number | null;
+      exampleRouting: ExampleRoutingDecision | null;
+      canonicalCounters: Stage2VNextCanonicalCounters | null;
+      validation: {
+        ok: boolean;
+        issues: string[];
+        validatorsRun: string[];
+      } | null;
+      candidateLineage: CandidateLineageRecord[];
+      criticGate: Stage2VNextCriticGate | null;
+      traceMeta: {
+        version: string;
+        compatibilityMode: string;
+        stageChainVersion: string | null;
+        pipelineVersion: Stage2PipelineVersion | null;
+        workerBuild: Stage2VNextWorkerBuild | null;
+      } | null;
+    };
+    consistencyChecks: ChatTraceExportConsistencyCheck[];
     currentResult: Stage2Response | null;
     currentProgress: Stage2Response["progress"] | null;
     analysis: Stage2Response["diagnostics"] extends infer T
@@ -465,9 +518,17 @@ function buildTraceContract(): ChatTraceExportTraceContract {
     canonicalSections: {
       stage2CausalInputs: "stage2.causalInputs",
       stage2StageManifests: "stage2.stageManifests",
+      stage2Execution: "stage2.execution",
       stage2Outcome: "stage2.outcome",
+      stage2VNext: "stage2.vnext",
+      stage2VNextExampleRouting: "stage2.vnext.exampleRouting",
+      stage2VNextCanonicalCounters: "stage2.vnext.canonicalCounters",
+      stage2VNextValidation: "stage2.vnext.validation",
+      stage2VNextCandidateLineage: "stage2.vnext.candidateLineage",
+      stage2VNextCriticGate: "stage2.vnext.criticGate",
       commentsUsage: "comments.runtimeUsage",
-      examplesUsage: "stage2.examplesRuntimeUsage"
+      examplesUsage: "stage2.examplesRuntimeUsage",
+      stage2ConsistencyChecks: "stage2.consistencyChecks"
     },
     convenienceMirrors: [
       "stage2.currentResult",
@@ -479,7 +540,7 @@ function buildTraceContract(): ChatTraceExportTraceContract {
       "sourceJobs[*].result"
     ],
     note:
-      "Canonical sections above are the trace's source-of-truth summaries. Existing nested result/diagnostics/raw event payloads remain as convenience mirrors and may duplicate the same facts in a less direct form."
+      "Canonical sections above are the trace's source-of-truth summaries. stage2.execution and stage2.vnext are authoritative for resolved pipeline mode, worker build, feature-flag state, critic gate, lineage, and validation. Existing nested result/diagnostics/raw event payloads remain as convenience mirrors only."
   };
 }
 
@@ -497,6 +558,128 @@ function buildStageManifestSummaries(
     manifestSource: stage.inputManifest ? "runtime" : "missing",
     inputManifest: stage.inputManifest ?? null
   }));
+}
+
+function buildStage2Execution(
+  rawStage2: Stage2Response | null
+): ChatTraceExport["stage2"]["execution"] {
+  const execution = (rawStage2?.output.pipeline?.execution ?? null) as Stage2PipelineExecution | null;
+  return {
+    exporterVersion: TRACE_EXPORT_VERSION,
+    resolvedAt: execution?.resolvedAt ?? null,
+    pipelineVersion: execution?.pipelineVersion ?? rawStage2?.stage2Worker?.pipelineVersion ?? null,
+    stageChainVersion: execution?.stageChainVersion ?? rawStage2?.stage2Worker?.stageChainVersion ?? null,
+    featureFlags: execution?.featureFlags ?? rawStage2?.stage2Worker?.featureFlags ?? null,
+    workerBuild:
+      execution?.workerBuild ??
+      (rawStage2?.stage2Worker?.buildId
+        ? {
+            buildId: rawStage2.stage2Worker.buildId,
+            startedAt: rawStage2.stage2Worker.startedAt ?? "",
+            pid: rawStage2.stage2Worker.pid ?? null
+          }
+        : null),
+    legacyFallbackReason: execution?.legacyFallbackReason ?? null
+  };
+}
+
+function buildStage2VNextCanonical(
+  rawStage2: Stage2Response | null
+): ChatTraceExport["stage2"]["vnext"] {
+  const vnext = rawStage2?.output.pipeline?.vnext ?? null;
+  return {
+    present: Boolean(vnext),
+    phase: vnext?.phase ?? null,
+    exampleRouting: vnext?.exampleRouting ?? null,
+    canonicalCounters: vnext?.canonicalCounters ?? vnext?.trace.canonicalCounters ?? null,
+    validation: vnext
+      ? {
+          ok: vnext.validation.ok,
+          issues: vnext.validation.issues,
+          validatorsRun: vnext.trace.validation.validatorsRun
+        }
+      : null,
+    candidateLineage: vnext?.candidateLineage ?? vnext?.trace.candidateLineage ?? [],
+    criticGate: vnext?.criticGate ?? vnext?.trace.criticGate ?? null,
+    traceMeta: vnext
+      ? {
+          version: vnext.trace.meta.version,
+          compatibilityMode: vnext.trace.meta.compatibilityMode,
+          stageChainVersion: vnext.trace.meta.stageChainVersion,
+          pipelineVersion: vnext.trace.meta.pipelineVersion,
+          workerBuild: vnext.trace.meta.workerBuild
+        }
+      : null
+  };
+}
+
+function buildStage2ConsistencyChecks(
+  rawStage2: Stage2Response | null,
+  stageManifests: ChatTraceExportStageManifest[]
+): ChatTraceExportConsistencyCheck[] {
+  if (!rawStage2) {
+    return [];
+  }
+
+  const checks: ChatTraceExportConsistencyCheck[] = [];
+  const analyzerComments = stageManifests.find((stage) => stage.stageId === "analyzer")?.inputManifest?.comments;
+  const selectorComments = stageManifests.find((stage) => stage.stageId === "selector")?.inputManifest?.comments;
+  const runtimeComments = rawStage2.source.commentsUsedForPrompt ?? 0;
+  checks.push({
+    id: "comments_prompt_accounting",
+    ok:
+      (analyzerComments?.passedCount ?? 0) <= runtimeComments &&
+      (selectorComments?.passedCount ?? 0) <= runtimeComments,
+    details:
+      `runtimeAvailable=${runtimeComments}; analyzerPassed=${analyzerComments?.passedCount ?? 0}; ` +
+      `selectorPassed=${selectorComments?.passedCount ?? 0}.`
+  });
+
+  const selectedExampleIds =
+    rawStage2.output.pipeline?.selectorOutput &&
+    typeof rawStage2.output.pipeline.selectorOutput === "object" &&
+    Array.isArray((rawStage2.output.pipeline.selectorOutput as { selectedExampleIds?: unknown }).selectedExampleIds)
+      ? ((rawStage2.output.pipeline.selectorOutput as { selectedExampleIds?: string[] }).selectedExampleIds ?? [])
+      : [];
+  checks.push({
+    id: "selected_examples_count_alignment",
+    ok: (rawStage2.output.pipeline?.selectedExamplesCount ?? 0) === selectedExampleIds.length,
+    details:
+      `selectedExamplesCount=${rawStage2.output.pipeline?.selectedExamplesCount ?? 0}; ` +
+      `selectorSelectedIds=${selectedExampleIds.length}.`
+  });
+
+  const vnext = rawStage2.output.pipeline?.vnext;
+  if (vnext) {
+    const criticGate = vnext.criticGate ?? vnext.trace.criticGate;
+    const validatedPoolIds = new Set(criticGate.validatedShortlistPoolIds);
+    checks.push({
+      id: "vnext_disabled_examples",
+      ok:
+        vnext.exampleRouting.mode !== "disabled" ||
+        ((rawStage2.output.pipeline?.selectedExamplesCount ?? 0) === 0 &&
+          (vnext.canonicalCounters ?? vnext.trace.canonicalCounters).examplesPassedDownstream === 0),
+      details:
+        `mode=${vnext.exampleRouting.mode}; selectedExamplesCount=${rawStage2.output.pipeline?.selectedExamplesCount ?? 0}; ` +
+        `examplesPassedDownstream=${(vnext.canonicalCounters ?? vnext.trace.canonicalCounters).examplesPassedDownstream}.`
+    });
+    checks.push({
+      id: "critic_gate_alignment",
+      ok:
+        criticGate.reserveBackfillCount === 0 &&
+        criticGate.rewriteCandidateIds.length === criticGate.criticKeptCandidateIds.length &&
+        criticGate.rewriteCandidateIds.every((candidateId) =>
+          criticGate.criticKeptCandidateIds.includes(candidateId)
+        ) &&
+        criticGate.visibleShortlistCandidateIds.every((candidateId) => validatedPoolIds.has(candidateId)),
+      details:
+        `criticKept=${criticGate.criticKeptCandidateIds.length}; rewritePool=${criticGate.rewriteCandidateIds.length}; ` +
+        `validatedPool=${criticGate.validatedShortlistPoolIds.length}; visible=${criticGate.visibleShortlistCandidateIds.length}; ` +
+        `reserveBackfill=${criticGate.reserveBackfillCount}.`
+    });
+  }
+
+  return checks;
 }
 
 function buildStage2Outcome(rawStage2: Stage2Response | null) {
@@ -940,6 +1123,9 @@ export async function buildChatTraceExport(
   const stageManifests = buildStageManifestSummaries(
     rawCurrentStage2?.diagnostics?.effectivePrompting?.promptStages
   );
+  const execution = buildStage2Execution(rawCurrentStage2);
+  const vnext = buildStage2VNextCanonical(rawCurrentStage2);
+  const consistencyChecks = buildStage2ConsistencyChecks(rawCurrentStage2, stageManifests);
 
   return {
     version: TRACE_EXPORT_VERSION,
@@ -1019,8 +1205,11 @@ export async function buildChatTraceExport(
           "Comment truncation in this section refers to export trimming only; runtime truncation lives in comments.runtimeUsage and stage2.stageManifests."
         ]
       },
+      execution,
       outcome: buildStage2Outcome(rawCurrentStage2),
       examplesRuntimeUsage,
+      vnext,
+      consistencyChecks,
       currentResult: sanitizedCurrentStage2,
       currentProgress: sanitizedCurrentStage2?.progress ?? selectedRun?.snapshot ?? null,
       analysis: sanitizedCurrentStage2?.diagnostics?.analysis ?? null,

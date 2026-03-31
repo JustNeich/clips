@@ -8,6 +8,17 @@ import type {
   Stage2ExplorationMode,
   Stage2StyleProfile
 } from "../stage2-channel-learning";
+import type {
+  CandidateLineageRecord,
+  ExampleRoutingDecision,
+  Stage2PipelineVersion,
+  Stage2VNextCanonicalCounters,
+  Stage2VNextCriticGate,
+  Stage2VNextFeatureFlagSnapshot,
+  Stage2VNextTraceV3,
+  Stage2VNextWorkerBuild
+} from "../stage2-vnext/contracts";
+import type { Stage2VNextTraceValidationResult } from "../stage2-vnext/validators";
 
 export type Stage2RetrievalConfidence = "high" | "medium" | "low";
 export type Stage2ExamplesMode = "domain_guided" | "form_guided" | "style_guided";
@@ -734,6 +745,15 @@ export type Stage2RunDebugArtifact = {
   promptStages: Stage2DiagnosticsPromptStage[];
 };
 
+export type Stage2PipelineExecution = {
+  featureFlags: Stage2VNextFeatureFlagSnapshot;
+  pipelineVersion: Stage2PipelineVersion;
+  stageChainVersion: string;
+  workerBuild: Stage2VNextWorkerBuild;
+  resolvedAt: string;
+  legacyFallbackReason: string | null;
+};
+
 export type ViralShortsStage2Result = {
   inputAnalysis: {
     visualAnchors: string[];
@@ -768,6 +788,7 @@ export type ViralShortsStage2Result = {
   pipeline: {
     channelId: string;
     mode: "packet_only" | "codex_pipeline" | "regenerate";
+    execution?: Stage2PipelineExecution;
     selectorOutput: SelectorOutput;
     availableExamplesCount: number;
     selectedExamplesCount: number;
@@ -793,6 +814,15 @@ export type ViralShortsStage2Result = {
         droppedAfterValidationCount: number;
         topSignalSummary?: Stage2TopSignalSummary;
       };
+    };
+    vnext?: {
+      phase: 1;
+      exampleRouting: ExampleRoutingDecision;
+      criticGate: Stage2VNextCriticGate;
+      canonicalCounters: Stage2VNextCanonicalCounters;
+      candidateLineage: CandidateLineageRecord[];
+      trace: Stage2VNextTraceV3;
+      validation: Stage2VNextTraceValidationResult;
     };
   };
   diagnostics?: Stage2Diagnostics;

@@ -97,12 +97,20 @@ function isTerminalStatus(status: Stage3JobStatus): boolean {
   return status === "completed" || status === "failed" || status === "interrupted";
 }
 
-async function summarizeJobFailure(job: Stage3JobRecord, error: unknown): Promise<string> {
+async function classifyJobFailure(job: Stage3JobRecord, error: unknown): Promise<{
+  code: string;
+  message: string;
+  recoverable: boolean;
+}> {
   try {
     const executor = await import("./stage3-job-executor");
-    return executor.summarizeStage3HeavyJobError(job.kind, error);
+    return executor.classifyStage3HeavyJobError(job.kind, error);
   } catch {
-    return error instanceof Error ? error.message : "Stage 3 job failed.";
+    return {
+      code: "job_failed",
+      message: error instanceof Error ? error.message : "Stage 3 job failed.",
+      recoverable: true
+    };
   }
 }
 
@@ -128,20 +136,12 @@ async function normalizeJobFailure(job: Stage3JobRecord, error: unknown): Promis
       recoverable: true
     };
   }
+  const classified = await classifyJobFailure(job, error);
   return {
     status: "failed",
-    code:
-      job.kind === "preview"
-        ? "preview_failed"
-        : job.kind === "render"
-          ? "render_failed"
-          : job.kind === "editing-proxy"
-            ? "editing_proxy_failed"
-            : job.kind === "source-download"
-            ? "source_download_failed"
-            : "job_failed",
-    message: await summarizeJobFailure(job, error),
-    recoverable: true
+    code: classified.code,
+    message: classified.message,
+    recoverable: classified.recoverable
   };
 }
 

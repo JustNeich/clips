@@ -159,9 +159,17 @@ type Step3RenderTemplateProps = {
   sourceAudioEnabled: boolean;
   musicGain: number;
   publication?: ChannelPublication | null;
-  onRender: (overrides?: Stage3EditorDraftOverrides, textFitOverride?: Stage3TextFitSnapshot | null) => void;
+  onRender: (
+    overrides?: Stage3EditorDraftOverrides,
+    textFitOverride?: Stage3TextFitSnapshot | null,
+    managedTemplateStateOverride?: Step3ManagedTemplateState | null
+  ) => void;
   onExport: () => void;
-  onOptimize: (overrides?: Stage3EditorDraftOverrides, textFitOverride?: Stage3TextFitSnapshot | null) => void;
+  onOptimize: (
+    overrides?: Stage3EditorDraftOverrides,
+    textFitOverride?: Stage3TextFitSnapshot | null,
+    managedTemplateStateOverride?: Step3ManagedTemplateState | null
+  ) => void;
   onResumeAgent: () => void;
   onRollbackSelectedVersion: () => void;
   onReset: () => void;
@@ -1130,6 +1138,7 @@ function Stage3LivePreviewPanel({
     playbackPlan.totalOutputDurationSec > 0 ? playbackPlan.totalOutputDurationSec : clipDurationSec;
   // Preview transport should react only to timing changes, not per-fragment framing overrides.
   const playbackTimingKey = useMemo(() => buildStage3PlaybackTimingKey(playbackPlan), [playbackPlan]);
+  const lastPlaybackTimingKeyRef = useRef<string | null>(null);
   const layoutScale = fitScale * previewScaleMultiplier;
   const playbackTransformState = useMemo(
     () =>
@@ -1251,7 +1260,7 @@ function Stage3LivePreviewPanel({
 
   useEffect(() => {
     setTimelineSec((prev) => clamp(prev, 0, playbackDurationSec));
-  }, [activePreviewMediaMode, activePreviewVideoUrl, playbackDurationSec, playbackPlan]);
+  }, [activePreviewMediaMode, activePreviewVideoUrl, playbackDurationSec]);
 
   useEffect(() => {
     if (editorMode) {
@@ -1326,6 +1335,24 @@ function Stage3LivePreviewPanel({
     },
     [playbackDurationSec, syncBackgroundTo]
   );
+
+  useEffect(() => {
+    if (lastPlaybackTimingKeyRef.current === null) {
+      lastPlaybackTimingKeyRef.current = playbackTimingKey;
+      return;
+    }
+    if (lastPlaybackTimingKeyRef.current === playbackTimingKey) {
+      return;
+    }
+    lastPlaybackTimingKeyRef.current = playbackTimingKey;
+
+    if (activePreviewMediaMode === "mapped") {
+      seekTimeline(0);
+      return;
+    }
+
+    setTimelineSec((prev) => clamp(prev, 0, playbackDurationSec));
+  }, [activePreviewMediaMode, playbackDurationSec, playbackTimingKey, seekTimeline]);
 
   const seekTimelineAtClientX = useCallback(
     (clientX: number) => {
@@ -2616,9 +2643,9 @@ export function Step3RenderTemplate({
 
     const timer = window.setTimeout(() => {
       if (pendingTextFitAction.kind === "optimize") {
-        onOptimize(pendingTextFitAction.overrides, activePreviewTextFit);
+        onOptimize(pendingTextFitAction.overrides, activePreviewTextFit, managedTemplateState);
       } else {
-        onRender(pendingTextFitAction.overrides, activePreviewTextFit);
+        onRender(pendingTextFitAction.overrides, activePreviewTextFit, managedTemplateState);
       }
       setPendingTextFitAction(null);
     }, 0);
@@ -2629,6 +2656,7 @@ export function Step3RenderTemplate({
   }, [
     activePreviewTextFit,
     isPreviewTextFitReady,
+    managedTemplateState,
     onOptimize,
     onRender,
     pendingTextFitAction,
@@ -4135,9 +4163,9 @@ export function Step3RenderTemplate({
     if (isPreviewTextFitReady) {
       window.setTimeout(() => {
         if (kind === "optimize") {
-          onOptimize(overrides, activePreviewTextFit);
+          onOptimize(overrides, activePreviewTextFit, managedTemplateState);
         } else {
-          onRender(overrides, activePreviewTextFit);
+          onRender(overrides, activePreviewTextFit, managedTemplateState);
         }
       }, 0);
       return;

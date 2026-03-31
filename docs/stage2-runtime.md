@@ -513,8 +513,10 @@ When a run looks suspicious:
    - selected run id
    - canonical causal inputs in `stage2.causalInputs`
    - per-stage manifests in `stage2.stageManifests`
+   - resolved pipeline mode / worker build / feature flag state in `stage2.execution`
    - active corpus vs selector prompt pool in `stage2.examplesRuntimeUsage`
    - canonical final-selector outcome in `stage2.outcome`
+   - canonical vNext audit data in `stage2.vnext`
    - `stage2.outcome.topSignalSummary` when debugging weak or overly descriptive `TOP` behavior
    - explicit export truncation in `stage2.exportOmissions`
    - Stage 2 -> Stage 3 handoff summary
@@ -524,14 +526,18 @@ When a run looks suspicious:
 For forensic debugging, treat these sections as canonical:
 - `stage2.causalInputs`
 - `stage2.stageManifests`
+- `stage2.execution`
 - `stage2.outcome`
+- `stage2.vnext`
 - `comments.runtimeUsage`
 - `stage2.examplesRuntimeUsage`
 
 These sections answer:
 - what exact channel snapshot and learning state shaped the run;
 - what each prompt stage actually received;
+- which worker build handled the run and whether vNext was actually enabled there;
 - what the final selector really evaluated and picked;
+- what the vNext critic gate, lineage, counters, and validation actually recorded;
 - whether comments/examples were runtime-truncated or only export-truncated.
 
 Convenience mirrors still remain in the trace:

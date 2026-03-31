@@ -96,6 +96,14 @@ import { YouTubeCommentsApiError } from "../lib/youtube-comments";
 import { buildLimitedCommentsExtractorArgs } from "../lib/ytdlp";
 import { validateStage2Output } from "../lib/stage2-output-validation";
 import {
+  CandidateLifecycle,
+  applyExampleRoutingDecision,
+  buildTraceV3,
+  decideExampleRouting,
+  validateTitle,
+  validateTraceV3
+} from "../lib/stage2-vnext";
+import {
   assertCodexProducedFinalMessage,
   formatCodexExecFailureMessage,
   normalizeCodexReasoningEffort
@@ -666,6 +674,7 @@ async function runSuccessfulPipeline(options?: {
   stage2ExamplesConfig?: Stage2ExamplesConfig;
   workspaceStage2ExamplesCorpusJson?: string;
   stage2HardConstraints?: Stage2HardConstraints;
+  stage2VNextEnabled?: boolean;
   analyzerResponse?: Record<string, unknown>;
   selectedExampleIds?: string[];
   userInstruction?: string | null;
@@ -856,6 +865,7 @@ async function runSuccessfulPipeline(options?: {
     executor,
     promptConfig,
     debugMode: options?.debugMode,
+    stage2VNextEnabled: options?.stage2VNextEnabled,
     onProgress: async (event) => {
       progressEvents.push({
         stageId: event.stageId,
@@ -4781,6 +4791,240 @@ test("weak generic pools produce style_guided retrieval with truthful warning", 
   assert.match(selectorPool.assessment.retrievalWarning ?? "", /did not find strong domain-near examples/i);
 });
 
+test("vnext example router upgrades low-confidence retrieval to disabled and passes zero examples downstream", () => {
+  const weakGenericExamples = Array.from({ length: 8 }, (_, index) =>
+    makeExample({
+      id: `weak_vnext_${index + 1}`,
+      ownerChannelId: "generic",
+      ownerChannelName: "Generic",
+      title: `Wild reaction clip ${index + 1}`,
+      overlayTop: `This whole thing gets crazy right away and everybody starts losing it ${index + 1}`,
+      overlayBottom: `That is one of those videos people keep replaying for the vibe ${index + 1}`,
+      clipType: "general",
+      whyItWorks: [],
+      qualityScore: 0.2
+    })
+  );
+
+  const selectorPool = buildSelectorExamplePool({
+    examples: weakGenericExamples,
+    queryText:
+      "robot arm solder joint fails under load factory floor everyone hears the crack before it collapses"
+  });
+  const decision = decideExampleRouting({
+    availableExamples: selectorPool.selectorExamples,
+    assessment: selectorPool.assessment
+  });
+  const passedExamples = applyExampleRoutingDecision({
+    availableExamples: selectorPool.selectorExamples,
+    decision
+  });
+
+  assert.equal(decision.mode, "disabled");
+  assert.deepEqual(decision.selectedExampleIds, []);
+  assert.equal(passedExamples.length, 0);
+});
+
+test("candidate lifecycle rejects hard-rejected reentry transitions", () => {
+  const lifecycle = new CandidateLifecycle();
+  lifecycle.registerSemanticDraft({
+    candidateId: "cand_reject",
+    createdAt: "2026-03-31T10:00:00.000Z"
+  });
+  lifecycle.transition({
+    candidateId: "cand_reject",
+    toState: "packed_valid",
+    stageId: "constraint_packer",
+    at: "2026-03-31T10:00:01.000Z"
+  });
+  lifecycle.transition({
+    candidateId: "cand_reject",
+    toState: "hard_rejected",
+    stageId: "quality_court",
+    at: "2026-03-31T10:00:02.000Z",
+    reason: "visual_fail"
+  });
+
+  assert.throws(
+    () =>
+      lifecycle.transition({
+        candidateId: "cand_reject",
+        toState: "visible_shortlist",
+        stageId: "pairwise_final_selector",
+        at: "2026-03-31T10:00:03.000Z"
+      }),
+    /Invalid candidate lifecycle transition/
+  );
+});
+
+test("trace validator catches disabled example leaks and hard-rejected shortlist reentry", () => {
+  const lifecycle = new CandidateLifecycle();
+  lifecycle.registerSemanticDraft({
+    candidateId: "cand_1",
+    createdAt: "2026-03-31T10:00:00.000Z"
+  });
+  lifecycle.transition({
+    candidateId: "cand_1",
+    toState: "packed_valid",
+    stageId: "constraint_packer",
+    at: "2026-03-31T10:00:01.000Z"
+  });
+  lifecycle.transition({
+    candidateId: "cand_1",
+    toState: "judged",
+    stageId: "quality_court",
+    at: "2026-03-31T10:00:02.000Z"
+  });
+  lifecycle.transition({
+    candidateId: "cand_1",
+    toState: "hard_rejected",
+    stageId: "quality_court",
+    at: "2026-03-31T10:00:03.000Z",
+    reason: "native_fluency_fail"
+  });
+
+  const trace = buildTraceV3({
+    meta: {
+      version: "stage2-vnext-trace-v3",
+      generatedAt: "2026-03-31T10:01:00.000Z",
+      featureFlag: "STAGE2_VNEXT_ENABLED",
+      featureFlags: {
+        STAGE2_VNEXT_ENABLED: true,
+        source: "override",
+        rawValue: null
+      },
+      pipelineVersion: "vnext",
+      stageChainVersion: "stage2-vnext-phase1-bridge",
+      workerBuild: {
+        buildId: "test-build",
+        startedAt: "2026-03-31T09:59:00.000Z",
+        pid: 123
+      },
+      compatibilityMode: "legacy_bridge",
+      implementedStages: ["example_router", "constraint_packer", "quality_court", "pairwise_final_selector"]
+    },
+    inputs: {
+      source: {
+        sourceId: "source_1",
+        sourceUrl: "https://example.com/source",
+        title: "Clip",
+        description: "Description",
+        transcript: null,
+        durationSec: null,
+        frames: [],
+        comments: [
+          {
+            id: "comment_1",
+            author: "viewer",
+            text: "this joint is cooked",
+            likes: 12,
+            postedAt: null
+          }
+        ],
+        metadata: {
+          provider: "test",
+          downloadedAt: "2026-03-31T10:00:00.000Z",
+          totalComments: 1
+        }
+      },
+      channel: {
+        channelId: "channel_1",
+        name: "Channel 1",
+        username: "channel_1",
+        hardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+        userInstruction: null
+      }
+    },
+    stageOutputs: {
+      clipTruthExtractor: null,
+      audienceMiner: null,
+      exampleRouter: {
+        decision: {
+          mode: "disabled",
+          confidence: 0.2,
+          selectedExampleIds: [],
+          blockedExampleIds: ["example_1"],
+          reasons: ["retrieval too weak"]
+        },
+        retrievedExamples: [],
+        passedExamples: [],
+        blockedExamples: []
+      },
+      strategySearch: null,
+      semanticDraftGenerator: {
+        drafts: []
+      },
+      constraintPacker: {
+        packedCandidates: []
+      },
+      qualityCourt: {
+        judgeCards: []
+      },
+      pairwiseFinalSelector: {
+        visibleCandidateIds: ["cand_1"],
+        winnerCandidateId: "cand_1",
+        pairwiseMatches: [],
+        rationale: "invalid shortlist"
+      },
+      titleAndSeo: {
+        titles: [],
+        seo: null
+      },
+      exampleUsage: [
+        {
+          stageId: "semantic_draft_generator",
+          exampleMode: "disabled",
+          passedExampleIds: ["example_1"]
+        }
+      ]
+    },
+    candidateLineage: lifecycle.list(),
+    criticGate: {
+      evaluatedCandidateIds: ["cand_1"],
+      criticKeptCandidateIds: [],
+      criticRejectedCandidateIds: ["cand_1"],
+      rewriteCandidateIds: [],
+      validatedShortlistPoolIds: [],
+      visibleShortlistCandidateIds: ["cand_1"],
+      invalidDroppedCandidateIds: [],
+      reserveBackfillCount: 0
+    },
+    validation: {
+      validatorsRun: [],
+      issues: []
+    },
+    selection: {
+      visibleCandidateIds: ["cand_1"],
+      winnerCandidateId: "cand_1",
+      pairwiseMatches: [],
+      rationale: "invalid shortlist"
+    },
+    memory: {
+      status: "not_implemented"
+    },
+    cost: {
+      totalPromptChars: 0,
+      totalEstimatedInputTokens: 0,
+      totalEstimatedOutputTokens: 0
+    }
+  });
+  const validation = validateTraceV3(trace);
+
+  assert.equal(validation.ok, false);
+  assert.match(validation.issues.join(" "), /Disabled example mode still passed examples/i);
+  assert.match(validation.issues.join(" "), /hard-rejected candidate/i);
+});
+
+test("title validator normalizes all-caps policy after checking opener", () => {
+  const validation = validateTitle("How axle fails", {
+    requireQuestionWordOpener: true,
+    forceAllCaps: true
+  });
+
+  assert.equal(validation.normalizedTitle, "HOW AXLE FAILS");
+  assert.equal(validation.passed, true);
+});
+
 test("selector prompt changes behavior by examples mode instead of treating every pool as semantic guidance", () => {
   const service = new ViralShortsWorkerService();
   const formOnlyExamples = Array.from({ length: 6 }, (_, index) =>
@@ -4863,6 +5107,105 @@ test("writer and critic prompts guard against wrong-market borrowing in low-conf
   assert.match(writerCall?.prompt ?? "", /bootstrap channel style directions/i);
   assert.match(criticCall?.prompt ?? "", /candidate borrows the wrong market/i);
   assert.match(criticCall?.prompt ?? "", /Good form is not enough if the semantics were imported from a weak example pool/i);
+});
+
+test("vnext low-confidence runs strip examples from selector and downstream prompts", async () => {
+  const weakGenericExamples = Array.from({ length: 8 }, (_, index) =>
+    makeExample({
+      id: `weak_vnext_prompt_${index + 1}`,
+      ownerChannelId: "generic",
+      ownerChannelName: "Generic",
+      title: `Wild reaction clip ${index + 1}`,
+      overlayTop: `This whole thing gets crazy right away and everybody starts losing it ${index + 1}`,
+      overlayBottom: `That is one of those videos people keep replaying for the vibe ${index + 1}`,
+      clipType: "general",
+      whyItWorks: [],
+      qualityScore: 0.2
+    })
+  );
+
+  const { executor, result } = await runSuccessfulPipeline({
+    stage2VNextEnabled: true,
+    stage2ExamplesConfig: {
+      version: 1,
+      useWorkspaceDefault: false,
+      customExamples: weakGenericExamples
+    },
+    selectedExampleIds: weakGenericExamples.slice(0, 3).map((example) => example.id),
+    selectorResponse: {
+      selected_example_ids: weakGenericExamples.slice(0, 3).map((example) => example.id)
+    }
+  });
+
+  const selectorCall = executor.calls[1];
+  const writerCall = executor.calls[2];
+  const criticCall = executor.calls[3];
+
+  assert.equal(result.output.pipeline.vnext?.exampleRouting.mode, "disabled");
+  assert.equal(result.output.pipeline.selectedExamplesCount, 0);
+  assert.doesNotMatch(selectorCall?.prompt ?? "", /Wild reaction clip/);
+  assert.match(writerCall?.prompt ?? "", /"selectedExamples": \[\]/);
+  assert.match(criticCall?.prompt ?? "", /"selectedExamples": \[\]/);
+  assert.equal(result.output.pipeline.vnext?.trace.canonicalCounters.examplesPassedDownstream, 0);
+});
+
+test("worker-path env flag activation resolves vnext execution metadata inside runPipeline", async () => {
+  const previous = process.env.STAGE2_VNEXT_ENABLED;
+  process.env.STAGE2_VNEXT_ENABLED = "true";
+
+  try {
+    const { result } = await runSuccessfulPipeline();
+
+    assert.equal(result.output.pipeline.execution?.featureFlags.STAGE2_VNEXT_ENABLED, true);
+    assert.equal(result.output.pipeline.execution?.featureFlags.source, "env");
+    assert.equal(result.output.pipeline.execution?.pipelineVersion, "vnext");
+    assert.equal(result.output.pipeline.execution?.stageChainVersion, "stage2-vnext-phase1-bridge");
+    assert.ok(result.output.pipeline.execution?.workerBuild.buildId);
+    assert.ok(result.output.pipeline.execution?.workerBuild.startedAt);
+    assert.equal(result.output.pipeline.vnext?.validation.ok, true);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.STAGE2_VNEXT_ENABLED;
+    } else {
+      process.env.STAGE2_VNEXT_ENABLED = previous;
+    }
+  }
+});
+
+test("vnext fails closed instead of backfilling critic rejects into the rewrite pool", async () => {
+  const criticResponse = Array.from({ length: 8 }, (_, index) => ({
+    candidate_id: `cand_${index + 1}`,
+    scores: makeCriticScoreMap(index),
+    total: 9 - index * 0.2,
+    issues: index < 3 ? [] : ["critic rejected this candidate"],
+    keep: index < 3
+  }));
+
+  await assert.rejects(
+    () =>
+      runSuccessfulPipeline({
+        stage2VNextEnabled: true,
+        criticResponse
+      }),
+    /reserve backfill is disabled/
+  );
+});
+
+test("vnext fails closed when the visible shortlist is still dominated by legacy weak-hook patterns", async () => {
+  const weakHookCandidates = Array.from({ length: 8 }, (_, index) => ({
+    ...makeCandidate(`cand_${index + 1}`, index % 2 === 0 ? "shared_experience" : "payoff_reveal", index + 1),
+    top: `The truck, the mud, the wheel all keep moving ${index + 1}`
+  }));
+
+  await assert.rejects(
+    () =>
+      runSuccessfulPipeline({
+        stage2VNextEnabled: true,
+        writerCandidates: weakHookCandidates,
+        rewrittenCandidates: weakHookCandidates
+      }),
+    /visible shortlist quality gate failed/i
+  );
 });
 
 test("writer, critic, rewriter, and final selector prompts carry comment lanes plus batch sameness signals", () => {
@@ -8256,7 +8599,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     });
 
     assert.ok(trace);
-    assert.equal(trace?.version, "clip-trace-export-v2");
+    assert.equal(trace?.version, "clip-trace-export-v3");
     assert.equal(trace?.comments.totalComments, 20);
     assert.equal(trace?.comments.includedCount, 15);
     assert.equal(trace?.comments.items.length, 15);
@@ -8281,6 +8624,8 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.deepEqual(trace?.channel.stage2HardConstraints, channelConstraints);
     assert.equal(trace?.stage2.selectedRunId, selectedRun.runId);
     assert.equal(trace?.traceContract.canonicalSections.stage2CausalInputs, "stage2.causalInputs");
+    assert.equal(trace?.traceContract.canonicalSections.stage2Execution, "stage2.execution");
+    assert.equal(trace?.traceContract.canonicalSections.stage2VNext, "stage2.vnext");
     assert.match(trace?.traceContract.note ?? "", /canonical/i);
     assert.equal(trace?.stage2.causalInputs.run.mode, "manual");
     assert.equal(trace?.stage2.causalInputs.run.userInstruction, "selected instruction");
@@ -8300,6 +8645,9 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       1
     );
     assert.equal(trace?.stage2.outcome.retrievalConfidence, "medium");
+    assert.equal(trace?.stage2.execution.exporterVersion, "clip-trace-export-v3");
+    assert.equal(trace?.stage2.execution.pipelineVersion, null);
+    assert.equal(trace?.stage2.vnext.present, false);
     assert.equal(trace?.stage2.outcome.examplesMode, "form_guided");
     assert.equal(trace?.stage2.outcome.examplesRoleSummary, "Examples help with structure more than semantics.");
     assert.equal(trace?.stage2.outcome.primaryDriverSummary, "Clip truth and channel learning carry more weight than retrieval.");
@@ -8374,6 +8722,436 @@ test("chat trace export assembles a full payload, truncates comments, and honors
   });
 });
 
+test("chat trace export preserves canonical vnext proof markers for a deterministic proof run", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+    const stage2Store = await import("../lib/stage2-progress-store");
+    const { buildChatTraceExport } = await import("../lib/chat-trace-export");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Trace Export VNext Proof",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Proof Channel",
+      username: "proof_channel"
+    });
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/watch?v=traceExportVnextProof",
+      channel.id
+    );
+
+    const weakGenericExamples = Array.from({ length: 8 }, (_, index) =>
+      makeExample({
+        id: `proof_weak_${index + 1}`,
+        ownerChannelId: "generic",
+        ownerChannelName: "Generic",
+        title: `Generic viral clip ${index + 1}`,
+        overlayTop: `This thing gets wild fast ${index + 1}`,
+        overlayBottom: `Everybody keeps replaying this one ${index + 1}`,
+        clipType: "general",
+        whyItWorks: [],
+        qualityScore: 0.2
+      })
+    );
+    const selectedExampleIds = weakGenericExamples.slice(0, 3).map((example) => example.id);
+    const { result, videoContext } = await runSuccessfulPipeline({
+      stage2VNextEnabled: true,
+      stage2ExamplesConfig: {
+        version: 1,
+        useWorkspaceDefault: false,
+        customExamples: weakGenericExamples
+      },
+      selectedExampleIds,
+      selectorResponse: {
+        selected_example_ids: selectedExampleIds
+      }
+    });
+    const proofComments = videoContext.comments.map((comment, index) => ({
+      id: comment.id ?? `proof_comment_${index + 1}`,
+      author: comment.author,
+      text: comment.text,
+      likes: comment.likes,
+      postedAt: comment.postedAt ?? null
+    }));
+
+    const run = stage2Store.createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: chat.id,
+      request: {
+        sourceUrl: chat.url,
+        userInstruction: videoContext.userInstruction ?? null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints
+        }
+      }
+    });
+    const stage2Response: Stage2Response = {
+      source: {
+        url: chat.url,
+        title: videoContext.title,
+        totalComments: proofComments.length,
+        topComments: proofComments,
+        allComments: proofComments,
+        commentsUsedForPrompt: proofComments.length,
+        frameDescriptions: videoContext.frameDescriptions
+      },
+      output: result.output,
+      warnings: result.warnings,
+      diagnostics: result.diagnostics,
+      tokenUsage: result.tokenUsage,
+      userInstructionUsed: videoContext.userInstruction,
+      stage2Run: {
+        runId: run.runId,
+        mode: "manual",
+        createdAt: nowIso(),
+        startedAt: nowIso(),
+        finishedAt: nowIso()
+      },
+      stage2Worker: {
+        runId: run.runId,
+        buildId: result.output.pipeline.execution?.workerBuild.buildId,
+        startedAt: result.output.pipeline.execution?.workerBuild.startedAt,
+        pid: result.output.pipeline.execution?.workerBuild.pid,
+        pipelineVersion: result.output.pipeline.execution?.pipelineVersion,
+        stageChainVersion: result.output.pipeline.execution?.stageChainVersion,
+        featureFlags: result.output.pipeline.execution?.featureFlags
+      }
+    };
+    stage2Store.setStage2RunResultData(run.runId, stage2Response);
+    stage2Store.finalizeStage2RunSuccess(run.runId);
+
+    const trace = await buildChatTraceExport({
+      workspace: owner.workspace,
+      userId: owner.user.id,
+      chatId: chat.id,
+      selectedRunId: run.runId
+    });
+
+    assert.ok(trace);
+    assert.equal(trace?.version, "clip-trace-export-v3");
+    assert.equal(trace?.stage2.execution.featureFlags?.STAGE2_VNEXT_ENABLED, true);
+    assert.equal(trace?.stage2.execution.pipelineVersion, "vnext");
+    assert.equal(trace?.stage2.execution.stageChainVersion, "stage2-vnext-phase1-bridge");
+    assert.equal(trace?.stage2.vnext.present, true);
+    assert.equal(trace?.stage2.vnext.exampleRouting?.mode, "disabled");
+    assert.equal(trace?.stage2.currentResult?.output.pipeline?.selectedExamplesCount, 0);
+    assert.equal(trace?.stage2.vnext.canonicalCounters?.examplesPassedDownstream, 0);
+    assert.equal(trace?.stage2.vnext.criticGate?.reserveBackfillCount, 0);
+    assert.equal(trace?.stage2.vnext.validation?.ok, true);
+    assert.equal(trace?.traceContract.canonicalSections.stage2VNext, "stage2.vnext");
+    assert.equal(
+      trace?.traceContract.canonicalSections.stage2VNextCanonicalCounters,
+      "stage2.vnext.canonicalCounters"
+    );
+    assert.equal(trace?.stage2.consistencyChecks.every((check) => check.ok), true);
+  });
+});
+
+test("chat trace export surfaces consistency check failures when vnext counters contradict runtime output", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+    const stage2Store = await import("../lib/stage2-progress-store");
+    const { buildChatTraceExport } = await import("../lib/chat-trace-export");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Trace Export Consistency",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Consistency Channel",
+      username: "consistency_channel"
+    });
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/watch?v=traceExportConsistency",
+      channel.id
+    );
+
+    const proofBase = makeRuntimeStage2Response("consistency_run", "consistency");
+    const stage2Response: Stage2Response = {
+      ...proofBase,
+      output: {
+        ...proofBase.output,
+        pipeline: {
+          channelId: channel.id,
+          mode: "codex_pipeline",
+          execution: {
+            featureFlags: {
+              STAGE2_VNEXT_ENABLED: true,
+              source: "override",
+              rawValue: null
+            },
+            pipelineVersion: "vnext",
+            stageChainVersion: "stage2-vnext-phase1-bridge",
+            workerBuild: {
+              buildId: "consistency-build",
+              startedAt: nowIso(),
+              pid: 777
+            },
+            resolvedAt: nowIso(),
+            legacyFallbackReason: null
+          },
+          selectorOutput: {
+            selectedExampleIds: [],
+            rejectedExampleIds: ["example_1"]
+          },
+          availableExamplesCount: 4,
+          selectedExamplesCount: 2,
+          finalSelector: {
+            candidateOptionMap: Array.from({ length: 5 }, (_, index) => ({
+              option: index + 1,
+              candidateId: `cand_${index + 1}`
+            })),
+            shortlistCandidateIds: Array.from({ length: 5 }, (_, index) => `cand_${index + 1}`),
+            finalPickCandidateId: "cand_1",
+            rationaleRaw: "consistency fixture"
+          },
+          vnext: {
+            phase: 1,
+            exampleRouting: {
+              mode: "disabled",
+              confidence: 0.2,
+              selectedExampleIds: [],
+              blockedExampleIds: ["example_1"],
+              reasons: ["weak retrieval"]
+            },
+            criticGate: {
+              evaluatedCandidateIds: ["cand_1", "cand_2"],
+              criticKeptCandidateIds: ["cand_1"],
+              criticRejectedCandidateIds: ["cand_2"],
+              rewriteCandidateIds: ["cand_1"],
+              validatedShortlistPoolIds: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+              visibleShortlistCandidateIds: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+              invalidDroppedCandidateIds: [],
+              reserveBackfillCount: 0
+            },
+            canonicalCounters: {
+              sourceCommentsAvailable: 0,
+              sourceCommentsPassedToAudienceMiner: 0,
+              sourceCommentsPassedToTruthExtractor: 0,
+              examplesRetrieved: 1,
+              examplesPassedDownstream: 1,
+              semanticDraftsGenerated: 5,
+              packedCandidatesGenerated: 5,
+              packedCandidatesValid: 5,
+              hardRejectedCount: 1,
+              survivorCount: 1,
+              visibleShortlistCount: 5,
+              winnerCount: 1
+            },
+            candidateLineage: [],
+            trace: {
+              meta: {
+                version: "stage2-vnext-trace-v3",
+                generatedAt: nowIso(),
+                featureFlag: "STAGE2_VNEXT_ENABLED",
+                featureFlags: {
+                  STAGE2_VNEXT_ENABLED: true,
+                  source: "override",
+                  rawValue: null
+                },
+                pipelineVersion: "vnext",
+                stageChainVersion: "stage2-vnext-phase1-bridge",
+                workerBuild: {
+                  buildId: "consistency-build",
+                  startedAt: nowIso(),
+                  pid: 777
+                },
+                compatibilityMode: "legacy_bridge",
+                implementedStages: [
+                  "example_router",
+                  "semantic_draft_generator",
+                  "constraint_packer",
+                  "quality_court",
+                  "pairwise_final_selector",
+                  "title_and_seo"
+                ]
+              },
+              inputs: {
+                source: {
+                  sourceId: "source_consistency",
+                  sourceUrl: chat.url,
+                  title: "Consistency Clip",
+                  description: "",
+                  transcript: null,
+                  durationSec: null,
+                  frames: [],
+                  comments: [],
+                  metadata: {
+                    provider: "test",
+                    downloadedAt: nowIso(),
+                    totalComments: 0
+                  }
+                },
+                channel: {
+                  channelId: channel.id,
+                  name: channel.name,
+                  username: channel.username,
+                  hardConstraints: channel.stage2HardConstraints,
+                  userInstruction: null
+                }
+              },
+              stageOutputs: {
+                clipTruthExtractor: null,
+                audienceMiner: null,
+                exampleRouter: {
+                  decision: {
+                    mode: "disabled",
+                    confidence: 0.2,
+                    selectedExampleIds: [],
+                    blockedExampleIds: ["example_1"],
+                    reasons: ["weak retrieval"]
+                  },
+                  retrievedExamples: [],
+                  passedExamples: [],
+                  blockedExamples: []
+                },
+                strategySearch: null,
+                semanticDraftGenerator: {
+                  drafts: []
+                },
+                constraintPacker: {
+                  packedCandidates: []
+                },
+                qualityCourt: {
+                  judgeCards: []
+                },
+                pairwiseFinalSelector: {
+                  visibleCandidateIds: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+                  winnerCandidateId: "cand_1",
+                  pairwiseMatches: [],
+                  rationale: "fixture"
+                },
+                titleAndSeo: {
+                  titles: [],
+                  seo: null
+                },
+                exampleUsage: [
+                  {
+                    stageId: "semantic_draft_generator",
+                    exampleMode: "disabled",
+                    passedExampleIds: ["example_1"]
+                  }
+                ]
+              },
+              candidateLineage: [],
+              criticGate: {
+                evaluatedCandidateIds: ["cand_1", "cand_2"],
+                criticKeptCandidateIds: ["cand_1"],
+                criticRejectedCandidateIds: ["cand_2"],
+                rewriteCandidateIds: ["cand_1"],
+                validatedShortlistPoolIds: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+                visibleShortlistCandidateIds: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+                invalidDroppedCandidateIds: [],
+                reserveBackfillCount: 0
+              },
+              canonicalCounters: {
+                sourceCommentsAvailable: 0,
+                sourceCommentsPassedToAudienceMiner: 0,
+                sourceCommentsPassedToTruthExtractor: 0,
+                examplesRetrieved: 1,
+                examplesPassedDownstream: 1,
+                semanticDraftsGenerated: 5,
+                packedCandidatesGenerated: 5,
+                packedCandidatesValid: 5,
+                hardRejectedCount: 1,
+                survivorCount: 1,
+                visibleShortlistCount: 5,
+                winnerCount: 1
+              },
+              validation: {
+                validatorsRun: ["traceValidator"],
+                issues: []
+              },
+              selection: {
+                visibleCandidateIds: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+                winnerCandidateId: "cand_1",
+                pairwiseMatches: [],
+                rationale: "fixture"
+              },
+              memory: {
+                status: "not_implemented"
+              },
+              cost: {
+                totalPromptChars: 0,
+                totalEstimatedInputTokens: 0,
+                totalEstimatedOutputTokens: 0
+              }
+            },
+            validation: {
+              ok: false,
+              issues: ["Disabled example mode still passed examples to a downstream stage."]
+            }
+          }
+        }
+      },
+      stage2Run: {
+        runId: "consistency_run",
+        mode: "manual",
+        createdAt: nowIso()
+      }
+    };
+    const run = stage2Store.createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: chat.id,
+      request: {
+        sourceUrl: chat.url,
+        userInstruction: "consistency",
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints
+        }
+      }
+    });
+    stage2Store.setStage2RunResultData(run.runId, {
+      ...stage2Response,
+      stage2Run: {
+        ...stage2Response.stage2Run,
+        runId: run.runId
+      }
+    });
+    stage2Store.finalizeStage2RunSuccess(run.runId);
+
+    const trace = await buildChatTraceExport({
+      workspace: owner.workspace,
+      userId: owner.user.id,
+      chatId: chat.id,
+      selectedRunId: run.runId
+    });
+
+    assert.ok(trace);
+    assert.equal(
+      trace?.stage2.consistencyChecks.find((check) => check.id === "selected_examples_count_alignment")?.ok,
+      false
+    );
+    assert.equal(
+      trace?.stage2.consistencyChecks.find((check) => check.id === "vnext_disabled_examples")?.ok,
+      false
+    );
+  });
+});
+
 test("chat trace export remains valid when the chat has no comments, no stage 2 result, and no stage 3 state", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");
@@ -8405,6 +9183,7 @@ test("chat trace export remains valid when the chat has no comments, no stage 2 
 
     assert.ok(trace);
     assert.equal(trace?.traceContract.canonicalSections.stage2Outcome, "stage2.outcome");
+    assert.equal(trace?.traceContract.canonicalSections.stage2Execution, "stage2.execution");
     assert.equal(trace?.comments.available, false);
     assert.equal(trace?.comments.runtimeUsage.totalExtractedCount, 0);
     assert.equal(trace?.comments.exportUsage.includedCount, 0);
@@ -8417,6 +9196,7 @@ test("chat trace export remains valid when the chat has no comments, no stage 2 
     assert.equal(trace?.stage2.stageManifests.length, 0);
     assert.equal(trace?.stage2.outcome.finalPickCandidateId, null);
     assert.equal(trace?.stage2.examplesRuntimeUsage.activeCorpusCount, 0);
+    assert.equal(trace?.stage2.vnext.present, false);
     assert.equal(trace?.stage2.currentResult, null);
     assert.equal(trace?.stage3.draft, null);
     assert.equal(trace?.stage3.latestRenderExport, null);

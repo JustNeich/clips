@@ -108,7 +108,7 @@ test("chat trace export route returns an attachment for authenticated workspace 
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-type") ?? "", /application\/json/i);
     assert.match(response.headers.get("content-disposition") ?? "", /attachment; filename="clip-trace-trace_route-/);
-    assert.equal(body.version, "clip-trace-export-v2");
+    assert.equal(body.version, "clip-trace-export-v3");
     assert.equal(body.chat?.id, chat.id);
   });
 });

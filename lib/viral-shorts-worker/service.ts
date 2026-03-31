@@ -10,6 +10,7 @@ import {
   Stage2ExamplesAssessment,
   Stage2ExampleGuidanceRole,
   Stage2HumanPhrasingSignals,
+  Stage2PipelineExecution,
   Stage2CandidateTopSignalSummary,
   Stage2Diagnostics,
   Stage2DiagnosticsExample,
@@ -51,6 +52,32 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../stage2-channel-config";
+import {
+  CandidateLifecycle,
+  buildStage2VNextBridgeTrace,
+  type ExampleRoutingDecision,
+  type Stage2VNextExampleUsage,
+  type FinalSelection as Stage2VNextFinalSelection,
+  type JudgeScoreCard,
+  type PackedCandidate as Stage2VNextPackedCandidate,
+  type SemanticDraft as Stage2VNextSemanticDraft,
+  type SourcePacket,
+  type StrategyPacket,
+  applyExampleRoutingDecision,
+  buildRetrievedExamples,
+  decideExampleRouting,
+  resolveStage2VNextFlagSnapshot,
+  getStage2WorkerBuildInfo,
+  resolveStage2StageChainVersion,
+  validateBannedPatterns,
+  validateExampleRoutingDecisionSchema,
+  validateFinalSelectionObjectSchema,
+  validateJudgeScoreCardListSchema,
+  validateLengthWindow,
+  validatePackedCandidateListSchema,
+  validateSemanticDraftListSchema,
+  validateTitle
+} from "../stage2-vnext";
 import { normalizeStage2TitleOptionsValue } from "../stage2-title-options";
 import {
   STAGE2_PIPELINE_STAGES,
@@ -1323,6 +1350,80 @@ function applyExamplesAssessmentToSelectorOutput(
   };
 }
 
+function buildLegacyFallbackReason(
+  featureFlags: Stage2PipelineExecution["featureFlags"]
+): string | null {
+  if (featureFlags.STAGE2_VNEXT_ENABLED) {
+    return null;
+  }
+  if (featureFlags.source === "override") {
+    return "stage2VNextEnabled override explicitly forced legacy mode in the worker path.";
+  }
+  if (featureFlags.source === "env") {
+    return `Worker env resolved STAGE2_VNEXT_ENABLED=${featureFlags.rawValue ?? "false"}, so the pipeline stayed on legacy mode.`;
+  }
+  return "STAGE2_VNEXT_ENABLED was absent in the worker environment, so Stage 2 resolved to legacy mode by default.";
+}
+
+function buildStage2PipelineExecutionSnapshot(input: {
+  featureFlags: Stage2PipelineExecution["featureFlags"];
+  pipelineVersion: Stage2PipelineExecution["pipelineVersion"];
+  stageChainVersion: string;
+  workerBuild: Stage2PipelineExecution["workerBuild"];
+  resolvedAt: string;
+}): Stage2PipelineExecution {
+  return {
+    featureFlags: input.featureFlags,
+    pipelineVersion: input.pipelineVersion,
+    stageChainVersion: input.stageChainVersion,
+    workerBuild: input.workerBuild,
+    resolvedAt: input.resolvedAt,
+    legacyFallbackReason: buildLegacyFallbackReason(input.featureFlags)
+  };
+}
+
+function applyExampleRoutingToSelectorOutput(input: {
+  selectorOutput: SelectorOutput;
+  availableExamples: Stage2CorpusExample[];
+  exampleRouting: ExampleRoutingDecision | null;
+}): SelectorOutput {
+  if (!input.exampleRouting) {
+    return input.selectorOutput;
+  }
+
+  if (input.exampleRouting.mode === "disabled") {
+    return {
+      ...input.selectorOutput,
+      selectedExampleIds: [],
+      selectedExamples: [],
+      rejectedExampleIds: input.availableExamples.map((example) => example.id)
+    };
+  }
+
+  const allowedExamples = applyExampleRoutingDecision({
+    availableExamples: input.availableExamples,
+    decision: input.exampleRouting
+  });
+  const allowedIds = new Set(allowedExamples.map((example) => example.id));
+  const selectedExampleIds = (input.selectorOutput.selectedExampleIds ?? []).filter((exampleId) =>
+    allowedIds.has(exampleId)
+  );
+  const selectedExamples = allowedExamples.filter((example) => selectedExampleIds.includes(example.id));
+  const blockedExampleIds = input.availableExamples
+    .filter((example) => !allowedIds.has(example.id))
+    .map((example) => example.id);
+  const rejectedExampleIds = Array.from(
+    new Set([...(input.selectorOutput.rejectedExampleIds ?? []), ...blockedExampleIds])
+  );
+
+  return {
+    ...input.selectorOutput,
+    selectedExampleIds,
+    selectedExamples,
+    rejectedExampleIds
+  };
+}
+
 function buildModeAwareWriterBrief(input: {
   baseBrief: string;
   assessment: Stage2ExamplesAssessment;
@@ -1718,6 +1819,231 @@ function normalizeCandidates(raw: unknown, selectorOutput: SelectorOutput): Cand
       };
     })
     .filter((candidate): candidate is CandidateCaption => candidate !== null);
+}
+
+type Stage2VNextPackedBridgeEntry = {
+  candidate: CandidateCaption;
+  packedCandidate: Stage2VNextPackedCandidate;
+  valid: boolean;
+  issues: string[];
+};
+
+function resolveStage2VNextFrameRole(
+  index: number,
+  total: number
+): SourcePacket["frames"][number]["role"] {
+  if (index === 0) {
+    return "setup";
+  }
+  if (index === total - 1) {
+    return "payoff";
+  }
+  if (index >= Math.max(1, total - 2)) {
+    return "turn";
+  }
+  return "extra";
+}
+
+function buildStage2VNextSourcePacket(videoContext: ViralShortsVideoContext): SourcePacket {
+  return {
+    sourceId: videoContext.sourceUrl,
+    sourceUrl: videoContext.sourceUrl,
+    title: videoContext.title,
+    description: videoContext.description,
+    transcript: videoContext.transcript || null,
+    durationSec: null,
+    frames: videoContext.frameDescriptions.map((description, index, frames) => ({
+      frameId: `frame_${index + 1}`,
+      tsSec: index,
+      role: resolveStage2VNextFrameRole(index, frames.length),
+      imageRef: description
+    })),
+    comments: videoContext.comments.map((comment, index) => ({
+      id: comment.id?.trim() || `comment_${index + 1}`,
+      author: comment.author,
+      text: comment.text,
+      likes: comment.likes,
+      postedAt: comment.postedAt ?? null
+    })),
+    metadata: {
+      provider: "stage2-legacy-bridge",
+      downloadedAt: new Date().toISOString(),
+      totalComments: videoContext.comments.length
+    }
+  };
+}
+
+function buildStage2VNextSemanticDrafts(
+  candidates: CandidateCaption[]
+): Stage2VNextSemanticDraft[] {
+  return candidates.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    angleId: candidate.angle,
+    explorationMode:
+      candidate.explorationMode === "exploratory" ? "exploratory" : "aligned",
+    semanticTop: candidate.top,
+    semanticBottom: candidate.bottom,
+    cuesUsed: candidate.styleDirectionIds ?? [],
+    rationale: candidate.rationale
+  }));
+}
+
+function buildStage2VNextStrategyPacket(
+  selectorOutput: SelectorOutput,
+  exampleRouting: ExampleRoutingDecision
+): StrategyPacket {
+  const rankedAngles = selectorOutput.rankedAngles.length > 0
+    ? selectorOutput.rankedAngles
+    : [{ angle: selectorOutput.primaryAngle, score: 1, why: selectorOutput.rationale ?? "Legacy bridge." }];
+  const toStrategyAngle = (angle: SelectorOutput["rankedAngles"][number]) => ({
+    angleId: angle.angle,
+    label: angle.angle,
+    rationale: angle.why,
+    hookMode: "hook_first" as const,
+    bottomEnergy: selectorOutput.bottomEnergy,
+    claimPolicy: [],
+    rejectPatterns: selectorOutput.failureModes.slice(0, 4)
+  });
+
+  return {
+    primaryAngle: toStrategyAngle(rankedAngles[0]!),
+    secondaryAngles: rankedAngles.slice(1, 3).map(toStrategyAngle),
+    rankedAngleIds: rankedAngles.map((angle) => angle.angle),
+    revealPolicy: "hint_only",
+    commentUsagePolicy: [],
+    exampleMode: exampleRouting.mode,
+    writerDo: [selectorOutput.writerBrief],
+    writerDont: selectorOutput.failureModes.slice(0, 6)
+  };
+}
+
+function buildStage2VNextPackedBridgeEntries(input: {
+  candidates: CandidateCaption[];
+  constraints: Stage2HardConstraints;
+}): Stage2VNextPackedBridgeEntry[] {
+  return input.candidates.map((candidate) => {
+    const repaired = repairCandidateForHardConstraints(candidate, input.constraints);
+    const lengthValidation = validateLengthWindow({
+      top: repaired.candidate.top,
+      bottom: repaired.candidate.bottom,
+      constraints: input.constraints
+    });
+    const bannedPatternValidation = validateBannedPatterns({
+      top: repaired.candidate.top,
+      bottom: repaired.candidate.bottom,
+      constraints: input.constraints
+    });
+    const schemaPass =
+      repaired.candidate.top.trim().length > 0 && repaired.candidate.bottom.trim().length > 0;
+    const valid =
+      repaired.valid &&
+      schemaPass &&
+      lengthValidation.topLengthPass &&
+      lengthValidation.bottomLengthPass &&
+      bannedPatternValidation.passed;
+
+    return {
+      candidate: repaired.candidate,
+      packedCandidate: {
+        candidateId: repaired.candidate.candidateId,
+        parentCandidateId: candidate.candidateId,
+        angleId: repaired.candidate.angle,
+        top: repaired.candidate.top,
+        bottom: repaired.candidate.bottom,
+        topRu: repaired.candidate.topRu,
+        bottomRu: repaired.candidate.bottomRu,
+        topLength: lengthValidation.topLength,
+        bottomLength: lengthValidation.bottomLength,
+        repairCount: repaired.repaired ? 1 : 0,
+        validations: {
+          schemaPass,
+          topLengthPass: lengthValidation.topLengthPass,
+          bottomLengthPass: lengthValidation.bottomLengthPass,
+          bannedPatternPass: bannedPatternValidation.passed
+        }
+      },
+      valid,
+      issues: [...lengthValidation.issues, ...bannedPatternValidation.issues]
+    };
+  });
+}
+
+function buildStage2VNextJudgeCards(criticScores: CriticScore[]): JudgeScoreCard[] {
+  return criticScores.map((score) => ({
+    candidateId: score.candidateId,
+    hardPass: score.keep,
+    hardFailReasons: score.keep ? [] : score.issues.length > 0 ? score.issues : ["legacy_critic_reject"],
+    scores: {
+      visualFaithfulness: score.scores.paused_frame_accuracy ?? 0,
+      hookStrength: score.scores.hook_strength ?? 0,
+      nativeFluency: score.scores.naturalness ?? 0,
+      audienceAuthenticity: score.scores.comment_vibe_authenticity ?? 0,
+      styleFit: score.scores.brand_fit ?? 0,
+      riskSafety: score.scores.visual_anchor ?? 0
+    },
+    notes: score.issues
+  }));
+}
+
+function buildStage2VNextExampleUsage(input: {
+  exampleRouting: ExampleRoutingDecision;
+  selectedExampleIds: string[];
+}): Stage2VNextExampleUsage[] {
+  return [
+    {
+      stageId: "example_router",
+      exampleMode: input.exampleRouting.mode,
+      passedExampleIds: input.exampleRouting.selectedExampleIds
+    },
+    {
+      stageId: "strategy_search",
+      exampleMode: input.exampleRouting.mode,
+      passedExampleIds: input.exampleRouting.selectedExampleIds
+    },
+    {
+      stageId: "semantic_draft_generator",
+      exampleMode: input.exampleRouting.mode,
+      passedExampleIds: input.selectedExampleIds
+    },
+    {
+      stageId: "quality_court",
+      exampleMode: input.exampleRouting.mode,
+      passedExampleIds: input.selectedExampleIds
+    },
+    {
+      stageId: "pairwise_final_selector",
+      exampleMode: input.exampleRouting.mode,
+      passedExampleIds: input.selectedExampleIds
+    },
+    {
+      stageId: "title_and_seo",
+      exampleMode: input.exampleRouting.mode,
+      passedExampleIds: input.selectedExampleIds
+    }
+  ];
+}
+
+function buildStage2VNextCriticGate(input: {
+  criticScores: CriticScore[];
+  rewriteCandidates: CandidateCaption[];
+  validatedShortlistPoolCandidateIds: string[];
+  visibleShortlistCandidateIds: string[];
+  invalidDroppedCandidateIds: string[];
+}): NonNullable<NonNullable<ViralShortsStage2Result["pipeline"]["vnext"]>["criticGate"]> {
+  return {
+    evaluatedCandidateIds: input.criticScores.map((score) => score.candidateId),
+    criticKeptCandidateIds: input.criticScores
+      .filter((score) => score.keep)
+      .map((score) => score.candidateId),
+    criticRejectedCandidateIds: input.criticScores
+      .filter((score) => !score.keep)
+      .map((score) => score.candidateId),
+    rewriteCandidateIds: input.rewriteCandidates.map((candidate) => candidate.candidateId),
+    validatedShortlistPoolIds: input.validatedShortlistPoolCandidateIds,
+    visibleShortlistCandidateIds: input.visibleShortlistCandidateIds,
+    invalidDroppedCandidateIds: input.invalidDroppedCandidateIds,
+    reserveBackfillCount: 0
+  };
 }
 
 function extractLeadingExcerpt(text: string, maxWords: number): string {
@@ -2637,6 +2963,7 @@ function buildRewriterCandidatePool(input: {
   candidates: CandidateCaption[];
   criticScores: CriticScore[];
   constraints: Stage2HardConstraints;
+  allowReserveBackfill?: boolean;
 }): {
   candidates: CandidateCaption[];
   criticApprovedCount: number;
@@ -2649,7 +2976,7 @@ function buildRewriterCandidatePool(input: {
 
   if (criticApprovedIds.length === 0) {
     return {
-      candidates: input.candidates,
+      candidates: input.allowReserveBackfill === false ? [] : input.candidates,
       criticApprovedCount: 0,
       reserveBackfillCount: 0
     };
@@ -2684,7 +3011,7 @@ function buildRewriterCandidatePool(input: {
     )
   );
 
-  if (selectedIds.length < targetCount) {
+  if (selectedIds.length < targetCount && input.allowReserveBackfill !== false) {
     const reserveScores = [...input.criticScores]
       .filter((score) => !score.keep && byId.has(score.candidateId))
       .sort((left, right) => right.total - left.total);
@@ -2696,7 +3023,7 @@ function buildRewriterCandidatePool(input: {
     }
   }
 
-  if (selectedIds.length < targetCount) {
+  if (selectedIds.length < targetCount && input.allowReserveBackfill !== false) {
     for (const candidate of input.candidates) {
       if (selectedIds.length >= targetCount) {
         break;
@@ -3125,7 +3452,12 @@ function buildShortlist(input: {
   rewrittenCandidates: CandidateCaption[];
   fallbackCandidates: CandidateCaption[];
   criticScores: CriticScore[];
-}): { entries: ShortlistEntry[]; stats: ShortlistStats } {
+}): {
+  entries: ShortlistEntry[];
+  stats: ShortlistStats;
+  validatedPoolCandidateIds: string[];
+  invalidDroppedCandidateIds: string[];
+} {
   const targetCount = REQUIRED_FINAL_SHORTLIST_COUNT;
   const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
   const scoreMap = new Map(input.criticScores.map((score) => [score.candidateId, score.total]));
@@ -3301,6 +3633,8 @@ function buildShortlist(input: {
   const entries = accepted.slice(0, targetCount);
   return {
     entries,
+    validatedPoolCandidateIds: repairedPool.map((entry) => entry.candidate.candidateId),
+    invalidDroppedCandidateIds: invalidEntries.map((entry) => entry.candidate.candidateId),
     stats: {
       targetCount,
       requestedCount: Math.min(targetCount, input.finalSelector.finalCandidates.length || targetCount),
@@ -3315,6 +3649,30 @@ function buildShortlist(input: {
           : null
     }
   };
+}
+
+function validateVisibleShortlistQuality(stats: ShortlistStats): string[] {
+  const visibleSignals = stats.topSignalSummary?.visibleCandidateSignals ?? [];
+  if (visibleSignals.length === 0) {
+    return ["Visible shortlist quality gate ran with no visible candidates."];
+  }
+
+  const weakPatternCount = visibleSignals.filter(
+    (signal) => signal.inventoryOpening || signal.lateHook || signal.pureBeatNarration
+  ).length;
+  const earlyHookCount = visibleSignals.filter((signal) => signal.earlyHookPresent).length;
+
+  const issues: string[] = [];
+  if (
+    earlyHookCount === 0 &&
+    weakPatternCount >= Math.max(3, Math.ceil(visibleSignals.length * 0.6))
+  ) {
+    issues.push(
+      "Visible shortlist is still dominated by inventory-opening, delayed-hook, or beat-narration TOP patterns."
+    );
+  }
+
+  return issues;
 }
 
 function buildFallbackTitleOption(candidate: CandidateCaption, option: number): { option: number; title: string; titleRu: string } {
@@ -3333,17 +3691,66 @@ function buildFallbackTitleOption(candidate: CandidateCaption, option: number): 
   };
 }
 
+function countTitleLettersByCase(value: string): { letters: number; uppercaseLetters: number } {
+  const letters = Array.from(value).filter((char) => /\p{L}/u.test(char));
+  const uppercaseLetters = letters.filter((char) => char === char.toUpperCase()).length;
+  return {
+    letters: letters.length,
+    uppercaseLetters
+  };
+}
+
+function shouldForceAllCapsTitles(
+  options: Array<{ title: string; titleRu: string }>
+): boolean {
+  const votes = options.reduce((count, option) => {
+    const titleMetrics = countTitleLettersByCase(option.title);
+    const titleRuMetrics = countTitleLettersByCase(option.titleRu);
+    const titleUppercaseShare =
+      titleMetrics.letters > 0 ? titleMetrics.uppercaseLetters / titleMetrics.letters : 0;
+    const titleRuUppercaseShare =
+      titleRuMetrics.letters > 0 ? titleRuMetrics.uppercaseLetters / titleRuMetrics.letters : 0;
+    return count + Number(titleUppercaseShare >= 0.6 || titleRuUppercaseShare >= 0.6);
+  }, 0);
+  return votes >= Math.max(1, Math.ceil(options.length / 2));
+}
+
+function sanitizeTitleText(value: string): string {
+  return value
+    .replace(/[|]{2,}/g, "|")
+    .replace(/!{2,}/g, "!")
+    .replace(/\?{2,}/g, "?")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeTitleOptions(
   raw: unknown,
   shortlist: CandidateCaption[]
 ): Array<{ option: number; title: string; titleRu: string }> {
   const normalized = (normalizeStage2TitleOptionsValue(raw) ?? []).slice(0, 5);
+  const baseOptions =
+    normalized.length === 5
+      ? normalized.map((item, index) => ({ ...item, option: index + 1 }))
+      : shortlist.slice(0, 5).map((candidate, index) => buildFallbackTitleOption(candidate, index + 1));
+  const policy = {
+    forceAllCaps: shouldForceAllCapsTitles(baseOptions)
+  };
 
-  if (normalized.length === 5) {
-    return normalized.map((item, index) => ({ ...item, option: index + 1 }));
-  }
-
-  return shortlist.slice(0, 5).map((candidate, index) => buildFallbackTitleOption(candidate, index + 1));
+  return baseOptions.map((item, index) => {
+    const fallback = shortlist[index]
+      ? buildFallbackTitleOption(shortlist[index]!, index + 1)
+      : buildFallbackTitleOption(shortlist[0]!, index + 1);
+    const validation = validateTitle(sanitizeTitleText(item.title), policy);
+    const fallbackValidation = validateTitle(sanitizeTitleText(fallback.title), policy);
+    return {
+      option: index + 1,
+      title: validation.passed ? validation.normalizedTitle : fallbackValidation.normalizedTitle,
+      titleRu: policy.forceAllCaps
+        ? sanitizeTitleText(item.titleRu || fallback.titleRu).toUpperCase()
+        : sanitizeTitleText(item.titleRu || fallback.titleRu)
+    };
+  });
 }
 
 function estimateTokensFromChars(chars: number | null | undefined): number | null {
@@ -3805,11 +4212,31 @@ export class ViralShortsWorkerService {
     stageModels?: Partial<Stage2PipelineModelMap>;
     promptConfig?: Stage2PromptConfig | null;
     debugMode?: Stage2DebugMode;
+    stage2VNextEnabled?: boolean;
     onProgress?: (event: PipelineProgressEvent) => void | Promise<void>;
   }): Promise<RunPipelineResult> {
     const warnings: StageWarning[] = [];
     const promptConfig = normalizeStage2PromptConfig(input.promptConfig);
     const debugMode: Stage2DebugMode = input.debugMode === "raw" ? "raw" : "summary";
+    const featureFlags = resolveStage2VNextFlagSnapshot(input.stage2VNextEnabled);
+    const stage2VNextEnabled = featureFlags.STAGE2_VNEXT_ENABLED;
+    const pipelineVersion = stage2VNextEnabled ? "vnext" : "legacy";
+    const workerBuild = getStage2WorkerBuildInfo();
+    const stageChainVersion = resolveStage2StageChainVersion(pipelineVersion);
+    const pipelineExecution = buildStage2PipelineExecutionSnapshot({
+      featureFlags,
+      pipelineVersion,
+      stageChainVersion,
+      workerBuild,
+      resolvedAt: new Date().toISOString()
+    });
+    if (pipelineExecution.legacyFallbackReason) {
+      warnings.push({
+        field: "stage2_pipeline_mode",
+        message: pipelineExecution.legacyFallbackReason
+      });
+    }
+    const candidateLifecycle = stage2VNextEnabled ? new CandidateLifecycle() : null;
     const executedPromptStages: ExecutedPromptStageRecord[] = [];
     const recordExecutedStage = (
       stageId: Stage2PipelineStageId,
@@ -3933,6 +4360,30 @@ export class ViralShortsWorkerService {
       examples: availableExamples,
       queryText
     });
+    const exampleRouting =
+      stage2VNextEnabled
+        ? decideExampleRouting({
+            availableExamples: selectorPool.selectorExamples,
+            assessment: selectorPool.assessment
+          })
+        : null;
+    if (exampleRouting) {
+      const routingIssues = validateExampleRoutingDecisionSchema(exampleRouting);
+      if (routingIssues.length > 0) {
+        throw new Error(
+          `Stage 2 vNext example router emitted an invalid contract: ${routingIssues
+            .map((issue) => `${issue.path}: ${issue.message}`)
+            .join(" ")}`
+        );
+      }
+    }
+    const selectorPromptExamples =
+      exampleRouting === null
+        ? selectorPool.selectorExamples
+        : applyExampleRoutingDecision({
+            availableExamples: selectorPool.selectorExamples,
+            decision: exampleRouting
+          });
     if (selectorPool.selectorExamples.length < availableExamples.length) {
       const poolNotes = [
         `Selector prompt used ${selectorPool.selectorExamples.length} curated examples out of ${availableExamples.length} active corpus entries.`
@@ -3954,12 +4405,19 @@ export class ViralShortsWorkerService {
         message: selectorPool.assessment.retrievalWarning
       });
     }
+    if (exampleRouting?.mode === "disabled") {
+      warnings.push({
+        field: "examples",
+        message:
+          "Stage 2 vNext disabled downstream example usage for this run because retrieval confidence was below threshold."
+      });
+    }
 
     const selectorPrompt = buildSelectorPrompt({
       channelConfig,
       videoContext: input.videoContext,
       analyzerOutput,
-      availableExamples: selectorPool.selectorExamples,
+      availableExamples: selectorPromptExamples,
       examplesAssessment: selectorPool.assessment,
       promptConfig
     });
@@ -3975,7 +4433,7 @@ export class ViralShortsWorkerService {
     const selectorFallback = fallbackSelectorOutput(
       channelConfig,
       analyzerOutput,
-      selectorPool.selectorExamples,
+      selectorPromptExamples,
       input.videoContext,
       selectorPool.assessment,
       selectorPool.exampleInsights
@@ -3995,7 +4453,7 @@ export class ViralShortsWorkerService {
         normalizeSelectorOutput(
           selectorRaw,
           selectorFallback,
-          selectorPool.selectorExamples,
+          selectorPromptExamples,
           selectorPool.assessment,
           selectorPool.exampleInsights,
           analyzerOutput
@@ -4025,6 +4483,11 @@ export class ViralShortsWorkerService {
         detail: `Fallback used: ${message}`
       });
     }
+    selectorOutput = applyExampleRoutingToSelectorOutput({
+      selectorOutput,
+      availableExamples: selectorPool.selectorExamples,
+      exampleRouting
+    });
     recordExecutedStage(
       "selector",
       selectorPrompt,
@@ -4099,12 +4562,79 @@ export class ViralShortsWorkerService {
       { model: input.stageModels?.writer ?? null }
     );
 
+    let activeCandidates = candidates;
+    let vnextSemanticDrafts: Stage2VNextSemanticDraft[] = [];
+    let vnextPackedBridgeEntries: Stage2VNextPackedBridgeEntry[] = [];
+    if (stage2VNextEnabled) {
+      const transitionTimestamp = new Date().toISOString();
+      vnextSemanticDrafts = buildStage2VNextSemanticDrafts(candidates);
+      const semanticIssues = validateSemanticDraftListSchema(vnextSemanticDrafts);
+      if (semanticIssues.length > 0) {
+        throw new Error(
+          `Stage 2 vNext semantic draft contract failed: ${semanticIssues
+            .map((issue) => `${issue.path}: ${issue.message}`)
+            .join(" ")}`
+        );
+      }
+      for (const draft of vnextSemanticDrafts) {
+        candidateLifecycle?.registerSemanticDraft({
+          candidateId: draft.candidateId,
+          createdAt: transitionTimestamp
+        });
+      }
+
+      vnextPackedBridgeEntries = buildStage2VNextPackedBridgeEntries({
+        candidates,
+        constraints: channelConfig.hardConstraints
+      });
+      const packedIssues = validatePackedCandidateListSchema(
+        vnextPackedBridgeEntries.map((entry) => entry.packedCandidate)
+      );
+      if (packedIssues.length > 0) {
+        throw new Error(
+          `Stage 2 vNext packed candidate contract failed: ${packedIssues
+            .map((issue) => `${issue.path}: ${issue.message}`)
+            .join(" ")}`
+        );
+      }
+
+      for (const entry of vnextPackedBridgeEntries) {
+        candidateLifecycle?.transition({
+          candidateId: entry.packedCandidate.candidateId,
+          toState: entry.valid ? "packed_valid" : "packed_invalid",
+          stageId: "constraint_packer",
+          at: transitionTimestamp,
+          reason: entry.valid ? null : entry.issues.join(" "),
+          repairCount: entry.packedCandidate.repairCount
+        });
+        if (!entry.valid) {
+          candidateLifecycle?.transition({
+            candidateId: entry.packedCandidate.candidateId,
+            toState: "hard_rejected",
+            stageId: "constraint_packer",
+            at: transitionTimestamp,
+            reason: entry.issues.join(" "),
+            repairCount: entry.packedCandidate.repairCount
+          });
+        }
+      }
+
+      activeCandidates = vnextPackedBridgeEntries
+        .filter((entry) => entry.valid)
+        .map((entry) => entry.candidate);
+      if (activeCandidates.length < REQUIRED_FINAL_SHORTLIST_COUNT) {
+        throw new Error(
+          `Stage 2 vNext produced only ${activeCandidates.length} packed-valid candidates; regeneration is not implemented yet.`
+        );
+      }
+    }
+
     const criticPrompt = buildCriticPrompt({
       channelConfig,
       analyzerOutput,
       selectorOutput,
       examplesAssessment: selectorPool.assessment,
-      candidates,
+      candidates: activeCandidates,
       promptConfig
     });
     const criticReasoningEffort = resolveStageReasoningEffort("critic", promptConfig);
@@ -4124,7 +4654,7 @@ export class ViralShortsWorkerService {
         model: input.stageModels?.critic ?? null,
         reasoningEffort: criticReasoningEffort
       });
-      criticScores = normalizeCriticScores(criticRaw, candidates);
+      criticScores = normalizeCriticScores(criticRaw, activeCandidates);
       await reportProgress({
         stageId: "critic",
         state: "completed",
@@ -4139,7 +4669,7 @@ export class ViralShortsWorkerService {
         field: "critic",
         message: error instanceof Error ? `Critic fallback used: ${error.message}` : "Critic fallback used."
       });
-      criticScores = normalizeCriticScores([], candidates);
+      criticScores = normalizeCriticScores([], activeCandidates);
       await reportProgress({
         stageId: "critic",
         state: "completed",
@@ -4157,11 +4687,48 @@ export class ViralShortsWorkerService {
       { model: input.stageModels?.critic ?? null }
     );
 
+    let vnextJudgeCards: JudgeScoreCard[] = [];
+    if (stage2VNextEnabled) {
+      const transitionTimestamp = new Date().toISOString();
+      vnextJudgeCards = buildStage2VNextJudgeCards(criticScores);
+      const judgeIssues = validateJudgeScoreCardListSchema(vnextJudgeCards);
+      if (judgeIssues.length > 0) {
+        throw new Error(
+          `Stage 2 vNext judge card contract failed: ${judgeIssues
+            .map((issue) => `${issue.path}: ${issue.message}`)
+            .join(" ")}`
+        );
+      }
+
+      for (const score of criticScores) {
+        candidateLifecycle?.transition({
+          candidateId: score.candidateId,
+          toState: "judged",
+          stageId: "quality_court",
+          at: transitionTimestamp,
+          reason: null
+        });
+        candidateLifecycle?.transition({
+          candidateId: score.candidateId,
+          toState: score.keep ? "survivor" : "hard_rejected",
+          stageId: "quality_court",
+          at: transitionTimestamp,
+          reason: score.keep ? null : score.issues.join(" ") || "legacy_critic_reject"
+        });
+      }
+    }
+
     const rewriterCandidatePool = buildRewriterCandidatePool({
-      candidates,
+      candidates: activeCandidates,
       criticScores,
-      constraints: channelConfig.hardConstraints
+      constraints: channelConfig.hardConstraints,
+      allowReserveBackfill: !stage2VNextEnabled
     });
+    if (stage2VNextEnabled && rewriterCandidatePool.candidates.length < REQUIRED_FINAL_SHORTLIST_COUNT) {
+      throw new Error(
+        `Stage 2 vNext produced only ${rewriterCandidatePool.candidates.length} critic survivors; reserve backfill is disabled until regeneration ships.`
+      );
+    }
     const topCandidates = rewriterCandidatePool.candidates;
 
     let rewrittenCandidates = topCandidates;
@@ -4195,8 +4762,27 @@ export class ViralShortsWorkerService {
       const normalizedRewrites = normalizeCandidates(rewriterRaw, selectorOutput);
       if (normalizedRewrites.length > 0) {
         const merged = mergeRewriterCandidates(topCandidates, normalizedRewrites);
-        rewrittenCandidates = merged.candidates;
-        appliedRewriteCount = merged.appliedRewriteCount;
+        if (stage2VNextEnabled) {
+          const validatedMerged = buildStage2VNextPackedBridgeEntries({
+            candidates: merged.candidates,
+            constraints: channelConfig.hardConstraints
+          });
+          const validMergedById = new Map(
+            validatedMerged
+              .filter((entry) => entry.valid)
+              .map((entry) => [entry.candidate.candidateId, entry.candidate] as const)
+          );
+          rewrittenCandidates = topCandidates.map(
+            (candidate) => validMergedById.get(candidate.candidateId) ?? candidate
+          );
+          appliedRewriteCount = rewrittenCandidates.filter((candidate, index) => {
+            const original = topCandidates[index];
+            return candidate.top !== original?.top || candidate.bottom !== original?.bottom;
+          }).length;
+        } else {
+          rewrittenCandidates = merged.candidates;
+          appliedRewriteCount = merged.appliedRewriteCount;
+        }
       }
       await reportProgress({
         stageId: "rewriter",
@@ -4223,6 +4809,17 @@ export class ViralShortsWorkerService {
         reasoningEffort: rewriterReasoningEffort,
         detail: `Fallback used: ${message}`
       });
+    }
+    if (stage2VNextEnabled) {
+      const transitionTimestamp = new Date().toISOString();
+      for (const candidate of topCandidates) {
+        candidateLifecycle?.transition({
+          candidateId: candidate.candidateId,
+          toState: "rewritten",
+          stageId: "rewriter",
+          at: transitionTimestamp
+        });
+      }
     }
     recordExecutedStage(
       "rewriter",
@@ -4278,11 +4875,19 @@ export class ViralShortsWorkerService {
       analyzerOutput,
       finalSelector,
       rewrittenCandidates,
-      fallbackCandidates: candidates,
+      fallbackCandidates: stage2VNextEnabled ? rewrittenCandidates : candidates,
       criticScores
     });
     if (shortlistResult.stats.visibleCount !== shortlistResult.stats.targetCount) {
       throw new Error(buildShortlistFailureMessage(shortlistResult.stats));
+    }
+    if (stage2VNextEnabled) {
+      const visibleShortlistQualityIssues = validateVisibleShortlistQuality(shortlistResult.stats);
+      if (visibleShortlistQualityIssues.length > 0) {
+        throw new Error(
+          `Stage 2 vNext visible shortlist quality gate failed: ${visibleShortlistQualityIssues.join(" ")}`
+        );
+      }
     }
     const shortlistEntries = shortlistResult.entries;
     const shortlist = shortlistEntries.map((entry) => entry.candidate);
@@ -4378,7 +4983,7 @@ export class ViralShortsWorkerService {
       executedPromptStages,
       workspaceCorpusCount,
       activeExamplesCount: availableExamples.length,
-      selectorExamples: selectorPool.selectorExamples,
+      selectorExamples: selectorPromptExamples,
       examplesAssessment: selectorPool.assessment,
       exampleInsights: selectorPool.exampleInsights,
       selectorOutput,
@@ -4429,6 +5034,112 @@ export class ViralShortsWorkerService {
       finalPickCandidateId: resolvedFinalPickCandidateId
     });
 
+    let vnextPipeline:
+      | NonNullable<ViralShortsStage2Result["pipeline"]["vnext"]>
+      | undefined;
+    if (stage2VNextEnabled && exampleRouting) {
+      const transitionTimestamp = new Date().toISOString();
+      const vnextSelection: Stage2VNextFinalSelection = {
+        visibleCandidateIds: resolvedFinalSelectorState.shortlistCandidateIds,
+        winnerCandidateId: resolvedFinalPickCandidateId,
+        pairwiseMatches: [],
+        rationale: sanitizedRationaleRaw
+      };
+      const selectionIssues = validateFinalSelectionObjectSchema(vnextSelection);
+      if (selectionIssues.length > 0) {
+        throw new Error(
+          `Stage 2 vNext final selection contract failed: ${selectionIssues
+            .map((issue) => `${issue.path}: ${issue.message}`)
+            .join(" ")}`
+        );
+      }
+
+      for (const candidateId of resolvedFinalSelectorState.shortlistCandidateIds) {
+        candidateLifecycle?.transition({
+          candidateId,
+          toState: "pairwise_ranked",
+          stageId: "pairwise_final_selector",
+          at: transitionTimestamp
+        });
+        candidateLifecycle?.transition({
+          candidateId,
+          toState: "visible_shortlist",
+          stageId: "pairwise_final_selector",
+          at: transitionTimestamp
+        });
+      }
+      candidateLifecycle?.transition({
+        candidateId: resolvedFinalPickCandidateId,
+        toState: "winner",
+        stageId: "pairwise_final_selector",
+        at: transitionTimestamp
+      });
+      const vnextCriticGate = buildStage2VNextCriticGate({
+        criticScores,
+        rewriteCandidates: topCandidates,
+        validatedShortlistPoolCandidateIds: shortlistResult.validatedPoolCandidateIds,
+        visibleShortlistCandidateIds: resolvedFinalSelectorState.shortlistCandidateIds,
+        invalidDroppedCandidateIds: shortlistResult.invalidDroppedCandidateIds
+      });
+
+      const vnextTraceBundle = buildStage2VNextBridgeTrace({
+        source: buildStage2VNextSourcePacket(input.videoContext),
+        channel: {
+          channelId: channelConfig.channelId,
+          name: channelConfig.name,
+          username: channelConfig.username,
+          hardConstraints: channelConfig.hardConstraints,
+          userInstruction: input.videoContext.userInstruction?.trim() || null
+        },
+        exampleRouting: {
+          decision: exampleRouting,
+          retrievedExamples: buildRetrievedExamples(selectorPool.selectorExamples),
+          passedExamples: buildRetrievedExamples(selectorPromptExamples),
+          blockedExamples: buildRetrievedExamples(
+            selectorPool.selectorExamples.filter(
+              (example) => !selectorPromptExamples.some((allowed) => allowed.id === example.id)
+            )
+          )
+        },
+        strategy: buildStage2VNextStrategyPacket(selectorOutput, exampleRouting),
+        semanticDrafts: vnextSemanticDrafts,
+        packedCandidates: vnextPackedBridgeEntries.map((entry) => entry.packedCandidate),
+        judgeCards: vnextJudgeCards,
+        selection: vnextSelection,
+        titles: titleOptions,
+        seo: null,
+        candidateLineage: candidateLifecycle?.list() ?? [],
+        criticGate: vnextCriticGate,
+        featureFlags: pipelineExecution.featureFlags,
+        pipelineVersion: pipelineExecution.pipelineVersion,
+        stageChainVersion: pipelineExecution.stageChainVersion,
+        workerBuild: pipelineExecution.workerBuild,
+        exampleUsage: buildStage2VNextExampleUsage({
+          exampleRouting,
+          selectedExampleIds: selectorOutput.selectedExampleIds ?? []
+        }),
+        cost: {
+          totalPromptChars: diagnosticsBundle.tokenUsage.totalPromptChars,
+          totalEstimatedInputTokens: diagnosticsBundle.tokenUsage.totalEstimatedInputTokens,
+          totalEstimatedOutputTokens: diagnosticsBundle.tokenUsage.totalEstimatedOutputTokens
+        }
+      });
+      if (!vnextTraceBundle.validation.ok) {
+        throw new Error(
+          `Stage 2 vNext trace validation failed: ${vnextTraceBundle.validation.issues.join(" ")}`
+        );
+      }
+      vnextPipeline = {
+        phase: 1,
+        exampleRouting,
+        criticGate: vnextCriticGate,
+        canonicalCounters: vnextTraceBundle.trace.canonicalCounters,
+        candidateLineage: candidateLifecycle?.list() ?? [],
+        trace: vnextTraceBundle.trace,
+        validation: vnextTraceBundle.validation
+      };
+    }
+
     const output: ViralShortsStage2Result = {
       inputAnalysis: {
         visualAnchors: analyzerOutput.visualAnchors.slice(0, 3),
@@ -4448,9 +5159,11 @@ export class ViralShortsWorkerService {
       pipeline: {
         channelId: channelConfig.channelId,
         mode: "codex_pipeline",
+        execution: pipelineExecution,
         selectorOutput,
         availableExamplesCount: availableExamples.length,
-        selectedExamplesCount: selectorOutput.selectedExamples?.length ?? 0,
+        selectedExamplesCount:
+          selectorOutput.selectedExampleIds?.length ?? selectorOutput.selectedExamples?.length ?? 0,
         retrievalConfidence: selectorPool.assessment.retrievalConfidence,
         examplesMode: selectorPool.assessment.examplesMode,
         retrievalExplanation: selectorPool.assessment.explanation,
@@ -4462,7 +5175,8 @@ export class ViralShortsWorkerService {
           rationaleInternalRaw: internalFinalSelectorReason,
           rationaleInternalModelRaw: sanitizedModelFinalSelectorReason,
           shortlistStats: shortlistResult.stats
-        }
+        },
+        ...(vnextPipeline ? { vnext: vnextPipeline } : {})
       },
       diagnostics: diagnosticsBundle.diagnostics
     };

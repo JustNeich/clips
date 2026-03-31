@@ -120,7 +120,9 @@ npm run dev
   - clip trace export is forensic-oriented:
     - canonical causal inputs live in `stage2.causalInputs`;
     - per-stage prompt manifests live in `stage2.stageManifests`;
+    - resolved worker mode / build / feature-flag truth lives in `stage2.execution`;
     - final outcome truth lives in `stage2.outcome`;
+    - canonical vNext audit sections live in `stage2.vnext`;
     - export truncation is reported explicitly instead of being silently hidden;
   - `data/examples.json` используется только один раз как seed для нового workspace, а не как live runtime source;
   - вызывает `codex exec` по stage-этапам с авторизацией пользователя через кнопку `Connect Codex` (device auth);

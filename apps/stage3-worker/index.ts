@@ -507,7 +507,11 @@ async function completeRemoteJob(
 async function failRemoteJob(
   config: WorkerConfig,
   job: Stage3JobEnvelope["job"],
-  error: unknown
+  classified: {
+    code: string;
+    message: string;
+    recoverable: boolean;
+  }
 ): Promise<void> {
   await fetch(`${config.serverOrigin}/api/stage3/worker/jobs/${job.id}/fail`, {
     method: "POST",
@@ -516,9 +520,9 @@ async function failRemoteJob(
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      errorCode: "worker_failed",
-      message: error instanceof Error ? error.message : "Stage 3 worker failed.",
-      recoverable: true
+      errorCode: classified.code,
+      message: classified.message,
+      recoverable: classified.recoverable
     })
   }).catch(() => undefined);
 }
@@ -554,7 +558,7 @@ async function startCommand(): Promise<void> {
   process.env.STAGE3_WORKER_SESSION_TOKEN = config.sessionToken;
   process.env.STAGE3_WORKER_INSTALL_ROOT = paths().root;
 
-  const { executeStage3HeavyJobPayload } = await import("../../lib/stage3-job-executor");
+  const { classifyStage3HeavyJobError, executeStage3HeavyJobPayload } = await import("../../lib/stage3-job-executor");
 
   const appVersion = await readAppVersion();
   let stop = false;
@@ -627,8 +631,9 @@ async function startCommand(): Promise<void> {
           await executed.cleanup?.();
         }
       } catch (error) {
-        await failRemoteJob(config, job, error);
-        console.error(`Job ${job.id} failed: ${error instanceof Error ? error.message : String(error)}`);
+        const classified = classifyStage3HeavyJobError(job.kind, error);
+        await failRemoteJob(config, job, classified);
+        console.error(`Job ${job.id} failed: ${classified.message}`);
       } finally {
         clearInterval(leaseTimer);
       }

@@ -15,6 +15,17 @@ import type {
   Stage2Diagnostics,
   Stage2TokenUsage
 } from "../../lib/viral-shorts-worker/types";
+import type {
+  CandidateLineageRecord,
+  ExampleRoutingDecision,
+  Stage2PipelineVersion,
+  Stage2VNextCanonicalCounters,
+  Stage2VNextCriticGate,
+  Stage2VNextFeatureFlagSnapshot,
+  Stage2VNextTraceV3,
+  Stage2VNextWorkerBuild
+} from "../../lib/stage2-vnext/contracts";
+import type { Stage2VNextTraceValidationResult } from "../../lib/stage2-vnext/validators";
 
 export type CommentItem = {
   id: string;
@@ -67,13 +78,21 @@ export type Stage2Output = {
   pipeline?: {
     channelId: string;
     mode: "packet_only" | "codex_pipeline" | "regenerate";
+    execution?: {
+      featureFlags: Stage2VNextFeatureFlagSnapshot;
+      pipelineVersion: Stage2PipelineVersion;
+      stageChainVersion: string;
+      workerBuild: Stage2VNextWorkerBuild;
+      resolvedAt: string;
+      legacyFallbackReason: string | null;
+    };
     selectorOutput: unknown;
     availableExamplesCount: number;
     selectedExamplesCount: number;
-    finalSelector?: {
-      candidateOptionMap: Array<{
-        option: number;
-        candidateId: string;
+      finalSelector?: {
+        candidateOptionMap: Array<{
+          option: number;
+          candidateId: string;
       }>;
       shortlistCandidateIds: string[];
       finalPickCandidateId: string;
@@ -88,10 +107,19 @@ export type Stage2Output = {
         repairedCount: number;
         droppedAfterValidationCount: number;
         topSignalSummary?: unknown;
+        };
+      };
+      vnext?: {
+        phase: 1;
+        exampleRouting: ExampleRoutingDecision;
+        criticGate: Stage2VNextCriticGate;
+        canonicalCounters: Stage2VNextCanonicalCounters;
+        candidateLineage: CandidateLineageRecord[];
+        trace: Stage2VNextTraceV3;
+        validation: Stage2VNextTraceValidationResult;
       };
     };
   };
-};
 
 export type Stage2Response = {
   source: {
@@ -142,6 +170,12 @@ export type Stage2Response = {
     runId: string;
     profileId?: string;
     stateDir?: string;
+    buildId?: string;
+    startedAt?: string;
+    pid?: number | null;
+    pipelineVersion?: Stage2PipelineVersion;
+    stageChainVersion?: string;
+    featureFlags?: Stage2VNextFeatureFlagSnapshot;
   };
   stage2Run?: {
     runId: string;

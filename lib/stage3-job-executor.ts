@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import {
   Stage3JobKind
 } from "../app/components/types";
+import { extractYtDlpErrorDescriptorFromUnknown } from "./ytdlp";
 import {
   prepareStage3Preview,
   PREVIEW_WAIT_TIMEOUT_MS,
@@ -34,6 +35,22 @@ export type Stage3ExecutedJobResult = {
     | null;
   cleanup: (() => Promise<void>) | null;
 };
+
+export function resolveStage3HeavyJobErrorCode(kind: Stage3JobKind): string {
+  if (kind === "preview") {
+    return "preview_failed";
+  }
+  if (kind === "render") {
+    return "render_failed";
+  }
+  if (kind === "editing-proxy") {
+    return "editing_proxy_failed";
+  }
+  if (kind === "source-download") {
+    return "source_download_failed";
+  }
+  return "job_failed";
+}
 
 export async function executeStage3HeavyJobPayload(
   kind: Stage3JobKind,
@@ -137,18 +154,54 @@ export async function executeStage3HeavyJobPayload(
   throw new Error(`Unsupported Stage 3 local job kind: ${kind}`);
 }
 
-export function summarizeStage3HeavyJobError(kind: Stage3JobKind, error: unknown): string {
+export function classifyStage3HeavyJobError(
+  kind: Stage3JobKind,
+  error: unknown
+): { code: string; message: string; recoverable: boolean } {
+  const ytdlpError = extractYtDlpErrorDescriptorFromUnknown(error);
+  if (ytdlpError) {
+    return {
+      code: resolveStage3HeavyJobErrorCode(kind),
+      message: ytdlpError.message,
+      recoverable: ytdlpError.retryable
+    };
+  }
+
   if (kind === "preview") {
-    return summarizeStage3PreviewError(error);
+    return {
+      code: resolveStage3HeavyJobErrorCode(kind),
+      message: summarizeStage3PreviewError(error),
+      recoverable: true
+    };
   }
   if (kind === "render") {
-    return summarizeStage3RenderError(error);
+    return {
+      code: resolveStage3HeavyJobErrorCode(kind),
+      message: summarizeStage3RenderError(error),
+      recoverable: true
+    };
   }
   if (kind === "editing-proxy") {
-    return summarizeStage3EditingProxyError(error);
+    return {
+      code: resolveStage3HeavyJobErrorCode(kind),
+      message: summarizeStage3EditingProxyError(error),
+      recoverable: true
+    };
   }
   if (kind === "agent-media-step") {
-    return error instanceof Error ? error.message : "Stage 3 agent media step failed.";
+    return {
+      code: resolveStage3HeavyJobErrorCode(kind),
+      message: error instanceof Error ? error.message : "Stage 3 agent media step failed.",
+      recoverable: true
+    };
   }
-  return error instanceof Error ? error.message : "Stage 3 job failed.";
+  return {
+    code: resolveStage3HeavyJobErrorCode(kind),
+    message: error instanceof Error ? error.message : "Stage 3 job failed.",
+    recoverable: true
+  };
+}
+
+export function summarizeStage3HeavyJobError(kind: Stage3JobKind, error: unknown): string {
+  return classifyStage3HeavyJobError(kind, error).message;
 }

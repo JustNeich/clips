@@ -33,6 +33,11 @@ export type YtDlpAuthContext = {
   cleanup: () => Promise<void>;
 };
 
+export type YtDlpErrorDescriptor = {
+  message: string;
+  retryable: boolean;
+};
+
 function normalizeCookieSecret(value: string): string {
   const trimmed = value.trim();
   const normalized = trimmed.includes("\n") ? trimmed : trimmed.replace(/\\n/g, "\n");
@@ -75,21 +80,32 @@ export async function createYtDlpAuthContext(tmpDir?: string): Promise<YtDlpAuth
   };
 }
 
-export function getYtDlpError(stderr: string): string {
+export function getYtDlpErrorDescriptor(stderr: string): YtDlpErrorDescriptor {
   const normalized = stderr.toLowerCase();
   const workerRuntime = Boolean(process.env.STAGE3_WORKER_SERVER_ORIGIN);
 
   if (!normalized.trim()) {
-    if (process.env.VERCEL === "1") {
-      return "yt-dlp недоступен на этом Vercel deployment. Step 1 fetch/download/comments не сможет обработать исходное видео.";
-    }
-    return workerRuntime ? "yt-dlp не найден на локальном executor." : "yt-dlp не найден в среде выполнения.";
+    return {
+      message:
+        process.env.VERCEL === "1"
+          ? "yt-dlp недоступен на этом Vercel deployment. Step 1 fetch/download/comments не сможет обработать исходное видео."
+          : workerRuntime
+            ? "yt-dlp не найден на локальном executor."
+            : "yt-dlp не найден в среде выполнения.",
+      retryable: false
+    };
   }
   if (normalized.includes("unsupported url")) {
-    return "Ссылка не поддерживается.";
+    return {
+      message: "Ссылка не поддерживается.",
+      retryable: false
+    };
   }
   if (normalized.includes("private")) {
-    return "Это приватное видео, скачать его нельзя.";
+    return {
+      message: "Это приватное видео, скачать его нельзя.",
+      retryable: false
+    };
   }
   if (
     normalized.includes("sign in to confirm you're not a bot") ||
@@ -97,33 +113,61 @@ export function getYtDlpError(stderr: string): string {
     normalized.includes("cookies-from-browser") ||
     normalized.includes("cookies for the authentication")
   ) {
-    return "YouTube отклонил запрос на этом сервере (anti-bot/auth). Если YTDLP_COOKIES уже заданы, проблема может быть в IP или репутации runtime.";
+    return {
+      message:
+        "YouTube отклонил запрос на этом сервере (anti-bot/auth). Если YTDLP_COOKIES уже заданы, проблема может быть в IP или репутации runtime.",
+      retryable: false
+    };
   }
   if (normalized.includes("login")) {
-    return "Источник требует авторизацию. Публичные ссылки работают лучше.";
+    return {
+      message: "Источник требует авторизацию. Публичные ссылки работают лучше.",
+      retryable: false
+    };
   }
   if (normalized.includes("ffmpeg is not installed")) {
-    return workerRuntime
-      ? "На локальном executor не установлен ffmpeg. Установите ffmpeg и повторите."
-      : "В среде выполнения не установлен ffmpeg. Установите ffmpeg и повторите.";
+    return {
+      message: workerRuntime
+        ? "На локальном executor не установлен ffmpeg. Установите ffmpeg и повторите."
+        : "В среде выполнения не установлен ffmpeg. Установите ffmpeg и повторите.",
+      retryable: false
+    };
   }
   if (normalized.includes("not found")) {
-    return "Видео не найдено.";
+    return {
+      message: "Видео не найдено.",
+      retryable: false
+    };
   }
   if (normalized.includes("comment")) {
-    return "Не удалось получить комментарии для этой ссылки.";
+    return {
+      message: "Не удалось получить комментарии для этой ссылки.",
+      retryable: false
+    };
   }
 
-  return "Не удалось обработать ссылку.";
+  return {
+    message: "Не удалось обработать ссылку.",
+    retryable: true
+  };
+}
+
+export function getYtDlpError(stderr: string): string {
+  return getYtDlpErrorDescriptor(stderr).message;
 }
 
 export function extractYtDlpErrorFromText(message: string): string | null {
+  const descriptor = extractYtDlpErrorDescriptorFromText(message);
+  return descriptor?.message ?? null;
+}
+
+export function extractYtDlpErrorDescriptorFromText(message: string): YtDlpErrorDescriptor | null {
   const normalized = message.toLowerCase();
   if (!YT_DLP_ERROR_SIGNALS.some((signal) => normalized.includes(signal))) {
     return null;
   }
 
-  return getYtDlpError(message);
+  return getYtDlpErrorDescriptor(message);
 }
 
 const YT_DLP_ERROR_SIGNALS = [
@@ -142,6 +186,11 @@ const YT_DLP_ERROR_SIGNALS = [
 ];
 
 export function extractYtDlpErrorFromUnknown(error: unknown): string | null {
+  const descriptor = extractYtDlpErrorDescriptorFromUnknown(error);
+  return descriptor?.message ?? null;
+}
+
+export function extractYtDlpErrorDescriptorFromUnknown(error: unknown): YtDlpErrorDescriptor | null {
   const stderr =
     typeof error === "object" && error && "stderr" in error
       ? String((error as { stderr?: string }).stderr ?? "")
@@ -153,5 +202,5 @@ export function extractYtDlpErrorFromUnknown(error: unknown): string | null {
     return null;
   }
 
-  return extractYtDlpErrorFromText(combined);
+  return extractYtDlpErrorDescriptorFromText(combined);
 }

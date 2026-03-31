@@ -13,7 +13,12 @@ export async function GET(): Promise<Response> {
           userId: auth.user.id
         })
       },
-      { status: 200 }
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store"
+        }
+      }
     );
   } catch (error) {
     if (error instanceof Response) {

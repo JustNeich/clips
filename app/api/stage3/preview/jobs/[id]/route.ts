@@ -6,6 +6,10 @@ import { createNodeStreamResponse } from "../../../../../../lib/node-stream-resp
 
 export const runtime = "nodejs";
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store"
+} as const;
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
@@ -16,7 +20,13 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     const { id } = await context.params;
     const job = getStage3JobOrThrow(id);
     if (job.workspaceId !== auth.workspace.id || job.userId !== auth.user.id) {
-      return Response.json({ error: "Stage 3 job not found." }, { status: 404 });
+      return Response.json(
+        { error: "Stage 3 job not found." },
+        {
+          status: 404,
+          headers: NO_STORE_HEADERS
+        }
+      );
     }
 
     const url = new URL(request.url);
@@ -28,7 +38,10 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
             jobId: job.id,
             recoverable: job.recoverable
           }),
-          { status: job.status === "completed" ? 410 : 409 }
+          {
+            status: job.status === "completed" ? 410 : 409,
+            headers: NO_STORE_HEADERS
+          }
         );
       }
       const stat = await fs.stat(job.artifactFilePath);
@@ -45,21 +58,33 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     }
 
     return Response.json(
-      buildStage3JobEnvelope(job, job.artifact ? `/api/stage3/preview/jobs/${job.id}?download=1` : null)
+      buildStage3JobEnvelope(job, job.artifact ? `/api/stage3/preview/jobs/${job.id}?download=1` : null),
+      {
+        headers: NO_STORE_HEADERS
+      }
     );
   } catch (error) {
     if (error instanceof Response) {
       return error;
     }
     if (error instanceof Error && error.message === "Stage 3 job not found.") {
-      return Response.json({ error: error.message }, { status: 404 });
+      return Response.json(
+        { error: error.message },
+        {
+          status: 404,
+          headers: NO_STORE_HEADERS
+        }
+      );
     }
     return Response.json(
       buildStage3JobErrorBody({
         message: error instanceof Error ? error.message : "Не удалось получить статус preview job.",
         recoverable: true
       }),
-      { status: 500 }
+      {
+        status: 500,
+        headers: NO_STORE_HEADERS
+      }
     );
   }
 }

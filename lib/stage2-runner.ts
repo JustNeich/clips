@@ -644,7 +644,13 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       debugMode: run.request.debugMode === "raw" ? "raw" : "summary",
       debugRef: debugRef ? { kind: "stage2-run-debug" as const, ref: debugRef } : null,
       stage2Worker: {
-        runId: run.runId
+        runId: run.runId,
+        buildId: parsedOutput.pipeline.execution?.workerBuild.buildId,
+        startedAt: parsedOutput.pipeline.execution?.workerBuild.startedAt,
+        pid: parsedOutput.pipeline.execution?.workerBuild.pid,
+        pipelineVersion: parsedOutput.pipeline.execution?.pipelineVersion,
+        stageChainVersion: parsedOutput.pipeline.execution?.stageChainVersion,
+        featureFlags: parsedOutput.pipeline.execution?.featureFlags
       },
       stage2Run: {
         runId: run.runId,

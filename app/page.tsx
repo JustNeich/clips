@@ -174,6 +174,12 @@ import {
   trimClientSegmentsToDuration
 } from "./home-page-support";
 import { STAGE3_EDITING_PROXY_CACHE_VERSION } from "../lib/stage3-editing-proxy-contract";
+import {
+  normalizeStage3EditorPreviewNotice,
+  normalizeStage3SourceFailureNotice
+} from "../lib/stage3-preview-notice";
+import { resolveStage3SnapshotManagedTemplateState } from "../lib/stage3-snapshot-managed-template";
+import { resolveStage3WorkerRefreshIntervalMs } from "../lib/stage3-worker-polling";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
@@ -411,6 +417,7 @@ export default function HomePage() {
   const stage3AccuratePreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
   const stage3AccuratePreviewRequestKeyRef = useRef<string>("");
   const stage3AccuratePreviewRequestIdRef = useRef(0);
+  const stage3WorkerStatusAnnouncementRef = useRef<string | null>(null);
   const restoringFlowShellStateRef = useRef<PersistedFlowShellState | null>(null);
   const sourceProgressPollIdRef = useRef(0);
   const sourceJobsRequestVersionsRef = useRef<Record<string, number>>({});
@@ -550,6 +557,14 @@ export default function HomePage() {
     [stage3Workers]
   );
   const stage3WorkerPanelState = activeStage3Worker?.status ?? (stage3Workers.length > 0 ? "offline" : "not_paired");
+  const stage3WorkerRefreshIntervalMs = useMemo(
+    () =>
+      resolveStage3WorkerRefreshIntervalMs({
+        workerState: stage3WorkerPanelState,
+        pairingActive: Boolean(stage3WorkerPairing)
+      }),
+    [stage3WorkerPairing, stage3WorkerPanelState]
+  );
 
   useEffect(() => {
     activeChatIdRef.current = activeChat?.id ?? null;
@@ -768,7 +783,9 @@ export default function HomePage() {
       setStage3Workers([]);
       return [];
     }
-    const response = await fetch("/api/stage3/workers");
+    const response = await fetch("/api/stage3/workers", {
+      cache: "no-store"
+    });
     if (!response.ok) {
       throw new Error(await parseError(response, "Не удалось загрузить локальные Stage 3 executors."));
     }
@@ -808,13 +825,14 @@ export default function HomePage() {
       });
       setStatusType("ok");
       setStatus("Pairing token создан. Запустите локальный Stage 3 worker на своей машине.");
+      void refreshStage3Workers().catch(() => undefined);
     } catch (error) {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось подготовить локальный executor."));
     } finally {
       setIsStage3WorkerPairing(false);
     }
-  }, [getUiErrorMessage, parseError, stage3LocalExecutorAvailable]);
+  }, [getUiErrorMessage, parseError, refreshStage3Workers, stage3LocalExecutorAvailable]);
 
   const applyChannelToRenderPlan = useCallback(
     (channel: Channel | null, assets: ChannelAsset[] = []): Stage3RenderPlan => {
@@ -1907,16 +1925,43 @@ export default function HomePage() {
     if (isAuthLoading || currentStep !== 3 || !stage3LocalExecutorAvailable) {
       setStage3Workers([]);
       setStage3WorkerPairing(null);
+      stage3WorkerStatusAnnouncementRef.current = null;
       return;
     }
     void refreshStage3Workers().catch(() => undefined);
     const timer = window.setInterval(() => {
       void refreshStage3Workers().catch(() => undefined);
-    }, 10_000);
+    }, stage3WorkerRefreshIntervalMs);
     return () => {
       window.clearInterval(timer);
     };
-  }, [currentStep, isAuthLoading, refreshStage3Workers, stage3LocalExecutorAvailable]);
+  }, [
+    currentStep,
+    isAuthLoading,
+    refreshStage3Workers,
+    stage3LocalExecutorAvailable,
+    stage3WorkerRefreshIntervalMs
+  ]);
+
+  useEffect(() => {
+    if (!stage3WorkerPairing) {
+      stage3WorkerStatusAnnouncementRef.current = null;
+      return;
+    }
+    if (stage3WorkerPanelState !== "online" && stage3WorkerPanelState !== "busy") {
+      return;
+    }
+    if (stage3WorkerStatusAnnouncementRef.current === activeStage3Worker?.id) {
+      return;
+    }
+    stage3WorkerStatusAnnouncementRef.current = activeStage3Worker?.id ?? "__connected__";
+    setStatusType("ok");
+    setStatus(
+      activeStage3Worker?.label
+        ? `Executor ${activeStage3Worker.label} подключен.`
+        : "Локальный executor подключен."
+    );
+  }, [activeStage3Worker?.id, activeStage3Worker?.label, stage3WorkerPanelState, stage3WorkerPairing]);
 
   useEffect(() => {
     if (!activeChannel) {
@@ -2037,7 +2082,8 @@ export default function HomePage() {
   const makeLiveSnapshot = useCallback(
     (
       draftOverrides?: Partial<Stage3EditorDraftOverrides>,
-      textFitOverride?: Stage3TextFitSnapshot | null
+      textFitOverride?: Stage3TextFitSnapshot | null,
+      managedTemplateStateOverride?: Step3ManagedTemplateState | null
     ): Stage3StateSnapshot => {
       const hasLegacyCameraOverride = Array.isArray(draftOverrides?.cameraKeyframes);
       const hasPositionTrackOverride = Array.isArray(draftOverrides?.cameraPositionKeyframes);
@@ -2096,10 +2142,11 @@ export default function HomePage() {
         },
         fallbackRenderPlan()
       );
-      const activeManagedTemplateState =
-        stage3ManagedTemplateState?.managedId === effectiveRenderPlan.templateId
-          ? stage3ManagedTemplateState
-          : null;
+      const activeManagedTemplateState = resolveStage3SnapshotManagedTemplateState({
+        templateId: effectiveRenderPlan.templateId,
+        pageState: stage3ManagedTemplateState,
+        previewState: managedTemplateStateOverride
+      });
       const templateSnapshot = buildTemplateRenderSnapshot({
         templateId:
           activeManagedTemplateState?.baseTemplateId ??
@@ -2780,7 +2827,8 @@ export default function HomePage() {
 
   const handleRenderVideo = async (
     draftOverrides?: Partial<Stage3EditorDraftOverrides>,
-    textFitOverride?: Stage3TextFitSnapshot | null
+    textFitOverride?: Stage3TextFitSnapshot | null,
+    managedTemplateStateOverride?: Step3ManagedTemplateState | null
   ): Promise<void> => {
     const chat = requireActiveChat();
     if (!chat) {
@@ -2805,7 +2853,7 @@ export default function HomePage() {
         : `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     try {
-      const baseSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride);
+      const baseSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, managedTemplateStateOverride);
       const renderSnapshot: Stage3StateSnapshot = {
         ...baseSnapshot,
         renderPlan: normalizeRenderPlan(
@@ -2903,7 +2951,10 @@ export default function HomePage() {
       );
     } catch (error) {
       setStage3RenderState("error");
-      const message = getUiErrorMessage(error, "Render export failed.");
+      const message =
+        normalizeStage3SourceFailureNotice(getUiErrorMessage(error, "Render export failed."), {
+          mode: "render"
+        }) ?? "Render export failed.";
       await appendEvent(chat.id, {
         role: "assistant",
         type: "error",
@@ -2933,9 +2984,14 @@ export default function HomePage() {
       let transientFailures = 0;
 
       while (!isStale()) {
-        const response = await fetchWithTimeout(`/api/stage3/render/jobs/${jobId}`, {
-          signal: controller.signal
-        }, 15_000);
+        const response = await fetchWithTimeout(
+          `/api/stage3/render/jobs/${jobId}`,
+          {
+            signal: controller.signal,
+            cache: "no-store"
+          },
+          15_000
+        );
         const shouldRetry = response.status >= 500 || responseLooksLikeHtml(response);
         if (!response.ok || !responseLooksLikeJson(response)) {
           const message = await parseError(response, "Render export failed.");
@@ -3022,7 +3078,10 @@ export default function HomePage() {
       }
       setStage3RenderState("error");
       const chatId = stage3RenderContextRef.current?.chatId ?? activeChat?.id ?? null;
-      const message = getUiErrorMessage(error, "Render export failed.");
+      const message =
+        normalizeStage3SourceFailureNotice(getUiErrorMessage(error, "Render export failed."), {
+          mode: "render"
+        }) ?? "Render export failed.";
       if (chatId) {
         await appendEvent(chatId, {
           role: "assistant",
@@ -3052,7 +3111,8 @@ export default function HomePage() {
 
   const handleOptimizeStage3 = async (
     draftOverrides?: Partial<Stage3EditorDraftOverrides>,
-    textFitOverride?: Stage3TextFitSnapshot | null
+    textFitOverride?: Stage3TextFitSnapshot | null,
+    managedTemplateStateOverride?: Step3ManagedTemplateState | null
   ): Promise<void> => {
     const chat = requireActiveChat();
     if (!chat) {
@@ -3073,7 +3133,7 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const currentSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride);
+      const currentSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, managedTemplateStateOverride);
       const response = await fetch("/api/stage3/agent/run", {
         method: "POST",
         headers: {
@@ -4426,7 +4486,11 @@ export default function HomePage() {
           return;
         }
         if (job.status === "failed" || job.status === "interrupted") {
-          const message = job.errorMessage ?? "Не удалось загрузить предпросмотр.";
+          const message =
+            normalizeStage3EditorPreviewNotice(
+              job.errorMessage ?? "Не удалось загрузить предпросмотр.",
+              job.executionTarget
+            ) ?? "Не удалось загрузить предпросмотр.";
           if (job.recoverable) {
             scheduleRetry(message, 4000);
             return;
@@ -4465,11 +4529,19 @@ export default function HomePage() {
         }
 
         try {
-          const response = await fetchWithTimeout(`/api/stage3/editing-proxy/jobs/${job.id}`, {
-            signal: controller.signal
-          }, 12_000);
+          const response = await fetchWithTimeout(
+            `/api/stage3/editing-proxy/jobs/${job.id}`,
+            {
+              signal: controller.signal,
+              cache: "no-store"
+            },
+            12_000
+          );
           if (!response.ok) {
-            const message = await parseError(response, "Не удалось обновить статус proxy-видео.");
+            const message =
+              normalizeStage3EditorPreviewNotice(
+                await parseError(response, "Не удалось обновить статус proxy-видео.")
+              ) ?? "Не удалось обновить статус proxy-видео.";
             const retryDelayMs = parseRetryAfterMs(response.headers.get("retry-after"), 4000);
             scheduleRetry(message, retryDelayMs);
             return;
@@ -4484,7 +4556,12 @@ export default function HomePage() {
             scheduleRetry("Proxy-видео готовится дольше обычного. Повторяю...", 4000);
             return;
           }
-          scheduleRetry(getUiErrorMessage(error, "Не удалось обновить статус proxy-видео."), 4000);
+          scheduleRetry(
+            normalizeStage3EditorPreviewNotice(
+              getUiErrorMessage(error, "Не удалось обновить статус proxy-видео.")
+            ) ?? "Не удалось обновить статус proxy-видео.",
+            4000
+          );
           return;
         }
       }
@@ -4508,7 +4585,10 @@ export default function HomePage() {
           signal: controller.signal
         }, 12_000);
         if (!response.ok) {
-          const message = await parseError(response, "Не удалось поставить proxy-видео в очередь.");
+          const message =
+            normalizeStage3EditorPreviewNotice(
+              await parseError(response, "Не удалось поставить proxy-видео в очередь.")
+            ) ?? "Не удалось поставить proxy-видео в очередь.";
           const retryDelayMs = parseRetryAfterMs(response.headers.get("retry-after"), 4000);
           if (response.status >= 500) {
             scheduleRetry(message, retryDelayMs);
@@ -4529,7 +4609,12 @@ export default function HomePage() {
           scheduleRetry("Proxy-видео готовится дольше обычного. Повторяю...", 4000);
           return;
         }
-        scheduleRetry(getUiErrorMessage(error, "Не удалось загрузить proxy-видео."), 4000);
+        scheduleRetry(
+          normalizeStage3EditorPreviewNotice(
+            getUiErrorMessage(error, "Не удалось загрузить proxy-видео.")
+          ) ?? "Не удалось загрузить proxy-видео.",
+          4000
+        );
       }
     };
 
@@ -4671,7 +4756,10 @@ export default function HomePage() {
         }
         const contentType = responseContentType(response);
         if (!response.ok || !contentType.includes("video/")) {
-          const message = await parseError(response, "Не удалось обновить точный clip-preview.");
+          const message =
+            normalizeStage3SourceFailureNotice(await parseError(response, "Не удалось обновить точный clip-preview."), {
+              mode: "accurate-preview"
+            }) ?? "Не удалось обновить точный clip-preview.";
           if (response.status >= 500) {
             scheduleRetry(message, parseRetryAfterMs(response.headers.get("retry-after"), 5000));
             return;
@@ -4690,7 +4778,12 @@ export default function HomePage() {
         if (isStale() || isAbortError(error)) {
           return;
         }
-        scheduleRetry(getUiErrorMessage(error, "Не удалось обновить точный clip-preview."), 5000);
+        scheduleRetry(
+          normalizeStage3SourceFailureNotice(getUiErrorMessage(error, "Не удалось обновить точный clip-preview."), {
+            mode: "accurate-preview"
+          }) ?? "Не удалось обновить точный clip-preview.",
+          5000
+        );
       }
     };
 
@@ -6135,12 +6228,12 @@ export default function HomePage() {
           renderState={stage3RenderState}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
-          onRender={(overrides, textFitOverride) => {
-            void handleRenderVideo(overrides, textFitOverride);
-          }}
-          onOptimize={(overrides, textFitOverride) => {
-            void handleOptimizeStage3(overrides, textFitOverride);
-          }}
+	          onRender={(overrides, textFitOverride, managedTemplateStateOverride) => {
+	            void handleRenderVideo(overrides, textFitOverride, managedTemplateStateOverride);
+	          }}
+	          onOptimize={(overrides, textFitOverride, managedTemplateStateOverride) => {
+	            void handleOptimizeStage3(overrides, textFitOverride, managedTemplateStateOverride);
+	          }}
           onResumeAgent={() => {
             void handleResumeStage3Agent();
           }}
