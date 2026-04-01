@@ -31,8 +31,11 @@ import { listSourceJobsForChat, type SourceJobRecord } from "./source-job-store"
 import { listStage2RunsForChat, type Stage2RunRecord } from "./stage2-progress-store";
 import type { Stage2DiagnosticsPromptStage, Stage2PipelineExecution } from "./viral-shorts-worker/types";
 import type {
+  AudiencePacket,
   CandidateLineageRecord,
+  ClipTruthPacket,
   ExampleRoutingDecision,
+  FinalSelection as Stage2VNextFinalSelection,
   Stage2PipelineVersion,
   Stage2VNextCanonicalCounters,
   Stage2VNextCriticGate,
@@ -85,7 +88,9 @@ type ChatTraceExportTraceContract = {
     stage2StageManifests: string;
     stage2Execution: string;
     stage2Outcome: string;
+    stage2NativeCaptionV3: string;
     stage2VNext: string;
+    stage2VNextStageOutputs: string;
     stage2VNextExampleRouting: string;
     stage2VNextCanonicalCounters: string;
     stage2VNextValidation: string;
@@ -197,10 +202,10 @@ export type ChatTraceExport = {
         title: string | null;
         descriptionChars: number;
         transcriptChars: number;
+        speechGroundingStatus: "transcript_present" | "no_speech_detected" | "speech_uncertain";
         frameCount: number;
-        runtimeCommentCount: number;
+        runtimeCommentsAvailable: number;
         runtimeCommentIds: string[];
-        commentsUsedForPrompt: number;
         commentsOmittedFromPrompt: number;
         downloadProvider: Stage2Response["source"]["downloadProvider"] | null;
         primaryProviderError: string | null;
@@ -264,6 +269,75 @@ export type ChatTraceExport = {
           : null
         : null;
     };
+    nativeCaptionV3: {
+      present: boolean;
+      contextPacket: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                contextPacket?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
+      candidateBatch: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                candidateBatch?: infer U;
+              };
+            };
+          }
+          ? U | []
+          : []
+        : [];
+      qualityCourt: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                qualityCourt?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
+      repair: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                repair?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
+      titleWriter: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                titleWriter?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
+      translation: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                translation?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
+    };
     examplesRuntimeUsage: {
       source: Stage2Response["diagnostics"] extends infer T
         ? T extends { examples?: { source?: infer U } }
@@ -310,6 +384,17 @@ export type ChatTraceExport = {
     vnext: {
       present: boolean;
       phase: number | null;
+      stageOutputs: {
+        clipTruthExtractor: ClipTruthPacket | null;
+        audienceMiner: AudiencePacket | null;
+        rankedFinalSelector: Stage2VNextFinalSelection | null;
+        memory:
+          | {
+              status: "disabled";
+              reason: string;
+            }
+          | null;
+      } | null;
       exampleRouting: ExampleRoutingDecision | null;
       canonicalCounters: Stage2VNextCanonicalCounters | null;
       validation: {
@@ -321,7 +406,7 @@ export type ChatTraceExport = {
       criticGate: Stage2VNextCriticGate | null;
       traceMeta: {
         version: string;
-        compatibilityMode: string;
+        compatibilityMode: "none";
         stageChainVersion: string | null;
         pipelineVersion: Stage2PipelineVersion | null;
         workerBuild: Stage2VNextWorkerBuild | null;
@@ -520,7 +605,9 @@ function buildTraceContract(): ChatTraceExportTraceContract {
       stage2StageManifests: "stage2.stageManifests",
       stage2Execution: "stage2.execution",
       stage2Outcome: "stage2.outcome",
+      stage2NativeCaptionV3: "stage2.nativeCaptionV3",
       stage2VNext: "stage2.vnext",
+      stage2VNextStageOutputs: "stage2.vnext.stageOutputs",
       stage2VNextExampleRouting: "stage2.vnext.exampleRouting",
       stage2VNextCanonicalCounters: "stage2.vnext.canonicalCounters",
       stage2VNextValidation: "stage2.vnext.validation",
@@ -540,7 +627,7 @@ function buildTraceContract(): ChatTraceExportTraceContract {
       "sourceJobs[*].result"
     ],
     note:
-      "Canonical sections above are the trace's source-of-truth summaries. stage2.execution and stage2.vnext are authoritative for resolved pipeline mode, worker build, feature-flag state, critic gate, lineage, and validation. Existing nested result/diagnostics/raw event payloads remain as convenience mirrors only."
+      "Canonical sections above are the trace's source-of-truth summaries. stage2.execution plus stage2.nativeCaptionV3 or stage2.vnext are authoritative for resolved pipeline mode, worker build, candidate decisions, repair, lineage, and validation. Existing nested result/diagnostics/raw event payloads remain as convenience mirrors only."
   };
 }
 
@@ -590,6 +677,14 @@ function buildStage2VNextCanonical(
   return {
     present: Boolean(vnext),
     phase: vnext?.phase ?? null,
+    stageOutputs: vnext
+      ? {
+          clipTruthExtractor: vnext.trace.stageOutputs.clipTruthExtractor,
+          audienceMiner: vnext.trace.stageOutputs.audienceMiner,
+          rankedFinalSelector: vnext.trace.stageOutputs.rankedFinalSelector,
+          memory: vnext.trace.memory
+        }
+      : null,
     exampleRouting: vnext?.exampleRouting ?? null,
     canonicalCounters: vnext?.canonicalCounters ?? vnext?.trace.canonicalCounters ?? null,
     validation: vnext
@@ -653,6 +748,8 @@ function buildStage2ConsistencyChecks(
   if (vnext) {
     const criticGate = vnext.criticGate ?? vnext.trace.criticGate;
     const validatedPoolIds = new Set(criticGate.validatedShortlistPoolIds);
+    const criticManifestCandidates =
+      stageManifests.find((stage) => stage.stageId === "critic")?.inputManifest?.candidates ?? null;
     checks.push({
       id: "vnext_disabled_examples",
       ok:
@@ -677,6 +774,18 @@ function buildStage2ConsistencyChecks(
         `validatedPool=${criticGate.validatedShortlistPoolIds.length}; visible=${criticGate.visibleShortlistCandidateIds.length}; ` +
         `reserveBackfill=${criticGate.reserveBackfillCount}.`
     });
+    checks.push({
+      id: "critic_manifest_alignment",
+      ok:
+        (criticManifestCandidates?.passedCount ?? criticGate.evaluatedCandidateIds.length) ===
+          criticGate.evaluatedCandidateIds.length &&
+        (criticManifestCandidates?.criticScoreCount ?? criticGate.evaluatedCandidateIds.length) ===
+          criticGate.evaluatedCandidateIds.length,
+      details:
+        `criticManifestPassed=${criticManifestCandidates?.passedCount ?? "missing"}; ` +
+        `criticManifestScores=${criticManifestCandidates?.criticScoreCount ?? "missing"}; ` +
+        `criticGateEvaluated=${criticGate.evaluatedCandidateIds.length}.`
+    });
   }
 
   return checks;
@@ -684,21 +793,44 @@ function buildStage2ConsistencyChecks(
 
 function buildStage2Outcome(rawStage2: Stage2Response | null) {
   const finalSelector = rawStage2?.output.pipeline?.finalSelector;
+  const finalists = rawStage2?.output.finalists ?? [];
+  const nativeWinner = rawStage2?.output.winner ?? null;
+  const nativeCandidateOptionMap =
+    finalists.length > 0
+      ? finalists.map((finalist) => ({
+          option: finalist.option,
+          candidateId: finalist.candidateId
+        }))
+      : [];
   return {
     retrievalConfidence: rawStage2?.diagnostics?.examples?.retrievalConfidence ?? null,
     examplesMode: rawStage2?.diagnostics?.examples?.examplesMode ?? null,
     examplesRoleSummary: rawStage2?.diagnostics?.examples?.examplesRoleSummary ?? null,
     primaryDriverSummary: rawStage2?.diagnostics?.examples?.primaryDriverSummary ?? null,
-    candidateOptionMap: finalSelector?.candidateOptionMap ?? [],
-    visibleOptionToCandidateMap: finalSelector?.candidateOptionMap ?? [],
-    shortlistCandidateIds: finalSelector?.shortlistCandidateIds ?? [],
-    finalPickCandidateId: finalSelector?.finalPickCandidateId ?? null,
-    finalPickOption: rawStage2?.output.finalPick.option ?? null,
-    finalPickReason: rawStage2?.output.finalPick.reason ?? null,
-    rationaleRaw: finalSelector?.rationaleRaw ?? null,
+    candidateOptionMap: finalSelector?.candidateOptionMap ?? nativeCandidateOptionMap,
+    visibleOptionToCandidateMap: finalSelector?.candidateOptionMap ?? nativeCandidateOptionMap,
+    shortlistCandidateIds:
+      finalSelector?.shortlistCandidateIds ?? finalists.map((finalist) => finalist.candidateId),
+    finalPickCandidateId: finalSelector?.finalPickCandidateId ?? nativeWinner?.candidateId ?? null,
+    finalPickOption: rawStage2?.output.finalPick.option ?? nativeWinner?.option ?? null,
+    finalPickReason: rawStage2?.output.finalPick.reason ?? nativeWinner?.reason ?? null,
+    rationaleRaw: finalSelector?.rationaleRaw ?? nativeWinner?.reason ?? null,
     rationaleInternalRaw: finalSelector?.rationaleInternalRaw ?? null,
     rationaleInternalModelRaw: finalSelector?.rationaleInternalModelRaw ?? null,
     topSignalSummary: finalSelector?.shortlistStats?.topSignalSummary ?? null
+  };
+}
+
+function buildStage2NativeCaptionV3(rawStage2: Stage2Response | null) {
+  const nativeCaption = rawStage2?.output.pipeline?.nativeCaptionV3 ?? null;
+  return {
+    present: Boolean(nativeCaption),
+    contextPacket: nativeCaption?.contextPacket ?? null,
+    candidateBatch: nativeCaption?.candidateBatch ?? [],
+    qualityCourt: nativeCaption?.qualityCourt ?? null,
+    repair: nativeCaption?.repair ?? null,
+    titleWriter: nativeCaption?.titleWriter ?? null,
+    translation: nativeCaption?.translation ?? null
   };
 }
 
@@ -796,11 +928,11 @@ function buildStage2CausalInputs(input: {
       title: sourceContext?.title ?? input.rawStage2?.source.title ?? null,
       descriptionChars: sourceContext?.descriptionChars ?? 0,
       transcriptChars: sourceContext?.transcriptChars ?? 0,
+      speechGroundingStatus: sourceContext?.speechGroundingStatus ?? "speech_uncertain",
       frameCount: sourceContext?.frameCount ?? input.rawStage2?.source.frameDescriptions?.length ?? 0,
-      runtimeCommentCount:
+      runtimeCommentsAvailable:
         sourceContext?.runtimeCommentCount ?? input.rawStage2?.source.commentsUsedForPrompt ?? 0,
       runtimeCommentIds: sourceContext?.runtimeCommentIds ?? [],
-      commentsUsedForPrompt: input.rawStage2?.source.commentsUsedForPrompt ?? 0,
       commentsOmittedFromPrompt: input.rawStage2?.source.commentsOmittedFromPrompt ?? 0,
       downloadProvider: input.rawStage2?.source.downloadProvider ?? null,
       primaryProviderError: input.rawStage2?.source.primaryProviderError ?? null,
@@ -1208,6 +1340,7 @@ export async function buildChatTraceExport(
       execution,
       outcome: buildStage2Outcome(rawCurrentStage2),
       examplesRuntimeUsage,
+      nativeCaptionV3: buildStage2NativeCaptionV3(rawCurrentStage2),
       vnext,
       consistencyChecks,
       currentResult: sanitizedCurrentStage2,

@@ -466,8 +466,9 @@ export function ChannelManager({
   }, [saveWorkspaceStage2DefaultsWithNotice]);
 
   useEffect(() => {
+    const autosaveResetTimers = autosaveResetTimersRef.current;
     return () => {
-      Object.values(autosaveResetTimersRef.current).forEach((timerId) => {
+      Object.values(autosaveResetTimers).forEach((timerId) => {
         if (typeof timerId === "number") {
           window.clearTimeout(timerId);
         }
@@ -548,7 +549,7 @@ export function ChannelManager({
       setStyleProfileDiscoveryError(null);
       setStyleProfileSaveState({ status: "idle", message: null });
     }
-  }, [activeChannel?.id, isWorkspaceDefaultsSelection, styleProfileStorageKey]);
+  }, [activeChannel, isWorkspaceDefaultsSelection, styleProfileStorageKey]);
 
   useEffect(() => {
     if (!styleProfileStorageKey || !styleProfileDraft || typeof window === "undefined") {
@@ -568,7 +569,7 @@ export function ChannelManager({
     }
   }, [styleProfileActiveRunId, styleProfileDraft, styleProfileStorageKey]);
 
-  const setAutosaveFeedback = (
+  const setAutosaveFeedback = useCallback((
     scope: AutosaveScope,
     status: AutosaveStatus,
     message: string | null = null
@@ -577,9 +578,22 @@ export function ChannelManager({
       ...current,
       [scope]: { status, message }
     }));
-  };
+  }, []);
 
-  const scheduleAutosaveReset = (scope: AutosaveScope) => {
+  const resetAutosaveFeedbackIfNeeded = useCallback((scope: AutosaveScope) => {
+    setAutosaveState((current) => {
+      const scopeState = current[scope];
+      if (scopeState.status === "idle" && scopeState.message === null) {
+        return current;
+      }
+      return {
+        ...current,
+        [scope]: { status: "idle", message: null }
+      };
+    });
+  }, []);
+
+  const scheduleAutosaveReset = useCallback((scope: AutosaveScope) => {
     const existingTimer = autosaveResetTimersRef.current[scope];
     if (typeof existingTimer === "number") {
       window.clearTimeout(existingTimer);
@@ -588,15 +602,15 @@ export function ChannelManager({
       setAutosaveFeedback(scope, "idle", null);
       delete autosaveResetTimersRef.current[scope];
     }, 1800);
-  };
+  }, [setAutosaveFeedback]);
 
-  const clearAutosaveReset = (scope: AutosaveScope) => {
+  const clearAutosaveReset = useCallback((scope: AutosaveScope) => {
     const existingTimer = autosaveResetTimersRef.current[scope];
     if (typeof existingTimer === "number") {
       window.clearTimeout(existingTimer);
       delete autosaveResetTimersRef.current[scope];
     }
-  };
+  }, []);
 
   const buildBrandSnapshot = (nextName: string, nextUsername: string): string =>
     JSON.stringify({
@@ -711,6 +725,7 @@ export function ChannelManager({
     });
   }, [
     activeChannel,
+    clearAutosaveReset,
     isWorkspaceDefaultsSelection,
     workspaceStage2ExamplesCorpusJson,
     workspaceStage2HardConstraintsProp,
@@ -763,7 +778,7 @@ export function ChannelManager({
   }, [activeChannel, stage2ExamplesConfig, workspaceExamplesCount, workspaceExamplesJson]);
 
   useEffect(() => {
-    if (!activeChannel || !canEditChannelExamples) {
+    if (!activeChannel || !canEditSetup) {
       return;
     }
     if (skipAutosaveRef.current.brand) {
@@ -772,9 +787,7 @@ export function ChannelManager({
     }
     const nextSnapshot = buildBrandSnapshot(name, username);
     if (nextSnapshot === persistedSnapshotRef.current.brand) {
-      if (autosaveState.brand.status !== "idle") {
-        setAutosaveFeedback("brand", "idle", null);
-      }
+      resetAutosaveFeedbackIfNeeded("brand");
       return;
     }
     clearAutosaveReset("brand");
@@ -802,7 +815,16 @@ export function ChannelManager({
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [activeChannel, canEditSetup, name, username]);
+  }, [
+    activeChannel,
+    canEditSetup,
+    clearAutosaveReset,
+    name,
+    resetAutosaveFeedbackIfNeeded,
+    scheduleAutosaveReset,
+    setAutosaveFeedback,
+    username
+  ]);
 
   useEffect(() => {
     if (!activeChannel || !canEditChannelExamples) {
@@ -823,9 +845,7 @@ export function ChannelManager({
     }
     const nextSnapshot = buildStage2Snapshot(stage2ExamplesConfig, stage2HardConstraints);
     if (nextSnapshot === persistedSnapshotRef.current.stage2) {
-      if (autosaveState.stage2.status !== "idle") {
-        setAutosaveFeedback("stage2", "idle", null);
-      }
+      resetAutosaveFeedbackIfNeeded("stage2");
       return;
     }
     clearAutosaveReset("stage2");
@@ -859,7 +879,11 @@ export function ChannelManager({
   }, [
     activeChannel,
     canEditChannelExamples,
+    clearAutosaveReset,
     customExamplesError,
+    resetAutosaveFeedbackIfNeeded,
+    scheduleAutosaveReset,
+    setAutosaveFeedback,
     stage2ExamplesConfig,
     stage2HardConstraints
   ]);
@@ -888,9 +912,7 @@ export function ChannelManager({
       workspaceCodexModelConfig
     );
     if (nextSnapshot === persistedSnapshotRef.current.stage2Defaults) {
-      if (autosaveState.stage2Defaults.status !== "idle") {
-        setAutosaveFeedback("stage2Defaults", "idle", null);
-      }
+      resetAutosaveFeedbackIfNeeded("stage2Defaults");
       return;
     }
     clearAutosaveReset("stage2Defaults");
@@ -926,6 +948,11 @@ export function ChannelManager({
   }, [
     activeChannel,
     canEditWorkspaceDefaults,
+    clearAutosaveReset,
+    open,
+    resetAutosaveFeedbackIfNeeded,
+    scheduleAutosaveReset,
+    setAutosaveFeedback,
     workspaceExamplesError,
     workspaceExamplesJson,
     stage2HardConstraints,
@@ -943,9 +970,7 @@ export function ChannelManager({
     }
     const nextSnapshot = buildRenderSnapshot(templateId);
     if (nextSnapshot === persistedSnapshotRef.current.render) {
-      if (autosaveState.render.status !== "idle") {
-        setAutosaveFeedback("render", "idle", null);
-      }
+      resetAutosaveFeedbackIfNeeded("render");
       return;
     }
     clearAutosaveReset("render");
@@ -973,7 +998,15 @@ export function ChannelManager({
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [activeChannel, canEditSetup, templateId]);
+  }, [
+    activeChannel,
+    canEditSetup,
+    clearAutosaveReset,
+    resetAutosaveFeedbackIfNeeded,
+    scheduleAutosaveReset,
+    setAutosaveFeedback,
+    templateId
+  ]);
 
   useEffect(() => {
     if (!styleProfileActiveRunId) {

@@ -10,7 +10,6 @@ import {
   type MutableRefObject
 } from "react";
 import {
-  ChannelPublication,
   ChannelAsset,
   Stage3AgentConversationItem,
   Stage3CameraMotion,
@@ -164,12 +163,16 @@ type Step3RenderTemplateProps = {
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
   musicGain: number;
-  publication?: ChannelPublication | null;
+  publishAfterRender?: boolean;
+  publishAfterRenderEnabled?: boolean;
+  publishAfterRenderInfo?: string | null;
+  publishAfterRenderDisabledReason?: string | null;
   onRender: (
     overrides?: Stage3EditorDraftOverrides,
     textFitOverride?: Stage3TextFitSnapshot | null,
     authoritativePreviewSnapshot?: Step3AuthoritativePreviewSnapshot | null
   ) => void;
+  onPublishAfterRenderChange?: (value: boolean) => void;
   onExport: () => void;
   onOptimize: (
     overrides?: Stage3EditorDraftOverrides,
@@ -270,6 +273,11 @@ function formatTimeSec(value: number): string {
   const sec = Math.floor(total % 60);
   const ms = Math.floor((total - Math.floor(total)) * 10);
   return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}.${ms}`;
+}
+
+function formatRenderPublishLabel(info: string | null): string | null {
+  const trimmed = info?.trim();
+  return trimmed ? trimmed : null;
 }
 
 function detectWorkerGuidePlatform(): WorkerGuidePlatform {
@@ -2005,8 +2013,12 @@ export function Step3RenderTemplate({
   bottomFontScale,
   sourceAudioEnabled,
   musicGain,
-  publication = null,
+  publishAfterRender = false,
+  publishAfterRenderEnabled = false,
+  publishAfterRenderInfo = null,
+  publishAfterRenderDisabledReason = null,
   onRender,
+  onPublishAfterRenderChange = () => undefined,
   onExport,
   onOptimize,
   onResumeAgent,
@@ -2908,7 +2920,7 @@ export function Step3RenderTemplate({
     }, 320);
   };
 
-  const flushPositionKeyframesCommit = (value: Stage3PositionKeyframe[]) => {
+  const flushPositionKeyframesCommit = useCallback((value: Stage3PositionKeyframe[]) => {
     if (positionKeyframesCommitTimerRef.current !== null) {
       window.clearTimeout(positionKeyframesCommitTimerRef.current);
       positionKeyframesCommitTimerRef.current = null;
@@ -2919,7 +2931,7 @@ export function Step3RenderTemplate({
     });
     setLocalPositionKeyframes(next);
     onCameraPositionKeyframesChange(next);
-  };
+  }, [clipDurationSec, localFocusY, onCameraPositionKeyframesChange]);
 
   const schedulePositionKeyframesCommit = (value: Stage3PositionKeyframe[]) => {
     const next = normalizeStage3PositionKeyframes(value, {
@@ -2936,7 +2948,7 @@ export function Step3RenderTemplate({
     }, 180);
   };
 
-  const flushScaleKeyframesCommit = (value: Stage3ScaleKeyframe[]) => {
+  const flushScaleKeyframesCommit = useCallback((value: Stage3ScaleKeyframe[]) => {
     if (scaleKeyframesCommitTimerRef.current !== null) {
       window.clearTimeout(scaleKeyframesCommitTimerRef.current);
       scaleKeyframesCommitTimerRef.current = null;
@@ -2947,7 +2959,7 @@ export function Step3RenderTemplate({
     });
     setLocalScaleKeyframes(next);
     onCameraScaleKeyframesChange(next);
-  };
+  }, [clipDurationSec, localVideoZoom, onCameraScaleKeyframesChange]);
 
   const scheduleScaleKeyframesCommit = (value: Stage3ScaleKeyframe[]) => {
     const next = normalizeStage3ScaleKeyframes(value, {
@@ -3243,23 +3255,23 @@ export function Step3RenderTemplate({
     addScaleKeyframeAtPlayhead();
   };
 
-  const removeSelectedPositionKeyframe = () => {
+  const removeSelectedPositionKeyframe = useCallback(() => {
     if (!selectedPositionKeyframe) {
       return;
     }
     const next = normalizedLocalPositionKeyframes.filter((keyframe) => keyframe.id !== selectedPositionKeyframe.id);
     setSelectedPositionKeyframeId(next[next.length - 1]?.id ?? null);
     flushPositionKeyframesCommit(next);
-  };
+  }, [flushPositionKeyframesCommit, normalizedLocalPositionKeyframes, selectedPositionKeyframe]);
 
-  const removeSelectedScaleKeyframe = () => {
+  const removeSelectedScaleKeyframe = useCallback(() => {
     if (!selectedScaleKeyframe) {
       return;
     }
     const next = normalizedLocalScaleKeyframes.filter((keyframe) => keyframe.id !== selectedScaleKeyframe.id);
     setSelectedScaleKeyframeId(next[next.length - 1]?.id ?? null);
     flushScaleKeyframesCommit(next);
-  };
+  }, [flushScaleKeyframesCommit, normalizedLocalScaleKeyframes, selectedScaleKeyframe]);
 
   const clearCameraTracks = () => {
     setSelectedPositionKeyframeId(null);
@@ -4191,6 +4203,7 @@ export function Step3RenderTemplate({
   };
 
   const isPreparingRenderText = Boolean(pendingTextFitAction);
+  const renderPublishLabel = formatRenderPublishLabel(publishAfterRenderInfo);
 
   const finishCaptionEditorCard = (
     <section className="control-card control-card-priority stage3-caption-editor-card">
@@ -4318,7 +4331,23 @@ export function Step3RenderTemplate({
   );
 
   const finishFooter = (
-    <div className="sticky-action-bar">
+    <div className="sticky-action-bar stage3-render-action-bar">
+      <div className="stage3-render-publish-group">
+        <label className="field-label fragment-toggle">
+          <input
+            type="checkbox"
+            checked={publishAfterRender}
+            disabled={!publishAfterRenderEnabled || isRendering || isPreparingRenderText}
+            onChange={(event) => onPublishAfterRenderChange(event.target.checked)}
+          />
+          <span>Опубликовать</span>
+        </label>
+        {publishAfterRender && renderPublishLabel ? (
+          <p className="subtle-text stage3-render-publish-info">{renderPublishLabel}</p>
+        ) : !publishAfterRenderEnabled && publishAfterRenderDisabledReason ? (
+          <p className="subtle-text stage3-render-publish-info">{publishAfterRenderDisabledReason}</p>
+        ) : null}
+      </div>
       <button
         type="button"
         className="btn btn-ghost"

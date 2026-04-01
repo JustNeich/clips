@@ -5,6 +5,7 @@ import {
   buildPublicationSlotCandidateFromDateAndIndex,
   pickNextPublicationSlot
 } from "./channel-publishing";
+import { isChannelPublishIntegrationReady } from "./channel-publish-state";
 import {
   appendChannelPublicationEvent,
   cancelChannelPublication,
@@ -364,9 +365,14 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
   renderExport: RenderExportRecord;
   stage2Result: Stage2Response | null;
   createdByUserId: string;
+  publishAfterRender?: boolean;
 }): ChannelPublication | null {
   const settings = getChannelPublishSettings(input.channelId);
-  if (!settings.autoQueueEnabled) {
+  const shouldPublishAfterRender = input.publishAfterRender ?? settings.autoQueueEnabled;
+  if (!shouldPublishAfterRender) {
+    return null;
+  }
+  if (!isChannelPublishIntegrationReady(getChannelPublishIntegration(input.channelId))) {
     return null;
   }
 
@@ -442,6 +448,7 @@ export function completeRenderExportAndMaybeQueue(input: {
   snapshotJson: string;
   createdByUserId: string;
   stage2Result: Stage2Response | null;
+  publishAfterRender?: boolean;
 }): {
   renderExport: RenderExportRecord;
   publication: ChannelPublication | null;
@@ -467,7 +474,8 @@ export function completeRenderExportAndMaybeQueue(input: {
     chatTitle: input.chatTitle,
     renderExport,
     stage2Result: input.stage2Result,
-    createdByUserId: input.createdByUserId
+    createdByUserId: input.createdByUserId,
+    publishAfterRender: input.publishAfterRender
   });
   return { renderExport, publication };
 }

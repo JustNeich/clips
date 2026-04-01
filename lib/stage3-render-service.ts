@@ -84,6 +84,7 @@ export type Stage3RenderRequestBody = {
   sourceUrl?: string;
   channelId?: string;
   chatId?: string;
+  publishAfterRender?: boolean;
   renderTitle?: string;
   topText?: string;
   bottomText?: string;

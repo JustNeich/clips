@@ -1,5 +1,7 @@
 import type {
+  AudiencePacket,
   CandidateLineageRecord,
+  ClipTruthPacket,
   ExampleRoutingDecision,
   FinalSelection,
   JudgeScoreCard,
@@ -20,8 +22,10 @@ import type { Stage2HardConstraints } from "../../stage2-channel-config";
 import { buildTraceV3 } from "../trace/build-trace-v3";
 import { validateTraceV3, type Stage2VNextTraceValidationResult } from "../validators";
 
-export function buildStage2VNextBridgeTrace(input: {
+export function buildStage2VNextTrace(input: {
   source: SourcePacket;
+  clipTruth: ClipTruthPacket;
+  audience: AudiencePacket;
   channel: {
     channelId: string;
     name: string;
@@ -63,13 +67,15 @@ export function buildStage2VNextBridgeTrace(input: {
       pipelineVersion: input.pipelineVersion,
       stageChainVersion: input.stageChainVersion,
       workerBuild: input.workerBuild,
-      compatibilityMode: "legacy_bridge",
+      compatibilityMode: "none",
       implementedStages: [
+        "clip_truth_extractor",
+        "audience_miner",
         "example_router",
         "semantic_draft_generator",
         "constraint_packer",
         "quality_court",
-        "pairwise_final_selector",
+        "ranked_final_selector",
         "title_and_seo"
       ]
     },
@@ -78,8 +84,8 @@ export function buildStage2VNextBridgeTrace(input: {
       channel: input.channel
     },
     stageOutputs: {
-      clipTruthExtractor: null,
-      audienceMiner: null,
+      clipTruthExtractor: input.clipTruth,
+      audienceMiner: input.audience,
       exampleRouter: input.exampleRouting,
       strategySearch: input.strategy,
       semanticDraftGenerator: {
@@ -91,7 +97,7 @@ export function buildStage2VNextBridgeTrace(input: {
       qualityCourt: {
         judgeCards: input.judgeCards
       },
-      pairwiseFinalSelector: input.selection,
+      rankedFinalSelector: input.selection,
       titleAndSeo: {
         titles: input.titles,
         seo: input.seo
@@ -111,7 +117,8 @@ export function buildStage2VNextBridgeTrace(input: {
     },
     selection: input.selection,
     memory: {
-      status: "not_implemented"
+      status: "disabled",
+      reason: "learning_write_back_not_enabled_for_stage2_vnext"
     },
     cost: {
       totalPromptChars: input.cost?.totalPromptChars ?? 0,

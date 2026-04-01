@@ -1165,10 +1165,13 @@ export function getNextChannelPublicationWakeAt(): string | null {
   const db = getDb();
   const row = db
     .prepare(
-      `SELECT upload_ready_at
-         FROM channel_publications
-        WHERE status = 'queued'
-        ORDER BY upload_ready_at ASC
+      `SELECT p.upload_ready_at
+         FROM channel_publications p
+         JOIN channel_publish_integrations i ON i.channel_id = p.channel_id
+        WHERE p.status = 'queued'
+          AND i.status = 'connected'
+          AND i.selected_youtube_channel_id IS NOT NULL
+        ORDER BY p.upload_ready_at ASC
         LIMIT 1`
     )
     .get() as { upload_ready_at?: string | null } | undefined;
@@ -1188,11 +1191,14 @@ export function claimNextReadyChannelPublication(input: {
     sweepPublishedChannelPublications(nowString);
     const row = db
       .prepare(
-        `SELECT id
-           FROM channel_publications
-          WHERE status = 'queued'
-            AND upload_ready_at <= ?
-          ORDER BY upload_ready_at ASC, created_at ASC
+        `SELECT p.id
+           FROM channel_publications p
+           JOIN channel_publish_integrations i ON i.channel_id = p.channel_id
+          WHERE p.status = 'queued'
+            AND p.upload_ready_at <= ?
+            AND i.status = 'connected'
+            AND i.selected_youtube_channel_id IS NOT NULL
+          ORDER BY p.upload_ready_at ASC, p.created_at ASC
           LIMIT 1`
       )
       .get(nowString) as { id?: string } | undefined;

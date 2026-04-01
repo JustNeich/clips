@@ -8,20 +8,20 @@ Stage 2 больше не является one-shot prompt и больше не 
 
 Текущий pipeline:
 
-1. `analyzer`
-2. `selector`
-3. `writer`
-4. `critic`
-5. `rewriter`
-6. `final selector`
-7. `titles`
-8. human pick в UI
-9. optional `seo` call после готового shortlist
+1. `contextPacket`
+2. `candidateGenerator`
+3. `qualityCourt`
+4. `targetedRepair` (optional)
+5. `titleWriter`
+6. human pick / review в UI
+7. optional `translate finalists` action after the run
+8. optional publishing-time SEO generation outside Stage 2
 
 Ключевой принцип:
 - Stage 2 всегда использует **один effective examples corpus на run**
 - prompt configuration хранится по stage
-- selector является **LLM-driven editorial stage**, а не deterministic classifier
+- examples по умолчанию выключены в `native_caption_v3` hot path
+- RU translation и SEO больше не входят в Stage 2 transaction
 
 ## 2. End-to-end flow
 
@@ -47,8 +47,9 @@ Run lifecycle:
 
 Run modes:
 - `manual` / `auto` проходят полный multi-stage pipeline
-- `regenerate` использует уже сохранённый successful run как base run и делает один быстрый LLM pass только по visible options
-- быстрый regenerate не притворяется полным pipeline: у него отдельные progress steps `База -> Перегенерация -> Сборка`
+- `regenerate` для `native_caption_v3` переиспользует сохранённый `contextPacket` и заново прогоняет `candidateGenerator -> qualityCourt -> targetedRepair? -> titleWriter`
+- исторический quick regenerate для legacy/vnext payloads остаётся только для compatibility
+- regenerate по-прежнему использует coarse progress steps `База -> Перегенерация -> Сборка`
 
 Основной runtime entry:
 - `/Users/neich/dev/clips automations/lib/stage2-runner.ts`
@@ -529,6 +530,7 @@ For forensic debugging, treat these sections as canonical:
 - `stage2.execution`
 - `stage2.outcome`
 - `stage2.vnext`
+- `stage2.vnext.stageOutputs`
 - `comments.runtimeUsage`
 - `stage2.examplesRuntimeUsage`
 
@@ -537,8 +539,15 @@ These sections answer:
 - what each prompt stage actually received;
 - which worker build handled the run and whether vNext was actually enabled there;
 - what the final selector really evaluated and picked;
-- what the vNext critic gate, lineage, counters, and validation actually recorded;
+- what the vNext clip-truth packet, audience packet, critic gate, lineage, counters, and validation actually recorded;
 - whether comments/examples were runtime-truncated or only export-truncated.
+
+Worker rollout behavior is fail-closed:
+- `processStage2Run` now aborts the run before SEO if `stage2.execution.pipelineVersion !== "vnext"`;
+- the worker also aborts if `stage2.execution.stageChainVersion` still contains transitional bridge naming;
+- the worker also aborts if `stage2.vnext` is missing canonical runtime sections (`exampleRouting`, `canonicalCounters`, `validation`, `candidateLineage`, `criticGate`);
+- the worker also aborts if canonical trace stage outputs are incomplete (`clipTruthExtractor`, `audienceMiner`) or if `compatibilityMode !== "none"`;
+- weak-example leakage or any non-zero `reserveBackfillCount` is treated as rollout failure, not as a silent legacy fallback.
 
 Convenience mirrors still remain in the trace:
 - `stage2.currentResult`
@@ -559,11 +568,15 @@ Those mirrors are useful for raw inspection, but the canonical sections above ar
 
 When comments do exist, trace export now distinguishes:
 - total extracted comments;
-- comments available to runtime after prompt-prep filtering;
+- comments available to runtime after prompt-prep filtering via `stage2.causalInputs.sourceContext.runtimeCommentsAvailable`;
 - analyzer comment subset;
 - selector comment subset;
 - comments exported into the trace file;
 - export truncation vs runtime truncation.
+
+Speech grounding is also explicit in trace export:
+- `stage2.causalInputs.sourceContext.transcriptChars > 0` means transcript grounding is present;
+- otherwise `stage2.causalInputs.sourceContext.speechGroundingStatus` explains whether speech was absent (`no_speech_detected`) or simply unavailable (`speech_uncertain`).
 
 ## 11. Related files
 

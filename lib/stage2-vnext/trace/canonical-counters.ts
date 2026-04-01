@@ -30,7 +30,7 @@ export function buildCanonicalCounters(trace: Pick<
     survivorCount: trace.candidateLineage.filter((record) =>
       record.state === "survivor" ||
       record.state === "rewritten" ||
-      record.state === "pairwise_ranked" ||
+      record.state === "ranked_shortlist" ||
       record.state === "visible_shortlist" ||
       record.state === "winner"
     ).length,

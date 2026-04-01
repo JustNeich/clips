@@ -6,7 +6,7 @@ export type CandidateState =
   | "hard_rejected"
   | "survivor"
   | "rewritten"
-  | "pairwise_ranked"
+  | "ranked_shortlist"
   | "visible_shortlist"
   | "winner";
 
@@ -15,7 +15,7 @@ export type CandidateOriginStage =
   | "constraint_packer"
   | "quality_court"
   | "rewriter"
-  | "pairwise_final_selector";
+  | "ranked_final_selector";
 
 export interface CandidateLineageTransition {
   at: string;

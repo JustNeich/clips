@@ -65,6 +65,15 @@ type Step2PickCaptionProps = {
 type DiagnosticsView = NonNullable<Stage2Response["diagnostics"]>;
 type DiagnosticsPromptStage = DiagnosticsView["effectivePrompting"]["promptStages"][number];
 type DiagnosticsExample = DiagnosticsView["examples"]["availableExamples"][number];
+type NativeCaptionFinalist = NonNullable<Stage2Response["output"]["finalists"]>[number];
+type NativeCaptionTranslationArtifact = {
+  translatedAt: string;
+  items: Array<{
+    candidateId: string;
+    topRu: string;
+    bottomRu: string;
+  }>;
+};
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("ru-RU", {
@@ -479,6 +488,7 @@ export function normalizeStage2DiagnosticsForView(
   const examplesCandidate = asObject(candidate.examples);
   const analysisCandidate = asObject(candidate.analysis);
   const legacyRetrieval = asObject(candidate.retrieval);
+  const sourceContextCandidate = asObject(candidate.sourceContext);
 
   const promptStages = Array.isArray(promptingCandidate?.promptStages)
     ? promptingCandidate.promptStages
@@ -616,6 +626,22 @@ export function normalizeStage2DiagnosticsForView(
       genericRisks: asStringArray(analysisCandidate?.genericRisks),
       uncertaintyNotes: asStringArray(analysisCandidate?.uncertaintyNotes),
       rawSummary: asString(analysisCandidate?.rawSummary)
+    },
+    sourceContext: {
+      sourceUrl: asString(sourceContextCandidate?.sourceUrl),
+      title: asString(sourceContextCandidate?.title),
+      descriptionChars: asNumber(sourceContextCandidate?.descriptionChars) ?? 0,
+      transcriptChars: asNumber(sourceContextCandidate?.transcriptChars) ?? 0,
+      speechGroundingStatus:
+        sourceContextCandidate?.speechGroundingStatus === "transcript_present"
+          ? "transcript_present"
+          : sourceContextCandidate?.speechGroundingStatus === "no_speech_detected"
+            ? "no_speech_detected"
+            : "speech_uncertain",
+      frameCount: asNumber(sourceContextCandidate?.frameCount) ?? 0,
+      runtimeCommentCount: asNumber(sourceContextCandidate?.runtimeCommentCount) ?? 0,
+      runtimeCommentIds: asStringArray(sourceContextCandidate?.runtimeCommentIds),
+      userInstructionChars: asNumber(sourceContextCandidate?.userInstructionChars) ?? 0
     },
     effectivePrompting: {
       promptStages
@@ -1168,6 +1194,15 @@ export function Step2PickCaption({
     status: "idle" | "saving" | "saved" | "error";
     message: string | null;
   } | null>(null);
+  const [nativeTranslationState, setNativeTranslationState] = useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    artifact: NativeCaptionTranslationArtifact | null;
+    message: string | null;
+  }>({
+    status: "idle",
+    artifact: null,
+    message: null
+  });
   const selectedRun = useMemo(
     () => runs.find((run) => run.runId === selectedRunId) ?? null,
     [runs, selectedRunId]
@@ -1210,6 +1245,33 @@ export function Step2PickCaption({
       null
     );
   }, [selectedTitleOption, stage2]);
+  const isNativeCaptionV3 = Boolean(
+    stage2?.output.pipeline?.execution?.pipelineVersion === "native_caption_v3" ||
+      stage2?.output.finalists?.length
+  );
+  const nativeFinalists = useMemo(() => {
+    if (!stage2 || !isNativeCaptionV3) {
+      return [] as NativeCaptionFinalist[];
+    }
+    const finalists = stage2.output.finalists ?? [];
+    const winnerCandidateId = stage2.output.winner?.candidateId ?? null;
+    return [...finalists].sort((left, right) => {
+      const leftWinner = left.candidateId === winnerCandidateId ? 1 : 0;
+      const rightWinner = right.candidateId === winnerCandidateId ? 1 : 0;
+      return rightWinner - leftWinner || left.option - right.option;
+    });
+  }, [isNativeCaptionV3, stage2]);
+  const translationItems = useMemo(() => {
+    const items = [
+      ...(stage2?.output.pipeline?.nativeCaptionV3?.translation?.items ?? []),
+      ...(nativeTranslationState.artifact?.items ?? [])
+    ];
+    const byCandidateId = new Map<string, NativeCaptionTranslationArtifact["items"][number]>();
+    items.forEach((item) => {
+      byCandidateId.set(item.candidateId, item);
+    });
+    return byCandidateId;
+  }, [nativeTranslationState.artifact, stage2]);
   const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
   const commentsAcquisitionLabel = formatCommentsAcquisitionLabel(stage2?.source ?? null);
   const pendingFeedbackSinceVisibleRun = useMemo(() => {
@@ -1318,6 +1380,14 @@ export function Step2PickCaption({
   }, [stage2?.stage2Run?.runId]);
 
   useEffect(() => {
+    setNativeTranslationState({
+      status: "idle",
+      artifact: null,
+      message: null
+    });
+  }, [stage2?.stage2Run?.runId]);
+
+  useEffect(() => {
     if (instruction.trim() || pendingFeedbackSummary) {
       setRegenerationDetailsOpen(true);
     }
@@ -1404,6 +1474,44 @@ export function Step2PickCaption({
       note: ""
     }).catch(() => undefined);
   };
+
+  const handleTranslateFinalists = useCallback(async (): Promise<void> => {
+    const runId = stage2?.stage2Run?.runId;
+    if (!runId || !isNativeCaptionV3 || nativeFinalists.length === 0) {
+      return;
+    }
+    setNativeTranslationState({
+      status: "loading",
+      artifact: null,
+      message: null
+    });
+    try {
+      const response = await fetch("/api/pipeline/stage2/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId })
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { translation?: NativeCaptionTranslationArtifact | null; error?: string; message?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || "Не удалось перевести finalists.");
+      }
+      setNativeTranslationState({
+        status: "ready",
+        artifact: payload?.translation ?? null,
+        message: payload?.translation
+          ? "Перевод finalists готов."
+          : "Перевод не вернул новых строк."
+      });
+    } catch (error) {
+      setNativeTranslationState({
+        status: "error",
+        artifact: null,
+        message: error instanceof Error ? error.message : "Не удалось перевести finalists."
+      });
+    }
+  }, [isNativeCaptionV3, nativeFinalists.length, stage2?.stage2Run?.runId]);
 
   return (
     <StepWorkspace
@@ -1699,312 +1807,658 @@ export function Step2PickCaption({
             </div>
           ) : (
             <>
-              <section className="options-grid options-grid-stage2">
-                {stage2.output.captionOptions.map((option) => {
-                  const selected = activeOption?.option === option.option;
-                  const finalPick = stage2.output.finalPick.option === option.option;
-                  const topRu = option.topRu?.trim() || option.top;
-                  const bottomRu = option.bottomRu?.trim() || option.bottom;
-
-                  return (
-                    <article
-                      key={option.option}
-                      className={`option-card ${selected ? "selected" : ""}`}
-                      aria-label={`Caption option ${option.option}`}
-                    >
-                      <div className="option-card-head">
-                        <div className="option-title-row">
-                          <h3>Вариант {option.option}</h3>
-                          {finalPick ? <span className="badge">Финальный выбор</span> : null}
-                          {selected ? <span className="badge muted">Выбран</span> : null}
-                          {option.explorationMode === "exploratory" ? (
-                            <span className="badge muted">Эксперимент</span>
-                          ) : null}
-                        </div>
-                        <div className="option-actions">
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => handleChooseOption(option.option)}
-                          >
-                            Выбрать
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() =>
-                              onCopy(
-                                [
-                                  `TOP EN: ${option.top}`,
-                                  `TOP RU: ${topRu}`,
-                                  `BOTTOM EN: ${option.bottom}`,
-                                  `BOTTOM RU: ${bottomRu}`
-                                ].join("\n"),
-                                `Вариант ${option.option} скопирован.`
-                              )
-                            }
-                          >
-                            Копировать
-                          </button>
-                          {canSubmitFeedback ? (
-                            <div className="option-feedback-hover-actions">
-                              <button
-                                type="button"
-                                className="btn btn-ghost option-feedback-icon-btn"
-                                title="Лайкнуть весь вариант"
-                                aria-label={`Лайкнуть вариант ${option.option}`}
-                                onClick={() => openFeedbackComposer(option.option, "option", "more_like_this")}
-                              >
-                                <span aria-hidden="true">👍</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost option-feedback-icon-btn"
-                                title="Дизлайкнуть весь вариант"
-                                aria-label={`Дизлайкнуть вариант ${option.option}`}
-                                onClick={() => openFeedbackComposer(option.option, "option", "less_like_this")}
-                              >
-                                <span aria-hidden="true">👎</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
+              {isNativeCaptionV3 ? (
+                <>
+                  <section className="control-card control-card-subtle">
+                    <div className="option-card-head">
+                      <div>
+                        <h3>Winner-first shortlist</h3>
+                        <p className="subtle-text">
+                          Новый hot path показывает только finalists, а заголовки относятся только к winner.
+                        </p>
                       </div>
-
-                      <div className="translation-row">
-                        <div className="option-feedback-scope-head">
-                          <span className="field-label">TOP</span>
-                          {canSubmitFeedback ? (
-                            <div className="option-feedback-scope-actions">
-                              <button
-                                type="button"
-                                className="btn btn-ghost option-feedback-icon-btn"
-                                title="Лайкнуть только TOP"
-                                aria-label={`Лайкнуть TOP варианта ${option.option}`}
-                                onClick={() => openFeedbackComposer(option.option, "top", "more_like_this")}
-                              >
-                                <span aria-hidden="true">👍</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost option-feedback-icon-btn"
-                                title="Дизлайкнуть только TOP"
-                                aria-label={`Дизлайкнуть TOP варианта ${option.option}`}
-                                onClick={() => openFeedbackComposer(option.option, "top", "less_like_this")}
-                              >
-                                <span aria-hidden="true">👎</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="translation-grid">
-                          <div className="translation-col">
-                            <span className="translation-label">EN</span>
-                            <p className="text-block">{option.top}</p>
-                          </div>
-                          <div className="translation-col">
-                            <span className="translation-label">RU</span>
-                            <p className="text-block">{topRu}</p>
-                          </div>
-                        </div>
+                      <div className="option-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={nativeTranslationState.status === "loading" || nativeFinalists.length === 0}
+                          onClick={() => {
+                            void handleTranslateFinalists();
+                          }}
+                        >
+                          {nativeTranslationState.status === "loading"
+                            ? "Переводим finalists..."
+                            : "Перевести finalists"}
+                        </button>
                       </div>
-                      <div className="translation-row">
-                        <div className="option-feedback-scope-head">
-                          <span className="field-label">BOTTOM</span>
-                          {canSubmitFeedback ? (
-                            <div className="option-feedback-scope-actions">
-                              <button
-                                type="button"
-                                className="btn btn-ghost option-feedback-icon-btn"
-                                title="Лайкнуть только BOTTOM"
-                                aria-label={`Лайкнуть BOTTOM варианта ${option.option}`}
-                                onClick={() => openFeedbackComposer(option.option, "bottom", "more_like_this")}
-                              >
-                                <span aria-hidden="true">👍</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost option-feedback-icon-btn"
-                                title="Дизлайкнуть только BOTTOM"
-                                aria-label={`Дизлайкнуть BOTTOM варианта ${option.option}`}
-                                onClick={() => openFeedbackComposer(option.option, "bottom", "less_like_this")}
-                              >
-                                <span aria-hidden="true">👎</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="translation-grid">
-                          <div className="translation-col">
-                            <span className="translation-label">EN</span>
-                            <p className="text-block">{option.bottom}</p>
-                          </div>
-                          <div className="translation-col">
-                            <span className="translation-label">RU</span>
-                            <p className="text-block">{bottomRu}</p>
-                          </div>
-                        </div>
-                      </div>
-                      {feedbackDraft?.option === option.option ? (
-                        <div className="option-feedback-panel">
-                          <div className="option-feedback-head">
-                            <strong>
-                              {feedbackDraft.kind === "more_like_this"
-                                ? "Лайк"
-                                : "Дизлайк"}
-                            </strong>
-                            <span className="subtle-text">
-                              {formatFeedbackScopeLabel(feedbackDraft.scope)} · {formatFeedbackNoteModeLabel(feedbackDraft.noteMode)}
-                            </span>
-                          </div>
-                          <div className="compact-field">
-                            <label className="field-label" htmlFor={`feedback-note-mode-${option.option}`}>
-                              Режим заметки
-                            </label>
-                            <select
-                              id={`feedback-note-mode-${option.option}`}
-                              className="text-input"
-                              value={feedbackDraft.noteMode}
-                              onChange={(event) =>
-                                setFeedbackDraft((current) =>
-                                  current
-                                    ? {
-                                        ...current,
-                                        noteMode: event.target.value as ChannelEditorialFeedbackNoteMode,
-                                        status: current.status === "saved" ? "idle" : current.status,
-                                        message: null
-                                      }
-                                    : current
-                                )
-                              }
-                            >
-                              <option value="soft_preference">Soft preference</option>
-                              <option value="hard_rule">Hard rule</option>
-                              <option value="situational_note">Situational note</option>
-                            </select>
-                            <p className="subtle-text">
-                              {formatFeedbackNoteModeHelp(feedbackDraft.noteMode)}
-                            </p>
-                          </div>
-                          <textarea
-                            className="text-area"
-                            rows={3}
-                            placeholder="Например: меньше позы, больше живого наблюдения"
-                            value={feedbackDraft.note}
-                            onChange={(event) =>
-                              setFeedbackDraft((current) =>
-                                current
-                                  ? {
-                                      ...current,
-                                      note: event.target.value,
-                                      status: current.status === "saved" ? "idle" : current.status,
-                                      message: null
-                                    }
-                                  : current
-                              )
-                            }
-                          />
-                          <div className="option-feedback-actions">
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              disabled={feedbackDraft.status === "saving"}
-                              onClick={() => {
-                                void submitFeedback();
-                              }}
-                            >
-                              {feedbackDraft.status === "saving" ? "Сохраняем..." : "Сохранить"}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-ghost"
-                              onClick={() => setFeedbackDraft(null)}
-                            >
-                              Отмена
-                            </button>
-                          </div>
-                          {feedbackDraft.message ? (
-                            <p
-                              className={`subtle-text ${
-                                feedbackDraft.status === "error" ? "danger-text" : ""
-                              }`}
-                            >
-                              {feedbackDraft.message}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
-              </section>
-
-              <section className="control-card">
-                <div className="option-card-head">
-                  <div>
-                    <h3>Варианты заголовка</h3>
+                    </div>
                     <p className="subtle-text">
-                      Выбранный заголовок используется в имени экспортируемого файла.
+                      Winner: вариант {stage2.output.finalPick.option}. {stage2.output.finalPick.reason}
                     </p>
-                  </div>
-                </div>
-                <div className="options-grid options-grid-stage2">
-                  {stage2.output.titleOptions.map((titleOption) => {
-                    const selected = activeTitleOption?.option === titleOption.option;
-                    const titleRu = titleOption.titleRu?.trim() || titleOption.title;
-
-                    return (
-                      <article
-                        key={titleOption.option}
-                        className={`option-card ${selected ? "selected" : ""}`}
-                        aria-label={`Вариант заголовка ${titleOption.option}`}
+                    {nativeTranslationState.message ? (
+                      <p
+                        className={`subtle-text ${
+                          nativeTranslationState.status === "error" ? "danger-text" : ""
+                        }`}
                       >
-                        <div className="option-card-head">
-                          <div className="option-title-row">
-                            <h3>Заголовок {titleOption.option}</h3>
-                            {selected ? <span className="badge muted">Выбран для файла</span> : null}
-                          </div>
-                          <div className="option-actions">
-                            <button
-                              type="button"
-                            className="btn btn-secondary"
-                            onClick={() => onSelectTitleOption(titleOption.option)}
-                          >
-                              Выбрать
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-ghost"
-                              onClick={() =>
-                                onCopy(
-                                  [`TITLE EN: ${titleOption.title}`, `TITLE RU: ${titleRu}`].join("\n"),
-                                  `Заголовок ${titleOption.option} скопирован.`
-                                )
-                              }
-                            >
-                              Копировать
-                            </button>
-                          </div>
-                        </div>
+                        {nativeTranslationState.message}
+                      </p>
+                    ) : null}
+                  </section>
 
-                        <div className="translation-row">
-                          <span className="field-label">TITLE</span>
-                          <div className="translation-grid">
-                            <div className="translation-col">
-                              <span className="translation-label">EN</span>
-                              <p className="text-block">{titleOption.title}</p>
+                  <section className="options-grid options-grid-stage2">
+                    {nativeFinalists.map((finalist) => {
+                      const selected = activeOption?.option === finalist.option;
+                      const finalPick = stage2.output.finalPick.option === finalist.option;
+                      const translation = translationItems.get(finalist.candidateId) ?? null;
+
+                      return (
+                        <article
+                          key={finalist.candidateId}
+                          className={`option-card ${selected ? "selected" : ""}`}
+                          aria-label={`Caption finalist ${finalist.option}`}
+                        >
+                          <div className="option-card-head">
+                            <div className="option-title-row">
+                              <h3>Финалист {finalist.option}</h3>
+                              {finalPick ? <span className="badge">Winner</span> : null}
+                              {selected ? <span className="badge muted">Выбран</span> : null}
                             </div>
-                            <div className="translation-col">
-                              <span className="translation-label">RU</span>
-                              <p className="text-block">{titleRu}</p>
+                            <div className="option-actions">
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => handleChooseOption(finalist.option)}
+                              >
+                                Выбрать
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() =>
+                                  onCopy(
+                                    [
+                                      `TOP EN: ${finalist.top}`,
+                                      translation ? `TOP RU: ${translation.topRu}` : null,
+                                      `BOTTOM EN: ${finalist.bottom}`,
+                                      translation ? `BOTTOM RU: ${translation.bottomRu}` : null
+                                    ]
+                                      .filter(Boolean)
+                                      .join("\n"),
+                                    `Финалист ${finalist.option} скопирован.`
+                                  )
+                                }
+                              >
+                                Копировать
+                              </button>
+                              {canSubmitFeedback ? (
+                                <div className="option-feedback-hover-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Лайкнуть весь вариант"
+                                    aria-label={`Лайкнуть вариант ${finalist.option}`}
+                                    onClick={() =>
+                                      openFeedbackComposer(finalist.option, "option", "more_like_this")
+                                    }
+                                  >
+                                    <span aria-hidden="true">👍</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Дизлайкнуть весь вариант"
+                                    aria-label={`Дизлайкнуть вариант ${finalist.option}`}
+                                    onClick={() =>
+                                      openFeedbackComposer(finalist.option, "option", "less_like_this")
+                                    }
+                                  >
+                                    <span aria-hidden="true">👎</span>
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </section>
+
+                          <div className="translation-row">
+                            <div className="option-feedback-scope-head">
+                              <span className="field-label">TOP</span>
+                              {canSubmitFeedback ? (
+                                <div className="option-feedback-scope-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Лайкнуть только TOP"
+                                    aria-label={`Лайкнуть TOP варианта ${finalist.option}`}
+                                    onClick={() =>
+                                      openFeedbackComposer(finalist.option, "top", "more_like_this")
+                                    }
+                                  >
+                                    <span aria-hidden="true">👍</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Дизлайкнуть только TOP"
+                                    aria-label={`Дизлайкнуть TOP варианта ${finalist.option}`}
+                                    onClick={() =>
+                                      openFeedbackComposer(finalist.option, "top", "less_like_this")
+                                    }
+                                  >
+                                    <span aria-hidden="true">👎</span>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            <p className="text-block">{finalist.top}</p>
+                            {translation ? (
+                              <div className="translation-grid">
+                                <div className="translation-col">
+                                  <span className="translation-label">RU review</span>
+                                  <p className="text-block">{translation.topRu}</p>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="translation-row">
+                            <div className="option-feedback-scope-head">
+                              <span className="field-label">BOTTOM</span>
+                              {canSubmitFeedback ? (
+                                <div className="option-feedback-scope-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Лайкнуть только BOTTOM"
+                                    aria-label={`Лайкнуть BOTTOM варианта ${finalist.option}`}
+                                    onClick={() =>
+                                      openFeedbackComposer(finalist.option, "bottom", "more_like_this")
+                                    }
+                                  >
+                                    <span aria-hidden="true">👍</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Дизлайкнуть только BOTTOM"
+                                    aria-label={`Дизлайкнуть BOTTOM варианта ${finalist.option}`}
+                                    onClick={() =>
+                                      openFeedbackComposer(finalist.option, "bottom", "less_like_this")
+                                    }
+                                  >
+                                    <span aria-hidden="true">👎</span>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            <p className="text-block">{finalist.bottom}</p>
+                            {translation ? (
+                              <div className="translation-grid">
+                                <div className="translation-col">
+                                  <span className="translation-label">RU review</span>
+                                  <p className="text-block">{translation.bottomRu}</p>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                          {feedbackDraft?.option === finalist.option ? (
+                            <div className="option-feedback-panel">
+                              <div className="option-feedback-head">
+                                <strong>
+                                  {feedbackDraft.kind === "more_like_this" ? "Лайк" : "Дизлайк"}
+                                </strong>
+                                <span className="subtle-text">
+                                  {formatFeedbackScopeLabel(feedbackDraft.scope)} ·{" "}
+                                  {formatFeedbackNoteModeLabel(feedbackDraft.noteMode)}
+                                </span>
+                              </div>
+                              <div className="compact-field">
+                                <label
+                                  className="field-label"
+                                  htmlFor={`feedback-note-mode-${finalist.option}`}
+                                >
+                                  Режим заметки
+                                </label>
+                                <select
+                                  id={`feedback-note-mode-${finalist.option}`}
+                                  className="text-input"
+                                  value={feedbackDraft.noteMode}
+                                  onChange={(event) =>
+                                    setFeedbackDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            noteMode: event.target.value as ChannelEditorialFeedbackNoteMode,
+                                            status: current.status === "saved" ? "idle" : current.status,
+                                            message: null
+                                          }
+                                        : current
+                                    )
+                                  }
+                                >
+                                  <option value="soft_preference">Soft preference</option>
+                                  <option value="hard_rule">Hard rule</option>
+                                  <option value="situational_note">Situational note</option>
+                                </select>
+                                <p className="subtle-text">
+                                  {formatFeedbackNoteModeHelp(feedbackDraft.noteMode)}
+                                </p>
+                              </div>
+                              <textarea
+                                className="text-area"
+                                rows={3}
+                                placeholder="Например: меньше позы, больше живого наблюдения"
+                                value={feedbackDraft.note}
+                                onChange={(event) =>
+                                  setFeedbackDraft((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          note: event.target.value,
+                                          status: current.status === "saved" ? "idle" : current.status,
+                                          message: null
+                                        }
+                                      : current
+                                  )
+                                }
+                              />
+                              <div className="option-feedback-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={feedbackDraft.status === "saving"}
+                                  onClick={() => {
+                                    void submitFeedback();
+                                  }}
+                                >
+                                  {feedbackDraft.status === "saving" ? "Сохраняем..." : "Сохранить"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={() => setFeedbackDraft(null)}
+                                >
+                                  Отмена
+                                </button>
+                              </div>
+                              {feedbackDraft.message ? (
+                                <p
+                                  className={`subtle-text ${
+                                    feedbackDraft.status === "error" ? "danger-text" : ""
+                                  }`}
+                                >
+                                  {feedbackDraft.message}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </section>
+
+                  <section className="control-card">
+                    <div className="option-card-head">
+                      <div>
+                        <h3>Winner-scoped title options</h3>
+                        <p className="subtle-text">
+                          Эти 5 заголовков написаны только для winner и используются в имени экспортируемого файла.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="options-grid options-grid-stage2">
+                      {stage2.output.titleOptions.map((titleOption) => {
+                        const selected = activeTitleOption?.option === titleOption.option;
+                        return (
+                          <article
+                            key={titleOption.option}
+                            className={`option-card ${selected ? "selected" : ""}`}
+                            aria-label={`Вариант заголовка ${titleOption.option}`}
+                          >
+                            <div className="option-card-head">
+                              <div className="option-title-row">
+                                <h3>Заголовок {titleOption.option}</h3>
+                                {selected ? <span className="badge muted">Выбран для файла</span> : null}
+                              </div>
+                              <div className="option-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  onClick={() => onSelectTitleOption(titleOption.option)}
+                                >
+                                  Выбрать
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={() =>
+                                    onCopy(
+                                      `TITLE EN: ${titleOption.title}`,
+                                      `Заголовок ${titleOption.option} скопирован.`
+                                    )
+                                  }
+                                >
+                                  Копировать
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-block">{titleOption.title}</p>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                </>
+              ) : (
+                <>
+                  <section className="options-grid options-grid-stage2">
+                    {stage2.output.captionOptions.map((option) => {
+                      const selected = activeOption?.option === option.option;
+                      const finalPick = stage2.output.finalPick.option === option.option;
+                      const topRu = option.topRu?.trim() || option.top;
+                      const bottomRu = option.bottomRu?.trim() || option.bottom;
+
+                      return (
+                        <article
+                          key={option.option}
+                          className={`option-card ${selected ? "selected" : ""}`}
+                          aria-label={`Caption option ${option.option}`}
+                        >
+                          <div className="option-card-head">
+                            <div className="option-title-row">
+                              <h3>Вариант {option.option}</h3>
+                              {finalPick ? <span className="badge">Финальный выбор</span> : null}
+                              {selected ? <span className="badge muted">Выбран</span> : null}
+                              {option.explorationMode === "exploratory" ? (
+                                <span className="badge muted">Эксперимент</span>
+                              ) : null}
+                            </div>
+                            <div className="option-actions">
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => handleChooseOption(option.option)}
+                              >
+                                Выбрать
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() =>
+                                  onCopy(
+                                    [
+                                      `TOP EN: ${option.top}`,
+                                      `TOP RU: ${topRu}`,
+                                      `BOTTOM EN: ${option.bottom}`,
+                                      `BOTTOM RU: ${bottomRu}`
+                                    ].join("\n"),
+                                    `Вариант ${option.option} скопирован.`
+                                  )
+                                }
+                              >
+                                Копировать
+                              </button>
+                              {canSubmitFeedback ? (
+                                <div className="option-feedback-hover-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Лайкнуть весь вариант"
+                                    aria-label={`Лайкнуть вариант ${option.option}`}
+                                    onClick={() => openFeedbackComposer(option.option, "option", "more_like_this")}
+                                  >
+                                    <span aria-hidden="true">👍</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Дизлайкнуть весь вариант"
+                                    aria-label={`Дизлайкнуть вариант ${option.option}`}
+                                    onClick={() => openFeedbackComposer(option.option, "option", "less_like_this")}
+                                  >
+                                    <span aria-hidden="true">👎</span>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="translation-row">
+                            <div className="option-feedback-scope-head">
+                              <span className="field-label">TOP</span>
+                              {canSubmitFeedback ? (
+                                <div className="option-feedback-scope-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Лайкнуть только TOP"
+                                    aria-label={`Лайкнуть TOP варианта ${option.option}`}
+                                    onClick={() => openFeedbackComposer(option.option, "top", "more_like_this")}
+                                  >
+                                    <span aria-hidden="true">👍</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Дизлайкнуть только TOP"
+                                    aria-label={`Дизлайкнуть TOP варианта ${option.option}`}
+                                    onClick={() => openFeedbackComposer(option.option, "top", "less_like_this")}
+                                  >
+                                    <span aria-hidden="true">👎</span>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="translation-grid">
+                              <div className="translation-col">
+                                <span className="translation-label">EN</span>
+                                <p className="text-block">{option.top}</p>
+                              </div>
+                              <div className="translation-col">
+                                <span className="translation-label">RU</span>
+                                <p className="text-block">{topRu}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="translation-row">
+                            <div className="option-feedback-scope-head">
+                              <span className="field-label">BOTTOM</span>
+                              {canSubmitFeedback ? (
+                                <div className="option-feedback-scope-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Лайкнуть только BOTTOM"
+                                    aria-label={`Лайкнуть BOTTOM варианта ${option.option}`}
+                                    onClick={() => openFeedbackComposer(option.option, "bottom", "more_like_this")}
+                                  >
+                                    <span aria-hidden="true">👍</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost option-feedback-icon-btn"
+                                    title="Дизлайкнуть только BOTTOM"
+                                    aria-label={`Дизлайкнуть BOTTOM варианта ${option.option}`}
+                                    onClick={() => openFeedbackComposer(option.option, "bottom", "less_like_this")}
+                                  >
+                                    <span aria-hidden="true">👎</span>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="translation-grid">
+                              <div className="translation-col">
+                                <span className="translation-label">EN</span>
+                                <p className="text-block">{option.bottom}</p>
+                              </div>
+                              <div className="translation-col">
+                                <span className="translation-label">RU</span>
+                                <p className="text-block">{bottomRu}</p>
+                              </div>
+                            </div>
+                          </div>
+                          {feedbackDraft?.option === option.option ? (
+                            <div className="option-feedback-panel">
+                              <div className="option-feedback-head">
+                                <strong>
+                                  {feedbackDraft.kind === "more_like_this"
+                                    ? "Лайк"
+                                    : "Дизлайк"}
+                                </strong>
+                                <span className="subtle-text">
+                                  {formatFeedbackScopeLabel(feedbackDraft.scope)} · {formatFeedbackNoteModeLabel(feedbackDraft.noteMode)}
+                                </span>
+                              </div>
+                              <div className="compact-field">
+                                <label className="field-label" htmlFor={`feedback-note-mode-${option.option}`}>
+                                  Режим заметки
+                                </label>
+                                <select
+                                  id={`feedback-note-mode-${option.option}`}
+                                  className="text-input"
+                                  value={feedbackDraft.noteMode}
+                                  onChange={(event) =>
+                                    setFeedbackDraft((current) =>
+                                      current
+                                        ? {
+                                            ...current,
+                                            noteMode: event.target.value as ChannelEditorialFeedbackNoteMode,
+                                            status: current.status === "saved" ? "idle" : current.status,
+                                            message: null
+                                          }
+                                        : current
+                                    )
+                                  }
+                                >
+                                  <option value="soft_preference">Soft preference</option>
+                                  <option value="hard_rule">Hard rule</option>
+                                  <option value="situational_note">Situational note</option>
+                                </select>
+                                <p className="subtle-text">
+                                  {formatFeedbackNoteModeHelp(feedbackDraft.noteMode)}
+                                </p>
+                              </div>
+                              <textarea
+                                className="text-area"
+                                rows={3}
+                                placeholder="Например: меньше позы, больше живого наблюдения"
+                                value={feedbackDraft.note}
+                                onChange={(event) =>
+                                  setFeedbackDraft((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          note: event.target.value,
+                                          status: current.status === "saved" ? "idle" : current.status,
+                                          message: null
+                                        }
+                                      : current
+                                  )
+                                }
+                              />
+                              <div className="option-feedback-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={feedbackDraft.status === "saving"}
+                                  onClick={() => {
+                                    void submitFeedback();
+                                  }}
+                                >
+                                  {feedbackDraft.status === "saving" ? "Сохраняем..." : "Сохранить"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={() => setFeedbackDraft(null)}
+                                >
+                                  Отмена
+                                </button>
+                              </div>
+                              {feedbackDraft.message ? (
+                                <p
+                                  className={`subtle-text ${
+                                    feedbackDraft.status === "error" ? "danger-text" : ""
+                                  }`}
+                                >
+                                  {feedbackDraft.message}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </section>
+
+                  <section className="control-card">
+                    <div className="option-card-head">
+                      <div>
+                        <h3>Варианты заголовка</h3>
+                        <p className="subtle-text">
+                          Выбранный заголовок используется в имени экспортируемого файла.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="options-grid options-grid-stage2">
+                      {stage2.output.titleOptions.map((titleOption) => {
+                        const selected = activeTitleOption?.option === titleOption.option;
+                        const titleRu = titleOption.titleRu?.trim() || titleOption.title;
+
+                        return (
+                          <article
+                            key={titleOption.option}
+                            className={`option-card ${selected ? "selected" : ""}`}
+                            aria-label={`Вариант заголовка ${titleOption.option}`}
+                          >
+                            <div className="option-card-head">
+                              <div className="option-title-row">
+                                <h3>Заголовок {titleOption.option}</h3>
+                                {selected ? <span className="badge muted">Выбран для файла</span> : null}
+                              </div>
+                              <div className="option-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  onClick={() => onSelectTitleOption(titleOption.option)}
+                                >
+                                  Выбрать
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={() =>
+                                    onCopy(
+                                      [`TITLE EN: ${titleOption.title}`, `TITLE RU: ${titleRu}`].join("\n"),
+                                      `Заголовок ${titleOption.option} скопирован.`
+                                    )
+                                  }
+                                >
+                                  Копировать
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="translation-row">
+                              <span className="field-label">TITLE</span>
+                              <div className="translation-grid">
+                                <div className="translation-col">
+                                  <span className="translation-label">EN</span>
+                                  <p className="text-block">{titleOption.title}</p>
+                                </div>
+                                <div className="translation-col">
+                                  <span className="translation-label">RU</span>
+                                  <p className="text-block">{titleRu}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                </>
+              )}
 
               <details className="advanced-block">
                 <summary>SEO, память канала и диагностика</summary>

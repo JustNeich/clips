@@ -23,7 +23,8 @@ import {
   findLatestPublicationForRenderExport,
   listChannelPublications,
   markChannelPublicationScheduled,
-  publishNowChannelPublication
+  publishNowChannelPublication,
+  saveChannelPublishIntegration
 } from "../lib/publication-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -153,6 +154,28 @@ async function seedChannelPublicationScenario(slotIndexes: number[]): Promise<{
   };
 }
 
+function connectChannelPublishing(channelId: string): void {
+  saveChannelPublishIntegration({
+    workspaceId: "w1",
+    channelId,
+    userId: "u1",
+    status: "connected",
+    credential: null,
+    googleAccountEmail: "u@example.com",
+    selectedYoutubeChannelId: "youtube-channel-1",
+    selectedYoutubeChannelTitle: "Daily Dopamine",
+    selectedYoutubeChannelCustomUrl: "@dailydopamine",
+    availableChannels: [
+      {
+        id: "youtube-channel-1",
+        title: "Daily Dopamine",
+        customUrl: "@dailydopamine"
+      }
+    ],
+    scopes: ["youtube.upload"]
+  });
+}
+
 test("moveChannelPublicationToSlot moves a publication into an empty slot within the same day", async () => {
   await withIsolatedAppData(async () => {
     const scenario = await seedChannelPublicationScenario([0, 1]);
@@ -275,6 +298,7 @@ test("updateChannelPublicationFromEditor persists a custom exact publication tim
 test("stale publication lease cannot overwrite a newer queued state", async () => {
   await withIsolatedAppData(async () => {
     const scenario = await seedChannelPublicationScenario([0]);
+    connectChannelPublishing(scenario.channelId);
     const publicationId = scenario.publications[0]!.id;
     const readyAt = nowIso();
     getDb()
@@ -304,6 +328,7 @@ test("stale publication lease cannot overwrite a newer queued state", async () =
 test("completeRenderExportAndMaybeQueue recreates a queued publication when render export already exists", async () => {
   await withIsolatedAppData(async () => {
     const scenario = await seedChannelPublicationScenario([]);
+    connectChannelPublishing(scenario.channelId);
     const workspaceId = "w1";
     const userId = "u1";
     const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=recover123", scenario.channelId);
@@ -371,6 +396,7 @@ test("completeRenderExportAndMaybeQueue recreates a queued publication when rend
 test("completeRenderExportAndMaybeQueue does not duplicate a scheduled publication for the same render export", async () => {
   await withIsolatedAppData(async () => {
     const scenario = await seedChannelPublicationScenario([]);
+    connectChannelPublishing(scenario.channelId);
     const workspaceId = "w1";
     const userId = "u1";
     const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=stable123", scenario.channelId);
@@ -440,6 +466,108 @@ test("completeRenderExportAndMaybeQueue does not duplicate a scheduled publicati
     assert.equal(second.publication?.id, first.publication?.id);
     assert.equal(second.publication?.status, "scheduled");
     assert.equal(listChannelPublications(scenario.channelId).length, 1);
+  });
+});
+
+test("completeRenderExportAndMaybeQueue skips queued publication when publishAfterRender is false", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([]);
+    connectChannelPublishing(scenario.channelId);
+    const workspaceId = "w1";
+    const userId = "u1";
+    const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=manualoff123", scenario.channelId);
+    const stage3JobId = newId();
+    const stamp = nowIso();
+    getDb()
+      .prepare(
+        `INSERT INTO stage3_jobs
+          (id, workspace_id, user_id, kind, status, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, created_at, updated_at, started_at, completed_at)
+          VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
+      )
+      .run(
+        stage3JobId,
+        workspaceId,
+        userId,
+        "render",
+        "completed",
+        JSON.stringify({ chatId: chat.id, channelId: scenario.channelId }),
+        1,
+        0,
+        stamp,
+        stamp
+      );
+
+    const completion = completeRenderExportAndMaybeQueue({
+      workspaceId,
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      chatTitle: "Manual off chat",
+      stage3JobId,
+      artifactFileName: "manual-off.mp4",
+      artifactFilePath: "/tmp/manual-off.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Manual off",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId,
+      stage2Result: null,
+      publishAfterRender: false
+    });
+
+    assert.ok(completion.renderExport.id);
+    assert.equal(completion.publication, null);
+    assert.equal(listChannelPublications(scenario.channelId).length, 0);
+  });
+});
+
+test("completeRenderExportAndMaybeQueue keeps render export but skips queued publication when YouTube is not connected", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([]);
+    const workspaceId = "w1";
+    const userId = "u1";
+    const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=offline123", scenario.channelId);
+    const stage3JobId = newId();
+    const stamp = nowIso();
+    getDb()
+      .prepare(
+        `INSERT INTO stage3_jobs
+          (id, workspace_id, user_id, kind, status, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, created_at, updated_at, started_at, completed_at)
+          VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
+      )
+      .run(
+        stage3JobId,
+        workspaceId,
+        userId,
+        "render",
+        "completed",
+        JSON.stringify({ chatId: chat.id, channelId: scenario.channelId }),
+        1,
+        0,
+        stamp,
+        stamp
+      );
+
+    const completion = completeRenderExportAndMaybeQueue({
+      workspaceId,
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      chatTitle: "Offline chat",
+      stage3JobId,
+      artifactFileName: "offline.mp4",
+      artifactFilePath: "/tmp/offline.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Offline",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId,
+      stage2Result: null
+    });
+
+    assert.ok(completion.renderExport.id);
+    assert.equal(completion.publication, null);
+    assert.equal(listChannelPublications(scenario.channelId).length, 0);
   });
 });
 

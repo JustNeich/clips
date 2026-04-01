@@ -111,6 +111,7 @@ import {
 import {
   buildAnalyzerPrompt,
   buildCriticPrompt,
+  buildStage2SourceContextSummary,
   evaluateHumanPhrasingSignals,
   evaluateTopHookSignals,
   buildFinalSelectorPrompt,
@@ -121,6 +122,7 @@ import {
 } from "../lib/viral-shorts-worker/prompts";
 import type { Stage2ExamplesAssessment } from "../lib/viral-shorts-worker/types";
 import {
+  auditStage2WorkerRollout,
   buildAdaptiveFramePlan,
   buildStage2RuntimeVideoContext
 } from "../lib/stage2-runner";
@@ -683,6 +685,8 @@ async function runSuccessfulPipeline(options?: {
   selectorResponse?: Record<string, unknown>;
   criticResponse?: unknown;
   writerCandidates?: Array<Record<string, unknown>>;
+  recoveryWriterCandidates?: Array<Record<string, unknown>>;
+  recoveryCriticResponse?: unknown;
   rewrittenCandidates?: Array<Record<string, unknown>>;
   rewriterResponse?: unknown;
   finalSelectorResponse?: Record<string, unknown>;
@@ -761,7 +765,7 @@ async function runSuccessfulPipeline(options?: {
   const defaultRewriterResponse = options?.providerWrappedStageOutputs
     ? { candidates: activeRewrittenCandidates }
     : activeRewrittenCandidates;
-  const executor = new QueueExecutor([
+  const queuedResponses: unknown[] = [
     {
       visual_anchors: ["axle swings sideways", "mud kicks up", "driver leans forward"],
       specific_nouns: ["pickup", "axle", "rut", "wheel"],
@@ -803,7 +807,17 @@ async function runSuccessfulPipeline(options?: {
       ...options?.selectorResponse
     },
     options?.providerWrappedStageOutputs ? { candidates: activeWriterCandidates } : activeWriterCandidates,
-    options?.criticResponse ?? defaultCriticResponse,
+    options?.criticResponse ?? defaultCriticResponse
+  ];
+  if (options?.recoveryWriterCandidates) {
+    queuedResponses.push(
+      options.providerWrappedStageOutputs
+        ? { candidates: options.recoveryWriterCandidates }
+        : options.recoveryWriterCandidates
+    );
+    queuedResponses.push(options.recoveryCriticResponse ?? defaultCriticResponse);
+  }
+  queuedResponses.push(
     options?.rewriterResponse ?? defaultRewriterResponse,
     {
       final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
@@ -826,7 +840,8 @@ async function runSuccessfulPipeline(options?: {
           title_ru: `КАК ЛОМАЕТСЯ МОСТ ${index + 1}`,
           rationale: `Title ${index + 1} leans into the failure mystery.`
         })))
-  ]);
+  );
+  const executor = new QueueExecutor(queuedResponses);
   const progressEvents: Array<{ stageId: string; state: string; detail: string | null | undefined }> = [];
   const videoContext = buildVideoContext({
     sourceUrl: options?.videoContextOverrides?.sourceUrl ?? "https://example.com/short",
@@ -1744,6 +1759,22 @@ test("main Stage 2 runtime video context carries transcript and richer frame tim
   assert.equal(runtimeContext.frameDescriptions.length, 6);
   assert.match(runtimeContext.frameDescriptions[0] ?? "", /opening setup/);
   assert.match(runtimeContext.frameDescriptions[runtimeContext.frameDescriptions.length - 1] ?? "", /late aftermath/);
+});
+
+test("source context summary marks missing speech grounding explicitly when transcript is absent", () => {
+  const summary = buildStage2SourceContextSummary(
+    buildVideoContext({
+      sourceUrl: "https://example.com/silent-clip",
+      title: "Silent reaction clip",
+      description: "A silent clip with no audio while everyone reacts visually.",
+      transcript: "",
+      comments: [],
+      frameDescriptions: ["frame 1", "frame 2"]
+    })
+  );
+
+  assert.equal(summary.transcriptChars, 0);
+  assert.equal(summary.speechGroundingStatus, "no_speech_detected");
 });
 
 test("yt-dlp caption metadata is converted into transcript text for Stage 2 when captions are available", async () => {
@@ -4850,7 +4881,7 @@ test("candidate lifecycle rejects hard-rejected reentry transitions", () => {
       lifecycle.transition({
         candidateId: "cand_reject",
         toState: "visible_shortlist",
-        stageId: "pairwise_final_selector",
+        stageId: "ranked_final_selector",
         at: "2026-03-31T10:00:03.000Z"
       }),
     /Invalid candidate lifecycle transition/
@@ -4894,14 +4925,21 @@ test("trace validator catches disabled example leaks and hard-rejected shortlist
         rawValue: null
       },
       pipelineVersion: "vnext",
-      stageChainVersion: "stage2-vnext-phase1-bridge",
+      stageChainVersion: "stage2-vnext",
       workerBuild: {
         buildId: "test-build",
         startedAt: "2026-03-31T09:59:00.000Z",
         pid: 123
       },
-      compatibilityMode: "legacy_bridge",
-      implementedStages: ["example_router", "constraint_packer", "quality_court", "pairwise_final_selector"]
+      compatibilityMode: "none",
+      implementedStages: [
+        "clip_truth_extractor",
+        "audience_miner",
+        "example_router",
+        "constraint_packer",
+        "quality_court",
+        "ranked_final_selector"
+      ]
     },
     inputs: {
       source: {
@@ -4936,8 +4974,38 @@ test("trace validator catches disabled example leaks and hard-rejected shortlist
       }
     },
     stageOutputs: {
-      clipTruthExtractor: null,
-      audienceMiner: null,
+      clipTruthExtractor: {
+        observedFacts: ["robot arm", "joint fails"],
+        visibleAnchors: ["robot arm", "joint"],
+        visibleActions: ["joint buckles"],
+        sceneBeats: ["arm strains", "joint snaps"],
+        revealMoment: "the arm gives way",
+        lateClipChange: "the aftermath makes the failure obvious",
+        pauseSafeTopFacts: ["robot arm", "joint"],
+        inferredReads: ["the setup was already failing"],
+        uncertaintyNotes: ["fixture truth packet"],
+        claimGuardrails: ["do not overclaim the cause"],
+        firstSecondsSignal: "the arm already looks unstable",
+        whyViewerCares: "the failure is visible before the full collapse"
+      },
+      audienceMiner: {
+        sentimentSummary: "tense disbelief",
+        consensusLane: "people immediately read the joint as cooked",
+        jokeLane: "jokes about the arm being done for",
+        dissentLane: "",
+        suspicionLane: "",
+        shorthandPressure: "medium",
+        allowedCues: ["cooked"],
+        bannedCues: ["not a fact"],
+        normalizedSlang: [
+          {
+            raw: "cooked",
+            safeNativeEquivalent: "cooked",
+            keepRawAllowed: true
+          }
+        ],
+        moderationFindings: []
+      },
       exampleRouter: {
         decision: {
           mode: "disabled",
@@ -4960,10 +5028,10 @@ test("trace validator catches disabled example leaks and hard-rejected shortlist
       qualityCourt: {
         judgeCards: []
       },
-      pairwiseFinalSelector: {
+      rankedFinalSelector: {
         visibleCandidateIds: ["cand_1"],
         winnerCandidateId: "cand_1",
-        pairwiseMatches: [],
+        rankingMatches: [],
         rationale: "invalid shortlist"
       },
       titleAndSeo: {
@@ -4996,11 +5064,12 @@ test("trace validator catches disabled example leaks and hard-rejected shortlist
     selection: {
       visibleCandidateIds: ["cand_1"],
       winnerCandidateId: "cand_1",
-      pairwiseMatches: [],
+      rankingMatches: [],
       rationale: "invalid shortlist"
     },
     memory: {
-      status: "not_implemented"
+      status: "disabled",
+      reason: "fixture"
     },
     cost: {
       totalPromptChars: 0,
@@ -5140,12 +5209,23 @@ test("vnext low-confidence runs strip examples from selector and downstream prom
   const selectorCall = executor.calls[1];
   const writerCall = executor.calls[2];
   const criticCall = executor.calls[3];
+  const rewriterCall = executor.calls[4];
+  const stageIdsWithNoDownstreamExamples = ["writer", "rewriter", "finalSelector", "titles"] as const;
 
   assert.equal(result.output.pipeline.vnext?.exampleRouting.mode, "disabled");
   assert.equal(result.output.pipeline.selectedExamplesCount, 0);
   assert.doesNotMatch(selectorCall?.prompt ?? "", /Wild reaction clip/);
   assert.match(writerCall?.prompt ?? "", /"selectedExamples": \[\]/);
   assert.match(criticCall?.prompt ?? "", /"selectedExamples": \[\]/);
+  assert.match(rewriterCall?.prompt ?? "", /"selectedExamples": \[\]/);
+  for (const stageId of stageIdsWithNoDownstreamExamples) {
+    const stage = result.diagnostics.effectivePrompting.promptStages.find(
+      (promptStage) => promptStage.stageId === stageId
+    );
+    assert.equal(stage?.inputManifest?.examples?.passedCount, 0);
+    assert.deepEqual(stage?.inputManifest?.examples?.passedExampleIds, []);
+    assert.deepEqual(stage?.inputManifest?.examples?.selectedExampleIds ?? [], []);
+  }
   assert.equal(result.output.pipeline.vnext?.trace.canonicalCounters.examplesPassedDownstream, 0);
 });
 
@@ -5159,10 +5239,19 @@ test("worker-path env flag activation resolves vnext execution metadata inside r
     assert.equal(result.output.pipeline.execution?.featureFlags.STAGE2_VNEXT_ENABLED, true);
     assert.equal(result.output.pipeline.execution?.featureFlags.source, "env");
     assert.equal(result.output.pipeline.execution?.pipelineVersion, "vnext");
-    assert.equal(result.output.pipeline.execution?.stageChainVersion, "stage2-vnext-phase1-bridge");
+    assert.equal(result.output.pipeline.execution?.stageChainVersion, "stage2-vnext");
     assert.ok(result.output.pipeline.execution?.workerBuild.buildId);
     assert.ok(result.output.pipeline.execution?.workerBuild.startedAt);
+    assert.ok(result.output.pipeline.vnext?.exampleRouting);
+    assert.ok(result.output.pipeline.vnext?.canonicalCounters);
+    assert.ok(result.output.pipeline.vnext?.validation);
+    assert.ok((result.output.pipeline.vnext?.candidateLineage.length ?? 0) > 0);
+    assert.ok(result.output.pipeline.vnext?.criticGate);
+    assert.ok(result.output.pipeline.vnext?.trace.stageOutputs.clipTruthExtractor);
+    assert.ok(result.output.pipeline.vnext?.trace.stageOutputs.audienceMiner);
+    assert.equal(result.output.pipeline.vnext?.trace.meta.compatibilityMode, "none");
     assert.equal(result.output.pipeline.vnext?.validation.ok, true);
+    assert.deepEqual(auditStage2WorkerRollout(result.output), { ok: true });
   } finally {
     if (previous === undefined) {
       delete process.env.STAGE2_VNEXT_ENABLED;
@@ -5172,7 +5261,44 @@ test("worker-path env flag activation resolves vnext execution metadata inside r
   }
 });
 
-test("vnext fails closed instead of backfilling critic rejects into the rewrite pool", async () => {
+test("worker rollout audit rejects legacy fallback before the runner can silently succeed", async () => {
+  const { result } = await runSuccessfulPipeline({
+    stage2VNextEnabled: false
+  });
+
+  const audit = auditStage2WorkerRollout(result.output);
+  assert.equal(audit.ok, false);
+  if (!audit.ok) {
+    assert.match(audit.message, /pipelineVersion=legacy/);
+    assert.match(audit.message, /STAGE2_VNEXT_ENABLED=false/);
+    assert.match(audit.message, /legacyFallbackReason=/);
+  }
+});
+
+test("worker rollout audit rejects incomplete canonical vnext payloads", async () => {
+  const { result } = await runSuccessfulPipeline({
+    stage2VNextEnabled: true
+  });
+
+  const audit = auditStage2WorkerRollout({
+    ...result.output,
+    pipeline: {
+      ...result.output.pipeline,
+      vnext: result.output.pipeline.vnext
+        ? {
+            ...result.output.pipeline.vnext,
+            candidateLineage: []
+          }
+        : result.output.pipeline.vnext
+    }
+  });
+  assert.equal(audit.ok, false);
+  if (!audit.ok) {
+    assert.match(audit.message, /candidateLineage/);
+  }
+});
+
+test("vnext regenerates fresh candidates instead of backfilling critic rejects into the rewrite pool", async () => {
   const criticResponse = Array.from({ length: 8 }, (_, index) => ({
     candidate_id: `cand_${index + 1}`,
     scores: makeCriticScoreMap(index),
@@ -5180,14 +5306,176 @@ test("vnext fails closed instead of backfilling critic rejects into the rewrite 
     issues: index < 3 ? [] : ["critic rejected this candidate"],
     keep: index < 3
   }));
+  const recoveryWriterCandidates = Array.from({ length: 8 }, (_, index) =>
+    makeCandidate(`cand_${index + 1}`, index % 2 === 0 ? "shared_experience" : "payoff_reveal", index + 11)
+  );
+  const recoveryCriticResponse = Array.from({ length: 8 }, (_, index) => ({
+    candidate_id: `regen_1_cand_${index + 1}`,
+    scores: makeCriticScoreMap(index),
+    total: 8.5 - index * 0.15,
+    issues: index < 2 ? [] : ["recovery critic rejected this candidate"],
+    keep: index < 2
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    stage2VNextEnabled: true,
+    criticResponse,
+    recoveryWriterCandidates,
+    recoveryCriticResponse
+  });
+
+  const criticGate = result.output.pipeline.vnext?.criticGate;
+  assert.ok(criticGate);
+  assert.equal(criticGate?.reserveBackfillCount, 0);
+  assert.equal(criticGate?.criticKeptCandidateIds.length, 5);
+  assert.deepEqual(criticGate?.rewriteCandidateIds, criticGate?.criticKeptCandidateIds);
+  assert.ok(criticGate?.criticKeptCandidateIds.some((candidateId) => candidateId.startsWith("regen_1_")));
+  assert.ok(
+    result.output.pipeline.vnext?.candidateLineage.some((record) =>
+      record.candidateId.startsWith("regen_1_") && record.state !== "semantic_draft"
+    )
+  );
+});
+
+test("vnext rewriter input manifest matches critic-kept ids exactly with no reserve resurrection", async () => {
+  const criticResponse = Array.from({ length: 8 }, (_, index) => ({
+    candidate_id: `cand_${index + 1}`,
+    scores: makeCriticScoreMap(index),
+    total: 9 - index * 0.2,
+    issues: index < 5 ? [] : ["critic rejected this candidate"],
+    keep: index < 5
+  }));
+
+  const { result, progressEvents } = await runSuccessfulPipeline({
+    stage2VNextEnabled: true,
+    criticResponse
+  });
+
+  const criticGate = result.output.pipeline.vnext?.criticGate;
+  const rewriterStage = result.diagnostics.effectivePrompting.promptStages.find(
+    (stage) => stage.stageId === "rewriter"
+  );
+  const rewriterEvent = progressEvents.find((event) => event.stageId === "rewriter" && event.state === "completed");
+
+  assert.ok(criticGate);
+  assert.deepEqual(criticGate?.rewriteCandidateIds, criticGate?.criticKeptCandidateIds);
+  assert.deepEqual(
+    rewriterStage?.inputManifest?.candidates?.passedCandidateIds,
+    criticGate?.criticKeptCandidateIds
+  );
+  assert.equal(rewriterStage?.inputManifest?.candidates?.passedCount, criticGate?.criticKeptCandidateIds.length);
+  assert.doesNotMatch(rewriterEvent?.detail ?? "", /reserve/i);
+});
+
+test("vnext critic manifest and judged ids exclude packed-invalid candidates instead of silently drifting", async () => {
+  const writerCandidates = Array.from({ length: 8 }, (_, index) =>
+    makeCandidate(`cand_${index + 1}`, index % 2 === 0 ? "shared_experience" : "payoff_reveal", index + 1)
+  );
+  writerCandidates[0] = {
+    ...writerCandidates[0]!,
+    top: "too short",
+    bottom: "still too short"
+  };
+  const criticResponse = Array.from({ length: 8 }, (_, index) => ({
+    candidate_id: `cand_${index + 1}`,
+    scores: makeCriticScoreMap(index),
+    total: 9 - index * 0.1,
+    issues: index < 6 ? [] : ["critic rejected this candidate"],
+    keep: index < 6
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    stage2VNextEnabled: true,
+    writerCandidates,
+    criticResponse
+  });
+
+  const criticStage = result.diagnostics.effectivePrompting.promptStages.find(
+    (stage) => stage.stageId === "critic"
+  );
+  const criticGate = result.output.pipeline.vnext?.criticGate;
+
+  assert.equal(criticStage?.inputManifest?.candidates?.passedCount, 7);
+  assert.equal(criticStage?.inputManifest?.candidates?.criticScoreCount, 7);
+  assert.equal(criticGate?.evaluatedCandidateIds.length, 7);
+  assert.ok(!criticGate?.evaluatedCandidateIds.includes("cand_1"));
+});
+
+test("vnext editorial taste gate rejects editorial abstraction candidates before they reach the shortlist", async () => {
+  const editorializedCandidates = Array.from({ length: 8 }, (_, index) => ({
+    ...makeCandidate(`cand_${index + 1}`, index % 2 === 0 ? "shared_experience" : "payoff_reveal", index + 1),
+    top: `The quiet courtroom energy takes over immediately ${index + 1}`,
+    bottom: `It turns into anti-confirmation and micro-drama fast ${index + 1}`
+  }));
+  const recoveryCriticResponse = Array.from({ length: 8 }, (_, index) => ({
+    candidate_id: `regen_1_cand_${index + 1}`,
+    scores: makeCriticScoreMap(index),
+    total: 8.2 - index * 0.1,
+    issues: ["editorial abstraction still present"],
+    keep: false
+  }));
 
   await assert.rejects(
     () =>
       runSuccessfulPipeline({
         stage2VNextEnabled: true,
-        criticResponse
+        writerCandidates: editorializedCandidates,
+        rewrittenCandidates: editorializedCandidates,
+        recoveryWriterCandidates: editorializedCandidates,
+        recoveryCriticResponse
       }),
-    /reserve backfill is disabled/
+    /after one regeneration pass; failing closed/i
+  );
+});
+
+test("vnext preserves multiple clip-safe audience-shorthand candidates in the visible shortlist", async () => {
+  const commentNativeCandidates = Array.from({ length: 8 }, (_, index) => ({
+    ...makeCandidate(`cand_${index + 1}`, index % 3 === 0 ? "payoff_reveal" : "shared_experience", index + 1),
+    bottom: `"He knew it was bad," and the whole crowd hears it ${index + 1}`
+  }));
+  commentNativeCandidates[0] = {
+    ...commentNativeCandidates[0]!,
+    bottom: `"Miles" is the only read people hear by the end 1`
+  };
+  commentNativeCandidates[1] = {
+    ...commentNativeCandidates[1]!,
+    bottom: `That "smart AF" reaction lands without forcing it 2`
+  };
+
+  const criticResponse = commentNativeCandidates.map((candidate, index) => ({
+    candidate_id: candidate.candidate_id,
+    scores: makeCriticScoreMap(index),
+    total: 8.75 - index * 0.08,
+    issues: [],
+    keep: true
+  }));
+
+  const { result } = await runSuccessfulPipeline({
+    stage2VNextEnabled: true,
+    analyzerResponse: {
+      comment_vibe: "fandom shorthand and excited reaction",
+      slang_to_adapt: ["Miles", "smart AF"],
+      comment_consensus_lane: "Consensus lane keeps calling him Miles.",
+      comment_joke_lane: "Joke lane keeps saying smart AF.",
+      comment_dissent_lane: ""
+    },
+    writerCandidates: commentNativeCandidates,
+    rewrittenCandidates: commentNativeCandidates,
+    criticResponse,
+    finalSelectorResponse: {
+      final_candidates: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
+      final_pick: "cand_2"
+    }
+  });
+
+  const visibleCandidateIds = result.output.captionOptions.map((candidate) => candidate.candidateId);
+  assert.ok(visibleCandidateIds.includes("cand_1"));
+  assert.ok(visibleCandidateIds.includes("cand_2"));
+  assert.ok(
+    result.output.captionOptions.some((candidate) => /\bmiles\b/i.test(`${candidate.top} ${candidate.bottom}`))
+  );
+  assert.ok(
+    result.output.captionOptions.some((candidate) => /smart af/i.test(`${candidate.top} ${candidate.bottom}`))
   );
 });
 
@@ -7015,6 +7303,17 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
       uncertaintyNotes: [],
       rawSummary: "A mud run turns into a visible axle failure once the rear corner collapses."
     },
+    sourceContext: {
+      sourceUrl: "https://example.com/clip",
+      title: "Bridge collapse",
+      descriptionChars: 120,
+      transcriptChars: 80,
+      speechGroundingStatus: "transcript_present",
+      frameCount: 4,
+      runtimeCommentCount: 6,
+      runtimeCommentIds: ["comment_1", "comment_2"],
+      userInstructionChars: 0
+    },
     effectivePrompting: {
       promptStages: [
         {
@@ -8633,7 +8932,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.equal(trace?.stage2.causalInputs.stylePrior.selectedDirections.length, 2);
     assert.equal(trace?.stage2.causalInputs.editorialMemory?.recentFeedbackCount, 0);
     assert.equal(trace?.stage2.causalInputs.sourceContext.transcriptChars, 1402);
-    assert.equal(trace?.stage2.causalInputs.sourceContext.commentsUsedForPrompt, 20);
+    assert.equal(trace?.stage2.causalInputs.sourceContext.runtimeCommentsAvailable, 20);
     assert.equal(trace?.stage2.causalInputs.sourceContext.commentsOmittedFromPrompt, 0);
     assert.ok(trace?.stage2.stageManifests.some((stage) => stage.stageId === "selector"));
     assert.equal(
@@ -8843,14 +9142,18 @@ test("chat trace export preserves canonical vnext proof markers for a determinis
     assert.equal(trace?.version, "clip-trace-export-v3");
     assert.equal(trace?.stage2.execution.featureFlags?.STAGE2_VNEXT_ENABLED, true);
     assert.equal(trace?.stage2.execution.pipelineVersion, "vnext");
-    assert.equal(trace?.stage2.execution.stageChainVersion, "stage2-vnext-phase1-bridge");
+    assert.equal(trace?.stage2.execution.stageChainVersion, "stage2-vnext");
     assert.equal(trace?.stage2.vnext.present, true);
+    assert.ok(trace?.stage2.vnext.stageOutputs?.clipTruthExtractor);
+    assert.ok(trace?.stage2.vnext.stageOutputs?.audienceMiner);
+    assert.equal(trace?.stage2.vnext.traceMeta?.compatibilityMode, "none");
     assert.equal(trace?.stage2.vnext.exampleRouting?.mode, "disabled");
     assert.equal(trace?.stage2.currentResult?.output.pipeline?.selectedExamplesCount, 0);
     assert.equal(trace?.stage2.vnext.canonicalCounters?.examplesPassedDownstream, 0);
     assert.equal(trace?.stage2.vnext.criticGate?.reserveBackfillCount, 0);
     assert.equal(trace?.stage2.vnext.validation?.ok, true);
     assert.equal(trace?.traceContract.canonicalSections.stage2VNext, "stage2.vnext");
+    assert.equal(trace?.traceContract.canonicalSections.stage2VNextStageOutputs, "stage2.vnext.stageOutputs");
     assert.equal(
       trace?.traceContract.canonicalSections.stage2VNextCanonicalCounters,
       "stage2.vnext.canonicalCounters"
@@ -8898,7 +9201,7 @@ test("chat trace export surfaces consistency check failures when vnext counters 
               rawValue: null
             },
             pipelineVersion: "vnext",
-            stageChainVersion: "stage2-vnext-phase1-bridge",
+            stageChainVersion: "stage2-vnext",
             workerBuild: {
               buildId: "consistency-build",
               startedAt: nowIso(),
@@ -8967,19 +9270,21 @@ test("chat trace export surfaces consistency check failures when vnext counters 
                   rawValue: null
                 },
                 pipelineVersion: "vnext",
-                stageChainVersion: "stage2-vnext-phase1-bridge",
+                stageChainVersion: "stage2-vnext",
                 workerBuild: {
                   buildId: "consistency-build",
                   startedAt: nowIso(),
                   pid: 777
                 },
-                compatibilityMode: "legacy_bridge",
+                compatibilityMode: "none",
                 implementedStages: [
+                  "clip_truth_extractor",
+                  "audience_miner",
                   "example_router",
                   "semantic_draft_generator",
                   "constraint_packer",
                   "quality_court",
-                  "pairwise_final_selector",
+                  "ranked_final_selector",
                   "title_and_seo"
                 ]
               },
@@ -9008,8 +9313,38 @@ test("chat trace export surfaces consistency check failures when vnext counters 
                 }
               },
               stageOutputs: {
-                clipTruthExtractor: null,
-                audienceMiner: null,
+                clipTruthExtractor: {
+                  observedFacts: ["consistency fact"],
+                  visibleAnchors: ["anchor"],
+                  visibleActions: ["action"],
+                  sceneBeats: ["beat"],
+                  revealMoment: "reveal",
+                  lateClipChange: "aftermath",
+                  pauseSafeTopFacts: ["anchor"],
+                  inferredReads: ["read"],
+                  uncertaintyNotes: [],
+                  claimGuardrails: ["stay clip-grounded"],
+                  firstSecondsSignal: "opening signal",
+                  whyViewerCares: "viewer cares"
+                },
+                audienceMiner: {
+                  sentimentSummary: "curious",
+                  consensusLane: "consensus",
+                  jokeLane: "jokes",
+                  dissentLane: "",
+                  suspicionLane: "",
+                  shorthandPressure: "medium",
+                  allowedCues: ["Miles"],
+                  bannedCues: ["not confirmed"],
+                  normalizedSlang: [
+                    {
+                      raw: "Miles",
+                      safeNativeEquivalent: "Miles",
+                      keepRawAllowed: true
+                    }
+                  ],
+                  moderationFindings: []
+                },
                 exampleRouter: {
                   decision: {
                     mode: "disabled",
@@ -9032,10 +9367,10 @@ test("chat trace export surfaces consistency check failures when vnext counters 
                 qualityCourt: {
                   judgeCards: []
                 },
-                pairwiseFinalSelector: {
+                rankedFinalSelector: {
                   visibleCandidateIds: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
                   winnerCandidateId: "cand_1",
-                  pairwiseMatches: [],
+                  rankingMatches: [],
                   rationale: "fixture"
                 },
                 titleAndSeo: {
@@ -9082,11 +9417,12 @@ test("chat trace export surfaces consistency check failures when vnext counters 
               selection: {
                 visibleCandidateIds: ["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"],
                 winnerCandidateId: "cand_1",
-                pairwiseMatches: [],
+                rankingMatches: [],
                 rationale: "fixture"
               },
               memory: {
-                status: "not_implemented"
+                status: "disabled",
+                reason: "fixture"
               },
               cost: {
                 totalPromptChars: 0,

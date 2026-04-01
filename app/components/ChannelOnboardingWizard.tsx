@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -514,7 +515,13 @@ export function ChannelOnboardingWizard({
               <div className="channel-onboarding-avatar">
                 <div className="channel-onboarding-avatar-preview">
                   {avatarPreviewUrl ? (
-                    <img src={avatarPreviewUrl} alt="Предпросмотр аватара" />
+                    <Image
+                      src={avatarPreviewUrl}
+                      alt="Предпросмотр аватара"
+                      width={92}
+                      height={92}
+                      unoptimized
+                    />
                   ) : (
                     <span>Аватар</span>
                   )}

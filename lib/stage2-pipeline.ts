@@ -14,7 +14,50 @@ export {
 } from "./stage2-prompt-specs";
 export type { Stage2PromptConfigStageId, Stage2ReasoningEffort } from "./stage2-prompt-specs";
 
-const STAGE2_PIPELINE_STAGE_DEFINITIONS = [
+const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
+  {
+    id: "contextPacket",
+    label: "Building context packet",
+    shortLabel: "Контекст",
+    description: "Собираем observed facts, audience temperature и strategy в единый packet.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  },
+  {
+    id: "candidateGenerator",
+    label: "Drafting candidate batch",
+    shortLabel: "Кандидаты",
+    description: "Writer генерирует ровно 8 сильных английских caption-кандидатов.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  },
+  {
+    id: "qualityCourt",
+    label: "Running quality court",
+    shortLabel: "Суд",
+    description: "Строгий judge режет слабые варианты и выбирает лучших финалистов.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  },
+  {
+    id: "targetedRepair",
+    label: "Repairing near-misses",
+    shortLabel: "Ремонт",
+    description: "Точечный repair почти-годных кандидатов запускается только при необходимости.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  },
+  {
+    id: "titleWriter",
+    label: "Writing winner titles",
+    shortLabel: "Тайтлы",
+    description: "Пишем 5 title options только для финального winner-кандидата.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  }
+] as const;
+
+const STAGE2_LEGACY_PIPELINE_STAGE_DEFINITIONS = [
   {
     id: "analyzer",
     label: "Analyzing video",
@@ -81,7 +124,10 @@ const STAGE2_PIPELINE_STAGE_DEFINITIONS = [
   }
 ] as const;
 
-export const STAGE2_PIPELINE_STAGES = STAGE2_PIPELINE_STAGE_DEFINITIONS;
+export const STAGE2_PIPELINE_STAGES = [
+  ...STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS,
+  ...STAGE2_LEGACY_PIPELINE_STAGE_DEFINITIONS
+] as const;
 
 const STAGE2_REGENERATE_STAGE_DEFINITIONS = [
   {
@@ -116,7 +162,7 @@ export type Stage2PromptStageConfig = {
 };
 
 export type Stage2PromptConfig = {
-  version: 2;
+  version: 3;
   stages: Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
 };
 
@@ -168,7 +214,7 @@ function nowIso(): string {
 }
 
 export const DEFAULT_STAGE2_PROMPT_CONFIG: Stage2PromptConfig = {
-  version: 2,
+  version: 3,
   stages: Object.fromEntries(
     STAGE2_PROMPT_STAGE_IDS.map((stageId) => [
       stageId,
@@ -187,7 +233,7 @@ export function listStage2PromptConfigStages(): Array<{
   description: string;
   promptStageType: "llm" | "deterministic";
 }> {
-  return STAGE2_PIPELINE_STAGES.filter((stage) => stage.promptConfigurable).map((stage) => ({
+  return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS.filter((stage) => stage.promptConfigurable).map((stage) => ({
     id: stage.id as Stage2PromptConfigStageId,
     label: stage.label,
     shortLabel: stage.shortLabel,
@@ -224,11 +270,29 @@ function resolveStage2ProgressDefinitions(
     }
   }
 
-  return STAGE2_PIPELINE_STAGES;
+  if (stepCandidates && stepCandidates.length > 0) {
+    const candidateIds = new Set(
+      stepCandidates
+        .map((step) => (typeof step.id === "string" ? step.id.trim() : ""))
+        .filter(Boolean)
+    );
+    if (
+      Array.from(candidateIds).some((id) =>
+        STAGE2_LEGACY_PIPELINE_STAGE_DEFINITIONS.some((stage) => stage.id === id)
+      ) &&
+      !Array.from(candidateIds).some((id) =>
+        STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS.some((stage) => stage.id === id)
+      )
+    ) {
+      return STAGE2_LEGACY_PIPELINE_STAGE_DEFINITIONS;
+    }
+  }
+
+  return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS;
 }
 
 export function getStage2ProgressStartStageId(mode?: string | null): Stage2ProgressStageId {
-  return resolveStage2ProgressDefinitions(mode)[0]?.id ?? "analyzer";
+  return resolveStage2ProgressDefinitions(mode)[0]?.id ?? "contextPacket";
 }
 
 function sanitizePrompt(value: unknown, fallback: string): string {
@@ -282,9 +346,19 @@ export function normalizeStage2PromptConfig(input: unknown): Stage2PromptConfig 
         >)
       : undefined;
 
+  const legacyStageFallbacks: Partial<Record<Stage2PromptConfigStageId, Stage2PromptConfigStageId[]>> = {
+    contextPacket: ["analyzer", "selector"],
+    candidateGenerator: ["writer"],
+    qualityCourt: ["critic", "finalSelector"],
+    targetedRepair: ["rewriter"],
+    titleWriter: ["titles"]
+  };
+
   const stages = Object.fromEntries(
     STAGE2_PROMPT_STAGE_IDS.map((stageId) => {
-      const stageCandidate = stagesCandidate?.[stageId];
+      const stageCandidate =
+        stagesCandidate?.[stageId] ??
+        legacyStageFallbacks[stageId]?.map((fallbackId) => stagesCandidate?.[fallbackId]).find(Boolean);
       const defaultPrompt = STAGE2_DEFAULT_STAGE_PROMPTS[stageId];
       const legacyTemplateOverride = sanitizeLegacyPrompt(stageCandidate?.templateOverride);
       const legacyGuidance = sanitizeLegacyPrompt(stageCandidate?.guidance);
@@ -313,7 +387,7 @@ export function normalizeStage2PromptConfig(input: unknown): Stage2PromptConfig 
   ) as Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
 
   return {
-    version: 2,
+    version: 3,
     stages
   };
 }

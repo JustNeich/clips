@@ -4,18 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { Stage2Response } from "../app/components/types";
-import { runCodexExec } from "./codex-runner";
 import { saveStage2RunDebugArtifact } from "./stage2-debug-artifacts";
 import {
   normalizeComments,
   prepareCommentsForPrompt,
   sortCommentsByPopularity
 } from "./comments";
-import {
-  buildStage2SeoPrompt,
-  parseStage2SeoOutput,
-  STAGE2_SEO_OUTPUT_SCHEMA
-} from "./stage2-seo";
 import { buildStage2Spec } from "./stage2-spec";
 import {
   buildQuickRegenerateResult,
@@ -42,13 +36,16 @@ import {
   sanitizeFileName
 } from "./ytdlp";
 import { requireRuntimeTool } from "./runtime-capabilities";
-import { resolveStage2PromptTemplate } from "./viral-shorts-worker/prompts";
 import {
   buildVideoContext,
   ViralShortsWorkerService
 } from "./viral-shorts-worker/service";
 import { createStage2CodexExecutorContext } from "./stage2-codex-executor";
-import type { Stage2RunDebugArtifact, Stage2TokenUsage } from "./viral-shorts-worker/types";
+import type {
+  NativeCaptionContextPacket,
+  Stage2RunDebugArtifact,
+  Stage2TokenUsage
+} from "./viral-shorts-worker/types";
 
 const execFileAsync = promisify(execFile);
 
@@ -58,6 +55,170 @@ type VideoInfoJson = {
   transcript?: string;
   comments?: unknown;
 };
+
+type Stage2WorkerRolloutAudit =
+  | { ok: true }
+  | {
+      ok: false;
+      message: string;
+    };
+
+function formatStage2WorkerBuildLabel(
+  execution: NonNullable<NonNullable<Stage2Response["output"]["pipeline"]>["execution"]>
+): string {
+  const parts = [
+    execution.workerBuild.buildId || "unknown-build",
+    execution.workerBuild.startedAt || "unknown-start",
+    execution.workerBuild.pid ? `pid=${execution.workerBuild.pid}` : null
+  ].filter(Boolean);
+  return parts.join(" ");
+}
+
+export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stage2WorkerRolloutAudit {
+  const pipeline = output.pipeline;
+  if (!pipeline) {
+    return {
+      ok: false,
+      message: "Stage 2 rollout failed: worker output is missing pipeline metadata."
+    };
+  }
+
+  const execution = pipeline.execution;
+  if (!execution) {
+    return {
+      ok: false,
+      message: "Stage 2 rollout failed: worker output is missing pipeline.execution metadata."
+    };
+  }
+
+  if (execution.pipelineVersion === "native_caption_v3") {
+    if (!pipeline.nativeCaptionV3) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: pipelineVersion resolved to native_caption_v3 but stage2.nativeCaptionV3 is missing."
+      };
+    }
+    if (!Array.isArray(output.finalists) || output.finalists.length === 0) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 output did not return any finalists."
+      };
+    }
+    if (!output.winner) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 output is missing the winner payload."
+      };
+    }
+    if (!Array.isArray(output.titleOptions) || output.titleOptions.length !== 5) {
+      return {
+        ok: false,
+        message:
+          `Stage 2 rollout failed: native_caption_v3 expected 5 title options, received ${output.titleOptions?.length ?? 0}.`
+      };
+    }
+    return { ok: true };
+  }
+
+  if (execution.pipelineVersion !== "vnext" || execution.featureFlags.STAGE2_VNEXT_ENABLED !== true) {
+    return {
+      ok: false,
+      message:
+        `Stage 2 rollout failed: pipelineVersion=${execution.pipelineVersion}; ` +
+        `STAGE2_VNEXT_ENABLED=${execution.featureFlags.STAGE2_VNEXT_ENABLED}; ` +
+        `stageChainVersion=${execution.stageChainVersion || "missing"}; ` +
+        `legacyFallbackReason=${execution.legacyFallbackReason ?? "none"}; ` +
+        `workerBuild=${formatStage2WorkerBuildLabel(execution)}.`
+    };
+  }
+
+  if (execution.stageChainVersion.includes("bridge")) {
+    return {
+      ok: false,
+      message:
+        `Stage 2 rollout failed: transitional stageChainVersion=${execution.stageChainVersion} is still active; ` +
+        `workerBuild=${formatStage2WorkerBuildLabel(execution)}.`
+    };
+  }
+
+  const vnext = pipeline.vnext;
+  if (!vnext) {
+    return {
+      ok: false,
+      message:
+        "Stage 2 rollout failed: pipelineVersion resolved to vnext but stage2.vnext is missing from worker output."
+    };
+  }
+
+  const missingSections: string[] = [];
+  if (!vnext.exampleRouting) {
+    missingSections.push("exampleRouting");
+  }
+  if (!vnext.canonicalCounters) {
+    missingSections.push("canonicalCounters");
+  }
+  if (!vnext.validation) {
+    missingSections.push("validation");
+  }
+  if (!Array.isArray(vnext.candidateLineage) || vnext.candidateLineage.length === 0) {
+    missingSections.push("candidateLineage");
+  }
+  if (!vnext.criticGate) {
+    missingSections.push("criticGate");
+  }
+  if (missingSections.length > 0) {
+    return {
+      ok: false,
+      message:
+        `Stage 2 rollout failed: stage2.vnext is missing canonical runtime sections: ${missingSections.join(", ")}. ` +
+        `workerBuild=${formatStage2WorkerBuildLabel(execution)}.`
+    };
+  }
+
+  if (vnext.trace.meta.compatibilityMode !== "none") {
+    return {
+      ok: false,
+      message:
+        `Stage 2 rollout failed: compatibilityMode=${vnext.trace.meta.compatibilityMode} instead of none.`
+    };
+  }
+
+  if (!vnext.trace.stageOutputs.clipTruthExtractor || !vnext.trace.stageOutputs.audienceMiner) {
+    return {
+      ok: false,
+      message:
+        "Stage 2 rollout failed: canonical vNext stage outputs are incomplete (clipTruthExtractor/audienceMiner missing)."
+    };
+  }
+
+  if (vnext.exampleRouting.mode === "disabled" && pipeline.selectedExamplesCount !== 0) {
+    return {
+      ok: false,
+      message:
+        `Stage 2 rollout failed: exampleRouting.mode=disabled but selectedExamplesCount=${pipeline.selectedExamplesCount}.`
+    };
+  }
+
+  if (vnext.criticGate.reserveBackfillCount !== 0) {
+    return {
+      ok: false,
+      message:
+        `Stage 2 rollout failed: critic gate still reported reserveBackfillCount=${vnext.criticGate.reserveBackfillCount}.`
+    };
+  }
+
+  if (!vnext.validation.ok) {
+    return {
+      ok: false,
+      message: `Stage 2 rollout failed: vNext validation failed: ${vnext.validation.issues.join(" ")}`
+    };
+  }
+
+  return { ok: true };
+}
 
 async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   videoPath: string;
@@ -307,6 +468,151 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     detail: `Base run ${baseRunId.slice(0, 8)} loaded.`
   });
 
+  const basePipelineVersion = baseResult.output.pipeline?.execution?.pipelineVersion ?? "legacy";
+  if (basePipelineVersion === "native_caption_v3") {
+    const contextPacket =
+      baseResult.output.pipeline?.nativeCaptionV3?.contextPacket ??
+      baseResult.output.pipeline?.contextPacket ??
+      null;
+    if (!contextPacket) {
+      markStage2RunStageFailed(
+        run.runId,
+        "regenerate",
+        "The selected native caption run is missing its saved context packet."
+      );
+      throw new Error("The selected native caption run is missing its saved context packet.");
+    }
+
+    const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
+    const workerService = new ViralShortsWorkerService();
+    const channel = run.request.channel;
+    const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
+    const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
+    markStage2RunStageRunning(run.runId, "regenerate", {
+      detail: "Reusing the saved context packet and rerunning native caption generation.",
+      reasoningEffort: executorContext.reasoningEffort
+    });
+    const regenerateStartedAt = Date.now();
+
+    let pipelineResult;
+    try {
+      pipelineResult = await workerService.runNativeCaptionPipelineFromContext({
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2StyleProfile: channel.stage2StyleProfile,
+          editorialMemory: channel.editorialMemory
+        },
+        workspaceStage2ExamplesCorpusJson,
+        videoContext: buildStage2RuntimeVideoContext({
+          sourceUrl: baseResult.source.url,
+          title: baseResult.source.title,
+          description: "",
+          transcript: "",
+          comments: baseResult.source.topComments ?? [],
+          frameDescriptions: baseResult.source.frameDescriptions ?? [],
+          userInstruction: run.userInstruction
+        }),
+        contextPacket: contextPacket as NativeCaptionContextPacket,
+        executor: executorContext.executor,
+        stageModels: {
+          contextPacket: executorContext.resolvedCodexModelConfig.contextPacket,
+          candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
+          qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
+          targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
+          titleWriter: executorContext.resolvedCodexModelConfig.titleWriter
+        },
+        promptConfig: workspaceStage2PromptConfig,
+        debugMode: run.request.debugMode
+      });
+      markStage2RunStageCompleted(run.runId, "regenerate", {
+        detail: "Native caption rerun finished.",
+        durationMs: Date.now() - regenerateStartedAt,
+        reasoningEffort: executorContext.reasoningEffort
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Native caption regenerate failed.";
+      markStage2RunStageFailed(run.runId, "regenerate", message, {
+        durationMs: Date.now() - regenerateStartedAt,
+        reasoningEffort: executorContext.reasoningEffort
+      });
+      throw error instanceof Error ? error : new Error(message);
+    }
+
+    markStage2RunStageRunning(run.runId, "assemble", {
+      detail: "Persisting the native caption rerun result."
+    });
+    const debugRef = await persistStage2RawDebugArtifact({
+      runId: run.runId,
+      rawDebugArtifact: pipelineResult.rawDebugArtifact
+    });
+    const baseResponse = {
+      ...baseResult,
+      output: pipelineResult.output,
+      seo: null,
+      warnings: [
+        ...pipelineResult.warnings,
+        ...validateStage2Output(pipelineResult.output, channel.stage2HardConstraints)
+      ],
+      diagnostics: pipelineResult.diagnostics,
+      progress: getStage2Run(run.runId)?.snapshot ?? null,
+      model: executorContext.pipelineModelSummary ?? "default",
+      reasoningEffort: executorContext.reasoningEffort,
+      userInstructionUsed: run.userInstruction,
+      debugMode: run.request.debugMode === "raw" ? "raw" : "summary",
+      debugRef: debugRef ? { kind: "stage2-run-debug" as const, ref: debugRef } : null,
+      stage2Spec: buildStage2Spec({
+        name: "Native Caption Pipeline v3",
+        outputSections: [
+          "contextPacket",
+          "finalists(1-3)",
+          "winner",
+          "titleOptions(5 winner-only)",
+          "diagnostics(nativeCaptionV3,prompts)",
+          "progress(stage snapshots)"
+        ],
+        hardConstraints: channel.stage2HardConstraints,
+        enforcedVia: "Context packet + candidate batch + quality court + targeted repair + title writer"
+      }),
+      stage2Worker: {
+        runId: run.runId,
+        buildId: pipelineResult.output.pipeline.execution?.workerBuild.buildId,
+        startedAt: pipelineResult.output.pipeline.execution?.workerBuild.startedAt,
+        pid: pipelineResult.output.pipeline.execution?.workerBuild.pid,
+        pipelineVersion: pipelineResult.output.pipeline.execution?.pipelineVersion,
+        stageChainVersion: pipelineResult.output.pipeline.execution?.stageChainVersion,
+        featureFlags: pipelineResult.output.pipeline.execution?.featureFlags
+      },
+      stage2Run: {
+        runId: run.runId,
+        mode: run.mode,
+        baseRunId,
+        createdAt: run.createdAt,
+        startedAt: run.startedAt
+      },
+      channel: {
+        id: channel.id,
+        name: channel.name,
+        username: channel.username
+      }
+    };
+    const tokenUsage = finalizeTokenUsage(
+      pipelineResult.tokenUsage,
+      measurePersistedPayloadBytes(baseResponse)
+    );
+    markStage2RunStageCompleted(run.runId, "assemble", {
+      detail: `Native caption rerun saved ${pipelineResult.output.finalists?.length ?? 0} finalists and ${pipelineResult.output.titleOptions.length} winner titles.`
+    });
+
+    return {
+      ...baseResponse,
+      tokenUsage
+    } as Stage2Response;
+  }
+
   const channel = run.request.channel;
   const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
   markStage2RunStageRunning(run.runId, "regenerate", {
@@ -398,7 +704,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
 
     const channel = run.request.channel;
-    markStage2RunStageRunning(run.runId, "analyzer", {
+    markStage2RunStageRunning(run.runId, "contextPacket", {
       detail: "Подготавливаем source media, кадры и комментарии."
     });
 
@@ -422,7 +728,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       frameDescriptions: frames.frameDescriptions,
       userInstruction: run.userInstruction
     });
-    const pipelineResult = await workerService.runPipeline({
+    const pipelineResult = await workerService.runNativeCaptionPipeline({
       channel: {
         id: channel.id,
         name: channel.name,
@@ -437,13 +743,11 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       imagePaths: frames.framePaths,
       executor: executorContext.executor,
       stageModels: {
-        analyzer: executorContext.resolvedCodexModelConfig.analyzer,
-        selector: executorContext.resolvedCodexModelConfig.selector,
-        writer: executorContext.resolvedCodexModelConfig.writer,
-        critic: executorContext.resolvedCodexModelConfig.critic,
-        rewriter: executorContext.resolvedCodexModelConfig.rewriter,
-        finalSelector: executorContext.resolvedCodexModelConfig.finalSelector,
-        titles: executorContext.resolvedCodexModelConfig.titles
+        contextPacket: executorContext.resolvedCodexModelConfig.contextPacket,
+        candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
+        qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
+        targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
+        titleWriter: executorContext.resolvedCodexModelConfig.titleWriter
       },
       promptConfig: workspaceStage2PromptConfig,
       debugMode: run.request.debugMode,
@@ -475,123 +779,20 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       }
     });
     const parsedOutput = pipelineResult.output;
+    const rolloutAudit = auditStage2WorkerRollout(parsedOutput);
+    if (!rolloutAudit.ok) {
+      throw new Error(rolloutAudit.message);
+    }
     const warnings = [
       ...pipelineResult.warnings,
       ...validateStage2Output(parsedOutput, channel.stage2HardConstraints)
     ];
-
-    let seo: { description: string; tags: string } | null = null;
-    const seoTemplate = resolveStage2PromptTemplate("seo", workspaceStage2PromptConfig);
-    let seoPromptText: string | null = null;
-    let seoSerializedResultBytes: number | null = null;
-    try {
-      const seoPrompt = buildStage2SeoPrompt({
-        sourceUrl: run.sourceUrl,
-        title: downloaded.title,
-        comments: promptComments.included,
-        omittedCommentsCount: promptComments.omittedCount,
-        stage2Output: parsedOutput,
-        descriptionPrompt: seoTemplate.configuredPrompt,
-        userInstruction: run.userInstruction
-      });
-      seoPromptText = seoPrompt;
-      const seoModel = executorContext.resolvedCodexModelConfig.seo;
-      const seoReasoningEffort = seoTemplate.reasoningEffort;
-      markStage2RunStageRunning(run.runId, "seo", {
-        detail: "Генерируем описание и tags.",
-        promptChars: seoPrompt.length,
-        reasoningEffort: seoReasoningEffort
-      });
-
-      const seoSchemaPath = path.join(tmpDir, "stage2.description.schema.json");
-      const seoOutputPath = path.join(tmpDir, "stage2.description.output.json");
-      await fs.writeFile(seoSchemaPath, JSON.stringify(STAGE2_SEO_OUTPUT_SCHEMA, null, 2), "utf-8");
-
-      const seoTimeoutFromEnv = Number.parseInt(
-        process.env.CODEX_STAGE2_DESCRIPTION_TIMEOUT_MS ?? "",
-        10
-      );
-      const seoTimeoutMs =
-        Number.isFinite(seoTimeoutFromEnv) && seoTimeoutFromEnv > 0
-          ? seoTimeoutFromEnv
-          : 4 * 60_000;
-
-      const seoStartedAt = Date.now();
-      await runCodexExec({
-        prompt: seoPrompt,
-        imagePaths: [],
-        outputSchemaPath: seoSchemaPath,
-        outputMessagePath: seoOutputPath,
-        cwd: process.cwd(),
-        codexHome: executorContext.codexHome,
-        timeoutMs: seoTimeoutMs,
-        model: seoModel,
-        reasoningEffort: seoReasoningEffort
-      });
-
-      const rawSeoOutput = await fs.readFile(seoOutputPath, "utf-8");
-      seo = parseStage2SeoOutput(rawSeoOutput);
-      seoSerializedResultBytes = measurePersistedPayloadBytes(seo);
-      markStage2RunStageCompleted(run.runId, "seo", {
-        detail: "SEO metadata готова.",
-        durationMs: Date.now() - seoStartedAt,
-        promptChars: seoPrompt.length,
-        reasoningEffort: seoReasoningEffort
-      });
-    } catch (seoError) {
-      const message =
-        seoError instanceof Error
-          ? `SEO description generation failed: ${seoError.message}`
-          : "SEO description generation failed.";
-      warnings.push({
-        field: "seo",
-        message
-      });
-      markStage2RunStageCompleted(run.runId, "seo", {
-        detail: `Fallback/no SEO: ${message}`
-      });
-    }
-    const seoPromptStage = {
-      stageId: "seo",
-      label: "SEO",
-      stageType: "llm_prompt" as const,
-      defaultPrompt: seoTemplate.defaultPrompt,
-      configuredPrompt: seoTemplate.configuredPrompt,
-      model: executorContext.resolvedCodexModelConfig.seo,
-      reasoningEffort: seoTemplate.reasoningEffort,
-      isCustomPrompt: seoTemplate.isCustomPrompt,
-      promptText: null,
-      promptTextAvailable: Boolean(seoPromptText),
-      promptChars: seoPromptText?.length ?? null,
-      estimatedInputTokens: seoPromptText ? Math.max(1, Math.ceil(seoPromptText.length / 4)) : null,
-      estimatedOutputTokens:
-        seoSerializedResultBytes !== null ? Math.max(1, Math.ceil(seoSerializedResultBytes / 4)) : null,
-      serializedResultBytes: seoSerializedResultBytes,
-      persistedPayloadBytes: null,
-      usesImages: false,
-      summary: "LLM stage: generates SEO description and tags from the final Stage 2 pick."
-    };
-    const diagnostics = pipelineResult.diagnostics
-      ? {
-          ...pipelineResult.diagnostics,
-          effectivePrompting: {
-            ...pipelineResult.diagnostics.effectivePrompting,
-            promptStages: [...pipelineResult.diagnostics.effectivePrompting.promptStages, seoPromptStage]
-          }
-        }
-      : pipelineResult.diagnostics;
+    const diagnostics = pipelineResult.diagnostics;
     const rawDebugArtifact =
       run.request.debugMode === "raw" && pipelineResult.rawDebugArtifact
         ? {
             ...pipelineResult.rawDebugArtifact,
-            runId: run.runId,
-            promptStages: [
-              ...pipelineResult.rawDebugArtifact.promptStages,
-              {
-                ...seoPromptStage,
-                promptText: seoPromptText
-              }
-            ]
+            runId: run.runId
           }
         : null;
     const debugRef = await persistStage2RawDebugArtifact({
@@ -620,21 +821,20 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         commentsAcquisitionError: downloaded.commentsAcquisition.error
       },
       stage2Spec: buildStage2Spec({
-        name: "Viral Shorts Worker Overlay Generation",
+        name: "Native Caption Pipeline v3",
         outputSections: [
-          "inputAnalysis",
-          "captionOptions(5)",
-          "titleOptions(5)",
-          "finalPick",
-          "seo(description,tags)",
-          "diagnostics(channel,prompts,examples)",
+          "contextPacket",
+          "finalists(1-3)",
+          "winner",
+          "titleOptions(5 winner-only)",
+          "diagnostics(nativeCaptionV3,prompts)",
           "progress(stage snapshots)"
         ],
         hardConstraints: channel.stage2HardConstraints,
-        enforcedVia: "Multi-stage worker pipeline + Codex JSON stages + post-validation"
+        enforcedVia: "Context packet + candidate batch + quality court + targeted repair + title writer"
       }),
       output: parsedOutput,
-      seo,
+      seo: null,
       warnings,
       diagnostics,
       progress: getStage2Run(run.runId)?.snapshot ?? null,
@@ -665,21 +865,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       }
     };
     const tokenUsage = finalizeTokenUsage(
-      {
-        ...pipelineResult.tokenUsage,
-        stages: [
-          ...pipelineResult.tokenUsage.stages,
-          {
-            stageId: "seo",
-            promptChars: seoPromptText?.length ?? null,
-            estimatedInputTokens: seoPromptText ? Math.max(1, Math.ceil(seoPromptText.length / 4)) : null,
-            estimatedOutputTokens:
-              seoSerializedResultBytes !== null ? Math.max(1, Math.ceil(seoSerializedResultBytes / 4)) : null,
-            serializedResultBytes: seoSerializedResultBytes,
-            persistedPayloadBytes: 0
-          }
-        ]
-      },
+      pipelineResult.tokenUsage,
       measurePersistedPayloadBytes(baseResponse)
     );
     return {
@@ -689,7 +875,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
   } catch (error) {
     const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
     const errorMessage = ytdlpMessage ?? getPipelineErrorMessage(error);
-    const activeStageId = getStage2Run(run.runId)?.snapshot.activeStageId ?? "analyzer";
+    const activeStageId = getStage2Run(run.runId)?.snapshot.activeStageId ?? "contextPacket";
     markStage2RunStageFailed(run.runId, activeStageId, errorMessage);
     throw new Error(errorMessage);
   } finally {

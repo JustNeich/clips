@@ -17,11 +17,11 @@ export type Stage2VNextStageId =
   | "semantic_draft_generator"
   | "constraint_packer"
   | "quality_court"
-  | "pairwise_final_selector"
+  | "ranked_final_selector"
   | "title_and_seo"
   | "feedback_capture";
 
-export type Stage2PipelineVersion = "legacy" | "vnext";
+export type Stage2PipelineVersion = "legacy" | "vnext" | "native_caption_v3";
 
 export type Stage2VNextFlagResolutionSource = "override" | "env" | "default_false";
 
@@ -78,7 +78,7 @@ export interface Stage2VNextTraceV3 {
     pipelineVersion: Stage2PipelineVersion;
     stageChainVersion: string;
     workerBuild: Stage2VNextWorkerBuild;
-    compatibilityMode: "legacy_bridge" | "full_vnext";
+    compatibilityMode: "none";
     implementedStages: Stage2VNextStageId[];
   };
   inputs: {
@@ -110,7 +110,7 @@ export interface Stage2VNextTraceV3 {
     qualityCourt: {
       judgeCards: JudgeScoreCard[];
     };
-    pairwiseFinalSelector: FinalSelection | null;
+    rankedFinalSelector: FinalSelection | null;
     titleAndSeo: {
       titles: TitleOption[];
       seo: SeoPayload | null;
@@ -126,7 +126,8 @@ export interface Stage2VNextTraceV3 {
   };
   selection: FinalSelection | null;
   memory: {
-    status: "not_implemented";
+    status: "disabled";
+    reason: string;
   };
   cost: {
     totalPromptChars: number;

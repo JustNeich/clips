@@ -106,6 +106,11 @@ test("team-store persists workspace codex model config overrides in per-substage
     );
 
     const updated = updateWorkspaceCodexModelConfig(auth.workspace.id, {
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.4-mini",
+      qualityCourt: "gpt-5.3-codex-spark",
+      targetedRepair: "gpt-5.4-mini",
+      titleWriter: "gpt-5.4",
       analyzer: "gpt-5.4-mini",
       selector: "gpt-5.3-codex-spark",
       writer: "gpt-5.4",
@@ -120,6 +125,11 @@ test("team-store persists workspace codex model config overrides in per-substage
     });
 
     assert.deepEqual(updated.codexModelConfig, {
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.4-mini",
+      qualityCourt: "gpt-5.3-codex-spark",
+      targetedRepair: "gpt-5.4-mini",
+      titleWriter: "gpt-5.4",
       analyzer: "gpt-5.4-mini",
       selector: "gpt-5.3-codex-spark",
       writer: "gpt-5.4",

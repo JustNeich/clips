@@ -214,6 +214,132 @@ test("ViralShortsWorkerService routes per-stage models and only analyzer receive
   assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], [], [], [], [], []]);
 });
 
+test("runNativeCaptionPipeline routes native stage models and keeps translation outside the hot path", async () => {
+  const service = new ViralShortsWorkerService();
+  const executor = new CaptureQueueExecutor([
+    {
+      grounding: {
+        observed_facts: ["two people pause before reacting"],
+        visible_actions: ["one freezes", "the other looks over"],
+        micro_turn: "the pause lands harder than the action",
+        first_seconds_signal: "the room goes quiet immediately",
+        uncertainties: [],
+        forbidden_claims: ["do not invent dialogue"],
+        safe_inferences: ["awkward energy", "shared hesitation"]
+      },
+      audience: {
+        consensus_read: "everyone clocked the hesitation",
+        joke_lane: "that pause said enough",
+        dissent_exists: false,
+        safe_reusable_cues: ["that pause said enough"],
+        blocked_cues: [],
+        toxic_or_low_value_patterns: []
+      },
+      strategy: {
+        primary_angle: "awkward_pause",
+        secondary_angles: ["quiet_social_read"],
+        hook_seeds: ["the pause said enough"],
+        bottom_functions: ["sharpen the social read"],
+        must_do: ["land why-care immediately"],
+        must_avoid: ["inventory openings"],
+        quality_bar: ["native human feel"]
+      }
+    },
+    Array.from({ length: 8 }, (_, index) => ({
+      candidate_id: `cand_${index + 1}`,
+      angle: index === 0 ? "awkward_pause" : "quiet_social_read",
+      hook_family: "social_read",
+      cue_used: "that pause said enough",
+      top: `That pause told the whole room what was happening ${index + 1}.`,
+      bottom: `Nobody needed the follow-up once that look landed ${index + 1}.`
+    })),
+    {
+      kept: [
+        {
+          candidate_id: "cand_1",
+          scores: {
+            hook_immediacy: 9,
+            native_fluency: 9,
+            visual_defensibility: 9,
+            audience_authenticity: 8,
+            human_warmth: 8,
+            bottom_usefulness: 8
+          },
+          why_it_works: ["It lands the social read fast."]
+        },
+        {
+          candidate_id: "cand_2",
+          scores: {
+            hook_immediacy: 8,
+            native_fluency: 8,
+            visual_defensibility: 8,
+            audience_authenticity: 8,
+            human_warmth: 7,
+            bottom_usefulness: 8
+          },
+          why_it_works: ["Still feels lived-in."]
+        }
+      ],
+      rejected: [
+        {
+          candidate_id: "cand_3",
+          hard_fail_reasons: ["too abstract"],
+          offending_phrases: ["social geometry"]
+        }
+      ],
+      winner_candidate_id: "cand_1",
+      winner_reason: "Candidate 1 is the cleanest winner.",
+      needs_repair: false,
+      repair_briefs: []
+    },
+    Array.from({ length: 5 }, (_, index) => ({
+      option: index + 1,
+      title: `Winner title ${index + 1}`
+    }))
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_1",
+      name: "Channel 1",
+      username: "channel_1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/short",
+      title: "A grounded clip",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "keep it dry"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
+    executor,
+    stageModels: {
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.4-mini",
+      qualityCourt: "gpt-5.3-codex-spark",
+      targetedRepair: "gpt-5.4-mini",
+      titleWriter: "gpt-5.4"
+    }
+  });
+
+  assert.equal(result.output.pipeline.execution?.pipelineVersion, "native_caption_v3");
+  assert.equal(result.output.finalists?.length, 2);
+  assert.equal(result.output.winner?.candidateId, "cand_1");
+  assert.equal(result.output.titleOptions.length, 5);
+  assert.equal(result.output.captionOptions[0]?.topRu, undefined);
+  assert.deepEqual(
+    executor.calls.map((call) => call.model),
+    ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-5.4"]
+  );
+  assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
+  assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], [], []]);
+});
+
 test("runQuickRegenerateModel forwards the dedicated regenerate model without images", async () => {
   const executor = new CaptureQueueExecutor([
     {
@@ -250,6 +376,54 @@ test("runQuickRegenerateModel forwards the dedicated regenerate model without im
   assert.equal(executor.calls.length, 1);
   assert.equal(executor.calls[0]?.model, "gpt-5.3-codex-spark");
   assert.deepEqual(executor.calls[0]?.imagePaths, []);
+});
+
+test("translateNativeCaptionFinalists is off-hot-path, text-only, and returns finalist translations only", async () => {
+  const service = new ViralShortsWorkerService();
+  const executor = new CaptureQueueExecutor([
+    [
+      {
+        candidate_id: "cand_1",
+        top_ru: "Эта пауза всё сказала без слов.",
+        bottom_ru: "После этого взгляда продолжение уже было не нужно."
+      },
+      {
+        candidate_id: "stray_candidate",
+        top_ru: "Лишний",
+        bottom_ru: "Перевод"
+      }
+    ]
+  ]);
+
+  const translation = await service.translateNativeCaptionFinalists({
+    finalists: [
+      {
+        option: 1,
+        candidateId: "cand_1",
+        angle: "awkward_pause",
+        hookFamily: "social_read",
+        cueUsed: "that pause said enough",
+        top: "That pause told the whole room what was happening.",
+        bottom: "Nobody needed the follow-up once that look landed.",
+        constraintCheck: {
+          passed: true,
+          repaired: false,
+          topLength: 48,
+          bottomLength: 51,
+          issues: []
+        }
+      }
+    ],
+    executor,
+    model: "gpt-5.4",
+    reasoningEffort: "low"
+  });
+
+  assert.equal(executor.calls.length, 1);
+  assert.equal(executor.calls[0]?.model, "gpt-5.4");
+  assert.deepEqual(executor.calls[0]?.imagePaths, []);
+  assert.equal(translation?.items.length, 1);
+  assert.equal(translation?.items[0]?.candidateId, "cand_1");
 });
 
 test("runStage2StyleDiscovery forwards the dedicated multimodal model and reference images", async () => {

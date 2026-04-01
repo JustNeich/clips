@@ -1320,11 +1320,21 @@ function buildCandidateUsage(input: {
 export function buildStage2SourceContextSummary(
   videoContext: ViralShortsVideoContext
 ): Stage2DiagnosticsSourceContext {
+  const transcript = videoContext.transcript.trim();
+  const speechGroundingStatus =
+    transcript.length > 0
+      ? "transcript_present"
+      : /\b(no dialogue|no dialog|no audio|silent|without audio|mute|muted)\b/i.test(
+            `${videoContext.title} ${videoContext.description}`
+          )
+        ? "no_speech_detected"
+        : "speech_uncertain";
   return {
     sourceUrl: videoContext.sourceUrl,
     title: videoContext.title,
     descriptionChars: videoContext.description.trim().length,
-    transcriptChars: videoContext.transcript.trim().length,
+    transcriptChars: transcript.length,
+    speechGroundingStatus,
     frameCount: videoContext.frameDescriptions.length,
     runtimeCommentCount: videoContext.comments.length,
     runtimeCommentIds: videoContext.comments.map((comment, index) =>
@@ -1516,6 +1526,15 @@ export function buildWriterPrompt(input: {
   selectorOutput: SelectorOutput;
   examplesAssessment: Stage2ExamplesAssessment;
   userInstruction?: string | null;
+  recoveryContext?: {
+    reason: "critic_survivor_shortfall";
+    passNumber: number;
+    targetAdditionalSurvivors: number;
+    existingCandidateIds: string[];
+    survivingCandidateIds: string[];
+    blockedCandidateIds: string[];
+    blockedPatterns: string[];
+  } | null;
   promptConfig?: Stage2PromptConfig | null;
 }): string {
   const commentCarryProfile = buildCommentCarryProfile(input.analyzerOutput);
@@ -1524,6 +1543,7 @@ export function buildWriterPrompt(input: {
     analysisDigest: buildAnalysisDigest(input.analyzerOutput),
     commentCarryProfile,
     examplesAssessment: buildExamplesAssessmentPayload(input.examplesAssessment),
+    recoveryContext: input.recoveryContext ?? null,
     writerBriefDigest: buildWriterBriefDigest({
       analyzerOutput: input.analyzerOutput,
       selectorOutput: input.selectorOutput,

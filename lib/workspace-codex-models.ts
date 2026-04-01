@@ -10,7 +10,11 @@ const MULTIMODAL_FALLBACK_MODEL = "gpt-5.4";
 export type WorkspaceCodexModel = (typeof WORKSPACE_CODEX_MODEL_OPTIONS)[number]["value"];
 export type WorkspaceCodexModelSetting = WorkspaceCodexModel | "deploy_default";
 
-export const STAGE2_MULTIMODAL_MODEL_STAGE_IDS = ["analyzer", "styleDiscovery"] as const;
+export const STAGE2_MULTIMODAL_MODEL_STAGE_IDS = [
+  "analyzer",
+  "contextPacket",
+  "styleDiscovery"
+] as const;
 export const STAGE2_TEXT_ONLY_MODEL_STAGE_IDS = [
   "selector",
   "writer",
@@ -19,9 +23,20 @@ export const STAGE2_TEXT_ONLY_MODEL_STAGE_IDS = [
   "finalSelector",
   "titles",
   "seo",
+  "candidateGenerator",
+  "qualityCourt",
+  "targetedRepair",
+  "titleWriter",
   "regenerate"
 ] as const;
-export const STAGE2_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
+export const STAGE2_NATIVE_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
+  "contextPacket",
+  "candidateGenerator",
+  "qualityCourt",
+  "targetedRepair",
+  "titleWriter"
+] as const;
+export const STAGE2_LEGACY_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
   "analyzer",
   "selector",
   "writer",
@@ -30,8 +45,12 @@ export const STAGE2_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
   "finalSelector",
   "titles"
 ] as const;
+export const STAGE2_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
+  ...STAGE2_NATIVE_PIPELINE_EXECUTION_MODEL_STAGE_IDS,
+  ...STAGE2_LEGACY_PIPELINE_EXECUTION_MODEL_STAGE_IDS
+] as const;
 export const STAGE2_PROMPT_MODEL_STAGE_IDS = [
-  ...STAGE2_PIPELINE_EXECUTION_MODEL_STAGE_IDS,
+  ...STAGE2_NATIVE_PIPELINE_EXECUTION_MODEL_STAGE_IDS,
   "seo"
 ] as const;
 export const STAGE2_MODEL_STAGE_IDS = [
@@ -67,45 +86,75 @@ export type WorkspaceCodexModelStageField = {
 
 export const STAGE2_PROMPT_MODEL_STAGE_FIELDS: readonly WorkspaceCodexModelStageField[] = [
   {
+    id: "contextPacket",
+    label: "Context packet",
+    description: "Мультимодальный packet из кадров, title, transcript и comments.",
+    allowsImages: true
+  },
+  {
+    id: "candidateGenerator",
+    label: "Candidate generator",
+    description: "Текстовая генерация batch из 8 английских caption-кандидатов.",
+    allowsImages: false
+  },
+  {
+    id: "qualityCourt",
+    label: "Quality court",
+    description: "Строгий text-only judge, который режет слабые и synthetic варианты.",
+    allowsImages: false
+  },
+  {
+    id: "targetedRepair",
+    label: "Targeted repair",
+    description: "Текстовый repair только для near-miss кандидатов по briefs суда.",
+    allowsImages: false
+  },
+  {
+    id: "titleWriter",
+    label: "Title writer",
+    description: "Текстовая генерация 5 title options для финального winner.",
+    allowsImages: false
+  },
+  {
     id: "analyzer",
-    label: "Анализ видео",
-    description: "Мультимодальный разбор sampled frames, title, transcript и комментариев.",
+    label: "Legacy analyzer",
+    description: "Старый мультимодальный Stage 2 analyzer для legacy/vnext совместимости.",
     allowsImages: true
   },
   {
     id: "selector",
-    label: "Выбор угла",
-    description: "Текстовый селектор angle, clip type и релевантных examples.",
+    label: "Legacy selector",
+    description: "Старый text-only selector для legacy/vnext совместимости.",
     allowsImages: false
   },
   {
     id: "writer",
-    label: "Черновики",
-    description: "Текстовый writer, который пишет основной пул caption options.",
+    label: "Legacy writer",
+    description: "Старый text-only writer для legacy/vnext совместимости.",
     allowsImages: false
   },
   {
     id: "critic",
-    label: "Скоринг",
-    description: "Текстовый critic для оценки и отсечения слабых кандидатов.",
+    label: "Legacy critic",
+    description: "Старый text-only critic для legacy/vnext совместимости.",
     allowsImages: false
   },
   {
     id: "rewriter",
-    label: "Переписывание",
-    description: "Текстовый rewriter, который шлифует финалистов без потери ограничений.",
+    label: "Legacy rewriter",
+    description: "Старый text-only rewriter для legacy/vnext совместимости.",
     allowsImages: false
   },
   {
     id: "finalSelector",
-    label: "Шортлист",
-    description: "Текстовый финальный селектор shortlist и recommended pick.",
+    label: "Legacy final selector",
+    description: "Старый финальный селектор shortlist для legacy/vnext совместимости.",
     allowsImages: false
   },
   {
     id: "titles",
-    label: "Заголовки",
-    description: "Текстовая генерация title options для shortlist.",
+    label: "Legacy titles",
+    description: "Старый title writer для legacy/vnext совместимости.",
     allowsImages: false
   },
   {
@@ -142,6 +191,7 @@ export const STAGE3_MODEL_STAGE_FIELDS: readonly WorkspaceCodexModelStageField[]
 
 export const DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG: WorkspaceCodexModelConfig = {
   analyzer: "deploy_default",
+  contextPacket: "deploy_default",
   selector: "deploy_default",
   writer: "deploy_default",
   critic: "deploy_default",
@@ -149,6 +199,10 @@ export const DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG: WorkspaceCodexModelConfig = {
   finalSelector: "deploy_default",
   titles: "deploy_default",
   seo: "deploy_default",
+  candidateGenerator: "deploy_default",
+  qualityCourt: "deploy_default",
+  targetedRepair: "deploy_default",
+  titleWriter: "deploy_default",
   regenerate: "deploy_default",
   styleDiscovery: "deploy_default",
   stage3Planner: "deploy_default"
@@ -212,6 +266,31 @@ function readStageSettingCandidate(
 ): unknown {
   if (hasOwnKey(candidate, stageId)) {
     return candidate[stageId];
+  }
+  if (stageId === "contextPacket") {
+    if (hasOwnKey(candidate, "analyzer")) {
+      return candidate.analyzer;
+    }
+    if (hasOwnKey(candidate, "selector")) {
+      return candidate.selector;
+    }
+  }
+  if (stageId === "candidateGenerator" && hasOwnKey(candidate, "writer")) {
+    return candidate.writer;
+  }
+  if (stageId === "qualityCourt") {
+    if (hasOwnKey(candidate, "critic")) {
+      return candidate.critic;
+    }
+    if (hasOwnKey(candidate, "finalSelector")) {
+      return candidate.finalSelector;
+    }
+  }
+  if (stageId === "targetedRepair" && hasOwnKey(candidate, "rewriter")) {
+    return candidate.rewriter;
+  }
+  if (stageId === "titleWriter" && hasOwnKey(candidate, "titles")) {
+    return candidate.titles;
   }
   if (stageId === "seo") {
     if (hasOwnKey(candidate, "stage2Seo")) {

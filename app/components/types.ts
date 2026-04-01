@@ -66,6 +66,36 @@ export type Stage2Output = {
       issues: string[];
     };
   }>;
+  finalists?: Array<{
+    option: number;
+    candidateId: string;
+    angle: string;
+    hookFamily: string;
+    cueUsed: string;
+    top: string;
+    bottom: string;
+    constraintCheck: {
+      passed: boolean;
+      repaired: boolean;
+      topLength: number;
+      bottomLength: number;
+      issues: string[];
+    };
+    scores?: {
+      hookImmediacy: number;
+      nativeFluency: number;
+      visualDefensibility: number;
+      audienceAuthenticity: number;
+      humanWarmth: number;
+      bottomUsefulness: number;
+    };
+    whyItWorks?: string[];
+    translation?: {
+      topRu: string;
+      bottomRu: string;
+      translatedAt: string;
+    } | null;
+  }>;
   titleOptions: Array<{
     option: number;
     title: string;
@@ -74,6 +104,20 @@ export type Stage2Output = {
   finalPick: {
     option: number;
     reason: string;
+  };
+  winner?: {
+    candidateId: string;
+    option: number;
+    reason: string;
+    scores?: {
+      hookImmediacy: number;
+      nativeFluency: number;
+      visualDefensibility: number;
+      audienceAuthenticity: number;
+      humanWarmth: number;
+      bottomUsefulness: number;
+    };
+    needsRepair: boolean;
   };
   pipeline?: {
     channelId: string;
@@ -89,6 +133,86 @@ export type Stage2Output = {
     selectorOutput: unknown;
     availableExamplesCount: number;
     selectedExamplesCount: number;
+    contextPacket?: {
+      grounding: {
+        observedFacts: string[];
+        visibleActions: string[];
+        microTurn: string;
+        firstSecondsSignal: string;
+        uncertainties: string[];
+        forbiddenClaims: string[];
+        safeInferences: string[];
+      };
+      audience: {
+        consensusRead: string;
+        jokeLane: string;
+        dissentExists: boolean;
+        safeReusableCues: string[];
+        blockedCues: string[];
+        toxicOrLowValuePatterns: string[];
+      };
+      strategy: {
+        primaryAngle: string;
+        secondaryAngles: string[];
+        hookSeeds: string[];
+        bottomFunctions: string[];
+        mustDo: string[];
+        mustAvoid: string[];
+        qualityBar: string[];
+      };
+    };
+    nativeCaptionV3?: {
+      contextPacket: NonNullable<Stage2Output["pipeline"]>["contextPacket"];
+      candidateBatch: Array<{
+        candidateId: string;
+        angle: string;
+        hookFamily: string;
+        cueUsed: string;
+        top: string;
+        bottom: string;
+      }>;
+      qualityCourt: {
+        kept: Array<{
+          candidateId: string;
+          scores: NonNullable<Stage2Output["winner"]>["scores"];
+          whyItWorks: string[];
+        }>;
+        rejected: Array<{
+          candidateId: string;
+          hardFailReasons: string[];
+          offendingPhrases: string[];
+        }>;
+        winnerCandidateId: string | null;
+        winnerReason: string;
+        needsRepair: boolean;
+        repairBriefs: Array<{
+          candidateId: string;
+          fixOnly: string[];
+          preserve: string[];
+        }>;
+      };
+      repair: {
+        repairedCandidates: Array<{
+          candidateId: string;
+          top: string;
+          bottom: string;
+        }>;
+      } | null;
+      titleWriter: {
+        titleOptions: Array<{
+          option: number;
+          title: string;
+        }>;
+      };
+      translation: {
+        translatedAt: string;
+        items: Array<{
+          candidateId: string;
+          topRu: string;
+          bottomRu: string;
+        }>;
+      } | null;
+    };
       finalSelector?: {
         candidateOptionMap: Array<{
           option: number;

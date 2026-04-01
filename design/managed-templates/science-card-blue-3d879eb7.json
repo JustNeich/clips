@@ -1,8 +1,147 @@
 {
   "id": "science-card-blue-3d879eb7",
+  "workspaceId": null,
+  "creatorUserId": null,
+  "creatorDisplayName": null,
   "createdAt": "2026-03-29T11:17:06.552Z",
-  "updatedAt": "2026-03-29T14:14:40.137Z",
+  "updatedAt": "2026-04-01T11:42:55.646Z",
   "versions": [
+    {
+      "id": "b0239ed9",
+      "createdAt": "2026-04-01T11:42:55.646Z",
+      "label": "Версия 01.04, 14:42",
+      "snapshot": {
+        "name": "Science Card gl",
+        "description": "Синяя версия базового Science Card: более заметная рамка, но та же геометрия карточки и те же внутренние пропорции.",
+        "baseTemplateId": "science-card-v1",
+        "content": {
+          "topText": "Scientists found a way to splice two living plant stems, and the joined tissue starts acting like a single working system almost immediately.",
+          "bottomText": "You can watch the wound knit together, the fluids reroute, and the whole graft behave like the plant decided the surgery was always part of the plan.",
+          "channelName": "Science Snack",
+          "channelHandle": "@Science_Snack_1",
+          "topHighlightPhrases": [],
+          "topFontScale": 1.34,
+          "bottomFontScale": 1.03,
+          "previewScale": 0.4,
+          "mediaAsset": null,
+          "backgroundAsset": null,
+          "avatarAsset": null
+        },
+        "templateConfig": {
+          "frame": {
+            "width": 1080,
+            "height": 1920
+          },
+          "card": {
+            "x": 83,
+            "y": 192,
+            "width": 907,
+            "height": 1461,
+            "radius": 28,
+            "borderWidth": 24,
+            "borderColor": "#6b90e6",
+            "fill": "#c72323",
+            "shadow": "9px 18px 4px 8px rgba(0, 0, 0, 0.43)"
+          },
+          "slot": {
+            "topHeight": 419,
+            "bottomHeight": 292,
+            "topPaddingX": 0,
+            "topPaddingY": 15,
+            "topPaddingTop": 16,
+            "topPaddingBottom": 0,
+            "bottomMetaHeight": 132,
+            "bottomMetaPaddingX": 21,
+            "bottomMetaPaddingY": 0,
+            "bottomTextPaddingX": 23,
+            "bottomTextPaddingY": 0,
+            "bottomTextPaddingTop": 11,
+            "bottomTextPaddingBottom": 0,
+            "bottomTextPaddingLeft": 23,
+            "bottomTextPaddingRight": 46
+          },
+          "author": {
+            "name": "Science Snack",
+            "handle": "@Science_Snack_1",
+            "avatarSize": 98,
+            "avatarBorder": 0,
+            "checkSize": 72,
+            "gap": 8,
+            "copyGap": 0,
+            "nameCheckGap": 5,
+            "checkAssetPath": "/stage3-template-badges/pink-glow-badge.png"
+          },
+          "typography": {
+            "top": {
+              "min": 40,
+              "max": 56,
+              "softLimit": 220,
+              "penalty": 0.14,
+              "lineHeight": 0.938,
+              "maxLines": 7,
+              "maxChars": 420,
+              "horizontalSafety": 0.975,
+              "glyphFactor": 0.53,
+              "fillTargetMin": 0.9,
+              "fillTargetMax": 0.95,
+              "weight": 900,
+              "letterSpacing": "-0.04em",
+              "fontFamily": "\"Futura\",\"Avenir Next\",\"Century Gothic\",\"Montserrat\",sans-serif"
+            },
+            "bottom": {
+              "min": 24,
+              "max": 34,
+              "softLimit": 190,
+              "penalty": 0.16,
+              "lineHeight": 1.08,
+              "maxLines": 4,
+              "maxChars": 320,
+              "fillTargetMin": 0.8,
+              "fillTargetMax": 0.88,
+              "weight": 450,
+              "letterSpacing": "-0.01em",
+              "fontStyle": "normal",
+              "fontFamily": "\".SF NS Rounded\",\"SF Pro Rounded\",\"Helvetica Rounded\",\"Arial Rounded MT Bold\",\"Trebuchet MS\",sans-serif"
+            },
+            "authorName": {
+              "font": 40,
+              "lineHeight": 1,
+              "weight": 800,
+              "letterSpacing": "-0.03em"
+            },
+            "authorHandle": {
+              "font": 34,
+              "lineHeight": 1,
+              "weight": 900,
+              "letterSpacing": "-0.022em"
+            }
+          },
+          "palette": {
+            "cardFill": "#ffffff",
+            "topSectionFill": "#ffffff",
+            "bottomSectionFill": "#ffffff",
+            "topTextColor": "#000000",
+            "bottomTextColor": "#0b0d10",
+            "authorNameColor": "#000000",
+            "authorHandleColor": "#acacac",
+            "checkBadgeColor": "#e985d6",
+            "borderColor": "#2057d6"
+          }
+        },
+        "shadowLayers": [
+          {
+            "id": "shadow-054g7492",
+            "offsetX": 9,
+            "offsetY": 18,
+            "blur": 4,
+            "spread": 8,
+            "opacity": 0.43,
+            "color": "#000000",
+            "inset": false
+          }
+        ]
+      }
+    },
     {
       "id": "aea6b692",
       "createdAt": "2026-03-29T14:12:12.996Z",
@@ -953,7 +1092,7 @@
     "topHighlightPhrases": [],
     "topFontScale": 1.34,
     "bottomFontScale": 1.03,
-    "previewScale": 0.24,
+    "previewScale": 0.4,
     "mediaAsset": null,
     "backgroundAsset": null,
     "avatarAsset": null
@@ -1000,7 +1139,7 @@
       "gap": 8,
       "copyGap": 0,
       "nameCheckGap": 5,
-      "checkAssetPath": "/stage3-template-badges/science-card-v1-check.png"
+      "checkAssetPath": "/stage3-template-badges/pink-glow-badge.png"
     },
     "typography": {
       "top": {
@@ -1029,10 +1168,10 @@
         "maxChars": 320,
         "fillTargetMin": 0.8,
         "fillTargetMax": 0.88,
-        "weight": 500,
+        "weight": 450,
         "letterSpacing": "-0.01em",
-        "fontStyle": "italic",
-        "fontFamily": "\"SFMono-Regular\",\"Roboto Mono\",\"Menlo\",\"Monaco\",\"Courier New\",monospace"
+        "fontStyle": "normal",
+        "fontFamily": "\".SF NS Rounded\",\"SF Pro Rounded\",\"Helvetica Rounded\",\"Arial Rounded MT Bold\",\"Trebuchet MS\",sans-serif"
       },
       "authorName": {
         "font": 40,

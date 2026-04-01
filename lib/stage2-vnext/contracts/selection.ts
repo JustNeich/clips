@@ -1,4 +1,4 @@
-export interface PairwiseMatch {
+export interface RankedSelectionMatch {
   leftCandidateId: string;
   rightCandidateId: string;
   winnerCandidateId: string;
@@ -8,7 +8,7 @@ export interface PairwiseMatch {
 export interface FinalSelection {
   visibleCandidateIds: string[];
   winnerCandidateId: string;
-  pairwiseMatches: PairwiseMatch[];
+  rankingMatches: RankedSelectionMatch[];
   rationale: string;
 }
 

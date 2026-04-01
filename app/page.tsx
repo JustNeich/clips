@@ -70,6 +70,10 @@ import {
   type Stage2HardConstraints
 } from "../lib/stage2-channel-config";
 import {
+  DEFAULT_CHANNEL_PUBLISH_SETTINGS,
+  pickNextPublicationSlot
+} from "../lib/channel-publishing";
+import {
   DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
   normalizeWorkspaceCodexModelConfig,
   resolveWorkspaceCodexModelConfig,
@@ -181,6 +185,7 @@ import {
   normalizeStage3EditorPreviewNotice,
   normalizeStage3SourceFailureNotice
 } from "../lib/stage3-preview-notice";
+import { isChannelPublishIntegrationReady } from "../lib/channel-publish-state";
 import {
   applyStage3AuthoritativePreviewContent,
   resolveStage3SnapshotManagedTemplateState
@@ -203,6 +208,16 @@ const STAGE2_ELAPSED_TICK_HIDDEN_MS = 1_000;
 const STAGE2_POLL_RETRY_VISIBLE_MS = 1_500;
 const STAGE2_POLL_RETRY_HIDDEN_MS = 4_000;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
+
+function formatChannelPublicationMoment(iso: string, timeZone: string): string {
+  return new Date(iso).toLocaleString("ru-RU", {
+    timeZone,
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
 
 const Step1PasteLink = dynamic(
   () => import("./components/Step1PasteLink").then((mod) => mod.Step1PasteLink),
@@ -328,6 +343,7 @@ export default function HomePage() {
   const [selectedTitleOption, setSelectedTitleOption] = useState<number | null>(null);
   const [stage3TopText, setStage3TopText] = useState("");
   const [stage3BottomText, setStage3BottomText] = useState("");
+  const [stage3PublishAfterRender, setStage3PublishAfterRender] = useState(false);
   const [stage3ClipStartSec, setStage3ClipStartSec] = useState(0);
   const [stage3FocusY, setStage3FocusY] = useState(0.5);
   const [stage3RenderPlan, setStage3RenderPlan] = useState<Stage3RenderPlan>(fallbackRenderPlan());
@@ -416,6 +432,7 @@ export default function HomePage() {
   } | null>(null);
   const initializedStage3ChatRef = useRef<string | null>(null);
   const previousChannelIdRef = useRef<string | null>(null);
+  const previousPublishToggleChannelIdRef = useRef<string | null>(null);
   const stage3PreviewCacheRef = useRef<Map<string, { url: string; createdAt: number }>>(new Map());
   const stage3PreviewRequestKeyRef = useRef<string>("");
   const stage3PreviewRequestIdRef = useRef(0);
@@ -540,6 +557,51 @@ export default function HomePage() {
       (left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime()
     )[matches.length - 1] ?? null;
   }, [activeChat?.id, channelPublications]);
+  const isActiveChannelPublishingReady = isChannelPublishIntegrationReady(activeChannel?.publishIntegration);
+  const stage3PublishAfterRenderDisabledReason = !activeChannel
+    ? "Сначала выберите канал."
+    : !isActiveChannelPublishingReady
+      ? "Подключите YouTube и выберите канал назначения в Channel Manager → Publishing."
+      : null;
+  const stage3PlannedPublicationSchedule = useMemo(() => {
+    if (!activeChannel || !isActiveChannelPublishingReady) {
+      return null;
+    }
+
+    if (
+      activeChatPublication &&
+      (activeChatPublication.status === "queued" ||
+        activeChatPublication.status === "paused" ||
+        activeChatPublication.status === "failed")
+    ) {
+      return {
+        scheduledAt: activeChatPublication.scheduledAt,
+        reusingExisting: true
+      };
+    }
+
+    const slot = pickNextPublicationSlot({
+      settings: activeChannel.publishSettings ?? DEFAULT_CHANNEL_PUBLISH_SETTINGS,
+      existingPublications: channelPublications.filter(
+        (publication) => publication.status !== "published" && publication.status !== "canceled"
+      )
+    });
+
+    return {
+      scheduledAt: slot.scheduledAt,
+      reusingExisting: false
+    };
+  }, [activeChannel, activeChatPublication, channelPublications, isActiveChannelPublishingReady]);
+  const stage3PublishAfterRenderInfo = useMemo(() => {
+    if (!stage3PublishAfterRender || !stage3PlannedPublicationSchedule) {
+      return null;
+    }
+    const timeZone = activeChannel?.publishSettings?.timezone ?? DEFAULT_CHANNEL_PUBLISH_SETTINGS.timezone;
+    const formatted = formatChannelPublicationMoment(stage3PlannedPublicationSchedule.scheduledAt, timeZone);
+    return stage3PlannedPublicationSchedule.reusingExisting
+      ? `Обновим текущую queued-публикацию: ${formatted}.`
+      : `Запланируем публикацию на ${formatted}.`;
+  }, [activeChannel?.publishSettings?.timezone, stage3PlannedPublicationSchedule, stage3PublishAfterRender]);
   const canOperateActiveChannel = activeChannel?.currentUserCanOperate !== false;
   const stage3BackgroundUrl =
     activeChannelId && stage3RenderPlan.backgroundAssetId
@@ -1041,7 +1103,7 @@ export default function HomePage() {
     const nextAssets = body.assets ?? [];
     setChannelAssets(nextAssets);
     return nextAssets;
-  }, []);
+  }, [parseError]);
 
   const refreshWorkspaceMembers = useCallback(async (): Promise<void> => {
     if (!authState?.effectivePermissions.canManageMembers) {
@@ -2004,6 +2066,28 @@ export default function HomePage() {
   }, [activeChannel, channelAssets]);
 
   useEffect(() => {
+    if (!activeChannel) {
+      previousPublishToggleChannelIdRef.current = null;
+      setStage3PublishAfterRender(false);
+      return;
+    }
+    if (previousPublishToggleChannelIdRef.current === activeChannel.id) {
+      return;
+    }
+    previousPublishToggleChannelIdRef.current = activeChannel.id;
+    setStage3PublishAfterRender(
+      isChannelPublishIntegrationReady(activeChannel.publishIntegration) &&
+        (activeChannel.publishSettings?.autoQueueEnabled ?? DEFAULT_CHANNEL_PUBLISH_SETTINGS.autoQueueEnabled)
+    );
+  }, [activeChannel]);
+
+  useEffect(() => {
+    if (!isActiveChannelPublishingReady) {
+      setStage3PublishAfterRender(false);
+    }
+  }, [isActiveChannelPublishingReady]);
+
+  useEffect(() => {
     setStage3RenderPlan((prev) => {
       const nextAvatarMime = findAssetById(channelAssets, prev.avatarAssetId)?.mimeType ?? null;
       const nextBackgroundMime = findAssetById(channelAssets, prev.backgroundAssetId)?.mimeType ?? null;
@@ -2889,6 +2973,7 @@ export default function HomePage() {
         snapshot: renderSnapshot,
         renderTitle: selectedTitle?.title ?? null
       };
+      const shouldPublishAfterRender = stage3PublishAfterRender && isActiveChannelPublishingReady;
 
       await appendEvent(chat.id, {
         role: "user",
@@ -2906,6 +2991,7 @@ export default function HomePage() {
             sourceUrl: chat.url,
             channelId: activeChannelId,
             chatId: chat.id,
+            publishAfterRender: shouldPublishAfterRender,
             renderTitle: selectedTitle?.title ?? undefined,
             templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
             topText: renderSnapshot.topText,
@@ -3498,7 +3584,7 @@ export default function HomePage() {
       }
     }
     return null;
-  }, [activeChat]);
+  }, [activeChat, sourceJobDetail?.result?.commentsPayload]);
   const stage1FetchState = useMemo(() => {
     const eventState = extractStage1FetchState(activeChat);
     const sourceResult = sourceJobDetail?.result;
@@ -4909,7 +4995,7 @@ export default function HomePage() {
         liveAction: nextLiveAction
       };
     });
-  }, [activeChat?.id, activeLiveAction, chatList, isSourceJobVisibleRunning, isStage2RunVisibleRunning]);
+  }, [activeChat, activeLiveAction, chatList, isSourceJobVisibleRunning, isStage2RunVisibleRunning]);
 
   const handleHistoryOpen = useCallback(async (id: string, step?: 1 | 2 | 3): Promise<void> => {
     setStatus("");
@@ -4984,26 +5070,23 @@ export default function HomePage() {
     setStatusType("");
   };
 
-  const showNextChatShortcutToast = useCallback(
-    (chatId: string): void => {
-      const toastId = `next-chat-shortcut:${chatId}`;
-      showAppToast({
-        id: toastId,
-        tone: "neutral",
-        title: "Следующий ролик",
-        message: "Можно уже открыть новый чат для следующей ссылки.",
-        variant: "shortcut",
-        actionLabel: "Создать новый чат",
-        durationMs: 5000,
-        autoHideMs: 5000,
-        onAction: () => {
-          dismissAppToast(toastId);
-          handleCreateNextChatShortcut(chatId);
-        }
-      });
-    },
-    [dismissAppToast, showAppToast]
-  );
+  const showNextChatShortcutToast = (chatId: string): void => {
+    const toastId = `next-chat-shortcut:${chatId}`;
+    showAppToast({
+      id: toastId,
+      tone: "neutral",
+      title: "Следующий ролик",
+      message: "Можно уже открыть новый чат для следующей ссылки.",
+      variant: "shortcut",
+      actionLabel: "Создать новый чат",
+      durationMs: 5000,
+      autoHideMs: 5000,
+      onAction: () => {
+        dismissAppToast(toastId);
+        handleCreateNextChatShortcut(chatId);
+      }
+    });
+  };
 
   const handleCreateNextChatShortcut = (toastChatId?: string | null): void => {
     const resolvedToastChatId = toastChatId ?? activeChat?.id ?? null;
@@ -5066,7 +5149,7 @@ export default function HomePage() {
       setStatus("");
       setStatusType("");
     },
-    [activeChannelId, channels, channelAssets, applyChannelToRenderPlan, flushActiveDraftSave]
+    [activeChannelId, channels, applyChannelToRenderPlan, flushActiveDraftSave]
   );
 
   const handleDeleteHistory = useCallback(async (chatId: string): Promise<void> => {
@@ -6235,10 +6318,14 @@ export default function HomePage() {
           bottomFontScale={stage3RenderPlan.bottomFontScale}
           sourceAudioEnabled={stage3RenderPlan.sourceAudioEnabled}
           musicGain={stage3RenderPlan.musicGain}
-          publication={activeChatPublication}
+          publishAfterRender={stage3PublishAfterRender}
+          publishAfterRenderEnabled={isActiveChannelPublishingReady}
+          publishAfterRenderInfo={stage3PublishAfterRenderInfo}
+          publishAfterRenderDisabledReason={stage3PublishAfterRenderDisabledReason}
           renderState={stage3RenderState}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
+          onPublishAfterRenderChange={setStage3PublishAfterRender}
 	          onRender={(overrides, textFitOverride, managedTemplateStateOverride) => {
 	            void handleRenderVideo(overrides, textFitOverride, managedTemplateStateOverride);
 	          }}

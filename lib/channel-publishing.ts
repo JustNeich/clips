@@ -228,7 +228,53 @@ export function stringifyChannelPublicationTags(tags: string[]): string {
       .map((tag) => tag.trim())
       .filter(Boolean)
       .slice(0, 30)
-  );
+    );
+}
+
+const PUBLICATION_TAG_STOPWORDS = new Set([
+  "that",
+  "this",
+  "with",
+  "from",
+  "they",
+  "them",
+  "what",
+  "when",
+  "then",
+  "into",
+  "just",
+  "once",
+  "after",
+  "before",
+  "there",
+  "their",
+  "about",
+  "have",
+  "your"
+]);
+
+function buildFallbackPublicationTags(texts: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const text of texts) {
+    const words = String(text ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]+/g, " ")
+      .split(/\s+/)
+      .map((word) => word.trim())
+      .filter((word) => word.length >= 4 && !PUBLICATION_TAG_STOPWORDS.has(word));
+    for (const word of words) {
+      if (seen.has(word)) {
+        continue;
+      }
+      seen.add(word);
+      tags.push(word);
+      if (tags.length >= 12) {
+        return tags;
+      }
+    }
+  }
+  return tags;
 }
 
 export function parseChannelPublicationTagsJson(value: string | null | undefined): string[] {
@@ -398,17 +444,38 @@ export function buildChannelPublicationMetadata(input: {
   tags: string[];
   needsReview: boolean;
 } {
+  const selectedCaption =
+    input.stage2Result?.output.captionOptions.find(
+      (option) => option.option === input.stage2Result?.output.finalPick.option
+    ) ?? input.stage2Result?.output.captionOptions[0] ?? null;
   const title =
     input.renderTitle?.trim() ||
     input.stage2Result?.output.titleOptions[0]?.title?.trim() ||
     input.chatTitle?.trim() ||
     "Short video";
-  const description = input.stage2Result?.seo?.description?.trim() ?? "";
-  const tags = splitChannelPublicationTags(input.stage2Result?.seo?.tags ?? "");
+  const seoDescription = input.stage2Result?.seo?.description?.trim() ?? "";
+  const seoTags = splitChannelPublicationTags(input.stage2Result?.seo?.tags ?? "");
+  const description =
+    seoDescription ||
+    [
+      title,
+      selectedCaption?.top ? `TOP: ${selectedCaption.top}` : null,
+      selectedCaption?.bottom ? `BOTTOM: ${selectedCaption.bottom}` : null
+    ]
+      .filter(Boolean)
+      .join("\n");
+  const tags =
+    seoTags.length > 0
+      ? seoTags
+      : buildFallbackPublicationTags([title, selectedCaption?.top, selectedCaption?.bottom]);
   return {
     title,
     description,
     tags,
-    needsReview: description.length === 0 || tags.length === 0
+    needsReview:
+      !seoDescription ||
+      seoTags.length === 0 ||
+      description.length === 0 ||
+      tags.length === 0
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type DragEvent } from "react";
+import { isChannelPublishIntegrationReady } from "../../lib/channel-publish-state";
 import type {
   ChannelPublication,
   ChannelPublicationScheduleMode,
@@ -377,6 +378,11 @@ export function PublishingPlanner({
     () => buildPublicationDayGroups(publications, timeZone),
     [publications, timeZone]
   );
+  const isPublishingOffline =
+    !integration ||
+    integration.status === "disconnected" ||
+    integration.status === "pending_selection" ||
+    !isChannelPublishIntegrationReady(integration);
 
   const startEdit = (publication: ChannelPublication) => {
     const scheduledAtLocal = formatDateTimeLocalValue(publication.scheduledAt, timeZone);
@@ -1059,15 +1065,15 @@ export function PublishingPlanner({
         </div>
       </div>
 
-      {!integration || integration.status === "disconnected" ? (
+      {isPublishingOffline ? (
         <div className="publishing-empty-state">
-          <p>Сначала подключите YouTube в Channel Manager → Publishing.</p>
+          <p>Модуль публикации сейчас оффлайн. Подключите YouTube и выберите канал назначения в Channel Manager → Publishing.</p>
         </div>
       ) : null}
 
       {loading ? <p className="subtle-text">Загружаем очередь публикаций…</p> : null}
 
-      {!loading && dayGroups.length > 0 ? (
+      {!loading && !isPublishingOffline && dayGroups.length > 0 ? (
         <div className="publishing-day-list">
           {dayGroups.map((group) => {
             const itemsBySlot = new Map(
@@ -1127,11 +1133,10 @@ export function PublishingPlanner({
         </div>
       ) : null}
 
-      {!loading && publications.length === 0 ? (
+      {!loading && !isPublishingOffline && publications.length === 0 ? (
         <div className="publishing-empty-state">
           <p>
-            Пока нет queued видео. После первого успешного render они появятся здесь
-            автоматически.
+            Пока нет queued видео. После первого успешного render и активного YouTube-подключения они появятся здесь автоматически.
           </p>
         </div>
       ) : null}

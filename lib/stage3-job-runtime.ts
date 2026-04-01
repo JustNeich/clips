@@ -330,7 +330,9 @@ async function ensureRenderExportCompletionState(
     sourceUrl: payload.sourceUrl?.trim() || chat.url,
     snapshotJson: JSON.stringify(payload.snapshot ?? null),
     createdByUserId: initialJob.userId,
-    stage2Result: (stage2Result ?? null) as Stage2Response | null
+    stage2Result: (stage2Result ?? null) as Stage2Response | null,
+    publishAfterRender:
+      typeof payload.publishAfterRender === "boolean" ? payload.publishAfterRender : undefined
   });
 
   return {

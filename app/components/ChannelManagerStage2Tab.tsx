@@ -248,6 +248,11 @@ export function ChannelManagerStage2Tab({
   workspaceStage2PromptConfig,
   workspaceCodexModelConfig = DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
   resolvedWorkspaceCodexModelConfig = {
+    contextPacket: null,
+    candidateGenerator: null,
+    qualityCourt: null,
+    targetedRepair: null,
+    titleWriter: null,
     analyzer: null,
     selector: null,
     writer: null,

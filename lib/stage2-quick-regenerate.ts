@@ -475,6 +475,7 @@ function buildQuickDiagnostics(input: {
           title: input.baseResult.source.title,
           descriptionChars: 0,
           transcriptChars: 0,
+          speechGroundingStatus: "speech_uncertain",
           frameCount: input.baseResult.source.frameDescriptions?.length ?? 0,
           runtimeCommentCount:
             input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length,
@@ -544,6 +545,7 @@ function buildQuickDiagnostics(input: {
       title: input.baseResult.source.title,
       descriptionChars: 0,
       transcriptChars: 0,
+      speechGroundingStatus: "speech_uncertain",
       frameCount: input.baseResult.source.frameDescriptions?.length ?? 0,
       runtimeCommentCount:
         input.baseResult.source.commentsUsedForPrompt ?? input.baseResult.source.topComments.length,

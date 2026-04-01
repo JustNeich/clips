@@ -13,9 +13,9 @@ export const STAGE2_VNEXT_ALLOWED_STATE_TRANSITIONS: Record<
   packed_invalid: ["hard_rejected"],
   judged: ["hard_rejected", "survivor"],
   hard_rejected: [],
-  survivor: ["rewritten", "pairwise_ranked", "visible_shortlist"],
-  rewritten: ["pairwise_ranked", "visible_shortlist"],
-  pairwise_ranked: ["visible_shortlist", "winner"],
+  survivor: ["rewritten", "ranked_shortlist", "visible_shortlist"],
+  rewritten: ["ranked_shortlist", "visible_shortlist"],
+  ranked_shortlist: ["visible_shortlist", "winner"],
   visible_shortlist: ["winner"],
   winner: []
 };

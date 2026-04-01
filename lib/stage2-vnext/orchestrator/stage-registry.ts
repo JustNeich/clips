@@ -13,7 +13,7 @@ export const STAGE2_VNEXT_STAGE_REGISTRY: Array<{
   { id: "semantic_draft_generator", label: "Semantic draft generator", implementedInPhase: 4 },
   { id: "constraint_packer", label: "Constraint packer", implementedInPhase: 1 },
   { id: "quality_court", label: "Quality court", implementedInPhase: 5 },
-  { id: "pairwise_final_selector", label: "Pairwise final selector", implementedInPhase: 5 },
+  { id: "ranked_final_selector", label: "Ranked final selector", implementedInPhase: 5 },
   { id: "title_and_seo", label: "Title and SEO", implementedInPhase: 6 },
   { id: "feedback_capture", label: "Feedback capture", implementedInPhase: 6 }
 ];

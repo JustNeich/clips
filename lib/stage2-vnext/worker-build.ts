@@ -24,5 +24,8 @@ export function getStage2WorkerBuildInfo(
 }
 
 export function resolveStage2StageChainVersion(pipelineVersion: Stage2PipelineVersion): string {
-  return pipelineVersion === "vnext" ? "stage2-vnext-phase1-bridge" : "stage2-legacy-chain-v1";
+  if (pipelineVersion === "native_caption_v3") {
+    return "native-caption-v3";
+  }
+  return pipelineVersion === "vnext" ? "stage2-vnext" : "stage2-legacy-chain-v1";
 }

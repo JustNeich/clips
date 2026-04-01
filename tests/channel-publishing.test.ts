@@ -175,12 +175,86 @@ test("buildChannelPublicationMetadata falls back when SEO is missing", () => {
     })
   });
 
-  assert.deepEqual(metadata, {
-    title: "Stage2 fallback title",
-    description: "",
-    tags: [],
-    needsReview: true
+  assert.equal(metadata.title, "Stage2 fallback title");
+  assert.equal(
+    metadata.description,
+    "Stage2 fallback title"
+  );
+  assert.deepEqual(metadata.tags, ["stage2", "fallback", "title"]);
+  assert.equal(metadata.needsReview, true);
+});
+
+test("buildChannelPublicationMetadata derives publish-time metadata from the winner caption when SEO is absent", () => {
+  const metadata = buildChannelPublicationMetadata({
+    renderTitle: null,
+    chatTitle: "Fallback chat title",
+    stage2Result: makeStage2Result({
+      output: {
+        inputAnalysis: {
+          visualAnchors: [],
+          commentVibe: "",
+          keyPhraseToAdapt: ""
+        },
+        captionOptions: [
+          {
+            option: 1,
+            candidateId: "cand_1",
+            angle: "awkward_pause",
+            top: "That pause told the whole room what was happening.",
+            bottom: "Nobody needed the follow-up once that look landed."
+          }
+        ],
+        finalists: [
+          {
+            option: 1,
+            candidateId: "cand_1",
+            angle: "awkward_pause",
+            hookFamily: "social_read",
+            cueUsed: "that pause said enough",
+            top: "That pause told the whole room what was happening.",
+            bottom: "Nobody needed the follow-up once that look landed.",
+            constraintCheck: {
+              passed: true,
+              repaired: false,
+              topLength: 48,
+              bottomLength: 51,
+              issues: []
+            }
+          }
+        ],
+        titleOptions: [{ option: 1, title: "Stage2 fallback title" }],
+        finalPick: {
+          option: 1,
+          reason: "best"
+        },
+        winner: {
+          candidateId: "cand_1",
+          option: 1,
+          reason: "best",
+          needsRepair: false
+        }
+      },
+      seo: null
+    })
   });
+
+  assert.equal(
+    metadata.description,
+    [
+      "Stage2 fallback title",
+      "TOP: That pause told the whole room what was happening.",
+      "BOTTOM: Nobody needed the follow-up once that look landed."
+    ].join("\n")
+  );
+  assert.deepEqual(metadata.tags.slice(0, 6), [
+    "stage2",
+    "fallback",
+    "title",
+    "pause",
+    "told",
+    "whole"
+  ]);
+  assert.equal(metadata.needsReview, true);
 });
 
 test("normalizeChannelPublishSettings preserves notifySubscribersByDefault overrides", () => {

@@ -226,9 +226,9 @@ export function validateFinalSelectionSchema(value: unknown): Stage2VNextSchemaV
   );
   pushIssue(
     issues,
-    "pairwiseMatches",
-    Array.isArray(candidate.pairwiseMatches),
-    "pairwiseMatches must be an array."
+    "rankingMatches",
+    Array.isArray(candidate.rankingMatches),
+    "rankingMatches must be an array."
   );
   pushIssue(
     issues,

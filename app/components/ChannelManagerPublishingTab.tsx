@@ -197,8 +197,9 @@ export function ChannelManagerPublishingTab({
       <section className="details-section publishing-manager-section">
         <h3>Слоты публикации</h3>
         <p className="subtle-text">
-          После успешного render ролик автоматически попадёт в ближайший свободный слот. При необходимости
-          конкретную публикацию потом можно перевести на точную дату и время прямо в planner.
+          Автопостановка в publish queue включается только после подключения YouTube и выбора канала назначения.
+          После этого успешный render попадёт в ближайший свободный слот, а конкретную публикацию можно будет
+          перевести на точную дату и время прямо в planner.
         </p>
         <div className="compact-grid publishing-manager-grid">
           <label className="field-stack">
@@ -295,7 +296,7 @@ export function ChannelManagerPublishingTab({
                 }))
               }
             />
-            <span>Автоматически ставить новые рендеры в очередь</span>
+            <span>По умолчанию включать чекбокс «Опубликовать» для новых рендеров</span>
           </label>
         </div>
 

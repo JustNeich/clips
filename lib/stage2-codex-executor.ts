@@ -40,7 +40,7 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
     deployStage2SeoModel: process.env.CODEX_STAGE2_DESCRIPTION_MODEL,
     deployStage3Model: process.env.CODEX_STAGE3_MODEL
   });
-  const model = resolvedCodexModelConfig.analyzer;
+  const model = resolvedCodexModelConfig.contextPacket ?? resolvedCodexModelConfig.analyzer;
   const pipelineModelSummary = summarizeResolvedStage2ModelUsage({
     resolvedConfig: resolvedCodexModelConfig,
     stageIds: STAGE2_PROMPT_MODEL_STAGE_IDS

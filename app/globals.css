@@ -3489,6 +3489,21 @@ select.text-input:focus {
   flex-wrap: wrap;
 }
 
+.stage3-render-action-bar {
+  align-items: center;
+}
+
+.stage3-render-publish-group {
+  margin-inline-end: auto;
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 320px);
+}
+
+.stage3-render-publish-info {
+  margin: 0;
+}
+
 .preview-shell-stage3 {
   position: relative;
   height: 100%;
@@ -7115,6 +7130,10 @@ select.text-input:focus {
 
   .sticky-action-bar .btn {
     flex: 1 1 100%;
+  }
+
+  .stage3-render-publish-group {
+    min-width: 100%;
   }
 
   .history-trigger {

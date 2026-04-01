@@ -10,7 +10,11 @@
 - Stage 2 пайплайн генерации контента через LLM (Codex auth):
   - скачивание видео + комментариев;
   - анализ кадров видео + комментариев;
-  - генерация 5 вариантов caption + 5 title + final pick через multi-stage viral worker pipeline.
+  - `native_caption_v3` hot path:
+    - `contextPacket -> candidateGenerator -> qualityCourt -> targetedRepair? -> titleWriter`;
+    - 1-3 finalists + winner-first titles;
+    - без hot-path SEO и без hot-path RU перевода;
+    - отдельный optional action для перевода finalists после завершения run.
 - Channel onboarding теперь проходит через guided wizard:
   - basic setup;
   - Stage 2 baseline settings;
@@ -100,7 +104,7 @@ npm run dev
   - если комментарии недоступны, продолжает пайплайн с доступными видео-метаданными;
   - извлекает адаптивно сэмплированный набор кадров из видео, а не фиксированные 3 stills;
   - ставит durable background run в очередь и продолжает его независимо от открытой вкладки;
-  - использует pipeline `analyzer -> selector -> writer -> critic -> rewriter -> final selector -> titles`;
+  - использует pipeline `contextPacket -> candidateGenerator -> qualityCourt -> targetedRepair? -> titleWriter`;
   - использует один effective examples corpus на run: либо `workspace default corpus`, либо `channel custom corpus`;
   - использует channel learning layer:
     - bootstrap style profile из onboarding;
@@ -122,16 +126,20 @@ npm run dev
     - per-stage prompt manifests live in `stage2.stageManifests`;
     - resolved worker mode / build / feature-flag truth lives in `stage2.execution`;
     - final outcome truth lives in `stage2.outcome`;
-    - canonical vNext audit sections live in `stage2.vnext`;
+    - native caption sections live in `stage2.nativeCaptionV3`;
+    - legacy / historical vNext audit sections remain in `stage2.vnext`;
     - export truncation is reported explicitly instead of being silently hidden;
+  - worker rollout is fail-closed:
+    - Stage 2 run aborts if `native_caption_v3` metadata is missing for new runs;
+    - historical `vnext` payloads stay readable in trace/export and UI;
   - `data/examples.json` используется только один раз как seed для нового workspace, а не как live runtime source;
   - вызывает `codex exec` по stage-этапам с авторизацией пользователя через кнопку `Connect Codex` (device auth);
   - отдает live progress snapshot по шагам pipeline (`GET /api/pipeline/stage2?runId=...`);
   - возвращает структурированный JSON:
-    - `inputAnalysis`
-    - `captionOptions` (5)
-    - `titleOptions` (5)
-    - `finalPick`
+    - `finalists` (1-3)
+    - `winner`
+    - `titleOptions` (5 for the winner)
+    - compatibility mirrors `captionOptions/finalPick` for downstream consumers
     - `progress`
 
 ### Stage 2 runtime state
@@ -273,6 +281,11 @@ Primary Stage 2 control surface:
 - это поле по умолчанию заполняется workspace default corpus, но может быть полностью заменено локальной версией для канала;
 - `selector` является реальным LLM stage и сам выбирает angle и релевантные examples из доступного corpus;
 - UI во время генерации показывает активный pipeline step в реальном времени.
+
+Publishing / YouTube queue:
+- planner публикации остаётся offline, пока для канала не подключён YouTube OAuth и не выбран целевой YouTube-канал;
+- успешный render сохраняет `render export`, но не создаёт queued-публикацию, если publishing integration ещё не готова.
+- в Step 3 рядом с render доступен чекбокс `Опубликовать`: только при включённом флаге render ставится в publish queue, а UI заранее показывает ожидаемое время публикации.
 
 Подробная документация по текущей Stage 2 архитектуре:
 - [docs/stage2-runtime.md](/Users/neich/dev/clips automations/docs/stage2-runtime.md)
