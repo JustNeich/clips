@@ -763,6 +763,7 @@ export async function resolveManagedTemplate(
     if (direct) {
       return direct;
     }
+    return null;
   }
 
   const templates = await listManagedTemplates();
@@ -938,6 +939,7 @@ export function resolveManagedTemplateSync(
     if (direct) {
       return direct;
     }
+    return null;
   }
 
   ensureManagedTemplatesRootSync();

@@ -270,7 +270,8 @@ function computeViewportBox(
     topText: snapshot.topText,
     bottomText: snapshot.bottomText,
     topFontScale: snapshot.renderPlan.topFontScale,
-    bottomFontScale: snapshot.renderPlan.bottomFontScale
+    bottomFontScale: snapshot.renderPlan.bottomFontScale,
+    templateConfigOverride: snapshot.managedTemplateState?.templateConfig
   });
 
   const slotAspect = computed.videoWidth / Math.max(1, computed.videoHeight);

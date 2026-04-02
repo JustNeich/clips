@@ -18,6 +18,7 @@ import {
   Stage3PreviewState,
   Stage3RenderPolicy,
   Stage3RenderState,
+  Stage3SnapshotManagedTemplateState,
   Stage3ScaleKeyframe,
   Stage3Segment,
   STAGE3_SEGMENT_SPEED_OPTIONS,
@@ -82,24 +83,24 @@ import {
   normalizeStage3SegmentZoomOverride,
   resolveStage3SegmentTransformState
 } from "../../lib/stage3-segment-transforms";
+import {
+  hasResolvedStage3ManagedTemplateState,
+  toSnapshotManagedTemplateState
+} from "../../lib/stage3-snapshot-managed-template";
 import type { ManagedTemplate } from "../../lib/managed-template-types";
 import type {
   Stage2ToStage3HandoffSummary,
   Stage3CaptionApplyMode
 } from "../../lib/stage2-stage3-handoff";
 
-export type Step3ManagedTemplateState = {
-  managedId: string;
+export type Step3ManagedTemplateState = Stage3SnapshotManagedTemplateState & {
   name: string;
-  baseTemplateId: string;
-  templateConfig: Stage3TemplateConfig;
-  updatedAt: string | null;
 };
 
 export type Step3AuthoritativePreviewSnapshot = {
   templateSnapshot: TemplateRenderSnapshot;
   textFit: Stage3TextFitSnapshot;
-  managedTemplateState: Step3ManagedTemplateState | null;
+  managedTemplateState: Stage3SnapshotManagedTemplateState | null;
 };
 
 type Step3RenderTemplateProps = {
@@ -223,8 +224,8 @@ type WorkerInstallLink = {
 type PendingTextFitAction = {
   kind: "render" | "optimize";
   overrides: Stage3EditorDraftOverrides;
-  snapshotHash: string;
-  fitHash: string;
+  snapshotHash: string | null;
+  fitHash: string | null;
 };
 
 type Stage3SurfaceMode = "finish" | "editor";
@@ -2279,10 +2280,12 @@ export function Step3RenderTemplate({
     }
     return toTextFitSnapshot(previewTemplateSnapshot.computed, previewTemplateSnapshot);
   }, [previewFitHash, previewMeasuredFitState, previewTemplateSnapshot]);
-  const isPreviewTextFitReady =
+  const isPreviewTextFitMeasured =
     previewMeasuredFitState?.snapshotHash === previewTemplateSnapshot.snapshotHash &&
     previewMeasuredFitState.fitHash === previewFitHash &&
     previewMeasuredFitState.measured;
+  const isManagedTemplateReady = hasResolvedStage3ManagedTemplateState(managedTemplateState, templateId);
+  const isPreviewTextFitReady = isPreviewTextFitMeasured && isManagedTemplateReady;
 
   const maxStartSec = Math.max(0, (fragmentSourceDurationSec ?? clipDurationSec) - clipDurationSec);
   const clipEndSec = localClipStartSec + clipDurationSec;
@@ -2651,8 +2654,10 @@ export function Step3RenderTemplate({
       return;
     }
     if (
-      pendingTextFitAction.snapshotHash !== previewTemplateSnapshot.snapshotHash ||
-      pendingTextFitAction.fitHash !== previewFitHash
+      pendingTextFitAction.snapshotHash &&
+      pendingTextFitAction.fitHash &&
+      (pendingTextFitAction.snapshotHash !== previewTemplateSnapshot.snapshotHash ||
+        pendingTextFitAction.fitHash !== previewFitHash)
     ) {
       setPendingTextFitAction(null);
       return;
@@ -2665,7 +2670,7 @@ export function Step3RenderTemplate({
       const authoritativePreviewSnapshot: Step3AuthoritativePreviewSnapshot = {
         templateSnapshot: previewTemplateSnapshot,
         textFit: activePreviewTextFit,
-        managedTemplateState
+        managedTemplateState: toSnapshotManagedTemplateState(managedTemplateState, templateId)
       };
       if (pendingTextFitAction.kind === "optimize") {
         onOptimize(pendingTextFitAction.overrides, activePreviewTextFit, authoritativePreviewSnapshot);
@@ -2686,7 +2691,8 @@ export function Step3RenderTemplate({
     onRender,
     pendingTextFitAction,
     previewFitHash,
-    previewTemplateSnapshot
+    previewTemplateSnapshot,
+    templateId
   ]);
 
   useEffect(() => {
@@ -4181,8 +4187,8 @@ export function Step3RenderTemplate({
     const request: PendingTextFitAction = {
       kind,
       overrides,
-      snapshotHash: previewTemplateSnapshot.snapshotHash,
-      fitHash: previewFitHash
+      snapshotHash: isManagedTemplateReady ? previewTemplateSnapshot.snapshotHash : null,
+      fitHash: isManagedTemplateReady ? previewFitHash : null
     };
 
     if (isPreviewTextFitReady) {
@@ -4190,7 +4196,7 @@ export function Step3RenderTemplate({
         const authoritativePreviewSnapshot: Step3AuthoritativePreviewSnapshot = {
           templateSnapshot: previewTemplateSnapshot,
           textFit: activePreviewTextFit,
-          managedTemplateState
+          managedTemplateState: toSnapshotManagedTemplateState(managedTemplateState, templateId)
         };
         if (kind === "optimize") {
           onOptimize(overrides, activePreviewTextFit, authoritativePreviewSnapshot);
@@ -4201,6 +4207,9 @@ export function Step3RenderTemplate({
       return;
     }
 
+    if (!isManagedTemplateReady) {
+      void loadManagedTemplate();
+    }
     setPendingTextFitAction(request);
   };
 

@@ -190,7 +190,8 @@ export async function tryCreateStage3PreviewResponse(
 
 function normalizeRenderPlan(
   rawPlan: Partial<Stage3RenderPlan> | undefined,
-  sourceDurationSec: number | null
+  sourceDurationSec: number | null,
+  managedTemplateState?: Stage3StateSnapshot["managedTemplateState"]
 ): Stage3RenderPlan {
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
@@ -198,7 +199,7 @@ function normalizeRenderPlan(
     typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
       ? rawPlan.templateId.trim()
       : STAGE3_TEMPLATE_ID;
-  const template = resolveManagedTemplateRuntimeSync(templateId).templateConfig;
+  const template = resolveManagedTemplateRuntimeSync(templateId, managedTemplateState).templateConfig;
   const videoZoom =
     typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
@@ -347,8 +348,11 @@ export async function buildStage3PreviewDedupeKey(
   const sourceUrl = resolveSourceUrl(body.sourceUrl);
   const snapshot = body.snapshot;
   const clipStartSec = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
-  const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, null);
-  const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(renderPlan.templateId);
+  const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, null, snapshot?.managedTemplateState);
+  const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(
+    renderPlan.templateId,
+    snapshot?.managedTemplateState
+  );
   const previewKey = buildPreviewCacheKey({
     sourceKey: hashKey(sourceUrl),
     clipStartSec,
@@ -384,8 +388,11 @@ export async function prepareStage3Preview(
   const clipStartCandidate = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
   const clipStartSec = clampClipStart(clipStartCandidate, source.sourceDurationSec, clipDurationSec);
   const rawPlan = snapshot?.renderPlan ?? body.renderPlan;
-  const renderPlan = normalizeRenderPlan(rawPlan, source.sourceDurationSec);
-  const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(renderPlan.templateId);
+  const renderPlan = normalizeRenderPlan(rawPlan, source.sourceDurationSec, snapshot?.managedTemplateState);
+  const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(
+    renderPlan.templateId,
+    snapshot?.managedTemplateState
+  );
   const assetTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-assets-"));
   let musicFilePath: string | null = null;
   try {

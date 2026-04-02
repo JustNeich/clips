@@ -3,9 +3,15 @@ import test from "node:test";
 
 import type { Stage3RenderPlan } from "../app/components/types";
 import { SCIENCE_CARD, SCIENCE_CARD_V7 } from "../lib/stage3-template";
+import { resolveManagedTemplateRuntimeSync } from "../lib/managed-template-runtime";
+import {
+  createManagedTemplate,
+  deleteManagedTemplate
+} from "../lib/managed-template-store";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import {
   applyStage3AuthoritativePreviewContent,
+  hasResolvedStage3ManagedTemplateState,
   resolveStage3SnapshotManagedTemplateState
 } from "../lib/stage3-snapshot-managed-template";
 
@@ -154,4 +160,70 @@ test("authoritative preview content preserves preview snapshot hash", () => {
   });
 
   assert.equal(rebuiltSnapshot.snapshotHash, authoritativePreview.snapshotHash);
+});
+
+test("snapshot-backed managed template runtime wins without reading the local store", () => {
+  const runtime = resolveManagedTemplateRuntimeSync("managed-template-1", {
+    managedId: "managed-template-1",
+    baseTemplateId: "science-card-v7",
+    templateConfig: SCIENCE_CARD_V7,
+    updatedAt: "2026-04-02T10:00:00.000Z"
+  });
+
+  assert.equal(runtime.managedTemplateId, "managed-template-1");
+  assert.equal(runtime.baseTemplateId, "science-card-v7");
+  assert.equal(runtime.updatedAt, "2026-04-02T10:00:00.000Z");
+  assert.deepEqual(runtime.templateConfig, SCIENCE_CARD_V7);
+});
+
+test("custom managed template state is not considered resolved until it has a revision", () => {
+  assert.equal(
+    hasResolvedStage3ManagedTemplateState(
+      {
+        managedId: "managed-template-1",
+        updatedAt: null
+      },
+      "managed-template-1"
+    ),
+    false
+  );
+});
+
+test("missing requested managed template falls back to built-in default instead of another saved template", async () => {
+  const created = await createManagedTemplate(
+    {
+      name: "Unrelated template",
+      description: "Should not be auto-selected for another template id.",
+      baseTemplateId: "science-card-v7",
+      content: {
+        topText: "Top",
+        bottomText: "Bottom",
+        channelName: "Runtime",
+        channelHandle: "@runtime",
+        topHighlightPhrases: [],
+        topFontScale: 1,
+        bottomFontScale: 1,
+        previewScale: 0.34,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      },
+      templateConfig: SCIENCE_CARD_V7,
+      shadowLayers: []
+    },
+    {
+      workspaceId: "workspace-test",
+      creatorUserId: "user-test",
+      creatorDisplayName: "Runtime Test"
+    }
+  );
+
+  try {
+    const runtime = resolveManagedTemplateRuntimeSync("missing-template-id");
+    assert.equal(runtime.managedTemplateId, "science-card-v1");
+    assert.equal(runtime.baseTemplateId, "science-card-v1");
+    assert.notEqual(runtime.managedTemplateId, created.id);
+  } finally {
+    await deleteManagedTemplate(created.id);
+  }
 });

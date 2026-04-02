@@ -4,6 +4,7 @@ import type {
   ResolvedWorkspaceCodexModelConfig,
   WorkspaceCodexModelConfig
 } from "../../lib/workspace-codex-models";
+import type { Stage3TemplateConfig } from "../../lib/stage3-template";
 import type {
   ChannelEditorialFeedbackEvent,
   Stage2ExplorationMode,
@@ -750,6 +751,13 @@ export type Stage3RenderPlan = {
   prompt: string;
 };
 
+export type Stage3SnapshotManagedTemplateState = {
+  managedId: string;
+  baseTemplateId: string;
+  templateConfig: Stage3TemplateConfig;
+  updatedAt: string | null;
+};
+
 export type Stage3StateSnapshot = {
   topText: string;
   bottomText: string;
@@ -758,6 +766,7 @@ export type Stage3StateSnapshot = {
   focusY: number;
   renderPlan: Stage3RenderPlan;
   sourceDurationSec: number | null;
+  managedTemplateState?: Stage3SnapshotManagedTemplateState | null;
   templateSnapshot?: {
     templateId: string;
     specRevision: string;

@@ -545,9 +545,10 @@ function normalizeRenderPlan(
   rawPlan: Partial<Stage3RenderPlan> | undefined,
   sourceDurationSec: number | null,
   fallbackTemplateId: string,
-  agentPrompt: string | undefined
+  agentPrompt: string | undefined,
+  managedTemplateState?: Stage3StateSnapshot["managedTemplateState"]
 ): Stage3RenderPlan {
-  const template = resolveManagedTemplateRuntimeSync(fallbackTemplateId).templateConfig;
+  const template = resolveManagedTemplateRuntimeSync(fallbackTemplateId, managedTemplateState).templateConfig;
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
   const videoZoom =
@@ -735,8 +736,17 @@ export async function renderStage3Video(
         : typeof body.renderPlan?.templateId === "string" && body.renderPlan.templateId.trim()
           ? body.renderPlan.templateId.trim()
           : body.templateId?.trim() || STAGE3_TEMPLATE_ID;
-    const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, sourceDurationSec, templateIdFromInput, body.agentPrompt);
-    const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(renderPlan.templateId);
+    const renderPlan = normalizeRenderPlan(
+      snapshot?.renderPlan ?? body.renderPlan,
+      sourceDurationSec,
+      templateIdFromInput,
+      body.agentPrompt,
+      snapshot?.managedTemplateState
+    );
+    const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(
+      renderPlan.templateId,
+      snapshot?.managedTemplateState
+    );
     const templateSnapshotContent = {
       topText: snapshot?.topText ?? body.topText ?? "",
       bottomText: snapshot?.bottomText ?? body.bottomText ?? "",

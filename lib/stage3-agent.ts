@@ -831,7 +831,8 @@ function computeTextFit(
   templateId: string,
   topText: string,
   bottomText: string,
-  renderPlan: Stage3RenderPlan
+  renderPlan: Stage3RenderPlan,
+  managedTemplateState?: Stage3StateSnapshot["managedTemplateState"]
 ): Stage3StateSnapshot["textFit"] & {
   topText: string;
   bottomText: string;
@@ -841,7 +842,8 @@ function computeTextFit(
     topText,
     bottomText,
     topFontScale: renderPlan.topFontScale,
-    bottomFontScale: renderPlan.bottomFontScale
+    bottomFontScale: renderPlan.bottomFontScale,
+    templateConfigOverride: managedTemplateState?.templateConfig
   });
   return {
     topText: computed.top,
@@ -865,13 +867,15 @@ export function createSnapshot(input: {
   focusY: number;
   sourceDurationSec: number | null;
   renderPlan: Stage3RenderPlan;
+  managedTemplateState?: Stage3StateSnapshot["managedTemplateState"];
 }): Stage3StateSnapshot {
   const normalizedPlan = normalizePlan(input.renderPlan, input.sourceDurationSec);
   const fit = computeTextFit(
     normalizedPlan.templateId || "science-card-v1",
     input.topText,
     input.bottomText,
-    normalizedPlan
+    normalizedPlan,
+    input.managedTemplateState
   );
   return {
     topText: fit.topText,
@@ -881,6 +885,7 @@ export function createSnapshot(input: {
     focusY: clamp(input.focusY, 0.12, 0.88),
     sourceDurationSec: input.sourceDurationSec,
     renderPlan: normalizedPlan,
+    managedTemplateState: input.managedTemplateState ?? null,
     textFit: {
       topFontPx: fit.topFontPx,
       bottomFontPx: fit.bottomFontPx,
@@ -1036,9 +1041,13 @@ export function evaluateScore(snapshot: Stage3StateSnapshot, context: Stage3Eval
     topText: snapshot.topText,
     bottomText: snapshot.bottomText,
     topFontScale: snapshot.renderPlan.topFontScale,
-    bottomFontScale: snapshot.renderPlan.bottomFontScale
+    bottomFontScale: snapshot.renderPlan.bottomFontScale,
+    templateConfigOverride: snapshot.managedTemplateState?.templateConfig
   });
-  const typography = resolveManagedTemplateRuntimeSync(snapshot.renderPlan.templateId).templateConfig.typography;
+  const typography = resolveManagedTemplateRuntimeSync(
+    snapshot.renderPlan.templateId,
+    snapshot.managedTemplateState
+  ).templateConfig.typography;
   if (snapshot.textFit.topCompacted) {
     textReadability += 7;
   }
@@ -1362,7 +1371,8 @@ export function applyOperations(
     clipDurationSec: snapshot.clipDurationSec,
     focusY: nextFocus,
     sourceDurationSec,
-    renderPlan: nextPlan
+    renderPlan: nextPlan,
+    managedTemplateState: snapshot.managedTemplateState
   });
   return { next, changes };
 }
@@ -1385,10 +1395,12 @@ export function inferHeuristicOperations(input: {
     topText: input.snapshot.topText,
     bottomText: input.snapshot.bottomText,
     topFontScale: input.snapshot.renderPlan.topFontScale,
-    bottomFontScale: input.snapshot.renderPlan.bottomFontScale
+    bottomFontScale: input.snapshot.renderPlan.bottomFontScale,
+    templateConfigOverride: input.snapshot.managedTemplateState?.templateConfig
   });
   const typography = resolveManagedTemplateRuntimeSync(
-    input.snapshot.renderPlan.templateId
+    input.snapshot.renderPlan.templateId,
+    input.snapshot.managedTemplateState
   ).templateConfig.typography;
   const topFillRatio = clamp(
     (computed.topLines * computed.topFont * computed.topLineHeight) /
@@ -1596,7 +1608,8 @@ export async function optimizeStage3Version(
     renderPlan: {
       ...baselinePlan,
       prompt
-    }
+    },
+    managedTemplateState: input.currentSnapshot?.managedTemplateState ?? null
   });
 
   const context: EvaluationContext = {
@@ -1781,7 +1794,8 @@ export async function buildStage3Version(input: BuildStage3VersionInput): Promis
       ? Number(input.currentSnapshot?.focusY)
       : input.manualFocusY,
     sourceDurationSec: input.sourceDurationSec,
-    renderPlan: normalizePlan(input.currentSnapshot?.renderPlan, input.sourceDurationSec)
+    renderPlan: normalizePlan(input.currentSnapshot?.renderPlan, input.sourceDurationSec),
+    managedTemplateState: input.currentSnapshot?.managedTemplateState ?? null
   });
 
   return {

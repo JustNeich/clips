@@ -3,6 +3,7 @@ import { STAGE3_TEMPLATE_ID, getTemplateById, getScienceCardComputed } from "./s
 import type { TemplateContentFixture } from "./template-calibration-types";
 import type { ManagedTemplate, ManagedTemplateShadowLayer } from "./managed-template-types";
 import { assertServerRuntime } from "./server-runtime-guard";
+import type { Stage3SnapshotManagedTemplateState } from "../app/components/types";
 import {
   resolveManagedTemplate,
   resolveManagedTemplateSync
@@ -109,15 +110,56 @@ function toResolvedRuntime(template: ManagedTemplate | null): ResolvedManagedTem
   };
 }
 
+function toResolvedRuntimeFromSnapshot(
+  snapshotState: Stage3SnapshotManagedTemplateState
+): ResolvedManagedTemplateRuntime {
+  const templateConfig = cloneTemplateConfig(snapshotState.templateConfig);
+  const updatedAt = snapshotState.updatedAt ?? new Date().toISOString();
+  return {
+    managedTemplateId: snapshotState.managedId,
+    name: snapshotState.managedId,
+    description: "",
+    baseTemplateId: snapshotState.baseTemplateId,
+    content: {
+      topText: "",
+      bottomText: "",
+      channelName: templateConfig.author.name,
+      channelHandle: templateConfig.author.handle,
+      topHighlightPhrases: [],
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 0.34,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfig,
+    shadowLayers: [],
+    versions: [],
+    updatedAt,
+    createdAt: updatedAt
+  };
+}
+
 export async function resolveManagedTemplateRuntime(
-  templateId: string | null | undefined
+  templateId: string | null | undefined,
+  snapshotState?: Stage3SnapshotManagedTemplateState | null
 ): Promise<ResolvedManagedTemplateRuntime> {
+  const candidate = typeof templateId === "string" ? templateId.trim() : "";
+  if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
+    return toResolvedRuntimeFromSnapshot(snapshotState);
+  }
   return toResolvedRuntime(await resolveManagedTemplate(templateId));
 }
 
 export function resolveManagedTemplateRuntimeSync(
-  templateId: string | null | undefined
+  templateId: string | null | undefined,
+  snapshotState?: Stage3SnapshotManagedTemplateState | null
 ): ResolvedManagedTemplateRuntime {
+  const candidate = typeof templateId === "string" ? templateId.trim() : "";
+  if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
+    return toResolvedRuntimeFromSnapshot(snapshotState);
+  }
   return toResolvedRuntime(resolveManagedTemplateSync(templateId));
 }
 
@@ -127,8 +169,8 @@ export function computeManagedTemplateTextFit(input: {
   bottomText: string;
   topFontScale?: number;
   bottomFontScale?: number;
+  templateConfigOverride?: Stage3TemplateConfig;
 }) {
-  const runtime = resolveManagedTemplateRuntimeSync(input.templateId);
   return getScienceCardComputed(
     input.topText,
     input.bottomText,
@@ -136,6 +178,6 @@ export function computeManagedTemplateTextFit(input: {
       topFontScale: input.topFontScale,
       bottomFontScale: input.bottomFontScale
     },
-    runtime.templateConfig
+    input.templateConfigOverride ?? resolveManagedTemplateRuntimeSync(input.templateId).templateConfig
   );
 }

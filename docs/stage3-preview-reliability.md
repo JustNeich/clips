@@ -38,3 +38,15 @@
 - Step 3 должен получать runtime-состояние шаблона, который реально назначен видимому каналу, даже если библиотека шаблонов в редакторе ограничена personal scope.
 - При временной ошибке повторной загрузки UI больше не должен затирать уже загруженный managed template built-in fallback'ом.
 - Иначе preview строится по одной конфигурации, а final render по другой, что и приводит к `Template snapshot drift detected`.
+
+## 7. Render и preview обязаны использовать snapshot-backed managed template runtime
+
+- Если Step 3 уже собрал authoritative preview для custom template, его `baseTemplateId`, `templateConfig` и `updatedAt` должны ехать дальше в `snapshot`.
+- Host render, accurate preview, viewport/crop расчёты и optimization agent не должны повторно угадывать тот же template через локальный `design/managed-templates/*.json`.
+- Это особенно важно для production/local worker, где нужный managed template может отсутствовать на диске.
+
+## 8. Missing custom template не должен подменяться другим сохранённым template
+
+- Если запрошенный managed template id не найден, runtime не имеет права молча брать “последний обновлённый” чужой template.
+- Без этого missing-id на worker превращается не в понятный fallback, а в произвольный layout, и drift становится непредсказуемым.
+- Безопасный fallback здесь только built-in template или snapshot-backed runtime, если он был передан из preview.

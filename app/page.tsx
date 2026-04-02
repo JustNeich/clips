@@ -188,7 +188,8 @@ import {
 import { isChannelPublishIntegrationReady } from "../lib/channel-publish-state";
 import {
   applyStage3AuthoritativePreviewContent,
-  resolveStage3SnapshotManagedTemplateState
+  resolveStage3SnapshotManagedTemplateState,
+  toSnapshotManagedTemplateState
 } from "../lib/stage3-snapshot-managed-template";
 import { resolveStage3WorkerRefreshIntervalMs } from "../lib/stage3-worker-polling";
 
@@ -2243,14 +2244,18 @@ export default function HomePage() {
         pageState: stage3ManagedTemplateState,
         previewState: authoritativeManagedTemplateState
       });
+      const snapshotManagedTemplateState = toSnapshotManagedTemplateState(
+        activeManagedTemplateState,
+        effectiveRenderPlan.templateId
+      );
       const templateSnapshot =
         authoritativeTemplateSnapshot ??
         buildTemplateRenderSnapshot({
           templateId:
-            activeManagedTemplateState?.baseTemplateId ??
+            snapshotManagedTemplateState?.baseTemplateId ??
             effectiveRenderPlan.templateId ??
             STAGE3_TEMPLATE_ID,
-          templateConfigOverride: activeManagedTemplateState?.templateConfig,
+          templateConfigOverride: snapshotManagedTemplateState?.templateConfig,
           content: {
             topText: stage3TopText,
             bottomText: stage3BottomText,
@@ -2281,6 +2286,7 @@ export default function HomePage() {
         focusY: snapshotFocusY,
         renderPlan: effectiveRenderPlan,
         sourceDurationSec,
+        managedTemplateState: snapshotManagedTemplateState,
         templateSnapshot: {
           templateId: templateSnapshot.templateId,
           specRevision: templateSnapshot.specRevision,

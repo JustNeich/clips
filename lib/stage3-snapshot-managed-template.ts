@@ -1,17 +1,57 @@
-import type { Stage3RenderPlan } from "../app/components/types";
-import type { Stage3TemplateConfig } from "./stage3-template";
+import type {
+  Stage3RenderPlan,
+  Stage3SnapshotManagedTemplateState
+} from "../app/components/types";
 import type { TemplateRenderSnapshot } from "./stage3-template-core";
-
-export type Stage3SnapshotManagedTemplateState = {
-  managedId: string;
-  baseTemplateId: string;
-  templateConfig: Stage3TemplateConfig;
-  updatedAt: string | null;
-};
+import { getTemplateRegistryEntry } from "./stage3-template-registry";
 
 export type Stage3SnapshotAuthoritativePreview = {
   templateSnapshot: TemplateRenderSnapshot | null;
 };
+
+export function isBuiltInStage3TemplateId(templateId: string | null | undefined): boolean {
+  const candidate = templateId?.trim();
+  if (!candidate) {
+    return false;
+  }
+  return getTemplateRegistryEntry(candidate).variant.id === candidate;
+}
+
+export function hasResolvedStage3ManagedTemplateState(
+  state: Pick<Stage3SnapshotManagedTemplateState, "managedId" | "updatedAt"> | null | undefined,
+  templateId: string | null | undefined
+): boolean {
+  const candidate = templateId?.trim();
+  if (!candidate) {
+    return false;
+  }
+  if (isBuiltInStage3TemplateId(candidate)) {
+    return true;
+  }
+  return state?.managedId === candidate && typeof state.updatedAt === "string" && state.updatedAt.length > 0;
+}
+
+export function toSnapshotManagedTemplateState(
+  state: Stage3SnapshotManagedTemplateState | null | undefined,
+  templateId: string | null | undefined
+): Stage3SnapshotManagedTemplateState | null {
+  const candidate = templateId?.trim();
+  if (!candidate) {
+    return null;
+  }
+  if (state?.managedId !== candidate) {
+    return null;
+  }
+  if (!state.updatedAt?.trim()) {
+    return null;
+  }
+  return {
+    managedId: state.managedId,
+    baseTemplateId: state.baseTemplateId,
+    templateConfig: state.templateConfig,
+    updatedAt: state.updatedAt
+  };
+}
 
 export function resolveStage3SnapshotManagedTemplateState(params: {
   templateId: string;
