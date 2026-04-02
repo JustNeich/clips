@@ -364,6 +364,16 @@ export type Stage2DiagnosticsPromptStage = {
   stageType: "llm_prompt";
   defaultPrompt: string;
   configuredPrompt: string;
+  promptSource?: "default" | "workspace_override" | "channel_override";
+  promptCompatibilityFamily?: string | null;
+  promptCompatibilityVersion?: string | null;
+  defaultPromptHash?: string | null;
+  configuredPromptHash?: string | null;
+  overrideAccepted?: boolean;
+  overrideRejectedReason?: string | null;
+  overrideCandidatePresent?: boolean;
+  overrideCandidatePromptHash?: string | null;
+  legacyFallbackBypassed?: boolean;
   model?: string | null;
   reasoningEffort: string | null;
   isCustomPrompt: boolean;
@@ -557,10 +567,23 @@ export type Stage2Diagnostics = {
   nativeCaptionV3?: {
     contextPacket: NativeCaptionContextPacket;
     candidateBatch: NativeCaptionCandidate[];
+    hardValidator: NativeCaptionHardValidatorResult;
     qualityCourt: NativeCaptionQualityCourt;
     repair: NativeCaptionRepairResult | null;
+    templateBackfill: {
+      backfilledCandidates: NativeCaptionTemplateBackfillCandidate[];
+    } | null;
+    guardSummary: NativeCaptionGuardSummary;
+    displayOptions: ViralShortsStage2Result["captionOptions"];
     titleWriter: {
       titleOptions: NativeCaptionTitleOption[];
+      translationCoverage: {
+        requestedCount: number;
+        translatedCount: number;
+        fallbackCount: number;
+        fallbackOptions: number[];
+        retriedOptions: number[];
+      };
     };
     translation: NativeCaptionTranslationArtifact | null;
   };
@@ -759,86 +782,133 @@ export type Stage2RunDebugArtifact = {
 export type NativeCaptionContextPacket = {
   grounding: {
     observedFacts: string[];
-    visibleActions: string[];
+    visibleSequence: string[];
     microTurn: string;
     firstSecondsSignal: string;
     uncertainties: string[];
     forbiddenClaims: string[];
     safeInferences: string[];
   };
-  audience: {
-    consensusRead: string;
+  audienceWave: {
+    exists: boolean;
+    emotionalTemperature: string;
+    dominantHarmlessHandle: string | null;
+    consensusLane: string;
     jokeLane: string;
-    dissentExists: boolean;
+    dissentLane: string;
     safeReusableCues: string[];
     blockedCues: string[];
-    toxicOrLowValuePatterns: string[];
+    flatteningRisks: string[];
+    mustNotLose: string[];
   };
   strategy: {
     primaryAngle: string;
     secondaryAngles: string[];
     hookSeeds: string[];
     bottomFunctions: string[];
+    requiredLanes: Array<{
+      laneId: string;
+      count: number;
+      purpose: string;
+    }>;
     mustDo: string[];
     mustAvoid: string[];
-    qualityBar: string[];
   };
 };
 
 export type NativeCaptionCandidate = {
   candidateId: string;
+  laneId: string;
   angle: string;
-  hookFamily: string;
-  cueUsed: string;
   top: string;
   bottom: string;
+  retainedHandle: boolean;
+  displayIntent: "finalist_or_display_safe" | "recovery" | "template_backfill";
 };
 
-export type NativeCaptionQualityCourtKept = {
-  candidateId: string;
-  scores: {
-    hookImmediacy: number;
-    nativeFluency: number;
-    visualDefensibility: number;
-    audienceAuthenticity: number;
-    humanWarmth: number;
-    bottomUsefulness: number;
-  };
-  whyItWorks: string[];
+export type NativeCaptionHardValidatorResult = {
+  validPool: string[];
+  invalidPool: Array<{
+    candidateId: string;
+    hardIssues: string[];
+  }>;
 };
 
-export type NativeCaptionQualityCourtRejected = {
+export type NativeCaptionQualityCourtFinalist = {
   candidateId: string;
-  hardFailReasons: string[];
+  whyChosen: string[];
+  preservedHandle: boolean;
+};
+
+export type NativeCaptionDisplaySafeExtra = {
+  candidateId: string;
+  whyDisplaySafe: string[];
+};
+
+export type NativeCaptionHardRejected = {
+  candidateId: string;
+  reasons: string[];
   offendingPhrases: string[];
 };
 
 export type NativeCaptionRepairBrief = {
-  candidateId: string;
-  fixOnly: string[];
-  preserve: string[];
+  laneId: string;
+  goal: string;
+  mustKeep: string[];
+  mustAvoid: string[];
 };
 
 export type NativeCaptionQualityCourt = {
-  kept: NativeCaptionQualityCourtKept[];
-  rejected: NativeCaptionQualityCourtRejected[];
+  finalists: NativeCaptionQualityCourtFinalist[];
+  displaySafeExtras: NativeCaptionDisplaySafeExtra[];
+  hardRejected: NativeCaptionHardRejected[];
   winnerCandidateId: string | null;
-  winnerReason: string;
-  needsRepair: boolean;
-  repairBriefs: NativeCaptionRepairBrief[];
+  recoveryPlan: {
+    required: boolean;
+    missingCount: number;
+    briefs: NativeCaptionRepairBrief[];
+  };
 };
 
 export type NativeCaptionRepairResult = {
-  repairedCandidates: Array<{
-    candidateId: string;
-    top: string;
-    bottom: string;
-  }>;
+  recoveredCandidates: Array<NativeCaptionCandidate & { displayIntent: "recovery" }>;
+};
+
+export type NativeCaptionTemplateBackfillCandidate = NativeCaptionCandidate & {
+  displayIntent: "template_backfill";
+  templateFamily:
+    | "handle_first"
+    | "contrast_first"
+    | "reaction_first"
+    | "plain_observed"
+    | "uncertainty_safe";
+};
+
+export type NativeCaptionGuardSummary = {
+  totalCandidateCount: number;
+  validPoolCount: number;
+  invalidPoolCount: number;
+  finalistCount: number;
+  displaySafeExtraCount: number;
+  recoveryCount: number;
+  templateBackfillCount: number;
+  displayShortlistCount: number;
+  winnerCandidateId: string | null;
+  winnerTier: "finalist" | "recovery" | "template_backfill" | "missing";
+  winnerValidity: "valid" | "invalid" | "missing";
+  degradedSuccess: boolean;
+  dominantHarmlessHandle: string | null;
+  audienceHandlePreservedInFinalists: boolean;
+  recoveryTriggered: boolean;
+  recoveryReason: string | null;
+  failClosedReason: string | null;
 };
 
 export type NativeCaptionTitleOption = {
   option: number;
   title: string;
+  titleRu?: string;
+  titleRuSource?: "llm" | "fallback";
 };
 
 export type NativeCaptionTranslationArtifact = {
@@ -847,17 +917,29 @@ export type NativeCaptionTranslationArtifact = {
     candidateId: string;
     topRu: string;
     bottomRu: string;
+    source: "llm" | "fallback";
   }>;
+  coverage: {
+    requestedCount: number;
+    translatedCount: number;
+    fallbackCount: number;
+    fallbackCandidateIds: string[];
+    retriedCandidateIds: string[];
+  };
 };
 
 export type NativeCaptionFinalist = {
   option: number;
   candidateId: string;
+  laneId: string;
   angle: string;
-  hookFamily: string;
-  cueUsed: string;
   top: string;
   bottom: string;
+  displayTier: "finalist";
+  sourceStage: "qualityCourt";
+  displayReason: string;
+  retainedHandle: boolean;
+  preservedHandle: boolean;
   constraintCheck: {
     passed: boolean;
     repaired: boolean;
@@ -865,8 +947,7 @@ export type NativeCaptionFinalist = {
     bottomLength: number;
     issues: string[];
   };
-  scores?: NativeCaptionQualityCourtKept["scores"];
-  whyItWorks?: string[];
+  whyChosen?: string[];
   translation?: {
     topRu: string;
     bottomRu: string;
@@ -878,8 +959,9 @@ export type NativeCaptionWinner = {
   candidateId: string;
   option: number;
   reason: string;
-  scores?: NativeCaptionQualityCourtKept["scores"];
-  needsRepair: boolean;
+  displayTier: "finalist" | "recovery" | "template_backfill";
+  sourceStage: "qualityCourt" | "targetedRepair" | "templateBackfill";
+  constraintCheck?: NativeCaptionFinalist["constraintCheck"];
 };
 
 export type Stage2PipelineExecution = {
@@ -889,6 +971,8 @@ export type Stage2PipelineExecution = {
   workerBuild: Stage2VNextWorkerBuild;
   resolvedAt: string;
   legacyFallbackReason: string | null;
+  promptPolicyVersion?: string;
+  selectorOutputAuthority?: "authoritative" | "derived_non_authoritative";
 };
 
 export type ViralShortsStage2Result = {
@@ -900,9 +984,14 @@ export type ViralShortsStage2Result = {
   captionOptions: Array<{
     option: number;
     candidateId: string;
+    laneId?: string;
     angle: string;
     top: string;
     bottom: string;
+    displayTier: "finalist" | "display_safe_extra" | "recovery" | "template_backfill";
+    sourceStage: "qualityCourt" | "targetedRepair" | "templateBackfill";
+    displayReason: string;
+    retainedHandle?: boolean;
     topRu?: string;
     bottomRu?: string;
     constraintCheck: {
@@ -938,10 +1027,23 @@ export type ViralShortsStage2Result = {
     nativeCaptionV3?: {
       contextPacket: NativeCaptionContextPacket;
       candidateBatch: NativeCaptionCandidate[];
+      hardValidator: NativeCaptionHardValidatorResult;
       qualityCourt: NativeCaptionQualityCourt;
       repair: NativeCaptionRepairResult | null;
+      templateBackfill: {
+        backfilledCandidates: NativeCaptionTemplateBackfillCandidate[];
+      } | null;
+      guardSummary: NativeCaptionGuardSummary;
+      displayOptions: ViralShortsStage2Result["captionOptions"];
       titleWriter: {
         titleOptions: NativeCaptionTitleOption[];
+        translationCoverage: {
+          requestedCount: number;
+          translatedCount: number;
+          fallbackCount: number;
+          fallbackOptions: number[];
+          retriedOptions: number[];
+        };
       };
       translation: NativeCaptionTranslationArtifact | null;
     };

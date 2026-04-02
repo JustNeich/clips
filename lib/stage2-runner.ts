@@ -99,13 +99,6 @@ export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stag
           "Stage 2 rollout failed: pipelineVersion resolved to native_caption_v3 but stage2.nativeCaptionV3 is missing."
       };
     }
-    if (!Array.isArray(output.finalists) || output.finalists.length === 0) {
-      return {
-        ok: false,
-        message:
-          "Stage 2 rollout failed: native_caption_v3 output did not return any finalists."
-      };
-    }
     if (!output.winner) {
       return {
         ok: false,
@@ -113,11 +106,87 @@ export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stag
           "Stage 2 rollout failed: native_caption_v3 output is missing the winner payload."
       };
     }
+    if (!pipeline.nativeCaptionV3.guardSummary) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 output is missing guardSummary diagnostics."
+      };
+    }
+    if (!Array.isArray(output.captionOptions) || output.captionOptions.length !== 5) {
+      return {
+        ok: false,
+        message:
+          `Stage 2 rollout failed: native_caption_v3 expected 5 display options, received ${output.captionOptions?.length ?? 0}.`
+      };
+    }
+    if (
+      output.captionOptions.some(
+        (option) => !option.topRu?.trim() || !option.bottomRu?.trim()
+      )
+    ) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 expected bilingual display options with topRu/bottomRu."
+      };
+    }
+    if (output.captionOptions.some((option) => option.constraintCheck?.passed === false)) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 returned an invalid display option after runtime gating."
+      };
+    }
+    if (output.winner.constraintCheck?.passed === false) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 returned an invalid winner after runtime gating."
+      };
+    }
+    if (pipeline.nativeCaptionV3.guardSummary.winnerValidity !== "valid") {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 guardSummary reports a non-valid winner."
+      };
+    }
     if (!Array.isArray(output.titleOptions) || output.titleOptions.length !== 5) {
       return {
         ok: false,
         message:
           `Stage 2 rollout failed: native_caption_v3 expected 5 title options, received ${output.titleOptions?.length ?? 0}.`
+      };
+    }
+    if (output.titleOptions.some((option) => !option.titleRu?.trim())) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 expected bilingual title options with titleRu."
+      };
+    }
+    if (pipeline.nativeCaptionV3.guardSummary.displayShortlistCount !== 5) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: native_caption_v3 guardSummary does not report a 5-option display shortlist."
+      };
+    }
+    const winnerDisplayOption = output.captionOptions.find((option) => option.option === output.finalPick.option);
+    if (!winnerDisplayOption || winnerDisplayOption.candidateId !== output.winner.candidateId) {
+      return {
+        ok: false,
+        message:
+          "Stage 2 rollout failed: finalPick.option does not resolve to the native winner inside captionOptions."
+      };
+    }
+    const expectedDegradedSuccess = output.winner.displayTier !== "finalist";
+    if (pipeline.nativeCaptionV3.guardSummary.degradedSuccess !== expectedDegradedSuccess) {
+      return {
+        ok: false,
+        message:
+          `Stage 2 rollout failed: native_caption_v3 degradedSuccess=${pipeline.nativeCaptionV3.guardSummary.degradedSuccess} but winner.displayTier=${output.winner.displayTier}.`
       };
     }
     return { ok: true };
@@ -523,6 +592,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
           qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
           targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
+          captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation,
           titleWriter: executorContext.resolvedCodexModelConfig.titleWriter
         },
         promptConfig: workspaceStage2PromptConfig,
@@ -568,14 +638,16 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
         name: "Native Caption Pipeline v3",
         outputSections: [
           "contextPacket",
-          "finalists(1-3)",
+          "captionOptions(5 bilingual display options)",
+          "finalists(0-3)",
           "winner",
-          "titleOptions(5 winner-only)",
+          "titleOptions(5 bilingual winner-only)",
           "diagnostics(nativeCaptionV3,prompts)",
           "progress(stage snapshots)"
         ],
         hardConstraints: channel.stage2HardConstraints,
-        enforcedVia: "Context packet + candidate batch + quality court + targeted repair + title writer"
+        enforcedVia:
+          "Context packet + candidate batch + quality court + targeted repair + caption translation + title writer"
       }),
       stage2Worker: {
         runId: run.runId,
@@ -604,8 +676,8 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       measurePersistedPayloadBytes(baseResponse)
     );
     markStage2RunStageCompleted(run.runId, "assemble", {
-      detail: `Native caption rerun saved ${pipelineResult.output.finalists?.length ?? 0} finalists and ${pipelineResult.output.titleOptions.length} winner titles.`
-    });
+        detail: `Native caption rerun saved ${pipelineResult.output.finalists?.length ?? 0} finalists and ${pipelineResult.output.titleOptions.length} winner titles.`
+      });
 
     return {
       ...baseResponse,
@@ -747,6 +819,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
         qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
         targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
+        captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation,
         titleWriter: executorContext.resolvedCodexModelConfig.titleWriter
       },
       promptConfig: workspaceStage2PromptConfig,
@@ -824,14 +897,16 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         name: "Native Caption Pipeline v3",
         outputSections: [
           "contextPacket",
-          "finalists(1-3)",
+          "captionOptions(5 bilingual display options)",
+          "finalists(0-3)",
           "winner",
-          "titleOptions(5 winner-only)",
+          "titleOptions(5 bilingual winner-only)",
           "diagnostics(nativeCaptionV3,prompts)",
           "progress(stage snapshots)"
         ],
         hardConstraints: channel.stage2HardConstraints,
-        enforcedVia: "Context packet + candidate batch + quality court + targeted repair + title writer"
+        enforcedVia:
+          "Context packet + candidate batch + quality court + targeted repair + caption translation + title writer"
       }),
       output: parsedOutput,
       seo: null,

@@ -51,9 +51,14 @@ export type Stage2Output = {
   captionOptions: Array<{
     option: number;
     candidateId?: string;
+    laneId?: string;
     angle?: string;
     top: string;
     bottom: string;
+    displayTier?: "finalist" | "display_safe_extra" | "recovery" | "template_backfill";
+    sourceStage?: "qualityCourt" | "targetedRepair" | "templateBackfill";
+    displayReason?: string;
+    retainedHandle?: boolean;
     topRu?: string;
     bottomRu?: string;
     styleDirectionIds?: string[];
@@ -69,11 +74,15 @@ export type Stage2Output = {
   finalists?: Array<{
     option: number;
     candidateId: string;
+    laneId: string;
     angle: string;
-    hookFamily: string;
-    cueUsed: string;
     top: string;
     bottom: string;
+    displayTier: "finalist";
+    sourceStage: "qualityCourt";
+    displayReason: string;
+    retainedHandle: boolean;
+    preservedHandle: boolean;
     constraintCheck: {
       passed: boolean;
       repaired: boolean;
@@ -81,15 +90,7 @@ export type Stage2Output = {
       bottomLength: number;
       issues: string[];
     };
-    scores?: {
-      hookImmediacy: number;
-      nativeFluency: number;
-      visualDefensibility: number;
-      audienceAuthenticity: number;
-      humanWarmth: number;
-      bottomUsefulness: number;
-    };
-    whyItWorks?: string[];
+    whyChosen?: string[];
     translation?: {
       topRu: string;
       bottomRu: string;
@@ -109,15 +110,15 @@ export type Stage2Output = {
     candidateId: string;
     option: number;
     reason: string;
-    scores?: {
-      hookImmediacy: number;
-      nativeFluency: number;
-      visualDefensibility: number;
-      audienceAuthenticity: number;
-      humanWarmth: number;
-      bottomUsefulness: number;
+    displayTier: "finalist" | "recovery" | "template_backfill";
+    sourceStage: "qualityCourt" | "targetedRepair" | "templateBackfill";
+    constraintCheck?: {
+      passed: boolean;
+      repaired: boolean;
+      topLength: number;
+      bottomLength: number;
+      issues: string[];
     };
-    needsRepair: boolean;
   };
   pipeline?: {
     channelId: string;
@@ -129,6 +130,8 @@ export type Stage2Output = {
       workerBuild: Stage2VNextWorkerBuild;
       resolvedAt: string;
       legacyFallbackReason: string | null;
+      promptPolicyVersion?: string;
+      selectorOutputAuthority?: "authoritative" | "derived_non_authoritative";
     };
     selectorOutput: unknown;
     availableExamplesCount: number;
@@ -136,73 +139,146 @@ export type Stage2Output = {
     contextPacket?: {
       grounding: {
         observedFacts: string[];
-        visibleActions: string[];
+        visibleSequence: string[];
         microTurn: string;
         firstSecondsSignal: string;
         uncertainties: string[];
         forbiddenClaims: string[];
         safeInferences: string[];
       };
-      audience: {
-        consensusRead: string;
+      audienceWave: {
+        exists: boolean;
+        emotionalTemperature: string;
+        dominantHarmlessHandle: string | null;
+        consensusLane: string;
         jokeLane: string;
-        dissentExists: boolean;
+        dissentLane: string;
         safeReusableCues: string[];
         blockedCues: string[];
-        toxicOrLowValuePatterns: string[];
+        flatteningRisks: string[];
+        mustNotLose: string[];
       };
       strategy: {
         primaryAngle: string;
         secondaryAngles: string[];
         hookSeeds: string[];
         bottomFunctions: string[];
+        requiredLanes: Array<{
+          laneId: string;
+          count: number;
+          purpose: string;
+        }>;
         mustDo: string[];
         mustAvoid: string[];
-        qualityBar: string[];
       };
     };
     nativeCaptionV3?: {
       contextPacket: NonNullable<Stage2Output["pipeline"]>["contextPacket"];
       candidateBatch: Array<{
         candidateId: string;
+        laneId: string;
         angle: string;
-        hookFamily: string;
-        cueUsed: string;
         top: string;
         bottom: string;
+        retainedHandle: boolean;
+        displayIntent: "finalist_or_display_safe" | "recovery" | "template_backfill";
       }>;
-      qualityCourt: {
-        kept: Array<{
+      hardValidator: {
+        validPool: string[];
+        invalidPool: Array<{
           candidateId: string;
-          scores: NonNullable<Stage2Output["winner"]>["scores"];
-          whyItWorks: string[];
+          hardIssues: string[];
         }>;
-        rejected: Array<{
+      };
+      qualityCourt: {
+        finalists: Array<{
           candidateId: string;
-          hardFailReasons: string[];
+          whyChosen: string[];
+          preservedHandle: boolean;
+        }>;
+        displaySafeExtras: Array<{
+          candidateId: string;
+          whyDisplaySafe: string[];
+        }>;
+        hardRejected: Array<{
+          candidateId: string;
+          reasons: string[];
           offendingPhrases: string[];
         }>;
         winnerCandidateId: string | null;
-        winnerReason: string;
-        needsRepair: boolean;
-        repairBriefs: Array<{
-          candidateId: string;
-          fixOnly: string[];
-          preserve: string[];
-        }>;
+        recoveryPlan: {
+          required: boolean;
+          missingCount: number;
+          briefs: Array<{
+            laneId: string;
+            goal: string;
+            mustKeep: string[];
+            mustAvoid: string[];
+          }>;
+        };
       };
       repair: {
-        repairedCandidates: Array<{
+        recoveredCandidates: Array<{
           candidateId: string;
+          laneId: string;
+          angle: string;
           top: string;
           bottom: string;
+          retainedHandle: boolean;
+          displayIntent: "recovery";
         }>;
       } | null;
+      templateBackfill: {
+        backfilledCandidates: Array<{
+          candidateId: string;
+          laneId: string;
+          angle: string;
+          top: string;
+          bottom: string;
+          retainedHandle: boolean;
+          displayIntent: "template_backfill";
+          templateFamily:
+            | "handle_first"
+            | "contrast_first"
+            | "reaction_first"
+            | "plain_observed"
+            | "uncertainty_safe";
+        }>;
+      } | null;
+      guardSummary: {
+        totalCandidateCount: number;
+        validPoolCount: number;
+        invalidPoolCount: number;
+        finalistCount: number;
+        displaySafeExtraCount: number;
+        recoveryCount: number;
+        templateBackfillCount: number;
+        displayShortlistCount: number;
+        winnerCandidateId: string | null;
+        winnerTier: "finalist" | "recovery" | "template_backfill" | "missing";
+        winnerValidity: "valid" | "invalid" | "missing";
+        degradedSuccess: boolean;
+        dominantHarmlessHandle: string | null;
+        audienceHandlePreservedInFinalists: boolean;
+        recoveryTriggered: boolean;
+        recoveryReason: string | null;
+        failClosedReason: string | null;
+      };
+      displayOptions: Stage2Output["captionOptions"];
       titleWriter: {
         titleOptions: Array<{
           option: number;
           title: string;
+          titleRu?: string;
+          titleRuSource?: "llm" | "fallback";
         }>;
+        translationCoverage: {
+          requestedCount: number;
+          translatedCount: number;
+          fallbackCount: number;
+          fallbackOptions: number[];
+          retriedOptions: number[];
+        };
       };
       translation: {
         translatedAt: string;
@@ -210,13 +286,21 @@ export type Stage2Output = {
           candidateId: string;
           topRu: string;
           bottomRu: string;
+          source: "llm" | "fallback";
         }>;
+        coverage: {
+          requestedCount: number;
+          translatedCount: number;
+          fallbackCount: number;
+          fallbackCandidateIds: string[];
+          retriedCandidateIds: string[];
+        };
       } | null;
     };
-      finalSelector?: {
-        candidateOptionMap: Array<{
-          option: number;
-          candidateId: string;
+    finalSelector?: {
+      candidateOptionMap: Array<{
+        option: number;
+        candidateId: string;
       }>;
       shortlistCandidateIds: string[];
       finalPickCandidateId: string;
@@ -231,19 +315,19 @@ export type Stage2Output = {
         repairedCount: number;
         droppedAfterValidationCount: number;
         topSignalSummary?: unknown;
-        };
-      };
-      vnext?: {
-        phase: 1;
-        exampleRouting: ExampleRoutingDecision;
-        criticGate: Stage2VNextCriticGate;
-        canonicalCounters: Stage2VNextCanonicalCounters;
-        candidateLineage: CandidateLineageRecord[];
-        trace: Stage2VNextTraceV3;
-        validation: Stage2VNextTraceValidationResult;
       };
     };
+    vnext?: {
+      phase: 1;
+      exampleRouting: ExampleRoutingDecision;
+      criticGate: Stage2VNextCriticGate;
+      canonicalCounters: Stage2VNextCanonicalCounters;
+      candidateLineage: CandidateLineageRecord[];
+      trace: Stage2VNextTraceV3;
+      validation: Stage2VNextTraceValidationResult;
+    };
   };
+};
 
 export type Stage2Response = {
   source: {

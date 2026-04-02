@@ -43,11 +43,13 @@ import type {
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   createStage2ProgressSnapshot,
+  getStage2DefaultPromptCompatibility,
   markStage2ProgressStageCompleted,
   markStage2ProgressStageFailed,
   markStage2ProgressStageRunning,
   normalizeStage2ProgressSnapshot,
-  normalizeStage2PromptConfig
+  normalizeStage2PromptConfig,
+  prepareStage2PromptConfigForExplicitSave
 } from "../lib/stage2-pipeline";
 import {
   issueScopedRequestVersion,
@@ -244,6 +246,122 @@ function makeCandidate(candidateId: string, angle: string, index: number) {
   };
 }
 
+function makeFixedLengthText(seed: string, length: number): string {
+  const normalizedSeed = seed.trim() || "text";
+  return normalizedSeed.repeat(Math.ceil(length / normalizedSeed.length)).slice(0, length);
+}
+
+function makeNativeCaptionCandidateFixture(input: {
+  candidateId: string;
+  topLength: number;
+  bottomLength: number;
+  angle?: string;
+  hookFamily?: string;
+  cueUsed?: string;
+  laneId?: string;
+  retainedHandle?: boolean;
+  displayIntent?: "finalist_or_display_safe" | "recovery" | "template_backfill";
+  topText?: string;
+  bottomText?: string;
+}) {
+  return {
+    candidate_id: input.candidateId,
+    angle: input.angle ?? input.laneId ?? "shared_experience",
+    lane_id: input.laneId ?? input.angle ?? "shared_experience",
+    hook_family: input.hookFamily ?? "contradiction_first",
+    cue_used: input.cueUsed ?? "none",
+    top:
+      input.topText ??
+      makeFixedLengthText(`${input.candidateId} TOP `, input.topLength),
+    bottom:
+      input.bottomText ??
+      makeFixedLengthText(`${input.candidateId} BOTTOM `, input.bottomLength),
+    retained_handle: input.retainedHandle ?? false,
+    display_intent: input.displayIntent ?? "finalist_or_display_safe"
+  };
+}
+
+function makeNativeCaptionContextPacket() {
+  return {
+    grounding: {
+      observedFacts: ["A visible pause changes the room tone."],
+      visibleSequence: ["One person freezes mid-sentence."],
+      microTurn: "The pause becomes the clip.",
+      firstSecondsSignal: "A casual setup turns tense.",
+      uncertainties: [],
+      forbiddenClaims: [],
+      safeInferences: ["The room reads the pause immediately."]
+    },
+    audienceWave: {
+      exists: true,
+      emotionalTemperature: "tense amusement",
+      dominantHarmlessHandle: "that pause said enough",
+      consensusLane: "Everybody clocked the same awkward turn.",
+      jokeLane: "the pause said enough",
+      dissentLane: "",
+      safeReusableCues: ["the pause said enough"],
+      blockedCues: [],
+      flatteningRisks: ["generic clean English"],
+      mustNotLose: ["the pause said enough"]
+    },
+    strategy: {
+      primaryAngle: "awkward_pause",
+      secondaryAngles: ["shared_read"],
+      hookSeeds: ["That pause changed the whole room"],
+      bottomFunctions: ["sharpen the social read"],
+      requiredLanes: [
+        {
+          laneId: "audience_locked",
+          count: 2,
+          purpose: "Preserve the dominant harmless public handle."
+        },
+        {
+          laneId: "balanced_clean",
+          count: 2,
+          purpose: "Keep the clip native and strong without flattening it."
+        },
+        {
+          laneId: "backup_simple",
+          count: 1,
+          purpose: "Hold a plainer but still alive fallback lane."
+        }
+      ],
+      mustDo: ["land the why-care immediately"],
+      mustAvoid: ["recap pacing"]
+    }
+  };
+}
+
+function makeNativeCaptionChannel(
+  hardConstraints: Stage2HardConstraints = DEFAULT_STAGE2_HARD_CONSTRAINTS
+) {
+  return {
+    id: "native-channel",
+    name: "Native Channel",
+    username: "native_channel",
+    stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+    stage2HardConstraints: hardConstraints
+  };
+}
+
+const RELAXED_NATIVE_HARD_CONSTRAINTS: Stage2HardConstraints = {
+  ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  topLengthMax: 140,
+  bottomLengthMax: 170
+};
+
+function makeSparseNativeVideoContext() {
+  return buildVideoContext({
+    sourceUrl: "https://example.com/native-short",
+    title: "A pause changes the room",
+    description: "",
+    transcript: "",
+    comments: [],
+    frameDescriptions: ["A person stops talking while everyone looks over."],
+    userInstruction: null
+  });
+}
+
 function makeCriticScoreMap(index: number): Record<string, number> {
   const base = 9 - index * 0.1;
   return {
@@ -270,6 +388,63 @@ type ExecutorCall = {
   reasoningEffort?: string | null;
 };
 
+function extractPromptJsonPayload(prompt: string): Record<string, unknown> | null {
+  const marker = "USER CONTEXT JSON\n";
+  const markerIndex = prompt.lastIndexOf(marker);
+  if (markerIndex === -1) {
+    return null;
+  }
+  try {
+    return JSON.parse(prompt.slice(markerIndex + marker.length)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function looksLikeCaptionTranslationResponse(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => {
+      if (!item || typeof item !== "object") {
+        return false;
+      }
+      const candidate = item as Record<string, unknown>;
+      return (
+        typeof candidate.candidate_id === "string" &&
+        typeof candidate.top_ru === "string" &&
+        typeof candidate.bottom_ru === "string"
+      );
+    })
+  );
+}
+
+function synthesizeCaptionTranslationFromPrompt(prompt: string): Array<{
+  candidate_id: string;
+  top_ru: string;
+  bottom_ru: string;
+}> {
+  const payload = extractPromptJsonPayload(prompt);
+  const displayOptions = Array.isArray(payload?.display_options_json)
+    ? payload.display_options_json
+    : [];
+  return displayOptions
+    .map((entry) => {
+      const item = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : null;
+      const candidateId = typeof item?.candidate_id === "string" ? item.candidate_id.trim() : "";
+      const top = typeof item?.top === "string" ? item.top.trim() : "";
+      const bottom = typeof item?.bottom === "string" ? item.bottom.trim() : "";
+      if (!candidateId || !top || !bottom) {
+        return null;
+      }
+      return {
+        candidate_id: candidateId,
+        top_ru: `RU ${top}`,
+        bottom_ru: `RU ${bottom}`
+      };
+    })
+    .filter((entry): entry is { candidate_id: string; top_ru: string; bottom_ru: string } => Boolean(entry));
+}
+
 class QueueExecutor implements JsonStageExecutor {
   readonly calls: ExecutorCall[] = [];
 
@@ -289,15 +464,70 @@ class QueueExecutor implements JsonStageExecutor {
       imagePaths: input.imagePaths,
       reasoningEffort: input.reasoningEffort ?? null
     });
+    const next = this.responses[0];
+    if (
+      input.prompt.includes("display_options_json") &&
+      !(next instanceof Error) &&
+      !looksLikeCaptionTranslationResponse(next)
+    ) {
+      return synthesizeCaptionTranslationFromPrompt(input.prompt) as T;
+    }
     if (this.responses.length === 0) {
       throw new Error("No queued executor response.");
     }
-    const next = this.responses.shift();
-    if (next instanceof Error) {
-      throw next;
+    const queued = this.responses.shift();
+    if (queued instanceof Error) {
+      throw queued;
     }
-    return next as T;
+    return queued as T;
   }
+}
+
+async function runNativeCaptionPipelineFixture(input: {
+  responses: unknown[];
+  promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
+  hardConstraints?: Stage2HardConstraints;
+  videoContext?: ReturnType<typeof buildVideoContext>;
+  contextPacket?: ReturnType<typeof makeNativeCaptionContextPacket>;
+  stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
+  editorialMemory?: ReturnType<typeof createEmptyStage2EditorialMemorySummary>;
+}) {
+  const harness = createNativeCaptionPipelineHarness(input);
+  const result = await harness.run();
+  return { result, executor: harness.executor };
+}
+
+function createNativeCaptionPipelineHarness(input: {
+  responses: unknown[];
+  promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
+  hardConstraints?: Stage2HardConstraints;
+  videoContext?: ReturnType<typeof buildVideoContext>;
+  contextPacket?: ReturnType<typeof makeNativeCaptionContextPacket>;
+  stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
+  editorialMemory?: ReturnType<typeof createEmptyStage2EditorialMemorySummary>;
+}) {
+  const service = new ViralShortsWorkerService();
+  const executor = new QueueExecutor([...input.responses]);
+  const channel = input.stage2StyleProfile
+    ? {
+        ...makeNativeCaptionChannel(input.hardConstraints),
+        stage2StyleProfile: input.stage2StyleProfile,
+        editorialMemory: input.editorialMemory
+      }
+    : makeNativeCaptionChannel(input.hardConstraints);
+  return {
+    executor,
+    run: () =>
+      service.runNativeCaptionPipelineFromContext({
+        channel,
+        workspaceStage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
+        videoContext: input.videoContext ?? makeSparseNativeVideoContext(),
+        contextPacket: input.contextPacket ?? makeNativeCaptionContextPacket(),
+        executor,
+        promptConfig: input.promptConfig ?? normalizeStage2PromptConfig({}),
+        debugMode: "summary"
+      })
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -1137,6 +1367,59 @@ test("workspace prompt defaults persist as the new default source for stage prom
     assert.equal(selectorResolved.reasoningEffort, "x-high");
     assert.equal(writerResolved.configuredPrompt, "Workspace writer default prompt.");
     assert.equal(writerResolved.reasoningEffort, "medium");
+  });
+});
+
+test("workspace reset helper clears incompatible native prompt overrides without touching legacy stages", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const { getDb } = await import("../lib/db/client");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Workspace Native Reset",
+      email: "owner-native-reset@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const legacyStoredConfig = JSON.stringify(
+      {
+        version: 3,
+        stages: {
+          writer: {
+            prompt: "Legacy writer prompt survives for the legacy chain.",
+            reasoningEffort: "medium"
+          },
+          candidateGenerator: {
+            prompt: "Write 20 candidates with top_ru and bottom_ru.",
+            reasoningEffort: "x-high"
+          }
+        }
+      },
+      null,
+      2
+    );
+    getDb()
+      .prepare("UPDATE workspaces SET stage2_prompt_config_json = ? WHERE id = ?")
+      .run(legacyStoredConfig, owner.workspace.id);
+
+    const beforeReset = teamStore.getWorkspaceStage2PromptConfig(owner.workspace.id);
+    const staleResolved = resolveStage2PromptTemplate("candidateGenerator", beforeReset);
+    const legacyResolved = resolveStage2PromptTemplate("writer", beforeReset);
+    assert.equal(staleResolved.overrideAccepted, false);
+    assert.equal(staleResolved.promptSource, "default");
+    assert.equal(legacyResolved.promptSource, "workspace_override");
+
+    const reset = teamStore.resetWorkspaceIncompatibleNativePromptOverrides(owner.workspace.id);
+    assert.deepEqual(reset.removedStageIds, ["candidateGenerator"]);
+
+    const afterReset = teamStore.getWorkspaceStage2PromptConfig(owner.workspace.id);
+    const afterCandidateResolved = resolveStage2PromptTemplate("candidateGenerator", afterReset);
+    const afterLegacyResolved = resolveStage2PromptTemplate("writer", afterReset);
+    assert.equal(afterCandidateResolved.overrideCandidatePresent, false);
+    assert.equal(afterCandidateResolved.promptSource, "default");
+    assert.equal(afterLegacyResolved.promptSource, "workspace_override");
+    assert.match(afterLegacyResolved.configuredPrompt, /Legacy writer prompt survives/i);
   });
 });
 
@@ -3655,6 +3938,35 @@ test("stage 2 to stage 3 handoff summary uses current live text when provided", 
   assert.equal(handoff.canResetToSelectedCaption, true);
 });
 
+test("stage 2 to stage 3 handoff blocks an invalid selected caption instead of leaking it downstream", () => {
+  const stage2 = makeRuntimeStage2Response("run_invalid_handoff", "invalid");
+  stage2.output.finalPick.option = 1;
+  stage2.output.captionOptions[0] = {
+    ...stage2.output.captionOptions[0],
+    constraintCheck: {
+      passed: false,
+      repaired: false,
+      topLength: 170,
+      bottomLength: 455,
+      issues: ["BOTTOM length is 455, expected 140-150."]
+    }
+  };
+
+  const handoff = buildStage2ToStage3HandoffSummary({
+    stage2,
+    draft: null,
+    latestVersion: null,
+    selectedCaptionOption: 1,
+    selectedTitleOption: 1
+  });
+
+  assert.equal(handoff.caption, null);
+  assert.equal(handoff.selectedCaptionOption, null);
+  assert.equal(handoff.captionBlockedReason, "selected_stage2_caption_failed_hard_constraints");
+  assert.equal(handoff.topText, null);
+  assert.equal(handoff.bottomText, null);
+});
+
 test("caption apply helper supports taking all, top only, or bottom only", () => {
   const caption = {
     top: "Picked top",
@@ -4315,6 +4627,76 @@ test("legacy stage prompt configs still migrate into the new direct prompt field
   assert.match(resolved.configuredPrompt, /Writer override template/);
   assert.match(resolved.configuredPrompt, /Legacy note from older config/);
   assert.equal(resolved.isCustomPrompt, true);
+});
+
+test("legacy writer and critic overrides do not bleed into native_caption_v3 stages", () => {
+  const config = normalizeStage2PromptConfig({
+    stages: {
+      writer: {
+        prompt: "Write 20 candidates with top_ru and bottom_ru plus style_direction_ids."
+      },
+      critic: {
+        prompt: "Return a JSON array with keep flags and score totals."
+      },
+      rewriter: {
+        prompt: "Repair finalists using the legacy Russian bilingual contract."
+      },
+      titles: {
+        prompt: "Return title_ru variants."
+      }
+    }
+  });
+
+  const candidateResolved = resolveStage2PromptTemplate("candidateGenerator", config);
+  const courtResolved = resolveStage2PromptTemplate("qualityCourt", config);
+  const repairResolved = resolveStage2PromptTemplate("targetedRepair", config);
+  const titleResolved = resolveStage2PromptTemplate("titleWriter", config);
+
+  assert.equal(candidateResolved.promptSource, "default");
+  assert.equal(candidateResolved.overrideCandidatePresent, false);
+  assert.doesNotMatch(candidateResolved.configuredPrompt, /20 candidates|top_ru|bottom_ru|style_direction_ids/i);
+  assert.equal(courtResolved.promptSource, "default");
+  assert.doesNotMatch(courtResolved.configuredPrompt, /json array|keep flags|score totals/i);
+  assert.equal(repairResolved.promptSource, "default");
+  assert.doesNotMatch(repairResolved.configuredPrompt, /legacy russian|bilingual/i);
+  assert.equal(titleResolved.promptSource, "default");
+  assert.doesNotMatch(titleResolved.configuredPrompt, /Return title_ru variants\./i);
+});
+
+test("stale native workspace overrides are ignored until they carry compatible native metadata", () => {
+  const staleConfig = normalizeStage2PromptConfig({
+    version: 3 as never,
+    stages: {
+      candidateGenerator: {
+        prompt: "Write 20 candidates with top_ru and bottom_ru.",
+        reasoningEffort: "x-high"
+      }
+    }
+  });
+
+  const staleResolved = resolveStage2PromptTemplate("candidateGenerator", staleConfig);
+  assert.equal(staleResolved.promptSource, "default");
+  assert.equal(staleResolved.overrideCandidatePresent, true);
+  assert.equal(staleResolved.overrideAccepted, false);
+  assert.equal(staleResolved.overrideRejectedReason, "missing_native_compatibility_metadata");
+  assert.doesNotMatch(staleResolved.configuredPrompt, /20 candidates|top_ru|bottom_ru/i);
+
+  const compatibleConfig = prepareStage2PromptConfigForExplicitSave({
+    nextConfig: normalizeStage2PromptConfig({
+      stages: {
+        candidateGenerator: {
+          prompt: "Use the runtime hard_constraints_json and write exactly eight punchy candidates.",
+          reasoningEffort: "high",
+          compatibility: getStage2DefaultPromptCompatibility("candidateGenerator")
+        }
+      }
+    }),
+    previousConfig: DEFAULT_STAGE2_PROMPT_CONFIG
+  });
+  const compatibleResolved = resolveStage2PromptTemplate("candidateGenerator", compatibleConfig);
+  assert.equal(compatibleResolved.promptSource, "workspace_override");
+  assert.equal(compatibleResolved.overrideAccepted, true);
+  assert.match(compatibleResolved.configuredPrompt, /hard_constraints_json/i);
 });
 
 test("buildPromptPacket keeps the selector stage as a real prompt stage with active corpus context", () => {
@@ -6278,6 +6660,1251 @@ test("no-comments fallback stays truthful and preserves analyzer sequence diagno
   );
 });
 
+test("TOM-spoiler handle test keeps an audience-locked finalist when the public read is safe", async () => {
+  const harness = createNativeCaptionPipelineHarness({
+    hardConstraints: RELAXED_NATIVE_HARD_CONSTRAINTS,
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C01",
+          topLength: 80,
+          bottomLength: 100,
+          laneId: "audience_locked",
+          retainedHandle: true,
+          topText: "Tom spoiler energy takes over the whole clip the second that pause lands in the room.",
+          bottomText: "Everybody already reads the look the same way, so the caption should not pretend the room missed it."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C02",
+          topLength: 80,
+          bottomLength: 100,
+          laneId: "balanced_clean",
+          topText: "The pause flips the whole moment from casual setup into something everyone instantly clocks.",
+          bottomText: "It lands because the reaction is already there before anyone has to explain what changed."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C03",
+          topLength: 80,
+          bottomLength: 100,
+          laneId: "balanced_clean",
+          topText: "That tiny pause becomes the why-care before the clip even has time to move on.",
+          bottomText: "The room gives away the social read immediately, which is why the line has to stay human."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C04",
+          topLength: 80,
+          bottomLength: 100,
+          laneId: "human_observational",
+          topText: "You can feel the room shift the second the silence gets a little too loud to ignore.",
+          bottomText: "Nobody needs extra explanation once the faces in the shot are already doing the talking."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C05",
+          topLength: 80,
+          bottomLength: 100,
+          laneId: "backup_simple",
+          topText: "The clip works because the pause itself becomes the whole event almost instantly.",
+          bottomText: "It stays readable when the caption trusts the shared reaction instead of sanding it into sludge."
+        })
+      ],
+      {
+        finalists: [
+          {
+            candidate_id: "C02",
+            why_chosen: ["Cleaner opening."],
+            preserved_handle: false
+          },
+          {
+            candidate_id: "C03",
+            why_chosen: ["Balanced and readable."],
+            preserved_handle: false
+          },
+          {
+            candidate_id: "C04",
+            why_chosen: ["Human observational lane."],
+            preserved_handle: false
+          }
+        ],
+        display_safe_extras: [
+          {
+            candidate_id: "C01",
+            why_display_safe: ["Valid but flatter than the cleaner picks."]
+          },
+          {
+            candidate_id: "C05",
+            why_display_safe: ["Plain backup."]
+          }
+        ],
+        hard_rejected: [],
+        winner_candidate_id: "C02",
+        recovery_plan: {
+          required: false,
+          missing_count: 0,
+          briefs: []
+        }
+      },
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Tom handle title ${index + 1}`
+      }))
+    ]
+  });
+
+  const result = await harness.run();
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(
+    (result.output.finalists ?? []).some(
+      (finalist) => finalist.candidateId === "C01" && finalist.preservedHandle
+    ),
+    true
+  );
+  assert.equal(
+    result.output.captionOptions.find((option) => option.candidateId === "C01")?.displayTier,
+    "finalist"
+  );
+  assert.equal(result.output.winner?.candidateId, "C02");
+});
+
+test("Echoes audience-wave test keeps the window-seat disbelief lane alive instead of letting flatter clean copy auto-win", async () => {
+  const baseContextPacket = makeNativeCaptionContextPacket();
+  const contextPacket = {
+    ...baseContextPacket,
+    audienceWave: {
+      ...baseContextPacket.audienceWave,
+      emotionalTemperature: "awe and disbelief",
+      dominantHarmlessHandle: "window-seat disbelief",
+      consensusLane: "Everyone is reacting through that window-seat disbelief read.",
+      jokeLane: "window-seat disbelief",
+      safeReusableCues: ["window-seat disbelief"],
+      flatteningRisks: ["dry generic safety"],
+      mustNotLose: ["window-seat disbelief"]
+    },
+    strategy: {
+      ...baseContextPacket.strategy,
+      requiredLanes: [
+        {
+          laneId: "audience_locked",
+          count: 3,
+          purpose: "Keep the window-seat disbelief lane alive."
+        },
+        {
+          laneId: "balanced_clean",
+          count: 2,
+          purpose: "Keep the clip native without sanding it flat."
+        },
+        {
+          laneId: "backup_simple",
+          count: 1,
+          purpose: "Hold one plain fallback."
+        }
+      ]
+    }
+  };
+  const harness = createNativeCaptionPipelineHarness({
+    hardConstraints: RELAXED_NATIVE_HARD_CONSTRAINTS,
+    contextPacket,
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C01",
+          topLength: 88,
+          bottomLength: 108,
+          laneId: "audience_locked",
+          retainedHandle: true,
+          topText: "Window-seat disbelief is the whole reason this clip lands before anyone can even add commentary.",
+          bottomText: "That shared read is already doing the work, so flattening it into cleaner copy would miss the moment."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C02",
+          topLength: 88,
+          bottomLength: 108,
+          laneId: "balanced_clean",
+          topText: "The shot gets interesting because the room tips from calm into disbelief in one beat.",
+          bottomText: "It stays strong when the caption lets the visible reaction carry the weight instead of overexplaining."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C03",
+          topLength: 88,
+          bottomLength: 108,
+          laneId: "balanced_clean",
+          topText: "The whole scene changes the second everyone in frame realizes they are all seeing the same thing.",
+          bottomText: "That is why the line has to sound like a person reacting, not a safer rewrite of the obvious."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C04",
+          topLength: 88,
+          bottomLength: 108,
+          laneId: "human_observational",
+          topText: "The first reaction tells you why viewers latch onto this clip long before the sequence is over.",
+          bottomText: "Once the faces in frame change, the why-care is already locked in without any fake certainty."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C05",
+          topLength: 88,
+          bottomLength: 108,
+          laneId: "backup_simple",
+          topText: "The visible turn lands early enough that the clip basically explains its own hold on people.",
+          bottomText: "What matters is keeping the crowd read alive without turning it into a pasted joke."
+        })
+      ],
+      new Error("editorial court unavailable"),
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Echoes handle title ${index + 1}`
+      }))
+    ]
+  });
+
+  const result = await harness.run();
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(result.output.winner?.candidateId, "C01");
+  assert.equal(result.output.winner?.displayTier, "finalist");
+  assert.equal(
+    (result.output.finalists ?? []).some((finalist) => finalist.preservedHandle),
+    true
+  );
+});
+
+test("hard-reject display test keeps hard-rejected candidates out of the visible shortlist", async () => {
+  const harness = createNativeCaptionPipelineHarness({
+    hardConstraints: RELAXED_NATIVE_HARD_CONSTRAINTS,
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C01",
+          topLength: 84,
+          bottomLength: 102,
+          laneId: "balanced_clean",
+          topText: "The moment matters because the pause changes the social read before anything bigger happens.",
+          bottomText: "You can feel everyone land on the same interpretation without the caption needing to overstate it."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C02",
+          topLength: 84,
+          bottomLength: 102,
+          laneId: "balanced_clean",
+          topText: "That tiny beat becomes the entire hook once the room realizes where the moment is going.",
+          bottomText: "It works because the visible reaction keeps sharpening the line instead of asking for explanation."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C03",
+          topLength: 84,
+          bottomLength: 102,
+          laneId: "human_observational",
+          topText: "The clip locks in as soon as the silence gets loud enough that the whole room feels it.",
+          bottomText: "Once the faces change together, the caption only needs to stay human and visually honest."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C04",
+          topLength: 84,
+          bottomLength: 102,
+          laneId: "backup_simple",
+          topText: "The whole reason this clip travels is that the pause becomes bigger than the setup itself.",
+          bottomText: "Viewers do not need a recap when the room already gives the social meaning away."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C05",
+          topLength: 84,
+          bottomLength: 102,
+          laneId: "backup_simple",
+          topText: "The visible turn lands early enough that the audience read is basically already sitting on screen.",
+          bottomText: "That makes a plainer fallback usable as long as it still sounds like a person and not a report."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C06",
+          topLength: 84,
+          bottomLength: 102,
+          laneId: "audience_locked",
+          retainedHandle: true,
+          topText: "Tom spoiler energy becomes the whole read here even if a flatter caption would look safer on paper.",
+          bottomText: "This one should never surface if the phrase itself crosses into non-native nonsense."
+        })
+      ],
+      {
+        finalists: [
+          {
+            candidate_id: "C01",
+            why_chosen: ["Best clean line."],
+            preserved_handle: false
+          },
+          {
+            candidate_id: "C02",
+            why_chosen: ["Strong backup finalist."],
+            preserved_handle: false
+          },
+          {
+            candidate_id: "C03",
+            why_chosen: ["Useful observational finalist."],
+            preserved_handle: false
+          }
+        ],
+        display_safe_extras: [
+          {
+            candidate_id: "C04",
+            why_display_safe: ["Valid soft reject."]
+          },
+          {
+            candidate_id: "C06",
+            why_display_safe: ["Would be tempting if it were not too weird."]
+          }
+        ],
+        hard_rejected: [
+          {
+            candidate_id: "C06",
+            reasons: ["H1 invented_or_non_native"],
+            offending_phrases: ["Tom spoiler energy"]
+          }
+        ],
+        winner_candidate_id: "C01",
+        recovery_plan: {
+          required: false,
+          missing_count: 0,
+          briefs: []
+        }
+      },
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Hard reject title ${index + 1}`
+      }))
+    ]
+  });
+
+  const result = await harness.run();
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(
+    result.output.captionOptions.some((option) => option.candidateId === "C06"),
+    false
+  );
+  assert.equal(
+    (result.output.finalists ?? []).some((finalist) => finalist.candidateId === "C06"),
+    false
+  );
+  assert.equal(
+    result.output.captionOptions.some((option) => option.candidateId === "C05"),
+    true
+  );
+});
+
+test("soft-reject display test allows display-safe extras to remain visible without promoting them to finalists", async () => {
+  const harness = createNativeCaptionPipelineHarness({
+    hardConstraints: RELAXED_NATIVE_HARD_CONSTRAINTS,
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C01",
+          topLength: 82,
+          bottomLength: 100,
+          laneId: "balanced_clean",
+          topText: "The pause becomes the whole hook because the room reacts before the clip can move on.",
+          bottomText: "That makes the strongest line feel like commentary from inside the moment rather than a recap."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C02",
+          topLength: 82,
+          bottomLength: 100,
+          laneId: "balanced_clean",
+          topText: "The social turn lands fast enough that everybody watching already knows why the clip works.",
+          bottomText: "It stays alive when the caption lets the reaction sharpen the read instead of cleaning it flat."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C03",
+          topLength: 82,
+          bottomLength: 100,
+          laneId: "human_observational",
+          topText: "The shot gets sticky because one small beat changes the mood of the whole room immediately.",
+          bottomText: "Once that visible reaction hits, the caption only has to preserve the human read honestly."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C04",
+          topLength: 82,
+          bottomLength: 100,
+          laneId: "backup_simple",
+          topText: "The clip keeps its hold because the silence itself becomes more interesting than the setup.",
+          bottomText: "A plainer version can still stay visible as long as it sounds human and clip-specific."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C05",
+          topLength: 82,
+          bottomLength: 100,
+          laneId: "backup_simple",
+          topText: "The visible turn lands early enough that viewers are already reacting before the clip finishes.",
+          bottomText: "That makes this a usable extra even if the finalists have a little more bite."
+        })
+      ],
+      {
+        finalists: [
+          {
+            candidate_id: "C01",
+            why_chosen: ["Best finalist."],
+            preserved_handle: false
+          },
+          {
+            candidate_id: "C02",
+            why_chosen: ["Second finalist."],
+            preserved_handle: false
+          },
+          {
+            candidate_id: "C03",
+            why_chosen: ["Third finalist."],
+            preserved_handle: false
+          }
+        ],
+        display_safe_extras: [
+          {
+            candidate_id: "C04",
+            why_display_safe: ["S1 near-clone of a stronger finalist."]
+          },
+          {
+            candidate_id: "C05",
+            why_display_safe: ["S2 valid but less distinctive."]
+          }
+        ],
+        hard_rejected: [],
+        winner_candidate_id: "C01",
+        recovery_plan: {
+          required: false,
+          missing_count: 0,
+          briefs: []
+        }
+      },
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Soft reject title ${index + 1}`
+      }))
+    ]
+  });
+
+  const result = await harness.run();
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(
+    result.output.captionOptions.filter((option) => option.displayTier === "display_safe_extra").length,
+    2
+  );
+  assert.equal(
+    result.output.captionOptions.find((option) => option.candidateId === "C04")?.displayTier,
+    "display_safe_extra"
+  );
+  assert.equal(
+    result.output.captionOptions.find((option) => option.candidateId === "C05")?.displayTier,
+    "display_safe_extra"
+  );
+});
+
+test("template-winner test reserves a visible template slot when only display-safe extras survive", async () => {
+  const harness = createNativeCaptionPipelineHarness({
+    hardConstraints: RELAXED_NATIVE_HARD_CONSTRAINTS,
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C01",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "balanced_clean",
+          topText: "The pause lands early enough that a clean extra can still describe the moment honestly.",
+          bottomText: "This stays usable, but it is not strong enough to carry winner duty on its own."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C02",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "balanced_clean",
+          topText: "The visible turn keeps the clip readable even when the line stays on the cautious side.",
+          bottomText: "It works as display-safe cover, but it does not feel like the winner the clip deserves."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C03",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "human_observational",
+          topText: "A valid observational line can stay on screen here without really being finalist-grade.",
+          bottomText: "That is exactly when the runtime has to keep the output alive without pretending this can win."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C04",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "backup_simple",
+          topText: "This is readable enough to display, but it still feels more like a placeholder than a pick.",
+          bottomText: "The clip remains processable, so the pipeline still owes the user a real valid winner."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C05",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "backup_simple",
+          topText: "Another safe extra can fill the grid, but it should not silently inherit winner status.",
+          bottomText: "That is where deterministic template backfill has to step in and make the degraded path honest."
+        })
+      ],
+      {
+        finalists: [],
+        display_safe_extras: [
+          {
+            candidate_id: "C01",
+            why_display_safe: ["Valid but not finalist-grade."]
+          },
+          {
+            candidate_id: "C02",
+            why_display_safe: ["Valid but less distinctive."]
+          },
+          {
+            candidate_id: "C03",
+            why_display_safe: ["Human but weaker."]
+          },
+          {
+            candidate_id: "C04",
+            why_display_safe: ["Display-safe fallback."]
+          },
+          {
+            candidate_id: "C05",
+            why_display_safe: ["Display-safe fallback."]
+          }
+        ],
+        hard_rejected: [],
+        winner_candidate_id: null,
+        recovery_plan: {
+          required: true,
+          missing_count: 1,
+          briefs: [
+            {
+              lane_id: "balanced_clean",
+              goal: "Generate one winner-grade fallback without flattening the clip.",
+              must_keep: ["land the why-care immediately"],
+              must_avoid: ["generic clean English"]
+            }
+          ]
+        }
+      },
+      [],
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Template reserve title ${index + 1}`
+      }))
+    ]
+  });
+
+  const result = await harness.run();
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(result.output.winner?.displayTier, "template_backfill");
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, true);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount, 1);
+  assert.equal(
+    result.output.captionOptions.some((option) => option.displayTier === "template_backfill"),
+    true
+  );
+  assert.equal(result.output.finalPick.option, result.output.winner?.option);
+});
+
+test("template backfill still fills the fifth slot when clip words are banned", async () => {
+  const harness = createNativeCaptionPipelineHarness({
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      bannedWords: ["clip", "clips"]
+    },
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C01",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "balanced_clean",
+          topText: "The visible turn lands early enough that this safe extra can stay readable without carrying winner duty.",
+          bottomText: "It works as coverage, but the stronger public read still needs a real fallback winner."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C02",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "balanced_clean",
+          topText: "The sequence stays understandable even when the line plays it cautious and only holds the room tone.",
+          bottomText: "That makes it display-safe, not the kind of option that should inherit the final pick silently."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C03",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "human_observational",
+          topText: "A human observational read can stay on screen here without really feeling like the option to beat.",
+          bottomText: "The degraded path still has to stay honest about that instead of pretending a safe extra can win."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C04",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "backup_simple",
+          topText: "This one is readable enough to display, but it still feels more like grid support than a selection.",
+          bottomText: "That is exactly where the deterministic fallback path needs to keep one stronger slot alive."
+        }),
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C05",
+          topLength: 84,
+          bottomLength: 104,
+          laneId: "backup_simple",
+          topText: "Another safe extra can keep the shortlist full, but it should not quietly turn into the winner.",
+          bottomText: "The system still owes the run one valid fallback pick when finalists and recovery both collapse."
+        })
+      ],
+      {
+        finalists: [],
+        display_safe_extras: [
+          {
+            candidate_id: "C01",
+            why_display_safe: ["Valid but not finalist-grade."]
+          },
+          {
+            candidate_id: "C02",
+            why_display_safe: ["Valid but less distinctive."]
+          },
+          {
+            candidate_id: "C03",
+            why_display_safe: ["Human but weaker."]
+          },
+          {
+            candidate_id: "C04",
+            why_display_safe: ["Display-safe fallback."]
+          },
+          {
+            candidate_id: "C05",
+            why_display_safe: ["Display-safe fallback."]
+          }
+        ],
+        hard_rejected: [],
+        winner_candidate_id: null,
+        recovery_plan: {
+          required: true,
+          missing_count: 1,
+          briefs: [
+            {
+              lane_id: "balanced_clean",
+              goal: "Generate one winner-grade fallback without flattening the public read.",
+              must_keep: ["land the why-care immediately"],
+              must_avoid: ["generic clean English"]
+            }
+          ]
+        }
+      },
+      [],
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Banned word fallback title ${index + 1}`
+      }))
+    ]
+  });
+
+  const result = await harness.run();
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(result.output.winner?.displayTier, "template_backfill");
+  assert.equal(result.output.captionOptions.every((option) => option.constraintCheck.passed), true);
+  assert.equal(
+    result.output.captionOptions.some((option) => /\bclips?\b/i.test(`${option.top} ${option.bottom}`)),
+    false
+  );
+});
+
+test("native runtime degrades through recovery and template backfill when editorial finalists collapse", async () => {
+  const harness = createNativeCaptionPipelineHarness({
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({ candidateId: "C03", topLength: 170, bottomLength: 705 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C06", topLength: 170, bottomLength: 455 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C07", topLength: 170, bottomLength: 450 })
+      ],
+      {
+        kept: [
+          {
+            candidate_id: "C03",
+            scores: {
+              hook_immediacy: 9,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 7,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["good top"]
+          },
+          {
+            candidate_id: "C06",
+            scores: {
+              hook_immediacy: 9,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 7,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["good top"]
+          },
+          {
+            candidate_id: "C07",
+            scores: {
+              hook_immediacy: 9,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 7,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["good top"]
+          }
+        ],
+        rejected: [],
+        winner_candidate_id: "C06",
+        winner_reason: "Judge liked C06 most.",
+        needs_repair: false,
+        repair_briefs: []
+      },
+      [],
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Recovered native title ${index + 1}`
+      }))
+    ],
+    hardConstraints: {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      topLengthMin: 160,
+      topLengthMax: 180,
+      bottomLengthMin: 140,
+      bottomLengthMax: 150
+    }
+  });
+
+  const result = await harness.run();
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(result.output.winner?.displayTier, "template_backfill");
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, true);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount > 0, true);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryTriggered, true);
+  assert.equal(result.output.captionOptions.every((option) => option.constraintCheck.passed), true);
+  assert.equal(harness.executor.calls.length, 6);
+  assert.match(harness.executor.calls[2]?.prompt ?? "", /recovery_briefs_json/i);
+});
+
+test("sparse native clip smoke test still returns a degraded 5-option shortlist", async () => {
+  const harness = createNativeCaptionPipelineHarness({
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({ candidateId: "C01", topLength: 165, bottomLength: 430 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C02", topLength: 164, bottomLength: 460 })
+      ],
+      {
+        kept: [
+          {
+            candidate_id: "C01",
+            scores: {
+              hook_immediacy: 8,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 8,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["looks promising"]
+          },
+          {
+            candidate_id: "C02",
+            scores: {
+              hook_immediacy: 8,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 8,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["looks promising"]
+          }
+        ],
+        rejected: [],
+        winner_candidate_id: "C01",
+        winner_reason: "Judge liked C01 most.",
+        needs_repair: false,
+        repair_briefs: []
+      },
+      [],
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Sparse native title ${index + 1}`
+      }))
+    ],
+    hardConstraints: {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      topLengthMin: 160,
+      topLengthMax: 180,
+      bottomLengthMin: 140,
+      bottomLengthMax: 150
+    },
+    videoContext: makeSparseNativeVideoContext()
+  });
+
+  const result = await harness.run();
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(result.output.winner?.constraintCheck?.passed, true);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, true);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount > 0, true);
+  assert.equal(harness.executor.calls.length, 6);
+  assert.equal(
+    harness.executor.calls.some((call) => /winner_candidate_json/i.test(call.prompt)),
+    true
+  );
+});
+
+test("native caption translation retries missing items once and falls back to English when Russian stays missing", async () => {
+  const harness = createNativeCaptionPipelineHarness({
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({
+          candidateId: "C01",
+          topLength: 72,
+          bottomLength: 100,
+          laneId: "audience_locked",
+          retainedHandle: true
+        }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C02", topLength: 72, bottomLength: 100 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C03", topLength: 72, bottomLength: 100 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C04", topLength: 72, bottomLength: 100 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C05", topLength: 72, bottomLength: 100 })
+      ],
+      {
+        finalists: [
+          {
+            candidate_id: "C01",
+            why_chosen: ["Best finalist."],
+            preserved_handle: true
+          }
+        ],
+        display_safe_extras: [
+          { candidate_id: "C02", why_display_safe: ["Valid reserve."] },
+          { candidate_id: "C03", why_display_safe: ["Valid reserve."] },
+          { candidate_id: "C04", why_display_safe: ["Valid reserve."] },
+          { candidate_id: "C05", why_display_safe: ["Valid reserve."] }
+        ],
+        hard_rejected: [],
+        winner_candidate_id: "C01",
+        recovery_plan: {
+          required: false,
+          missing_count: 0,
+          briefs: []
+        }
+      },
+      [],
+      [
+        {
+          candidate_id: "C01",
+          top_ru: "Переведенный верх для C01.",
+          bottom_ru: "Переведенный низ для C01."
+        }
+      ],
+      [],
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Fallback title ${index + 1}`
+      }))
+    ]
+  });
+
+  const result = await harness.run();
+
+  assert.equal(harness.executor.calls.length, 7);
+  const captionTranslationCalls = harness.executor.calls.filter((call) =>
+    /display_options_json/i.test(call.prompt)
+  );
+  assert.equal(captionTranslationCalls.length, 2);
+  assert.equal(result.output.captionOptions[0]?.topRu, "Переведенный верх для C01.");
+  assert.equal(result.output.captionOptions[1]?.topRu, result.output.captionOptions[1]?.top);
+  assert.equal(result.output.titleOptions[0]?.titleRu, result.output.titleOptions[0]?.title);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.translation?.coverage.translatedCount, 1);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.translation?.coverage.fallbackCount, 4);
+  assert.deepEqual(
+    result.output.pipeline.nativeCaptionV3?.translation?.coverage.retriedCandidateIds,
+    ["C02", "C03", "C04", "C05"]
+  );
+  assert.equal(
+    result.warnings.some((warning) => warning.field === "captionTranslation"),
+    true
+  );
+  assert.equal(result.warnings.some((warning) => warning.field === "titleWriter"), true);
+});
+
+test("native prompts use the runtime channel hard-constraint windows in generation judging and repair", async () => {
+  const customConstraints: Stage2HardConstraints = {
+    ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+    topLengthMin: 20,
+    topLengthMax: 22,
+    bottomLengthMin: 10,
+    bottomLengthMax: 12
+  };
+  const { executor } = await runNativeCaptionPipelineFixture({
+    hardConstraints: customConstraints,
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({ candidateId: "C01", topLength: 30, bottomLength: 18 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C02", topLength: 31, bottomLength: 19 })
+      ],
+      {
+        kept: [
+          {
+            candidate_id: "C01",
+            scores: {
+              hook_immediacy: 8,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 8,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["keep C01"]
+          },
+          {
+            candidate_id: "C02",
+            scores: {
+              hook_immediacy: 8,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 8,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["keep C02"]
+          }
+        ],
+        rejected: [],
+        winner_candidate_id: "C01",
+        winner_reason: "Judge liked C01 most.",
+        needs_repair: true,
+        repair_briefs: [
+          {
+            candidate_id: "C01",
+            fix_only: ["length"],
+            preserve: ["angle"]
+          },
+          {
+            candidate_id: "C02",
+            fix_only: ["length"],
+            preserve: ["angle"]
+          }
+        ]
+      },
+      [
+        {
+          candidate_id: "C01",
+          top: makeFixedLengthText("C01 FIX ", 21),
+          bottom: makeFixedLengthText("C01 ", 11)
+        },
+        {
+          candidate_id: "C02",
+          top: makeFixedLengthText("C02 FIX ", 22),
+          bottom: makeFixedLengthText("C02 ", 12)
+        }
+      ],
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Tight title ${index + 1}`
+      }))
+    ]
+  });
+
+  assert.match(executor.calls[0]?.prompt ?? "", /"topLengthMin": 20/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"bottomLengthMax": 12/);
+  assert.match(executor.calls[1]?.prompt ?? "", /"topLengthMin": 20/);
+  assert.match(executor.calls[1]?.prompt ?? "", /candidate_constraint_checks_json/);
+  assert.match(executor.calls[2]?.prompt ?? "", /"bottomLengthMin": 10/);
+});
+
+test("native prompts carry channel learning through generation judging repair and titles", async () => {
+  const styleProfile = normalizeStage2StyleProfile({
+    explorationShare: 0.34,
+    candidateDirections: [
+      {
+        id: "dir_absurd",
+        fitBand: "core",
+        name: "Straight-Faced Absurdity",
+        description: "Treat the clip like a real procedure that just happens to look absurd.",
+        voice: "Dry, precise, slightly amused.",
+        topPattern: "Lead with the serious setup before the absurdity clicks.",
+        bottomPattern: "Cash the joke without turning it into a meme caption.",
+        humorLevel: "medium",
+        sarcasmLevel: "low",
+        warmthLevel: "medium",
+        insiderDensityLevel: "medium",
+        bestFor: "Clips where the crowd joke is obvious but the procedure is still real.",
+        avoids: "Broad meme sludge and fake swagger.",
+        microExample: "The joke works because nobody has to say it out loud.",
+        sourceReferenceIds: [],
+        internalPromptNotes: "Carry the joke dry, not broad.",
+        axes: {
+          humor: 0.66,
+          sarcasm: 0.24,
+          warmth: 0.48,
+          insiderDensity: 0.55,
+          intensity: 0.44,
+          explanationDensity: 0.32,
+          quoteDensity: 0.35,
+          topCompression: 0.72
+        }
+      },
+      {
+        id: "dir_comment_native",
+        fitBand: "adjacent",
+        name: "Comment-Native Dryness",
+        description: "Preserve one lived-in crowd phrase when it sharpens the read.",
+        voice: "Plain spoken, observant, lightly amused.",
+        topPattern: "Get to the crowd read early without sounding like a recap.",
+        bottomPattern: "Use one clean crowd phrase if it is clip-safe and earned.",
+        humorLevel: "medium",
+        sarcasmLevel: "low",
+        warmthLevel: "medium",
+        insiderDensityLevel: "medium",
+        bestFor: "Crowd-read clips where the comments already found the clean phrase.",
+        avoids: "Invented slang and generic reaction English.",
+        microExample: "The room already found the line, so the caption should not sand it down.",
+        sourceReferenceIds: [],
+        internalPromptNotes: "If the crowd found the phrase, do not flatten it.",
+        axes: {
+          humor: 0.58,
+          sarcasm: 0.18,
+          warmth: 0.52,
+          insiderDensity: 0.5,
+          intensity: 0.4,
+          explanationDensity: 0.3,
+          quoteDensity: 0.4,
+          topCompression: 0.68
+        }
+      }
+    ],
+    selectedDirectionIds: ["dir_absurd", "dir_comment_native"]
+  });
+  const editorialMemory = {
+    ...createEmptyStage2EditorialMemorySummary(styleProfile),
+    recentFeedbackCount: 4,
+    recentSelectionCount: 6,
+    promptSummary:
+      "Winning lines keep the joke dry and specific, and they do not sand down the crowd phrase when it is clip-safe.",
+    recentNotes: ["Keep the joke dry, not broad."]
+  };
+
+  const { executor, result } = await runNativeCaptionPipelineFixture({
+    stage2StyleProfile: styleProfile,
+    editorialMemory,
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({ candidateId: "C01", topLength: 30, bottomLength: 18 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C02", topLength: 31, bottomLength: 19 })
+      ],
+      {
+        kept: [
+          {
+            candidate_id: "C01",
+            scores: {
+              hook_immediacy: 8,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 8,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["keep C01"]
+          },
+          {
+            candidate_id: "C02",
+            scores: {
+              hook_immediacy: 8,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 8,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["keep C02"]
+          }
+        ],
+        rejected: [],
+        winner_candidate_id: "C01",
+        winner_reason: "Judge liked C01 most.",
+        needs_repair: true,
+        repair_briefs: [
+          {
+            candidate_id: "C01",
+            fix_only: ["length"],
+            preserve: ["angle"]
+          },
+          {
+            candidate_id: "C02",
+            fix_only: ["length"],
+            preserve: ["angle"]
+          }
+        ]
+      },
+      [
+        {
+          candidate_id: "C01",
+          top: makeFixedLengthText("C01 FIX ", 21),
+          bottom: makeFixedLengthText("C01 ", 11)
+        },
+        {
+          candidate_id: "C02",
+          top: makeFixedLengthText("C02 FIX ", 22),
+          bottom: makeFixedLengthText("C02 ", 12)
+        }
+      ],
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Dry title ${index + 1}`
+      }))
+    ],
+    hardConstraints: {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      topLengthMin: 20,
+      topLengthMax: 22,
+      bottomLengthMin: 10,
+      bottomLengthMax: 12
+    }
+  });
+
+  assert.match(executor.calls[0]?.prompt ?? "", /"channel_learning_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /Straight-Faced Absurdity/);
+  assert.match(executor.calls[0]?.prompt ?? "", /Winning lines keep the joke dry and specific/i);
+  assert.match(executor.calls[1]?.prompt ?? "", /"channel_learning_json"/);
+  assert.match(executor.calls[2]?.prompt ?? "", /"channel_learning_json"/);
+  assert.match(executor.calls[3]?.prompt ?? "", /display_options_json/);
+  assert.match(executor.calls[4]?.prompt ?? "", /"channel_learning_json"/);
+
+  const promptStages = result.diagnostics.effectivePrompting.promptStages;
+  const candidateStage = promptStages.find((stage) => stage.stageId === "candidateGenerator");
+  const courtStage = promptStages.find((stage) => stage.stageId === "qualityCourt");
+  const repairStage = promptStages.find((stage) => stage.stageId === "targetedRepair");
+  const translationStage = promptStages.find((stage) => stage.stageId === "captionTranslation");
+  const titleStage = promptStages.find((stage) => stage.stageId === "titleWriter");
+  assert.equal(candidateStage?.inputManifest?.channelLearning?.detail, "compact");
+  assert.equal(candidateStage?.inputManifest?.channelLearning?.selectedDirectionCount, 2);
+  assert.equal(courtStage?.inputManifest?.channelLearning?.detail, "compact");
+  assert.equal(repairStage?.inputManifest?.channelLearning?.detail, "compact");
+  assert.equal(translationStage?.inputManifest?.channelLearning, null);
+  assert.equal(titleStage?.inputManifest?.channelLearning?.detail, "compact");
+});
+
+test("production-shaped native regression fixture keeps prompt-source proof and blocks invalid finalists from surviving", async () => {
+  const stalePromptConfig = normalizeStage2PromptConfig({
+    version: 3 as never,
+    stages: {
+      candidateGenerator: {
+        prompt: "Write 20 candidates with top_ru and bottom_ru.",
+        reasoningEffort: "x-high"
+      },
+      qualityCourt: {
+        prompt: "Return a JSON array with keep flags and total scores."
+      },
+      titleWriter: {
+        prompt: "Return title_ru variants."
+      }
+    }
+  });
+  const { result } = await runNativeCaptionPipelineFixture({
+    promptConfig: stalePromptConfig,
+    hardConstraints: {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      topLengthMin: 160,
+      topLengthMax: 180,
+      bottomLengthMin: 140,
+      bottomLengthMax: 150
+    },
+    responses: [
+      [
+        makeNativeCaptionCandidateFixture({ candidateId: "C03", topLength: 170, bottomLength: 705 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C06", topLength: 170, bottomLength: 455 }),
+        makeNativeCaptionCandidateFixture({ candidateId: "C07", topLength: 170, bottomLength: 450 })
+      ],
+      {
+        kept: [
+          {
+            candidate_id: "C03",
+            scores: {
+              hook_immediacy: 9,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 7,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["good top"]
+          },
+          {
+            candidate_id: "C06",
+            scores: {
+              hook_immediacy: 9,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 7,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["good top"]
+          },
+          {
+            candidate_id: "C07",
+            scores: {
+              hook_immediacy: 9,
+              native_fluency: 8,
+              visual_defensibility: 8,
+              audience_authenticity: 8,
+              human_warmth: 7,
+              bottom_usefulness: 8
+            },
+            why_it_works: ["good top"]
+          }
+        ],
+        rejected: [],
+        winner_candidate_id: "C06",
+        winner_reason: "Judge liked C06 most.",
+        needs_repair: false,
+        repair_briefs: []
+      },
+      [
+        {
+          candidate_id: "C06",
+          top: makeFixedLengthText("C06 FIX ", 168),
+          bottom: makeFixedLengthText("C06 SAFE ", 145)
+        },
+        {
+          candidate_id: "C07",
+          top: makeFixedLengthText("C07 FIX ", 169),
+          bottom: makeFixedLengthText("C07 SAFE ", 146)
+        }
+      ],
+      Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Native title ${index + 1}`
+      }))
+    ]
+  });
+
+  assert.equal(result.output.pipeline.execution?.pipelineVersion, "native_caption_v3");
+  assert.equal(
+    result.output.pipeline.execution?.promptPolicyVersion,
+    "native_defaults_authoritative_v1_channel_learning"
+  );
+  assert.equal(
+    result.output.pipeline.execution?.selectorOutputAuthority,
+    "derived_non_authoritative"
+  );
+  assert.equal(result.output.finalists?.every((finalist) => finalist.constraintCheck.passed), true);
+  assert.equal(result.output.winner?.constraintCheck?.passed, true);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.displayShortlistCount, 5);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryTriggered, true);
+  assert.match(
+    result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryReason ?? "",
+    /displayable_below_target|winner_missing|audience_handle_missing_in_finalists|finalists_below_target/
+  );
+  const promptStages = result.diagnostics.effectivePrompting.promptStages;
+  const candidateStage = promptStages.find((stage) => stage.stageId === "candidateGenerator");
+  const courtStage = promptStages.find((stage) => stage.stageId === "qualityCourt");
+  assert.equal(candidateStage?.promptSource, "default");
+  assert.equal(candidateStage?.overrideAccepted, false);
+  assert.equal(candidateStage?.overrideRejectedReason, "missing_native_compatibility_metadata");
+  assert.equal(candidateStage?.legacyFallbackBypassed, true);
+  assert.equal(courtStage?.promptSource, "default");
+  assert.equal(courtStage?.overrideAccepted, false);
+});
+
 test("comments diagnostics distinguish primary success, fallback success, and unavailable states", async () => {
   const primary = await fetchCommentsForUrl("https://www.youtube.com/watch?v=abc123XYZ89", {
     youtubeApiProvider: async () => makeCommentsPayload("primary"),
@@ -6413,6 +8040,12 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   const rewriterResolved = resolveStage2PromptTemplate("rewriter", normalizeStage2PromptConfig({}));
   const titlesResolved = resolveStage2PromptTemplate("titles", normalizeStage2PromptConfig({}));
   const seoResolved = resolveStage2PromptTemplate("seo", normalizeStage2PromptConfig({}));
+  const contextPacketResolved = resolveStage2PromptTemplate("contextPacket", normalizeStage2PromptConfig({}));
+  const candidateGeneratorResolved = resolveStage2PromptTemplate("candidateGenerator", normalizeStage2PromptConfig({}));
+  const qualityCourtResolved = resolveStage2PromptTemplate("qualityCourt", normalizeStage2PromptConfig({}));
+  const targetedRepairResolved = resolveStage2PromptTemplate("targetedRepair", normalizeStage2PromptConfig({}));
+  const captionTranslationResolved = resolveStage2PromptTemplate("captionTranslation", normalizeStage2PromptConfig({}));
+  const titleWriterResolved = resolveStage2PromptTemplate("titleWriter", normalizeStage2PromptConfig({}));
 
   assert.match(analyzerResolved.defaultPrompt, /specific_nouns/);
   assert.match(analyzerResolved.defaultPrompt, /visible_actions/);
@@ -6466,6 +8099,16 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(titlesResolved.defaultPrompt, /real Russian/);
   assert.match(seoResolved.defaultPrompt, /Search terms and topics covered:/);
   assert.match(seoResolved.defaultPrompt, /Exactly 17 tags/);
+  assert.match(contextPacketResolved.defaultPrompt, /channel_learning_json/);
+  assert.match(contextPacketResolved.defaultPrompt, /dominant harmless public handle/i);
+  assert.match(candidateGeneratorResolved.defaultPrompt, /channel_learning_json/);
+  assert.match(candidateGeneratorResolved.defaultPrompt, /exactly 8 candidates/i);
+  assert.match(qualityCourtResolved.defaultPrompt, /hard_validator_json/);
+  assert.match(targetedRepairResolved.defaultPrompt, /channel_learning_json/);
+  assert.match(captionTranslationResolved.defaultPrompt, /display_options_json/);
+  assert.match(captionTranslationResolved.defaultPrompt, /natural Russian/i);
+  assert.match(titleWriterResolved.defaultPrompt, /channel_learning_json/);
+  assert.match(titleWriterResolved.defaultPrompt, /title_ru/);
 });
 
 test("writer prompt surfaces exact constraint targets and flags strict-length mode", () => {
@@ -6671,6 +8314,278 @@ test("stage 2 ui surfaces active corpus and selector picks instead of profile or
   assert.match(html, /Raw prompt contexts вынесены из основного Stage 2 payload/);
   assert.ok(!/hot pool/i.test(html));
   assert.ok(!/stable \+ hot \+ anti/i.test(html));
+});
+
+test("native Step 2 UI renders RU-first cards without raw editorial or validator strings", () => {
+  const stage2 = makeRuntimeStage2Response("run_native_ui", "native");
+  stage2.output.captionOptions = [
+    {
+      option: 1,
+      candidateId: "cand_1",
+      laneId: "audience_locked",
+      angle: "window-seat disbelief",
+      top: "English top that keeps the harmless handle alive.",
+      bottom: "English bottom that closes on the audience reaction cleanly.",
+      topRu: "Русский верх, который сразу звучит как рабочий вариант.",
+      bottomRu: "Русский низ, который уже можно отдавать оператору без доперевода.",
+      displayTier: "finalist",
+      sourceStage: "qualityCourt",
+      displayReason: "Valid per hard_validator_json.",
+      retainedHandle: true,
+      constraintCheck: {
+        passed: true,
+        repaired: false,
+        topLength: 52,
+        bottomLength: 63,
+        issues: []
+      }
+    },
+    {
+      option: 2,
+      candidateId: "cand_2",
+      laneId: "balanced_clean",
+      angle: "balanced",
+      top: "Second English top.",
+      bottom: "Second English bottom.",
+      topRu: "Второй русский верх.",
+      bottomRu: "Второй русский низ.",
+      displayTier: "display_safe_extra",
+      sourceStage: "qualityCourt",
+      displayReason: "Bottom Lens",
+      retainedHandle: false,
+      constraintCheck: {
+        passed: true,
+        repaired: false,
+        topLength: 18,
+        bottomLength: 20,
+        issues: []
+      }
+    },
+    ...Array.from({ length: 3 }, (_, index) => ({
+      option: index + 3,
+      candidateId: `cand_${index + 3}`,
+      laneId: "backup_simple",
+      angle: "backup",
+      top: `Backup English top ${index + 3}.`,
+      bottom: `Backup English bottom ${index + 3}.`,
+      topRu: `Резервный русский верх ${index + 3}.`,
+      bottomRu: `Резервный русский низ ${index + 3}.`,
+      displayTier: "template_backfill" as const,
+      sourceStage: "templateBackfill" as const,
+      displayReason: "Best GIFs",
+      retainedHandle: false,
+      constraintCheck: {
+        passed: true,
+        repaired: false,
+        topLength: 21,
+        bottomLength: 24,
+        issues: []
+      }
+    }))
+  ];
+  stage2.output.finalists = [
+    {
+      option: 1,
+      candidateId: "cand_1",
+      laneId: "audience_locked",
+      angle: "window-seat disbelief",
+      top: "English top that keeps the harmless handle alive.",
+      bottom: "English bottom that closes on the audience reaction cleanly.",
+      displayTier: "finalist",
+      sourceStage: "qualityCourt",
+      displayReason: "Valid per hard_validator_json.",
+      retainedHandle: true,
+      preservedHandle: true,
+      constraintCheck: {
+        passed: true,
+        repaired: false,
+        topLength: 52,
+        bottomLength: 63,
+        issues: []
+      },
+      whyChosen: ["Best GIFs", "Bottom Lens"],
+      translation: {
+        topRu: "Русский верх, который сразу звучит как рабочий вариант.",
+        bottomRu: "Русский низ, который уже можно отдавать оператору без доперевода.",
+        translatedAt: nowIso()
+      }
+    }
+  ];
+  stage2.output.titleOptions = Array.from({ length: 5 }, (_, index) => ({
+    option: index + 1,
+    title: `Winner title EN ${index + 1}`,
+    titleRu: `ГОТОВЫЙ ЗАГОЛОВОК RU ${index + 1}`
+  }));
+  stage2.output.winner = {
+    candidateId: "cand_1",
+    option: 1,
+    reason: "Valid per hard_validator_json.",
+    displayTier: "finalist",
+    sourceStage: "qualityCourt",
+    constraintCheck: {
+      passed: true,
+      repaired: false,
+      topLength: 52,
+      bottomLength: 63,
+      issues: []
+    }
+  };
+  stage2.output.pipeline = {
+    channelId: "channel_native",
+    mode: "codex_pipeline",
+    execution: {
+      featureFlags: {} as never,
+      pipelineVersion: "native_caption_v3",
+      stageChainVersion: "stage2-native-test",
+      workerBuild: {
+        buildId: "build-test",
+        startedAt: nowIso(),
+        pid: 1
+      },
+      resolvedAt: nowIso(),
+      legacyFallbackReason: null
+    },
+    selectorOutput: {
+      clipType: "payoff_reveal",
+      primaryAngle: "window-seat disbelief",
+      secondaryAngles: [],
+      rankedAngles: [],
+      coreTrigger: "trigger",
+      humanStake: "stake",
+      narrativeFrame: "frame",
+      whyViewerCares: "care",
+      topStrategy: "top",
+      bottomEnergy: "bottom",
+      whyOldV6WouldWorkHere: "old",
+      failureModes: [],
+      writerBrief: "brief"
+    },
+    availableExamplesCount: 0,
+    selectedExamplesCount: 0,
+    nativeCaptionV3: {
+      contextPacket: makeNativeCaptionContextPacket(),
+      candidateBatch: [],
+      hardValidator: {
+        validPool: ["cand_1"],
+        invalidPool: []
+      },
+      qualityCourt: {
+        finalists: [
+          {
+            candidateId: "cand_1",
+            whyChosen: ["Best GIFs", "Bottom Lens"],
+            preservedHandle: true
+          }
+        ],
+        displaySafeExtras: [],
+        hardRejected: [],
+        winnerCandidateId: "cand_1",
+        recoveryPlan: {
+          required: false,
+          missingCount: 0,
+          briefs: []
+        }
+      },
+      repair: null,
+      templateBackfill: null,
+      guardSummary: {
+        totalCandidateCount: 5,
+        validPoolCount: 5,
+        invalidPoolCount: 0,
+        finalistCount: 1,
+        displaySafeExtraCount: 1,
+        recoveryCount: 0,
+        templateBackfillCount: 3,
+        displayShortlistCount: 5,
+        winnerCandidateId: "cand_1",
+        winnerTier: "finalist",
+        winnerValidity: "valid",
+        degradedSuccess: false,
+        dominantHarmlessHandle: "window-seat disbelief",
+        audienceHandlePreservedInFinalists: true,
+        recoveryTriggered: false,
+        recoveryReason: null,
+        failClosedReason: null
+      },
+      displayOptions: stage2.output.captionOptions,
+      titleWriter: {
+        titleOptions: stage2.output.titleOptions,
+        translationCoverage: {
+          requestedCount: 5,
+          translatedCount: 5,
+          fallbackCount: 0,
+          fallbackOptions: [],
+          retriedOptions: []
+        }
+      },
+      translation: {
+        translatedAt: nowIso(),
+        items: stage2.output.captionOptions.map((option) => ({
+          candidateId: option.candidateId ?? `cand_${option.option}`,
+          topRu: option.topRu ?? option.top,
+          bottomRu: option.bottomRu ?? option.bottom,
+          source: "llm" as const
+        })),
+        coverage: {
+          requestedCount: 5,
+          translatedCount: 5,
+          fallbackCount: 0,
+          fallbackCandidateIds: [],
+          retriedCandidateIds: []
+        }
+      }
+    }
+  };
+
+  const html = renderToStaticMarkup(
+    React.createElement(Step2PickCaption, {
+      channelName: "Native Channel",
+      channelUsername: "native_channel",
+      stage2,
+      progress: null,
+      stageCreatedAt: nowIso(),
+      commentsAvailable: true,
+      instruction: "",
+      runs: [],
+      selectedRunId: null,
+      currentRunStatus: "completed",
+      currentRunError: null,
+      canRunStage2: true,
+      canQuickRegenerate: true,
+      runBlockedReason: null,
+      quickRegenerateBlockedReason: null,
+      isLaunching: false,
+      isRunning: false,
+      expectedDurationMs: 40_000,
+      elapsedMs: 0,
+      selectedOption: 1,
+      selectedTitleOption: 1,
+      onInstructionChange: () => undefined,
+      onQuickRegenerate: () => undefined,
+      onRunStage2: () => undefined,
+      onSelectRun: () => undefined,
+      onSelectOption: () => undefined,
+      onSelectTitleOption: () => undefined,
+      onCopy: () => undefined
+    })
+  );
+  const primaryHtml = html.split("SEO, память канала и диагностика")[0] ?? html;
+
+  assert.match(primaryHtml, /Готовые варианты/);
+  assert.match(primaryHtml, /Победитель/);
+  assert.match(primaryHtml, /Проверен/);
+  assert.match(primaryHtml, /Резерв/);
+  assert.match(primaryHtml, /ГОТОВЫЙ ЗАГОЛОВОК RU 1/);
+  assert.match(primaryHtml, /Winner title EN 1/);
+  assert.ok(
+    primaryHtml.indexOf("Русский верх, который сразу звучит как рабочий вариант.") <
+      primaryHtml.indexOf("English top that keeps the harmless handle alive.")
+  );
+  assert.ok(!/Winner-first shortlist/.test(primaryHtml));
+  assert.ok(!/Перевести finalists/.test(primaryHtml));
+  assert.ok(!/Valid per hard_validator_json\./.test(primaryHtml));
+  assert.ok(!/Best GIFs/.test(primaryHtml));
+  assert.ok(!/Bottom Lens/.test(primaryHtml));
 });
 
 test("legacy diagnostics payload from older runs does not crash the Stage 2 UI", () => {
@@ -6934,8 +8849,7 @@ test("step 2 marks future stages as not started after a shortlist failure instea
   );
 
   assert.match(html, /Последний запуск остановился на этапе, отмеченном ниже/);
-  assert.match(html, /Не запускался/);
-  assert.match(html, /Этот этап не запускался, потому что запуск завершился ошибкой на предыдущем шаге/);
+  assert.match(html, /Ожидает запуска/);
   assert.doesNotMatch(html, /Generating titles/);
   assert.doesNotMatch(html, /Generating SEO/);
 });
@@ -8172,17 +10086,17 @@ test("failed stage 2 run remains inspectable after reload-style DB reopen", { co
       }
     });
 
-    store.markStage2RunStageRunning(run.runId, "writer", {
-      detail: "Writing shortlist."
+    store.markStage2RunStageRunning(run.runId, "candidateGenerator", {
+      detail: "Drafting candidate batch."
     });
-    store.markStage2RunStageFailed(run.runId, "writer", "writer timeout");
+    store.markStage2RunStageFailed(run.runId, "candidateGenerator", "candidate generator timeout");
 
     delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
     const reloaded = store.getStage2Run(run.runId);
     assert.equal(reloaded?.status, "failed");
-    assert.equal(reloaded?.errorMessage, "writer timeout");
-    assert.equal(reloaded?.snapshot.activeStageId, "writer");
-    assert.match(reloaded?.snapshot.error ?? "", /writer timeout/);
+    assert.equal(reloaded?.errorMessage, "candidate generator timeout");
+    assert.equal(reloaded?.snapshot.activeStageId, "candidateGenerator");
+    assert.match(reloaded?.snapshot.error ?? "", /candidate generator timeout/);
     assert.equal(
       store.listStage2RunsForChat(chat.id, owner.workspace.id, 10)[0]?.runId,
       run.runId
@@ -8232,8 +10146,8 @@ test("running stage 2 run is re-queued after process restart and completes on th
       }
     });
 
-    store.markStage2RunStageRunning(run.runId, "writer", {
-      detail: "Writing before restart."
+    store.markStage2RunStageRunning(run.runId, "candidateGenerator", {
+      detail: "Drafting before restart."
     });
 
     delete (globalThis as { __clipsStage2RuntimeState__?: unknown }).__clipsStage2RuntimeState__;
@@ -8242,28 +10156,28 @@ test("running stage 2 run is re-queued after process restart and completes on th
       const recovered = store.getStage2Run(claimedRun.runId);
       assert.equal(recovered?.status, "running");
       assert.equal(
-        recovered?.snapshot.steps.find((step) => step.id === "writer")?.state,
+        recovered?.snapshot.steps.find((step) => step.id === "candidateGenerator")?.state,
         "pending"
       );
       assert.match(
-        recovered?.snapshot.steps.find((step) => step.id === "analyzer")?.detail ?? "",
+        recovered?.snapshot.steps.find((step) => step.id === "contextPacket")?.detail ?? "",
         /Recovered after process restart/
       );
       observedRecoveredSnapshot = true;
 
-      store.markStage2RunStageRunning(claimedRun.runId, "analyzer", {
-        detail: "Recovered analyzer rerun."
+      store.markStage2RunStageRunning(claimedRun.runId, "contextPacket", {
+        detail: "Recovered context rerun."
       });
       await sleep(25);
-      store.markStage2RunStageCompleted(claimedRun.runId, "analyzer", {
-        detail: "Recovered analyzer done."
+      store.markStage2RunStageCompleted(claimedRun.runId, "contextPacket", {
+        detail: "Recovered context done."
       });
-      store.markStage2RunStageRunning(claimedRun.runId, "finalSelector", {
-        detail: "Recovered shortlist."
+      store.markStage2RunStageRunning(claimedRun.runId, "titleWriter", {
+        detail: "Recovered title pass."
       });
       await sleep(25);
-      store.markStage2RunStageCompleted(claimedRun.runId, "finalSelector", {
-        detail: "Recovered shortlist ready."
+      store.markStage2RunStageCompleted(claimedRun.runId, "titleWriter", {
+        detail: "Recovered title pass ready."
       });
       return makeRuntimeStage2Response(claimedRun.runId, "recovered");
     });
@@ -8950,13 +10864,20 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.equal(trace?.stage2.outcome.examplesMode, "form_guided");
     assert.equal(trace?.stage2.outcome.examplesRoleSummary, "Examples help with structure more than semantics.");
     assert.equal(trace?.stage2.outcome.primaryDriverSummary, "Clip truth and channel learning carry more weight than retrieval.");
+    const expectedVisibleOptionMap =
+      trace?.stage2.currentResult?.output.pipeline?.finalSelector?.candidateOptionMap ??
+      trace?.stage2.currentResult?.output.captionOptions.map((option) => ({
+        option: option.option,
+        candidateId: option.candidateId ?? `option_${option.option}`
+      })) ??
+      [];
     assert.deepEqual(
       trace?.stage2.outcome.candidateOptionMap,
-      trace?.stage2.currentResult?.output.pipeline?.finalSelector?.candidateOptionMap ?? []
+      expectedVisibleOptionMap
     );
     assert.deepEqual(
       trace?.stage2.outcome.visibleOptionToCandidateMap,
-      trace?.stage2.outcome.candidateOptionMap
+      expectedVisibleOptionMap
     );
     assert.equal(
       trace?.stage2.outcome.finalPickCandidateId,

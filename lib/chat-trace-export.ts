@@ -116,6 +116,15 @@ type ChatTraceExportStageManifest = {
   summary: string;
   promptChars: number | null;
   reasoningEffort: string | null;
+  promptSource?: Stage2DiagnosticsPromptStage["promptSource"];
+  promptCompatibilityFamily?: string | null;
+  promptCompatibilityVersion?: string | null;
+  defaultPromptHash?: string | null;
+  configuredPromptHash?: string | null;
+  overrideAccepted?: boolean;
+  overrideRejectedReason?: string | null;
+  overrideCandidatePresent?: boolean;
+  legacyFallbackBypassed?: boolean;
   usesImages: boolean;
   promptTextPresent: boolean;
   manifestSource: "runtime" | "missing";
@@ -232,6 +241,8 @@ export type ChatTraceExport = {
       featureFlags: Stage2VNextFeatureFlagSnapshot | null;
       workerBuild: Stage2VNextWorkerBuild | null;
       legacyFallbackReason: string | null;
+      promptPolicyVersion: string | null;
+      selectorOutputAuthority: "authoritative" | "derived_non_authoritative" | null;
     };
     outcome: {
       retrievalConfidence: Stage2Response["diagnostics"] extends infer T
@@ -252,6 +263,8 @@ export type ChatTraceExport = {
       finalPickCandidateId: string | null;
       finalPickOption: number | null;
       finalPickReason: string | null;
+      winnerTier: "finalist" | "recovery" | "template_backfill" | "missing" | null;
+      degradedSuccess: boolean | null;
       rationaleRaw: string | null;
       rationaleInternalRaw: string | null;
       rationaleInternalModelRaw: string | null;
@@ -293,6 +306,17 @@ export type ChatTraceExport = {
           ? U | []
           : []
         : [];
+      hardValidator: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                hardValidator?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
       qualityCourt: Stage2Response["output"] extends infer T
         ? T extends {
             pipeline?: {
@@ -315,11 +339,55 @@ export type ChatTraceExport = {
           ? U | null
           : null
         : null;
+      templateBackfill: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                templateBackfill?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
+      guardSummary: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                guardSummary?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
+      displayOptions: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                displayOptions?: infer U;
+              };
+            };
+          }
+          ? U | []
+          : []
+        : [];
       titleWriter: Stage2Response["output"] extends infer T
         ? T extends {
             pipeline?: {
               nativeCaptionV3?: {
                 titleWriter?: infer U;
+              };
+            };
+          }
+          ? U | null
+          : null
+        : null;
+      captionTranslation: Stage2Response["output"] extends infer T
+        ? T extends {
+            pipeline?: {
+              nativeCaptionV3?: {
+                translation?: infer U;
               };
             };
           }
@@ -640,6 +708,15 @@ function buildStageManifestSummaries(
     summary: stage.summary,
     promptChars: stage.promptChars,
     reasoningEffort: stage.reasoningEffort,
+    promptSource: stage.promptSource,
+    promptCompatibilityFamily: stage.promptCompatibilityFamily ?? null,
+    promptCompatibilityVersion: stage.promptCompatibilityVersion ?? null,
+    defaultPromptHash: stage.defaultPromptHash ?? null,
+    configuredPromptHash: stage.configuredPromptHash ?? null,
+    overrideAccepted: stage.overrideAccepted ?? false,
+    overrideRejectedReason: stage.overrideRejectedReason ?? null,
+    overrideCandidatePresent: stage.overrideCandidatePresent ?? false,
+    legacyFallbackBypassed: stage.legacyFallbackBypassed ?? false,
     usesImages: stage.usesImages,
     promptTextPresent: Boolean(stage.promptText),
     manifestSource: stage.inputManifest ? "runtime" : "missing",
@@ -666,7 +743,9 @@ function buildStage2Execution(
             pid: rawStage2.stage2Worker.pid ?? null
           }
         : null),
-    legacyFallbackReason: execution?.legacyFallbackReason ?? null
+    legacyFallbackReason: execution?.legacyFallbackReason ?? null,
+    promptPolicyVersion: execution?.promptPolicyVersion ?? null,
+    selectorOutputAuthority: execution?.selectorOutputAuthority ?? null
   };
 }
 
@@ -795,25 +874,33 @@ function buildStage2Outcome(rawStage2: Stage2Response | null) {
   const finalSelector = rawStage2?.output.pipeline?.finalSelector;
   const finalists = rawStage2?.output.finalists ?? [];
   const nativeWinner = rawStage2?.output.winner ?? null;
+  const visibleCaptionOptions = rawStage2?.output.captionOptions ?? [];
   const nativeCandidateOptionMap =
-    finalists.length > 0
-      ? finalists.map((finalist) => ({
+    visibleCaptionOptions.length > 0
+      ? visibleCaptionOptions.map((option) => ({
+          option: option.option,
+          candidateId: option.candidateId ?? `option_${option.option}`
+        }))
+      : finalists.map((finalist) => ({
           option: finalist.option,
           candidateId: finalist.candidateId
-        }))
-      : [];
+        }));
   return {
     retrievalConfidence: rawStage2?.diagnostics?.examples?.retrievalConfidence ?? null,
     examplesMode: rawStage2?.diagnostics?.examples?.examplesMode ?? null,
     examplesRoleSummary: rawStage2?.diagnostics?.examples?.examplesRoleSummary ?? null,
     primaryDriverSummary: rawStage2?.diagnostics?.examples?.primaryDriverSummary ?? null,
     candidateOptionMap: finalSelector?.candidateOptionMap ?? nativeCandidateOptionMap,
-    visibleOptionToCandidateMap: finalSelector?.candidateOptionMap ?? nativeCandidateOptionMap,
+    visibleOptionToCandidateMap: nativeCandidateOptionMap,
     shortlistCandidateIds:
-      finalSelector?.shortlistCandidateIds ?? finalists.map((finalist) => finalist.candidateId),
+      finalSelector?.shortlistCandidateIds ??
+      visibleCaptionOptions.map((option) => option.candidateId ?? `option_${option.option}`),
     finalPickCandidateId: finalSelector?.finalPickCandidateId ?? nativeWinner?.candidateId ?? null,
     finalPickOption: rawStage2?.output.finalPick.option ?? nativeWinner?.option ?? null,
     finalPickReason: rawStage2?.output.finalPick.reason ?? nativeWinner?.reason ?? null,
+    winnerTier: rawStage2?.output.winner?.displayTier ?? rawStage2?.output.pipeline?.nativeCaptionV3?.guardSummary?.winnerTier ?? null,
+    degradedSuccess:
+      rawStage2?.output.pipeline?.nativeCaptionV3?.guardSummary?.degradedSuccess ?? null,
     rationaleRaw: finalSelector?.rationaleRaw ?? nativeWinner?.reason ?? null,
     rationaleInternalRaw: finalSelector?.rationaleInternalRaw ?? null,
     rationaleInternalModelRaw: finalSelector?.rationaleInternalModelRaw ?? null,
@@ -827,9 +914,14 @@ function buildStage2NativeCaptionV3(rawStage2: Stage2Response | null) {
     present: Boolean(nativeCaption),
     contextPacket: nativeCaption?.contextPacket ?? null,
     candidateBatch: nativeCaption?.candidateBatch ?? [],
+    hardValidator: nativeCaption?.hardValidator ?? null,
     qualityCourt: nativeCaption?.qualityCourt ?? null,
     repair: nativeCaption?.repair ?? null,
+    templateBackfill: nativeCaption?.templateBackfill ?? null,
+    guardSummary: nativeCaption?.guardSummary ?? null,
+    displayOptions: nativeCaption?.displayOptions ?? [],
     titleWriter: nativeCaption?.titleWriter ?? null,
+    captionTranslation: nativeCaption?.translation ?? null,
     translation: nativeCaption?.translation ?? null
   };
 }

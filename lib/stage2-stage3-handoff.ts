@@ -17,6 +17,7 @@ export type Stage2ToStage3HandoffSummary = {
   stage2Available: boolean;
   defaultCaptionOption: number | null;
   selectedCaptionOption: number | null;
+  captionBlockedReason?: string | null;
   defaultTitleOption: number | null;
   selectedTitleOption: number | null;
   caption:
@@ -66,11 +67,17 @@ export function getSelectedStage2Caption(
   }
   const defaults = getStage2SelectionDefaults(stage2);
   const resolvedOption = preferredOption ?? defaults.captionOption;
-  return (
+  const selected =
     stage2.output.captionOptions.find((item) => item.option === resolvedOption) ??
     stage2.output.captionOptions[0] ??
-    null
-  );
+    null;
+  if (!selected) {
+    return null;
+  }
+  if (selected.constraintCheck?.passed === false) {
+    return null;
+  }
+  return selected;
 }
 
 export function getSelectedStage2Title(
@@ -152,10 +159,14 @@ export function buildStage2ToStage3HandoffSummary(input: {
   currentBottomText?: string | null;
 }): Stage2ToStage3HandoffSummary {
   const defaults = getStage2SelectionDefaults(input.stage2);
+  const requestedCaptionOption =
+    input.draft?.stage2.selectedCaptionOption ?? input.selectedCaptionOption ?? defaults.captionOption;
+  const requestedCaption =
+    input.stage2?.output.captionOptions.find((item) => item.option === requestedCaptionOption) ?? null;
   const caption =
     getSelectedStage2Caption(
       input.stage2,
-      input.draft?.stage2.selectedCaptionOption ?? input.selectedCaptionOption ?? defaults.captionOption
+      requestedCaptionOption
     ) ?? null;
   const title =
     getSelectedStage2Title(
@@ -200,6 +211,10 @@ export function buildStage2ToStage3HandoffSummary(input: {
     stage2Available: Boolean(input.stage2),
     defaultCaptionOption: defaults.captionOption,
     selectedCaptionOption: caption?.option ?? null,
+    captionBlockedReason:
+      requestedCaption?.constraintCheck?.passed === false
+        ? "selected_stage2_caption_failed_hard_constraints"
+        : null,
     defaultTitleOption: defaults.titleOption,
     selectedTitleOption: title?.option ?? null,
     caption:

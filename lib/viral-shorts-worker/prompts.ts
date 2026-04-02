@@ -16,7 +16,13 @@ import {
   Stage2WriterBriefDigest,
   ViralShortsVideoContext
 } from "./types";
-import { Stage2PromptConfig } from "../stage2-pipeline";
+import {
+  computeStage2PromptHash,
+  getStage2DefaultPromptCompatibility,
+  getStage2PromptOverrideCompatibility,
+  isNativeStage2PromptStage,
+  Stage2PromptConfig
+} from "../stage2-pipeline";
 import {
   STAGE2_DEFAULT_REASONING_EFFORTS,
   STAGE2_DEFAULT_STAGE_PROMPTS,
@@ -231,6 +237,16 @@ export type ResolvedStage2PromptTemplate = {
   configuredPrompt: string;
   reasoningEffort: Stage2ReasoningEffort;
   isCustomPrompt: boolean;
+  promptSource: "default" | "workspace_override" | "channel_override";
+  promptCompatibilityFamily: string;
+  promptCompatibilityVersion: string | null;
+  defaultPromptHash: string;
+  configuredPromptHash: string;
+  overrideAccepted: boolean;
+  overrideRejectedReason: string | null;
+  overrideCandidatePresent: boolean;
+  overrideCandidatePromptHash: string | null;
+  legacyFallbackBypassed: boolean;
 };
 
 function renderPrompt(system: string, payload: unknown): string {
@@ -263,13 +279,32 @@ function countMatches(text: string, patterns: RegExp[]): number {
 
 export function resolveStage2PromptTemplate(
   stageId: Stage2PromptConfigStageId,
-  promptConfig?: Stage2PromptConfig | null
+  promptConfig?: Stage2PromptConfig | null,
+  options?: {
+    overrideSource?: "workspace_override" | "channel_override";
+  }
 ): ResolvedStage2PromptTemplate {
   const defaultPrompt = STAGE2_DEFAULT_STAGE_PROMPTS[stageId];
   const stageConfig = promptConfig?.stages[stageId];
-  const configuredPrompt = stageConfig?.prompt?.trim() || defaultPrompt;
+  const defaultReasoningEffort = STAGE2_DEFAULT_REASONING_EFFORTS[stageId];
+  const defaultCompatibility = getStage2DefaultPromptCompatibility(stageId);
+  const overrideCompatibility = getStage2PromptOverrideCompatibility({
+    stageId,
+    stageConfig
+  });
+  const overrideCandidatePresent = Boolean(
+    stageConfig &&
+      (stageConfig.prompt.trim() !== defaultPrompt ||
+        stageConfig.reasoningEffort !== defaultReasoningEffort)
+  );
+  const configuredPrompt =
+    overrideCandidatePresent && overrideCompatibility.accepted
+      ? stageConfig?.prompt?.trim() || defaultPrompt
+      : defaultPrompt;
   const reasoningEffort =
-    stageConfig?.reasoningEffort ?? STAGE2_DEFAULT_REASONING_EFFORTS[stageId];
+    overrideCandidatePresent && overrideCompatibility.accepted
+      ? stageConfig?.reasoningEffort ?? defaultReasoningEffort
+      : defaultReasoningEffort;
   return {
     stageId,
     stageType: "llm_prompt",
@@ -277,7 +312,29 @@ export function resolveStage2PromptTemplate(
     defaultPrompt,
     configuredPrompt,
     reasoningEffort,
-    isCustomPrompt: configuredPrompt !== defaultPrompt
+    isCustomPrompt:
+      configuredPrompt !== defaultPrompt || reasoningEffort !== defaultReasoningEffort,
+    promptSource:
+      overrideCandidatePresent && overrideCompatibility.accepted
+        ? options?.overrideSource ?? "workspace_override"
+        : "default",
+    promptCompatibilityFamily: overrideCompatibility.family,
+    promptCompatibilityVersion:
+      overrideCompatibility.accepted
+        ? overrideCompatibility.bundleVersion
+        : stageConfig?.compatibility?.bundleVersion ?? null,
+    defaultPromptHash: defaultCompatibility.defaultPromptHash,
+    configuredPromptHash: computeStage2PromptHash(configuredPrompt),
+    overrideAccepted: overrideCandidatePresent ? overrideCompatibility.accepted : false,
+    overrideRejectedReason:
+      overrideCandidatePresent && !overrideCompatibility.accepted
+        ? overrideCompatibility.reason
+        : null,
+    overrideCandidatePresent,
+    overrideCandidatePromptHash: overrideCandidatePresent
+      ? computeStage2PromptHash(stageConfig?.prompt?.trim() || defaultPrompt)
+      : null,
+    legacyFallbackBypassed: isNativeStage2PromptStage(stageId)
   };
 }
 
@@ -760,7 +817,7 @@ function extractPromptCommentCue(text: string): string {
   return extractLeadingCommentClause(normalized, 7);
 }
 
-function buildCommentPromptDigest(
+export function buildCommentPromptDigest(
   comments: ViralShortsVideoContext["comments"]
 ): {
   reusableLanguage: string[];

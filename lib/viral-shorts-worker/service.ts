@@ -19,8 +19,11 @@ import {
   NativeCaptionCandidate,
   NativeCaptionContextPacket,
   NativeCaptionFinalist,
+  NativeCaptionGuardSummary,
+  NativeCaptionHardValidatorResult,
   NativeCaptionQualityCourt,
   NativeCaptionRepairResult,
+  NativeCaptionTemplateBackfillCandidate,
   NativeCaptionTitleOption,
   NativeCaptionTranslationArtifact,
   NativeCaptionWinner,
@@ -34,6 +37,7 @@ import {
 import {
   buildAnalyzerPrompt,
   buildCommentCarryProfile,
+  buildCommentPromptDigest,
   buildStage2PromptInputManifestMap,
   buildStage2SourceContextSummary,
   buildCriticPrompt,
@@ -100,6 +104,7 @@ import { CommentItem } from "../comments";
 import { JsonStageExecutor } from "./executor";
 import { buildSelectorExamplePool } from "./selector-example-pool";
 import {
+  buildStage2LearningPromptContext,
   createEmptyStage2EditorialMemorySummary,
   DEFAULT_STAGE2_STYLE_PROFILE
 } from "../stage2-channel-learning";
@@ -424,14 +429,14 @@ const NATIVE_CAPTION_STYLE_CARD = {
 const NATIVE_CONTEXT_PACKET_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["grounding", "audience", "strategy"],
+  required: ["grounding", "audience_wave", "strategy"],
   properties: {
     grounding: {
       type: "object",
       additionalProperties: false,
       required: [
         "observed_facts",
-        "visible_actions",
+        "visible_sequence",
         "micro_turn",
         "first_seconds_signal",
         "uncertainties",
@@ -440,7 +445,7 @@ const NATIVE_CONTEXT_PACKET_SCHEMA = {
       ],
       properties: {
         observed_facts: { type: "array", items: { type: "string", minLength: 1 } },
-        visible_actions: { type: "array", items: { type: "string", minLength: 1 } },
+        visible_sequence: { type: "array", items: { type: "string", minLength: 1 } },
         micro_turn: { type: "string", minLength: 1 },
         first_seconds_signal: { type: "string", minLength: 1 },
         uncertainties: { type: "array", items: { type: "string", minLength: 1 } },
@@ -448,24 +453,32 @@ const NATIVE_CONTEXT_PACKET_SCHEMA = {
         safe_inferences: { type: "array", items: { type: "string", minLength: 1 } }
       }
     },
-    audience: {
+    audience_wave: {
       type: "object",
       additionalProperties: false,
       required: [
-        "consensus_read",
+        "exists",
+        "emotional_temperature",
+        "dominant_harmless_handle",
+        "consensus_lane",
         "joke_lane",
-        "dissent_exists",
+        "dissent_lane",
         "safe_reusable_cues",
         "blocked_cues",
-        "toxic_or_low_value_patterns"
+        "flattening_risks",
+        "must_not_lose"
       ],
       properties: {
-        consensus_read: { type: "string" },
+        exists: { type: "boolean" },
+        emotional_temperature: { type: "string", minLength: 1 },
+        dominant_harmless_handle: { type: ["string", "null"] },
+        consensus_lane: { type: "string" },
         joke_lane: { type: "string" },
-        dissent_exists: { type: "boolean" },
+        dissent_lane: { type: "string" },
         safe_reusable_cues: { type: "array", items: { type: "string", minLength: 1 } },
         blocked_cues: { type: "array", items: { type: "string", minLength: 1 } },
-        toxic_or_low_value_patterns: { type: "array", items: { type: "string", minLength: 1 } }
+        flattening_risks: { type: "array", items: { type: "string", minLength: 1 } },
+        must_not_lose: { type: "array", items: { type: "string", minLength: 1 } }
       }
     },
     strategy: {
@@ -476,18 +489,31 @@ const NATIVE_CONTEXT_PACKET_SCHEMA = {
         "secondary_angles",
         "hook_seeds",
         "bottom_functions",
+        "required_lanes",
         "must_do",
-        "must_avoid",
-        "quality_bar"
+        "must_avoid"
       ],
       properties: {
         primary_angle: { type: "string", minLength: 1 },
         secondary_angles: { type: "array", items: { type: "string", minLength: 1 } },
         hook_seeds: { type: "array", items: { type: "string", minLength: 1 } },
         bottom_functions: { type: "array", items: { type: "string", minLength: 1 } },
+        required_lanes: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["lane_id", "count", "purpose"],
+            properties: {
+              lane_id: { type: "string", minLength: 1 },
+              count: { type: "integer", minimum: 1, maximum: 8 },
+              purpose: { type: "string", minLength: 1 }
+            }
+          }
+        },
         must_do: { type: "array", items: { type: "string", minLength: 1 } },
-        must_avoid: { type: "array", items: { type: "string", minLength: 1 } },
-        quality_bar: { type: "array", items: { type: "string", minLength: 1 } }
+        must_avoid: { type: "array", items: { type: "string", minLength: 1 } }
       }
     }
   }
@@ -500,14 +526,21 @@ const NATIVE_CANDIDATE_BATCH_SCHEMA = {
   items: {
     type: "object",
     additionalProperties: false,
-    required: ["candidate_id", "angle", "hook_family", "cue_used", "top", "bottom"],
+    required: [
+      "candidate_id",
+      "lane_id",
+      "top",
+      "bottom",
+      "retained_handle",
+      "display_intent"
+    ],
     properties: {
       candidate_id: { type: "string", minLength: 1 },
-      angle: { type: "string", minLength: 1 },
-      hook_family: { type: "string", minLength: 1 },
-      cue_used: { type: "string", minLength: 1 },
+      lane_id: { type: "string", minLength: 1 },
       top: { type: "string", minLength: 1 },
-      bottom: { type: "string", minLength: 1 }
+      bottom: { type: "string", minLength: 1 },
+      retained_handle: { type: "boolean" },
+      display_intent: { type: "string", const: "finalist_or_display_safe" }
     }
   }
 } as const;
@@ -515,67 +548,74 @@ const NATIVE_CANDIDATE_BATCH_SCHEMA = {
 const NATIVE_QUALITY_COURT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["kept", "rejected", "winner_candidate_id", "winner_reason", "needs_repair", "repair_briefs"],
+  required: [
+    "finalists",
+    "display_safe_extras",
+    "hard_rejected",
+    "winner_candidate_id",
+    "recovery_plan"
+  ],
   properties: {
-    kept: {
+    finalists: {
       type: "array",
       maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["candidate_id", "scores", "why_it_works"],
+        required: ["candidate_id", "why_chosen", "preserved_handle"],
         properties: {
           candidate_id: { type: "string", minLength: 1 },
-          scores: {
-            type: "object",
-            additionalProperties: false,
-            required: [
-              "hook_immediacy",
-              "native_fluency",
-              "visual_defensibility",
-              "audience_authenticity",
-              "human_warmth",
-              "bottom_usefulness"
-            ],
-            properties: {
-              hook_immediacy: { type: "number" },
-              native_fluency: { type: "number" },
-              visual_defensibility: { type: "number" },
-              audience_authenticity: { type: "number" },
-              human_warmth: { type: "number" },
-              bottom_usefulness: { type: "number" }
-            }
-          },
-          why_it_works: { type: "array", items: { type: "string", minLength: 1 } }
+          why_chosen: { type: "array", items: { type: "string", minLength: 1 } },
+          preserved_handle: { type: "boolean" }
         }
       }
     },
-    rejected: {
+    display_safe_extras: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["candidate_id", "hard_fail_reasons", "offending_phrases"],
+        required: ["candidate_id", "why_display_safe"],
         properties: {
           candidate_id: { type: "string", minLength: 1 },
-          hard_fail_reasons: { type: "array", items: { type: "string", minLength: 1 } },
+          why_display_safe: { type: "array", items: { type: "string", minLength: 1 } }
+        }
+      }
+    },
+    hard_rejected: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["candidate_id", "reasons", "offending_phrases"],
+        properties: {
+          candidate_id: { type: "string", minLength: 1 },
+          reasons: { type: "array", items: { type: "string", minLength: 1 } },
           offending_phrases: { type: "array", items: { type: "string" } }
         }
       }
     },
     winner_candidate_id: { type: ["string", "null"] },
-    winner_reason: { type: "string", minLength: 1 },
-    needs_repair: { type: "boolean" },
-    repair_briefs: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["candidate_id", "fix_only", "preserve"],
-        properties: {
-          candidate_id: { type: "string", minLength: 1 },
-          fix_only: { type: "array", items: { type: "string", minLength: 1 } },
-          preserve: { type: "array", items: { type: "string", minLength: 1 } }
+    recovery_plan: {
+      type: "object",
+      additionalProperties: false,
+      required: ["required", "missing_count", "briefs"],
+      properties: {
+        required: { type: "boolean" },
+        missing_count: { type: "integer", minimum: 0, maximum: 8 },
+        briefs: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["lane_id", "goal", "must_keep", "must_avoid"],
+            properties: {
+              lane_id: { type: "string", minLength: 1 },
+              goal: { type: "string", minLength: 1 },
+              must_keep: { type: "array", items: { type: "string", minLength: 1 } },
+              must_avoid: { type: "array", items: { type: "string", minLength: 1 } }
+            }
+          }
         }
       }
     }
@@ -587,11 +627,21 @@ const NATIVE_TARGETED_REPAIR_SCHEMA = {
   items: {
     type: "object",
     additionalProperties: false,
-    required: ["candidate_id", "top", "bottom"],
+    required: [
+      "candidate_id",
+      "lane_id",
+      "top",
+      "bottom",
+      "retained_handle",
+      "display_intent"
+    ],
     properties: {
       candidate_id: { type: "string", minLength: 1 },
+      lane_id: { type: "string", minLength: 1 },
       top: { type: "string", minLength: 1 },
-      bottom: { type: "string", minLength: 1 }
+      bottom: { type: "string", minLength: 1 },
+      retained_handle: { type: "boolean" },
+      display_intent: { type: "string", const: "recovery" }
     }
   }
 } as const;
@@ -603,10 +653,11 @@ const NATIVE_TITLE_WRITER_SCHEMA = {
   items: {
     type: "object",
     additionalProperties: false,
-    required: ["option", "title"],
+    required: ["option", "title", "title_ru"],
     properties: {
       option: { type: "integer", minimum: 1, maximum: 5 },
-      title: { type: "string", minLength: 1 }
+      title: { type: "string", minLength: 1 },
+      title_ru: { type: "string", minLength: 1 }
     }
   }
 } as const;
@@ -1639,7 +1690,12 @@ function buildStage2PipelineExecutionSnapshot(input: {
     stageChainVersion: input.stageChainVersion,
     workerBuild: input.workerBuild,
     resolvedAt: input.resolvedAt,
-    legacyFallbackReason: buildLegacyFallbackReason(input.featureFlags, input.pipelineVersion)
+    legacyFallbackReason: buildLegacyFallbackReason(input.featureFlags, input.pipelineVersion),
+    promptPolicyVersion: STAGE2_PROMPT_POLICY_VERSION,
+    selectorOutputAuthority:
+      input.pipelineVersion === "native_caption_v3"
+        ? "derived_non_authoritative"
+        : "authoritative"
   };
 }
 
@@ -1656,10 +1712,98 @@ const NATIVE_CAPTION_EXAMPLES_ASSESSMENT: Stage2ExamplesAssessment = {
   editorialMemoryPriority: "supporting"
 };
 
+const NATIVE_CAPTION_MINIMUM_VALID_FINALISTS = 2;
+const STAGE2_PROMPT_POLICY_VERSION = "native_defaults_authoritative_v1_channel_learning";
+
+function buildNativeCaptionChannelLearningPayload(
+  channelConfig: Stage2RuntimeChannelConfig,
+  detail: "minimal" | "compact"
+) {
+  const channelLearning = buildStage2LearningPromptContext({
+    profile: channelConfig.styleProfile,
+    editorialMemory: channelConfig.editorialMemory,
+    detail
+  });
+  return {
+    payload: channelLearning,
+    usage: {
+      detail,
+      selectedDirectionCount: channelLearning.bootstrap.selectedDirectionCount,
+      highlightedDirectionIds: channelLearning.bootstrap.directionHighlights.map((entry) => entry.id),
+      explorationShare:
+        typeof channelLearning.bootstrap.explorationShare === "number"
+          ? channelLearning.bootstrap.explorationShare
+          : null,
+      recentFeedbackCount: channelLearning.editorialMemory.recentFeedbackCount,
+      recentSelectionCount: channelLearning.editorialMemory.recentSelectionCount,
+      promptSummary:
+        channelLearning.editorialMemory.promptSummary ||
+        channelLearning.bootstrap.lessons.summary ||
+        channelLearning.bootstrap.selectionSummary ||
+        null
+    }
+  };
+}
+
 function renderJsonPrompt(system: string, payload: unknown): string {
   return ["SYSTEM", system.trim(), "", "USER CONTEXT JSON", JSON.stringify(payload, null, 2)].join(
     "\n"
   );
+}
+
+class NativeCaptionFailClosedError extends Error {
+  constructor(
+    message: string,
+    readonly guardSummary: NativeCaptionGuardSummary
+  ) {
+    super(message);
+    this.name = "NativeCaptionFailClosedError";
+  }
+}
+
+function buildDefaultNativeRequiredLanes(
+  audienceWave: NativeCaptionContextPacket["audienceWave"]
+): NativeCaptionContextPacket["strategy"]["requiredLanes"] {
+  const dominantWave =
+    audienceWave.exists &&
+    (Boolean(audienceWave.dominantHarmlessHandle) ||
+      audienceWave.safeReusableCues.length > 0 ||
+      audienceWave.mustNotLose.length > 0);
+  const weakWave =
+    !audienceWave.exists ||
+    (!audienceWave.dominantHarmlessHandle &&
+      audienceWave.safeReusableCues.length === 0 &&
+      !audienceWave.consensusLane.trim() &&
+      !audienceWave.jokeLane.trim());
+
+  if (dominantWave && !weakWave) {
+    return [
+      { laneId: "audience_locked", count: 3, purpose: "Preserve the dominant harmless handle or public read." },
+      { laneId: "balanced_clean", count: 2, purpose: "Keep strong native phrasing without sanding down the wave." },
+      { laneId: "human_observational", count: 1, purpose: "Catch the most human micro-read without meme pressure." },
+      { laneId: "bolder_safe", count: 1, purpose: "Push one sharper but still visually defensible read." },
+      { laneId: "backup_simple", count: 1, purpose: "Keep one plainer alive option in reserve." }
+    ];
+  }
+
+  if (weakWave) {
+    return [
+      { laneId: "audience_locked", count: 1, purpose: "Keep one audience-linked option if any cue survives safely." },
+      { laneId: "balanced_clean", count: 3, purpose: "Carry most of the batch with strong native framing." },
+      { laneId: "human_observational", count: 1, purpose: "Keep the strongest human micro-read." },
+      { laneId: "skeptic_or_precision", count: 1, purpose: "Leave room for contested or cautious framing." },
+      { laneId: "backup_simple", count: 2, purpose: "Preserve plain alive backups when context is sparse." }
+    ];
+  }
+
+  return [
+    { laneId: "audience_locked", count: 2, purpose: "Keep the public harmless read alive when it exists." },
+    { laneId: "balanced_clean", count: 2, purpose: "Carry native strong options that do not flatten the clip." },
+    { laneId: "human_observational", count: 1, purpose: "Capture the strongest human micro-read." },
+    { laneId: "bolder_safe", count: 1, purpose: "Try one slightly sharper but still defensible line." },
+    { laneId: "skeptic_or_precision", count: 1, purpose: "Keep one careful or contested read in play." },
+    { laneId: "backup_simple", count: 1, purpose: "Reserve one plain but alive option." }
+  ];
 }
 
 function buildNativeCaptionFallbackContextPacket(input: {
@@ -1671,6 +1815,46 @@ function buildNativeCaptionFallbackContextPacket(input: {
     .map((comment) => comment.text.trim())
     .filter((text) => /racist|demonic|too old|polic|slur|hate/i.test(text))
     .slice(0, 4);
+  const safeReusableCues = [
+    ...input.analyzerOutput.slangToAdapt,
+    ...input.analyzerOutput.commentLanguageCues
+  ]
+    .map((cue) => cue.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  const dominantHarmlessHandle = safeReusableCues[0] ?? null;
+  const audienceWave: NativeCaptionContextPacket["audienceWave"] = {
+    exists: Boolean(
+      input.videoContext.comments.length > 0 ||
+        input.analyzerOutput.commentConsensusLane.trim() ||
+        input.analyzerOutput.commentJokeLane.trim() ||
+        input.analyzerOutput.commentDissentLane.trim()
+    ),
+    emotionalTemperature:
+      input.analyzerOutput.commentVibe.trim() ||
+      input.analyzerOutput.bestBottomEnergy.trim() ||
+      "watchful reaction",
+    dominantHarmlessHandle,
+    consensusLane: input.analyzerOutput.commentConsensusLane || input.analyzerOutput.commentVibe,
+    jokeLane: input.analyzerOutput.commentJokeLane,
+    dissentLane: input.analyzerOutput.commentDissentLane,
+    safeReusableCues,
+    blockedCues: blockedCommentCues,
+    flatteningRisks: [
+      "flattening the clip into generic safe copy",
+      ...(dominantHarmlessHandle ? [`erasing the handle "${dominantHarmlessHandle}"`] : []),
+      ...input.analyzerOutput.genericRisks
+    ]
+      .filter(Boolean)
+      .slice(0, 6),
+    mustNotLose: [
+      dominantHarmlessHandle,
+      input.analyzerOutput.commentJokeLane,
+      input.analyzerOutput.commentConsensusLane
+    ]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .slice(0, 4)
+  };
   return {
     grounding: {
       observedFacts: [
@@ -1679,7 +1863,10 @@ function buildNativeCaptionFallbackContextPacket(input: {
         input.analyzerOutput.setting,
         input.analyzerOutput.payoff
       ].filter(Boolean),
-      visibleActions: input.analyzerOutput.visibleActions.slice(0, 5),
+      visibleSequence:
+        input.analyzerOutput.sceneBeats.length > 0
+          ? input.analyzerOutput.sceneBeats.slice(0, 5)
+          : input.analyzerOutput.visibleActions.slice(0, 5),
       microTurn:
         input.analyzerOutput.revealMoment ||
         input.analyzerOutput.lateClipChange ||
@@ -1700,19 +1887,7 @@ function buildNativeCaptionFallbackContextPacket(input: {
         .filter(Boolean)
         .slice(0, 4)
     },
-    audience: {
-      consensusRead: input.analyzerOutput.commentConsensusLane || input.analyzerOutput.commentVibe,
-      jokeLane: input.analyzerOutput.commentJokeLane,
-      dissentExists: Boolean(input.analyzerOutput.commentDissentLane.trim()),
-      safeReusableCues: [
-        ...input.analyzerOutput.slangToAdapt,
-        ...input.analyzerOutput.commentLanguageCues
-      ]
-        .filter((cue) => cue.trim().length > 0)
-        .slice(0, 5),
-      blockedCues: blockedCommentCues,
-      toxicOrLowValuePatterns: blockedCommentCues
-    },
+    audienceWave,
     strategy: {
       primaryAngle: input.selectorOutput.primaryAngle,
       secondaryAngles: input.selectorOutput.secondaryAngles.slice(0, 3),
@@ -1743,12 +1918,7 @@ function buildNativeCaptionFallbackContextPacket(input: {
       ]
         .filter(Boolean)
         .slice(0, 6),
-      qualityBar: [
-        "native human feel",
-        "visual defensibility",
-        "hook immediacy",
-        "comment-native specificity"
-      ]
+      requiredLanes: buildDefaultNativeRequiredLanes(audienceWave)
     }
   };
 }
@@ -1758,6 +1928,7 @@ function buildNativeCaptionContextPacketPrompt(input: {
   channelConfig: Stage2RuntimeChannelConfig;
   promptConfig: Stage2PromptConfig;
 }): string {
+  const channelLearning = buildNativeCaptionChannelLearningPayload(input.channelConfig, "minimal");
   return renderJsonPrompt(
     resolveStage2PromptTemplate("contextPacket", input.promptConfig).configuredPrompt,
     {
@@ -1771,7 +1942,9 @@ function buildNativeCaptionContextPacketPrompt(input: {
         likes: comment.likes,
         text: comment.text
       })),
+      comment_digest_json: buildCommentPromptDigest(input.videoContext.comments),
       style_card_json: NATIVE_CAPTION_STYLE_CARD,
+      channel_learning_json: channelLearning.payload,
       hard_constraints_json: input.channelConfig.hardConstraints,
       user_instruction: input.videoContext.userInstruction?.trim() || null
     }
@@ -1786,8 +1959,11 @@ function normalizeNativeCaptionContextPacket(
   const grounding = (obj.grounding && typeof obj.grounding === "object"
     ? obj.grounding
     : {}) as Record<string, unknown>;
-  const audience = (obj.audience && typeof obj.audience === "object"
-    ? obj.audience
+  const audienceWave = ((obj.audience_wave ??
+    obj.audienceWave ??
+    obj.audience) &&
+  typeof (obj.audience_wave ?? obj.audienceWave ?? obj.audience) === "object"
+    ? (obj.audience_wave ?? obj.audienceWave ?? obj.audience)
     : {}) as Record<string, unknown>;
   const strategy = (obj.strategy && typeof obj.strategy === "object"
     ? obj.strategy
@@ -1800,7 +1976,10 @@ function normalizeNativeCaptionContextPacket(
   return {
     grounding: {
       observedFacts: asList(grounding.observed_facts, fallback.grounding.observedFacts),
-      visibleActions: asList(grounding.visible_actions, fallback.grounding.visibleActions),
+      visibleSequence: asList(
+        grounding.visible_sequence ?? grounding.visible_actions,
+        fallback.grounding.visibleSequence
+      ),
       microTurn: String(grounding.micro_turn ?? fallback.grounding.microTurn).trim() || fallback.grounding.microTurn,
       firstSecondsSignal:
         String(grounding.first_seconds_signal ?? fallback.grounding.firstSecondsSignal).trim() ||
@@ -1809,21 +1988,49 @@ function normalizeNativeCaptionContextPacket(
       forbiddenClaims: asList(grounding.forbidden_claims, fallback.grounding.forbiddenClaims),
       safeInferences: asList(grounding.safe_inferences, fallback.grounding.safeInferences)
     },
-    audience: {
-      consensusRead:
-        String(audience.consensus_read ?? fallback.audience.consensusRead).trim() ||
-        fallback.audience.consensusRead,
-      jokeLane: String(audience.joke_lane ?? fallback.audience.jokeLane).trim() || fallback.audience.jokeLane,
-      dissentExists:
-        typeof audience.dissent_exists === "boolean"
-          ? audience.dissent_exists
-          : fallback.audience.dissentExists,
-      safeReusableCues: asList(audience.safe_reusable_cues, fallback.audience.safeReusableCues),
-      blockedCues: asList(audience.blocked_cues, fallback.audience.blockedCues),
-      toxicOrLowValuePatterns: asList(
-        audience.toxic_or_low_value_patterns,
-        fallback.audience.toxicOrLowValuePatterns
-      )
+    audienceWave: {
+      exists:
+        typeof audienceWave.exists === "boolean"
+          ? audienceWave.exists
+          : typeof audienceWave.dissent_exists === "boolean"
+            ? audienceWave.dissent_exists || fallback.audienceWave.exists
+            : fallback.audienceWave.exists,
+      emotionalTemperature:
+        String(
+          audienceWave.emotional_temperature ??
+            audienceWave.emotionalTemperature ??
+            fallback.audienceWave.emotionalTemperature
+        ).trim() || fallback.audienceWave.emotionalTemperature,
+      dominantHarmlessHandle:
+        typeof (audienceWave.dominant_harmless_handle ?? audienceWave.dominantHarmlessHandle) === "string"
+          ? String(audienceWave.dominant_harmless_handle ?? audienceWave.dominantHarmlessHandle).trim() || null
+          : fallback.audienceWave.dominantHarmlessHandle,
+      consensusLane:
+        String(
+          audienceWave.consensus_lane ??
+            audienceWave.consensus_read ??
+            audienceWave.consensusLane ??
+            fallback.audienceWave.consensusLane
+        ).trim() || fallback.audienceWave.consensusLane,
+      jokeLane:
+        String(audienceWave.joke_lane ?? audienceWave.jokeLane ?? fallback.audienceWave.jokeLane).trim() ||
+        fallback.audienceWave.jokeLane,
+      dissentLane:
+        String(
+          audienceWave.dissent_lane ??
+            audienceWave.dissentLane ??
+            fallback.audienceWave.dissentLane
+        ).trim() || fallback.audienceWave.dissentLane,
+      safeReusableCues: asList(
+        audienceWave.safe_reusable_cues,
+        fallback.audienceWave.safeReusableCues
+      ),
+      blockedCues: asList(audienceWave.blocked_cues, fallback.audienceWave.blockedCues),
+      flatteningRisks: asList(
+        audienceWave.flattening_risks ?? audienceWave.toxic_or_low_value_patterns,
+        fallback.audienceWave.flatteningRisks
+      ),
+      mustNotLose: asList(audienceWave.must_not_lose, fallback.audienceWave.mustNotLose)
     },
     strategy: {
       primaryAngle:
@@ -1832,9 +2039,32 @@ function normalizeNativeCaptionContextPacket(
       secondaryAngles: asList(strategy.secondary_angles, fallback.strategy.secondaryAngles),
       hookSeeds: asList(strategy.hook_seeds, fallback.strategy.hookSeeds),
       bottomFunctions: asList(strategy.bottom_functions, fallback.strategy.bottomFunctions),
+      requiredLanes:
+        (() => {
+          const normalized = (Array.isArray(strategy.required_lanes) ? strategy.required_lanes : [])
+            .map((entry) => {
+              const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+              const laneId = String(item.lane_id ?? item.laneId ?? "").trim();
+              const count = Number(item.count ?? 0);
+              const purpose = String(item.purpose ?? "").trim();
+              if (!laneId || !Number.isFinite(count) || count < 1 || !purpose) {
+                return null;
+              }
+              return {
+                laneId,
+                count: Math.max(1, Math.min(8, Math.floor(count))),
+                purpose
+              };
+            })
+            .filter(
+              (
+                entry
+              ): entry is NativeCaptionContextPacket["strategy"]["requiredLanes"][number] => Boolean(entry)
+            );
+          return normalized.length > 0 ? normalized : fallback.strategy.requiredLanes;
+        })(),
       mustDo: asList(strategy.must_do, fallback.strategy.mustDo),
-      mustAvoid: asList(strategy.must_avoid, fallback.strategy.mustAvoid),
-      qualityBar: asList(strategy.quality_bar, fallback.strategy.qualityBar)
+      mustAvoid: asList(strategy.must_avoid, fallback.strategy.mustAvoid)
     }
   };
 }
@@ -1845,11 +2075,13 @@ function buildNativeCaptionCandidateGeneratorPrompt(input: {
   promptConfig: Stage2PromptConfig;
   userInstruction?: string | null;
 }): string {
+  const channelLearning = buildNativeCaptionChannelLearningPayload(input.channelConfig, "compact");
   return renderJsonPrompt(
     resolveStage2PromptTemplate("candidateGenerator", input.promptConfig).configuredPrompt,
     {
       context_packet_json: input.contextPacket,
       style_card_json: NATIVE_CAPTION_STYLE_CARD,
+      channel_learning_json: channelLearning.payload,
       hard_constraints_json: input.channelConfig.hardConstraints,
       user_instruction: input.userInstruction?.trim() || null
     }
@@ -1877,13 +2109,25 @@ function normalizeNativeCaptionCandidateBatch(raw: unknown): NativeCaptionCandid
         suffix += 1;
       }
       usedIds.add(candidateId);
+      const laneId = String(item.lane_id ?? item.laneId ?? item.angle ?? "balanced_clean").trim() || "balanced_clean";
+      const retainedHandle =
+        typeof (item.retained_handle ?? item.retainedHandle) === "boolean"
+          ? Boolean(item.retained_handle ?? item.retainedHandle)
+          : false;
+      const displayIntentRaw = String(
+        item.display_intent ?? item.displayIntent ?? "finalist_or_display_safe"
+      ).trim();
       return {
         candidateId,
-        angle: String(item.angle ?? "shared_experience").trim() || "shared_experience",
-        hookFamily: String(item.hook_family ?? item.hookFamily ?? "contradiction_first").trim() || "contradiction_first",
-        cueUsed: String(item.cue_used ?? item.cueUsed ?? "none").trim() || "none",
+        laneId,
+        angle: laneId,
         top,
-        bottom
+        bottom,
+        retainedHandle,
+        displayIntent:
+          displayIntentRaw === "recovery" || displayIntentRaw === "template_backfill"
+            ? displayIntentRaw
+            : "finalist_or_display_safe"
       };
     })
     .filter((entry): entry is NativeCaptionCandidate => Boolean(entry))
@@ -1898,95 +2142,336 @@ function toLegacyCandidate(candidate: NativeCaptionCandidate): CandidateCaption 
     bottom: candidate.bottom,
     topRu: candidate.top,
     bottomRu: candidate.bottom,
-    rationale: `${candidate.hookFamily}:${candidate.cueUsed}`
+    rationale: `${candidate.laneId}:${candidate.displayIntent}`
+  };
+}
+
+function evaluateNativeCaptionConstraintCheck(
+  candidate: NativeCaptionCandidate,
+  constraints: Stage2HardConstraints
+): NativeCaptionFinalist["constraintCheck"] {
+  const base = evaluateCandidateHardConstraints(toLegacyCandidate(candidate), constraints, false);
+  const extraIssues: string[] = [];
+  const combinedText = `${candidate.top}\n${candidate.bottom}`;
+  if (!candidate.top.trim()) {
+    extraIssues.push("TOP is empty.");
+  }
+  if (!candidate.bottom.trim()) {
+    extraIssues.push("BOTTOM is empty.");
+  }
+  if (/\b(top_ru|bottom_ru|translation|candidate_id|lane_id)\b/i.test(combinedText)) {
+    extraIssues.push("Output leaked translation or schema fields into caption text.");
+  }
+  if (/^(top|bottom)\s*:/i.test(candidate.top) || /^(top|bottom)\s*:/i.test(candidate.bottom)) {
+    extraIssues.push("Output leaked meta labels into caption text.");
+  }
+  if (/\b(placeholder|your text here|insert caption|same as above)\b/i.test(combinedText)) {
+    extraIssues.push("Output contains placeholder text.");
+  }
+  const issues = [...base.issues, ...extraIssues];
+  return {
+    ...base,
+    passed: issues.length === 0,
+    issues
+  };
+}
+
+function buildNativeCaptionConstraintCheckMap(
+  candidates: NativeCaptionCandidate[],
+  constraints: Stage2HardConstraints
+): Map<string, NativeCaptionFinalist["constraintCheck"]> {
+  return new Map(
+    candidates.map((candidate) => [
+      candidate.candidateId,
+      evaluateNativeCaptionConstraintCheck(candidate, constraints)
+    ])
+  );
+}
+
+function buildNativeCaptionConstraintChecksForPrompt(
+  candidates: NativeCaptionCandidate[],
+  constraintChecks: Map<string, NativeCaptionFinalist["constraintCheck"]>
+) {
+  return candidates.map((candidate) => {
+    const constraintCheck = constraintChecks.get(candidate.candidateId);
+    return {
+      candidate_id: candidate.candidateId,
+      passed: constraintCheck?.passed ?? false,
+      repaired: constraintCheck?.repaired ?? false,
+      top_length: constraintCheck?.topLength ?? candidate.top.length,
+      bottom_length: constraintCheck?.bottomLength ?? candidate.bottom.length,
+      issues: constraintCheck?.issues ?? []
+    };
+  });
+}
+
+function buildNativeCaptionHardValidator(input: {
+  candidates: NativeCaptionCandidate[];
+  constraintChecks: Map<string, NativeCaptionFinalist["constraintCheck"]>;
+}): NativeCaptionHardValidatorResult {
+  return input.candidates.reduce<NativeCaptionHardValidatorResult>(
+    (accumulator, candidate) => {
+      const constraintCheck = input.constraintChecks.get(candidate.candidateId);
+      if (constraintCheck?.passed) {
+        accumulator.validPool.push(candidate.candidateId);
+      } else {
+        accumulator.invalidPool.push({
+          candidateId: candidate.candidateId,
+          hardIssues: constraintCheck?.issues ?? ["failed hard validation"]
+        });
+      }
+      return accumulator;
+    },
+    {
+      validPool: [],
+      invalidPool: []
+    }
+  );
+}
+
+function buildNativeCaptionRecoveryPlan(input: {
+  contextPacket: NativeCaptionContextPacket;
+  finalists: NativeCaptionQualityCourt["finalists"];
+  displaySafeExtras: NativeCaptionQualityCourt["displaySafeExtras"];
+  winnerCandidateId: string | null;
+  validCandidates: NativeCaptionCandidate[];
+}): NativeCaptionQualityCourt["recoveryPlan"] {
+  const displayedCount = input.finalists.length + input.displaySafeExtras.length;
+  const handleAvailable = input.validCandidates.some((candidate) => candidate.retainedHandle);
+  const handlePreserved = input.finalists.some((entry) => entry.preservedHandle);
+  const missingCount = Math.max(
+    0,
+    3 - input.finalists.length,
+    5 - displayedCount,
+    input.winnerCandidateId ? 0 : 1,
+    handleAvailable && !handlePreserved ? 1 : 0
+  );
+  if (missingCount === 0) {
+    return {
+      required: false,
+      missingCount: 0,
+      briefs: []
+    };
+  }
+
+  const laneCounts = new Map<string, number>();
+  for (const candidate of input.validCandidates) {
+    laneCounts.set(candidate.laneId, (laneCounts.get(candidate.laneId) ?? 0) + 1);
+  }
+  const briefs = input.contextPacket.strategy.requiredLanes
+    .filter((lane) => lane.count > (laneCounts.get(lane.laneId) ?? 0) || lane.laneId === "audience_locked")
+    .map((lane) => ({
+      laneId: lane.laneId,
+      goal:
+        lane.laneId === "audience_locked" &&
+        input.contextPacket.audienceWave.dominantHarmlessHandle &&
+        !handlePreserved
+          ? `Restore the harmless public handle "${input.contextPacket.audienceWave.dominantHarmlessHandle}" naturally.`
+          : lane.purpose,
+      mustKeep: [
+        ...input.contextPacket.audienceWave.mustNotLose,
+        ...input.contextPacket.strategy.mustDo
+      ].slice(0, 6),
+      mustAvoid: [
+        ...input.contextPacket.audienceWave.flatteningRisks,
+        ...input.contextPacket.strategy.mustAvoid
+      ].slice(0, 6)
+    }))
+    .slice(0, Math.max(1, missingCount));
+
+  return {
+    required: true,
+    missingCount,
+    briefs:
+      briefs.length > 0
+        ? briefs
+        : [
+            {
+              laneId: "balanced_clean",
+              goal: "Generate additional display-safe options without flattening the clip.",
+              mustKeep: [...input.contextPacket.strategy.mustDo].slice(0, 4),
+              mustAvoid: [...input.contextPacket.strategy.mustAvoid].slice(0, 4)
+            }
+          ]
   };
 }
 
 function buildNativeCaptionQualityCourtFallback(input: {
   candidates: NativeCaptionCandidate[];
-  constraints: Stage2HardConstraints;
+  contextPacket: NativeCaptionContextPacket;
 }): NativeCaptionQualityCourt {
   const scored = input.candidates.map((candidate) => {
     const legacyCandidate = toLegacyCandidate(candidate);
     const topSignals = evaluateTopHookSignals(legacyCandidate.top);
     const humanSignals = evaluateHumanPhrasingSignals(legacyCandidate);
-    const constraintCheck = evaluateCandidateHardConstraints(legacyCandidate, input.constraints);
-    const scores = {
-      hookImmediacy: topSignals.earlyHookPresent ? 9 : topSignals.inventoryOpening ? 5 : 7,
-      nativeFluency: humanSignals.syntheticPhrasing ? 5 : humanSignals.inventedCompound ? 6 : 8,
-      visualDefensibility: constraintCheck.passed ? 8 : 6,
-      audienceAuthenticity: candidate.cueUsed !== "none" ? 8 : 7,
-      humanWarmth: /warm|soft|gentle|smile|awkward/i.test(candidate.bottom) ? 8 : 7,
-      bottomUsefulness:
-        candidate.bottom.trim().toLowerCase() === candidate.top.trim().toLowerCase() ? 4 : 8
-    };
-    const total = Object.values(scores).reduce((sum, value) => sum + value, 0);
-    const strong =
-      scores.nativeFluency >= 8 &&
-      scores.hookImmediacy >= 8 &&
-      scores.visualDefensibility >= 8 &&
-      constraintCheck.passed &&
-      !humanSignals.syntheticPhrasing;
+    const hardReasons = [
+      ...(humanSignals.syntheticPhrasing || humanSignals.inventedCompound
+        ? ["H1 invented_or_non_native"]
+        : []),
+      ...(topSignals.inventoryOpening || topSignals.pureBeatNarration ? ["H2 beat_log_or_inventory_opening"] : []),
+      ...(/report|editorial|spokesperson|statement/i.test(`${candidate.top} ${candidate.bottom}`)
+        ? ["H3 analyst_or_reporting_tone"]
+        : []),
+      ...(!candidate.retainedHandle &&
+      Boolean(input.contextPacket.audienceWave.dominantHarmlessHandle) &&
+      input.candidates.some((entry) => entry.retainedHandle)
+        ? ["H5 flattened_audience_wave_or_erased_handle"]
+        : []),
+      ...(!topSignals.earlyHookPresent ? ["H6 dead_generic_clean_english"] : [])
+    ];
     return {
       candidate,
-      scores,
-      total,
-      strong,
       topSignals,
       humanSignals,
-      issues: [
-        ...(topSignals.inventoryOpening ? ["inventory opening"] : []),
-        ...(humanSignals.syntheticPhrasing ? ["synthetic phrasing"] : []),
-        ...(constraintCheck.passed ? [] : constraintCheck.issues)
-      ]
+      hardReasons,
+      softReasons: [
+        ...(!topSignals.earlyHookPresent ? ["S4 slightly_weaker_hook"] : []),
+        ...(!candidate.retainedHandle &&
+        Boolean(input.contextPacket.audienceWave.dominantHarmlessHandle) &&
+        !hardReasons.includes("H5 flattened_audience_wave_or_erased_handle")
+          ? ["S3 emotionally_flatter_than_handle_preserving_option"]
+          : [])
+      ],
+      sortScore:
+        (candidate.retainedHandle ? 100 : 0) +
+        (topSignals.earlyHookPresent ? 10 : 0) -
+        hardReasons.length * 20 -
+        humanSignals.suspiciousPhrases.length
     };
   });
-  const kept = [...scored]
-    .sort((left, right) => right.total - left.total)
-    .filter((entry) => entry.strong)
-    .slice(0, 3)
-    .map((entry) => ({
-      candidateId: entry.candidate.candidateId,
-      scores: entry.scores,
-      whyItWorks: [
-        entry.topSignals.earlyHookPresent ? "Hook lands early." : "Hook remains readable.",
-        entry.humanSignals.syntheticPhrasing ? "Needs plainer English." : "Phrasing stays human."
-      ]
+  const survivors = scored
+    .filter((entry) => entry.hardReasons.length === 0)
+    .sort((left, right) => right.sortScore - left.sortScore)
+    .map((entry) => entry.candidate);
+  const finalists = survivors.slice(0, 3).map((candidate) => ({
+    candidateId: candidate.candidateId,
+    whyChosen: [
+      candidate.retainedHandle
+        ? "Preserves the dominant harmless public handle without sounding forced."
+        : "Keeps the clip readable without generic safe language.",
+      "Feels human and gets to why-care early."
+    ],
+    preservedHandle: candidate.retainedHandle
+  }));
+  const displaySafeExtras = survivors
+    .slice(3, 5)
+    .map((candidate) => ({
+      candidateId: candidate.candidateId,
+      whyDisplaySafe: ["Valid and human, but less distinctive than the finalists."]
     }));
-  const rejected = scored
-    .filter((entry) => !kept.some((keptEntry) => keptEntry.candidateId === entry.candidate.candidateId))
+  const hardRejected = scored
+    .filter((entry) => entry.hardReasons.length > 0)
     .map((entry) => ({
       candidateId: entry.candidate.candidateId,
-      hardFailReasons: entry.issues.length > 0 ? entry.issues : ["weaker than stronger survivors"],
+      reasons: entry.hardReasons,
       offendingPhrases: entry.humanSignals.suspiciousPhrases.slice(0, 3)
     }));
   return {
-    kept,
-    rejected,
-    winnerCandidateId: kept[0]?.candidateId ?? scored[0]?.candidate.candidateId ?? null,
-    winnerReason:
-      kept[0] !== undefined
-        ? "Fallback judge kept the strongest native-feeling option."
-        : "Fallback judge selected the least risky option.",
-    needsRepair: kept.length < 2,
-    repairBriefs: rejected.slice(0, Math.max(0, 2 - kept.length)).map((entry) => ({
-      candidateId: entry.candidateId,
-      fixOnly: entry.hardFailReasons,
-      preserve: ["visible social read", "current angle"]
-    }))
+    finalists,
+    displaySafeExtras,
+    hardRejected,
+    winnerCandidateId: finalists[0]?.candidateId ?? null,
+    recoveryPlan: buildNativeCaptionRecoveryPlan({
+      contextPacket: input.contextPacket,
+      finalists,
+      displaySafeExtras,
+      winnerCandidateId: finalists[0]?.candidateId ?? null,
+      validCandidates: input.candidates
+    })
+  };
+}
+
+function applyRuntimeSelectionToQualityCourt(input: {
+  qualityCourt: NativeCaptionQualityCourt;
+  validCandidates: NativeCaptionCandidate[];
+  hardValidator: NativeCaptionHardValidatorResult;
+  contextPacket: NativeCaptionContextPacket;
+}): NativeCaptionQualityCourt {
+  const validById = new Map(input.validCandidates.map((candidate) => [candidate.candidateId, candidate] as const));
+  const hardRejectedIds = new Set(input.qualityCourt.hardRejected.map((entry) => entry.candidateId));
+  const safeValidCandidates = input.validCandidates.filter(
+    (candidate) => !hardRejectedIds.has(candidate.candidateId)
+  );
+  let finalists = input.qualityCourt.finalists
+    .filter((entry) => validById.has(entry.candidateId))
+    .slice(0, 3);
+  let displaySafeExtras = input.qualityCourt.displaySafeExtras.filter(
+    (entry) => validById.has(entry.candidateId) && !hardRejectedIds.has(entry.candidateId)
+  );
+
+  const handleCandidate = safeValidCandidates.find((candidate) => candidate.retainedHandle) ?? null;
+  if (
+    handleCandidate &&
+    !finalists.some((entry) => entry.candidateId === handleCandidate.candidateId || entry.preservedHandle)
+  ) {
+    const promoted = {
+      candidateId: handleCandidate.candidateId,
+      whyChosen: [
+        "Preserves the dominant harmless handle the audience is clearly using.",
+        "Keeps the public read alive instead of sanding it into generic safe copy."
+      ],
+      preservedHandle: true
+    };
+    finalists = [promoted, ...finalists.filter((entry) => entry.candidateId !== handleCandidate.candidateId)].slice(0, 3);
+    displaySafeExtras = displaySafeExtras.filter((entry) => entry.candidateId !== handleCandidate.candidateId);
+  }
+
+  const finalistIds = new Set(finalists.map((entry) => entry.candidateId));
+  displaySafeExtras = displaySafeExtras.filter((entry) => !finalistIds.has(entry.candidateId));
+  for (const candidate of safeValidCandidates) {
+    if (finalistIds.has(candidate.candidateId) || hardRejectedIds.has(candidate.candidateId)) {
+      continue;
+    }
+    if (!displaySafeExtras.some((entry) => entry.candidateId === candidate.candidateId)) {
+      displaySafeExtras.push({
+        candidateId: candidate.candidateId,
+        whyDisplaySafe: ["Valid and display-safe, but not strong enough to beat the finalists."]
+      });
+    }
+  }
+  displaySafeExtras = displaySafeExtras.slice(0, Math.max(0, 5 - finalists.length));
+
+  const winnerCandidateId =
+    input.qualityCourt.winnerCandidateId && finalistIds.has(input.qualityCourt.winnerCandidateId)
+      ? input.qualityCourt.winnerCandidateId
+      : finalists[0]?.candidateId ?? null;
+  return {
+    finalists,
+    displaySafeExtras,
+    hardRejected: input.qualityCourt.hardRejected.filter((entry) => !validById.has(entry.candidateId) || hardRejectedIds.has(entry.candidateId)),
+    winnerCandidateId,
+    recoveryPlan: buildNativeCaptionRecoveryPlan({
+      contextPacket: input.contextPacket,
+      finalists,
+      displaySafeExtras,
+      winnerCandidateId,
+      validCandidates: safeValidCandidates
+    })
   };
 }
 
 function buildNativeCaptionQualityCourtPrompt(input: {
   contextPacket: NativeCaptionContextPacket;
+  channelConfig: Stage2RuntimeChannelConfig;
   candidates: NativeCaptionCandidate[];
+  hardConstraints: Stage2HardConstraints;
+  candidateConstraintChecks: Map<string, NativeCaptionFinalist["constraintCheck"]>;
+  hardValidator: NativeCaptionHardValidatorResult;
   promptConfig: Stage2PromptConfig;
 }): string {
+  const channelLearning = buildNativeCaptionChannelLearningPayload(input.channelConfig, "compact");
   return renderJsonPrompt(
     resolveStage2PromptTemplate("qualityCourt", input.promptConfig).configuredPrompt,
     {
       context_packet_json: input.contextPacket,
-      candidate_batch_json: input.candidates
+      candidate_batch_json: input.candidates,
+      hard_validator_json: input.hardValidator,
+      channel_learning_json: channelLearning.payload,
+      hard_constraints_json: input.hardConstraints,
+      candidate_constraint_checks_json: buildNativeCaptionConstraintChecksForPrompt(
+        input.candidates,
+        input.candidateConstraintChecks
+      )
     }
   );
 }
@@ -1994,45 +2479,72 @@ function buildNativeCaptionQualityCourtPrompt(input: {
 function normalizeNativeCaptionQualityCourt(
   raw: unknown,
   candidates: NativeCaptionCandidate[],
-  constraints: Stage2HardConstraints
+  contextPacket: NativeCaptionContextPacket
 ): NativeCaptionQualityCourt {
-  const fallback = buildNativeCaptionQualityCourtFallback({ candidates, constraints });
+  const fallback = buildNativeCaptionQualityCourtFallback({ candidates, contextPacket });
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const keptRaw = Array.isArray(obj.kept) ? obj.kept : [];
-  const rejectedRaw = Array.isArray(obj.rejected) ? obj.rejected : [];
   const candidateIds = new Set(candidates.map((candidate) => candidate.candidateId));
-  const kept = keptRaw
+
+  if (Array.isArray(obj.kept)) {
+    const kept = (obj.kept as Array<Record<string, unknown>>)
+      .map((entry) => {
+        const candidateId = String(entry.candidate_id ?? entry.candidateId ?? "").trim();
+        if (!candidateIds.has(candidateId)) {
+          return null;
+        }
+        return {
+          candidateId,
+          whyChosen: (Array.isArray(entry.why_it_works) ? entry.why_it_works : [])
+            .map((reason) => String(reason ?? "").trim())
+            .filter(Boolean),
+          preservedHandle: Boolean(candidates.find((candidate) => candidate.candidateId === candidateId)?.retainedHandle)
+        };
+      })
+      .filter((entry): entry is NativeCaptionQualityCourt["finalists"][number] => Boolean(entry));
+    return {
+      finalists: kept.length > 0 ? kept : fallback.finalists,
+      displaySafeExtras: [],
+      hardRejected: [],
+      winnerCandidateId:
+        String(obj.winner_candidate_id ?? obj.winnerCandidateId ?? kept[0]?.candidateId ?? "").trim() ||
+        kept[0]?.candidateId ||
+        null,
+      recoveryPlan: fallback.recoveryPlan
+    };
+  }
+
+  const finalists = (Array.isArray(obj.finalists) ? obj.finalists : [])
     .map((entry) => {
       const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
       const candidateId = String(item.candidate_id ?? item.candidateId ?? "").trim();
       if (!candidateIds.has(candidateId)) {
         return null;
       }
-      const scores = (item.scores && typeof item.scores === "object" ? item.scores : {}) as Record<
-        string,
-        unknown
-      >;
       return {
         candidateId,
-        scores: {
-          hookImmediacy: Number(scores.hook_immediacy ?? scores.hookImmediacy ?? 0) || 0,
-          nativeFluency: Number(scores.native_fluency ?? scores.nativeFluency ?? 0) || 0,
-          visualDefensibility:
-            Number(scores.visual_defensibility ?? scores.visualDefensibility ?? 0) || 0,
-          audienceAuthenticity:
-            Number(scores.audience_authenticity ?? scores.audienceAuthenticity ?? 0) || 0,
-          humanWarmth: Number(scores.human_warmth ?? scores.humanWarmth ?? 0) || 0,
-          bottomUsefulness:
-            Number(scores.bottom_usefulness ?? scores.bottomUsefulness ?? 0) || 0
-        },
-        whyItWorks: (Array.isArray(item.why_it_works) ? item.why_it_works : [])
+        whyChosen: (Array.isArray(item.why_chosen) ? item.why_chosen : [])
+          .map((reason) => String(reason ?? "").trim())
+          .filter(Boolean),
+        preservedHandle: typeof item.preserved_handle === "boolean" ? item.preserved_handle : false
+      };
+    })
+    .filter((entry): entry is NativeCaptionQualityCourt["finalists"][number] => Boolean(entry));
+  const displaySafeExtras = (Array.isArray(obj.display_safe_extras) ? obj.display_safe_extras : [])
+    .map((entry) => {
+      const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+      const candidateId = String(item.candidate_id ?? item.candidateId ?? "").trim();
+      if (!candidateIds.has(candidateId)) {
+        return null;
+      }
+      return {
+        candidateId,
+        whyDisplaySafe: (Array.isArray(item.why_display_safe) ? item.why_display_safe : [])
           .map((reason) => String(reason ?? "").trim())
           .filter(Boolean)
       };
     })
-    .filter((entry): entry is NativeCaptionQualityCourt["kept"][number] => Boolean(entry))
-    .slice(0, 3);
-  const rejected = rejectedRaw
+    .filter((entry): entry is NativeCaptionQualityCourt["displaySafeExtras"][number] => Boolean(entry));
+  const hardRejected = (Array.isArray(obj.hard_rejected) ? obj.hard_rejected : [])
     .map((entry) => {
       const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
       const candidateId = String(item.candidate_id ?? item.candidateId ?? "").trim();
@@ -2041,7 +2553,7 @@ function normalizeNativeCaptionQualityCourt(
       }
       return {
         candidateId,
-        hardFailReasons: (Array.isArray(item.hard_fail_reasons) ? item.hard_fail_reasons : [])
+        reasons: (Array.isArray(item.reasons) ? item.reasons : [])
           .map((reason) => String(reason ?? "").trim())
           .filter(Boolean),
         offendingPhrases: (Array.isArray(item.offending_phrases) ? item.offending_phrases : [])
@@ -2049,108 +2561,543 @@ function normalizeNativeCaptionQualityCourt(
           .filter(Boolean)
       };
     })
-    .filter((entry): entry is NativeCaptionQualityCourt["rejected"][number] => Boolean(entry));
-  if (kept.length === 0) {
+    .filter((entry): entry is NativeCaptionQualityCourt["hardRejected"][number] => Boolean(entry));
+  const recoveryPlanRaw =
+    obj.recovery_plan && typeof obj.recovery_plan === "object"
+      ? (obj.recovery_plan as Record<string, unknown>)
+      : null;
+
+  if (finalists.length === 0 && displaySafeExtras.length === 0 && hardRejected.length === 0) {
     return fallback;
   }
+
   return {
-    kept,
-    rejected,
+    finalists,
+    displaySafeExtras,
+    hardRejected,
     winnerCandidateId:
-      String(obj.winner_candidate_id ?? obj.winnerCandidateId ?? kept[0]?.candidateId ?? "").trim() ||
-      kept[0]?.candidateId ||
+      String(obj.winner_candidate_id ?? obj.winnerCandidateId ?? finalists[0]?.candidateId ?? "").trim() ||
+      finalists[0]?.candidateId ||
       null,
-    winnerReason: String(obj.winner_reason ?? obj.winnerReason ?? fallback.winnerReason).trim() || fallback.winnerReason,
-    needsRepair: typeof obj.needs_repair === "boolean" ? obj.needs_repair : fallback.needsRepair,
-    repairBriefs: (Array.isArray(obj.repair_briefs) ? obj.repair_briefs : [])
-      .map((entry) => {
-        const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
-        const candidateId = String(item.candidate_id ?? item.candidateId ?? "").trim();
-        if (!candidateIds.has(candidateId)) {
-          return null;
-        }
-        return {
-          candidateId,
-          fixOnly: (Array.isArray(item.fix_only) ? item.fix_only : [])
-            .map((reason) => String(reason ?? "").trim())
-            .filter(Boolean),
-          preserve: (Array.isArray(item.preserve) ? item.preserve : [])
-            .map((reason) => String(reason ?? "").trim())
-            .filter(Boolean)
-        };
-      })
-      .filter((entry): entry is NativeCaptionQualityCourt["repairBriefs"][number] => Boolean(entry))
+    recoveryPlan:
+      recoveryPlanRaw
+        ? {
+            required: Boolean(recoveryPlanRaw.required),
+            missingCount: Math.max(0, Math.min(8, Number(recoveryPlanRaw.missing_count ?? 0) || 0)),
+            briefs: (Array.isArray(recoveryPlanRaw.briefs) ? recoveryPlanRaw.briefs : [])
+              .map((entry) => {
+                const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+                const laneId = String(item.lane_id ?? item.laneId ?? "").trim();
+                const goal = String(item.goal ?? "").trim();
+                if (!laneId || !goal) {
+                  return null;
+                }
+                return {
+                  laneId,
+                  goal,
+                  mustKeep: (Array.isArray(item.must_keep) ? item.must_keep : [])
+                    .map((value) => String(value ?? "").trim())
+                    .filter(Boolean),
+                  mustAvoid: (Array.isArray(item.must_avoid) ? item.must_avoid : [])
+                    .map((value) => String(value ?? "").trim())
+                    .filter(Boolean)
+                };
+              })
+              .filter((entry): entry is NativeCaptionQualityCourt["recoveryPlan"]["briefs"][number] => Boolean(entry))
+          }
+        : fallback.recoveryPlan
   };
 }
 
 function buildNativeCaptionTargetedRepairPrompt(input: {
   contextPacket: NativeCaptionContextPacket;
-  repairBriefs: NativeCaptionQualityCourt["repairBriefs"];
+  channelConfig: Stage2RuntimeChannelConfig;
+  repairBriefs: NativeCaptionQualityCourt["recoveryPlan"]["briefs"];
   candidates: NativeCaptionCandidate[];
+  hardConstraints: Stage2HardConstraints;
+  candidateConstraintChecks: Map<string, NativeCaptionFinalist["constraintCheck"]>;
   promptConfig: Stage2PromptConfig;
 }): string {
+  const channelLearning = buildNativeCaptionChannelLearningPayload(input.channelConfig, "compact");
   return renderJsonPrompt(
     resolveStage2PromptTemplate("targetedRepair", input.promptConfig).configuredPrompt,
     {
       context_packet_json: input.contextPacket,
-      repair_briefs_json: input.repairBriefs,
-      candidate_batch_json: input.candidates
+      recovery_briefs_json: input.repairBriefs,
+      existing_display_candidates_json: input.candidates,
+      channel_learning_json: channelLearning.payload,
+      hard_constraints_json: input.hardConstraints,
+      candidate_constraint_checks_json: buildNativeCaptionConstraintChecksForPrompt(
+        input.candidates,
+        input.candidateConstraintChecks
+      )
     }
   );
 }
 
-function normalizeNativeCaptionRepairResult(
-  raw: unknown,
-  candidateIds: Set<string>
-): NativeCaptionRepairResult | null {
-  const entries = Array.isArray(raw) ? raw : [];
-  const repairedCandidates = entries
-    .map((entry) => {
-      const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
-      const candidateId = String(item.candidate_id ?? item.candidateId ?? "").trim();
-      const top = String(item.top ?? "").trim();
-      const bottom = String(item.bottom ?? "").trim();
-      if (!candidateIds.has(candidateId) || !top || !bottom) {
-        return null;
+function normalizeNativeCaptionRecoveryResult(raw: unknown): NativeCaptionRepairResult | null {
+  const candidates = normalizeNativeCaptionCandidateBatch(raw).map((candidate) => ({
+    ...candidate,
+    displayIntent: "recovery" as const
+  }));
+  return candidates.length > 0
+    ? {
+        recoveredCandidates: candidates
       }
-      return { candidateId, top, bottom };
-    })
-    .filter((entry): entry is NativeCaptionRepairResult["repairedCandidates"][number] => Boolean(entry));
-  return repairedCandidates.length > 0 ? { repairedCandidates } : null;
+    : null;
 }
 
-function applyNativeCaptionRepairs(
-  candidates: NativeCaptionCandidate[],
-  repairResult: NativeCaptionRepairResult | null
-): NativeCaptionCandidate[] {
-  if (!repairResult) {
-    return candidates;
+function normalizeNativeCaptionPhrase(value: string | null | undefined, fallback: string): string {
+  const normalized = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized || fallback;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function preserveReplacementCase(source: string, replacement: string): string {
+  if (!source) {
+    return replacement;
   }
-  const repairById = new Map(
-    repairResult.repairedCandidates.map((entry) => [entry.candidateId, entry] as const)
-  );
-  return candidates.map((candidate) => {
-    const repair = repairById.get(candidate.candidateId);
-    if (!repair) {
-      return candidate;
+  if (source.toUpperCase() === source) {
+    return replacement.toUpperCase();
+  }
+  if (source.toLowerCase() === source) {
+    return replacement.toLowerCase();
+  }
+  return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+}
+
+function sanitizeNativeCaptionTemplateLine(line: string, constraints: Stage2HardConstraints): string {
+  const replacementMap = new Map<string, string>([
+    ["clip", "moment"],
+    ["clips", "moments"],
+    ["caption", "line"],
+    ["captions", "lines"]
+  ]);
+  let sanitized = normalizeNativeCaptionPhrase(line, "");
+  for (const bannedWord of constraints.bannedWords) {
+    const normalizedWord = normalizeNativeCaptionPhrase(bannedWord, "").toLowerCase();
+    if (!normalizedWord) {
+      continue;
     }
-    return {
-      ...candidate,
-      top: repair.top,
-      bottom: repair.bottom
+    const replacement = replacementMap.get(normalizedWord) ?? "";
+    sanitized = sanitized.replace(new RegExp(`\\b${escapeRegExp(normalizedWord)}\\b`, "gi"), (match) =>
+      replacement ? preserveReplacementCase(match, replacement) : ""
+    );
+  }
+  return sanitized
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/\(\s*\)/g, "")
+    .trim();
+}
+
+function padNativeCaptionLineToMinLength(input: {
+  line: string;
+  minLength: number;
+  maxLength: number;
+  fillerPhrases: string[];
+}): string {
+  let line = normalizeNativeCaptionPhrase(input.line, "");
+  if (line.length >= input.minLength) {
+    return line;
+  }
+  const fillerWords = input.fillerPhrases
+    .map((phrase) => normalizeNativeCaptionPhrase(phrase, ""))
+    .filter(Boolean)
+    .join(" ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  if (fillerWords.length === 0) {
+    return line;
+  }
+  let index = 0;
+  while (line.length < input.minLength && index < fillerWords.length * 8) {
+    const nextWord = fillerWords[index % fillerWords.length];
+    const candidate = `${line} ${nextWord}`.trim();
+    if (candidate.length > input.maxLength) {
+      break;
+    }
+    line = candidate;
+    index += 1;
+  }
+  return line;
+}
+
+function composeNativeCaptionLineWithinWindow(input: {
+  fragments: string[];
+  minLength: number;
+  maxLength: number;
+}): string {
+  const words = input.fragments
+    .map((fragment) => normalizeNativeCaptionPhrase(fragment, ""))
+    .filter(Boolean)
+    .join(" ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  if (words.length === 0) {
+    return "";
+  }
+  let line = "";
+  let index = 0;
+  while (line.length < input.minLength && index < words.length * 20) {
+    const nextWord = words[index % words.length];
+    const candidate = `${line} ${nextWord}`.trim();
+    if (candidate.length > input.maxLength) {
+      break;
+    }
+    line = candidate;
+    index += 1;
+  }
+  return line;
+}
+
+function buildNativeCaptionTemplateBackfill(input: {
+  contextPacket: NativeCaptionContextPacket;
+  constraints: Stage2HardConstraints;
+  missingCount: number;
+  existingCandidates: NativeCaptionCandidate[];
+}): { backfilledCandidates: NativeCaptionTemplateBackfillCandidate[] } | null {
+  if (input.missingCount <= 0) {
+    return null;
+  }
+  const observed =
+    input.contextPacket.grounding.observedFacts[0] ??
+    input.contextPacket.grounding.visibleSequence[0] ??
+    "the visible turn";
+  const secondaryObserved =
+    input.contextPacket.grounding.visibleSequence[1] ??
+    input.contextPacket.grounding.safeInferences[0] ??
+    observed;
+  const microTurn = normalizeNativeCaptionPhrase(
+    input.contextPacket.grounding.microTurn,
+    "the whole read locks in"
+  );
+  const firstSignal = normalizeNativeCaptionPhrase(
+    input.contextPacket.grounding.firstSecondsSignal,
+    "the reaction starts early"
+  );
+  const consensus = normalizeNativeCaptionPhrase(
+    input.contextPacket.audienceWave.consensusLane ||
+      input.contextPacket.audienceWave.jokeLane ||
+      input.contextPacket.strategy.bottomFunctions[0],
+    "the audience read is already doing the work"
+  );
+  const uncertainty = normalizeNativeCaptionPhrase(
+    input.contextPacket.grounding.uncertainties[0] ||
+      input.contextPacket.audienceWave.dissentLane ||
+      "viewers are reading more into it without proving hidden facts",
+    "viewers are reading more into it without proving hidden facts"
+  );
+  const handle = input.contextPacket.audienceWave.dominantHarmlessHandle;
+  const seen = new Set(
+    input.existingCandidates.map((candidate) => `${candidate.top.toLowerCase()}|${candidate.bottom.toLowerCase()}`)
+  );
+  const templates: Array<{
+    templateFamily: NativeCaptionTemplateBackfillCandidate["templateFamily"];
+    laneId: string;
+    retainedHandle: boolean;
+    top: string;
+    bottom: string;
+  }> = [
+    {
+      templateFamily: "handle_first",
+      laneId: handle ? "audience_locked" : "balanced_clean",
+      retainedHandle: Boolean(handle),
+      top: handle
+        ? `${handle} becomes the whole public read once ${microTurn.toLowerCase()} happens.`
+        : `${observed} becomes the whole public read once ${microTurn.toLowerCase()} happens.`,
+      bottom: `${consensus} lands because ${firstSignal.toLowerCase()}.`
+    },
+    {
+      templateFamily: "contrast_first",
+      laneId: "balanced_clean",
+      retainedHandle: false,
+      top: `${observed} should read ordinary until ${microTurn.toLowerCase()} turns it into the why-care.`,
+      bottom: `${consensus} makes sense because ${secondaryObserved.toLowerCase()}.`
+    },
+    {
+      templateFamily: "reaction_first",
+      laneId: "human_observational",
+      retainedHandle: false,
+      top: `The reaction explains the whole moment before the full sequence even finishes.`,
+      bottom: `${consensus} works because ${observed.toLowerCase()} is already visible.`
+    },
+    {
+      templateFamily: "plain_observed",
+      laneId: "backup_simple",
+      retainedHandle: false,
+      top: `${observed} is the visible fact that makes the moment work immediately.`,
+      bottom: `${consensus} keeps the social read clean without inventing anything extra.`
+    },
+    {
+      templateFamily: "uncertainty_safe",
+      laneId: "skeptic_or_precision",
+      retainedHandle: false,
+      top: `${observed} is what the moment clearly gives you before viewers read anything deeper into it.`,
+      bottom: `${uncertainty} stays a public read, not a claim of hidden fact.`
+    }
+  ];
+
+  const backfilledCandidates: NativeCaptionTemplateBackfillCandidate[] = [];
+  for (const [index, template] of templates.entries()) {
+    const paddedTop = padNativeCaptionLineToMinLength({
+      line: sanitizeNativeCaptionTemplateLine(template.top, input.constraints),
+      minLength: input.constraints.topLengthMin,
+      maxLength: input.constraints.topLengthMax,
+      fillerPhrases: [
+        observed,
+        secondaryObserved,
+        microTurn,
+        firstSignal,
+        consensus,
+        handle ?? ""
+      ]
+    });
+    const paddedBottom = padNativeCaptionLineToMinLength({
+      line: sanitizeNativeCaptionTemplateLine(template.bottom, input.constraints),
+      minLength: input.constraints.bottomLengthMin,
+      maxLength: input.constraints.bottomLengthMax,
+      fillerPhrases: [
+        consensus,
+        uncertainty,
+        observed,
+        secondaryObserved,
+        microTurn,
+        handle ?? ""
+      ]
+    });
+    const repaired = repairCandidateForHardConstraints(
+      {
+        candidateId: `template_backfill_${index + 1}`,
+        angle: template.laneId,
+        top: paddedTop,
+        bottom: paddedBottom,
+        topRu: paddedTop,
+        bottomRu: paddedBottom,
+        rationale: template.templateFamily
+      },
+      input.constraints
+    );
+    const dedupeKey = `${repaired.candidate.top.toLowerCase()}|${repaired.candidate.bottom.toLowerCase()}`;
+    if (!repaired.valid || seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    backfilledCandidates.push({
+      candidateId: repaired.candidate.candidateId,
+      laneId: template.laneId,
+      angle: template.laneId,
+      top: repaired.candidate.top,
+      bottom: repaired.candidate.bottom,
+      retainedHandle: template.retainedHandle,
+      displayIntent: "template_backfill",
+      templateFamily: template.templateFamily
+    });
+    if (backfilledCandidates.length >= input.missingCount) {
+      break;
+    }
+  }
+
+  const deterministicVariants = [
+    {
+      laneId: "backup_simple",
+      templateFamily: "plain_observed" as const,
+      retainedHandle: false,
+      top: `${observed} is the whole reason the moment keeps its hold even before anything bigger is proven.`,
+      bottom: `${consensus} stays readable because ${microTurn.toLowerCase()} never really loosens its grip.`
+    },
+    {
+      laneId: "balanced_clean",
+      templateFamily: "contrast_first" as const,
+      retainedHandle: false,
+      top: `${observed} looks ordinary for a second and then the room tone shifts into the real why-care.`,
+      bottom: `${consensus} lands because ${firstSignal.toLowerCase()} shows up so early.`
+    },
+    {
+      laneId: handle ? "audience_locked" : "human_observational",
+      templateFamily: handle ? ("handle_first" as const) : ("reaction_first" as const),
+      retainedHandle: Boolean(handle),
+      top: handle
+        ? `${handle} is the public read because ${observed.toLowerCase()} never stops feeding it.`
+        : `The visible reaction is already enough to tell you why viewers lock onto this moment.`,
+      bottom: `${consensus} works because ${secondaryObserved.toLowerCase()} keeps backing it up.`
+    },
+    {
+      laneId: "skeptic_or_precision",
+      templateFamily: "uncertainty_safe" as const,
+      retainedHandle: false,
+      top: `${observed} is the clear part, and everything louder than that is still just a viewer read.`,
+      bottom: `${uncertainty} keeps the read honest without killing the social meaning.`
+    },
+    {
+      laneId: "backup_simple",
+      templateFamily: "plain_observed" as const,
+      retainedHandle: false,
+      top: `${observed} keeps the moment interesting because the visible turn lands before anyone needs extra context.`,
+      bottom: `${consensus} is enough reaction on its own without inventing more than the moment gives you.`
+    },
+    {
+      laneId: "balanced_clean",
+      templateFamily: "reaction_first" as const,
+      retainedHandle: false,
+      top: `The whole moment starts making sense once the reaction and the pause line up in the same beat.`,
+      bottom: `${consensus} follows naturally because ${observed.toLowerCase()} is already on screen.`
+    }
+  ];
+
+  for (const [index, template] of deterministicVariants.entries()) {
+    if (backfilledCandidates.length >= input.missingCount) {
+      break;
+    }
+    const paddedTop = padNativeCaptionLineToMinLength({
+      line: sanitizeNativeCaptionTemplateLine(template.top, input.constraints),
+      minLength: input.constraints.topLengthMin,
+      maxLength: input.constraints.topLengthMax,
+      fillerPhrases: [
+        observed,
+        secondaryObserved,
+        microTurn,
+        firstSignal,
+        consensus,
+        handle ?? ""
+      ]
+    });
+    const paddedBottom = padNativeCaptionLineToMinLength({
+      line: sanitizeNativeCaptionTemplateLine(template.bottom, input.constraints),
+      minLength: input.constraints.bottomLengthMin,
+      maxLength: input.constraints.bottomLengthMax,
+      fillerPhrases: [
+        consensus,
+        uncertainty,
+        observed,
+        secondaryObserved,
+        microTurn,
+        handle ?? ""
+      ]
+    });
+    const repaired = repairCandidateForHardConstraints(
+      {
+        candidateId: `template_backfill_variant_${index + 1}`,
+        angle: template.laneId,
+        top: paddedTop,
+        bottom: paddedBottom,
+        topRu: paddedTop,
+        bottomRu: paddedBottom,
+        rationale: `${template.templateFamily}_variant`
+      },
+      input.constraints
+    );
+    const dedupeKey = `${repaired.candidate.top.toLowerCase()}|${repaired.candidate.bottom.toLowerCase()}`;
+    if (!repaired.valid || seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    backfilledCandidates.push({
+      candidateId: repaired.candidate.candidateId,
+      laneId: template.laneId,
+      angle: template.laneId,
+      top: repaired.candidate.top,
+      bottom: repaired.candidate.bottom,
+      retainedHandle: template.retainedHandle,
+      displayIntent: "template_backfill",
+      templateFamily: template.templateFamily
+    });
+  }
+
+  const guardrailVariants = [
+    {
+      laneId: handle ? "audience_locked" : "balanced_clean",
+      templateFamily: handle ? ("handle_first" as const) : ("plain_observed" as const),
+      retainedHandle: Boolean(handle),
+      topFragments: [handle ?? observed, observed, microTurn, firstSignal, consensus, secondaryObserved],
+      bottomFragments: [consensus, uncertainty, observed, secondaryObserved, microTurn, firstSignal]
+    },
+    {
+      laneId: "balanced_clean",
+      templateFamily: "contrast_first" as const,
+      retainedHandle: false,
+      topFragments: [observed, secondaryObserved, firstSignal, microTurn, consensus, observed],
+      bottomFragments: [consensus, observed, microTurn, uncertainty, secondaryObserved, consensus]
+    },
+    {
+      laneId: "human_observational",
+      templateFamily: "reaction_first" as const,
+      retainedHandle: false,
+      topFragments: [firstSignal, observed, microTurn, secondaryObserved, consensus, observed],
+      bottomFragments: [observed, consensus, uncertainty, microTurn, secondaryObserved, consensus]
+    },
+    {
+      laneId: "backup_simple",
+      templateFamily: "plain_observed" as const,
+      retainedHandle: false,
+      topFragments: [observed, consensus, firstSignal, microTurn, observed, secondaryObserved],
+      bottomFragments: [consensus, observed, uncertainty, firstSignal, microTurn, consensus]
+    },
+    {
+      laneId: "skeptic_or_precision",
+      templateFamily: "uncertainty_safe" as const,
+      retainedHandle: false,
+      topFragments: [observed, uncertainty, firstSignal, microTurn, observed, consensus],
+      bottomFragments: [uncertainty, consensus, observed, secondaryObserved, microTurn, firstSignal]
+    }
+  ];
+
+  for (const [index, variant] of guardrailVariants.entries()) {
+    if (backfilledCandidates.length >= input.missingCount) {
+      break;
+    }
+    const candidate: NativeCaptionTemplateBackfillCandidate = {
+      candidateId: `template_backfill_guardrail_${index + 1}`,
+      laneId: variant.laneId,
+      angle: variant.laneId,
+      top: composeNativeCaptionLineWithinWindow({
+        fragments: variant.topFragments,
+        minLength: input.constraints.topLengthMin,
+        maxLength: input.constraints.topLengthMax
+      }),
+      bottom: composeNativeCaptionLineWithinWindow({
+        fragments: variant.bottomFragments,
+        minLength: input.constraints.bottomLengthMin,
+        maxLength: input.constraints.bottomLengthMax
+      }),
+      retainedHandle: variant.retainedHandle,
+      displayIntent: "template_backfill",
+      templateFamily: variant.templateFamily
     };
-  });
+    const dedupeKey = `${candidate.top.toLowerCase()}|${candidate.bottom.toLowerCase()}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    const constraintCheck = evaluateNativeCaptionConstraintCheck(candidate, input.constraints);
+    if (!constraintCheck.passed) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    backfilledCandidates.push(candidate);
+  }
+
+  return backfilledCandidates.length > 0 ? { backfilledCandidates } : null;
 }
 
 function buildNativeCaptionTitleWriterPrompt(input: {
   contextPacket: NativeCaptionContextPacket;
+  channelConfig: Stage2RuntimeChannelConfig;
   winner: NativeCaptionCandidate | null;
   promptConfig: Stage2PromptConfig;
 }): string {
+  const channelLearning = buildNativeCaptionChannelLearningPayload(input.channelConfig, "compact");
   return renderJsonPrompt(
     resolveStage2PromptTemplate("titleWriter", input.promptConfig).configuredPrompt,
     {
       context_packet_json: input.contextPacket,
+      channel_learning_json: channelLearning.payload,
       winner_candidate_json: input.winner
     }
   );
@@ -2158,32 +3105,38 @@ function buildNativeCaptionTitleWriterPrompt(input: {
 
 function normalizeNativeCaptionTitleOptions(raw: unknown): NativeCaptionTitleOption[] {
   const entries = Array.isArray(raw) ? raw : [];
-  return entries
-    .map((entry, index) => {
+  const normalized: NativeCaptionTitleOption[] = [];
+  entries.forEach((entry, index) => {
       const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
       const title = String(item.title ?? "").trim();
+      const titleRu = String(item.title_ru ?? item.titleRu ?? "").trim();
       if (!title) {
-        return null;
+        return;
       }
-      return {
+      normalized.push({
         option: Number(item.option ?? index + 1) || index + 1,
-        title
-      };
-    })
-    .filter((entry): entry is NativeCaptionTitleOption => Boolean(entry))
-    .slice(0, 5);
+        title,
+        ...(titleRu ? { titleRu, titleRuSource: "llm" as const } : {})
+      });
+    });
+  return normalized.slice(0, 5);
 }
 
 function buildNativeCaptionTranslationPrompt(input: {
-  finalists: NativeCaptionFinalist[];
+  displayOptions: Array<{
+    candidateId: string;
+    top: string;
+    bottom: string;
+  }>;
+  promptConfig: Stage2PromptConfig;
 }): string {
   return renderJsonPrompt(
-    "Translate the following English caption options into natural Russian for operator review.\n\nPreserve:\n- meaning,\n- trigger,\n- tone,\n- publishability.\n\nDo not transliterate English.\nDo not smooth away the tension.\n\nReturn strict JSON.",
+    resolveStage2PromptTemplate("captionTranslation", input.promptConfig).configuredPrompt,
     {
-      finalists: input.finalists.map((finalist) => ({
-        candidate_id: finalist.candidateId,
-        top: finalist.top,
-        bottom: finalist.bottom
+      display_options_json: input.displayOptions.map((option) => ({
+        candidate_id: option.candidateId,
+        top: option.top,
+        bottom: option.bottom
       }))
     }
   );
@@ -2191,30 +3144,46 @@ function buildNativeCaptionTranslationPrompt(input: {
 
 function normalizeNativeCaptionTranslationArtifact(
   raw: unknown,
-  finalists: NativeCaptionFinalist[]
+  displayOptions: Array<{
+    candidateId: string;
+    top: string;
+    bottom: string;
+  }>,
+  retriedCandidateIds: string[] = []
 ): NativeCaptionTranslationArtifact | null {
-  const finalistIds = new Set(finalists.map((finalist) => finalist.candidateId));
+  const optionIds = new Set(displayOptions.map((option) => option.candidateId));
   const entries = Array.isArray(raw) ? raw : [];
-  const items = entries
-    .map((entry) => {
+  const items: NativeCaptionTranslationArtifact["items"] = [];
+  entries.forEach((entry) => {
       const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
       const candidateId = String(item.candidate_id ?? item.candidateId ?? "").trim();
       const topRu = String(item.top_ru ?? item.topRu ?? "").trim();
       const bottomRu = String(item.bottom_ru ?? item.bottomRu ?? "").trim();
-      if (!finalistIds.has(candidateId) || !topRu || !bottomRu) {
-        return null;
+      if (!optionIds.has(candidateId) || !topRu || !bottomRu) {
+        return;
       }
-      return {
+      items.push({
         candidateId,
         topRu,
-        bottomRu
-      };
-    })
-    .filter((entry): entry is NativeCaptionTranslationArtifact["items"][number] => Boolean(entry));
+        bottomRu,
+        source: "llm" as const
+      });
+    });
+  const translatedIds = new Set(items.map((entry) => entry.candidateId));
+  const fallbackCandidateIds = displayOptions
+    .map((option) => option.candidateId)
+    .filter((candidateId) => !translatedIds.has(candidateId));
   return items.length > 0
     ? {
         translatedAt: new Date().toISOString(),
-        items
+        items,
+        coverage: {
+          requestedCount: displayOptions.length,
+          translatedCount: items.length,
+          fallbackCount: fallbackCandidateIds.length,
+          fallbackCandidateIds,
+          retriedCandidateIds
+        }
       }
     : null;
 }
@@ -4850,6 +5819,7 @@ function buildPromptStageDiagnostics(input: {
   promptConfig: Stage2PromptConfig | null;
   promptText: string | null;
   includePromptText?: boolean;
+  promptConfigSource?: "workspace_override" | "channel_override";
   usesImages?: boolean;
   model?: string | null;
   summary: string;
@@ -4861,7 +5831,10 @@ function buildPromptStageDiagnostics(input: {
   const stageMeta = STAGE2_PIPELINE_STAGES.find((stage) => stage.id === input.stageId);
   const resolved = resolveStage2PromptTemplate(
     input.stageId as keyof Stage2PromptConfig["stages"],
-    input.promptConfig
+    input.promptConfig,
+    {
+      overrideSource: input.promptConfigSource ?? "workspace_override"
+    }
   );
   return {
     stageId: input.stageId,
@@ -4869,6 +5842,16 @@ function buildPromptStageDiagnostics(input: {
     stageType: "llm_prompt",
     defaultPrompt: resolved.defaultPrompt,
     configuredPrompt: resolved.configuredPrompt,
+    promptSource: resolved.promptSource,
+    promptCompatibilityFamily: resolved.promptCompatibilityFamily,
+    promptCompatibilityVersion: resolved.promptCompatibilityVersion,
+    defaultPromptHash: resolved.defaultPromptHash,
+    configuredPromptHash: resolved.configuredPromptHash,
+    overrideAccepted: resolved.overrideAccepted,
+    overrideRejectedReason: resolved.overrideRejectedReason,
+    overrideCandidatePresent: resolved.overrideCandidatePresent,
+    overrideCandidatePromptHash: resolved.overrideCandidatePromptHash,
+    legacyFallbackBypassed: resolved.legacyFallbackBypassed,
     model: input.model ?? null,
     reasoningEffort: resolved.reasoningEffort,
     isCustomPrompt: resolved.isCustomPrompt,
@@ -5323,26 +6306,6 @@ export class ViralShortsWorkerService {
     });
   }
 
-  async translateNativeCaptionFinalists(input: {
-    finalists: NativeCaptionFinalist[];
-    executor: JsonStageExecutor;
-    model?: string | null;
-    reasoningEffort?: string | null;
-  }): Promise<NativeCaptionTranslationArtifact | null> {
-    if (input.finalists.length === 0) {
-      return null;
-    }
-    const rawTranslation = await input.executor.runJson<unknown>({
-      prompt: buildNativeCaptionTranslationPrompt({
-        finalists: input.finalists
-      }),
-      schema: NATIVE_TRANSLATION_SCHEMA,
-      model: input.model ?? null,
-      reasoningEffort: input.reasoningEffort ?? null
-    });
-    return normalizeNativeCaptionTranslationArtifact(rawTranslation, input.finalists);
-  }
-
   private async runNativeCaptionPipelineInternal(input: {
     channel: {
       id: string;
@@ -5444,6 +6407,7 @@ export class ViralShortsWorkerService {
         promptConfig
       });
       const contextReasoningEffort = resolveStageReasoningEffort("contextPacket", promptConfig);
+      const contextLearning = buildNativeCaptionChannelLearningPayload(channelConfig, "minimal");
       promptInputManifests.contextPacket = {
         learningDetail: "minimal",
         description: {
@@ -5478,9 +6442,9 @@ export class ViralShortsWorkerService {
             .map((comment, index) => comment.id ?? `comment_${index + 1}`)
         },
         examples: null,
-        channelLearning: null,
+        channelLearning: contextLearning.usage,
         candidates: null,
-        stageFlags: ["style card", "examples disabled", "multimodal packet"]
+        stageFlags: ["style card", "channel learning", "comment digest", "examples disabled", "multimodal packet"]
       };
       await reportProgress({
         stageId: "contextPacket",
@@ -5554,16 +6518,17 @@ export class ViralShortsWorkerService {
       userInstruction: input.videoContext.userInstruction
     });
     const candidateReasoningEffort = resolveStageReasoningEffort("candidateGenerator", promptConfig);
+    const compactChannelLearning = buildNativeCaptionChannelLearningPayload(channelConfig, "compact");
     promptInputManifests.candidateGenerator = {
-      learningDetail: "none",
+      learningDetail: "compact",
       description: null,
       transcript: null,
       frames: null,
       comments: null,
       examples: null,
-      channelLearning: null,
+      channelLearning: compactChannelLearning.usage,
       candidates: null,
-      stageFlags: ["8 candidates", "english only", "examples disabled", "style card"]
+      stageFlags: ["8 candidates", "english only", "examples disabled", "style card", "channel learning"]
     };
     await reportProgress({
       stageId: "candidateGenerator",
@@ -5603,35 +6568,70 @@ export class ViralShortsWorkerService {
       candidates,
       { model: input.stageModels?.candidateGenerator ?? null }
     );
+    let candidateConstraintChecks = buildNativeCaptionConstraintCheckMap(
+      candidates,
+      channelConfig.hardConstraints
+    );
+    await reportProgress({
+      stageId: "hardValidator",
+      state: "running",
+      promptChars: 0,
+      reasoningEffort: null,
+      detail: "Checking deterministic hard constraints."
+    });
+    const hardValidationStartedAt = Date.now();
+    const hardValidator = buildNativeCaptionHardValidator({
+      candidates,
+      constraintChecks: candidateConstraintChecks
+    });
+    const validCandidateIds = new Set(hardValidator.validPool);
+    const validCandidates = candidates.filter((candidate) => validCandidateIds.has(candidate.candidateId));
+    await reportProgress({
+      stageId: "hardValidator",
+      state: "completed",
+      durationMs: Date.now() - hardValidationStartedAt,
+      promptChars: 0,
+      reasoningEffort: null,
+      detail: `${hardValidator.validPool.length} valid and ${hardValidator.invalidPool.length} invalid candidates after deterministic checks.`
+    });
 
     const qualityCourtPrompt = buildNativeCaptionQualityCourtPrompt({
       contextPacket,
+      channelConfig,
       candidates,
+      hardConstraints: channelConfig.hardConstraints,
+      candidateConstraintChecks,
+      hardValidator,
       promptConfig
     });
     const qualityCourtReasoningEffort = resolveStageReasoningEffort("qualityCourt", promptConfig);
     promptInputManifests.qualityCourt = {
-      learningDetail: "none",
+      learningDetail: "compact",
       description: null,
       transcript: null,
       frames: null,
       comments: null,
       examples: null,
-      channelLearning: null,
+      channelLearning: compactChannelLearning.usage,
       candidates: {
-        passedCount: candidates.length,
-        passedCandidateIds: candidates.map((candidate) => candidate.candidateId),
+        passedCount: hardValidator.validPool.length,
+        passedCandidateIds: hardValidator.validPool,
         criticScoreCount: null,
         shortlistCount: null
       },
-      stageFlags: ["strict native editor", "keeps at most 3", "repair only when needed"]
+      stageFlags: [
+        "editorial court",
+        "pairwise choice",
+        "finalists plus display-safe extras",
+        "channel learning"
+      ]
     };
     await reportProgress({
       stageId: "qualityCourt",
       state: "running",
       promptChars: qualityCourtPrompt.length,
       reasoningEffort: qualityCourtReasoningEffort,
-      detail: "Running the quality court."
+      detail: "Running the editorial court on the valid pool."
     });
     const courtStartedAt = Date.now();
     let qualityCourt: NativeCaptionQualityCourt;
@@ -5642,11 +6642,7 @@ export class ViralShortsWorkerService {
         model: input.stageModels?.qualityCourt ?? null,
         reasoningEffort: qualityCourtReasoningEffort
       });
-      qualityCourt = normalizeNativeCaptionQualityCourt(
-        rawQualityCourt,
-        candidates,
-        channelConfig.hardConstraints
-      );
+      qualityCourt = normalizeNativeCaptionQualityCourt(rawQualityCourt, candidates, contextPacket);
     } catch (error) {
       warnings.push({
         field: "qualityCourt",
@@ -5656,58 +6652,178 @@ export class ViralShortsWorkerService {
             : "Quality court fallback used."
       });
       qualityCourt = buildNativeCaptionQualityCourtFallback({
-        candidates,
-        constraints: channelConfig.hardConstraints
+        candidates: validCandidates.length > 0 ? validCandidates : candidates,
+        contextPacket
       });
     }
+    qualityCourt = applyRuntimeSelectionToQualityCourt({
+      qualityCourt,
+      validCandidates,
+      hardValidator,
+      contextPacket
+    });
     await reportProgress({
       stageId: "qualityCourt",
       state: "completed",
       durationMs: Date.now() - courtStartedAt,
       promptChars: qualityCourtPrompt.length,
       reasoningEffort: qualityCourtReasoningEffort,
-      detail: `${qualityCourt.kept.length} finalists survived the quality court.`
+      detail: `${qualityCourt.finalists.length} finalists and ${qualityCourt.displaySafeExtras.length} display-safe extras survived editorial review.`
     });
     recordExecutedStage(
       "qualityCourt",
       qualityCourtPrompt,
-      "LLM stage: rejects synthetic or weak candidates and selects up to 3 finalists.",
+      "LLM stage: applies editorial hard-fail logic, keeps up to 3 finalists, and marks display-safe extras.",
       qualityCourt,
       { model: input.stageModels?.qualityCourt ?? null }
     );
 
-    let repairedCandidates = candidates;
+    const recoveryReasonParts: string[] = [];
+    if (qualityCourt.finalists.length < 3) {
+      recoveryReasonParts.push(`finalists_below_target:${qualityCourt.finalists.length}/3`);
+    }
+    if (qualityCourt.finalists.length + qualityCourt.displaySafeExtras.length < 5) {
+      recoveryReasonParts.push(
+        `displayable_below_target:${qualityCourt.finalists.length + qualityCourt.displaySafeExtras.length}/5`
+      );
+    }
+    if (!qualityCourt.winnerCandidateId) {
+      recoveryReasonParts.push("winner_missing");
+    }
+    if (
+      contextPacket.audienceWave.dominantHarmlessHandle &&
+      validCandidates.some((candidate) => candidate.retainedHandle) &&
+      !qualityCourt.finalists.some((entry) => entry.preservedHandle)
+    ) {
+      recoveryReasonParts.push("audience_handle_missing_in_finalists");
+    }
+    const recoveryReason = recoveryReasonParts.join(",") || null;
+
+    const validById = new Map(validCandidates.map((candidate) => [candidate.candidateId, candidate] as const));
+    const dedupeKeyForCandidate = (candidate: NativeCaptionCandidate) =>
+      `${candidate.top.toLowerCase()}|${candidate.bottom.toLowerCase()}`;
+    const seedUsedIds = new Set<string>();
+    const seedUsedTexts = new Set<string>();
+
+    type NativeDisplayEntry = {
+      candidate: NativeCaptionCandidate;
+      displayTier: "finalist" | "display_safe_extra" | "recovery" | "template_backfill";
+      sourceStage: "qualityCourt" | "targetedRepair" | "templateBackfill";
+      displayReason: string;
+      constraintCheck?: NativeCaptionFinalist["constraintCheck"];
+      preservedHandle?: boolean;
+      whyChosen?: string[];
+    };
+
+    const resolveDisplayConstraintCheck = (
+      entry: NativeDisplayEntry
+    ): NativeCaptionFinalist["constraintCheck"] => {
+      if (entry.constraintCheck) {
+        return entry.constraintCheck;
+      }
+      const constraintCheck =
+        candidateConstraintChecks.get(entry.candidate.candidateId) ??
+        evaluateNativeCaptionConstraintCheck(entry.candidate, channelConfig.hardConstraints);
+      candidateConstraintChecks.set(entry.candidate.candidateId, constraintCheck);
+      entry.constraintCheck = constraintCheck;
+      return constraintCheck;
+    };
+
+    const pushUniqueSeedEntry = (
+      target: NativeDisplayEntry[],
+      entry: NativeDisplayEntry | null
+    ): void => {
+      if (!entry) {
+        return;
+      }
+      const dedupeKey = dedupeKeyForCandidate(entry.candidate);
+      if (seedUsedIds.has(entry.candidate.candidateId) || seedUsedTexts.has(dedupeKey)) {
+        return;
+      }
+      seedUsedIds.add(entry.candidate.candidateId);
+      seedUsedTexts.add(dedupeKey);
+      target.push(entry);
+    };
+
+    const finalistEntries: NativeDisplayEntry[] = [];
+    for (const finalist of qualityCourt.finalists) {
+      const candidate = validById.get(finalist.candidateId);
+      pushUniqueSeedEntry(
+        finalistEntries,
+        candidate
+          ? {
+              candidate,
+              displayTier: "finalist",
+              sourceStage: "qualityCourt",
+              displayReason:
+                finalist.whyChosen[0] ??
+                (candidate.retainedHandle
+                  ? "Preserves the audience handle without flattening the clip."
+                  : "Won the editorial court on truth, wave, and naturalness."),
+              preservedHandle: finalist.preservedHandle,
+              whyChosen: finalist.whyChosen
+            }
+          : null
+      );
+    }
+
+    const displaySafeExtraEntries: NativeDisplayEntry[] = [];
+    for (const extra of qualityCourt.displaySafeExtras) {
+      const candidate = validById.get(extra.candidateId);
+      pushUniqueSeedEntry(
+        displaySafeExtraEntries,
+        candidate
+          ? {
+              candidate,
+              displayTier: "display_safe_extra",
+              sourceStage: "qualityCourt",
+              displayReason:
+                extra.whyDisplaySafe[0] ??
+                "Display-safe and human, but weaker than the finalists.",
+              preservedHandle: candidate.retainedHandle
+            }
+          : null
+      );
+    }
+
     let repairResult: NativeCaptionRepairResult | null = null;
-    if (qualityCourt.needsRepair && qualityCourt.repairBriefs.length > 0) {
+    let recoveryEntries: NativeDisplayEntry[] = [];
+    if (qualityCourt.recoveryPlan.required && qualityCourt.recoveryPlan.briefs.length > 0) {
       const repairPrompt = buildNativeCaptionTargetedRepairPrompt({
         contextPacket,
-        repairBriefs: qualityCourt.repairBriefs,
-        candidates,
+        channelConfig,
+        repairBriefs: qualityCourt.recoveryPlan.briefs,
+        candidates: [
+          ...finalistEntries.map((entry) => entry.candidate),
+          ...displaySafeExtraEntries.map((entry) => entry.candidate)
+        ],
+        hardConstraints: channelConfig.hardConstraints,
+        candidateConstraintChecks,
         promptConfig
       });
       const repairReasoningEffort = resolveStageReasoningEffort("targetedRepair", promptConfig);
       promptInputManifests.targetedRepair = {
-        learningDetail: "none",
+        learningDetail: "compact",
         description: null,
         transcript: null,
         frames: null,
         comments: null,
         examples: null,
-        channelLearning: null,
+        channelLearning: compactChannelLearning.usage,
         candidates: {
-          passedCount: qualityCourt.repairBriefs.length,
-          passedCandidateIds: qualityCourt.repairBriefs.map((brief) => brief.candidateId),
-          criticScoreCount: qualityCourt.kept.length,
-          shortlistCount: qualityCourt.kept.length
+          passedCount: qualityCourt.recoveryPlan.briefs.length,
+          passedCandidateIds: qualityCourt.recoveryPlan.briefs.map((brief) => brief.laneId),
+          criticScoreCount: qualityCourt.finalists.length,
+          shortlistCount: finalistEntries.length + displaySafeExtraEntries.length
         },
-        stageFlags: ["conditional repair", "fix only cited issues"]
+        stageFlags: ["conditional recovery", "fills missing lanes only", "channel learning"]
       };
       await reportProgress({
         stageId: "targetedRepair",
         state: "running",
         promptChars: repairPrompt.length,
         reasoningEffort: repairReasoningEffort,
-        detail: "Repairing the near-miss finalists."
+        detail: "Generating only the missing recovery candidates."
       });
       const repairStartedAt = Date.now();
       try {
@@ -5717,20 +6833,51 @@ export class ViralShortsWorkerService {
           model: input.stageModels?.targetedRepair ?? null,
           reasoningEffort: repairReasoningEffort
         });
-        repairResult = normalizeNativeCaptionRepairResult(
-          rawRepair,
-          new Set(qualityCourt.repairBriefs.map((brief) => brief.candidateId))
-        );
-        repairedCandidates = applyNativeCaptionRepairs(candidates, repairResult);
+        repairResult = normalizeNativeCaptionRecoveryResult(rawRepair);
       } catch (error) {
         warnings.push({
           field: "targetedRepair",
           message:
             error instanceof Error
-              ? `Targeted repair fallback used: ${error.message}`
-              : "Targeted repair fallback used."
+              ? `Targeted recovery fallback used: ${error.message}`
+              : "Targeted recovery fallback used."
         });
       }
+
+      if (repairResult?.recoveredCandidates.length) {
+        const recoveryConstraintChecks = buildNativeCaptionConstraintCheckMap(
+          repairResult.recoveredCandidates,
+          channelConfig.hardConstraints
+        );
+        for (const candidate of repairResult.recoveredCandidates) {
+          candidateConstraintChecks.set(
+            candidate.candidateId,
+            recoveryConstraintChecks.get(candidate.candidateId) ??
+              evaluateNativeCaptionConstraintCheck(candidate, channelConfig.hardConstraints)
+          );
+        }
+        recoveryEntries = repairResult.recoveredCandidates
+          .filter(
+            (candidate) =>
+              candidateConstraintChecks.get(candidate.candidateId)?.passed === true &&
+              !seedUsedIds.has(candidate.candidateId) &&
+              !seedUsedTexts.has(dedupeKeyForCandidate(candidate))
+          )
+          .map((candidate, index) => {
+            const brief = qualityCourt.recoveryPlan.briefs[index] ?? qualityCourt.recoveryPlan.briefs[0] ?? null;
+            return {
+              candidate,
+              displayTier: "recovery" as const,
+              sourceStage: "targetedRepair" as const,
+              displayReason:
+                brief?.goal ??
+                (candidate.retainedHandle
+                  ? "Recovery restored the missing audience-locked read."
+                  : "Recovery filled a missing slot without flattening the clip.")
+            };
+          });
+      }
+
       await reportProgress({
         stageId: "targetedRepair",
         state: "completed",
@@ -5738,25 +6885,18 @@ export class ViralShortsWorkerService {
         promptChars: repairPrompt.length,
         reasoningEffort: repairReasoningEffort,
         detail:
-          repairResult?.repairedCandidates.length
-            ? `${repairResult.repairedCandidates.length} candidates repaired.`
-            : "No clean repairs applied."
+          recoveryEntries.length > 0
+            ? `${recoveryEntries.length} valid recovery candidates added.`
+            : "Recovery did not yield additional valid display options."
       });
       recordExecutedStage(
         "targetedRepair",
         repairPrompt,
-        "LLM stage: repairs only the cited near-miss candidates.",
-        repairResult ?? { repairedCandidates: [] },
+        "LLM stage: writes only the missing candidates requested by the editorial court.",
+        repairResult ?? { recoveredCandidates: [] },
         { model: input.stageModels?.targetedRepair ?? null }
       );
     } else {
-      await reportProgress({
-        stageId: "targetedRepair",
-        state: "completed",
-        detail: "Skipped because the quality court cleared enough finalists.",
-        promptChars: 0,
-        reasoningEffort: null
-      });
       promptInputManifests.targetedRepair = {
         learningDetail: "none",
         description: null,
@@ -5768,62 +6908,348 @@ export class ViralShortsWorkerService {
         candidates: {
           passedCount: 0,
           passedCandidateIds: [],
-          criticScoreCount: qualityCourt.kept.length,
-          shortlistCount: qualityCourt.kept.length
+          criticScoreCount: qualityCourt.finalists.length,
+          shortlistCount: finalistEntries.length + displaySafeExtraEntries.length
         },
         stageFlags: ["skipped"]
       };
+      await reportProgress({
+        stageId: "targetedRepair",
+        state: "completed",
+        detail: "Skipped because the editorial court already produced enough displayable options.",
+        promptChars: 0,
+        reasoningEffort: null
+      });
     }
 
-    const keptById = new Map(qualityCourt.kept.map((entry) => [entry.candidateId, entry]));
-    const finalistsSource = repairedCandidates
-      .filter((candidate) => keptById.has(candidate.candidateId))
-      .slice(0, 3);
-    const finalistCandidates =
-      finalistsSource.length > 0 ? finalistsSource : repairedCandidates.slice(0, 1);
-    const finalists: NativeCaptionFinalist[] = finalistCandidates.map((candidate, index) => ({
-      option: index + 1,
-      candidateId: candidate.candidateId,
-      angle: candidate.angle,
-      hookFamily: candidate.hookFamily,
-      cueUsed: candidate.cueUsed,
-      top: candidate.top,
-      bottom: candidate.bottom,
-      constraintCheck: evaluateCandidateHardConstraints(
-        toLegacyCandidate(candidate),
-        channelConfig.hardConstraints,
-        false
-      ),
-      scores: keptById.get(candidate.candidateId)?.scores,
-      whyItWorks: keptById.get(candidate.candidateId)?.whyItWorks
-    }));
-    const winnerCandidateId =
-      qualityCourt.winnerCandidateId && finalists.some((finalist) => finalist.candidateId === qualityCourt.winnerCandidateId)
-        ? qualityCourt.winnerCandidateId
-        : finalists[0]?.candidateId ?? repairedCandidates[0]?.candidateId ?? null;
-    const winnerOption = Math.max(
-      1,
-      finalists.findIndex((finalist) => finalist.candidateId === winnerCandidateId) + 1
-    );
-    const winnerCandidate =
-      finalists.find((finalist) => finalist.candidateId === winnerCandidateId) ?? finalists[0] ?? null;
+    const displayEntries: NativeDisplayEntry[] = [];
+    const displayUsedIds = new Set<string>();
+    const displayUsedTexts = new Set<string>();
+    const syncDisplayDedupes = (): void => {
+      displayUsedIds.clear();
+      displayUsedTexts.clear();
+      for (const entry of displayEntries) {
+        displayUsedIds.add(entry.candidate.candidateId);
+        displayUsedTexts.add(dedupeKeyForCandidate(entry.candidate));
+      }
+    };
+    const pushUniqueDisplayEntry = (
+      target: NativeDisplayEntry[],
+      entry: NativeDisplayEntry | null
+    ): void => {
+      if (!entry) {
+        return;
+      }
+      const dedupeKey = dedupeKeyForCandidate(entry.candidate);
+      if (displayUsedIds.has(entry.candidate.candidateId) || displayUsedTexts.has(dedupeKey)) {
+        return;
+      }
+      displayUsedIds.add(entry.candidate.candidateId);
+      displayUsedTexts.add(dedupeKey);
+      target.push(entry);
+    };
+    for (const entry of finalistEntries) {
+      pushUniqueDisplayEntry(displayEntries, entry);
+    }
+    for (const entry of displaySafeExtraEntries) {
+      if (displayEntries.length >= 5) {
+        break;
+      }
+      pushUniqueDisplayEntry(displayEntries, entry);
+    }
+    for (const entry of recoveryEntries) {
+      if (displayEntries.length >= 5) {
+        break;
+      }
+      pushUniqueDisplayEntry(displayEntries, entry);
+    }
 
-    const titlePrompt = buildNativeCaptionTitleWriterPrompt({
-      contextPacket,
-      winner: winnerCandidate
-        ? {
-            candidateId: winnerCandidate.candidateId,
-            angle: winnerCandidate.angle,
-            hookFamily: winnerCandidate.hookFamily,
-            cueUsed: winnerCandidate.cueUsed,
-            top: winnerCandidate.top,
-            bottom: winnerCandidate.bottom
+    let templateBackfill: { backfilledCandidates: NativeCaptionTemplateBackfillCandidate[] } | null = null;
+    const needsTemplateWinnerSeed = !displayEntries.some(
+      (entry) => entry.displayTier === "finalist" || entry.displayTier === "recovery"
+    );
+    const templateSlotsNeeded = Math.max(0, 5 - displayEntries.length, needsTemplateWinnerSeed ? 1 : 0);
+    let templateDisplayCount = 0;
+    if (templateSlotsNeeded > 0) {
+      await reportProgress({
+        stageId: "templateBackfill",
+        state: "running",
+        promptChars: 0,
+        reasoningEffort: null,
+        detail: "Deterministically backfilling the missing display slots."
+      });
+      const templateBackfillStartedAt = Date.now();
+      if (needsTemplateWinnerSeed && displayEntries.length >= 5) {
+        while (displayEntries.length > 4) {
+          const removableIndex = [...displayEntries]
+            .map((entry, index) => ({ entry, index }))
+            .reverse()
+            .find((item) => item.entry.displayTier === "display_safe_extra")?.index;
+          if (removableIndex === undefined) {
+            break;
           }
-        : null,
-      promptConfig
+          displayEntries.splice(removableIndex, 1);
+        }
+        syncDisplayDedupes();
+      }
+      templateBackfill = buildNativeCaptionTemplateBackfill({
+        contextPacket,
+        constraints: channelConfig.hardConstraints,
+        missingCount: templateSlotsNeeded,
+        existingCandidates: [
+          ...candidates,
+          ...(repairResult?.recoveredCandidates ?? [])
+        ]
+      });
+      for (const candidate of templateBackfill?.backfilledCandidates ?? []) {
+        candidateConstraintChecks.set(
+          candidate.candidateId,
+          evaluateNativeCaptionConstraintCheck(candidate, channelConfig.hardConstraints)
+        );
+        if (displayEntries.length >= 5) {
+          break;
+        }
+        pushUniqueDisplayEntry(displayEntries, {
+          candidate,
+          constraintCheck: candidateConstraintChecks.get(candidate.candidateId),
+          displayTier: "template_backfill",
+          sourceStage: "templateBackfill",
+          displayReason: `Deterministic ${candidate.templateFamily.replace(/_/g, " ")} backfill kept the slot valid.`
+        });
+      }
+      templateDisplayCount = displayEntries.filter((entry) => entry.displayTier === "template_backfill").length;
+      await reportProgress({
+        stageId: "templateBackfill",
+        state: "completed",
+        durationMs: Date.now() - templateBackfillStartedAt,
+        promptChars: 0,
+        reasoningEffort: null,
+        detail:
+          templateDisplayCount > 0
+            ? `${templateDisplayCount} template options added.`
+            : "Template backfill could not add new display options."
+      });
+    } else {
+      await reportProgress({
+        stageId: "templateBackfill",
+        state: "completed",
+        detail: "Skipped because recovery already filled the five display slots.",
+        promptChars: 0,
+        reasoningEffort: null
+      });
+    }
+
+    const finalizeDisplayEntries = (entries: NativeDisplayEntry[], limit: number): NativeDisplayEntry[] => {
+      const finalized: NativeDisplayEntry[] = [];
+      const usedIds = new Set<string>();
+      const usedTexts = new Set<string>();
+      for (const entry of entries) {
+        const constraintCheck = resolveDisplayConstraintCheck(entry);
+        if (!constraintCheck.passed) {
+          continue;
+        }
+        const dedupeKey = dedupeKeyForCandidate(entry.candidate);
+        if (usedIds.has(entry.candidate.candidateId) || usedTexts.has(dedupeKey)) {
+          continue;
+        }
+        usedIds.add(entry.candidate.candidateId);
+        usedTexts.add(dedupeKey);
+        finalized.push({
+          ...entry,
+          constraintCheck
+        });
+        if (finalized.length >= limit) {
+          break;
+        }
+      }
+      return finalized;
+    };
+
+    const appendTemplateBackfillEntries = (target: NativeDisplayEntry[], limit: number): NativeDisplayEntry[] => {
+      let attemptsRemaining = 3;
+      while (target.length < limit && attemptsRemaining > 0) {
+        const missingCount = limit - target.length;
+        const extraBackfill = buildNativeCaptionTemplateBackfill({
+          contextPacket,
+          constraints: channelConfig.hardConstraints,
+          missingCount,
+          existingCandidates: [
+            ...candidates,
+            ...(repairResult?.recoveredCandidates ?? []),
+            ...target.map((entry) => entry.candidate)
+          ]
+        });
+        if (!extraBackfill?.backfilledCandidates.length) {
+          break;
+        }
+        if (templateBackfill === null) {
+          templateBackfill = {
+            backfilledCandidates: []
+          };
+        }
+        let addedAny = false;
+        templateBackfill.backfilledCandidates.push(...extraBackfill.backfilledCandidates);
+        const usedIds = new Set(target.map((entry) => entry.candidate.candidateId));
+        const usedTexts = new Set(target.map((entry) => dedupeKeyForCandidate(entry.candidate)));
+        for (const candidate of extraBackfill.backfilledCandidates) {
+          if (target.length >= limit) {
+            break;
+          }
+          const dedupeKey = dedupeKeyForCandidate(candidate);
+          if (usedIds.has(candidate.candidateId) || usedTexts.has(dedupeKey)) {
+            continue;
+          }
+          const constraintCheck = evaluateNativeCaptionConstraintCheck(candidate, channelConfig.hardConstraints);
+          candidateConstraintChecks.set(candidate.candidateId, constraintCheck);
+          if (!constraintCheck.passed) {
+            continue;
+          }
+          usedIds.add(candidate.candidateId);
+          usedTexts.add(dedupeKey);
+          target.push({
+            candidate,
+            constraintCheck,
+            displayTier: "template_backfill",
+            sourceStage: "templateBackfill",
+            displayReason: `Deterministic ${candidate.templateFamily.replace(/_/g, " ")} backfill kept the slot valid.`
+          });
+          addedAny = true;
+        }
+        if (!addedAny) {
+          break;
+        }
+        attemptsRemaining -= 1;
+      }
+      return target;
+    };
+
+    let shortlistedDisplayEntries = finalizeDisplayEntries(displayEntries, 5);
+    shortlistedDisplayEntries = appendTemplateBackfillEntries(shortlistedDisplayEntries, 5);
+    shortlistedDisplayEntries = finalizeDisplayEntries(shortlistedDisplayEntries, 5);
+    const winnerEntry =
+      shortlistedDisplayEntries.find(
+        (entry) =>
+          entry.displayTier === "finalist" &&
+          entry.candidate.candidateId === qualityCourt.winnerCandidateId
+      ) ??
+      shortlistedDisplayEntries.find((entry) => entry.displayTier === "finalist") ??
+      shortlistedDisplayEntries.find((entry) => entry.displayTier === "recovery") ??
+      shortlistedDisplayEntries.find((entry) => entry.displayTier === "template_backfill") ??
+      null;
+
+    const captionOptions = shortlistedDisplayEntries.map((entry, index) => {
+      const constraintCheck = resolveDisplayConstraintCheck(entry);
+      return {
+        option: index + 1,
+        candidateId: entry.candidate.candidateId,
+        laneId: entry.candidate.laneId,
+        angle: entry.candidate.angle,
+        top: entry.candidate.top,
+        bottom: entry.candidate.bottom,
+        displayTier: entry.displayTier,
+        sourceStage: entry.sourceStage,
+        displayReason: entry.displayReason,
+        retainedHandle: entry.candidate.retainedHandle,
+        constraintCheck
+      };
     });
-    const titleReasoningEffort = resolveStageReasoningEffort("titleWriter", promptConfig);
-    promptInputManifests.titleWriter = {
+    const captionOptionById = new Map(captionOptions.map((option) => [option.candidateId, option] as const));
+    const finalists = shortlistedDisplayEntries.reduce<NativeCaptionFinalist[]>((accumulator, entry) => {
+      if (entry.displayTier !== "finalist") {
+        return accumulator;
+      }
+      const optionRecord = captionOptionById.get(entry.candidate.candidateId);
+      if (!optionRecord) {
+        return accumulator;
+      }
+      accumulator.push({
+        option: optionRecord.option,
+        candidateId: entry.candidate.candidateId,
+        laneId: entry.candidate.laneId,
+        angle: entry.candidate.angle,
+        top: entry.candidate.top,
+        bottom: entry.candidate.bottom,
+        displayTier: "finalist",
+        sourceStage: "qualityCourt",
+        displayReason: entry.displayReason,
+        retainedHandle: entry.candidate.retainedHandle,
+        preservedHandle: Boolean(entry.preservedHandle),
+        constraintCheck: optionRecord.constraintCheck,
+        ...(entry.whyChosen ? { whyChosen: entry.whyChosen } : {})
+      });
+      return accumulator;
+    }, []);
+
+    const winnerOptionRecord = winnerEntry
+      ? captionOptionById.get(winnerEntry.candidate.candidateId) ?? null
+      : null;
+    const winnerTier =
+      winnerEntry?.displayTier === "finalist" ||
+      winnerEntry?.displayTier === "recovery" ||
+      winnerEntry?.displayTier === "template_backfill"
+        ? winnerEntry.displayTier
+        : null;
+    const winner: NativeCaptionWinner | undefined =
+      winnerEntry && winnerOptionRecord && winnerTier
+        ? {
+            candidateId: winnerEntry.candidate.candidateId,
+            option: winnerOptionRecord.option,
+            reason: winnerEntry.displayReason,
+            displayTier: winnerTier,
+            sourceStage: winnerEntry.sourceStage,
+            constraintCheck: winnerOptionRecord.constraintCheck
+          }
+        : undefined;
+    const finalPick = {
+      option: winner?.option ?? 1,
+      reason: winner?.reason ?? "Fallback winner selected from the valid display shortlist."
+    };
+    const winnerCandidateForTitles =
+      winner && winnerEntry
+        ? {
+            candidateId: winnerEntry.candidate.candidateId,
+            laneId: winnerEntry.candidate.laneId,
+            angle: winnerEntry.candidate.angle,
+            top: winnerEntry.candidate.top,
+            bottom: winnerEntry.candidate.bottom,
+            retainedHandle: winnerEntry.candidate.retainedHandle,
+            displayIntent: winnerEntry.candidate.displayIntent
+          }
+        : null;
+
+    const guardSummary: NativeCaptionGuardSummary = {
+      totalCandidateCount:
+        candidates.length +
+        (repairResult?.recoveredCandidates.length ?? 0) +
+        (templateBackfill?.backfilledCandidates.length ?? 0),
+      validPoolCount: hardValidator.validPool.length,
+      invalidPoolCount: hardValidator.invalidPool.length,
+      finalistCount: finalists.length,
+      displaySafeExtraCount: captionOptions.filter((option) => option.displayTier === "display_safe_extra").length,
+      recoveryCount: captionOptions.filter((option) => option.displayTier === "recovery").length,
+      templateBackfillCount: captionOptions.filter((option) => option.displayTier === "template_backfill").length,
+      displayShortlistCount: captionOptions.length,
+      winnerCandidateId: winner?.candidateId ?? null,
+      winnerTier: winner?.displayTier ?? "missing",
+      winnerValidity: winner?.constraintCheck?.passed ? "valid" : winner ? "invalid" : "missing",
+      degradedSuccess: Boolean(winner && winner.displayTier !== "finalist"),
+      dominantHarmlessHandle: contextPacket.audienceWave.dominantHarmlessHandle,
+      audienceHandlePreservedInFinalists: finalists.some((finalist) => finalist.preservedHandle),
+      recoveryTriggered: qualityCourt.recoveryPlan.required,
+      recoveryReason,
+      failClosedReason: null
+    };
+
+    const displayOptionsForTranslation = captionOptions.map((option) => ({
+      candidateId: option.candidateId,
+      top: option.top,
+      bottom: option.bottom
+    }));
+    const captionTranslationReasoningEffort = resolveStageReasoningEffort(
+      "captionTranslation",
+      promptConfig
+    );
+    promptInputManifests.captionTranslation = {
       learningDetail: "none",
       description: null,
       transcript: null,
@@ -5832,12 +7258,183 @@ export class ViralShortsWorkerService {
       examples: null,
       channelLearning: null,
       candidates: {
+        passedCount: captionOptions.length,
+        passedCandidateIds: captionOptions.map((option) => option.candidateId),
+        criticScoreCount: finalists.length,
+        shortlistCount: captionOptions.length
+      },
+      stageFlags: ["display shortlist translation", "retry missing items once", "ru review"]
+    };
+    await reportProgress({
+      stageId: "captionTranslation",
+      state: "running",
+      promptChars: 0,
+      reasoningEffort: captionTranslationReasoningEffort,
+      detail: "Translating the 5 display captions into Russian."
+    });
+    const captionTranslationStartedAt = Date.now();
+    const captionTranslationPromptTexts: string[] = [];
+    const captionTranslationById = new Map<
+      string,
+      NativeCaptionTranslationArtifact["items"][number]
+    >();
+    let retriedCaptionCandidateIds: string[] = [];
+    let captionTranslationArtifact: NativeCaptionTranslationArtifact | null = null;
+    try {
+      const translationPrompt = buildNativeCaptionTranslationPrompt({
+        displayOptions: displayOptionsForTranslation,
+        promptConfig
+      });
+      captionTranslationPromptTexts.push(translationPrompt);
+      const rawTranslation = await input.executor.runJson<unknown>({
+        prompt: translationPrompt,
+        schema: NATIVE_TRANSLATION_SCHEMA,
+        model: input.stageModels?.captionTranslation ?? null,
+        reasoningEffort: captionTranslationReasoningEffort
+      });
+      normalizeNativeCaptionTranslationArtifact(rawTranslation, displayOptionsForTranslation)?.items.forEach(
+        (item) => {
+          captionTranslationById.set(item.candidateId, item);
+        }
+      );
+
+      const missingDisplayOptions = displayOptionsForTranslation.filter(
+        (option) => !captionTranslationById.has(option.candidateId)
+      );
+      if (missingDisplayOptions.length > 0) {
+        retriedCaptionCandidateIds = missingDisplayOptions.map((option) => option.candidateId);
+        try {
+          const retryPrompt = buildNativeCaptionTranslationPrompt({
+            displayOptions: missingDisplayOptions,
+            promptConfig
+          });
+          captionTranslationPromptTexts.push(retryPrompt);
+          const retryRawTranslation = await input.executor.runJson<unknown>({
+            prompt: retryPrompt,
+            schema: NATIVE_TRANSLATION_SCHEMA,
+            model: input.stageModels?.captionTranslation ?? null,
+            reasoningEffort: captionTranslationReasoningEffort
+          });
+          normalizeNativeCaptionTranslationArtifact(retryRawTranslation, missingDisplayOptions)?.items.forEach(
+            (item) => {
+              captionTranslationById.set(item.candidateId, item);
+            }
+          );
+        } catch (error) {
+          warnings.push({
+            field: "captionTranslation",
+            message:
+              error instanceof Error
+                ? `Caption translation retry used English fallback for some options: ${error.message}`
+                : "Caption translation retry used English fallback for some options."
+          });
+        }
+      }
+    } catch (error) {
+      warnings.push({
+        field: "captionTranslation",
+        message:
+          error instanceof Error
+            ? `Caption translation fallback used: ${error.message}`
+            : "Caption translation fallback used."
+      });
+    }
+
+    const captionTranslationItems = displayOptionsForTranslation.map((option) => {
+      const translated = captionTranslationById.get(option.candidateId);
+      if (translated) {
+        return translated;
+      }
+      return {
+        candidateId: option.candidateId,
+        topRu: option.top,
+        bottomRu: option.bottom,
+        source: "fallback" as const
+      };
+    });
+    const captionFallbackCandidateIds = captionTranslationItems
+      .filter((item) => item.source === "fallback")
+      .map((item) => item.candidateId);
+    captionTranslationArtifact = {
+      translatedAt: new Date().toISOString(),
+      items: captionTranslationItems,
+      coverage: {
+        requestedCount: displayOptionsForTranslation.length,
+        translatedCount: captionTranslationItems.length - captionFallbackCandidateIds.length,
+        fallbackCount: captionFallbackCandidateIds.length,
+        fallbackCandidateIds: captionFallbackCandidateIds,
+        retriedCandidateIds: retriedCaptionCandidateIds
+      }
+    };
+    if (captionTranslationArtifact.coverage.fallbackCount > 0) {
+      warnings.push({
+        field: "captionTranslation",
+        message: `Russian caption fallback used for ${captionTranslationArtifact.coverage.fallbackCount} display option${captionTranslationArtifact.coverage.fallbackCount === 1 ? "" : "s"}.`
+      });
+    }
+    await reportProgress({
+      stageId: "captionTranslation",
+      state: "completed",
+      durationMs: Date.now() - captionTranslationStartedAt,
+      promptChars: captionTranslationPromptTexts.reduce((sum, prompt) => sum + prompt.length, 0),
+      reasoningEffort: captionTranslationReasoningEffort,
+      detail:
+        captionTranslationArtifact.coverage.fallbackCount > 0
+          ? `${captionTranslationArtifact.coverage.translatedCount}/${captionTranslationArtifact.coverage.requestedCount} captions translated; ${captionTranslationArtifact.coverage.fallbackCount} used English fallback.`
+          : "All 5 display captions translated into Russian."
+    });
+    recordExecutedStage(
+      "captionTranslation",
+      joinPromptPasses(captionTranslationPromptTexts),
+      "LLM stage: translates the 5 display captions into Russian with one retry for missing items.",
+      captionTranslationArtifact,
+      { model: input.stageModels?.captionTranslation ?? null }
+    );
+
+    const localizedCaptionOptions = captionOptions.map((option) => {
+      const translation =
+        captionTranslationArtifact?.items.find((item) => item.candidateId === option.candidateId) ?? null;
+      return {
+        ...option,
+        topRu: translation?.topRu ?? option.top,
+        bottomRu: translation?.bottomRu ?? option.bottom
+      };
+    });
+    const localizedFinalists = finalists.map((finalist) => {
+      const translation =
+        captionTranslationArtifact?.items.find((item) => item.candidateId === finalist.candidateId) ?? null;
+      return {
+        ...finalist,
+        translation: {
+          topRu: translation?.topRu ?? finalist.top,
+          bottomRu: translation?.bottomRu ?? finalist.bottom,
+          translatedAt: captionTranslationArtifact?.translatedAt ?? new Date().toISOString()
+        }
+      };
+    });
+
+    const titlePrompt = buildNativeCaptionTitleWriterPrompt({
+      contextPacket,
+      channelConfig,
+      winner: winnerCandidateForTitles,
+      promptConfig
+    });
+    const titleReasoningEffort = resolveStageReasoningEffort("titleWriter", promptConfig);
+    promptInputManifests.titleWriter = {
+      learningDetail: "compact",
+      description: null,
+      transcript: null,
+      frames: null,
+      comments: null,
+      examples: null,
+      channelLearning: compactChannelLearning.usage,
+      candidates: {
         passedCount: finalists.length,
         passedCandidateIds: finalists.map((finalist) => finalist.candidateId),
-        criticScoreCount: qualityCourt.kept.length,
-        shortlistCount: finalists.length
+        criticScoreCount: finalists.length,
+        shortlistCount: captionOptions.length
       },
-      stageFlags: ["winner-only titles", "english only"]
+      stageFlags: ["winner-only titles", "bilingual output", "retry missing items once", "channel learning"]
     };
     await reportProgress({
       stageId: "titleWriter",
@@ -5847,7 +7444,9 @@ export class ViralShortsWorkerService {
       detail: "Writing winner titles."
     });
     const titleStartedAt = Date.now();
+    const titlePromptTexts: string[] = [titlePrompt];
     let titleOptions: NativeCaptionTitleOption[] = [];
+    let retriedTitleOptions: number[] = [];
     try {
       const rawTitles = await input.executor.runJson<unknown>({
         prompt: titlePrompt,
@@ -5856,6 +7455,47 @@ export class ViralShortsWorkerService {
         reasoningEffort: titleReasoningEffort
       });
       titleOptions = normalizeNativeCaptionTitleOptions(rawTitles);
+      const missingTitleOptions = Array.from({ length: 5 }, (_, index) => index + 1).filter((option) => {
+        const titleOption = titleOptions.find((entry) => entry.option === option);
+        return !titleOption?.title || !titleOption?.titleRu;
+      });
+      if (missingTitleOptions.length > 0) {
+        retriedTitleOptions = missingTitleOptions;
+        try {
+          titlePromptTexts.push(titlePrompt);
+          const retryRawTitles = await input.executor.runJson<unknown>({
+            prompt: titlePrompt,
+            schema: NATIVE_TITLE_WRITER_SCHEMA,
+            model: input.stageModels?.titleWriter ?? null,
+            reasoningEffort: titleReasoningEffort
+          });
+          const retriedOptions = normalizeNativeCaptionTitleOptions(retryRawTitles);
+          const retryByOption = new Map(retriedOptions.map((entry) => [entry.option, entry] as const));
+          titleOptions = titleOptions.map((entry) => {
+            if (entry.titleRu) {
+              return entry;
+            }
+            const retried = retryByOption.get(entry.option);
+            return retried?.titleRu ? retried : entry;
+          });
+          for (const option of missingTitleOptions) {
+            if (!titleOptions.some((entry) => entry.option === option)) {
+              const retried = retryByOption.get(option);
+              if (retried) {
+                titleOptions.push(retried);
+              }
+            }
+          }
+        } catch (error) {
+          warnings.push({
+            field: "titleWriter",
+            message:
+              error instanceof Error
+                ? `Title translation fallback used for some options: ${error.message}`
+                : "Title translation fallback used for some options."
+          });
+        }
+      }
     } catch (error) {
       warnings.push({
         field: "titleWriter",
@@ -5863,28 +7503,58 @@ export class ViralShortsWorkerService {
           error instanceof Error ? `Title writer fallback used: ${error.message}` : "Title writer fallback used."
       });
     }
-    if (titleOptions.length < 5) {
-      const seedTitle = input.videoContext.title.trim() || winnerCandidate?.top || "What changed here";
-      titleOptions = Array.from({ length: 5 }, (_, index) => ({
-        option: index + 1,
-        title:
-          titleOptions[index]?.title ??
-          `${seedTitle.replace(/\s+/g, " ").trim().slice(0, 70)}${index === 0 ? "" : ` ${index + 1}`}`.trim()
-      }));
+    const seedTitle = input.videoContext.title.trim() || winnerCandidateForTitles?.top || "What changed here";
+    const titleByOption = new Map(titleOptions.map((entry) => [entry.option, entry] as const));
+    const titleFallbackOptions: number[] = [];
+    titleOptions = Array.from({ length: 5 }, (_, index) => {
+      const option = index + 1;
+      const existing = titleByOption.get(option) ?? null;
+      const fallbackTitle = `${seedTitle.replace(/\s+/g, " ").trim().slice(0, 70)}${index === 0 ? "" : ` ${option}`}`.trim();
+      const title = existing?.title?.trim() || fallbackTitle || `Option ${option}`;
+      const titleRu = existing?.titleRu?.trim() || title;
+      const titleRuSource = existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";
+      if (titleRuSource === "fallback") {
+        titleFallbackOptions.push(option);
+      }
+      return {
+        option,
+        title,
+        titleRu,
+        titleRuSource
+      };
+    });
+    const titleTranslationCoverage = {
+      requestedCount: 5,
+      translatedCount: 5 - titleFallbackOptions.length,
+      fallbackCount: titleFallbackOptions.length,
+      fallbackOptions: titleFallbackOptions,
+      retriedOptions: retriedTitleOptions
+    };
+    if (titleTranslationCoverage.fallbackCount > 0) {
+      warnings.push({
+        field: "titleWriter",
+        message: `Russian title fallback used for ${titleTranslationCoverage.fallbackCount} title option${titleTranslationCoverage.fallbackCount === 1 ? "" : "s"}.`
+      });
     }
     await reportProgress({
       stageId: "titleWriter",
       state: "completed",
       durationMs: Date.now() - titleStartedAt,
-      promptChars: titlePrompt.length,
+      promptChars: titlePromptTexts.reduce((sum, prompt) => sum + prompt.length, 0),
       reasoningEffort: titleReasoningEffort,
-      detail: "Winner titles generated."
+      detail:
+        titleTranslationCoverage.fallbackCount > 0
+          ? `${titleTranslationCoverage.translatedCount}/5 bilingual titles generated; ${titleTranslationCoverage.fallbackCount} used English fallback.`
+          : "Winner titles generated in English and Russian."
     });
     recordExecutedStage(
       "titleWriter",
-      titlePrompt,
+      joinPromptPasses(titlePromptTexts),
       "LLM stage: writes 5 titles for the winning native caption.",
-      titleOptions,
+      {
+        titleOptions,
+        translationCoverage: titleTranslationCoverage
+      },
       { model: input.stageModels?.titleWriter ?? null }
     );
 
@@ -5943,18 +7613,6 @@ export class ViralShortsWorkerService {
         (sum, stage) => sum + (stage.persistedPayloadBytes ?? 0),
         0
       )
-    };
-    const captionOptions = finalists.map((finalist) => ({
-      option: finalist.option,
-      candidateId: finalist.candidateId,
-      angle: finalist.angle,
-      top: finalist.top,
-      bottom: finalist.bottom,
-      constraintCheck: finalist.constraintCheck
-    }));
-    const finalPick = {
-      option: winnerOption,
-      reason: qualityCourt.winnerReason
     };
     const diagnostics: Stage2Diagnostics = {
       channel: {
@@ -6032,36 +7690,32 @@ export class ViralShortsWorkerService {
       nativeCaptionV3: {
         contextPacket,
         candidateBatch: candidates,
+        hardValidator,
         qualityCourt,
         repair: repairResult,
+        templateBackfill,
+        guardSummary,
+        displayOptions: localizedCaptionOptions,
         titleWriter: {
-          titleOptions
+          titleOptions,
+          translationCoverage: titleTranslationCoverage
         },
-        translation: null
+        translation: captionTranslationArtifact
       }
     };
-    const winner: NativeCaptionWinner | undefined = winnerCandidate
-      ? {
-          candidateId: winnerCandidate.candidateId,
-          option: winnerOption,
-          reason: qualityCourt.winnerReason,
-          scores: winnerCandidate.scores,
-          needsRepair: qualityCourt.needsRepair
-        }
-      : undefined;
     const output: ViralShortsStage2Result = {
       inputAnalysis: {
         visualAnchors: analyzerOutput.visualAnchors.slice(0, 3),
         commentVibe: analyzerOutput.commentVibe,
         keyPhraseToAdapt:
           analyzerOutput.commentLanguageCues[0] ??
-          contextPacket.audience.safeReusableCues[0] ??
+          contextPacket.audienceWave.safeReusableCues[0] ??
           contextPacket.strategy.hookSeeds[0] ??
           analyzerOutput.visualAnchors[0] ??
           input.videoContext.title
       },
-      captionOptions,
-      finalists,
+      captionOptions: localizedCaptionOptions,
+      finalists: localizedFinalists,
       titleOptions,
       finalPick,
       winner,
@@ -6079,12 +7733,17 @@ export class ViralShortsWorkerService {
         nativeCaptionV3: {
           contextPacket,
           candidateBatch: candidates,
+          hardValidator,
           qualityCourt,
           repair: repairResult,
+          templateBackfill,
+          guardSummary,
+          displayOptions: localizedCaptionOptions,
           titleWriter: {
-            titleOptions
+            titleOptions,
+            translationCoverage: titleTranslationCoverage
           },
-          translation: null
+          translation: captionTranslationArtifact
         }
       },
       diagnostics
@@ -7130,6 +8789,9 @@ export class ViralShortsWorkerService {
         angle: candidate.angle,
         top: candidate.top,
         bottom: candidate.bottom,
+        displayTier: "finalist" as const,
+        sourceStage: "qualityCourt" as const,
+        displayReason: "Selected for the visible shortlist.",
         topRu: candidate.topRu,
         bottomRu: candidate.bottomRu,
         styleDirectionIds: candidate.styleDirectionIds,

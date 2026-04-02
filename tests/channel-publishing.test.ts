@@ -208,11 +208,15 @@ test("buildChannelPublicationMetadata derives publish-time metadata from the win
           {
             option: 1,
             candidateId: "cand_1",
+            laneId: "balanced_clean",
             angle: "awkward_pause",
-            hookFamily: "social_read",
-            cueUsed: "that pause said enough",
             top: "That pause told the whole room what was happening.",
             bottom: "Nobody needed the follow-up once that look landed.",
+            displayTier: "finalist",
+            sourceStage: "qualityCourt",
+            displayReason: "Won the editorial court.",
+            retainedHandle: false,
+            preservedHandle: false,
             constraintCheck: {
               passed: true,
               repaired: false,
@@ -231,7 +235,8 @@ test("buildChannelPublicationMetadata derives publish-time metadata from the win
           candidateId: "cand_1",
           option: 1,
           reason: "best",
-          needsRepair: false
+          displayTier: "finalist",
+          sourceStage: "qualityCourt"
         }
       },
       seo: null
@@ -254,6 +259,86 @@ test("buildChannelPublicationMetadata derives publish-time metadata from the win
     "told",
     "whole"
   ]);
+  assert.equal(metadata.needsReview, true);
+});
+
+test("buildChannelPublicationMetadata refuses to use an invalid winner caption as the SEO fallback", () => {
+  const metadata = buildChannelPublicationMetadata({
+    renderTitle: null,
+    chatTitle: "Fallback chat title",
+    stage2Result: makeStage2Result({
+      output: {
+        inputAnalysis: {
+          visualAnchors: [],
+          commentVibe: "",
+          keyPhraseToAdapt: ""
+        },
+        captionOptions: [
+          {
+            option: 1,
+            candidateId: "cand_1",
+            angle: "awkward_pause",
+            top: "That pause told the whole room what was happening.",
+            bottom:
+              "Nobody needed the follow-up once that look landed and the caption keeps going far past the allowed bottom length window for this channel.",
+            constraintCheck: {
+              passed: false,
+              repaired: false,
+              topLength: 48,
+              bottomLength: 132,
+              issues: ["BOTTOM length is 132, expected 140-150."]
+            }
+          }
+        ],
+        finalists: [
+          {
+            option: 1,
+            candidateId: "cand_1",
+            laneId: "balanced_clean",
+            angle: "awkward_pause",
+            top: "That pause told the whole room what was happening.",
+            bottom:
+              "Nobody needed the follow-up once that look landed and the caption keeps going far past the allowed bottom length window for this channel.",
+            displayTier: "finalist",
+            sourceStage: "qualityCourt",
+            displayReason: "Won the editorial court.",
+            retainedHandle: false,
+            preservedHandle: false,
+            constraintCheck: {
+              passed: false,
+              repaired: false,
+              topLength: 48,
+              bottomLength: 132,
+              issues: ["BOTTOM length is 132, expected 140-150."]
+            }
+          }
+        ],
+        titleOptions: [{ option: 1, title: "Stage2 fallback title" }],
+        finalPick: {
+          option: 1,
+          reason: "best"
+        },
+        winner: {
+          candidateId: "cand_1",
+          option: 1,
+          reason: "best",
+          displayTier: "finalist",
+          sourceStage: "qualityCourt",
+          constraintCheck: {
+            passed: false,
+            repaired: false,
+            topLength: 48,
+            bottomLength: 132,
+            issues: ["BOTTOM length is 132, expected 140-150."]
+          }
+        }
+      },
+      seo: null
+    })
+  });
+
+  assert.equal(metadata.description, "Stage2 fallback title");
+  assert.deepEqual(metadata.tags, ["stage2", "fallback", "title"]);
   assert.equal(metadata.needsReview, true);
 });
 

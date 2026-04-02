@@ -14,36 +14,76 @@ export {
 } from "./stage2-prompt-specs";
 export type { Stage2PromptConfigStageId, Stage2ReasoningEffort } from "./stage2-prompt-specs";
 
+export const STAGE2_PROMPT_CONFIG_VERSION = 4 as const;
+export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY = "stage2_legacy";
+export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_NATIVE = "native_caption_v3";
+export const STAGE2_LEGACY_PROMPT_BUNDLE_VERSION = "stage2_legacy@2026-04-01";
+export const STAGE2_NATIVE_PROMPT_BUNDLE_VERSION = "native_caption_v3@2026-04-02";
+
+export type Stage2PromptCompatibilityFamily =
+  | typeof STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY
+  | typeof STAGE2_PROMPT_COMPATIBILITY_FAMILY_NATIVE;
+
+export type Stage2PromptCompatibility = {
+  family: Stage2PromptCompatibilityFamily;
+  bundleVersion: string;
+  defaultPromptHash: string;
+};
+
 const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
   {
     id: "contextPacket",
     label: "Building context packet",
     shortLabel: "Контекст",
-    description: "Собираем observed facts, audience temperature и strategy в единый packet.",
+    description: "Собираем observed fact, uncertainty, audience wave и lane strategy в единый packet.",
     promptConfigurable: true,
     promptStageType: "llm"
   },
   {
     id: "candidateGenerator",
-    label: "Drafting candidate batch",
+    label: "Generating lane batch",
     shortLabel: "Кандидаты",
-    description: "Writer генерирует ровно 8 сильных английских caption-кандидатов.",
+    description: "Writer генерирует ровно 8 кандидатов по lane plan без generic safe sludge.",
     promptConfigurable: true,
     promptStageType: "llm"
   },
   {
+    id: "hardValidator",
+    label: "Running hard validator",
+    shortLabel: "Валидатор",
+    description: "Детерминированно режем все объективно невалидные кандидаты до редакторского выбора.",
+    promptConfigurable: false,
+    promptStageType: "deterministic"
+  },
+  {
     id: "qualityCourt",
-    label: "Running quality court",
+    label: "Running editorial court",
     shortLabel: "Суд",
-    description: "Строгий judge режет слабые варианты и выбирает лучших финалистов.",
+    description: "Редакторский court выбирает finalists, display-safe extras и recovery plan.",
     promptConfigurable: true,
     promptStageType: "llm"
   },
   {
     id: "targetedRepair",
-    label: "Repairing near-misses",
-    shortLabel: "Ремонт",
-    description: "Точечный repair почти-годных кандидатов запускается только при необходимости.",
+    label: "Running targeted recovery",
+    shortLabel: "Recovery",
+    description: "Генерируем только недостающие варианты по recovery briefs, без полного рерана.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  },
+  {
+    id: "templateBackfill",
+    label: "Applying template backfill",
+    shortLabel: "Backfill",
+    description: "Детерминированный template backfill гарантирует 5 валидных display options при деградации.",
+    promptConfigurable: false,
+    promptStageType: "deterministic"
+  },
+  {
+    id: "captionTranslation",
+    label: "Translating display captions",
+    shortLabel: "Перевод",
+    description: "Переводим все 5 display options на русский с одним retry только для missing items.",
     promptConfigurable: true,
     promptStageType: "llm"
   },
@@ -51,7 +91,7 @@ const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
     id: "titleWriter",
     label: "Writing winner titles",
     shortLabel: "Тайтлы",
-    description: "Пишем 5 title options только для финального winner-кандидата.",
+    description: "Пишем 5 bilingual title options только для финального winner-кандидата.",
     promptConfigurable: true,
     promptStageType: "llm"
   }
@@ -159,10 +199,11 @@ export type Stage2ProgressStageId = Stage2PipelineStageId | Stage2RegenerateStag
 export type Stage2PromptStageConfig = {
   prompt: string;
   reasoningEffort: Stage2ReasoningEffort;
+  compatibility: Stage2PromptCompatibility | null;
 };
 
 export type Stage2PromptConfig = {
-  version: 3;
+  version: typeof STAGE2_PROMPT_CONFIG_VERSION;
   stages: Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
 };
 
@@ -214,13 +255,14 @@ function nowIso(): string {
 }
 
 export const DEFAULT_STAGE2_PROMPT_CONFIG: Stage2PromptConfig = {
-  version: 3,
+  version: STAGE2_PROMPT_CONFIG_VERSION,
   stages: Object.fromEntries(
     STAGE2_PROMPT_STAGE_IDS.map((stageId) => [
       stageId,
       {
         prompt: STAGE2_DEFAULT_STAGE_PROMPTS[stageId],
-        reasoningEffort: STAGE2_DEFAULT_REASONING_EFFORTS[stageId]
+        reasoningEffort: STAGE2_DEFAULT_REASONING_EFFORTS[stageId],
+        compatibility: getStage2DefaultPromptCompatibility(stageId)
       }
     ])
   ) as Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>
@@ -305,6 +347,169 @@ function sanitizeLegacyPrompt(value: unknown): string {
   return typeof value === "string" ? value.replace(/\r\n?/g, "\n").trim() : "";
 }
 
+export function computeStage2PromptHash(prompt: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < prompt.length; index += 1) {
+    hash ^= prompt.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+export function isNativeStage2PromptStage(stageId: Stage2PromptConfigStageId): boolean {
+  return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS.some((stage) => stage.id === stageId);
+}
+
+export function getStage2PromptCompatibilityFamily(
+  stageId: Stage2PromptConfigStageId
+): Stage2PromptCompatibilityFamily {
+  return isNativeStage2PromptStage(stageId)
+    ? STAGE2_PROMPT_COMPATIBILITY_FAMILY_NATIVE
+    : STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY;
+}
+
+export function getStage2PromptBundleVersion(stageId: Stage2PromptConfigStageId): string {
+  return isNativeStage2PromptStage(stageId)
+    ? STAGE2_NATIVE_PROMPT_BUNDLE_VERSION
+    : STAGE2_LEGACY_PROMPT_BUNDLE_VERSION;
+}
+
+export function getStage2DefaultPromptCompatibility(
+  stageId: Stage2PromptConfigStageId
+): Stage2PromptCompatibility {
+  return {
+    family: getStage2PromptCompatibilityFamily(stageId),
+    bundleVersion: getStage2PromptBundleVersion(stageId),
+    defaultPromptHash: computeStage2PromptHash(STAGE2_DEFAULT_STAGE_PROMPTS[stageId])
+  };
+}
+
+function normalizePromptCompatibility(
+  _stageId: Stage2PromptConfigStageId,
+  value: unknown
+): Stage2PromptCompatibility | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Partial<Stage2PromptCompatibility>;
+  const family =
+    candidate.family === STAGE2_PROMPT_COMPATIBILITY_FAMILY_NATIVE ||
+    candidate.family === STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY
+      ? candidate.family
+      : null;
+  const bundleVersion =
+    typeof candidate.bundleVersion === "string" && candidate.bundleVersion.trim()
+      ? candidate.bundleVersion.trim()
+      : null;
+  const defaultPromptHash =
+    typeof candidate.defaultPromptHash === "string" && candidate.defaultPromptHash.trim()
+      ? candidate.defaultPromptHash.trim()
+      : null;
+  if (!family || !bundleVersion || !defaultPromptHash) {
+    return null;
+  }
+  return {
+    family,
+    bundleVersion,
+    defaultPromptHash
+  };
+}
+
+export function getStage2PromptOverrideCompatibility(input: {
+  stageId: Stage2PromptConfigStageId;
+  stageConfig: Stage2PromptStageConfig | null | undefined;
+}):
+  | {
+      accepted: true;
+      family: Stage2PromptCompatibilityFamily;
+      bundleVersion: string;
+      defaultPromptHash: string;
+      reason: null;
+    }
+  | {
+      accepted: false;
+      family: Stage2PromptCompatibilityFamily;
+      bundleVersion: string | null;
+      defaultPromptHash: string | null;
+      reason: string | null;
+    } {
+  const expected = getStage2DefaultPromptCompatibility(input.stageId);
+  const stageConfig = input.stageConfig;
+  if (!stageConfig) {
+    return {
+      accepted: false,
+      family: expected.family,
+      bundleVersion: null,
+      defaultPromptHash: null,
+      reason: null
+    };
+  }
+  const isDefaultPrompt = stageConfig.prompt === STAGE2_DEFAULT_STAGE_PROMPTS[input.stageId];
+  const isDefaultReasoning =
+    stageConfig.reasoningEffort === STAGE2_DEFAULT_REASONING_EFFORTS[input.stageId];
+  if (!isNativeStage2PromptStage(input.stageId)) {
+    return {
+      accepted: true,
+      family: expected.family,
+      bundleVersion: stageConfig.compatibility?.bundleVersion ?? expected.bundleVersion,
+      defaultPromptHash: stageConfig.compatibility?.defaultPromptHash ?? expected.defaultPromptHash,
+      reason: null
+    };
+  }
+  if (isDefaultPrompt && isDefaultReasoning) {
+    return {
+      accepted: true,
+      family: expected.family,
+      bundleVersion: expected.bundleVersion,
+      defaultPromptHash: expected.defaultPromptHash,
+      reason: null
+    };
+  }
+  if (!stageConfig.compatibility) {
+    return {
+      accepted: false,
+      family: expected.family,
+      bundleVersion: null,
+      defaultPromptHash: null,
+      reason: "missing_native_compatibility_metadata"
+    };
+  }
+  if (stageConfig.compatibility.family !== expected.family) {
+    return {
+      accepted: false,
+      family: stageConfig.compatibility.family,
+      bundleVersion: stageConfig.compatibility.bundleVersion,
+      defaultPromptHash: stageConfig.compatibility.defaultPromptHash,
+      reason: "stage_family_mismatch"
+    };
+  }
+  if (stageConfig.compatibility.bundleVersion !== expected.bundleVersion) {
+    return {
+      accepted: false,
+      family: stageConfig.compatibility.family,
+      bundleVersion: stageConfig.compatibility.bundleVersion,
+      defaultPromptHash: stageConfig.compatibility.defaultPromptHash,
+      reason: "bundle_version_mismatch"
+    };
+  }
+  if (stageConfig.compatibility.defaultPromptHash !== expected.defaultPromptHash) {
+    return {
+      accepted: false,
+      family: stageConfig.compatibility.family,
+      bundleVersion: stageConfig.compatibility.bundleVersion,
+      defaultPromptHash: stageConfig.compatibility.defaultPromptHash,
+      reason: "default_prompt_hash_mismatch"
+    };
+  }
+  return {
+    accepted: true,
+    family: stageConfig.compatibility.family,
+    bundleVersion: stageConfig.compatibility.bundleVersion,
+    defaultPromptHash: stageConfig.compatibility.defaultPromptHash,
+    reason: null
+  };
+}
+
 function normalizeReasoningEffort(
   value: unknown,
   fallback: Stage2ReasoningEffort
@@ -340,25 +545,16 @@ export function normalizeStage2PromptConfig(input: unknown): Stage2PromptConfig 
                 templateOverride?: unknown;
                 guidance?: unknown;
                 template?: unknown;
+                compatibility?: unknown;
               }
             >
           >
         >)
       : undefined;
 
-  const legacyStageFallbacks: Partial<Record<Stage2PromptConfigStageId, Stage2PromptConfigStageId[]>> = {
-    contextPacket: ["analyzer", "selector"],
-    candidateGenerator: ["writer"],
-    qualityCourt: ["critic", "finalSelector"],
-    targetedRepair: ["rewriter"],
-    titleWriter: ["titles"]
-  };
-
   const stages = Object.fromEntries(
     STAGE2_PROMPT_STAGE_IDS.map((stageId) => {
-      const stageCandidate =
-        stagesCandidate?.[stageId] ??
-        legacyStageFallbacks[stageId]?.map((fallbackId) => stagesCandidate?.[fallbackId]).find(Boolean);
+      const stageCandidate = stagesCandidate?.[stageId];
       const defaultPrompt = STAGE2_DEFAULT_STAGE_PROMPTS[stageId];
       const legacyTemplateOverride = sanitizeLegacyPrompt(stageCandidate?.templateOverride);
       const legacyGuidance = sanitizeLegacyPrompt(stageCandidate?.guidance);
@@ -380,14 +576,23 @@ export function normalizeStage2PromptConfig(input: unknown): Stage2PromptConfig 
           reasoningEffort: normalizeReasoningEffort(
             stageCandidate?.reasoningEffort,
             STAGE2_DEFAULT_REASONING_EFFORTS[stageId]
-          )
+          ),
+          compatibility:
+            normalizePromptCompatibility(stageId, stageCandidate?.compatibility) ??
+            (prompt === defaultPrompt &&
+            normalizeReasoningEffort(
+              stageCandidate?.reasoningEffort,
+              STAGE2_DEFAULT_REASONING_EFFORTS[stageId]
+            ) === STAGE2_DEFAULT_REASONING_EFFORTS[stageId]
+              ? getStage2DefaultPromptCompatibility(stageId)
+              : null)
         }
       ];
     })
   ) as Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
 
   return {
-    version: 3,
+    version: STAGE2_PROMPT_CONFIG_VERSION,
     stages
   };
 }
@@ -408,10 +613,92 @@ export function stringifyStage2PromptConfig(config: Stage2PromptConfig): string 
   return JSON.stringify(normalizeStage2PromptConfig(config));
 }
 
+export function prepareStage2PromptConfigForExplicitSave(input: {
+  nextConfig: Stage2PromptConfig;
+  previousConfig?: Stage2PromptConfig | null;
+}): Stage2PromptConfig {
+  const nextConfig = normalizeStage2PromptConfig(input.nextConfig);
+  const previousConfig = input.previousConfig ? normalizeStage2PromptConfig(input.previousConfig) : null;
+  const stages = Object.fromEntries(
+    STAGE2_PROMPT_STAGE_IDS.map((stageId) => {
+      const nextStage = nextConfig.stages[stageId];
+      const previousStage = previousConfig?.stages[stageId] ?? null;
+      const defaultPrompt = STAGE2_DEFAULT_STAGE_PROMPTS[stageId];
+      const defaultReasoning = STAGE2_DEFAULT_REASONING_EFFORTS[stageId];
+      const usesDefault =
+        nextStage.prompt === defaultPrompt && nextStage.reasoningEffort === defaultReasoning;
+      const changedFromPrevious =
+        !previousStage ||
+        nextStage.prompt !== previousStage.prompt ||
+        nextStage.reasoningEffort !== previousStage.reasoningEffort;
+      if (!isNativeStage2PromptStage(stageId)) {
+        return [stageId, nextStage];
+      }
+      if (usesDefault || changedFromPrevious) {
+        return [
+          stageId,
+          {
+            ...nextStage,
+            compatibility: getStage2DefaultPromptCompatibility(stageId)
+          }
+        ];
+      }
+      return [stageId, nextStage];
+    })
+  ) as Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
+  return {
+    version: STAGE2_PROMPT_CONFIG_VERSION,
+    stages
+  };
+}
+
+export function resetIncompatibleNativeStage2PromptOverrides(config: Stage2PromptConfig): {
+  config: Stage2PromptConfig;
+  removedStageIds: Stage2PromptConfigStageId[];
+} {
+  const normalized = normalizeStage2PromptConfig(config);
+  const removedStageIds: Stage2PromptConfigStageId[] = [];
+  const stages = Object.fromEntries(
+    STAGE2_PROMPT_STAGE_IDS.map((stageId) => {
+      const stage = normalized.stages[stageId];
+      const compatibility = getStage2PromptOverrideCompatibility({
+        stageId,
+        stageConfig: stage
+      });
+      if (!isNativeStage2PromptStage(stageId) || compatibility.accepted) {
+        return [stageId, stage];
+      }
+      removedStageIds.push(stageId);
+      return [
+        stageId,
+        {
+          prompt: STAGE2_DEFAULT_STAGE_PROMPTS[stageId],
+          reasoningEffort: STAGE2_DEFAULT_REASONING_EFFORTS[stageId],
+          compatibility: getStage2DefaultPromptCompatibility(stageId)
+        }
+      ];
+    })
+  ) as Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
+  return {
+    config: {
+      version: STAGE2_PROMPT_CONFIG_VERSION,
+      stages
+    },
+    removedStageIds
+  };
+}
+
 export function hasStage2PromptOverrides(config: Stage2PromptConfig): boolean {
   const normalized = normalizeStage2PromptConfig(config);
   return STAGE2_PROMPT_STAGE_IDS.some((stageId) => {
     const stage = normalized.stages[stageId];
+    const compatibility = getStage2PromptOverrideCompatibility({
+      stageId,
+      stageConfig: stage
+    });
+    if (isNativeStage2PromptStage(stageId) && !compatibility.accepted) {
+      return false;
+    }
     return (
       stage.prompt !== STAGE2_DEFAULT_STAGE_PROMPTS[stageId] ||
       stage.reasoningEffort !== STAGE2_DEFAULT_REASONING_EFFORTS[stageId]

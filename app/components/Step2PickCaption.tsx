@@ -65,14 +65,10 @@ type Step2PickCaptionProps = {
 type DiagnosticsView = NonNullable<Stage2Response["diagnostics"]>;
 type DiagnosticsPromptStage = DiagnosticsView["effectivePrompting"]["promptStages"][number];
 type DiagnosticsExample = DiagnosticsView["examples"]["availableExamples"][number];
-type NativeCaptionFinalist = NonNullable<Stage2Response["output"]["finalists"]>[number];
-type NativeCaptionTranslationArtifact = {
-  translatedAt: string;
-  items: Array<{
-    candidateId: string;
-    topRu: string;
-    bottomRu: string;
-  }>;
+
+type NativeUiBadge = {
+  label: string;
+  tone?: "default" | "muted" | "success";
 };
 
 function formatDate(value: string): string {
@@ -250,6 +246,49 @@ function formatRunModeLabel(mode: Stage2RunSummary["mode"]): string {
     return "быстрый";
   }
   return "полный";
+}
+
+function buildNativeUiBadges(input: {
+  isWinner: boolean;
+  isSelected: boolean;
+  isFinalist: boolean;
+  isChecked: boolean;
+}): NativeUiBadge[] {
+  const badges: NativeUiBadge[] = [];
+  if (input.isWinner) {
+    badges.push({ label: "Победитель", tone: "success" });
+  }
+  if (input.isSelected) {
+    badges.push({ label: "Выбран", tone: "muted" });
+  }
+  if (input.isFinalist && !input.isWinner) {
+    badges.push({ label: "Рекомендован", tone: "default" });
+  }
+  if (!input.isFinalist) {
+    badges.push({ label: "Резерв", tone: "muted" });
+  }
+  if (input.isChecked) {
+    badges.push({ label: "Проверен", tone: "muted" });
+  }
+  return badges;
+}
+
+function buildCaptionCopyPayload(input: {
+  top: string;
+  bottom: string;
+  topRu?: string;
+  bottomRu?: string;
+}): string {
+  return [
+    `TOP RU: ${input.topRu?.trim() || input.top}`,
+    `TOP EN: ${input.top}`,
+    `BOTTOM RU: ${input.bottomRu?.trim() || input.bottom}`,
+    `BOTTOM EN: ${input.bottom}`
+  ].join("\n");
+}
+
+function buildTitleCopyPayload(input: { title: string; titleRu?: string }): string {
+  return [`TITLE RU: ${input.titleRu?.trim() || input.title}`, `TITLE EN: ${input.title}`].join("\n");
 }
 
 function formatStageProgressStatusLabel(input: {
@@ -1194,15 +1233,6 @@ export function Step2PickCaption({
     status: "idle" | "saving" | "saved" | "error";
     message: string | null;
   } | null>(null);
-  const [nativeTranslationState, setNativeTranslationState] = useState<{
-    status: "idle" | "loading" | "ready" | "error";
-    artifact: NativeCaptionTranslationArtifact | null;
-    message: string | null;
-  }>({
-    status: "idle",
-    artifact: null,
-    message: null
-  });
   const selectedRun = useMemo(
     () => runs.find((run) => run.runId === selectedRunId) ?? null,
     [runs, selectedRunId]
@@ -1249,29 +1279,6 @@ export function Step2PickCaption({
     stage2?.output.pipeline?.execution?.pipelineVersion === "native_caption_v3" ||
       stage2?.output.finalists?.length
   );
-  const nativeFinalists = useMemo(() => {
-    if (!stage2 || !isNativeCaptionV3) {
-      return [] as NativeCaptionFinalist[];
-    }
-    const finalists = stage2.output.finalists ?? [];
-    const winnerCandidateId = stage2.output.winner?.candidateId ?? null;
-    return [...finalists].sort((left, right) => {
-      const leftWinner = left.candidateId === winnerCandidateId ? 1 : 0;
-      const rightWinner = right.candidateId === winnerCandidateId ? 1 : 0;
-      return rightWinner - leftWinner || left.option - right.option;
-    });
-  }, [isNativeCaptionV3, stage2]);
-  const translationItems = useMemo(() => {
-    const items = [
-      ...(stage2?.output.pipeline?.nativeCaptionV3?.translation?.items ?? []),
-      ...(nativeTranslationState.artifact?.items ?? [])
-    ];
-    const byCandidateId = new Map<string, NativeCaptionTranslationArtifact["items"][number]>();
-    items.forEach((item) => {
-      byCandidateId.set(item.candidateId, item);
-    });
-    return byCandidateId;
-  }, [nativeTranslationState.artifact, stage2]);
   const sourceProviderLabel = formatSourceProviderLabel(stage2?.source.downloadProvider);
   const commentsAcquisitionLabel = formatCommentsAcquisitionLabel(stage2?.source ?? null);
   const pendingFeedbackSinceVisibleRun = useMemo(() => {
@@ -1380,14 +1387,6 @@ export function Step2PickCaption({
   }, [stage2?.stage2Run?.runId]);
 
   useEffect(() => {
-    setNativeTranslationState({
-      status: "idle",
-      artifact: null,
-      message: null
-    });
-  }, [stage2?.stage2Run?.runId]);
-
-  useEffect(() => {
     if (instruction.trim() || pendingFeedbackSummary) {
       setRegenerationDetailsOpen(true);
     }
@@ -1475,43 +1474,59 @@ export function Step2PickCaption({
     }).catch(() => undefined);
   };
 
-  const handleTranslateFinalists = useCallback(async (): Promise<void> => {
-    const runId = stage2?.stage2Run?.runId;
-    if (!runId || !isNativeCaptionV3 || nativeFinalists.length === 0) {
-      return;
-    }
-    setNativeTranslationState({
-      status: "loading",
-      artifact: null,
-      message: null
-    });
-    try {
-      const response = await fetch("/api/pipeline/stage2/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId })
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | { translation?: NativeCaptionTranslationArtifact | null; error?: string; message?: string }
-        | null;
-      if (!response.ok) {
-        throw new Error(payload?.message || payload?.error || "Не удалось перевести finalists.");
-      }
-      setNativeTranslationState({
-        status: "ready",
-        artifact: payload?.translation ?? null,
-        message: payload?.translation
-          ? "Перевод finalists готов."
-          : "Перевод не вернул новых строк."
-      });
-    } catch (error) {
-      setNativeTranslationState({
-        status: "error",
-        artifact: null,
-        message: error instanceof Error ? error.message : "Не удалось перевести finalists."
-      });
-    }
-  }, [isNativeCaptionV3, nativeFinalists.length, stage2?.stage2Run?.runId]);
+  const renderScopeFeedbackActions = (
+    option: number,
+    scope: "top" | "bottom"
+  ): React.ReactNode =>
+    canSubmitFeedback ? (
+      <div className="option-feedback-scope-actions">
+        <button
+          type="button"
+          className="btn btn-ghost option-feedback-icon-btn"
+          title={`Лайкнуть только ${scope.toUpperCase()}`}
+          aria-label={`Лайкнуть ${scope.toUpperCase()} варианта ${option}`}
+          onClick={() => openFeedbackComposer(option, scope, "more_like_this")}
+        >
+          <span aria-hidden="true">👍</span>
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost option-feedback-icon-btn"
+          title={`Дизлайкнуть только ${scope.toUpperCase()}`}
+          aria-label={`Дизлайкнуть ${scope.toUpperCase()} варианта ${option}`}
+          onClick={() => openFeedbackComposer(option, scope, "less_like_this")}
+        >
+          <span aria-hidden="true">👎</span>
+        </button>
+      </div>
+    ) : null;
+
+  const renderBilingualTextSection = (input: {
+    option: number;
+    fieldLabel: string;
+    primaryLabel: string;
+    primaryText: string;
+    secondaryLabel: string;
+    secondaryText: string;
+    feedbackScope?: "top" | "bottom";
+  }): React.ReactNode => (
+    <div className="translation-row">
+      <div className="option-feedback-scope-head">
+        <span className="field-label">{input.fieldLabel}</span>
+        {input.feedbackScope ? renderScopeFeedbackActions(input.option, input.feedbackScope) : null}
+      </div>
+      <div className="translation-stack">
+        <div className="translation-col translation-col-primary">
+          <span className="translation-label">{input.primaryLabel}</span>
+          <p className="text-block">{input.primaryText}</p>
+        </div>
+        <div className="translation-col translation-col-secondary">
+          <span className="translation-label">{input.secondaryLabel}</span>
+          <p className="text-block text-block-secondary">{input.secondaryText}</p>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <StepWorkspace
@@ -1812,63 +1827,63 @@ export function Step2PickCaption({
                   <section className="control-card control-card-subtle">
                     <div className="option-card-head">
                       <div>
-                        <h3>Winner-first shortlist</h3>
+                        <h3>Готовые варианты</h3>
                         <p className="subtle-text">
-                          Новый hot path показывает только finalists, а заголовки относятся только к winner.
+                          Пять уже проверенных вариантов собраны сразу с переводом. Выше всего стоит
+                          победитель, но резервные альтернативы тоже готовы к работе.
                         </p>
                       </div>
-                      <div className="option-actions">
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          disabled={nativeTranslationState.status === "loading" || nativeFinalists.length === 0}
-                          onClick={() => {
-                            void handleTranslateFinalists();
-                          }}
-                        >
-                          {nativeTranslationState.status === "loading"
-                            ? "Переводим finalists..."
-                            : "Перевести finalists"}
-                        </button>
-                      </div>
                     </div>
-                    <p className="subtle-text">
-                      Winner: вариант {stage2.output.finalPick.option}. {stage2.output.finalPick.reason}
-                    </p>
-                    {nativeTranslationState.message ? (
-                      <p
-                        className={`subtle-text ${
-                          nativeTranslationState.status === "error" ? "danger-text" : ""
-                        }`}
-                      >
-                        {nativeTranslationState.message}
+                    {stage2.output.pipeline?.nativeCaptionV3?.guardSummary.degradedSuccess ? (
+                      <p className="subtle-text">
+                        Запуск завершился в safe fallback-режиме: shortlist остаётся валидным, даже если
+                        часть слотов пришлось добрать через recovery или template backfill.
                       </p>
                     ) : null}
                   </section>
 
                   <section className="options-grid options-grid-stage2">
-                    {nativeFinalists.map((finalist) => {
-                      const selected = activeOption?.option === finalist.option;
-                      const finalPick = stage2.output.finalPick.option === finalist.option;
-                      const translation = translationItems.get(finalist.candidateId) ?? null;
+                    {stage2.output.captionOptions.map((option) => {
+                      const selected = activeOption?.option === option.option;
+                      const finalPick = stage2.output.finalPick.option === option.option;
+                      const topRu = option.topRu?.trim() || option.top;
+                      const bottomRu = option.bottomRu?.trim() || option.bottom;
+                      const badges = buildNativeUiBadges({
+                        isWinner: finalPick,
+                        isSelected: selected,
+                        isFinalist: option.displayTier === "finalist",
+                        isChecked: option.constraintCheck?.passed !== false
+                      });
 
                       return (
                         <article
-                          key={finalist.candidateId}
+                          key={option.candidateId ?? option.option}
                           className={`option-card ${selected ? "selected" : ""}`}
-                          aria-label={`Caption finalist ${finalist.option}`}
+                          aria-label={`Caption option ${option.option}`}
                         >
                           <div className="option-card-head">
                             <div className="option-title-row">
-                              <h3>Финалист {finalist.option}</h3>
-                              {finalPick ? <span className="badge">Winner</span> : null}
-                              {selected ? <span className="badge muted">Выбран</span> : null}
+                              <h3>Вариант {option.option}</h3>
+                              {badges.map((badge) => (
+                                <span
+                                  key={badge.label}
+                                  className={`badge${
+                                    badge.tone === "muted"
+                                      ? " muted"
+                                      : badge.tone === "success"
+                                        ? ""
+                                        : ""
+                                  }`}
+                                >
+                                  {badge.label}
+                                </span>
+                              ))}
                             </div>
                             <div className="option-actions">
                               <button
                                 type="button"
                                 className="btn btn-secondary"
-                                onClick={() => handleChooseOption(finalist.option)}
+                                onClick={() => handleChooseOption(option.option)}
                               >
                                 Выбрать
                               </button>
@@ -1877,15 +1892,13 @@ export function Step2PickCaption({
                                 className="btn btn-ghost"
                                 onClick={() =>
                                   onCopy(
-                                    [
-                                      `TOP EN: ${finalist.top}`,
-                                      translation ? `TOP RU: ${translation.topRu}` : null,
-                                      `BOTTOM EN: ${finalist.bottom}`,
-                                      translation ? `BOTTOM RU: ${translation.bottomRu}` : null
-                                    ]
-                                      .filter(Boolean)
-                                      .join("\n"),
-                                    `Финалист ${finalist.option} скопирован.`
+                                    buildCaptionCopyPayload({
+                                      top: option.top,
+                                      bottom: option.bottom,
+                                      topRu,
+                                      bottomRu
+                                    }),
+                                    `Вариант ${option.option} скопирован.`
                                   )
                                 }
                               >
@@ -1897,9 +1910,9 @@ export function Step2PickCaption({
                                     type="button"
                                     className="btn btn-ghost option-feedback-icon-btn"
                                     title="Лайкнуть весь вариант"
-                                    aria-label={`Лайкнуть вариант ${finalist.option}`}
+                                    aria-label={`Лайкнуть вариант ${option.option}`}
                                     onClick={() =>
-                                      openFeedbackComposer(finalist.option, "option", "more_like_this")
+                                      openFeedbackComposer(option.option, "option", "more_like_this")
                                     }
                                   >
                                     <span aria-hidden="true">👍</span>
@@ -1908,9 +1921,9 @@ export function Step2PickCaption({
                                     type="button"
                                     className="btn btn-ghost option-feedback-icon-btn"
                                     title="Дизлайкнуть весь вариант"
-                                    aria-label={`Дизлайкнуть вариант ${finalist.option}`}
+                                    aria-label={`Дизлайкнуть вариант ${option.option}`}
                                     onClick={() =>
-                                      openFeedbackComposer(finalist.option, "option", "less_like_this")
+                                      openFeedbackComposer(option.option, "option", "less_like_this")
                                     }
                                   >
                                     <span aria-hidden="true">👎</span>
@@ -1920,88 +1933,25 @@ export function Step2PickCaption({
                             </div>
                           </div>
 
-                          <div className="translation-row">
-                            <div className="option-feedback-scope-head">
-                              <span className="field-label">TOP</span>
-                              {canSubmitFeedback ? (
-                                <div className="option-feedback-scope-actions">
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost option-feedback-icon-btn"
-                                    title="Лайкнуть только TOP"
-                                    aria-label={`Лайкнуть TOP варианта ${finalist.option}`}
-                                    onClick={() =>
-                                      openFeedbackComposer(finalist.option, "top", "more_like_this")
-                                    }
-                                  >
-                                    <span aria-hidden="true">👍</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost option-feedback-icon-btn"
-                                    title="Дизлайкнуть только TOP"
-                                    aria-label={`Дизлайкнуть TOP варианта ${finalist.option}`}
-                                    onClick={() =>
-                                      openFeedbackComposer(finalist.option, "top", "less_like_this")
-                                    }
-                                  >
-                                    <span aria-hidden="true">👎</span>
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                            <p className="text-block">{finalist.top}</p>
-                            {translation ? (
-                              <div className="translation-grid">
-                                <div className="translation-col">
-                                  <span className="translation-label">RU review</span>
-                                  <p className="text-block">{translation.topRu}</p>
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <div className="translation-row">
-                            <div className="option-feedback-scope-head">
-                              <span className="field-label">BOTTOM</span>
-                              {canSubmitFeedback ? (
-                                <div className="option-feedback-scope-actions">
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost option-feedback-icon-btn"
-                                    title="Лайкнуть только BOTTOM"
-                                    aria-label={`Лайкнуть BOTTOM варианта ${finalist.option}`}
-                                    onClick={() =>
-                                      openFeedbackComposer(finalist.option, "bottom", "more_like_this")
-                                    }
-                                  >
-                                    <span aria-hidden="true">👍</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost option-feedback-icon-btn"
-                                    title="Дизлайкнуть только BOTTOM"
-                                    aria-label={`Дизлайкнуть BOTTOM варианта ${finalist.option}`}
-                                    onClick={() =>
-                                      openFeedbackComposer(finalist.option, "bottom", "less_like_this")
-                                    }
-                                  >
-                                    <span aria-hidden="true">👎</span>
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                            <p className="text-block">{finalist.bottom}</p>
-                            {translation ? (
-                              <div className="translation-grid">
-                                <div className="translation-col">
-                                  <span className="translation-label">RU review</span>
-                                  <p className="text-block">{translation.bottomRu}</p>
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                          {feedbackDraft?.option === finalist.option ? (
+                          {renderBilingualTextSection({
+                            option: option.option,
+                            fieldLabel: "TOP",
+                            primaryLabel: "RU",
+                            primaryText: topRu,
+                            secondaryLabel: "EN original",
+                            secondaryText: option.top,
+                            feedbackScope: "top"
+                          })}
+                          {renderBilingualTextSection({
+                            option: option.option,
+                            fieldLabel: "BOTTOM",
+                            primaryLabel: "RU",
+                            primaryText: bottomRu,
+                            secondaryLabel: "EN original",
+                            secondaryText: option.bottom,
+                            feedbackScope: "bottom"
+                          })}
+                          {feedbackDraft?.option === option.option ? (
                             <div className="option-feedback-panel">
                               <div className="option-feedback-head">
                                 <strong>
@@ -2015,12 +1965,12 @@ export function Step2PickCaption({
                               <div className="compact-field">
                                 <label
                                   className="field-label"
-                                  htmlFor={`feedback-note-mode-${finalist.option}`}
+                                  htmlFor={`feedback-note-mode-${option.option}`}
                                 >
                                   Режим заметки
                                 </label>
                                 <select
-                                  id={`feedback-note-mode-${finalist.option}`}
+                                  id={`feedback-note-mode-${option.option}`}
                                   className="text-input"
                                   value={feedbackDraft.noteMode}
                                   onChange={(event) =>
@@ -2100,15 +2050,16 @@ export function Step2PickCaption({
                   <section className="control-card">
                     <div className="option-card-head">
                       <div>
-                        <h3>Winner-scoped title options</h3>
+                        <h3>Готовые заголовки</h3>
                         <p className="subtle-text">
-                          Эти 5 заголовков написаны только для winner и используются в имени экспортируемого файла.
+                          Эти 5 заголовков написаны только для победителя и уже готовы на русском и английском.
                         </p>
                       </div>
                     </div>
                     <div className="options-grid options-grid-stage2">
                       {stage2.output.titleOptions.map((titleOption) => {
                         const selected = activeTitleOption?.option === titleOption.option;
+                        const titleRu = titleOption.titleRu?.trim() || titleOption.title;
                         return (
                           <article
                             key={titleOption.option}
@@ -2133,7 +2084,10 @@ export function Step2PickCaption({
                                   className="btn btn-ghost"
                                   onClick={() =>
                                     onCopy(
-                                      `TITLE EN: ${titleOption.title}`,
+                                      buildTitleCopyPayload({
+                                        title: titleOption.title,
+                                        titleRu
+                                      }),
                                       `Заголовок ${titleOption.option} скопирован.`
                                     )
                                   }
@@ -2142,7 +2096,14 @@ export function Step2PickCaption({
                                 </button>
                               </div>
                             </div>
-                            <p className="text-block">{titleOption.title}</p>
+                            {renderBilingualTextSection({
+                              option: titleOption.option,
+                              fieldLabel: "TITLE",
+                              primaryLabel: "RU",
+                              primaryText: titleRu,
+                              secondaryLabel: "EN original",
+                              secondaryText: titleOption.title
+                            })}
                           </article>
                         );
                       })}
@@ -2186,12 +2147,12 @@ export function Step2PickCaption({
                                 className="btn btn-ghost"
                                 onClick={() =>
                                   onCopy(
-                                    [
-                                      `TOP EN: ${option.top}`,
-                                      `TOP RU: ${topRu}`,
-                                      `BOTTOM EN: ${option.bottom}`,
-                                      `BOTTOM RU: ${bottomRu}`
-                                    ].join("\n"),
+                                    buildCaptionCopyPayload({
+                                      top: option.top,
+                                      bottom: option.bottom,
+                                      topRu,
+                                      bottomRu
+                                    }),
                                     `Вариант ${option.option} скопирован.`
                                   )
                                 }
@@ -2223,80 +2184,24 @@ export function Step2PickCaption({
                             </div>
                           </div>
 
-                          <div className="translation-row">
-                            <div className="option-feedback-scope-head">
-                              <span className="field-label">TOP</span>
-                              {canSubmitFeedback ? (
-                                <div className="option-feedback-scope-actions">
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost option-feedback-icon-btn"
-                                    title="Лайкнуть только TOP"
-                                    aria-label={`Лайкнуть TOP варианта ${option.option}`}
-                                    onClick={() => openFeedbackComposer(option.option, "top", "more_like_this")}
-                                  >
-                                    <span aria-hidden="true">👍</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost option-feedback-icon-btn"
-                                    title="Дизлайкнуть только TOP"
-                                    aria-label={`Дизлайкнуть TOP варианта ${option.option}`}
-                                    onClick={() => openFeedbackComposer(option.option, "top", "less_like_this")}
-                                  >
-                                    <span aria-hidden="true">👎</span>
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="translation-grid">
-                              <div className="translation-col">
-                                <span className="translation-label">EN</span>
-                                <p className="text-block">{option.top}</p>
-                              </div>
-                              <div className="translation-col">
-                                <span className="translation-label">RU</span>
-                                <p className="text-block">{topRu}</p>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="translation-row">
-                            <div className="option-feedback-scope-head">
-                              <span className="field-label">BOTTOM</span>
-                              {canSubmitFeedback ? (
-                                <div className="option-feedback-scope-actions">
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost option-feedback-icon-btn"
-                                    title="Лайкнуть только BOTTOM"
-                                    aria-label={`Лайкнуть BOTTOM варианта ${option.option}`}
-                                    onClick={() => openFeedbackComposer(option.option, "bottom", "more_like_this")}
-                                  >
-                                    <span aria-hidden="true">👍</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost option-feedback-icon-btn"
-                                    title="Дизлайкнуть только BOTTOM"
-                                    aria-label={`Дизлайкнуть BOTTOM варианта ${option.option}`}
-                                    onClick={() => openFeedbackComposer(option.option, "bottom", "less_like_this")}
-                                  >
-                                    <span aria-hidden="true">👎</span>
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="translation-grid">
-                              <div className="translation-col">
-                                <span className="translation-label">EN</span>
-                                <p className="text-block">{option.bottom}</p>
-                              </div>
-                              <div className="translation-col">
-                                <span className="translation-label">RU</span>
-                                <p className="text-block">{bottomRu}</p>
-                              </div>
-                            </div>
-                          </div>
+                          {renderBilingualTextSection({
+                            option: option.option,
+                            fieldLabel: "TOP",
+                            primaryLabel: "RU",
+                            primaryText: topRu,
+                            secondaryLabel: "EN original",
+                            secondaryText: option.top,
+                            feedbackScope: "top"
+                          })}
+                          {renderBilingualTextSection({
+                            option: option.option,
+                            fieldLabel: "BOTTOM",
+                            primaryLabel: "RU",
+                            primaryText: bottomRu,
+                            secondaryLabel: "EN original",
+                            secondaryText: option.bottom,
+                            feedbackScope: "bottom"
+                          })}
                           {feedbackDraft?.option === option.option ? (
                             <div className="option-feedback-panel">
                               <div className="option-feedback-head">
@@ -2429,7 +2334,10 @@ export function Step2PickCaption({
                                   className="btn btn-ghost"
                                   onClick={() =>
                                     onCopy(
-                                      [`TITLE EN: ${titleOption.title}`, `TITLE RU: ${titleRu}`].join("\n"),
+                                      buildTitleCopyPayload({
+                                        title: titleOption.title,
+                                        titleRu
+                                      }),
                                       `Заголовок ${titleOption.option} скопирован.`
                                     )
                                   }
@@ -2439,19 +2347,14 @@ export function Step2PickCaption({
                               </div>
                             </div>
 
-                            <div className="translation-row">
-                              <span className="field-label">TITLE</span>
-                              <div className="translation-grid">
-                                <div className="translation-col">
-                                  <span className="translation-label">EN</span>
-                                  <p className="text-block">{titleOption.title}</p>
-                                </div>
-                                <div className="translation-col">
-                                  <span className="translation-label">RU</span>
-                                  <p className="text-block">{titleRu}</p>
-                                </div>
-                              </div>
-                            </div>
+                            {renderBilingualTextSection({
+                              option: titleOption.option,
+                              fieldLabel: "TITLE",
+                              primaryLabel: "RU",
+                              primaryText: titleRu,
+                              secondaryLabel: "EN original",
+                              secondaryText: titleOption.title
+                            })}
                           </article>
                         );
                       })}

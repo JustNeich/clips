@@ -11,6 +11,7 @@ export const STAGE2_PROMPT_STAGE_IDS = [
   "candidateGenerator",
   "qualityCourt",
   "targetedRepair",
+  "captionTranslation",
   "titleWriter"
 ] as const;
 
@@ -932,120 +933,164 @@ Tags rules:
 - Mix broad niche tags, action/context tags, and concrete entities or objects from the clip.
 
 Do not invent facts that are not supported by the clip, comments, or final caption context.`,
-  contextPacket: `You are a multimodal clip strategist.
-
-Your job is NOT to write captions.
-Your job is to build a compact, high-signal context packet for a caption writer.
+  contextPacket: `You are not writing captions.
+You are building one compact context packet for a native-English caption editor.
 
 Separate:
-- observed fact,
-- safe inference,
-- audience reading,
-- unsafe or toxic comment noise,
-- strategy.
+1. observed fact
+2. uncertainty
+3. safe inference
+4. audience wave
+5. strategy
 
-Treat comments as audience temperature, not as evidence.
-If speech is missing or uncertain, do not invent quotes.
-If the visible gesture is not fully confirmed, say so explicitly.
+Rules:
+- Comments are audience temperature, not proof.
+- If speech is uncertain, say so.
+- If gesture or detail is uncertain, say so.
+- If the clip has a dominant harmless public handle, name it.
+- If the audience is concentrated around one benign joke, phrase, or tension, state what later stages must not flatten away.
+- Use channel_learning_json as a tone boundary, not as visual evidence.
 
-Your packet must help a downstream native-English writer produce:
-- early-hook captions,
-- human, natural phrasing,
-- visually defensible reads,
-- no synthetic wording,
-- no overclaiming.
+Return strict JSON only with:
+- grounding.observed_facts
+- grounding.visible_sequence
+- grounding.micro_turn
+- grounding.first_seconds_signal
+- grounding.uncertainties
+- grounding.forbidden_claims
+- grounding.safe_inferences
+- audience_wave.exists
+- audience_wave.emotional_temperature
+- audience_wave.dominant_harmless_handle
+- audience_wave.consensus_lane
+- audience_wave.joke_lane
+- audience_wave.dissent_lane
+- audience_wave.safe_reusable_cues
+- audience_wave.blocked_cues
+- audience_wave.flattening_risks
+- audience_wave.must_not_lose
+- strategy.primary_angle
+- strategy.secondary_angles
+- strategy.hook_seeds
+- strategy.bottom_functions
+- strategy.required_lanes
+- strategy.must_do
+- strategy.must_avoid`,
+  candidateGenerator: `You are a native-English short-caption writer.
 
-Return strict JSON only.`,
-  candidateGenerator: `You are a native English social-caption writer.
+Write exactly 8 candidates for the lane plan in context_packet_json.strategy.requiredLanes.
+Your job is not abstract polish.
+Your job is visual truth, audience wave, native human phrasing, and early why-care.
 
-You write publishable captions that feel like a sharp human wrote them in one pass.
-
-You are not allowed to sound like:
-- an analyst,
-- a recapper,
-- PR,
-- news copy,
-- a translation,
-- an AI trying to impress another AI.
-
-Hard rules:
-1. Generate exactly 8 candidates.
-2. TOP must be 160-185 characters.
-3. BOTTOM must be 130-150 characters.
-4. The why-care hook must land in the first clause.
-5. TOP may include at most one setting detail before the contradiction lands.
-6. BOTTOM must sharpen or deepen, not paraphrase.
-7. Stay inside observed facts + explicitly allowed safe inferences.
-8. Use plain, native English.
-9. No coined abstractions, no editorial labels, no analyst tone.
-10. No quote unless grounded in verified speech.
-11. At least 2 candidates must use one safe audience cue naturally.
-12. Never use any blocked cue.
-
-Candidate diversity rules:
-- vary the hook shape,
-- vary the bottom function,
-- vary whether a safe audience cue is used,
-- avoid near-clones.
+Rules:
+- English only.
+- No translations.
+- No explanations.
+- No invented facts.
+- No PR, analyst, or reporting tone.
+- TOP must land why-care in the first clause.
+- BOTTOM must add reaction, texture, or payoff instead of restating TOP.
+- If laneId = audience_locked and a benign handle exists, retain it naturally.
+- Do not sand the clip into generic clean English.
+- Do not produce near-clones.
+- Obey the exact runtime hard-constraint window in hard_constraints_json.
+- Respect channel_learning_json when it narrows tone, but never let it erase the clip's public read.
 
 Return strict JSON only.
-Do not include translations.
-Do not include long rationales.`,
-  qualityCourt: `You are a brutal native-English caption editor.
+Each item must contain:
+- candidate_id
+- lane_id
+- top
+- bottom
+- retained_handle
+- display_intent`,
+  qualityCourt: `You are a hard native-English editor.
 
-Your job is to reject anything that would make a real native speaker think:
-- "this sounds AI-written",
-- "this takes too long to get to the point",
-- "this is recap/analysis, not a caption",
-- "this phrase is not how a person would say it."
+You are not rewarding abstract "good writing."
+You are deciding what would actually win on this exact clip.
 
-Be stricter than a normal editor.
-Borderline candidates should fail.
+Decision order:
+1. kill editorial hard-fails
+2. compare the survivors pairwise
+3. keep the strongest 1-3 finalists
+4. if a dominant harmless handle exists and any safe candidate preserved it, at least 1 finalist must preserve it
+5. mark weaker-but-still-human candidates as display-safe extras only
+6. request recovery only for missing slots, missing finalists, or missing winner
 
-Hard-fail a candidate if any of these are true:
-1. inventory opening before the why-care clause
-2. beat logging / recap pacing
-3. editorial, analyst, PR, or reporting phrasing
-4. invented or non-native phrase
-5. unsupported factual implication
-6. toxic or risky cue leakage
-7. bottom restates top
-8. near-clone of a stronger candidate
+Editorial hard-fails:
+- invented or non-native phrasing
+- beat-log or recap pacing
+- analyst / PR / reporting language
+- unsupported implication
+- flattening the audience wave into generic safe copy
+- dead generic clean English
 
-When you fail a candidate:
-- quote the exact offending substring if possible.
+Rules:
+- Cleaner-but-flatter loses.
+- Safe-but-dead loses.
+- Do not use absolute numeric scores for the decision.
+- Use hard_validator_json as already-set objective validity truth.
+- Only soft rejects may become display-safe extras.
+- Any hard reject must not be displayed.
 
-Keep at most 3 strong candidates.
-If fewer than 2 candidates clear the bar, request targeted repair.
-Return strict JSON only.`,
-  targetedRepair: `You are a native-English caption repairer.
+Return strict JSON only with:
+- finalists
+- display_safe_extras
+- hard_rejected
+- winner_candidate_id
+- recovery_plan`,
+  targetedRepair: `You are writing only the missing candidates requested by the editorial court.
 
-You are not writing from scratch.
-You are repairing almost-good candidates.
+Do not rewrite the whole batch.
+Do not go generic.
+Follow the recovery briefs exactly.
+If a brief says preserve the harmless public handle, preserve it.
+If a brief says stay plainer, stay plainer without going dead.
 
-Your job:
-- preserve the winning underlying read,
-- fix only the cited failures,
-- make the result sound more human,
-- move the hook earlier if needed,
-- replace synthetic or analyst phrasing with plain native English,
-- keep all claims visually defensible.
+Rules:
+- English only.
+- No explanations.
+- No invented facts.
+- No PR, analyst, or recap tone.
+- Obey the exact runtime hard-constraint window in hard_constraints_json.
+- Respect channel_learning_json when relevant.
 
-Do not add new theories.
-Do not introduce new metaphors.
-Do not inflate the tone.
-Return strict JSON only.`,
-  titleWriter: `You write native English short-form video titles.
+Return strict JSON only.
+Each item must contain:
+- candidate_id
+- lane_id
+- top
+- bottom
+- retained_handle
+- display_intent`,
+  captionTranslation: `You are translating already-approved display caption options into natural Russian for operator review.
 
-The title must:
-- be curiosity-driven,
-- stay truthful,
-- feel human,
-- avoid broken emphasis and fake urgency,
-- avoid generic “WHY DID HE FREEZE” sludge unless the clip truly earns it.
+Translate every item in display_options_json.
 
-Do not use malformed all caps.
-Do not use clickbait lies.
+Rules:
+- Preserve the factual frame, emotional wave, and trigger.
+- Keep the Russian natural and publishable.
+- Do not add commentary, explanations, or extra claims.
+- Do not smooth sharp-but-harmless public reads into generic safe sludge.
+- Return strict JSON only.
+
+Each item must contain:
+- candidate_id
+- top_ru
+- bottom_ru`,
+  titleWriter: `You are writing 5 winner-specific title options for the final winning caption.
+
+Rules:
+- Titles are winner-specific.
+- 1-2 titles may preserve the benign public handle if it helps.
+- Do not oversell beyond the winner's factual frame.
+- No clickbait that contradicts the caption.
+- Stay human, clickable, and honest.
+- Respect channel_learning_json as a tone boundary.
+- Return bilingual output:
+  - 'title' = English title
+  - 'title_ru' = natural Russian translation for operator review
+
 Return strict JSON only.`
 };
 
@@ -1065,5 +1110,6 @@ export const STAGE2_DEFAULT_REASONING_EFFORTS: Record<
   candidateGenerator: "low",
   qualityCourt: "low",
   targetedRepair: "low",
+  captionTranslation: "low",
   titleWriter: "low"
 };

@@ -15,8 +15,11 @@ import {
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   parseStage2PromptConfigJson,
+  prepareStage2PromptConfigForExplicitSave,
+  resetIncompatibleNativeStage2PromptOverrides,
   stringifyStage2PromptConfig,
-  type Stage2PromptConfig
+  type Stage2PromptConfig,
+  type Stage2PromptConfigStageId
 } from "./stage2-pipeline";
 import {
   DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
@@ -379,17 +382,9 @@ export function getWorkspaceStage2PromptConfig(workspaceId: string): Stage2Promp
   if (!row) {
     throw new Error("Workspace not found.");
   }
-  const normalized = normalizeWorkspaceStage2PromptConfig(
+  return normalizeWorkspaceStage2PromptConfig(
     row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null
   );
-  const serialized = stringifyStage2PromptConfig(normalized);
-  if ((row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null) !== serialized) {
-    db.prepare("UPDATE workspaces SET stage2_prompt_config_json = ? WHERE id = ?").run(
-      serialized,
-      workspaceId
-    );
-  }
-  return normalized;
 }
 
 export function getWorkspaceCodexModelConfig(workspaceId: string): WorkspaceCodexModelConfig {
@@ -476,9 +471,21 @@ export function updateWorkspaceStage2PromptConfig(
   workspaceId: string,
   promptConfig: Stage2PromptConfig
 ): WorkspaceRecord {
-  const serialized = stringifyStage2PromptConfig(promptConfig);
-  const updatedAt = nowIso();
   const db = getDb();
+  const existingRow = db
+    .prepare("SELECT stage2_prompt_config_json FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!existingRow) {
+    throw new Error("Workspace not found.");
+  }
+  const preparedConfig = prepareStage2PromptConfigForExplicitSave({
+    nextConfig: promptConfig,
+    previousConfig: parseStage2PromptConfigJson(
+      existingRow.stage2_prompt_config_json ? String(existingRow.stage2_prompt_config_json) : null
+    )
+  });
+  const serialized = stringifyStage2PromptConfig(preparedConfig);
+  const updatedAt = nowIso();
   db.prepare(
     "UPDATE workspaces SET stage2_prompt_config_json = ?, updated_at = ? WHERE id = ?"
   ).run(serialized, updatedAt, workspaceId);
@@ -489,6 +496,43 @@ export function updateWorkspaceStage2PromptConfig(
     throw new Error("Workspace not found.");
   }
   return mapWorkspace(row);
+}
+
+export function resetWorkspaceIncompatibleNativePromptOverrides(workspaceId: string): {
+  workspace: WorkspaceRecord;
+  removedStageIds: Stage2PromptConfigStageId[];
+  previousConfig: Stage2PromptConfig;
+  nextConfig: Stage2PromptConfig;
+} {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT stage2_prompt_config_json FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  const previousConfig = parseStage2PromptConfigJson(
+    row.stage2_prompt_config_json ? String(row.stage2_prompt_config_json) : null
+  );
+  const resetResult = resetIncompatibleNativeStage2PromptOverrides(previousConfig);
+  if (resetResult.removedStageIds.length > 0) {
+    db.prepare(
+      "UPDATE workspaces SET stage2_prompt_config_json = ?, updated_at = ? WHERE id = ?"
+    ).run(stringifyStage2PromptConfig(resetResult.config), nowIso(), workspaceId);
+  }
+  const updatedRow = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!updatedRow) {
+    throw new Error("Workspace not found.");
+  }
+  const workspace = mapWorkspace(updatedRow);
+  return {
+    workspace,
+    removedStageIds: resetResult.removedStageIds,
+    previousConfig,
+    nextConfig: resetResult.config
+  };
 }
 
 export function updateWorkspaceCodexModelConfig(

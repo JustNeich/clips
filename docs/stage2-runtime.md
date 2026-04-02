@@ -6,22 +6,42 @@
 
 Stage 2 больше не является one-shot prompt и больше не строится вокруг competitor-sync / hot-pool / profile-driven preset architecture.
 
-Текущий pipeline:
+Для `native_caption_v3` текущий hot path выглядит так:
 
 1. `contextPacket`
 2. `candidateGenerator`
-3. `qualityCourt`
-4. `targetedRepair` (optional)
-5. `titleWriter`
-6. human pick / review в UI
-7. optional `translate finalists` action after the run
-8. optional publishing-time SEO generation outside Stage 2
+3. `hardValidator`
+4. `qualityCourt`
+5. `targetedRepair` (optional)
+6. `templateBackfill` (optional)
+7. `captionTranslation`
+8. `titleWriter`
+9. human pick / review в UI
+10. optional publishing-time SEO generation outside Stage 2
 
 Ключевой принцип:
 - Stage 2 всегда использует **один effective examples corpus на run**
 - prompt configuration хранится по stage
 - examples по умолчанию выключены в `native_caption_v3` hot path
-- RU translation и SEO больше не входят в Stage 2 transaction
+- RU translation display shortlist теперь входит в Stage 2 transaction
+- SEO по-прежнему живёт вне Stage 2 transaction
+- deterministic validity и template backfill живут в runtime, а не в prompt overrides
+
+### Native display contract
+
+Для processable `native_caption_v3` run runtime теперь обязан:
+- всегда вернуть `output.captionOptions.length === 5`;
+- держать `output.finalists` как finalist-grade subset, а не зеркало visible shortlist;
+- всегда вернуть один valid `winner`;
+- никогда не показывать hard-invalid / hard-rejected options;
+- маркировать degraded path через payload/trace, а не через `failed` durable status.
+
+Текущая top-level truth model:
+- `captionOptions` = ровно 5 displayed options;
+- `finalists` = только finalist-grade options (`0..3`);
+- `winner` = может прийти из `finalist`, `recovery` или `template_backfill`;
+- `finalPick.option` = slot winner-а внутри `captionOptions`;
+- durable run storage по-прежнему остаётся только `completed` / `failed`.
 
 ## 2. End-to-end flow
 
@@ -47,7 +67,7 @@ Run lifecycle:
 
 Run modes:
 - `manual` / `auto` проходят полный multi-stage pipeline
-- `regenerate` для `native_caption_v3` переиспользует сохранённый `contextPacket` и заново прогоняет `candidateGenerator -> qualityCourt -> targetedRepair? -> titleWriter`
+- `regenerate` для `native_caption_v3` переиспользует сохранённый `contextPacket` и заново прогоняет `candidateGenerator -> hardValidator -> qualityCourt -> targetedRepair? -> templateBackfill? -> captionTranslation -> titleWriter`
 - исторический quick regenerate для legacy/vnext payloads остаётся только для compatibility
 - regenerate по-прежнему использует coarse progress steps `База -> Перегенерация -> Сборка`
 
@@ -335,32 +355,57 @@ Selector candidate pool должен быть чище, чем полный corp
 - generic `clipType=general` examples не должны доминировать, если есть более релевантные metadata-rich matches;
 - diagnostics должны показывать и active corpus, и curated selector pool, чтобы оператор видел реальный runtime boundary.
 
-## 6. Final shortlist contract
+## 6. Native shortlist contract
 
-Финальный shortlist в success-path всегда должен содержать **ровно 5 visible options**.
+Для `native_caption_v3` финальный public contract теперь строится не вокруг “5 finalists”, а вокруг **5 displayed options** с явным tiering.
 
-Текущая политика:
-- final selector просит 5 strongest finalists
-- затем shortlist проходит constraint-safe repair и hard-constraint validation
-- если publishable пятёрка не собирается даже после deterministic backfill/reserve fill, run **не считается successful** и падает явно
+Display assembly order:
+1. `finalists`
+2. `displaySafeExtras`
+3. `recovery`
+4. `template_backfill`
 
-Required invariants для completed run:
+Ключевые правила:
+- `hardValidator` режет только objective invalidity: length windows, banned words/openers, empty fields, meta leakage, malformed shape;
+- `qualityCourt` делает editorial choice и может вернуть только `finalists`, `displaySafeExtras`, `hardRejected`, `winnerCandidateId`, `recoveryPlan`;
+- hard-rejected candidates не могут вернуться в visible shortlist;
+- soft rejects могут жить как `displaySafeExtras`, но не должны silently считаться “best five”;
+- если у клипа есть benign public handle и есть хотя бы один safe candidate, хотя бы один finalist обязан его сохранить;
+- если finalists/recovery collapse, runtime fail-open заполняет visible five через recovery/backfill и помечает результат как degraded.
+
+Required invariants для processable completed native run:
 - `output.captionOptions.length === 5`
-- `output.pipeline.finalSelector.candidateOptionMap.length === 5`
-- `output.pipeline.finalSelector.shortlistCandidateIds.length === 5`
-- `output.pipeline.finalSelector.finalPickCandidateId` входит в visible shortlist
-- `progress.finalSelector.summary/detail` совпадают с persisted shortlist
-- `rationaleInternalRaw` описывает ту же visible shortlist, что видит оператор
-- `rationaleInternalModelRaw` не должен противоречить persisted shortlist; если raw model prose устарел после shortlist repair, он sanitiz'ится в shortlist-consistent text
+- каждый displayed option проходит `constraintCheck.passed === true`
+- каждый displayed option уже несёт `topRu` и `bottomRu` внутри основного run
+- `output.finalists.length` находится в диапазоне `0..3`
+- `output.winner` всегда существует и всегда указывает на option внутри `captionOptions`
+- `output.finalPick.option === output.winner.option`
+- `output.winner.displayTier !== "finalist"` означает `output.pipeline.nativeCaptionV3.guardSummary.degradedSuccess === true`
+- `output.captionOptions[n]` всегда несёт `displayTier`, `sourceStage`, `displayReason`, `constraintCheck`
+- `output.titleOptions.length === 5` и каждый item уже несёт `titleRu`
 
-Дополнительно после prompt-alignment pass:
-- final visible five должны различаться по реальному feel, а не только по angle label;
-- при близком качестве в shortlist желательно сохранять хотя бы один credible exploratory alternate;
-- strongest aligned lane не должен пропадать из visible set просто потому, что пять кандидатов звучат “чисто” одинаково.
-- repaired line с generic tail не должна выигрывать final pick у cleaner visible alternative;
-- runtime repair не должен спасать broken reporting-verb endings вроде `... says.` / `... means.` через generic padding.
+`displaySafeExtras` intentionally не являются winner-grade.
+Если winner не может прийти из finalists или recovery, runtime обязан зарезервировать visible slot под `template_backfill`, а не silently повышать extra до winner.
 
-То есть `Shortlist 2` / `Shortlist 3` / `Shortlist empty` больше не являются допустимым successful outcome.
+Trace truth для native path теперь включает:
+- `validPoolCount`
+- `finalistCount`
+- `displaySafeExtraCount`
+- `recoveryCount`
+- `templateBackfillCount`
+- `displayShortlistCount`
+- `winnerTier`
+- `degradedSuccess`
+- `dominantHarmlessHandle`
+- `audienceHandlePreservedInFinalists`
+- `recoveryTriggered`
+- `recoveryReason`
+- `captionTranslation.coverage`
+- `titleWriter.translationCoverage`
+- per-option `displayTier` / `displayReason`
+
+Downstream consumers должны читать `captionOptions` как единственный visible shortlist.
+`finalists` остаётся editorial subset для UI/trace/explainability, а не source of truth для Stage 3 handoff, publishing fallback, или trace export.
 
 ### Comments acquisition truthfulness
 
@@ -502,13 +547,15 @@ Trace export uses the same helper to explain:
 When a run looks suspicious:
 1. Inspect the durable run in `stage2_runs`.
 2. Check `progress.status`, `activeStageId`, and each step's `status/finishedAt/summary/detail`.
-3. Compare `output.finalPick.reason` with `pipeline.finalSelector.rationaleRaw`.
-   The first is operator-facing and must refer only to visible options.
-4. Compare `pipeline.finalSelector.shortlistStats.visibleCount` with:
+3. Compare `pipeline.finalSelector.shortlistStats.visibleCount` with:
    - `output.captionOptions.length`
    - `pipeline.finalSelector.candidateOptionMap.length`
    - `pipeline.finalSelector.shortlistCandidateIds.length`
-5. If any of those values is not `5`, treat the run as contract-broken.
+4. For native runs also verify:
+   - every `output.captionOptions[n]` already has `topRu/bottomRu`
+   - every `output.titleOptions[n]` already has `titleRu`
+   - `stage2.nativeCaptionV3.captionTranslation.coverage` truthfully records retry/fallback
+5. If any visible-count invariant is not `5`, treat the run as contract-broken.
    Successful runs must not persist a reduced visible shortlist anymore.
 6. Use clip trace export to verify:
    - selected run id

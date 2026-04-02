@@ -444,10 +444,12 @@ export function buildChannelPublicationMetadata(input: {
   tags: string[];
   needsReview: boolean;
 } {
-  const selectedCaption =
+  const selectedCaptionCandidate =
     input.stage2Result?.output.captionOptions.find(
       (option) => option.option === input.stage2Result?.output.finalPick.option
     ) ?? input.stage2Result?.output.captionOptions[0] ?? null;
+  const selectedCaption =
+    selectedCaptionCandidate?.constraintCheck?.passed === false ? null : selectedCaptionCandidate;
   const title =
     input.renderTitle?.trim() ||
     input.stage2Result?.output.titleOptions[0]?.title?.trim() ||
@@ -475,6 +477,7 @@ export function buildChannelPublicationMetadata(input: {
     needsReview:
       !seoDescription ||
       seoTags.length === 0 ||
+      (!seoDescription && selectedCaption === null) ||
       description.length === 0 ||
       tags.length === 0
   };

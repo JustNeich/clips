@@ -26,6 +26,7 @@ export const STAGE2_TEXT_ONLY_MODEL_STAGE_IDS = [
   "candidateGenerator",
   "qualityCourt",
   "targetedRepair",
+  "captionTranslation",
   "titleWriter",
   "regenerate"
 ] as const;
@@ -34,6 +35,7 @@ export const STAGE2_NATIVE_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
   "candidateGenerator",
   "qualityCourt",
   "targetedRepair",
+  "captionTranslation",
   "titleWriter"
 ] as const;
 export const STAGE2_LEGACY_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
@@ -110,9 +112,15 @@ export const STAGE2_PROMPT_MODEL_STAGE_FIELDS: readonly WorkspaceCodexModelStage
     allowsImages: false
   },
   {
+    id: "captionTranslation",
+    label: "Caption translation",
+    description: "Текстовый перевод уже собранных 5 display options на русский с retry missing items.",
+    allowsImages: false
+  },
+  {
     id: "titleWriter",
     label: "Title writer",
-    description: "Текстовая генерация 5 title options для финального winner.",
+    description: "Текстовая генерация 5 bilingual title options для финального winner.",
     allowsImages: false
   },
   {
@@ -202,6 +210,7 @@ export const DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG: WorkspaceCodexModelConfig = {
   candidateGenerator: "deploy_default",
   qualityCourt: "deploy_default",
   targetedRepair: "deploy_default",
+  captionTranslation: "deploy_default",
   titleWriter: "deploy_default",
   regenerate: "deploy_default",
   styleDiscovery: "deploy_default",
@@ -288,6 +297,14 @@ function readStageSettingCandidate(
   }
   if (stageId === "targetedRepair" && hasOwnKey(candidate, "rewriter")) {
     return candidate.rewriter;
+  }
+  if (stageId === "captionTranslation") {
+    if (hasOwnKey(candidate, "titleWriter")) {
+      return candidate.titleWriter;
+    }
+    if (hasOwnKey(candidate, "titles")) {
+      return candidate.titles;
+    }
   }
   if (stageId === "titleWriter" && hasOwnKey(candidate, "titles")) {
     return candidate.titles;
