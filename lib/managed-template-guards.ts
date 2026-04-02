@@ -1,3 +1,5 @@
+import { resolveChannelPermissions } from "./acl";
+import { getChannelAccessForUser, listChannels } from "./chat-history";
 import { requireAuth } from "./auth/guards";
 import { canCreateManagedTemplates, canEditManagedTemplate, canViewManagedTemplate } from "./managed-template-access";
 import { readManagedTemplate } from "./managed-template-store";
@@ -17,8 +19,8 @@ export async function requireManagedTemplateCreateAccess() {
   return auth;
 }
 
-export async function requireManagedTemplateViewAccess(templateId: string) {
-  const auth = await requireAuth();
+export async function requireManagedTemplateViewAccess(templateId: string, request?: Request) {
+  const auth = await requireAuth(request);
   const template = await readManagedTemplate(templateId);
   if (!template || !canViewManagedTemplate(auth, template)) {
     throw jsonError("Template not found.", 404);
@@ -26,8 +28,48 @@ export async function requireManagedTemplateViewAccess(templateId: string) {
   return { auth, template };
 }
 
-export async function requireManagedTemplateEditAccess(templateId: string) {
-  const auth = await requireAuth();
+async function canViewManagedTemplateViaVisibleChannel(
+  auth: Awaited<ReturnType<typeof requireAuth>>,
+  templateId: string
+): Promise<boolean> {
+  const channels = await listChannels(auth.workspace.id);
+  for (const channel of channels) {
+    if (channel.templateId !== templateId) {
+      continue;
+    }
+    const explicitAccess = await getChannelAccessForUser(channel.id, auth.user.id);
+    const permissions = resolveChannelPermissions({
+      membership: auth.membership,
+      channel: {
+        id: channel.id,
+        creatorUserId: channel.creatorUserId
+      },
+      explicitAccess
+    });
+    if (permissions.isVisible) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export async function requireManagedTemplateRuntimeViewAccess(templateId: string, request?: Request) {
+  const auth = await requireAuth(request);
+  const template = await readManagedTemplate(templateId);
+  if (!template) {
+    throw jsonError("Template not found.", 404);
+  }
+  if (canViewManagedTemplate(auth, template)) {
+    return { auth, template };
+  }
+  if (!(await canViewManagedTemplateViaVisibleChannel(auth, templateId))) {
+    throw jsonError("Template not found.", 404);
+  }
+  return { auth, template };
+}
+
+export async function requireManagedTemplateEditAccess(templateId: string, request?: Request) {
+  const auth = await requireAuth(request);
   const template = await readManagedTemplate(templateId);
   if (!template || !canViewManagedTemplate(auth, template)) {
     throw jsonError("Template not found.", 404);

@@ -2139,7 +2139,9 @@ export function Step3RenderTemplate({
       if (requestId !== managedTemplateLoadRequestIdRef.current) {
         return;
       }
-      setManagedTemplateState(buildFallbackManagedTemplateState());
+      setManagedTemplateState((current) =>
+        current.managedId === templateId && current.updatedAt ? current : buildFallbackManagedTemplateState()
+      );
     }
   }, [buildFallbackManagedTemplateState, templateId]);
 

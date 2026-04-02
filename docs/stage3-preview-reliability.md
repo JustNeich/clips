@@ -32,3 +32,9 @@
 - Editing proxy уже знает `sourceDurationSec`.
 - UI читает это значение из job result и использует как ранний источник правды.
 - Медленный `/api/video/meta` остаётся fallback-путём, а не единственным способом узнать длительность ролика.
+
+## 6. Assigned managed template не должен тихо падать в built-in fallback
+
+- Step 3 должен получать runtime-состояние шаблона, который реально назначен видимому каналу, даже если библиотека шаблонов в редакторе ограничена personal scope.
+- При временной ошибке повторной загрузки UI больше не должен затирать уже загруженный managed template built-in fallback'ом.
+- Иначе preview строится по одной конфигурации, а final render по другой, что и приводит к `Template snapshot drift detected`.
