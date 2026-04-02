@@ -1834,7 +1834,7 @@ export function Step2PickCaption({
                         </p>
                       </div>
                     </div>
-                    {stage2.output.pipeline?.nativeCaptionV3?.guardSummary.degradedSuccess ? (
+                    {stage2.output.pipeline?.nativeCaptionV3?.guardSummary?.degradedSuccess ? (
                       <p className="subtle-text">
                         Запуск завершился в safe fallback-режиме: shortlist остаётся валидным, даже если
                         часть слотов пришлось добрать через recovery или template backfill.

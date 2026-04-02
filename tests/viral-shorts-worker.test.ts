@@ -8718,6 +8718,188 @@ test("legacy diagnostics payload from older runs does not crash the Stage 2 UI",
   assert.match(html, /Эффективные промпты/);
 });
 
+test("partial native payload without guardSummary does not crash the Stage 2 UI", () => {
+  const stage2 = {
+    source: {
+      url: "https://example.com/native",
+      title: "Partial native run",
+      totalComments: 0,
+      topComments: [],
+      allComments: [],
+      commentsUsedForPrompt: 0
+    },
+    output: {
+      inputAnalysis: {
+        visualAnchors: ["anchor"],
+        commentVibe: "dry",
+        keyPhraseToAdapt: "partial native"
+      },
+      captionOptions: Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        candidateId: `C0${index + 1}`,
+        top: `native top ${index + 1}`,
+        bottom: `native bottom ${index + 1}`,
+        topRu: `нативный верх ${index + 1}`,
+        bottomRu: `нативный низ ${index + 1}`,
+        displayTier: index === 0 ? "finalist" : "display_safe_extra",
+        sourceStage: index === 0 ? "qualityCourt" : "targetedRepair",
+        displayReason: "Visible option.",
+        constraintCheck: { passed: true, hardIssues: [] }
+      })),
+      finalists: [
+        {
+          option: 1,
+          candidateId: "C01",
+          top: "native top 1",
+          bottom: "native bottom 1",
+          topRu: "нативный верх 1",
+          bottomRu: "нативный низ 1",
+          constraintCheck: { passed: true, hardIssues: [] }
+        }
+      ],
+      winner: {
+        option: 1,
+        candidateId: "C01",
+        top: "native top 1",
+        bottom: "native bottom 1",
+        topRu: "нативный верх 1",
+        bottomRu: "нативный низ 1",
+        displayTier: "finalist",
+        sourceStage: "qualityCourt",
+        displayReason: "Winner.",
+        constraintCheck: { passed: true, hardIssues: [] }
+      },
+      titleOptions: Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        title: `Native ${index + 1}`,
+        titleRu: `Нативный ${index + 1}`
+      })),
+      finalPick: {
+        option: 1,
+        reason: "native winner"
+      },
+      pipeline: {
+        nativeCaptionV3: {
+          pipelineVersion: "native_caption_v3",
+          promptFamilyVersion: "native_caption_v3@2026-04-02",
+          contextPacket: {
+            grounding: {
+              observedFacts: ["anchor"],
+              visibleSequence: ["turn"],
+              microTurn: "turn",
+              firstSecondsSignal: "signal",
+              uncertainties: [],
+              forbiddenClaims: [],
+              safeInferences: []
+            },
+            audienceWave: {
+              exists: false,
+              emotionalTemperature: "dry",
+              dominantHarmlessHandle: null,
+              consensusLane: "",
+              jokeLane: "",
+              dissentLane: "",
+              safeReusableCues: [],
+              blockedCues: [],
+              flatteningRisks: [],
+              mustNotLose: []
+            },
+            strategy: {
+              primaryAngle: "dry",
+              secondaryAngles: [],
+              hookSeeds: [],
+              bottomFunctions: [],
+              requiredLanes: [],
+              mustDo: [],
+              mustAvoid: []
+            }
+          },
+          generatedCandidates: [],
+          hardValidation: { validPool: [], invalidPool: [] },
+          editorialCourt: {
+            finalists: [],
+            displaySafeExtras: [],
+            hardRejected: [],
+            winnerCandidateId: null,
+            recoveryPlan: { required: false, missingCount: 0, briefs: [] }
+          },
+          titleWriter: {
+            options: Array.from({ length: 5 }, (_, index) => ({
+              option: index + 1,
+              title: `Native ${index + 1}`,
+              titleRu: `Нативный ${index + 1}`
+            })),
+            translationCoverage: {
+              requestedCount: 5,
+              translatedCount: 5,
+              fallbackCount: 0,
+              fallbackOptions: [],
+              retriedOptions: []
+            }
+          },
+          translation: {
+            translatedAt: nowIso(),
+            items: [
+              {
+                candidateId: "C01",
+                topRu: "нативный верх 1",
+                bottomRu: "нативный низ 1",
+                source: "llm"
+              }
+            ],
+            coverage: {
+              requestedCount: 5,
+              translatedCount: 1,
+              fallbackCount: 4,
+              fallbackCandidateIds: ["C02", "C03", "C04", "C05"],
+              retriedCandidateIds: []
+            }
+          }
+        }
+      }
+    },
+    warnings: [],
+    diagnostics: null
+  } as unknown as Stage2Response;
+
+  const html = renderToStaticMarkup(
+    React.createElement(Step2PickCaption, {
+      channelName: "Target Channel",
+      channelUsername: "target_channel",
+      stage2,
+      progress: null,
+      stageCreatedAt: nowIso(),
+      commentsAvailable: true,
+      instruction: "",
+      runs: [],
+      selectedRunId: null,
+      currentRunStatus: null,
+      currentRunError: null,
+      canRunStage2: true,
+      canQuickRegenerate: true,
+      runBlockedReason: null,
+      quickRegenerateBlockedReason: null,
+      isLaunching: false,
+      isRunning: false,
+      expectedDurationMs: 40_000,
+      elapsedMs: 12_000,
+      selectedOption: 1,
+      selectedTitleOption: 1,
+      onInstructionChange: () => undefined,
+      onQuickRegenerate: () => undefined,
+      onRunStage2: () => undefined,
+      onSelectRun: () => undefined,
+      onSelectOption: () => undefined,
+      onSelectTitleOption: () => undefined,
+      onCopy: () => undefined
+    })
+  );
+
+  assert.match(html, /Готовые варианты/);
+  assert.match(html, /нативный верх 1/);
+  assert.doesNotMatch(html, /safe fallback-режиме/);
+});
+
 test("step 2 keeps an attached running run informational instead of rendering it as a blocking error", () => {
   const html = renderToStaticMarkup(
     React.createElement(Step2PickCaption, {
