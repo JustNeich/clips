@@ -7,6 +7,7 @@ import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants
 import { downloadSourceMedia } from "./source-acquisition";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { computeManagedTemplateTextFit } from "./managed-template-runtime";
+import { maybeDownloadStage3WorkerSource } from "./stage3-worker-source-client";
 import { sanitizeFileName } from "./ytdlp";
 
 const execFileAsync = promisify(execFile);
@@ -201,11 +202,34 @@ export async function downloadSourceVideo(
   rawUrl: string,
   tmpDir: string
 ): Promise<{ filePath: string; fileName: string }> {
-  const downloaded = await downloadSourceMedia(rawUrl, tmpDir);
-  return {
-    filePath: downloaded.filePath,
-    fileName: sanitizeFileName(downloaded.fileName)
-  };
+  try {
+    const downloaded = await downloadSourceMedia(rawUrl, tmpDir);
+    return {
+      filePath: downloaded.filePath,
+      fileName: sanitizeFileName(downloaded.fileName)
+    };
+  } catch (localError) {
+    try {
+      const hosted = await maybeDownloadStage3WorkerSource({
+        sourceUrl: rawUrl,
+        tmpDir
+      });
+      if (hosted) {
+        return {
+          filePath: hosted.filePath,
+          fileName: sanitizeFileName(hosted.fileName)
+        };
+      }
+    } catch (hostedError) {
+      const localMessage =
+        localError instanceof Error ? localError.message : "local source fetch failed";
+      const hostedMessage =
+        hostedError instanceof Error ? hostedError.message : "host source fallback failed";
+      throw new Error(`${localMessage} Host fallback: ${hostedMessage}`);
+    }
+
+    throw localError;
+  }
 }
 
 export async function probeVideoDurationSeconds(videoPath: string): Promise<number | null> {

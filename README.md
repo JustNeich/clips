@@ -310,6 +310,8 @@ Publishing / YouTube queue:
 - `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — обязательны для подключения YouTube канала и публикации через OAuth.
 - `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для YouTube comments/media, если официальный API временно недоступен и нужно попытаться пройти через `yt-dlp`.
 
+Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Поэтому ситуация, когда Step 1/2 у всех проходит, а Stage 3 ломается только у одного пользователя, действительно может быть связана именно с его локальным runtime/IP.
+
 Ограничения comments fetch для YouTube:
 - `comments disabled` — YouTube API честно вернёт, что комментарии отключены.
 - `video unavailable / not found` — видео недоступно или удалено.

@@ -122,6 +122,8 @@
 
 Preview/render больше не должны тихо падать обратно на host. Если worker offline, job останется в очереди и UI покажет честное состояние ожидания.
 
+Если локальный `yt-dlp` на машине пользователя упрется в YouTube anti-bot/IP issue, Stage 3 worker теперь пробует скачать source через хост по своему worker token. Это снижает вероятность user-specific сбоев, когда production runtime проходит YouTube, а конкретный локальный IP нет.
+
 ## Локальная разработка
 
 Для localhost вместо production bootstrap используйте repo-local режим:
