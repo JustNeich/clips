@@ -5,6 +5,7 @@ import {
   Stage2PromptConfigStageId,
   Stage2ReasoningEffort
 } from "./stage2-prompt-specs";
+import { resolveStage2WorkerProfile } from "./stage2-worker-profile";
 
 export {
   STAGE2_DEFAULT_REASONING_EFFORTS,
@@ -18,7 +19,8 @@ export const STAGE2_PROMPT_CONFIG_VERSION = 4 as const;
 export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY = "stage2_legacy";
 export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_NATIVE = "native_caption_v3";
 export const STAGE2_LEGACY_PROMPT_BUNDLE_VERSION = "stage2_legacy@2026-04-01";
-export const STAGE2_NATIVE_PROMPT_BUNDLE_VERSION = "native_caption_v3@2026-04-02";
+export const STAGE2_NATIVE_PROMPT_BUNDLE_VERSION =
+  "native_caption_v3@2026-04-03-quality-first-reference-one-shot";
 
 export type Stage2PromptCompatibilityFamily =
   | typeof STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY
@@ -31,6 +33,15 @@ export type Stage2PromptCompatibility = {
 };
 
 const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
+  {
+    id: "oneShotReference",
+    label: "Running one-shot reference baseline",
+    shortLabel: "One-shot",
+    description:
+      "Product-owned one-shot prompt reads video truth, comment wave, channel narrative, and editorial memory in one pass.",
+    promptConfigurable: false,
+    promptStageType: "llm"
+  },
   {
     id: "contextPacket",
     label: "Building context packet",
@@ -94,6 +105,37 @@ const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
     description: "Пишем 5 bilingual title options только для финального winner-кандидата.",
     promptConfigurable: true,
     promptStageType: "llm"
+  },
+  {
+    id: "assemble",
+    label: "Assembling result",
+    shortLabel: "Сборка",
+    description:
+      "Собираем совместимый Stage 2 output, приводим bilingual поля к финальному виду и сохраняем diagnostics.",
+    promptConfigurable: false,
+    promptStageType: "deterministic"
+  }
+] as const;
+
+const STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES = [
+  {
+    id: "oneShotReference",
+    label: "Running one-shot reference baseline",
+    shortLabel: "One-shot",
+    description:
+      "Product-owned one-shot baseline extracts analysis, options, and winner ranking in one pass."
+  },
+  {
+    id: "captionTranslation",
+    label: "Translating display captions",
+    shortLabel: "Перевод",
+    description: "Переводим display shortlist на русский с fallback для missing items."
+  },
+  {
+    id: "assemble",
+    label: "Assembling result",
+    shortLabel: "Сборка",
+    description: "Собираем итоговый совместимый Stage 2 output и diagnostics."
   }
 ] as const;
 
@@ -290,7 +332,8 @@ function isRegenerateMode(value: string | null | undefined): boolean {
 
 function resolveStage2ProgressDefinitions(
   mode?: string | null,
-  stepCandidates?: Record<string, unknown>[]
+  stepCandidates?: Record<string, unknown>[],
+  workerProfileId?: string | null
 ): readonly Stage2ProgressStageDefinition[] {
   if (isRegenerateMode(mode)) {
     return STAGE2_REGENERATE_PROGRESS_STAGES;
@@ -320,6 +363,16 @@ function resolveStage2ProgressDefinitions(
     );
     if (
       Array.from(candidateIds).some((id) =>
+        STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES.some((stage) => stage.id === id)
+      ) &&
+      !Array.from(candidateIds).some((id) =>
+        ["contextPacket", "candidateGenerator", "qualityCourt", "targetedRepair", "titleWriter"].includes(id)
+      )
+    ) {
+      return STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES;
+    }
+    if (
+      Array.from(candidateIds).some((id) =>
         STAGE2_LEGACY_PIPELINE_STAGE_DEFINITIONS.some((stage) => stage.id === id)
       ) &&
       !Array.from(candidateIds).some((id) =>
@@ -330,11 +383,21 @@ function resolveStage2ProgressDefinitions(
     }
   }
 
+  if (
+    workerProfileId !== undefined &&
+    resolveStage2WorkerProfile(workerProfileId).executionMode === "one_shot_reference_v1"
+  ) {
+    return STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES;
+  }
+
   return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS;
 }
 
-export function getStage2ProgressStartStageId(mode?: string | null): Stage2ProgressStageId {
-  return resolveStage2ProgressDefinitions(mode)[0]?.id ?? "contextPacket";
+export function getStage2ProgressStartStageId(
+  mode?: string | null,
+  workerProfileId?: string | null
+): Stage2ProgressStageId {
+  return resolveStage2ProgressDefinitions(mode, undefined, workerProfileId)[0]?.id ?? "contextPacket";
 }
 
 function sanitizePrompt(value: unknown, fallback: string): string {
@@ -708,10 +771,11 @@ export function hasStage2PromptOverrides(config: Stage2PromptConfig): boolean {
 
 export function createStage2ProgressSnapshot(
   runId: string,
-  mode: string | null | undefined = "manual"
+  mode: string | null | undefined = "manual",
+  options?: { workerProfileId?: string | null }
 ): Stage2ProgressSnapshot {
   const timestamp = nowIso();
-  const stageDefinitions = resolveStage2ProgressDefinitions(mode);
+  const stageDefinitions = resolveStage2ProgressDefinitions(mode, undefined, options?.workerProfileId);
   return {
     runId,
     status: "queued",
@@ -908,9 +972,12 @@ export function finalizeStage2ProgressSuccess(snapshot: Stage2ProgressSnapshot):
 export function resetStage2ProgressForRetry(
   snapshot: Stage2ProgressSnapshot,
   detail?: string | null,
-  mode: string | null | undefined = "manual"
+  mode: string | null | undefined = "manual",
+  workerProfileId?: string | null
 ): Stage2ProgressSnapshot {
-  const restarted = createStage2ProgressSnapshot(snapshot.runId, mode);
+  const restarted = createStage2ProgressSnapshot(snapshot.runId, mode, {
+    workerProfileId
+  });
   if (!detail) {
     return restarted;
   }
@@ -918,7 +985,7 @@ export function resetStage2ProgressForRetry(
   return {
     ...restarted,
     steps: restarted.steps.map((step) =>
-      step.id === getStage2ProgressStartStageId(mode)
+      step.id === getStage2ProgressStartStageId(mode, workerProfileId)
         ? {
             ...step,
             summary: summarizeProgressDetail(detail),

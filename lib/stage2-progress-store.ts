@@ -30,6 +30,10 @@ import {
   Stage2EditorialMemorySummary,
   Stage2StyleProfile
 } from "./stage2-channel-learning";
+import {
+  normalizeStage2EditorialMemorySource,
+  type Stage2EditorialMemorySource
+} from "./stage2-editorial-memory-resolution";
 import { normalizeStage2ResultTitleOptions } from "./stage2-title-options";
 import type { Stage2DebugMode } from "./viral-shorts-worker/types";
 
@@ -45,10 +49,12 @@ export type Stage2RunRequest = {
     id: string;
     name: string;
     username: string;
+    stage2WorkerProfileId?: string | null;
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
     stage2StyleProfile?: Stage2StyleProfile;
     editorialMemory?: Stage2EditorialMemorySummary;
+    editorialMemorySource?: Stage2EditorialMemorySource | null;
   };
 };
 
@@ -141,6 +147,11 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
       id: String(channelCandidate?.id ?? record.channel_id ?? "").trim(),
       name: String(channelCandidate?.name ?? "").trim(),
       username: String(channelCandidate?.username ?? "").trim(),
+      stage2WorkerProfileId:
+        typeof channelCandidate?.stage2WorkerProfileId === "string" &&
+        channelCandidate.stage2WorkerProfileId.trim()
+          ? channelCandidate.stage2WorkerProfileId.trim()
+          : null,
       stage2ExamplesConfig:
         channelCandidate?.stage2ExamplesConfig &&
         typeof channelCandidate.stage2ExamplesConfig === "object"
@@ -171,7 +182,10 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
                 typeof channelCandidate.stage2StyleProfile === "object"
                 ? normalizeStage2StyleProfile(channelCandidate.stage2StyleProfile)
                 : DEFAULT_STAGE2_STYLE_PROFILE
-            )
+            ),
+      editorialMemorySource: normalizeStage2EditorialMemorySource(
+        channelCandidate?.editorialMemorySource ?? null
+      )
     }
   };
 }
@@ -296,7 +310,9 @@ export function createStage2Run(input: {
     mode: input.request.mode,
     baseRunId: input.request.baseRunId ?? null,
     request: input.request,
-    snapshot: createStage2ProgressSnapshot(runId, input.request.mode),
+    snapshot: createStage2ProgressSnapshot(runId, input.request.mode, {
+      workerProfileId: input.request.channel.stage2WorkerProfileId
+    }),
     status: "queued",
     resultData: null,
     errorMessage: null,
@@ -474,7 +490,12 @@ export function recoverInterruptedStage2Runs(
         record.mode === "regenerate"
           ? "Recovered after process restart. Re-running quick regenerate from base."
           : detail;
-      const restartedSnapshot = resetStage2ProgressForRetry(record.snapshot, restartDetail, record.mode);
+      const restartedSnapshot = resetStage2ProgressForRetry(
+        record.snapshot,
+        restartDetail,
+        record.mode,
+        record.request.channel.stage2WorkerProfileId
+      );
       db.prepare(
         `UPDATE stage2_runs
             SET status = 'queued',

@@ -11,9 +11,12 @@ import type {
   Stage2EditorialMemorySummary,
   Stage2StyleProfile
 } from "../../lib/stage2-channel-learning";
+import type { Stage2EditorialMemorySource } from "../../lib/stage2-editorial-memory-resolution";
+import type { Stage2WorkerProfileId } from "../../lib/stage2-worker-profile";
 import type {
   Stage2DebugMode,
   Stage2Diagnostics,
+  Stage2ExecutionPathVariant,
   Stage2TokenUsage
 } from "../../lib/viral-shorts-worker/types";
 import type {
@@ -57,7 +60,7 @@ export type Stage2Output = {
     top: string;
     bottom: string;
     displayTier?: "finalist" | "display_safe_extra" | "recovery" | "template_backfill";
-    sourceStage?: "qualityCourt" | "targetedRepair" | "templateBackfill";
+    sourceStage?: "oneShotReference" | "qualityCourt" | "targetedRepair" | "templateBackfill";
     displayReason?: string;
     retainedHandle?: boolean;
     topRu?: string;
@@ -80,7 +83,7 @@ export type Stage2Output = {
     top: string;
     bottom: string;
     displayTier: "finalist";
-    sourceStage: "qualityCourt";
+    sourceStage: "oneShotReference" | "qualityCourt";
     displayReason: string;
     retainedHandle: boolean;
     preservedHandle: boolean;
@@ -112,7 +115,7 @@ export type Stage2Output = {
     option: number;
     reason: string;
     displayTier: "finalist" | "recovery" | "template_backfill";
-    sourceStage: "qualityCourt" | "targetedRepair" | "templateBackfill";
+    sourceStage: "oneShotReference" | "qualityCourt" | "targetedRepair" | "templateBackfill";
     constraintCheck?: {
       passed: boolean;
       repaired: boolean;
@@ -123,10 +126,19 @@ export type Stage2Output = {
   };
   pipeline?: {
     channelId: string;
+    workerProfile?: {
+      requestedId: string | null;
+      resolvedId: Stage2WorkerProfileId;
+      label: string;
+      description: string;
+      summary: string;
+      origin: "channel_setting" | "default_baseline";
+    };
     mode: "packet_only" | "codex_pipeline" | "regenerate";
     execution?: {
       featureFlags: Stage2VNextFeatureFlagSnapshot;
       pipelineVersion: Stage2PipelineVersion;
+      pathVariant?: Stage2ExecutionPathVariant;
       stageChainVersion: string;
       workerBuild: Stage2VNextWorkerBuild;
       resolvedAt: string;
@@ -190,7 +202,7 @@ export type Stage2Output = {
           candidateId: string;
           hardIssues: string[];
         }>;
-      };
+      } | null;
       qualityCourt: {
         finalists: Array<{
           candidateId: string;
@@ -217,7 +229,7 @@ export type Stage2Output = {
             mustAvoid: string[];
           }>;
         };
-      };
+      } | null;
       repair: {
         recoveredCandidates: Array<{
           candidateId: string;
@@ -428,6 +440,7 @@ export type Stage2RunDetail = Stage2RunSummary & {
 export type ChannelFeedbackResponse = {
   historyEvents: ChannelEditorialFeedbackEvent[];
   editorialMemory: Stage2EditorialMemorySummary;
+  editorialMemorySource?: Stage2EditorialMemorySource | null;
 };
 
 export type SourceJobStatus = "queued" | "running" | "completed" | "failed";

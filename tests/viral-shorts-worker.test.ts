@@ -333,12 +333,14 @@ function makeNativeCaptionContextPacket() {
 }
 
 function makeNativeCaptionChannel(
-  hardConstraints: Stage2HardConstraints = DEFAULT_STAGE2_HARD_CONSTRAINTS
+  hardConstraints: Stage2HardConstraints = DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  stage2WorkerProfileId: string | null = null
 ) {
   return {
     id: "native-channel",
     name: "Native Channel",
     username: "native_channel",
+    stage2WorkerProfileId,
     stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
     stage2HardConstraints: hardConstraints
   };
@@ -487,6 +489,7 @@ async function runNativeCaptionPipelineFixture(input: {
   responses: unknown[];
   promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
   hardConstraints?: Stage2HardConstraints;
+  stage2WorkerProfileId?: string | null;
   videoContext?: ReturnType<typeof buildVideoContext>;
   contextPacket?: ReturnType<typeof makeNativeCaptionContextPacket>;
   stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
@@ -497,10 +500,52 @@ async function runNativeCaptionPipelineFixture(input: {
   return { result, executor: harness.executor };
 }
 
+const DEFAULT_NATIVE_TEST_WORKER_PROFILE_ID = "stable_social_wave_v1";
+
+function resolveNativeTestWorkerProfileId(input: {
+  stage2WorkerProfileId?: string | null;
+}): string | null {
+  return Object.prototype.hasOwnProperty.call(input, "stage2WorkerProfileId")
+    ? (input.stage2WorkerProfileId ?? null)
+    : DEFAULT_NATIVE_TEST_WORKER_PROFILE_ID;
+}
+
+async function runNativeCaptionPipelineDirectFixture(input: {
+  responses: unknown[];
+  promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
+  hardConstraints?: Stage2HardConstraints;
+  stage2WorkerProfileId?: string | null;
+  videoContext?: ReturnType<typeof buildVideoContext>;
+  stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
+  editorialMemory?: ReturnType<typeof createEmptyStage2EditorialMemorySummary>;
+}) {
+  const service = new ViralShortsWorkerService();
+  const executor = new QueueExecutor([...input.responses]);
+  const workerProfileId = resolveNativeTestWorkerProfileId(input);
+  const channel = input.stage2StyleProfile
+    ? {
+        ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId),
+        stage2StyleProfile: input.stage2StyleProfile,
+        editorialMemory: input.editorialMemory
+      }
+    : makeNativeCaptionChannel(input.hardConstraints, workerProfileId);
+  const result = await service.runNativeCaptionPipeline({
+    channel,
+    workspaceStage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
+    videoContext: input.videoContext ?? makeSparseNativeVideoContext(),
+    imagePaths: [],
+    executor,
+    promptConfig: input.promptConfig ?? normalizeStage2PromptConfig({}),
+    debugMode: "summary"
+  });
+  return { result, executor };
+}
+
 function createNativeCaptionPipelineHarness(input: {
   responses: unknown[];
   promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
   hardConstraints?: Stage2HardConstraints;
+  stage2WorkerProfileId?: string | null;
   videoContext?: ReturnType<typeof buildVideoContext>;
   contextPacket?: ReturnType<typeof makeNativeCaptionContextPacket>;
   stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
@@ -508,13 +553,14 @@ function createNativeCaptionPipelineHarness(input: {
 }) {
   const service = new ViralShortsWorkerService();
   const executor = new QueueExecutor([...input.responses]);
+  const workerProfileId = resolveNativeTestWorkerProfileId(input);
   const channel = input.stage2StyleProfile
     ? {
-        ...makeNativeCaptionChannel(input.hardConstraints),
+        ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId),
         stage2StyleProfile: input.stage2StyleProfile,
         editorialMemory: input.editorialMemory
       }
-    : makeNativeCaptionChannel(input.hardConstraints);
+    : makeNativeCaptionChannel(input.hardConstraints, workerProfileId);
   return {
     executor,
     run: () =>
@@ -1273,6 +1319,37 @@ test("new channels no longer auto-populate a viral worker profile", { concurrenc
   });
 });
 
+test("channels persist an explicit Stage 2 platform line when one is chosen", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Stage 2 Platform Line",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "LaunchMind",
+      username: "launchmind",
+      stage2WorkerProfileId: "stable_skill_gap_v1"
+    });
+    assert.equal(channel.stage2WorkerProfileId, "stable_skill_gap_v1");
+
+    const updated = await chatHistory.updateChannelById(channel.id, {
+      stage2WorkerProfileId: "stable_social_wave_v1"
+    });
+    assert.equal(updated.stage2WorkerProfileId, "stable_social_wave_v1");
+
+    const reloaded = await chatHistory.getChannelById(channel.id);
+    assert.equal(reloaded?.stage2WorkerProfileId, "stable_social_wave_v1");
+  });
+});
+
 test("existing workspace access seeds the workspace default corpus from bundled examples", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const { getDb, newId, nowIso } = await import("../lib/db/client");
@@ -1680,6 +1757,9 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
     canEditWorkspaceDefaults: false,
     canEditHardConstraints: true,
     canEditChannelExamples: true,
+    stage2WorkerProfileId: "stable_reference_v6",
+    canEditStage2WorkerProfile: true,
+    updateStage2WorkerProfileId: () => undefined,
     activeExamplesPreview: {
       source: "channel_custom",
       corpus: [],
@@ -1721,6 +1801,8 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   assert.match(markup, /TOP макс\./);
   assert.match(markup, /BOTTOM мин\./);
   assert.match(markup, /BOTTOM макс\./);
+  assert.match(markup, /Формат pipeline/);
+  assert.match(markup, /Stable Reference v6/);
   assert.match(markup, /Запрещённые слова/);
   assert.match(markup, /Запрещённые начала/);
   assert.match(markup, /type="number"/);
@@ -1746,6 +1828,17 @@ test("channel manager save notices classify Stage 2 and style-profile saves with
       saving: "Сохраняем настройки Stage 2…",
       saved: "Настройки Stage 2 сохранены.",
       error: "Не удалось сохранить настройки Stage 2."
+    }
+  );
+
+  assert.deepEqual(
+    describeChannelManagerSavePatch({
+      stage2WorkerProfileId: "stable_social_wave_v1"
+    }),
+    {
+      saving: "Сохраняем формат pipeline…",
+      saved: "Формат pipeline сохранён.",
+      error: "Не удалось сохранить формат pipeline."
     }
   );
 
@@ -1853,6 +1946,9 @@ test("channel Stage 2 tab exposes post-onboarding style profile editing and feed
     canEditWorkspaceDefaults: false,
     canEditHardConstraints: true,
     canEditChannelExamples: true,
+    stage2WorkerProfileId: "stable_social_wave_v1",
+    canEditStage2WorkerProfile: true,
+    updateStage2WorkerProfileId: () => undefined,
     activeExamplesPreview: {
       source: "channel_custom",
       corpus: [],
@@ -7525,6 +7621,250 @@ test("native caption translation retries missing items once and falls back to En
   assert.equal(result.warnings.some((warning) => warning.field === "titleWriter"), true);
 });
 
+test("stable_reference_v6 runs through the one-shot reference baseline and keeps the native Stage 2 contract", async () => {
+  const videoContext = buildVideoContext({
+    sourceUrl: "https://example.com/reference-one-shot",
+    title: "A mechanic pauses before the whole room gets it",
+    description: "A short clip where the visible pause changes the read.",
+    transcript: "He does not even need to say anything after that pause.",
+    comments: [
+      {
+        author: "viewer-one",
+        likes: 120,
+        text: "that pause said enough"
+      },
+      {
+        author: "viewer-two",
+        likes: 88,
+        text: "everyone in that room heard it"
+      }
+    ],
+    frameDescriptions: [
+      "A mechanic freezes with the wrench still in his hand.",
+      "Everyone nearby turns toward the pause instead of the part."
+    ],
+    userInstruction: "keep the benchmark density"
+  });
+
+  const oneShotResponse = {
+    analysis: {
+      visual_anchors: [
+        "the wrench stops mid-air",
+        "everyone turns toward the pause",
+        "the room reads it before he speaks"
+      ],
+      comment_vibe: "dry, impressed side-eye",
+      key_phrase_to_adapt: "that pause said enough"
+    },
+    candidates: Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `ref_${index + 1}`,
+      top:
+        index === 0
+          ? "That wrench stops mid-air because everybody in that bay can hear the whole mistake before he says a word, and the clip turns into the second the room reads the pause."
+          : `The room stops watching the part and starts watching him the second that pause lands, because the whole bay already knows what that frozen wrench means ${index + 1}.`,
+      bottom:
+        index === 0
+          ? "That isn't dead air, that's every mechanic in there hearing the repair bill at the same time."
+          : `That pause said enough, and the whole bay answered it before he ever did, because every mechanic there already heard the bill in it ${index + 1}.`,
+      retained_handle: index < 2,
+      rationale:
+        index === 0
+          ? "Best benchmark-style paradox top with a human release."
+          : `Variant ${index + 1}`
+    })),
+    winner_candidate_id: "ref_1",
+    titles: Array.from({ length: 5 }, (_, index) => ({
+      title: `PAUSE SAID ENOUGH ${index + 1}`,
+      title_ru: `ПАУЗА СКАЗАЛА ВСЁ ${index + 1}`
+    }))
+  };
+
+  const { result, executor } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6",
+    promptConfig: normalizeStage2PromptConfig({
+      stages: {
+        oneShotReference: {
+          reasoningEffort: "x-high"
+        }
+      }
+    }),
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 140,
+      topLengthMax: 210,
+      bottomLengthMin: 80,
+      bottomLengthMax: 160
+    },
+    videoContext,
+    responses: [oneShotResponse]
+  });
+
+  assert.equal(result.output.pipeline.execution?.pipelineVersion, "native_caption_v3");
+  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1");
+  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v6");
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(result.output.titleOptions.length, 5);
+  assert.equal(result.output.winner?.candidateId, "ref_1");
+  assert.equal(result.output.finalists?.length, 5);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.repair, null);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.hardValidator, null);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.qualityCourt, null);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.templateBackfill, null);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.displayShortlistCount, 5);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount, 0);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, false);
+  assert.equal(
+    result.output.captionOptions.every((option) => option.sourceStage === "oneShotReference"),
+    true
+  );
+  assert.equal(
+    result.diagnostics.effectivePrompting.promptStages.some((stage) => stage.stageId === "oneShotReference"),
+    true
+  );
+  assert.equal(
+    result.diagnostics.effectivePrompting.promptStages.some((stage) => stage.stageId === "candidateGenerator"),
+    false
+  );
+  assert.equal(
+    result.diagnostics.effectivePrompting.promptStages.some((stage) => stage.stageId === "titleWriter"),
+    false
+  );
+  assert.match(executor.calls[0]?.prompt ?? "", /"video_truth_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"current_comment_wave_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"channel_narrative_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"editorial_memory_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"publishability_contract_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"line_profile_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"hard_constraints_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /even 1 character outside/i);
+  assert.match(executor.calls[0]?.prompt ?? "", /that pause said enough/i);
+  assert.equal(executor.calls[0]?.reasoningEffort, "x-high");
+  assert.equal(
+    result.output.captionOptions.every((option) => Boolean(option.topRu) && Boolean(option.bottomRu)),
+    true
+  );
+});
+
+test("stable_reference_v6 fails hard instead of backfilling meta-leaking one-shot output", async () => {
+  await assert.rejects(
+    () =>
+      runNativeCaptionPipelineDirectFixture({
+        stage2WorkerProfileId: "stable_reference_v6",
+        hardConstraints: {
+          ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+          topLengthMin: 40,
+          topLengthMax: 220,
+          bottomLengthMin: 20,
+          bottomLengthMax: 180
+        },
+        responses: [
+          {
+            analysis: {
+              visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+              comment_vibe: "dry disbelief",
+              key_phrase_to_adapt: "that pause said enough"
+            },
+            candidates: Array.from({ length: 5 }, (_, index) => ({
+              candidate_id: `bad_${index + 1}`,
+              top:
+                index === 3
+                  ? "This is frame 4 where the whole room reads it and the narrator starts explaining the manifest."
+                  : `Concrete grounded top ${index + 1} keeps the clip readable without filler and still lands the why-care early enough to publish cleanly.`,
+              bottom:
+                index === 4
+                  ? "At 6.32s the option 5 lane kicks in and the debug wording takes over."
+                  : `Concrete grounded bottom ${index + 1} keeps the human reaction natural and publishable without meta leakage.`,
+              retained_handle: false
+            })),
+            winner_candidate_id: "bad_1",
+            titles: Array.from({ length: 5 }, (_, index) => ({
+              title: `PUBLISHABLE TITLE ${index + 1}`
+            }))
+          }
+        ]
+      }),
+    /Reference one-shot failed\..*(frame index|seconds timestamp|pipeline slot|debug or schema wording)/i
+  );
+});
+
+test("stable_reference_v6 applies tiny deterministic exact-length polish to near-miss overflows", async () => {
+  const groundedTopSeed =
+    "The frozen wrench tells the whole bay what kind of mistake just landed, and every mechanic there starts reading his face before he can explain. ";
+  const groundedBottomSeed =
+    "That pause says enough for the whole bay to hear the repair bill in it, and nobody there needs the softer follow-up to get the point. ";
+  const { result } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6",
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 160,
+      topLengthMax: 185,
+      bottomLengthMin: 130,
+      bottomLengthMax: 150
+    },
+    responses: [
+      {
+        analysis: {
+          visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+          comment_vibe: "dry respect",
+          key_phrase_to_adapt: "that pause said enough"
+        },
+        candidates: [
+          {
+            candidate_id: "cand_1",
+            top: makeFixedLengthText(groundedTopSeed, 181),
+            bottom: makeFixedLengthText(groundedBottomSeed, 147),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_2",
+            top: makeFixedLengthText(groundedTopSeed, 178),
+            bottom: makeFixedLengthText(groundedBottomSeed, 154),
+            retained_handle: true
+          },
+          {
+            candidate_id: "cand_3",
+            top: makeFixedLengthText(groundedTopSeed, 176),
+            bottom: makeFixedLengthText(groundedBottomSeed, 158),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_4",
+            top: makeFixedLengthText(groundedTopSeed, 173),
+            bottom: makeFixedLengthText(groundedBottomSeed, 146),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_5",
+            top: makeFixedLengthText(groundedTopSeed, 187),
+            bottom: makeFixedLengthText(groundedBottomSeed, 149),
+            retained_handle: true
+          }
+        ],
+        winner_candidate_id: "cand_1",
+        titles: Array.from({ length: 5 }, (_, index) => ({
+          title: `WHY DID THE ROOM FREEZE ${index + 1}`
+        }))
+      }
+    ]
+  });
+
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(
+    result.output.captionOptions.some((option) => option.constraintCheck.repaired === true),
+    true
+  );
+  assert.equal(
+    result.output.captionOptions.every(
+      (option) =>
+        option.top.length >= 160 &&
+        option.top.length <= 185 &&
+        option.bottom.length >= 130 &&
+        option.bottom.length <= 150
+    ),
+    true
+  );
+});
+
 test("native prompts use the runtime channel hard-constraint windows in generation judging and repair", async () => {
   const customConstraints: Stage2HardConstraints = {
     ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
@@ -7683,6 +8023,7 @@ test("native prompts carry channel learning through generation judging repair an
   };
 
   const { executor, result } = await runNativeCaptionPipelineFixture({
+    stage2WorkerProfileId: "stable_social_wave_v1",
     stage2StyleProfile: styleProfile,
     editorialMemory,
     responses: [
@@ -7761,12 +8102,15 @@ test("native prompts carry channel learning through generation judging repair an
   });
 
   assert.match(executor.calls[0]?.prompt ?? "", /"channel_learning_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"line_profile_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /stable_social_wave_v1/);
   assert.match(executor.calls[0]?.prompt ?? "", /Straight-Faced Absurdity/);
   assert.match(executor.calls[0]?.prompt ?? "", /Winning lines keep the joke dry and specific/i);
   assert.match(executor.calls[1]?.prompt ?? "", /"channel_learning_json"/);
   assert.match(executor.calls[2]?.prompt ?? "", /"channel_learning_json"/);
   assert.match(executor.calls[3]?.prompt ?? "", /display_options_json/);
   assert.match(executor.calls[4]?.prompt ?? "", /"channel_learning_json"/);
+  assert.equal(result.diagnostics.channel.workerProfile?.resolvedId, "stable_social_wave_v1");
 
   const promptStages = result.diagnostics.effectivePrompting.promptStages;
   const candidateStage = promptStages.find((stage) => stage.stageId === "candidateGenerator");
@@ -7880,7 +8224,7 @@ test("production-shaped native regression fixture keeps prompt-source proof and 
   assert.equal(result.output.pipeline.execution?.pipelineVersion, "native_caption_v3");
   assert.equal(
     result.output.pipeline.execution?.promptPolicyVersion,
-    "native_defaults_authoritative_v1_channel_learning"
+    "native_defaults_authoritative_v2_platform_lines"
   );
   assert.equal(
     result.output.pipeline.execution?.selectorOutputAuthority,
@@ -10322,14 +10666,15 @@ test("running stage 2 run is re-queued after process restart and completes on th
           id: channel.id,
           name: channel.name,
           username: channel.username,
+          stage2WorkerProfileId: channel.stage2WorkerProfileId,
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints
         }
       }
     });
 
-    store.markStage2RunStageRunning(run.runId, "candidateGenerator", {
-      detail: "Drafting before restart."
+    store.markStage2RunStageRunning(run.runId, "oneShotReference", {
+      detail: "Reference one-shot before restart."
     });
 
     delete (globalThis as { __clipsStage2RuntimeState__?: unknown }).__clipsStage2RuntimeState__;
@@ -10338,28 +10683,35 @@ test("running stage 2 run is re-queued after process restart and completes on th
       const recovered = store.getStage2Run(claimedRun.runId);
       assert.equal(recovered?.status, "running");
       assert.equal(
-        recovered?.snapshot.steps.find((step) => step.id === "candidateGenerator")?.state,
+        recovered?.snapshot.steps.find((step) => step.id === "oneShotReference")?.state,
         "pending"
       );
       assert.match(
-        recovered?.snapshot.steps.find((step) => step.id === "contextPacket")?.detail ?? "",
+        recovered?.snapshot.steps.find((step) => step.id === "oneShotReference")?.detail ?? "",
         /Recovered after process restart/
       );
       observedRecoveredSnapshot = true;
 
-      store.markStage2RunStageRunning(claimedRun.runId, "contextPacket", {
-        detail: "Recovered context rerun."
+      store.markStage2RunStageRunning(claimedRun.runId, "oneShotReference", {
+        detail: "Recovered reference rerun."
       });
       await sleep(25);
-      store.markStage2RunStageCompleted(claimedRun.runId, "contextPacket", {
-        detail: "Recovered context done."
+      store.markStage2RunStageCompleted(claimedRun.runId, "oneShotReference", {
+        detail: "Recovered reference done."
       });
-      store.markStage2RunStageRunning(claimedRun.runId, "titleWriter", {
-        detail: "Recovered title pass."
+      store.markStage2RunStageRunning(claimedRun.runId, "captionTranslation", {
+        detail: "Recovered translation pass."
       });
       await sleep(25);
-      store.markStage2RunStageCompleted(claimedRun.runId, "titleWriter", {
-        detail: "Recovered title pass ready."
+      store.markStage2RunStageCompleted(claimedRun.runId, "captionTranslation", {
+        detail: "Recovered translation pass ready."
+      });
+      store.markStage2RunStageRunning(claimedRun.runId, "assemble", {
+        detail: "Recovered assembly pass."
+      });
+      await sleep(25);
+      store.markStage2RunStageCompleted(claimedRun.runId, "assemble", {
+        detail: "Recovered assembly ready."
       });
       return makeRuntimeStage2Response(claimedRun.runId, "recovered");
     });
@@ -10581,6 +10933,14 @@ test("chat trace export assembles a full payload, truncates comments, and honors
         id: channel.id,
         name: channel.name,
         username: channel.username,
+        workerProfile: {
+          requestedId: "stable_social_wave_v1",
+          resolvedId: "stable_social_wave_v1",
+          label: "Stable Social Wave v1",
+          description: "Preserve public handles and comment-native wave.",
+          summary: "Keep the social wave alive.",
+          origin: "channel_setting"
+        },
         examplesSource: "workspace_default",
         styleProfile: traceStyleProfile,
         editorialMemory: traceEditorialMemory,
@@ -10813,9 +11173,35 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       }
     } as any;
 
+    const traceExecution: NonNullable<
+      NonNullable<NonNullable<Stage2Response["output"]>["pipeline"]>["execution"]
+    > = {
+      featureFlags: {
+        STAGE2_VNEXT_ENABLED: false,
+        source: "default_false",
+        rawValue: null
+      },
+      pipelineVersion: "native_caption_v3",
+      pathVariant: "modular_native_v1",
+      stageChainVersion: "native_caption_v3@trace-fixture",
+      workerBuild: {
+        buildId: "trace-fixture-build",
+        startedAt: nowIso(),
+        pid: null
+      },
+      resolvedAt: nowIso(),
+      legacyFallbackReason: null
+    };
+
     const selectedRunBase = makeRuntimeStage2Response("selected_run", "selected");
     const selectedRunResponse: Stage2Response = {
       ...selectedRunBase,
+      output: {
+        ...selectedRunBase.output,
+        pipeline: {
+          execution: traceExecution
+        } as any
+      },
       source: {
         ...selectedRunBase.source,
         url: chat.url,
@@ -10852,6 +11238,12 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     const latestRunBase = makeRuntimeStage2Response("latest_run", "latest");
     const latestRunResponse: Stage2Response = {
       ...latestRunBase,
+      output: {
+        ...latestRunBase.output,
+        pipeline: {
+          execution: traceExecution
+        } as any
+      },
       source: {
         ...latestRunBase.source,
         url: chat.url,
@@ -10911,10 +11303,22 @@ test("chat trace export assembles a full payload, truncates comments, and honors
           id: traceChannel.id,
           name: traceChannel.name,
           username: traceChannel.username,
+          stage2WorkerProfileId: "stable_social_wave_v1",
           stage2ExamplesConfig: traceChannel.stage2ExamplesConfig,
           stage2HardConstraints: traceChannel.stage2HardConstraints,
           stage2StyleProfile: traceStyleProfile,
-          editorialMemory: traceEditorialMemory
+          editorialMemory: traceEditorialMemory,
+          editorialMemorySource: {
+            strategy: "same_line_only",
+            requestedWorkerProfileId: "stable_social_wave_v1",
+            resolvedWorkerProfileId: "stable_social_wave_v1",
+            sameLineExplicitCount: 2,
+            fallbackExplicitCount: 0,
+            sameLineSelectionCount: 1,
+            fallbackSelectionCount: 0,
+            supplementedWithFallback: false,
+            explicitThreshold: 2
+          }
         }
       }
     });
@@ -10936,10 +11340,22 @@ test("chat trace export assembles a full payload, truncates comments, and honors
           id: traceChannel.id,
           name: traceChannel.name,
           username: traceChannel.username,
+          stage2WorkerProfileId: "stable_social_wave_v1",
           stage2ExamplesConfig: traceChannel.stage2ExamplesConfig,
           stage2HardConstraints: traceChannel.stage2HardConstraints,
           stage2StyleProfile: traceStyleProfile,
-          editorialMemory: traceEditorialMemory
+          editorialMemory: traceEditorialMemory,
+          editorialMemorySource: {
+            strategy: "same_line_only",
+            requestedWorkerProfileId: "stable_social_wave_v1",
+            resolvedWorkerProfileId: "stable_social_wave_v1",
+            sameLineExplicitCount: 2,
+            fallbackExplicitCount: 0,
+            sameLineSelectionCount: 1,
+            fallbackSelectionCount: 0,
+            supplementedWithFallback: false,
+            explicitThreshold: 2
+          }
         }
       }
     });
@@ -11024,6 +11440,13 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     assert.match(trace?.traceContract.note ?? "", /canonical/i);
     assert.equal(trace?.stage2.causalInputs.run.mode, "manual");
     assert.equal(trace?.stage2.causalInputs.run.userInstruction, "selected instruction");
+    assert.equal(trace?.stage2.causalInputs.channelSnapshotUsed.stage2WorkerProfileId, "stable_social_wave_v1");
+    assert.equal(trace?.stage2.causalInputs.workerProfile.resolvedId, "stable_social_wave_v1");
+    assert.equal(trace?.stage2.causalInputs.editorialMemorySource?.strategy, "same_line_only");
+    assert.equal(
+      trace?.stage2.causalInputs.editorialMemorySource?.resolvedWorkerProfileId,
+      "stable_social_wave_v1"
+    );
     assert.deepEqual(trace?.stage2.causalInputs.stylePrior.selectedDirectionIds, ["direction_1", "direction_2"]);
     assert.equal(trace?.stage2.causalInputs.stylePrior.selectedDirections.length, 2);
     assert.equal(trace?.stage2.causalInputs.editorialMemory?.recentFeedbackCount, 0);
@@ -11041,7 +11464,8 @@ test("chat trace export assembles a full payload, truncates comments, and honors
     );
     assert.equal(trace?.stage2.outcome.retrievalConfidence, "medium");
     assert.equal(trace?.stage2.execution.exporterVersion, "clip-trace-export-v3");
-    assert.equal(trace?.stage2.execution.pipelineVersion, null);
+    assert.equal(trace?.stage2.execution.pipelineVersion, "native_caption_v3");
+    assert.equal(trace?.stage2.execution.pathVariant, "modular_native_v1");
     assert.equal(trace?.stage2.vnext.present, false);
     assert.equal(trace?.stage2.outcome.examplesMode, "form_guided");
     assert.equal(trace?.stage2.outcome.examplesRoleSummary, "Examples help with structure more than semantics.");

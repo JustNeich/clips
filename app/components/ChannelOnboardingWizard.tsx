@@ -13,6 +13,10 @@ import {
 import { type Stage2StyleProfile } from "../../lib/stage2-channel-learning";
 import type { ChannelStyleDiscoveryRunDetail } from "../../lib/channel-style-discovery-types";
 import {
+  listStage2WorkerProfiles,
+  resolveStage2WorkerProfile
+} from "../../lib/stage2-worker-profile";
+import {
   applyChannelOnboardingStyleDiscoveryResult,
   buildChannelOnboardingCreatePayload,
   canNavigateChannelOnboardingStep,
@@ -52,6 +56,7 @@ type ChannelOnboardingWizardProps = {
   onSubmit: (input: {
     name: string;
     username: string;
+    stage2WorkerProfileId: string;
     stage2HardConstraints: Stage2HardConstraints;
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2StyleProfile: Stage2StyleProfile;
@@ -238,6 +243,11 @@ export function ChannelOnboardingWizard({
   const workspaceExamplesCount = useMemo(
     () => collectWorkspaceStage2Examples(workspaceStage2ExamplesCorpusJson).length,
     [workspaceStage2ExamplesCorpusJson]
+  );
+  const workerProfiles = useMemo(() => listStage2WorkerProfiles(), []);
+  const resolvedWorkerProfile = useMemo(
+    () => resolveStage2WorkerProfile(draft.stage2WorkerProfileId),
+    [draft.stage2WorkerProfileId]
   );
   const referenceLinks = useMemo(
     () => parseChannelOnboardingReferenceLinks(draft.referenceLinksText),
@@ -584,6 +594,37 @@ export function ChannelOnboardingWizard({
               <div className="channel-onboarding-highlight">
                 <strong>{workspaceExamplesCount}</strong>
                 <span>примеров уже доступно по умолчанию из общего корпуса рабочего пространства</span>
+              </div>
+              <div className="field-stack">
+                <label className="field-label">Формат pipeline</label>
+                <select
+                  className="text-input"
+                  value={draft.stage2WorkerProfileId}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      stage2WorkerProfileId: event.target.value as typeof current.stage2WorkerProfileId
+                    }))
+                  }
+                >
+                  {workerProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="subtle-text">
+                  Этот переключатель задаёт базовую линию Stage 2: benchmark-reference,
+                  social-wave, skill-gap или experimental. Ниже по-прежнему можно оставлять
+                  общий корпус и обычные ограничения.
+                </p>
+              </div>
+              <div className="channel-onboarding-note-card">
+                <strong>{resolvedWorkerProfile.label}</strong>
+                <p className="subtle-text">{resolvedWorkerProfile.description}</p>
+                <p className="subtle-text">
+                  <strong>Как это влияет на runtime:</strong> {resolvedWorkerProfile.summary}
+                </p>
               </div>
               <div className="channel-onboarding-toggle-row">
                 <button

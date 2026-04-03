@@ -24,6 +24,7 @@ import {
   stringifyStage2StyleProfile,
   type Stage2StyleProfile
 } from "./stage2-channel-learning";
+import { parseStage2WorkerProfileId } from "./stage2-worker-profile";
 import { listLatestPublicationSummariesByChatIds } from "./publication-store";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
@@ -180,7 +181,7 @@ function mapChannel(row: Record<string, unknown>): Channel {
     systemPrompt: sanitizeTextBlock(String(row.system_prompt ?? ""), ""),
     descriptionPrompt: sanitizeTextBlock(String(row.description_prompt ?? ""), ""),
     examplesJson,
-    stage2WorkerProfileId: null,
+    stage2WorkerProfileId: parseStage2WorkerProfileId(row.stage2_worker_profile_id),
     stage2ExamplesConfig: parseStage2ExamplesConfigJson(
       row.stage2_examples_config_json ? String(row.stage2_examples_config_json) : null,
       { channelId, channelName }
@@ -367,7 +368,7 @@ export async function createChannel(input: {
     systemPrompt: sanitizeTextBlock(input.systemPrompt, ""),
     descriptionPrompt: sanitizeTextBlock(input.descriptionPrompt, ""),
     examplesJson: typeof input.examplesJson === "string" ? ensureValidJsonString(input.examplesJson) : "[]",
-    stage2WorkerProfileId: null,
+    stage2WorkerProfileId: parseStage2WorkerProfileId(input.stage2WorkerProfileId),
     stage2ExamplesConfig: input.stage2ExamplesConfig
       ? parseStage2ExamplesConfigJson(
           stringifyStage2ExamplesConfig(input.stage2ExamplesConfig, {
@@ -474,7 +475,10 @@ export async function updateChannelById(
       typeof patch.examplesJson === "string"
         ? ensureValidJsonString(patch.examplesJson)
         : channel.examplesJson,
-    stage2WorkerProfileId: null,
+    stage2WorkerProfileId:
+      "stage2WorkerProfileId" in patch
+        ? parseStage2WorkerProfileId(patch.stage2WorkerProfileId)
+        : channel.stage2WorkerProfileId,
     stage2ExamplesConfig:
       "stage2ExamplesConfig" in patch && patch.stage2ExamplesConfig
         ? parseStage2ExamplesConfigJson(

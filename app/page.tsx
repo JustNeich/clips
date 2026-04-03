@@ -5239,6 +5239,7 @@ export default function HomePage() {
   const handleCreateChannelFromOnboarding = async (input: {
     name: string;
     username: string;
+    stage2WorkerProfileId: string;
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
     stage2StyleProfile: Channel["stage2StyleProfile"];
@@ -5254,6 +5255,7 @@ export default function HomePage() {
         body: JSON.stringify({
           name: input.name,
           username: input.username,
+          stage2WorkerProfileId: input.stage2WorkerProfileId,
           stage2ExamplesConfig: input.stage2ExamplesConfig,
           stage2HardConstraints: input.stage2HardConstraints,
           stage2StyleProfile: input.stage2StyleProfile
@@ -5300,6 +5302,7 @@ export default function HomePage() {
     patch: Partial<{
       name: string;
       username: string;
+      stage2WorkerProfileId: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2PromptConfig: Stage2PromptConfig;

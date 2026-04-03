@@ -27,6 +27,11 @@ import {
   type WorkspaceCodexModelSetting,
   type WorkspaceCodexModelStageId
 } from "../../lib/workspace-codex-models";
+import {
+  listStage2WorkerProfiles,
+  resolveStage2WorkerProfile,
+  type Stage2WorkerProfileId
+} from "../../lib/stage2-worker-profile";
 import type { ChannelStyleProfileEditorDraft } from "./channel-onboarding-support";
 import { AutosaveState } from "./channel-manager-support";
 
@@ -60,6 +65,9 @@ type ChannelManagerStage2TabProps = {
   canEditWorkspaceDefaults: boolean;
   canEditHardConstraints: boolean;
   canEditChannelExamples: boolean;
+  stage2WorkerProfileId: Stage2WorkerProfileId;
+  canEditStage2WorkerProfile: boolean;
+  updateStage2WorkerProfileId: (value: Stage2WorkerProfileId) => void;
   activeExamplesPreview: ActiveExamplesPreview;
   channelStyleProfile?: Stage2StyleProfile | null;
   channelStyleProfileDraft?: ChannelStyleProfileEditorDraft | null;
@@ -248,6 +256,7 @@ export function ChannelManagerStage2Tab({
   workspaceStage2PromptConfig,
   workspaceCodexModelConfig = DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
   resolvedWorkspaceCodexModelConfig = {
+    oneShotReference: null,
     contextPacket: null,
     candidateGenerator: null,
     qualityCourt: null,
@@ -271,6 +280,9 @@ export function ChannelManagerStage2Tab({
   canEditWorkspaceDefaults,
   canEditHardConstraints,
   canEditChannelExamples,
+  stage2WorkerProfileId,
+  canEditStage2WorkerProfile,
+  updateStage2WorkerProfileId,
   activeExamplesPreview,
   channelStyleProfile,
   channelStyleProfileDraft,
@@ -305,6 +317,13 @@ export function ChannelManagerStage2Tab({
   resetStage2PromptStage,
   updateWorkspaceCodexModelSetting = () => undefined
 }: ChannelManagerStage2TabProps) {
+  const workerProfiles = listStage2WorkerProfiles();
+  const resolvedWorkerProfile = resolveStage2WorkerProfile(stage2WorkerProfileId);
+  const referenceOneShotModelField = STAGE2_PROMPT_MODEL_STAGE_FIELDS.find(
+    (field) => field.id === "oneShotReference"
+  );
+  const referenceOneShotStageConfig = workspaceStage2PromptConfig.stages.oneShotReference;
+
   if (isWorkspaceDefaultsSelection) {
     return (
       <div className="field-stack">
@@ -438,6 +457,61 @@ export function ChannelManagerStage2Tab({
               только на text-only маршрутах.
             </p>
           </div>
+
+          <article className="stage2-config-stage-card">
+            <div className="stage2-config-stage-head">
+              <div className="stage2-config-stage-index">R</div>
+              <div className="stage2-config-stage-copy">
+                <div className="quick-edit-label-row">
+                  <label className="field-label">
+                    Stable Reference v6 <span className="badge">Product-owned one-shot</span>
+                  </label>
+                  <span className="badge muted">Prompt locked</span>
+                </div>
+                <p className="subtle-text">
+                  Этот baseline запускает `stable_reference_v6` через quality-first one-shot path.
+                  Здесь можно менять только модель и уровень рассуждений; сам промпт остаётся
+                  продуктовым и не редактируется из workspace UI.
+                </p>
+              </div>
+            </div>
+            <div className="stage2-config-stage-body">
+              <div className="stage2-config-stage-controls">
+                <div className="compact-field">
+                  <label className="field-label">Базовый уровень рассуждений</label>
+                  <select
+                    className="text-input"
+                    value={referenceOneShotStageConfig.reasoningEffort}
+                    disabled={!canEditWorkspaceDefaults}
+                    onChange={(event) =>
+                      updateStage2PromptReasoning(
+                        "oneShotReference",
+                        event.target.value as typeof referenceOneShotStageConfig.reasoningEffort
+                      )
+                    }
+                  >
+                    {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="subtle-text">
+                    Этим reasoning запускается product-owned reference baseline в `stable_reference_v6`.
+                  </p>
+                </div>
+                {referenceOneShotModelField
+                  ? renderModelSettingField({
+                      field: referenceOneShotModelField,
+                      workspaceCodexModelConfig,
+                      resolvedWorkspaceCodexModelConfig,
+                      canEditWorkspaceDefaults,
+                      updateWorkspaceCodexModelSetting
+                    })
+                  : null}
+              </div>
+            </div>
+          </article>
 
           <div className="stage2-config-stage-list">
             {stage2PromptStages.map((stage, index) => {
@@ -586,6 +660,51 @@ export function ChannelManagerStage2Tab({
         <p className="subtle-text">
           Для конкретного канала здесь настраивается свой JSON корпуса примеров.
           Базовый корпус задаётся владельцем отдельно через раздел общих настроек.
+        </p>
+      </section>
+      <section className="control-card control-card-subtle">
+        <div className="control-section-head">
+          <div>
+            <h3>Формат pipeline</h3>
+            <p className="subtle-text">
+              Эта настройка задаёт базовую линию Stage 2 для канала. Поверх неё уже работают
+              style prior, editorial memory и clip-specific steering.
+            </p>
+          </div>
+          <span className="badge">{resolvedWorkerProfile.label}</span>
+        </div>
+        <div className="compact-field">
+          <label className="field-label">Активная линия</label>
+          <select
+            className="text-input"
+            value={stage2WorkerProfileId}
+            disabled={!canEditStage2WorkerProfile}
+            onChange={(event) =>
+              updateStage2WorkerProfileId(event.target.value as Stage2WorkerProfileId)
+            }
+          >
+            {workerProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="stage2-insight-grid">
+          <article className="stage2-insight-card">
+            <span className="field-label">Что делает линия</span>
+            <strong>{resolvedWorkerProfile.label}</strong>
+            <p className="subtle-text">{resolvedWorkerProfile.description}</p>
+          </article>
+          <article className="stage2-insight-card">
+            <span className="field-label">Как это влияет</span>
+            <strong>Prompt + lanes</strong>
+            <p className="subtle-text">{resolvedWorkerProfile.summary}</p>
+          </article>
+        </div>
+        <p className={`subtle-text ${autosaveState.stage2.status === "error" ? "danger-text" : ""}`}>
+          {autosaveState.stage2.message ??
+            "Формат pipeline сохраняется вместе с корпусом примеров и ограничениями канала."}
         </p>
       </section>
       {!isWorkspaceDefaultsSelection && channelStyleProfile ? (
@@ -1026,7 +1145,7 @@ export function ChannelManagerStage2Tab({
         <p className="subtle-text">Запрещённые начала проверяются только в начале TOP и хранятся отдельным списком.</p>
         <p className={`subtle-text ${autosaveState.stage2.status === "error" ? "danger-text" : ""}`}>
           {autosaveState.stage2.message ??
-            "На уровне канала автоматически сохраняются JSON корпуса примеров и все ограничения."}
+            "На уровне канала автоматически сохраняются формат pipeline, JSON корпуса примеров и все ограничения."}
         </p>
         <p className="subtle-text">
           Базовые промпты задаются владельцем в разделе общих настроек. Здесь на уровне канала

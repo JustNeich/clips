@@ -21,6 +21,8 @@ import {
   normalizeStage2EditorialMemorySummary,
   normalizeStage2StyleProfile
 } from "./stage2-channel-learning";
+import { normalizeStage2EditorialMemorySource } from "./stage2-editorial-memory-resolution";
+import { resolveStage2WorkerProfile } from "./stage2-worker-profile";
 import {
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints,
@@ -196,8 +198,17 @@ export type ChatTraceExport = {
         channelId: string | null;
         name: string | null;
         username: string | null;
+        stage2WorkerProfileId: string | null;
         hardConstraints: unknown | null;
         examplesConfig: unknown | null;
+      };
+      workerProfile: {
+        requestedId: string | null;
+        resolvedId: string | null;
+        label: string | null;
+        description: string | null;
+        summary: string | null;
+        origin: "channel_setting" | "default_baseline" | null;
       };
       stylePrior: {
         selectedDirectionIds: string[];
@@ -206,6 +217,7 @@ export type ChatTraceExport = {
         referenceInfluenceSummary: string;
       };
       editorialMemory: Stage2RunRecord["request"]["channel"]["editorialMemory"] | null;
+      editorialMemorySource: Stage2RunRecord["request"]["channel"]["editorialMemorySource"] | null;
       sourceContext: {
         sourceUrl: string | null;
         title: string | null;
@@ -237,6 +249,7 @@ export type ChatTraceExport = {
       exporterVersion: string;
       resolvedAt: string | null;
       pipelineVersion: Stage2PipelineVersion | null;
+      pathVariant: Stage2PipelineExecution["pathVariant"] | null;
       stageChainVersion: string | null;
       featureFlags: Stage2VNextFeatureFlagSnapshot | null;
       workerBuild: Stage2VNextWorkerBuild | null;
@@ -732,6 +745,7 @@ function buildStage2Execution(
     exporterVersion: TRACE_EXPORT_VERSION,
     resolvedAt: execution?.resolvedAt ?? null,
     pipelineVersion: execution?.pipelineVersion ?? rawStage2?.stage2Worker?.pipelineVersion ?? null,
+    pathVariant: execution?.pathVariant ?? null,
     stageChainVersion: execution?.stageChainVersion ?? rawStage2?.stage2Worker?.stageChainVersion ?? null,
     featureFlags: execution?.featureFlags ?? rawStage2?.stage2Worker?.featureFlags ?? null,
     workerBuild:
@@ -987,10 +1001,14 @@ function buildStage2CausalInputs(input: {
   rawStage2: Stage2Response | null;
 }) {
   const channelSnapshot = input.selectedRun?.request.channel;
+  const workerProfile = resolveStage2WorkerProfile(channelSnapshot?.stage2WorkerProfileId);
   const styleProfile = normalizeStage2StyleProfile(channelSnapshot?.stage2StyleProfile);
   const editorialMemory = normalizeStage2EditorialMemorySummary(
     channelSnapshot?.editorialMemory,
     styleProfile
+  );
+  const editorialMemorySource = normalizeStage2EditorialMemorySource(
+    channelSnapshot?.editorialMemorySource
   );
   const selectedDirections = getSelectedStage2StyleDirections(styleProfile);
   const sourceContext = input.rawStage2?.diagnostics?.sourceContext;
@@ -1005,8 +1023,17 @@ function buildStage2CausalInputs(input: {
       channelId: channelSnapshot?.id ?? null,
       name: channelSnapshot?.name ?? null,
       username: channelSnapshot?.username ?? null,
+      stage2WorkerProfileId: channelSnapshot?.stage2WorkerProfileId ?? null,
       hardConstraints: channelSnapshot?.stage2HardConstraints ?? null,
       examplesConfig: channelSnapshot?.stage2ExamplesConfig ?? null
+    },
+    workerProfile: {
+      requestedId: workerProfile.requestedId,
+      resolvedId: workerProfile.resolvedId,
+      label: workerProfile.label,
+      description: workerProfile.description,
+      summary: workerProfile.summary,
+      origin: workerProfile.origin
     },
     stylePrior: {
       selectedDirectionIds: styleProfile.selectedDirectionIds,
@@ -1015,6 +1042,7 @@ function buildStage2CausalInputs(input: {
       referenceInfluenceSummary: styleProfile.referenceInfluenceSummary
     },
     editorialMemory,
+    editorialMemorySource,
     sourceContext: {
       sourceUrl: sourceContext?.sourceUrl ?? input.rawStage2?.source.url ?? null,
       title: sourceContext?.title ?? input.rawStage2?.source.title ?? null,

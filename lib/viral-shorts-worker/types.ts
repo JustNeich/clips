@@ -9,6 +9,10 @@ import type {
   Stage2StyleProfile
 } from "../stage2-channel-learning";
 import type {
+  ResolvedStage2WorkerProfile,
+  Stage2WorkerProfileId
+} from "../stage2-worker-profile";
+import type {
   CandidateLineageRecord,
   ExampleRoutingDecision,
   Stage2PipelineVersion,
@@ -315,6 +319,8 @@ export type Stage2RuntimeChannelConfig = {
   channelId: string;
   name: string;
   username: string;
+  stage2WorkerProfileId?: string | null;
+  workerProfile?: ResolvedStage2WorkerProfile;
   hardConstraints: Stage2HardConstraints;
   examplesSource: Stage2ExamplesCorpusSource;
   styleProfile?: Stage2StyleProfile;
@@ -357,6 +363,12 @@ export type Stage2TokenUsage = {
   totalSerializedResultBytes: number;
   totalPersistedPayloadBytes: number;
 };
+
+export type Stage2ExecutionPathVariant =
+  | "legacy_multistage_v1"
+  | "modular_native_v1"
+  | "reference_one_shot_v1"
+  | "vnext_pipeline_v1";
 
 export type Stage2DiagnosticsPromptStage = {
   stageId: string;
@@ -492,6 +504,14 @@ export type Stage2Diagnostics = {
     channelId: string;
     name: string;
     username: string;
+    workerProfile?: {
+      requestedId: string | null;
+      resolvedId: Stage2WorkerProfileId;
+      label: string;
+      description: string;
+      summary: string;
+      origin: "channel_setting" | "default_baseline";
+    };
     examplesSource: Stage2ExamplesCorpusSource;
     hardConstraints: Stage2HardConstraints;
     styleProfile?: Stage2StyleProfile;
@@ -567,8 +587,8 @@ export type Stage2Diagnostics = {
   nativeCaptionV3?: {
     contextPacket: NativeCaptionContextPacket;
     candidateBatch: NativeCaptionCandidate[];
-    hardValidator: NativeCaptionHardValidatorResult;
-    qualityCourt: NativeCaptionQualityCourt;
+    hardValidator: NativeCaptionHardValidatorResult | null;
+    qualityCourt: NativeCaptionQualityCourt | null;
     repair: NativeCaptionRepairResult | null;
     templateBackfill: {
       backfilledCandidates: NativeCaptionTemplateBackfillCandidate[];
@@ -936,7 +956,7 @@ export type NativeCaptionFinalist = {
   top: string;
   bottom: string;
   displayTier: "finalist";
-  sourceStage: "qualityCourt";
+  sourceStage: "oneShotReference" | "qualityCourt";
   displayReason: string;
   retainedHandle: boolean;
   preservedHandle: boolean;
@@ -960,13 +980,14 @@ export type NativeCaptionWinner = {
   option: number;
   reason: string;
   displayTier: "finalist" | "recovery" | "template_backfill";
-  sourceStage: "qualityCourt" | "targetedRepair" | "templateBackfill";
+  sourceStage: "oneShotReference" | "qualityCourt" | "targetedRepair" | "templateBackfill";
   constraintCheck?: NativeCaptionFinalist["constraintCheck"];
 };
 
 export type Stage2PipelineExecution = {
   featureFlags: Stage2VNextFeatureFlagSnapshot;
   pipelineVersion: Stage2PipelineVersion;
+  pathVariant?: Stage2ExecutionPathVariant;
   stageChainVersion: string;
   workerBuild: Stage2VNextWorkerBuild;
   resolvedAt: string;
@@ -989,7 +1010,7 @@ export type ViralShortsStage2Result = {
     top: string;
     bottom: string;
     displayTier: "finalist" | "display_safe_extra" | "recovery" | "template_backfill";
-    sourceStage: "qualityCourt" | "targetedRepair" | "templateBackfill";
+    sourceStage: "oneShotReference" | "qualityCourt" | "targetedRepair" | "templateBackfill";
     displayReason: string;
     retainedHandle?: boolean;
     topRu?: string;
@@ -1015,6 +1036,14 @@ export type ViralShortsStage2Result = {
   winner?: NativeCaptionWinner;
   pipeline: {
     channelId: string;
+    workerProfile?: {
+      requestedId: string | null;
+      resolvedId: Stage2WorkerProfileId;
+      label: string;
+      description: string;
+      summary: string;
+      origin: "channel_setting" | "default_baseline";
+    };
     mode: "packet_only" | "codex_pipeline" | "regenerate";
     execution?: Stage2PipelineExecution;
     selectorOutput: SelectorOutput;
@@ -1027,8 +1056,8 @@ export type ViralShortsStage2Result = {
     nativeCaptionV3?: {
       contextPacket: NativeCaptionContextPacket;
       candidateBatch: NativeCaptionCandidate[];
-      hardValidator: NativeCaptionHardValidatorResult;
-      qualityCourt: NativeCaptionQualityCourt;
+      hardValidator: NativeCaptionHardValidatorResult | null;
+      qualityCourt: NativeCaptionQualityCourt | null;
       repair: NativeCaptionRepairResult | null;
       templateBackfill: {
         backfilledCandidates: NativeCaptionTemplateBackfillCandidate[];

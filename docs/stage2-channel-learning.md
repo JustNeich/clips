@@ -8,6 +8,17 @@
 - не позволять первым 10 reference links автоматически и навсегда определить identity канала;
 - дать Stage 2 мягкий, обучаемый, но не застывший editorial prior.
 
+Важно:
+- channel learning не заменяет platform line policy в `native_caption_v3`;
+- line selector задаёт production family boundary (`stable_reference_v6`, `stable_social_wave_v1`, `stable_skill_gap_v1`, `experimental`);
+- bootstrap style profile + editorial memory живут поверх этой boundary и уточняют channel-specific steering.
+- у `stable_reference_v6` эти сигналы теперь особенно важны, потому что baseline line работает через product-owned one-shot prompt:
+  - current clip comments читаются как clip-local social read;
+  - channel bootstrap и reaction history читаются как style/tone boundaries;
+  - они не могут переопределять visible facts из текущего ролика.
+  - one-shot обязан сам собрать 5 publishable options без runtime filler/backfill.
+  - runtime допускает только tiny deterministic exact-length polish для маленьких перелётов по длине, если publishable wording остаётся тем же по смыслу.
+
 ## 1. Product model
 
 Новая модель работает так:
@@ -22,6 +33,7 @@
 
 Ключевое правило:
 - references сужают proposal space, но не принимают финальное решение вместо редактора.
+- для `stable_reference_v6` выбранные directions и editorial memory влияют на narrator DNA внутри product-owned one-shot baseline, а не через внешний validator/repair loop.
 
 ## 2. Guided onboarding flow
 
@@ -340,6 +352,8 @@ Stage 2 не должен делать вид, что examples всегда од
 
 Rolling memory строится в:
 - `lib/stage2-channel-learning.ts`
+- line-aware assembly живёт в:
+  - `lib/stage2-editorial-memory-resolution.ts`
 
 Ключевой builder:
 - `buildStage2EditorialMemorySummary(...)`
@@ -351,6 +365,14 @@ Rolling memory строится в:
 - старые события не остаются равно сильными бесконечно;
 - внутри окна новые реакции важнее старых;
 - bootstrap selections дают мягкий стартовый prior, но не фиксируют канал навсегда.
+
+Дополнительное правило для platform lines:
+- если Stage 2 run знает `stage2WorkerProfileId`, editorial memory собирается по принципу `same-line-first`;
+- primary pool = явные rating events из run'ов той же line;
+- fallback pool = channel-wide recent events, если same-line explicit signal слишком слабый;
+- events без `stage2RunId` участвуют только в fallback pool;
+- hard rules остаются активными всегда, независимо от линии;
+- passive selections могут дополнять картину, но не должны побеждать explicit ratings.
 
 Режимы заметок:
 - `soft_preference` — базовый режим, живёт внутри окна последних `30` явных реакций;
@@ -459,6 +481,7 @@ Exploration действует в двух местах:
 Stage 2 run snapshot теперь несёт два новых runtime блока:
 - `stage2StyleProfile`
 - `editorialMemory`
+- `editorialMemorySource`
 
 Они прикрепляются в:
 - `lib/stage2-run-request.ts`
@@ -479,6 +502,12 @@ Prompt payload строится в:
 - rolling editorial memory
 - exploration share
 
+Для `stable_reference_v6` этот слой дополнительно компактизируется в two steering packets:
+- `channel_narrative_json`
+- `editorial_memory_json`
+
+Они intentionally не содержат raw chain-of-thought или полный lexical dump прошлых caption wins.
+
 ### Stage expectations
 
 `selector`:
@@ -497,7 +526,18 @@ Prompt payload строится в:
   - high-like acronyms, nicknames и compact punchlines должны доходить до writing layer, если они реально sharpen the line;
   - если comments дали сильный shorthand pressure, writer должен выпустить не только safe visual lines, но и 1-2 clean comment-native lines;
   - нельзя paste'ить comment text как готовый bottom;
-  - нельзя уходить в generic stock tails только потому, что batch уже звучит “нормально”.
+- нельзя уходить в generic stock tails только потому, что batch уже звучит “нормально”.
+
+`stable_reference_v6` one-shot baseline:
+- не использует workspace-editable stage prompts;
+- получает тот же channel learning в виде compact steering JSON;
+- обязан уважать порядок влияния:
+  1. video truth
+  2. current comment wave
+  3. line policy
+  4. channel bootstrap narrative
+  5. editorial memory
+- historical feedback может калибровать tone и narrator habit, но не имеет права добавлять факты, которых нет в текущем ролике.
 
 `critic` и `final selector`:
 - не должны автоматически убивать все exploratory кандидаты;

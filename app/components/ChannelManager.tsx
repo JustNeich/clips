@@ -45,6 +45,10 @@ import {
   type WorkspaceCodexModelConfig
 } from "../../lib/workspace-codex-models";
 import {
+  resolveStage2WorkerProfile,
+  type Stage2WorkerProfileId
+} from "../../lib/stage2-worker-profile";
+import {
   applyChannelStyleProfileEditorDiscoveryResult,
   buildChannelStyleProfileFromEditorDraft,
   createChannelStyleProfileEditorDraft,
@@ -84,6 +88,7 @@ export { CHANNEL_MANAGER_DEFAULT_SETTINGS_ID, canDeleteManagedChannel, listChann
 type ChannelSavePatch = Partial<{
   name: string;
   username: string;
+  stage2WorkerProfileId: string | null;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
@@ -115,6 +120,13 @@ export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
       saving: "Сохраняем настройки Stage 2…",
       saved: "Настройки Stage 2 сохранены.",
       error: "Не удалось сохранить настройки Stage 2."
+    };
+  }
+  if ("stage2WorkerProfileId" in patch) {
+    return {
+      saving: "Сохраняем формат pipeline…",
+      saved: "Формат pipeline сохранён.",
+      error: "Не удалось сохранить формат pipeline."
     };
   }
   if ("templateId" in patch || "defaultBackgroundAssetId" in patch || "defaultMusicAssetId" in patch) {
@@ -276,6 +288,9 @@ export function ChannelManager({
 
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
+  const [stage2WorkerProfileId, setStage2WorkerProfileId] = useState<Stage2WorkerProfileId>(
+    resolveStage2WorkerProfile(null).resolvedId
+  );
   const [stage2ExamplesConfig, setStage2ExamplesConfig] = useState<Stage2ExamplesConfig>(
     DEFAULT_STAGE2_EXAMPLES_CONFIG
   );
@@ -619,10 +634,12 @@ export function ChannelManager({
     });
 
   const buildStage2Snapshot = (
+    nextWorkerProfileId: string | null,
     nextExamplesConfig: Stage2ExamplesConfig,
     nextHardConstraints: Stage2HardConstraints
   ): string =>
     JSON.stringify({
+      stage2WorkerProfileId: resolveStage2WorkerProfile(nextWorkerProfileId).resolvedId,
       stage2ExamplesConfig: nextExamplesConfig,
       stage2HardConstraints: nextHardConstraints
     });
@@ -680,8 +697,10 @@ export function ChannelManager({
       channelId: activeChannel.id,
       channelName: activeChannel.name
     });
+    const resolvedWorkerProfile = resolveStage2WorkerProfile(activeChannel.stage2WorkerProfileId);
     setName(activeChannel.name);
     setUsername(activeChannel.username);
+    setStage2WorkerProfileId(resolvedWorkerProfile.resolvedId);
     const initialChannelExamples = normalizedExamplesConfig.useWorkspaceDefault
       ? collectWorkspaceStage2Examples(workspaceStage2ExamplesCorpusJson)
       : normalizedExamplesConfig.customExamples ?? [];
@@ -699,7 +718,11 @@ export function ChannelManager({
     setTemplateId(activeChannel.templateId);
     persistedSnapshotRef.current = {
       brand: buildBrandSnapshot(activeChannel.name, activeChannel.username),
-      stage2: buildStage2Snapshot(normalizedExamplesConfig, normalizedChannelHardConstraints),
+      stage2: buildStage2Snapshot(
+        activeChannel.stage2WorkerProfileId,
+        normalizedExamplesConfig,
+        normalizedChannelHardConstraints
+      ),
       stage2Defaults: buildStage2DefaultsSnapshot(
         workspaceStage2ExamplesCorpusJson,
         normalizedHardConstraints,
@@ -843,7 +866,11 @@ export function ChannelManager({
       );
       return;
     }
-    const nextSnapshot = buildStage2Snapshot(stage2ExamplesConfig, stage2HardConstraints);
+    const nextSnapshot = buildStage2Snapshot(
+      stage2WorkerProfileId,
+      stage2ExamplesConfig,
+      stage2HardConstraints
+    );
     if (nextSnapshot === persistedSnapshotRef.current.stage2) {
       resetAutosaveFeedbackIfNeeded("stage2");
       return;
@@ -854,6 +881,7 @@ export function ChannelManager({
     const timerId = window.setTimeout(() => {
       setAutosaveFeedback("stage2", "saving", "Сохраняем настройки второго этапа…");
       void saveChannelRef.current(activeChannel.id, {
+        stage2WorkerProfileId,
         stage2ExamplesConfig,
         stage2HardConstraints
       })
@@ -884,6 +912,7 @@ export function ChannelManager({
     resetAutosaveFeedbackIfNeeded,
     scheduleAutosaveReset,
     setAutosaveFeedback,
+    stage2WorkerProfileId,
     stage2ExamplesConfig,
     stage2HardConstraints
   ]);
@@ -1499,6 +1528,9 @@ export function ChannelManager({
                 canEditWorkspaceDefaults={canEditWorkspaceDefaults}
                 canEditHardConstraints={canEditHardConstraints}
                 canEditChannelExamples={canEditChannelExamples}
+                stage2WorkerProfileId={stage2WorkerProfileId}
+                canEditStage2WorkerProfile={canEditSetup}
+                updateStage2WorkerProfileId={(value) => setStage2WorkerProfileId(value)}
                 activeExamplesPreview={activeExamplesPreview}
                 channelStyleProfile={activeChannel?.stage2StyleProfile ?? null}
                 channelStyleProfileDraft={styleProfileDraft}

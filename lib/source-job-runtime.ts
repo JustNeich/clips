@@ -3,11 +3,7 @@ import { appendChatEvent, getChatById, getChannelById } from "./chat-history";
 import { enqueueAndScheduleStage2Run } from "./stage2-run-runtime";
 import { findActiveStage2RunForChat } from "./stage2-progress-store";
 import { buildStage2RunRequestSnapshot } from "./stage2-run-request";
-import {
-  listChannelEditorialPassiveSelectionEvents,
-  listChannelEditorialRatingEvents
-} from "./channel-editorial-feedback-store";
-import { buildStage2EditorialMemorySummary } from "./stage2-channel-learning";
+import { resolveChannelEditorialMemory } from "./stage2-editorial-memory-resolution";
 import {
   claimNextQueuedSourceJob,
   createSourceJob,
@@ -157,16 +153,21 @@ async function maybeEnqueueStage2(job: SourceJobRecord): Promise<string | null> 
         id: channel.id,
         name: channel.name,
         username: channel.username,
+        stage2WorkerProfileId: channel.stage2WorkerProfileId,
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
         stage2HardConstraints: channel.stage2HardConstraints,
         stage2StyleProfile: channel.stage2StyleProfile,
-        editorialMemory: buildStage2EditorialMemorySummary({
-          profile: channel.stage2StyleProfile,
-          feedbackEvents: [
-            ...listChannelEditorialRatingEvents(channel.id, 30),
-            ...listChannelEditorialPassiveSelectionEvents(channel.id, 12)
-          ]
-        })
+        ...(() => {
+          const resolution = resolveChannelEditorialMemory({
+            channelId: channel.id,
+            stage2StyleProfile: channel.stage2StyleProfile,
+            stage2WorkerProfileId: channel.stage2WorkerProfileId
+          });
+          return {
+            editorialMemory: resolution.editorialMemory,
+            editorialMemorySource: resolution.source
+          };
+        })()
       }
     })
   });

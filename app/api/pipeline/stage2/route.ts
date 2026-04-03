@@ -22,10 +22,8 @@ import {
 import { buildStage2RunRequestSnapshot } from "../../../../lib/stage2-run-request";
 import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
 import {
-  listChannelEditorialPassiveSelectionEvents,
-  listChannelEditorialRatingEvents
-} from "../../../../lib/channel-editorial-feedback-store";
-import { buildStage2EditorialMemorySummary } from "../../../../lib/stage2-channel-learning";
+  resolveChannelEditorialMemory
+} from "../../../../lib/stage2-editorial-memory-resolution";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 import type { Stage2DebugMode } from "../../../../lib/viral-shorts-worker/types";
@@ -266,16 +264,21 @@ export async function POST(request: Request): Promise<Response> {
           id: channel.id,
           name: channel.name,
           username: channel.username,
+          stage2WorkerProfileId: channel.stage2WorkerProfileId,
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
-          editorialMemory: buildStage2EditorialMemorySummary({
-            profile: channel.stage2StyleProfile,
-            feedbackEvents: [
-              ...listChannelEditorialRatingEvents(channel.id, 30),
-              ...listChannelEditorialPassiveSelectionEvents(channel.id, 12)
-            ]
-          })
+          ...(() => {
+            const resolution = resolveChannelEditorialMemory({
+              channelId: channel.id,
+              stage2StyleProfile: channel.stage2StyleProfile,
+              stage2WorkerProfileId: channel.stage2WorkerProfileId
+            });
+            return {
+              editorialMemory: resolution.editorialMemory,
+              editorialMemorySource: resolution.source
+            };
+          })()
         }
       })
     });

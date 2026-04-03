@@ -13,6 +13,11 @@ import {
   STAGE2_STYLE_MIN_REFERENCE_LINKS,
   type Stage2StyleProfile
 } from "../../lib/stage2-channel-learning";
+import {
+  DEFAULT_STAGE2_WORKER_PROFILE_ID,
+  normalizeStage2WorkerProfileId,
+  type Stage2WorkerProfileId
+} from "../../lib/stage2-worker-profile";
 import { normalizeStage2StyleDiscoveryReferenceUrls } from "../../lib/stage2-style-reference-links";
 
 export const CHANNEL_ONBOARDING_STEPS = [
@@ -45,6 +50,7 @@ export type ChannelOnboardingStyleDiscoveryStatus = "missing" | "fresh" | "stale
 export type ChannelOnboardingDraft = {
   name: string;
   username: string;
+  stage2WorkerProfileId: Stage2WorkerProfileId;
   useWorkspaceExamples: boolean;
   customExamplesJson: string;
   customExamplesError: string | null;
@@ -80,6 +86,7 @@ export function createChannelOnboardingDraft(input: {
   return {
     name: "",
     username: "",
+    stage2WorkerProfileId: DEFAULT_STAGE2_WORKER_PROFILE_ID,
     useWorkspaceExamples: true,
     customExamplesJson: "[]",
     customExamplesError: null,
@@ -118,6 +125,9 @@ export function normalizePersistedChannelOnboardingState(
     name: typeof draftCandidate?.name === "string" ? draftCandidate.name : fallbackDraft.name,
     username:
       typeof draftCandidate?.username === "string" ? draftCandidate.username : fallbackDraft.username,
+    stage2WorkerProfileId:
+      normalizeStage2WorkerProfileId(draftCandidate?.stage2WorkerProfileId) ??
+      fallbackDraft.stage2WorkerProfileId,
     useWorkspaceExamples:
       typeof draftCandidate?.useWorkspaceExamples === "boolean"
         ? draftCandidate.useWorkspaceExamples
@@ -388,6 +398,7 @@ export function getChannelOnboardingProgressStepState(input: {
 export function buildChannelOnboardingCreatePayload(draft: ChannelOnboardingDraft): {
   name: string;
   username: string;
+  stage2WorkerProfileId: Stage2WorkerProfileId;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
   referenceUrls: string[];
@@ -403,6 +414,7 @@ export function buildChannelOnboardingCreatePayload(draft: ChannelOnboardingDraf
   return {
     name: draft.name.trim() || "Новый канал",
     username: normalizeChannelOnboardingUsername(draft.username) || "kanal",
+    stage2WorkerProfileId: draft.stage2WorkerProfileId,
     stage2ExamplesConfig: draft.useWorkspaceExamples
       ? DEFAULT_STAGE2_EXAMPLES_CONFIG
       : customExamples.config,

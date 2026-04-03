@@ -23,6 +23,7 @@ import {
   markStage2RunStageRunning,
   Stage2RunRecord
 } from "./stage2-progress-store";
+import { getStage2ProgressStartStageId } from "./stage2-pipeline";
 import {
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2PromptConfig
@@ -72,6 +73,41 @@ function formatStage2WorkerBuildLabel(
     execution.workerBuild.pid ? `pid=${execution.workerBuild.pid}` : null
   ].filter(Boolean);
   return parts.join(" ");
+}
+
+function resolveNativeStage2ResponseExecutionSettings(input: {
+  output: Stage2Response["output"];
+  promptConfig: ReturnType<typeof getWorkspaceStage2PromptConfig>;
+  executorContext: Awaited<ReturnType<typeof createStage2CodexExecutorContext>>;
+  hardConstraints: Stage2RunRecord["request"]["channel"]["stage2HardConstraints"];
+}) {
+  const isReferenceOneShot =
+    input.output.pipeline?.execution?.pathVariant === "reference_one_shot_v1";
+  return {
+    model:
+      (isReferenceOneShot
+        ? input.executorContext.resolvedCodexModelConfig.oneShotReference
+        : input.executorContext.pipelineModelSummary) ?? "default",
+    reasoningEffort: isReferenceOneShot
+      ? input.promptConfig.stages.oneShotReference.reasoningEffort
+      : input.executorContext.reasoningEffort,
+    stage2Spec: buildStage2Spec({
+      name: "Native Caption Pipeline v3",
+      outputSections: [
+        "contextPacket",
+        "captionOptions(5 bilingual display options)",
+        isReferenceOneShot ? "finalists(5 publishable options)" : "finalists(0-3)",
+        "winner",
+        "titleOptions(5 bilingual winner-only)",
+        "diagnostics(nativeCaptionV3,prompts)",
+        "progress(stage snapshots)"
+      ],
+      hardConstraints: input.hardConstraints,
+      enforcedVia: isReferenceOneShot
+        ? "One-shot reference baseline + caption translation + assemble"
+        : "Context packet + candidate batch + quality court + targeted repair + caption translation + title writer"
+    })
+  };
 }
 
 export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stage2WorkerRolloutAudit {
@@ -570,6 +606,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           id: channel.id,
           name: channel.name,
           username: channel.username,
+          stage2WorkerProfileId: channel.stage2WorkerProfileId,
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
@@ -588,6 +625,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
         contextPacket: contextPacket as NativeCaptionContextPacket,
         executor: executorContext.executor,
         stageModels: {
+          oneShotReference: executorContext.resolvedCodexModelConfig.oneShotReference,
           contextPacket: executorContext.resolvedCodexModelConfig.contextPacket,
           candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
           qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
@@ -629,26 +667,15 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       ],
       diagnostics: pipelineResult.diagnostics,
       progress: getStage2Run(run.runId)?.snapshot ?? null,
-      model: executorContext.pipelineModelSummary ?? "default",
-      reasoningEffort: executorContext.reasoningEffort,
+      ...resolveNativeStage2ResponseExecutionSettings({
+        output: pipelineResult.output,
+        promptConfig: workspaceStage2PromptConfig,
+        executorContext,
+        hardConstraints: channel.stage2HardConstraints
+      }),
       userInstructionUsed: run.userInstruction,
       debugMode: run.request.debugMode === "raw" ? "raw" : "summary",
       debugRef: debugRef ? { kind: "stage2-run-debug" as const, ref: debugRef } : null,
-      stage2Spec: buildStage2Spec({
-        name: "Native Caption Pipeline v3",
-        outputSections: [
-          "contextPacket",
-          "captionOptions(5 bilingual display options)",
-          "finalists(0-3)",
-          "winner",
-          "titleOptions(5 bilingual winner-only)",
-          "diagnostics(nativeCaptionV3,prompts)",
-          "progress(stage snapshots)"
-        ],
-        hardConstraints: channel.stage2HardConstraints,
-        enforcedVia:
-          "Context packet + candidate batch + quality court + targeted repair + caption translation + title writer"
-      }),
       stage2Worker: {
         runId: run.runId,
         buildId: pipelineResult.output.pipeline.execution?.workerBuild.buildId,
@@ -776,9 +803,13 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
 
     const channel = run.request.channel;
-    markStage2RunStageRunning(run.runId, "contextPacket", {
+    markStage2RunStageRunning(
+      run.runId,
+      getStage2ProgressStartStageId(run.mode, channel.stage2WorkerProfileId),
+      {
       detail: "Подготавливаем source media, кадры и комментарии."
-    });
+      }
+    );
 
     const downloaded = await downloadVideoAndMetadata(run.sourceUrl, tmpDir);
     const allComments = sortCommentsByPopularity(normalizeComments(downloaded.infoJson.comments)).slice(0, 300);
@@ -805,6 +836,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         id: channel.id,
         name: channel.name,
         username: channel.username,
+        stage2WorkerProfileId: channel.stage2WorkerProfileId,
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
         stage2HardConstraints: channel.stage2HardConstraints,
         stage2StyleProfile: channel.stage2StyleProfile,
@@ -815,6 +847,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       imagePaths: frames.framePaths,
       executor: executorContext.executor,
       stageModels: {
+        oneShotReference: executorContext.resolvedCodexModelConfig.oneShotReference,
         contextPacket: executorContext.resolvedCodexModelConfig.contextPacket,
         candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
         qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
@@ -893,28 +926,17 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         commentsAcquisitionNote: downloaded.commentsAcquisition.note,
         commentsAcquisitionError: downloaded.commentsAcquisition.error
       },
-      stage2Spec: buildStage2Spec({
-        name: "Native Caption Pipeline v3",
-        outputSections: [
-          "contextPacket",
-          "captionOptions(5 bilingual display options)",
-          "finalists(0-3)",
-          "winner",
-          "titleOptions(5 bilingual winner-only)",
-          "diagnostics(nativeCaptionV3,prompts)",
-          "progress(stage snapshots)"
-        ],
-        hardConstraints: channel.stage2HardConstraints,
-        enforcedVia:
-          "Context packet + candidate batch + quality court + targeted repair + caption translation + title writer"
+      ...resolveNativeStage2ResponseExecutionSettings({
+        output: parsedOutput,
+        promptConfig: workspaceStage2PromptConfig,
+        executorContext,
+        hardConstraints: channel.stage2HardConstraints
       }),
       output: parsedOutput,
       seo: null,
       warnings,
       diagnostics,
       progress: getStage2Run(run.runId)?.snapshot ?? null,
-      model: executorContext.pipelineModelSummary ?? "default",
-      reasoningEffort: executorContext.reasoningEffort,
       userInstructionUsed: run.userInstruction,
       debugMode: run.request.debugMode === "raw" ? "raw" : "summary",
       debugRef: debugRef ? { kind: "stage2-run-debug" as const, ref: debugRef } : null,
@@ -950,7 +972,9 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
   } catch (error) {
     const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
     const errorMessage = ytdlpMessage ?? getPipelineErrorMessage(error);
-    const activeStageId = getStage2Run(run.runId)?.snapshot.activeStageId ?? "contextPacket";
+    const activeStageId =
+      getStage2Run(run.runId)?.snapshot.activeStageId ??
+      getStage2ProgressStartStageId(run.mode, run.request.channel.stage2WorkerProfileId);
     markStage2RunStageFailed(run.runId, activeStageId, errorMessage);
     throw new Error(errorMessage);
   } finally {

@@ -97,17 +97,28 @@ import {
   STAGE2_PIPELINE_STAGES,
   Stage2PipelineStageId,
   Stage2PromptConfig,
+  computeStage2PromptHash,
   normalizeStage2PromptConfig
 } from "../stage2-pipeline";
-import { Stage2PromptConfigStageId } from "../stage2-prompt-specs";
+import {
+  STAGE2_REFERENCE_ONE_SHOT_PROMPT,
+  STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION,
+  Stage2PromptConfigStageId
+} from "../stage2-prompt-specs";
 import { CommentItem } from "../comments";
 import { JsonStageExecutor } from "./executor";
 import { buildSelectorExamplePool } from "./selector-example-pool";
 import {
   buildStage2LearningPromptContext,
   createEmptyStage2EditorialMemorySummary,
-  DEFAULT_STAGE2_STYLE_PROFILE
+  DEFAULT_STAGE2_STYLE_PROFILE,
+  normalizeStage2StyleProfile
 } from "../stage2-channel-learning";
+import {
+  buildStage2WorkerProfilePromptPayload,
+  buildStage2WorkerProfileRequiredLanes,
+  resolveStage2WorkerProfile
+} from "../stage2-worker-profile";
 
 const ANALYZER_SCHEMA = {
   type: "object",
@@ -383,48 +394,13 @@ const TITLE_SCHEMA = {
   }
 } as const;
 
-const NATIVE_CAPTION_STYLE_CARD = {
-  channel_voice: {
-    core_tone: "warm, sharp, socially observant, slightly amused, never cruel",
-    best_at: [
-      "micro-hesitation",
-      "awkward chemistry",
-      "gentle crowd-read tension",
-      "tiny public deflections",
-      "soft meme energy"
-    ],
-    avoid: [
-      "editorial explanation",
-      "metaphor inflation",
-      "news framing",
-      "PR tone",
-      "fake-insider certainty",
-      "pseudo-slang cosplay"
-    ]
-  },
-  hook_rules: [
-    "land why-care in the first clause",
-    "avoid venue/clothing inventory before the social trigger",
-    "do not front-load proper nouns unless they are the hook"
-  ],
-  bottom_rules: [
-    "bottom must sharpen the social read",
-    "bottom must not summarize the top",
-    "bottom should feel like a real human reaction, not a diagnosis"
-  ],
-  positive_micro_moves: [
-    "small, vivid, readable in one pass",
-    "one warm skeptical turn",
-    "comment-native but still clean",
-    "specific, not report-like"
-  ],
-  negative_micro_moves: [
-    "beat logging",
-    "over-explaining",
-    "coined abstractions",
-    "safe but lifeless wording"
-  ]
-} as const;
+function getResolvedStage2WorkerProfile(channelConfig: Stage2RuntimeChannelConfig) {
+  return channelConfig.workerProfile ?? resolveStage2WorkerProfile(channelConfig.stage2WorkerProfileId);
+}
+
+function buildNativeCaptionStyleCard(channelConfig: Stage2RuntimeChannelConfig) {
+  return getResolvedStage2WorkerProfile(channelConfig).styleCard;
+}
 
 const NATIVE_CONTEXT_PACKET_SCHEMA = {
   type: "object",
@@ -675,6 +651,76 @@ const NATIVE_TRANSLATION_SCHEMA = {
     }
   }
 } as const;
+
+const NATIVE_REFERENCE_ONE_SHOT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["analysis", "candidates", "winner_candidate_id", "titles"],
+  properties: {
+    analysis: {
+      type: "object",
+      additionalProperties: false,
+      required: ["visual_anchors", "comment_vibe", "key_phrase_to_adapt"],
+      properties: {
+        visual_anchors: {
+          type: "array",
+          minItems: 3,
+          maxItems: 3,
+          items: { type: "string", minLength: 1 }
+        },
+        comment_vibe: { type: "string", minLength: 1 },
+        key_phrase_to_adapt: { type: "string", minLength: 1 }
+      }
+    },
+    candidates: {
+      type: "array",
+      minItems: 5,
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["candidate_id", "top", "bottom", "retained_handle"],
+        properties: {
+          candidate_id: { type: "string", minLength: 1 },
+          top: { type: "string", minLength: 1 },
+          bottom: { type: "string", minLength: 1 },
+          retained_handle: { type: "boolean" },
+          rationale: { type: "string", minLength: 1 }
+        }
+      }
+    },
+    winner_candidate_id: { type: "string", minLength: 1 },
+    titles: {
+      type: "array",
+      minItems: 5,
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title"],
+        properties: {
+          title: { type: "string", minLength: 1 },
+          title_ru: { type: "string", minLength: 1 }
+        }
+      }
+    }
+  }
+} as const;
+
+type NativeReferenceOneShotResult = {
+  analysis: {
+    visualAnchors: string[];
+    commentVibe: string;
+    keyPhraseToAdapt: string;
+  };
+  candidates: Array<
+    NativeCaptionCandidate & {
+      rationale?: string | null;
+    }
+  >;
+  winnerCandidateId: string | null;
+  titles: NativeCaptionTitleOption[];
+};
 
 type StageWarning = {
   field: string;
@@ -1680,6 +1726,7 @@ function buildLegacyFallbackReason(
 function buildStage2PipelineExecutionSnapshot(input: {
   featureFlags: Stage2PipelineExecution["featureFlags"];
   pipelineVersion: Stage2PipelineExecution["pipelineVersion"];
+  pathVariant?: Stage2PipelineExecution["pathVariant"];
   stageChainVersion: string;
   workerBuild: Stage2PipelineExecution["workerBuild"];
   resolvedAt: string;
@@ -1687,6 +1734,7 @@ function buildStage2PipelineExecutionSnapshot(input: {
   return {
     featureFlags: input.featureFlags,
     pipelineVersion: input.pipelineVersion,
+    pathVariant: input.pathVariant,
     stageChainVersion: input.stageChainVersion,
     workerBuild: input.workerBuild,
     resolvedAt: input.resolvedAt,
@@ -1699,21 +1747,27 @@ function buildStage2PipelineExecutionSnapshot(input: {
   };
 }
 
-const NATIVE_CAPTION_EXAMPLES_ASSESSMENT: Stage2ExamplesAssessment = {
-  retrievalConfidence: "low",
-  examplesMode: "style_guided",
-  explanation: "Examples are disabled in native_caption_v3 by default.",
-  evidence: [],
-  retrievalWarning: null,
-  examplesRoleSummary: "Examples are disabled for native_caption_v3.",
-  primaryDriverSummary: "Primary driver is the clip context packet and shared style card.",
-  primaryDrivers: ["clip_context", "style_card"],
-  channelStylePriority: "primary",
-  editorialMemoryPriority: "supporting"
-};
-
 const NATIVE_CAPTION_MINIMUM_VALID_FINALISTS = 2;
-const STAGE2_PROMPT_POLICY_VERSION = "native_defaults_authoritative_v1_channel_learning";
+const STAGE2_PROMPT_POLICY_VERSION = "native_defaults_authoritative_v2_platform_lines";
+const STAGE2_ONE_SHOT_PROMPT_COMPATIBILITY_FAMILY = "native_caption_v3_product_owned";
+
+function buildNativeCaptionExamplesAssessment(
+  channelConfig: Stage2RuntimeChannelConfig
+): Stage2ExamplesAssessment {
+  return {
+    retrievalConfidence: "low",
+    examplesMode: "style_guided",
+    explanation: "Examples are disabled in native_caption_v3 by default.",
+    evidence: [],
+    retrievalWarning: null,
+    examplesRoleSummary: "Examples are disabled for native_caption_v3.",
+    primaryDriverSummary:
+      "Primary driver is the clip context packet, the selected platform line, and channel learning.",
+    primaryDrivers: ["clip_context", "platform_line", "style_card", "channel_learning"],
+    channelStylePriority: "primary",
+    editorialMemoryPriority: "supporting"
+  };
+}
 
 function buildNativeCaptionChannelLearningPayload(
   channelConfig: Stage2RuntimeChannelConfig,
@@ -1745,6 +1799,474 @@ function buildNativeCaptionChannelLearningPayload(
   };
 }
 
+function buildReferenceOneShotVideoTruthPayload(input: {
+  videoContext: ViralShortsVideoContext;
+  analyzerOutput: AnalyzerOutput;
+}) {
+  const sourceSummary = buildStage2SourceContextSummary(input.videoContext);
+  return {
+    title: input.videoContext.title,
+    description_or_null: input.videoContext.description.trim() || null,
+    transcript_status: sourceSummary.speechGroundingStatus,
+    transcript_or_null: input.videoContext.transcript.trim() || null,
+    frames: input.videoContext.frameDescriptions,
+    visible_facts_seed: {
+      visual_anchors: input.analyzerOutput.visualAnchors.slice(0, 5),
+      specific_nouns: input.analyzerOutput.specificNouns.slice(0, 8),
+      visible_actions: input.analyzerOutput.visibleActions.slice(0, 8),
+      first_seconds_signal: input.analyzerOutput.firstSecondsSignal,
+      scene_beats: input.analyzerOutput.sceneBeats.slice(0, 5),
+      reveal_moment: input.analyzerOutput.revealMoment,
+      late_clip_change: input.analyzerOutput.lateClipChange,
+      hidden_detail: input.analyzerOutput.hiddenDetail,
+      generic_risks: input.analyzerOutput.genericRisks.slice(0, 6),
+      uncertainty_notes: input.analyzerOutput.uncertaintyNotes.slice(0, 5)
+    }
+  };
+}
+
+function buildReferenceOneShotCommentWavePayload(input: {
+  videoContext: ViralShortsVideoContext;
+  analyzerOutput: AnalyzerOutput;
+}) {
+  return {
+    comments: input.videoContext.comments.slice(0, 18).map((comment) => ({
+      author: comment.author,
+      likes: comment.likes,
+      text: comment.text
+    })),
+    comment_digest_json: buildCommentPromptDigest(input.videoContext.comments),
+    consensus_lane: input.analyzerOutput.commentConsensusLane,
+    joke_lane: input.analyzerOutput.commentJokeLane,
+    dissent_lane: input.analyzerOutput.commentDissentLane,
+    suspicion_lane: input.analyzerOutput.commentSuspicionLane,
+    comment_vibe_seed: input.analyzerOutput.commentVibe,
+    language_cues: input.analyzerOutput.commentLanguageCues.slice(0, 6),
+    slang_to_adapt: input.analyzerOutput.slangToAdapt.slice(0, 5)
+  };
+}
+
+function buildReferenceOneShotChannelNarrativePayload(
+  channelConfig: Stage2RuntimeChannelConfig
+) {
+  const styleProfile = normalizeStage2StyleProfile(channelConfig.styleProfile);
+  const channelLearning = buildStage2LearningPromptContext({
+    profile: styleProfile,
+    editorialMemory: channelConfig.editorialMemory,
+    detail: "compact"
+  });
+  const selectedDirections = styleProfile.candidateDirections
+    .filter((direction) => styleProfile.selectedDirectionIds.includes(direction.id))
+    .slice(0, 4);
+  return {
+    selected_directions: selectedDirections.map((direction) => ({
+      id: direction.id,
+      name: direction.name,
+      fit_band: direction.fitBand,
+      voice: direction.voice,
+      top_pattern: direction.topPattern,
+      bottom_pattern: direction.bottomPattern,
+      best_for: direction.bestFor,
+      avoids: direction.avoids
+    })),
+    reference_influence_summary: channelLearning.bootstrap.referenceInfluenceSummary,
+    bootstrap_confidence: channelLearning.bootstrap.bootstrapConfidence,
+    audience_portrait_summary: channelLearning.bootstrap.audiencePortraitSummary,
+    packaging_portrait_summary: channelLearning.bootstrap.packagingPortraitSummary,
+    selection_summary: channelLearning.bootstrap.selectionSummary,
+    lessons_summary: channelLearning.bootstrap.lessons.summary,
+    top_narrator_lessons: channelLearning.bootstrap.lessons.topMoves,
+    bottom_narrator_lessons: channelLearning.bootstrap.lessons.bottomMoves
+  };
+}
+
+function buildReferenceOneShotEditorialMemoryPayload(
+  channelConfig: Stage2RuntimeChannelConfig
+) {
+  const editorialMemory = buildStage2LearningPromptContext({
+    profile: channelConfig.styleProfile,
+    editorialMemory: channelConfig.editorialMemory,
+    detail: "compact"
+  }).editorialMemory;
+  const positiveDirectionPull = editorialMemory.directionScores
+    .filter((entry) => entry.score > 0)
+    .slice(0, 3);
+  const negativeDirectionPull = [...editorialMemory.directionScores]
+    .reverse()
+    .filter((entry) => entry.score < 0)
+    .slice(0, 3);
+  const positiveAnglePull = editorialMemory.angleScores
+    .filter((entry) => entry.score > 0)
+    .slice(0, 3);
+  const negativeAnglePull = [...editorialMemory.angleScores]
+    .reverse()
+    .filter((entry) => entry.score < 0)
+    .slice(0, 3);
+  return {
+    active_hard_rules: editorialMemory.hardRuleNotes,
+    recent_positive_pull: {
+      directions: positiveDirectionPull,
+      angles: positiveAnglePull
+    },
+    recent_negative_pull: {
+      directions: negativeDirectionPull,
+      angles: negativeAnglePull
+    },
+    recent_notes: editorialMemory.recentNotes,
+    passive_selection_count: editorialMemory.recentSelectionCount,
+    normalized_tone_axes: editorialMemory.normalizedAxes,
+    prompt_summary: editorialMemory.promptSummary
+  };
+}
+
+function buildReferenceOneShotPrompt(input: {
+  videoContext: ViralShortsVideoContext;
+  channelConfig: Stage2RuntimeChannelConfig;
+  analyzerOutput: AnalyzerOutput;
+}): string {
+  return renderJsonPrompt(STAGE2_REFERENCE_ONE_SHOT_PROMPT, {
+    video_truth_json: buildReferenceOneShotVideoTruthPayload(input),
+    current_comment_wave_json: buildReferenceOneShotCommentWavePayload(input),
+    line_profile_json: buildStage2WorkerProfilePromptPayload(
+      getResolvedStage2WorkerProfile(input.channelConfig)
+    ),
+    channel_narrative_json: buildReferenceOneShotChannelNarrativePayload(
+      input.channelConfig
+    ),
+    editorial_memory_json: buildReferenceOneShotEditorialMemoryPayload(
+      input.channelConfig
+    ),
+    publishability_contract_json: {
+      top_window: {
+        min: input.channelConfig.hardConstraints.topLengthMin,
+        max: input.channelConfig.hardConstraints.topLengthMax
+      },
+      bottom_window: {
+        min: input.channelConfig.hardConstraints.bottomLengthMin,
+        max: input.channelConfig.hardConstraints.bottomLengthMax
+      },
+      exact_length_required: true,
+      fail_closed_if_any_candidate_misses_window: true,
+      must_count_every_candidate_before_return: true
+    },
+    hard_constraints_json: input.channelConfig.hardConstraints,
+    user_instruction: input.videoContext.userInstruction?.trim() || null
+  });
+}
+
+function normalizeReferenceOneShotResult(
+  raw: unknown
+): NativeReferenceOneShotResult {
+  const candidate = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const analysisCandidate =
+    candidate.analysis && typeof candidate.analysis === "object"
+      ? (candidate.analysis as Record<string, unknown>)
+      : {};
+  const candidateEntries = Array.isArray(candidate.candidates) ? candidate.candidates : [];
+  const usedIds = new Set<string>();
+  const normalizedCandidates = candidateEntries
+    .map((entry, index) => {
+      const item = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+      const top = String(item.top ?? "").trim();
+      const bottom = String(item.bottom ?? "").trim();
+      if (!top || !bottom) {
+        return null;
+      }
+      const baseId = String(item.candidate_id ?? item.candidateId ?? `cand_${index + 1}`)
+        .trim()
+        .replace(/\s+/g, "_");
+      let candidateId = baseId || `cand_${index + 1}`;
+      let suffix = 1;
+      while (usedIds.has(candidateId)) {
+        candidateId = `${baseId}_${suffix}`;
+        suffix += 1;
+      }
+      usedIds.add(candidateId);
+      const retainedHandle =
+        typeof (item.retained_handle ?? item.retainedHandle) === "boolean"
+          ? Boolean(item.retained_handle ?? item.retainedHandle)
+          : false;
+      return {
+        candidateId,
+        laneId: retainedHandle ? "audience_locked_reference" : "explanatory_paradox",
+        angle: retainedHandle ? "audience_locked_reference" : "explanatory_paradox",
+        top,
+        bottom,
+        retainedHandle,
+        displayIntent: "finalist_or_display_safe" as const,
+        rationale:
+          typeof item.rationale === "string" && item.rationale.trim()
+            ? item.rationale.trim()
+            : null
+      };
+    })
+    .filter((entry) => entry !== null) as NativeReferenceOneShotResult["candidates"];
+  const titleEntries = Array.isArray(candidate.titles) ? candidate.titles : [];
+  const normalizedTitles = titleEntries
+    .map((entry, index) => {
+      const item = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+      const title = String(item.title ?? "").trim();
+      if (!title) {
+        return null;
+      }
+      const titleRu = String(item.title_ru ?? item.titleRu ?? "").trim();
+      return {
+        option: index + 1,
+        title,
+        titleRu: titleRu || undefined,
+        titleRuSource: titleRu ? ("llm" as const) : ("fallback" as const)
+      };
+    })
+    .filter((entry) => entry !== null) as NativeCaptionTitleOption[];
+  const winnerCandidateIdRaw = String(
+    candidate.winner_candidate_id ?? candidate.winnerCandidateId ?? ""
+  ).trim();
+  return {
+    analysis: {
+      visualAnchors: Array.isArray(analysisCandidate.visual_anchors)
+        ? analysisCandidate.visual_anchors
+            .map((item) => String(item ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 3)
+        : [],
+      commentVibe:
+        String(
+          analysisCandidate.comment_vibe ?? analysisCandidate.commentVibe ?? ""
+        ).trim(),
+      keyPhraseToAdapt:
+        String(
+          analysisCandidate.key_phrase_to_adapt ??
+            analysisCandidate.keyPhraseToAdapt ??
+            ""
+        ).trim()
+    },
+    candidates: normalizedCandidates,
+    winnerCandidateId: winnerCandidateIdRaw || null,
+    titles: normalizedTitles
+  };
+}
+
+const REFERENCE_ONE_SHOT_META_LEAKAGE_RULES = [
+  {
+    regex: /\bframe\s*#?\d+\b/i,
+    reason: "mentions a frame index"
+  },
+  {
+    regex: /\bshot\s*#?\d+\b/i,
+    reason: "mentions a shot index"
+  },
+  {
+    regex: /\b(?:lane|candidate|option|comment)\s*[_#-]?\d+\b/i,
+    reason: "mentions a pipeline slot or manifest index"
+  },
+  {
+    regex: /\b\d{1,2}(?:\.\d{1,2})?s\b/i,
+    reason: "mentions a seconds timestamp"
+  },
+  {
+    regex: /\b\d{1,2}:\d{2}\b/,
+    reason: "mentions a clock-style timestamp"
+  },
+  {
+    regex: /\b(?:manifest|debug|schema|json)\b/i,
+    reason: "contains debug or schema wording"
+  },
+  {
+    regex: /\b(?:visual_anchors|comment_vibe|key_phrase_to_adapt|winner_candidate_id|candidate_id)\b/i,
+    reason: "leaks contract field names"
+  }
+] as const;
+
+function findReferenceOneShotMetaLeakage(text: string): string | null {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+  for (const rule of REFERENCE_ONE_SHOT_META_LEAKAGE_RULES) {
+    if (rule.regex.test(normalized)) {
+      return rule.reason;
+    }
+  }
+  return null;
+}
+
+function collectReferenceOneShotContractIssues(input: {
+  result: NativeReferenceOneShotResult;
+  hardConstraints: Stage2HardConstraints;
+}): string[] {
+  const issues: string[] = [];
+
+  if (input.result.analysis.visualAnchors.length !== 3) {
+    issues.push(
+      `analysis.visual_anchors must contain exactly 3 items, received ${input.result.analysis.visualAnchors.length}`
+    );
+  }
+  if (!input.result.analysis.commentVibe.trim()) {
+    issues.push("analysis.comment_vibe must be non-empty");
+  }
+  if (!input.result.analysis.keyPhraseToAdapt.trim()) {
+    issues.push("analysis.key_phrase_to_adapt must be non-empty");
+  }
+
+  if (input.result.candidates.length !== 5) {
+    issues.push(`candidates must contain exactly 5 items, received ${input.result.candidates.length}`);
+  }
+  if (input.result.titles.length !== 5) {
+    issues.push(`titles must contain exactly 5 items, received ${input.result.titles.length}`);
+  }
+
+  const candidateIds = new Set<string>();
+  const candidatePairs = new Set<string>();
+  for (const candidate of input.result.candidates) {
+    if (candidateIds.has(candidate.candidateId)) {
+      issues.push(`candidate_id "${candidate.candidateId}" is duplicated`);
+    }
+    candidateIds.add(candidate.candidateId);
+
+    const pairKey = `${candidate.top.trim().toLowerCase()}|${candidate.bottom.trim().toLowerCase()}`;
+    if (candidatePairs.has(pairKey)) {
+      issues.push(`candidate "${candidate.candidateId}" duplicates another top/bottom pair`);
+    }
+    candidatePairs.add(pairKey);
+
+    if (candidate.top.includes("\n") || candidate.bottom.includes("\n")) {
+      issues.push(`candidate "${candidate.candidateId}" must stay single-line in both top and bottom`);
+    }
+
+    const topMetaLeakage = findReferenceOneShotMetaLeakage(candidate.top);
+    if (topMetaLeakage) {
+      issues.push(`candidate "${candidate.candidateId}" top ${topMetaLeakage}`);
+    }
+    const bottomMetaLeakage = findReferenceOneShotMetaLeakage(candidate.bottom);
+    if (bottomMetaLeakage) {
+      issues.push(`candidate "${candidate.candidateId}" bottom ${bottomMetaLeakage}`);
+    }
+
+    const constraintCheck = evaluateNativeCaptionConstraintCheck(
+      candidate,
+      input.hardConstraints
+    );
+    if (!constraintCheck.passed) {
+      issues.push(
+        `candidate "${candidate.candidateId}" violates hard constraints: ${constraintCheck.issues.join(", ")}`
+      );
+    }
+  }
+
+  const titleValues = new Set<string>();
+  for (const [index, title] of input.result.titles.entries()) {
+    const titleLabel = `title ${index + 1}`;
+    if (!title.title.trim()) {
+      issues.push(`${titleLabel} must be non-empty`);
+      continue;
+    }
+    if (title.title.includes("\n")) {
+      issues.push(`${titleLabel} must stay single-line`);
+    }
+    const titleMetaLeakage = findReferenceOneShotMetaLeakage(title.title);
+    if (titleMetaLeakage) {
+      issues.push(`${titleLabel} ${titleMetaLeakage}`);
+    }
+    const normalizedTitle = title.title.trim().toLowerCase();
+    if (titleValues.has(normalizedTitle)) {
+      issues.push(`${titleLabel} duplicates another English title`);
+    }
+    titleValues.add(normalizedTitle);
+  }
+
+  if (!input.result.winnerCandidateId || !candidateIds.has(input.result.winnerCandidateId)) {
+    issues.push("winner_candidate_id must point to one of the 5 candidates");
+  }
+
+  return issues;
+}
+
+const REFERENCE_ONE_SHOT_MAX_OVERFLOW_POLISH_CHARS = 12;
+
+function attemptReferenceOneShotLineLengthPolish(input: {
+  text: string;
+  minimum: number;
+  maximum: number;
+}): { text: string; repaired: boolean } {
+  let value = input.text.replace(/\s+/g, " ").trim();
+  let repaired = value !== input.text.trim();
+
+  if (value.length >= input.minimum && value.length <= input.maximum) {
+    return { text: value, repaired };
+  }
+
+  const overflow = value.length - input.maximum;
+  if (overflow <= 0 || overflow > REFERENCE_ONE_SHOT_MAX_OVERFLOW_POLISH_CHARS) {
+    return { text: value, repaired };
+  }
+
+  let tightened = truncateToWordBoundary(value, input.maximum).trim();
+  if (!tightened) {
+    return { text: value, repaired };
+  }
+  const withoutFragment = trimTrailingIncompleteFragment(tightened);
+  if (withoutFragment && withoutFragment.trim().length >= input.minimum) {
+    tightened = withoutFragment.trim();
+  }
+  const withoutBrokenEnding = trimTrailingBrokenEndingWords(tightened);
+  if (withoutBrokenEnding && withoutBrokenEnding.trim().length >= input.minimum) {
+    tightened = withoutBrokenEnding.trim();
+  }
+  tightened = ensureTerminalPunctuation(tightened, input.maximum).trim();
+  if (
+    tightened.length < input.minimum ||
+    tightened.length > input.maximum ||
+    looksLikeBrokenCaptionEnding(tightened)
+  ) {
+    return { text: value, repaired };
+  }
+  return {
+    text: tightened,
+    repaired: true
+  };
+}
+
+function applyReferenceOneShotLengthPolish(input: {
+  result: NativeReferenceOneShotResult;
+  hardConstraints: Stage2HardConstraints;
+}): {
+  result: NativeReferenceOneShotResult;
+  polishedCandidateIds: string[];
+} {
+  const polishedCandidateIds: string[] = [];
+  const candidates = input.result.candidates.map((candidate) => {
+    const top = attemptReferenceOneShotLineLengthPolish({
+      text: candidate.top,
+      minimum: input.hardConstraints.topLengthMin,
+      maximum: input.hardConstraints.topLengthMax
+    });
+    const bottom = attemptReferenceOneShotLineLengthPolish({
+      text: candidate.bottom,
+      minimum: input.hardConstraints.bottomLengthMin,
+      maximum: input.hardConstraints.bottomLengthMax
+    });
+    if (!top.repaired && !bottom.repaired) {
+      return candidate;
+    }
+    polishedCandidateIds.push(candidate.candidateId);
+    return {
+      ...candidate,
+      top: top.text,
+      bottom: bottom.text,
+      rationale: candidate.rationale
+        ? `${candidate.rationale} Exact-length polish tightened the final wording without changing the angle.`
+        : "Exact-length polish tightened the final wording without changing the angle."
+    };
+  });
+  return {
+    result: {
+      ...input.result,
+      candidates
+    },
+    polishedCandidateIds
+  };
+}
+
 function renderJsonPrompt(system: string, payload: unknown): string {
   return ["SYSTEM", system.trim(), "", "USER CONTEXT JSON", JSON.stringify(payload, null, 2)].join(
     "\n"
@@ -1762,7 +2284,8 @@ class NativeCaptionFailClosedError extends Error {
 }
 
 function buildDefaultNativeRequiredLanes(
-  audienceWave: NativeCaptionContextPacket["audienceWave"]
+  audienceWave: NativeCaptionContextPacket["audienceWave"],
+  channelConfig: Stage2RuntimeChannelConfig
 ): NativeCaptionContextPacket["strategy"]["requiredLanes"] {
   const dominantWave =
     audienceWave.exists &&
@@ -1775,41 +2298,18 @@ function buildDefaultNativeRequiredLanes(
       audienceWave.safeReusableCues.length === 0 &&
       !audienceWave.consensusLane.trim() &&
       !audienceWave.jokeLane.trim());
-
-  if (dominantWave && !weakWave) {
-    return [
-      { laneId: "audience_locked", count: 3, purpose: "Preserve the dominant harmless handle or public read." },
-      { laneId: "balanced_clean", count: 2, purpose: "Keep strong native phrasing without sanding down the wave." },
-      { laneId: "human_observational", count: 1, purpose: "Catch the most human micro-read without meme pressure." },
-      { laneId: "bolder_safe", count: 1, purpose: "Push one sharper but still visually defensible read." },
-      { laneId: "backup_simple", count: 1, purpose: "Keep one plainer alive option in reserve." }
-    ];
-  }
-
-  if (weakWave) {
-    return [
-      { laneId: "audience_locked", count: 1, purpose: "Keep one audience-linked option if any cue survives safely." },
-      { laneId: "balanced_clean", count: 3, purpose: "Carry most of the batch with strong native framing." },
-      { laneId: "human_observational", count: 1, purpose: "Keep the strongest human micro-read." },
-      { laneId: "skeptic_or_precision", count: 1, purpose: "Leave room for contested or cautious framing." },
-      { laneId: "backup_simple", count: 2, purpose: "Preserve plain alive backups when context is sparse." }
-    ];
-  }
-
-  return [
-    { laneId: "audience_locked", count: 2, purpose: "Keep the public harmless read alive when it exists." },
-    { laneId: "balanced_clean", count: 2, purpose: "Carry native strong options that do not flatten the clip." },
-    { laneId: "human_observational", count: 1, purpose: "Capture the strongest human micro-read." },
-    { laneId: "bolder_safe", count: 1, purpose: "Try one slightly sharper but still defensible line." },
-    { laneId: "skeptic_or_precision", count: 1, purpose: "Keep one careful or contested read in play." },
-    { laneId: "backup_simple", count: 1, purpose: "Reserve one plain but alive option." }
-  ];
+  return buildStage2WorkerProfileRequiredLanes({
+    profileId: getResolvedStage2WorkerProfile(channelConfig).resolvedId,
+    dominantWave,
+    weakWave
+  });
 }
 
 function buildNativeCaptionFallbackContextPacket(input: {
   analyzerOutput: AnalyzerOutput;
   selectorOutput: SelectorOutput;
   videoContext: ViralShortsVideoContext;
+  channelConfig: Stage2RuntimeChannelConfig;
 }): NativeCaptionContextPacket {
   const blockedCommentCues = input.videoContext.comments
     .map((comment) => comment.text.trim())
@@ -1918,7 +2418,7 @@ function buildNativeCaptionFallbackContextPacket(input: {
       ]
         .filter(Boolean)
         .slice(0, 6),
-      requiredLanes: buildDefaultNativeRequiredLanes(audienceWave)
+      requiredLanes: buildDefaultNativeRequiredLanes(audienceWave, input.channelConfig)
     }
   };
 }
@@ -1943,7 +2443,10 @@ function buildNativeCaptionContextPacketPrompt(input: {
         text: comment.text
       })),
       comment_digest_json: buildCommentPromptDigest(input.videoContext.comments),
-      style_card_json: NATIVE_CAPTION_STYLE_CARD,
+      line_profile_json: buildStage2WorkerProfilePromptPayload(
+        getResolvedStage2WorkerProfile(input.channelConfig)
+      ),
+      style_card_json: buildNativeCaptionStyleCard(input.channelConfig),
       channel_learning_json: channelLearning.payload,
       hard_constraints_json: input.channelConfig.hardConstraints,
       user_instruction: input.videoContext.userInstruction?.trim() || null
@@ -2080,7 +2583,10 @@ function buildNativeCaptionCandidateGeneratorPrompt(input: {
     resolveStage2PromptTemplate("candidateGenerator", input.promptConfig).configuredPrompt,
     {
       context_packet_json: input.contextPacket,
-      style_card_json: NATIVE_CAPTION_STYLE_CARD,
+      line_profile_json: buildStage2WorkerProfilePromptPayload(
+        getResolvedStage2WorkerProfile(input.channelConfig)
+      ),
+      style_card_json: buildNativeCaptionStyleCard(input.channelConfig),
       channel_learning_json: channelLearning.payload,
       hard_constraints_json: input.channelConfig.hardConstraints,
       user_instruction: input.userInstruction?.trim() || null
@@ -2466,6 +2972,9 @@ function buildNativeCaptionQualityCourtPrompt(input: {
       context_packet_json: input.contextPacket,
       candidate_batch_json: input.candidates,
       hard_validator_json: input.hardValidator,
+      line_profile_json: buildStage2WorkerProfilePromptPayload(
+        getResolvedStage2WorkerProfile(input.channelConfig)
+      ),
       channel_learning_json: channelLearning.payload,
       hard_constraints_json: input.hardConstraints,
       candidate_constraint_checks_json: buildNativeCaptionConstraintChecksForPrompt(
@@ -2625,6 +3134,9 @@ function buildNativeCaptionTargetedRepairPrompt(input: {
       context_packet_json: input.contextPacket,
       recovery_briefs_json: input.repairBriefs,
       existing_display_candidates_json: input.candidates,
+      line_profile_json: buildStage2WorkerProfilePromptPayload(
+        getResolvedStage2WorkerProfile(input.channelConfig)
+      ),
       channel_learning_json: channelLearning.payload,
       hard_constraints_json: input.hardConstraints,
       candidate_constraint_checks_json: buildNativeCaptionConstraintChecksForPrompt(
@@ -3097,6 +3609,9 @@ function buildNativeCaptionTitleWriterPrompt(input: {
     resolveStage2PromptTemplate("titleWriter", input.promptConfig).configuredPrompt,
     {
       context_packet_json: input.contextPacket,
+      line_profile_json: buildStage2WorkerProfilePromptPayload(
+        getResolvedStage2WorkerProfile(input.channelConfig)
+      ),
       channel_learning_json: channelLearning.payload,
       winner_candidate_json: input.winner
     }
@@ -5868,6 +6383,54 @@ function buildPromptStageDiagnostics(input: {
   };
 }
 
+function buildProductOwnedPromptStageDiagnostics(input: {
+  stageId: Stage2PipelineStageId;
+  promptText: string | null;
+  includePromptText?: boolean;
+  usesImages?: boolean;
+  model?: string | null;
+  reasoningEffort?: string | null;
+  summary: string;
+  serializedResultBytes?: number | null;
+  estimatedOutputTokens?: number | null;
+  persistedPayloadBytes?: number | null;
+  inputManifest?: Stage2DiagnosticsPromptStage["inputManifest"];
+  defaultPrompt: string;
+  promptCompatibilityVersion: string;
+}): Stage2DiagnosticsPromptStage {
+  const stageMeta = STAGE2_PIPELINE_STAGES.find((stage) => stage.id === input.stageId);
+  const promptHash = computeStage2PromptHash(input.defaultPrompt);
+  return {
+    stageId: input.stageId,
+    label: stageMeta?.shortLabel ?? input.stageId,
+    stageType: "llm_prompt",
+    defaultPrompt: input.defaultPrompt,
+    configuredPrompt: input.defaultPrompt,
+    promptSource: "default",
+    promptCompatibilityFamily: STAGE2_ONE_SHOT_PROMPT_COMPATIBILITY_FAMILY,
+    promptCompatibilityVersion: input.promptCompatibilityVersion,
+    defaultPromptHash: promptHash,
+    configuredPromptHash: promptHash,
+    overrideAccepted: false,
+    overrideRejectedReason: "product_owned_prompt_not_workspace_editable",
+    overrideCandidatePresent: false,
+    legacyFallbackBypassed: true,
+    model: input.model ?? null,
+    reasoningEffort: input.reasoningEffort ?? null,
+    isCustomPrompt: false,
+    promptText: input.includePromptText ? input.promptText : null,
+    promptTextAvailable: Boolean(input.promptText),
+    promptChars: input.promptText ? input.promptText.length : null,
+    estimatedInputTokens: estimateTokensFromChars(input.promptText ? input.promptText.length : null),
+    estimatedOutputTokens: input.estimatedOutputTokens ?? null,
+    serializedResultBytes: input.serializedResultBytes ?? null,
+    persistedPayloadBytes: input.persistedPayloadBytes ?? null,
+    usesImages: Boolean(input.usesImages),
+    summary: input.summary,
+    ...(input.inputManifest ? { inputManifest: input.inputManifest } : {})
+  };
+}
+
 function buildDiagnosticsExample(
   bucket: Stage2DiagnosticsExample["bucket"],
   example: Stage2CorpusExample,
@@ -5994,11 +6557,20 @@ function buildRunDiagnosticsBundle(input: {
     analyzerOutput: input.analyzerOutput,
     selectorOutput: input.selectorOutput
   });
+  const resolvedWorkerProfile = getResolvedStage2WorkerProfile(input.channelConfig);
   const diagnostics: Stage2Diagnostics = {
     channel: {
       channelId: input.channelConfig.channelId,
       name: input.channelConfig.name,
       username: input.channelConfig.username,
+      workerProfile: {
+        requestedId: resolvedWorkerProfile.requestedId,
+        resolvedId: resolvedWorkerProfile.resolvedId,
+        label: resolvedWorkerProfile.label,
+        description: resolvedWorkerProfile.description,
+        summary: resolvedWorkerProfile.summary,
+        origin: resolvedWorkerProfile.origin
+      },
       examplesSource: input.channelConfig.examplesSource,
       hardConstraints: input.channelConfig.hardConstraints,
       styleProfile: input.channelConfig.styleProfile,
@@ -6127,6 +6699,7 @@ function normalizeChannelConfig(input: {
   id: string;
   name: string;
   username: string;
+  stage2WorkerProfileId?: string | null;
   stage2HardConstraints: Stage2HardConstraints;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
@@ -6134,16 +6707,765 @@ function normalizeChannelConfig(input: {
   resolvedExamplesSource?: Stage2RuntimeChannelConfig["examplesSource"];
 }): Stage2RuntimeChannelConfig {
   const styleProfile = input.stage2StyleProfile ?? DEFAULT_STAGE2_STYLE_PROFILE;
+  const workerProfile = resolveStage2WorkerProfile(input.stage2WorkerProfileId);
   return {
     channelId: input.id,
     name: input.name,
     username: input.username,
+    stage2WorkerProfileId: workerProfile.requestedId,
+    workerProfile,
     hardConstraints: input.stage2HardConstraints,
     styleProfile,
     editorialMemory: input.editorialMemory ?? createEmptyStage2EditorialMemorySummary(styleProfile),
     examplesSource:
       input.resolvedExamplesSource ??
       (input.stage2ExamplesConfig.useWorkspaceDefault ? "workspace_default" : "channel_custom")
+  };
+}
+
+async function runReferenceOneShotNativeCaptionPipeline(input: {
+  channelConfig: Stage2RuntimeChannelConfig;
+  workspaceCorpusCount: number;
+  videoContext: ViralShortsVideoContext;
+  imagePaths: string[];
+  executor: JsonStageExecutor;
+  stageModels?: Partial<Stage2PipelineModelMap>;
+  promptConfig: Stage2PromptConfig;
+  debugMode: Stage2DebugMode;
+  onProgress?: (event: PipelineProgressEvent) => void | Promise<void>;
+  reusedContextPacket: NativeCaptionContextPacket | null;
+  pipelineExecution: Stage2PipelineExecution;
+  analyzerOutput: AnalyzerOutput;
+  selectorFallback: SelectorOutput;
+  nativeExamplesAssessment: Stage2ExamplesAssessment;
+}): Promise<RunPipelineResult> {
+  const warnings: StageWarning[] = [];
+  const executedPromptStages: ExecutedPromptStageRecord[] = [];
+  const promptInputManifests: Partial<
+    Record<Stage2PipelineStageId, Stage2DiagnosticsPromptStage["inputManifest"]>
+  > = {};
+  const reportProgress = async (event: PipelineProgressEvent): Promise<void> => {
+    try {
+      await input.onProgress?.(event);
+    } catch {
+      return;
+    }
+  };
+  const recordExecutedStage = (
+    stageId: Stage2PipelineStageId,
+    promptText: string,
+    summary: string,
+    resultPayload: unknown,
+    options?: { usesImages?: boolean; model?: string | null }
+  ) => {
+    const serializedResultBytes = measureSerializedBytes(resultPayload);
+    executedPromptStages.push({
+      stageId,
+      promptText,
+      summary,
+      usesImages: options?.usesImages,
+      model: options?.model ?? null,
+      serializedResultBytes,
+      estimatedOutputTokens: estimateTokensFromChars(serializedResultBytes)
+    });
+  };
+
+  const compactChannelLearning = buildNativeCaptionChannelLearningPayload(
+    input.channelConfig,
+    "compact"
+  );
+  const contextPacket =
+    input.reusedContextPacket ??
+    buildNativeCaptionFallbackContextPacket({
+      analyzerOutput: input.analyzerOutput,
+      selectorOutput: input.selectorFallback,
+      videoContext: input.videoContext,
+      channelConfig: input.channelConfig
+    });
+  const oneShotPrompt = buildReferenceOneShotPrompt({
+    videoContext: input.videoContext,
+    channelConfig: input.channelConfig,
+    analyzerOutput: input.analyzerOutput
+  });
+  const oneShotReasoningEffort = resolveStageReasoningEffort(
+    "oneShotReference",
+    input.promptConfig
+  );
+  const oneShotModel =
+    input.stageModels?.oneShotReference ??
+    input.stageModels?.candidateGenerator ??
+    input.stageModels?.contextPacket ??
+    null;
+  promptInputManifests.oneShotReference = {
+    learningDetail: "compact",
+    description: {
+      availableChars: input.videoContext.description.trim().length,
+      passedChars: input.videoContext.description.trim().length,
+      omittedChars: 0,
+      truncated: false,
+      limit: null
+    },
+    transcript: {
+      availableChars: input.videoContext.transcript.trim().length,
+      passedChars: input.videoContext.transcript.trim().length,
+      omittedChars: 0,
+      truncated: false,
+      limit: null
+    },
+    frames: {
+      availableCount: input.videoContext.frameDescriptions.length,
+      passedCount: input.videoContext.frameDescriptions.length,
+      omittedCount: 0,
+      truncated: false,
+      limit: null
+    },
+    comments: {
+      availableCount: input.videoContext.comments.length,
+      passedCount: Math.min(18, input.videoContext.comments.length),
+      omittedCount: Math.max(0, input.videoContext.comments.length - 18),
+      truncated: input.videoContext.comments.length > 18,
+      limit: 18,
+      passedCommentIds: input.videoContext.comments
+        .slice(0, 18)
+        .map((comment, index) => comment.id ?? `comment_${index + 1}`)
+    },
+    examples: null,
+    channelLearning: compactChannelLearning.usage,
+    candidates: null,
+    stageFlags: [
+      "one-shot baseline",
+      "product-owned prompt",
+      "video truth first",
+      "current comment wave",
+      "channel narrative",
+      "editorial memory",
+      "quality-first fail hard",
+      "no deterministic backfill"
+    ]
+  };
+  await reportProgress({
+    stageId: "oneShotReference",
+    state: "running",
+    promptChars: oneShotPrompt.length,
+    reasoningEffort: oneShotReasoningEffort,
+    detail: "Running the one-shot reference baseline."
+  });
+  const oneShotStartedAt = Date.now();
+  let oneShotResult: NativeReferenceOneShotResult;
+  let polishedCandidateIds: string[] = [];
+  try {
+    const rawOneShot = await input.executor.runJson<unknown>({
+      prompt: oneShotPrompt,
+      schema: NATIVE_REFERENCE_ONE_SHOT_SCHEMA,
+      imagePaths: input.imagePaths,
+      model: oneShotModel,
+      reasoningEffort: oneShotReasoningEffort
+    });
+    const polished = applyReferenceOneShotLengthPolish({
+      result: normalizeReferenceOneShotResult(rawOneShot),
+      hardConstraints: input.channelConfig.hardConstraints
+    });
+    oneShotResult = polished.result;
+    polishedCandidateIds = polished.polishedCandidateIds;
+    const contractIssues = collectReferenceOneShotContractIssues({
+      result: oneShotResult,
+      hardConstraints: input.channelConfig.hardConstraints
+    });
+    if (contractIssues.length > 0) {
+      throw new Error(contractIssues.join("; "));
+    }
+  } catch (error) {
+    const failureMessage = formatStageFailure("Reference one-shot", error);
+    await reportProgress({
+      stageId: "oneShotReference",
+      state: "failed",
+      durationMs: Date.now() - oneShotStartedAt,
+      promptChars: oneShotPrompt.length,
+      reasoningEffort: oneShotReasoningEffort,
+      detail: failureMessage
+    });
+    throw new Error(failureMessage);
+  }
+  await reportProgress({
+    stageId: "oneShotReference",
+    state: "completed",
+    durationMs: Date.now() - oneShotStartedAt,
+    promptChars: oneShotPrompt.length,
+    reasoningEffort: oneShotReasoningEffort,
+    detail:
+      polishedCandidateIds.length > 0
+        ? `One-shot baseline produced 5 publishable finalists; exact-length polish tightened ${polishedCandidateIds.length} candidate(s) without repair or backfill.`
+        : "One-shot baseline produced 5 publishable finalists without repair or backfill."
+  });
+  recordExecutedStage(
+    "oneShotReference",
+    oneShotPrompt,
+    polishedCandidateIds.length > 0
+      ? "Product-owned one-shot baseline: returns the final 5 publishable reference-style options directly from video truth, comments, line policy, channel narrative, and editorial memory, then applies tiny deterministic exact-length polish for near-miss overflows."
+      : "Product-owned one-shot baseline: returns the final 5 publishable reference-style options directly from video truth, comments, line policy, channel narrative, and editorial memory.",
+    oneShotResult,
+    { usesImages: input.imagePaths.length > 0, model: oneShotModel }
+  );
+
+  const candidates = oneShotResult.candidates;
+  const candidateConstraintChecks = buildNativeCaptionConstraintCheckMap(
+    candidates,
+    input.channelConfig.hardConstraints
+  );
+  const captionOptions = candidates.map((candidate, index) => {
+    const isPolished = polishedCandidateIds.includes(candidate.candidateId);
+    const baseConstraintCheck =
+      candidateConstraintChecks.get(candidate.candidateId) ??
+      evaluateNativeCaptionConstraintCheck(candidate, input.channelConfig.hardConstraints);
+    const constraintCheck = isPolished
+      ? {
+          ...baseConstraintCheck,
+          repaired: true
+        }
+      : baseConstraintCheck;
+    return {
+      option: index + 1,
+      candidateId: candidate.candidateId,
+      laneId: candidate.laneId,
+      angle: candidate.angle,
+      top: candidate.top,
+      bottom: candidate.bottom,
+      displayTier: "finalist" as const,
+      sourceStage: "oneShotReference" as const,
+      displayReason:
+        candidate.rationale?.trim() ||
+        (isPolished
+          ? "Reference one-shot baseline kept this option publishable after exact-length polish."
+          : "Reference one-shot baseline kept this option publishable without repair or backfill."),
+      retainedHandle: candidate.retainedHandle,
+      constraintCheck
+    };
+  });
+  const finalists = captionOptions.map((option) => ({
+    option: option.option,
+    candidateId: option.candidateId,
+    laneId: option.laneId ?? option.candidateId,
+    angle: option.angle,
+    top: option.top,
+    bottom: option.bottom,
+    displayTier: "finalist" as const,
+    sourceStage: "oneShotReference" as const,
+    displayReason: option.displayReason,
+    retainedHandle: Boolean(option.retainedHandle),
+    preservedHandle: Boolean(option.retainedHandle),
+    constraintCheck: option.constraintCheck,
+    whyChosen: [option.displayReason]
+  }));
+  const winnerCandidate =
+    candidates.find((candidate) => candidate.candidateId === oneShotResult.winnerCandidateId) ??
+    candidates[0] ??
+    null;
+  const winnerOption =
+    winnerCandidate
+      ? captionOptions.find((option) => option.candidateId === winnerCandidate.candidateId) ?? null
+      : null;
+  const winner =
+    winnerCandidate && winnerOption
+      ? {
+          candidateId: winnerCandidate.candidateId,
+          option: winnerOption.option,
+          reason: winnerOption.displayReason,
+          displayTier: "finalist" as const,
+          sourceStage: "oneShotReference" as const,
+          constraintCheck: winnerOption.constraintCheck
+        }
+      : undefined;
+  const finalPick = {
+    option: winner?.option ?? 1,
+    reason: winner?.reason ?? "Reference one-shot baseline selected the strongest publishable option."
+  };
+  const guardSummary: NativeCaptionGuardSummary = {
+    totalCandidateCount: candidates.length,
+    validPoolCount: candidates.length,
+    invalidPoolCount: 0,
+    finalistCount: finalists.length,
+    displaySafeExtraCount: 0,
+    recoveryCount: 0,
+    templateBackfillCount: 0,
+    displayShortlistCount: captionOptions.length,
+    winnerCandidateId: winner?.candidateId ?? null,
+    winnerTier: winner?.displayTier ?? "missing",
+    winnerValidity: winner?.constraintCheck?.passed ? "valid" : winner ? "invalid" : "missing",
+    degradedSuccess: false,
+    dominantHarmlessHandle: contextPacket.audienceWave.dominantHarmlessHandle,
+    audienceHandlePreservedInFinalists: finalists.some((finalist) => finalist.preservedHandle),
+    recoveryTriggered: false,
+    recoveryReason: null,
+    failClosedReason: null
+  };
+
+  const displayOptionsForTranslation = captionOptions.map((option) => ({
+    candidateId: option.candidateId,
+    top: option.top,
+    bottom: option.bottom
+  }));
+  const captionTranslationReasoningEffort = resolveStageReasoningEffort(
+    "captionTranslation",
+    input.promptConfig
+  );
+  promptInputManifests.captionTranslation = {
+    learningDetail: "none",
+    description: null,
+    transcript: null,
+    frames: null,
+    comments: null,
+    examples: null,
+    channelLearning: null,
+    candidates: {
+      passedCount: captionOptions.length,
+      passedCandidateIds: captionOptions.map((option) => option.candidateId),
+      criticScoreCount: finalists.length,
+      shortlistCount: captionOptions.length
+    },
+    stageFlags: ["display shortlist translation", "retry missing items once", "ru review"]
+  };
+  await reportProgress({
+    stageId: "captionTranslation",
+    state: "running",
+    promptChars: 0,
+    reasoningEffort: captionTranslationReasoningEffort,
+    detail: "Translating the 5 display captions into Russian."
+  });
+  const captionTranslationStartedAt = Date.now();
+  const captionTranslationPromptTexts: string[] = [];
+  const captionTranslationById = new Map<
+    string,
+    NativeCaptionTranslationArtifact["items"][number]
+  >();
+  let retriedCaptionCandidateIds: string[] = [];
+  let captionTranslationArtifact: NativeCaptionTranslationArtifact | null = null;
+  try {
+    const translationPrompt = buildNativeCaptionTranslationPrompt({
+      displayOptions: displayOptionsForTranslation,
+      promptConfig: input.promptConfig
+    });
+    captionTranslationPromptTexts.push(translationPrompt);
+    const rawTranslation = await input.executor.runJson<unknown>({
+      prompt: translationPrompt,
+      schema: NATIVE_TRANSLATION_SCHEMA,
+      model: input.stageModels?.captionTranslation ?? null,
+      reasoningEffort: captionTranslationReasoningEffort
+    });
+    normalizeNativeCaptionTranslationArtifact(rawTranslation, displayOptionsForTranslation)?.items.forEach(
+      (item) => {
+        captionTranslationById.set(item.candidateId, item);
+      }
+    );
+
+    const missingDisplayOptions = displayOptionsForTranslation.filter(
+      (option) => !captionTranslationById.has(option.candidateId)
+    );
+    if (missingDisplayOptions.length > 0) {
+      retriedCaptionCandidateIds = missingDisplayOptions.map((option) => option.candidateId);
+      try {
+        const retryPrompt = buildNativeCaptionTranslationPrompt({
+          displayOptions: missingDisplayOptions,
+          promptConfig: input.promptConfig
+        });
+        captionTranslationPromptTexts.push(retryPrompt);
+        const retryRawTranslation = await input.executor.runJson<unknown>({
+          prompt: retryPrompt,
+          schema: NATIVE_TRANSLATION_SCHEMA,
+          model: input.stageModels?.captionTranslation ?? null,
+          reasoningEffort: captionTranslationReasoningEffort
+        });
+        normalizeNativeCaptionTranslationArtifact(retryRawTranslation, missingDisplayOptions)?.items.forEach(
+          (item) => {
+            captionTranslationById.set(item.candidateId, item);
+          }
+        );
+      } catch (error) {
+        warnings.push({
+          field: "captionTranslation",
+          message:
+            error instanceof Error
+              ? `Caption translation retry used English fallback for some options: ${error.message}`
+              : "Caption translation retry used English fallback for some options."
+        });
+      }
+    }
+  } catch (error) {
+    warnings.push({
+      field: "captionTranslation",
+      message:
+        error instanceof Error
+          ? `Caption translation fallback used: ${error.message}`
+          : "Caption translation fallback used."
+    });
+  }
+  const captionTranslationItems = displayOptionsForTranslation.map((option) => {
+    const translated = captionTranslationById.get(option.candidateId);
+    if (translated) {
+      return translated;
+    }
+    return {
+      candidateId: option.candidateId,
+      topRu: option.top,
+      bottomRu: option.bottom,
+      source: "fallback" as const
+    };
+  });
+  const captionFallbackCandidateIds = captionTranslationItems
+    .filter((item) => item.source === "fallback")
+    .map((item) => item.candidateId);
+  captionTranslationArtifact = {
+    translatedAt: new Date().toISOString(),
+    items: captionTranslationItems,
+    coverage: {
+      requestedCount: displayOptionsForTranslation.length,
+      translatedCount: captionTranslationItems.length - captionFallbackCandidateIds.length,
+      fallbackCount: captionFallbackCandidateIds.length,
+      fallbackCandidateIds: captionFallbackCandidateIds,
+      retriedCandidateIds: retriedCaptionCandidateIds
+    }
+  };
+  await reportProgress({
+    stageId: "captionTranslation",
+    state: "completed",
+    durationMs: Date.now() - captionTranslationStartedAt,
+    promptChars: captionTranslationPromptTexts.reduce((sum, prompt) => sum + prompt.length, 0),
+    reasoningEffort: captionTranslationReasoningEffort,
+    detail:
+      captionTranslationArtifact.coverage.fallbackCount > 0
+        ? `${captionTranslationArtifact.coverage.translatedCount}/${captionTranslationArtifact.coverage.requestedCount} captions translated; ${captionTranslationArtifact.coverage.fallbackCount} used English fallback.`
+        : "All 5 display captions translated into Russian."
+  });
+  recordExecutedStage(
+    "captionTranslation",
+    joinPromptPasses(captionTranslationPromptTexts),
+    "LLM stage: translates the 5 display captions into Russian with one retry for missing items.",
+    captionTranslationArtifact,
+    { model: input.stageModels?.captionTranslation ?? null }
+  );
+  const localizedCaptionOptions = captionOptions.map((option) => {
+    const translation =
+      captionTranslationArtifact?.items.find((item) => item.candidateId === option.candidateId) ??
+      null;
+    return {
+      ...option,
+      topRu: translation?.topRu ?? option.top,
+      bottomRu: translation?.bottomRu ?? option.bottom
+    };
+  });
+  const localizedFinalists = finalists.map((finalist) => {
+    const translation =
+      captionTranslationArtifact?.items.find((item) => item.candidateId === finalist.candidateId) ??
+      null;
+    return {
+      ...finalist,
+      translation: {
+        topRu: translation?.topRu ?? finalist.top,
+        bottomRu: translation?.bottomRu ?? finalist.bottom,
+        translatedAt: captionTranslationArtifact?.translatedAt ?? new Date().toISOString()
+      }
+    };
+  });
+
+  const titleByOption = new Map(
+    oneShotResult.titles.map((entry, index) => [entry.option ?? index + 1, entry] as const)
+  );
+  const titleFallbackOptions: number[] = [];
+  const titleOptions = Array.from({ length: 5 }, (_, index) => {
+    const option = index + 1;
+    const existing = titleByOption.get(option) ?? null;
+    const seedTitle =
+      input.videoContext.title.trim() ||
+      oneShotResult.analysis.keyPhraseToAdapt ||
+      "Reference title";
+    const title = existing?.title?.trim() || `${seedTitle.slice(0, 70)}${option === 1 ? "" : ` ${option}`}`.trim();
+    const titleRu = existing?.titleRu?.trim() || title;
+    const titleRuSource = existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";
+    if (titleRuSource === "fallback") {
+      titleFallbackOptions.push(option);
+    }
+    return {
+      option,
+      title,
+      titleRu,
+      titleRuSource
+    };
+  });
+  const titleTranslationCoverage = {
+    requestedCount: 5,
+    translatedCount: 5 - titleFallbackOptions.length,
+    fallbackCount: titleFallbackOptions.length,
+    fallbackOptions: titleFallbackOptions,
+    retriedOptions: [] as number[]
+  };
+  if (titleTranslationCoverage.fallbackCount > 0) {
+    warnings.push({
+      field: "oneShotReference",
+      message: `Russian title fallback used for ${titleTranslationCoverage.fallbackCount} title option${titleTranslationCoverage.fallbackCount === 1 ? "" : "s"}.`
+    });
+  }
+
+  await reportProgress({
+    stageId: "assemble",
+    state: "running",
+    promptChars: 0,
+    reasoningEffort: null,
+    detail: "Assembling the one-shot baseline result."
+  });
+
+  const rawPromptStages = executedPromptStages.map((stage) =>
+    stage.stageId === "oneShotReference"
+      ? buildProductOwnedPromptStageDiagnostics({
+          stageId: stage.stageId,
+          promptText: stage.promptText,
+          includePromptText: true,
+          usesImages: stage.usesImages,
+          model: stage.model,
+          reasoningEffort: oneShotReasoningEffort,
+          summary: stage.summary,
+          serializedResultBytes: stage.serializedResultBytes,
+          estimatedOutputTokens: stage.estimatedOutputTokens,
+          inputManifest: promptInputManifests[stage.stageId],
+          defaultPrompt: STAGE2_REFERENCE_ONE_SHOT_PROMPT,
+          promptCompatibilityVersion: STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION
+        })
+      : buildPromptStageDiagnostics({
+          stageId: stage.stageId,
+          promptConfig: input.promptConfig,
+          promptText: stage.promptText,
+          includePromptText: true,
+          usesImages: stage.usesImages,
+          model: stage.model,
+          summary: stage.summary,
+          serializedResultBytes: stage.serializedResultBytes,
+          estimatedOutputTokens: stage.estimatedOutputTokens,
+          inputManifest: promptInputManifests[stage.stageId]
+        })
+  );
+  const summaryPromptStages = executedPromptStages.map((stage) =>
+    stage.stageId === "oneShotReference"
+      ? buildProductOwnedPromptStageDiagnostics({
+          stageId: stage.stageId,
+          promptText: stage.promptText,
+          includePromptText: false,
+          usesImages: stage.usesImages,
+          model: stage.model,
+          reasoningEffort: oneShotReasoningEffort,
+          summary: stage.summary,
+          serializedResultBytes: stage.serializedResultBytes,
+          estimatedOutputTokens: stage.estimatedOutputTokens,
+          inputManifest: promptInputManifests[stage.stageId],
+          defaultPrompt: STAGE2_REFERENCE_ONE_SHOT_PROMPT,
+          promptCompatibilityVersion: STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION
+        })
+      : buildPromptStageDiagnostics({
+          stageId: stage.stageId,
+          promptConfig: input.promptConfig,
+          promptText: stage.promptText,
+          includePromptText: false,
+          usesImages: stage.usesImages,
+          model: stage.model,
+          summary: stage.summary,
+          serializedResultBytes: stage.serializedResultBytes,
+          estimatedOutputTokens: stage.estimatedOutputTokens,
+          inputManifest: promptInputManifests[stage.stageId]
+        })
+  );
+  const tokenUsageStages = rawPromptStages.map((stage) => ({
+    stageId: stage.stageId,
+    promptChars: stage.promptChars,
+    estimatedInputTokens: stage.estimatedInputTokens ?? null,
+    estimatedOutputTokens: stage.estimatedOutputTokens ?? null,
+    serializedResultBytes: stage.serializedResultBytes ?? null,
+    persistedPayloadBytes: stage.persistedPayloadBytes ?? null
+  }));
+  const tokenUsage: Stage2TokenUsage = {
+    stages: tokenUsageStages,
+    totalPromptChars: tokenUsageStages.reduce((sum, stage) => sum + (stage.promptChars ?? 0), 0),
+    totalEstimatedInputTokens: tokenUsageStages.reduce(
+      (sum, stage) => sum + (stage.estimatedInputTokens ?? 0),
+      0
+    ),
+    totalEstimatedOutputTokens: tokenUsageStages.reduce(
+      (sum, stage) => sum + (stage.estimatedOutputTokens ?? 0),
+      0
+    ),
+    totalSerializedResultBytes: tokenUsageStages.reduce(
+      (sum, stage) => sum + (stage.serializedResultBytes ?? 0),
+      0
+    ),
+    totalPersistedPayloadBytes: tokenUsageStages.reduce(
+      (sum, stage) => sum + (stage.persistedPayloadBytes ?? 0),
+      0
+    )
+  };
+  const resolvedWorkerProfile = getResolvedStage2WorkerProfile(input.channelConfig);
+  const diagnostics: Stage2Diagnostics = {
+    channel: {
+      channelId: input.channelConfig.channelId,
+      name: input.channelConfig.name,
+      username: input.channelConfig.username,
+      workerProfile: {
+        requestedId: resolvedWorkerProfile.requestedId,
+        resolvedId: resolvedWorkerProfile.resolvedId,
+        label: resolvedWorkerProfile.label,
+        description: resolvedWorkerProfile.description,
+        summary: resolvedWorkerProfile.summary,
+        origin: resolvedWorkerProfile.origin
+      },
+      examplesSource: input.channelConfig.examplesSource,
+      hardConstraints: input.channelConfig.hardConstraints,
+      styleProfile: input.channelConfig.styleProfile,
+      editorialMemory: input.channelConfig.editorialMemory,
+      workspaceCorpusCount: input.workspaceCorpusCount,
+      activeCorpusCount: 0
+    },
+    selection: {
+      clipType: input.selectorFallback.clipType,
+      primaryAngle: input.selectorFallback.primaryAngle,
+      secondaryAngles: input.selectorFallback.secondaryAngles,
+      rankedAngles: input.selectorFallback.rankedAngles,
+      coreTrigger: input.selectorFallback.coreTrigger,
+      humanStake: input.selectorFallback.humanStake,
+      narrativeFrame: input.selectorFallback.narrativeFrame,
+      whyViewerCares: input.selectorFallback.whyViewerCares,
+      topStrategy: input.selectorFallback.topStrategy,
+      bottomEnergy: input.selectorFallback.bottomEnergy,
+      whyOldV6WouldWorkHere: input.selectorFallback.whyOldV6WouldWorkHere,
+      failureModes: input.selectorFallback.failureModes,
+      writerBrief: input.selectorFallback.writerBrief,
+      rationale: input.selectorFallback.rationale ?? null,
+      selectedExampleIds: []
+    },
+    analysis: {
+      visualAnchors: input.analyzerOutput.visualAnchors,
+      specificNouns: input.analyzerOutput.specificNouns,
+      visibleActions: input.analyzerOutput.visibleActions,
+      firstSecondsSignal: input.analyzerOutput.firstSecondsSignal,
+      sceneBeats: input.analyzerOutput.sceneBeats,
+      revealMoment: input.analyzerOutput.revealMoment,
+      lateClipChange: input.analyzerOutput.lateClipChange,
+      whyViewerCares: input.analyzerOutput.whyViewerCares,
+      bestBottomEnergy: input.analyzerOutput.bestBottomEnergy,
+      commentVibe: input.analyzerOutput.commentVibe,
+      commentConsensusLane: input.analyzerOutput.commentConsensusLane,
+      commentJokeLane: input.analyzerOutput.commentJokeLane,
+      commentDissentLane: input.analyzerOutput.commentDissentLane,
+      commentSuspicionLane: input.analyzerOutput.commentSuspicionLane,
+      slangToAdapt: input.analyzerOutput.slangToAdapt,
+      commentLanguageCues: input.analyzerOutput.commentLanguageCues,
+      hiddenDetail: input.analyzerOutput.hiddenDetail,
+      genericRisks: input.analyzerOutput.genericRisks,
+      uncertaintyNotes: input.analyzerOutput.uncertaintyNotes,
+      rawSummary: input.analyzerOutput.rawSummary
+    },
+    sourceContext: buildStage2SourceContextSummary(input.videoContext),
+    effectivePrompting: {
+      promptStages: input.debugMode === "raw" ? rawPromptStages : summaryPromptStages
+    },
+    examples: {
+      source: input.channelConfig.examplesSource,
+      workspaceCorpusCount: input.workspaceCorpusCount,
+      activeCorpusCount: 0,
+      selectorCandidateCount: 0,
+      retrievalConfidence: input.nativeExamplesAssessment.retrievalConfidence,
+      examplesMode: input.nativeExamplesAssessment.examplesMode,
+      explanation: input.nativeExamplesAssessment.explanation,
+      evidence: input.nativeExamplesAssessment.evidence,
+      retrievalWarning: input.nativeExamplesAssessment.retrievalWarning,
+      examplesRoleSummary: input.nativeExamplesAssessment.examplesRoleSummary,
+      primaryDriverSummary: input.nativeExamplesAssessment.primaryDriverSummary,
+      primaryDrivers: input.nativeExamplesAssessment.primaryDrivers,
+      channelStylePriority: input.nativeExamplesAssessment.channelStylePriority,
+      editorialMemoryPriority: input.nativeExamplesAssessment.editorialMemoryPriority,
+      availableExamples: [],
+      selectedExamples: []
+    },
+    nativeCaptionV3: {
+      contextPacket,
+      candidateBatch: candidates,
+      hardValidator: null,
+      qualityCourt: null,
+      repair: null,
+      templateBackfill: null,
+      guardSummary,
+      displayOptions: localizedCaptionOptions,
+      titleWriter: {
+        titleOptions,
+        translationCoverage: titleTranslationCoverage
+      },
+      translation: captionTranslationArtifact
+    }
+  };
+  const output: ViralShortsStage2Result = {
+    inputAnalysis: {
+      visualAnchors: oneShotResult.analysis.visualAnchors,
+      commentVibe: oneShotResult.analysis.commentVibe,
+      keyPhraseToAdapt: oneShotResult.analysis.keyPhraseToAdapt
+    },
+    captionOptions: localizedCaptionOptions,
+    finalists: localizedFinalists,
+    titleOptions,
+    finalPick,
+    winner,
+    pipeline: {
+      channelId: input.channelConfig.channelId,
+      workerProfile: {
+        requestedId: resolvedWorkerProfile.requestedId,
+        resolvedId: resolvedWorkerProfile.resolvedId,
+        label: resolvedWorkerProfile.label,
+        description: resolvedWorkerProfile.description,
+        summary: resolvedWorkerProfile.summary,
+        origin: resolvedWorkerProfile.origin
+      },
+      mode: input.reusedContextPacket ? "regenerate" : "codex_pipeline",
+      execution: input.pipelineExecution,
+      selectorOutput: input.selectorFallback,
+      availableExamplesCount: 0,
+      selectedExamplesCount: 0,
+      retrievalConfidence: input.nativeExamplesAssessment.retrievalConfidence,
+      examplesMode: input.nativeExamplesAssessment.examplesMode,
+      retrievalExplanation: input.nativeExamplesAssessment.explanation,
+      contextPacket,
+      nativeCaptionV3: {
+        contextPacket,
+        candidateBatch: candidates,
+        hardValidator: null,
+        qualityCourt: null,
+        repair: null,
+        templateBackfill: null,
+        guardSummary,
+        displayOptions: localizedCaptionOptions,
+        titleWriter: {
+          titleOptions,
+          translationCoverage: titleTranslationCoverage
+        },
+        translation: captionTranslationArtifact
+      }
+    },
+    diagnostics
+  };
+  await reportProgress({
+    stageId: "assemble",
+    state: "completed",
+    promptChars: 0,
+    reasoningEffort: null,
+    detail: "One-shot baseline result assembled."
+  });
+
+  return {
+    output,
+    warnings,
+    diagnostics,
+    rawDebugArtifact:
+      input.debugMode === "raw"
+        ? {
+            kind: "stage2-run-debug",
+            runId: "pending",
+            createdAt: new Date().toISOString(),
+            promptStages: rawPromptStages
+          }
+        : null,
+    tokenUsage
   };
 }
 
@@ -6196,6 +7518,7 @@ export class ViralShortsWorkerService {
       id: string;
       name: string;
       username: string;
+      stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
@@ -6260,6 +7583,7 @@ export class ViralShortsWorkerService {
       id: string;
       name: string;
       username: string;
+      stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
@@ -6285,6 +7609,7 @@ export class ViralShortsWorkerService {
       id: string;
       name: string;
       username: string;
+      stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
@@ -6311,6 +7636,7 @@ export class ViralShortsWorkerService {
       id: string;
       name: string;
       username: string;
+      stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
@@ -6329,14 +7655,6 @@ export class ViralShortsWorkerService {
     const warnings: StageWarning[] = [];
     const promptConfig = normalizeStage2PromptConfig(input.promptConfig);
     const debugMode: Stage2DebugMode = input.debugMode === "raw" ? "raw" : "summary";
-    const workerBuild = getStage2WorkerBuildInfo();
-    const pipelineExecution = buildStage2PipelineExecutionSnapshot({
-      featureFlags: resolveStage2VNextFlagSnapshot(false),
-      pipelineVersion: "native_caption_v3",
-      stageChainVersion: resolveStage2StageChainVersion("native_caption_v3"),
-      workerBuild,
-      resolvedAt: new Date().toISOString()
-    });
     const { source, workspaceCorpusCount } = this.resolveExamplesCorpus({
       channel: {
         id: input.channel.id,
@@ -6348,6 +7666,20 @@ export class ViralShortsWorkerService {
     const channelConfig = normalizeChannelConfig({
       ...input.channel,
       resolvedExamplesSource: source
+    });
+    const resolvedNativeWorkerProfile = getResolvedStage2WorkerProfile(channelConfig);
+    const workerBuild = getStage2WorkerBuildInfo();
+    const pathVariant =
+      resolvedNativeWorkerProfile.executionMode === "one_shot_reference_v1"
+        ? "reference_one_shot_v1"
+        : "modular_native_v1";
+    const pipelineExecution = buildStage2PipelineExecutionSnapshot({
+      featureFlags: resolveStage2VNextFlagSnapshot(false),
+      pipelineVersion: "native_caption_v3",
+      pathVariant,
+      stageChainVersion: resolveStage2StageChainVersion("native_caption_v3"),
+      workerBuild,
+      resolvedAt: new Date().toISOString()
     });
     const executedPromptStages: ExecutedPromptStageRecord[] = [];
     const promptInputManifests: Partial<
@@ -6390,14 +7722,34 @@ export class ViralShortsWorkerService {
       input.videoContext.comments.length > 0
         ? applyCommentIntelligenceBoost(analyzerFallback, input.videoContext.comments)
         : applyNoCommentsTruthfulnessGuard(analyzerFallback, false);
+    const nativeExamplesAssessment = buildNativeCaptionExamplesAssessment(channelConfig);
     const selectorFallback = fallbackSelectorOutput(
       channelConfig,
       analyzerOutput,
       [],
       input.videoContext,
-      NATIVE_CAPTION_EXAMPLES_ASSESSMENT,
+      nativeExamplesAssessment,
       []
     );
+
+    if (pathVariant === "reference_one_shot_v1") {
+      return runReferenceOneShotNativeCaptionPipeline({
+        channelConfig,
+        workspaceCorpusCount,
+        videoContext: input.videoContext,
+        imagePaths: input.imagePaths,
+        executor: input.executor,
+        stageModels: input.stageModels,
+        promptConfig,
+        debugMode,
+        onProgress: input.onProgress,
+        reusedContextPacket: input.reusedContextPacket,
+        pipelineExecution,
+        analyzerOutput,
+        selectorFallback,
+        nativeExamplesAssessment
+      });
+    }
 
     let contextPacket = input.reusedContextPacket;
     if (!contextPacket) {
@@ -6457,7 +7809,8 @@ export class ViralShortsWorkerService {
       const fallbackPacket = buildNativeCaptionFallbackContextPacket({
         analyzerOutput,
         selectorOutput: selectorFallback,
-        videoContext: input.videoContext
+        videoContext: input.videoContext,
+        channelConfig
       });
       try {
         const rawContextPacket = await input.executor.runJson<unknown>({
@@ -7614,11 +8967,20 @@ export class ViralShortsWorkerService {
         0
       )
     };
+    const resolvedWorkerProfile = getResolvedStage2WorkerProfile(channelConfig);
     const diagnostics: Stage2Diagnostics = {
       channel: {
         channelId: channelConfig.channelId,
         name: channelConfig.name,
         username: channelConfig.username,
+        workerProfile: {
+          requestedId: resolvedWorkerProfile.requestedId,
+          resolvedId: resolvedWorkerProfile.resolvedId,
+          label: resolvedWorkerProfile.label,
+          description: resolvedWorkerProfile.description,
+          summary: resolvedWorkerProfile.summary,
+          origin: resolvedWorkerProfile.origin
+        },
         examplesSource: channelConfig.examplesSource,
         hardConstraints: channelConfig.hardConstraints,
         styleProfile: channelConfig.styleProfile,
@@ -7674,16 +9036,16 @@ export class ViralShortsWorkerService {
         workspaceCorpusCount,
         activeCorpusCount: 0,
         selectorCandidateCount: 0,
-        retrievalConfidence: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.retrievalConfidence,
-        examplesMode: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.examplesMode,
-        explanation: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.explanation,
-        evidence: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.evidence,
-        retrievalWarning: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.retrievalWarning,
-        examplesRoleSummary: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.examplesRoleSummary,
-        primaryDriverSummary: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.primaryDriverSummary,
-        primaryDrivers: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.primaryDrivers,
-        channelStylePriority: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.channelStylePriority,
-        editorialMemoryPriority: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.editorialMemoryPriority,
+        retrievalConfidence: nativeExamplesAssessment.retrievalConfidence,
+        examplesMode: nativeExamplesAssessment.examplesMode,
+        explanation: nativeExamplesAssessment.explanation,
+        evidence: nativeExamplesAssessment.evidence,
+        retrievalWarning: nativeExamplesAssessment.retrievalWarning,
+        examplesRoleSummary: nativeExamplesAssessment.examplesRoleSummary,
+        primaryDriverSummary: nativeExamplesAssessment.primaryDriverSummary,
+        primaryDrivers: nativeExamplesAssessment.primaryDrivers,
+        channelStylePriority: nativeExamplesAssessment.channelStylePriority,
+        editorialMemoryPriority: nativeExamplesAssessment.editorialMemoryPriority,
         availableExamples: [],
         selectedExamples: []
       },
@@ -7721,14 +9083,22 @@ export class ViralShortsWorkerService {
       winner,
       pipeline: {
         channelId: channelConfig.channelId,
+        workerProfile: {
+          requestedId: resolvedWorkerProfile.requestedId,
+          resolvedId: resolvedWorkerProfile.resolvedId,
+          label: resolvedWorkerProfile.label,
+          description: resolvedWorkerProfile.description,
+          summary: resolvedWorkerProfile.summary,
+          origin: resolvedWorkerProfile.origin
+        },
         mode: input.reusedContextPacket ? "regenerate" : "codex_pipeline",
         execution: pipelineExecution,
         selectorOutput: selectorFallback,
         availableExamplesCount: 0,
         selectedExamplesCount: 0,
-        retrievalConfidence: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.retrievalConfidence,
-        examplesMode: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.examplesMode,
-        retrievalExplanation: NATIVE_CAPTION_EXAMPLES_ASSESSMENT.explanation,
+        retrievalConfidence: nativeExamplesAssessment.retrievalConfidence,
+        examplesMode: nativeExamplesAssessment.examplesMode,
+        retrievalExplanation: nativeExamplesAssessment.explanation,
         contextPacket,
         nativeCaptionV3: {
           contextPacket,
@@ -7770,6 +9140,7 @@ export class ViralShortsWorkerService {
       id: string;
       name: string;
       username: string;
+      stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
@@ -7796,6 +9167,8 @@ export class ViralShortsWorkerService {
     const pipelineExecution = buildStage2PipelineExecutionSnapshot({
       featureFlags,
       pipelineVersion,
+      pathVariant:
+        pipelineVersion === "vnext" ? "vnext_pipeline_v1" : "legacy_multistage_v1",
       stageChainVersion,
       workerBuild,
       resolvedAt: new Date().toISOString()
@@ -8949,6 +10322,14 @@ export class ViralShortsWorkerService {
       },
       pipeline: {
         channelId: channelConfig.channelId,
+        workerProfile: {
+          requestedId: getResolvedStage2WorkerProfile(channelConfig).requestedId,
+          resolvedId: getResolvedStage2WorkerProfile(channelConfig).resolvedId,
+          label: getResolvedStage2WorkerProfile(channelConfig).label,
+          description: getResolvedStage2WorkerProfile(channelConfig).description,
+          summary: getResolvedStage2WorkerProfile(channelConfig).summary,
+          origin: getResolvedStage2WorkerProfile(channelConfig).origin
+        },
         mode: "codex_pipeline",
         execution: pipelineExecution,
         selectorOutput,

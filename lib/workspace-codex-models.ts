@@ -11,6 +11,7 @@ export type WorkspaceCodexModel = (typeof WORKSPACE_CODEX_MODEL_OPTIONS)[number]
 export type WorkspaceCodexModelSetting = WorkspaceCodexModel | "deploy_default";
 
 export const STAGE2_MULTIMODAL_MODEL_STAGE_IDS = [
+  "oneShotReference",
   "analyzer",
   "contextPacket",
   "styleDiscovery"
@@ -31,6 +32,7 @@ export const STAGE2_TEXT_ONLY_MODEL_STAGE_IDS = [
   "regenerate"
 ] as const;
 export const STAGE2_NATIVE_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
+  "oneShotReference",
   "contextPacket",
   "candidateGenerator",
   "qualityCourt",
@@ -87,6 +89,13 @@ export type WorkspaceCodexModelStageField = {
 };
 
 export const STAGE2_PROMPT_MODEL_STAGE_FIELDS: readonly WorkspaceCodexModelStageField[] = [
+  {
+    id: "oneShotReference",
+    label: "Reference one-shot",
+    description:
+      "Продуктовый one-shot baseline для Stable Reference v6: сразу собирает финальные 5 publishable options без repair/backfill.",
+    allowsImages: true
+  },
   {
     id: "contextPacket",
     label: "Context packet",
@@ -198,6 +207,7 @@ export const STAGE3_MODEL_STAGE_FIELDS: readonly WorkspaceCodexModelStageField[]
 ] as const;
 
 export const DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG: WorkspaceCodexModelConfig = {
+  oneShotReference: "deploy_default",
   analyzer: "deploy_default",
   contextPacket: "deploy_default",
   selector: "deploy_default",
@@ -282,6 +292,14 @@ function readStageSettingCandidate(
     }
     if (hasOwnKey(candidate, "selector")) {
       return candidate.selector;
+    }
+  }
+  if (stageId === "oneShotReference") {
+    if (hasOwnKey(candidate, "candidateGenerator")) {
+      return candidate.candidateGenerator;
+    }
+    if (hasOwnKey(candidate, "contextPacket")) {
+      return candidate.contextPacket;
     }
   }
   if (stageId === "candidateGenerator" && hasOwnKey(candidate, "writer")) {

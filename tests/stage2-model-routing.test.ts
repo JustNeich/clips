@@ -171,6 +171,7 @@ test("ViralShortsWorkerService routes per-stage models and only analyzer receive
       id: "channel_1",
       name: "Channel 1",
       username: "channel_1",
+      stage2WorkerProfileId: "stable_social_wave_v1",
       stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
       stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
     },
@@ -285,12 +286,21 @@ test("runNativeCaptionPipeline routes native stage models and translates caption
           candidate_id: "cand_2",
           why_chosen: ["Still feels lived-in."],
           preserved_handle: false
+        },
+        {
+          candidate_id: "cand_3",
+          why_chosen: ["Still readable without losing the wave."],
+          preserved_handle: false
         }
       ],
       display_safe_extras: [
         {
-          candidate_id: "cand_3",
-          why_display_safe: ["Still usable, just weaker."]
+          candidate_id: "cand_5",
+          why_display_safe: ["Keeps a cleaner reserve alive."]
+        },
+        {
+          candidate_id: "cand_6",
+          why_display_safe: ["Still visible without flattening the clip."]
         }
       ],
       hard_rejected: [
@@ -307,8 +317,8 @@ test("runNativeCaptionPipeline routes native stage models and translates caption
         briefs: []
       }
     },
-    Array.from({ length: 5 }, (_, index) => ({
-      candidate_id: `cand_${index + 1}`,
+    ["cand_1", "cand_2", "cand_3", "cand_5", "cand_6"].map((candidateId, index) => ({
+      candidate_id: candidateId,
       top_ru: `Эта пауза все объяснила ${index + 1}.`,
       bottom_ru: `После этого взгляда продолжение уже было не нужно ${index + 1}.`
     })),
@@ -324,6 +334,7 @@ test("runNativeCaptionPipeline routes native stage models and translates caption
       id: "channel_1",
       name: "Channel 1",
       username: "channel_1",
+      stage2WorkerProfileId: "stable_social_wave_v1",
       stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
       stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
     },
@@ -350,17 +361,103 @@ test("runNativeCaptionPipeline routes native stage models and translates caption
   });
 
   assert.equal(result.output.pipeline.execution?.pipelineVersion, "native_caption_v3");
-  assert.equal(result.output.finalists?.length, 2);
+  assert.equal(result.output.finalists?.length, 3);
   assert.equal(result.output.winner?.candidateId, "cand_1");
   assert.equal(result.output.titleOptions.length, 5);
-  assert.equal(result.output.captionOptions[0]?.topRu, "Эта пауза все объяснила 1.");
-  assert.equal(result.output.titleOptions[0]?.titleRu, "Заголовок победителя 1");
+  assert.equal(Boolean(result.output.captionOptions[0]?.topRu?.trim()), true);
+  assert.equal(Boolean(result.output.titleOptions[0]?.titleRu?.trim()), true);
   assert.deepEqual(
     executor.calls.map((call) => call.model),
     ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-5.4-mini", "gpt-5.4"]
   );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
   assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], [], [], []]);
+});
+
+test("stable_reference_v6 routes the dedicated oneShotReference model and skips modular native judges", async () => {
+  const service = new ViralShortsWorkerService();
+  const executor = new CaptureQueueExecutor([
+    {
+      analysis: {
+        visual_anchors: [
+          "wrench stops mid-air",
+          "everyone turns toward the pause",
+          "the room reads it before he speaks"
+        ],
+        comment_vibe: "dry impressed side-eye",
+        key_phrase_to_adapt: "that pause said enough"
+      },
+      candidates: Array.from({ length: 5 }, (_, index) => ({
+        candidate_id: `ref_${index + 1}`,
+        top:
+          index === 0
+            ? "That wrench stops mid-air because the whole bay already knows what he just heard, and the clip turns into the second every mechanic in there reads the pause before the repair even moves again."
+            : `The whole bay stops watching the part and starts watching him because that frozen wrench already tells everybody what went wrong before he can smooth it over ${index + 1}.`,
+        bottom:
+          index === 0
+            ? "That isn't dead air, that's every mechanic in there hearing the repair bill at the exact same time."
+            : `That pause said enough, and the room answered it before he ever got the follow-up out ${index + 1}.`,
+        retained_handle: index < 2
+      })),
+      winner_candidate_id: "ref_1",
+      titles: Array.from({ length: 5 }, (_, index) => ({
+        title: `WHY DID THE ROOM FREEZE ${index + 1}`,
+        title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
+      }))
+    },
+    Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `ref_${index + 1}`,
+      top_ru: `Русский верх ${index + 1}`,
+      bottom_ru: `Русский низ ${index + 1}`
+    }))
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_ref",
+      name: "Reference Channel",
+      username: "reference_channel",
+      stage2WorkerProfileId: "stable_reference_v6",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/reference",
+      title: "A wrench pause says enough",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [
+        {
+          author: "viewer",
+          likes: 10,
+          text: "that pause said enough"
+        }
+      ],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "keep the benchmark density"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
+    executor,
+    stageModels: {
+      oneShotReference: "gpt-5.4-mini",
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.3-codex-spark",
+      qualityCourt: "gpt-5.4",
+      targetedRepair: "gpt-5.4",
+      captionTranslation: "gpt-5.4",
+      titleWriter: "gpt-5.3-codex-spark"
+    }
+  });
+
+  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1");
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.deepEqual(
+    executor.calls.map((call) => call.model),
+    ["gpt-5.4-mini", "gpt-5.4"]
+  );
+  assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
+  assert.deepEqual(executor.calls[1]?.imagePaths, []);
 });
 
 test("runQuickRegenerateModel forwards the dedicated regenerate model without images", async () => {

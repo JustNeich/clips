@@ -41,6 +41,7 @@ import {
   listChannelEditorialPassiveSelectionEvents,
   listChannelEditorialRatingEvents
 } from "../lib/channel-editorial-feedback-store";
+import { resolveChannelEditorialMemory } from "../lib/stage2-editorial-memory-resolution";
 import {
   type ChannelEditorialFeedbackEvent,
   buildStage2EditorialMemorySummary,
@@ -52,7 +53,9 @@ import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
   type Stage2HardConstraints
 } from "../lib/stage2-channel-config";
+import { DEFAULT_STAGE2_WORKER_PROFILE_ID } from "../lib/stage2-worker-profile";
 import { buildStage2RunRequestSnapshot } from "../lib/stage2-run-request";
+import { createStage2Run } from "../lib/stage2-progress-store";
 import {
   buildStage2StyleDiscoveryReferenceSetEvidence,
   buildStage2StyleDiscoveryPrompt,
@@ -299,6 +302,7 @@ test("channel onboarding support walks through the four-step wizard and builds a
   const draft = createChannelOnboardingDraft({
     workspaceStage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS
   });
+  assert.equal(draft.stage2WorkerProfileId, DEFAULT_STAGE2_WORKER_PROFILE_ID);
   assert.equal(canContinueChannelOnboardingStep("identity", draft), false);
 
   draft.name = "Dry Process Channel";
@@ -306,6 +310,7 @@ test("channel onboarding support walks through the four-step wizard and builds a
   assert.equal(canContinueChannelOnboardingStep("identity", draft), true);
 
   draft.useWorkspaceExamples = false;
+  draft.stage2WorkerProfileId = "stable_skill_gap_v1";
   draft.customExamplesJson = JSON.stringify([
     {
       id: "example_1",
@@ -340,6 +345,7 @@ test("channel onboarding support walks through the four-step wizard and builds a
   const payload = buildChannelOnboardingCreatePayload(adjustedDraft);
   assert.equal(payload.name, "Dry Process Channel");
   assert.equal(payload.username, "dry_process_channel");
+  assert.equal(payload.stage2WorkerProfileId, "stable_skill_gap_v1");
   assert.equal(payload.referenceUrls.length, 10);
   assert.equal(payload.stage2ExamplesConfig.useWorkspaceDefault, false);
   assert.equal(payload.stage2StyleProfile.explorationShare, 0.35);
@@ -481,6 +487,7 @@ test("persisted onboarding draft restores the unlocked step and active discovery
         }),
         name: "Reload Safe Channel",
         username: "reload_safe_channel",
+        stage2WorkerProfileId: "stable_social_wave_v1",
         referenceLinksText: createReferenceUrls(10).join("\n"),
         styleProfile: createStyleProfile(["direction_2", "direction_4"]),
         selectedStyleDirectionIds: ["direction_2", "direction_4"]
@@ -494,6 +501,7 @@ test("persisted onboarding draft restores the unlocked step and active discovery
   assert.equal(hydrated.furthestUnlockedStep, "styles");
   assert.equal(hydrated.activeStyleDiscoveryRunId, "run_restore_1");
   assert.equal(hydrated.draft.name, "Reload Safe Channel");
+  assert.equal(hydrated.draft.stage2WorkerProfileId, "stable_social_wave_v1");
   assert.equal(hydrated.draft.styleProfile?.candidateDirections.length, 20);
   assert.deepEqual(hydrated.draft.selectedStyleDirectionIds, ["direction_2", "direction_4"]);
 });
@@ -1202,6 +1210,196 @@ test("hard-rule feedback stays active beyond the rolling last-30 explicit reacti
   });
 });
 
+test("same-line-first editorial memory prefers matching worker-profile runs and only blends fallback when the signal is sparse", async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Same Line Memory",
+      email: "owner-same-line-memory@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const styleProfile = createStyleProfile(["direction_1", "direction_2"]);
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Same Line Channel",
+      username: "same_line_channel",
+      stage2StyleProfile: styleProfile
+    });
+
+    const socialRun = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: buildStage2RunRequestSnapshot({
+        sourceUrl: "https://example.com/social-run",
+        userInstruction: null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2WorkerProfileId: "stable_social_wave_v1",
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2StyleProfile: channel.stage2StyleProfile
+        }
+      })
+    });
+    const skillRun = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: buildStage2RunRequestSnapshot({
+        sourceUrl: "https://example.com/skill-run",
+        userInstruction: null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2WorkerProfileId: "stable_skill_gap_v1",
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2StyleProfile: channel.stage2StyleProfile
+        }
+      })
+    });
+
+    const socialEvent = createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      stage2RunId: socialRun.runId,
+      kind: "more_like_this",
+      note: "Keep the crowd phrase alive.",
+      optionSnapshot: {
+        candidateId: "social_cand",
+        optionNumber: 1,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "comment-native lane",
+        styleDirectionIds: ["direction_1"],
+        explorationMode: "aligned"
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const skillEvent = createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      stage2RunId: skillRun.runId,
+      kind: "less_like_this",
+      note: "Too process-heavy for this social lane.",
+      optionSnapshot: {
+        candidateId: "skill_cand",
+        optionNumber: 2,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "skill-gap lane",
+        styleDirectionIds: ["direction_2"],
+        explorationMode: "aligned"
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const runlessEvent = createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      kind: "more_like_this",
+      note: "Runless fallback note should only join the blended pool.",
+      optionSnapshot: {
+        candidateId: "runless_cand",
+        optionNumber: 3,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "fallback lane",
+        styleDirectionIds: ["direction_1"],
+        explorationMode: "aligned"
+      }
+    });
+    createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      kind: "less_like_this",
+      noteMode: "hard_rule",
+      note: "Never smooth the harmless public handle into generic English.",
+      optionSnapshot: {
+        candidateId: "hard_rule",
+        optionNumber: 4,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "handle lane",
+        styleDirectionIds: ["direction_1"],
+        explorationMode: "aligned"
+      }
+    });
+    createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      stage2RunId: socialRun.runId,
+      kind: "selected_option",
+      note: null,
+      optionSnapshot: {
+        candidateId: "social_selected",
+        optionNumber: 5,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "comment-native lane",
+        styleDirectionIds: ["direction_1"],
+        explorationMode: "aligned"
+      }
+    });
+
+    const sameLineOnly = resolveChannelEditorialMemory({
+      channelId: channel.id,
+      stage2StyleProfile: channel.stage2StyleProfile,
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      sameLineExplicitMinimum: 1
+    });
+    assert.equal(sameLineOnly.source.strategy, "same_line_only");
+    assert.equal(sameLineOnly.source.sameLineExplicitCount, 1);
+    assert.equal(
+      sameLineOnly.historyEvents.some((event) => event.id === socialEvent.id),
+      true
+    );
+    assert.equal(
+      sameLineOnly.historyEvents.some((event) => event.id === skillEvent.id),
+      false
+    );
+    assert.equal(
+      sameLineOnly.historyEvents.some((event) => event.id === runlessEvent.id),
+      false
+    );
+
+    const blended = resolveChannelEditorialMemory({
+      channelId: channel.id,
+      stage2StyleProfile: channel.stage2StyleProfile,
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      sameLineExplicitMinimum: 2
+    });
+    assert.equal(blended.source.strategy, "same_line_plus_channel_fallback");
+    assert.equal(blended.source.sameLineExplicitCount, 1);
+    assert.equal(blended.source.supplementedWithFallback, true);
+    assert.equal(
+      blended.historyEvents.some((event) => event.id === socialEvent.id),
+      true
+    );
+    assert.equal(
+      blended.historyEvents.some((event) => event.id === runlessEvent.id),
+      true
+    );
+    assert.match(
+      blended.editorialMemory.promptSummary,
+      /Never smooth the harmless public handle into generic English/i
+    );
+  });
+});
+
 test("explicit feedback events can be deleted and editorial memory recomputes from the remaining signals", async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");
@@ -1412,6 +1610,17 @@ test("Stage 2 run snapshots and prompt packets include bootstrap style profile p
     profile: styleProfile,
     feedbackEvents: []
   });
+  const editorialMemorySource = {
+    strategy: "same_line_only" as const,
+    requestedWorkerProfileId: "stable_reference_v6",
+    resolvedWorkerProfileId: "stable_reference_v6" as const,
+    sameLineExplicitCount: 2,
+    fallbackExplicitCount: 0,
+    sameLineSelectionCount: 1,
+    fallbackSelectionCount: 0,
+    supplementedWithFallback: false,
+    explicitThreshold: 2
+  };
 
   const request = buildStage2RunRequestSnapshot({
     sourceUrl: "https://www.youtube.com/shorts/with-memory",
@@ -1428,7 +1637,8 @@ test("Stage 2 run snapshots and prompt packets include bootstrap style profile p
       },
       stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
       stage2StyleProfile: styleProfile,
-      editorialMemory
+      editorialMemory,
+      editorialMemorySource
     }
   });
 
@@ -1437,6 +1647,8 @@ test("Stage 2 run snapshots and prompt packets include bootstrap style profile p
     "direction_2"
   ]);
   assert.match(request.channel.editorialMemory?.promptSummary ?? "", /Bootstrap directions/);
+  assert.equal(request.channel.editorialMemorySource?.strategy, "same_line_only");
+  assert.equal(request.channel.editorialMemorySource?.resolvedWorkerProfileId, "stable_reference_v6");
 
   const workerService = new ViralShortsWorkerService();
   const promptPacket = workerService.buildPromptPacket({

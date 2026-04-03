@@ -3,17 +3,15 @@ import {
 } from "../../../../../lib/chat-history";
 import {
   createChannelEditorialFeedbackEvent,
-  deleteChannelEditorialFeedbackEvent,
-  listChannelEditorialPassiveSelectionEvents,
-  listChannelEditorialRatingEvents
+  deleteChannelEditorialFeedbackEvent
 } from "../../../../../lib/channel-editorial-feedback-store";
 import {
-  buildStage2EditorialMemorySummary,
   type ChannelEditorialFeedbackKind,
   type ChannelEditorialFeedbackNoteMode,
   type ChannelEditorialFeedbackScope,
   type Stage2StyleProfile
 } from "../../../../../lib/stage2-channel-learning";
+import { resolveChannelEditorialMemory } from "../../../../../lib/stage2-editorial-memory-resolution";
 import {
   requireAuth,
   requireChannelOperate,
@@ -37,24 +35,28 @@ type ChannelFeedbackBody = {
 
 function loadChannelFeedbackState(
   channelId: string,
-  stage2StyleProfile: Stage2StyleProfile | null | undefined
+  stage2StyleProfile: Stage2StyleProfile | null | undefined,
+  stage2WorkerProfileId?: string | null
 ) {
-  const historyEvents = listChannelEditorialRatingEvents(channelId, 30);
-  const editorialMemory = buildStage2EditorialMemorySummary({
-    profile: stage2StyleProfile,
-    feedbackEvents: [
-      ...historyEvents,
-      ...listChannelEditorialPassiveSelectionEvents(channelId, 12)
-    ]
+  const resolution = resolveChannelEditorialMemory({
+    channelId,
+    stage2StyleProfile,
+    stage2WorkerProfileId
   });
 
   return {
-    historyEvents,
-    editorialMemory
+    historyEvents: resolution.historyEvents,
+    editorialMemory: resolution.editorialMemory,
+    editorialMemorySource: resolution.source
   };
 }
 
-export async function GET(_request: Request, context: Context): Promise<Response> {
+function getRequestedWorkerProfileId(request: Request): string | null {
+  const value = new URL(request.url).searchParams.get("stage2WorkerProfileId");
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function GET(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
 
   try {
@@ -65,7 +67,14 @@ export async function GET(_request: Request, context: Context): Promise<Response
       return Response.json({ error: "Channel not found." }, { status: 404 });
     }
 
-    return Response.json(loadChannelFeedbackState(id, channel.stage2StyleProfile), { status: 200 });
+    return Response.json(
+      loadChannelFeedbackState(
+        id,
+        channel.stage2StyleProfile,
+        getRequestedWorkerProfileId(request)
+      ),
+      { status: 200 }
+    );
   } catch (error) {
     if (error instanceof Response) {
       return error;
@@ -115,9 +124,17 @@ export async function POST(request: Request, context: Context): Promise<Response
       note: body?.note ?? null,
       optionSnapshot: body?.optionSnapshot
     });
-    const { historyEvents, editorialMemory } = loadChannelFeedbackState(id, channel.stage2StyleProfile);
+    const {
+      historyEvents,
+      editorialMemory,
+      editorialMemorySource
+    } = loadChannelFeedbackState(
+      id,
+      channel.stage2StyleProfile,
+      getRequestedWorkerProfileId(request)
+    );
 
-    return Response.json({ event, historyEvents, editorialMemory }, { status: 200 });
+    return Response.json({ event, historyEvents, editorialMemory, editorialMemorySource }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
       return error;
@@ -156,8 +173,19 @@ export async function DELETE(request: Request, context: Context): Promise<Respon
       return Response.json({ error: "Feedback event not found." }, { status: 404 });
     }
 
-    const { historyEvents, editorialMemory } = loadChannelFeedbackState(id, channel.stage2StyleProfile);
-    return Response.json({ deletedEventId: eventId, historyEvents, editorialMemory }, { status: 200 });
+    const {
+      historyEvents,
+      editorialMemory,
+      editorialMemorySource
+    } = loadChannelFeedbackState(
+      id,
+      channel.stage2StyleProfile,
+      getRequestedWorkerProfileId(request)
+    );
+    return Response.json(
+      { deletedEventId: eventId, historyEvents, editorialMemory, editorialMemorySource },
+      { status: 200 }
+    );
   } catch (error) {
     if (error instanceof Response) {
       return error;

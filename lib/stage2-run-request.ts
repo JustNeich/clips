@@ -13,6 +13,10 @@ import {
   type Stage2EditorialMemorySummary,
   type Stage2StyleProfile
 } from "./stage2-channel-learning";
+import {
+  normalizeStage2EditorialMemorySource,
+  type Stage2EditorialMemorySource
+} from "./stage2-editorial-memory-resolution";
 import type { Stage2RunMode, Stage2RunRequest } from "./stage2-progress-store";
 import type { Stage2DebugMode } from "./viral-shorts-worker/types";
 
@@ -20,10 +24,12 @@ type Stage2RunChannelSnapshotInput = {
   id: string;
   name: string;
   username: string;
+  stage2WorkerProfileId?: string | null;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
   stage2StyleProfile?: Stage2StyleProfile;
   editorialMemory?: Stage2EditorialMemorySummary;
+  editorialMemorySource?: Stage2EditorialMemorySource | null;
 };
 
 export function buildStage2RunRequestSnapshot(input: {
@@ -50,6 +56,7 @@ export function buildStage2RunRequestSnapshot(input: {
       id: input.channel.id,
       name: channelName,
       username: input.channel.username.trim(),
+      stage2WorkerProfileId: input.channel.stage2WorkerProfileId,
       stage2ExamplesConfig: parseStage2ExamplesConfigJson(
         stringifyStage2ExamplesConfig(input.channel.stage2ExamplesConfig, fallbackOwner),
         fallbackOwner
@@ -67,6 +74,9 @@ export function buildStage2RunRequestSnapshot(input: {
             : undefined
         ),
         input.channel.stage2StyleProfile
+      ),
+      editorialMemorySource: normalizeStage2EditorialMemorySource(
+        input.channel.editorialMemorySource ?? null
       )
     }
   };

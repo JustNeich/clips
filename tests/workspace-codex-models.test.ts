@@ -43,6 +43,7 @@ test("resolveWorkspaceCodexModelConfig keeps text-only stages on deploy Spark bu
     deployStage3Model: null
   });
 
+  assert.equal(resolved.oneShotReference, "gpt-5.4");
   assert.equal(resolved.analyzer, "gpt-5.4");
   assert.equal(resolved.styleDiscovery, "gpt-5.4");
   assert.equal(resolved.selector, "gpt-5.3-codex-spark");
@@ -63,6 +64,7 @@ test("normalizeWorkspaceCodexModelConfig migrates legacy stage2Pipeline safely i
     stage3Planner: "gpt-5.4"
   });
 
+  assert.equal(normalized.oneShotReference, "deploy_default");
   assert.equal(normalized.analyzer, "deploy_default");
   assert.equal(normalized.styleDiscovery, "deploy_default");
   assert.equal(normalized.selector, "gpt-5.3-codex-spark");
@@ -77,6 +79,10 @@ test("normalizeWorkspaceCodexModelConfig migrates legacy stage2Pipeline safely i
 });
 
 test("getWorkspaceCodexModelOptionsForStage hides Spark on multimodal stages only", () => {
+  assert.deepEqual(
+    getWorkspaceCodexModelOptionsForStage("oneShotReference").map((option) => option.value),
+    ["gpt-5.4", "gpt-5.4-mini"]
+  );
   assert.deepEqual(
     getWorkspaceCodexModelOptionsForStage("analyzer").map((option) => option.value),
     ["gpt-5.4", "gpt-5.4-mini"]
@@ -106,6 +112,7 @@ test("team-store persists workspace codex model config overrides in per-substage
     );
 
     const updated = updateWorkspaceCodexModelConfig(auth.workspace.id, {
+      oneShotReference: "gpt-5.4-mini",
       contextPacket: "gpt-5.4",
       candidateGenerator: "gpt-5.4-mini",
       qualityCourt: "gpt-5.3-codex-spark",
@@ -126,6 +133,7 @@ test("team-store persists workspace codex model config overrides in per-substage
     });
 
     assert.deepEqual(updated.codexModelConfig, {
+      oneShotReference: "gpt-5.4-mini",
       contextPacket: "gpt-5.4",
       candidateGenerator: "gpt-5.4-mini",
       qualityCourt: "gpt-5.3-codex-spark",
