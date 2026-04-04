@@ -12,6 +12,7 @@ import {
   findActiveSourceJobForChat,
   getSourceJob,
   hasQueuedSourceJobs,
+  interruptRunningSourceJobs,
   markSourceJobStageRunning,
   recoverInterruptedSourceJobs,
   SourceJobRecord,
@@ -73,12 +74,25 @@ function getSourceConcurrencyLimit(): number {
   return Math.max(1, Math.min(6, Math.floor(raw)));
 }
 
+function isHostedRenderRuntime(): boolean {
+  return process.env.RENDER === "true" || process.env.RENDER === "1";
+}
+
 function ensureSourceRuntime(): void {
   const state = getRuntimeState();
   if (state.initialized) {
     return;
   }
   state.initialized = true;
+  if (isHostedRenderRuntime()) {
+    const interrupted = interruptRunningSourceJobs(
+      "Source job stopped after process restart on hosted runtime. Start it again manually."
+    );
+    if (interrupted > 0) {
+      logSourceRuntime("bootstrap_interrupt_jobs", { count: interrupted });
+    }
+    return;
+  }
   const recovered = recoverInterruptedSourceJobs();
   if (recovered > 0) {
     logSourceRuntime("bootstrap_requeue_jobs", { count: recovered });

@@ -7,6 +7,7 @@ import {
   finalizeStage2RunSuccess,
   getStage2Run,
   hasQueuedStage2Runs,
+  interruptRunningStage2Runs,
   recoverInterruptedStage2Runs,
   setStage2RunResultData,
   Stage2RunRecord,
@@ -67,6 +68,10 @@ function getStage2ConcurrencyLimit(): number {
   return Math.max(1, Math.min(12, Math.floor(raw)));
 }
 
+function isHostedRenderRuntime(): boolean {
+  return process.env.RENDER === "true" || process.env.RENDER === "1";
+}
+
 function formatSourceProviderLabel(provider: Stage2Response["source"]["downloadProvider"]): string | null {
   if (provider === "visolix") {
     return "Visolix";
@@ -83,6 +88,15 @@ function ensureStage2Runtime(): void {
     return;
   }
   state.initialized = true;
+  if (isHostedRenderRuntime()) {
+    const interrupted = interruptRunningStage2Runs(
+      "Stage 2 run stopped after process restart on hosted runtime. Start it again manually."
+    );
+    if (interrupted > 0) {
+      logStage2Runtime("bootstrap_interrupt_runs", { count: interrupted });
+    }
+    return;
+  }
   const recovered = recoverInterruptedStage2Runs();
   if (recovered > 0) {
     logStage2Runtime("bootstrap_requeue_runs", { count: recovered });

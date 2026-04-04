@@ -387,6 +387,44 @@ export function recoverInterruptedSourceJobs(detail = "Recovered after process r
   });
 }
 
+export function interruptRunningSourceJobs(
+  message = "Source job stopped after process restart on hosted runtime. Start it again manually."
+): number {
+  return runInTransaction((db) => {
+    const rows = db
+      .prepare("SELECT * FROM source_jobs WHERE status = 'running'")
+      .all() as SourceJobRow[];
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    for (const row of rows) {
+      const record = mapSourceJob(row);
+      const finishedAt = nowIso();
+      const progress = {
+        ...record.progress,
+        status: "failed" as const,
+        detail: message,
+        error: message,
+        updatedAt: finishedAt,
+        finishedAt,
+        activeStageId: record.progress.activeStageId ?? "prepare"
+      };
+      db.prepare(
+        `UPDATE source_jobs
+            SET status = 'failed',
+                progress_json = ?,
+                error_message = ?,
+                updated_at = ?,
+                finished_at = ?
+          WHERE job_id = ?`
+      ).run(JSON.stringify(progress), message, progress.updatedAt, progress.finishedAt, record.jobId);
+    }
+
+    return rows.length;
+  });
+}
+
 export function markSourceJobStageRunning(
   jobId: string,
   stageId: SourceJobStageId,

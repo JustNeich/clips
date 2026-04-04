@@ -10735,6 +10735,136 @@ test("running stage 2 run is re-queued after process restart and completes on th
   });
 });
 
+test("running stage 2 run is failed instead of re-queued after hosted runtime restart", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const previousRender = process.env.RENDER;
+    process.env.RENDER = "true";
+    try {
+      const runtime = await import("../lib/stage2-run-runtime");
+      const store = await import("../lib/stage2-progress-store");
+      const teamStore = await import("../lib/team-store");
+      const chatHistory = await import("../lib/chat-history");
+
+      const owner = await teamStore.bootstrapOwner({
+        workspaceName: "Hosted Stage 2 Recovery",
+        email: "owner@example.com",
+        password: "Password123!",
+        displayName: "Owner"
+      });
+      const channel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Hosted Recovery Channel",
+        username: "hosted_recovery_channel"
+      });
+      const chat = await chatHistory.createOrGetChatByUrl(
+        "https://www.youtube.com/shorts/hosted-stage2-recovery-check",
+        channel.id
+      );
+      const run = store.createStage2Run({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        chatId: chat.id,
+        request: {
+          sourceUrl: "https://example.com/hosted-recovery",
+          userInstruction: "hosted recover me",
+          mode: "manual",
+          channel: {
+            id: channel.id,
+            name: channel.name,
+            username: channel.username,
+            stage2WorkerProfileId: channel.stage2WorkerProfileId,
+            stage2ExamplesConfig: channel.stage2ExamplesConfig,
+            stage2HardConstraints: channel.stage2HardConstraints
+          }
+        }
+      });
+
+      store.markStage2RunStageRunning(run.runId, "oneShotReference", {
+        detail: "Reference one-shot before hosted restart."
+      });
+
+      delete (globalThis as { __clipsStage2RuntimeState__?: unknown }).__clipsStage2RuntimeState__;
+      runtime.scheduleStage2RunProcessing();
+
+      const recovered = store.getStage2Run(run.runId);
+      assert.equal(recovered?.status, "failed");
+      assert.match(recovered?.errorMessage ?? "", /hosted runtime/i);
+      assert.match(recovered?.snapshot.error ?? "", /hosted runtime/i);
+    } finally {
+      if (previousRender === undefined) {
+        delete process.env.RENDER;
+      } else {
+        process.env.RENDER = previousRender;
+      }
+    }
+  });
+});
+
+test("running source job is failed instead of re-queued after hosted runtime restart", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const previousRender = process.env.RENDER;
+    process.env.RENDER = "true";
+    try {
+      const runtime = await import("../lib/source-job-runtime");
+      const store = await import("../lib/source-job-store");
+      const teamStore = await import("../lib/team-store");
+      const chatHistory = await import("../lib/chat-history");
+
+      const owner = await teamStore.bootstrapOwner({
+        workspaceName: "Hosted Source Recovery",
+        email: "owner@example.com",
+        password: "Password123!",
+        displayName: "Owner"
+      });
+      const channel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Hosted Source Channel",
+        username: "hosted_source_channel"
+      });
+      const chat = await chatHistory.createOrGetChatByUrl(
+        "https://www.youtube.com/shorts/hosted-source-recovery-check",
+        channel.id
+      );
+      const job = store.createSourceJob({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        request: {
+          sourceUrl: chat.url,
+          autoRunStage2: false,
+          trigger: "fetch",
+          chat: {
+            id: chat.id,
+            channelId: channel.id
+          },
+          channel: {
+            id: channel.id,
+            name: channel.name,
+            username: channel.username
+          }
+        }
+      });
+
+      store.markSourceJobStageRunning(job.jobId, "comments", "Loading comments before hosted restart.");
+
+      delete (globalThis as { __clipsSourceRuntimeState__?: unknown }).__clipsSourceRuntimeState__;
+      runtime.scheduleSourceJobProcessing();
+
+      const recovered = store.getSourceJob(job.jobId);
+      assert.equal(recovered?.status, "failed");
+      assert.match(recovered?.errorMessage ?? "", /hosted runtime/i);
+      assert.match(recovered?.progress.error ?? "", /hosted runtime/i);
+    } finally {
+      if (previousRender === undefined) {
+        delete process.env.RENDER;
+      } else {
+        process.env.RENDER = previousRender;
+      }
+    }
+  });
+});
+
 test("chat trace export assembles a full payload, truncates comments, and honors the selected stage 2 run", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");

@@ -383,6 +383,14 @@ cp .env.example .env.local
 - `Dockerfile` с установкой `yt-dlp`, `ffmpeg`, `ffprobe` и `codex`
 - `render.yaml` с рекомендованным регионом `Frankfurt`, `Starter` plan, mount path `/var/data` и local-worker defaults для Stage 3
 
+Для `Starter` имеет смысл сразу зажать фоновые очереди:
+- `STAGE2_MAX_CONCURRENT_RUNS=1`
+- `SOURCE_MAX_CONCURRENT_JOBS=1`
+
+Иначе несколько одновременных Stage 1/Stage 2 задач могут упереться в лимит памяти инстанса раньше, чем Render успеет восстановить сервис.
+
+Если hosted instance всё же упал во время `Stage 1` / `Stage 2`, после следующего boot такие задачи не должны автоматически продолжаться по кругу. Их лучше запускать вручную после восстановления сервиса, иначе можно поймать restart-loop на маленьком инстансе.
+
 Если сервис создан как native `Node` web service, он не увидит системные бинарники. В этом случае создайте новый Docker-based service или переведите сервис на `runtime: docker` через Render Blueprint.
 
 ## Ограничения
