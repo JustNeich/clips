@@ -33,6 +33,8 @@ type EditingProxyProfile = {
   keyframeIntervalFrames: number;
 };
 
+export const STAGE3_EVEN_DIMENSIONS_FILTER = "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,setsar=1";
+
 export type VideoDimensions = {
   width: number;
   height: number;
@@ -107,12 +109,16 @@ export function buildStage3EditingProxyFfmpegArgs(params: {
   outputPath: string;
   profile: EditingProxyProfile;
 }): string[] {
+  const videoFilter = [
+    `fps=${params.profile.fps},scale=${params.profile.maxDimensionPx}:-2:force_original_aspect_ratio=decrease`,
+    STAGE3_EVEN_DIMENSIONS_FILTER
+  ].join(",");
   return [
     "-y",
     "-i",
     params.sourcePath,
     "-vf",
-    `fps=${params.profile.fps},scale=${params.profile.maxDimensionPx}:-2:force_original_aspect_ratio=decrease,setsar=1`,
+    videoFilter,
     "-c:v",
     "libx264",
     "-preset",
@@ -168,6 +174,25 @@ function normalizeSegmentSpeed(value: unknown): number {
 function makeEven(value: number, min = 2): number {
   const rounded = Math.max(min, Math.round(value));
   return rounded % 2 === 0 ? rounded : rounded - 1;
+}
+
+export function buildStage3FitClipVideoFilters(params: {
+  effectiveRatio: number;
+  smoothSlowMo: boolean;
+  pts: string;
+  scalePrefix?: string;
+}): string {
+  const filters: string[] = [];
+  const prefix = params.scalePrefix?.trim();
+  if (prefix) {
+    filters.push(prefix.replace(/,+$/, ""));
+  }
+  filters.push(`setpts=${params.pts}*PTS`);
+  if (params.smoothSlowMo && params.effectiveRatio > 1) {
+    filters.push("minterpolate=fps=60", "fps=30");
+  }
+  filters.push(STAGE3_EVEN_DIMENSIONS_FILTER);
+  return filters.join(",");
 }
 
 export function sanitizeFocusY(rawFocusY?: number | null): number {
@@ -884,6 +909,7 @@ async function extractSegmentsToFiles(
     if (Math.abs(speed - 1) > 0.001) {
       videoFilters.push(`setpts=PTS/${speed.toFixed(6)}`);
     }
+    videoFilters.push(STAGE3_EVEN_DIMENSIONS_FILTER);
 
     const args = [
       "-y",
@@ -1029,10 +1055,12 @@ async function fitClipToDuration(params: {
   const pts = effectiveRatio.toFixed(6);
   const tempo = (1 / effectiveRatio).toFixed(6);
   const scalePrefix = encode.fitScalePrefix;
-  const videoFilters =
-    params.smoothSlowMo && effectiveRatio > 1
-      ? `${scalePrefix}setpts=${pts}*PTS,minterpolate=fps=60,fps=30`
-      : `${scalePrefix}setpts=${pts}*PTS`;
+  const videoFilters = buildStage3FitClipVideoFilters({
+    effectiveRatio,
+    smoothSlowMo: params.smoothSlowMo,
+    pts,
+    scalePrefix
+  });
   const audioFilters = buildAtempoChain(Number.parseFloat(tempo));
 
   await execFileAsync(
