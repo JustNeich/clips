@@ -29,9 +29,9 @@ import {
   getWorkspaceStage2PromptConfig
 } from "./team-store";
 import {
-  fetchOptionalYtDlpInfo,
-  downloadSourceMedia
+  fetchOptionalYtDlpInfo
 } from "./source-acquisition";
+import { ensureSourceMediaCached } from "./source-media-cache";
 import {
   extractYtDlpErrorFromUnknown,
   sanitizeFileName
@@ -325,12 +325,21 @@ export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stag
   return { ok: true };
 }
 
-async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
+export async function downloadVideoAndMetadata(
+  url: string,
+  tmpDir: string,
+  deps?: {
+    ensureCached?: typeof ensureSourceMediaCached;
+    fetchOptionalInfo?: typeof fetchOptionalYtDlpInfo;
+  }
+): Promise<{
   videoPath: string;
   videoFileName: string;
   title: string;
   infoJson: VideoInfoJson;
   videoSizeBytes: number;
+  sourceCacheKey: string;
+  sourceCacheState: "hit" | "miss" | "wait";
   downloadProvider: "visolix" | "ytDlp";
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
@@ -342,9 +351,9 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
     error: string | null;
   };
 }> {
-  const downloaded = await downloadSourceMedia(url, tmpDir);
-  const optionalInfo = await fetchOptionalYtDlpInfo(url, tmpDir);
-  const title = optionalInfo.infoJson?.title?.trim() || downloaded.title?.trim() || "video";
+  const cachedSource = await (deps?.ensureCached ?? ensureSourceMediaCached)(url);
+  const optionalInfo = await (deps?.fetchOptionalInfo ?? fetchOptionalYtDlpInfo)(url, tmpDir);
+  const title = optionalInfo.infoJson?.title?.trim() || cachedSource.title?.trim() || "video";
   const infoJson: VideoInfoJson = {
     title,
     description: optionalInfo.infoJson?.description?.trim() || "",
@@ -353,14 +362,16 @@ async function downloadVideoAndMetadata(url: string, tmpDir: string): Promise<{
   };
 
   return {
-    videoPath: downloaded.filePath,
-    videoFileName: `${sanitizeFileName(downloaded.fileName)}.mp4`,
+    videoPath: cachedSource.sourcePath,
+    videoFileName: `${sanitizeFileName(cachedSource.fileName)}.mp4`,
     title,
     infoJson,
-    videoSizeBytes: downloaded.videoSizeBytes,
-    downloadProvider: downloaded.provider,
-    primaryProviderError: downloaded.primaryProviderError,
-    downloadFallbackUsed: downloaded.downloadFallbackUsed,
+    videoSizeBytes: cachedSource.videoSizeBytes,
+    sourceCacheKey: cachedSource.sourceKey,
+    sourceCacheState: cachedSource.cacheState,
+    downloadProvider: cachedSource.downloadProvider,
+    primaryProviderError: cachedSource.primaryProviderError,
+    downloadFallbackUsed: cachedSource.downloadFallbackUsed,
     commentsExtractionFallbackUsed: optionalInfo.commentsExtractionFallbackUsed,
     commentsAcquisition: optionalInfo.commentsAcquisition
   };
@@ -911,6 +922,8 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         title: downloaded.title,
         videoFileName: downloaded.videoFileName,
         videoSizeBytes: downloaded.videoSizeBytes,
+        sourceCacheKey: downloaded.sourceCacheKey,
+        sourceCacheState: downloaded.sourceCacheState,
         downloadProvider: downloaded.downloadProvider,
         primaryProviderError: downloaded.primaryProviderError,
         downloadFallbackUsed: downloaded.downloadFallbackUsed,

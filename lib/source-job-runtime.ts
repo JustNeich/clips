@@ -19,6 +19,7 @@ import {
   SourceJobRequest
 } from "./source-job-store";
 import { fetchCommentsForUrl } from "./source-comments";
+import { ensureSourceMediaCached } from "./source-media-cache";
 import { getWorkspaceCodexIntegration } from "./team-store";
 
 type SourceRuntimeState = {
@@ -118,6 +119,10 @@ async function appendSourceSuccessEvent(result: SourceJobResult, commentsPayload
       : "Источник подготовлен. Продолжаем без комментариев.",
     data: {
       stage1Ready: true,
+      sourceCacheKey: result.sourceCacheKey ?? null,
+      sourceCacheState: result.sourceCacheState ?? null,
+      downloadProvider: result.downloadProvider ?? null,
+      downloadFallbackUsed: result.downloadFallbackUsed ?? false,
       commentsAvailable: false,
       commentsError: result.commentsError
     }
@@ -196,6 +201,9 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     throw new Error("Chat not found for source job.");
   }
 
+  markSourceJobStageRunning(job.jobId, "prepare", "Скачиваем и кэшируем исходное видео.");
+  const cachedSource = await ensureSourceMediaCached(job.sourceUrl);
+
   let commentsPayload: CommentsPayload | null = null;
   let commentsAvailable = false;
   let commentsError: string | null = null;
@@ -220,7 +228,14 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     channelId: job.channelId,
     sourceUrl: job.sourceUrl,
     stage1Ready: true,
-    title: commentsPayload?.title ?? chat.title ?? null,
+    title: commentsPayload?.title ?? cachedSource.title ?? chat.title ?? null,
+    videoFileName: cachedSource.fileName,
+    videoSizeBytes: cachedSource.videoSizeBytes,
+    sourceCacheKey: cachedSource.sourceKey,
+    sourceCacheState: cachedSource.cacheState,
+    downloadProvider: cachedSource.downloadProvider,
+    primaryProviderError: cachedSource.primaryProviderError,
+    downloadFallbackUsed: cachedSource.downloadFallbackUsed,
     commentsAvailable,
     commentsError,
     commentsPayload,

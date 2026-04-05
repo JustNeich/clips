@@ -352,6 +352,8 @@ export type Stage2Response = {
     commentsUsedForPrompt: number;
     videoFileName?: string;
     videoSizeBytes?: number;
+    sourceCacheKey?: string;
+    sourceCacheState?: "hit" | "miss" | "wait";
     downloadProvider?: "visolix" | "ytDlp";
     primaryProviderError?: string | null;
     downloadFallbackUsed?: boolean;
@@ -464,6 +466,13 @@ export type SourceJobResult = {
   sourceUrl: string;
   stage1Ready: boolean;
   title: string | null;
+  videoFileName?: string | null;
+  videoSizeBytes?: number | null;
+  sourceCacheKey?: string | null;
+  sourceCacheState?: "hit" | "miss" | "wait";
+  downloadProvider?: "visolix" | "ytDlp";
+  primaryProviderError?: string | null;
+  downloadFallbackUsed?: boolean;
   commentsAvailable: boolean;
   commentsError: string | null;
   commentsPayload: CommentsPayload | null;
