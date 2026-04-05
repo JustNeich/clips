@@ -38,6 +38,10 @@ export type YtDlpErrorDescriptor = {
   retryable: boolean;
 };
 
+type YtDlpErrorContext = {
+  sourceUrl?: string | null;
+};
+
 function normalizeCookieSecret(value: string): string {
   const trimmed = value.trim();
   const normalized = trimmed.includes("\n") ? trimmed : trimmed.replace(/\\n/g, "\n");
@@ -80,9 +84,35 @@ export async function createYtDlpAuthContext(tmpDir?: string): Promise<YtDlpAuth
   };
 }
 
-export function getYtDlpErrorDescriptor(stderr: string): YtDlpErrorDescriptor {
+function resolveSourcePlatformLabel(rawUrl?: string | null): "YouTube" | "Instagram" | "Facebook" | null {
+  const trimmed = rawUrl?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(normalizeSupportedUrl(trimmed));
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "youtu.be" || hostname.includes("youtube.com")) {
+      return "YouTube";
+    }
+    if (hostname.includes("instagram.com")) {
+      return "Instagram";
+    }
+    if (hostname.includes("facebook.com") || hostname === "fb.watch") {
+      return "Facebook";
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export function getYtDlpErrorDescriptor(stderr: string, context?: YtDlpErrorContext): YtDlpErrorDescriptor {
   const normalized = stderr.toLowerCase();
   const workerRuntime = Boolean(process.env.STAGE3_WORKER_SERVER_ORIGIN);
+  const sourcePlatform = resolveSourcePlatformLabel(context?.sourceUrl) ?? "Источник";
 
   if (!normalized.trim()) {
     return {
@@ -114,8 +144,7 @@ export function getYtDlpErrorDescriptor(stderr: string): YtDlpErrorDescriptor {
     normalized.includes("cookies for the authentication")
   ) {
     return {
-      message:
-        "YouTube отклонил запрос на этом сервере (anti-bot/auth). Если YTDLP_COOKIES уже заданы, проблема может быть в IP или репутации runtime.",
+      message: `${sourcePlatform} отклонил запрос на этом сервере (anti-bot/auth). Если YTDLP_COOKIES уже заданы, проблема может быть в IP или репутации runtime.`,
       retryable: false
     };
   }
@@ -152,22 +181,25 @@ export function getYtDlpErrorDescriptor(stderr: string): YtDlpErrorDescriptor {
   };
 }
 
-export function getYtDlpError(stderr: string): string {
-  return getYtDlpErrorDescriptor(stderr).message;
+export function getYtDlpError(stderr: string, context?: YtDlpErrorContext): string {
+  return getYtDlpErrorDescriptor(stderr, context).message;
 }
 
-export function extractYtDlpErrorFromText(message: string): string | null {
-  const descriptor = extractYtDlpErrorDescriptorFromText(message);
+export function extractYtDlpErrorFromText(message: string, context?: YtDlpErrorContext): string | null {
+  const descriptor = extractYtDlpErrorDescriptorFromText(message, context);
   return descriptor?.message ?? null;
 }
 
-export function extractYtDlpErrorDescriptorFromText(message: string): YtDlpErrorDescriptor | null {
+export function extractYtDlpErrorDescriptorFromText(
+  message: string,
+  context?: YtDlpErrorContext
+): YtDlpErrorDescriptor | null {
   const normalized = message.toLowerCase();
   if (!YT_DLP_ERROR_SIGNALS.some((signal) => normalized.includes(signal))) {
     return null;
   }
 
-  return getYtDlpErrorDescriptor(message);
+  return getYtDlpErrorDescriptor(message, context);
 }
 
 const YT_DLP_ERROR_SIGNALS = [
@@ -185,12 +217,15 @@ const YT_DLP_ERROR_SIGNALS = [
   "not found"
 ];
 
-export function extractYtDlpErrorFromUnknown(error: unknown): string | null {
-  const descriptor = extractYtDlpErrorDescriptorFromUnknown(error);
+export function extractYtDlpErrorFromUnknown(error: unknown, context?: YtDlpErrorContext): string | null {
+  const descriptor = extractYtDlpErrorDescriptorFromUnknown(error, context);
   return descriptor?.message ?? null;
 }
 
-export function extractYtDlpErrorDescriptorFromUnknown(error: unknown): YtDlpErrorDescriptor | null {
+export function extractYtDlpErrorDescriptorFromUnknown(
+  error: unknown,
+  context?: YtDlpErrorContext
+): YtDlpErrorDescriptor | null {
   const stderr =
     typeof error === "object" && error && "stderr" in error
       ? String((error as { stderr?: string }).stderr ?? "")
@@ -202,5 +237,5 @@ export function extractYtDlpErrorDescriptorFromUnknown(error: unknown): YtDlpErr
     return null;
   }
 
-  return extractYtDlpErrorDescriptorFromText(combined);
+  return extractYtDlpErrorDescriptorFromText(combined, context);
 }

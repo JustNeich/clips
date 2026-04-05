@@ -526,7 +526,7 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
     });
   } catch (error) {
     throw new Error(
-      extractYtDlpErrorFromUnknown(error) ??
+      extractYtDlpErrorFromUnknown(error, { sourceUrl }) ??
         (error instanceof Error ? error.message : "yt-dlp не смог скачать исходное видео.")
     );
   }
@@ -639,7 +639,7 @@ async function tryYtDlpMetadata(rawUrl: string): Promise<SourceMetadataResult> {
     };
   } catch (error) {
     throw new Error(
-      extractYtDlpErrorFromUnknown(error) ??
+      extractYtDlpErrorFromUnknown(error, { sourceUrl: rawUrl }) ??
         (error instanceof Error ? error.message : "Не удалось получить metadata через yt-dlp.")
     );
   } finally {

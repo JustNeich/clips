@@ -134,7 +134,7 @@ export async function fetchCommentsPayloadViaYtDlp(input: {
     };
   } catch (error) {
     throw new Error(
-      extractYtDlpErrorFromUnknown(error) ??
+      extractYtDlpErrorFromUnknown(error, { sourceUrl }) ??
         toErrorMessage(error, "Не удалось получить комментарии.")
     );
   } finally {
