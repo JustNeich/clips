@@ -494,6 +494,7 @@ async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<Sourc
 }
 
 async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadCoreResult> {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
   const ytDlpPath = await resolveYtDlpExecutable();
   if (!ytDlpPath) {
     throw new Error(
@@ -516,7 +517,7 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
     "-o",
     outputTemplate,
-    rawUrl
+    sourceUrl
   ];
 
   try {
