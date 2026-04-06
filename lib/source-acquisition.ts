@@ -271,7 +271,7 @@ function buildVisolixUrlCandidates(rawUrl: string): string[] {
     new Set(
       baseCandidates.flatMap((candidate) => {
         const encoded = encodeVisolixHeaderUrl(candidate);
-        return encoded === candidate ? [candidate] : [encoded, candidate];
+        return encoded === candidate ? [candidate] : [candidate, encoded];
       })
     )
   );
@@ -384,7 +384,19 @@ async function visolixDownloadInit(rawUrl: string): Promise<VisolixInitResponse>
         );
       }
 
-      return (body ?? {}) as VisolixInitResponse;
+      const payload = (body ?? {}) as VisolixInitResponse;
+      const directDownloadUrl =
+        asTrimmedString(payload.download_url) ??
+        asTrimmedString((payload as Record<string, unknown>).url) ??
+        asTrimmedString((payload as Record<string, unknown>).downloadUrl);
+      const progressUrl = asTrimmedString(payload.progress_url);
+
+      if (!directDownloadUrl && !progressUrl) {
+        lastError = new Error("Visolix не вернул download_url или progress_url для download job.");
+        continue;
+      }
+
+      return payload;
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         lastError = new Error("Visolix API не ответил вовремя.");
