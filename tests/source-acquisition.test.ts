@@ -73,7 +73,7 @@ test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback 
   }
 });
 
-test("downloadSourceMedia sends instagram platform to Visolix and retries with the encoded fallback only after the raw URL", { concurrency: false }, async () => {
+test("downloadSourceMedia exhausts raw instagram reel variants before trying encoded Visolix fallbacks", { concurrency: false }, async () => {
   const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
   const previousVisolixBaseUrl = process.env.VISOLIX_BASE_URL;
   const originalFetch = globalThis.fetch;
@@ -96,8 +96,11 @@ test("downloadSourceMedia sends instagram platform to Visolix and retries with t
         format: headers.get("X-FORMAT")
       });
 
-      if (seenHeaders.length === 1) {
-        return jsonResponse({ success: true, id: "job_1", title: "Instagram source without progress yet" });
+      if (seenHeaders.length < 4) {
+        return jsonResponse({
+          success: false,
+          message: "Platform mismatch. Detected: other, Provided: instagram"
+        });
       }
 
       return jsonResponse({
@@ -131,7 +134,17 @@ test("downloadSourceMedia sends instagram platform to Visolix and retries with t
       },
       {
         platform: "instagram",
-        url: encodeURIComponent(canonicalUrl),
+        url: "https://www.instagram.com/reel/DWCau2xDLz6",
+        format: null
+      },
+      {
+        platform: "instagram",
+        url: "https://instagram.com/reel/DWCau2xDLz6",
+        format: null
+      },
+      {
+        platform: "instagram",
+        url: "https://instagram.com/reel/DWCau2xDLz6/",
         format: null
       }
     ]);

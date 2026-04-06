@@ -262,10 +262,53 @@ function encodeVisolixHeaderUrl(rawUrl: string): string {
   return encodeURIComponent(rawUrl);
 }
 
+function buildInstagramVisolixVariants(rawUrl: string): string[] {
+  try {
+    const parsed = new URL(rawUrl);
+    const hostname = parsed.hostname.toLowerCase();
+    if (!hostname.includes("instagram.com")) {
+      return [];
+    }
+
+    const pathSegments = parsed.pathname.split("/").filter(Boolean);
+    const reelIndex = pathSegments.findIndex((segment) => {
+      const lowered = segment.toLowerCase();
+      return lowered === "reel" || lowered === "reels";
+    });
+    const reelId = reelIndex >= 0 ? pathSegments[reelIndex + 1] : null;
+    if (!reelId) {
+      return [];
+    }
+
+    const baseHosts = Array.from(new Set([parsed.hostname, parsed.hostname.replace(/^www\./i, ""), `www.${parsed.hostname.replace(/^www\./i, "")}`]));
+    const pathVariants = [`/reel/${reelId}`, `/reel/${reelId}/`];
+    const urls: string[] = [];
+
+    for (const host of baseHosts) {
+      for (const pathname of pathVariants) {
+        const candidate = new URL(parsed.toString());
+        candidate.protocol = "https:";
+        candidate.hostname = host;
+        candidate.pathname = pathname;
+        candidate.search = "";
+        candidate.hash = "";
+        candidate.username = "";
+        candidate.password = "";
+        urls.push(candidate.toString());
+      }
+    }
+
+    return urls;
+  } catch {
+    return [];
+  }
+}
+
 function buildVisolixUrlCandidates(rawUrl: string): string[] {
   const trimmed = rawUrl.trim();
   const normalized = normalizeUrlForVisolix(trimmed).trim();
-  const rawCandidates = Array.from(new Set([normalized, trimmed].filter(Boolean)));
+  const instagramVariants = buildInstagramVisolixVariants(normalized);
+  const rawCandidates = Array.from(new Set([normalized, ...instagramVariants, trimmed].filter(Boolean)));
   const encodedCandidates = rawCandidates
     .map((candidate) => encodeVisolixHeaderUrl(candidate))
     .filter((candidate, index, list) => candidate !== rawCandidates[index] && list.indexOf(candidate) === index);
