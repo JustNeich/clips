@@ -7865,6 +7865,77 @@ test("stable_reference_v6 applies tiny deterministic exact-length polish to near
   );
 });
 
+test("stable_reference_v6 trims a one-character punctuation overflow instead of failing the whole one-shot run", async () => {
+  const groundedTopSeed =
+    "The trade sounds harmless until the second photo makes the whole joke land, and the clip turns into the moment everybody realizes who got thrown under the bus. ";
+  const almostMaxBottom = `${makeFixedLengthText(
+    "That second picture says enough for everyone in the comments to hear the betrayal before anybody explains the deal out loud and softens the joke",
+    150
+  )}.`;
+
+  const { result } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6",
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 160,
+      topLengthMax: 185,
+      bottomLengthMin: 140,
+      bottomLengthMax: 150
+    },
+    responses: [
+      {
+        analysis: {
+          visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+          comment_vibe: "dry betrayal humor",
+          key_phrase_to_adapt: "strongest will"
+        },
+        candidates: [
+          {
+            candidate_id: "cand_1",
+            top: makeFixedLengthText(groundedTopSeed, 176),
+            bottom: makeFixedLengthText("cand_1 grounded bottom ", 147),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_2",
+            top: makeFixedLengthText(groundedTopSeed, 178),
+            bottom: almostMaxBottom,
+            retained_handle: true
+          },
+          {
+            candidate_id: "cand_3",
+            top: makeFixedLengthText(groundedTopSeed, 181),
+            bottom: makeFixedLengthText("cand_3 grounded bottom ", 149),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_4",
+            top: makeFixedLengthText(groundedTopSeed, 173),
+            bottom: makeFixedLengthText("cand_4 grounded bottom ", 145),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_5",
+            top: makeFixedLengthText(groundedTopSeed, 170),
+            bottom: makeFixedLengthText("cand_5 grounded bottom ", 148),
+            retained_handle: true
+          }
+        ],
+        winner_candidate_id: "cand_2",
+        titles: Array.from({ length: 5 }, (_, index) => ({
+          title: `WHO GOT THROWN UNDER THE BUS ${index + 1}`
+        }))
+      }
+    ]
+  });
+
+  const repairedCandidate = result.output.captionOptions.find((option) => option.candidateId === "cand_2");
+  assert.ok(repairedCandidate);
+  assert.equal(repairedCandidate?.bottom.length, 150);
+  assert.equal(repairedCandidate?.constraintCheck.repaired, true);
+  assert.equal(result.output.winner?.candidateId, "cand_2");
+});
+
 test("native prompts use the runtime channel hard-constraint windows in generation judging and repair", async () => {
   const customConstraints: Stage2HardConstraints = {
     ...DEFAULT_STAGE2_HARD_CONSTRAINTS,

@@ -2200,6 +2200,20 @@ function attemptReferenceOneShotLineLengthPolish(input: {
     return { text: value, repaired };
   }
 
+  const strippedTerminalPunctuation = value.replace(/[.!?]["']?$/u, "").trim();
+  if (
+    strippedTerminalPunctuation &&
+    strippedTerminalPunctuation !== value &&
+    strippedTerminalPunctuation.length >= input.minimum &&
+    strippedTerminalPunctuation.length <= input.maximum &&
+    !looksLikeBrokenCaptionEnding(strippedTerminalPunctuation)
+  ) {
+    return {
+      text: strippedTerminalPunctuation,
+      repaired: true
+    };
+  }
+
   let tightened = truncateToWordBoundary(value, input.maximum).trim();
   if (!tightened) {
     return { text: value, repaired };
