@@ -265,16 +265,12 @@ function encodeVisolixHeaderUrl(rawUrl: string): string {
 function buildVisolixUrlCandidates(rawUrl: string): string[] {
   const trimmed = rawUrl.trim();
   const normalized = normalizeUrlForVisolix(trimmed).trim();
-  const baseCandidates = Array.from(new Set([trimmed, normalized].filter(Boolean)));
+  const rawCandidates = Array.from(new Set([normalized, trimmed].filter(Boolean)));
+  const encodedCandidates = rawCandidates
+    .map((candidate) => encodeVisolixHeaderUrl(candidate))
+    .filter((candidate, index, list) => candidate !== rawCandidates[index] && list.indexOf(candidate) === index);
 
-  return Array.from(
-    new Set(
-      baseCandidates.flatMap((candidate) => {
-        const encoded = encodeVisolixHeaderUrl(candidate);
-        return encoded === candidate ? [candidate] : [candidate, encoded];
-      })
-    )
-  );
+  return Array.from(new Set([...rawCandidates, ...encodedCandidates]));
 }
 
 function deriveVisolixPlatform(rawUrl: string): string | null {

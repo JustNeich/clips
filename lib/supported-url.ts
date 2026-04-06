@@ -99,12 +99,16 @@ function normalizeDirectSupportedUrl(parsed: URL): string {
   normalized.password = "";
   normalized.hash = "";
 
-  if (
-    hostname.includes("instagram.com") &&
-    (normalized.pathname.toLowerCase().startsWith("/share/reel/") ||
-      normalized.pathname.toLowerCase().startsWith("/share/reels/"))
-  ) {
-    normalized.pathname = normalized.pathname.replace(/^\/share\/reels?\//i, "/reel/");
+  if (hostname.includes("instagram.com")) {
+    const pathSegments = normalized.pathname.split("/").filter(Boolean);
+    const reelIndex = pathSegments.findIndex((segment) => {
+      const lowered = segment.toLowerCase();
+      return lowered === "reel" || lowered === "reels";
+    });
+
+    if (reelIndex >= 0 && pathSegments[reelIndex + 1]) {
+      normalized.pathname = `/reel/${pathSegments[reelIndex + 1]}/`;
+    }
   }
 
   if (hostname.includes("instagram.com") || hostname.includes("facebook.com") || hostname === "fb.watch") {
