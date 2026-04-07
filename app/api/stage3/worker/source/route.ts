@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { requireStage3WorkerAuth } from "../../../../../lib/auth/stage3-worker";
 import { createNodeStreamResponse } from "../../../../../lib/node-stream-response";
-import { downloadSourceMedia } from "../../../../../lib/source-acquisition";
+import { ensureSourceMediaCached } from "../../../../../lib/source-media-cache";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
@@ -39,9 +39,9 @@ export async function POST(request: Request): Promise<Response> {
     let cleanupScheduled = false;
 
     try {
-      const downloaded = await downloadSourceMedia(sourceUrl, tmpDir);
-      const fileStat = await fs.stat(downloaded.filePath);
-      const stream = createReadStream(downloaded.filePath);
+      const cached = await ensureSourceMediaCached(sourceUrl);
+      const fileStat = await fs.stat(cached.sourcePath);
+      const stream = createReadStream(cached.sourcePath);
 
       scheduleDirectoryCleanup(tmpDir);
       cleanupScheduled = true;
@@ -53,8 +53,8 @@ export async function POST(request: Request): Promise<Response> {
           "Content-Type": "video/mp4",
           "Content-Length": String(fileStat.size),
           "Cache-Control": "private, no-store",
-          "x-stage3-source-file-name": downloaded.fileName,
-          "x-stage3-source-provider": downloaded.provider
+          "x-stage3-source-file-name": cached.fileName,
+          "x-stage3-source-provider": cached.downloadProvider
         }
       });
     } finally {

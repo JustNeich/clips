@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { STAGE3_SEGMENT_SPEED_OPTIONS } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { downloadSourceMedia } from "./source-acquisition";
+import { ensureSourceMediaCached } from "./source-media-cache";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { computeManagedTemplateTextFit } from "./managed-template-runtime";
 import { maybeDownloadStage3WorkerSource } from "./stage3-worker-source-client";
@@ -72,6 +73,10 @@ export type Stage3FramedPreviewAnalysis = {
 
 function isMemoryConstrainedRuntime(): boolean {
   return process.env.RENDER === "true" || process.env.RENDER === "1";
+}
+
+function isPairedStage3WorkerRuntime(): boolean {
+  return Boolean(process.env.STAGE3_WORKER_SERVER_ORIGIN?.trim() && process.env.STAGE3_WORKER_SESSION_TOKEN?.trim());
 }
 
 function getEncodeProfile(profile: Stage3MediaProfile): EncodeProfile {
@@ -227,6 +232,14 @@ export async function downloadSourceVideo(
   rawUrl: string,
   tmpDir: string
 ): Promise<{ filePath: string; fileName: string }> {
+  if (!isPairedStage3WorkerRuntime()) {
+    const cached = await ensureSourceMediaCached(rawUrl);
+    return {
+      filePath: cached.sourcePath,
+      fileName: sanitizeFileName(cached.fileName)
+    };
+  }
+
   try {
     const downloaded = await downloadSourceMedia(rawUrl, tmpDir);
     return {
