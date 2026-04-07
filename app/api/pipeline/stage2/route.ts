@@ -24,8 +24,9 @@ import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
 import {
   resolveChannelEditorialMemory
 } from "../../../../lib/stage2-editorial-memory-resolution";
+import { resolveManagedTemplateRuntimeSync } from "../../../../lib/managed-template-runtime";
 import type { Stage2Response } from "../../../components/types";
-import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
+import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../lib/ytdlp";
 import type { Stage2DebugMode } from "../../../../lib/viral-shorts-worker/types";
 
 export const runtime = "nodejs";
@@ -199,7 +200,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!isSupportedUrl(sourceUrl)) {
       return Response.json(
         {
-          error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
+          error: SUPPORTED_SOURCE_ERROR_MESSAGE
         },
         { status: 400 }
       );
@@ -268,6 +269,7 @@ export async function POST(request: Request): Promise<Response> {
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
+          templateHighlightProfile: resolveManagedTemplateRuntimeSync(channel.templateId).templateConfig.highlights,
           ...(() => {
             const resolution = resolveChannelEditorialMemory({
               channelId: channel.id,

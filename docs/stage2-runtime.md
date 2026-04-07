@@ -14,10 +14,11 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 
 Его hot path:
 1. `oneShotReference`
-2. `captionTranslation`
-3. `assemble`
-4. human pick / review в UI
-5. optional publishing-time SEO generation outside Stage 2
+2. `captionHighlighting` (optional, fail-open)
+3. `captionTranslation`
+4. `assemble`
+5. human pick / review в UI
+6. optional publishing-time SEO generation outside Stage 2
 
 Ключевая идея:
 - product-owned one-shot prompt получает video truth, current comment wave, line policy, channel narrative и editorial memory;
@@ -26,7 +27,8 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 - one-shot обязан сам вернуть 5 финальных publishable options и 5 titles;
 - deterministic pruning, repair и template backfill для этой line больше не участвуют в сборке shortlist;
 - runtime может применить только очень узкий deterministic exact-length polish для near-miss overflow на финальных строках, если это не меняет angle и не превращается в repair loop;
-- если one-shot ломает контракт или выдаёт meta leakage, run завершается `failed`, а не silently деградирует.
+- если one-shot ломает контракт, нарушает banned-content rules или выдаёт meta leakage, run завершается `failed`, а не silently деградирует;
+- если one-shot промахивается только по length window, runtime сохраняет shortlist с warnings и не переводит весь run в `failed`.
 
 ### `stable_social_wave_v1` / `stable_skill_gap_v1` / `experimental` -> `modular_native_v1`
 
@@ -37,10 +39,11 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 4. `qualityCourt`
 5. `targetedRepair` (optional)
 6. `templateBackfill` (optional)
-7. `captionTranslation`
-8. `titleWriter`
-9. human pick / review в UI
-10. optional publishing-time SEO generation outside Stage 2
+7. `captionHighlighting` (optional, fail-open)
+8. `captionTranslation`
+9. `titleWriter`
+10. human pick / review в UI
+11. optional publishing-time SEO generation outside Stage 2
 
 Ключевой принцип:
 - Stage 2 всегда использует **один effective examples corpus на run**
@@ -61,10 +64,12 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 
 Для processable `native_caption_v3` run runtime теперь обязан:
 - всегда вернуть `output.captionOptions.length === 5`;
+- отдельно хранить цветовые подсветки в `output.captionOptions[].highlights`, не добавляя marker-синтаксис в сами строки;
 - для `reference_one_shot_v1` возвращать 5 finalist-grade options без filler slots;
 - для modular native держать `output.finalists` как finalist-grade subset, а не зеркало visible shortlist;
-- всегда вернуть один valid `winner`;
-- никогда не показывать hard-invalid / hard-rejected options;
+- всегда вернуть один valid `winner`, если в visible shortlist вообще есть хотя бы один constraint-valid option;
+- modular native никогда не показывает hard-invalid / hard-rejected options;
+- `reference_one_shot_v1` может сохранить length-window misses в visible shortlist как warnings для ручного review, но не fail-closed run только из-за этого;
 - маркировать degraded path через payload/trace только там, где это реально разрешено архитектурой.
 
 Текущая top-level truth model:
@@ -95,11 +100,12 @@ Run lifecycle:
 - runtime поднимает queued job
 - progress по шагам сохраняется в snapshot
 - completed / failed result живут в persistent storage и переживают reload/navigation
+- snapshot request дополнительно фиксирует `channel.templateHighlightProfile`, то есть resolved highlight-config активного channel template на момент enqueue
 
 Run modes:
 - `manual` / `auto` проходят полный line-aware pipeline:
-  - `stable_reference_v6` -> `oneShotReference -> captionTranslation -> assemble`
-  - остальные native lines -> `contextPacket -> candidateGenerator -> hardValidator -> qualityCourt -> targetedRepair? -> templateBackfill? -> captionTranslation -> titleWriter`
+  - `stable_reference_v6` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> assemble`
+  - остальные native lines -> `contextPacket -> candidateGenerator -> hardValidator -> qualityCourt -> targetedRepair? -> templateBackfill? -> captionHighlighting? -> captionTranslation -> titleWriter`
 - `regenerate` для `native_caption_v3` по-прежнему работает как lightweight rewrite path и не переключает line family
 - исторический quick regenerate для legacy/vnext payloads остаётся только для compatibility
 - regenerate по-прежнему использует coarse progress steps `База -> Перегенерация -> Сборка`

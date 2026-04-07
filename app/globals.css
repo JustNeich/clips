@@ -6940,6 +6940,77 @@ select.text-input:focus {
   color: var(--text);
 }
 
+.template-road-editor-highlight-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0.012)),
+    rgba(8, 12, 18, 0.72);
+}
+
+.template-road-editor-highlight-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.template-road-editor-highlight-panel-copy {
+  display: grid;
+  gap: 6px;
+  max-width: 720px;
+}
+
+.template-road-editor-highlight-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.template-road-editor-highlight-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 38%),
+    rgba(11, 16, 24, 0.88);
+}
+
+.template-road-editor-highlight-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.template-road-editor-highlight-card-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.template-road-editor-highlight-slot-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.template-road-editor-highlight-swatch {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
 @media (max-width: 1180px) {
   .template-road-editor-page {
     height: auto;
@@ -7008,7 +7079,9 @@ select.text-input:focus {
   }
 
   .template-road-editor-shadow-head,
-  .template-road-editor-shadow-card-head {
+  .template-road-editor-shadow-card-head,
+  .template-road-editor-highlight-panel-head,
+  .template-road-editor-highlight-card-head {
     display: grid;
   }
 

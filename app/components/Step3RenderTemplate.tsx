@@ -39,6 +39,10 @@ import {
   buildTemplateRenderSnapshot
 } from "../../lib/stage3-template-core";
 import {
+  createEmptyTemplateCaptionHighlights,
+  type TemplateCaptionHighlights
+} from "../../lib/template-highlights";
+import {
   Stage3TemplateViewport,
   getTemplatePreviewViewportMetrics
 } from "../../lib/stage3-template-viewport";
@@ -77,6 +81,11 @@ import {
   resolveStage3PlaybackSyncAction,
   resolveStage3PlaybackTransformState
 } from "../../lib/stage3-preview-playback";
+import { attachStage3PreviewFrameLoop } from "../../lib/stage3-preview-loop";
+import {
+  resolveStage3ReportedSourceDuration,
+  type Stage3PreviewMediaMode
+} from "../../lib/stage3-preview-media";
 import {
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
@@ -133,6 +142,7 @@ type Step3RenderTemplateProps = {
   canRollbackSelectedVersion: boolean;
   topText: string;
   bottomText: string;
+  captionHighlights?: TemplateCaptionHighlights;
   captionSources: Stage2Response["output"]["captionOptions"];
   selectedCaptionOption: number | null;
   handoffSummary: Stage2ToStage3HandoffSummary | null;
@@ -229,7 +239,6 @@ type PendingTextFitAction = {
 };
 
 type Stage3SurfaceMode = "finish" | "editor";
-type Stage3PreviewMediaMode = "mapped" | "linear";
 type FragmentDraftField = "startSec" | "endSec" | "speed" | "focusY" | "videoZoom";
 type FragmentDraftInputs = {
   startSec: string;
@@ -678,7 +687,6 @@ function PreviewClipVideo({
   onClipEnd?: () => void;
   controllerRef?: MutableRefObject<PreviewClipVideoController | null>;
 }) {
-  const frameLoopTokenRef = useRef<number | null>(null);
   const activeSegmentIndexRef = useRef(0);
   const lastPublishedOutputRef = useRef(0);
   const playbackPlanRef = useRef(playbackPlan);
@@ -740,7 +748,10 @@ function PreviewClipVideo({
     const seekToPlaybackAnchor = () => {
       const mediaDurationSec =
         Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
-      onSourceDurationChange?.(mediaDurationSec);
+      const reportedSourceDurationSec = resolveStage3ReportedSourceDuration(mediaMode, mediaDurationSec);
+      if (reportedSourceDurationSec !== undefined) {
+        onSourceDurationChange?.(reportedSourceDurationSec);
+      }
       const anchorOutputSec = clamp(lastPublishedOutputRef.current, 0, playbackDurationSec);
       const initialPosition = seekToOutputTime(anchorOutputSec, 0);
       if (isPlaying) {
@@ -895,50 +906,13 @@ function PreviewClipVideo({
     if (!video || !isPlaying) {
       return;
     }
-
-    let rafId: number | null = null;
-    let cancelled = false;
-
-    const cleanupScheduled = () => {
-      if (rafId !== null) {
-        window.cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      if (frameLoopTokenRef.current !== null && video.cancelVideoFrameCallback) {
-        video.cancelVideoFrameCallback(frameLoopTokenRef.current);
-        frameLoopTokenRef.current = null;
-      }
-    };
-
-    const schedule = () => {
-      if (cancelled || video.paused) {
-        return;
-      }
-      if (video.requestVideoFrameCallback) {
-        frameLoopTokenRef.current = video.requestVideoFrameCallback(() => {
-          frameLoopTokenRef.current = null;
-          if (!publishPosition()) {
-            return;
-          }
-          schedule();
-        });
-        return;
-      }
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null;
-        if (!publishPosition()) {
-          return;
-        }
-        schedule();
-      });
-    };
-
-    schedule();
-
-    return () => {
-      cancelled = true;
-      cleanupScheduled();
-    };
+    return attachStage3PreviewFrameLoop({
+      video,
+      isPlaying,
+      publishPosition,
+      requestAnimationFrameImpl: window.requestAnimationFrame.bind(window),
+      cancelAnimationFrameImpl: window.cancelAnimationFrame.bind(window)
+    });
   }, [isPlaying, publishPosition, sourceUrl, videoRef]);
 
   return (
@@ -1983,6 +1957,7 @@ export function Step3RenderTemplate({
   canRollbackSelectedVersion,
   topText,
   bottomText,
+  captionHighlights = createEmptyTemplateCaptionHighlights(),
   captionSources,
   selectedCaptionOption,
   handoffSummary,
@@ -2216,6 +2191,7 @@ export function Step3RenderTemplate({
           bottomText,
           channelName,
           channelHandle: `@${channelUsername}`,
+          highlights: captionHighlights,
           topFontScale: localTopFontScale,
           bottomFontScale: localBottomFontScale,
           previewScale: 1,
@@ -2229,6 +2205,7 @@ export function Step3RenderTemplate({
       backgroundAssetUrl,
       bottomText,
       channelName,
+      captionHighlights,
       channelUsername,
       localBottomFontScale,
       localTopFontScale,

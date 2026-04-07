@@ -1,5 +1,8 @@
 import { requireAuth } from "../../../../lib/auth/guards";
-import { canCreateManagedTemplates, filterManagedTemplatesForAuth } from "../../../../lib/managed-template-access";
+import {
+  canCreateManagedTemplates,
+  filterManagedTemplatesForAuthIncludingVisibleChannels
+} from "../../../../lib/managed-template-access";
 import {
   createManagedTemplate,
   listManagedTemplateSummaries
@@ -7,9 +10,12 @@ import {
 
 export const runtime = "nodejs";
 
-export async function GET(): Promise<Response> {
-  const auth = await requireAuth();
-  const templates = filterManagedTemplatesForAuth(auth, await listManagedTemplateSummaries());
+export async function GET(request: Request): Promise<Response> {
+  const auth = await requireAuth(request);
+  const templates = await filterManagedTemplatesForAuthIncludingVisibleChannels(
+    auth,
+    await listManagedTemplateSummaries()
+  );
   return Response.json(
     {
       templates,
@@ -24,7 +30,7 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const auth = await requireAuth();
+  const auth = await requireAuth(request);
   if (!canCreateManagedTemplates(auth.membership.role)) {
     return Response.json({ error: "Доступ запрещен." }, { status: 403 });
   }

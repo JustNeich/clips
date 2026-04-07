@@ -35,6 +35,7 @@ import {
   type Stage2EditorialMemorySource
 } from "./stage2-editorial-memory-resolution";
 import { normalizeStage2ResultTitleOptions } from "./stage2-title-options";
+import { normalizeTemplateHighlightConfig, type TemplateHighlightConfig } from "./template-highlights";
 import type { Stage2DebugMode } from "./viral-shorts-worker/types";
 
 export type Stage2RunMode = "manual" | "auto" | "regenerate";
@@ -55,6 +56,7 @@ export type Stage2RunRequest = {
     stage2StyleProfile?: Stage2StyleProfile;
     editorialMemory?: Stage2EditorialMemorySummary;
     editorialMemorySource?: Stage2EditorialMemorySource | null;
+    templateHighlightProfile?: TemplateHighlightConfig | null;
   };
 };
 
@@ -185,6 +187,9 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
             ),
       editorialMemorySource: normalizeStage2EditorialMemorySource(
         channelCandidate?.editorialMemorySource ?? null
+      ),
+      templateHighlightProfile: normalizeTemplateHighlightConfig(
+        channelCandidate?.templateHighlightProfile ?? null
       )
     }
   };

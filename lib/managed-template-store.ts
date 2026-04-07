@@ -1,16 +1,23 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { getStage3DesignLabPreset } from "./stage3-design-lab";
 import type { TemplateContentFixture } from "./template-calibration-types";
 import {
   STAGE3_TEMPLATE_ID,
+  cloneStage3TemplateConfig,
   type Stage3TemplateConfig,
   getTemplateById
 } from "./stage3-template";
 import { listTemplateVariants } from "./stage3-template-registry";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
+import {
+  buildTemplateHighlightSpansFromPhrases,
+  createEmptyTemplateCaptionHighlights,
+  normalizeTemplateCaptionHighlights,
+  normalizeTemplateHighlightConfig
+} from "./template-highlights";
 import type {
   ManagedTemplate,
   ManagedTemplateShadowLayer,
@@ -22,8 +29,6 @@ import { assertServerRuntime } from "./server-runtime-guard";
 
 assertServerRuntime("managed-template-store");
 
-const MANAGED_TEMPLATES_ROOT = path.join(process.cwd(), "design", "managed-templates");
-const SEEDED_MARKER_PATH = path.join(MANAGED_TEMPLATES_ROOT, ".seeded");
 const SUPPORTED_BASE_TEMPLATE_IDS = new Set(listTemplateVariants().map((variant) => variant.id));
 const TEMPLATE_WRITE_QUEUE = new Map<string, Promise<void>>();
 const MAX_MANAGED_TEMPLATE_VERSIONS = 24;
@@ -64,20 +69,16 @@ function slugify(value: string): string {
   return slug || "template";
 }
 
-function cloneTemplateConfig(config: Stage3TemplateConfig): Stage3TemplateConfig {
-  return {
-    frame: { ...config.frame },
-    card: { ...config.card },
-    slot: { ...config.slot },
-    author: { ...config.author },
-    typography: {
-      top: { ...config.typography.top },
-      bottom: { ...config.typography.bottom },
-      authorName: { ...config.typography.authorName },
-      authorHandle: { ...config.typography.authorHandle }
-    },
-    palette: { ...config.palette }
-  };
+function getManagedTemplatesRoot(): string {
+  const override = process.env.MANAGED_TEMPLATES_ROOT?.trim();
+  if (override) {
+    return path.resolve(override);
+  }
+  return path.join(process.cwd(), "design", "managed-templates");
+}
+
+function getSeededMarkerPath(): string {
+  return path.join(getManagedTemplatesRoot(), ".seeded");
 }
 
 function resolveBaseTemplateId(value: unknown): string {
@@ -95,6 +96,7 @@ function buildDefaultContent(baseTemplateId: string): TemplateContentFixture {
     bottomText: preset.bottomText,
     channelName: preset.channelName,
     channelHandle: preset.channelHandle,
+    highlights: createEmptyTemplateCaptionHighlights(),
     topHighlightPhrases: [],
     topFontScale: 1,
     bottomFontScale: 1,
@@ -112,9 +114,33 @@ function buildSeedSnapshot(baseTemplateId: string): ManagedTemplateVersionSnapsh
     description: preset.note,
     baseTemplateId,
     content: buildDefaultContent(baseTemplateId),
-    templateConfig: cloneTemplateConfig(getTemplateById(baseTemplateId)),
+    templateConfig: cloneStage3TemplateConfig(getTemplateById(baseTemplateId)),
     shadowLayers: []
   };
+}
+
+function buildSystemManagedTemplate(baseTemplateId: string, createdAt = new Date().toISOString()): ManagedTemplate {
+  const snapshot = buildSeedSnapshot(baseTemplateId);
+  return {
+    id: baseTemplateId,
+    workspaceId: null,
+    creatorUserId: null,
+    creatorDisplayName: null,
+    createdAt,
+    updatedAt: createdAt,
+    versions: [],
+    ...snapshot
+  };
+}
+
+export function isSystemManagedTemplate(
+  template:
+    | Pick<ManagedTemplate, "workspaceId" | "creatorUserId">
+    | Pick<ManagedTemplateSummary, "workspaceId" | "creatorUserId">
+    | null
+    | undefined
+): boolean {
+  return !template?.workspaceId && !template?.creatorUserId;
 }
 
 function normalizeContent(raw: unknown, baseTemplateId: string): TemplateContentFixture {
@@ -123,16 +149,36 @@ function normalizeContent(raw: unknown, baseTemplateId: string): TemplateContent
     return defaults;
   }
 
-  return {
-    topText: typeof raw.topText === "string" ? raw.topText : defaults.topText,
-    bottomText: typeof raw.bottomText === "string" ? raw.bottomText : defaults.bottomText,
-    channelName: typeof raw.channelName === "string" ? raw.channelName : defaults.channelName,
-    channelHandle: typeof raw.channelHandle === "string" ? raw.channelHandle : defaults.channelHandle,
-    topHighlightPhrases: Array.isArray(raw.topHighlightPhrases)
+  const topText = typeof raw.topText === "string" ? raw.topText : defaults.topText;
+  const bottomText = typeof raw.bottomText === "string" ? raw.bottomText : defaults.bottomText;
+  const topHighlightPhrases = (
+    Array.isArray(raw.topHighlightPhrases)
       ? raw.topHighlightPhrases.filter(
           (item): item is string => typeof item === "string" && item.trim().length > 0
         )
-      : defaults.topHighlightPhrases,
+      : defaults.topHighlightPhrases
+  ) ?? [];
+  const highlights = normalizeTemplateCaptionHighlights(raw.highlights, {
+    top: topText,
+    bottom: bottomText
+  });
+  if (highlights.top.length === 0 && highlights.bottom.length === 0 && topHighlightPhrases.length > 0) {
+    highlights.top = buildTemplateHighlightSpansFromPhrases({
+      text: topText,
+      annotations: topHighlightPhrases.map((phrase) => ({
+        phrase,
+        slotId: "slot1" as const
+      }))
+    });
+  }
+
+  return {
+    topText,
+    bottomText,
+    channelName: typeof raw.channelName === "string" ? raw.channelName : defaults.channelName,
+    channelHandle: typeof raw.channelHandle === "string" ? raw.channelHandle : defaults.channelHandle,
+    highlights,
+    topHighlightPhrases,
     topFontScale:
       typeof raw.topFontScale === "number" && Number.isFinite(raw.topFontScale)
         ? clampStage3TextScaleUi(raw.topFontScale)
@@ -163,7 +209,7 @@ function normalizeContent(raw: unknown, baseTemplateId: string): TemplateContent
 }
 
 function normalizeTemplateConfig(raw: unknown, baseTemplateId: string): Stage3TemplateConfig {
-  const base = cloneTemplateConfig(getTemplateById(baseTemplateId));
+  const base = cloneStage3TemplateConfig(getTemplateById(baseTemplateId));
   if (!isRecord(raw)) {
     return base;
   }
@@ -332,6 +378,10 @@ function normalizeTemplateConfig(raw: unknown, baseTemplateId: string): Stage3Te
     }
   }
 
+  base.highlights = normalizeTemplateHighlightConfig(raw.highlights, {
+    accentColor: base.palette.accentColor ?? base.palette.topTextColor
+  });
+
   return base;
 }
 
@@ -408,7 +458,7 @@ function buildVersion(
       description: template.description,
       baseTemplateId: template.baseTemplateId,
       content: { ...template.content },
-      templateConfig: cloneTemplateConfig(template.templateConfig),
+      templateConfig: cloneStage3TemplateConfig(template.templateConfig),
       shadowLayers: template.shadowLayers.map((layer) => ({ ...layer }))
     }
   };
@@ -438,75 +488,52 @@ async function pathExists(filePath: string): Promise<boolean> {
 }
 
 async function ensureManagedTemplatesRoot(): Promise<void> {
-  await fs.mkdir(MANAGED_TEMPLATES_ROOT, { recursive: true });
+  const root = getManagedTemplatesRoot();
+  await fs.mkdir(root, { recursive: true });
 
-  if (await pathExists(SEEDED_MARKER_PATH)) {
-    return;
-  }
-
-  const existingTemplateFiles = (await fs.readdir(MANAGED_TEMPLATES_ROOT)).filter((entry) =>
-    entry.endsWith(".json")
+  const existingTemplateFiles = new Set(
+    (await fs.readdir(root))
+      .filter((entry) => entry.endsWith(".json"))
+      .map((entry) => path.basename(entry, ".json"))
   );
 
-  if (existingTemplateFiles.length === 0) {
-    const now = new Date().toISOString();
-    const seedTemplates = listTemplateVariants().map((variant) => {
-      const snapshot = buildSeedSnapshot(variant.id);
-      const template: ManagedTemplate = {
-        id: variant.id,
-        workspaceId: null,
-        creatorUserId: null,
-        creatorDisplayName: null,
-        createdAt: now,
-        updatedAt: now,
-        versions: [],
-        ...snapshot
-      };
-      return template;
-    });
-    await Promise.all(seedTemplates.map((template) => writeManagedTemplate(template)));
+  const now = new Date().toISOString();
+  const missingSystemTemplates = listTemplateVariants()
+    .map((variant) => variant.id)
+    .filter((templateId) => !existingTemplateFiles.has(sanitizeTemplateId(templateId)));
+
+  if (missingSystemTemplates.length > 0) {
+    await Promise.all(
+      missingSystemTemplates.map((templateId) => writeManagedTemplate(buildSystemManagedTemplate(templateId, now)))
+    );
   }
 
-  await fs.writeFile(SEEDED_MARKER_PATH, "seeded\n", "utf-8");
+  await fs.writeFile(getSeededMarkerPath(), "seeded\n", "utf-8");
 }
 
 function ensureManagedTemplatesRootSync(): void {
-  mkdirSync(MANAGED_TEMPLATES_ROOT, { recursive: true });
+  const root = getManagedTemplatesRoot();
+  mkdirSync(root, { recursive: true });
 
-  if (existsSync(SEEDED_MARKER_PATH)) {
-    return;
-  }
-
-  const existingTemplateFiles = readdirSync(MANAGED_TEMPLATES_ROOT).filter((entry) =>
-    entry.endsWith(".json")
+  const existingTemplateFiles = new Set(
+    readdirSync(root)
+      .filter((entry) => entry.endsWith(".json"))
+      .map((entry) => path.basename(entry, ".json"))
   );
+  const now = new Date().toISOString();
+  const missingSystemTemplates = listTemplateVariants()
+    .map((variant) => variant.id)
+    .filter((templateId) => !existingTemplateFiles.has(sanitizeTemplateId(templateId)));
 
-  if (existingTemplateFiles.length === 0) {
-    const now = new Date().toISOString();
-    const seedTemplates = listTemplateVariants().map((variant) => {
-      const snapshot = buildSeedSnapshot(variant.id);
-      const template: ManagedTemplate = {
-        id: variant.id,
-        workspaceId: null,
-        creatorUserId: null,
-        creatorDisplayName: null,
-        createdAt: now,
-        updatedAt: now,
-        versions: [],
-        ...snapshot
-      };
-      return template;
-    });
-    for (const template of seedTemplates) {
-      writeManagedTemplateSync(template);
-    }
+  for (const templateId of missingSystemTemplates) {
+    writeManagedTemplateSync(buildSystemManagedTemplate(templateId, now));
   }
 
-  writeFileSync(SEEDED_MARKER_PATH, "seeded\n", "utf-8");
+  writeFileSync(getSeededMarkerPath(), "seeded\n", "utf-8");
 }
 
 function getManagedTemplatePath(templateId: string): string {
-  return path.join(MANAGED_TEMPLATES_ROOT, `${sanitizeTemplateId(templateId)}.json`);
+  return path.join(getManagedTemplatesRoot(), `${sanitizeTemplateId(templateId)}.json`);
 }
 
 function toManagedTemplateSummary(template: ManagedTemplate): ManagedTemplateSummary {
@@ -701,7 +728,7 @@ async function readManagedTemplateFile(filePath: string): Promise<ManagedTemplat
 }
 
 async function writeManagedTemplate(template: ManagedTemplate): Promise<void> {
-  await fs.mkdir(MANAGED_TEMPLATES_ROOT, { recursive: true });
+  await fs.mkdir(getManagedTemplatesRoot(), { recursive: true });
   const filePath = getManagedTemplatePath(template.id);
   const payload = `${JSON.stringify(template, null, 2)}\n`;
   const previousWrite = TEMPLATE_WRITE_QUEUE.get(filePath) ?? Promise.resolve();
@@ -723,7 +750,7 @@ async function writeManagedTemplate(template: ManagedTemplate): Promise<void> {
 }
 
 function writeManagedTemplateSync(template: ManagedTemplate): void {
-  mkdirSync(MANAGED_TEMPLATES_ROOT, { recursive: true });
+  mkdirSync(getManagedTemplatesRoot(), { recursive: true });
   const filePath = getManagedTemplatePath(template.id);
   const tempPath = `${filePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
   writeFileSync(tempPath, `${JSON.stringify(template, null, 2)}\n`, "utf-8");
@@ -732,11 +759,12 @@ function writeManagedTemplateSync(template: ManagedTemplate): void {
 
 export async function listManagedTemplates(): Promise<ManagedTemplate[]> {
   await ensureManagedTemplatesRoot();
-  const files = (await fs.readdir(MANAGED_TEMPLATES_ROOT))
+  const files = (await fs.readdir(getManagedTemplatesRoot()))
     .filter((entry) => entry.endsWith(".json"))
     .sort();
+  const root = getManagedTemplatesRoot();
   const templates = (
-    await Promise.all(files.map((entry) => readManagedTemplateFile(path.join(MANAGED_TEMPLATES_ROOT, entry))))
+    await Promise.all(files.map((entry) => readManagedTemplateFile(path.join(root, entry))))
   ).filter((item): item is ManagedTemplate => item !== null);
   return templates.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
@@ -766,22 +794,7 @@ export async function resolveManagedTemplate(
     return null;
   }
 
-  const templates = await listManagedTemplates();
-  if (templates.length > 0) {
-    return templates[0];
-  }
-
-  const now = new Date().toISOString();
-  return {
-    id: STAGE3_TEMPLATE_ID,
-    workspaceId: null,
-    creatorUserId: null,
-    creatorDisplayName: null,
-    createdAt: now,
-    updatedAt: now,
-    versions: [],
-    ...buildSeedSnapshot(STAGE3_TEMPLATE_ID)
-  };
+  return readManagedTemplate(STAGE3_TEMPLATE_ID);
 }
 
 export async function createManagedTemplate(
@@ -810,7 +823,7 @@ export async function updateManagedTemplate(
   input: ManagedTemplateInput
 ): Promise<ManagedTemplate | null> {
   const existing = await readManagedTemplate(templateId);
-  if (!existing) {
+  if (!existing || isSystemManagedTemplate(existing)) {
     return null;
   }
   const snapshot = normalizeSnapshot(input, existing);
@@ -828,7 +841,7 @@ export async function createManagedTemplateVersion(
   label?: string | null
 ): Promise<ManagedTemplate | null> {
   const existing = await readManagedTemplate(templateId);
-  if (!existing) {
+  if (!existing || isSystemManagedTemplate(existing)) {
     return null;
   }
   const stamp = new Date().toISOString();
@@ -858,7 +871,7 @@ export async function restoreManagedTemplateVersion(
   versionId: string
 ): Promise<ManagedTemplate | null> {
   const existing = await readManagedTemplate(templateId);
-  if (!existing) {
+  if (!existing || isSystemManagedTemplate(existing)) {
     return null;
   }
   const selected = existing.versions.find((version) => version.id === sanitizeTemplateId(versionId));
@@ -898,6 +911,10 @@ export async function restoreManagedTemplateVersion(
 export async function deleteManagedTemplate(templateId: string): Promise<boolean> {
   const safeId = sanitizeTemplateId(templateId);
   if (!safeId) {
+    return false;
+  }
+  const existing = await readManagedTemplate(safeId);
+  if (!existing || isSystemManagedTemplate(existing)) {
     return false;
   }
   try {
@@ -942,35 +959,16 @@ export function resolveManagedTemplateSync(
     return null;
   }
 
-  ensureManagedTemplatesRootSync();
-  const files = readdirSync(MANAGED_TEMPLATES_ROOT)
-    .filter((entry) => entry.endsWith(".json"))
-    .sort();
-  const templates = files
-    .map((entry) => readManagedTemplateSync(path.basename(entry, ".json")))
-    .filter((item): item is ManagedTemplate => item !== null)
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-
-  if (templates.length > 0) {
-    return templates[0];
-  }
-
-  const now = new Date().toISOString();
-  return {
-    id: STAGE3_TEMPLATE_ID,
-    workspaceId: null,
-    creatorUserId: null,
-    creatorDisplayName: null,
-    createdAt: now,
-    updatedAt: now,
-    versions: [],
-    ...buildSeedSnapshot(STAGE3_TEMPLATE_ID)
-  };
+  return readManagedTemplateSync(STAGE3_TEMPLATE_ID);
 }
 
 export function deleteManagedTemplateSync(templateId: string): boolean {
   const safeId = sanitizeTemplateId(templateId);
   if (!safeId) {
+    return false;
+  }
+  const existing = readManagedTemplateSync(safeId);
+  if (!existing || isSystemManagedTemplate(existing)) {
     return false;
   }
   try {

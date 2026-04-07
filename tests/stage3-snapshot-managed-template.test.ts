@@ -73,6 +73,7 @@ test("authoritative preview snapshot wins for author and font scales", () => {
       bottomText: "Bottom",
       channelName: "Preview Author",
       channelHandle: "@preview",
+      highlights: { top: [], bottom: [] },
       topFontScale: 1.44,
       bottomFontScale: 0.93,
       previewScale: 1,
@@ -120,6 +121,7 @@ test("authoritative preview content preserves preview snapshot hash", () => {
       bottomText: "Preview bottom",
       channelName: "Fresh Author",
       channelHandle: "@fresh",
+      highlights: { top: [], bottom: [] },
       topFontScale: 1.37,
       bottomFontScale: 0.91,
       previewScale: 1,
@@ -140,6 +142,7 @@ test("authoritative preview content preserves preview snapshot hash", () => {
       bottomText: authoritativePreview.content.bottomText,
       channelName: effectivePlan.authorName,
       channelHandle: effectivePlan.authorHandle,
+      highlights: { top: [], bottom: [] },
       topFontScale: effectivePlan.topFontScale,
       bottomFontScale: effectivePlan.bottomFontScale,
       previewScale: 1,
@@ -160,6 +163,51 @@ test("authoritative preview content preserves preview snapshot hash", () => {
   });
 
   assert.equal(rebuiltSnapshot.snapshotHash, authoritativePreview.snapshotHash);
+});
+
+test("template snapshot hash changes when highlight spans change", () => {
+  const baseSnapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v7",
+    templateConfigOverride: SCIENCE_CARD_V7,
+    content: {
+      topText: "John Lennon signed the album in 1980.",
+      bottomText: "The autograph came back hours later.",
+      channelName: "Fresh Author",
+      channelHandle: "@fresh",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+  const highlightedSnapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v7",
+    templateConfigOverride: SCIENCE_CARD_V7,
+    content: {
+      topText: "John Lennon signed the album in 1980.",
+      bottomText: "The autograph came back hours later.",
+      channelName: "Fresh Author",
+      channelHandle: "@fresh",
+      highlights: {
+        top: [
+          { start: 0, end: 11, slotId: "slot1" },
+          { start: 32, end: 36, slotId: "slot2" }
+        ],
+        bottom: [{ start: 4, end: 13, slotId: "slot3" }]
+      },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+
+  assert.notEqual(baseSnapshot.snapshotHash, highlightedSnapshot.snapshotHash);
 });
 
 test("snapshot-backed managed template runtime wins without reading the local store", () => {
@@ -200,6 +248,7 @@ test("missing requested managed template falls back to built-in default instead 
         bottomText: "Bottom",
         channelName: "Runtime",
         channelHandle: "@runtime",
+        highlights: { top: [], bottom: [] },
         topHighlightPhrases: [],
         topFontScale: 1,
         bottomFontScale: 1,

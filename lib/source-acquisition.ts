@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { resolveExecutableFromCandidates } from "./command-path";
 import { fetchCommentsForUrl } from "./source-comments";
+import { getUploadedSourceDisplayName, isUploadedSourceUrl } from "./uploaded-source";
 import { fetchTranscriptFromYtDlpInfo, type YtDlpCaptionInfo } from "./youtube-captions";
 import { extractYouTubeVideoIdFromUrl } from "./youtube-comments";
 import { readYtDlpMetadataArtifacts } from "./ytdlp-metadata";
@@ -65,9 +66,25 @@ type YtDlpInfoJson = YtDlpCaptionInfo & {
 };
 
 export type SourceAcquisitionProvider = "visolix" | "ytDlp";
+export type SourceCommentsProvider = "youtubeDataApi" | "ytDlp";
+export type SourceCommentsStatus = "primary_success" | "fallback_success" | "unavailable";
+export type SourceCommentsAcquisition = {
+  status: SourceCommentsStatus;
+  provider: SourceCommentsProvider | null;
+  note: string | null;
+  error: string | null;
+};
+
+export type OptionalSourceInfoResult = {
+  infoJson: { title?: string; description?: string; transcript?: string; comments?: unknown } | null;
+  commentsExtractionFallbackUsed: boolean;
+  commentsAcquisition: SourceCommentsAcquisition;
+};
+
+export type SourceDownloadProvider = SourceAcquisitionProvider | "upload";
 
 export type SourceDownloadResult = {
-  provider: SourceAcquisitionProvider;
+  provider: SourceDownloadProvider;
   filePath: string;
   fileName: string;
   title: string | null;
@@ -100,20 +117,9 @@ export function setSourceAcquisitionDownloadersForTests(
 }
 
 export type SourceMetadataResult = {
-  provider: SourceAcquisitionProvider;
+  provider: SourceDownloadProvider;
   title: string | null;
   durationSec: number | null;
-};
-
-export type OptionalYtDlpInfoResult = {
-  infoJson: { title?: string; description?: string; transcript?: string; comments?: unknown } | null;
-  commentsExtractionFallbackUsed: boolean;
-  commentsAcquisition: {
-    status: "primary_success" | "fallback_success" | "unavailable";
-    provider: "youtubeDataApi" | "ytDlp" | null;
-    note: string | null;
-    error: string | null;
-  };
 };
 
 function asTrimmedString(value: unknown): string | null {
@@ -148,13 +154,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function createCommentsAcquisition(input?: Partial<OptionalYtDlpInfoResult["commentsAcquisition"]>) {
+function createCommentsAcquisition(input?: Partial<SourceCommentsAcquisition>) {
   return {
     status: input?.status ?? "unavailable",
     provider: input?.provider ?? null,
     note: input?.note ?? null,
     error: input?.error ?? null
-  } satisfies OptionalYtDlpInfoResult["commentsAcquisition"];
+  } satisfies SourceCommentsAcquisition;
 }
 
 function stripHtmlTags(value: string): string {
@@ -544,8 +550,14 @@ async function tryVisolixDownload(rawUrl: string, tmpDir: string): Promise<Sourc
   };
 }
 
-async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadCoreResult> {
-  const sourceUrl = normalizeSupportedUrl(rawUrl);
+async function downloadViaYtDlp(input: {
+  sourceUrl: string;
+  tmpDir: string;
+  fileNameHint?: string | null;
+  titleHint?: string | null;
+  durationHint?: number | null;
+  errorContextUrl?: string | null;
+}): Promise<Omit<SourceDownloadCoreResult, "provider">> {
   const ytDlpPath = await resolveYtDlpExecutable();
   if (!ytDlpPath) {
     throw new Error(
@@ -555,8 +567,8 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
     );
   }
 
-  const outputTemplate = path.join(tmpDir, "source.%(ext)s");
-  const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
+  const outputTemplate = path.join(input.tmpDir, "source.%(ext)s");
+  const ytDlpAuth = await createYtDlpAuthContext(input.tmpDir);
   const args = [
     ...ytDlpAuth.args,
     "--no-playlist",
@@ -568,7 +580,7 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
     "-o",
     outputTemplate,
-    sourceUrl
+    input.sourceUrl
   ];
 
   try {
@@ -578,12 +590,12 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
     });
   } catch (error) {
     throw new Error(
-      extractYtDlpErrorFromUnknown(error, { sourceUrl }) ??
+      extractYtDlpErrorFromUnknown(error, { sourceUrl: input.errorContextUrl ?? input.sourceUrl }) ??
         (error instanceof Error ? error.message : "yt-dlp не смог скачать исходное видео.")
     );
   }
 
-  const files = await fs.readdir(tmpDir);
+  const files = await fs.readdir(input.tmpDir);
   const mp4File = files.find((file) => file.endsWith(".mp4"));
   const infoJsonFile = files.find((file) => file.endsWith(".info.json"));
 
@@ -591,29 +603,42 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
     throw new Error("yt-dlp не создал mp4 после скачивания source.");
   }
 
-  const downloadedPath = path.join(tmpDir, mp4File);
-  const canonicalPath = path.join(tmpDir, "source.mp4");
+  const downloadedPath = path.join(input.tmpDir, mp4File);
+  const canonicalPath = path.join(input.tmpDir, "source.mp4");
   if (downloadedPath !== canonicalPath) {
     await fs.copyFile(downloadedPath, canonicalPath);
   }
 
-  let title: string | null = null;
-  let durationSec: number | null = null;
+  let title: string | null = input.titleHint ?? null;
+  let durationSec: number | null = input.durationHint ?? null;
 
   if (infoJsonFile) {
-    const infoJson = JSON.parse(await fs.readFile(path.join(tmpDir, infoJsonFile), "utf-8")) as YtDlpInfoJson;
-    title = asTrimmedString(infoJson.title);
-    durationSec = asPositiveNumber(infoJson.duration);
+    const infoJson = JSON.parse(await fs.readFile(path.join(input.tmpDir, infoJsonFile), "utf-8")) as YtDlpInfoJson;
+    title = asTrimmedString(infoJson.title) ?? title;
+    durationSec = asPositiveNumber(infoJson.duration) ?? durationSec;
   }
 
   const stat = await fs.stat(canonicalPath);
   return {
-    provider: "ytDlp",
     filePath: canonicalPath,
-    fileName: sanitizeOutputName(path.parse(mp4File).name, "source"),
+    fileName: sanitizeOutputName(input.fileNameHint ?? title ?? path.parse(mp4File).name, "source"),
     title,
     durationSec,
     videoSizeBytes: stat.size
+  };
+}
+
+async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceDownloadCoreResult> {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
+  const downloaded = await downloadViaYtDlp({
+    sourceUrl,
+    tmpDir,
+    errorContextUrl: sourceUrl
+  });
+
+  return {
+    provider: "ytDlp",
+    ...downloaded
   };
 }
 
@@ -622,6 +647,10 @@ export async function downloadSourceMedia(
   tmpDir: string
 ): Promise<SourceDownloadResult> {
   const sourceUrl = normalizeSupportedUrl(rawUrl);
+  if (isUploadedSourceUrl(sourceUrl)) {
+    throw new Error("Загруженный mp4 уже хранится локально и не должен скачиваться повторно.");
+  }
+
   const errors: string[] = [];
   const visolixDownloader = testVisolixDownloader ?? tryVisolixDownload;
   const ytDlpDownloader = testYtDlpDownloader ?? tryYtDlpDownload;
@@ -701,6 +730,13 @@ async function tryYtDlpMetadata(rawUrl: string): Promise<SourceMetadataResult> {
 
 export async function fetchSourceMetadata(rawUrl: string): Promise<SourceMetadataResult> {
   const sourceUrl = normalizeSupportedUrl(rawUrl);
+  if (isUploadedSourceUrl(sourceUrl)) {
+    return {
+      provider: "upload",
+      title: getUploadedSourceDisplayName(sourceUrl),
+      durationSec: null
+    };
+  }
   if (isVisolixConfigured()) {
     return {
       provider: "visolix",
@@ -715,10 +751,24 @@ export async function fetchSourceMetadata(rawUrl: string): Promise<SourceMetadat
 export async function fetchOptionalYtDlpInfo(
   rawUrl: string,
   tmpDir: string
-): Promise<OptionalYtDlpInfoResult> {
+): Promise<OptionalSourceInfoResult> {
   const sourceUrl = normalizeSupportedUrl(rawUrl);
   if (isYouTubeUrl(sourceUrl)) {
     return fetchOptionalYouTubeInfo(sourceUrl, tmpDir);
+  }
+  if (isUploadedSourceUrl(sourceUrl)) {
+    return {
+      infoJson: {
+        title: getUploadedSourceDisplayName(sourceUrl) ?? undefined
+      },
+      commentsExtractionFallbackUsed: false,
+      commentsAcquisition: createCommentsAcquisition({
+        status: "unavailable",
+        provider: null,
+        note: "Для загруженного mp4 комментарии недоступны.",
+        error: "Комментарии для загруженного mp4 недоступны."
+      })
+    };
   }
 
   const ytDlpPath = await resolveYtDlpExecutable();
@@ -829,7 +879,7 @@ export async function fetchOptionalYtDlpInfo(
 async function fetchOptionalYouTubeInfo(
   sourceUrl: string,
   tmpDir: string
-): Promise<OptionalYtDlpInfoResult> {
+): Promise<OptionalSourceInfoResult> {
   const ytDlpPath = await resolveYtDlpExecutable();
   let normalizedInfo: YtDlpInfoJson | null = null;
   let transcript: string | null = null;

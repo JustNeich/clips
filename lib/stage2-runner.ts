@@ -128,6 +128,7 @@ export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stag
   }
 
   if (execution.pipelineVersion === "native_caption_v3") {
+    const isReferenceOneShot = execution.pathVariant === "reference_one_shot_v1";
     if (!pipeline.nativeCaptionV3) {
       return {
         ok: false,
@@ -167,21 +168,30 @@ export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stag
           "Stage 2 rollout failed: native_caption_v3 expected bilingual display options with topRu/bottomRu."
       };
     }
-    if (output.captionOptions.some((option) => option.constraintCheck?.passed === false)) {
+    const hasInvalidDisplayOption = output.captionOptions.some(
+      (option) => option.constraintCheck?.passed === false
+    );
+    const hasValidDisplayOption = output.captionOptions.some(
+      (option) => option.constraintCheck?.passed !== false
+    );
+    if (hasInvalidDisplayOption && !isReferenceOneShot) {
       return {
         ok: false,
         message:
           "Stage 2 rollout failed: native_caption_v3 returned an invalid display option after runtime gating."
       };
     }
-    if (output.winner.constraintCheck?.passed === false) {
+    if (output.winner.constraintCheck?.passed === false && (!isReferenceOneShot || hasValidDisplayOption)) {
       return {
         ok: false,
         message:
           "Stage 2 rollout failed: native_caption_v3 returned an invalid winner after runtime gating."
       };
     }
-    if (pipeline.nativeCaptionV3.guardSummary.winnerValidity !== "valid") {
+    if (
+      pipeline.nativeCaptionV3.guardSummary.winnerValidity !== "valid" &&
+      (!isReferenceOneShot || hasValidDisplayOption)
+    ) {
       return {
         ok: false,
         message:
@@ -340,7 +350,7 @@ export async function downloadVideoAndMetadata(
   videoSizeBytes: number;
   sourceCacheKey: string;
   sourceCacheState: "hit" | "miss" | "wait";
-  downloadProvider: "visolix" | "ytDlp";
+  downloadProvider: "visolix" | "ytDlp" | "upload";
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
   commentsExtractionFallbackUsed: boolean;
@@ -621,7 +631,8 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
-          editorialMemory: channel.editorialMemory
+          editorialMemory: channel.editorialMemory,
+          templateHighlightProfile: channel.templateHighlightProfile ?? null
         },
         workspaceStage2ExamplesCorpusJson,
         videoContext: buildStage2RuntimeVideoContext({
@@ -641,6 +652,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
           qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
           targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
+          captionHighlighting: executorContext.resolvedCodexModelConfig.captionHighlighting,
           captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation,
           titleWriter: executorContext.resolvedCodexModelConfig.titleWriter
         },
@@ -851,7 +863,8 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
         stage2HardConstraints: channel.stage2HardConstraints,
         stage2StyleProfile: channel.stage2StyleProfile,
-        editorialMemory: channel.editorialMemory
+        editorialMemory: channel.editorialMemory,
+        templateHighlightProfile: channel.templateHighlightProfile ?? null
       },
       workspaceStage2ExamplesCorpusJson,
       videoContext,
@@ -863,6 +876,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
         qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
         targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
+        captionHighlighting: executorContext.resolvedCodexModelConfig.captionHighlighting,
         captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation,
         titleWriter: executorContext.resolvedCodexModelConfig.titleWriter
       },

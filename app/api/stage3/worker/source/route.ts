@@ -4,7 +4,7 @@ import path from "node:path";
 import { requireStage3WorkerAuth } from "../../../../../lib/auth/stage3-worker";
 import { createNodeStreamResponse } from "../../../../../lib/node-stream-response";
 import { ensureSourceMediaCached } from "../../../../../lib/source-media-cache";
-import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
+import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
 
@@ -29,7 +29,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!isSupportedUrl(sourceUrl)) {
       return Response.json(
         {
-          error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
+          error: SUPPORTED_SOURCE_ERROR_MESSAGE
         },
         { status: 400 }
       );

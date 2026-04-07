@@ -15,12 +15,12 @@ export {
 } from "./stage2-prompt-specs";
 export type { Stage2PromptConfigStageId, Stage2ReasoningEffort } from "./stage2-prompt-specs";
 
-export const STAGE2_PROMPT_CONFIG_VERSION = 4 as const;
+export const STAGE2_PROMPT_CONFIG_VERSION = 5 as const;
 export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY = "stage2_legacy";
 export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_NATIVE = "native_caption_v3";
 export const STAGE2_LEGACY_PROMPT_BUNDLE_VERSION = "stage2_legacy@2026-04-01";
 export const STAGE2_NATIVE_PROMPT_BUNDLE_VERSION =
-  "native_caption_v3@2026-04-03-quality-first-reference-one-shot";
+  "native_caption_v3@2026-04-07-caption-highlighting";
 
 export type Stage2PromptCompatibilityFamily =
   | typeof STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY
@@ -91,6 +91,14 @@ const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
     promptStageType: "deterministic"
   },
   {
+    id: "captionHighlighting",
+    label: "Tagging caption highlights",
+    shortLabel: "Подсветка",
+    description: "Размечаем точные spans для template-driven color highlighting без изменения текста.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  },
+  {
     id: "captionTranslation",
     label: "Translating display captions",
     shortLabel: "Перевод",
@@ -124,6 +132,12 @@ const STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES = [
     shortLabel: "One-shot",
     description:
       "Product-owned one-shot baseline extracts analysis, options, and winner ranking in one pass."
+  },
+  {
+    id: "captionHighlighting",
+    label: "Tagging caption highlights",
+    shortLabel: "Подсветка",
+    description: "Размечаем точные spans для финального shortlist без изменения текста."
   },
   {
     id: "captionTranslation",

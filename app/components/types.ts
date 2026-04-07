@@ -5,6 +5,7 @@ import type {
   WorkspaceCodexModelConfig
 } from "../../lib/workspace-codex-models";
 import type { Stage3TemplateConfig } from "../../lib/stage3-template";
+import type { TemplateCaptionHighlights } from "../../lib/template-highlights";
 import type {
   ChannelEditorialFeedbackEvent,
   Stage2ExplorationMode,
@@ -65,6 +66,7 @@ export type Stage2Output = {
     retainedHandle?: boolean;
     topRu?: string;
     bottomRu?: string;
+    highlights?: TemplateCaptionHighlights;
     styleDirectionIds?: string[];
     explorationMode?: Stage2ExplorationMode;
     constraintCheck?: {
@@ -354,7 +356,7 @@ export type Stage2Response = {
     videoSizeBytes?: number;
     sourceCacheKey?: string;
     sourceCacheState?: "hit" | "miss" | "wait";
-    downloadProvider?: "visolix" | "ytDlp";
+    downloadProvider?: "visolix" | "ytDlp" | "upload";
     primaryProviderError?: string | null;
     downloadFallbackUsed?: boolean;
     commentsOmittedFromPrompt?: number;
@@ -470,7 +472,7 @@ export type SourceJobResult = {
   videoSizeBytes?: number | null;
   sourceCacheKey?: string | null;
   sourceCacheState?: "hit" | "miss" | "wait";
-  downloadProvider?: "visolix" | "ytDlp";
+  downloadProvider?: "visolix" | "ytDlp" | "upload";
   primaryProviderError?: string | null;
   downloadFallbackUsed?: boolean;
   commentsAvailable: boolean;
@@ -783,6 +785,7 @@ export type Stage3SnapshotManagedTemplateState = {
 export type Stage3StateSnapshot = {
   topText: string;
   bottomText: string;
+  captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
@@ -1041,6 +1044,7 @@ export type ChatDraft = {
   stage3: {
     topText: string | null;
     bottomText: string | null;
+    captionHighlights: TemplateCaptionHighlights | null;
     clipStartSec: number | null;
     focusY: number | null;
     renderPlan: Partial<Stage3RenderPlan> | null;

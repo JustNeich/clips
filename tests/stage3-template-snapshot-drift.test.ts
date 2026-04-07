@@ -12,6 +12,7 @@ test("measured text fit can change render snapshot without invalidating the base
       "You can watch the wound knit together, the fluids reroute, and the whole graft behave like the plant decided the surgery was always part of the plan.",
     channelName: "Science Snack",
     channelHandle: "@Science_Snack_1",
+    highlights: { top: [], bottom: [] },
     topFontScale: 1.32,
     bottomFontScale: 1.18,
     previewScale: 1,

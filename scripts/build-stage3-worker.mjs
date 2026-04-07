@@ -36,6 +36,7 @@ const WORKER_LIB_RUNTIME_FILES = [
   "template-calibration-types.ts",
   "auto-fit-template-scene.tsx",
   "stage3-template-core.ts",
+  "template-highlights.ts",
   "stage3-render-variation.ts",
   "stage3-camera.ts",
   "stage3-text-fit.ts",

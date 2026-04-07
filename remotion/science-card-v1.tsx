@@ -283,6 +283,7 @@ export function ScienceCardV1({
       bottomText,
       channelName: authorName,
       channelHandle: authorHandle,
+      highlights: { top: [], bottom: [] },
       topFontScale,
       bottomFontScale,
       previewScale: 1,

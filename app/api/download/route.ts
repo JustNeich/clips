@@ -1,19 +1,10 @@
 import { createReadStream, promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { requireAuth } from "../../../lib/auth/guards";
-import { downloadSourceMedia } from "../../../lib/source-acquisition";
 import { createNodeStreamResponse } from "../../../lib/node-stream-response";
-import { isSupportedUrl, normalizeSupportedUrl } from "../../../lib/ytdlp";
+import { ensureSourceMediaCached } from "../../../lib/source-media-cache";
+import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../lib/ytdlp";
 
 export const runtime = "nodejs";
-
-function scheduleDirectoryCleanup(dirPath: string): void {
-  const timer = setTimeout(() => {
-    void fs.rm(dirPath, { recursive: true, force: true }).catch(() => undefined);
-  }, 120_000);
-  timer.unref?.();
-}
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -30,40 +21,28 @@ export async function POST(request: Request): Promise<Response> {
     if (!isSupportedUrl(sourceUrl)) {
       return Response.json(
         {
-          error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
+          error: SUPPORTED_SOURCE_ERROR_MESSAGE
         },
         { status: 400 }
       );
     }
 
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-dl-"));
-    let cleanupScheduled = false;
+    const cached = await ensureSourceMediaCached(sourceUrl);
+    const fileStat = await fs.stat(cached.sourcePath);
+    const fileName = cached.fileName.toLowerCase().endsWith(".mp4") ? cached.fileName : `${cached.fileName}.mp4`;
+    const stream = createReadStream(cached.sourcePath);
 
-    try {
-      const downloaded = await downloadSourceMedia(sourceUrl, tmpDir);
-      const fileStat = await fs.stat(downloaded.filePath);
-      const fileName = `${downloaded.fileName}.mp4`;
-      const stream = createReadStream(downloaded.filePath);
-
-      scheduleDirectoryCleanup(tmpDir);
-      cleanupScheduled = true;
-
-      return createNodeStreamResponse({
-        stream,
-        signal: request.signal,
-        headers: {
-          "Content-Type": "video/mp4",
-          "Content-Length": String(fileStat.size),
-          "Content-Disposition": `attachment; filename="${fileName}"`,
-          "Cache-Control": "no-store",
-          "X-Source-Provider": downloaded.provider
-        }
-      });
-    } finally {
-      if (!cleanupScheduled) {
-        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    return createNodeStreamResponse({
+      stream,
+      signal: request.signal,
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Length": String(fileStat.size),
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Cache-Control": "no-store",
+        "X-Source-Provider": cached.downloadProvider
       }
-    }
+    });
   } catch (error) {
     if (error instanceof Response) {
       return error;

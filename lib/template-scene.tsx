@@ -21,6 +21,12 @@ import {
   buildTemplateRenderSnapshot,
   resolveTemplateChromeMetrics
 } from "./stage3-template-core";
+import {
+  buildTemplateHighlightSpansFromPhrases,
+  normalizeTemplateHighlightSpans,
+  type TemplateHighlightSlotId,
+  type TemplateHighlightSpan
+} from "./template-highlights";
 
 export type TemplateSceneRect = {
   x: number;
@@ -136,38 +142,74 @@ function resolvePalette(templateConfig: Stage3TemplateConfig = SCIENCE_CARD): St
   return { ...DEFAULT_TEMPLATE_PALETTE, ...(templateConfig.palette ?? {}) };
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function renderHighlightedText(
   text: string,
-  highlightPhrases: string[] | undefined,
-  accentColor: string
+  highlights: TemplateHighlightSpan[],
+  slotColors: Record<TemplateHighlightSlotId, string>
 ): React.ReactNode {
-  const normalized = (highlightPhrases ?? []).map((item) => item.trim()).filter(Boolean);
-  if (!normalized.length || !text.trim()) {
+  if (!highlights.length || !text.trim()) {
     return text;
   }
-  const matcher = new RegExp(`(${normalized.map((item) => escapeRegExp(item)).join("|")})`, "gi");
-  const parts = text.split(matcher);
-  return parts.map((part, index) => {
-    const isAccent = normalized.some((phrase) => phrase.toLowerCase() === part.toLowerCase());
-    return isAccent ? (
-      <span key={`${part}-${index}`} style={{ color: accentColor }}>
-        {part}
-      </span>
-    ) : (
-      <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  highlights.forEach((highlight, index) => {
+    const start = Math.max(0, Math.min(text.length, highlight.start));
+    const end = Math.max(start, Math.min(text.length, highlight.end));
+    if (start > cursor) {
+      parts.push(
+        <React.Fragment key={`plain-${cursor}-${start}`}>{text.slice(cursor, start)}</React.Fragment>
+      );
+    }
+    const color = slotColors[highlight.slotId];
+    const segment = text.slice(start, end);
+    parts.push(
+      color ? (
+        <span key={`hl-${highlight.slotId}-${index}`} style={{ color }}>
+          {segment}
+        </span>
+      ) : (
+        <React.Fragment key={`plain-${highlight.slotId}-${index}`}>{segment}</React.Fragment>
+      )
     );
+    cursor = end;
   });
+  if (cursor < text.length) {
+    parts.push(<React.Fragment key={`plain-tail-${cursor}`}>{text.slice(cursor)}</React.Fragment>);
+  }
+  return parts;
 }
 
-function resolveTopHighlightPhrases(templateId: string, content: TemplateContentFixture, topText: string): string[] | undefined {
-  if (Array.isArray(content.topHighlightPhrases) && content.topHighlightPhrases.length > 0) {
-    return content.topHighlightPhrases;
+function resolveBlockHighlights(
+  block: keyof TemplateContentFixture["highlights"],
+  templateConfig: Stage3TemplateConfig,
+  content: TemplateContentFixture,
+  text: string
+): TemplateHighlightSpan[] {
+  if (!templateConfig.highlights.enabled) {
+    return [];
   }
-  return undefined;
+  if (block === "top" && !templateConfig.highlights.topEnabled) {
+    return [];
+  }
+  if (block === "bottom" && !templateConfig.highlights.bottomEnabled) {
+    return [];
+  }
+  const enabledSlotIds = new Set(
+    templateConfig.highlights.slots.filter((slot) => slot.enabled).map((slot) => slot.slotId)
+  );
+  const normalized = normalizeTemplateHighlightSpans(content.highlights[block], text).filter((item) =>
+    enabledSlotIds.has(item.slotId)
+  );
+  if (normalized.length > 0 || block !== "top" || !Array.isArray(content.topHighlightPhrases)) {
+    return normalized;
+  }
+  return buildTemplateHighlightSpansFromPhrases({
+    text,
+    annotations: content.topHighlightPhrases.map((phrase) => ({
+      phrase,
+      slotId: "slot1" as const
+    }))
+  }).filter((item) => enabledSlotIds.has(item.slotId));
 }
 
 type ScienceShellVisuals = {
@@ -551,7 +593,11 @@ export function TemplateScene({
       : resolveScienceShellVisuals(resolvedTemplateId, templateConfig, palette, regions);
   const topText = computed.top || "Верхний текст появится здесь.";
   const bottomText = computed.bottom || "Нижний текст появится здесь.";
-  const highlightPhrases = resolveTopHighlightPhrases(resolvedTemplateId, effectiveContent, topText);
+  const topHighlights = resolveBlockHighlights("top", templateConfig, effectiveContent, topText);
+  const bottomHighlights = resolveBlockHighlights("bottom", templateConfig, effectiveContent, bottomText);
+  const highlightColors = Object.fromEntries(
+    templateConfig.highlights.slots.map((slot) => [slot.slotId, slot.color])
+  ) as Record<TemplateHighlightSlotId, string>;
   const authorName = effectiveContent.channelName || templateConfig.author.name;
   const authorHandle = effectiveContent.channelHandle || templateConfig.author.handle;
   const authorGap = templateConfig.author.gap ?? 11;
@@ -896,9 +942,7 @@ export function TemplateScene({
                 overflow: "hidden"
               }}
             >
-              {highlightPhrases
-                ? renderHighlightedText(topText, highlightPhrases, palette.accentColor ?? palette.topTextColor)
-                : topText}
+              {topHighlights.length > 0 ? renderHighlightedText(topText, topHighlights, highlightColors) : topText}
             </p>
           </section>
 
@@ -1012,7 +1056,9 @@ export function TemplateScene({
                   ...scienceShellVisuals.bottomTextStyle
                 }}
               >
-                {bottomText}
+                {bottomHighlights.length > 0
+                  ? renderHighlightedText(bottomText, bottomHighlights, highlightColors)
+                  : bottomText}
               </p>
             </div>
           </section>

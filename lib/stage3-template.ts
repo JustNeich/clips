@@ -4,6 +4,11 @@ import {
   snapStage3TextFontPx,
   STAGE3_TEXT_FONT_STEP_PX
 } from "./stage3-text-fit";
+import {
+  cloneTemplateHighlightConfig,
+  createDefaultTemplateHighlightConfig,
+  type TemplateHighlightConfig
+} from "./template-highlights";
 
 export const SCIENCE_CARD_TEMPLATE_ID = "science-card-v1";
 export const SCIENCE_CARD_BLUE_TEMPLATE_ID = "science-card-blue-v1";
@@ -82,6 +87,7 @@ export const SCIENCE_CARD = {
     checkBadgeColor: "#e985d6",
     borderColor: "#000000"
   },
+  highlights: createDefaultTemplateHighlightConfig(),
   author: {
     name: "Science Snack",
     handle: "@Science_Snack_1",
@@ -149,7 +155,10 @@ function createScienceCardBorderVariant(borderColor: string) {
     palette: {
       ...SCIENCE_CARD.palette,
       borderColor
-    }
+    },
+    highlights: createDefaultTemplateHighlightConfig({
+      accentColor: borderColor
+    })
   } as const;
 }
 
@@ -242,7 +251,10 @@ export const AMERICAN_NEWS = {
     checkBadgeColor: "#f3b31f",
     borderColor: "#f3b31f",
     accentColor: "#f3b31f"
-  }
+  },
+  highlights: createDefaultTemplateHighlightConfig({
+    accentColor: "#f3b31f"
+  })
 } as const;
 
 export const SCIENCE_CARD_V7 = {
@@ -364,7 +376,10 @@ export const HEDGES_OF_HONOR = {
   },
   author: {
     ...SCIENCE_CARD_V7.author
-  }
+  },
+  highlights: createDefaultTemplateHighlightConfig({
+    accentColor: SCIENCE_CARD_V7.palette.topTextColor
+  })
 } as const;
 
 const CLASSIC_SCIENCE_CARD_TEMPLATE_IDS = new Set([
@@ -485,7 +500,25 @@ export type Stage3TemplateConfig = {
     borderColor: string;
     accentColor?: string;
   };
+  highlights: TemplateHighlightConfig;
 };
+
+export function cloneStage3TemplateConfig(config: Stage3TemplateConfig): Stage3TemplateConfig {
+  return {
+    frame: { ...config.frame },
+    card: { ...config.card },
+    slot: { ...config.slot },
+    author: { ...config.author },
+    typography: {
+      top: { ...config.typography.top },
+      bottom: { ...config.typography.bottom },
+      authorName: { ...config.typography.authorName },
+      authorHandle: { ...config.typography.authorHandle }
+    },
+    palette: { ...config.palette },
+    highlights: cloneTemplateHighlightConfig(config.highlights)
+  };
+}
 
 type TypographyConfig = {
   min: number;

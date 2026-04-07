@@ -937,13 +937,16 @@ export function formatStage3Operation(op: string): string {
 }
 
 export function formatSourceProviderLabel(
-  provider: "visolix" | "ytDlp" | null | undefined
+  provider: "visolix" | "ytDlp" | "upload" | null | undefined
 ): string | null {
   if (provider === "visolix") {
     return "Visolix";
   }
   if (provider === "ytDlp") {
     return "локальный fallback-загрузчик";
+  }
+  if (provider === "upload") {
+    return "ручную загрузку mp4";
   }
   return null;
 }

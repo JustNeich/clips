@@ -497,6 +497,7 @@ export default async function ScienceCardDesignPage({ searchParams }: ScienceCar
       channelHandle: channelHandle ?? templateConfig.author.handle,
       topText,
       bottomText,
+      highlights: { top: [], bottom: [] },
       topHighlightPhrases: highlightPhrases,
       topFontScale: topScale,
       bottomFontScale: bottomScale,

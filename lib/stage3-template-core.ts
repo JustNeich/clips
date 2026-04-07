@@ -1,4 +1,5 @@
 import type { TemplateContentFixture } from "./template-calibration-types";
+import { normalizeTemplateCaptionHighlights } from "./template-highlights";
 import {
   isClassicScienceCardTemplateId,
   SCIENCE_CARD_TEMPLATE_ID,
@@ -310,7 +311,11 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
   const content: TemplateContentFixture = {
     ...input.content,
     topText: computed.top,
-    bottomText: computed.bottom
+    bottomText: computed.bottom,
+    highlights: normalizeTemplateCaptionHighlights(input.content.highlights, {
+      top: computed.top,
+      bottom: computed.bottom
+    })
   };
   const fitOverride = input.fitOverride;
   const fit: TemplateTextFitResult = {
@@ -348,6 +353,7 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
         bottomText: content.bottomText,
         channelName: content.channelName,
         channelHandle: content.channelHandle,
+        highlights: content.highlights,
         topFontScale: content.topFontScale,
         bottomFontScale: content.bottomFontScale
       },

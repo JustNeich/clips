@@ -6,7 +6,12 @@ import test from "node:test";
 
 import { POST as fetchComments } from "../app/api/comments/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
+import { GET as listManagedTemplatesRoute } from "../app/api/design/templates/route";
 import { GET as getManagedTemplate } from "../app/api/design/templates/[templateId]/route";
+import {
+  DELETE as deleteManagedTemplateRoute,
+  PUT as updateManagedTemplateRoute
+} from "../app/api/design/templates/[templateId]/route";
 import { POST as downloadSource } from "../app/api/download/route";
 import { GET as getRuntimeCapabilities } from "../app/api/runtime/capabilities/route";
 import { GET as readStage3Background } from "../app/api/stage3/background/[id]/route";
@@ -14,6 +19,7 @@ import { POST as uploadStage3Background } from "../app/api/stage3/background/rou
 import { POST as fetchVideoMeta } from "../app/api/video/meta/route";
 import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
 import { createManagedTemplate, deleteManagedTemplate } from "../lib/managed-template-store";
+import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { setChannelAccess } from "../lib/team-store";
 import {
   acceptInviteRegistration,
@@ -26,13 +32,20 @@ import {
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-api-auth-test-"));
   const previousAppDataDir = process.env.APP_DATA_DIR;
+  const previousManagedTemplatesRoot = process.env.MANAGED_TEMPLATES_ROOT;
   process.env.APP_DATA_DIR = appDataDir;
+  process.env.MANAGED_TEMPLATES_ROOT = path.join(appDataDir, "managed-templates");
   delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
 
   try {
     return await run();
   } finally {
     delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+    if (previousManagedTemplatesRoot === undefined) {
+      delete process.env.MANAGED_TEMPLATES_ROOT;
+    } else {
+      process.env.MANAGED_TEMPLATES_ROOT = previousManagedTemplatesRoot;
+    }
     if (previousAppDataDir === undefined) {
       delete process.env.APP_DATA_DIR;
     } else {
@@ -273,5 +286,200 @@ test("redactor still cannot open an unrelated managed template outside visible c
     } finally {
       await deleteManagedTemplate(template.id);
     }
+  });
+});
+
+test("managed template list keeps system templates and channel-shared templates visible to redactors", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Template List Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "editor@example.com",
+      role: "redactor",
+      createdByUserId: owner.user.id
+    });
+    const editor = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Editor"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const sharedTemplate = await createManagedTemplate(
+      {
+        name: "Shared Channel Template",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+    const privateTemplate = await createManagedTemplate(
+      {
+        name: "Private Draft Template",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    try {
+      const channel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Template Visibility Channel",
+        username: "template_visibility",
+        templateId: sharedTemplate.id
+      });
+      setChannelAccess({
+        channelId: channel.id,
+        userId: editor.user.id,
+        grantedByUserId: owner.user.id
+      });
+
+      const response = await listManagedTemplatesRoute(
+        new Request("http://localhost/api/design/templates", {
+          headers: { cookie: `${APP_SESSION_COOKIE}=${editor.sessionToken}` }
+        })
+      );
+      const body = (await response.json()) as {
+        templates?: Array<{ id: string }>;
+      };
+
+      assert.equal(response.status, 200);
+      assert.ok(body.templates?.some((template) => template.id === STAGE3_TEMPLATE_ID));
+      assert.ok(body.templates?.some((template) => template.id === sharedTemplate.id));
+      assert.ok(!body.templates?.some((template) => template.id === privateTemplate.id));
+    } finally {
+      await deleteManagedTemplate(sharedTemplate.id);
+      await deleteManagedTemplate(privateTemplate.id);
+    }
+  });
+});
+
+test("redactor can update a managed template when it is assigned to an editable channel", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Template Edit Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "editor@example.com",
+      role: "redactor",
+      createdByUserId: owner.user.id
+    });
+    const editor = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Editor"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const template = await createManagedTemplate(
+      {
+        name: "Editable Shared Template",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    try {
+      const channel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Editable Shared Channel",
+        username: "editable_shared_channel",
+        templateId: template.id
+      });
+      setChannelAccess({
+        channelId: channel.id,
+        userId: editor.user.id,
+        grantedByUserId: owner.user.id
+      });
+
+      const response = await updateManagedTemplateRoute(
+        new Request(`http://localhost/api/design/templates/${template.id}`, {
+          method: "PUT",
+          headers: {
+            cookie: `${APP_SESSION_COOKIE}=${editor.sessionToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            name: "Editable Shared Template Updated",
+            description: "Updated through channel access"
+          })
+        }),
+        { params: Promise.resolve({ templateId: template.id }) }
+      );
+      const body = (await response.json()) as {
+        error?: string;
+        template?: { id?: string; name?: string; description?: string };
+      };
+
+      assert.equal(response.status, 200);
+      assert.equal(body.template?.id, template.id);
+      assert.equal(body.template?.name, "Editable Shared Template Updated");
+      assert.equal(body.template?.description, "Updated through channel access");
+    } finally {
+      await deleteManagedTemplate(template.id);
+    }
+  });
+});
+
+test("system managed templates reject direct update and delete requests", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "System Template Guard Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const updateResponse = await updateManagedTemplateRoute(
+      new Request(`http://localhost/api/design/templates/${STAGE3_TEMPLATE_ID}`, {
+        method: "PUT",
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name: "Should Not Save"
+        })
+      }),
+      { params: Promise.resolve({ templateId: STAGE3_TEMPLATE_ID }) }
+    );
+    const updateBody = (await updateResponse.json()) as { error?: string };
+
+    assert.equal(updateResponse.status, 403);
+    assert.equal(updateBody.error, "Системный шаблон нельзя менять напрямую. Создай копию и редактируй её.");
+
+    const deleteResponse = await deleteManagedTemplateRoute(
+      new Request(`http://localhost/api/design/templates/${STAGE3_TEMPLATE_ID}`, {
+        method: "DELETE",
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`
+        }
+      }),
+      { params: Promise.resolve({ templateId: STAGE3_TEMPLATE_ID }) }
+    );
+    const deleteBody = (await deleteResponse.json()) as { error?: string };
+
+    assert.equal(deleteResponse.status, 403);
+    assert.equal(deleteBody.error, "Системный шаблон нельзя менять напрямую. Создай копию и редактируй её.");
   });
 });

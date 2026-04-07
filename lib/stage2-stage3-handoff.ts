@@ -1,4 +1,9 @@
 import type { ChatDraft, Stage2Response, Stage3Version } from "../app/components/types";
+import {
+  cloneTemplateCaptionHighlights,
+  mergeTemplateCaptionHighlightsByMode,
+  type TemplateCaptionHighlights
+} from "./template-highlights";
 
 type Stage2CaptionOption = Stage2Response["output"]["captionOptions"][number];
 
@@ -25,6 +30,7 @@ export type Stage2ToStage3HandoffSummary = {
         option: number;
         top: string;
         bottom: string;
+        highlights: TemplateCaptionHighlights;
       }
     | null;
   title:
@@ -101,33 +107,44 @@ export type Stage3CaptionApplyMode = "all" | "top" | "bottom";
 export function applyStage2CaptionToStage3Text(input: {
   currentTopText: string;
   currentBottomText: string;
-  caption: Pick<Stage2CaptionOption, "top" | "bottom"> | null;
+  currentCaptionHighlights?: TemplateCaptionHighlights | null;
+  caption: Pick<Stage2CaptionOption, "top" | "bottom" | "highlights"> | null;
   mode: Stage3CaptionApplyMode;
-}): { topText: string; bottomText: string } {
+}): { topText: string; bottomText: string; captionHighlights: TemplateCaptionHighlights } {
   if (!input.caption) {
     return {
       topText: input.currentTopText,
-      bottomText: input.currentBottomText
+      bottomText: input.currentBottomText,
+      captionHighlights: cloneTemplateCaptionHighlights(input.currentCaptionHighlights)
     };
   }
+
+  const captionHighlights = mergeTemplateCaptionHighlightsByMode({
+    current: input.currentCaptionHighlights,
+    next: input.caption.highlights,
+    mode: input.mode
+  });
 
   if (input.mode === "all") {
     return {
       topText: input.caption.top,
-      bottomText: input.caption.bottom
+      bottomText: input.caption.bottom,
+      captionHighlights
     };
   }
 
   if (input.mode === "top") {
     return {
       topText: input.caption.top,
-      bottomText: input.currentBottomText
+      bottomText: input.currentBottomText,
+      captionHighlights
     };
   }
 
   return {
     topText: input.currentTopText,
-    bottomText: input.caption.bottom
+    bottomText: input.caption.bottom,
+    captionHighlights
   };
 }
 
@@ -222,7 +239,8 @@ export function buildStage2ToStage3HandoffSummary(input: {
         ? {
             option: caption.option,
             top: caption.top,
-            bottom: caption.bottom
+            bottom: caption.bottom,
+            highlights: cloneTemplateCaptionHighlights(caption.highlights)
           }
         : null,
     title:

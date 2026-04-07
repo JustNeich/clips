@@ -19,6 +19,11 @@ import {
 } from "./stage3-design-lab";
 import { getTemplateFigmaSpec } from "./stage3-template-spec";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
+import {
+  buildTemplateHighlightSpansFromPhrases,
+  createEmptyTemplateCaptionHighlights,
+  normalizeTemplateCaptionHighlights
+} from "./template-highlights";
 
 const DESIGN_TEMPLATES_ROOT = path.join(process.cwd(), "design", "templates");
 const ARTIFACTS_DIR_NAME = "artifacts";
@@ -48,6 +53,7 @@ function buildDefaultContent(preset: Stage3DesignLabPreset): TemplateContentFixt
     bottomText: preset.bottomText,
     channelName: preset.channelName,
     channelHandle: preset.channelHandle,
+    highlights: createEmptyTemplateCaptionHighlights(),
     topHighlightPhrases: undefined,
     topFontScale: 1,
     bottomFontScale: 1,
@@ -154,14 +160,31 @@ function normalizeContentFixture(raw: unknown, preset: Stage3DesignLabPreset): T
     return defaults;
   }
   const candidate = raw as Record<string, unknown>;
+  const topText = typeof candidate.topText === "string" ? candidate.topText : defaults.topText;
+  const bottomText = typeof candidate.bottomText === "string" ? candidate.bottomText : defaults.bottomText;
+  const topHighlightPhrases = Array.isArray(candidate.topHighlightPhrases)
+    ? candidate.topHighlightPhrases.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : defaults.topHighlightPhrases;
+  const highlights = normalizeTemplateCaptionHighlights(candidate.highlights, {
+    top: topText,
+    bottom: bottomText
+  });
+  if (highlights.top.length === 0 && highlights.bottom.length === 0 && (topHighlightPhrases?.length ?? 0) > 0) {
+    highlights.top = buildTemplateHighlightSpansFromPhrases({
+      text: topText,
+      annotations: topHighlightPhrases!.map((phrase) => ({
+        phrase,
+        slotId: "slot1" as const
+      }))
+    });
+  }
   return {
-    topText: typeof candidate.topText === "string" ? candidate.topText : defaults.topText,
-    bottomText: typeof candidate.bottomText === "string" ? candidate.bottomText : defaults.bottomText,
+    topText,
+    bottomText,
     channelName: typeof candidate.channelName === "string" ? candidate.channelName : defaults.channelName,
     channelHandle: typeof candidate.channelHandle === "string" ? candidate.channelHandle : defaults.channelHandle,
-    topHighlightPhrases: Array.isArray(candidate.topHighlightPhrases)
-      ? candidate.topHighlightPhrases.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-      : defaults.topHighlightPhrases,
+    highlights,
+    topHighlightPhrases,
     topFontScale:
       typeof candidate.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
         ? clampStage3TextScaleUi(candidate.topFontScale)

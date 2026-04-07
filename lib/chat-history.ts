@@ -863,12 +863,17 @@ export async function deleteChatDraft(threadId: string, userId: string): Promise
   return Number(result.changes ?? 0) > 0;
 }
 
-export async function createOrGetChatByUrl(rawUrl: string, channelIdRaw?: string): Promise<ChatThread> {
-  const url = normalizeSupportedUrl(rawUrl.trim());
+export async function createOrGetChatBySource(input: {
+  rawUrl: string;
+  channelIdRaw?: string;
+  title?: string | null;
+  eventText?: string | null;
+}): Promise<ChatThread> {
+  const url = normalizeSupportedUrl(input.rawUrl.trim());
   if (!url) {
     throw new Error("URL is required.");
   }
-  const channel = channelIdRaw ? await getChannelById(channelIdRaw) : await getDefaultChannel().catch(() => null);
+  const channel = input.channelIdRaw ? await getChannelById(input.channelIdRaw) : await getDefaultChannel().catch(() => null);
   if (!channel) {
     throw new Error("Channel not found.");
   }
@@ -887,7 +892,7 @@ export async function createOrGetChatByUrl(rawUrl: string, channelIdRaw?: string
     workspaceId: channel.workspaceId,
     channelId: channel.id,
     url,
-    title: url,
+    title: sanitizeName(input.title, url),
     createdAt,
     updatedAt: createdAt,
     events: []
@@ -908,10 +913,17 @@ export async function createOrGetChatByUrl(rawUrl: string, channelIdRaw?: string
   await appendChatEvent(thread.id, {
     role: "user",
     type: "link",
-    text: `Ссылка добавлена: ${url}`
+    text: input.eventText?.trim() || `Ссылка добавлена: ${url}`
   });
 
   return (await getChatById(thread.id)) as ChatThread;
+}
+
+export async function createOrGetChatByUrl(rawUrl: string, channelIdRaw?: string): Promise<ChatThread> {
+  return createOrGetChatBySource({
+    rawUrl,
+    channelIdRaw
+  });
 }
 
 export async function appendChatEvent(

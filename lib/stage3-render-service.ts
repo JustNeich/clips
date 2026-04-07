@@ -752,6 +752,7 @@ export async function renderStage3Video(
       bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
       channelName: renderPlan.authorName,
       channelHandle: renderPlan.authorHandle,
+      highlights: snapshot?.captionHighlights ?? { top: [], bottom: [] },
       topFontScale: renderPlan.topFontScale,
       bottomFontScale: renderPlan.bottomFontScale,
       previewScale: 1,

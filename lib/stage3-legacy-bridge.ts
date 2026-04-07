@@ -231,6 +231,7 @@ function passToSnapshot(pass: Stage3AgentPass, sourceDurationSec: number | null)
   return {
     topText: pass.topText,
     bottomText: pass.bottomText,
+    captionHighlights: { top: [], bottom: [] },
     clipStartSec: pass.clipStartSec,
     clipDurationSec: pass.clipDurationSec,
     focusY: pass.focusY,
@@ -261,6 +262,10 @@ function normalizeSnapshot(
   return {
     topText: typeof candidate.topText === "string" ? candidate.topText : fallback.topText,
     bottomText: typeof candidate.bottomText === "string" ? candidate.bottomText : fallback.bottomText,
+    captionHighlights:
+      candidate.captionHighlights && typeof candidate.captionHighlights === "object"
+        ? candidate.captionHighlights
+        : fallback.captionHighlights,
     clipStartSec:
       typeof candidate.clipStartSec === "number" ? candidate.clipStartSec : fallback.clipStartSec,
     clipDurationSec:

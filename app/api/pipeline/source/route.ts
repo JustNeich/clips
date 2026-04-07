@@ -10,7 +10,7 @@ import {
 import { listSourceJobsForChat, SourceJobRecord, SourceJobTrigger } from "../../../../lib/source-job-store";
 import type { SourceJobDetail, Stage2RunSummary } from "../../../components/types";
 import { getRuntimeCapabilities } from "../../../../lib/runtime-capabilities";
-import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
+import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../lib/ytdlp";
 import { getWorkspaceCodexIntegration } from "../../../../lib/team-store";
 
 export const runtime = "nodejs";
@@ -166,7 +166,7 @@ export async function POST(request: Request): Promise<Response> {
       const normalizedUrl = normalizeSupportedUrl(incomingUrl);
       if (!isSupportedUrl(normalizedUrl)) {
         return Response.json(
-          { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
+          { error: SUPPORTED_SOURCE_ERROR_MESSAGE },
           { status: 400 }
         );
       }
@@ -180,7 +180,7 @@ export async function POST(request: Request): Promise<Response> {
     const sourceUrl = normalizeSupportedUrl(incomingUrl || chat.url || "");
     if (!sourceUrl || !isSupportedUrl(sourceUrl)) {
       return Response.json(
-        { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
+        { error: SUPPORTED_SOURCE_ERROR_MESSAGE },
         { status: 400 }
       );
     }

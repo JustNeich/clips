@@ -1,9 +1,15 @@
 import type { Stage3TemplateConfig } from "./stage3-template";
-import { STAGE3_TEMPLATE_ID, getTemplateById, getScienceCardComputed } from "./stage3-template";
+import {
+  STAGE3_TEMPLATE_ID,
+  cloneStage3TemplateConfig,
+  getTemplateById,
+  getScienceCardComputed
+} from "./stage3-template";
 import type { TemplateContentFixture } from "./template-calibration-types";
 import type { ManagedTemplate, ManagedTemplateShadowLayer } from "./managed-template-types";
 import { assertServerRuntime } from "./server-runtime-guard";
 import type { Stage3SnapshotManagedTemplateState } from "../app/components/types";
+import { createEmptyTemplateCaptionHighlights } from "./template-highlights";
 import {
   resolveManagedTemplate,
   resolveManagedTemplateSync
@@ -23,22 +29,6 @@ export type ResolvedManagedTemplateRuntime = {
   updatedAt: string;
   createdAt: string;
 };
-
-function cloneTemplateConfig(config: Stage3TemplateConfig): Stage3TemplateConfig {
-  return {
-    frame: { ...config.frame },
-    card: { ...config.card },
-    slot: { ...config.slot },
-    author: { ...config.author },
-    typography: {
-      top: { ...config.typography.top },
-      bottom: { ...config.typography.bottom },
-      authorName: { ...config.typography.authorName },
-      authorHandle: { ...config.typography.authorHandle }
-    },
-    palette: { ...config.palette }
-  };
-}
 
 function serializeShadowLayer(layer: ManagedTemplateShadowLayer): string {
   const rgba = toRgba(layer.color, layer.opacity);
@@ -72,10 +62,10 @@ function toRgba(color: string, opacity: number): string {
 }
 
 function toResolvedRuntime(template: ManagedTemplate | null): ResolvedManagedTemplateRuntime {
-  const fallbackConfig = cloneTemplateConfig(getTemplateById(STAGE3_TEMPLATE_ID));
+  const fallbackConfig = cloneStage3TemplateConfig(getTemplateById(STAGE3_TEMPLATE_ID));
   const shadowCss = template ? serializeShadowLayers(template.shadowLayers) : undefined;
   const baseTemplateConfig = template
-    ? cloneTemplateConfig(template.templateConfig)
+    ? cloneStage3TemplateConfig(template.templateConfig)
     : fallbackConfig;
 
   return {
@@ -88,6 +78,7 @@ function toResolvedRuntime(template: ManagedTemplate | null): ResolvedManagedTem
       bottomText: "",
       channelName: fallbackConfig.author.name,
       channelHandle: fallbackConfig.author.handle,
+      highlights: createEmptyTemplateCaptionHighlights(),
       topHighlightPhrases: [],
       topFontScale: 1,
       bottomFontScale: 1,
@@ -113,7 +104,7 @@ function toResolvedRuntime(template: ManagedTemplate | null): ResolvedManagedTem
 function toResolvedRuntimeFromSnapshot(
   snapshotState: Stage3SnapshotManagedTemplateState
 ): ResolvedManagedTemplateRuntime {
-  const templateConfig = cloneTemplateConfig(snapshotState.templateConfig);
+  const templateConfig = cloneStage3TemplateConfig(snapshotState.templateConfig);
   const updatedAt = snapshotState.updatedAt ?? new Date().toISOString();
   return {
     managedTemplateId: snapshotState.managedId,
@@ -125,6 +116,7 @@ function toResolvedRuntimeFromSnapshot(
       bottomText: "",
       channelName: templateConfig.author.name,
       channelHandle: templateConfig.author.handle,
+      highlights: createEmptyTemplateCaptionHighlights(),
       topHighlightPhrases: [],
       topFontScale: 1,
       bottomFontScale: 1,

@@ -7,11 +7,18 @@ import { getStage3DesignLabPreset } from "./stage3-design-lab";
 import { type TemplateContentFixture } from "./template-calibration-types";
 import {
   STAGE3_TEMPLATE_ID,
+  cloneStage3TemplateConfig,
   type Stage3TemplateConfig,
   getTemplateById
 } from "./stage3-template";
 import { listTemplateVariants } from "./stage3-template-registry";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
+import {
+  buildTemplateHighlightSpansFromPhrases,
+  createEmptyTemplateCaptionHighlights,
+  normalizeTemplateCaptionHighlights,
+  normalizeTemplateHighlightConfig
+} from "./template-highlights";
 import type {
   TemplateStyleBoxShadowLayer,
   TemplateStylePreset
@@ -50,22 +57,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function cloneTemplateConfig(config: Stage3TemplateConfig): Stage3TemplateConfig {
-  return {
-    frame: { ...config.frame },
-    card: { ...config.card },
-    slot: { ...config.slot },
-    author: { ...config.author },
-    typography: {
-      top: { ...config.typography.top },
-      bottom: { ...config.typography.bottom },
-      authorName: { ...config.typography.authorName },
-      authorHandle: { ...config.typography.authorHandle }
-    },
-    palette: { ...config.palette }
-  };
-}
-
 function resolveTemplateId(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) {
     return STAGE3_TEMPLATE_ID;
@@ -81,6 +72,7 @@ function buildDefaultContent(templateId: string): TemplateContentFixture {
     bottomText: preset.bottomText,
     channelName: preset.channelName,
     channelHandle: preset.channelHandle,
+    highlights: createEmptyTemplateCaptionHighlights(),
     topHighlightPhrases: [],
     topFontScale: 1,
     bottomFontScale: 1,
@@ -101,16 +93,36 @@ function normalizeContent(raw: unknown, templateId: string): TemplateContentFixt
     return defaults;
   }
 
-  return {
-    topText: typeof raw.topText === "string" ? raw.topText : defaults.topText,
-    bottomText: typeof raw.bottomText === "string" ? raw.bottomText : defaults.bottomText,
-    channelName: typeof raw.channelName === "string" ? raw.channelName : defaults.channelName,
-    channelHandle: typeof raw.channelHandle === "string" ? raw.channelHandle : defaults.channelHandle,
-    topHighlightPhrases: Array.isArray(raw.topHighlightPhrases)
+  const topText = typeof raw.topText === "string" ? raw.topText : defaults.topText;
+  const bottomText = typeof raw.bottomText === "string" ? raw.bottomText : defaults.bottomText;
+  const topHighlightPhrases = (
+    Array.isArray(raw.topHighlightPhrases)
       ? raw.topHighlightPhrases.filter(
           (item): item is string => typeof item === "string" && item.trim().length > 0
         )
-      : defaults.topHighlightPhrases,
+      : defaults.topHighlightPhrases
+  ) ?? [];
+  const highlights = normalizeTemplateCaptionHighlights(raw.highlights, {
+    top: topText,
+    bottom: bottomText
+  });
+  if (highlights.top.length === 0 && highlights.bottom.length === 0 && topHighlightPhrases.length > 0) {
+    highlights.top = buildTemplateHighlightSpansFromPhrases({
+      text: topText,
+      annotations: topHighlightPhrases.map((phrase) => ({
+        phrase,
+        slotId: "slot1" as const
+      }))
+    });
+  }
+
+  return {
+    topText,
+    bottomText,
+    channelName: typeof raw.channelName === "string" ? raw.channelName : defaults.channelName,
+    channelHandle: typeof raw.channelHandle === "string" ? raw.channelHandle : defaults.channelHandle,
+    highlights,
+    topHighlightPhrases,
     topFontScale:
       typeof raw.topFontScale === "number" && Number.isFinite(raw.topFontScale)
         ? clampStage3TextScaleUi(raw.topFontScale)
@@ -141,7 +153,7 @@ function normalizeContent(raw: unknown, templateId: string): TemplateContentFixt
 }
 
 function normalizeTemplateConfig(raw: unknown, templateId: string): Stage3TemplateConfig {
-  const base = cloneTemplateConfig(getTemplateById(templateId));
+  const base = cloneStage3TemplateConfig(getTemplateById(templateId));
   if (!isRecord(raw)) {
     return base;
   }
@@ -309,6 +321,10 @@ function normalizeTemplateConfig(raw: unknown, templateId: string): Stage3Templa
       }
     }
   }
+
+  base.highlights = normalizeTemplateHighlightConfig(raw.highlights, {
+    accentColor: base.palette.accentColor ?? base.palette.topTextColor
+  });
 
   return base;
 }

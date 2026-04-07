@@ -1,5 +1,5 @@
 import { reassignChannelsTemplateId } from "../../../../../lib/chat-history";
-import { filterManagedTemplatesForAuth } from "../../../../../lib/managed-template-access";
+import { filterManagedTemplatesForAuthIncludingVisibleChannels } from "../../../../../lib/managed-template-access";
 import {
   requireManagedTemplateEditAccess,
   requireManagedTemplateRuntimeViewAccess
@@ -57,7 +57,7 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
     }
 
     const fallbackTemplateId =
-      filterManagedTemplatesForAuth(auth, await listManagedTemplates()).find(
+      (await filterManagedTemplatesForAuthIncludingVisibleChannels(auth, await listManagedTemplates())).find(
         (template) => template.id !== templateId
       )?.id ?? STAGE3_TEMPLATE_ID;
 

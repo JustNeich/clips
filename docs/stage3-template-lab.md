@@ -16,19 +16,34 @@
 - `template-road` — style editor: фиксированный canvas слева, scrollable inspector справа. Нужен для быстрой настройки chrome, palette, typography и spacing.
 - `template-lab` — calibration lab: reference/diff/artifacts и проходы до визуального совпадения.
 
+С недавнего обновления `template-road` также хранит template-level highlighting profile:
+- master toggle `Highlighting`
+- отдельные тумблеры для `top` и `bottom`
+- до 3 semantic color slots с `color + label + guidance`
+- demo phrase inputs для live preview без запуска Stage 2
+
+Важно:
+- preview в редакторе и финальный render теперь читают structured `content.highlights`, а не inline markers;
+- legacy `topHighlightPhrases` оставлен только как fallback при загрузке старых шаблонов;
+- если оператор вручную меняет текст в Stage 3, highlight spans для этого блока должны считаться сброшенными до следующего apply из Stage 2.
+- built-in/system templates всегда видны в библиотеке, но открываются только в `read-only`;
+- чтобы изменить встроенный шаблон, нужно создать копию из `template-road`, после чего она становится обычным managed template;
+- для ролей ниже manager библиотека показывает не только личные drafts, но и шаблоны, назначенные на видимые им каналы.
+
 ## Как использовать
 
 1. Для style-прохода открыть `template-road` и выбрать базовый шаблон.
 2. Справа через inspector крутить radius, border, fill, shadow, font stacks, weights, colors и внутренние отступы.
-3. Слева смотреть только на live canvas и оценивать hierarchy / breathing room без reference diff.
-4. Когда нужна именно калибровка под референс, открыть `template-lab`.
-5. В `template-lab` подгрузить reference image или URL и провести diff-pass.
-6. После завершения calibration-pass поменять статус шаблона:
+3. В секции `Демо-контент` при необходимости настроить `Highlighting`: включить top/bottom, выбрать до 3 слотов, задать `label/guidance` и demo phrases для проверки палитры.
+4. Слева смотреть только на live canvas и оценивать hierarchy / breathing room без reference diff.
+5. Когда нужна именно калибровка под референс, открыть `template-lab`.
+6. В `template-lab` подгрузить reference image или URL и провести diff-pass.
+7. После завершения calibration-pass поменять статус шаблона:
    - `Queue`
    - `In Progress`
    - `Review`
    - `Approved`
-7. Зафиксировать следующие шаги в `Заметки по проходу`.
+8. Зафиксировать следующие шаги в `Заметки по проходу`.
 
 ## Preset workflow
 

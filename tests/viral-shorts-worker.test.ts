@@ -141,6 +141,11 @@ import {
   SCIENCE_CARD_RED_TEMPLATE_ID,
   SCIENCE_CARD_TEMPLATE_ID
 } from "../lib/stage3-template";
+import {
+  buildTemplateHighlightSpansFromPhrases,
+  createDefaultTemplateHighlightConfig,
+  type TemplateHighlightConfig
+} from "../lib/template-highlights";
 import { prepareCodexSchemaTransport } from "../lib/viral-shorts-worker/executor";
 import {
   applyStage2CaptionToStage3Text,
@@ -334,7 +339,10 @@ function makeNativeCaptionContextPacket() {
 
 function makeNativeCaptionChannel(
   hardConstraints: Stage2HardConstraints = DEFAULT_STAGE2_HARD_CONSTRAINTS,
-  stage2WorkerProfileId: string | null = null
+  stage2WorkerProfileId: string | null = null,
+  options?: {
+    templateHighlightProfile?: TemplateHighlightConfig | null;
+  }
 ) {
   return {
     id: "native-channel",
@@ -342,7 +350,8 @@ function makeNativeCaptionChannel(
     username: "native_channel",
     stage2WorkerProfileId,
     stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
-    stage2HardConstraints: hardConstraints
+    stage2HardConstraints: hardConstraints,
+    templateHighlightProfile: options?.templateHighlightProfile ?? null
   };
 }
 
@@ -469,6 +478,7 @@ class QueueExecutor implements JsonStageExecutor {
     const next = this.responses[0];
     if (
       input.prompt.includes("display_options_json") &&
+      !input.prompt.includes("template_highlight_profile_json") &&
       !(next instanceof Error) &&
       !looksLikeCaptionTranslationResponse(next)
     ) {
@@ -490,6 +500,7 @@ async function runNativeCaptionPipelineFixture(input: {
   promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
   hardConstraints?: Stage2HardConstraints;
   stage2WorkerProfileId?: string | null;
+  templateHighlightProfile?: TemplateHighlightConfig | null;
   videoContext?: ReturnType<typeof buildVideoContext>;
   contextPacket?: ReturnType<typeof makeNativeCaptionContextPacket>;
   stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
@@ -515,6 +526,7 @@ async function runNativeCaptionPipelineDirectFixture(input: {
   promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
   hardConstraints?: Stage2HardConstraints;
   stage2WorkerProfileId?: string | null;
+  templateHighlightProfile?: TemplateHighlightConfig | null;
   videoContext?: ReturnType<typeof buildVideoContext>;
   stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
   editorialMemory?: ReturnType<typeof createEmptyStage2EditorialMemorySummary>;
@@ -524,11 +536,15 @@ async function runNativeCaptionPipelineDirectFixture(input: {
   const workerProfileId = resolveNativeTestWorkerProfileId(input);
   const channel = input.stage2StyleProfile
     ? {
-        ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId),
+        ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
+          templateHighlightProfile: input.templateHighlightProfile
+        }),
         stage2StyleProfile: input.stage2StyleProfile,
         editorialMemory: input.editorialMemory
       }
-    : makeNativeCaptionChannel(input.hardConstraints, workerProfileId);
+    : makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
+        templateHighlightProfile: input.templateHighlightProfile
+      });
   const result = await service.runNativeCaptionPipeline({
     channel,
     workspaceStage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
@@ -546,6 +562,7 @@ function createNativeCaptionPipelineHarness(input: {
   promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
   hardConstraints?: Stage2HardConstraints;
   stage2WorkerProfileId?: string | null;
+  templateHighlightProfile?: TemplateHighlightConfig | null;
   videoContext?: ReturnType<typeof buildVideoContext>;
   contextPacket?: ReturnType<typeof makeNativeCaptionContextPacket>;
   stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
@@ -556,11 +573,15 @@ function createNativeCaptionPipelineHarness(input: {
   const workerProfileId = resolveNativeTestWorkerProfileId(input);
   const channel = input.stage2StyleProfile
     ? {
-        ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId),
+        ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
+          templateHighlightProfile: input.templateHighlightProfile
+        }),
         stage2StyleProfile: input.stage2StyleProfile,
         editorialMemory: input.editorialMemory
       }
-    : makeNativeCaptionChannel(input.hardConstraints, workerProfileId);
+    : makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
+        templateHighlightProfile: input.templateHighlightProfile
+      });
   return {
     executor,
     run: () =>
@@ -730,12 +751,14 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
       {
         option: 1,
         top: "Option one top",
-        bottom: "\"Option one bottom\""
+        bottom: "\"Option one bottom\"",
+        highlights: { top: [], bottom: [] }
       },
       {
         option: 2,
         top: "Option two top",
-        bottom: "\"Option two bottom\""
+        bottom: "\"Option two bottom\"",
+        highlights: { top: [], bottom: [] }
       }
     ],
     selectedCaptionOption: 2,
@@ -748,7 +771,8 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
       caption: {
         option: 2,
         top: "Option two top",
-        bottom: "\"Option two bottom\""
+        bottom: "\"Option two bottom\"",
+        highlights: { top: [], bottom: [] }
       },
       title: {
         option: 1,
@@ -3943,6 +3967,7 @@ test("stage 2 to stage 3 handoff summary explains whether text comes from select
     baseline: {
       topText: "baseline top",
       bottomText: "baseline bottom",
+      captionHighlights: { top: [], bottom: [] },
       clipStartSec: 0,
       clipDurationSec: 6,
       focusY: 0.5,
@@ -3953,6 +3978,7 @@ test("stage 2 to stage 3 handoff summary explains whether text comes from select
     final: {
       topText: "latest version top",
       bottomText: "latest version bottom",
+      captionHighlights: { top: [], bottom: [] },
       clipStartSec: 1,
       clipDurationSec: 6,
       focusY: 0.42,
@@ -3989,6 +4015,7 @@ test("stage 2 to stage 3 handoff summary explains whether text comes from select
       stage3: {
         topText: "manual top override",
         bottomText: null,
+        captionHighlights: null,
         clipStartSec: null,
         focusY: null,
         renderPlan: null,
@@ -4032,6 +4059,31 @@ test("stage 2 to stage 3 handoff summary uses current live text when provided", 
   assert.equal(handoff.bottomTextSource, "draft_override");
   assert.equal(handoff.hasManualTextOverride, true);
   assert.equal(handoff.canResetToSelectedCaption, true);
+});
+
+test("applyStage2CaptionToStage3Text merges highlight metadata by block", () => {
+  const applied = applyStage2CaptionToStage3Text({
+    currentTopText: "Current top",
+    currentBottomText: "Current bottom",
+    currentCaptionHighlights: {
+      top: [{ start: 0, end: 7, slotId: "slot2" }],
+      bottom: [{ start: 8, end: 14, slotId: "slot3" }]
+    },
+    caption: {
+      top: "Selected top",
+      bottom: "Selected bottom",
+      highlights: {
+        top: [{ start: 0, end: 8, slotId: "slot1" }],
+        bottom: [{ start: 9, end: 15, slotId: "slot1" }]
+      }
+    },
+    mode: "top"
+  });
+
+  assert.equal(applied.topText, "Selected top");
+  assert.equal(applied.bottomText, "Current bottom");
+  assert.deepEqual(applied.captionHighlights.top, [{ start: 0, end: 8, slotId: "slot1" }]);
+  assert.deepEqual(applied.captionHighlights.bottom, [{ start: 8, end: 14, slotId: "slot3" }]);
 });
 
 test("stage 2 to stage 3 handoff blocks an invalid selected caption instead of leaking it downstream", () => {
@@ -4078,7 +4130,8 @@ test("caption apply helper supports taking all, top only, or bottom only", () =>
     }),
     {
       topText: "Picked top",
-      bottomText: "\"Picked bottom\""
+      bottomText: "\"Picked bottom\"",
+      captionHighlights: { top: [], bottom: [] }
     }
   );
 
@@ -4091,7 +4144,8 @@ test("caption apply helper supports taking all, top only, or bottom only", () =>
     }),
     {
       topText: "Picked top",
-      bottomText: "\"Current bottom\""
+      bottomText: "\"Current bottom\"",
+      captionHighlights: { top: [], bottom: [] }
     }
   );
 
@@ -4104,7 +4158,8 @@ test("caption apply helper supports taking all, top only, or bottom only", () =>
     }),
     {
       topText: "Current top",
-      bottomText: "\"Picked bottom\""
+      bottomText: "\"Picked bottom\"",
+      captionHighlights: { top: [], bottom: [] }
     }
   );
 });
@@ -4456,6 +4511,7 @@ test("american-news uses a dark gold news shell with source-friendly background 
         bottomText: "Bottom",
         channelName: "American News",
         channelHandle: "@amnnews9",
+        highlights: { top: [], bottom: [] },
         topFontScale: 1,
         bottomFontScale: 1,
         previewScale: 1,
@@ -4598,6 +4654,7 @@ test("science-card-v7 and hedges-of-honor use the honor verification badge asset
         bottomText: "Bottom",
         channelName: "Echoes Of Honor",
         channelHandle: "@EchoesOfHonor50",
+        highlights: { top: [], bottom: [] },
         topFontScale: 1,
         bottomFontScale: 1,
         previewScale: 1,
@@ -4624,6 +4681,7 @@ test("hedges-of-honor renders card chrome on card bounds instead of covering the
         bottomText: "Bottom",
         channelName: "Echoes Of Honor",
         channelHandle: "@EchoesOfHonor50",
+        highlights: { top: [], bottom: [] },
         topFontScale: 1,
         bottomFontScale: 1,
         previewScale: 1,
@@ -7745,6 +7803,215 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
   );
 });
 
+test("caption highlighting skips the model pass when template highlighting is disabled", async () => {
+  const disabledHighlightProfile = createDefaultTemplateHighlightConfig({
+    accentColor: "#65d46e"
+  });
+
+  const { result, executor } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6",
+    templateHighlightProfile: disabledHighlightProfile,
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 20,
+      topLengthMax: 220,
+      bottomLengthMin: 20,
+      bottomLengthMax: 180
+    },
+    responses: [
+      {
+        analysis: {
+          visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+          comment_vibe: "dry disbelief",
+          key_phrase_to_adapt: "signed for a fan"
+        },
+        candidates: Array.from({ length: 5 }, (_, index) => ({
+          candidate_id: `skip_${index + 1}`,
+          top: `In 1980 John Lennon signed for a fan, and the room changed the second the autograph came back ${index + 1}.`,
+          bottom: `It looks harmless until the return note turns the whole exchange into something nobody there can laugh off ${index + 1}.`,
+          retained_handle: index === 0
+        })),
+        winner_candidate_id: "skip_1",
+        titles: Array.from({ length: 5 }, (_, index) => ({
+          title: `SIGNED FOR A FAN ${index + 1}`
+        }))
+      }
+    ]
+  });
+
+  assert.equal(
+    executor.calls.some((call) => /template_highlight_profile_json/i.test(call.prompt)),
+    false
+  );
+  assert.equal(
+    result.output.captionOptions.every(
+      (option) => (option.highlights?.top.length ?? 0) === 0 && (option.highlights?.bottom.length ?? 0) === 0
+    ),
+    true
+  );
+});
+
+test("caption highlighting turns phrase annotations into exact spans and drops overlaps deterministically", async () => {
+  const highlightProfile = createDefaultTemplateHighlightConfig({
+    accentColor: "#f6d24a"
+  });
+  highlightProfile.enabled = true;
+  highlightProfile.topEnabled = true;
+  highlightProfile.bottomEnabled = true;
+  highlightProfile.slots[0].enabled = true;
+  highlightProfile.slots[0].label = "Names";
+  highlightProfile.slots[0].guidance = "Use for names and named entities.";
+  highlightProfile.slots[1].enabled = true;
+  highlightProfile.slots[1].label = "Dates";
+  highlightProfile.slots[1].guidance = "Use for years and precise dates.";
+  highlightProfile.slots[2].enabled = true;
+  highlightProfile.slots[2].label = "Escalation";
+  highlightProfile.slots[2].guidance = "Use for the sharpest turn or escalation phrase.";
+
+  const candidateTop = "John Lennon signed the album in 1980, and the room changed immediately.";
+  const candidateBottom =
+    "The autograph felt harmless until hours later turned the whole exchange dark again.";
+
+  const { result, executor } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6",
+    templateHighlightProfile: highlightProfile,
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 20,
+      topLengthMax: 220,
+      bottomLengthMin: 20,
+      bottomLengthMax: 180
+    },
+    responses: [
+      {
+        analysis: {
+          visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+          comment_vibe: "quiet dread",
+          key_phrase_to_adapt: "the room changed"
+        },
+        candidates: Array.from({ length: 5 }, (_, index) => ({
+          candidate_id: `highlight_${index + 1}`,
+          top:
+            index === 0
+              ? candidateTop
+              : `A stranger thinks the signature is the whole story until the return note changes the room again ${index + 1}.`,
+          bottom:
+            index === 0
+              ? candidateBottom
+              : `The exchange looks harmless until the aftermath makes everybody read the moment differently ${index + 1}.`,
+          retained_handle: index === 0
+        })),
+        winner_candidate_id: "highlight_1",
+        titles: Array.from({ length: 5 }, (_, index) => ({
+          title: `RETURN NOTE ${index + 1}`
+        }))
+      },
+      [
+        {
+          candidate_id: "highlight_1",
+          top: [
+            { phrase: "John Lennon", slotId: "slot1" },
+            { phrase: "John", slotId: "slot2" },
+            { phrase: "1980", slotId: "slot2" }
+          ],
+          bottom: [
+            { phrase: "autograph", slotId: "slot1" },
+            { phrase: "hours later", slotId: "slot3" }
+          ]
+        }
+      ]
+    ]
+  });
+
+  const highlighted = result.output.captionOptions.find((option) => option.candidateId === "highlight_1");
+  assert.ok(highlighted);
+  assert.deepEqual(
+    highlighted?.highlights?.top,
+    buildTemplateHighlightSpansFromPhrases({
+      text: candidateTop,
+      annotations: [
+        { phrase: "John Lennon", slotId: "slot1" },
+        { phrase: "John", slotId: "slot2" },
+        { phrase: "1980", slotId: "slot2" }
+      ]
+    })
+  );
+  assert.deepEqual(
+    highlighted?.highlights?.bottom,
+    buildTemplateHighlightSpansFromPhrases({
+      text: candidateBottom,
+      annotations: [
+        { phrase: "autograph", slotId: "slot1" },
+        { phrase: "hours later", slotId: "slot3" }
+      ]
+    })
+  );
+  assert.deepEqual(
+    highlighted?.highlights?.top,
+    [
+      { start: 0, end: 11, slotId: "slot1" },
+      { start: 32, end: 36, slotId: "slot2" }
+    ]
+  );
+  assert.equal(
+    executor.calls.some((call) => /template_highlight_profile_json/i.test(call.prompt)),
+    true
+  );
+});
+
+test("caption highlighting failures stay fail-open and keep the display shortlist intact", async () => {
+  const highlightProfile = createDefaultTemplateHighlightConfig({
+    accentColor: "#f6d24a"
+  });
+  highlightProfile.enabled = true;
+  highlightProfile.slots[0].enabled = true;
+
+  const { result } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6",
+    templateHighlightProfile: highlightProfile,
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 20,
+      topLengthMax: 220,
+      bottomLengthMin: 20,
+      bottomLengthMax: 180
+    },
+    responses: [
+      {
+        analysis: {
+          visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+          comment_vibe: "dry disbelief",
+          key_phrase_to_adapt: "hours later"
+        },
+        candidates: Array.from({ length: 5 }, (_, index) => ({
+          candidate_id: `failopen_${index + 1}`,
+          top: `The autograph looked harmless until the return note landed and changed the whole room ${index + 1}.`,
+          bottom: `That delay is what makes the clip feel worse, because everybody there realizes it at once ${index + 1}.`,
+          retained_handle: index === 0
+        })),
+        winner_candidate_id: "failopen_1",
+        titles: Array.from({ length: 5 }, (_, index) => ({
+          title: `HOURS LATER ${index + 1}`
+        }))
+      },
+      new Error("highlight model down")
+    ]
+  });
+
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(Boolean(result.output.winner), true);
+  assert.equal(
+    result.output.captionOptions.every(
+      (option) => (option.highlights?.top.length ?? 0) === 0 && (option.highlights?.bottom.length ?? 0) === 0
+    ),
+    true
+  );
+  assert.equal(
+    result.warnings.some((warning) => warning.field === "captionHighlighting"),
+    true
+  );
+});
+
 test("stable_reference_v6 fails hard instead of backfilling meta-leaking one-shot output", async () => {
   await assert.rejects(
     () =>
@@ -7785,6 +8052,95 @@ test("stable_reference_v6 fails hard instead of backfilling meta-leaking one-sho
       }),
     /Reference one-shot failed\..*(frame index|seconds timestamp|pipeline slot|debug or schema wording)/i
   );
+});
+
+test("stable_reference_v6 keeps length-window misses as warnings instead of failing the run", async () => {
+  const groundedTopSeed =
+    "The contract sounded celebratory until the second detail made the whole room realize what the legend had quietly agreed to, and the clip changes once that lands. ";
+  const groundedBottomSeed =
+    "That extra clause is what turns the story from clean nostalgia into the kind of public loss fans immediately start arguing over in the comments. ";
+
+  const { result, executor } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6",
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 180,
+      topLengthMax: 200,
+      bottomLengthMin: 140,
+      bottomLengthMax: 160
+    },
+    responses: [
+      {
+        analysis: {
+          visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+          comment_vibe: "dry disbelief",
+          key_phrase_to_adapt: "the contract changed everything"
+        },
+        candidates: [
+          {
+            candidate_id: "cand_1",
+            top: makeFixedLengthText(groundedTopSeed, 196),
+            bottom: makeFixedLengthText(groundedBottomSeed, 150),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_2",
+            top: makeFixedLengthText(groundedTopSeed, 191),
+            bottom: makeFixedLengthText(groundedBottomSeed, 149),
+            retained_handle: true
+          },
+          {
+            candidate_id: "cand_3",
+            top: makeFixedLengthText(groundedTopSeed, 188),
+            bottom: makeFixedLengthText(groundedBottomSeed, 152),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_4",
+            top: makeFixedLengthText(groundedTopSeed, 219),
+            bottom: makeFixedLengthText(groundedBottomSeed, 155),
+            retained_handle: false
+          },
+          {
+            candidate_id: "cand_5",
+            top: makeFixedLengthText(groundedTopSeed, 205),
+            bottom: makeFixedLengthText(groundedBottomSeed, 151),
+            retained_handle: true
+          }
+        ],
+        winner_candidate_id: "cand_5",
+        titles: Array.from({ length: 5 }, (_, index) => ({
+          title: `THE CONTRACT TURN ${index + 1}`
+        }))
+      }
+    ]
+  });
+
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.deepEqual(
+    result.output.captionOptions
+      .filter((option) => option.constraintCheck.passed === false)
+      .map((option) => option.candidateId),
+    ["cand_4", "cand_5"]
+  );
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.validPoolCount, 3);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.invalidPoolCount, 2);
+  assert.equal(result.output.winner?.candidateId, "cand_1");
+  assert.equal(result.output.finalPick.option, 1);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.winnerValidity, "valid");
+  assert.equal(
+    result.warnings.some((warning) => /outside the configured length window/i.test(warning.message)),
+    true
+  );
+  assert.equal(
+    result.warnings.some((warning) => /promoted valid finalist "cand_1" as final pick/i.test(warning.message)),
+    true
+  );
+  assert.match(executor.calls[0]?.prompt ?? "", /"topLengthMin": 180/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"topLengthMax": 200/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"bottomLengthMin": 140/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"bottomLengthMax": 160/);
+  assert.deepEqual(auditStage2WorkerRollout(result.output), { ok: true });
 });
 
 test("stable_reference_v6 applies tiny deterministic exact-length polish to near-miss overflows", async () => {
@@ -10993,6 +11349,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       stage3: {
         topText: "Top overlay",
         bottomText: "Bottom overlay",
+        captionHighlights: null,
         clipStartSec: 1.25,
         focusY: 0.42,
         renderPlan: null,

@@ -11,6 +11,10 @@ import { normalizeStage2ProgressSnapshot } from "./stage2-pipeline";
 import { sanitizeStage3DraftRenderPlanOverride } from "./stage3-draft-render-plan";
 import { normalizeStage2TitleOptionsValue } from "./stage2-title-options";
 import { buildLegacyTimelineEntries, findLatestStage3AgentSessionRef } from "./stage3-legacy-bridge";
+import {
+  cloneTemplateCaptionHighlights,
+  normalizeTemplateCaptionHighlights
+} from "./template-highlights";
 
 type ChatEventLike = {
   id: string;
@@ -278,6 +282,7 @@ export function getDefaultDraftState(chat: Pick<ChatLike, "events"> | null): {
   selectedTitleOption: number | null;
   topText: string | null;
   bottomText: string | null;
+  captionHighlights: ChatDraft["stage3"]["captionHighlights"];
   clipStartSec: number | null;
   focusY: number | null;
   agentPrompt: string;
@@ -299,6 +304,9 @@ export function getDefaultDraftState(chat: Pick<ChatLike, "events"> | null): {
     selectedTitleOption,
     topText: latestVersion?.final.topText ?? null,
     bottomText: latestVersion?.final.bottomText ?? null,
+    captionHighlights: latestVersion?.final.captionHighlights
+      ? cloneTemplateCaptionHighlights(latestVersion.final.captionHighlights)
+      : null,
     clipStartSec: latestVersion?.final.clipStartSec ?? null,
     focusY: latestVersion?.final.focusY ?? null,
     agentPrompt: latestVersion?.prompt ?? "",
@@ -325,6 +333,14 @@ export function normalizeChatDraft(value: unknown): ChatDraft | null {
   const stage3Candidate = candidate.stage3 && typeof candidate.stage3 === "object"
     ? (candidate.stage3 as Record<string, unknown>)
     : {};
+  const topText =
+    typeof stage3Candidate.topText === "string" && stage3Candidate.topText.trim()
+      ? stage3Candidate.topText
+      : null;
+  const bottomText =
+    typeof stage3Candidate.bottomText === "string" && stage3Candidate.bottomText.trim()
+      ? stage3Candidate.bottomText
+      : null;
 
   if (!threadId || !userId || !updatedAt) {
     return null;
@@ -352,13 +368,14 @@ export function normalizeChatDraft(value: unknown): ChatDraft | null {
           : null
     },
     stage3: {
-      topText:
-        typeof stage3Candidate.topText === "string" && stage3Candidate.topText.trim()
-          ? stage3Candidate.topText
-          : null,
-      bottomText:
-        typeof stage3Candidate.bottomText === "string" && stage3Candidate.bottomText.trim()
-          ? stage3Candidate.bottomText
+      topText,
+      bottomText,
+      captionHighlights:
+        stage3Candidate.captionHighlights && typeof stage3Candidate.captionHighlights === "object"
+          ? normalizeTemplateCaptionHighlights(stage3Candidate.captionHighlights, {
+              top: topText ?? "",
+              bottom: bottomText ?? ""
+            })
           : null,
       clipStartSec:
         typeof stage3Candidate.clipStartSec === "number" && Number.isFinite(stage3Candidate.clipStartSec)
@@ -430,6 +447,13 @@ function draftHasMeaningfulStage3Delta(
   }
   if (draft.stage3.bottomText !== null && draft.stage3.bottomText !== defaults.bottomText) {
     return true;
+  }
+  if (draft.stage3.captionHighlights !== null) {
+    const draftHighlights = JSON.stringify(draft.stage3.captionHighlights);
+    const defaultHighlights = JSON.stringify(defaults.captionHighlights);
+    if (draftHighlights !== defaultHighlights) {
+      return true;
+    }
   }
   if (draft.stage3.clipStartSec !== null && draft.stage3.clipStartSec !== defaults.clipStartSec) {
     return true;

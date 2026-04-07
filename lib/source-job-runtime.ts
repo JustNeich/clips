@@ -4,6 +4,7 @@ import { enqueueAndScheduleStage2Run } from "./stage2-run-runtime";
 import { findActiveStage2RunForChat } from "./stage2-progress-store";
 import { buildStage2RunRequestSnapshot } from "./stage2-run-request";
 import { resolveChannelEditorialMemory } from "./stage2-editorial-memory-resolution";
+import { isUploadedSourceUrl } from "./uploaded-source";
 import {
   claimNextQueuedSourceJob,
   createSourceJob,
@@ -201,7 +202,13 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     throw new Error("Chat not found for source job.");
   }
 
-  markSourceJobStageRunning(job.jobId, "prepare", "Скачиваем и кэшируем исходное видео.");
+  markSourceJobStageRunning(
+    job.jobId,
+    "prepare",
+    isUploadedSourceUrl(job.sourceUrl)
+      ? "Проверяем загруженный mp4 и фиксируем его в source cache."
+      : "Скачиваем и кэшируем исходное видео."
+  );
   const cachedSource = await ensureSourceMediaCached(job.sourceUrl);
 
   let commentsPayload: CommentsPayload | null = null;

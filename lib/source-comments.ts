@@ -19,6 +19,8 @@ import {
   isSupportedUrl,
   normalizeSupportedUrl
 } from "./ytdlp";
+import { SUPPORTED_SOURCE_ERROR_MESSAGE } from "./supported-url";
+import { isUploadedSourceUrl } from "./uploaded-source";
 
 const execFileAsync = promisify(execFile);
 
@@ -154,12 +156,22 @@ export async function fetchCommentsForUrl(
         fallbackUsed: false,
         status: "unavailable",
         note: "Источник не поддерживается для загрузки комментариев.",
-        error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels."
+        error: SUPPORTED_SOURCE_ERROR_MESSAGE
       };
   }
 
   const maxComments = clampCommentsCap(options.maxComments);
   const ytDlpProvider = options.ytDlpProvider ?? fetchCommentsPayloadViaYtDlp;
+  if (isUploadedSourceUrl(sourceUrl)) {
+    return {
+      payload: null,
+      provider: null,
+      fallbackUsed: false,
+      status: "unavailable",
+      note: "Для загруженного mp4 комментарии недоступны. Продолжаем только с видеоконтекстом.",
+      error: "Комментарии для загруженного mp4 недоступны."
+    };
+  }
 
   if (extractYouTubeVideoIdFromUrl(sourceUrl)) {
     const youtubeApiProvider = options.youtubeApiProvider ?? fetchYouTubeCommentsPayload;

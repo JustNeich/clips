@@ -261,6 +261,7 @@ export function ChannelManagerStage2Tab({
     candidateGenerator: null,
     qualityCourt: null,
     targetedRepair: null,
+    captionHighlighting: null,
     captionTranslation: null,
     titleWriter: null,
     analyzer: null,

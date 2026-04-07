@@ -1,8 +1,13 @@
 import { resolveChannelPermissions } from "./acl";
 import { getChannelAccessForUser, listChannels } from "./chat-history";
 import { requireAuth } from "./auth/guards";
-import { canCreateManagedTemplates, canEditManagedTemplate, canViewManagedTemplate } from "./managed-template-access";
-import { readManagedTemplate } from "./managed-template-store";
+import {
+  canCreateManagedTemplates,
+  canEditManagedTemplate,
+  canViewManagedTemplate,
+  collectEditableManagedTemplateIdsFromChannels
+} from "./managed-template-access";
+import { isSystemManagedTemplate, readManagedTemplate } from "./managed-template-store";
 
 function jsonError(message: string, status: number): Response {
   return new Response(JSON.stringify({ error: message }), {
@@ -71,10 +76,20 @@ export async function requireManagedTemplateRuntimeViewAccess(templateId: string
 export async function requireManagedTemplateEditAccess(templateId: string, request?: Request) {
   const auth = await requireAuth(request);
   const template = await readManagedTemplate(templateId);
-  if (!template || !canViewManagedTemplate(auth, template)) {
+  if (!template) {
     throw jsonError("Template not found.", 404);
   }
-  if (!canEditManagedTemplate(auth, template)) {
+  if (isSystemManagedTemplate(template)) {
+    throw jsonError("Системный шаблон нельзя менять напрямую. Создай копию и редактируй её.", 403);
+  }
+  if (canEditManagedTemplate(auth, template)) {
+    return { auth, template };
+  }
+  const editableViaChannels = await collectEditableManagedTemplateIdsFromChannels(auth);
+  if (!editableViaChannels.has(template.id)) {
+    if (!canViewManagedTemplate(auth, template)) {
+      throw jsonError("Template not found.", 404);
+    }
     throw jsonError("Доступ запрещен.", 403);
   }
   return { auth, template };

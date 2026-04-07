@@ -25,6 +25,9 @@ const SUPPORTED_HOSTS = new Set([
   "fb.watch"
 ]);
 
+export const SUPPORTED_SOURCE_ERROR_MESSAGE =
+  "Поддерживаются ссылки на YouTube Shorts, Instagram Reels, Facebook Reels или загрузка готового MP4.";
+
 function normalizeHostname(hostname: string): string {
   const lowered = hostname.toLowerCase();
   return HOST_ALIASES.get(lowered) ?? lowered;
@@ -148,6 +151,9 @@ export function normalizeSupportedUrl(rawUrl: string): string {
 export function isSupportedUrl(rawUrl: string): boolean {
   try {
     const parsed = new URL(normalizeSupportedUrl(rawUrl));
+    if (parsed.protocol === "upload:") {
+      return true;
+    }
     if (!["http:", "https:"].includes(parsed.protocol)) {
       return false;
     }

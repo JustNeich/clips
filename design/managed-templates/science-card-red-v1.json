@@ -1,0 +1,157 @@
+{
+  "id": "science-card-red-v1",
+  "workspaceId": null,
+  "creatorUserId": null,
+  "creatorDisplayName": null,
+  "createdAt": "2026-04-07T19:02:45.792Z",
+  "updatedAt": "2026-04-07T19:02:45.792Z",
+  "versions": [],
+  "name": "Science Card Red",
+  "description": "Красная версия базового Science Card: тот же editorial-характер, те же отступы и типографика, но с более агрессивным рамочным акцентом.",
+  "baseTemplateId": "science-card-red-v1",
+  "content": {
+    "topText": "Scientists found a way to splice two living plant stems, and the joined tissue starts acting like a single working system almost immediately.",
+    "bottomText": "You can watch the wound knit together, the fluids reroute, and the whole graft behave like the plant decided the surgery was always part of the plan.",
+    "channelName": "Science Snack",
+    "channelHandle": "@Science_Snack_1",
+    "highlights": {
+      "top": [],
+      "bottom": []
+    },
+    "topHighlightPhrases": [],
+    "topFontScale": 1,
+    "bottomFontScale": 1,
+    "previewScale": 0.34,
+    "mediaAsset": null,
+    "backgroundAsset": null,
+    "avatarAsset": null
+  },
+  "templateConfig": {
+    "frame": {
+      "width": 1080,
+      "height": 1920
+    },
+    "card": {
+      "x": 83,
+      "y": 192,
+      "width": 907,
+      "height": 1461,
+      "radius": 12,
+      "borderWidth": 16,
+      "borderColor": "#d33f49",
+      "fill": "#ffffff",
+      "shadow": "0 4px 4px rgba(0,0,0,0.25)"
+    },
+    "slot": {
+      "topHeight": 419,
+      "bottomHeight": 292,
+      "topPaddingX": 6,
+      "topPaddingY": 15,
+      "topPaddingTop": 15,
+      "topPaddingBottom": 15,
+      "bottomMetaHeight": 132,
+      "bottomMetaPaddingX": 23,
+      "bottomMetaPaddingY": 0,
+      "bottomTextPaddingX": 23,
+      "bottomTextPaddingY": 0,
+      "bottomTextPaddingTop": 0,
+      "bottomTextPaddingBottom": 0,
+      "bottomTextPaddingLeft": 23,
+      "bottomTextPaddingRight": 46
+    },
+    "author": {
+      "name": "Science Snack",
+      "handle": "@Science_Snack_1",
+      "avatarSize": 101,
+      "avatarBorder": 0,
+      "checkSize": 54,
+      "gap": 8,
+      "copyGap": 0,
+      "nameCheckGap": 2,
+      "checkAssetPath": "/stage3-template-badges/science-card-v1-check.png"
+    },
+    "typography": {
+      "top": {
+        "min": 40,
+        "max": 56,
+        "softLimit": 220,
+        "penalty": 0.14,
+        "lineHeight": 0.938,
+        "maxLines": 7,
+        "maxChars": 420,
+        "horizontalSafety": 0.975,
+        "glyphFactor": 0.53,
+        "fillTargetMin": 0.9,
+        "fillTargetMax": 0.95,
+        "weight": 900,
+        "letterSpacing": "-0.04em"
+      },
+      "bottom": {
+        "min": 24,
+        "max": 34,
+        "softLimit": 190,
+        "penalty": 0.16,
+        "lineHeight": 1.08,
+        "maxLines": 4,
+        "maxChars": 320,
+        "fillTargetMin": 0.8,
+        "fillTargetMax": 0.88,
+        "weight": 500,
+        "letterSpacing": "-0.01em",
+        "fontStyle": "normal"
+      },
+      "authorName": {
+        "font": 40,
+        "lineHeight": 1,
+        "weight": 800,
+        "letterSpacing": "-0.03em"
+      },
+      "authorHandle": {
+        "font": 34,
+        "lineHeight": 1,
+        "weight": 300,
+        "letterSpacing": "-0.022em"
+      }
+    },
+    "palette": {
+      "cardFill": "#ffffff",
+      "topSectionFill": "#ffffff",
+      "bottomSectionFill": "#ffffff",
+      "topTextColor": "#000000",
+      "bottomTextColor": "#0b0d10",
+      "authorNameColor": "#000000",
+      "authorHandleColor": "#acacac",
+      "checkBadgeColor": "#e985d6",
+      "borderColor": "#d33f49"
+    },
+    "highlights": {
+      "enabled": false,
+      "topEnabled": true,
+      "bottomEnabled": true,
+      "slots": [
+        {
+          "slotId": "slot1",
+          "enabled": true,
+          "color": "#d33f49",
+          "label": "Key nouns",
+          "guidance": "Use for the most important specific nouns, names, or entities."
+        },
+        {
+          "slotId": "slot2",
+          "enabled": false,
+          "color": "#2cc8c3",
+          "label": "Support facts",
+          "guidance": "Use for supporting facts like dates, places, roles, or measurable details."
+        },
+        {
+          "slotId": "slot3",
+          "enabled": false,
+          "color": "#ff5f6d",
+          "label": "Urgency / contrast",
+          "guidance": "Use for the sharpest action words, conflict words, or tension-driving cues."
+        }
+      ]
+    }
+  },
+  "shadowLayers": []
+}

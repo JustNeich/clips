@@ -14,6 +14,7 @@ type DraftBody = {
   stage3?: {
     topText?: string | null;
     bottomText?: string | null;
+    captionHighlights?: unknown;
     clipStartSec?: number | null;
     focusY?: number | null;
     renderPlan?: unknown;
@@ -52,6 +53,7 @@ export async function PATCH(
       stage3: {
         topText: body?.stage3?.topText ?? null,
         bottomText: body?.stage3?.bottomText ?? null,
+        captionHighlights: body?.stage3?.captionHighlights ?? null,
         clipStartSec: body?.stage3?.clipStartSec ?? null,
         focusY: body?.stage3?.focusY ?? null,
         renderPlan: body?.stage3?.renderPlan ?? null,

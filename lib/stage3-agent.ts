@@ -880,6 +880,7 @@ export function createSnapshot(input: {
   return {
     topText: fit.topText,
     bottomText: fit.bottomText,
+    captionHighlights: { top: [], bottom: [] },
     clipStartSec: Math.max(0, input.clipStartSec),
     clipDurationSec: TARGET_DURATION_SEC,
     focusY: clamp(input.focusY, 0.12, 0.88),

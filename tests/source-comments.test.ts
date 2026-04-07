@@ -320,6 +320,15 @@ test("non-YouTube URLs preserve the existing yt-dlp comments path", async () => 
   assert.equal(youtubeCalled, false);
 });
 
+test("uploaded mp4 sources degrade gracefully without comments", async () => {
+  const resolution = await fetchCommentsForUrl("upload://abc123/final-cut.mp4");
+  assert.equal(resolution.payload, null);
+  assert.equal(resolution.provider, null);
+  assert.equal(resolution.fallbackUsed, false);
+  assert.equal(resolution.status, "unavailable");
+  assert.equal(resolution.error, "Комментарии для загруженного mp4 недоступны.");
+});
+
 test("fetchYouTubeCommentsPayload surfaces missing server config clearly", async () => {
   await assert.rejects(
     () =>

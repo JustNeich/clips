@@ -79,6 +79,9 @@ function formatSourceProviderLabel(provider: Stage2Response["source"]["downloadP
   if (provider === "ytDlp") {
     return "Локальный резервный загрузчик";
   }
+  if (provider === "upload") {
+    return "Ручную загрузку mp4";
+  }
   return null;
 }
 

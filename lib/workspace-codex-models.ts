@@ -27,6 +27,7 @@ export const STAGE2_TEXT_ONLY_MODEL_STAGE_IDS = [
   "candidateGenerator",
   "qualityCourt",
   "targetedRepair",
+  "captionHighlighting",
   "captionTranslation",
   "titleWriter",
   "regenerate"
@@ -37,6 +38,7 @@ export const STAGE2_NATIVE_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
   "candidateGenerator",
   "qualityCourt",
   "targetedRepair",
+  "captionHighlighting",
   "captionTranslation",
   "titleWriter"
 ] as const;
@@ -118,6 +120,12 @@ export const STAGE2_PROMPT_MODEL_STAGE_FIELDS: readonly WorkspaceCodexModelStage
     id: "targetedRepair",
     label: "Targeted repair",
     description: "Текстовый repair только для near-miss кандидатов по briefs суда.",
+    allowsImages: false
+  },
+  {
+    id: "captionHighlighting",
+    label: "Caption highlighting",
+    description: "Текстовая разметка exact highlight spans для template-driven color slots.",
     allowsImages: false
   },
   {
@@ -220,6 +228,7 @@ export const DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG: WorkspaceCodexModelConfig = {
   candidateGenerator: "deploy_default",
   qualityCourt: "deploy_default",
   targetedRepair: "deploy_default",
+  captionHighlighting: "deploy_default",
   captionTranslation: "deploy_default",
   titleWriter: "deploy_default",
   regenerate: "deploy_default",
@@ -317,6 +326,17 @@ function readStageSettingCandidate(
     return candidate.rewriter;
   }
   if (stageId === "captionTranslation") {
+    if (hasOwnKey(candidate, "titleWriter")) {
+      return candidate.titleWriter;
+    }
+    if (hasOwnKey(candidate, "titles")) {
+      return candidate.titles;
+    }
+  }
+  if (stageId === "captionHighlighting") {
+    if (hasOwnKey(candidate, "captionTranslation")) {
+      return candidate.captionTranslation;
+    }
     if (hasOwnKey(candidate, "titleWriter")) {
       return candidate.titleWriter;
     }

@@ -5,6 +5,8 @@ import path from "node:path";
 import test from "node:test";
 import {
   downloadSourceMedia,
+  fetchSourceMetadata,
+  fetchOptionalYtDlpInfo,
   setSourceAcquisitionDownloadersForTests,
   summarizeProviderTextResponse
 } from "../lib/source-acquisition";
@@ -234,6 +236,23 @@ test("downloadSourceMedia sends the canonical instagram reel path to Visolix bef
     } else {
       process.env.VISOLIX_BASE_URL = previousVisolixBaseUrl;
     }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("uploaded mp4 metadata exposes upload provider without comments", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-upload-meta-test-"));
+  try {
+    const metadata = await fetchSourceMetadata("upload://abc123/final-cut.mp4");
+    const optionalInfo = await fetchOptionalYtDlpInfo("upload://abc123/final-cut.mp4", tmpDir);
+    assert.equal(metadata.provider, "upload");
+    assert.equal(metadata.title, "final-cut.mp4");
+    assert.equal(metadata.durationSec, null);
+    assert.equal(optionalInfo.infoJson?.title, "final-cut.mp4");
+    assert.equal(optionalInfo.commentsAcquisition.provider, null);
+    assert.equal(optionalInfo.commentsAcquisition.status, "unavailable");
+    assert.equal(optionalInfo.commentsAcquisition.error, "Комментарии для загруженного mp4 недоступны.");
+  } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
 });

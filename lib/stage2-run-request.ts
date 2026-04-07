@@ -18,6 +18,7 @@ import {
   type Stage2EditorialMemorySource
 } from "./stage2-editorial-memory-resolution";
 import type { Stage2RunMode, Stage2RunRequest } from "./stage2-progress-store";
+import { cloneTemplateHighlightConfig, type TemplateHighlightConfig } from "./template-highlights";
 import type { Stage2DebugMode } from "./viral-shorts-worker/types";
 
 type Stage2RunChannelSnapshotInput = {
@@ -30,6 +31,7 @@ type Stage2RunChannelSnapshotInput = {
   stage2StyleProfile?: Stage2StyleProfile;
   editorialMemory?: Stage2EditorialMemorySummary;
   editorialMemorySource?: Stage2EditorialMemorySource | null;
+  templateHighlightProfile?: TemplateHighlightConfig | null;
 };
 
 export function buildStage2RunRequestSnapshot(input: {
@@ -77,7 +79,10 @@ export function buildStage2RunRequestSnapshot(input: {
       ),
       editorialMemorySource: normalizeStage2EditorialMemorySource(
         input.channel.editorialMemorySource ?? null
-      )
+      ),
+      templateHighlightProfile: input.channel.templateHighlightProfile
+        ? cloneTemplateHighlightConfig(input.channel.templateHighlightProfile)
+        : null
     }
   };
 }

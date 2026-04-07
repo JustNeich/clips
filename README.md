@@ -1,7 +1,7 @@
 # Shorts / Reels MP4 Downloader (Next.js)
 
 Простое приложение на Next.js:
-- поле для ссылки (`YouTube Shorts`, `Instagram Reels`, `Facebook Reels`);
+- поле для ссылки (`YouTube Shorts`, `Instagram Reels`, `Facebook Reels`, `public Reddit posts`);
 - история чатов: каждая ссылка = отдельный чат;
 - скачивание видео в `mp4`;
 - загрузка комментариев;
@@ -86,11 +86,12 @@ npm run dev
 - UI хранит историю в backend-файле `.data/chat-history.json`.
 - Каждый URL создает отдельный чат (или открывает уже существующий).
 - UI отправляет ссылку на `POST /api/download`.
-- API запускает `yt-dlp`, получает видео и возвращает клиенту `mp4` как attachment.
+- API выбирает provider-specific source path, получает видео и возвращает клиенту `mp4` как attachment.
 - UI может отправить ссылку на `POST /api/comments`.
 - API получает комментарии провайдерно:
   - для `YouTube` сначала использует `YouTube Data API v3`;
   - если API временно недоступен или не настроен, может сделать fallback через `yt-dlp`;
+  - для `Reddit` использует официальный `Reddit OAuth API`, а затем работает с media URL из `v.redd.it` / Reddit CDN;
   - для `Instagram / Facebook` сохраняется текущий `yt-dlp`-path;
   - если комментарии недоступны, source flow продолжает работу без них.
 - После этого backend сортирует комментарии по лайкам и возвращает:
@@ -101,6 +102,7 @@ npm run dev
 - Stage 2:
   - скачивает видео и комментарии;
   - для `YouTube` использует тот же API-first comments path, а `yt-dlp` оставляет fallback-ом;
+  - для `Reddit` не использует `Visolix`, а получает metadata/comments через OAuth и скачивает actual media URL напрямую;
   - если комментарии недоступны, продолжает пайплайн с доступными видео-метаданными;
   - извлекает адаптивно сэмплированный набор кадров из видео, а не фиксированные 3 stills;
   - ставит durable background run в очередь и продолжает его независимо от открытой вкладки;
@@ -206,6 +208,15 @@ npm run stage3-worker -- start
 - `ffmpeg`
 - `ffprobe`
 - `yt-dlp`
+
+## Stage 1 sources
+
+- Поддерживаются ссылки на:
+  - `youtube.com/shorts/...`
+  - `instagram.com/reel/...`
+  - `facebook.com/reel/...`
+- Дополнительно редактор может загрузить готовый `mp4` прямо в Stage 1.
+- Для загруженного `mp4` комментарии недоступны, но Step 2 и Step 3 продолжают работать по видеоконтексту.
 
 ## Connect Codex (device auth)
 

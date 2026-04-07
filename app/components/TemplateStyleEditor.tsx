@@ -6,6 +6,7 @@ import { getStage3DesignLabPreset } from "../../lib/stage3-design-lab";
 import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
 import {
   STAGE3_TEMPLATE_ID,
+  cloneStage3TemplateConfig,
   type Stage3TemplateConfig,
   getTemplateById,
   getTemplateComputed
@@ -18,6 +19,14 @@ import {
 } from "../../lib/stage3-template-viewport";
 import { clampStage3TextScaleUi } from "../../lib/stage3-text-fit";
 import type { TemplateContentFixture } from "../../lib/template-calibration-types";
+import {
+  buildTemplateHighlightSpansFromPhrases,
+  createEmptyTemplateCaptionHighlights,
+  TEMPLATE_HIGHLIGHT_SLOT_IDS,
+  type TemplateCaptionHighlights,
+  type TemplateHighlightPhraseAnnotation,
+  type TemplateHighlightSlotId
+} from "../../lib/template-highlights";
 import type {
   ManagedTemplate,
   ManagedTemplateShadowLayer,
@@ -98,6 +107,11 @@ type SectionLink = {
   id: string;
   label: string;
 };
+
+type HighlightDemoPhrases = Record<
+  keyof TemplateCaptionHighlights,
+  Record<TemplateHighlightSlotId, string>
+>;
 
 const TEMPLATE_VARIANTS = listTemplateVariants();
 const TEMPLATE_IDS = new Set(TEMPLATE_VARIANTS.map((variant) => variant.id));
@@ -250,6 +264,109 @@ const SECTION_LINKS: SectionLink[] = [
   { id: "template-road-style-details", label: "Детали" }
 ];
 
+function createEmptyHighlightDemoPhrases(): HighlightDemoPhrases {
+  return {
+    top: {
+      slot1: "",
+      slot2: "",
+      slot3: ""
+    },
+    bottom: {
+      slot1: "",
+      slot2: "",
+      slot3: ""
+    }
+  };
+}
+
+function parseHighlightPhraseInput(value: string): string[] {
+  return value
+    .split("|")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildHighlightAnnotationsFromDrafts(
+  drafts: Record<TemplateHighlightSlotId, string>
+): TemplateHighlightPhraseAnnotation[] {
+  return TEMPLATE_HIGHLIGHT_SLOT_IDS.flatMap((slotId) =>
+    parseHighlightPhraseInput(drafts[slotId]).map((phrase) => ({
+      slotId,
+      phrase
+    }))
+  );
+}
+
+function buildHighlightDemoPhrasesFromContent(content: TemplateContentFixture): HighlightDemoPhrases {
+  const next = createEmptyHighlightDemoPhrases();
+
+  const applyBlock = (
+    block: keyof TemplateCaptionHighlights,
+    text: string,
+    fallbackPhrases?: string[]
+  ) => {
+    const phrasesBySlot = new Map<TemplateHighlightSlotId, string[]>(
+      TEMPLATE_HIGHLIGHT_SLOT_IDS.map((slotId) => [slotId, []])
+    );
+    const seenBySlot = new Map<TemplateHighlightSlotId, Set<string>>(
+      TEMPLATE_HIGHLIGHT_SLOT_IDS.map((slotId) => [slotId, new Set<string>()])
+    );
+
+    for (const span of content.highlights[block] ?? []) {
+      const phrase = text.slice(span.start, span.end).trim();
+      if (!phrase) {
+        continue;
+      }
+      const normalized = phrase.toLowerCase();
+      const seen = seenBySlot.get(span.slotId);
+      const phrases = phrasesBySlot.get(span.slotId);
+      if (!seen || !phrases || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      phrases.push(phrase);
+    }
+
+    for (const slotId of TEMPLATE_HIGHLIGHT_SLOT_IDS) {
+      next[block][slotId] = (phrasesBySlot.get(slotId) ?? []).join(" | ");
+    }
+
+    if (block === "top" && !next.top.slot1 && Array.isArray(fallbackPhrases) && fallbackPhrases.length > 0) {
+      next.top.slot1 = fallbackPhrases.join(" | ");
+    }
+  };
+
+  applyBlock("top", content.topText, content.topHighlightPhrases);
+  applyBlock("bottom", content.bottomText);
+
+  return next;
+}
+
+function applyHighlightDemoPhrasesToContent(
+  content: TemplateContentFixture,
+  drafts: HighlightDemoPhrases,
+  overrides?: Partial<Pick<TemplateContentFixture, "topText" | "bottomText">>
+): TemplateContentFixture {
+  const topText = overrides?.topText ?? content.topText;
+  const bottomText = overrides?.bottomText ?? content.bottomText;
+
+  return {
+    ...content,
+    ...overrides,
+    highlights: {
+      top: buildTemplateHighlightSpansFromPhrases({
+        text: topText,
+        annotations: buildHighlightAnnotationsFromDrafts(drafts.top)
+      }),
+      bottom: buildTemplateHighlightSpansFromPhrases({
+        text: bottomText,
+        annotations: buildHighlightAnnotationsFromDrafts(drafts.bottom)
+      })
+    },
+    topHighlightPhrases: parseHighlightPhraseInput(drafts.top.slot1)
+  };
+}
+
 function clampPreviewScale(value: number): number {
   if (!Number.isFinite(value)) {
     return 0.34;
@@ -282,19 +399,7 @@ function resolveTemplateId(value: string | null | undefined): string {
 }
 
 function cloneTemplateConfig(config: Stage3TemplateConfig): Stage3TemplateConfig {
-  return {
-    frame: { ...config.frame },
-    card: { ...config.card },
-    slot: { ...config.slot },
-    author: { ...config.author },
-    typography: {
-      top: { ...config.typography.top },
-      bottom: { ...config.typography.bottom },
-      authorName: { ...config.typography.authorName },
-      authorHandle: { ...config.typography.authorHandle }
-    },
-    palette: { ...config.palette }
-  };
+  return cloneStage3TemplateConfig(config);
 }
 
 function createDefaultContent(templateId: string): TemplateContentFixture {
@@ -304,6 +409,7 @@ function createDefaultContent(templateId: string): TemplateContentFixture {
     bottomText: preset.bottomText,
     channelName: preset.channelName,
     channelHandle: preset.channelHandle,
+    highlights: createEmptyTemplateCaptionHighlights(),
     topHighlightPhrases: [],
     topFontScale: 1,
     bottomFontScale: 1,
@@ -970,6 +1076,9 @@ export function TemplateStyleEditor({
   const [content, setContent] = useState<TemplateContentFixture>(() =>
     createDefaultContent(initialResolvedTemplateId)
   );
+  const [highlightDemoPhrases, setHighlightDemoPhrases] = useState<HighlightDemoPhrases>(() =>
+    buildHighlightDemoPhrasesFromContent(createDefaultContent(initialResolvedTemplateId))
+  );
   const [templateConfig, setTemplateConfig] = useState<Stage3TemplateConfig>(() =>
     cloneTemplateConfig(getTemplateById(initialResolvedTemplateId))
   );
@@ -1026,8 +1135,14 @@ export function TemplateStyleEditor({
     [templateId, templates]
   );
   const canCreateTemplates = templateCapabilities.canCreate;
+  const isSystemTemplate = Boolean(
+    templateId &&
+      (TEMPLATE_IDS.has(templateId) ||
+        (activeTemplateSummary?.workspaceId === null && activeTemplateSummary?.creatorUserId === null))
+  );
+  const isTemplateReadOnly = !canCreateTemplates || isSystemTemplate;
   const emptyLibraryMessage = canCreateTemplates
-    ? "У тебя пока нет своих шаблонов. Создай первый, и он сразу появится в настройках канала и в Stage 3."
+    ? "У тебя пока нет доступных шаблонов. Создай первый, и он сразу появится в настройках канала и в Stage 3."
     : "У тебя пока нет доступных шаблонов для редактирования.";
   const visibleVersions = useMemo(
     () => (showAllVersions ? versions : versions.slice(0, MAX_VISIBLE_TEMPLATE_VERSIONS)),
@@ -1052,8 +1167,9 @@ export function TemplateStyleEditor({
   }, [canvasStageSize.height, canvasStageSize.width, requestedCanvasScale, viewportMetrics.height, viewportMetrics.width]);
   const scaledViewportWidth = Math.round(viewportMetrics.width * effectiveCanvasScale);
   const scaledViewportHeight = Math.round(viewportMetrics.height * effectiveCanvasScale);
-  const highlightValue = (content.topHighlightPhrases ?? []).join(" | ");
+  const highlightConfig = templateConfig.highlights;
   const accentColor = templateConfig.palette.accentColor ?? templateConfig.palette.topTextColor;
+  const enabledHighlightSlotCount = highlightConfig.slots.filter((slot) => slot.enabled).length;
   const shadowCss = useMemo(() => serializeShadowLayers(shadowLayers), [shadowLayers]);
   const editorSignature = useMemo(
     () =>
@@ -1109,11 +1225,13 @@ export function TemplateStyleEditor({
     loadTemplateRequestIdRef.current += 1;
     cancelPendingAutosaveCycle();
     const nextState = buildManagedTemplateEditorState(managedTemplate);
+    const nextContent = { ...managedTemplate.content };
 
     loadingTemplateRef.current = true;
     setTemplateId(managedTemplate.id);
     setBaseTemplateId(managedTemplate.baseTemplateId);
-    setContent({ ...managedTemplate.content });
+    setContent(nextContent);
+    setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
     setTemplateConfig(nextState.templateConfig);
     setShadowLayers(nextState.shadowLayers);
     setVersions(managedTemplate.versions);
@@ -1138,11 +1256,13 @@ export function TemplateStyleEditor({
       cancelPendingAutosaveCycle();
       const resolvedTemplateId = resolveTemplateId(nextBaseTemplateId);
       const nextConfig = cloneTemplateConfig(getTemplateById(resolvedTemplateId));
+      const nextContent = createDefaultContent(resolvedTemplateId);
 
       loadingTemplateRef.current = true;
       setTemplateId(null);
       setBaseTemplateId(resolvedTemplateId);
-      setContent(createDefaultContent(resolvedTemplateId));
+      setContent(nextContent);
+      setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
       setTemplateConfig(nextConfig);
       setShadowLayers(parseShadowLayersFromValue(nextConfig.card.shadow));
       setVersions([]);
@@ -1376,7 +1496,7 @@ export function TemplateStyleEditor({
           applyDraftTemplate(
             initialResolvedTemplateId,
             capabilities.canCreate
-              ? "У тебя пока нет своих шаблонов. Создай первый, и он сразу появится в настройках канала и в Stage 3."
+              ? "У тебя пока нет доступных шаблонов. Создай первый, и он сразу появится в настройках канала и в Stage 3."
               : "У тебя пока нет доступных шаблонов для редактирования."
           );
           return;
@@ -1472,7 +1592,7 @@ export function TemplateStyleEditor({
   }, [showAllVersions, versions.length]);
 
   const persistCurrentTemplate = useCallback(async (): Promise<ManagedTemplate | null> => {
-    if (!templateId) {
+    if (!templateId || isTemplateReadOnly) {
       return null;
     }
     const requestTemplateId = templateId;
@@ -1541,6 +1661,7 @@ export function TemplateStyleEditor({
     baseTemplateId,
     content,
     editorSignature,
+    isTemplateReadOnly,
     persistQueueRef,
     shadowCss,
     shadowLayers,
@@ -1552,7 +1673,7 @@ export function TemplateStyleEditor({
   ]);
 
   useEffect(() => {
-    if (!templateId || !hydrationReadyRef.current || loadingTemplateRef.current) {
+    if (!templateId || isTemplateReadOnly || !hydrationReadyRef.current || loadingTemplateRef.current) {
       return;
     }
     if (!isDirty) {
@@ -1596,6 +1717,7 @@ export function TemplateStyleEditor({
   }, [
     clearPendingAutosaveTimer,
     editorSignature,
+    isTemplateReadOnly,
     isDirty,
     persistCurrentTemplate,
     templateId
@@ -1631,7 +1753,9 @@ export function TemplateStyleEditor({
   }
 
   function resetContent() {
-    setContent(createDefaultContent(baseTemplateId));
+    const nextContent = createDefaultContent(baseTemplateId);
+    setContent(nextContent);
+    setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
     setComputed(null);
     setBackgroundUploadState("idle");
     setBackgroundUploadMessage("");
@@ -1641,10 +1765,68 @@ export function TemplateStyleEditor({
     key: K,
     value: TemplateContentFixture[K]
   ) {
-    setContent((current) => ({
+    setContent((current) => {
+      if (key === "topText" || key === "bottomText") {
+        return applyHighlightDemoPhrasesToContent(current, highlightDemoPhrases, {
+          [key]: value
+        } as Partial<Pick<TemplateContentFixture, "topText" | "bottomText">>);
+      }
+      return {
+        ...current,
+        [key]: value
+      };
+    });
+  }
+
+  function updateTemplateHighlights<K extends keyof Stage3TemplateConfig["highlights"]>(
+    key: K,
+    value: Stage3TemplateConfig["highlights"][K]
+  ) {
+    setTemplateConfig((current) => ({
       ...current,
-      [key]: value
+      highlights: {
+        ...current.highlights,
+        [key]: value
+      }
     }));
+  }
+
+  function updateTemplateHighlightSlot<K extends keyof Stage3TemplateConfig["highlights"]["slots"][number]>(
+    slotId: TemplateHighlightSlotId,
+    key: K,
+    value: Stage3TemplateConfig["highlights"]["slots"][number][K]
+  ) {
+    setTemplateConfig((current) => ({
+      ...current,
+      highlights: {
+        ...current.highlights,
+        slots: current.highlights.slots.map((slot) =>
+          slot.slotId === slotId
+            ? {
+                ...slot,
+                [key]: value
+              }
+            : slot
+        ) as Stage3TemplateConfig["highlights"]["slots"]
+      }
+    }));
+  }
+
+  function setHighlightingEnabled(enabled: boolean) {
+    setTemplateConfig((current) => {
+      const next = cloneTemplateConfig(current);
+      next.highlights.enabled = enabled;
+      if (
+        enabled &&
+        !current.highlights.enabled &&
+        next.highlights.slots[0] &&
+        next.highlights.slots[0].color.trim().toLowerCase() === "#f3b31f"
+      ) {
+        next.highlights.slots[0].color =
+          current.palette.accentColor ?? current.palette.topTextColor;
+      }
+      return next;
+    });
   }
 
   function updateCard<K extends keyof Stage3TemplateConfig["card"]>(
@@ -1800,12 +1982,20 @@ export function TemplateStyleEditor({
     setShadowLayers((current) => current.filter((layer) => layer.id !== layerId));
   }
 
-  function handleHighlightChange(event: ChangeEvent<HTMLInputElement>) {
-    const parts = event.target.value
-      .split("|")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    updateContent("topHighlightPhrases", parts);
+  function updateHighlightDemoPhraseBlock(
+    block: keyof TemplateCaptionHighlights,
+    slotId: TemplateHighlightSlotId,
+    value: string
+  ) {
+    setHighlightDemoPhrases((current) => {
+      const next: HighlightDemoPhrases = {
+        top: { ...current.top },
+        bottom: { ...current.bottom }
+      };
+      next[block][slotId] = value;
+      setContent((existing) => applyHighlightDemoPhrasesToContent(existing, next));
+      return next;
+    });
   }
 
   async function handleBackgroundFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -1907,6 +2097,11 @@ export function TemplateStyleEditor({
     if (!templateId) {
       return;
     }
+    if (isTemplateReadOnly) {
+      setSaveState("error");
+      setSaveMessage("Системный шаблон нельзя менять напрямую. Создай копию.");
+      return;
+    }
     cancelPendingAutosaveCycle();
 
     setSaveState("saving");
@@ -1954,6 +2149,11 @@ export function TemplateStyleEditor({
     if (!templateId) {
       return;
     }
+    if (isTemplateReadOnly) {
+      setSaveState("error");
+      setSaveMessage("Системный шаблон нельзя менять напрямую. Создай копию.");
+      return;
+    }
     cancelPendingAutosaveCycle();
 
     const confirmed =
@@ -1999,6 +2199,11 @@ export function TemplateStyleEditor({
 
   async function handleDeleteTemplate() {
     if (!templateId) {
+      return;
+    }
+    if (isTemplateReadOnly) {
+      setSaveState("error");
+      setSaveMessage("Системный шаблон нельзя удалять. Создай копию и работай с ней.");
       return;
     }
     cancelPendingAutosaveCycle();
@@ -2164,7 +2369,9 @@ export function TemplateStyleEditor({
               </h2>
             </div>
             <p className="subtle-text template-road-editor-header-copy">
-              Автосохранение включено. Ручное действие нужно только для контрольных точек в истории.
+              {isSystemTemplate
+                ? "Системный шаблон открыт в read-only. Чтобы сохранить изменения, создай копию."
+                : "Автосохранение включено. Ручное действие нужно только для контрольных точек в истории."}
             </p>
             <div className="template-road-editor-header-actions">
               <button type="button" className="btn btn-secondary" onClick={resetStyle}>
@@ -2186,7 +2393,7 @@ export function TemplateStyleEditor({
                 onClick={() => void handleCreateTemplate()}
                 disabled={saveState === "saving" || !canCreateTemplates}
               >
-                Новый шаблон
+                {isSystemTemplate ? "Создать копию" : "Новый шаблон"}
               </button>
             </div>
           </header>
@@ -2207,7 +2414,7 @@ export function TemplateStyleEditor({
                 type="button"
                 className="btn btn-primary"
                 onClick={() => void handleCreateVersion()}
-                disabled={saveState === "saving" || !templateId}
+                disabled={saveState === "saving" || !templateId || isTemplateReadOnly}
               >
                 Сохранить версию
               </button>
@@ -2215,7 +2422,7 @@ export function TemplateStyleEditor({
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => void handleDeleteTemplate()}
-                disabled={!templateId || saveState === "saving"}
+                disabled={!templateId || saveState === "saving" || isTemplateReadOnly}
               >
                 Удалить шаблон
               </button>
@@ -2257,8 +2464,9 @@ export function TemplateStyleEditor({
                 <span className="meta-pill">
                   {templateCapabilities.visibilityScope === "all"
                     ? "Видны все шаблоны"
-                    : "Видны только мои шаблоны"}
+                    : "Видны мои и назначенные шаблоны"}
                 </span>
+                {isSystemTemplate ? <span className="meta-pill">Read-only</span> : null}
                 {updatedAt ? (
                   <span className="meta-pill">
                     Обновлён: {new Date(updatedAt).toLocaleTimeString("ru-RU", {
@@ -2401,7 +2609,7 @@ export function TemplateStyleEditor({
                           type="button"
                           className="btn btn-ghost"
                           onClick={() => void handleRestoreVersion(version.id)}
-                          disabled={saveState === "saving"}
+                          disabled={saveState === "saving" || isTemplateReadOnly}
                         >
                           Откатиться к версии
                         </button>
@@ -2486,6 +2694,9 @@ export function TemplateStyleEditor({
               <>
                 <span className="meta-pill">Верх: {content.topText.length} символов</span>
                 <span className="meta-pill">Низ: {content.bottomText.length} символов</span>
+                <span className="meta-pill">
+                  Выделение: {highlightConfig.enabled ? `${enabledHighlightSlotCount} слота` : "выкл"}
+                </span>
               </>
             }
           >
@@ -2635,19 +2846,155 @@ export function TemplateStyleEditor({
                 }
               />
             </div>
-            <label className="template-road-editor-field">
-              <span className="field-label">Фразы для выделения</span>
-              <input
-                className="text-input"
-                type="text"
-                placeholder="слово одно | слово два"
-                value={highlightValue}
-                onChange={handleHighlightChange}
-              />
-              <span className="template-road-editor-field-hint">
-                Перечисляй фразы через `|`, если хочешь проверить акцентный цвет на важных словах.
-              </span>
-            </label>
+            <div className="template-road-editor-highlight-panel">
+              <div className="template-road-editor-highlight-panel-head">
+                <div className="template-road-editor-highlight-panel-copy">
+                  <span className="field-label">Выделение ключевых слов</span>
+                  <span className="template-road-editor-field-hint">
+                    Здесь настраивается palette для Stage 2 и demo-preview внутри редактора. Текст остаётся plain, а цвет хранится как spans.
+                  </span>
+                </div>
+                <label className="template-road-editor-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={highlightConfig.enabled}
+                    onChange={(event) => setHighlightingEnabled(event.target.checked)}
+                  />
+                  <span>{highlightConfig.enabled ? "Highlighting включён" : "Highlighting выключен"}</span>
+                </label>
+              </div>
+              <div className="template-road-editor-grid two-up">
+                <div className="template-road-editor-field template-road-editor-checkbox-field">
+                  <span className="field-label">Верхний блок</span>
+                  <label className="template-road-editor-checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={highlightConfig.topEnabled}
+                      onChange={(event) => updateTemplateHighlights("topEnabled", event.target.checked)}
+                    />
+                    <span>{highlightConfig.topEnabled ? "Подсветка top включена" : "Подсветка top выключена"}</span>
+                  </label>
+                  <span className="template-road-editor-field-hint">
+                    Stage 2 сможет размечать цветные слова в верхнем тексте и тут же показывать их в preview.
+                  </span>
+                </div>
+                <div className="template-road-editor-field template-road-editor-checkbox-field">
+                  <span className="field-label">Нижний блок</span>
+                  <label className="template-road-editor-checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={highlightConfig.bottomEnabled}
+                      onChange={(event) => updateTemplateHighlights("bottomEnabled", event.target.checked)}
+                    />
+                    <span>
+                      {highlightConfig.bottomEnabled ? "Подсветка bottom включена" : "Подсветка bottom выключена"}
+                    </span>
+                  </label>
+                  <span className="template-road-editor-field-hint">
+                    Полезно для шаблонов, где цветом нужно подсвечивать только нижний пояс или оба блока сразу.
+                  </span>
+                </div>
+              </div>
+              <div className="template-road-editor-highlight-slots">
+                {highlightConfig.slots.map((slot, index) => (
+                  <div key={slot.slotId} className="template-road-editor-highlight-card">
+                    <div className="template-road-editor-highlight-card-head">
+                      <div className="template-road-editor-highlight-card-copy">
+                        <span className="template-road-editor-highlight-slot-kicker">
+                          Слот {index + 1}
+                        </span>
+                        <strong>{slot.label || `Slot ${index + 1}`}</strong>
+                      </div>
+                      <span
+                        className="template-road-editor-highlight-swatch"
+                        style={{ background: slot.color }}
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="template-road-editor-field template-road-editor-checkbox-field">
+                      <span className="field-label">Статус слота</span>
+                      <label className="template-road-editor-checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={slot.enabled}
+                          onChange={(event) =>
+                            updateTemplateHighlightSlot(slot.slotId, "enabled", event.target.checked)
+                          }
+                        />
+                        <span>{slot.enabled ? "Слот участвует в Stage 2" : "Слот выключен"}</span>
+                      </label>
+                      <span className="template-road-editor-field-hint">
+                        Порядок слотов стабилен: Stage 2 видит их как `slot1`, `slot2`, `slot3`.
+                      </span>
+                    </div>
+                    <ColorControl
+                      label="Цвет"
+                      hint="Этот цвет используется в preview, Stage 3 export и финальном рендере."
+                      value={slot.color}
+                      onChange={(value) => updateTemplateHighlightSlot(slot.slotId, "color", value)}
+                    />
+                    <label className="template-road-editor-field">
+                      <span className="field-label">Операторский label</span>
+                      <input
+                        className="text-input"
+                        type="text"
+                        value={slot.label}
+                        onChange={(event) =>
+                          updateTemplateHighlightSlot(slot.slotId, "label", event.target.value)
+                        }
+                      />
+                      <span className="template-road-editor-field-hint">
+                        Короткое имя группы. Например: names, dates, action words.
+                      </span>
+                    </label>
+                    <label className="template-road-editor-field">
+                      <span className="field-label">Guidance для Stage 2</span>
+                      <textarea
+                        className="text-area template-road-editor-textarea"
+                        rows={3}
+                        value={slot.guidance}
+                        onChange={(event) =>
+                          updateTemplateHighlightSlot(slot.slotId, "guidance", event.target.value)
+                        }
+                      />
+                      <span className="template-road-editor-field-hint">
+                        Объясни модели, какие слова надо относить к этому цвету в рамках конкретного канала.
+                      </span>
+                    </label>
+                    <label className="template-road-editor-field">
+                      <span className="field-label">Demo phrases для верхнего текста</span>
+                      <input
+                        className="text-input"
+                        type="text"
+                        placeholder="имя | год | action"
+                        value={highlightDemoPhrases.top[slot.slotId]}
+                        onChange={(event) =>
+                          updateHighlightDemoPhraseBlock("top", slot.slotId, event.target.value)
+                        }
+                      />
+                      <span className="template-road-editor-field-hint">
+                        Перечисляй фразы через `|`, чтобы сразу проверить этот цвет на верхнем блоке.
+                      </span>
+                    </label>
+                    <label className="template-road-editor-field">
+                      <span className="field-label">Demo phrases для нижнего текста</span>
+                      <input
+                        className="text-input"
+                        type="text"
+                        placeholder="роль | место | факт"
+                        value={highlightDemoPhrases.bottom[slot.slotId]}
+                        onChange={(event) =>
+                          updateHighlightDemoPhraseBlock("bottom", slot.slotId, event.target.value)
+                        }
+                      />
+                      <span className="template-road-editor-field-hint">
+                        Эти фразы нужны только для preview в редакторе. В runtime Stage 2 запишет реальные spans сам.
+                      </span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
           </EditorSection>
 
           <EditorSection

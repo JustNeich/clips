@@ -1,8 +1,9 @@
 "use client";
 
-import React, { FormEvent } from "react";
+import React, { FormEvent, useRef } from "react";
 import type { SourceJobDetail } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
+import { getUploadedSourceDisplayName, isUploadedSourceUrl } from "../../lib/uploaded-source";
 
 type Step1PasteLinkProps = {
   draftUrl: string;
@@ -14,12 +15,16 @@ type Step1PasteLinkProps = {
   downloadBusy: boolean;
   fetchAvailable: boolean;
   fetchBlockedReason?: string | null;
+  uploadBusy: boolean;
+  uploadAvailable: boolean;
+  uploadBlockedReason?: string | null;
   downloadAvailable: boolean;
   downloadBlockedReason?: string | null;
   showCreateNextChatShortcut?: boolean;
   onDraftUrlChange: (value: string) => void;
   onPaste: () => void;
   onFetch: () => void;
+  onUploadFile: (file: File) => void;
   onDownloadSource: () => void;
   onCreateNextChat?: () => void;
 };
@@ -29,15 +34,18 @@ type SourcePreview =
       kind: "youtube";
       href: string;
       embedUrl: string;
+      label: string;
     }
   | {
       kind: "video";
       href: string;
       videoUrl: string;
+      label: string;
     }
   | {
       kind: "external";
       href: string;
+      label: string;
     };
 
 function resolveSourcePreview(rawUrl: string | null): SourcePreview | null {
@@ -47,13 +55,24 @@ function resolveSourcePreview(rawUrl: string | null): SourcePreview | null {
   }
 
   try {
+    if (isUploadedSourceUrl(trimmed)) {
+      const previewUrl = `/api/source-media?sourceUrl=${encodeURIComponent(trimmed)}`;
+      return {
+        kind: "video",
+        href: previewUrl,
+        videoUrl: previewUrl,
+        label: getUploadedSourceDisplayName(trimmed) ?? "uploaded.mp4"
+      };
+    }
+
     const parsed = new URL(trimmed);
     const pathname = parsed.pathname.toLowerCase();
     if (pathname.endsWith(".mp4") || pathname.endsWith(".webm") || pathname.endsWith(".mov")) {
       return {
         kind: "video",
         href: parsed.toString(),
-        videoUrl: parsed.toString()
+        videoUrl: parsed.toString(),
+        label: parsed.toString()
       };
     }
 
@@ -73,13 +92,15 @@ function resolveSourcePreview(rawUrl: string | null): SourcePreview | null {
         href: parsed.toString(),
         embedUrl: `https://www.youtube.com/embed/${encodeURIComponent(
           youtubeId
-        )}?rel=0&modestbranding=1&playsinline=1`
+        )}?rel=0&modestbranding=1&playsinline=1`,
+        label: parsed.toString()
       };
     }
 
     return {
       kind: "external",
-      href: parsed.toString()
+      href: parsed.toString(),
+      label: parsed.toString()
     };
   } catch {
     return null;
@@ -96,14 +117,19 @@ export function Step1PasteLink({
   downloadBusy,
   fetchAvailable,
   fetchBlockedReason,
+  uploadBusy,
+  uploadAvailable,
+  uploadBlockedReason,
   downloadAvailable,
   downloadBlockedReason,
   onDraftUrlChange,
   onPaste,
   onFetch,
+  onUploadFile,
   onDownloadSource
 }: Step1PasteLinkProps) {
   const sourcePreview = resolveSourcePreview(activeUrl);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isAttachedSourceJob =
     Boolean(sourceJob) &&
     (sourceJob?.status === "queued" || sourceJob?.status === "running") &&
@@ -122,6 +148,10 @@ export function Step1PasteLink({
     onFetch();
   };
 
+  const handleChooseFile = (): void => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <StepWorkspace
       editLabel="Редактирование"
@@ -131,7 +161,10 @@ export function Step1PasteLink({
           <header className="step-head">
             <p className="kicker">Шаг 1</p>
             <h2>Источник</h2>
-            <p>Вставьте ссылку на Shorts или Reels, чтобы получить исходник. Комментарии необязательны и не блокируют процесс.</p>
+            <p>
+              Вставьте ссылку на YouTube Shorts, Instagram/Facebook Reels или загрузите готовый mp4.
+              Комментарии необязательны и не блокируют процесс.
+            </p>
           </header>
 
           <section className="control-card">
@@ -155,7 +188,7 @@ export function Step1PasteLink({
 
               <p className="subtle-text">
                 Примеры: `instagram.com/reel/...`, `instagram.com/share/reel/...`, `youtube.com/shorts/...`,
-                `facebook.com/reel/...`
+                `facebook.com/reel/...` или загрузка готового `mp4`
               </p>
 
               <div className="control-actions">
@@ -172,11 +205,36 @@ export function Step1PasteLink({
                 >
                   {fetchBusy ? "Получаем..." : "Получить источник"}
                 </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/mp4,.mp4"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.currentTarget.value = "";
+                    if (file) {
+                      onUploadFile(file);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleChooseFile}
+                  disabled={uploadBusy || !uploadAvailable}
+                  title={!uploadAvailable ? uploadBlockedReason ?? undefined : undefined}
+                >
+                  {uploadBusy ? "Загружаем..." : "Загрузить mp4"}
+                </button>
               </div>
               {!fetchAvailable && inlineFetchMessage ? (
                 <p className={`subtle-text${isAttachedSourceJob || isAttachedStage2Run ? "" : " danger-text"}`}>
                   {inlineFetchMessage}
                 </p>
+              ) : null}
+              {!uploadAvailable && uploadBlockedReason ? (
+                <p className="subtle-text danger-text">{uploadBlockedReason}</p>
               ) : null}
               {commentsFallbackActive ? (
                 <p className="subtle-text">
@@ -278,7 +336,7 @@ export function Step1PasteLink({
                   target="_blank"
                   rel="noreferrer"
                 >
-                  {sourcePreview.href}
+                  {sourcePreview.label}
                 </a>
               ) : (
                 <p className="mono source-link-text">{activeUrl ?? "Источник не выбран"}</p>

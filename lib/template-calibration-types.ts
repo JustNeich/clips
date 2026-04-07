@@ -1,3 +1,5 @@
+import type { TemplateCaptionHighlights } from "./template-highlights";
+
 export type TemplateCalibrationStatus = "queued" | "in-progress" | "review" | "approved";
 
 export type TemplateCompareMode =
@@ -22,6 +24,7 @@ export type TemplateContentFixture = {
   bottomText: string;
   channelName: string;
   channelHandle: string;
+  highlights: TemplateCaptionHighlights;
   topHighlightPhrases?: string[];
   topFontScale: number;
   bottomFontScale: number;

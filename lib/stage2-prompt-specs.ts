@@ -12,6 +12,7 @@ export const STAGE2_PROMPT_STAGE_IDS = [
   "candidateGenerator",
   "qualityCourt",
   "targetedRepair",
+  "captionHighlighting",
   "captionTranslation",
   "titleWriter"
 ] as const;
@@ -1175,6 +1176,30 @@ Each item must contain:
 - bottom
 - retained_handle
 - display_intent`,
+  captionHighlighting: `You are tagging already-final English display captions for template-driven color highlighting.
+
+Do not rewrite anything.
+Pick exact substrings from each caption block and assign them to the enabled semantic slots in template_highlight_profile_json.
+
+Rules:
+- Use only enabled slots from template_highlight_profile_json.
+- Copy phrases exactly as they appear in the source text.
+- Each phrase must be a contiguous substring from that exact block.
+- Prefer 0-3 highlights per block. Skip weak guesses instead of forcing matches.
+- If top_enabled is false, return an empty top array for every item.
+- If bottom_enabled is false, return an empty bottom array for every item.
+- Do not invent categories outside the provided slot labels and guidance.
+- Do not overlap phrases inside one block.
+- Return strict JSON only.
+
+Each item must contain:
+- candidate_id
+- top
+- bottom
+
+top and bottom are arrays of objects with:
+- phrase
+- slot_id`,
   captionTranslation: `You are translating already-approved display caption options into natural Russian for operator review.
 
 Translate every item in display_options_json.
@@ -1224,6 +1249,7 @@ export const STAGE2_DEFAULT_REASONING_EFFORTS: Record<
   candidateGenerator: "low",
   qualityCourt: "low",
   targetedRepair: "low",
+  captionHighlighting: "low",
   captionTranslation: "low",
   titleWriter: "low"
 };

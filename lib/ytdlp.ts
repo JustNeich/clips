@@ -2,7 +2,11 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { normalizeSupportedUrl } from "./supported-url";
-export { isSupportedUrl, normalizeSupportedUrl } from "./supported-url";
+export {
+  isSupportedUrl,
+  normalizeSupportedUrl,
+  SUPPORTED_SOURCE_ERROR_MESSAGE
+} from "./supported-url";
 
 export function buildLimitedCommentsExtractorArgs(rawUrl: string, maxComments = 300): string[] {
   const safeMaxComments = Math.max(1, Math.floor(maxComments));

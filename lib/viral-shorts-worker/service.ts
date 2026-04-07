@@ -119,6 +119,15 @@ import {
   buildStage2WorkerProfileRequiredLanes,
   resolveStage2WorkerProfile
 } from "../stage2-worker-profile";
+import {
+  buildTemplateHighlightSpansFromPhrases,
+  createEmptyTemplateCaptionHighlights,
+  getEnabledTemplateHighlightSlots,
+  hasEnabledTemplateHighlights,
+  normalizeTemplateHighlightPhraseAnnotations,
+  type TemplateCaptionHighlightPhraseMap,
+  type TemplateCaptionHighlights
+} from "../template-highlights";
 
 const ANALYZER_SCHEMA = {
   type: "object",
@@ -648,6 +657,42 @@ const NATIVE_TRANSLATION_SCHEMA = {
       candidate_id: { type: "string", minLength: 1 },
       top_ru: { type: "string", minLength: 1 },
       bottom_ru: { type: "string", minLength: 1 }
+    }
+  }
+} as const;
+
+const NATIVE_CAPTION_HIGHLIGHTING_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["candidate_id", "top", "bottom"],
+    properties: {
+      candidate_id: { type: "string", minLength: 1 },
+      top: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["phrase", "slot_id"],
+          properties: {
+            phrase: { type: "string", minLength: 1 },
+            slot_id: { type: "string", minLength: 1 }
+          }
+        }
+      },
+      bottom: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["phrase", "slot_id"],
+          properties: {
+            phrase: { type: "string", minLength: 1 },
+            slot_id: { type: "string", minLength: 1 }
+          }
+        }
+      }
     }
   }
 } as const;
@@ -2090,66 +2135,82 @@ function findReferenceOneShotMetaLeakage(text: string): string | null {
   return null;
 }
 
-function collectReferenceOneShotContractIssues(input: {
+function isReferenceOneShotLengthConstraintIssue(issue: string): boolean {
+  return /^(TOP|BOTTOM) length \d+ вне диапазона \d+-\d+\.$/u.test(issue.trim());
+}
+
+function collectReferenceOneShotContractDiagnostics(input: {
   result: NativeReferenceOneShotResult;
   hardConstraints: Stage2HardConstraints;
-}): string[] {
-  const issues: string[] = [];
+}): {
+  fatalIssues: string[];
+  lengthWindowWarnings: string[];
+} {
+  const fatalIssues: string[] = [];
+  const lengthWindowWarnings: string[] = [];
 
   if (input.result.analysis.visualAnchors.length !== 3) {
-    issues.push(
+    fatalIssues.push(
       `analysis.visual_anchors must contain exactly 3 items, received ${input.result.analysis.visualAnchors.length}`
     );
   }
   if (!input.result.analysis.commentVibe.trim()) {
-    issues.push("analysis.comment_vibe must be non-empty");
+    fatalIssues.push("analysis.comment_vibe must be non-empty");
   }
   if (!input.result.analysis.keyPhraseToAdapt.trim()) {
-    issues.push("analysis.key_phrase_to_adapt must be non-empty");
+    fatalIssues.push("analysis.key_phrase_to_adapt must be non-empty");
   }
 
   if (input.result.candidates.length !== 5) {
-    issues.push(`candidates must contain exactly 5 items, received ${input.result.candidates.length}`);
+    fatalIssues.push(`candidates must contain exactly 5 items, received ${input.result.candidates.length}`);
   }
   if (input.result.titles.length !== 5) {
-    issues.push(`titles must contain exactly 5 items, received ${input.result.titles.length}`);
+    fatalIssues.push(`titles must contain exactly 5 items, received ${input.result.titles.length}`);
   }
 
   const candidateIds = new Set<string>();
   const candidatePairs = new Set<string>();
   for (const candidate of input.result.candidates) {
     if (candidateIds.has(candidate.candidateId)) {
-      issues.push(`candidate_id "${candidate.candidateId}" is duplicated`);
+      fatalIssues.push(`candidate_id "${candidate.candidateId}" is duplicated`);
     }
     candidateIds.add(candidate.candidateId);
 
     const pairKey = `${candidate.top.trim().toLowerCase()}|${candidate.bottom.trim().toLowerCase()}`;
     if (candidatePairs.has(pairKey)) {
-      issues.push(`candidate "${candidate.candidateId}" duplicates another top/bottom pair`);
+      fatalIssues.push(`candidate "${candidate.candidateId}" duplicates another top/bottom pair`);
     }
     candidatePairs.add(pairKey);
 
     if (candidate.top.includes("\n") || candidate.bottom.includes("\n")) {
-      issues.push(`candidate "${candidate.candidateId}" must stay single-line in both top and bottom`);
+      fatalIssues.push(`candidate "${candidate.candidateId}" must stay single-line in both top and bottom`);
     }
 
     const topMetaLeakage = findReferenceOneShotMetaLeakage(candidate.top);
     if (topMetaLeakage) {
-      issues.push(`candidate "${candidate.candidateId}" top ${topMetaLeakage}`);
+      fatalIssues.push(`candidate "${candidate.candidateId}" top ${topMetaLeakage}`);
     }
     const bottomMetaLeakage = findReferenceOneShotMetaLeakage(candidate.bottom);
     if (bottomMetaLeakage) {
-      issues.push(`candidate "${candidate.candidateId}" bottom ${bottomMetaLeakage}`);
+      fatalIssues.push(`candidate "${candidate.candidateId}" bottom ${bottomMetaLeakage}`);
     }
 
-    const constraintCheck = evaluateNativeCaptionConstraintCheck(
-      candidate,
-      input.hardConstraints
-    );
+    const constraintCheck = evaluateNativeCaptionConstraintCheck(candidate, input.hardConstraints);
     if (!constraintCheck.passed) {
-      issues.push(
-        `candidate "${candidate.candidateId}" violates hard constraints: ${constraintCheck.issues.join(", ")}`
+      const blockingConstraintIssues = constraintCheck.issues.filter(
+        (issue) => !isReferenceOneShotLengthConstraintIssue(issue)
       );
+      const lengthConstraintIssues = constraintCheck.issues.filter(isReferenceOneShotLengthConstraintIssue);
+      if (blockingConstraintIssues.length > 0) {
+        fatalIssues.push(
+          `candidate "${candidate.candidateId}" violates hard constraints: ${blockingConstraintIssues.join(", ")}`
+        );
+      }
+      if (lengthConstraintIssues.length > 0) {
+        lengthWindowWarnings.push(
+          `candidate "${candidate.candidateId}" stayed outside the configured length window: ${lengthConstraintIssues.join(", ")}`
+        );
+      }
     }
   }
 
@@ -2157,28 +2218,31 @@ function collectReferenceOneShotContractIssues(input: {
   for (const [index, title] of input.result.titles.entries()) {
     const titleLabel = `title ${index + 1}`;
     if (!title.title.trim()) {
-      issues.push(`${titleLabel} must be non-empty`);
+      fatalIssues.push(`${titleLabel} must be non-empty`);
       continue;
     }
     if (title.title.includes("\n")) {
-      issues.push(`${titleLabel} must stay single-line`);
+      fatalIssues.push(`${titleLabel} must stay single-line`);
     }
     const titleMetaLeakage = findReferenceOneShotMetaLeakage(title.title);
     if (titleMetaLeakage) {
-      issues.push(`${titleLabel} ${titleMetaLeakage}`);
+      fatalIssues.push(`${titleLabel} ${titleMetaLeakage}`);
     }
     const normalizedTitle = title.title.trim().toLowerCase();
     if (titleValues.has(normalizedTitle)) {
-      issues.push(`${titleLabel} duplicates another English title`);
+      fatalIssues.push(`${titleLabel} duplicates another English title`);
     }
     titleValues.add(normalizedTitle);
   }
 
   if (!input.result.winnerCandidateId || !candidateIds.has(input.result.winnerCandidateId)) {
-    issues.push("winner_candidate_id must point to one of the 5 candidates");
+    fatalIssues.push("winner_candidate_id must point to one of the 5 candidates");
   }
 
-  return issues;
+  return {
+    fatalIssues,
+    lengthWindowWarnings
+  };
 }
 
 const REFERENCE_ONE_SHOT_MAX_OVERFLOW_POLISH_CHARS = 12;
@@ -3671,6 +3735,118 @@ function buildNativeCaptionTranslationPrompt(input: {
   );
 }
 
+type NativeCaptionHighlightingArtifact = {
+  highlightedAt: string;
+  items: Array<{
+    candidateId: string;
+    top: TemplateCaptionHighlightPhraseMap["top"];
+    bottom: TemplateCaptionHighlightPhraseMap["bottom"];
+    source: "llm" | "fallback";
+  }>;
+  coverage: {
+    requestedCount: number;
+    highlightedCount: number;
+    fallbackCount: number;
+    fallbackCandidateIds: string[];
+  };
+};
+
+function buildNativeCaptionHighlightingPrompt(input: {
+  displayOptions: Array<{
+    candidateId: string;
+    top: string;
+    bottom: string;
+  }>;
+  highlightProfile: NonNullable<Stage2RuntimeChannelConfig["templateHighlightProfile"]>;
+  promptConfig: Stage2PromptConfig;
+}): string {
+  return renderJsonPrompt(
+    resolveStage2PromptTemplate("captionHighlighting", input.promptConfig).configuredPrompt,
+    {
+      template_highlight_profile_json: {
+        enabled: input.highlightProfile.enabled,
+        top_enabled: input.highlightProfile.topEnabled,
+        bottom_enabled: input.highlightProfile.bottomEnabled,
+        slots: getEnabledTemplateHighlightSlots(input.highlightProfile).map((slot) => ({
+          slot_id: slot.slotId,
+          label: slot.label,
+          guidance: slot.guidance
+        }))
+      },
+      display_options_json: input.displayOptions.map((option) => ({
+        candidate_id: option.candidateId,
+        top: option.top,
+        bottom: option.bottom
+      }))
+    }
+  );
+}
+
+function normalizeNativeCaptionHighlightingArtifact(
+  raw: unknown,
+  displayOptions: Array<{
+    candidateId: string;
+    top: string;
+    bottom: string;
+  }>
+): NativeCaptionHighlightingArtifact | null {
+  const optionIds = new Set(displayOptions.map((option) => option.candidateId));
+  const entries = Array.isArray(raw) ? raw : [];
+  const items: NativeCaptionHighlightingArtifact["items"] = [];
+  entries.forEach((entry) => {
+    const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+    const candidateId = String(item.candidate_id ?? item.candidateId ?? "").trim();
+    if (!optionIds.has(candidateId)) {
+      return;
+    }
+    items.push({
+      candidateId,
+      top: normalizeTemplateHighlightPhraseAnnotations({ top: item.top, bottom: [] }).top,
+      bottom: normalizeTemplateHighlightPhraseAnnotations({ top: [], bottom: item.bottom }).bottom,
+      source: "llm"
+    });
+  });
+  const highlightedIds = new Set(items.map((entry) => entry.candidateId));
+  const fallbackCandidateIds = displayOptions
+    .map((option) => option.candidateId)
+    .filter((candidateId) => !highlightedIds.has(candidateId));
+  return {
+    highlightedAt: new Date().toISOString(),
+    items: [
+      ...items,
+      ...fallbackCandidateIds.map((candidateId) => ({
+        candidateId,
+        top: [],
+        bottom: [],
+        source: "fallback" as const
+      }))
+    ],
+    coverage: {
+      requestedCount: displayOptions.length,
+      highlightedCount: items.length,
+      fallbackCount: fallbackCandidateIds.length,
+      fallbackCandidateIds
+    }
+  };
+}
+
+function buildCaptionHighlightsFromPhraseMap(input: {
+  topText: string;
+  bottomText: string;
+  phrases?: TemplateCaptionHighlightPhraseMap | null;
+}): TemplateCaptionHighlights {
+  return {
+    top: buildTemplateHighlightSpansFromPhrases({
+      text: input.topText,
+      annotations: input.phrases?.top ?? []
+    }),
+    bottom: buildTemplateHighlightSpansFromPhrases({
+      text: input.bottomText,
+      annotations: input.phrases?.bottom ?? []
+    })
+  };
+}
+
 function normalizeNativeCaptionTranslationArtifact(
   raw: unknown,
   displayOptions: Array<{
@@ -4226,6 +4402,161 @@ function buildCriticShortfallRecoveryContext(input: {
 
 function joinPromptPasses(prompts: string[]): string {
   return prompts.filter((prompt) => prompt.trim().length > 0).join("\n\n----- RECOVERY PASS -----\n\n");
+}
+
+async function runNativeCaptionHighlightingStage(input: {
+  channelConfig: Stage2RuntimeChannelConfig;
+  captionOptions: Array<{
+    candidateId: string;
+    top: string;
+    bottom: string;
+  }>;
+  executor: JsonStageExecutor;
+  stageModels?: Partial<Stage2PipelineModelMap>;
+  promptConfig: Stage2PromptConfig;
+  warnings: StageWarning[];
+  promptInputManifests: Partial<Record<Stage2PipelineStageId, Stage2DiagnosticsPromptStage["inputManifest"]>>;
+  reportProgress: (event: PipelineProgressEvent) => Promise<void>;
+  recordExecutedStage: (
+    stageId: Stage2PipelineStageId,
+    promptText: string,
+    summary: string,
+    resultPayload: unknown,
+    options?: { usesImages?: boolean; model?: string | null }
+  ) => void;
+}): Promise<Map<string, TemplateCaptionHighlights>> {
+  const emptyByCandidate = new Map(
+    input.captionOptions.map((option) => [option.candidateId, createEmptyTemplateCaptionHighlights()] as const)
+  );
+  const highlightProfile = input.channelConfig.templateHighlightProfile;
+  if (!highlightProfile || !hasEnabledTemplateHighlights(highlightProfile)) {
+    await input.reportProgress({
+      stageId: "captionHighlighting",
+      state: "completed",
+      detail: "Template highlighting disabled for this channel; skipped."
+    });
+    return emptyByCandidate;
+  }
+
+  const reasoningEffort = resolveStageReasoningEffort("captionHighlighting", input.promptConfig);
+  const model = input.stageModels?.captionHighlighting ?? input.stageModels?.captionTranslation ?? null;
+  input.promptInputManifests.captionHighlighting = {
+    learningDetail: "none",
+    description: null,
+    transcript: null,
+    frames: null,
+    comments: null,
+    examples: null,
+    channelLearning: null,
+    candidates: {
+      passedCount: input.captionOptions.length,
+      passedCandidateIds: input.captionOptions.map((option) => option.candidateId),
+      criticScoreCount: 0,
+      shortlistCount: input.captionOptions.length
+    },
+    stageFlags: ["template highlight tagging", "exact substring spans", "fail open"]
+  };
+
+  const promptText = buildNativeCaptionHighlightingPrompt({
+    displayOptions: input.captionOptions,
+    highlightProfile,
+    promptConfig: input.promptConfig
+  });
+  await input.reportProgress({
+    stageId: "captionHighlighting",
+    state: "running",
+    promptChars: promptText.length,
+    reasoningEffort,
+    detail: "Tagging exact highlight spans for the display shortlist."
+  });
+
+  const startedAt = Date.now();
+  let artifact: NativeCaptionHighlightingArtifact;
+  try {
+    const raw = await input.executor.runJson<unknown>({
+      prompt: promptText,
+      schema: NATIVE_CAPTION_HIGHLIGHTING_SCHEMA,
+      model,
+      reasoningEffort
+    });
+    artifact =
+      normalizeNativeCaptionHighlightingArtifact(raw, input.captionOptions) ?? {
+        highlightedAt: new Date().toISOString(),
+        items: input.captionOptions.map((option) => ({
+          candidateId: option.candidateId,
+          top: [],
+          bottom: [],
+          source: "fallback" as const
+        })),
+        coverage: {
+          requestedCount: input.captionOptions.length,
+          highlightedCount: 0,
+          fallbackCount: input.captionOptions.length,
+          fallbackCandidateIds: input.captionOptions.map((option) => option.candidateId)
+        }
+      };
+  } catch (error) {
+    input.warnings.push({
+      field: "captionHighlighting",
+      message:
+        error instanceof Error
+          ? `Caption highlighting fallback used: ${error.message}`
+          : "Caption highlighting fallback used."
+    });
+    artifact = {
+      highlightedAt: new Date().toISOString(),
+      items: input.captionOptions.map((option) => ({
+        candidateId: option.candidateId,
+        top: [],
+        bottom: [],
+        source: "fallback" as const
+      })),
+      coverage: {
+        requestedCount: input.captionOptions.length,
+        highlightedCount: 0,
+        fallbackCount: input.captionOptions.length,
+        fallbackCandidateIds: input.captionOptions.map((option) => option.candidateId)
+      }
+    };
+  }
+
+  await input.reportProgress({
+    stageId: "captionHighlighting",
+    state: "completed",
+    durationMs: Date.now() - startedAt,
+    promptChars: promptText.length,
+    reasoningEffort,
+    detail:
+      artifact.coverage.highlightedCount > 0
+        ? `Caption highlighting tagged ${artifact.coverage.highlightedCount}/${artifact.coverage.requestedCount} option(s); ${artifact.coverage.fallbackCount} used empty fallback metadata.`
+        : "Caption highlighting returned no valid matches; empty metadata used."
+  });
+  input.recordExecutedStage(
+    "captionHighlighting",
+    promptText,
+    "LLM stage: tags exact highlight substrings for enabled template color slots and falls back to empty metadata on failure.",
+    artifact,
+    { model }
+  );
+
+  const byCandidate = new Map<string, TemplateCaptionHighlights>();
+  for (const option of input.captionOptions) {
+    const item = artifact.items.find((entry) => entry.candidateId === option.candidateId);
+    byCandidate.set(
+      option.candidateId,
+      item
+        ? buildCaptionHighlightsFromPhraseMap({
+            topText: option.top,
+            bottomText: option.bottom,
+            phrases: {
+              top: item.top,
+              bottom: item.bottom
+            }
+          })
+        : createEmptyTemplateCaptionHighlights()
+    );
+  }
+  return byCandidate;
 }
 
 function resolveStage2VNextFrameRole(
@@ -6718,6 +7049,7 @@ function normalizeChannelConfig(input: {
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
   editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
+  templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
   resolvedExamplesSource?: Stage2RuntimeChannelConfig["examplesSource"];
 }): Stage2RuntimeChannelConfig {
   const styleProfile = input.stage2StyleProfile ?? DEFAULT_STAGE2_STYLE_PROFILE;
@@ -6731,6 +7063,7 @@ function normalizeChannelConfig(input: {
     hardConstraints: input.stage2HardConstraints,
     styleProfile,
     editorialMemory: input.editorialMemory ?? createEmptyStage2EditorialMemorySummary(styleProfile),
+    templateHighlightProfile: input.templateHighlightProfile ?? null,
     examplesSource:
       input.resolvedExamplesSource ??
       (input.stage2ExamplesConfig.useWorkspaceDefault ? "workspace_default" : "channel_custom")
@@ -6867,6 +7200,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   const oneShotStartedAt = Date.now();
   let oneShotResult: NativeReferenceOneShotResult;
   let polishedCandidateIds: string[] = [];
+  let oneShotLengthWindowWarnings: string[] = [];
   try {
     const rawOneShot = await input.executor.runJson<unknown>({
       prompt: oneShotPrompt,
@@ -6881,12 +7215,13 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     });
     oneShotResult = polished.result;
     polishedCandidateIds = polished.polishedCandidateIds;
-    const contractIssues = collectReferenceOneShotContractIssues({
+    const contractDiagnostics = collectReferenceOneShotContractDiagnostics({
       result: oneShotResult,
       hardConstraints: input.channelConfig.hardConstraints
     });
-    if (contractIssues.length > 0) {
-      throw new Error(contractIssues.join("; "));
+    oneShotLengthWindowWarnings = contractDiagnostics.lengthWindowWarnings;
+    if (contractDiagnostics.fatalIssues.length > 0) {
+      throw new Error(contractDiagnostics.fatalIssues.join("; "));
     }
   } catch (error) {
     const failureMessage = formatStageFailure("Reference one-shot", error);
@@ -6907,9 +7242,11 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     promptChars: oneShotPrompt.length,
     reasoningEffort: oneShotReasoningEffort,
     detail:
-      polishedCandidateIds.length > 0
-        ? `One-shot baseline produced 5 publishable finalists; exact-length polish tightened ${polishedCandidateIds.length} candidate(s) without repair or backfill.`
-        : "One-shot baseline produced 5 publishable finalists without repair or backfill."
+      oneShotLengthWindowWarnings.length > 0
+        ? `One-shot baseline produced 5 finalist options; ${oneShotLengthWindowWarnings.length} option(s) stayed outside the configured length window and were kept with warnings.`
+        : polishedCandidateIds.length > 0
+          ? `One-shot baseline produced 5 publishable finalists; exact-length polish tightened ${polishedCandidateIds.length} candidate(s) without repair or backfill.`
+          : "One-shot baseline produced 5 publishable finalists without repair or backfill."
   });
   recordExecutedStage(
     "oneShotReference",
@@ -6955,6 +7292,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       constraintCheck
     };
   });
+  const validCaptionOptions = captionOptions.filter((option) => option.constraintCheck.passed);
+  const invalidCaptionOptions = captionOptions.filter((option) => !option.constraintCheck.passed);
   const finalists = captionOptions.map((option) => ({
     option: option.option,
     candidateId: option.candidateId,
@@ -6970,33 +7309,64 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     constraintCheck: option.constraintCheck,
     whyChosen: [option.displayReason]
   }));
-  const winnerCandidate =
+  const requestedWinnerCandidate =
     candidates.find((candidate) => candidate.candidateId === oneShotResult.winnerCandidateId) ??
     candidates[0] ??
     null;
-  const winnerOption =
-    winnerCandidate
-      ? captionOptions.find((option) => option.candidateId === winnerCandidate.candidateId) ?? null
+  const requestedWinnerOption =
+    requestedWinnerCandidate
+      ? captionOptions.find((option) => option.candidateId === requestedWinnerCandidate.candidateId) ?? null
       : null;
+  const resolvedWinnerOption =
+    requestedWinnerOption?.constraintCheck.passed === false && validCaptionOptions.length > 0
+      ? validCaptionOptions[0] ?? requestedWinnerOption
+      : requestedWinnerOption;
+  const winnerFallbackWarning =
+    requestedWinnerOption &&
+    resolvedWinnerOption &&
+    requestedWinnerOption.candidateId !== resolvedWinnerOption.candidateId
+      ? `One-shot baseline winner "${requestedWinnerOption.candidateId}" missed the configured length window, so runtime promoted valid finalist "${resolvedWinnerOption.candidateId}" as final pick.`
+      : null;
+  if (oneShotLengthWindowWarnings.length > 0) {
+    warnings.push({
+      field: "oneShotReference",
+      message:
+        `${oneShotLengthWindowWarnings.length} one-shot finalist(s) stayed outside the configured length window and were kept for review instead of failing the run. ` +
+        oneShotLengthWindowWarnings.join(" ")
+    });
+  }
+  if (winnerFallbackWarning) {
+    warnings.push({
+      field: "oneShotReference",
+      message: winnerFallbackWarning
+    });
+  }
+  const winnerCandidate =
+    resolvedWinnerOption
+      ? candidates.find((candidate) => candidate.candidateId === resolvedWinnerOption.candidateId) ?? null
+      : requestedWinnerCandidate;
   const winner =
-    winnerCandidate && winnerOption
+    winnerCandidate && resolvedWinnerOption
       ? {
           candidateId: winnerCandidate.candidateId,
-          option: winnerOption.option,
-          reason: winnerOption.displayReason,
+          option: resolvedWinnerOption.option,
+          reason: resolvedWinnerOption.displayReason,
           displayTier: "finalist" as const,
           sourceStage: "oneShotReference" as const,
-          constraintCheck: winnerOption.constraintCheck
+          constraintCheck: resolvedWinnerOption.constraintCheck
         }
       : undefined;
   const finalPick = {
     option: winner?.option ?? 1,
-    reason: winner?.reason ?? "Reference one-shot baseline selected the strongest publishable option."
+    reason:
+      winnerFallbackWarning ??
+      winner?.reason ??
+      "Reference one-shot baseline selected the strongest publishable option."
   };
   const guardSummary: NativeCaptionGuardSummary = {
     totalCandidateCount: candidates.length,
-    validPoolCount: candidates.length,
-    invalidPoolCount: 0,
+    validPoolCount: validCaptionOptions.length,
+    invalidPoolCount: invalidCaptionOptions.length,
     finalistCount: finalists.length,
     displaySafeExtraCount: 0,
     recoveryCount: 0,
@@ -7012,6 +7382,22 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     recoveryReason: null,
     failClosedReason: null
   };
+
+  const captionHighlightsById = await runNativeCaptionHighlightingStage({
+    channelConfig: input.channelConfig,
+    captionOptions: captionOptions.map((option) => ({
+      candidateId: option.candidateId,
+      top: option.top,
+      bottom: option.bottom
+    })),
+    executor: input.executor,
+    stageModels: input.stageModels,
+    promptConfig: input.promptConfig,
+    warnings,
+    promptInputManifests,
+    reportProgress,
+    recordExecutedStage
+  });
 
   const displayOptionsForTranslation = captionOptions.map((option) => ({
     candidateId: option.candidateId,
@@ -7162,6 +7548,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       null;
     return {
       ...option,
+      highlights: captionHighlightsById.get(option.candidateId) ?? createEmptyTemplateCaptionHighlights(),
       topRu: translation?.topRu ?? option.top,
       bottomRu: translation?.bottomRu ?? option.bottom
     };
@@ -7537,6 +7924,7 @@ export class ViralShortsWorkerService {
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
+      templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -7602,6 +7990,7 @@ export class ViralShortsWorkerService {
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
+      templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -7628,6 +8017,7 @@ export class ViralShortsWorkerService {
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
+      templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -7655,6 +8045,7 @@ export class ViralShortsWorkerService {
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
+      templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -8607,6 +8998,22 @@ export class ViralShortsWorkerService {
       failClosedReason: null
     };
 
+    const captionHighlightsById = await runNativeCaptionHighlightingStage({
+      channelConfig,
+      captionOptions: captionOptions.map((option) => ({
+        candidateId: option.candidateId,
+        top: option.top,
+        bottom: option.bottom
+      })),
+      executor: input.executor,
+      stageModels: input.stageModels,
+      promptConfig,
+      warnings,
+      promptInputManifests,
+      reportProgress,
+      recordExecutedStage
+    });
+
     const displayOptionsForTranslation = captionOptions.map((option) => ({
       candidateId: option.candidateId,
       top: option.top,
@@ -8763,6 +9170,7 @@ export class ViralShortsWorkerService {
         captionTranslationArtifact?.items.find((item) => item.candidateId === option.candidateId) ?? null;
       return {
         ...option,
+        highlights: captionHighlightsById.get(option.candidateId) ?? createEmptyTemplateCaptionHighlights(),
         topRu: translation?.topRu ?? option.top,
         bottomRu: translation?.bottomRu ?? option.bottom
       };
@@ -9159,6 +9567,7 @@ export class ViralShortsWorkerService {
       stage2HardConstraints: Stage2HardConstraints;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
+      templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;

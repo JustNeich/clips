@@ -1,6 +1,6 @@
 import { fetchSourceMetadata } from "../../../../lib/source-acquisition";
 import { requireAuth } from "../../../../lib/auth/guards";
-import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
+import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,7 @@ export async function POST(request: Request): Promise<Response> {
 
     if (!isSupportedUrl(sourceUrl)) {
       return Response.json(
-        { error: "Поддерживаются ссылки на YouTube Shorts, Instagram Reels и Facebook Reels." },
+        { error: SUPPORTED_SOURCE_ERROR_MESSAGE },
         { status: 400 }
       );
     }

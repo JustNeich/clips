@@ -23,6 +23,7 @@ import type {
   Stage2VNextWorkerBuild
 } from "../stage2-vnext/contracts";
 import type { Stage2VNextTraceValidationResult } from "../stage2-vnext/validators";
+import type { TemplateCaptionHighlights, TemplateHighlightConfig } from "../template-highlights";
 
 export type Stage2RetrievalConfidence = "high" | "medium" | "low";
 export type Stage2ExamplesMode = "domain_guided" | "form_guided" | "style_guided";
@@ -325,6 +326,7 @@ export type Stage2RuntimeChannelConfig = {
   examplesSource: Stage2ExamplesCorpusSource;
   styleProfile?: Stage2StyleProfile;
   editorialMemory?: Stage2EditorialMemorySummary;
+  templateHighlightProfile?: TemplateHighlightConfig | null;
 };
 
 export type PromptPacket = {
@@ -1015,6 +1017,7 @@ export type ViralShortsStage2Result = {
     retainedHandle?: boolean;
     topRu?: string;
     bottomRu?: string;
+    highlights?: TemplateCaptionHighlights;
     constraintCheck: {
       passed: boolean;
       repaired: boolean;

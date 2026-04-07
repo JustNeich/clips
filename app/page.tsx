@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { AppShell, FlowStep } from "./components/AppShell";
 import { PublishingPlanner } from "./components/PublishingPlanner";
 import type {
@@ -95,6 +96,7 @@ import {
   resolveSourceFetchBlockedReason,
   shouldReuseActiveChatForSourceFetch
 } from "../lib/source-job-client";
+import { isUploadedSourceUrl } from "../lib/uploaded-source";
 import {
   STAGE3_TEMPLATE_ID
 } from "../lib/stage3-template";
@@ -103,6 +105,11 @@ import {
   clampStage3TextScaleUi,
   createStage3TextFitSnapshot
 } from "../lib/stage3-text-fit";
+import {
+  clearTemplateCaptionHighlightsBlock,
+  cloneTemplateCaptionHighlights,
+  createEmptyTemplateCaptionHighlights
+} from "../lib/template-highlights";
 import {
   buildLegacyTimelineEntries,
   findLatestStage3AgentSessionRef,
@@ -260,6 +267,7 @@ const ChannelOnboardingWizard = dynamic(
 type BusyAction =
   | ""
   | "fetch"
+  | "source-upload"
   | "download"
   | "comments"
   | "stage2"
@@ -344,6 +352,9 @@ export default function HomePage() {
   const [selectedTitleOption, setSelectedTitleOption] = useState<number | null>(null);
   const [stage3TopText, setStage3TopText] = useState("");
   const [stage3BottomText, setStage3BottomText] = useState("");
+  const [stage3CaptionHighlights, setStage3CaptionHighlights] = useState(() =>
+    createEmptyTemplateCaptionHighlights()
+  );
   const [stage3PublishAfterRender, setStage3PublishAfterRender] = useState(false);
   const [stage3ClipStartSec, setStage3ClipStartSec] = useState(0);
   const [stage3FocusY, setStage3FocusY] = useState(0.5);
@@ -430,6 +441,7 @@ export default function HomePage() {
     option: number | null;
     top: string;
     bottom: string;
+    highlightsSignature: string;
   } | null>(null);
   const initializedStage3ChatRef = useRef<string | null>(null);
   const previousChannelIdRef = useRef<string | null>(null);
@@ -475,16 +487,19 @@ export default function HomePage() {
   const stage3LocalExecutorAvailable =
     runtimeCapabilities?.features.stage3LocalExecutor ?? process.env.NODE_ENV === "production";
   const codexBlockedReason = runtimeCapabilities?.tools.codex.message ?? null;
+  const currentSourceIsUploaded = Boolean(activeChat?.url && isUploadedSourceUrl(activeChat.url));
   const sourceAcquisitionBlockedReason = runtimeCapabilities
-    ? [
-        runtimeCapabilities.tools.visolix.message,
-        runtimeCapabilities.tools.ytDlp.message
-      ]
+    ? [runtimeCapabilities.tools.visolix.message, runtimeCapabilities.tools.ytDlp.message]
         .filter((value): value is string => Boolean(value))
         .join(" ")
     : null;
   const fetchSourceBlockedReason = sourceAcquisitionBlockedReason;
   const downloadSourceBlockedReason = sourceAcquisitionBlockedReason;
+  const uploadSourceBlockedReason = !activeChannelId
+    ? "Сначала создайте/выберите канал."
+    : null;
+  const effectiveDownloadSourceAvailable = currentSourceIsUploaded || downloadSourceAvailable;
+  const effectiveDownloadSourceBlockedReason = currentSourceIsUploaded ? null : downloadSourceBlockedReason;
   const effectiveCodexBlockedReason = codexRunning
     ? "Device auth уже запущен. Завершите его или сначала отмените."
     : codexBlockedReason;
@@ -935,6 +950,10 @@ export default function HomePage() {
     []
   );
 
+  const getCaptionHighlightsSignature = useCallback((value: unknown): string => {
+    return JSON.stringify(value ?? createEmptyTemplateCaptionHighlights());
+  }, []);
+
   const hydrateChatEditorState = useCallback(
     (chat: ChatThread | null, draft: ChatDraft | null): void => {
       if (!chat) {
@@ -945,6 +964,7 @@ export default function HomePage() {
         setSelectedTitleOption(null);
         setStage3TopText("");
         setStage3BottomText("");
+        setStage3CaptionHighlights(createEmptyTemplateCaptionHighlights());
         setStage3ClipStartSec(0);
         setStage3FocusY(0.5);
         setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
@@ -1002,10 +1022,17 @@ export default function HomePage() {
       });
       const nextTopText = handoffSummary.topText ?? "";
       const nextBottomText = handoffSummary.bottomText ?? "";
+      const nextCaptionHighlights =
+        draft?.stage3.captionHighlights ??
+        latestVersion?.final.captionHighlights ??
+        handoffSummary.caption?.highlights ??
+        createEmptyTemplateCaptionHighlights();
       const hydratedFromSelectedCaption =
         Boolean(selectedCaptionForHydration) &&
         nextTopText === (selectedCaptionForHydration?.top ?? "") &&
-        nextBottomText === (selectedCaptionForHydration?.bottom ?? "");
+        nextBottomText === (selectedCaptionForHydration?.bottom ?? "") &&
+        getCaptionHighlightsSignature(nextCaptionHighlights) ===
+          getCaptionHighlightsSignature(selectedCaptionForHydration?.highlights ?? null);
 
       initializedStage3ChatRef.current = chat.id;
       setCurrentStep(getPreferredStepForChat(chat, draft));
@@ -1014,6 +1041,7 @@ export default function HomePage() {
       setSelectedTitleOption(handoffSummary.selectedTitleOption);
       setStage3TopText(nextTopText);
       setStage3BottomText(nextBottomText);
+      setStage3CaptionHighlights(cloneTemplateCaptionHighlights(nextCaptionHighlights));
       setStage3ClipStartSec(draft?.stage3.clipStartSec ?? latestVersion?.final.clipStartSec ?? 0);
       setStage3FocusY(draft?.stage3.focusY ?? latestVersion?.final.focusY ?? 0.5);
       setStage3RenderPlan(nextRenderPlan);
@@ -1038,7 +1066,8 @@ export default function HomePage() {
             chatId: chat.id,
             option: selectedCaptionForHydration?.option ?? null,
             top: nextTopText,
-            bottom: nextBottomText
+            bottom: nextBottomText,
+            highlightsSignature: getCaptionHighlightsSignature(nextCaptionHighlights)
           }
         : null;
       stage3PreviewRequestKeyRef.current = "";
@@ -1050,7 +1079,7 @@ export default function HomePage() {
       setStage3RenderState("idle");
       setStage3RenderJobId(null);
     },
-    [activeChannel, applyChannelToRenderPlan, channelAssets]
+    [activeChannel, applyChannelToRenderPlan, channelAssets, getCaptionHighlightsSignature]
   );
 
   const refreshChannels = useCallback(async (preferredChannelId?: string | null): Promise<Channel[]> => {
@@ -2162,6 +2191,7 @@ export default function HomePage() {
   const applyStage3Snapshot = useCallback((snapshot: Stage3StateSnapshot): void => {
     setStage3TopText(snapshot.topText);
     setStage3BottomText(snapshot.bottomText);
+    setStage3CaptionHighlights(cloneTemplateCaptionHighlights(snapshot.captionHighlights));
     setStage3ClipStartSec(snapshot.clipStartSec);
     setStage3FocusY(snapshot.focusY);
     setStage3RenderPlan(normalizeRenderPlan(snapshot.renderPlan, fallbackRenderPlan()));
@@ -2261,6 +2291,7 @@ export default function HomePage() {
             bottomText: stage3BottomText,
             channelName: effectiveRenderPlan.authorName,
             channelHandle: effectiveRenderPlan.authorHandle,
+            highlights: stage3CaptionHighlights,
             topFontScale: effectiveRenderPlan.topFontScale,
             bottomFontScale: effectiveRenderPlan.bottomFontScale,
             previewScale: 1,
@@ -2281,6 +2312,7 @@ export default function HomePage() {
       return {
         topText: templateSnapshot.content.topText,
         bottomText: templateSnapshot.content.bottomText,
+        captionHighlights: cloneTemplateCaptionHighlights(templateSnapshot.content.highlights),
         clipStartSec: snapshotClipStart,
         clipDurationSec: CLIP_DURATION_SEC,
         focusY: snapshotFocusY,
@@ -2319,6 +2351,7 @@ export default function HomePage() {
       sourceDurationSec,
       stage3AgentPrompt,
       stage3BottomText,
+      stage3CaptionHighlights,
       stage3ClipStartSec,
       stage3FocusY,
       stage3ManagedTemplateState,
@@ -2520,6 +2553,49 @@ export default function HomePage() {
     return { chat: body.chat, job: body.job, reused: false, activeStage2Run: null };
   };
 
+  const uploadSourceFileToChannel = async (input: {
+    channelId: string;
+    file: File;
+    autoRunStage2: boolean;
+  }): Promise<{
+    chat: ChatThread;
+    job: SourceJobDetail;
+  }> => {
+    const response = await fetch("/api/pipeline/source-upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": input.file.type || "video/mp4",
+        "X-Channel-Id": input.channelId,
+        "X-File-Name": encodeURIComponent(input.file.name),
+        "X-Auto-Run-Stage2": input.autoRunStage2 ? "1" : "0"
+      },
+      body: input.file
+    });
+
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось загрузить mp4."));
+    }
+
+    const body = (await response.json()) as {
+      chat: ChatThread;
+      job: SourceJobDetail;
+    };
+
+    setSourceJobId(body.job.jobId);
+    setSourceJobDetail(body.job);
+    setSourceJobs((current) => {
+      const deduped = current.filter((item) => item.jobId !== body.job.jobId);
+      return [body.job, ...deduped].slice(0, 20);
+    });
+    await Promise.allSettled([
+      refreshActiveChat(body.chat.id),
+      refreshSourceJobsForChat(body.chat.id),
+      refreshChats()
+    ]);
+
+    return body;
+  };
+
   const runStage2ForChat = async (
     chat: Pick<ChatThread, "id" | "url">,
     instruction: string,
@@ -2676,6 +2752,64 @@ export default function HomePage() {
     }
   };
 
+  const handleUploadSourceFile = async (file: File): Promise<void> => {
+    if (!file) {
+      return;
+    }
+    if (!activeChannelId) {
+      setStatusType("error");
+      setStatus("Сначала создайте/выберите канал.");
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".mp4")) {
+      setStatusType("error");
+      setStatus("Загрузить можно только готовый mp4 файл.");
+      return;
+    }
+    if (!canUploadSourceForChannel) {
+      setStatusType("error");
+      setStatus(uploadSourceBlockedReason ?? "Загрузка mp4 сейчас недоступна.");
+      return;
+    }
+
+    await flushActiveDraftSave();
+    setBusyAction("source-upload");
+    setIsBusy(true);
+    setIsSourceEnqueueing(true);
+    setStatus("");
+    setStatusType("");
+
+    try {
+      const { chat, job } = await uploadSourceFileToChannel({
+        channelId: activeChannelId,
+        file,
+        autoRunStage2: codexLoggedIn
+      });
+      setDraftUrl("");
+      await hydrateChatLiveState(chat.id, {
+        preferredStep: 1
+      });
+      showNextChatShortcutToast(chat.id);
+      setCurrentStep(1);
+      setStatusType("ok");
+      setStatus(
+        job.progress.detail ??
+          (codexLoggedIn
+            ? "mp4 загружен. Step 2 стартует автоматически после завершения Step 1."
+            : "mp4 загружен. Можно переключаться между чатами и вернуться позже.")
+      );
+    } catch (error) {
+      const message = getUiErrorMessage(error, "Не удалось загрузить mp4.");
+      setCurrentStep(1);
+      setStatusType("error");
+      setStatus(message);
+    } finally {
+      setIsSourceEnqueueing(false);
+      setIsBusy(false);
+      setBusyAction("");
+    }
+  };
+
   const handleDownloadVideo = async (): Promise<void> => {
     const sourceUrl = activeChat?.url ?? draftUrl.trim();
     if (!sourceUrl) {
@@ -2685,9 +2819,9 @@ export default function HomePage() {
     }
 
     const chatId = activeChat?.id ?? null;
-    if (!downloadSourceAvailable) {
+    if (!effectiveDownloadSourceAvailable) {
       setStatusType("error");
-      setStatus(downloadSourceBlockedReason ?? "Скачивание источника недоступно на этом деплое.");
+      setStatus(effectiveDownloadSourceBlockedReason ?? "Скачивание источника недоступно на этом деплое.");
       return;
     }
 
@@ -2714,7 +2848,7 @@ export default function HomePage() {
         throw new Error(await parseError(response, "Не удалось скачать видео."));
       }
 
-      const provider = response.headers.get("X-Source-Provider") as "visolix" | "ytDlp" | null;
+      const provider = response.headers.get("X-Source-Provider") as "visolix" | "ytDlp" | "upload" | null;
       const providerLabel = formatSourceProviderLabel(provider);
       const blob = await response.blob();
       const downloadUrl = URL.createObjectURL(blob);
@@ -2944,6 +3078,8 @@ export default function HomePage() {
       return;
     }
 
+    const baseSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, authoritativePreviewSnapshot);
+    commitStage3LiveSnapshot(baseSnapshot);
     await flushActiveDraftSave();
     setBusyAction("render");
     setIsBusy(true);
@@ -2957,7 +3093,6 @@ export default function HomePage() {
         : `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     try {
-      const baseSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, authoritativePreviewSnapshot);
       const renderSnapshot: Stage3StateSnapshot = {
         ...baseSnapshot,
         renderPlan: normalizeRenderPlan(
@@ -3229,6 +3364,8 @@ export default function HomePage() {
       return;
     }
 
+    const currentSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, authoritativePreviewSnapshot);
+    commitStage3LiveSnapshot(currentSnapshot);
     await flushActiveDraftSave();
     setBusyAction("stage3-optimize");
     setIsBusy(true);
@@ -3236,7 +3373,6 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const currentSnapshot = makeLiveSnapshot(draftOverrides, textFitOverride, authoritativePreviewSnapshot);
       const response = await fetch("/api/stage3/agent/run", {
         method: "POST",
         headers: {
@@ -3761,6 +3897,10 @@ export default function HomePage() {
     () => Boolean(activeChannelId) && !sourceJobBlockedReason && !isSourceEnqueueing,
     [activeChannelId, isSourceEnqueueing, sourceJobBlockedReason]
   );
+  const canUploadSourceForChannel = useMemo(
+    () => Boolean(activeChannelId) && !uploadSourceBlockedReason && !isSourceEnqueueing,
+    [activeChannelId, isSourceEnqueueing, uploadSourceBlockedReason]
+  );
   const canRunStage2ForActiveChat = useMemo(() => {
     if (!activeChat || !codexLoggedIn || !stage2RuntimeAvailable) {
       return false;
@@ -4026,7 +4166,12 @@ export default function HomePage() {
   );
 
   const syncStage3AutoAppliedCaption = useCallback(
-    (nextTopText: string, nextBottomText: string, preferredOption?: number | null) => {
+    (
+      nextTopText: string,
+      nextBottomText: string,
+      nextCaptionHighlights = createEmptyTemplateCaptionHighlights(),
+      preferredOption?: number | null
+    ) => {
       if (!activeChat?.id || !visibleStage2Result) {
         autoAppliedCaptionRef.current = null;
         return;
@@ -4036,35 +4181,46 @@ export default function HomePage() {
         visibleStage2Result,
         preferredOption ?? selectedOption ?? null
       );
-      if (sourceCaption && nextTopText === sourceCaption.top && nextBottomText === sourceCaption.bottom) {
+      if (
+        sourceCaption &&
+        nextTopText === sourceCaption.top &&
+        nextBottomText === sourceCaption.bottom &&
+        getCaptionHighlightsSignature(nextCaptionHighlights) ===
+          getCaptionHighlightsSignature(sourceCaption.highlights ?? null)
+      ) {
         autoAppliedCaptionRef.current = {
           chatId: activeChat.id,
           option: sourceCaption.option,
           top: sourceCaption.top,
-          bottom: sourceCaption.bottom
+          bottom: sourceCaption.bottom,
+          highlightsSignature: getCaptionHighlightsSignature(sourceCaption.highlights ?? null)
         };
         return;
       }
 
       autoAppliedCaptionRef.current = null;
     },
-    [activeChat?.id, selectedOption, visibleStage2Result]
+    [activeChat?.id, getCaptionHighlightsSignature, selectedOption, visibleStage2Result]
   );
 
   const handleStage3TopTextChange = useCallback(
     (value: string) => {
+      const nextCaptionHighlights = clearTemplateCaptionHighlightsBlock(stage3CaptionHighlights, "top");
       setStage3TopText(value);
-      syncStage3AutoAppliedCaption(value, stage3BottomText);
+      setStage3CaptionHighlights(nextCaptionHighlights);
+      syncStage3AutoAppliedCaption(value, stage3BottomText, nextCaptionHighlights);
     },
-    [stage3BottomText, syncStage3AutoAppliedCaption]
+    [stage3BottomText, stage3CaptionHighlights, syncStage3AutoAppliedCaption]
   );
 
   const handleStage3BottomTextChange = useCallback(
     (value: string) => {
+      const nextCaptionHighlights = clearTemplateCaptionHighlightsBlock(stage3CaptionHighlights, "bottom");
       setStage3BottomText(value);
-      syncStage3AutoAppliedCaption(stage3TopText, value);
+      setStage3CaptionHighlights(nextCaptionHighlights);
+      syncStage3AutoAppliedCaption(stage3TopText, value, nextCaptionHighlights);
     },
-    [stage3TopText, syncStage3AutoAppliedCaption]
+    [stage3CaptionHighlights, stage3TopText, syncStage3AutoAppliedCaption]
   );
 
   const handleApplyStage2CaptionToStage3 = useCallback(
@@ -4077,21 +4233,24 @@ export default function HomePage() {
       const nextText = applyStage2CaptionToStage3Text({
         currentTopText: stage3TopText,
         currentBottomText: stage3BottomText,
+        currentCaptionHighlights: stage3CaptionHighlights,
         caption: sourceCaption,
         mode
       });
 
       if (mode === "all") {
         setSelectedOption(option);
-        syncStage3AutoAppliedCaption(nextText.topText, nextText.bottomText, option);
+        syncStage3AutoAppliedCaption(nextText.topText, nextText.bottomText, nextText.captionHighlights, option);
       } else {
-        syncStage3AutoAppliedCaption(nextText.topText, nextText.bottomText);
+        syncStage3AutoAppliedCaption(nextText.topText, nextText.bottomText, nextText.captionHighlights);
       }
 
       setStage3TopText(nextText.topText);
       setStage3BottomText(nextText.bottomText);
+      setStage3CaptionHighlights(nextText.captionHighlights);
     },
     [
+      stage3CaptionHighlights,
       stage3BottomText,
       stage3TopText,
       syncStage3AutoAppliedCaption,
@@ -4107,15 +4266,22 @@ export default function HomePage() {
       const nextText = applyStage2CaptionToStage3Text({
         currentTopText: stage3TopText,
         currentBottomText: stage3BottomText,
+        currentCaptionHighlights: stage3CaptionHighlights,
         caption: selectedCaption,
         mode
       });
 
-      syncStage3AutoAppliedCaption(nextText.topText, nextText.bottomText, selectedCaption.option);
+      syncStage3AutoAppliedCaption(
+        nextText.topText,
+        nextText.bottomText,
+        nextText.captionHighlights,
+        selectedCaption.option
+      );
       setStage3TopText(nextText.topText);
       setStage3BottomText(nextText.bottomText);
+      setStage3CaptionHighlights(nextText.captionHighlights);
     },
-    [selectedCaption, stage3BottomText, stage3TopText, syncStage3AutoAppliedCaption]
+    [selectedCaption, stage3BottomText, stage3CaptionHighlights, stage3TopText, syncStage3AutoAppliedCaption]
   );
 
   const hasActiveStage3Draft = useMemo(() => {
@@ -4125,6 +4291,7 @@ export default function HomePage() {
     return (
       activeDraft.stage3.topText !== null ||
       activeDraft.stage3.bottomText !== null ||
+      activeDraft.stage3.captionHighlights !== null ||
       activeDraft.stage3.clipStartSec !== null ||
       activeDraft.stage3.focusY !== null ||
       activeDraft.stage3.renderPlan !== null ||
@@ -4151,6 +4318,10 @@ export default function HomePage() {
     );
     const baseTopText = latestVersion?.final.topText ?? selectedCaption?.top ?? "";
     const baseBottomText = latestVersion?.final.bottomText ?? selectedCaption?.bottom ?? "";
+    const baseCaptionHighlights =
+      latestVersion?.final.captionHighlights ??
+      selectedCaption?.highlights ??
+      createEmptyTemplateCaptionHighlights();
     const baseClipStart = latestVersion?.final.clipStartSec ?? 0;
     const baseFocusY = latestVersion?.final.focusY ?? 0.5;
     const baseAgentPrompt = latestVersion?.prompt ?? defaults.agentPrompt ?? "";
@@ -4171,6 +4342,11 @@ export default function HomePage() {
       stage3: {
         topText: stage3TopText !== baseTopText ? stage3TopText : null,
         bottomText: stage3BottomText !== baseBottomText ? stage3BottomText : null,
+        captionHighlights:
+          getCaptionHighlightsSignature(stage3CaptionHighlights) !==
+          getCaptionHighlightsSignature(baseCaptionHighlights)
+            ? cloneTemplateCaptionHighlights(stage3CaptionHighlights)
+            : null,
         clipStartSec: stage3ClipStartSec !== baseClipStart ? stage3ClipStartSec : null,
         focusY: stage3FocusY !== baseFocusY ? stage3FocusY : null,
         renderPlan: renderPlanOverride,
@@ -4202,7 +4378,9 @@ export default function HomePage() {
     stage3SelectedVersionId,
     stage3TopText,
     stage3BottomText,
+    stage3CaptionHighlights,
     stage3Versions,
+    getCaptionHighlightsSignature,
     visibleStage2SelectionDefaults.captionOption,
     visibleStage2SelectionDefaults.titleOption
   ]);
@@ -4274,11 +4452,12 @@ export default function HomePage() {
   );
 
   const flushActiveDraftSave = useCallback(async (): Promise<void> => {
+    const nextDraftPayload = currentDraftPayloadRef.current;
     if (draftSaveTimerRef.current !== null) {
       window.clearTimeout(draftSaveTimerRef.current);
       draftSaveTimerRef.current = null;
-      if (currentDraftPayload) {
-        await saveActiveDraftPayload(currentDraftPayload, { silent: true });
+      if (nextDraftPayload) {
+        await saveActiveDraftPayload(nextDraftPayload, { silent: true });
       }
       return;
     }
@@ -4286,7 +4465,7 @@ export default function HomePage() {
     if (draftInFlightRef.current) {
       await draftInFlightRef.current.catch(() => undefined);
     }
-  }, [currentDraftPayload, saveActiveDraftPayload]);
+  }, [saveActiveDraftPayload]);
 
   const hasWorkingStage3Draft = useMemo(() => {
     if (hasActiveStage3Draft) {
@@ -4311,6 +4490,16 @@ export default function HomePage() {
     () => (currentDraftPayload ? JSON.stringify(currentDraftPayload) : null),
     [currentDraftPayload]
   );
+  const currentDraftPayloadRef = useRef<typeof currentDraftPayload>(currentDraftPayload);
+  currentDraftPayloadRef.current = currentDraftPayload;
+
+  const commitStage3LiveSnapshot = useCallback((snapshot: Stage3StateSnapshot): void => {
+    // Render and optimize can begin from local editor overrides before parent state settles.
+    // Flushing the snapshot first keeps draft persistence and later hydration aligned to the same fragments.
+    flushSync(() => {
+      applyStage3Snapshot(snapshot);
+    });
+  }, [applyStage3Snapshot]);
 
   useEffect(() => {
     if (!activeChat || !currentDraftPayload || !currentDraftPayloadJson) {
@@ -4364,14 +4553,18 @@ export default function HomePage() {
 
     const nextTopText = selectedCaption?.top ?? "";
     const nextBottomText = selectedCaption?.bottom ?? "";
+    const nextCaptionHighlights = cloneTemplateCaptionHighlights(selectedCaption?.highlights);
+    const nextCaptionHighlightsSignature = getCaptionHighlightsSignature(nextCaptionHighlights);
     const currentAutoApplied = autoAppliedCaptionRef.current;
     const alreadyAppliedCurrentSelection =
       currentAutoApplied?.chatId === activeChat.id &&
       currentAutoApplied.option === (selectedCaption?.option ?? null) &&
       currentAutoApplied.top === nextTopText &&
       currentAutoApplied.bottom === nextBottomText &&
+      currentAutoApplied.highlightsSignature === nextCaptionHighlightsSignature &&
       stage3TopText === nextTopText &&
-      stage3BottomText === nextBottomText;
+      stage3BottomText === nextBottomText &&
+      getCaptionHighlightsSignature(stage3CaptionHighlights) === nextCaptionHighlightsSignature;
 
     if (alreadyAppliedCurrentSelection) {
       return;
@@ -4391,10 +4584,12 @@ export default function HomePage() {
       chatId: activeChat.id,
       option: selectedCaption?.option ?? null,
       top: nextTopText,
-      bottom: nextBottomText
+      bottom: nextBottomText,
+      highlightsSignature: nextCaptionHighlightsSignature
     };
     setStage3TopText(nextTopText);
     setStage3BottomText(nextBottomText);
+    setStage3CaptionHighlights(nextCaptionHighlights);
     setStage3SelectedVersionId(null);
     setStage3PassSelectionByVersion({});
     setStage3AgentSessionId(null);
@@ -4405,8 +4600,11 @@ export default function HomePage() {
     selectedCaption?.option,
     selectedCaption?.top,
     selectedCaption?.bottom,
+    selectedCaption?.highlights,
+    stage3CaptionHighlights,
     stage3TopText,
-    stage3BottomText
+    stage3BottomText,
+    getCaptionHighlightsSignature
   ]);
 
   useEffect(() => {
@@ -5045,6 +5243,7 @@ export default function HomePage() {
     setSelectedTitleOption(null);
     setStage3TopText("");
     setStage3BottomText("");
+    setStage3CaptionHighlights(createEmptyTemplateCaptionHighlights());
     setStage3ClipStartSec(0);
     setStage3FocusY(0.5);
     setStage3RenderPlan(applyChannelToRenderPlan(activeChannel, channelAssets));
@@ -5125,6 +5324,7 @@ export default function HomePage() {
       setSelectedTitleOption(null);
       setStage3TopText("");
       setStage3BottomText("");
+      setStage3CaptionHighlights(createEmptyTemplateCaptionHighlights());
       setStage3ClipStartSec(0);
       setStage3FocusY(0.5);
       setStage3RenderPlan(applyChannelToRenderPlan(nextChannel, []));
@@ -5952,6 +6152,7 @@ export default function HomePage() {
       selectedOption: selectedCaption?.option ?? null,
       top: stage3TopText,
       bottom: stage3BottomText,
+      captionHighlights: stage3CaptionHighlights,
       clipStartSec: stage3ClipStartSec,
       clipDurationSec: CLIP_DURATION_SEC,
       focusY: stage3FocusY,
@@ -6203,14 +6404,20 @@ export default function HomePage() {
           downloadBusy={busyAction === "download"}
           fetchAvailable={Boolean(canFetchSourceForActiveChat)}
           fetchBlockedReason={sourceJobBlockedReason}
-          downloadAvailable={downloadSourceAvailable}
-          downloadBlockedReason={downloadSourceBlockedReason}
+          uploadBusy={busyAction === "source-upload"}
+          uploadAvailable={Boolean(canUploadSourceForChannel)}
+          uploadBlockedReason={uploadSourceBlockedReason}
+          downloadAvailable={effectiveDownloadSourceAvailable}
+          downloadBlockedReason={effectiveDownloadSourceBlockedReason}
           onDraftUrlChange={setDraftUrl}
           onPaste={() => {
             void handlePasteFromClipboard();
           }}
           onFetch={() => {
             void handleFetchSource();
+          }}
+          onUploadFile={(file) => {
+            void handleUploadSourceFile(file);
           }}
           onDownloadSource={() => {
             void handleDownloadVideo();
@@ -6299,6 +6506,7 @@ export default function HomePage() {
           canRollbackSelectedVersion={canRollbackStage3Version}
           topText={stage3TopText}
           bottomText={stage3BottomText}
+          captionHighlights={stage3CaptionHighlights}
           captionSources={visibleStage2Result?.output.captionOptions ?? []}
           selectedCaptionOption={selectedOption ?? visibleStage2SelectionDefaults.captionOption}
           handoffSummary={stage3HandoffSummary}
