@@ -10520,11 +10520,14 @@ test("step 1 shows attached source job as neutral live state instead of repeatin
       downloadBusy: false,
       fetchAvailable: false,
       fetchBlockedReason: "Для этого чата уже идёт получение источника.",
+      uploadBusy: false,
+      uploadAvailable: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
+      onUploadFile: () => undefined,
       onDownloadSource: () => undefined
     })
   );
@@ -10545,11 +10548,14 @@ test("step 1 keeps an attached stage 2 run informational instead of rendering it
       downloadBusy: false,
       fetchAvailable: false,
       fetchBlockedReason: "Для этого чата уже идёт Stage 2. Дождитесь завершения перед новым получением источника.",
+      uploadBusy: false,
+      uploadAvailable: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
+      onUploadFile: () => undefined,
       onDownloadSource: () => undefined
     })
   );
@@ -10570,11 +10576,14 @@ test("step 1 preview makes the source link clickable and embeds a YouTube player
       downloadBusy: false,
       fetchAvailable: true,
       fetchBlockedReason: null,
+      uploadBusy: false,
+      uploadAvailable: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
+      onUploadFile: () => undefined,
       onDownloadSource: () => undefined
     })
   );
@@ -10630,12 +10639,15 @@ test("step 1 no longer renders an inline next-chat shortcut card inside the work
       downloadBusy: false,
       fetchAvailable: true,
       fetchBlockedReason: null,
+      uploadBusy: false,
+      uploadAvailable: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
       showCreateNextChatShortcut: true,
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
+      onUploadFile: () => undefined,
       onDownloadSource: () => undefined,
       onCreateNextChat: () => undefined
     })

@@ -483,3 +483,42 @@ test("system managed templates reject direct update and delete requests", async 
     assert.equal(deleteBody.error, "Системный шаблон нельзя менять напрямую. Создай копию и редактируй её.");
   });
 });
+
+test("channels self-heal to the default template when a custom managed template is missing", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Channel Template Repair Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const template = await createManagedTemplate(
+      {
+        name: "Ephemeral Template",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Repair Channel",
+      username: "repair_channel",
+      templateId: template.id
+    });
+
+    await deleteManagedTemplate(template.id);
+
+    const reloaded = await chatHistory.getChannelById(channel.id);
+    assert.equal(reloaded?.templateId, STAGE3_TEMPLATE_ID);
+
+    const listed = await chatHistory.listChannels(owner.workspace.id);
+    assert.equal(listed.find((item) => item.id === channel.id)?.templateId, STAGE3_TEMPLATE_ID);
+  });
+});

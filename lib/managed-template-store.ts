@@ -1,7 +1,8 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { getAppDataDir } from "./app-paths";
 import { getStage3DesignLabPreset } from "./stage3-design-lab";
 import type { TemplateContentFixture } from "./template-calibration-types";
 import {
@@ -71,6 +72,14 @@ function slugify(value: string): string {
 
 function getManagedTemplatesRoot(): string {
   const override = process.env.MANAGED_TEMPLATES_ROOT?.trim();
+  if (override) {
+    return path.resolve(override);
+  }
+  return path.join(getAppDataDir(), "managed-templates");
+}
+
+function getLegacyManagedTemplatesRoot(): string {
+  const override = process.env.MANAGED_TEMPLATES_LEGACY_ROOT?.trim();
   if (override) {
     return path.resolve(override);
   }
@@ -487,8 +496,71 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
+async function migrateLegacyManagedTemplatesRoot(): Promise<void> {
+  const root = getManagedTemplatesRoot();
+  const legacyRoot = getLegacyManagedTemplatesRoot();
+  if (path.resolve(root) === path.resolve(legacyRoot)) {
+    return;
+  }
+
+  let legacyEntries: string[];
+  try {
+    legacyEntries = await fs.readdir(legacyRoot);
+  } catch {
+    return;
+  }
+
+  await fs.mkdir(root, { recursive: true });
+  const targetEntries = new Set(await fs.readdir(root).catch(() => []));
+  const legacyJsonEntries = legacyEntries.filter((entry) => entry.endsWith(".json"));
+
+  await Promise.all(
+    legacyJsonEntries.map(async (entry) => {
+      if (targetEntries.has(entry)) {
+        return;
+      }
+      const sourcePath = path.join(legacyRoot, entry);
+      const targetPath = path.join(root, entry);
+      try {
+        await fs.copyFile(sourcePath, targetPath);
+      } catch {
+        // Best-effort migration only. If the copy fails, seeding/runtime fallback will still continue.
+      }
+    })
+  );
+}
+
+function migrateLegacyManagedTemplatesRootSync(): void {
+  const root = getManagedTemplatesRoot();
+  const legacyRoot = getLegacyManagedTemplatesRoot();
+  if (path.resolve(root) === path.resolve(legacyRoot)) {
+    return;
+  }
+
+  let legacyEntries: string[];
+  try {
+    legacyEntries = readdirSync(legacyRoot);
+  } catch {
+    return;
+  }
+
+  mkdirSync(root, { recursive: true });
+  const targetEntries = new Set(readdirSync(root));
+  for (const entry of legacyEntries) {
+    if (!entry.endsWith(".json") || targetEntries.has(entry)) {
+      continue;
+    }
+    try {
+      copyFileSync(path.join(legacyRoot, entry), path.join(root, entry));
+    } catch {
+      // Best-effort migration only. Missing copies will fall back to seeding/runtime defaults.
+    }
+  }
+}
+
 async function ensureManagedTemplatesRoot(): Promise<void> {
   const root = getManagedTemplatesRoot();
+  await migrateLegacyManagedTemplatesRoot();
   await fs.mkdir(root, { recursive: true });
 
   const existingTemplateFiles = new Set(
@@ -513,6 +585,7 @@ async function ensureManagedTemplatesRoot(): Promise<void> {
 
 function ensureManagedTemplatesRootSync(): void {
   const root = getManagedTemplatesRoot();
+  migrateLegacyManagedTemplatesRootSync();
   mkdirSync(root, { recursive: true });
 
   const existingTemplateFiles = new Set(

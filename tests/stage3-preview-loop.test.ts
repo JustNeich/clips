@@ -53,14 +53,14 @@ test("preview frame loop starts after the browser emits play for an async autopl
   video.dispatch("play");
 
   assert.ok(pendingFrame);
-  const firstFrame = pendingFrame;
+  const firstFrame = pendingFrame as () => void;
   pendingFrame = null;
-  firstFrame?.();
+  firstFrame();
   assert.equal(publishCalls, 1);
   assert.ok(pendingFrame);
-  const secondFrame = pendingFrame;
+  const secondFrame = pendingFrame as () => void;
   pendingFrame = null;
-  secondFrame?.();
+  secondFrame();
   assert.equal(publishCalls, 2);
   assert.equal(pendingFrame, null);
 

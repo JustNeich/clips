@@ -29,6 +29,8 @@
 - built-in/system templates всегда видны в библиотеке, но открываются только в `read-only`;
 - чтобы изменить встроенный шаблон, нужно создать копию из `template-road`, после чего она становится обычным managed template;
 - для ролей ниже manager библиотека показывает не только личные drafts, но и шаблоны, назначенные на видимые им каналы.
+- managed templates по умолчанию хранятся в app-data storage, а не в `design/managed-templates` внутри рабочей копии;
+- при первом доступе runtime автоматически мигрирует legacy templates из старой repo-backed папки в новое durable storage.
 
 ## Как использовать
 

@@ -28,6 +28,7 @@ import { parseStage2WorkerProfileId } from "./stage2-worker-profile";
 import { listLatestPublicationSummariesByChatIds } from "./publication-store";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
+import { readManagedTemplate } from "./managed-template-store";
 import { getWorkspace, getWorkspaceStage2HardConstraints } from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
 
@@ -125,6 +126,35 @@ function sanitizeName(value: string | null | undefined, fallback: string): strin
     .replace(/\s+/g, " ")
     .trim();
   return normalized || fallback;
+}
+
+async function resolvePersistedChannelTemplateId(
+  value: string | null | undefined,
+  fallback = DEFAULT_TEMPLATE_ID
+): Promise<string> {
+  const candidate = sanitizeName(value, fallback);
+  const resolved = await readManagedTemplate(candidate);
+  return resolved?.id ?? fallback;
+}
+
+async function repairChannelTemplateReference(channel: Channel): Promise<Channel> {
+  const resolvedTemplateId = await resolvePersistedChannelTemplateId(channel.templateId);
+  if (resolvedTemplateId === channel.templateId) {
+    return channel;
+  }
+
+  const updatedAt = nowIso();
+  const db = getDb();
+  db.prepare("UPDATE channels SET template_id = ?, updated_at = ? WHERE id = ?").run(
+    resolvedTemplateId,
+    updatedAt,
+    channel.id
+  );
+  return {
+    ...channel,
+    templateId: resolvedTemplateId,
+    updatedAt
+  };
 }
 
 function sanitizeTextBlock(value: string | null | undefined, fallback: string): string {
@@ -291,7 +321,7 @@ export async function listChannels(workspaceId?: string): Promise<Channel[]> {
       "SELECT * FROM channels WHERE workspace_id = ? AND archived_at IS NULL ORDER BY updated_at DESC"
     )
     .all(workspaceId ?? getAnyWorkspaceId()) as Record<string, unknown>[];
-  return rows.map(mapChannel);
+  return Promise.all(rows.map((row) => repairChannelTemplateReference(mapChannel(row))));
 }
 
 export async function listChannelsWithStats(
@@ -326,7 +356,7 @@ export async function getChannelById(channelId: string): Promise<Channel | null>
   const row = db.prepare("SELECT * FROM channels WHERE id = ?").get(channelId) as
     | Record<string, unknown>
     | undefined;
-  return row ? mapChannel(row) : null;
+  return row ? repairChannelTemplateReference(mapChannel(row)) : null;
 }
 
 export async function getDefaultChannel(workspaceId?: string): Promise<Channel> {
@@ -339,7 +369,7 @@ export async function getDefaultChannel(workspaceId?: string): Promise<Channel> 
   if (!row) {
     throw new Error("Default channel not found.");
   }
-  return mapChannel(row);
+  return repairChannelTemplateReference(mapChannel(row));
 }
 
 export async function createChannel(input: {
@@ -359,6 +389,7 @@ export async function createChannel(input: {
 }): Promise<Channel> {
   const now = nowIso();
   const username = sanitizeUsername(input.username ?? "channel");
+  const templateId = await resolvePersistedChannelTemplateId(input.templateId);
   const channel: Channel = {
     id: newId(),
     workspaceId: input.workspaceId,
@@ -387,7 +418,7 @@ export async function createChannel(input: {
     stage2StyleProfile: input.stage2StyleProfile
       ? parseStage2StyleProfileJson(stringifyStage2StyleProfile(input.stage2StyleProfile))
       : DEFAULT_STAGE2_STYLE_PROFILE,
-    templateId: sanitizeName(input.templateId, DEFAULT_TEMPLATE_ID),
+    templateId,
     avatarAssetId: null,
     defaultBackgroundAssetId: null,
     defaultMusicAssetId: null,
@@ -457,6 +488,10 @@ export async function updateChannelById(
     throw new Error("Channel not found.");
   }
   const assetIds = new Set((await listChannelAssets(channelId)).map((asset) => asset.id));
+  const nextTemplateId =
+    typeof patch.templateId === "string"
+      ? await resolvePersistedChannelTemplateId(patch.templateId, channel.templateId)
+      : channel.templateId;
 
   const next = {
     ...channel,
@@ -504,10 +539,7 @@ export async function updateChannelById(
       "stage2StyleProfile" in patch && patch.stage2StyleProfile
         ? parseStage2StyleProfileJson(stringifyStage2StyleProfile(patch.stage2StyleProfile))
         : channel.stage2StyleProfile,
-    templateId:
-      typeof patch.templateId === "string"
-        ? sanitizeName(patch.templateId, channel.templateId)
-        : channel.templateId,
+    templateId: nextTemplateId,
     avatarAssetId:
       "avatarAssetId" in patch
         ? patch.avatarAssetId && assetIds.has(patch.avatarAssetId)
