@@ -26,6 +26,29 @@ test("buildStage3PlaybackPlan uses clip window when there are no explicit segmen
   assert.equal(plan.totalOutputDurationSec, 6);
 });
 
+test("buildStage3PlaybackPlan preserves an explicit whole-window selection and compresses it into 6 seconds", () => {
+  const plan = buildStage3PlaybackPlan({
+    segments: [{ startSec: 10, endSec: 30, speed: 1, label: "Whole window" }],
+    selectionMode: "window",
+    sourceDurationSec: 40,
+    clipStartSec: 10,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+
+  assert.equal(plan.segments.length, 1);
+  assert.equal(plan.segments[0]?.sourceStartSec, 10);
+  assert.equal(plan.segments[0]?.sourceEndSec, 30);
+  assert.equal(plan.totalOutputDurationSec, 6);
+  assert.equal(plan.timingMode, "compress");
+
+  const middle = resolveStage3PlaybackPosition(plan, 3);
+  assert.ok(middle);
+  assert.equal(Number(middle?.sourceTimeSec.toFixed(2)), 20);
+});
+
 test("buildStage3PlaybackPlan compresses the full source when normalize mode is active without explicit fragments", () => {
   const plan = buildStage3PlaybackPlan({
     segments: [],

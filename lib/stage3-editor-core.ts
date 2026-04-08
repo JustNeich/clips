@@ -322,11 +322,12 @@ function buildSourceSelection(params: {
     ];
   } else {
     fragments = [
-      buildWindowFragment({
-        clipStartSec: params.clipStartSec,
-        clipDurationSec: params.clipDurationSec,
-        sourceDurationSec: params.sourceDurationSec
-      })
+      explicitFragments[0] ??
+        buildWindowFragment({
+          clipStartSec: params.clipStartSec,
+          clipDurationSec: params.clipDurationSec,
+          sourceDurationSec: params.sourceDurationSec
+        })
     ];
   }
 

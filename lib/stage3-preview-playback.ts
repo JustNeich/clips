@@ -1,4 +1,9 @@
-import type { Stage3RenderPolicy, Stage3Segment, Stage3TimingMode } from "../app/components/types";
+import type {
+  Stage3EditorSelectionMode,
+  Stage3RenderPolicy,
+  Stage3Segment,
+  Stage3TimingMode
+} from "../app/components/types";
 import {
   buildStage3EditorSession,
   buildStage3EditorTimingKey,
@@ -69,6 +74,7 @@ export function buildStage3PlaybackPlan(params: {
   targetDurationSec: number;
   timingMode: Stage3TimingMode;
   policy: Stage3RenderPolicy;
+  selectionMode?: Stage3EditorSelectionMode;
 }): Stage3PlaybackPlan {
   const session = buildStage3EditorSession({
     rawSegments: params.segments,
@@ -76,7 +82,14 @@ export function buildStage3PlaybackPlan(params: {
     clipDurationSec: params.clipDurationSec,
     targetDurationSec: params.targetDurationSec,
     sourceDurationSec: params.sourceDurationSec,
-    selectionMode: params.segments.length > 0 ? "fragments" : params.policy === "fixed_segments" ? "window" : "fragments",
+    selectionMode:
+      params.selectionMode === "window" || params.selectionMode === "fragments"
+        ? params.selectionMode
+        : params.segments.length > 0
+          ? "fragments"
+          : params.policy === "fixed_segments"
+            ? "window"
+            : "fragments",
     legacyRenderPolicy: params.policy,
     legacyNormalizeToTargetEnabled: params.timingMode === "compress" || params.timingMode === "stretch"
   });

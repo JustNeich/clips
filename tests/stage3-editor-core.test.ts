@@ -21,6 +21,28 @@ test("single window without manual fragments produces an exact 6 second output p
   assert.equal(session.output.timingMode, "auto");
 });
 
+test("window mode can keep an explicit source window longer than 6 seconds and compress it into the fixed output", () => {
+  const session = buildStage3EditorSession({
+    rawSegments: [{ startSec: 10, endSec: 30, speed: 1, label: "Main window" }],
+    selectionMode: "window",
+    clipStartSec: 10,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    sourceDurationSec: 85.4
+  });
+
+  assert.equal(session.source.selectionMode, "window");
+  assert.equal(session.source.windowStartSec, 10);
+  assert.equal(session.source.windowEndSec, 30);
+  assert.equal(session.source.totalSelectedSourceDurationSec, 20);
+  assert.equal(session.renderPlanPatch.segments.length, 1);
+  assert.equal(session.renderPlanPatch.segments[0]?.startSec, 10);
+  assert.equal(session.renderPlanPatch.segments[0]?.endSec, 30);
+  assert.equal(session.output.totalOutputDurationSec, 6);
+  assert.equal(session.output.timingMode, "compress");
+  assert.equal(Number(session.output.segments[0]!.resolvedPlaybackRate.toFixed(3)), Number((20 / 6).toFixed(3)));
+});
+
 test("manual fragments are sorted, clamped, and de-overlapped before output planning", () => {
   const normalized = normalizeStage3EditorFragments({
     segments: [

@@ -6624,18 +6624,14 @@ export default function HomePage() {
               sourceDurationSec
             });
 
-            if (editorSelectionMode === "fragments" && normalizedSegments.length > 0) {
-              setStage3ClipStartSec(normalizedSegments[0]?.startSec ?? 0);
-            }
+            setStage3ClipStartSec(session.source.windowStartSec);
 
             setStage3RenderPlan((prev) =>
               normalizeRenderPlan(
                 {
                   ...prev,
-                  segments: normalizedSegments,
-                  editorSelectionMode: editorSelectionMode === "fragments" && normalizedSegments.length > 0
-                    ? "fragments"
-                    : "window",
+                  segments: session.renderPlanPatch.segments,
+                  editorSelectionMode: session.renderPlanPatch.editorSelectionMode,
                   timingMode: session.renderPlanPatch.timingMode,
                   normalizeToTargetEnabled: session.renderPlanPatch.normalizeToTargetEnabled,
                   policy: session.renderPlanPatch.policy

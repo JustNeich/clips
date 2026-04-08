@@ -15,10 +15,12 @@ This note captures the reliability rules for the manual fragment editor in Stage
 - Any timing edit resets preview playback back to `0s`.
 - The source overview rail is the primary direct-manipulation surface:
   - when there are no explicit fragments, the blue window itself is the clip-range control, so there is no separate `Начало клипа` slider;
-  - drag the segment body to move the fragment;
+  - in whole-window mode, drag the blue window body to move the selected source range and drag either edge to change its duration;
+  - drag the fragment body to move a manual fragment;
   - drag the left handle to trim `От`;
   - drag the right handle to trim `До`.
 - The old `Подогнать к 6с` toggle is removed. The editor always normalizes the selected material to the exact 6-second output timeline.
+- Whole-window mode is no longer fixed to a 6-second source slice. The selected source range may be shorter or longer than `6.0s`, and Stage 3 stretches or compresses it into the canonical output timeline.
 
 ## Per-fragment transforms
 
@@ -29,6 +31,7 @@ This note captures the reliability rules for the manual fragment editor in Stage
 ## Validation rules
 
 - Fragment timing is still clamped to the same source bounds used by numeric inputs.
+- Whole-window timing follows the same clamp rules as fragment timing, including the `0.1s` minimum width.
 - Minimum fragment duration remains `0.1s`.
 - Manual fragments are sorted, clamped to source duration, and de-overlapped before preview/render.
 - Overfilled selections are compressed into `6.0s`.

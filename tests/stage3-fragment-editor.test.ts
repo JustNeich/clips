@@ -119,3 +119,22 @@ test("normalizeRenderPlan sorts fragments by time so preview and render use the 
   assert.equal(normalized.segments[1]?.label, "B");
   assert.equal(normalized.policy, "fixed_segments");
 });
+
+test("normalizeRenderPlan preserves a whole-window selection stored as a single explicit segment", () => {
+  const normalized = normalizeRenderPlan(
+    {
+      ...fallbackRenderPlan(),
+      segments: [{ startSec: 10, endSec: 30, speed: 1, label: "Window" }],
+      editorSelectionMode: "window",
+      policy: "fixed_segments",
+      timingMode: "compress"
+    },
+    fallbackRenderPlan()
+  );
+
+  assert.equal(normalized.editorSelectionMode, "window");
+  assert.equal(normalized.segments.length, 1);
+  assert.equal(normalized.segments[0]?.startSec, 10);
+  assert.equal(normalized.segments[0]?.endSec, 30);
+  assert.equal(normalized.policy, "fixed_segments");
+});

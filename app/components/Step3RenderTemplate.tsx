@@ -279,6 +279,7 @@ type FragmentTimelineDragState =
     }
   | {
       target: "window";
+      mode: FragmentTimelineDragMode;
       startSec: number;
       endSec: number;
       durationSec: number;
@@ -1013,6 +1014,7 @@ type Stage3LivePreviewPanelProps = {
   clipDurationSec: number;
   sourceDurationSec: number | null;
   segments: Stage3Segment[];
+  editorSelectionMode?: Stage3EditorSelectionMode;
   timingMode: Stage3TimingMode;
   renderPolicy: Stage3RenderPolicy;
   focusY: number;
@@ -1065,6 +1067,7 @@ function Stage3LivePreviewPanel({
   clipDurationSec,
   sourceDurationSec,
   segments,
+  editorSelectionMode,
   timingMode,
   renderPolicy,
   focusY,
@@ -1166,9 +1169,10 @@ function Stage3LivePreviewPanel({
         clipDurationSec,
         targetDurationSec: clipDurationSec,
         timingMode,
-        policy: renderPolicy
+        policy: renderPolicy,
+        selectionMode: editorSelectionMode
       }),
-    [clipDurationSec, clipStartSec, renderPolicy, resolvedSourceDurationSec, segments, timingMode]
+    [clipDurationSec, clipStartSec, editorSelectionMode, renderPolicy, resolvedSourceDurationSec, segments, timingMode]
   );
   const playbackDurationSec =
     playbackPlan.totalOutputDurationSec > 0 ? playbackPlan.totalOutputDurationSec : clipDurationSec;
@@ -2087,6 +2091,7 @@ export function Step3RenderTemplate({
   const musicGainCommitTimerRef = useRef<number | null>(null);
 
   const [localClipStartSec, setLocalClipStartSec] = useState(clipStartSec);
+  const [localWholeClipWindowEndSec, setLocalWholeClipWindowEndSec] = useState(clipStartSec + clipDurationSec);
   const [localFocusY, setLocalFocusY] = useState(focusY);
   const [localVideoZoom, setLocalVideoZoom] = useState(videoZoom);
   const [selectedPositionKeyframeId, setSelectedPositionKeyframeId] = useState<string | null>(null);
@@ -2315,8 +2320,33 @@ export function Step3RenderTemplate({
   const isManagedTemplateReady = hasResolvedStage3ManagedTemplateState(managedTemplateState, templateId);
   const isPreviewTextFitReady = isPreviewTextFitMeasured && isManagedTemplateReady;
 
-  const maxStartSec = Math.max(0, (fragmentSourceDurationSec ?? clipDurationSec) - clipDurationSec);
-  const clipEndSec = localClipStartSec + clipDurationSec;
+  const implicitWholeClipWindowSegment = useMemo(
+    () =>
+      normalizeEditorSegments(
+        [
+          {
+            startSec: clipStartSec,
+            endSec: clipStartSec + clipDurationSec,
+            speed: 1,
+            label: "Основной фрагмент"
+          }
+        ],
+        fragmentSourceDurationSec
+      )[0] ?? {
+        startSec: roundToTenth(Math.max(0, clipStartSec)),
+        endSec: roundToTenth(Math.max(clipStartSec + 0.1, clipStartSec + clipDurationSec)),
+        speed: 1,
+        label: "Основной фрагмент"
+      },
+    [clipDurationSec, clipStartSec, fragmentSourceDurationSec]
+  );
+  const propWholeClipWindowSegment = useMemo(
+    () =>
+      resolvedEditorSelectionMode === "window"
+        ? normalizeEditorSegments(segments, fragmentSourceDurationSec)[0] ?? implicitWholeClipWindowSegment
+        : implicitWholeClipWindowSegment,
+    [fragmentSourceDurationSec, implicitWholeClipWindowSegment, resolvedEditorSelectionMode, segments]
+  );
   const normalizedSegments = useMemo(
     () =>
       resolvedEditorSelectionMode === "fragments"
@@ -2324,14 +2354,39 @@ export function Step3RenderTemplate({
         : [],
     [fragmentSourceDurationSec, resolvedEditorSelectionMode, segments]
   );
+  const wholeClipWindowSegment = useMemo(
+    () =>
+      normalizeEditorSegments(
+        [
+          {
+            ...propWholeClipWindowSegment,
+            startSec: localClipStartSec,
+            endSec: localWholeClipWindowEndSec
+          }
+        ],
+        fragmentSourceDurationSec
+      )[0] ?? propWholeClipWindowSegment,
+    [fragmentSourceDurationSec, localClipStartSec, localWholeClipWindowEndSec, propWholeClipWindowSegment]
+  );
+  const wholeClipWindowDurationSec = Math.max(
+    0.1,
+    (wholeClipWindowSegment?.endSec ?? localWholeClipWindowEndSec) - (wholeClipWindowSegment?.startSec ?? localClipStartSec)
+  );
+  const maxStartSec = Math.max(0, (fragmentSourceDurationSec ?? wholeClipWindowDurationSec) - wholeClipWindowDurationSec);
+  const clipEndSec = resolvedEditorSelectionMode === "window"
+    ? wholeClipWindowSegment?.endSec ?? localWholeClipWindowEndSec
+    : localClipStartSec + clipDurationSec;
   const editorSession = useMemo(
     () =>
       buildStage3EditorSession({
-        rawSegments: normalizedSegments,
+        rawSegments: resolvedEditorSelectionMode === "window" ? (wholeClipWindowSegment ? [wholeClipWindowSegment] : []) : normalizedSegments,
         selectionMode: resolvedEditorSelectionMode,
         legacyRenderPolicy: renderPolicy,
         legacyNormalizeToTargetEnabled: editorAlwaysNormalize,
-        clipStartSec: localClipStartSec,
+        clipStartSec:
+          resolvedEditorSelectionMode === "window"
+            ? wholeClipWindowSegment?.startSec ?? localClipStartSec
+            : localClipStartSec,
         clipDurationSec,
         targetDurationSec: clipDurationSec,
         sourceDurationSec: fragmentSourceDurationSec
@@ -2341,6 +2396,7 @@ export function Step3RenderTemplate({
       editorAlwaysNormalize,
       fragmentSourceDurationSec,
       localClipStartSec,
+      wholeClipWindowSegment,
       normalizedSegments,
       renderPolicy,
       resolvedEditorSelectionMode
@@ -2359,7 +2415,8 @@ export function Step3RenderTemplate({
         clipDurationSec,
         targetDurationSec: clipDurationSec,
         timingMode: editorSession.renderPlanPatch.timingMode,
-        policy: "fixed_segments"
+        policy: "fixed_segments",
+        selectionMode: editorSession.source.selectionMode
       }),
     [clipDurationSec, editorSession, fragmentSourceDurationSec]
   );
@@ -2517,7 +2574,7 @@ export function Step3RenderTemplate({
   const manualTimingLabel =
     normalizedSegments.length > 0
       ? `Фрагменты ${normalizedSegments.length} · выход ${formatTimeSec(effectiveOutputDurationSec)}`
-      : `Окно ${formatTimeSec(clipDurationSec)}`;
+      : `Окно ${formatTimeSec(sourceDisplayDurationSec)}`;
   const editorZoomLabel = `x${localVideoZoom.toFixed(2)}`;
   const nextFragmentSuggestion = useMemo(() => {
     if (!sourceUrl) {
@@ -2647,8 +2704,21 @@ export function Step3RenderTemplate({
   );
 
   useEffect(() => {
+    if (resolvedEditorSelectionMode === "window") {
+      setLocalClipStartSec(propWholeClipWindowSegment.startSec);
+      setLocalWholeClipWindowEndSec(propWholeClipWindowSegment.endSec ?? propWholeClipWindowSegment.startSec + 0.1);
+      return;
+    }
     setLocalClipStartSec(clamp(clipStartSec, 0, maxStartSec));
-  }, [clipStartSec, maxStartSec]);
+    setLocalWholeClipWindowEndSec(clamp(clipStartSec + clipDurationSec, clipStartSec + 0.1, clipStartSec + clipDurationSec));
+  }, [
+    clipDurationSec,
+    clipStartSec,
+    maxStartSec,
+    propWholeClipWindowSegment.endSec,
+    propWholeClipWindowSegment.startSec,
+    resolvedEditorSelectionMode
+  ]);
 
   useEffect(() => {
     setPreviewMeasuredFitState((current) => {
@@ -3666,12 +3736,45 @@ export function Step3RenderTemplate({
     flushMusicGainCommit(next);
   };
 
+  const commitWholeClipWindow = useCallback(
+    (nextStartSec: number, nextEndSec: number) => {
+      const boundedWindow = normalizeEditorSegments(
+        [
+          {
+            ...(wholeClipWindowSegment ?? propWholeClipWindowSegment),
+            startSec: nextStartSec,
+            endSec: nextEndSec,
+            speed: 1
+          }
+        ],
+        fragmentSourceDurationSec
+      )[0];
+      if (!boundedWindow) {
+        return null;
+      }
+      setLocalClipStartSec(boundedWindow.startSec);
+      setLocalWholeClipWindowEndSec(boundedWindow.endSec ?? boundedWindow.startSec + 0.1);
+      onFragmentStateChange({
+        segments: [boundedWindow],
+        editorSelectionMode: "window"
+      });
+      return boundedWindow;
+    },
+    [
+      fragmentSourceDurationSec,
+      onFragmentStateChange,
+      propWholeClipWindowSegment,
+      wholeClipWindowSegment
+    ]
+  );
+
   const commitFragments = useCallback(
     (nextSegments: Stage3Segment[], nextSelectionMode: Stage3EditorSelectionMode = "fragments") => {
       const bounded = normalizeEditorSegments(nextSegments, fragmentSourceDurationSec);
       onFragmentStateChange({
         segments: bounded,
-        editorSelectionMode: bounded.length > 0 ? "fragments" : nextSelectionMode
+        editorSelectionMode:
+          nextSelectionMode === "window" ? "window" : bounded.length > 0 ? "fragments" : nextSelectionMode
       });
     },
     [fragmentSourceDurationSec, onFragmentStateChange]
@@ -3719,6 +3822,27 @@ export function Step3RenderTemplate({
   }, [fragmentSourceDurationSec, normalizedSegments, segmentDraftInputs]);
 
   const commitPendingFragmentDrafts = useCallback(() => {
+    if (resolvedEditorSelectionMode === "window") {
+      const nextSession = buildStage3EditorSession({
+        rawSegments: wholeClipWindowSegment ? [wholeClipWindowSegment] : [],
+        selectionMode: "window",
+        legacyRenderPolicy: renderPolicy,
+        legacyNormalizeToTargetEnabled: editorAlwaysNormalize,
+        clipStartSec: wholeClipWindowSegment?.startSec ?? localClipStartSec,
+        clipDurationSec,
+        targetDurationSec: clipDurationSec,
+        sourceDurationSec: fragmentSourceDurationSec
+      });
+
+      return {
+        segments: nextSession.renderPlanPatch.segments,
+        editorSelectionMode: nextSession.renderPlanPatch.editorSelectionMode,
+        timingMode: nextSession.renderPlanPatch.timingMode,
+        renderPolicy: nextSession.renderPlanPatch.policy,
+        normalizeToTargetEnabled: nextSession.renderPlanPatch.normalizeToTargetEnabled
+      };
+    }
+
     const committedSegments = buildCommittedSegmentsFromDrafts();
     const hasChanges = JSON.stringify(committedSegments) !== JSON.stringify(normalizedSegments);
     const nextSelectionMode: Stage3EditorSelectionMode = committedSegments.length > 0 ? "fragments" : "window";
@@ -3752,7 +3876,9 @@ export function Step3RenderTemplate({
     localClipStartSec,
     normalizedSegments,
     fragmentSourceDurationSec,
-    renderPolicy
+    renderPolicy,
+    resolvedEditorSelectionMode,
+    wholeClipWindowSegment
   ]);
 
   const appendFragmentFromDraft = useCallback(
@@ -4021,15 +4147,29 @@ export function Step3RenderTemplate({
       const pointerRatio = clamp((clientX - rect.left) / rect.width, 0, 1);
       const pointerSec = pointerRatio * fragmentSourceDurationSec;
       if (dragState.target === "window") {
-        const nextStart = roundToTenth(
-          clamp(pointerSec - dragState.pointerOffsetSec, 0, Math.max(0, fragmentSourceDurationSec - dragState.durationSec))
-        );
-        setLocalClipStartSec(nextStart);
-        if (commitMode === "flush") {
-          flushClipCommit(nextStart);
+        let nextStart = dragState.startSec;
+        let nextEnd = dragState.endSec;
+
+        if (dragState.mode === "move") {
+          nextStart = clamp(pointerSec - dragState.pointerOffsetSec, 0, Math.max(0, fragmentSourceDurationSec - dragState.durationSec));
+          nextEnd = nextStart + dragState.durationSec;
+        } else if (dragState.mode === "resize-start") {
+          nextStart = clamp(pointerSec, 0, dragState.endSec - 0.1);
         } else {
-          scheduleClipCommit(nextStart);
+          nextEnd = clamp(pointerSec, dragState.startSec + 0.1, fragmentSourceDurationSec);
         }
+
+        nextStart = roundToTenth(nextStart);
+        nextEnd = roundToTenth(nextEnd);
+        if (nextEnd <= nextStart) {
+          nextEnd = roundToTenth(nextStart + 0.1);
+        }
+
+        if (commitMode === "schedule") {
+          setLocalClipStartSec(nextStart);
+          setLocalWholeClipWindowEndSec(nextEnd);
+        }
+        commitWholeClipWindow(nextStart, nextEnd);
         return;
       }
       let nextStart = dragState.startSec;
@@ -4063,11 +4203,11 @@ export function Step3RenderTemplate({
       );
     },
     [
+      commitWholeClipWindow,
       commitFragments,
       fragmentSourceDurationSec,
       normalizedSegments,
-      flushClipCommit,
-      scheduleClipCommit
+      setLocalWholeClipWindowEndSec
     ]
   );
 
@@ -4136,8 +4276,13 @@ export function Step3RenderTemplate({
   );
 
   const startWholeClipWindowDrag = useCallback(
-    (event: React.PointerEvent<HTMLElement>) => {
+    (event: React.PointerEvent<HTMLElement>, mode: FragmentTimelineDragMode = "move") => {
       if (!fragmentSourceDurationSec || fragmentSourceDurationSec <= 0 || maxStartSec <= 0) {
+        if (mode === "move") {
+          return;
+        }
+      }
+      if (!fragmentSourceDurationSec || fragmentSourceDurationSec <= 0) {
         return;
       }
       const rail = fragmentSourceRailRef.current;
@@ -4154,14 +4299,16 @@ export function Step3RenderTemplate({
       const pointerSec = pointerRatio * fragmentSourceDurationSec;
       fragmentTimelineDragRef.current = {
         target: "window",
+        mode,
         startSec: localClipStartSec,
         endSec: clipEndSec,
-        durationSec: clipDurationSec,
-        pointerOffsetSec: clamp(pointerSec - localClipStartSec, 0, clipDurationSec)
+        durationSec: wholeClipWindowDurationSec,
+        pointerOffsetSec:
+          mode === "move" ? clamp(pointerSec - localClipStartSec, 0, wholeClipWindowDurationSec) : 0
       };
       setIsFragmentTimelineDragging(true);
     },
-    [clipDurationSec, clipEndSec, fragmentSourceDurationSec, localClipStartSec, maxStartSec]
+    [clipEndSec, fragmentSourceDurationSec, localClipStartSec, maxStartSec, wholeClipWindowDurationSec]
   );
 
   const startTextFitAction = (kind: PendingTextFitAction["kind"]) => {
@@ -4743,8 +4890,8 @@ export function Step3RenderTemplate({
 	                              : fragmentSourceDurationSec !== null
 	                                ? resolvedEditorSelectionMode === "window"
 	                                  ? canDragWholeClipWindow
-	                                    ? "Перетаскивайте синее окно по линии, чтобы быстро выбрать нужный 6-секундный диапазон."
-	                                    : "Сейчас доступен один цельный 6-секундный диапазон без смещения."
+	                                    ? "Перетаскивайте синее окно по линии и тяните его края, чтобы выбрать нужный диапазон источника перед сжатием или растяжением в 6 секунд."
+	                                    : "Цельное окно можно растягивать по краям, как только станет доступна точная длина исходника."
 	                                  : "Лента показывает весь MP4-источник: синие участки задействованы, тёмные будут пропущены."
 	                                : "Длительность исходника появится, когда источник полностью определится."}
 	                          </p>
@@ -4789,9 +4936,17 @@ export function Step3RenderTemplate({
 	                                    width: `${wholeClipWindowRange.widthPercent}%`
 	                                  }}
 	                                  aria-label={`Активное окно: ${wholeClipWindowLabel ?? `${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`}`}
-	                                  onPointerDown={canDragWholeClipWindow ? startWholeClipWindowDrag : undefined}
+	                                  onPointerDown={canDragWholeClipWindow ? (event) => startWholeClipWindowDrag(event, "move") : undefined}
 	                                >
+	                                  <span
+	                                    className="fragment-source-handle fragment-source-handle-start"
+	                                    onPointerDown={(event) => startWholeClipWindowDrag(event, "resize-start")}
+	                                  />
 	                                  <span className="fragment-source-window-grip" aria-hidden="true" />
+	                                  <span
+	                                    className="fragment-source-handle fragment-source-handle-end"
+	                                    onPointerDown={(event) => startWholeClipWindowDrag(event, "resize-end")}
+	                                  />
 	                                </button>
 	                              ) : (
 	                                fragmentRows.map((row) => (
@@ -5268,7 +5423,8 @@ export function Step3RenderTemplate({
             clipStartSec={localClipStartSec}
             clipDurationSec={clipDurationSec}
             sourceDurationSec={fragmentSourceDurationSec}
-            segments={normalizedSegments}
+            segments={editorSession.renderPlanPatch.segments}
+            editorSelectionMode={editorSession.renderPlanPatch.editorSelectionMode}
             timingMode={editorSession.renderPlanPatch.timingMode}
             renderPolicy={editorSession.renderPlanPatch.policy}
             focusY={localFocusY}
