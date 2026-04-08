@@ -69,7 +69,7 @@ test("buildStage3PlaybackPlan maps multi-segment auto timing into a 6 second edi
   assert.equal(Number(position?.sourceTimeSec.toFixed(3)), 21);
 });
 
-test("compress mode preserves shorter segment output instead of stretching it", () => {
+test("underfilled fragment selections are stretched to the exact 6 second output timeline", () => {
   const plan = buildStage3PlaybackPlan({
     segments: [
       { startSec: 5, endSec: 7, speed: 1, label: "A" },
@@ -79,12 +79,13 @@ test("compress mode preserves shorter segment output instead of stretching it", 
     clipStartSec: 0,
     clipDurationSec: 6,
     targetDurationSec: 6,
-    timingMode: "compress",
+    timingMode: "auto",
     policy: "fixed_segments"
   });
 
-  assert.equal(Number(plan.totalOutputDurationSec.toFixed(3)), 3);
-  const position = resolveStage3PlaybackPosition(plan, 2.5);
+  assert.equal(Number(plan.totalOutputDurationSec.toFixed(3)), 6);
+  assert.equal(Number(plan.durationScale.toFixed(3)), 2);
+  const position = resolveStage3PlaybackPosition(plan, 5);
   assert.ok(position);
   assert.equal(position?.segment.label, "B");
   assert.equal(Number(position?.sourceTimeSec.toFixed(3)), 9.5);
@@ -303,6 +304,6 @@ test("resolveStage3PlaybackSyncAction publishes the matching later fragment when
   assert.ok(action);
   assert.equal(action?.kind, "position");
   assert.equal(action?.position.segmentIndex, 1);
-  assert.equal(Number(action?.position.outputTimeSec.toFixed(3)), 4.5);
+  assert.equal(Number(action?.position.outputTimeSec.toFixed(3)), 4.502);
   assert.equal(action?.position.sourceTimeSec, 10.5);
 });

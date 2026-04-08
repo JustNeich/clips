@@ -10,6 +10,7 @@ import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { computeManagedTemplateTextFit } from "./managed-template-runtime";
 import { maybeDownloadStage3WorkerSource } from "./stage3-worker-source-client";
 import { sanitizeFileName } from "./ytdlp";
+import { buildStage3EditorSession } from "./stage3-editor-core";
 
 const execFileAsync = promisify(execFile);
 
@@ -840,63 +841,24 @@ function normalizeSegments(params: {
   clipStartSec: number;
   clipDurationSec: number;
 }): Array<{ startSec: number; endSec: number; speed: number }> {
-  const sourceDuration = params.sourceDurationSec ?? null;
-  const raw = params.renderPlan.segments ?? [];
+  const session = buildStage3EditorSession({
+    rawSegments: params.renderPlan.segments ?? [],
+    selectionMode: params.renderPlan.editorSelectionMode,
+    legacyRenderPolicy: params.renderPlan.policy,
+    legacyNormalizeToTargetEnabled: params.renderPlan.normalizeToTargetEnabled,
+    clipStartSec: params.clipStartSec,
+    clipDurationSec: params.clipDurationSec,
+    targetDurationSec: params.renderPlan.targetDurationSec,
+    sourceDurationSec: params.sourceDurationSec
+  });
 
-  const fallbackWindow = (): Array<{ startSec: number; endSec: number; speed: number }> => {
-    const start = clampClipStart(params.clipStartSec, sourceDuration, params.clipDurationSec);
-    const end = sourceDuration
-      ? Math.min(sourceDuration, start + params.clipDurationSec)
-      : start + params.clipDurationSec;
-    return [{ startSec: start, endSec: Math.max(start + 0.05, end), speed: 1 }];
-  };
-
-  const normalized: Array<{ startSec: number; endSec: number; speed: number }> = [];
-  for (const segment of raw) {
-    const start = clampNumber(segment.startSec, 0, sourceDuration ?? Number.POSITIVE_INFINITY);
-    const endRaw = segment.endSec ?? sourceDuration ?? start + params.clipDurationSec;
-    const end = clampNumber(endRaw, start + 0.05, sourceDuration ?? endRaw);
-    if (end > start + 0.03) {
-      normalized.push({
-        startSec: start,
-        endSec: end,
-        speed: normalizeSegmentSpeed(segment.speed)
-      });
-    }
-  }
-
-  if (normalized.length > 0) {
-    return sortPreparedSegments(normalized);
-  }
-
-  if (params.renderPlan.policy === "full_source_normalize") {
-    if (sourceDuration && sourceDuration > 0.05) {
-      return [{ startSec: 0, endSec: sourceDuration, speed: 1 }];
-    }
-    return fallbackWindow();
-  }
-
-  if (params.renderPlan.policy === "adaptive_window") {
-    if (!sourceDuration || sourceDuration <= params.clipDurationSec) {
-      return fallbackWindow();
-    }
-
-    let windowDuration = params.clipDurationSec;
-    if (sourceDuration <= 12) {
-      windowDuration = sourceDuration;
-    } else if (sourceDuration <= 20) {
-      windowDuration = clampNumber(sourceDuration * 0.55, 8, 12);
-    } else {
-      windowDuration = params.clipDurationSec;
-    }
-    windowDuration = clampNumber(windowDuration, params.clipDurationSec, sourceDuration);
-
-    const start = clampNumber(params.clipStartSec, 0, Math.max(0, sourceDuration - windowDuration));
-    const end = start + windowDuration;
-    return [{ startSec: start, endSec: end, speed: 1 }];
-  }
-
-  return fallbackWindow();
+  return sortPreparedSegments(
+    session.renderPlanPatch.segments.map((segment) => ({
+      startSec: segment.startSec,
+      endSec: segment.endSec ?? segment.startSec + 0.1,
+      speed: normalizeSegmentSpeed(segment.speed)
+    }))
+  );
 }
 
 async function extractSegmentsToFiles(

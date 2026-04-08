@@ -9,8 +9,8 @@ import {
   trimClientSegmentsToDuration
 } from "../app/home-page-support";
 
-test("empty fragment editor state switches to full_source_normalize when normalize toggle is on", () => {
-  assert.equal(getEditingPolicy([], true), "full_source_normalize");
+test("empty fragment editor state always resolves to fixed_segments in the rewritten editor", () => {
+  assert.equal(getEditingPolicy([], true), "fixed_segments");
   assert.equal(getEditingPolicy([], false), "fixed_segments");
 });
 
@@ -64,7 +64,7 @@ test("client fragment normalization preserves per-fragment framing overrides", (
   assert.equal(normalized[0]?.mirrorEnabled, false);
 });
 
-test("trimClientSegmentsToDuration keeps fragment framing overrides on surviving segments", () => {
+test("trimClientSegmentsToDuration no longer truncates selected fragments and keeps framing overrides", () => {
   const trimmed = trimClientSegmentsToDuration(
     [
       {
@@ -91,6 +91,8 @@ test("trimClientSegmentsToDuration keeps fragment framing overrides on surviving
   );
 
   assert.equal(trimmed.length, 2);
+  assert.equal(trimmed[0]?.endSec, 5);
+  assert.equal(trimmed[1]?.endSec, 11);
   assert.equal(trimmed[0]?.focusY, 0.24);
   assert.equal(trimmed[0]?.videoZoom, 1.28);
   assert.equal(trimmed[0]?.mirrorEnabled, true);

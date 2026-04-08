@@ -1,4 +1,3 @@
-import { createReadStream } from "node:fs";
 import {
   deleteChannelAssetById,
   getChannelAssetById,
@@ -13,7 +12,7 @@ import {
   requireChannelSetupEdit,
   requireChannelVisibility
 } from "../../../../../../lib/auth/guards";
-import { createNodeStreamResponse } from "../../../../../../lib/node-stream-response";
+import { createNodeFileResponse } from "../../../../../../lib/node-file-response";
 
 export const runtime = "nodejs";
 
@@ -34,12 +33,12 @@ export async function GET(request: Request, context: Context): Promise<Response>
       return Response.json({ error: "Asset file unavailable." }, { status: 404 });
     }
 
-    return createNodeStreamResponse({
-      stream: createReadStream(file.filePath),
+    return createNodeFileResponse({
+      request,
+      filePath: file.filePath,
       signal: request.signal,
       headers: {
         "Content-Type": asset.mimeType,
-        "Content-Length": String(file.size),
         "Cache-Control": "public, max-age=86400, immutable"
       }
     });

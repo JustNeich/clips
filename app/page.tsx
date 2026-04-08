@@ -164,7 +164,6 @@ import {
   formatStage3Status,
   formatStage3StopReason,
   hydrateStage3RenderPlanOverride,
-  getEditingPolicy,
   isAbortError,
   mergeSavedChannelIntoList,
   mergeStage3Versions,
@@ -175,17 +174,14 @@ import {
   parseDownloadFileName,
   parseRetryAfterMs,
   PersistedFlowShellState,
-  resolveNormalizedTimingMode,
   responseLooksLikeHtml,
   responseLooksLikeJson,
   responseContentType,
   shorten,
   syncChatListPublicationSummaries,
-  sumClientSegmentsDuration,
   toJsonDownload,
   triggerBlobDownload,
-  triggerUrlDownload,
-  trimClientSegmentsToDuration
+  triggerUrlDownload
 } from "./home-page-support";
 import { STAGE3_EDITING_PROXY_CACHE_VERSION } from "../lib/stage3-editing-proxy-contract";
 import {
@@ -199,6 +195,7 @@ import {
   toSnapshotManagedTemplateState
 } from "../lib/stage3-snapshot-managed-template";
 import { resolveStage3WorkerRefreshIntervalMs } from "../lib/stage3-worker-polling";
+import { buildStage3EditorSession } from "../lib/stage3-editor-core";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
@@ -370,7 +367,6 @@ export default function HomePage() {
   const [stage3AccuratePreviewVideoUrl, setStage3AccuratePreviewVideoUrl] = useState<string | null>(null);
   const [stage3AccuratePreviewState, setStage3AccuratePreviewState] = useState<Stage3PreviewState>("idle");
   const [stage3AccuratePreviewNotice, setStage3AccuratePreviewNotice] = useState<string | null>(null);
-  const [stage3SurfaceMode, setStage3SurfaceMode] = useState<"finish" | "editor">("finish");
   const [stage3Workers, setStage3Workers] = useState<Stage3WorkerSummary[]>([]);
   const [stage3WorkerPairing, setStage3WorkerPairing] = useState<Stage3WorkerPairingResponse | null>(null);
   const [isStage3WorkerPairing, setIsStage3WorkerPairing] = useState(false);
@@ -2164,7 +2160,6 @@ export default function HomePage() {
     setStage3AccuratePreviewVideoUrl(null);
     setStage3AccuratePreviewState("idle");
     setStage3AccuratePreviewNotice(null);
-    setStage3SurfaceMode("finish");
     setStage3RenderState("idle");
     setStage3RenderJobId(null);
   }, [activeChat?.id]);
@@ -2210,10 +2205,22 @@ export default function HomePage() {
       const hasPositionTrackOverride = Array.isArray(draftOverrides?.cameraPositionKeyframes);
       const hasScaleTrackOverride = Array.isArray(draftOverrides?.cameraScaleKeyframes);
       const hasTransformTrackOverride = hasPositionTrackOverride || hasScaleTrackOverride;
+      const snapshotClipStart =
+        typeof draftOverrides?.clipStartSec === "number" && Number.isFinite(draftOverrides.clipStartSec)
+          ? Math.max(0, draftOverrides.clipStartSec)
+          : stage3ClipStartSec;
+      const snapshotFocusY =
+        typeof draftOverrides?.focusY === "number" && Number.isFinite(draftOverrides.focusY)
+          ? Math.min(0.88, Math.max(0.12, draftOverrides.focusY))
+          : stage3FocusY;
       const normalizedRenderPlan = normalizeRenderPlan(
         {
           ...stage3RenderPlan,
           segments: Array.isArray(draftOverrides?.segments) ? draftOverrides.segments : stage3RenderPlan.segments,
+          editorSelectionMode:
+            draftOverrides?.editorSelectionMode === "window" || draftOverrides?.editorSelectionMode === "fragments"
+              ? draftOverrides.editorSelectionMode
+              : stage3RenderPlan.editorSelectionMode,
           timingMode:
             draftOverrides?.timingMode === "auto" ||
             draftOverrides?.timingMode === "compress" ||
@@ -2263,12 +2270,28 @@ export default function HomePage() {
         },
         fallbackRenderPlan()
       );
+      const editorSession = buildStage3EditorSession({
+        rawSegments: normalizedRenderPlan.segments,
+        selectionMode: normalizedRenderPlan.editorSelectionMode,
+        legacyRenderPolicy: normalizedRenderPlan.policy,
+        legacyNormalizeToTargetEnabled: normalizedRenderPlan.normalizeToTargetEnabled,
+        clipStartSec: snapshotClipStart,
+        clipDurationSec: CLIP_DURATION_SEC,
+        targetDurationSec: CLIP_DURATION_SEC,
+        sourceDurationSec
+      });
       const authoritativeTemplateSnapshot = authoritativePreviewSnapshot?.templateSnapshot ?? null;
       const authoritativeManagedTemplateState = authoritativePreviewSnapshot?.managedTemplateState ?? null;
       const effectiveTextFitOverride = authoritativePreviewSnapshot?.textFit ?? textFitOverride ?? null;
-      const effectiveRenderPlan = applyStage3AuthoritativePreviewContent(normalizedRenderPlan, {
-        templateSnapshot: authoritativeTemplateSnapshot
-      });
+      const effectiveRenderPlan = applyStage3AuthoritativePreviewContent(
+        {
+          ...normalizedRenderPlan,
+          ...editorSession.renderPlanPatch
+        },
+        {
+          templateSnapshot: authoritativeTemplateSnapshot
+        }
+      );
       const activeManagedTemplateState = resolveStage3SnapshotManagedTemplateState({
         templateId: effectiveRenderPlan.templateId,
         pageState: stage3ManagedTemplateState,
@@ -2301,14 +2324,6 @@ export default function HomePage() {
           },
           fitOverride: effectiveTextFitOverride ?? undefined
         });
-      const snapshotClipStart =
-        typeof draftOverrides?.clipStartSec === "number" && Number.isFinite(draftOverrides.clipStartSec)
-          ? Math.max(0, draftOverrides.clipStartSec)
-          : stage3ClipStartSec;
-      const snapshotFocusY =
-        typeof draftOverrides?.focusY === "number" && Number.isFinite(draftOverrides.focusY)
-          ? Math.min(0.88, Math.max(0.12, draftOverrides.focusY))
-          : stage3FocusY;
       return {
         topText: templateSnapshot.content.topText,
         bottomText: templateSnapshot.content.bottomText,
@@ -4667,15 +4682,19 @@ export default function HomePage() {
           if (prev.prompt.trim()) {
             return prev;
           }
-          const compressionEnabled = prev.normalizeToTargetEnabled;
-          const policy = getEditingPolicy(prev.segments, compressionEnabled);
-          if (prev.policy === policy) {
+          if (prev.editorSelectionMode === "fragments" && prev.segments.length > 0) {
+            return prev;
+          }
+          if (prev.editorSelectionMode === "window" && prev.policy === "fixed_segments") {
             return prev;
           }
           return normalizeRenderPlan(
             {
               ...prev,
-              policy
+              editorSelectionMode: "window",
+              timingMode: "auto",
+              normalizeToTargetEnabled: true,
+              policy: "fixed_segments"
             },
             fallbackRenderPlan()
           );
@@ -4964,7 +4983,6 @@ export default function HomePage() {
     const fastPreviewReady = stage3PreviewState === "ready" && Boolean(stage3PreviewVideoUrl);
     if (
       currentStep !== 3 ||
-      stage3SurfaceMode !== "finish" ||
       !activeChat?.url ||
       !stage3AccuratePreviewKey ||
       !fastPreviewReady
@@ -5114,7 +5132,6 @@ export default function HomePage() {
     parseError,
     stage3AccuratePreviewKey,
     stage3AgentPrompt,
-    stage3SurfaceMode,
     stage3LivePreviewSnapshot,
     stage3PreviewState,
     stage3PreviewVideoUrl
@@ -6483,7 +6500,7 @@ export default function HomePage() {
           }
           avatarUrl={stage3AvatarUrl}
           previewVideoUrl={stage3PreviewVideoUrl}
-          accuratePreviewVideoUrl={stage3AccuratePreviewVideoUrl}
+          finalArtifactUrl={stage3AccuratePreviewVideoUrl}
           backgroundAssetUrl={stage3BackgroundUrl}
           backgroundAssetMimeType={stage3RenderPlan.backgroundAssetMimeType}
           backgroundOptions={backgroundOptions}
@@ -6495,8 +6512,8 @@ export default function HomePage() {
           selectedPassIndex={selectedStage3PassIndex}
           previewState={stage3PreviewState}
           previewNotice={stage3PreviewNotice}
-          accuratePreviewState={stage3AccuratePreviewState}
-          accuratePreviewNotice={stage3AccuratePreviewNotice}
+          finalArtifactState={stage3AccuratePreviewState}
+          finalArtifactNotice={stage3AccuratePreviewNotice}
           agentPrompt={stage3AgentPrompt}
           agentSession={activeStage3AgentTimeline?.session ?? null}
           agentMessages={stage3AgentConversation}
@@ -6512,6 +6529,7 @@ export default function HomePage() {
           handoffSummary={stage3HandoffSummary}
           segments={stage3RenderPlan.segments}
           compressionEnabled={stage3RenderPlan.normalizeToTargetEnabled}
+          editorSelectionMode={stage3RenderPlan.editorSelectionMode}
           timingMode={stage3RenderPlan.timingMode}
           renderPolicy={stage3RenderPlan.policy}
           workerState={stage3WorkerPanelState}
@@ -6592,32 +6610,32 @@ export default function HomePage() {
             );
           }}
           onAgentPromptChange={setStage3AgentPrompt}
-          onFragmentStateChange={({ segments, compressionEnabled }) => {
+          onFragmentStateChange={({ segments, editorSelectionMode }) => {
             const normalizedSegments = normalizeClientSegments(segments, sourceDurationSec);
-            const boundedSegments = compressionEnabled
-              ? normalizedSegments
-              : trimClientSegmentsToDuration(normalizedSegments, CLIP_DURATION_SEC, sourceDurationSec);
-            const policy = getEditingPolicy(boundedSegments, compressionEnabled);
-            const timingMode = compressionEnabled
-              ? resolveNormalizedTimingMode({
-                  segments: boundedSegments,
-                  targetDurationSec: CLIP_DURATION_SEC,
-                  sourceDurationSec
-                })
-              : "auto";
+            const session = buildStage3EditorSession({
+              rawSegments: normalizedSegments,
+              selectionMode: editorSelectionMode,
+              clipStartSec: stage3ClipStartSec,
+              clipDurationSec: CLIP_DURATION_SEC,
+              targetDurationSec: CLIP_DURATION_SEC,
+              sourceDurationSec
+            });
 
-            if (boundedSegments.length > 0) {
-              setStage3ClipStartSec(boundedSegments[0]?.startSec ?? 0);
+            if (editorSelectionMode === "fragments" && normalizedSegments.length > 0) {
+              setStage3ClipStartSec(normalizedSegments[0]?.startSec ?? 0);
             }
 
             setStage3RenderPlan((prev) =>
               normalizeRenderPlan(
                 {
                   ...prev,
-                  segments: boundedSegments,
-                  timingMode,
-                  normalizeToTargetEnabled: compressionEnabled,
-                  policy
+                  segments: normalizedSegments,
+                  editorSelectionMode: editorSelectionMode === "fragments" && normalizedSegments.length > 0
+                    ? "fragments"
+                    : "window",
+                  timingMode: session.renderPlanPatch.timingMode,
+                  normalizeToTargetEnabled: session.renderPlanPatch.normalizeToTargetEnabled,
+                  policy: session.renderPlanPatch.policy
                 },
                 fallbackRenderPlan()
               )
@@ -6663,18 +6681,19 @@ export default function HomePage() {
           onClipStartChange={(value) => {
             setStage3ClipStartSec(value);
             setStage3RenderPlan((prev) => {
-              if (prev.segments.length > 0) {
+              if (prev.editorSelectionMode === "fragments" && prev.segments.length > 0) {
                 return prev;
               }
-              const compressionEnabled = prev.normalizeToTargetEnabled;
-              const policy = getEditingPolicy(prev.segments, compressionEnabled);
-              if (prev.policy === policy) {
+              if (prev.editorSelectionMode === "window" && prev.policy === "fixed_segments") {
                 return prev;
               }
               return normalizeRenderPlan(
                 {
                   ...prev,
-                  policy
+                  editorSelectionMode: "window",
+                  timingMode: "auto",
+                  normalizeToTargetEnabled: true,
+                  policy: "fixed_segments"
                 },
                 fallbackRenderPlan()
               );
@@ -6776,7 +6795,6 @@ export default function HomePage() {
           onCreateWorkerPairing={() => {
             void createStage3WorkerPairing();
           }}
-          onSurfaceModeChange={setStage3SurfaceMode}
           onManagedTemplateStateChange={setStage3ManagedTemplateState}
           onOpenPlanner={handleOpenPublishingPlanner}
           onExport={handleExportTemplate}

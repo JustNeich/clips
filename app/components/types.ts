@@ -565,6 +565,7 @@ export type Stage3TimingMode = "auto" | "compress" | "stretch";
 export type Stage3AudioMode = "source_only" | "source_plus_music";
 
 export type Stage3RenderPolicy = "full_source_normalize" | "adaptive_window" | "fixed_segments";
+export type Stage3EditorSelectionMode = "window" | "fragments";
 
 export type Stage3TextPolicy = "strict_fit" | "preserve_words" | "aggressive_compact";
 
@@ -605,6 +606,7 @@ export type Stage3EditorDraftOverrides = {
   cameraPositionKeyframes: Stage3PositionKeyframe[];
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   segments: Stage3Segment[];
+  editorSelectionMode?: Stage3EditorSelectionMode;
   timingMode: Stage3TimingMode;
   renderPolicy: Stage3RenderPolicy;
   normalizeToTargetEnabled: boolean;
@@ -748,6 +750,7 @@ export type Stage3RenderPlan = {
   targetDurationSec: 6;
   timingMode: Stage3TimingMode;
   normalizeToTargetEnabled: boolean;
+  editorSelectionMode?: Stage3EditorSelectionMode;
   audioMode: Stage3AudioMode;
   sourceAudioEnabled: boolean;
   smoothSlowMo: boolean;

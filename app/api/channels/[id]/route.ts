@@ -4,6 +4,7 @@ import {
   updateChannelById
 } from "../../../../lib/chat-history";
 import { deleteChannelAssetDir } from "../../../../lib/channel-assets";
+import { filterManagedTemplatesForAuthIncludingVisibleChannels } from "../../../../lib/managed-template-access";
 import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../../lib/publication-store";
 import {
   requireAuth,
@@ -11,6 +12,7 @@ import {
   requireChannelVisibility
 } from "../../../../lib/auth/guards";
 import { getRestrictedChannelEditError } from "../../../../lib/channel-edit-permissions";
+import { listManagedTemplateSummaries } from "../../../../lib/managed-template-store";
 import { Stage2PromptConfig } from "../../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../../lib/stage2-channel-learning";
@@ -36,10 +38,25 @@ type PatchBody = Partial<{
   defaultMusicAssetId: string | null;
 }>;
 
+async function ensureChannelTemplateSelectable(
+  auth: Awaited<ReturnType<typeof requireAuth>>,
+  templateId: string | null | undefined
+): Promise<string | null> {
+  const candidate = templateId?.trim();
+  if (!candidate) {
+    return null;
+  }
+  const visibleTemplates = await filterManagedTemplatesForAuthIncludingVisibleChannels(
+    auth,
+    await listManagedTemplateSummaries()
+  );
+  return visibleTemplates.some((template) => template.id === candidate) ? candidate : null;
+}
+
 export async function GET(_request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(_request);
     const { channel, permissions } = await requireChannelVisibility(auth, id);
     const assets = await listChannelAssets(id);
     return Response.json(
@@ -81,11 +98,14 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
   }
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     await requireChannelSetupEdit(auth, id);
     const restrictedError = getRestrictedChannelEditError(auth.membership.role, body);
     if (restrictedError) {
       return Response.json({ error: restrictedError }, { status: 403 });
+    }
+    if (typeof body.templateId === "string" && !(await ensureChannelTemplateSelectable(auth, body.templateId))) {
+      return Response.json({ error: "Template not found." }, { status: 404 });
     }
     const channel = await updateChannelById(id, body);
     return Response.json({ channel }, { status: 200 });
@@ -103,7 +123,7 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
 export async function DELETE(_request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(_request);
     const { permissions } = await requireChannelVisibility(auth, id);
     if (!permissions.canDelete) {
       return Response.json({ error: "Forbidden." }, { status: 403 });

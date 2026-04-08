@@ -1,6 +1,5 @@
-import { createReadStream, promises as fs } from "node:fs";
 import { requireAuth } from "../../../lib/auth/guards";
-import { createNodeStreamResponse } from "../../../lib/node-stream-response";
+import { createNodeFileResponse } from "../../../lib/node-file-response";
 import { ensureSourceMediaCached } from "../../../lib/source-media-cache";
 import { isUploadedSourceUrl } from "../../../lib/uploaded-source";
 import { normalizeSupportedUrl } from "../../../lib/ytdlp";
@@ -23,15 +22,12 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     const cached = await ensureSourceMediaCached(sourceUrl);
-    const stat = await fs.stat(cached.sourcePath);
-    const stream = createReadStream(cached.sourcePath);
-
-    return createNodeStreamResponse({
-      stream,
+    return createNodeFileResponse({
+      request,
+      filePath: cached.sourcePath,
       signal: request.signal,
       headers: {
         "Content-Type": "video/mp4",
-        "Content-Length": String(stat.size),
         "Cache-Control": "private, no-store",
         "Content-Disposition": `inline; filename="${cached.fileName}"`
       }

@@ -13,7 +13,7 @@ test("editing proxy anti-bot failures are marked as non-recoverable", () => {
   assert.equal(classified.recoverable, false);
   assert.equal(
     classified.message,
-    "YouTube отклонил запрос на этом сервере (anti-bot/auth). Если YTDLP_COOKIES уже заданы, проблема может быть в IP или репутации runtime."
+    "Источник отклонил запрос на этом сервере (anti-bot/auth). Если YTDLP_COOKIES уже заданы, проблема может быть в IP или репутации runtime."
   );
 });
 

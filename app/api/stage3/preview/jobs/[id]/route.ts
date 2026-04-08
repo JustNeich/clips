@@ -1,8 +1,7 @@
-import { createReadStream, promises as fs } from "node:fs";
 import { requireAuth } from "../../../../../../lib/auth/guards";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../../lib/stage3-job-http";
 import { getStage3JobOrThrow } from "../../../../../../lib/stage3-job-runtime";
-import { createNodeStreamResponse } from "../../../../../../lib/node-stream-response";
+import { createNodeFileResponse } from "../../../../../../lib/node-file-response";
 
 export const runtime = "nodejs";
 
@@ -44,14 +43,12 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
           }
         );
       }
-      const stat = await fs.stat(job.artifactFilePath);
-      const stream = createReadStream(job.artifactFilePath);
-      return createNodeStreamResponse({
-        stream,
+      return createNodeFileResponse({
+        request,
+        filePath: job.artifactFilePath,
         signal: request.signal,
         headers: {
           "Content-Type": job.artifact.mimeType,
-          "Content-Length": String(stat.size),
           "Cache-Control": "private, max-age=300"
         }
       });

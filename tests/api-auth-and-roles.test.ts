@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { POST as fetchComments } from "../app/api/comments/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
+import { PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
 import { GET as listManagedTemplatesRoute } from "../app/api/design/templates/route";
 import { GET as getManagedTemplate } from "../app/api/design/templates/[templateId]/route";
 import {
@@ -520,5 +521,141 @@ test("channels self-heal to the default template when a custom managed template 
 
     const listed = await chatHistory.listChannels(owner.workspace.id);
     assert.equal(listed.find((item) => item.id === channel.id)?.templateId, STAGE3_TEMPLATE_ID);
+  });
+});
+
+test("channel setup rejects assigning a template that is not visible to the current editor", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Channel Template Scope Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "editor@example.com",
+      role: "redactor",
+      createdByUserId: owner.user.id
+    });
+    const editor = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Editor"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const privateTemplate = await createManagedTemplate(
+      {
+        name: "Owner Private Template",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+    const sharedTemplate = await createManagedTemplate(
+      {
+        name: "Editor Shared Template",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    try {
+      const channel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Scoped Channel",
+        username: "scoped_channel",
+        templateId: sharedTemplate.id
+      });
+      setChannelAccess({
+        channelId: channel.id,
+        userId: editor.user.id,
+        grantedByUserId: owner.user.id
+      });
+
+      const response = await patchChannelRoute(
+        new Request(`http://localhost/api/channels/${channel.id}`, {
+          method: "PATCH",
+          headers: {
+            cookie: `${APP_SESSION_COOKIE}=${editor.sessionToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            templateId: privateTemplate.id
+          })
+        }),
+        { params: Promise.resolve({ id: channel.id }) }
+      );
+      const body = (await response.json()) as { error?: string };
+      const reloaded = await chatHistory.getChannelById(channel.id);
+
+      assert.equal(response.status, 404);
+      assert.equal(body.error, "Template not found.");
+      assert.equal(reloaded?.templateId, sharedTemplate.id);
+    } finally {
+      await deleteManagedTemplate(privateTemplate.id);
+      await deleteManagedTemplate(sharedTemplate.id);
+    }
+  });
+});
+
+test("deleting a custom template reassigns channels to the stable default template", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Template Delete Fallback Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const template = await createManagedTemplate(
+      {
+        name: "Delete Me",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Delete Fallback Channel",
+      username: "delete_fallback_channel",
+      templateId: template.id
+    });
+
+    const response = await deleteManagedTemplateRoute(
+      new Request(`http://localhost/api/design/templates/${template.id}`, {
+        method: "DELETE",
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`
+        }
+      }),
+      { params: Promise.resolve({ templateId: template.id }) }
+    );
+    const body = (await response.json()) as {
+      deletedId?: string;
+      fallbackTemplateId?: string;
+      reassignedChannels?: number;
+    };
+    const reloaded = await chatHistory.getChannelById(channel.id);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.deletedId, template.id);
+    assert.equal(body.fallbackTemplateId, STAGE3_TEMPLATE_ID);
+    assert.equal(body.reassignedChannels, 1);
+    assert.equal(reloaded?.templateId, STAGE3_TEMPLATE_ID);
   });
 });

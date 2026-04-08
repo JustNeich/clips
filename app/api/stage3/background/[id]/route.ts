@@ -1,7 +1,7 @@
-import { createReadStream, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import { requireAuth } from "../../../../../lib/auth/guards";
+import { createNodeFileResponse } from "../../../../../lib/node-file-response";
 import { readStage3BackgroundAsset } from "../../../../../lib/stage3-background";
-import { createNodeStreamResponse } from "../../../../../lib/node-stream-response";
 
 export const runtime = "nodejs";
 
@@ -27,12 +27,12 @@ export async function GET(request: Request, context: Context): Promise<Response>
     return Response.json({ error: "Background file is unavailable." }, { status: 404 });
   }
 
-  return createNodeStreamResponse({
-    stream: createReadStream(asset.filePath),
+  return createNodeFileResponse({
+    request,
+    filePath: asset.filePath,
     signal: request.signal,
     headers: {
       "Content-Type": asset.mimeType,
-      "Content-Length": String(stat.size),
       "Cache-Control": "private, max-age=86400, immutable"
     }
   });

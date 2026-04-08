@@ -1,5 +1,4 @@
 import { reassignChannelsTemplateId } from "../../../../../lib/chat-history";
-import { filterManagedTemplatesForAuthIncludingVisibleChannels } from "../../../../../lib/managed-template-access";
 import {
   requireManagedTemplateEditAccess,
   requireManagedTemplateRuntimeViewAccess
@@ -7,7 +6,6 @@ import {
 import { STAGE3_TEMPLATE_ID } from "../../../../../lib/stage3-template";
 import {
   deleteManagedTemplate,
-  listManagedTemplates,
   updateManagedTemplate
 } from "../../../../../lib/managed-template-store";
 
@@ -56,10 +54,7 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
       return Response.json({ error: "Template not found." }, { status: 404 });
     }
 
-    const fallbackTemplateId =
-      (await filterManagedTemplatesForAuthIncludingVisibleChannels(auth, await listManagedTemplates())).find(
-        (template) => template.id !== templateId
-      )?.id ?? STAGE3_TEMPLATE_ID;
+    const fallbackTemplateId = STAGE3_TEMPLATE_ID;
 
     let reassignedChannels = 0;
     if (fallbackTemplateId && fallbackTemplateId !== templateId) {

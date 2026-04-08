@@ -47,6 +47,10 @@ import {
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "../lib/stage3-render-plan";
+import {
+  buildStage3EditorSession,
+  normalizeStage3EditorFragments
+} from "../lib/stage3-editor-core";
 
 const DEFAULT_TEXT_SCALE = 1.25;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
@@ -527,6 +531,7 @@ export function fallbackRenderPlan(): Stage3RenderPlan {
     targetDurationSec: 6,
     timingMode: "auto",
     normalizeToTargetEnabled: false,
+    editorSelectionMode: "window",
     audioMode: "source_only",
     sourceAudioEnabled: true,
     smoothSlowMo: false,
@@ -570,50 +575,25 @@ export function normalizeClientSegments(
   segments: Stage3Segment[],
   sourceDurationSec: number | null
 ): Stage3Segment[] {
-  return segments
-    .map((segment, index) => {
-      const startSec =
-        typeof segment.startSec === "number" && Number.isFinite(segment.startSec)
-          ? Math.max(0, segment.startSec)
-          : null;
-      if (startSec === null) {
-        return null;
-      }
-      const rawEnd =
-        segment.endSec === null
-          ? sourceDurationSec ?? startSec + 0.5
-          : typeof segment.endSec === "number" && Number.isFinite(segment.endSec)
-            ? segment.endSec
-            : startSec + 0.5;
-      const cappedEnd =
-        sourceDurationSec === null ? rawEnd : Math.min(Math.max(startSec + 0.1, rawEnd), sourceDurationSec);
-      return {
-        startSec: roundStage3Tenth(startSec),
-        endSec: roundStage3Tenth(Math.max(startSec + 0.1, cappedEnd)),
-        speed: normalizeStage3SegmentSpeed(segment.speed),
-        label:
-          typeof segment.label === "string" && segment.label.trim()
-            ? segment.label.trim()
-            : `Фрагмент ${index + 1}`,
-        focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
-        videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
-        mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
-      };
-    })
-    .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
-    .sort((left, right) => left.startSec - right.startSec)
-    .slice(0, 12)
-    .map((segment, index) => ({
-      ...segment,
-      label: segment.label || `Фрагмент ${index + 1}`
-    }));
+  return normalizeStage3EditorFragments({
+    segments,
+    sourceDurationSec
+  }).map((segment) => ({
+    startSec: segment.startSec,
+    endSec: segment.endSec,
+    speed: segment.speed,
+    label: segment.label,
+    focusY: segment.focusYOverride,
+    videoZoom: segment.videoZoomOverride,
+    mirrorEnabled: segment.mirrorEnabledOverride
+  }));
 }
 
 export function sumClientSegmentsDuration(
   segments: Stage3Segment[],
   sourceDurationSec: number | null
 ): number {
-  return segments.reduce((total, segment) => {
+  return normalizeClientSegments(segments, sourceDurationSec).reduce((total, segment) => {
     const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
     return total + Math.max(0, endSec - segment.startSec) / normalizeStage3SegmentSpeed(segment.speed);
   }, 0);
@@ -624,24 +604,8 @@ export function trimClientSegmentsToDuration(
   targetDurationSec: number,
   sourceDurationSec: number | null
 ): Stage3Segment[] {
-  let remaining = targetDurationSec;
-  const trimmed: Stage3Segment[] = [];
-
-  for (const segment of normalizeClientSegments(segments, sourceDurationSec)) {
-    if (remaining <= 0.05) {
-      break;
-    }
-    const endSec = segment.endSec ?? sourceDurationSec ?? segment.startSec;
-    const duration = Math.max(0.1, endSec - segment.startSec);
-    const keepDuration = Math.min(duration, remaining * segment.speed);
-    trimmed.push({
-      ...segment,
-      endSec: roundStage3Tenth(segment.startSec + keepDuration)
-    });
-    remaining -= keepDuration / segment.speed;
-  }
-
-  return normalizeClientSegments(trimmed, sourceDurationSec);
+  void targetDurationSec;
+  return normalizeClientSegments(segments, sourceDurationSec);
 }
 
 export function resolveNormalizedTimingMode(params: {
@@ -649,27 +613,24 @@ export function resolveNormalizedTimingMode(params: {
   targetDurationSec: number;
   sourceDurationSec: number | null;
 }): Stage3TimingMode {
-  const explicitDurationSec = sumClientSegmentsDuration(params.segments, params.sourceDurationSec);
-  if (explicitDurationSec <= 0.05) {
-    return "auto";
-  }
-  if (explicitDurationSec > params.targetDurationSec + 0.05) {
-    return "compress";
-  }
-  if (explicitDurationSec < params.targetDurationSec - 0.05) {
-    return "stretch";
-  }
-  return "auto";
+  const session = buildStage3EditorSession({
+    rawSegments: params.segments,
+    selectionMode: "fragments",
+    clipStartSec: 0,
+    clipDurationSec: params.targetDurationSec,
+    targetDurationSec: params.targetDurationSec,
+    sourceDurationSec: params.sourceDurationSec
+  });
+  return session.output.timingMode;
 }
 
 export function getEditingPolicy(
   segments: Stage3Segment[],
   compressionEnabled: boolean
 ): Stage3RenderPlan["policy"] {
-  if (segments.length > 0) {
-    return "fixed_segments";
-  }
-  return compressionEnabled ? "full_source_normalize" : "fixed_segments";
+  void segments;
+  void compressionEnabled;
+  return "fixed_segments";
 }
 
 export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderPlan {
@@ -747,6 +708,10 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
         ? candidate.timingMode
         : base.timingMode,
     normalizeToTargetEnabled,
+    editorSelectionMode:
+      candidate?.editorSelectionMode === "window" || candidate?.editorSelectionMode === "fragments"
+        ? candidate.editorSelectionMode
+        : base.editorSelectionMode,
     audioMode:
       candidate?.audioMode === "source_only" || candidate?.audioMode === "source_plus_music"
         ? candidate.audioMode

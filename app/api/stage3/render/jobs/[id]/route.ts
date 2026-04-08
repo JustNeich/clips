@@ -1,13 +1,12 @@
-import { createReadStream, promises as fs } from "node:fs";
 import { requireAuth } from "../../../../../../lib/auth/guards";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../../lib/stage3-job-http";
+import { createNodeFileResponse } from "../../../../../../lib/node-file-response";
 import {
   findLatestPublicationForRenderExport,
   getRenderExportByStage3JobId
 } from "../../../../../../lib/publication-store";
 import { appendStage3JobEvent } from "../../../../../../lib/stage3-job-store";
 import { getStage3JobOrThrow, recoverRenderExportCompletion } from "../../../../../../lib/stage3-job-runtime";
-import { createNodeStreamResponse } from "../../../../../../lib/node-stream-response";
 
 export const runtime = "nodejs";
 
@@ -69,14 +68,12 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
           }
         );
       }
-      const stat = await fs.stat(job.artifactFilePath);
-      const stream = createReadStream(job.artifactFilePath);
-      return createNodeStreamResponse({
-        stream,
+      return createNodeFileResponse({
+        request,
+        filePath: job.artifactFilePath,
         signal: request.signal,
         headers: {
           "Content-Type": job.artifact.mimeType,
-          "Content-Length": String(stat.size),
           "Content-Disposition": `attachment; filename="${job.artifact.fileName}"`,
           "Cache-Control": "private, max-age=900"
         }

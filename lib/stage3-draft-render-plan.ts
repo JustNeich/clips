@@ -3,6 +3,7 @@ import { Stage3RenderPlan } from "../app/components/types";
 const STAGE3_DRAFT_RENDER_PLAN_OVERRIDE_KEYS = [
   "timingMode",
   "normalizeToTargetEnabled",
+  "editorSelectionMode",
   "audioMode",
   "sourceAudioEnabled",
   "smoothSlowMo",

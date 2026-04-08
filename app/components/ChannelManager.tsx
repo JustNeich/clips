@@ -453,9 +453,8 @@ export function ChannelManager({
         }
         setManagedTemplates(Array.isArray(payload.templates) ? payload.templates : []);
       } catch {
-        if (!cancelled) {
-          setManagedTemplates([]);
-        }
+        // Keep the last successful template list to avoid showing a false
+        // "current unavailable template" state on transient request failures.
       }
     }
 

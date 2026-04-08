@@ -14,6 +14,7 @@ import {
   Stage3AgentConversationItem,
   Stage3CameraMotion,
   Stage3EditorDraftOverrides,
+  Stage3EditorSelectionMode,
   Stage3PositionKeyframe,
   Stage3PreviewState,
   Stage3RenderPolicy,
@@ -74,7 +75,10 @@ import { getStage3DesignLabLabel } from "../../lib/stage3-design-lab";
 import { sanitizeDisplayText } from "../../lib/ui-error";
 import { subscribeManagedTemplateSync } from "../../lib/managed-template-sync";
 import {
-  applyStage3PlaybackPositionToVideo,
+  buildStage3EditorSession,
+  normalizeStage3EditorFragments
+} from "../../lib/stage3-editor-core";
+import {
   buildStage3PlaybackTimingKey,
   buildStage3PlaybackPlan,
   resolveStage3PlaybackPosition,
@@ -83,8 +87,17 @@ import {
 } from "../../lib/stage3-preview-playback";
 import { attachStage3PreviewFrameLoop } from "../../lib/stage3-preview-loop";
 import {
-  resolveStage3ReportedSourceDuration,
-  type Stage3PreviewMediaMode
+  applyStage3PreviewMappedPosition,
+  createStage3PreviewMappedTransportState,
+  finalizeStage3PreviewMappedSeek,
+  isStage3PreviewMappedSeekPending,
+  maybeStartStage3PreviewMappedPlayback,
+  pauseStage3PreviewMappedPlayback,
+  resetStage3PreviewMappedTransportState,
+  updateStage3PreviewMappedPlayIntent
+} from "../../lib/stage3-preview-transport";
+import {
+  resolveStage3ReportedSourceDuration
 } from "../../lib/stage3-preview-media";
 import {
   normalizeStage3SegmentFocusOverride,
@@ -119,7 +132,7 @@ type Step3RenderTemplateProps = {
   channelUsername: string;
   avatarUrl: string | null;
   previewVideoUrl: string | null;
-  accuratePreviewVideoUrl?: string | null;
+  finalArtifactUrl?: string | null;
   backgroundAssetUrl: string | null;
   backgroundAssetMimeType: string | null;
   backgroundOptions: ChannelAsset[];
@@ -131,8 +144,8 @@ type Step3RenderTemplateProps = {
   selectedPassIndex: number;
   previewState: Stage3PreviewState;
   previewNotice: string | null;
-  accuratePreviewState?: Stage3PreviewState;
-  accuratePreviewNotice?: string | null;
+  finalArtifactState?: Stage3PreviewState;
+  finalArtifactNotice?: string | null;
   agentPrompt: string;
   agentSession: Stage3SessionRecord | null;
   agentMessages: Stage3AgentConversationItem[];
@@ -148,6 +161,7 @@ type Step3RenderTemplateProps = {
   handoffSummary: Stage2ToStage3HandoffSummary | null;
   segments: Stage3Segment[];
   compressionEnabled: boolean;
+  editorSelectionMode?: Stage3EditorSelectionMode;
   timingMode?: Stage3TimingMode;
   renderPolicy?: Stage3RenderPolicy;
   renderState: Stage3RenderState;
@@ -206,7 +220,10 @@ type Step3RenderTemplateProps = {
   onSelectVersionId: (runId: string) => void;
   onSelectPassIndex: (index: number) => void;
   onAgentPromptChange: (value: string) => void;
-  onFragmentStateChange: (value: { segments: Stage3Segment[]; compressionEnabled: boolean }) => void;
+  onFragmentStateChange: (value: {
+    segments: Stage3Segment[];
+    editorSelectionMode: Stage3EditorSelectionMode;
+  }) => void;
   onClipStartChange: (value: number) => void;
   onFocusYChange: (value: number) => void;
   onCameraPositionKeyframesChange: (value: Stage3PositionKeyframe[]) => void;
@@ -219,7 +236,6 @@ type Step3RenderTemplateProps = {
   onMusicGainChange: (value: number) => void;
   onCreateWorkerPairing: () => void;
   onOpenPlanner?: () => void;
-  onSurfaceModeChange?: (mode: Stage3SurfaceMode) => void;
   onManagedTemplateStateChange?: (value: Step3ManagedTemplateState) => void;
 };
 
@@ -238,7 +254,6 @@ type PendingTextFitAction = {
   fitHash: string | null;
 };
 
-type Stage3SurfaceMode = "finish" | "editor";
 type FragmentDraftField = "startSec" | "endSec" | "speed" | "focusY" | "videoZoom";
 type FragmentDraftInputs = {
   startSec: string;
@@ -271,7 +286,11 @@ type FragmentTimelineDragState =
     };
 
 type PreviewClipVideoController = {
-  seekToOutputTime: (outputSec: number, toleranceSec?: number) => {
+  seekToOutputTime: (
+    outputSec: number,
+    toleranceSec?: number,
+    options?: { resume?: boolean }
+  ) => {
     outputTimeSec: number;
     sourceTimeSec: number;
   } | null;
@@ -531,40 +550,17 @@ function normalizeEditorSegments(
   segments: Stage3Segment[],
   sourceDurationSec: number | null
 ): Stage3Segment[] {
-  const normalized = segments
-    .map((segment, index) => {
-      const startSec = Number.isFinite(segment.startSec) ? Math.max(0, segment.startSec) : null;
-      if (startSec === null) {
-        return null;
-      }
-      const maxEnd = sourceDurationSec ?? Number.POSITIVE_INFINITY;
-      const rawEnd =
-        segment.endSec === null
-          ? sourceDurationSec ?? startSec + 0.5
-          : Number.isFinite(segment.endSec)
-            ? segment.endSec
-            : startSec + 0.5;
-      const endSec = clamp(rawEnd, startSec + 0.1, maxEnd);
-      return {
-        startSec: roundToTenth(startSec),
-        endSec: roundToTenth(endSec),
-        speed: normalizeSegmentSpeed(segment.speed),
-        label:
-          typeof segment.label === "string" && segment.label.trim()
-            ? segment.label.trim()
-            : `Фрагмент ${index + 1}`,
-        focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
-        videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
-        mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
-      };
-    })
-    .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
-    .sort((a, b) => a.startSec - b.startSec)
-    .slice(0, 12);
-
-  return normalized.map((segment, index) => ({
-    ...segment,
-    label: segment.label || `Фрагмент ${index + 1}`
+  return normalizeStage3EditorFragments({
+    segments,
+    sourceDurationSec
+  }).map((segment) => ({
+    startSec: segment.startSec,
+    endSec: segment.endSec,
+    speed: normalizeSegmentSpeed(segment.speed),
+    label: segment.label,
+    focusY: segment.focusYOverride,
+    videoZoom: segment.videoZoomOverride,
+    mirrorEnabled: segment.mirrorEnabledOverride
   }));
 }
 
@@ -608,24 +604,8 @@ function trimSegmentsToDuration(
   targetDurationSec: number,
   sourceDurationSec: number | null
 ): Stage3Segment[] {
-  let remaining = targetDurationSec;
-  const trimmed: Stage3Segment[] = [];
-
-  for (const segment of normalizeEditorSegments(segments, sourceDurationSec)) {
-    if (remaining <= 0.05) {
-      break;
-    }
-    const segmentEnd = segment.endSec ?? sourceDurationSec ?? segment.startSec;
-    const segmentDuration = Math.max(0.1, segmentEnd - segment.startSec);
-    const keepDuration = Math.min(segmentDuration, remaining * segment.speed);
-    trimmed.push({
-      ...segment,
-      endSec: roundToTenth(segment.startSec + keepDuration)
-    });
-    remaining -= keepDuration / segment.speed;
-  }
-
-  return normalizeEditorSegments(trimmed, sourceDurationSec);
+  void targetDurationSec;
+  return normalizeEditorSegments(segments, sourceDurationSec);
 }
 
 function formatScore(value: number | null | undefined): string {
@@ -655,7 +635,6 @@ function PreviewClipVideo({
   playbackDurationSec,
   playbackPlan,
   playbackTimingKey,
-  mediaMode,
   className,
   objectPosition,
   videoZoom,
@@ -673,7 +652,6 @@ function PreviewClipVideo({
   playbackDurationSec: number;
   playbackPlan: ReturnType<typeof buildStage3PlaybackPlan>;
   playbackTimingKey: string;
-  mediaMode: Stage3PreviewMediaMode;
   className: string;
   objectPosition?: string;
   videoZoom?: number;
@@ -687,8 +665,7 @@ function PreviewClipVideo({
   onClipEnd?: () => void;
   controllerRef?: MutableRefObject<PreviewClipVideoController | null>;
 }) {
-  const activeSegmentIndexRef = useRef(0);
-  const lastPublishedOutputRef = useRef(0);
+  const mappedTransportStateRef = useRef(createStage3PreviewMappedTransportState(playbackTimingKey));
   const playbackPlanRef = useRef(playbackPlan);
 
   useEffect(() => {
@@ -696,34 +673,72 @@ function PreviewClipVideo({
     playbackPlanRef.current = playbackPlan;
   }, [playbackPlan]);
 
+  const applyPlayIntent = useCallback(
+    async (requestedPlay: boolean) => {
+      const video = videoRef.current;
+      if (!video) {
+        return;
+      }
+      updateStage3PreviewMappedPlayIntent(mappedTransportStateRef.current, requestedPlay);
+      if (!requestedPlay) {
+        pauseStage3PreviewMappedPlayback({
+          video,
+          state: mappedTransportStateRef.current
+        });
+        return;
+      }
+      if (
+        isStage3PreviewMappedSeekPending({
+          state: mappedTransportStateRef.current,
+          currentSourceTimeSec: video.currentTime
+        })
+      ) {
+        return;
+      }
+      await maybeStartStage3PreviewMappedPlayback({
+        video,
+        state: mappedTransportStateRef.current
+      });
+    },
+    [videoRef]
+  );
+
   const seekToOutputTime = useCallback(
-    (outputSec: number, toleranceSec = 0.04) => {
+    (outputSec: number, toleranceSec = 0.04, options?: { resume?: boolean }) => {
       const video = videoRef.current;
       if (!video) {
         return null;
       }
-      if (mediaMode === "linear") {
-        const nextSec = clamp(outputSec, 0, playbackDurationSec);
-        lastPublishedOutputRef.current = nextSec;
-        video.currentTime = nextSec;
-        onPositionChange?.(nextSec, nextSec);
-        return {
-          outputTimeSec: nextSec,
-          sourceTimeSec: nextSec
-        };
-      }
+      updateStage3PreviewMappedPlayIntent(
+        mappedTransportStateRef.current,
+        options?.resume ?? mappedTransportStateRef.current.requestedPlay
+      );
       const position = resolveStage3PlaybackPosition(playbackPlanRef.current, outputSec);
       if (!position) {
         return null;
       }
-      activeSegmentIndexRef.current = position.segmentIndex;
-      lastPublishedOutputRef.current = position.outputTimeSec;
-      applyStage3PlaybackPositionToVideo(video, position, toleranceSec);
+      const { seekIssued } = applyStage3PreviewMappedPosition({
+        video,
+        state: mappedTransportStateRef.current,
+        position,
+        toleranceSec,
+        seekPhase: position.outputTimeSec <= 0.001 ? "seeking_anchor" : "seeking_sync"
+      });
       onPositionChange?.(position.outputTimeSec, position.sourceTimeSec);
+      if (!seekIssued && mappedTransportStateRef.current.requestedPlay) {
+        void maybeStartStage3PreviewMappedPlayback({
+          video,
+          state: mappedTransportStateRef.current
+        }).catch(() => undefined);
+      }
       return position;
     },
-    [mediaMode, onPositionChange, playbackDurationSec, videoRef]
+    [onPositionChange, videoRef]
   );
+
+  useEffect(() => {
+    resetStage3PreviewMappedTransportState(mappedTransportStateRef.current, playbackTimingKey);
+  }, [playbackTimingKey]);
 
   useEffect(() => {
     if (!controllerRef) {
@@ -746,22 +761,30 @@ function PreviewClipVideo({
     }
 
     const seekToPlaybackAnchor = () => {
+      pauseStage3PreviewMappedPlayback({
+        video,
+        state: mappedTransportStateRef.current
+      });
       const mediaDurationSec =
         Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
-      const reportedSourceDurationSec = resolveStage3ReportedSourceDuration(mediaMode, mediaDurationSec);
+      const reportedSourceDurationSec = resolveStage3ReportedSourceDuration("mapped", mediaDurationSec);
       if (reportedSourceDurationSec !== undefined) {
         onSourceDurationChange?.(reportedSourceDurationSec);
       }
-      const anchorOutputSec = clamp(lastPublishedOutputRef.current, 0, playbackDurationSec);
-      const initialPosition = seekToOutputTime(anchorOutputSec, 0);
-      if (isPlaying) {
-        void video.play().catch(() => undefined);
-      } else {
-        video.pause();
-      }
+      const anchorOutputSec = clamp(
+        mappedTransportStateRef.current.lastPublishedOutputSec,
+        0,
+        playbackDurationSec
+      );
+      const initialPosition = seekToOutputTime(anchorOutputSec, 0, { resume: isPlaying });
       if (!initialPosition) {
         video.currentTime = anchorOutputSec;
         onPositionChange?.(anchorOutputSec, anchorOutputSec);
+        if (isPlaying) {
+          void video.play().catch(() => undefined);
+        } else {
+          video.pause();
+        }
       }
     };
 
@@ -776,7 +799,6 @@ function PreviewClipVideo({
     };
   }, [
     isPlaying,
-    mediaMode,
     onPositionChange,
     onSourceDurationChange,
     playbackDurationSec,
@@ -792,14 +814,17 @@ function PreviewClipVideo({
       return;
     }
     if (isPlaying) {
-      if (video.ended || lastPublishedOutputRef.current >= Math.max(0, playbackDurationSec - 0.02)) {
-        seekToOutputTime(0, 0);
+      if (
+        video.ended ||
+        mappedTransportStateRef.current.lastPublishedOutputSec >= Math.max(0, playbackDurationSec - 0.02)
+      ) {
+        seekToOutputTime(0, 0, { resume: true });
       }
-      void video.play().catch(() => undefined);
+      void applyPlayIntent(true);
     } else {
-      video.pause();
+      void applyPlayIntent(false);
     }
-  }, [isPlaying, mediaMode, playbackDurationSec, seekToOutputTime, sourceUrl, videoRef]);
+  }, [applyPlayIntent, isPlaying, playbackDurationSec, seekToOutputTime, sourceUrl, videoRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -809,10 +834,10 @@ function PreviewClipVideo({
 
     const handleEnded = () => {
       if (loopEnabled && isPlaying) {
-        seekToOutputTime(0, 0);
-        void video.play().catch(() => undefined);
+        seekToOutputTime(0, 0, { resume: true });
         return;
       }
+      mappedTransportStateRef.current.phase = "completed";
       onClipEnd?.();
     };
 
@@ -827,29 +852,26 @@ function PreviewClipVideo({
     if (!video) {
       return false;
     }
-    if (mediaMode === "linear") {
-      const outputSec = clamp(video.currentTime, 0, playbackDurationSec);
-      lastPublishedOutputRef.current = outputSec;
-      onPositionChange?.(outputSec, outputSec);
-      if (!loopEnabled && outputSec >= playbackDurationSec - 0.02) {
-        video.pause();
-        onClipEnd?.();
-        return false;
-      }
+    if (
+      isStage3PreviewMappedSeekPending({
+        state: mappedTransportStateRef.current,
+        currentSourceTimeSec: video.currentTime
+      })
+    ) {
       return true;
     }
     const currentPlaybackPlan = playbackPlanRef.current;
     const syncAction = resolveStage3PlaybackSyncAction({
       plan: currentPlaybackPlan,
       sourceTimeSec: video.currentTime,
-      preferredSegmentIndex: activeSegmentIndexRef.current
+      preferredSegmentIndex: mappedTransportStateRef.current.activeSegmentIndex
     });
     if (!syncAction) {
       return false;
     }
     if (syncAction.kind === "position") {
-      activeSegmentIndexRef.current = syncAction.position.segmentIndex;
-      lastPublishedOutputRef.current = syncAction.position.outputTimeSec;
+      mappedTransportStateRef.current.activeSegmentIndex = syncAction.position.segmentIndex;
+      mappedTransportStateRef.current.lastPublishedOutputSec = syncAction.position.outputTimeSec;
       if (Math.abs(video.playbackRate - syncAction.position.playbackRate) > 0.001) {
         video.playbackRate = syncAction.position.playbackRate;
       }
@@ -864,31 +886,37 @@ function PreviewClipVideo({
     }
 
     if (syncAction.kind === "seek") {
-      activeSegmentIndexRef.current = syncAction.position.segmentIndex;
-      lastPublishedOutputRef.current = syncAction.position.outputTimeSec;
-      applyStage3PlaybackPositionToVideo(video, syncAction.position, 0);
+      applyStage3PreviewMappedPosition({
+        video,
+        state: mappedTransportStateRef.current,
+        position: syncAction.position,
+        toleranceSec: 0,
+        seekPhase: syncAction.position.outputTimeSec <= 0.001 ? "seeking_anchor" : "seeking_sync"
+      });
       onPositionChange?.(syncAction.position.outputTimeSec, syncAction.position.sourceTimeSec);
       return true;
     }
 
     if (loopEnabled && isPlaying) {
-      const restartPosition = seekToOutputTime(0, 0);
+      const restartPosition = seekToOutputTime(0, 0, { resume: true });
       if (restartPosition) {
-        void video.play().catch(() => undefined);
         return true;
       }
     }
 
-    video.pause();
-    activeSegmentIndexRef.current = syncAction.position.segmentIndex;
-    lastPublishedOutputRef.current = syncAction.position.outputTimeSec;
+    pauseStage3PreviewMappedPlayback({
+      video,
+      state: mappedTransportStateRef.current
+    });
+    mappedTransportStateRef.current.activeSegmentIndex = syncAction.position.segmentIndex;
+    mappedTransportStateRef.current.lastPublishedOutputSec = syncAction.position.outputTimeSec;
+    mappedTransportStateRef.current.phase = "completed";
     onPositionChange?.(syncAction.position.outputTimeSec, syncAction.position.sourceTimeSec);
     onClipEnd?.();
     return false;
   }, [
     isPlaying,
     loopEnabled,
-    mediaMode,
     onClipEnd,
     onPositionChange,
     playbackDurationSec,
@@ -915,6 +943,31 @@ function PreviewClipVideo({
     });
   }, [isPlaying, publishPosition, sourceUrl, videoRef]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const handleSeeked = () => {
+      finalizeStage3PreviewMappedSeek({
+        state: mappedTransportStateRef.current,
+        currentSourceTimeSec: video.currentTime
+      });
+      if (mappedTransportStateRef.current.requestedPlay) {
+        void maybeStartStage3PreviewMappedPlayback({
+          video,
+          state: mappedTransportStateRef.current
+        }).catch(() => undefined);
+      }
+    };
+
+    video.addEventListener("seeked", handleSeeked);
+    return () => {
+      video.removeEventListener("seeked", handleSeeked);
+    };
+  }, [isPlaying, sourceUrl, videoRef]);
+
   return (
     <video
       ref={videoRef}
@@ -938,26 +991,23 @@ function PreviewClipVideo({
 type Stage3InternalPass = Stage3Version["internalPasses"][number];
 
 type Stage3LivePreviewPanelProps = {
-  editorMode: boolean;
   templateId: string;
   channelName: string;
   channelUsername: string;
   avatarUrl: string | null;
   previewVideoUrl: string | null;
-  accuratePreviewVideoUrl?: string | null;
+  finalArtifactUrl?: string | null;
   backgroundAssetUrl: string | null;
   backgroundAssetMimeType: string | null;
-  previewVersion: Stage3Version | null;
   selectedVersion: Stage3Version | null;
   selectedVersionId: string | null;
   selectedPass: Stage3InternalPass | null;
   selectedPassIndex: number;
   displayVersions: Stage3Version[];
-  summaryLines: string[];
   previewState: Stage3PreviewState;
   previewNotice: string | null;
-  accuratePreviewState?: Stage3PreviewState;
-  accuratePreviewNotice?: string | null;
+  finalArtifactState?: Stage3PreviewState;
+  finalArtifactNotice?: string | null;
   previewTemplateSnapshot: TemplateRenderSnapshot;
   clipStartSec: number;
   clipDurationSec: number;
@@ -993,26 +1043,23 @@ type Stage3LivePreviewPanelProps = {
 };
 
 function Stage3LivePreviewPanel({
-  editorMode,
   templateId,
   channelName,
   channelUsername,
   avatarUrl,
   previewVideoUrl,
-  accuratePreviewVideoUrl = null,
+  finalArtifactUrl = null,
   backgroundAssetUrl,
   backgroundAssetMimeType,
-  previewVersion,
   selectedVersion,
   selectedVersionId,
   selectedPass,
   selectedPassIndex,
   displayVersions,
-  summaryLines,
   previewState,
   previewNotice,
-  accuratePreviewState = "idle",
-  accuratePreviewNotice = null,
+  finalArtifactState = "idle",
+  finalArtifactNotice = null,
   previewTemplateSnapshot,
   clipStartSec,
   clipDurationSec,
@@ -1181,19 +1228,14 @@ function Stage3LivePreviewPanel({
     () =>
       resolveStage3BackgroundMode(templateId, {
         hasCustomBackground: Boolean(backgroundAssetUrl),
-        hasSourceVideo: Boolean(previewVideoUrl || accuratePreviewVideoUrl)
+        hasSourceVideo: Boolean(previewVideoUrl)
       }),
-    [accuratePreviewVideoUrl, backgroundAssetUrl, previewVideoUrl, templateId]
+    [backgroundAssetUrl, previewVideoUrl, templateId]
   );
-  const accuratePreviewReady = Boolean(accuratePreviewVideoUrl);
-  const activePreviewMediaMode: Stage3PreviewMediaMode = !editorMode && accuratePreviewReady ? "linear" : "mapped";
-  const activePreviewVideoUrl =
-    activePreviewMediaMode === "linear" ? accuratePreviewVideoUrl : previewVideoUrl;
+  const activePreviewVideoUrl = previewVideoUrl;
   const previewBackgroundMode = backgroundMode;
-  const effectivePreviewNotice = !editorMode ? accuratePreviewNotice ?? previewNotice : previewNotice;
-  const effectivePreviewState = !editorMode ? accuratePreviewState : previewState;
   const overlayTint = useMemo(() => resolveTemplateOverlayTint(templateId), [templateId]);
-  const summaryLine = summaryLines[0] ?? "Используется текущий live draft без сохраненной версии.";
+  const summaryLine = "Используется текущий live draft без сохраненной версии.";
   const sceneContent = useMemo<TemplateContentFixture>(
     () => previewTemplateSnapshot.content,
     [previewTemplateSnapshot]
@@ -1249,18 +1291,7 @@ function Stage3LivePreviewPanel({
 
   useEffect(() => {
     setTimelineSec((prev) => clamp(prev, 0, playbackDurationSec));
-  }, [activePreviewMediaMode, activePreviewVideoUrl, playbackDurationSec]);
-
-  useEffect(() => {
-    if (editorMode) {
-      return;
-    }
-    previewAdjustPointerIdRef.current = null;
-    draggingTransformKeyframeIdRef.current = null;
-    draggingTransformTrackRef.current = null;
-    setIsPreviewAdjustingCamera(false);
-    setIsDraggingCameraKeyframe(false);
-  }, [editorMode]);
+  }, [activePreviewVideoUrl, playbackDurationSec]);
 
   useEffect(() => {
     onTimelineSecChange?.(timelineSec);
@@ -1272,10 +1303,7 @@ function Stage3LivePreviewPanel({
       return;
     }
     const duration = Number.isFinite(bg.duration) && bg.duration > 0 ? bg.duration : null;
-    const desiredSec =
-      previewBackgroundMode === "source-blur" && activePreviewMediaMode === "mapped"
-        ? sourceSec
-        : outputSec;
+    const desiredSec = previewBackgroundMode === "source-blur" ? sourceSec : outputSec;
     const next = duration ? desiredSec % duration : desiredSec;
     if (Math.abs(bg.currentTime - next) > 0.08) {
       bg.currentTime = next;
@@ -1283,7 +1311,7 @@ function Stage3LivePreviewPanel({
     if (isPlayingRef.current && bg.paused) {
       void bg.play().catch(() => undefined);
     }
-  }, [activePreviewMediaMode, previewBackgroundMode]);
+  }, [previewBackgroundMode]);
 
   const handlePreviewPositionChange = useCallback(
     (outputSec: number, sourceSec: number) => {
@@ -1315,7 +1343,9 @@ function Stage3LivePreviewPanel({
     (value: number) => {
       const clamped = clamp(value, 0, playbackDurationSec);
       setTimelineSec(clamped);
-      const position = previewTransportRef.current?.seekToOutputTime(clamped, 0);
+      const position = previewTransportRef.current?.seekToOutputTime(clamped, 0, {
+        resume: isPlayingRef.current
+      });
       if (position) {
         syncBackgroundTo(position.outputTimeSec, position.sourceTimeSec);
         return;
@@ -1334,14 +1364,8 @@ function Stage3LivePreviewPanel({
       return;
     }
     lastPlaybackTimingKeyRef.current = playbackTimingKey;
-
-    if (activePreviewMediaMode === "mapped") {
-      seekTimeline(0);
-      return;
-    }
-
-    setTimelineSec((prev) => clamp(prev, 0, playbackDurationSec));
-  }, [activePreviewMediaMode, playbackDurationSec, playbackTimingKey, seekTimeline]);
+    setTimelineSec(0);
+  }, [playbackTimingKey]);
 
   const seekTimelineAtClientX = useCallback(
     (clientX: number) => {
@@ -1493,30 +1517,13 @@ function Stage3LivePreviewPanel({
   }, [isDraggingCameraKeyframe, updateTransformKeyframeTimeFromClientX]);
 
   const handleTogglePlay = useCallback(() => {
-    const video = slotPreviewRef.current;
-    if (!video) {
-      setIsPlaying((prev) => !prev);
-      return;
-    }
-
-    if (video.paused) {
-      setIsPlaying(true);
-      void video.play().catch(() => undefined);
-      return;
-    }
-
-    video.pause();
-    setIsPlaying(false);
+    setIsPlaying((prev) => !prev);
   }, []);
 
   const handleFrameStep = useCallback(
     (direction: -1 | 1) => {
       const frame = 1 / 30;
       setIsPlaying(false);
-      const video = slotPreviewRef.current;
-      if (video) {
-        video.pause();
-      }
       seekTimeline(timelineSec + frame * direction);
     },
     [seekTimeline, timelineSec]
@@ -1561,43 +1568,88 @@ function Stage3LivePreviewPanel({
         </div>
 
         {selectedVersion ? (
-          <details className="advanced-block internal-passes-inline">
-            <summary>Internal passes ({selectedVersion.internalPasses.length})</summary>
-            <div className="advanced-content">
-              <div className="pass-tabs-scroll">
-                <div className="passes-tabs">
-                  {selectedVersion.internalPasses.map((pass, index) => (
-                    <button
-                      key={`${selectedVersion.runId}-${pass.pass}`}
-                      type="button"
-                      className={`pass-tab ${index === selectedPassIndex ? "active" : ""}`}
-                      onClick={() => onSelectPassIndex(index)}
-                    >
-                      {pass.label}
-                    </button>
-                  ))}
-                </div>
+          <>
+            <section className="quick-edit-card">
+              <div className="quick-edit-label-row">
+                <span className="field-label">Выбранная версия</span>
+                <span className="quick-edit-value">v{selectedVersion.versionNo}</span>
               </div>
+              {selectedVersion.diff.summary.length > 0 ? (
+                <ul className="pass-changes">
+                  {selectedVersion.diff.summary.map((line, index) => (
+                    <li key={`${selectedVersion.runId}-summary-${index}`}>{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="subtle-text">Изменения для этой версии не зафиксированы отдельно.</p>
+              )}
+            </section>
 
-              {selectedPass ? (
-                <div className="pass-details">
-                  <p className="run-summary">
-                    <strong>{selectedPass.summary}</strong>
-                  </p>
-                  <ul className="pass-changes">
-                    {selectedPass.changes.map((change, index) => (
-                      <li key={`${selectedVersion.runId}-${selectedPass.pass}-${index}`}>{change}</li>
+            <details className="advanced-block internal-passes-inline">
+              <summary>Internal passes ({selectedVersion.internalPasses.length})</summary>
+              <div className="advanced-content">
+                <div className="pass-tabs-scroll">
+                  <div className="passes-tabs">
+                    {selectedVersion.internalPasses.map((pass, index) => (
+                      <button
+                        key={`${selectedVersion.runId}-${pass.pass}`}
+                        type="button"
+                        className={`pass-tab ${index === selectedPassIndex ? "active" : ""}`}
+                        onClick={() => onSelectPassIndex(index)}
+                      >
+                        {pass.label}
+                      </button>
                     ))}
-                  </ul>
+                  </div>
                 </div>
-              ) : null}
+
+                {selectedPass ? (
+                  <div className="pass-details">
+                    <p className="run-summary">
+                      <strong>{selectedPass.summary}</strong>
+                    </p>
+                    <ul className="pass-changes">
+                      {selectedPass.changes.map((change, index) => (
+                        <li key={`${selectedVersion.runId}-${selectedPass.pass}-${index}`}>{change}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </details>
+          </>
+        ) : null}
+
+        {finalArtifactUrl || finalArtifactState !== "idle" || finalArtifactNotice ? (
+          <section className="quick-edit-card">
+            <div className="quick-edit-label-row">
+              <span className="field-label">Точный preview / render artifact</span>
+              <span className="quick-edit-value">
+                {finalArtifactUrl ? "Готов" : finalArtifactState === "error" ? "Ошибка" : "Обновляется"}
+              </span>
             </div>
-          </details>
+            {finalArtifactNotice ? <p className="subtle-text">{sanitizeDisplayText(finalArtifactNotice)}</p> : null}
+            {finalArtifactUrl ? (
+              <a
+                className="btn btn-secondary"
+                href={finalArtifactUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Открыть артефакт
+              </a>
+            ) : finalArtifactState === "loading" || finalArtifactState === "retrying" || finalArtifactState === "debouncing" ? (
+              <p className="subtle-text">Собираю точный артефакт в фоне. Основной preview продолжает работать от live draft.</p>
+            ) : null}
+          </section>
         ) : null}
       </aside>
     );
   }, [
     displayVersions,
+    finalArtifactNotice,
+    finalArtifactState,
+    finalArtifactUrl,
     onSelectPassIndex,
     onSelectVersionId,
     selectedPass,
@@ -1612,9 +1664,7 @@ function Stage3LivePreviewPanel({
       <header className="preview-header preview-header-wrap">
         <div>
           <h3>Живой предпросмотр</h3>
-          <p className="subtle-text">
-            {previewVersion ? `Версия v${previewVersion.versionNo}` : "Черновой живой предпросмотр"}
-          </p>
+          <p className="subtle-text">Черновой live draft на каноническом 6-секундном таймлайне.</p>
           <p className="subtle-text preview-summary-inline">{summaryLine}</p>
         </div>
 
@@ -1782,12 +1832,11 @@ function Stage3LivePreviewPanel({
                     ) : undefined,
                     mediaNode: activePreviewVideoUrl ? (
                       <PreviewClipVideo
-                        key={`${activePreviewMediaMode}:${activePreviewVideoUrl}`}
+                        key={activePreviewVideoUrl}
                         sourceUrl={activePreviewVideoUrl}
                         playbackDurationSec={playbackDurationSec}
                         playbackPlan={playbackPlan}
                         playbackTimingKey={playbackTimingKey}
-                        mediaMode={activePreviewMediaMode}
                         className="preview-slot-video"
                         objectPosition={objectPosition}
                         videoZoom={cameraState.zoom}
@@ -1834,33 +1883,31 @@ function Stage3LivePreviewPanel({
                   }}
                 />
               </Stage3TemplateViewport>
-              {editorMode ? (
               <div
-                  className={`camera-preview-overlay ${isPreviewAdjustingCamera ? "dragging" : ""}`}
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Перетащите вверх или вниз, чтобы изменить вертикальный фокус камеры"
-                  onPointerDown={(event) => {
-                    previewAdjustPointerIdRef.current = event.pointerId;
-                    setIsPreviewAdjustingCamera(true);
-                    updateCameraFocusFromClientY(event.clientY);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowUp") {
-                      event.preventDefault();
-                      onCameraPreviewFocusChange(clampStage3FocusY(cameraState.focusY - 0.01));
-                    }
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      onCameraPreviewFocusChange(clampStage3FocusY(cameraState.focusY + 0.01));
-                    }
-                  }}
-                >
-                  <span className="camera-preview-overlay-label">
-                    Position Y · {Math.round(cameraState.focusY * 100)}%
-                  </span>
-                </div>
-              ) : null}
+                className={`camera-preview-overlay ${isPreviewAdjustingCamera ? "dragging" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-label="Перетащите вверх или вниз, чтобы изменить вертикальный фокус камеры"
+                onPointerDown={(event) => {
+                  previewAdjustPointerIdRef.current = event.pointerId;
+                  setIsPreviewAdjustingCamera(true);
+                  updateCameraFocusFromClientY(event.clientY);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    onCameraPreviewFocusChange(clampStage3FocusY(cameraState.focusY - 0.01));
+                  }
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    onCameraPreviewFocusChange(clampStage3FocusY(cameraState.focusY + 0.01));
+                  }
+                }}
+              >
+                <span className="camera-preview-overlay-label">
+                  Position Y · {Math.round(cameraState.focusY * 100)}%
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -1913,9 +1960,9 @@ function Stage3LivePreviewPanel({
           </div>
         </div>
         <div className="timeline-notice">
-            {effectivePreviewNotice ? (
-              <p className="subtle-text">{sanitizeDisplayText(effectivePreviewNotice)}</p>
-            ) : effectivePreviewState === "loading" || effectivePreviewState === "retrying" || effectivePreviewState === "debouncing" ? (
+            {previewNotice ? (
+              <p className="subtle-text">{sanitizeDisplayText(previewNotice)}</p>
+            ) : previewState === "loading" || previewState === "retrying" || previewState === "debouncing" ? (
               <p className="subtle-text">Обновляю предпросмотр...</p>
             ) : null}
         </div>
@@ -1934,7 +1981,7 @@ export function Step3RenderTemplate({
   channelUsername,
   avatarUrl,
   previewVideoUrl,
-  accuratePreviewVideoUrl = null,
+  finalArtifactUrl = null,
   backgroundAssetUrl,
   backgroundAssetMimeType,
   backgroundOptions,
@@ -1946,8 +1993,8 @@ export function Step3RenderTemplate({
   selectedPassIndex,
   previewState,
   previewNotice,
-  accuratePreviewState = "idle",
-  accuratePreviewNotice = null,
+  finalArtifactState = "idle",
+  finalArtifactNotice = null,
   agentPrompt,
   agentSession,
   agentMessages,
@@ -1962,9 +2009,10 @@ export function Step3RenderTemplate({
   selectedCaptionOption,
   handoffSummary,
   segments,
-  compressionEnabled,
-  timingMode = compressionEnabled ? "compress" : "auto",
-  renderPolicy = segments.length > 0 ? "fixed_segments" : compressionEnabled ? "full_source_normalize" : "fixed_segments",
+  compressionEnabled: _compressionEnabled,
+  editorSelectionMode,
+  timingMode = "auto",
+  renderPolicy = "fixed_segments",
   renderState,
   workerState,
   workerLabel,
@@ -2026,9 +2074,9 @@ export function Step3RenderTemplate({
   onMusicGainChange,
   onCreateWorkerPairing,
   onOpenPlanner = () => undefined,
-  onSurfaceModeChange,
   onManagedTemplateStateChange
 }: Step3RenderTemplateProps) {
+  const editorAlwaysNormalize = true;
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
   const videoZoomCommitTimerRef = useRef<number | null>(null);
@@ -2048,7 +2096,6 @@ export function Step3RenderTemplate({
   const [localTopFontScale, setLocalTopFontScale] = useState(topFontScale);
   const [localBottomFontScale, setLocalBottomFontScale] = useState(bottomFontScale);
   const [localMusicGain, setLocalMusicGain] = useState(musicGain);
-  const [stage3Mode, setStage3Mode] = useState<Stage3SurfaceMode>("finish");
   const [workerSetupOpen, setWorkerSetupOpen] = useState(false);
   const [workerGuidePlatform, setWorkerGuidePlatform] = useState<WorkerGuidePlatform>(() => detectWorkerGuidePlatform());
   const [workerCopyState, setWorkerCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -2158,6 +2205,12 @@ export function Step3RenderTemplate({
   }, [loadManagedTemplate, templateId]);
 
   const fragmentSourceDurationSec = sourceDurationSec ?? resolvedFragmentSourceDurationSec;
+  const resolvedEditorSelectionMode: Stage3EditorSelectionMode =
+    editorSelectionMode === "window" || editorSelectionMode === "fragments"
+      ? editorSelectionMode
+      : segments.length > 0
+        ? "fragments"
+        : "window";
 
   const runtimeTemplateId = managedTemplateState.baseTemplateId;
   const templateConfig = managedTemplateState.templateConfig;
@@ -2220,9 +2273,9 @@ export function Step3RenderTemplate({
     () =>
       resolveStage3BackgroundMode(runtimeTemplateId, {
         hasCustomBackground: Boolean(backgroundAssetUrl),
-        hasSourceVideo: Boolean(previewVideoUrl || accuratePreviewVideoUrl)
+        hasSourceVideo: Boolean(previewVideoUrl)
       }),
-    [accuratePreviewVideoUrl, backgroundAssetUrl, previewVideoUrl, runtimeTemplateId]
+    [backgroundAssetUrl, previewVideoUrl, runtimeTemplateId]
   );
 
   const displayVersions = useMemo(
@@ -2236,8 +2289,6 @@ export function Step3RenderTemplate({
   );
 
   const selectedPass = selectedVersion?.internalPasses[selectedPassIndex] ?? null;
-
-  const previewVersion = selectedVersion;
   const selectedCaptionSource =
     captionSources.find((item) => item.option === selectedCaptionOption) ?? null;
   const topTextSourceLabel = formatCaptionSourceLabel(handoffSummary?.topTextSource ?? "empty");
@@ -2267,62 +2318,78 @@ export function Step3RenderTemplate({
   const maxStartSec = Math.max(0, (fragmentSourceDurationSec ?? clipDurationSec) - clipDurationSec);
   const clipEndSec = localClipStartSec + clipDurationSec;
   const normalizedSegments = useMemo(
-    () => normalizeEditorSegments(segments, fragmentSourceDurationSec),
-    [fragmentSourceDurationSec, segments]
+    () =>
+      resolvedEditorSelectionMode === "fragments"
+        ? normalizeEditorSegments(segments, fragmentSourceDurationSec)
+        : [],
+    [fragmentSourceDurationSec, resolvedEditorSelectionMode, segments]
+  );
+  const editorSession = useMemo(
+    () =>
+      buildStage3EditorSession({
+        rawSegments: normalizedSegments,
+        selectionMode: resolvedEditorSelectionMode,
+        legacyRenderPolicy: renderPolicy,
+        legacyNormalizeToTargetEnabled: editorAlwaysNormalize,
+        clipStartSec: localClipStartSec,
+        clipDurationSec,
+        targetDurationSec: clipDurationSec,
+        sourceDurationSec: fragmentSourceDurationSec
+      }),
+    [
+      clipDurationSec,
+      editorAlwaysNormalize,
+      fragmentSourceDurationSec,
+      localClipStartSec,
+      normalizedSegments,
+      renderPolicy,
+      resolvedEditorSelectionMode
+    ]
   );
   const explicitSegmentsDurationSec = useMemo(
-    () => sumSegmentsDuration(normalizedSegments, fragmentSourceDurationSec),
-    [fragmentSourceDurationSec, normalizedSegments]
+    () => editorSession.source.totalBaseOutputDurationSec,
+    [editorSession.source.totalBaseOutputDurationSec]
   );
   const fragmentPlaybackPlan = useMemo(
     () =>
       buildStage3PlaybackPlan({
-        segments: normalizedSegments,
+        segments: editorSession.renderPlanPatch.segments,
         sourceDurationSec: fragmentSourceDurationSec,
-        clipStartSec: localClipStartSec,
+        clipStartSec: editorSession.source.windowStartSec,
         clipDurationSec,
         targetDurationSec: clipDurationSec,
-        timingMode,
-        policy: renderPolicy
+        timingMode: editorSession.renderPlanPatch.timingMode,
+        policy: "fixed_segments"
       }),
-    [clipDurationSec, fragmentSourceDurationSec, localClipStartSec, normalizedSegments, renderPolicy, timingMode]
+    [clipDurationSec, editorSession, fragmentSourceDurationSec]
   );
-  const effectiveOutputDurationSec =
-    normalizedSegments.length > 0 ? fragmentPlaybackPlan.totalOutputDurationSec : clipDurationSec;
+  const effectiveOutputDurationSec = fragmentPlaybackPlan.totalOutputDurationSec;
   const sourceSelectionDurationSec = useMemo(
-    () => sumSegmentCoverageDuration(normalizedSegments, fragmentSourceDurationSec),
-    [fragmentSourceDurationSec, normalizedSegments]
+    () => editorSession.source.totalSelectedSourceDurationSec,
+    [editorSession.source.totalSelectedSourceDurationSec]
   );
   const playbackPlanSourceDurationSec = useMemo(
-    () =>
-      fragmentPlaybackPlan.segments.reduce((total, segment) => {
-        return total + Math.max(0.05, segment.sourceEndSec - segment.sourceStartSec);
-      }, 0),
-    [fragmentPlaybackPlan.segments]
+    () => editorSession.source.totalSelectedSourceDurationSec,
+    [editorSession.source.totalSelectedSourceDurationSec]
   );
   const hasFragmentSourceTimelineData = fragmentSourceDurationSec !== null && fragmentSourceDurationSec > 0;
   const isFragmentTimelineLoading =
-    !hasFragmentSourceTimelineData && (Boolean(sourceUrl) || normalizedSegments.length > 0 || compressionEnabled);
+    !hasFragmentSourceTimelineData &&
+    (Boolean(sourceUrl) || normalizedSegments.length > 0 || resolvedEditorSelectionMode === "window");
   const isPreviewBusy =
     previewState === "debouncing" || previewState === "loading" || previewState === "retrying";
   const isRendering = renderState === "queued" || renderState === "rendering";
   const remainingSegmentsDurationSec = Math.max(0, clipDurationSec - explicitSegmentsDurationSec);
-  const normalizationModeLabel = compressionEnabled
-    ? fragmentPlaybackPlan.durationScale > 1.02
+  const normalizationModeLabel =
+    fragmentPlaybackPlan.durationScale > 1.02
       ? "Растягиваем до 6с"
       : fragmentPlaybackPlan.durationScale < 0.98
         ? "Сжимаем до 6с"
-        : "Ровно 6с"
-    : null;
-  const sourceDisplayDurationSec =
-    normalizedSegments.length > 0
-      ? sourceSelectionDurationSec
-      : playbackPlanSourceDurationSec > 0
-        ? playbackPlanSourceDurationSec
-        : clipDurationSec;
+        : "Ровно 6с";
+  const sourceDisplayDurationSec = sourceSelectionDurationSec > 0 ? sourceSelectionDurationSec : clipDurationSec;
   const wholeClipWindowLabel =
-    normalizedSegments.length === 0 && renderPolicy === "fixed_segments"
-      ? `${formatTimeSec(localClipStartSec)} → ${formatTimeSec(clipEndSec)}`
+    resolvedEditorSelectionMode === "window"
+      ? `${formatTimeSec(editorSession.source.windowStartSec)} → ${formatTimeSec(editorSession.source.windowEndSec)}`
       : null;
   const sourceCoveragePercent =
     fragmentSourceDurationSec && fragmentSourceDurationSec > 0
@@ -2334,23 +2401,7 @@ export function Step3RenderTemplate({
     if (fragmentSourceDurationSec === null || fragmentSourceDurationSec <= 0) {
       return [];
     }
-    const baseRanges =
-      normalizedSegments.length > 0
-        ? normalizedSegments.map((segment) => ({
-            startSec: segment.startSec,
-            endSec: segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5
-          }))
-        : fragmentPlaybackPlan.segments.length > 0
-          ? fragmentPlaybackPlan.segments.map((segment) => ({
-              startSec: segment.sourceStartSec,
-              endSec: segment.sourceEndSec
-            }))
-          : [
-              {
-                startSec: localClipStartSec,
-                endSec: clipEndSec
-              }
-            ];
+    const baseRanges = editorSession.source.coverageRanges;
     if (!baseRanges.length) {
       return [];
     }
@@ -2397,9 +2448,9 @@ export function Step3RenderTemplate({
         widthPercent
       };
     });
-  }, [clipEndSec, fragmentPlaybackPlan.segments, fragmentSourceDurationSec, localClipStartSec, normalizedSegments]);
+  }, [editorSession.source.coverageRanges, fragmentSourceDurationSec]);
   const wholeClipWindowRange =
-    normalizedSegments.length === 0 && renderPolicy === "fixed_segments" ? sourceTimelineRanges[0] ?? null : null;
+    resolvedEditorSelectionMode === "window" ? sourceTimelineRanges[0] ?? null : null;
   const canDragWholeClipWindow = Boolean(wholeClipWindowRange && maxStartSec > 0 && hasFragmentSourceTimelineData);
   const sourceTimelineScaleMarks = useMemo(() => {
     if (fragmentSourceDurationSec === null || fragmentSourceDurationSec <= 0) {
@@ -2443,10 +2494,6 @@ export function Step3RenderTemplate({
     : null;
   const cameraModeLabel = "База";
   const cameraFocusPercent = Math.round(localFocusY * 100);
-  const isFinishMode = stage3Mode === "finish";
-  useEffect(() => {
-    onSurfaceModeChange?.(stage3Mode);
-  }, [onSurfaceModeChange, stage3Mode]);
   const backgroundModeLabel =
     backgroundMode === "custom"
       ? "Custom"
@@ -2476,13 +2523,8 @@ export function Step3RenderTemplate({
     if (!sourceUrl) {
       return null;
     }
-    if (!compressionEnabled && remainingSegmentsDurationSec < 0.1) {
-      return null;
-    }
 
-    const defaultDuration = compressionEnabled
-      ? 1
-      : Math.min(1, Math.max(0.1, remainingSegmentsDurationSec));
+    const defaultDuration = Math.min(1, Math.max(0.1, remainingSegmentsDurationSec || 1));
     const lastSegment = normalizedSegments[normalizedSegments.length - 1] ?? null;
     const suggestedStart = lastSegment?.endSec ?? localClipStartSec;
     const sourceMaxStart =
@@ -2502,7 +2544,6 @@ export function Step3RenderTemplate({
       speed: 1 as Stage3Segment["speed"]
     };
   }, [
-    compressionEnabled,
     localClipStartSec,
     normalizedSegments,
     remainingSegmentsDurationSec,
@@ -3021,7 +3062,6 @@ export function Step3RenderTemplate({
     }, 320);
   };
 
-  const summaryLines = previewVersion?.diff.summary ?? ["Используется текущий live draft без сохраненной версии."];
   const pairCommand =
     workerPairing
       ? workerGuidePlatform === "windows"
@@ -3060,6 +3100,7 @@ export function Step3RenderTemplate({
       cameraPositionKeyframes: [],
       cameraScaleKeyframes: [],
       segments: fragmentOverrides.segments,
+      editorSelectionMode: fragmentOverrides.editorSelectionMode,
       timingMode: fragmentOverrides.timingMode,
       renderPolicy: fragmentOverrides.renderPolicy,
       normalizeToTargetEnabled: fragmentOverrides.normalizeToTargetEnabled,
@@ -3626,17 +3667,14 @@ export function Step3RenderTemplate({
   };
 
   const commitFragments = useCallback(
-    (nextSegments: Stage3Segment[], nextCompressionEnabled = compressionEnabled) => {
-      const normalized = normalizeEditorSegments(nextSegments, fragmentSourceDurationSec);
-      const bounded = nextCompressionEnabled
-        ? normalized
-        : trimSegmentsToDuration(normalized, clipDurationSec, fragmentSourceDurationSec);
+    (nextSegments: Stage3Segment[], nextSelectionMode: Stage3EditorSelectionMode = "fragments") => {
+      const bounded = normalizeEditorSegments(nextSegments, fragmentSourceDurationSec);
       onFragmentStateChange({
         segments: bounded,
-        compressionEnabled: nextCompressionEnabled
+        editorSelectionMode: bounded.length > 0 ? "fragments" : nextSelectionMode
       });
     },
-    [clipDurationSec, compressionEnabled, fragmentSourceDurationSec, onFragmentStateChange]
+    [fragmentSourceDurationSec, onFragmentStateChange]
   );
 
   const buildCommittedSegmentsFromDrafts = useCallback((): Stage3Segment[] => {
@@ -3677,50 +3715,44 @@ export function Step3RenderTemplate({
       };
     });
 
-    const normalized = normalizeEditorSegments(draftedSegments, fragmentSourceDurationSec);
-    return compressionEnabled
-      ? normalized
-      : trimSegmentsToDuration(normalized, clipDurationSec, fragmentSourceDurationSec);
-  }, [clipDurationSec, compressionEnabled, fragmentSourceDurationSec, normalizedSegments, segmentDraftInputs]);
+    return normalizeEditorSegments(draftedSegments, fragmentSourceDurationSec);
+  }, [fragmentSourceDurationSec, normalizedSegments, segmentDraftInputs]);
 
   const commitPendingFragmentDrafts = useCallback(() => {
     const committedSegments = buildCommittedSegmentsFromDrafts();
     const hasChanges = JSON.stringify(committedSegments) !== JSON.stringify(normalizedSegments);
-    const nextTimingMode =
-      compressionEnabled
-        ? committedSegments.length === 0
-          ? "auto"
-          : (() => {
-              const explicitDurationSec = sumSegmentsDuration(committedSegments, fragmentSourceDurationSec);
-              if (explicitDurationSec > clipDurationSec + 0.05) {
-                return "compress" as const;
-              }
-              if (explicitDurationSec < clipDurationSec - 0.05) {
-                return "stretch" as const;
-              }
-              return "auto" as const;
-            })()
-        : "auto";
-    const nextRenderPolicy: Stage3RenderPolicy =
-      committedSegments.length > 0 ? "fixed_segments" : compressionEnabled ? "full_source_normalize" : "fixed_segments";
+    const nextSelectionMode: Stage3EditorSelectionMode = committedSegments.length > 0 ? "fragments" : "window";
+    const nextSession = buildStage3EditorSession({
+      rawSegments: committedSegments,
+      selectionMode: nextSelectionMode,
+      legacyRenderPolicy: renderPolicy,
+      legacyNormalizeToTargetEnabled: editorAlwaysNormalize,
+      clipStartSec: localClipStartSec,
+      clipDurationSec,
+      targetDurationSec: clipDurationSec,
+      sourceDurationSec: fragmentSourceDurationSec
+    });
 
     if (hasChanges) {
-      commitFragments(committedSegments, compressionEnabled);
+      commitFragments(committedSegments, nextSelectionMode);
     }
 
     return {
       segments: committedSegments,
-      timingMode: nextTimingMode,
-      renderPolicy: nextRenderPolicy,
-      normalizeToTargetEnabled: compressionEnabled
+      editorSelectionMode: nextSelectionMode,
+      timingMode: nextSession.renderPlanPatch.timingMode,
+      renderPolicy: nextSession.renderPlanPatch.policy,
+      normalizeToTargetEnabled: nextSession.renderPlanPatch.normalizeToTargetEnabled
     };
   }, [
     buildCommittedSegmentsFromDrafts,
     clipDurationSec,
     commitFragments,
-    compressionEnabled,
+    editorAlwaysNormalize,
+    localClipStartSec,
     normalizedSegments,
-    fragmentSourceDurationSec
+    fragmentSourceDurationSec,
+    renderPolicy
   ]);
 
   const appendFragmentFromDraft = useCallback(
@@ -3750,14 +3782,11 @@ export function Step3RenderTemplate({
         )
       );
       const sourceMaxEnd = fragmentSourceDurationSec ?? nextFragmentSuggestion.endSec;
-      const maxOwnDuration = compressionEnabled
-        ? Number.POSITIVE_INFINITY
-        : Math.max(0.1, remainingSegmentsDurationSec * nextSpeed);
       const nextEnd = roundToTenth(
         clamp(
           Number.isFinite(parsedEnd) ? parsedEnd : nextFragmentSuggestion.endSec,
           nextStart + 0.1,
-          Math.min(sourceMaxEnd, nextStart + maxOwnDuration)
+          sourceMaxEnd
         )
       );
       const nextSegments = normalizeEditorSegments(
@@ -3775,17 +3804,14 @@ export function Step3RenderTemplate({
         ],
         fragmentSourceDurationSec
       );
-      const boundedSegments = compressionEnabled
-        ? nextSegments
-        : trimSegmentsToDuration(nextSegments, clipDurationSec, fragmentSourceDurationSec);
-      const nextIndex = boundedSegments.findIndex(
+      const nextIndex = nextSegments.findIndex(
         (segment) =>
           Math.abs(segment.startSec - nextStart) <= 0.001 &&
           Math.abs((segment.endSec ?? nextEnd) - nextEnd) <= 0.001 &&
           segment.speed === nextSpeed
       );
-      const focusedIndex = nextIndex >= 0 ? nextIndex : boundedSegments.length - 1;
-      const focusedSegment = boundedSegments[focusedIndex];
+      const focusedIndex = nextIndex >= 0 ? nextIndex : nextSegments.length - 1;
+      const focusedSegment = nextSegments[focusedIndex];
       if (!focusedSegment) {
         return;
       }
@@ -3813,12 +3839,10 @@ export function Step3RenderTemplate({
         rowKey,
         field
       });
-      commitFragments(boundedSegments);
+      commitFragments(nextSegments, "fragments");
     },
     [
-      clipDurationSec,
       commitFragments,
-      compressionEnabled,
       nextFragmentSuggestion,
       normalizedSegments,
       remainingSegmentsDurationSec,
@@ -3958,15 +3982,8 @@ export function Step3RenderTemplate({
 
     const nextStart = roundToTenth(clamp(parsedStart, 0, fragmentSourceDurationSec ?? parsedStart));
     const sourceMaxEnd = fragmentSourceDurationSec ?? parsedEnd;
-    const otherSegments = normalizedSegments.filter((_, itemIndex) => itemIndex !== index);
-    const otherDuration = sumSegmentsDuration(otherSegments, fragmentSourceDurationSec);
-    const maxOwnDuration = compressionEnabled
-      ? Number.POSITIVE_INFINITY
-      : Math.max(0.1, (clipDurationSec - otherDuration) * segment.speed);
     const requestedEnd = clamp(parsedEnd, nextStart + 0.1, sourceMaxEnd);
-    const nextEnd = roundToTenth(
-      clamp(requestedEnd, nextStart + 0.1, Math.min(sourceMaxEnd, nextStart + maxOwnDuration))
-    );
+    const nextEnd = roundToTenth(clamp(requestedEnd, nextStart + 0.1, sourceMaxEnd));
 
     const nextSegments = normalizedSegments.map((item, itemIndex) =>
       itemIndex === index
@@ -3979,9 +3996,7 @@ export function Step3RenderTemplate({
           }
         : item
     );
-    const boundedSegments = compressionEnabled
-      ? normalizeEditorSegments(nextSegments, fragmentSourceDurationSec)
-      : trimSegmentsToDuration(nextSegments, clipDurationSec, fragmentSourceDurationSec);
+    const boundedSegments = normalizeEditorSegments(nextSegments, fragmentSourceDurationSec);
     const nextIndex = boundedSegments.findIndex(
       (item) =>
         Math.abs(item.startSec - nextStart) <= 0.001 &&
@@ -4017,12 +4032,6 @@ export function Step3RenderTemplate({
         }
         return;
       }
-      const otherSegments = normalizedSegments.filter((_, itemIndex) => itemIndex !== dragState.index);
-      const otherDuration = sumSegmentsDuration(otherSegments, fragmentSourceDurationSec);
-      const maxOwnDuration = compressionEnabled
-        ? Number.POSITIVE_INFINITY
-        : Math.max(0.1, (clipDurationSec - otherDuration) * dragState.speed);
-
       let nextStart = dragState.startSec;
       let nextEnd = dragState.endSec;
 
@@ -4030,11 +4039,9 @@ export function Step3RenderTemplate({
         nextStart = clamp(pointerSec - dragState.pointerOffsetSec, 0, fragmentSourceDurationSec - dragState.durationSec);
         nextEnd = nextStart + dragState.durationSec;
       } else if (dragState.mode === "resize-start") {
-        const minStartByDuration = dragState.endSec - maxOwnDuration;
-        nextStart = clamp(pointerSec, Math.max(0, minStartByDuration), dragState.endSec - 0.1);
+        nextStart = clamp(pointerSec, 0, dragState.endSec - 0.1);
       } else {
         nextEnd = clamp(pointerSec, dragState.startSec + 0.1, fragmentSourceDurationSec);
-        nextEnd = Math.min(nextEnd, dragState.startSec + maxOwnDuration);
       }
 
       nextStart = roundToTenth(nextStart);
@@ -4056,9 +4063,7 @@ export function Step3RenderTemplate({
       );
     },
     [
-      clipDurationSec,
       commitFragments,
-      compressionEnabled,
       fragmentSourceDurationSec,
       normalizedSegments,
       flushClipCommit,
@@ -4364,29 +4369,12 @@ export function Step3RenderTemplate({
       </button>
     </div>
   );
-
-  const editorFooter = (
-    <div className="sticky-action-bar">
-      <button
-        type="button"
-        className="btn btn-ghost"
-        onClick={onReset}
-        title="Очистить текущий flow и перейти к следующей ссылке"
-      >
-        Новый чат
-      </button>
-      <button type="button" className="btn btn-secondary" onClick={() => setStage3Mode("finish")}>
-        Назад к финализации
-      </button>
-    </div>
-  );
-
-  const leftFooter = isFinishMode ? finishFooter : editorFooter;
+  const leftFooter = finishFooter;
 
   return (
     <>
       <StepWorkspace
-        editLabel={isFinishMode ? "Финал" : "Редактор"}
+        editLabel="Настройки"
         previewLabel="Предпросмотр"
         previewViewportHeight
         leftFooter={leftFooter}
@@ -4394,11 +4382,9 @@ export function Step3RenderTemplate({
           <div className="step-panel-stack">
             <header className="step-head">
               <p className="kicker">Шаг 3</p>
-              <h2>{isFinishMode ? "Финализация" : "Редактор"}</h2>
+              <h2>Финализация и монтаж</h2>
               <p>
-                {isFinishMode
-                  ? "Проверьте итоговый текст и быстро доведите ролик до рендера. Редкие настройки и контекст спрятаны ниже."
-                  : "Ручной монтаж тайминга и камеры. Вернитесь в финализацию, когда кадр и движение готовы."}
+                Один канонический live preview, а все финальные артефакты и история версий живут отдельно в drawer.
               </p>
               {showWorkerControls ? (
                 <div className="executor-summary-row executor-summary-row-compact">
@@ -4444,59 +4430,23 @@ export function Step3RenderTemplate({
               </details>
             </header>
 
-            <section
-              className={`control-card stage3-surface-card ${isFinishMode ? "control-card-priority" : "stage3-surface-card-compact"}`}
-            >
-              <div className={`control-section-head ${isFinishMode ? "" : "stage3-surface-head-compact"}`}>
-                {isFinishMode ? (
-                  <div>
-                    <h3>Финал</h3>
-                    <p className="subtle-text">Основной путь: финальный TOP/BOTTOM, звук, фон, версии и экспорт.</p>
-                  </div>
-                ) : null}
-                <div className="stage3-surface-switch" role="tablist" aria-label="Режим Step 3">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={isFinishMode}
-                    className={`stage3-surface-tab ${isFinishMode ? "active" : ""}`}
-                    onClick={() => setStage3Mode("finish")}
-                  >
-                    Финал
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={!isFinishMode}
-                    className={`stage3-surface-tab ${!isFinishMode ? "active" : ""}`}
-                    onClick={() => setStage3Mode("editor")}
-                  >
-                    Редактор
-                  </button>
+            <section className="control-card stage3-surface-card control-card-priority">
+              <div className="control-section-head">
+                <div>
+                  <h3>Единый preview</h3>
+                  <p className="subtle-text">Главная поверхность всегда показывает live draft на каноническом 6-секундном таймлайне.</p>
                 </div>
               </div>
 
-              {isFinishMode ? (
-                <>
-                  <div className="editing-status-row">
-                    <span className={`meta-pill ${hasManualCaptionOverride ? "warn" : ""}`}>{finishTextStatusLabel}</span>
-                    <span className="meta-pill">Фон {backgroundModeLabel}</span>
-                    <span className="meta-pill">Звук {audioModeLabel}</span>
-                  </div>
-
-                  <div className="stage3-surface-actions">
-                    <p className="subtle-text">Редактор открывайте только для ручного монтажа тайминга и кадра.</p>
-                    <button type="button" className="btn btn-secondary" onClick={() => setStage3Mode("editor")}>
-                      Открыть редактор
-                    </button>
-                  </div>
-                </>
-              ) : null}
+              <div className="editing-status-row">
+                <span className={`meta-pill ${hasManualCaptionOverride ? "warn" : ""}`}>{finishTextStatusLabel}</span>
+                <span className="meta-pill">Фон {backgroundModeLabel}</span>
+                <span className="meta-pill">Звук {audioModeLabel}</span>
+                <span className="meta-pill">Таймлайн 0 → 6с</span>
+              </div>
             </section>
 
-            {isFinishMode ? (
-              <>
-                <details className="advanced-block">
+            <details className="advanced-block">
                   <summary>Оформление и звук</summary>
                   <div className="advanced-content stage3-secondary-stack">
                     <section className="stage3-secondary-panel">
@@ -4736,9 +4686,7 @@ export function Step3RenderTemplate({
                     </section>
                   </div>
                 </details>
-                {finishCaptionEditorCard}
-              </>
-            ) : (
+            {finishCaptionEditorCard}
               <section className="control-card control-card-priority">
                 <div className="control-section-head">
                   <div>
@@ -4750,28 +4698,13 @@ export function Step3RenderTemplate({
                 <div className="quick-edit-grid">
                   <div className="quick-edit-card quick-edit-span-2 fragment-card">
                     <div className="fragment-toolbar">
-                      <label className="field-label fragment-toggle">
-                        <input
-                          type="checkbox"
-                          checked={compressionEnabled}
-                          onChange={(event) => {
-                            if (normalizedSegments.length > 0) {
-                              setActiveFragmentIndex((current) =>
-                                current === null ? 0 : Math.min(current, normalizedSegments.length - 1)
-                              );
-                            }
-                            commitFragments(normalizedSegments, event.target.checked);
-                          }}
-                        />
-                        <span>Подогнать к 6с</span>
-                      </label>
                       {normalizedSegments.length > 0 ? (
                         <button
                           type="button"
                           className="btn btn-ghost"
                           onClick={() => {
                             setActiveFragmentIndex(null);
-                            commitFragments([]);
+                            commitFragments([], "window");
                           }}
                         >
                           Вернуть цельный клип
@@ -4797,11 +4730,7 @@ export function Step3RenderTemplate({
                       {unusedSourceDurationSec !== null ? (
                         <span className="meta-pill">Свободно {formatTimeSec(unusedSourceDurationSec)}</span>
                       ) : null}
-                      <span className="meta-pill">
-                        {compressionEnabled
-                          ? normalizationModeLabel ?? "Подгоняем к 6с"
-                          : `Осталось ${formatTimeSec(remainingSegmentsDurationSec)}`}
-                      </span>
+                      <span className="meta-pill">{normalizationModeLabel ?? "Ровно 6с"}</span>
                     </div>
 
 	                    <section className="fragment-source-overview">
@@ -4812,13 +4741,11 @@ export function Step3RenderTemplate({
 	                            {isFragmentTimelineLoading
 	                              ? "Подтягиваем точную длительность исходника, после чего покажем реальное покрытие и позиции фрагментов."
 	                              : fragmentSourceDurationSec !== null
-	                                ? normalizedSegments.length === 0 && renderPolicy === "fixed_segments"
+	                                ? resolvedEditorSelectionMode === "window"
 	                                  ? canDragWholeClipWindow
 	                                    ? "Перетаскивайте синее окно по линии, чтобы быстро выбрать нужный 6-секундный диапазон."
 	                                    : "Сейчас доступен один цельный 6-секундный диапазон без смещения."
-	                                  : normalizedSegments.length === 0
-	                                    ? "Сейчас весь исходник участвует в рендере и будет подогнан под целевую длительность."
-	                                    : "Лента показывает весь MP4-источник: синие участки задействованы, тёмные будут пропущены."
+	                                  : "Лента показывает весь MP4-источник: синие участки задействованы, тёмные будут пропущены."
 	                                : "Длительность исходника появится, когда источник полностью определится."}
 	                          </p>
 	                        </div>
@@ -5315,39 +5242,35 @@ export function Step3RenderTemplate({
                   )}
                 </div>
               </section>
-            )}
           </div>
         }
         right={
           <Stage3LivePreviewPanel
-            editorMode={!isFinishMode}
             templateId={runtimeTemplateId}
             channelName={channelName}
             channelUsername={channelUsername}
             avatarUrl={avatarUrl}
             previewVideoUrl={previewVideoUrl}
-            accuratePreviewVideoUrl={accuratePreviewVideoUrl}
+            finalArtifactUrl={finalArtifactUrl}
             backgroundAssetUrl={backgroundAssetUrl}
             backgroundAssetMimeType={backgroundAssetMimeType}
-            previewVersion={previewVersion}
             selectedVersion={selectedVersion}
             selectedVersionId={selectedVersionId}
             selectedPass={selectedPass}
             selectedPassIndex={selectedPassIndex}
             displayVersions={displayVersions}
-            summaryLines={summaryLines}
             previewState={previewState}
             previewNotice={previewNotice ?? (isPreviewBusy ? "Обновляю предпросмотр..." : null)}
-            accuratePreviewState={accuratePreviewState}
-            accuratePreviewNotice={accuratePreviewNotice}
+            finalArtifactState={finalArtifactState}
+            finalArtifactNotice={finalArtifactNotice}
             previewTemplateSnapshot={previewTemplateSnapshot}
             onMeasuredTextFitChange={handlePreviewMeasuredTextFitChange}
             clipStartSec={localClipStartSec}
             clipDurationSec={clipDurationSec}
             sourceDurationSec={fragmentSourceDurationSec}
             segments={normalizedSegments}
-            timingMode={timingMode}
-            renderPolicy={renderPolicy}
+            timingMode={editorSession.renderPlanPatch.timingMode}
+            renderPolicy={editorSession.renderPlanPatch.policy}
             focusY={localFocusY}
             cameraMotion="disabled"
             cameraKeyframes={[]}

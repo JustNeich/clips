@@ -6,6 +6,8 @@ import {
 import { requireAuth } from "../../../lib/auth/guards";
 import { resolveChannelPermissions } from "../../../lib/acl";
 import { getRestrictedChannelEditError } from "../../../lib/channel-edit-permissions";
+import { filterManagedTemplatesForAuthIncludingVisibleChannels } from "../../../lib/managed-template-access";
+import { listManagedTemplateSummaries } from "../../../lib/managed-template-store";
 import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../lib/publication-store";
 import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2-channel-config";
@@ -33,9 +35,24 @@ type CreateChannelBody = {
   templateId?: string;
 };
 
-export async function GET(): Promise<Response> {
+async function ensureChannelTemplateSelectable(
+  auth: Awaited<ReturnType<typeof requireAuth>>,
+  templateId: string | null | undefined
+): Promise<string | null> {
+  const candidate = templateId?.trim();
+  if (!candidate) {
+    return null;
+  }
+  const visibleTemplates = await filterManagedTemplatesForAuthIncludingVisibleChannels(
+    auth,
+    await listManagedTemplateSummaries()
+  );
+  return visibleTemplates.some((template) => template.id === candidate) ? candidate : null;
+}
+
+export async function GET(request: Request): Promise<Response> {
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const channels = await listChannelsWithStats(auth.workspace.id);
     const visibleChannels = await Promise.all(
       channels.map(async (channel) => {
@@ -91,13 +108,16 @@ export async function GET(): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as CreateChannelBody | null;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     if (auth.membership.role === "redactor_limited") {
       return Response.json({ error: "Forbidden." }, { status: 403 });
     }
     const restrictedError = getRestrictedChannelEditError(auth.membership.role, body);
     if (restrictedError) {
       return Response.json({ error: restrictedError }, { status: 403 });
+    }
+    if (typeof body?.templateId === "string" && !(await ensureChannelTemplateSelectable(auth, body.templateId))) {
+      return Response.json({ error: "Template not found." }, { status: 404 });
     }
     const channel = await createChannel({
       workspaceId: auth.workspace.id,
