@@ -306,6 +306,7 @@ export default function HomePage() {
   const [authRecoveryMessage, setAuthRecoveryMessage] = useState<string | null>(null);
 
   const [draftUrl, setDraftUrl] = useState("");
+  const [autoRunStage2AfterSource, setAutoRunStage2AfterSource] = useState(true);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState("[]");
   const [workspaceStage2HardConstraints, setWorkspaceStage2HardConstraints] = useState<Stage2HardConstraints>(
@@ -2732,7 +2733,7 @@ export default function HomePage() {
         channelId: activeChannelId,
         url,
         trigger: "fetch",
-        autoRunStage2: codexLoggedIn
+        autoRunStage2: autoRunStage2AfterSource && codexLoggedIn
       });
       setDraftUrl("");
       await hydrateChatLiveState(chat.id, {
@@ -2798,7 +2799,7 @@ export default function HomePage() {
       const { chat, job } = await uploadSourceFileToChannel({
         channelId: activeChannelId,
         file,
-        autoRunStage2: codexLoggedIn
+        autoRunStage2: autoRunStage2AfterSource && codexLoggedIn
       });
       setDraftUrl("");
       await hydrateChatLiveState(chat.id, {
@@ -6424,6 +6425,7 @@ export default function HomePage() {
           uploadBusy={busyAction === "source-upload"}
           uploadAvailable={Boolean(canUploadSourceForChannel)}
           uploadBlockedReason={uploadSourceBlockedReason}
+          autoRunStage2Enabled={autoRunStage2AfterSource}
           downloadAvailable={effectiveDownloadSourceAvailable}
           downloadBlockedReason={effectiveDownloadSourceBlockedReason}
           onDraftUrlChange={setDraftUrl}
@@ -6436,6 +6438,7 @@ export default function HomePage() {
           onUploadFile={(file) => {
             void handleUploadSourceFile(file);
           }}
+          onAutoRunStage2Change={setAutoRunStage2AfterSource}
           onDownloadSource={() => {
             void handleDownloadVideo();
           }}

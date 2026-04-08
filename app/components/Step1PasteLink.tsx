@@ -1,6 +1,6 @@
 "use client";
 
-import React, { FormEvent, useRef } from "react";
+import React, { FormEvent, useMemo, useRef, useState } from "react";
 import type { SourceJobDetail } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 import { getUploadedSourceDisplayName, isUploadedSourceUrl } from "../../lib/uploaded-source";
@@ -18,6 +18,7 @@ type Step1PasteLinkProps = {
   uploadBusy: boolean;
   uploadAvailable: boolean;
   uploadBlockedReason?: string | null;
+  autoRunStage2Enabled: boolean;
   downloadAvailable: boolean;
   downloadBlockedReason?: string | null;
   showCreateNextChatShortcut?: boolean;
@@ -25,6 +26,7 @@ type Step1PasteLinkProps = {
   onPaste: () => void;
   onFetch: () => void;
   onUploadFile: (file: File) => void;
+  onAutoRunStage2Change: (value: boolean) => void;
   onDownloadSource: () => void;
   onCreateNextChat?: () => void;
 };
@@ -120,16 +122,19 @@ export function Step1PasteLink({
   uploadBusy,
   uploadAvailable,
   uploadBlockedReason,
+  autoRunStage2Enabled,
   downloadAvailable,
   downloadBlockedReason,
   onDraftUrlChange,
   onPaste,
   onFetch,
   onUploadFile,
+  onAutoRunStage2Change,
   onDownloadSource
 }: Step1PasteLinkProps) {
   const sourcePreview = resolveSourcePreview(activeUrl);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedUploadFileName, setSelectedUploadFileName] = useState<string | null>(null);
   const isAttachedSourceJob =
     Boolean(sourceJob) &&
     (sourceJob?.status === "queued" || sourceJob?.status === "running") &&
@@ -151,6 +156,31 @@ export function Step1PasteLink({
   const handleChooseFile = (): void => {
     fileInputRef.current?.click();
   };
+
+  const uploadSummary = useMemo(() => {
+    if (uploadBusy) {
+      return {
+        title: selectedUploadFileName ?? "Готовим загрузку",
+        detail: "MP4 загружается и сразу попадёт в Step 1."
+      };
+    }
+    if (selectedUploadFileName) {
+      return {
+        title: selectedUploadFileName,
+        detail: "Файл выбран и будет загружен в Stage 1."
+      };
+    }
+    if (sourcePreview?.kind === "video" && isUploadedSourceUrl(activeUrl ?? "")) {
+      return {
+        title: sourcePreview.label,
+        detail: "Этот mp4 уже загружен и используется как текущий источник."
+      };
+    }
+    return {
+      title: "Готовый mp4 не выбран",
+      detail: "Можно загрузить готовое видео вместо ссылки на Shorts или Reels."
+    };
+  }, [activeUrl, selectedUploadFileName, sourcePreview, uploadBusy]);
 
   return (
     <StepWorkspace
@@ -191,6 +221,36 @@ export function Step1PasteLink({
                 `facebook.com/reel/...` или загрузка готового `mp4`
               </p>
 
+              <div className="source-upload-row" aria-label="Загрузка готового mp4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/mp4,.mp4"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.currentTarget.value = "";
+                    if (file) {
+                      setSelectedUploadFileName(file.name);
+                      onUploadFile(file);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary source-upload-trigger"
+                  onClick={handleChooseFile}
+                  disabled={uploadBusy || !uploadAvailable}
+                  title={!uploadAvailable ? uploadBlockedReason ?? undefined : undefined}
+                >
+                  {uploadBusy ? "Загружаем..." : "Выбрать mp4"}
+                </button>
+                <div className={`source-upload-summary${selectedUploadFileName || uploadBusy ? " is-active" : ""}`}>
+                  <p className="source-upload-summary-title">{uploadSummary.title}</p>
+                  <p className="source-upload-summary-detail">{uploadSummary.detail}</p>
+                </div>
+              </div>
+
               <div className="control-actions">
                 <button
                   type="submit"
@@ -205,28 +265,20 @@ export function Step1PasteLink({
                 >
                   {fetchBusy ? "Получаем..." : "Получить источник"}
                 </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="video/mp4,.mp4"
-                  className="sr-only"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.currentTarget.value = "";
-                    if (file) {
-                      onUploadFile(file);
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleChooseFile}
-                  disabled={uploadBusy || !uploadAvailable}
-                  title={!uploadAvailable ? uploadBlockedReason ?? undefined : undefined}
-                >
-                  {uploadBusy ? "Загружаем..." : "Загрузить mp4"}
-                </button>
+              </div>
+              <div className="source-stage-toggle">
+                <label className="field-label fragment-toggle">
+                  <input
+                    type="checkbox"
+                    checked={autoRunStage2Enabled}
+                    onChange={(event) => onAutoRunStage2Change(event.target.checked)}
+                  />
+                  <span>Автоматически запускать Stage 2 после завершения Step 1</span>
+                </label>
+                <p className="subtle-text">
+                  Если чекбокс выключен, второй этап стартует только после кнопки «Генерировать варианты».
+                  Если Shared Codex не подключен, автозапуск не сработает даже при включённом чекбоксе.
+                </p>
               </div>
               {!fetchAvailable && inlineFetchMessage ? (
                 <p className={`subtle-text${isAttachedSourceJob || isAttachedStage2Run ? "" : " danger-text"}`}>

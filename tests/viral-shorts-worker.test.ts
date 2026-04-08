@@ -10522,12 +10522,15 @@ test("step 1 shows attached source job as neutral live state instead of repeatin
       fetchBlockedReason: "Для этого чата уже идёт получение источника.",
       uploadBusy: false,
       uploadAvailable: true,
+      uploadBlockedReason: null,
+      autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFile: () => undefined,
+      onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
   );
@@ -10550,12 +10553,15 @@ test("step 1 keeps an attached stage 2 run informational instead of rendering it
       fetchBlockedReason: "Для этого чата уже идёт Stage 2. Дождитесь завершения перед новым получением источника.",
       uploadBusy: false,
       uploadAvailable: true,
+      uploadBlockedReason: null,
+      autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFile: () => undefined,
+      onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
   );
@@ -10578,12 +10584,15 @@ test("step 1 preview makes the source link clickable and embeds a YouTube player
       fetchBlockedReason: null,
       uploadBusy: false,
       uploadAvailable: true,
+      uploadBlockedReason: null,
+      autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFile: () => undefined,
+      onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
   );
@@ -10592,6 +10601,39 @@ test("step 1 preview makes the source link clickable and embeds a YouTube player
   assert.match(html, /source-link-anchor/);
   assert.match(html, /iframe/);
   assert.match(html, /youtube\.com\/embed\/qQhqClv6fNo/);
+});
+
+test("step 1 renders a custom mp4 upload panel and auto-stage2 checkbox", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(Step1PasteLink, {
+      draftUrl: "",
+      activeUrl: null,
+      sourceJob: null,
+      sourceJobElapsedMs: 0,
+      commentsFallbackActive: false,
+      fetchBusy: false,
+      downloadBusy: false,
+      fetchAvailable: true,
+      fetchBlockedReason: null,
+      uploadBusy: false,
+      uploadAvailable: true,
+      uploadBlockedReason: null,
+      autoRunStage2Enabled: true,
+      downloadAvailable: true,
+      downloadBlockedReason: null,
+      onDraftUrlChange: () => undefined,
+      onPaste: () => undefined,
+      onFetch: () => undefined,
+      onUploadFile: () => undefined,
+      onAutoRunStage2Change: () => undefined,
+      onDownloadSource: () => undefined
+    })
+  );
+
+  assert.match(html, /Выбрать mp4/);
+  assert.match(html, /Готовый mp4 не выбран/);
+  assert.match(html, /Автоматически запускать Stage 2 после завершения Step 1/);
+  assert.match(html, /checked=""/);
 });
 
 test("step 1 no longer renders an inline next-chat shortcut card inside the workspace", () => {
@@ -10641,6 +10683,8 @@ test("step 1 no longer renders an inline next-chat shortcut card inside the work
       fetchBlockedReason: null,
       uploadBusy: false,
       uploadAvailable: true,
+      uploadBlockedReason: null,
+      autoRunStage2Enabled: true,
       downloadAvailable: true,
       downloadBlockedReason: null,
       showCreateNextChatShortcut: true,
@@ -10648,6 +10692,7 @@ test("step 1 no longer renders an inline next-chat shortcut card inside the work
       onPaste: () => undefined,
       onFetch: () => undefined,
       onUploadFile: () => undefined,
+      onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined,
       onCreateNextChat: () => undefined
     })
