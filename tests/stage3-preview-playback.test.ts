@@ -114,6 +114,25 @@ test("underfilled fragment selections are stretched to the exact 6 second output
   assert.equal(Number(position?.sourceTimeSec.toFixed(3)), 9.5);
 });
 
+test("buildStage3PlaybackPlan widens ultra-short fragments to the editor minimum before stretching", () => {
+  const plan = buildStage3PlaybackPlan({
+    segments: [{ startSec: 9.1, endSec: 9.3, speed: 1, label: "Tiny" }],
+    sourceDurationSec: 26.7,
+    clipStartSec: 9.1,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments",
+    selectionMode: "fragments"
+  });
+
+  assert.equal(plan.segments.length, 1);
+  assert.equal(plan.segments[0]?.sourceStartSec, 9.1);
+  assert.equal(plan.segments[0]?.sourceEndSec, 10.1);
+  assert.equal(plan.totalOutputDurationSec, 6);
+  assert.equal(plan.timingMode, "stretch");
+});
+
 test("segment transform overrides follow the active playback fragment", () => {
   const plan = buildStage3PlaybackPlan({
     segments: [

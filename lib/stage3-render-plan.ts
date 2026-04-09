@@ -1,4 +1,5 @@
 import type { Stage3RenderPolicy, Stage3Segment } from "../app/components/types";
+import { normalizeStage3EditorFragments } from "./stage3-editor-core";
 import {
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
@@ -73,7 +74,19 @@ export function normalizeStage3RenderPlanSegments(
       };
     })
     .filter((segment): segment is Stage3Segment => segment !== null);
-  return normalized.sort(compareStage3SegmentsByTiming);
+  return normalizeStage3EditorFragments({
+    segments: normalized.sort(compareStage3SegmentsByTiming),
+    sourceDurationSec: null,
+    labelPrefix
+  }).map((segment) => ({
+    startSec: segment.startSec,
+    endSec: segment.endSec,
+    speed: normalizeStage3RenderPlanSegmentSpeed(segment.speed),
+    label: segment.label,
+    focusY: segment.focusYOverride,
+    videoZoom: segment.videoZoomOverride,
+    mirrorEnabled: segment.mirrorEnabledOverride
+  }));
 }
 
 export function resolveCanonicalStage3RenderPolicy(params: {

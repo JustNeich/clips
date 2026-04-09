@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildStage3EditorSession, normalizeStage3EditorFragments } from "../lib/stage3-editor-core";
+import {
+  STAGE3_EDITOR_MIN_SELECTION_DURATION_SEC,
+  buildStage3EditorSession,
+  normalizeStage3EditorFragments
+} from "../lib/stage3-editor-core";
 
 test("single window without manual fragments produces an exact 6 second output plan", () => {
   const session = buildStage3EditorSession({
@@ -60,6 +64,36 @@ test("manual fragments are sorted, clamped, and de-overlapped before output plan
   assert.equal(normalized[1]?.endSec, 14.4);
   assert.equal(normalized[2]?.startSec, 14.4);
   assert.equal(normalized[2]?.endSec, 16);
+});
+
+test("manual fragments cannot collapse below the editor minimum after normalization", () => {
+  const normalized = normalizeStage3EditorFragments({
+    segments: [{ startSec: 9.1, endSec: 9.3, speed: 1, label: "Too short" }],
+    sourceDurationSec: 26.7
+  });
+
+  assert.equal(normalized.length, 1);
+  assert.equal(normalized[0]?.startSec, 9.1);
+  assert.equal(normalized[0]?.endSec, 10.1);
+  assert.equal(normalized[0]?.sourceDurationSec, STAGE3_EDITOR_MIN_SELECTION_DURATION_SEC);
+});
+
+test("window selections near the source edge stay at least one second wide after rounding", () => {
+  const session = buildStage3EditorSession({
+    rawSegments: [{ startSec: 25.8, endSec: 26.7, speed: 1, label: "Late window" }],
+    selectionMode: "window",
+    clipStartSec: 25.8,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    sourceDurationSec: 26.7
+  });
+
+  assert.equal(session.source.windowStartSec, 25.7);
+  assert.equal(session.source.windowEndSec, 26.7);
+  assert.equal(
+    Number((session.source.windowEndSec - session.source.windowStartSec).toFixed(1)),
+    STAGE3_EDITOR_MIN_SELECTION_DURATION_SEC
+  );
 });
 
 test("underfilled selections stretch to 6 seconds with a lower resolved playback rate", () => {

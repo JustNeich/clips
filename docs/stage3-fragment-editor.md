@@ -31,8 +31,8 @@ This note captures the reliability rules for the manual fragment editor in Stage
 ## Validation rules
 
 - Fragment timing is still clamped to the same source bounds used by numeric inputs.
-- Whole-window timing follows the same clamp rules as fragment timing, including the `0.1s` minimum width.
-- Minimum fragment duration remains `0.1s`.
+- Whole-window timing follows the same clamp rules as fragment timing, including the `1.0s` minimum width whenever the source is at least one second long.
+- Minimum fragment duration is now `1.0s` for normal sources; if the source itself is shorter than one second, Stage 3 uses the full available source span instead.
 - Manual fragments are sorted, clamped to source duration, and de-overlapped before preview/render.
 - Overfilled selections are compressed into `6.0s`.
 - Underfilled selections are stretched into `6.0s` with smooth slowmo.

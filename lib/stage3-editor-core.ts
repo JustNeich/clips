@@ -6,7 +6,8 @@ import type {
   Stage3TimingMode
 } from "../app/components/types";
 
-const MIN_SEGMENT_DURATION_SEC = 0.1;
+const MIN_EDITOR_TIMING_GUARD_SEC = 0.1;
+export const STAGE3_EDITOR_MIN_SELECTION_DURATION_SEC = 1;
 const DEFAULT_TARGET_DURATION_SEC = 6;
 
 function clamp(value: number, min: number, max: number): number {
@@ -25,11 +26,49 @@ function resolveFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function resolveSourceUpperBound(sourceDurationSec: number | null, fallback: number): number {
+export function resolveStage3EditorMinimumSelectionDurationSec(sourceDurationSec: number | null): number {
+  if (sourceDurationSec !== null && sourceDurationSec > 0) {
+    return Math.min(STAGE3_EDITOR_MIN_SELECTION_DURATION_SEC, sourceDurationSec);
+  }
+  return STAGE3_EDITOR_MIN_SELECTION_DURATION_SEC;
+}
+
+function resolveSourceUpperBound(sourceDurationSec: number | null, fallback: number, minimumDurationSec: number): number {
   if (sourceDurationSec !== null && sourceDurationSec > 0) {
     return sourceDurationSec;
   }
-  return Math.max(MIN_SEGMENT_DURATION_SEC, fallback);
+  return Math.max(minimumDurationSec, fallback);
+}
+
+function finalizeNormalizedEditorRange(params: {
+  startSec: number;
+  endSec: number;
+  sourceDurationSec: number | null;
+  minimumDurationSec: number;
+}): { startSec: number; endSec: number; sourceDurationSec: number } {
+  const upperBound = resolveSourceUpperBound(
+    params.sourceDurationSec,
+    params.endSec,
+    params.minimumDurationSec
+  );
+  let startSec = roundToTenth(params.startSec);
+  let endSec = roundToTenth(params.endSec);
+
+  if (endSec - startSec < params.minimumDurationSec - 0.0001) {
+    endSec = roundToTenth(Math.min(upperBound, startSec + params.minimumDurationSec));
+  }
+  if (endSec - startSec < params.minimumDurationSec - 0.0001) {
+    startSec = roundToTenth(Math.max(0, endSec - params.minimumDurationSec));
+  }
+  if (endSec - startSec < params.minimumDurationSec - 0.0001) {
+    endSec = roundToTenth(Math.min(upperBound, startSec + params.minimumDurationSec));
+  }
+
+  return {
+    startSec,
+    endSec,
+    sourceDurationSec: roundToThousandth(Math.max(MIN_EDITOR_TIMING_GUARD_SEC, endSec - startSec))
+  };
 }
 
 function resolveSelectionKind(params: {
@@ -155,28 +194,42 @@ export function normalizeStage3EditorFragments(params: {
   labelPrefix?: string;
 }): Stage3EditorFragment[] {
   const labelPrefix = params.labelPrefix?.trim() || "Фрагмент";
+  const minimumDurationSec = resolveStage3EditorMinimumSelectionDurationSec(params.sourceDurationSec);
   const normalized = params.segments
     .map((segment, index) => {
       const startSec = resolveFiniteNumber(segment.startSec);
       if (startSec === null) {
         return null;
       }
-      const normalizedStartSec = Math.max(0, startSec);
-      const upperBound = resolveSourceUpperBound(params.sourceDurationSec, normalizedStartSec + MIN_SEGMENT_DURATION_SEC);
-      const fallbackEndSec = normalizedStartSec + MIN_SEGMENT_DURATION_SEC;
+      const normalizedStartSec =
+        params.sourceDurationSec !== null && params.sourceDurationSec > 0
+          ? clamp(Math.max(0, startSec), 0, Math.max(0, params.sourceDurationSec - minimumDurationSec))
+          : Math.max(0, startSec);
+      const fallbackEndSec = normalizedStartSec + minimumDurationSec;
       const rawEndSec =
         segment.endSec === null
           ? params.sourceDurationSec ?? fallbackEndSec
           : resolveFiniteNumber(segment.endSec) ?? fallbackEndSec;
-      const endSec = clamp(rawEndSec, normalizedStartSec + MIN_SEGMENT_DURATION_SEC, upperBound);
+      const upperBound = resolveSourceUpperBound(
+        params.sourceDurationSec,
+        Math.max(fallbackEndSec, rawEndSec),
+        minimumDurationSec
+      );
+      const endSec = clamp(rawEndSec, normalizedStartSec + minimumDurationSec, upperBound);
+      const normalizedRange = finalizeNormalizedEditorRange({
+        startSec: normalizedStartSec,
+        endSec,
+        sourceDurationSec: params.sourceDurationSec,
+        minimumDurationSec
+      });
       return {
         label:
           typeof segment.label === "string" && segment.label.trim()
             ? segment.label.trim()
             : `${labelPrefix} ${index + 1}`,
-        startSec: roundToTenth(normalizedStartSec),
-        endSec: roundToTenth(endSec),
-        sourceDurationSec: roundToThousandth(Math.max(MIN_SEGMENT_DURATION_SEC, endSec - normalizedStartSec)),
+        startSec: normalizedRange.startSec,
+        endSec: normalizedRange.endSec,
+        sourceDurationSec: normalizedRange.sourceDurationSec,
         speed: segment.speed,
         focusYOverride:
           typeof segment.focusY === "number" && Number.isFinite(segment.focusY) ? segment.focusY : null,
@@ -202,16 +255,22 @@ export function normalizeStage3EditorFragments(params: {
   for (const fragment of normalized) {
     const last = nonOverlapping[nonOverlapping.length - 1];
     const startSec = last ? Math.max(fragment.startSec, last.endSec) : fragment.startSec;
-    const upperBound = resolveSourceUpperBound(params.sourceDurationSec, fragment.endSec);
-    const endSec = clamp(fragment.endSec, startSec + MIN_SEGMENT_DURATION_SEC, upperBound);
-    if (endSec - startSec < MIN_SEGMENT_DURATION_SEC - 0.0001) {
+    const upperBound = resolveSourceUpperBound(params.sourceDurationSec, fragment.endSec, minimumDurationSec);
+    const endSec = clamp(fragment.endSec, startSec + minimumDurationSec, upperBound);
+    if (endSec - startSec < minimumDurationSec - 0.0001) {
       continue;
     }
+    const normalizedRange = finalizeNormalizedEditorRange({
+      startSec,
+      endSec,
+      sourceDurationSec: params.sourceDurationSec,
+      minimumDurationSec
+    });
     nonOverlapping.push({
       ...fragment,
-      startSec: roundToTenth(startSec),
-      endSec: roundToTenth(endSec),
-      sourceDurationSec: roundToThousandth(Math.max(MIN_SEGMENT_DURATION_SEC, endSec - startSec))
+      startSec: normalizedRange.startSec,
+      endSec: normalizedRange.endSec,
+      sourceDurationSec: normalizedRange.sourceDurationSec
     });
   }
 
@@ -245,19 +304,26 @@ function buildWindowFragment(params: {
   clipDurationSec: number;
   sourceDurationSec: number | null;
 }): Stage3EditorFragment {
+  const minimumDurationSec = resolveStage3EditorMinimumSelectionDurationSec(params.sourceDurationSec);
   const sourceDuration = params.sourceDurationSec;
   const startUpperBound =
     sourceDuration && sourceDuration > params.clipDurationSec
-      ? Math.max(0, sourceDuration - params.clipDurationSec)
+      ? Math.max(0, sourceDuration - Math.max(params.clipDurationSec, minimumDurationSec))
       : 0;
   const startSec = sourceDuration ? clamp(params.clipStartSec, 0, startUpperBound) : Math.max(0, params.clipStartSec);
   const rawEndSec = sourceDuration ? Math.min(sourceDuration, startSec + params.clipDurationSec) : startSec + params.clipDurationSec;
-  const endSec = Math.max(startSec + MIN_SEGMENT_DURATION_SEC, rawEndSec);
+  const endSec = Math.max(startSec + minimumDurationSec, rawEndSec);
+  const normalizedRange = finalizeNormalizedEditorRange({
+    startSec,
+    endSec,
+    sourceDurationSec: params.sourceDurationSec,
+    minimumDurationSec
+  });
   return {
     label: "Основной фрагмент",
-    startSec: roundToTenth(startSec),
-    endSec: roundToTenth(endSec),
-    sourceDurationSec: roundToThousandth(Math.max(MIN_SEGMENT_DURATION_SEC, endSec - startSec)),
+    startSec: normalizedRange.startSec,
+    endSec: normalizedRange.endSec,
+    sourceDurationSec: normalizedRange.sourceDurationSec,
     speed: 1,
     focusYOverride: null,
     videoZoomOverride: null,
@@ -295,7 +361,7 @@ function buildSourceSelection(params: {
         label: "Полный исходник",
         startSec: 0,
         endSec: roundToTenth(Math.max(params.clipDurationSec, sourceDuration)),
-        sourceDurationSec: roundToThousandth(Math.max(MIN_SEGMENT_DURATION_SEC, sourceDuration)),
+        sourceDurationSec: roundToThousandth(Math.max(MIN_EDITOR_TIMING_GUARD_SEC, sourceDuration)),
         speed: 1,
         focusYOverride: null,
         videoZoomOverride: null,
@@ -313,7 +379,9 @@ function buildSourceSelection(params: {
         label: "Адаптивное окно",
         startSec: adaptiveWindow.startSec,
         endSec: adaptiveWindow.endSec,
-        sourceDurationSec: roundToThousandth(Math.max(MIN_SEGMENT_DURATION_SEC, adaptiveWindow.endSec - adaptiveWindow.startSec)),
+        sourceDurationSec: roundToThousandth(
+          Math.max(MIN_EDITOR_TIMING_GUARD_SEC, adaptiveWindow.endSec - adaptiveWindow.startSec)
+        ),
         speed: 1,
         focusYOverride: null,
         videoZoomOverride: null,
@@ -359,7 +427,7 @@ function buildOutputPlan(params: {
 }): Stage3EditorOutputPlan {
   const targetDurationSec = Math.max(DEFAULT_TARGET_DURATION_SEC, params.targetDurationSec);
   const totalBaseOutputDurationSec = Math.max(
-    MIN_SEGMENT_DURATION_SEC,
+    MIN_EDITOR_TIMING_GUARD_SEC,
     params.source.totalBaseOutputDurationSec || targetDurationSec
   );
   const durationScale = targetDurationSec / totalBaseOutputDurationSec;

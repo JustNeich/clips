@@ -138,3 +138,19 @@ test("normalizeRenderPlan preserves a whole-window selection stored as a single 
   assert.equal(normalized.segments[0]?.endSec, 30);
   assert.equal(normalized.policy, "fixed_segments");
 });
+
+test("normalizeRenderPlan widens too-short fragments to the editor minimum", () => {
+  const normalized = normalizeRenderPlan(
+    {
+      ...fallbackRenderPlan(),
+      segments: [{ startSec: 9.1, endSec: 9.3, speed: 1, label: "Tiny" }],
+      editorSelectionMode: "fragments",
+      policy: "fixed_segments"
+    },
+    fallbackRenderPlan()
+  );
+
+  assert.equal(normalized.segments.length, 1);
+  assert.equal(normalized.segments[0]?.startSec, 9.1);
+  assert.equal(normalized.segments[0]?.endSec, 10.1);
+});
