@@ -109,6 +109,15 @@
 5. Дождаться pairing и запуска worker.
 6. Оставить окно PowerShell открытым во время работы со Stage 3.
 
+Если после запуска команды в PowerShell долго не появляется ни одной строки:
+
+1. Подождать 10-15 секунд: новая команда теперь должна сразу печатать `Downloading Stage 3 bootstrap...` и `Running Stage 3 bootstrap...`.
+2. Если тишина сохраняется, попросить редактора запустить ту же команду в обычном `Windows PowerShell`, а не в терминале IDE.
+3. Если bootstrap уже стартовал и упал позже, лог лежит в `%LOCALAPPDATA%\\Clips Stage3 Worker\\logs\\bootstrap-*.log`.
+4. Для поддержки нужен либо текст из окна PowerShell, либо последний `bootstrap-*.log`.
+
+На старом Windows PowerShell причиной зависания часто был `Invoke-WebRequest` без `-UseBasicParsing`; bootstrap теперь принудительно использует basic parsing и пишет шаги установки в лог.
+
 ## Что ожидать в UI
 
 - `Not paired`:

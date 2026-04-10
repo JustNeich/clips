@@ -102,7 +102,18 @@ export function buildStage3WorkerCommands(params: {
   const origin = normalizeWorkerFacingOrigin(params.origin);
   const localDevCommand = `npm run stage3-worker -- pair --server ${origin} --token ${params.pairingToken}`;
   const shellBootstrapCommand = `curl -fsSL ${origin}/stage3-worker/bootstrap.sh | bash -s -- --server ${origin} --token ${params.pairingToken}`;
-  const powershellBootstrapCommand = `powershell -ExecutionPolicy Bypass -Command "iwr '${origin}/stage3-worker/bootstrap.ps1' -UseBasicParsing | iex; Install-ClipsStage3Worker -Server '${origin}' -Token '${params.pairingToken}'"`;
+  const powershellBootstrapCommand =
+    `powershell -NoProfile -ExecutionPolicy Bypass -Command ` +
+    `"& { ` +
+    `$ErrorActionPreference = 'Stop'; ` +
+    `$ProgressPreference = 'SilentlyContinue'; ` +
+    `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.ServicePointManager]::SecurityProtocol; ` +
+    `Write-Host '[Clips] Downloading Stage 3 bootstrap...'; ` +
+    `$bootstrap = Invoke-WebRequest '${origin}/stage3-worker/bootstrap.ps1' -UseBasicParsing -ErrorAction Stop; ` +
+    `Write-Host '[Clips] Running Stage 3 bootstrap...'; ` +
+    `Invoke-Expression $bootstrap.Content; ` +
+    `Install-ClipsStage3Worker -Server '${origin}' -Token '${params.pairingToken}'; ` +
+    `}"`;
   const isLocalOrigin = isLocalStage3WorkerOrigin(origin);
 
   return {
