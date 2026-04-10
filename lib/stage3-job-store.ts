@@ -438,6 +438,22 @@ function requeueExpiredLocalJobsInternal(db: ReturnType<typeof getDb>): void {
   }
 }
 
+export function sweepExpiredLocalStage3Jobs(): number {
+  return runInTransaction((db) => {
+    const stamp = nowIso();
+    const before = db.prepare(
+      `SELECT COUNT(*) AS count
+         FROM stage3_jobs
+        WHERE execution_target = 'local'
+          AND status = 'running'
+          AND lease_expires_at IS NOT NULL
+          AND lease_expires_at <= ?`
+    ).get(stamp) as { count?: number } | undefined;
+    requeueExpiredLocalJobsInternal(db);
+    return Number(before?.count) || 0;
+  });
+}
+
 export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
   return runInTransaction((db) => {
     const row =

@@ -15,6 +15,7 @@ import {
   Stage3CameraMotion,
   Stage3EditorDraftOverrides,
   Stage3EditorSelectionMode,
+  Stage3JobKind,
   Stage3PositionKeyframe,
   Stage3PreviewState,
   Stage3RenderPolicy,
@@ -174,6 +175,7 @@ type Step3RenderTemplateProps = {
   workerLabel: string | null;
   workerPlatform: string | null;
   workerLastSeenAt: string | null;
+  workerCurrentJobKind?: Stage3JobKind | null;
   workerPairing: Stage3WorkerPairingResponse | null;
   isWorkerPairing: boolean;
   showWorkerControls: boolean;
@@ -313,6 +315,25 @@ function formatTimeSec(value: number): string {
 function formatRenderPublishLabel(info: string | null): string | null {
   const trimmed = info?.trim();
   return trimmed ? trimmed : null;
+}
+
+function formatWorkerCurrentJobLabel(kind: Stage3JobKind | null): string | null {
+  if (kind === "editing-proxy") {
+    return "подготовка proxy";
+  }
+  if (kind === "preview") {
+    return "предпросмотр";
+  }
+  if (kind === "render") {
+    return "рендер";
+  }
+  if (kind === "source-download") {
+    return "загрузка исходника";
+  }
+  if (kind === "agent-media-step") {
+    return "обработка media";
+  }
+  return null;
 }
 
 function detectWorkerGuidePlatform(): WorkerGuidePlatform {
@@ -2027,6 +2048,7 @@ export function Step3RenderTemplate({
   workerLabel,
   workerPlatform,
   workerLastSeenAt,
+  workerCurrentJobKind = null,
   workerPairing,
   isWorkerPairing,
   showWorkerControls,
@@ -3576,6 +3598,10 @@ export function Step3RenderTemplate({
       : workerLabel
         ? `${workerLabel}${workerPlatform ? ` · ${workerPlatform}` : ""}${
             workerLastSeenAt ? ` · последний heartbeat ${formatDateShort(workerLastSeenAt)}` : ""
+          }${
+            workerState === "busy" && workerCurrentJobKind
+              ? ` · активная задача: ${formatWorkerCurrentJobLabel(workerCurrentJobKind) ?? workerCurrentJobKind}`
+              : ""
           }`
         : "Локальный executor зарегистрирован.";
 

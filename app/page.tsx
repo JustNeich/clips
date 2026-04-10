@@ -6599,6 +6599,7 @@ export default function HomePage() {
           workerLabel={activeStage3Worker?.label ?? null}
           workerPlatform={activeStage3Worker?.platform ?? null}
           workerLastSeenAt={activeStage3Worker?.lastSeenAt ?? null}
+          workerCurrentJobKind={activeStage3Worker?.currentJobKind ?? null}
           workerPairing={stage3WorkerPairing}
           isWorkerPairing={isStage3WorkerPairing}
           showWorkerControls={stage3LocalExecutorAvailable}

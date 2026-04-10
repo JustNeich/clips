@@ -1,10 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
+  Stage3JobKind,
   Stage3WorkerPlatform,
   Stage3WorkerStatus,
   Stage3WorkerSummary
 } from "../app/components/types";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
+import { sweepExpiredLocalStage3Jobs } from "./stage3-job-store";
 
 const PAIRING_TTL_MS = Number.parseInt(process.env.STAGE3_WORKER_PAIRING_TTL_SEC ?? "", 10) > 0
   ? Number.parseInt(process.env.STAGE3_WORKER_PAIRING_TTL_SEC ?? "", 10) * 1000
@@ -28,6 +30,23 @@ type WorkerRow = {
   created_at: string;
   updated_at: string;
   current_job_id?: string | null;
+  current_job_kind?: string | null;
+  current_job_lease_expires_at?: string | null;
+  current_job_heartbeat_at?: string | null;
+};
+
+type WorkerCurrentJobRow = {
+  current_job_id?: string | null;
+  current_job_kind?: string | null;
+  current_job_lease_expires_at?: string | null;
+  current_job_heartbeat_at?: string | null;
+};
+
+type WorkerCurrentJobSnapshot = {
+  id: string;
+  kind: Stage3JobKind;
+  leaseUntil: string | null;
+  lastHeartbeatAt: string | null;
 };
 
 type WorkerTokenRow = {
@@ -69,22 +88,82 @@ function normalizePlatform(value: string | null | undefined): Stage3WorkerPlatfo
   return "unknown";
 }
 
-function getCurrentJobId(workerId: string): string | null {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT id
-        FROM stage3_jobs
-       WHERE assigned_worker_id = ?
-         AND status = 'running'
-       ORDER BY updated_at DESC
-       LIMIT 1`
-    )
-    .get(workerId) as { id?: string } | undefined;
-  return row?.id ? String(row.id) : null;
+function normalizeCurrentJobKind(value: string | null | undefined): Stage3JobKind | null {
+  if (
+    value === "preview" ||
+    value === "render" ||
+    value === "editing-proxy" ||
+    value === "source-download" ||
+    value === "agent-media-step"
+  ) {
+    return value;
+  }
+  return null;
 }
 
-function deriveWorkerStatus(lastSeenAt: string | null, currentJobId: string | null): Stage3WorkerStatus {
+function readCurrentWorkerJobRow(workerId: string): WorkerCurrentJobRow | null {
+  const db = getDb();
+  return (
+    (db
+      .prepare(
+        `SELECT
+            id AS current_job_id,
+            kind AS current_job_kind,
+            lease_expires_at AS current_job_lease_expires_at,
+            heartbeat_at AS current_job_heartbeat_at
+          FROM stage3_jobs
+         WHERE assigned_worker_id = ?
+           AND status = 'running'
+         ORDER BY updated_at DESC
+         LIMIT 1`
+      )
+      .get(workerId) as WorkerCurrentJobRow | undefined) ?? null
+  );
+}
+
+function mapCurrentWorkerJob(row: WorkerCurrentJobRow | null): WorkerCurrentJobSnapshot | null {
+  if (!row?.current_job_id) {
+    return null;
+  }
+  const kind = normalizeCurrentJobKind(row.current_job_kind);
+  if (!kind) {
+    return null;
+  }
+  return {
+    id: String(row.current_job_id),
+    kind,
+    leaseUntil: row.current_job_lease_expires_at ? String(row.current_job_lease_expires_at) : null,
+    lastHeartbeatAt: row.current_job_heartbeat_at ? String(row.current_job_heartbeat_at) : null
+  };
+}
+
+function resolveCurrentWorkerJob(row: WorkerRow): WorkerCurrentJobSnapshot | null {
+  if (
+    Object.prototype.hasOwnProperty.call(row, "current_job_id") ||
+    Object.prototype.hasOwnProperty.call(row, "current_job_kind") ||
+    Object.prototype.hasOwnProperty.call(row, "current_job_lease_expires_at") ||
+    Object.prototype.hasOwnProperty.call(row, "current_job_heartbeat_at")
+  ) {
+    return mapCurrentWorkerJob(row);
+  }
+  return mapCurrentWorkerJob(readCurrentWorkerJobRow(String(row.id)));
+}
+
+function isCurrentWorkerJobActive(job: WorkerCurrentJobSnapshot | null): boolean {
+  if (!job) {
+    return false;
+  }
+  if (!job.leaseUntil) {
+    return true;
+  }
+  const leaseMs = new Date(job.leaseUntil).getTime();
+  if (!Number.isFinite(leaseMs) || leaseMs <= Date.now()) {
+    return false;
+  }
+  return true;
+}
+
+function deriveWorkerStatus(lastSeenAt: string | null, hasActiveCurrentJob: boolean): Stage3WorkerStatus {
   if (!lastSeenAt) {
     return "offline";
   }
@@ -92,17 +171,15 @@ function deriveWorkerStatus(lastSeenAt: string | null, currentJobId: string | nu
   if (!Number.isFinite(ageMs) || ageMs > ONLINE_WINDOW_MS) {
     return "offline";
   }
-  return currentJobId ? "busy" : "online";
+  return hasActiveCurrentJob ? "busy" : "online";
 }
 
 function mapWorkerRow(row: WorkerRow | null): Stage3WorkerRecord | null {
   if (!row) {
     return null;
   }
-  const currentJobId =
-    typeof row.current_job_id === "string" || row.current_job_id === null
-      ? row.current_job_id
-      : getCurrentJobId(String(row.id));
+  const currentJob = resolveCurrentWorkerJob(row);
+  const hasActiveCurrentJob = isCurrentWorkerJobActive(currentJob);
   return {
     id: String(row.id),
     workspaceId: String(row.workspace_id),
@@ -111,9 +188,10 @@ function mapWorkerRow(row: WorkerRow | null): Stage3WorkerRecord | null {
     platform: normalizePlatform(row.platform ? String(row.platform) : null),
     hostname: row.hostname ? String(row.hostname) : null,
     appVersion: row.app_version ? String(row.app_version) : null,
-    status: deriveWorkerStatus(row.last_seen_at ? String(row.last_seen_at) : null, currentJobId),
+    status: deriveWorkerStatus(row.last_seen_at ? String(row.last_seen_at) : null, hasActiveCurrentJob),
     lastSeenAt: row.last_seen_at ? String(row.last_seen_at) : null,
-    currentJobId,
+    currentJobId: hasActiveCurrentJob ? currentJob?.id ?? null : null,
+    currentJobKind: hasActiveCurrentJob ? currentJob?.kind ?? null : null,
     capabilitiesJson: row.capabilities_json ? String(row.capabilities_json) : null,
     revokedAt: row.revoked_at ? String(row.revoked_at) : null,
     createdAt: String(row.created_at),
@@ -310,6 +388,7 @@ export function touchStage3WorkerHeartbeat(input: {
 }
 
 export function listStage3Workers(input: { workspaceId: string; userId: string }): Stage3WorkerSummary[] {
+  sweepExpiredLocalStage3Jobs();
   const db = getDb();
   const rows = db
     .prepare(
@@ -321,7 +400,31 @@ export function listStage3Workers(input: { workspaceId: string; userId: string }
                    AND j.status = 'running'
                  ORDER BY j.updated_at DESC
                  LIMIT 1
-              ) AS current_job_id
+              ) AS current_job_id,
+              (
+                SELECT j.kind
+                  FROM stage3_jobs j
+                 WHERE j.assigned_worker_id = w.id
+                   AND j.status = 'running'
+                 ORDER BY j.updated_at DESC
+                 LIMIT 1
+              ) AS current_job_kind,
+              (
+                SELECT j.lease_expires_at
+                  FROM stage3_jobs j
+                 WHERE j.assigned_worker_id = w.id
+                   AND j.status = 'running'
+                 ORDER BY j.updated_at DESC
+                 LIMIT 1
+              ) AS current_job_lease_expires_at,
+              (
+                SELECT j.heartbeat_at
+                  FROM stage3_jobs j
+                 WHERE j.assigned_worker_id = w.id
+                   AND j.status = 'running'
+                 ORDER BY j.updated_at DESC
+                 LIMIT 1
+              ) AS current_job_heartbeat_at
          FROM stage3_workers w
         WHERE w.workspace_id = ?
           AND w.user_id = ?

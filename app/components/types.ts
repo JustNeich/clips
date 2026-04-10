@@ -704,6 +704,7 @@ export type Stage3WorkerSummary = {
   status: Stage3WorkerStatus;
   lastSeenAt: string | null;
   currentJobId: string | null;
+  currentJobKind: Stage3JobKind | null;
   createdAt: string;
   updatedAt: string;
 };

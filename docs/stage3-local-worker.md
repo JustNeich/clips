@@ -118,7 +118,9 @@
 - `Online`:
   worker готов забирать jobs
 - `Busy`:
-  worker сейчас выполняет Stage 3 job
+  worker сейчас выполняет активный Stage 3 job; в описании статуса дополнительно показывается тип задачи (`preview`, `render`, `editing-proxy` и т.д.)
+
+UI worker list теперь при каждом poll автоматически очищает протухшие local leases. Если job уже потерял lease и больше не выполняется, статус должен вернуться из `Busy` в `Online` без ручного сброса executor.
 
 Preview/render больше не должны тихо падать обратно на host. Если worker offline, job останется в очереди и UI покажет честное состояние ожидания.
 
