@@ -18,14 +18,18 @@ import {
 import { getDb, newId, nowIso } from "../lib/db/client";
 import {
   claimNextReadyChannelPublication,
+  cancelChannelPublication,
   createChannelPublication,
   createRenderExport,
   findLatestPublicationForRenderExport,
   listChannelPublications,
   markChannelPublicationScheduled,
+  pauseChannelPublication,
   publishNowChannelPublication,
+  retryChannelPublication,
   saveChannelPublishIntegration
 } from "../lib/publication-store";
+import { PublicationMutationError } from "../lib/publication-mutation-errors";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-publication-shift-test-"));
@@ -253,16 +257,22 @@ test("updateChannelPublicationFromEditor blocks notifySubscribers changes after 
       youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-1"
     });
 
-    await assert.rejects(
-      () =>
-        updateChannelPublicationFromEditor({
-          publicationId,
-          patch: {
-            notifySubscribers: false
-          }
-        }),
-      /только при первой загрузке видео/i
-    );
+    let error: unknown;
+    try {
+      await updateChannelPublicationFromEditor({
+        publicationId,
+        patch: {
+          notifySubscribers: false
+        }
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.ok(error instanceof PublicationMutationError);
+    assert.equal(error.code, "NOTIFY_SUBSCRIBERS_LOCKED");
+    assert.equal(error.field, "notifySubscribers");
+    assert.match(error.message, /только при первой загрузке видео/i);
   });
 });
 
@@ -295,6 +305,37 @@ test("updateChannelPublicationFromEditor persists a custom exact publication tim
   });
 });
 
+test("publication actions cannot clear a live upload lease", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    connectChannelPublishing(scenario.channelId);
+    const publicationId = scenario.publications[0]!.id;
+    const readyAt = nowIso();
+    getDb()
+      .prepare("UPDATE channel_publications SET scheduled_at = ?, upload_ready_at = ?, updated_at = ? WHERE id = ?")
+      .run(readyAt, readyAt, readyAt, publicationId);
+
+    const claimed = claimNextReadyChannelPublication({});
+    assert.ok(claimed, "expected a queued publication to be claimed");
+    assert.equal(claimed?.publication.id, publicationId);
+
+    assert.throws(() => publishNowChannelPublication(publicationId), /загружается в YouTube/i);
+    assert.throws(() => pauseChannelPublication(publicationId), /загружается в YouTube/i);
+    assert.throws(() => retryChannelPublication(publicationId), /загружается в YouTube/i);
+    assert.throws(() => cancelChannelPublication(publicationId), /загружается в YouTube/i);
+
+    const result = markChannelPublicationScheduled({
+      publicationId,
+      youtubeVideoId: "youtube-video-1",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-1",
+      expectedLeaseToken: claimed?.leaseToken
+    });
+
+    assert.equal(result.status, "scheduled");
+    assert.equal(result.youtubeVideoId, "youtube-video-1");
+  });
+});
+
 test("stale publication lease cannot overwrite a newer queued state", async () => {
   await withIsolatedAppData(async () => {
     const scenario = await seedChannelPublicationScenario([0]);
@@ -309,8 +350,11 @@ test("stale publication lease cannot overwrite a newer queued state", async () =
     assert.ok(claimed, "expected a queued publication to be claimed");
     assert.equal(claimed?.publication.id, publicationId);
 
-    const publishNow = publishNowChannelPublication(publicationId);
-    assert.equal(publishNow.status, "queued");
+    getDb()
+      .prepare(
+        "UPDATE channel_publications SET status = 'queued', lease_token = NULL, lease_expires_at = NULL, updated_at = ? WHERE id = ?"
+      )
+      .run(nowIso(), publicationId);
 
     const result = markChannelPublicationScheduled({
       publicationId,
@@ -469,6 +513,85 @@ test("completeRenderExportAndMaybeQueue does not duplicate a scheduled publicati
   });
 });
 
+test("completeRenderExportAndMaybeQueue does not create a second active publication for the same chat", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([]);
+    connectChannelPublishing(scenario.channelId);
+    const workspaceId = "w1";
+    const userId = "u1";
+    const chat = await createOrGetChatByUrl("https://youtube.com/watch?v=samechat123", scenario.channelId);
+    const firstStage3JobId = newId();
+    const secondStage3JobId = newId();
+    const stamp = nowIso();
+    for (const stage3JobId of [firstStage3JobId, secondStage3JobId]) {
+      getDb()
+        .prepare(
+          `INSERT INTO stage3_jobs
+            (id, workspace_id, user_id, kind, status, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, created_at, updated_at, started_at, completed_at)
+            VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
+        )
+        .run(
+          stage3JobId,
+          workspaceId,
+          userId,
+          "render",
+          "completed",
+          JSON.stringify({ chatId: chat.id, channelId: scenario.channelId }),
+          1,
+          0,
+          stamp,
+          stamp
+        );
+    }
+
+    const first = completeRenderExportAndMaybeQueue({
+      workspaceId,
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      chatTitle: "Same chat",
+      stage3JobId: firstStage3JobId,
+      artifactFileName: "same-chat-a.mp4",
+      artifactFilePath: "/tmp/same-chat-a.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Same chat A",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId,
+      stage2Result: null
+    });
+    assert.ok(first.publication, "expected initial publication to exist");
+
+    markChannelPublicationScheduled({
+      publicationId: first.publication!.id,
+      youtubeVideoId: "youtube-video-same-chat",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-same-chat"
+    });
+
+    const second = completeRenderExportAndMaybeQueue({
+      workspaceId,
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      chatTitle: "Same chat",
+      stage3JobId: secondStage3JobId,
+      artifactFileName: "same-chat-b.mp4",
+      artifactFilePath: "/tmp/same-chat-b.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Same chat B",
+      sourceUrl: chat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId,
+      stage2Result: null
+    });
+
+    assert.notEqual(second.renderExport.id, first.renderExport.id);
+    assert.equal(second.publication?.id, first.publication?.id);
+    assert.equal(second.publication?.status, "scheduled");
+    assert.equal(listChannelPublications(scenario.channelId).length, 1);
+  });
+});
+
 test("completeRenderExportAndMaybeQueue skips queued publication when publishAfterRender is false", async () => {
   await withIsolatedAppData(async () => {
     const scenario = await seedChannelPublicationScenario([]);
@@ -601,16 +724,22 @@ test("updateChannelPublicationFromEditor rejects an exact time that is already o
     const scenario = await seedChannelPublicationScenario([0, 1]);
     const secondPublicationId = scenario.publications[1]!.id;
 
-    await assert.rejects(
-      () =>
-        updateChannelPublicationFromEditor({
-          publicationId: secondPublicationId,
-          patch: {
-            scheduleMode: "custom",
-            scheduledAtLocal: "2040-05-05T21:00"
-          }
-        }),
-      /время уже занято/i
-    );
+    let error: unknown;
+    try {
+      await updateChannelPublicationFromEditor({
+        publicationId: secondPublicationId,
+        patch: {
+          scheduleMode: "custom",
+          scheduledAtLocal: "2040-05-05T21:00"
+        }
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.ok(error instanceof PublicationMutationError);
+    assert.equal(error.code, "TIME_OCCUPIED");
+    assert.equal(error.field, "scheduledAtLocal");
+    assert.match(error.message, /время уже занято/i);
   });
 });

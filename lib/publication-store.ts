@@ -16,6 +16,7 @@ import {
   stringifyChannelPublicationTags
 } from "./channel-publishing";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
+import { PublicationMutationError } from "./publication-mutation-errors";
 
 export type StoredYoutubeCredential = {
   refreshToken: string;
@@ -118,6 +119,7 @@ type ChannelPublicationRow = {
   attempts: number;
   lease_token: string | null;
   lease_expires_at: string | null;
+  upload_session_url: string | null;
   created_by_user_id: string;
   created_at: string;
   updated_at: string;
@@ -155,6 +157,16 @@ export type ClaimedChannelPublication = {
   publication: ChannelPublication;
   leaseToken: string;
   leaseExpiresAt: string;
+};
+
+export type ChannelPublicationProcessingState = {
+  publicationId: string;
+  status: ChannelPublication["status"];
+  leaseToken: string | null;
+  leaseExpiresAt: string | null;
+  uploadSessionUrl: string | null;
+  youtubeVideoId: string | null;
+  youtubeVideoUrl: string | null;
 };
 
 function hashStateToken(token: string): string {
@@ -783,6 +795,53 @@ export function getChannelPublicationById(publicationId: string): ChannelPublica
   return row ? mapChannelPublicationRow(row, readPublicationEvents(publicationId)) : null;
 }
 
+export function getChannelPublicationProcessingState(
+  publicationId: string
+): ChannelPublicationProcessingState | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT id, status, lease_token, lease_expires_at, upload_session_url, youtube_video_id, youtube_video_url
+         FROM channel_publications
+        WHERE id = ?
+        LIMIT 1`
+    )
+    .get(publicationId) as
+    | {
+        id?: string;
+        status?: string;
+        lease_token?: string | null;
+        lease_expires_at?: string | null;
+        upload_session_url?: string | null;
+        youtube_video_id?: string | null;
+        youtube_video_url?: string | null;
+      }
+    | undefined;
+  if (!row?.id) {
+    return null;
+  }
+  return {
+    publicationId: row.id,
+    status:
+      row.status === "uploading" ||
+      row.status === "scheduled" ||
+      row.status === "published" ||
+      row.status === "failed" ||
+      row.status === "paused" ||
+      row.status === "canceled"
+        ? row.status
+        : "queued",
+    leaseToken: row.lease_token ?? null,
+    leaseExpiresAt: row.lease_expires_at ?? null,
+    uploadSessionUrl:
+      typeof row.upload_session_url === "string" && row.upload_session_url.trim()
+        ? row.upload_session_url.trim()
+        : null,
+    youtubeVideoId: row.youtube_video_id ?? null,
+    youtubeVideoUrl: row.youtube_video_url ?? null
+  };
+}
+
 export function findLatestPublicationForRenderExport(renderExportId: string): ChannelPublication | null {
   const db = getDb();
   const row = db
@@ -895,6 +954,26 @@ export function findLatestReusablePublicationForChat(chatId: string): ChannelPub
   return row ? mapChannelPublicationRow(row, readPublicationEvents(row.id)) : null;
 }
 
+export function findLatestPublicationForChat(chatId: string): ChannelPublication | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT p.*, r.artifact_file_name as render_file_name, r.source_url as source_url, t.title as chat_title
+         FROM channel_publications p
+         JOIN render_exports r ON r.id = p.render_export_id
+         JOIN chat_threads t ON t.id = p.chat_id
+        WHERE p.chat_id = ?
+          AND p.status != 'canceled'
+        ORDER BY CASE
+          WHEN p.status IN ('queued', 'uploading', 'paused', 'failed', 'scheduled') THEN 0
+          ELSE 1
+        END ASC, p.updated_at DESC
+        LIMIT 1`
+    )
+    .get(chatId) as ChannelPublicationRow | undefined;
+  return row ? mapChannelPublicationRow(row, readPublicationEvents(row.id)) : null;
+}
+
 export function createChannelPublication(input: {
   workspaceId: string;
   channelId: string;
@@ -951,6 +1030,28 @@ export function createChannelPublication(input: {
   return getChannelPublicationById(publicationId)!;
 }
 
+function getPublicationForMutation(publicationId: string): ChannelPublication {
+  const current = getChannelPublicationById(publicationId);
+  if (!current) {
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
+  }
+  return current;
+}
+
+function assertPublicationNotUploading(publication: ChannelPublication, actionLabel: string): void {
+  if (publication.status === "uploading") {
+    throw new PublicationMutationError(
+      `${actionLabel} недоступно, пока ролик загружается в YouTube. Дождитесь завершения текущей загрузки, чтобы не создать дубль.`,
+      {
+        code: "PUBLICATION_UPLOAD_IN_PROGRESS"
+      }
+    );
+  }
+}
+
 export function updateChannelPublicationDraft(input: {
   publicationId: string;
   title?: string;
@@ -970,10 +1071,8 @@ export function updateChannelPublicationDraft(input: {
   renderExportId?: string;
   clearLastError?: boolean;
 }): ChannelPublication {
-  const current = getChannelPublicationById(input.publicationId);
-  if (!current) {
-    throw new Error("Публикация не найдена.");
-  }
+  const current = getPublicationForMutation(input.publicationId);
+  assertPublicationNotUploading(current, "Редактирование публикации");
   const db = getDb();
   db.prepare(
     `UPDATE channel_publications
@@ -1030,6 +1129,16 @@ export function updateChannelPublicationDraft(input: {
 }
 
 export function pauseChannelPublication(publicationId: string): ChannelPublication {
+  const current = getPublicationForMutation(publicationId);
+  assertPublicationNotUploading(current, "Пауза публикации");
+  if (current.status === "paused") {
+    return current;
+  }
+  if (current.status === "published" || current.status === "canceled") {
+    throw new PublicationMutationError("Эту публикацию больше нельзя поставить на паузу.", {
+      code: "PUBLICATION_ACTION_FORBIDDEN"
+    });
+  }
   const db = getDb();
   db.prepare(
     `UPDATE channel_publications
@@ -1044,6 +1153,16 @@ export function pauseChannelPublication(publicationId: string): ChannelPublicati
 }
 
 export function resumeChannelPublication(publicationId: string): ChannelPublication {
+  const current = getPublicationForMutation(publicationId);
+  assertPublicationNotUploading(current, "Возобновление публикации");
+  if (current.status === "queued" || current.status === "scheduled") {
+    return current;
+  }
+  if (current.status === "published" || current.status === "canceled") {
+    throw new PublicationMutationError("Эту публикацию больше нельзя возобновить.", {
+      code: "PUBLICATION_ACTION_FORBIDDEN"
+    });
+  }
   const db = getDb();
   db.prepare(
     `UPDATE channel_publications
@@ -1059,6 +1178,16 @@ export function resumeChannelPublication(publicationId: string): ChannelPublicat
 }
 
 export function retryChannelPublication(publicationId: string): ChannelPublication {
+  const current = getPublicationForMutation(publicationId);
+  assertPublicationNotUploading(current, "Повтор публикации");
+  if (current.status === "queued" || current.status === "scheduled") {
+    return current;
+  }
+  if (current.status === "published" || current.status === "canceled") {
+    throw new PublicationMutationError("Эту публикацию больше нельзя поставить на повтор.", {
+      code: "PUBLICATION_ACTION_FORBIDDEN"
+    });
+  }
   const db = getDb();
   db.prepare(
     `UPDATE channel_publications
@@ -1076,6 +1205,16 @@ export function retryChannelPublication(publicationId: string): ChannelPublicati
 }
 
 export function cancelChannelPublication(publicationId: string): ChannelPublication {
+  const current = getPublicationForMutation(publicationId);
+  assertPublicationNotUploading(current, "Удаление публикации");
+  if (current.status === "canceled") {
+    return current;
+  }
+  if (current.status === "published") {
+    throw new PublicationMutationError("Опубликованную публикацию нельзя удалить из очереди.", {
+      code: "PUBLICATION_ACTION_FORBIDDEN"
+    });
+  }
   const db = getDb();
   const canceledAt = nowIso();
   db.prepare(
@@ -1084,7 +1223,8 @@ export function cancelChannelPublication(publicationId: string): ChannelPublicat
             canceled_at = ?,
             updated_at = ?,
             lease_token = NULL,
-            lease_expires_at = NULL
+            lease_expires_at = NULL,
+            upload_session_url = NULL
       WHERE id = ?`
   ).run(canceledAt, canceledAt, publicationId);
   appendChannelPublicationEvent(publicationId, "info", "Публикация удалена из очереди.");
@@ -1092,9 +1232,10 @@ export function cancelChannelPublication(publicationId: string): ChannelPublicat
 }
 
 export function publishNowChannelPublication(publicationId: string): ChannelPublication {
-  const current = getChannelPublicationById(publicationId);
-  if (!current) {
-    throw new Error("Публикация не найдена.");
+  const current = getPublicationForMutation(publicationId);
+  assertPublicationNotUploading(current, "Publish now");
+  if (current.status === "published" || current.status === "canceled") {
+    return current;
   }
   const now = nowIso();
   const settings = getChannelPublishSettings(current.channelId) ?? DEFAULT_CHANNEL_PUBLISH_SETTINGS;
@@ -1181,7 +1322,7 @@ export function getNextChannelPublicationWakeAt(): string | null {
 export function claimNextReadyChannelPublication(input: {
   leaseDurationMs?: number;
 }): ClaimedChannelPublication | null {
-  const leaseMs = Math.max(30_000, Math.min(15 * 60_000, input.leaseDurationMs ?? 5 * 60_000));
+  const leaseMs = Math.max(5 * 60_000, Math.min(6 * 60 * 60_000, input.leaseDurationMs ?? 30 * 60_000));
   const now = new Date();
   const nowString = now.toISOString();
   const leaseToken = randomUUID();
@@ -1226,6 +1367,58 @@ export function claimNextReadyChannelPublication(input: {
   });
 }
 
+export function extendChannelPublicationLease(input: {
+  publicationId: string;
+  expectedLeaseToken: string;
+  leaseDurationMs?: number;
+}): boolean {
+  const expectedLeaseToken = input.expectedLeaseToken.trim();
+  if (!expectedLeaseToken) {
+    return false;
+  }
+  const leaseMs = Math.max(5 * 60_000, Math.min(6 * 60 * 60_000, input.leaseDurationMs ?? 30 * 60_000));
+  const now = new Date();
+  const stamp = now.toISOString();
+  const leaseExpiresAt = new Date(now.getTime() + leaseMs).toISOString();
+  const db = getDb();
+  const result = db
+    .prepare(
+      `UPDATE channel_publications
+          SET lease_expires_at = ?,
+              updated_at = ?
+        WHERE id = ?
+          AND status = 'uploading'
+          AND lease_token = ?`
+    )
+    .run(leaseExpiresAt, stamp, input.publicationId, expectedLeaseToken);
+  return Number(result.changes ?? 0) > 0;
+}
+
+export function persistChannelPublicationUploadSession(input: {
+  publicationId: string;
+  sessionUrl: string;
+  expectedLeaseToken: string;
+}): boolean {
+  const sessionUrl = input.sessionUrl.trim();
+  const expectedLeaseToken = input.expectedLeaseToken.trim();
+  if (!sessionUrl || !expectedLeaseToken) {
+    return false;
+  }
+  const db = getDb();
+  const stamp = nowIso();
+  const result = db
+    .prepare(
+      `UPDATE channel_publications
+          SET upload_session_url = ?,
+              updated_at = ?
+        WHERE id = ?
+          AND status = 'uploading'
+          AND lease_token = ?`
+    )
+    .run(sessionUrl, stamp, input.publicationId, expectedLeaseToken);
+  return Number(result.changes ?? 0) > 0;
+}
+
 export function markChannelPublicationScheduled(input: {
   publicationId: string;
   youtubeVideoId: string;
@@ -1244,6 +1437,7 @@ export function markChannelPublicationScheduled(input: {
                 last_error = NULL,
                 lease_token = NULL,
                 lease_expires_at = NULL,
+                upload_session_url = NULL,
                 updated_at = ?
           WHERE id = ?
             AND status = 'uploading'
@@ -1259,6 +1453,7 @@ export function markChannelPublicationScheduled(input: {
                 last_error = NULL,
                 lease_token = NULL,
                 lease_expires_at = NULL,
+                upload_session_url = NULL,
                 updated_at = ?
           WHERE id = ?`
       ).run(input.youtubeVideoId, input.youtubeVideoUrl, stamp, input.publicationId);
@@ -1267,7 +1462,10 @@ export function markChannelPublicationScheduled(input: {
     if (current) {
       return current;
     }
-    throw new Error("Публикация не найдена.");
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
   }
   appendChannelPublicationEvent(input.publicationId, "info", "Видео загружено в YouTube и запланировано.");
   return getChannelPublicationById(input.publicationId)!;
@@ -1309,7 +1507,10 @@ export function markChannelPublicationFailed(
     if (current) {
       return current;
     }
-    throw new Error("Публикация не найдена.");
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
   }
   appendChannelPublicationEvent(publicationId, "error", errorMessage);
   return getChannelPublicationById(publicationId)!;

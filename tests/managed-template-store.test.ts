@@ -1,48 +1,45 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import {
   createManagedTemplate,
+  deleteManagedTemplateDetailed,
+  getWorkspaceDefaultTemplateId,
   listManagedTemplates,
   resolveManagedTemplate,
   resolveManagedTemplateSync
 } from "../lib/managed-template-store";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
-import { listTemplateVariants } from "../lib/stage3-template-registry";
+import { bootstrapOwner } from "../lib/team-store";
+import { getDb } from "../lib/db/client";
 
-async function withIsolatedManagedTemplatesRoot<T>(run: (root: string) => Promise<T>): Promise<T> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "clips-managed-templates-test-"));
-  const previousRoot = process.env.MANAGED_TEMPLATES_ROOT;
-  process.env.MANAGED_TEMPLATES_ROOT = root;
-
-  try {
-    return await run(root);
-  } finally {
-    if (previousRoot === undefined) {
-      delete process.env.MANAGED_TEMPLATES_ROOT;
-    } else {
-      process.env.MANAGED_TEMPLATES_ROOT = previousRoot;
-    }
-    await rm(root, { recursive: true, force: true });
-  }
-}
-
-async function withManagedTemplateMigrationRoots<T>(run: (input: { appDataDir: string; legacyRoot: string }) => Promise<T>): Promise<T> {
-  const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-managed-templates-appdata-test-"));
-  const legacyRoot = await mkdtemp(path.join(os.tmpdir(), "clips-managed-templates-legacy-test-"));
+async function withIsolatedTemplateWorkspace<T>(
+  run: (input: { appDataDir: string; legacyRoot: string; owner: Awaited<ReturnType<typeof bootstrapOwner>> }) => Promise<T>
+): Promise<T> {
+  const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-workspace-templates-test-"));
+  const legacyRoot = path.join(appDataDir, "legacy-managed-templates");
   const previousAppDataDir = process.env.APP_DATA_DIR;
   const previousRoot = process.env.MANAGED_TEMPLATES_ROOT;
   const previousLegacyRoot = process.env.MANAGED_TEMPLATES_LEGACY_ROOT;
   process.env.APP_DATA_DIR = appDataDir;
-  delete process.env.MANAGED_TEMPLATES_ROOT;
+  process.env.MANAGED_TEMPLATES_ROOT = path.join(appDataDir, "managed-templates");
   process.env.MANAGED_TEMPLATES_LEGACY_ROOT = legacyRoot;
+  delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
 
   try {
-    return await run({ appDataDir, legacyRoot });
+    await mkdir(legacyRoot, { recursive: true });
+    const owner = await bootstrapOwner({
+      workspaceName: "Workspace Templates",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    return await run({ appDataDir, legacyRoot, owner });
   } finally {
+    delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
     if (previousAppDataDir === undefined) {
       delete process.env.APP_DATA_DIR;
     } else {
@@ -59,61 +56,39 @@ async function withManagedTemplateMigrationRoots<T>(run: (input: { appDataDir: s
       process.env.MANAGED_TEMPLATES_LEGACY_ROOT = previousLegacyRoot;
     }
     await rm(appDataDir, { recursive: true, force: true });
-    await rm(legacyRoot, { recursive: true, force: true });
   }
 }
 
-test("managed template store backfills missing built-in templates even after the seed marker exists", async () => {
-  await withIsolatedManagedTemplatesRoot(async (root) => {
-    const variants = listTemplateVariants().map((variant) => variant.id);
-    assert.ok(variants.length >= 2, "Expected at least two built-in templates for backfill coverage.");
+test("workspace template library seeds a DB-backed default template", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const templates = await listManagedTemplates(owner.workspace.id);
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const resolvedAsync = await resolveManagedTemplate(null, { workspaceId: owner.workspace.id });
+    const resolvedSync = resolveManagedTemplateSync(undefined, { workspaceId: owner.workspace.id });
+    const resolvedLegacyBuiltInId = await resolveManagedTemplate(STAGE3_TEMPLATE_ID, {
+      workspaceId: owner.workspace.id
+    });
 
-    await listManagedTemplates();
-
-    const missingTemplateId = variants.find((templateId) => templateId !== STAGE3_TEMPLATE_ID) ?? variants[0];
-    const missingTemplatePath = path.join(root, `${missingTemplateId}.json`);
-    await unlink(missingTemplatePath);
-
-    const templates = await listManagedTemplates();
-
-    await access(missingTemplatePath);
-    assert.ok(templates.some((template) => template.id === missingTemplateId));
+    assert.ok(templates.length >= 1);
+    assert.equal(defaultTemplateId, templates.find((template) => template.id === defaultTemplateId)?.id);
+    assert.notEqual(defaultTemplateId, STAGE3_TEMPLATE_ID);
+    assert.equal(resolvedAsync?.id, defaultTemplateId);
+    assert.equal(resolvedSync?.id, defaultTemplateId);
+    assert.equal(resolvedLegacyBuiltInId?.id, defaultTemplateId);
+    assert.equal(resolvedAsync?.layoutFamily, STAGE3_TEMPLATE_ID);
   });
 });
 
-test("managed template resolution defaults to the stable Stage 3 template id", async () => {
-  await withIsolatedManagedTemplatesRoot(async () => {
-    await listManagedTemplates();
-    await createManagedTemplate(
-      {
-        name: "Newest Custom Template",
-        baseTemplateId: "science-card-v1"
-      },
-      {
-        workspaceId: "workspace_test",
-        creatorUserId: "user_test",
-        creatorDisplayName: "Tester"
-      }
-    );
-
-    const resolvedAsync = await resolveManagedTemplate(null);
-    const resolvedSync = resolveManagedTemplateSync(undefined);
-
-    assert.equal(resolvedAsync?.id, STAGE3_TEMPLATE_ID);
-    assert.equal(resolvedSync?.id, STAGE3_TEMPLATE_ID);
-  });
-});
-
-test("managed template store migrates legacy repo-backed templates into app data storage", async () => {
-  await withManagedTemplateMigrationRoots(async ({ appDataDir, legacyRoot }) => {
+test("legacy repo-backed custom templates import into workspace_templates", async () => {
+  await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
     const legacyTemplateId = "legacy-custom-template";
     await writeFile(
       path.join(legacyRoot, `${legacyTemplateId}.json`),
       JSON.stringify(
         {
           id: legacyTemplateId,
-          workspaceId: "workspace_legacy",
-          creatorUserId: "user_legacy",
+          workspaceId: owner.workspace.id,
+          creatorUserId: owner.user.id,
           creatorDisplayName: "Legacy Editor",
           createdAt: "2026-04-08T10:00:00.000Z",
           updatedAt: "2026-04-08T10:00:00.000Z",
@@ -144,10 +119,137 @@ test("managed template store migrates legacy repo-backed templates into app data
       "utf-8"
     );
 
-    const templates = await listManagedTemplates();
-    const migratedPath = path.join(appDataDir, "managed-templates", `${legacyTemplateId}.json`);
+    const templates = await listManagedTemplates(owner.workspace.id);
 
     assert.ok(templates.some((template) => template.id === legacyTemplateId));
-    await access(migratedPath);
+  });
+});
+
+test("soft-deleted legacy templates are not resurrected by later imports", async () => {
+  await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
+    const legacyTemplateId = "legacy-delete-check";
+    await writeFile(
+      path.join(legacyRoot, `${legacyTemplateId}.json`),
+      JSON.stringify({
+        id: legacyTemplateId,
+        workspaceId: owner.workspace.id,
+        name: "Legacy Delete Check",
+        baseTemplateId: "science-card-v1"
+      }),
+      "utf-8"
+    );
+
+    assert.ok((await listManagedTemplates(owner.workspace.id)).some((template) => template.id === legacyTemplateId));
+    const deleted = await deleteManagedTemplateDetailed(legacyTemplateId, { workspaceId: owner.workspace.id });
+    const afterDelete = await listManagedTemplates(owner.workspace.id);
+
+    assert.equal(deleted.deleted, true);
+    assert.ok(!afterDelete.some((template) => template.id === legacyTemplateId));
+  });
+});
+
+test("legacy import does not steal same-id templates from another workspace", async () => {
+  await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
+    const legacyTemplateId = "shared-legacy-id";
+    const otherWorkspaceId = "other-workspace-id";
+    const stamp = "2026-04-08T10:00:00.000Z";
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).run(otherWorkspaceId, "Other Workspace", "other-workspace", stamp, stamp);
+    db.prepare(
+      `INSERT INTO workspace_templates
+       (id, workspace_id, name, description, layout_family, content_json, template_config_json, shadow_layers_json, created_at, updated_at, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+    ).run(
+      legacyTemplateId,
+      otherWorkspaceId,
+      "Other Workspace Template",
+      "",
+      STAGE3_TEMPLATE_ID,
+      "{}",
+      "{}",
+      "[]",
+      stamp,
+      stamp
+    );
+    await writeFile(
+      path.join(legacyRoot, `${legacyTemplateId}.json`),
+      JSON.stringify({
+        id: legacyTemplateId,
+        workspaceId: owner.workspace.id,
+        name: "Owner Legacy Collision",
+        baseTemplateId: STAGE3_TEMPLATE_ID
+      }),
+      "utf-8"
+    );
+
+    const chatHistory = await import("../lib/chat-history");
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Collision Channel",
+      username: "collision_channel"
+    });
+    db.prepare("UPDATE channels SET template_id = ? WHERE id = ?").run(legacyTemplateId, channel.id);
+
+    const templates = await listManagedTemplates(owner.workspace.id);
+    const importedTemplate = templates.find((template) => template.name === "Owner Legacy Collision");
+    const otherWorkspaceTemplate = db
+      .prepare("SELECT workspace_id FROM workspace_templates WHERE id = ? LIMIT 1")
+      .get(legacyTemplateId) as Record<string, unknown> | undefined;
+    const repairedChannel = await chatHistory.getChannelById(channel.id);
+
+    assert.ok(importedTemplate);
+    assert.notEqual(importedTemplate.id, legacyTemplateId);
+    assert.equal(otherWorkspaceTemplate?.workspace_id, otherWorkspaceId);
+    assert.equal(repairedChannel?.templateId, importedTemplate.id);
+  });
+});
+
+test("deleting the default template promotes an oldest replacement and blocks deleting the last template", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const replacement = await createManagedTemplate(
+      {
+        name: "Replacement Template",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const deletedDefault = await deleteManagedTemplateDetailed(defaultTemplateId, {
+      workspaceId: owner.workspace.id
+    });
+    const blockedLastDelete = await deleteManagedTemplateDetailed(replacement.id, {
+      workspaceId: owner.workspace.id
+    });
+
+    assert.equal(deletedDefault.deleted, true);
+    assert.equal(deletedDefault.fallbackTemplateId, replacement.id);
+    assert.equal(await getWorkspaceDefaultTemplateId(owner.workspace.id), replacement.id);
+    assert.equal(blockedLastDelete.deleted, false);
+    assert.equal(blockedLastDelete.reason, "last_template");
+  });
+});
+
+test("broken channel template references self-heal to the workspace default", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const chatHistory = await import("../lib/chat-history");
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Repair Channel",
+      username: "repair_channel"
+    });
+
+    getDb().prepare("UPDATE channels SET template_id = ? WHERE id = ?").run("missing-template-id", channel.id);
+    const repaired = await chatHistory.getChannelById(channel.id);
+
+    assert.equal(repaired?.templateId, defaultTemplateId);
   });
 });

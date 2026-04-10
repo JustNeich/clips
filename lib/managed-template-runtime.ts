@@ -135,24 +135,26 @@ function toResolvedRuntimeFromSnapshot(
 
 export async function resolveManagedTemplateRuntime(
   templateId: string | null | undefined,
-  snapshotState?: Stage3SnapshotManagedTemplateState | null
+  snapshotState?: Stage3SnapshotManagedTemplateState | null,
+  options?: { workspaceId?: string | null }
 ): Promise<ResolvedManagedTemplateRuntime> {
   const candidate = typeof templateId === "string" ? templateId.trim() : "";
   if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
     return toResolvedRuntimeFromSnapshot(snapshotState);
   }
-  return toResolvedRuntime(await resolveManagedTemplate(templateId));
+  return toResolvedRuntime(await resolveManagedTemplate(templateId, options));
 }
 
 export function resolveManagedTemplateRuntimeSync(
   templateId: string | null | undefined,
-  snapshotState?: Stage3SnapshotManagedTemplateState | null
+  snapshotState?: Stage3SnapshotManagedTemplateState | null,
+  options?: { workspaceId?: string | null }
 ): ResolvedManagedTemplateRuntime {
   const candidate = typeof templateId === "string" ? templateId.trim() : "";
   if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
     return toResolvedRuntimeFromSnapshot(snapshotState);
   }
-  return toResolvedRuntime(resolveManagedTemplateSync(templateId));
+  return toResolvedRuntime(resolveManagedTemplateSync(templateId, options));
 }
 
 export function computeManagedTemplateTextFit(input: {

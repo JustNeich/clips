@@ -15,6 +15,7 @@ export type ManagedTemplateShadowLayer = {
 export type ManagedTemplateVersionSnapshot = {
   name: string;
   description: string;
+  layoutFamily: string;
   baseTemplateId: string;
   content: TemplateContentFixture;
   templateConfig: Stage3TemplateConfig;
@@ -30,11 +31,12 @@ export type ManagedTemplateVersion = {
 
 export type ManagedTemplate = ManagedTemplateVersionSnapshot & {
   id: string;
-  workspaceId: string | null;
+  workspaceId: string;
   creatorUserId: string | null;
   creatorDisplayName: string | null;
   createdAt: string;
   updatedAt: string;
+  archivedAt: string | null;
   versions: ManagedTemplateVersion[];
 };
 
@@ -43,6 +45,7 @@ export type ManagedTemplateSummary = Pick<
   | "id"
   | "name"
   | "description"
+  | "layoutFamily"
   | "baseTemplateId"
   | "workspaceId"
   | "creatorUserId"

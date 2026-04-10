@@ -306,20 +306,65 @@ export async function listManagedYouTubeChannels(
     .filter((item): item is ChannelPublishIntegrationOption => Boolean(item));
 }
 
-export async function uploadYouTubeVideo(input: {
+type UploadSessionStatus =
+  | {
+      state: "incomplete";
+      nextByte: number;
+    }
+  | {
+      state: "completed";
+      videoId: string;
+    };
+
+function parseUploadRangeNextByte(rangeHeader: string | null): number {
+  const match = rangeHeader?.match(/bytes=(\d+)-(\d+)/i);
+  if (!match) {
+    return 0;
+  }
+  const end = Number.parseInt(match[2] ?? "", 10);
+  return Number.isFinite(end) ? end + 1 : 0;
+}
+
+function extractYouTubeVideoId(payload: Record<string, unknown> | null | undefined): string {
+  return typeof payload?.id === "string" ? payload.id.trim() : "";
+}
+
+function shouldRetryUploadError(error: unknown): boolean {
+  return !(error instanceof YouTubePublishError) || error.recoverable;
+}
+
+async function waitBeforeUploadRetry(attempt: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, 750 * (attempt + 1));
+    timeout.unref?.();
+  });
+}
+
+function startUploadHeartbeat(onHeartbeat?: () => void | Promise<void>): () => void {
+  if (!onHeartbeat) {
+    return () => undefined;
+  }
+  const ping = () => {
+    Promise.resolve(onHeartbeat()).catch(() => {
+      // Heartbeat is a safety net; the upload request remains the source of truth.
+    });
+  };
+  ping();
+  const interval = setInterval(ping, 30_000);
+  interval.unref?.();
+  return () => clearInterval(interval);
+}
+
+async function openYouTubeUploadSession(input: {
   accessToken: string;
-  filePath: string;
+  fileSize: number;
   mimeType: string;
   title: string;
   description: string;
   tags: string[];
   notifySubscribers: boolean;
   publishAt: string;
-}): Promise<{
-  videoId: string;
-  videoUrl: string;
-}> {
-  const fileStat = await fs.stat(input.filePath);
+}): Promise<string> {
   const startResponse = await runWithRetry(async () => {
     const response = await fetch(
       `${YOUTUBE_UPLOAD_BASE_URL}?uploadType=resumable&part=snippet,status&notifySubscribers=${input.notifySubscribers ? "true" : "false"}`,
@@ -328,7 +373,7 @@ export async function uploadYouTubeVideo(input: {
         headers: {
           Authorization: `Bearer ${input.accessToken}`,
           "Content-Type": "application/json; charset=UTF-8",
-          "X-Upload-Content-Length": String(fileStat.size),
+          "X-Upload-Content-Length": String(input.fileSize),
           "X-Upload-Content-Type": input.mimeType
         },
         body: JSON.stringify({
@@ -357,46 +402,191 @@ export async function uploadYouTubeVideo(input: {
     return response;
   });
 
-  const sessionUrl = startResponse.headers.get("location");
+  const sessionUrl = startResponse.headers.get("location")?.trim() ?? "";
   if (!sessionUrl) {
     throw new YouTubePublishError("YouTube не вернул upload session URL.", {
       recoverable: false
     });
   }
+  return sessionUrl;
+}
 
-  const uploadPayload = await runWithRetry(async () => {
-    const stream = Readable.toWeb(createReadStream(input.filePath)) as ReadableStream<Uint8Array>;
-    const response = await fetch(sessionUrl, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${input.accessToken}`,
-        "Content-Length": String(fileStat.size),
-        "Content-Type": input.mimeType
-      },
-      body: stream,
-      duplex: "half"
-    } as RequestInit & { duplex: "half" });
-    const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!response.ok) {
-      const message = extractGoogleApiErrorMessage(payload) ?? `Не удалось загрузить видео в YouTube (${response.status}).`;
-      throw new YouTubePublishError(message, {
-        recoverable: response.status >= 500 || response.status === 429,
-        reauthRequired: response.status === 401 || response.status === 403
-      });
+async function inspectYouTubeUploadSession(input: {
+  accessToken: string;
+  sessionUrl: string;
+  fileSize: number;
+}): Promise<UploadSessionStatus> {
+  const response = await fetch(input.sessionUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Length": "0",
+      "Content-Range": `bytes */${input.fileSize}`
     }
-    return payload;
   });
+  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (response.status === 308) {
+    return {
+      state: "incomplete",
+      nextByte: Math.min(input.fileSize, parseUploadRangeNextByte(response.headers.get("range")))
+    };
+  }
+  if (response.ok) {
+    const videoId = extractYouTubeVideoId(payload);
+    if (videoId) {
+      return {
+        state: "completed",
+        videoId
+      };
+    }
+  }
+  const message =
+    extractGoogleApiErrorMessage(payload) ??
+    `Не удалось проверить YouTube upload session (${response.status}).`;
+  throw new YouTubePublishError(message, {
+    recoverable: response.status >= 500 || response.status === 429,
+    reauthRequired: response.status === 401 || response.status === 403
+  });
+}
 
-  const videoId = typeof uploadPayload?.id === "string" ? uploadPayload.id.trim() : "";
+async function uploadRemainingYouTubeBytes(input: {
+  accessToken: string;
+  sessionUrl: string;
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
+  startByte: number;
+}): Promise<UploadSessionStatus> {
+  const startByte = Math.max(0, Math.min(input.fileSize, input.startByte));
+  if (startByte >= input.fileSize) {
+    return inspectYouTubeUploadSession(input);
+  }
+
+  const stream = Readable.toWeb(createReadStream(input.filePath, { start: startByte })) as ReadableStream<Uint8Array>;
+  const response = await fetch(input.sessionUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Length": String(input.fileSize - startByte),
+      "Content-Type": input.mimeType,
+      "Content-Range": `bytes ${startByte}-${input.fileSize - 1}/${input.fileSize}`
+    },
+    body: stream,
+    duplex: "half"
+  } as RequestInit & { duplex: "half" });
+  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (response.status === 308) {
+    return {
+      state: "incomplete",
+      nextByte: Math.min(input.fileSize, parseUploadRangeNextByte(response.headers.get("range")))
+    };
+  }
+  if (!response.ok) {
+    const message =
+      extractGoogleApiErrorMessage(payload) ??
+      `Не удалось загрузить видео в YouTube (${response.status}).`;
+    throw new YouTubePublishError(message, {
+      recoverable: response.status >= 500 || response.status === 429,
+      reauthRequired: response.status === 401 || response.status === 403
+    });
+  }
+
+  const videoId = extractYouTubeVideoId(payload);
   if (!videoId) {
     throw new YouTubePublishError("YouTube upload завершился без video id.", {
       recoverable: false
     });
   }
   return {
-    videoId,
-    videoUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
+    state: "completed",
+    videoId
   };
+}
+
+async function uploadViaResumableSession(input: {
+  accessToken: string;
+  sessionUrl: string;
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
+}): Promise<{ videoId: string }> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const status = await inspectYouTubeUploadSession(input);
+      if (status.state === "completed") {
+        return {
+          videoId: status.videoId
+        };
+      }
+      const uploaded = await uploadRemainingYouTubeBytes({
+        ...input,
+        startByte: status.nextByte
+      });
+      if (uploaded.state === "completed") {
+        return {
+          videoId: uploaded.videoId
+        };
+      }
+      lastError = new YouTubePublishError("YouTube upload session остался незавершённым.", {
+        recoverable: true
+      });
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryUploadError(error) || attempt === 2) {
+        throw error;
+      }
+    }
+    await waitBeforeUploadRetry(attempt);
+  }
+  throw lastError instanceof Error ? lastError : new Error("Unknown YouTube upload failure.");
+}
+
+export async function uploadYouTubeVideo(input: {
+  accessToken: string;
+  filePath: string;
+  mimeType: string;
+  title: string;
+  description: string;
+  tags: string[];
+  notifySubscribers: boolean;
+  publishAt: string;
+  sessionUrl?: string | null;
+  onSessionUrl?: (sessionUrl: string) => void | Promise<void>;
+  onHeartbeat?: () => void | Promise<void>;
+}): Promise<{
+  videoId: string;
+  videoUrl: string;
+}> {
+  const fileStat = await fs.stat(input.filePath);
+  if (fileStat.size <= 0) {
+    throw new YouTubePublishError("Файл для публикации пустой.", {
+      recoverable: false
+    });
+  }
+
+  const stopHeartbeat = startUploadHeartbeat(input.onHeartbeat);
+  try {
+    let sessionUrl = input.sessionUrl?.trim() ?? "";
+    if (!sessionUrl) {
+      sessionUrl = await openYouTubeUploadSession({ ...input, fileSize: fileStat.size });
+      await input.onSessionUrl?.(sessionUrl);
+    }
+
+    const result = await uploadViaResumableSession({
+      accessToken: input.accessToken,
+      filePath: input.filePath,
+      fileSize: fileStat.size,
+      mimeType: input.mimeType,
+      sessionUrl
+    });
+    return {
+      videoId: result.videoId,
+      videoUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(result.videoId)}`
+    };
+  } finally {
+    stopHeartbeat();
+  }
 }
 
 export async function updateYouTubeScheduledVideo(input: {

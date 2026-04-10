@@ -9,7 +9,7 @@ import {
   saveManagedTemplateBackgroundAsset,
   validateManagedTemplateBackgroundMime
 } from "../../../../lib/managed-template-assets";
-import { requireManagedTemplateCreateAccess } from "../../../../lib/managed-template-guards";
+import { requireAuth } from "../../../../lib/auth/guards";
 
 export const runtime = "nodejs";
 
@@ -49,7 +49,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const auth = await requireManagedTemplateCreateAccess();
+    const auth = await requireAuth(request);
     const assetId = randomUUID().replace(/-/g, "");
     const asset = await saveManagedTemplateBackgroundAsset({
       assetId,

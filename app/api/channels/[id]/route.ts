@@ -4,7 +4,6 @@ import {
   updateChannelById
 } from "../../../../lib/chat-history";
 import { deleteChannelAssetDir } from "../../../../lib/channel-assets";
-import { filterManagedTemplatesForAuthIncludingVisibleChannels } from "../../../../lib/managed-template-access";
 import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../../lib/publication-store";
 import {
   requireAuth,
@@ -12,7 +11,7 @@ import {
   requireChannelVisibility
 } from "../../../../lib/auth/guards";
 import { getRestrictedChannelEditError } from "../../../../lib/channel-edit-permissions";
-import { listManagedTemplateSummaries } from "../../../../lib/managed-template-store";
+import { readManagedTemplate } from "../../../../lib/managed-template-store";
 import { Stage2PromptConfig } from "../../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../../lib/stage2-channel-learning";
@@ -46,11 +45,8 @@ async function ensureChannelTemplateSelectable(
   if (!candidate) {
     return null;
   }
-  const visibleTemplates = await filterManagedTemplatesForAuthIncludingVisibleChannels(
-    auth,
-    await listManagedTemplateSummaries()
-  );
-  return visibleTemplates.some((template) => template.id === candidate) ? candidate : null;
+  const template = await readManagedTemplate(candidate, { workspaceId: auth.workspace.id });
+  return template ? template.id : null;
 }
 
 export async function GET(_request: Request, context: Context): Promise<Response> {

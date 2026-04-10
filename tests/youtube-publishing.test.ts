@@ -70,6 +70,8 @@ test("uploadYouTubeVideo streams the artifact body instead of buffering the whol
   const originalFetch = globalThis.fetch;
   let uploadBody: unknown = null;
   let uploadLength = "";
+  let uploadRange = "";
+  let inspectedSession = false;
 
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -82,10 +84,18 @@ test("uploadYouTubeVideo streams the artifact body instead of buffering the whol
       });
     }
     if (url === "https://upload.example/session") {
+      const contentRange = init?.headers
+        ? String((init.headers as Record<string, string>)["Content-Range"] ?? "")
+        : "";
+      if (contentRange === "bytes */8") {
+        inspectedSession = true;
+        return new Response(null, { status: 308 });
+      }
       uploadBody = init?.body ?? null;
       uploadLength = init?.headers
         ? String((init.headers as Record<string, string>)["Content-Length"] ?? "")
         : "";
+      uploadRange = contentRange;
       return Response.json({ id: "youtube-video-1" }, { status: 200 });
     }
     throw new Error(`Unexpected fetch URL: ${url}`);
@@ -104,11 +114,70 @@ test("uploadYouTubeVideo streams the artifact body instead of buffering the whol
     });
 
     assert.equal(result.videoId, "youtube-video-1");
+    assert.equal(inspectedSession, true);
     assert.equal(uploadLength, "8");
+    assert.equal(uploadRange, "bytes 0-7/8");
     assert.ok(uploadBody, "expected upload request body to be present");
     assert.equal(uploadBody instanceof Uint8Array, false);
     assert.equal(Buffer.isBuffer(uploadBody), false);
     assert.equal(typeof (uploadBody as { getReader?: unknown }).getReader, "function");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("uploadYouTubeVideo resumes an existing upload session instead of opening a duplicate session", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "clips-youtube-resume-test-"));
+  const filePath = path.join(tmpDir, "video.mp4");
+  await writeFile(filePath, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]));
+
+  const originalFetch = globalThis.fetch;
+  let openedNewSession = false;
+  let resumedRange = "";
+  let resumedLength = "";
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes("upload/youtube/v3/videos?uploadType=resumable")) {
+      openedNewSession = true;
+      throw new Error("should not open a new upload session");
+    }
+    if (url === "https://upload.example/session") {
+      const headers = init?.headers as Record<string, string> | undefined;
+      const contentRange = String(headers?.["Content-Range"] ?? "");
+      if (contentRange === "bytes */8") {
+        return new Response(null, {
+          status: 308,
+          headers: {
+            range: "bytes=0-3"
+          }
+        });
+      }
+      resumedRange = contentRange;
+      resumedLength = String(headers?.["Content-Length"] ?? "");
+      return Response.json({ id: "youtube-video-resumed" }, { status: 200 });
+    }
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const result = await uploadYouTubeVideo({
+      accessToken: "token",
+      filePath,
+      mimeType: "video/mp4",
+      title: "Clip",
+      description: "Desc",
+      tags: ["tag"],
+      notifySubscribers: false,
+      publishAt: "2040-05-05T18:00:00.000Z",
+      sessionUrl: "https://upload.example/session"
+    });
+
+    assert.equal(result.videoId, "youtube-video-resumed");
+    assert.equal(openedNewSession, false);
+    assert.equal(resumedRange, "bytes 4-7/8");
+    assert.equal(resumedLength, "4");
   } finally {
     globalThis.fetch = originalFetch;
     await rm(tmpDir, { recursive: true, force: true });

@@ -26,11 +26,14 @@
 - preview в редакторе и финальный render теперь читают structured `content.highlights`, а не inline markers;
 - legacy `topHighlightPhrases` оставлен только как fallback при загрузке старых шаблонов;
 - если оператор вручную меняет текст в Stage 3, highlight spans для этого блока должны считаться сброшенными до следующего apply из Stage 2.
-- built-in/system templates всегда видны в библиотеке, но открываются только в `read-only`;
-- чтобы изменить встроенный шаблон, нужно создать копию из `template-road`, после чего она становится обычным managed template;
-- для ролей ниже manager библиотека показывает не только личные drafts, но и шаблоны, назначенные на видимые им каналы.
-- managed templates по умолчанию хранятся в app-data storage, а не в `design/managed-templates` внутри рабочей копии;
-- при первом доступе runtime автоматически мигрирует legacy templates из старой repo-backed папки в новое durable storage.
+- библиотека шаблонов теперь workspace-wide: любой участник workspace видит, выбирает и редактирует те же template documents;
+- system/read-only/owner-scoped managed templates больше не являются runtime-моделью для каналов;
+- channel template assignment принимает только реальные `workspace_templates.id` из того же workspace;
+- `layoutFamily` хранится внутри template row как implementation detail renderer-а, а не как отдельный пользовательский built-in template;
+- SQLite `workspace_templates` является active source of truth, legacy file-backed managed templates читаются только как migration/bootstrap input;
+- если канал указывает на отсутствующий шаблон, read path должен сразу перепривязать его к `workspace.default_template_id` и сохранить repair;
+- при удалении используемого шаблона каналы переводятся на workspace default в той же transaction;
+- последний шаблон workspace удалить нельзя, а удаление текущего default сначала продвигает самый старый оставшийся шаблон.
 
 ## Как использовать
 
@@ -49,8 +52,8 @@
 
 ## Preset workflow
 
-1. В `template-road` нажать `New draft`, если хотите начать новый стиль поверх базового шаблона.
-2. После правок нажать `Create preset` или `Save as new`.
+1. В `template-road` нажать `Новый шаблон`, если хотите начать новый workspace template поверх выбранной renderer family.
+2. После правок нажать `Create preset` или сохранить шаблон через autosave.
 3. Preset сохраняется как JSON в `design/template-style-presets/<preset-id>.json`.
 4. Чтобы вернуться к нему позже, открыть `template-road?preset=<preset-id>`.
 5. Чтобы применить тот же стиль в render/view route, открыть `science-card?preset=<preset-id>`.

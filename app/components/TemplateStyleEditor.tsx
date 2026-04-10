@@ -30,8 +30,7 @@ import {
 import type {
   ManagedTemplate,
   ManagedTemplateShadowLayer,
-  ManagedTemplateSummary,
-  ManagedTemplateVersion
+  ManagedTemplateSummary
 } from "../../lib/managed-template-types";
 import { publishManagedTemplateSync } from "../../lib/managed-template-sync";
 
@@ -41,7 +40,7 @@ type TemplateStyleEditorProps = {
 
 type ManagedTemplateListCapabilities = {
   canCreate: boolean;
-  visibilityScope: "all" | "own";
+  visibilityScope: "workspace" | "all" | "own";
 };
 
 type ManagedTemplateListResponse = {
@@ -241,7 +240,6 @@ const BADGE_OPTIONS: BadgeOption[] = [
   }
 ];
 
-const MAX_VISIBLE_TEMPLATE_VERSIONS = 6;
 const DEFAULT_OPEN_SECTION_IDS = new Set<string>([
   "template-road-style-library",
   "template-road-style-base",
@@ -253,7 +251,6 @@ const DEFAULT_OPEN_SECTION_IDS = new Set<string>([
 
 const SECTION_LINKS: SectionLink[] = [
   { id: "template-road-style-library", label: "Шаблон" },
-  { id: "template-road-style-history", label: "История" },
   { id: "template-road-style-base", label: "Основа" },
   { id: "template-road-style-content", label: "Демо-текст" },
   { id: "template-road-style-card", label: "Карточка" },
@@ -677,13 +674,14 @@ function toManagedTemplateSummary(template: ManagedTemplate): ManagedTemplateSum
     id: template.id,
     name: template.name,
     description: template.description,
+    layoutFamily: template.layoutFamily,
     baseTemplateId: template.baseTemplateId,
     workspaceId: template.workspaceId,
     creatorUserId: template.creatorUserId,
     creatorDisplayName: template.creatorDisplayName,
     createdAt: template.createdAt,
     updatedAt: template.updatedAt,
-    versionsCount: template.versions.length
+    versionsCount: 0
   };
 }
 
@@ -709,25 +707,6 @@ function areTemplateSummaryListsEqual(
       template.createdAt === next.createdAt &&
       template.updatedAt === next.updatedAt &&
       template.versionsCount === next.versionsCount
-    );
-  });
-}
-
-function areTemplateVersionsEqual(
-  left: ManagedTemplateVersion[],
-  right: ManagedTemplateVersion[]
-): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  return left.every((version, index) => {
-    const next = right[index];
-    return (
-      next &&
-      version.id === next.id &&
-      version.label === next.label &&
-      version.createdAt === next.createdAt
     );
   });
 }
@@ -1091,11 +1070,9 @@ export function TemplateStyleEditor({
     canCreate: true,
     visibilityScope: initialTemplateAccessScope
   });
-  const [versions, setVersions] = useState<ManagedTemplateVersion[]>([]);
   const [templateName, setTemplateName] = useState(buildDefaultTemplateName(initialResolvedTemplateId));
   const [templateDescription, setTemplateDescription] = useState("");
   const [showHints, setShowHints] = useState(false);
-  const [showAllVersions, setShowAllVersions] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
     SECTION_LINKS.reduce<Record<string, boolean>>((accumulator, section) => {
       accumulator[section.id] = DEFAULT_OPEN_SECTION_IDS.has(section.id);
@@ -1135,19 +1112,9 @@ export function TemplateStyleEditor({
     [templateId, templates]
   );
   const canCreateTemplates = templateCapabilities.canCreate;
-  const isSystemTemplate = Boolean(
-    templateId &&
-      (TEMPLATE_IDS.has(templateId) ||
-        (activeTemplateSummary?.workspaceId === null && activeTemplateSummary?.creatorUserId === null))
-  );
-  const isTemplateReadOnly = !canCreateTemplates || isSystemTemplate;
   const emptyLibraryMessage = canCreateTemplates
     ? "У тебя пока нет доступных шаблонов. Создай первый, и он сразу появится в настройках канала и в Stage 3."
     : "У тебя пока нет доступных шаблонов для редактирования.";
-  const visibleVersions = useMemo(
-    () => (showAllVersions ? versions : versions.slice(0, MAX_VISIBLE_TEMPLATE_VERSIONS)),
-    [showAllVersions, versions]
-  );
   const viewportMetrics = useMemo(
     () => getTemplatePreviewViewportMetrics(baseTemplateId),
     [baseTemplateId]
@@ -1234,7 +1201,6 @@ export function TemplateStyleEditor({
     setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
     setTemplateConfig(nextState.templateConfig);
     setShadowLayers(nextState.shadowLayers);
-    setVersions(managedTemplate.versions);
     setTemplateName(managedTemplate.name);
     setTemplateDescription(managedTemplate.description);
     setUpdatedAt(managedTemplate.updatedAt);
@@ -1262,11 +1228,10 @@ export function TemplateStyleEditor({
       setTemplateId(null);
       setBaseTemplateId(resolvedTemplateId);
       setContent(nextContent);
-      setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
-      setTemplateConfig(nextConfig);
-      setShadowLayers(parseShadowLayersFromValue(nextConfig.card.shadow));
-      setVersions([]);
-      setTemplateName(buildDefaultTemplateName(resolvedTemplateId));
+    setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
+    setTemplateConfig(nextConfig);
+    setShadowLayers(parseShadowLayersFromValue(nextConfig.card.shadow));
+    setTemplateName(buildDefaultTemplateName(resolvedTemplateId));
       setTemplateDescription("");
       setUpdatedAt(null);
       setLastSavedSignature(null);
@@ -1293,7 +1258,12 @@ export function TemplateStyleEditor({
     const nextTemplates = Array.isArray(payload.templates) ? payload.templates : [];
     const nextCapabilities: ManagedTemplateListCapabilities = {
       canCreate: payload.capabilities?.canCreate !== false,
-      visibilityScope: payload.capabilities?.visibilityScope === "all" ? "all" : "own"
+      visibilityScope:
+        payload.capabilities?.visibilityScope === "workspace"
+          ? "workspace"
+          : payload.capabilities?.visibilityScope === "all"
+            ? "all"
+            : "own"
     };
     setTemplates((current) =>
       areTemplateSummaryListsEqual(current, nextTemplates) ? current : nextTemplates
@@ -1473,9 +1443,6 @@ export function TemplateStyleEditor({
         return;
       }
 
-      setVersions((current) =>
-        areTemplateVersionsEqual(current, savedTemplate.versions) ? current : savedTemplate.versions
-      );
       setUpdatedAt((current) => (current === savedTemplate.updatedAt ? current : savedTemplate.updatedAt));
       setLastSavedSignature(nextState.signature);
     },
@@ -1536,32 +1503,19 @@ export function TemplateStyleEditor({
           }
           const templateStillExists = nextTemplates.some((template) => template.id === currentTemplateId);
           if (!templateStillExists) {
-            if (!activeTemplateSummary) {
+            const fallbackTemplateId = nextTemplates[0]?.id ?? null;
+            if (fallbackTemplateId) {
+              await loadTemplate(fallbackTemplateId, {
+                fallbackTemplates: nextTemplates,
+                fallbackToFirst: true
+              });
+              setSaveState("error");
+              setSaveMessage("Текущий шаблон был удалён или восстановлен системой. Открыл доступный workspace-шаблон.");
               return;
             }
-            const fallbackStamp =
-              updatedAt ??
-              activeTemplateSummary?.updatedAt ??
-              new Date().toISOString();
-            setTemplates((current) =>
-              current.some((template) => template.id === currentTemplateId)
-                ? current
-                : upsertTemplateList(current, {
-                    id: currentTemplateId,
-                    name: templateName.trim() || buildDefaultTemplateName(baseTemplateId),
-                    description: templateDescription.trim(),
-                    baseTemplateId,
-                    workspaceId: activeTemplateSummary.workspaceId,
-                    creatorUserId: activeTemplateSummary.creatorUserId,
-                    creatorDisplayName: activeTemplateSummary.creatorDisplayName,
-                    createdAt: activeTemplateSummary?.createdAt ?? fallbackStamp,
-                    updatedAt: fallbackStamp,
-                    versionsCount: versions.length
-                  })
-            );
-            setSaveState("error");
-            setSaveMessage(
-              "Текущий шаблон временно пропал из библиотеки. Оставляю его открытым, чтобы не потерять правки."
+            applyDraftTemplate(
+              initialResolvedTemplateId,
+              "Библиотека шаблонов пуста. Создай новый workspace-шаблон, чтобы продолжить."
             );
           }
         } catch {
@@ -1575,24 +1529,15 @@ export function TemplateStyleEditor({
       window.removeEventListener("focus", handleWindowFocus);
     };
   }, [
-    activeTemplateSummary,
-    baseTemplateId,
+    applyDraftTemplate,
     fetchTemplateList,
-    templateDescription,
+    initialResolvedTemplateId,
+    loadTemplate,
     templateId,
-    templateName,
-    updatedAt,
-    versions.length
   ]);
 
-  useEffect(() => {
-    if (versions.length <= MAX_VISIBLE_TEMPLATE_VERSIONS && showAllVersions) {
-      setShowAllVersions(false);
-    }
-  }, [showAllVersions, versions.length]);
-
   const persistCurrentTemplate = useCallback(async (): Promise<ManagedTemplate | null> => {
-    if (!templateId || isTemplateReadOnly) {
+    if (!templateId) {
       return null;
     }
     const requestTemplateId = templateId;
@@ -1603,6 +1548,7 @@ export function TemplateStyleEditor({
     const payload = {
       name: templateName.trim() || buildDefaultTemplateName(baseTemplateId),
       description: templateDescription.trim(),
+      layoutFamily: baseTemplateId,
       baseTemplateId,
       content,
       templateConfig: {
@@ -1661,7 +1607,6 @@ export function TemplateStyleEditor({
     baseTemplateId,
     content,
     editorSignature,
-    isTemplateReadOnly,
     persistQueueRef,
     shadowCss,
     shadowLayers,
@@ -1673,7 +1618,7 @@ export function TemplateStyleEditor({
   ]);
 
   useEffect(() => {
-    if (!templateId || isTemplateReadOnly || !hydrationReadyRef.current || loadingTemplateRef.current) {
+    if (!templateId || !hydrationReadyRef.current || loadingTemplateRef.current) {
       return;
     }
     if (!isDirty) {
@@ -1717,7 +1662,6 @@ export function TemplateStyleEditor({
   }, [
     clearPendingAutosaveTimer,
     editorSignature,
-    isTemplateReadOnly,
     isDirty,
     persistCurrentTemplate,
     templateId
@@ -2047,6 +1991,7 @@ export function TemplateStyleEditor({
     const payload = {
       name: templateId ? `${resolvedDraftName} копия` : resolvedDraftName,
       description: templateDescription.trim(),
+      layoutFamily: baseTemplateId,
       baseTemplateId,
       content,
       templateConfig: {
@@ -2093,117 +2038,8 @@ export function TemplateStyleEditor({
     }
   }
 
-  async function handleCreateVersion() {
-    if (!templateId) {
-      return;
-    }
-    if (isTemplateReadOnly) {
-      setSaveState("error");
-      setSaveMessage("Системный шаблон нельзя менять напрямую. Создай копию.");
-      return;
-    }
-    cancelPendingAutosaveCycle();
-
-    setSaveState("saving");
-    setSaveMessage("Сохраняю версию...");
-
-    try {
-      await persistCurrentTemplate();
-      const response = await fetch(`/api/design/templates/${encodeURIComponent(templateId)}/versions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          label: `Версия ${new Date().toLocaleString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit"
-          })}`
-        })
-      });
-      if (!response.ok) {
-        throw new Error(`Version failed: ${response.status}`);
-      }
-      const { template } = (await response.json()) as { template?: ManagedTemplate };
-      if (!template) {
-        throw new Error("Template response is empty.");
-      }
-      applyManagedTemplate(template);
-      setTemplates((current) => upsertTemplateList(current, toManagedTemplateSummary(template)));
-      setSaveState("saved");
-      setSaveMessage("Версия сохранена. К ней можно откатиться позже.");
-      publishManagedTemplateSync({
-        templateId: template.id,
-        updatedAt: template.updatedAt,
-        reason: "versioned"
-      });
-    } catch {
-      setSaveState("error");
-      setSaveMessage("Не удалось сохранить версию.");
-    }
-  }
-
-  async function handleRestoreVersion(versionId: string) {
-    if (!templateId) {
-      return;
-    }
-    if (isTemplateReadOnly) {
-      setSaveState("error");
-      setSaveMessage("Системный шаблон нельзя менять напрямую. Создай копию.");
-      return;
-    }
-    cancelPendingAutosaveCycle();
-
-    const confirmed =
-      typeof window === "undefined"
-        ? true
-        : window.confirm("Откатить шаблон к выбранной версии? Перед откатом мы автоматически сохраним текущее состояние.");
-    if (!confirmed) {
-      return;
-    }
-
-    setSaveState("saving");
-    setSaveMessage("Откатываю шаблон...");
-
-    try {
-      await persistCurrentTemplate();
-      const response = await fetch(
-        `/api/design/templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(versionId)}/restore`,
-        {
-          method: "POST"
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`Restore failed: ${response.status}`);
-      }
-      const { template } = (await response.json()) as { template?: ManagedTemplate };
-      if (!template) {
-        throw new Error("Template response is empty.");
-      }
-      applyManagedTemplate(template);
-      setTemplates((current) => upsertTemplateList(current, toManagedTemplateSummary(template)));
-      setSaveState("saved");
-      setSaveMessage("Шаблон откатан к выбранной версии.");
-      publishManagedTemplateSync({
-        templateId: template.id,
-        updatedAt: template.updatedAt,
-        reason: "restored"
-      });
-    } catch {
-      setSaveState("error");
-      setSaveMessage("Не удалось откатить шаблон.");
-    }
-  }
-
   async function handleDeleteTemplate() {
     if (!templateId) {
-      return;
-    }
-    if (isTemplateReadOnly) {
-      setSaveState("error");
-      setSaveMessage("Системный шаблон нельзя удалять. Создай копию и работай с ней.");
       return;
     }
     cancelPendingAutosaveCycle();
@@ -2369,9 +2205,8 @@ export function TemplateStyleEditor({
               </h2>
             </div>
             <p className="subtle-text template-road-editor-header-copy">
-              {isSystemTemplate
-                ? "Системный шаблон открыт в read-only. Чтобы сохранить изменения, создай копию."
-                : "Автосохранение включено. Ручное действие нужно только для контрольных точек в истории."}
+              Автосохранение включено. Все шаблоны являются общими workspace-документами и
+              сразу доступны в настройках каналов.
             </p>
             <div className="template-road-editor-header-actions">
               <button type="button" className="btn btn-secondary" onClick={resetStyle}>
@@ -2393,7 +2228,7 @@ export function TemplateStyleEditor({
                 onClick={() => void handleCreateTemplate()}
                 disabled={saveState === "saving" || !canCreateTemplates}
               >
-                {isSystemTemplate ? "Создать копию" : "Новый шаблон"}
+                Новый шаблон
               </button>
             </div>
           </header>
@@ -2412,17 +2247,9 @@ export function TemplateStyleEditor({
             <div className="template-road-editor-header-actions">
               <button
                 type="button"
-                className="btn btn-primary"
-                onClick={() => void handleCreateVersion()}
-                disabled={saveState === "saving" || !templateId || isTemplateReadOnly}
-              >
-                Сохранить версию
-              </button>
-              <button
-                type="button"
                 className="btn btn-ghost"
                 onClick={() => void handleDeleteTemplate()}
-                disabled={!templateId || saveState === "saving" || isTemplateReadOnly}
+                disabled={!templateId || saveState === "saving"}
               >
                 Удалить шаблон
               </button>
@@ -2462,11 +2289,10 @@ export function TemplateStyleEditor({
                 {templateId ? <span className="meta-pill mono">ID: {templateId}</span> : null}
                 <span className="meta-pill">Основа: {activeTemplate.label}</span>
                 <span className="meta-pill">
-                  {templateCapabilities.visibilityScope === "all"
-                    ? "Видны все шаблоны"
-                    : "Видны мои и назначенные шаблоны"}
+                  {templateCapabilities.visibilityScope === "workspace"
+                    ? "Workspace-библиотека"
+                    : "Видны все шаблоны"}
                 </span>
-                {isSystemTemplate ? <span className="meta-pill">Read-only</span> : null}
                 {updatedAt ? (
                   <span className="meta-pill">
                     Обновлён: {new Date(updatedAt).toLocaleTimeString("ru-RU", {
@@ -2559,77 +2385,6 @@ export function TemplateStyleEditor({
                 </div>
               </details>
             ) : null}
-          </EditorSection>
-
-          <EditorSection
-            id="template-road-style-history"
-            eyebrow="История"
-            title="Версии шаблона"
-            description="Автосохранение обновляет живой шаблон сразу. Здесь только контрольные точки."
-            isOpen={Boolean(openSections["template-road-style-history"])}
-            onToggle={() => toggleSection("template-road-style-history")}
-            meta={
-              <>
-                <span className="meta-pill">Версий: {versions.length}</span>
-                <span className="meta-pill">Храним максимум: 24</span>
-              </>
-            }
-          >
-            <div className="template-road-editor-meta-strip">
-              <span className="meta-pill">
-                Обновлён: {updatedAt ? new Date(updatedAt).toLocaleString("ru-RU") : "ещё не знаем"}
-              </span>
-              {activeTemplateSummary ? (
-                <span className="meta-pill">Основа: {activeTemplate.label}</span>
-              ) : null}
-            </div>
-            {!templateId ? (
-              <p className="subtle-text">
-                Сначала создай шаблон. После этого здесь появятся контрольные точки, к которым можно
-                откатиться.
-              </p>
-            ) : versions.length === 0 ? (
-              <p className="subtle-text">
-                Пока нет сохранённых версий. Рабочее состояние уже живёт в шаблоне, но откатываться
-                пока не к чему.
-              </p>
-            ) : (
-              <div className="template-road-editor-shadow-list">
-                {visibleVersions.map((version) => (
-                  <div key={version.id} className="template-road-editor-shadow-card">
-                    <div className="template-road-editor-shadow-card-head">
-                      <div>
-                        <strong>{version.label}</strong>
-                        <p className="template-road-editor-shadow-snippet mono">
-                          {new Date(version.createdAt).toLocaleString("ru-RU")}
-                        </p>
-                      </div>
-                      <div className="template-road-editor-shadow-actions">
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => void handleRestoreVersion(version.id)}
-                          disabled={saveState === "saving" || isTemplateReadOnly}
-                        >
-                          Откатиться к версии
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {versions.length > MAX_VISIBLE_TEMPLATE_VERSIONS ? (
-                  <button
-                    type="button"
-                    className="btn btn-ghost template-road-editor-history-toggle"
-                    onClick={() => setShowAllVersions((current) => !current)}
-                  >
-                    {showAllVersions
-                      ? "Свернуть историю"
-                      : `Показать ещё ${versions.length - MAX_VISIBLE_TEMPLATE_VERSIONS} версий`}
-                  </button>
-                ) : null}
-              </div>
-            )}
           </EditorSection>
 
           <EditorSection

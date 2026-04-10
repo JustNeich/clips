@@ -1,8 +1,8 @@
 import path from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { getAppDataDir } from "./app-paths";
+import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { getStage3DesignLabPreset } from "./stage3-design-lab";
 import type { TemplateContentFixture } from "./template-calibration-types";
 import {
@@ -23,20 +23,18 @@ import type {
   ManagedTemplate,
   ManagedTemplateShadowLayer,
   ManagedTemplateSummary,
-  ManagedTemplateVersion,
   ManagedTemplateVersionSnapshot
 } from "./managed-template-types";
 import { assertServerRuntime } from "./server-runtime-guard";
 
 assertServerRuntime("managed-template-store");
 
-const SUPPORTED_BASE_TEMPLATE_IDS = new Set(listTemplateVariants().map((variant) => variant.id));
-const TEMPLATE_WRITE_QUEUE = new Map<string, Promise<void>>();
-const MAX_MANAGED_TEMPLATE_VERSIONS = 24;
+const SUPPORTED_LAYOUT_FAMILIES = new Set(listTemplateVariants().map((variant) => variant.id));
 
 type ManagedTemplateInput = {
   name?: unknown;
   description?: unknown;
+  layoutFamily?: unknown;
   baseTemplateId?: unknown;
   content?: unknown;
   templateConfig?: unknown;
@@ -45,8 +43,15 @@ type ManagedTemplateInput = {
 
 type ManagedTemplateCreateMeta = {
   workspaceId: string;
-  creatorUserId: string;
+  creatorUserId?: string | null;
   creatorDisplayName?: string | null;
+};
+
+export type ManagedTemplateDeleteResult = {
+  deleted: boolean;
+  fallbackTemplateId: string | null;
+  reassignedChannels: number;
+  reason?: "not_found" | "last_template";
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,20 +91,16 @@ function getLegacyManagedTemplatesRoot(): string {
   return path.join(process.cwd(), "design", "managed-templates");
 }
 
-function getSeededMarkerPath(): string {
-  return path.join(getManagedTemplatesRoot(), ".seeded");
-}
-
-function resolveBaseTemplateId(value: unknown): string {
+function resolveLayoutFamily(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) {
     return STAGE3_TEMPLATE_ID;
   }
   const candidate = value.trim();
-  return SUPPORTED_BASE_TEMPLATE_IDS.has(candidate) ? candidate : STAGE3_TEMPLATE_ID;
+  return SUPPORTED_LAYOUT_FAMILIES.has(candidate) ? candidate : STAGE3_TEMPLATE_ID;
 }
 
-function buildDefaultContent(baseTemplateId: string): TemplateContentFixture {
-  const preset = getStage3DesignLabPreset(baseTemplateId);
+function buildDefaultContent(layoutFamily: string): TemplateContentFixture {
+  const preset = getStage3DesignLabPreset(layoutFamily);
   return {
     topText: preset.topText,
     bottomText: preset.bottomText,
@@ -116,44 +117,21 @@ function buildDefaultContent(baseTemplateId: string): TemplateContentFixture {
   };
 }
 
-function buildSeedSnapshot(baseTemplateId: string): ManagedTemplateVersionSnapshot {
-  const preset = getStage3DesignLabPreset(baseTemplateId);
+function buildSeedSnapshot(layoutFamily: string): ManagedTemplateVersionSnapshot {
+  const preset = getStage3DesignLabPreset(layoutFamily);
   return {
     name: preset.label,
     description: preset.note,
-    baseTemplateId,
-    content: buildDefaultContent(baseTemplateId),
-    templateConfig: cloneStage3TemplateConfig(getTemplateById(baseTemplateId)),
+    layoutFamily,
+    baseTemplateId: layoutFamily,
+    content: buildDefaultContent(layoutFamily),
+    templateConfig: cloneStage3TemplateConfig(getTemplateById(layoutFamily)),
     shadowLayers: []
   };
 }
 
-function buildSystemManagedTemplate(baseTemplateId: string, createdAt = new Date().toISOString()): ManagedTemplate {
-  const snapshot = buildSeedSnapshot(baseTemplateId);
-  return {
-    id: baseTemplateId,
-    workspaceId: null,
-    creatorUserId: null,
-    creatorDisplayName: null,
-    createdAt,
-    updatedAt: createdAt,
-    versions: [],
-    ...snapshot
-  };
-}
-
-export function isSystemManagedTemplate(
-  template:
-    | Pick<ManagedTemplate, "workspaceId" | "creatorUserId">
-    | Pick<ManagedTemplateSummary, "workspaceId" | "creatorUserId">
-    | null
-    | undefined
-): boolean {
-  return !template?.workspaceId && !template?.creatorUserId;
-}
-
-function normalizeContent(raw: unknown, baseTemplateId: string): TemplateContentFixture {
-  const defaults = buildDefaultContent(baseTemplateId);
+function normalizeContent(raw: unknown, layoutFamily: string): TemplateContentFixture {
+  const defaults = buildDefaultContent(layoutFamily);
   if (!isRecord(raw)) {
     return defaults;
   }
@@ -217,8 +195,8 @@ function normalizeContent(raw: unknown, baseTemplateId: string): TemplateContent
   };
 }
 
-function normalizeTemplateConfig(raw: unknown, baseTemplateId: string): Stage3TemplateConfig {
-  const base = cloneStage3TemplateConfig(getTemplateById(baseTemplateId));
+function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3TemplateConfig {
+  const base = cloneStage3TemplateConfig(getTemplateById(layoutFamily));
   if (!isRecord(raw)) {
     return base;
   }
@@ -432,8 +410,10 @@ function normalizeSnapshot(
   input: ManagedTemplateInput,
   fallback?: Partial<ManagedTemplateVersionSnapshot>
 ): ManagedTemplateVersionSnapshot {
-  const baseTemplateId = resolveBaseTemplateId(input.baseTemplateId ?? fallback?.baseTemplateId);
-  const seed = buildSeedSnapshot(baseTemplateId);
+  const layoutFamily = resolveLayoutFamily(
+    input.layoutFamily ?? input.baseTemplateId ?? fallback?.layoutFamily ?? fallback?.baseTemplateId
+  );
+  const seed = buildSeedSnapshot(layoutFamily);
   return {
     name:
       typeof input.name === "string" && input.name.trim()
@@ -443,184 +423,14 @@ function normalizeSnapshot(
       typeof input.description === "string"
         ? input.description.trim()
         : fallback?.description?.trim() || seed.description,
-    baseTemplateId,
-    content: normalizeContent(input.content ?? fallback?.content, baseTemplateId),
+    layoutFamily,
+    baseTemplateId: layoutFamily,
+    content: normalizeContent(input.content ?? fallback?.content, layoutFamily),
     templateConfig: normalizeTemplateConfig(
       input.templateConfig ?? fallback?.templateConfig,
-      baseTemplateId
+      layoutFamily
     ),
     shadowLayers: normalizeShadowLayers(input.shadowLayers ?? fallback?.shadowLayers)
-  };
-}
-
-function buildVersion(
-  template: ManagedTemplateVersionSnapshot,
-  label: string,
-  createdAt = new Date().toISOString()
-): ManagedTemplateVersion {
-  return {
-    id: randomUUID().slice(0, 8),
-    createdAt,
-    label,
-    snapshot: {
-      name: template.name,
-      description: template.description,
-      baseTemplateId: template.baseTemplateId,
-      content: { ...template.content },
-      templateConfig: cloneStage3TemplateConfig(template.templateConfig),
-      shadowLayers: template.shadowLayers.map((layer) => ({ ...layer }))
-    }
-  };
-}
-
-function versionLabelFromTimestamp(stamp: string): string {
-  const date = new Date(stamp);
-  if (Number.isNaN(date.getTime())) {
-    return "Сохранённая версия";
-  }
-  return `Версия ${date.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  })}`;
-}
-
-async function pathExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function migrateLegacyManagedTemplatesRoot(): Promise<void> {
-  const root = getManagedTemplatesRoot();
-  const legacyRoot = getLegacyManagedTemplatesRoot();
-  if (path.resolve(root) === path.resolve(legacyRoot)) {
-    return;
-  }
-
-  let legacyEntries: string[];
-  try {
-    legacyEntries = await fs.readdir(legacyRoot);
-  } catch {
-    return;
-  }
-
-  await fs.mkdir(root, { recursive: true });
-  const targetEntries = new Set(await fs.readdir(root).catch(() => []));
-  const legacyJsonEntries = legacyEntries.filter((entry) => entry.endsWith(".json"));
-
-  await Promise.all(
-    legacyJsonEntries.map(async (entry) => {
-      if (targetEntries.has(entry)) {
-        return;
-      }
-      const sourcePath = path.join(legacyRoot, entry);
-      const targetPath = path.join(root, entry);
-      try {
-        await fs.copyFile(sourcePath, targetPath);
-      } catch {
-        // Best-effort migration only. If the copy fails, seeding/runtime fallback will still continue.
-      }
-    })
-  );
-}
-
-function migrateLegacyManagedTemplatesRootSync(): void {
-  const root = getManagedTemplatesRoot();
-  const legacyRoot = getLegacyManagedTemplatesRoot();
-  if (path.resolve(root) === path.resolve(legacyRoot)) {
-    return;
-  }
-
-  let legacyEntries: string[];
-  try {
-    legacyEntries = readdirSync(legacyRoot);
-  } catch {
-    return;
-  }
-
-  mkdirSync(root, { recursive: true });
-  const targetEntries = new Set(readdirSync(root));
-  for (const entry of legacyEntries) {
-    if (!entry.endsWith(".json") || targetEntries.has(entry)) {
-      continue;
-    }
-    try {
-      copyFileSync(path.join(legacyRoot, entry), path.join(root, entry));
-    } catch {
-      // Best-effort migration only. Missing copies will fall back to seeding/runtime defaults.
-    }
-  }
-}
-
-async function ensureManagedTemplatesRoot(): Promise<void> {
-  const root = getManagedTemplatesRoot();
-  await migrateLegacyManagedTemplatesRoot();
-  await fs.mkdir(root, { recursive: true });
-
-  const existingTemplateFiles = new Set(
-    (await fs.readdir(root))
-      .filter((entry) => entry.endsWith(".json"))
-      .map((entry) => path.basename(entry, ".json"))
-  );
-
-  const now = new Date().toISOString();
-  const missingSystemTemplates = listTemplateVariants()
-    .map((variant) => variant.id)
-    .filter((templateId) => !existingTemplateFiles.has(sanitizeTemplateId(templateId)));
-
-  if (missingSystemTemplates.length > 0) {
-    await Promise.all(
-      missingSystemTemplates.map((templateId) => writeManagedTemplate(buildSystemManagedTemplate(templateId, now)))
-    );
-  }
-
-  await fs.writeFile(getSeededMarkerPath(), "seeded\n", "utf-8");
-}
-
-function ensureManagedTemplatesRootSync(): void {
-  const root = getManagedTemplatesRoot();
-  migrateLegacyManagedTemplatesRootSync();
-  mkdirSync(root, { recursive: true });
-
-  const existingTemplateFiles = new Set(
-    readdirSync(root)
-      .filter((entry) => entry.endsWith(".json"))
-      .map((entry) => path.basename(entry, ".json"))
-  );
-  const now = new Date().toISOString();
-  const missingSystemTemplates = listTemplateVariants()
-    .map((variant) => variant.id)
-    .filter((templateId) => !existingTemplateFiles.has(sanitizeTemplateId(templateId)));
-
-  for (const templateId of missingSystemTemplates) {
-    writeManagedTemplateSync(buildSystemManagedTemplate(templateId, now));
-  }
-
-  writeFileSync(getSeededMarkerPath(), "seeded\n", "utf-8");
-}
-
-function getManagedTemplatePath(templateId: string): string {
-  return path.join(getManagedTemplatesRoot(), `${sanitizeTemplateId(templateId)}.json`);
-}
-
-function toManagedTemplateSummary(template: ManagedTemplate): ManagedTemplateSummary {
-  return {
-    id: template.id,
-    name: template.name,
-    description: template.description,
-    baseTemplateId: template.baseTemplateId,
-    workspaceId: template.workspaceId,
-    creatorUserId: template.creatorUserId,
-    creatorDisplayName: template.creatorDisplayName,
-    createdAt: template.createdAt,
-    updatedAt: template.updatedAt,
-    versionsCount: template.versions.length
   };
 }
 
@@ -681,10 +491,40 @@ function extractLeadingJsonObject(raw: string): string | null {
   return null;
 }
 
-function parseManagedTemplateRecord(
-  parsed: Record<string, unknown>,
-  fallbackId: string
-): ManagedTemplate | null {
+function buildManagedTemplateFromSnapshot(input: {
+  id: string;
+  workspaceId: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string | null;
+  snapshot: ManagedTemplateVersionSnapshot;
+}): ManagedTemplate {
+  return {
+    id: input.id,
+    workspaceId: input.workspaceId,
+    creatorUserId: null,
+    creatorDisplayName: null,
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
+    archivedAt: input.archivedAt ?? null,
+    versions: [],
+    ...input.snapshot
+  };
+}
+
+function buildDetachedPresetTemplate(layoutFamilyRaw: string, workspaceId = "detached-workspace"): ManagedTemplate {
+  const layoutFamily = resolveLayoutFamily(layoutFamilyRaw);
+  const now = nowIso();
+  return buildManagedTemplateFromSnapshot({
+    id: layoutFamily,
+    workspaceId,
+    createdAt: now,
+    updatedAt: now,
+    snapshot: buildSeedSnapshot(layoutFamily)
+  });
+}
+
+function parseLegacyTemplateRecord(parsed: Record<string, unknown>, fallbackId: string): ManagedTemplate | null {
   const safeId =
     typeof parsed.id === "string" && parsed.id.trim()
       ? sanitizeTemplateId(parsed.id)
@@ -692,46 +532,16 @@ function parseManagedTemplateRecord(
   if (!safeId) {
     return null;
   }
-
-  const fallback = buildSeedSnapshot(resolveBaseTemplateId(parsed.baseTemplateId));
-  const snapshot = normalizeSnapshot(parsed, fallback);
-  const rawVersions = Array.isArray(parsed.versions) ? parsed.versions : [];
-
-  const versions = rawVersions
-    .map((item): ManagedTemplateVersion | null => {
-      if (!isRecord(item)) {
-        return null;
-      }
-      const createdAt =
-        typeof item.createdAt === "string" && item.createdAt.trim()
-          ? item.createdAt
-          : new Date().toISOString();
-      const versionSnapshot = normalizeSnapshot(
-        isRecord(item.snapshot) ? (item.snapshot as ManagedTemplateInput) : {},
-        snapshot
-      );
-      return {
-        id:
-          typeof item.id === "string" && item.id.trim()
-            ? sanitizeTemplateId(item.id)
-            : randomUUID().slice(0, 8),
-        createdAt,
-        label:
-          typeof item.label === "string" && item.label.trim()
-            ? item.label.trim()
-            : versionLabelFromTimestamp(createdAt),
-        snapshot: versionSnapshot
-      };
-    })
-    .filter((item): item is ManagedTemplateVersion => item !== null)
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const snapshot = normalizeSnapshot(parsed);
+  const now = nowIso();
+  const workspaceId =
+    typeof parsed.workspaceId === "string" && parsed.workspaceId.trim()
+      ? parsed.workspaceId.trim()
+      : "";
 
   return {
     id: safeId,
-    workspaceId:
-      typeof parsed.workspaceId === "string" && parsed.workspaceId.trim()
-        ? parsed.workspaceId.trim()
-        : null,
+    workspaceId,
     creatorUserId:
       typeof parsed.creatorUserId === "string" && parsed.creatorUserId.trim()
         ? parsed.creatorUserId.trim()
@@ -743,311 +553,674 @@ function parseManagedTemplateRecord(
     createdAt:
       typeof parsed.createdAt === "string" && parsed.createdAt.trim()
         ? parsed.createdAt
-        : new Date().toISOString(),
+        : now,
     updatedAt:
       typeof parsed.updatedAt === "string" && parsed.updatedAt.trim()
         ? parsed.updatedAt
-        : new Date().toISOString(),
-    versions,
+        : now,
+    archivedAt: null,
+    versions: [],
     ...snapshot
   };
 }
 
-function parseManagedTemplateSource(
-  raw: string,
-  filePath: string
-): { template: ManagedTemplate | null; recovered: boolean } {
+function parseLegacyTemplateFile(filePath: string): ManagedTemplate | null {
+  const raw = readFileSync(filePath, "utf-8");
   const fallbackId = path.basename(filePath, ".json");
-
   try {
-    return {
-      template: parseManagedTemplateRecord(JSON.parse(raw) as Record<string, unknown>, fallbackId),
-      recovered: false
-    };
+    return parseLegacyTemplateRecord(JSON.parse(raw) as Record<string, unknown>, fallbackId);
   } catch {
     const recoveredRaw = extractLeadingJsonObject(raw);
     if (!recoveredRaw || recoveredRaw.trim() === raw.trim()) {
-      return { template: null, recovered: false };
-    }
-
-    try {
-      return {
-        template: parseManagedTemplateRecord(
-          JSON.parse(recoveredRaw) as Record<string, unknown>,
-          fallbackId
-        ),
-        recovered: true
-      };
-    } catch {
-      return { template: null, recovered: false };
-    }
-  }
-}
-
-async function readManagedTemplateFile(filePath: string): Promise<ManagedTemplate | null> {
-  try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    const parsed = parseManagedTemplateSource(raw, filePath);
-    if (!parsed.template) {
       return null;
     }
-    if (parsed.recovered) {
-      await writeManagedTemplate(parsed.template);
+    try {
+      return parseLegacyTemplateRecord(JSON.parse(recoveredRaw) as Record<string, unknown>, fallbackId);
+    } catch {
+      return null;
     }
-    return parsed.template;
-  } catch {
-    return null;
   }
 }
 
-async function writeManagedTemplate(template: ManagedTemplate): Promise<void> {
-  await fs.mkdir(getManagedTemplatesRoot(), { recursive: true });
-  const filePath = getManagedTemplatePath(template.id);
-  const payload = `${JSON.stringify(template, null, 2)}\n`;
-  const previousWrite = TEMPLATE_WRITE_QUEUE.get(filePath) ?? Promise.resolve();
-  let currentWrite: Promise<void> | null = null;
-  currentWrite = previousWrite
-    .catch(() => {})
-    .then(async () => {
-      const tempPath = `${filePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
-      await fs.writeFile(tempPath, payload, "utf-8");
-      await fs.rename(tempPath, filePath);
-    })
-    .finally(() => {
-      if (TEMPLATE_WRITE_QUEUE.get(filePath) === currentWrite) {
-        TEMPLATE_WRITE_QUEUE.delete(filePath);
+function readLegacyTemplateSources(): ManagedTemplate[] {
+  const roots = [getManagedTemplatesRoot(), getLegacyManagedTemplatesRoot()];
+  const byId = new Map<string, ManagedTemplate>();
+
+  for (const root of roots) {
+    if (!existsSync(root)) {
+      continue;
+    }
+    for (const entry of readdirSync(root).filter((item) => item.endsWith(".json")).sort()) {
+      const filePath = path.join(root, entry);
+      try {
+        const template = parseLegacyTemplateFile(filePath);
+        if (template && !byId.has(template.id)) {
+          byId.set(template.id, template);
+        }
+      } catch {
+        // Legacy file import is best effort. Broken JSON must not block app startup.
       }
+    }
+  }
+
+  return [...byId.values()];
+}
+
+function serializeJson(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function deserializeJson<T>(value: unknown, fallback: T): T {
+  if (typeof value !== "string" || !value.trim()) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function mapTemplateRow(row: Record<string, unknown>): ManagedTemplate {
+  const layoutFamily = resolveLayoutFamily(row.layout_family);
+  const seed = buildSeedSnapshot(layoutFamily);
+  const snapshot = normalizeSnapshot(
+    {
+      name: row.name,
+      description: row.description,
+      layoutFamily,
+      content: deserializeJson(row.content_json, seed.content),
+      templateConfig: deserializeJson(row.template_config_json, seed.templateConfig),
+      shadowLayers: deserializeJson(row.shadow_layers_json, seed.shadowLayers)
+    },
+    seed
+  );
+  return buildManagedTemplateFromSnapshot({
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    archivedAt: row.archived_at ? String(row.archived_at) : null,
+    snapshot
+  });
+}
+
+function toManagedTemplateSummary(template: ManagedTemplate): ManagedTemplateSummary {
+  return {
+    id: template.id,
+    name: template.name,
+    description: template.description,
+    layoutFamily: template.layoutFamily,
+    baseTemplateId: template.layoutFamily,
+    workspaceId: template.workspaceId,
+    creatorUserId: null,
+    creatorDisplayName: null,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+    versionsCount: 0
+  };
+}
+
+function insertOrUpdateTemplateRow(template: ManagedTemplate): void {
+  const db = getDb();
+  const existingWorkspaceId = getTemplateRowWorkspaceId(template.id);
+  if (existingWorkspaceId && existingWorkspaceId !== template.workspaceId) {
+    throw new Error(`Template id collision across workspaces: ${template.id}`);
+  }
+  db.prepare(
+    `INSERT INTO workspace_templates
+      (id, workspace_id, name, description, layout_family, content_json, template_config_json, shadow_layers_json, created_at, updated_at, archived_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        workspace_id = excluded.workspace_id,
+        name = excluded.name,
+        description = excluded.description,
+        layout_family = excluded.layout_family,
+        content_json = excluded.content_json,
+        template_config_json = excluded.template_config_json,
+        shadow_layers_json = excluded.shadow_layers_json,
+        updated_at = excluded.updated_at,
+        archived_at = excluded.archived_at`
+  ).run(
+    template.id,
+    template.workspaceId,
+    template.name,
+    template.description,
+    template.layoutFamily,
+    serializeJson(template.content),
+    serializeJson(template.templateConfig),
+    serializeJson(template.shadowLayers),
+    template.createdAt,
+    template.updatedAt,
+    template.archivedAt
+  );
+}
+
+function workspaceIds(): string[] {
+  const db = getDb();
+  const rows = db.prepare("SELECT id FROM workspaces ORDER BY created_at ASC").all() as Array<{ id: string }>;
+  return rows.map((row) => String(row.id));
+}
+
+function resolveWorkspaceId(workspaceId?: string | null): string {
+  const candidate = workspaceId?.trim();
+  if (candidate) {
+    return candidate;
+  }
+  const first = workspaceIds()[0];
+  if (!first) {
+    throw new Error("Workspace is not initialized.");
+  }
+  return first;
+}
+
+function activeTemplateExists(templateId: string, workspaceId?: string | null): boolean {
+  const db = getDb();
+  const row = workspaceId
+    ? db
+        .prepare(
+          "SELECT id FROM workspace_templates WHERE id = ? AND workspace_id = ? AND archived_at IS NULL LIMIT 1"
+        )
+        .get(templateId, workspaceId)
+    : db
+        .prepare("SELECT id FROM workspace_templates WHERE id = ? AND archived_at IS NULL LIMIT 1")
+        .get(templateId);
+  return Boolean((row as Record<string, unknown> | undefined)?.id);
+}
+
+function templateRowExists(templateId: string, workspaceId?: string | null): boolean {
+  const db = getDb();
+  const row = workspaceId
+    ? db
+        .prepare("SELECT id FROM workspace_templates WHERE id = ? AND workspace_id = ? LIMIT 1")
+        .get(templateId, workspaceId)
+    : db
+        .prepare("SELECT id FROM workspace_templates WHERE id = ? LIMIT 1")
+        .get(templateId);
+  return Boolean((row as Record<string, unknown> | undefined)?.id);
+}
+
+function getTemplateRowWorkspaceId(templateId: string): string | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT workspace_id FROM workspace_templates WHERE id = ? LIMIT 1")
+    .get(templateId) as Record<string, unknown> | undefined;
+  return typeof row?.workspace_id === "string" ? row.workspace_id : null;
+}
+
+function resolveWorkspaceScopedTemplateId(preferredId: string, workspaceId: string): string {
+  const baseId = sanitizeTemplateId(preferredId) || `template-${sanitizeTemplateId(workspaceId).slice(0, 8)}`;
+  const ownerWorkspaceId = getTemplateRowWorkspaceId(baseId);
+  if (!ownerWorkspaceId || ownerWorkspaceId === workspaceId) {
+    return baseId;
+  }
+
+  const suffixBase = `${baseId}-${sanitizeTemplateId(workspaceId).slice(0, 8) || "workspace"}`;
+  let candidate = suffixBase;
+  let suffix = 2;
+  while (true) {
+    const candidateOwnerWorkspaceId = getTemplateRowWorkspaceId(candidate);
+    if (!candidateOwnerWorkspaceId || candidateOwnerWorkspaceId === workspaceId) {
+      return candidate;
+    }
+    candidate = `${suffixBase}-${suffix}`;
+    suffix += 1;
+  }
+}
+
+function deterministicPresetTemplateId(workspaceId: string, layoutFamily: string): string {
+  return `wtpl-${workspaceId.slice(0, 10)}-${sanitizeTemplateId(layoutFamily)}`;
+}
+
+function createPresetTemplateRecord(params: {
+  workspaceId: string;
+  layoutFamily: string;
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}): ManagedTemplate {
+  const layoutFamily = resolveLayoutFamily(params.layoutFamily);
+  const snapshot = buildSeedSnapshot(layoutFamily);
+  const stamp = params.updatedAt ?? params.createdAt ?? nowIso();
+  return buildManagedTemplateFromSnapshot({
+    id: params.id ?? deterministicPresetTemplateId(params.workspaceId, layoutFamily),
+    workspaceId: params.workspaceId,
+    createdAt: params.createdAt ?? stamp,
+    updatedAt: stamp,
+    snapshot
+  });
+}
+
+function insertPresetTemplateIfMissing(workspaceId: string, layoutFamily: string): ManagedTemplate {
+  const id = resolveWorkspaceScopedTemplateId(
+    deterministicPresetTemplateId(workspaceId, layoutFamily),
+    workspaceId
+  );
+  const existing = readManagedTemplateSync(id, { workspaceId, skipEnsure: true });
+  if (existing && existing.archivedAt === null) {
+    return existing;
+  }
+  const template = createPresetTemplateRecord({ workspaceId, layoutFamily, id });
+  insertOrUpdateTemplateRow(template);
+  return template;
+}
+
+function findOldestActiveTemplateId(workspaceId: string, excludeTemplateId?: string | null): string | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT id
+       FROM workspace_templates
+       WHERE workspace_id = ?
+         AND archived_at IS NULL
+         AND (? IS NULL OR id != ?)
+       ORDER BY created_at ASC, id ASC
+       LIMIT 1`
+    )
+    .get(workspaceId, excludeTemplateId ?? null, excludeTemplateId ?? null) as
+    | Record<string, unknown>
+    | undefined;
+  return typeof row?.id === "string" ? row.id : null;
+}
+
+function importLegacyCustomTemplatesForWorkspace(workspaceId: string, legacyTemplates: ManagedTemplate[]): void {
+  for (const template of legacyTemplates) {
+    if (template.workspaceId !== workspaceId) {
+      continue;
+    }
+    if (SUPPORTED_LAYOUT_FAMILIES.has(template.id) && !template.creatorUserId) {
+      continue;
+    }
+    const importId = resolveWorkspaceScopedTemplateId(template.id, workspaceId);
+    if (templateRowExists(importId, workspaceId)) {
+      continue;
+    }
+    insertOrUpdateTemplateRow({
+      ...template,
+      id: importId,
+      workspaceId,
+      creatorUserId: null,
+      creatorDisplayName: null,
+      archivedAt: null,
+      versions: []
     });
-  TEMPLATE_WRITE_QUEUE.set(filePath, currentWrite);
-  await currentWrite;
+  }
 }
 
-function writeManagedTemplateSync(template: ManagedTemplate): void {
-  mkdirSync(getManagedTemplatesRoot(), { recursive: true });
-  const filePath = getManagedTemplatePath(template.id);
-  const tempPath = `${filePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
-  writeFileSync(tempPath, `${JSON.stringify(template, null, 2)}\n`, "utf-8");
-  renameSync(tempPath, filePath);
+function migrateLegacyChannelTemplateRefs(workspaceId: string, legacyTemplates: ManagedTemplate[]): void {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT template_id
+       FROM channels
+       WHERE workspace_id = ?
+         AND archived_at IS NULL
+         AND template_id IS NOT NULL
+         AND trim(template_id) != ''`
+    )
+    .all(workspaceId) as Array<{ template_id?: string }>;
+  const legacyById = new Map(legacyTemplates.map((template) => [template.id, template]));
+
+  for (const row of rows) {
+    const legacyTemplateId = String(row.template_id ?? "").trim();
+    if (!legacyTemplateId || activeTemplateExists(legacyTemplateId, workspaceId)) {
+      continue;
+    }
+
+    const legacyTemplate = legacyById.get(legacyTemplateId);
+    if (legacyTemplate?.workspaceId === workspaceId) {
+      const importId = resolveWorkspaceScopedTemplateId(legacyTemplate.id, workspaceId);
+      if (!templateRowExists(importId, workspaceId)) {
+        insertOrUpdateTemplateRow({
+          ...legacyTemplate,
+          id: importId,
+          workspaceId,
+          creatorUserId: null,
+          creatorDisplayName: null,
+          archivedAt: null,
+          versions: []
+        });
+      }
+      if (importId !== legacyTemplateId) {
+        db.prepare(
+          `UPDATE channels
+           SET template_id = ?, updated_at = ?
+           WHERE workspace_id = ? AND template_id = ?`
+        ).run(importId, nowIso(), workspaceId, legacyTemplateId);
+      }
+      continue;
+    }
+
+    if (SUPPORTED_LAYOUT_FAMILIES.has(legacyTemplateId)) {
+      const workspaceTemplate = insertPresetTemplateIfMissing(workspaceId, legacyTemplateId);
+      db.prepare(
+        `UPDATE channels
+         SET template_id = ?, updated_at = ?
+         WHERE workspace_id = ? AND template_id = ?`
+      ).run(workspaceTemplate.id, nowIso(), workspaceId, legacyTemplateId);
+    }
+  }
 }
 
-export async function listManagedTemplates(): Promise<ManagedTemplate[]> {
-  await ensureManagedTemplatesRoot();
-  const files = (await fs.readdir(getManagedTemplatesRoot()))
-    .filter((entry) => entry.endsWith(".json"))
-    .sort();
-  const root = getManagedTemplatesRoot();
-  const templates = (
-    await Promise.all(files.map((entry) => readManagedTemplateFile(path.join(root, entry))))
-  ).filter((item): item is ManagedTemplate => item !== null);
-  return templates.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+function ensureWorkspaceDefaultTemplate(workspaceId: string): string {
+  const db = getDb();
+  const workspaceRow = db
+    .prepare("SELECT default_template_id FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as { default_template_id?: unknown } | undefined;
+  let defaultTemplateId =
+    typeof workspaceRow?.default_template_id === "string" ? workspaceRow.default_template_id.trim() : "";
+
+  if (defaultTemplateId && activeTemplateExists(defaultTemplateId, workspaceId)) {
+    return defaultTemplateId;
+  }
+
+  let fallbackTemplateId = findOldestActiveTemplateId(workspaceId);
+  if (!fallbackTemplateId) {
+    fallbackTemplateId = insertPresetTemplateIfMissing(workspaceId, STAGE3_TEMPLATE_ID).id;
+  }
+
+  db.prepare("UPDATE workspaces SET default_template_id = ?, updated_at = ? WHERE id = ?").run(
+    fallbackTemplateId,
+    nowIso(),
+    workspaceId
+  );
+  return fallbackTemplateId;
 }
 
-export async function listManagedTemplateSummaries(): Promise<ManagedTemplateSummary[]> {
-  return (await listManagedTemplates()).map(toManagedTemplateSummary);
+function repairBrokenChannelTemplateRefs(workspaceId: string, fallbackTemplateId: string): number {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `UPDATE channels
+       SET template_id = ?, updated_at = ?
+       WHERE workspace_id = ?
+         AND archived_at IS NULL
+         AND (
+           template_id IS NULL
+           OR trim(template_id) = ''
+           OR template_id NOT IN (
+             SELECT id FROM workspace_templates
+             WHERE workspace_id = ? AND archived_at IS NULL
+           )
+         )`
+    )
+    .run(fallbackTemplateId, nowIso(), workspaceId, workspaceId);
+  return Number(result.changes ?? 0);
 }
 
-export async function readManagedTemplate(templateId: string): Promise<ManagedTemplate | null> {
-  await ensureManagedTemplatesRoot();
+function ensureWorkspaceTemplateLibrarySync(workspaceId: string): string {
+  const legacyTemplates = readLegacyTemplateSources();
+  importLegacyCustomTemplatesForWorkspace(workspaceId, legacyTemplates);
+  migrateLegacyChannelTemplateRefs(workspaceId, legacyTemplates);
+  const defaultTemplateId = ensureWorkspaceDefaultTemplate(workspaceId);
+  repairBrokenChannelTemplateRefs(workspaceId, defaultTemplateId);
+  return defaultTemplateId;
+}
+
+export function ensureWorkspaceTemplateLibrariesInitializedSync(workspaceId?: string | null): string | null {
+  const ids = workspaceId?.trim() ? [workspaceId.trim()] : workspaceIds();
+  let firstDefault: string | null = null;
+  for (const id of ids) {
+    const defaultId = ensureWorkspaceTemplateLibrarySync(id);
+    if (!firstDefault) {
+      firstDefault = defaultId;
+    }
+  }
+  return firstDefault;
+}
+
+export async function ensureWorkspaceTemplateLibrary(workspaceId?: string | null): Promise<string | null> {
+  return ensureWorkspaceTemplateLibrariesInitializedSync(workspaceId);
+}
+
+export function getWorkspaceDefaultTemplateIdSync(workspaceId?: string | null): string {
+  const resolvedWorkspaceId = resolveWorkspaceId(workspaceId);
+  return ensureWorkspaceTemplateLibrarySync(resolvedWorkspaceId);
+}
+
+export async function getWorkspaceDefaultTemplateId(workspaceId?: string | null): Promise<string> {
+  return getWorkspaceDefaultTemplateIdSync(workspaceId);
+}
+
+export function listManagedTemplatesSync(workspaceId?: string | null): ManagedTemplate[] {
+  const resolvedWorkspaceId = resolveWorkspaceId(workspaceId);
+  ensureWorkspaceTemplateLibrarySync(resolvedWorkspaceId);
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT *
+       FROM workspace_templates
+       WHERE workspace_id = ? AND archived_at IS NULL
+       ORDER BY updated_at DESC, created_at DESC`
+    )
+    .all(resolvedWorkspaceId) as Record<string, unknown>[];
+  return rows.map(mapTemplateRow);
+}
+
+export async function listManagedTemplates(workspaceId?: string | null): Promise<ManagedTemplate[]> {
+  return listManagedTemplatesSync(workspaceId);
+}
+
+export function listManagedTemplateSummariesSync(workspaceId?: string | null): ManagedTemplateSummary[] {
+  return listManagedTemplatesSync(workspaceId).map(toManagedTemplateSummary);
+}
+
+export async function listManagedTemplateSummaries(
+  workspaceId?: string | null
+): Promise<ManagedTemplateSummary[]> {
+  return listManagedTemplateSummariesSync(workspaceId);
+}
+
+export function readManagedTemplateSync(
+  templateId: string,
+  options?: { workspaceId?: string | null; skipEnsure?: boolean }
+): ManagedTemplate | null {
   const safeId = sanitizeTemplateId(templateId);
   if (!safeId) {
     return null;
   }
-  return readManagedTemplateFile(getManagedTemplatePath(safeId));
+  if (!options?.skipEnsure) {
+    ensureWorkspaceTemplateLibrariesInitializedSync(options?.workspaceId);
+  }
+  const db = getDb();
+  const row = options?.workspaceId
+    ? db
+        .prepare(
+          "SELECT * FROM workspace_templates WHERE id = ? AND workspace_id = ? AND archived_at IS NULL LIMIT 1"
+        )
+        .get(safeId, options.workspaceId)
+    : db
+        .prepare("SELECT * FROM workspace_templates WHERE id = ? AND archived_at IS NULL LIMIT 1")
+        .get(safeId);
+  return row ? mapTemplateRow(row as Record<string, unknown>) : null;
 }
 
-export async function resolveManagedTemplate(
-  templateId: string | null | undefined
+export async function readManagedTemplate(
+  templateId: string,
+  options?: { workspaceId?: string | null }
 ): Promise<ManagedTemplate | null> {
+  return readManagedTemplateSync(templateId, options);
+}
+
+function resolveDefaultTemplateSync(workspaceId?: string | null): ManagedTemplate | null {
+  const workspaceIdsToTry = workspaceId?.trim() ? [workspaceId.trim()] : workspaceIds();
+  for (const id of workspaceIdsToTry) {
+    const defaultTemplateId = ensureWorkspaceTemplateLibrarySync(id);
+    const template = readManagedTemplateSync(defaultTemplateId, {
+      workspaceId: id,
+      skipEnsure: true
+    });
+    if (template) {
+      return template;
+    }
+  }
+  return null;
+}
+
+export function resolveManagedTemplateSync(
+  templateId: string | null | undefined,
+  options?: { workspaceId?: string | null }
+): ManagedTemplate | null {
   const candidate = typeof templateId === "string" && templateId.trim() ? templateId.trim() : "";
   if (candidate) {
-    const direct = await readManagedTemplate(candidate);
+    const direct = readManagedTemplateSync(candidate, options);
     if (direct) {
       return direct;
     }
-    return null;
+    if (SUPPORTED_LAYOUT_FAMILIES.has(candidate)) {
+      const workspaceId = options?.workspaceId?.trim();
+      if (workspaceId) {
+        return insertPresetTemplateIfMissing(workspaceId, candidate);
+      }
+      return buildDetachedPresetTemplate(candidate, options?.workspaceId ?? "detached-workspace");
+    }
+    return resolveDefaultTemplateSync(options?.workspaceId);
   }
+  return resolveDefaultTemplateSync(options?.workspaceId);
+}
 
-  return readManagedTemplate(STAGE3_TEMPLATE_ID);
+export async function resolveManagedTemplate(
+  templateId: string | null | undefined,
+  options?: { workspaceId?: string | null }
+): Promise<ManagedTemplate | null> {
+  return resolveManagedTemplateSync(templateId, options);
 }
 
 export async function createManagedTemplate(
   input: ManagedTemplateInput,
   meta: ManagedTemplateCreateMeta
 ): Promise<ManagedTemplate> {
-  await ensureManagedTemplatesRoot();
+  const workspaceId = resolveWorkspaceId(meta.workspaceId);
+  ensureWorkspaceTemplateLibrarySync(workspaceId);
   const snapshot = normalizeSnapshot(input);
-  const now = new Date().toISOString();
-  const template: ManagedTemplate = {
-    id: `${slugify(snapshot.name)}-${randomUUID().slice(0, 8)}`,
-    workspaceId: meta.workspaceId,
-    creatorUserId: meta.creatorUserId,
-    creatorDisplayName: meta.creatorDisplayName?.trim() || null,
+  const now = nowIso();
+  const template = buildManagedTemplateFromSnapshot({
+    id: `${slugify(snapshot.name)}-${newId().slice(0, 8)}`,
+    workspaceId,
     createdAt: now,
     updatedAt: now,
-    versions: [],
-    ...snapshot
-  };
-  await writeManagedTemplate(template);
+    snapshot
+  });
+  insertOrUpdateTemplateRow(template);
+  ensureWorkspaceDefaultTemplate(workspaceId);
   return template;
 }
 
 export async function updateManagedTemplate(
   templateId: string,
-  input: ManagedTemplateInput
+  input: ManagedTemplateInput,
+  options?: { workspaceId?: string | null }
 ): Promise<ManagedTemplate | null> {
-  const existing = await readManagedTemplate(templateId);
-  if (!existing || isSystemManagedTemplate(existing)) {
+  const existing = readManagedTemplateSync(templateId, options);
+  if (!existing) {
     return null;
   }
   const snapshot = normalizeSnapshot(input, existing);
-  const updated: ManagedTemplate = {
-    ...existing,
-    ...snapshot,
-    updatedAt: new Date().toISOString()
-  };
-  await writeManagedTemplate(updated);
+  const updated = buildManagedTemplateFromSnapshot({
+    id: existing.id,
+    workspaceId: existing.workspaceId,
+    createdAt: existing.createdAt,
+    updatedAt: nowIso(),
+    snapshot
+  });
+  insertOrUpdateTemplateRow(updated);
   return updated;
 }
 
-export async function createManagedTemplateVersion(
+export async function createManagedTemplateVersion(): Promise<ManagedTemplate | null> {
+  return null;
+}
+
+export async function restoreManagedTemplateVersion(): Promise<ManagedTemplate | null> {
+  return null;
+}
+
+export function deleteManagedTemplateDetailedSync(
   templateId: string,
-  label?: string | null
-): Promise<ManagedTemplate | null> {
-  const existing = await readManagedTemplate(templateId);
-  if (!existing || isSystemManagedTemplate(existing)) {
-    return null;
+  options?: { workspaceId?: string | null }
+): ManagedTemplateDeleteResult {
+  const template = readManagedTemplateSync(templateId, options);
+  if (!template) {
+    return { deleted: false, fallbackTemplateId: null, reassignedChannels: 0, reason: "not_found" };
   }
-  const stamp = new Date().toISOString();
-  const version = buildVersion(
-    {
-      name: existing.name,
-      description: existing.description,
-      baseTemplateId: existing.baseTemplateId,
-      content: existing.content,
-      templateConfig: existing.templateConfig,
-      shadowLayers: existing.shadowLayers
-    },
-    label?.trim() || versionLabelFromTimestamp(stamp),
-    stamp
+  const workspaceId = template.workspaceId;
+  const activeCount = Number(
+    (
+      getDb()
+        .prepare(
+          "SELECT COUNT(*) as count FROM workspace_templates WHERE workspace_id = ? AND archived_at IS NULL"
+        )
+        .get(workspaceId) as Record<string, unknown> | undefined
+    )?.count ?? 0
   );
-  const updated: ManagedTemplate = {
-    ...existing,
-    updatedAt: stamp,
-    versions: [version, ...existing.versions].slice(0, MAX_MANAGED_TEMPLATE_VERSIONS)
-  };
-  await writeManagedTemplate(updated);
-  return updated;
+  if (activeCount <= 1) {
+    return { deleted: false, fallbackTemplateId: null, reassignedChannels: 0, reason: "last_template" };
+  }
+
+  return runInTransaction((db) => {
+    const now = nowIso();
+    const currentDefault = (
+      db.prepare("SELECT default_template_id FROM workspaces WHERE id = ? LIMIT 1").get(workspaceId) as
+        | Record<string, unknown>
+        | undefined
+    )?.default_template_id;
+    const nextDefault =
+      currentDefault === template.id
+        ? findOldestActiveTemplateId(workspaceId, template.id)
+        : typeof currentDefault === "string" && activeTemplateExists(currentDefault, workspaceId)
+          ? currentDefault
+          : findOldestActiveTemplateId(workspaceId, template.id);
+
+    if (!nextDefault) {
+      return { deleted: false, fallbackTemplateId: null, reassignedChannels: 0, reason: "last_template" };
+    }
+
+    db.prepare("UPDATE workspace_templates SET archived_at = ?, updated_at = ? WHERE id = ?").run(
+      now,
+      now,
+      template.id
+    );
+    db.prepare("UPDATE workspaces SET default_template_id = ?, updated_at = ? WHERE id = ?").run(
+      nextDefault,
+      now,
+      workspaceId
+    );
+    const reassigned = db
+      .prepare(
+        `UPDATE channels
+         SET template_id = ?, updated_at = ?
+         WHERE workspace_id = ? AND template_id = ?`
+      )
+      .run(nextDefault, now, workspaceId, template.id);
+    return {
+      deleted: true,
+      fallbackTemplateId: nextDefault,
+      reassignedChannels: Number(reassigned.changes ?? 0)
+    };
+  });
 }
 
-export async function restoreManagedTemplateVersion(
+export async function deleteManagedTemplateDetailed(
   templateId: string,
-  versionId: string
-): Promise<ManagedTemplate | null> {
-  const existing = await readManagedTemplate(templateId);
-  if (!existing || isSystemManagedTemplate(existing)) {
-    return null;
-  }
-  const selected = existing.versions.find((version) => version.id === sanitizeTemplateId(versionId));
-  if (!selected) {
-    return null;
-  }
-
-  const stamp = new Date().toISOString();
-  const rollbackVersion = buildVersion(
-    {
-      name: existing.name,
-      description: existing.description,
-      baseTemplateId: existing.baseTemplateId,
-      content: existing.content,
-      templateConfig: existing.templateConfig,
-      shadowLayers: existing.shadowLayers
-    },
-    `Автоснимок перед откатом ${new Date(stamp).toLocaleString("ru-RU", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit"
-    })}`,
-    stamp
-  );
-
-  const restored: ManagedTemplate = {
-    ...existing,
-    ...normalizeSnapshot(selected.snapshot, existing),
-    updatedAt: stamp,
-    versions: [rollbackVersion, ...existing.versions].slice(0, MAX_MANAGED_TEMPLATE_VERSIONS)
-  };
-  await writeManagedTemplate(restored);
-  return restored;
+  options?: { workspaceId?: string | null }
+): Promise<ManagedTemplateDeleteResult> {
+  return deleteManagedTemplateDetailedSync(templateId, options);
 }
 
-export async function deleteManagedTemplate(templateId: string): Promise<boolean> {
-  const safeId = sanitizeTemplateId(templateId);
-  if (!safeId) {
-    return false;
-  }
-  const existing = await readManagedTemplate(safeId);
-  if (!existing || isSystemManagedTemplate(existing)) {
-    return false;
-  }
-  try {
-    await fs.unlink(getManagedTemplatePath(safeId));
-    return true;
-  } catch {
-    return false;
-  }
+export async function deleteManagedTemplate(
+  templateId: string,
+  options?: { workspaceId?: string | null }
+): Promise<boolean> {
+  return deleteManagedTemplateDetailedSync(templateId, options).deleted;
 }
 
-export function readManagedTemplateSync(templateId: string): ManagedTemplate | null {
-  ensureManagedTemplatesRootSync();
-  const safeId = sanitizeTemplateId(templateId);
-  if (!safeId) {
-    return null;
-  }
-  const filePath = getManagedTemplatePath(safeId);
-  try {
-    const raw = readFileSync(filePath, "utf-8");
-    const parsed = parseManagedTemplateSource(raw, filePath);
-    if (!parsed.template) {
-      return null;
-    }
-    if (parsed.recovered) {
-      writeManagedTemplateSync(parsed.template);
-    }
-    return parsed.template;
-  } catch {
-    return null;
-  }
+export function deleteManagedTemplateSync(
+  templateId: string,
+  options?: { workspaceId?: string | null }
+): boolean {
+  return deleteManagedTemplateDetailedSync(templateId, options).deleted;
 }
 
-export function resolveManagedTemplateSync(
-  templateId: string | null | undefined
-): ManagedTemplate | null {
-  const candidate = typeof templateId === "string" && templateId.trim() ? templateId.trim() : "";
-  if (candidate) {
-    const direct = readManagedTemplateSync(candidate);
-    if (direct) {
-      return direct;
-    }
-    return null;
-  }
-
-  return readManagedTemplateSync(STAGE3_TEMPLATE_ID);
-}
-
-export function deleteManagedTemplateSync(templateId: string): boolean {
-  const safeId = sanitizeTemplateId(templateId);
-  if (!safeId) {
-    return false;
-  }
-  const existing = readManagedTemplateSync(safeId);
-  if (!existing || isSystemManagedTemplate(existing)) {
-    return false;
-  }
-  try {
-    unlinkSync(getManagedTemplatePath(safeId));
-    return true;
-  } catch {
-    return false;
-  }
+export function isSystemManagedTemplate(_template?: unknown): boolean {
+  return false;
 }

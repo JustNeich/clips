@@ -325,24 +325,9 @@ export function ChannelManager({
         value: template.id,
         label: template.name
       }));
-      if (templateId && !options.some((option) => option.value === templateId)) {
-        options.unshift({
-          value: templateId,
-          label:
-            templateId === STAGE3_TEMPLATE_ID
-              ? "Текущий: шаблон по умолчанию"
-              : `Текущий недоступный шаблон (${templateId})`
-        });
-      }
-      if (options.length === 0) {
-        options.push({
-          value: STAGE3_TEMPLATE_ID,
-          label: "Шаблон по умолчанию"
-        });
-      }
       return options;
     },
-    [managedTemplates, templateId]
+    [managedTemplates]
   );
   const skipAutosaveRef = useRef<Record<AutosaveScope, boolean>>({
     brand: true,

@@ -31,6 +31,12 @@
 - В Stage 3 publication planner удаление ролика из очереди не сбрасывает пользователя со страницы рендера:
   - карточка исчезает после локальной синхронизации очереди;
   - UI показывает success toast об удалении.
+- Publication planner теперь работает как publishing workspace:
+  - слева очередь по дням и слотам с фильтрами и быстрыми действиями;
+  - справа sticky inspector выбранной публикации для времени, title/description/tags и delivery-настроек;
+  - на мобильных inspector открывается drawer-ом, а не ломает основной список;
+  - save/action/shift обновляют очередь локально и затем делают background revalidate без полного blocking refresh;
+  - publication routes возвращают typed mutation errors (`code` + `field`), поэтому form-level и field-level ошибки показываются в правильном месте.
 
 ## 1. Установка зависимостей проекта
 
@@ -300,6 +306,9 @@ Publishing / YouTube queue:
 - planner публикации остаётся offline, пока для канала не подключён YouTube OAuth и не выбран целевой YouTube-канал;
 - успешный render сохраняет `render export`, но не создаёт queued-публикацию, если publishing integration ещё не готова.
 - в Step 3 рядом с render доступен чекбокс `Опубликовать`: только при включённом флаге render ставится в publish queue, а UI заранее показывает ожидаемое время публикации.
+- один chat/source clip не создаёт вторую активную публикацию: повторный render обновляет queued/paused/failed запись или возвращает уже uploading/scheduled/published запись без нового upload.
+- во время `uploading` planner блокирует конфликтующие действия, а сервер не принимает мутации, которые могли бы сбросить lease и породить второй YouTube upload.
+- YouTube upload использует сохранённый resumable session URL и lease heartbeat, поэтому после сбоя процесс продолжает тот же upload session вместо открытия дублирующего.
 
 Подробная документация по текущей Stage 2 архитектуре:
 - [docs/stage2-runtime.md](/Users/neich/dev/clips automations/docs/stage2-runtime.md)

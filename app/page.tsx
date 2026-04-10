@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { AppShell, FlowStep } from "./components/AppShell";
 import { PublishingPlanner } from "./components/PublishingPlanner";
+import { mergePublicationMutationResult } from "./components/publishing-workspace-support";
 import type {
   Step3AuthoritativePreviewSnapshot,
   Step3ManagedTemplateState
@@ -188,6 +189,10 @@ import {
   normalizeStage3EditorPreviewNotice,
   normalizeStage3SourceFailureNotice
 } from "../lib/stage3-preview-notice";
+import {
+  PublicationMutationError,
+  type PublicationMutationErrorPayload
+} from "../lib/publication-mutation-errors";
 import { isChannelPublishIntegrationReady } from "../lib/channel-publish-state";
 import {
   applyStage3AuthoritativePreviewContent,
@@ -686,6 +691,22 @@ export default function HomePage() {
 
     return summarizeUserFacingError(raw);
   }, []);
+
+  const parsePublicationMutationError = useCallback(
+    async (response: Response, fallback: string): Promise<PublicationMutationError> => {
+      const contentType = responseContentType(response);
+      const body = contentType.includes("application/json")
+        ? ((await response.clone().json().catch(() => null)) as PublicationMutationErrorPayload | null)
+        : null;
+      const message = body?.error ?? (await parseError(response, fallback));
+      return new PublicationMutationError(message, {
+        code: body?.code ?? "UNKNOWN",
+        field: body?.field,
+        status: response.status
+      });
+    },
+    [parseError]
+  );
 
   const getUiErrorMessage = useCallback(
     (error: unknown, fallback: string): string => {
@@ -1202,6 +1223,13 @@ export default function HomePage() {
       setIsChannelPublicationsLoading(false);
     }
   }, [parseError]);
+
+  const revalidateChannelPublicationsInBackground = useCallback((channelId: string | null): void => {
+    if (!channelId) {
+      return;
+    }
+    void refreshChannelPublications(channelId).catch(() => undefined);
+  }, [refreshChannelPublications]);
 
   const refreshChats = useCallback(async (): Promise<ChatListItem[]> => {
     const query = activeChannelId ? `?channelId=${encodeURIComponent(activeChannelId)}` : "";
@@ -5750,33 +5778,34 @@ export default function HomePage() {
       slotIndex: number;
       notifySubscribers: boolean;
     }>
-  ): Promise<void> => {
+  ): Promise<ChannelPublication> => {
     const response = await fetch(`/api/publications/${publicationId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch)
     });
     if (!response.ok) {
-      throw new Error(await parseError(response, "Не удалось обновить публикацию."));
+      throw await parsePublicationMutationError(response, "Не удалось обновить публикацию.");
     }
-    if (activeChannelId) {
-      await refreshChannelPublications(activeChannelId);
-    }
-  }, [activeChannelId, parseError, refreshChannelPublications]);
+    const body = (await response.json()) as { publication: ChannelPublication };
+    setChannelPublications((current) => mergePublicationMutationResult(current, body.publication));
+    revalidateChannelPublicationsInBackground(activeChannelId);
+    return body.publication;
+  }, [activeChannelId, parsePublicationMutationError, revalidateChannelPublicationsInBackground]);
 
   const handlePublicationAction = useCallback(async (
     publicationId: string,
     action: "pause" | "resume" | "retry" | "publish-now" | "delete"
-  ): Promise<void> => {
+  ): Promise<ChannelPublication> => {
     const response = await fetch(`/api/publications/${publicationId}/${action}`, {
       method: "POST"
     });
     if (!response.ok) {
-      throw new Error(await parseError(response, "Не удалось выполнить действие для публикации."));
+      throw await parsePublicationMutationError(response, "Не удалось выполнить действие для публикации.");
     }
-    if (activeChannelId) {
-      await refreshChannelPublications(activeChannelId);
-    }
+    const body = (await response.json()) as { publication: ChannelPublication };
+    setChannelPublications((current) => mergePublicationMutationResult(current, body.publication));
+    revalidateChannelPublicationsInBackground(activeChannelId);
     if (action === "delete") {
       showAppToast({
         id: `publication-delete:${publicationId}`,
@@ -5789,7 +5818,8 @@ export default function HomePage() {
       setStatusType("ok");
       setStatus("Публикация удалена.");
     }
-  }, [activeChannelId, parseError, refreshChannelPublications, showAppToast]);
+    return body.publication;
+  }, [activeChannelId, parsePublicationMutationError, revalidateChannelPublicationsInBackground, showAppToast]);
 
   const handleShiftPublication = useCallback(async (
     publicationId: string,
@@ -5802,29 +5832,41 @@ export default function HomePage() {
           slotDate: string;
           slotIndex: number;
         }
-  ): Promise<void> => {
+  ): Promise<{
+    publication: ChannelPublication;
+    swappedPublication: ChannelPublication | null;
+    mode: "moved" | "swapped";
+  }> => {
     const response = await fetch(`/api/publications/${publicationId}/shift`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(move)
     });
     if (!response.ok) {
-      throw new Error(await parseError(response, "Не удалось перенести публикацию."));
+      throw await parsePublicationMutationError(response, "Не удалось перенести публикацию.");
     }
-    const body = (await response.json()) as { mode?: "moved" | "swapped" };
-    if (activeChannelId) {
-      await refreshChannelPublications(activeChannelId);
-    }
+    const body = (await response.json()) as {
+      publication: ChannelPublication;
+      swappedPublication: ChannelPublication | null;
+      mode?: "moved" | "swapped";
+    };
+    setChannelPublications((current) => mergePublicationMutationResult(current, body));
+    revalidateChannelPublicationsInBackground(activeChannelId);
     setStatusType("ok");
     setStatus(
       body.mode === "swapped"
         ? "Публикации переставлены местами."
         : "Слот публикации обновлён."
     );
+    return {
+      publication: body.publication,
+      swappedPublication: body.swappedPublication ?? null,
+      mode: body.mode === "swapped" ? "swapped" : "moved"
+    };
   }, [
     activeChannelId,
-    parseError,
-    refreshChannelPublications
+    parsePublicationMutationError,
+    revalidateChannelPublicationsInBackground
   ]);
 
   const handleSaveWorkspaceStage2Defaults = async (

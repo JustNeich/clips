@@ -27,6 +27,7 @@ import {
   stringifyWorkspaceCodexModelConfig,
   type WorkspaceCodexModelConfig
 } from "./workspace-codex-models";
+import { ensureWorkspaceTemplateLibrary } from "./managed-template-store";
 
 export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
 export type WorkspaceCodexStatus = "connected" | "disconnected" | "connecting" | "error";
@@ -36,6 +37,7 @@ export type WorkspaceRecord = {
   id: string;
   name: string;
   slug: string;
+  defaultTemplateId: string | null;
   stage2ExamplesCorpusJson: string;
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
@@ -191,6 +193,10 @@ function mapWorkspace(row: Record<string, unknown>): WorkspaceRecord {
     id: String(row.id),
     name: String(row.name),
     slug: String(row.slug),
+    defaultTemplateId:
+      typeof row.default_template_id === "string" && row.default_template_id.trim()
+        ? String(row.default_template_id)
+        : null,
     stage2ExamplesCorpusJson: normalizeWorkspaceStage2ExamplesCorpusJson(
       row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null
     ),
@@ -676,6 +682,7 @@ export async function bootstrapOwner(input: {
     id: workspaceId,
     name: input.workspaceName.trim() || "Workspace",
     slug: sanitizeSlug(input.workspaceName),
+    defaultTemplateId: null,
     stage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
     stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
     stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
@@ -704,11 +711,12 @@ export async function bootstrapOwner(input: {
 
   runInTransaction((db) => {
     db.prepare(
-      "INSERT INTO workspaces (id, name, slug, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO workspaces (id, name, slug, default_template_id, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       workspace.id,
       workspace.name,
       workspace.slug,
+      workspace.defaultTemplateId,
       workspace.stage2ExamplesCorpusJson,
       stringifyStage2HardConstraints(workspace.stage2HardConstraints),
       stringifyStage2PromptConfig(workspace.stage2PromptConfig),
@@ -740,6 +748,7 @@ export async function bootstrapOwner(input: {
   });
 
   await ensureWorkspaceSeeded(workspace.id, user.id);
+  await ensureWorkspaceTemplateLibrary(workspace.id);
   const session = createAuthSession({
     workspaceId: workspace.id,
     userId: user.id,
@@ -1011,6 +1020,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
         wm.updated_at as membership_updated_at,
         w.name as workspace_name,
         w.slug as workspace_slug,
+        w.default_template_id as workspace_default_template_id,
         w.stage2_examples_corpus_json as workspace_stage2_examples_corpus_json,
         w.stage2_hard_constraints_json as workspace_stage2_hard_constraints_json,
         w.stage2_prompt_config_json as workspace_stage2_prompt_config_json,
@@ -1044,6 +1054,10 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
       id: String(row.workspace_id),
       name: String(row.workspace_name),
       slug: String(row.workspace_slug),
+      defaultTemplateId:
+        typeof row.workspace_default_template_id === "string" && row.workspace_default_template_id.trim()
+          ? String(row.workspace_default_template_id)
+          : null,
       stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(String(row.workspace_id)),
       stage2HardConstraints: getWorkspaceStage2HardConstraints(String(row.workspace_id)),
       stage2PromptConfig: getWorkspaceStage2PromptConfig(String(row.workspace_id)),

@@ -146,6 +146,7 @@ function migrateLegacyStage3WorkerTokens(db: DatabaseSync): void {
 }
 
 function applyDbMigrations(db: DatabaseSync): void {
+  addColumnIfMissing(db, "workspaces", "default_template_id", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_examples_corpus_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_hard_constraints_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_prompt_config_json", "TEXT");
@@ -202,6 +203,7 @@ function applyDbMigrations(db: DatabaseSync): void {
     "schedule_mode",
     "TEXT NOT NULL DEFAULT 'slot'"
   );
+  addColumnIfMissing(db, "channel_publications", "upload_session_url", "TEXT");
   addColumnIfMissing(
     db,
     "channel_editorial_feedback_events",
@@ -277,6 +279,12 @@ function applyDbMigrations(db: DatabaseSync): void {
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_channel_style_discovery_runs_creator_fingerprint ON channel_style_discovery_runs(workspace_id, creator_user_id, request_fingerprint, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_workspace_templates_workspace_updated ON workspace_templates(workspace_id, archived_at, updated_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_workspace_templates_workspace_created ON workspace_templates(workspace_id, archived_at, created_at ASC)"
   );
   db.exec("DROP INDEX IF EXISTS idx_stage3_jobs_kind_dedupe");
   db.exec(

@@ -34,34 +34,37 @@
 - UI читает это значение из job result и использует как ранний источник правды.
 - Медленный `/api/video/meta` остаётся fallback-путём, а не единственным способом узнать длительность ролика.
 
-## 6. Assigned managed template не должен тихо падать в built-in fallback
+## 6. Assigned workspace template не должен тихо падать в built-in fallback
 
-- Step 3 должен получать runtime-состояние шаблона, который реально назначен видимому каналу, даже если библиотека шаблонов в редакторе ограничена personal scope.
-- При временной ошибке повторной загрузки UI больше не должен затирать уже загруженный managed template built-in fallback'ом.
-- Иначе preview строится по одной конфигурации, а final render по другой, что и приводит к `Template snapshot drift detected`.
+- Step 3 должен получать runtime-состояние workspace template, который реально назначен каналу.
+- Библиотека шаблонов workspace-wide, поэтому UI не фильтрует её по owner/read-only/system visibility.
+- При временной ошибке повторной загрузки UI больше не должен затирать последний успешный список и выбранный шаблон.
+- Иначе preview строится по одной конфигурации, а final render по другой, что приводит к `Template snapshot drift detected`.
 
-## 7. Render и preview обязаны использовать snapshot-backed managed template runtime
+## 7. Render и preview обязаны использовать snapshot-backed workspace template runtime
 
-- Если Step 3 уже собрал authoritative preview для custom template, его `baseTemplateId`, `templateConfig` и `updatedAt` должны ехать дальше в `snapshot`.
+- Если Step 3 уже собрал authoritative preview для workspace template, его `baseTemplateId`/`layoutFamily`, `templateConfig` и `updatedAt` должны ехать дальше в `snapshot`.
 - Host render, accurate preview, viewport/crop расчёты и optimization agent не должны повторно угадывать тот же template через локальный `design/managed-templates/*.json`.
-- Это особенно важно для production/local worker, где нужный managed template может отсутствовать на диске.
+- Active template source of truth теперь SQLite `workspace_templates`; legacy JSON используется только для migration/bootstrap.
 
-## 8. Missing custom template не должен подменяться другим сохранённым template
+## 8. Missing workspace template должен self-heal к workspace default
 
-- Если запрошенный managed template id не найден, runtime не имеет права молча брать “последний обновлённый” чужой template.
-- Без этого missing-id на worker превращается не в понятный fallback, а в произвольный layout, и drift становится непредсказуемым.
-- Безопасный fallback здесь только built-in template или snapshot-backed runtime, если он был передан из preview.
+- Если канал ссылается на отсутствующий `template_id`, read path должен перепривязать его к `workspace.default_template_id` и сохранить repair.
+- Runtime не имеет права молча брать “последний обновлённый” или чужой template, потому что это превращает missing-id в произвольный layout.
+- Если workspace default тоже повреждён, библиотека должна досеять нормальный workspace template; последний template workspace удалить нельзя.
 
-## 9. System templates должны быть immutable, а built-ins должны досеиваться автоматически
+## 9. System templates не участвуют в channel assignment
 
-- Встроенные template ids являются общей базой проекта: они должны быть видимы всем ролям, но не должны редактироваться или удаляться через managed template API/UI.
-- Иначе редактор может случайно испортить глобальный fallback для всего workspace и получить эффект “шаблон внезапно пропал”.
-- Seed marker `.seeded` не должен блокировать появление новых built-in templates в старых инсталляциях: runtime обязан досоздавать недостающие JSON-файлы инкрементально.
+- Каналы ссылаются только на реальные строки `workspace_templates.id` из того же workspace.
+- Built-in renderer families могут использоваться как стартовые presets при создании template row, но не являются selectable runtime identity.
+- Workspace default template является обычной видимой строкой в библиотеке и отличается только ссылкой `workspaces.default_template_id`.
 
 ## 10. Channel template assignment должен быть валидируемым и предсказуемым
 
-- Канал не должен молча принимать `templateId`, которого текущий пользователь не видит в своей template library.
-- При удалении custom template все каналы, которые его использовали, должны уходить в стабильный built-in fallback `science-card-v1`, а не в случайный шаблон из персонального списка удаляющего пользователя.
+- Канал не должен принимать `templateId`, которого нет в `workspace_templates` этого же workspace.
+- При удалении template все каналы, которые его использовали, должны уходить в `workspace.default_template_id` в той же transaction.
+- Если удаляется текущий default, перед удалением должен быть выбран самый старый неархивный replacement.
+- Последний template workspace удалить нельзя.
 - Если запрос к template library временно падает, UI не должен затирать последний успешный список и притворяться, что активный шаблон “недоступен”.
 
 ## 11. Browser-facing video routes обязаны поддерживать byte-range seek

@@ -11,9 +11,11 @@ import {
   cancelChannelPublication,
   createChannelPublication,
   createRenderExport,
+  extendChannelPublicationLease,
+  findLatestPublicationForChat,
   findLatestPublicationForRenderExport,
-  findLatestReusablePublicationForChat,
   getChannelPublicationById,
+  getChannelPublicationProcessingState,
   getChannelPublishIntegration,
   getChannelPublishSettings,
   getRenderExportById,
@@ -23,6 +25,7 @@ import {
   markChannelPublicationFailed,
   markChannelPublishIntegrationReauthRequired,
   markChannelPublicationScheduled,
+  persistChannelPublicationUploadSession,
   retryChannelPublication,
   type RenderExportRecord,
   type StoredYoutubeCredential,
@@ -40,6 +43,10 @@ import {
   YouTubePublishError
 } from "./youtube-publishing";
 import { runInTransaction } from "./db/client";
+import {
+  PublicationMutationError,
+  type PublicationMutationErrorField
+} from "./publication-mutation-errors";
 
 type PublicationEditorPatch = Partial<{
   title: string;
@@ -66,10 +73,19 @@ function normalizeEditorText(value: string | undefined): string | undefined {
   return value.trim();
 }
 
+function getScheduleFieldFromPatch(
+  patch: PublicationEditorPatch
+): PublicationMutationErrorField {
+  return patch.scheduleMode === "custom" ? "scheduledAtLocal" : "slot";
+}
+
 function addDaysToSlotDate(slotDate: string, deltaDays: number): string {
   const date = new Date(`${slotDate}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) {
-    throw new Error("Некорректная дата слота.");
+    throw new PublicationMutationError("Некорректная дата слота.", {
+      code: "INVALID_SLOT_DATE",
+      field: "slot"
+    });
   }
   date.setUTCDate(date.getUTCDate() + deltaDays);
   return date.toISOString().slice(0, 10);
@@ -112,17 +128,31 @@ function resolveShiftTargetSlot(input: {
 }
 
 function assertPublicationCanMove(publication: ChannelPublication): void {
+  if (publication.status === "uploading") {
+    throw new PublicationMutationError("Публикацию нельзя переносить, пока ролик загружается в YouTube.", {
+      code: "PUBLICATION_UPLOAD_IN_PROGRESS"
+    });
+  }
   if (publication.status === "published" || publication.status === "canceled") {
-    throw new Error("Эту публикацию больше нельзя переносить по слотам.");
+    throw new PublicationMutationError("Эту публикацию больше нельзя переносить по слотам.", {
+      code: "PUBLICATION_MOVE_FORBIDDEN",
+      field: "slot"
+    });
   }
   if (publication.scheduleMode === "custom") {
-    throw new Error("Кастомное время не переносится по слотам. Откройте редактор публикации.");
+    throw new PublicationMutationError("Кастомное время не переносится по слотам. Откройте редактор публикации.", {
+      code: "PUBLICATION_MOVE_FORBIDDEN",
+      field: "slot"
+    });
   }
 }
 
 function assertSlotIndexInRange(slotIndex: number, dailySlotCount: number): void {
   if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= dailySlotCount) {
-    throw new Error("Некорректный слот публикации.");
+    throw new PublicationMutationError("Некорректный слот публикации.", {
+      code: "INVALID_SLOT",
+      field: "slot"
+    });
   }
 }
 
@@ -175,7 +205,10 @@ async function moveChannelPublicationIntoSlot(input: {
   });
 
   if (new Date(targetSchedule.scheduledAt).getTime() <= Date.now()) {
-    throw new Error("Нельзя перенести ролик в уже прошедший слот.");
+    throw new PublicationMutationError("Нельзя перенести ролик в уже прошедший слот.", {
+      code: "SLOT_IN_PAST",
+      field: "slot"
+    });
   }
 
   const conflicting = listChannelPublications(current.channelId).find(
@@ -193,7 +226,10 @@ async function moveChannelPublicationIntoSlot(input: {
     excludeMatchedPublicationId: conflicting?.id ?? null
   });
   if (timeConflict) {
-    throw new Error("Это время уже занято другой публикацией.");
+    throw new PublicationMutationError("Это время уже занято другой публикацией.", {
+      code: "TIME_OCCUPIED",
+      field: "slot"
+    });
   }
 
   if (!conflicting) {
@@ -219,7 +255,16 @@ async function moveChannelPublicationIntoSlot(input: {
   }
 
   if (conflicting.status === "published") {
-    throw new Error("Этот слот уже занят опубликованным роликом. Свап недоступен.");
+    throw new PublicationMutationError("Этот слот уже занят опубликованным роликом. Свап недоступен.", {
+      code: "SLOT_OCCUPIED",
+      field: "slot"
+    });
+  }
+  if (conflicting.status === "uploading") {
+    throw new PublicationMutationError("Этот слот занят роликом, который уже загружается в YouTube.", {
+      code: "PUBLICATION_UPLOAD_IN_PROGRESS",
+      field: "slot"
+    });
   }
 
   const currentSchedule = buildPublicationSlotCandidateFromDateAndIndex({
@@ -253,7 +298,9 @@ async function moveChannelPublicationIntoSlot(input: {
   const updatedConflicting = getChannelPublicationById(conflicting.id);
 
   if (!updatedCurrent || !updatedConflicting) {
-    throw new Error("Не удалось переставить публикации местами.");
+    throw new PublicationMutationError("Не удалось переставить публикации местами.", {
+      code: "UNKNOWN"
+    });
   }
 
   appendChannelPublicationEvent(
@@ -280,7 +327,15 @@ async function moveChannelPublicationIntoSlot(input: {
 async function syncScheduledPublicationIfNeeded(publicationId: string): Promise<ChannelPublication> {
   const publication = getChannelPublicationById(publicationId);
   if (!publication) {
-    throw new Error("Публикация не найдена.");
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
+  }
+  if (publication.status === "uploading") {
+    throw new PublicationMutationError("Публикацию нельзя синхронизировать, пока ролик загружается в YouTube.", {
+      code: "PUBLICATION_UPLOAD_IN_PROGRESS"
+    });
   }
   if (publication.status === "scheduled" && publication.youtubeVideoId) {
     return syncScheduledPublicationToYouTube(publication.id);
@@ -367,69 +422,84 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
   createdByUserId: string;
   publishAfterRender?: boolean;
 }): ChannelPublication | null {
-  const settings = getChannelPublishSettings(input.channelId);
-  const shouldPublishAfterRender = input.publishAfterRender ?? settings.autoQueueEnabled;
-  if (!shouldPublishAfterRender) {
-    return null;
-  }
-  if (!isChannelPublishIntegrationReady(getChannelPublishIntegration(input.channelId))) {
-    return null;
-  }
-
-  const defaults = buildChannelPublicationMetadata({
-    renderTitle: input.renderExport.renderTitle,
-    chatTitle: input.chatTitle,
-    stage2Result: input.stage2Result
-  });
-  const existingForRenderExport = findLatestPublicationForRenderExport(input.renderExport.id);
-  if (existingForRenderExport) {
-    if (
-      existingForRenderExport.status === "queued" ||
-      existingForRenderExport.status === "paused" ||
-      existingForRenderExport.status === "failed"
-    ) {
-      const updated = mergeQueuedPublicationDefaults({
-        current: existingForRenderExport,
-        renderExport: input.renderExport,
-        defaults
-      });
-      appendChannelPublicationEvent(updated.id, "info", "Рендер повторно синхронизирован с текущей публикацией.");
-      return updated;
+  return runInTransaction(() => {
+    const settings = getChannelPublishSettings(input.channelId);
+    const shouldPublishAfterRender = input.publishAfterRender ?? settings.autoQueueEnabled;
+    if (!shouldPublishAfterRender) {
+      return null;
     }
-    return existingForRenderExport.status === "canceled" ? null : existingForRenderExport;
-  }
+    if (!isChannelPublishIntegrationReady(getChannelPublishIntegration(input.channelId))) {
+      return null;
+    }
 
-  const existing = findLatestReusablePublicationForChat(input.chatId);
-  if (existing) {
-    const updated = mergeQueuedPublicationDefaults({
-      current: existing,
-      renderExport: input.renderExport,
-      defaults
+    const defaults = buildChannelPublicationMetadata({
+      renderTitle: input.renderExport.renderTitle,
+      chatTitle: input.chatTitle,
+      stage2Result: input.stage2Result
     });
-    appendChannelPublicationEvent(updated.id, "info", "Рендер обновлён, публикация синхронизирована с новым экспортом.");
-    return updated;
-  }
+    const existingForRenderExport = findLatestPublicationForRenderExport(input.renderExport.id);
+    if (existingForRenderExport) {
+      if (
+        existingForRenderExport.status === "queued" ||
+        existingForRenderExport.status === "paused" ||
+        existingForRenderExport.status === "failed"
+      ) {
+        const updated = mergeQueuedPublicationDefaults({
+          current: existingForRenderExport,
+          renderExport: input.renderExport,
+          defaults
+        });
+        appendChannelPublicationEvent(updated.id, "info", "Рендер повторно синхронизирован с текущей публикацией.");
+        return updated;
+      }
+      return existingForRenderExport.status === "canceled" ? null : existingForRenderExport;
+    }
 
-  const slot = pickNextPublicationSlot({
-    settings,
-    existingPublications: listFutureActivePublicationsForChannel(input.channelId)
-  });
-  return createChannelPublication({
-    workspaceId: input.workspaceId,
-    channelId: input.channelId,
-    chatId: input.chatId,
-    renderExportId: input.renderExport.id,
-    scheduleMode: slot.scheduleMode,
-    scheduledAt: slot.scheduledAt,
-    uploadReadyAt: slot.uploadReadyAt,
-    slotDate: slot.slotDate,
-    slotIndex: slot.slotIndex,
-    title: defaults.title,
-    description: defaults.description,
-    tags: defaults.tags,
-    notifySubscribers: settings.notifySubscribersByDefault,
-    needsReview: defaults.needsReview,
-    createdByUserId: input.createdByUserId
+    const existingForChat = findLatestPublicationForChat(input.chatId);
+    if (existingForChat) {
+      if (
+        existingForChat.status === "queued" ||
+        existingForChat.status === "paused" ||
+        existingForChat.status === "failed"
+      ) {
+        const updated = mergeQueuedPublicationDefaults({
+          current: existingForChat,
+          renderExport: input.renderExport,
+          defaults
+        });
+        appendChannelPublicationEvent(updated.id, "info", "Рендер обновлён, публикация синхронизирована с новым экспортом.");
+        return updated;
+      }
+
+      appendChannelPublicationEvent(
+        existingForChat.id,
+        "warn",
+        "Новый рендер не поставлен отдельной публикацией: этот ролик уже публикуется или опубликован."
+      );
+      return existingForChat;
+    }
+
+    const slot = pickNextPublicationSlot({
+      settings,
+      existingPublications: listFutureActivePublicationsForChannel(input.channelId)
+    });
+    return createChannelPublication({
+      workspaceId: input.workspaceId,
+      channelId: input.channelId,
+      chatId: input.chatId,
+      renderExportId: input.renderExport.id,
+      scheduleMode: slot.scheduleMode,
+      scheduledAt: slot.scheduledAt,
+      uploadReadyAt: slot.uploadReadyAt,
+      slotDate: slot.slotDate,
+      slotIndex: slot.slotIndex,
+      title: defaults.title,
+      description: defaults.description,
+      tags: defaults.tags,
+      notifySubscribers: settings.notifySubscribersByDefault,
+      needsReview: defaults.needsReview,
+      createdByUserId: input.createdByUserId
+    });
   });
 }
 
@@ -483,7 +553,10 @@ export function completeRenderExportAndMaybeQueue(input: {
 export async function syncScheduledPublicationToYouTube(publicationId: string): Promise<ChannelPublication> {
   const publication = getChannelPublicationById(publicationId);
   if (!publication) {
-    throw new Error("Публикация не найдена.");
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
   }
   if (!publication.youtubeVideoId || publication.status !== "scheduled") {
     return publication;
@@ -515,15 +588,27 @@ export async function updateChannelPublicationFromEditor(input: {
 }): Promise<ChannelPublication> {
   const current = getChannelPublicationById(input.publicationId);
   if (!current) {
-    throw new Error("Публикация не найдена.");
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
+  }
+  if (current.status === "uploading") {
+    throw new PublicationMutationError("Публикацию нельзя редактировать, пока ролик загружается в YouTube.", {
+      code: "PUBLICATION_UPLOAD_IN_PROGRESS"
+    });
   }
   if (
     current.youtubeVideoId &&
     typeof input.patch.notifySubscribers === "boolean" &&
     input.patch.notifySubscribers !== current.notifySubscribers
   ) {
-    throw new Error(
-      "Этот флаг YouTube применяет только при первой загрузке видео. Для уже загруженного ролика измените его вручную в Studio."
+    throw new PublicationMutationError(
+      "Этот флаг YouTube применяет только при первой загрузке видео. Для уже загруженного ролика измените его вручную в Studio.",
+      {
+        code: "NOTIFY_SUBSCRIBERS_LOCKED",
+        field: "notifySubscribers"
+      }
     );
   }
 
@@ -538,7 +623,10 @@ export async function updateChannelPublicationFromEditor(input: {
     | undefined;
   if (input.patch.scheduleMode === "custom") {
     if (!input.patch.scheduledAtLocal?.trim()) {
-      throw new Error("Для кастомной публикации укажите дату и время.");
+      throw new PublicationMutationError("Для кастомной публикации укажите дату и время.", {
+        code: "CUSTOM_TIME_REQUIRED",
+        field: "scheduledAtLocal"
+      });
     }
     const settings = getChannelPublishSettings(current.channelId);
     scheduledPatch = buildCustomPublicationCandidateFromLocalDateTime({
@@ -546,14 +634,23 @@ export async function updateChannelPublicationFromEditor(input: {
       localDateTime: input.patch.scheduledAtLocal
     });
     if (new Date(scheduledPatch.scheduledAt).getTime() <= Date.now()) {
-      throw new Error("Кастомное время уже в прошлом. Выберите будущее время или нажмите Publish now.");
+      throw new PublicationMutationError(
+        "Кастомное время уже в прошлом. Выберите будущее время или нажмите Publish now.",
+        {
+          code: "CUSTOM_TIME_IN_PAST",
+          field: "scheduledAtLocal"
+        }
+      );
     }
   } else if (
     input.patch.scheduleMode === "slot" ||
     (input.patch.slotDate && typeof input.patch.slotIndex === "number")
   ) {
     if (!input.patch.slotDate || typeof input.patch.slotIndex !== "number") {
-      throw new Error("Для слот-публикации передайте slotDate и slotIndex.");
+      throw new PublicationMutationError("Для слот-публикации передайте slotDate и slotIndex.", {
+        code: "SLOT_SELECTION_REQUIRED",
+        field: "slot"
+      });
     }
     const settings = getChannelPublishSettings(current.channelId);
     const conflicting = listFutureActivePublicationsForChannel(current.channelId).find(
@@ -565,7 +662,10 @@ export async function updateChannelPublicationFromEditor(input: {
         item.status !== "canceled"
     );
     if (conflicting) {
-      throw new Error("Этот слот уже занят другой публикацией.");
+      throw new PublicationMutationError("Этот слот уже занят другой публикацией.", {
+        code: "SLOT_OCCUPIED",
+        field: "slot"
+      });
     }
     scheduledPatch = buildPublicationSlotCandidateFromDateAndIndex({
       settings,
@@ -573,7 +673,10 @@ export async function updateChannelPublicationFromEditor(input: {
       slotIndex: input.patch.slotIndex
     });
     if (new Date(scheduledPatch.scheduledAt).getTime() <= Date.now()) {
-      throw new Error("Нельзя перенести ролик в уже прошедший слот.");
+      throw new PublicationMutationError("Нельзя перенести ролик в уже прошедший слот.", {
+        code: "SLOT_IN_PAST",
+        field: "slot"
+      });
     }
   }
 
@@ -584,7 +687,10 @@ export async function updateChannelPublicationFromEditor(input: {
       scheduledAt: scheduledPatch.scheduledAt
     });
     if (timeConflict) {
-      throw new Error("Это время уже занято другой публикацией.");
+      throw new PublicationMutationError("Это время уже занято другой публикацией.", {
+        code: "TIME_OCCUPIED",
+        field: getScheduleFieldFromPatch(input.patch)
+      });
     }
   }
 
@@ -627,7 +733,10 @@ export async function shiftChannelPublicationSlot(input: {
 }> {
   const current = getChannelPublicationById(input.publicationId);
   if (!current) {
-    throw new Error("Публикация не найдена.");
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
   }
   const settings = getChannelPublishSettings(current.channelId);
   const targetSlot = resolveShiftTargetSlot({
@@ -654,7 +763,10 @@ export async function moveChannelPublicationToSlot(input: {
 }> {
   const current = getChannelPublicationById(input.publicationId);
   if (!current) {
-    throw new Error("Публикация не найдена.");
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
   }
 
   return moveChannelPublicationIntoSlot({
@@ -677,31 +789,40 @@ export async function processQueuedChannelPublication(
 
   try {
     const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
-    if (publication.youtubeVideoId) {
-      await updateYouTubeScheduledVideo({
-        accessToken: credential.accessToken!,
-        videoId: publication.youtubeVideoId,
-        title: publication.title,
-        description: publication.description,
-        tags: publication.tags,
-        publishAt: publication.scheduledAt
-      });
-      return markChannelPublicationScheduled({
-        publicationId: publication.id,
-        youtubeVideoId: publication.youtubeVideoId,
-        youtubeVideoUrl: publication.youtubeVideoUrl,
-        expectedLeaseToken
-      });
-    }
-
     const latest = getChannelPublicationById(publication.id);
     if (!latest) {
       throw new Error("Публикация исчезла из очереди.");
     }
+    if (latest.status !== "uploading" && latest.status !== "queued") {
+      return latest;
+    }
+    if (!expectedLeaseToken) {
+      throw new YouTubePublishError("Публикация не имеет активного lease. Upload остановлен, чтобы не создать дубль.", {
+        recoverable: true
+      });
+    }
+    if (latest.youtubeVideoId) {
+      await updateYouTubeScheduledVideo({
+        accessToken: credential.accessToken!,
+        videoId: latest.youtubeVideoId,
+        title: latest.title,
+        description: latest.description,
+        tags: latest.tags,
+        publishAt: latest.scheduledAt
+      });
+      return markChannelPublicationScheduled({
+        publicationId: latest.id,
+        youtubeVideoId: latest.youtubeVideoId,
+        youtubeVideoUrl: latest.youtubeVideoUrl,
+        expectedLeaseToken
+      });
+    }
+
     const renderExport = getRenderExportById(latest.renderExportId);
     if (!renderExport) {
       throw new Error("Не найден render export для публикации.");
     }
+    const processingState = getChannelPublicationProcessingState(latest.id);
     const remote = await uploadYouTubeVideo({
       accessToken: credential.accessToken!,
       filePath: renderExport.artifactFilePath,
@@ -710,14 +831,63 @@ export async function processQueuedChannelPublication(
       description: latest.description,
       tags: latest.tags,
       notifySubscribers: latest.notifySubscribers,
-      publishAt: latest.scheduledAt
+      publishAt: latest.scheduledAt,
+      sessionUrl: processingState?.uploadSessionUrl ?? null,
+      onSessionUrl: async (sessionUrl) => {
+        if (
+          !expectedLeaseToken ||
+          !persistChannelPublicationUploadSession({
+            publicationId: latest.id,
+            sessionUrl,
+            expectedLeaseToken
+          })
+        ) {
+          throw new YouTubePublishError(
+            "Upload session не закрепился за текущей публикацией. Загрузка остановлена, чтобы не создать дубль.",
+            { recoverable: true }
+          );
+        }
+      },
+      onHeartbeat: () => {
+        if (!expectedLeaseToken) {
+          return;
+        }
+        extendChannelPublicationLease({
+          publicationId: latest.id,
+          expectedLeaseToken
+        });
+      }
     });
-    return markChannelPublicationScheduled({
+    const scheduled = markChannelPublicationScheduled({
       publicationId: publication.id,
       youtubeVideoId: remote.videoId,
       youtubeVideoUrl: remote.videoUrl,
       expectedLeaseToken
     });
+    if (scheduled.status === "scheduled" && scheduled.youtubeVideoId) {
+      try {
+        await updateYouTubeScheduledVideo({
+          accessToken: credential.accessToken!,
+          videoId: scheduled.youtubeVideoId,
+          title: scheduled.title,
+          description: scheduled.description,
+          tags: scheduled.tags,
+          publishAt: scheduled.scheduledAt
+        });
+      } catch (syncError) {
+        if (syncError instanceof YouTubePublishError && syncError.reauthRequired) {
+          markChannelPublishIntegrationReauthRequired(scheduled.channelId, syncError.message);
+        }
+        appendChannelPublicationEvent(
+          scheduled.id,
+          "warn",
+          syncError instanceof Error
+            ? `Видео загружено, но финальная синхронизация метаданных не прошла: ${syncError.message}`
+            : "Видео загружено, но финальная синхронизация метаданных не прошла."
+        );
+      }
+    }
+    return scheduled;
   } catch (error) {
     if (error instanceof YouTubePublishError && error.reauthRequired) {
       markChannelPublishIntegrationReauthRequired(publication.channelId, error.message);
@@ -735,7 +905,10 @@ export async function processQueuedChannelPublication(
 export async function deleteChannelPublicationWithRemoteSync(publicationId: string): Promise<ChannelPublication> {
   const publication = getChannelPublicationById(publicationId);
   if (!publication) {
-    throw new Error("Публикация не найдена.");
+    throw new PublicationMutationError("Публикация не найдена.", {
+      code: "PUBLICATION_NOT_FOUND",
+      status: 404
+    });
   }
   if (publication.status === "scheduled" && publication.youtubeVideoId) {
     const { credential } = await ensureFreshYouTubeCredential(publication.channelId);

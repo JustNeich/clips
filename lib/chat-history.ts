@@ -28,7 +28,7 @@ import { parseStage2WorkerProfileId } from "./stage2-worker-profile";
 import { listLatestPublicationSummariesByChatIds } from "./publication-store";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
-import { readManagedTemplate } from "./managed-template-store";
+import { getWorkspaceDefaultTemplateId, readManagedTemplate } from "./managed-template-store";
 import { getWorkspace, getWorkspaceStage2HardConstraints } from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
 
@@ -129,16 +129,21 @@ function sanitizeName(value: string | null | undefined, fallback: string): strin
 }
 
 async function resolvePersistedChannelTemplateId(
+  workspaceId: string,
   value: string | null | undefined,
-  fallback = DEFAULT_TEMPLATE_ID
+  fallback?: string
 ): Promise<string> {
-  const candidate = sanitizeName(value, fallback);
-  const resolved = await readManagedTemplate(candidate);
-  return resolved?.id ?? fallback;
+  const fallbackTemplateId = fallback?.trim() || (await getWorkspaceDefaultTemplateId(workspaceId));
+  const candidate = sanitizeName(value, fallbackTemplateId);
+  const resolved = await readManagedTemplate(candidate, { workspaceId });
+  return resolved?.id ?? fallbackTemplateId;
 }
 
 async function repairChannelTemplateReference(channel: Channel): Promise<Channel> {
-  const resolvedTemplateId = await resolvePersistedChannelTemplateId(channel.templateId);
+  const resolvedTemplateId = await resolvePersistedChannelTemplateId(
+    channel.workspaceId,
+    channel.templateId
+  );
   if (resolvedTemplateId === channel.templateId) {
     return channel;
   }
@@ -389,7 +394,7 @@ export async function createChannel(input: {
 }): Promise<Channel> {
   const now = nowIso();
   const username = sanitizeUsername(input.username ?? "channel");
-  const templateId = await resolvePersistedChannelTemplateId(input.templateId);
+  const templateId = await resolvePersistedChannelTemplateId(input.workspaceId, input.templateId);
   const channel: Channel = {
     id: newId(),
     workspaceId: input.workspaceId,
@@ -490,7 +495,7 @@ export async function updateChannelById(
   const assetIds = new Set((await listChannelAssets(channelId)).map((asset) => asset.id));
   const nextTemplateId =
     typeof patch.templateId === "string"
-      ? await resolvePersistedChannelTemplateId(patch.templateId, channel.templateId)
+      ? await resolvePersistedChannelTemplateId(channel.workspaceId, patch.templateId, channel.templateId)
       : channel.templateId;
 
   const next = {

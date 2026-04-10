@@ -19,7 +19,11 @@ import { GET as readStage3Background } from "../app/api/stage3/background/[id]/r
 import { POST as uploadStage3Background } from "../app/api/stage3/background/route";
 import { POST as fetchVideoMeta } from "../app/api/video/meta/route";
 import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
-import { createManagedTemplate, deleteManagedTemplate } from "../lib/managed-template-store";
+import {
+  createManagedTemplate,
+  deleteManagedTemplate,
+  getWorkspaceDefaultTemplateId
+} from "../lib/managed-template-store";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { setChannelAccess } from "../lib/team-store";
 import {
@@ -242,7 +246,7 @@ test("redactor can load a managed template when it is assigned to a visible chan
   });
 });
 
-test("redactor still cannot open an unrelated managed template outside visible channels", async () => {
+test("redactor can open any template in the same workspace library", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Template Scope Workspace",
@@ -280,17 +284,18 @@ test("redactor still cannot open an unrelated managed template outside visible c
         }),
         { params: Promise.resolve({ templateId: template.id }) }
       );
-      const body = (await response.json()) as { error?: string };
+      const body = (await response.json()) as { error?: string; template?: { id?: string; name?: string } };
 
-      assert.equal(response.status, 404);
-      assert.equal(body.error, "Template not found.");
+      assert.equal(response.status, 200);
+      assert.equal(body.template?.id, template.id);
+      assert.equal(body.template?.name, "Private Draft Template");
     } finally {
       await deleteManagedTemplate(template.id);
     }
   });
 });
 
-test("managed template list keeps system templates and channel-shared templates visible to redactors", async () => {
+test("managed template list returns the whole workspace library to redactors", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Template List Workspace",
@@ -353,13 +358,13 @@ test("managed template list keeps system templates and channel-shared templates 
         })
       );
       const body = (await response.json()) as {
-        templates?: Array<{ id: string }>;
+        templates?: Array<{ id: string; layoutFamily?: string }>;
       };
 
       assert.equal(response.status, 200);
-      assert.ok(body.templates?.some((template) => template.id === STAGE3_TEMPLATE_ID));
+      assert.ok(body.templates?.some((template) => template.layoutFamily === STAGE3_TEMPLATE_ID));
       assert.ok(body.templates?.some((template) => template.id === sharedTemplate.id));
-      assert.ok(!body.templates?.some((template) => template.id === privateTemplate.id));
+      assert.ok(body.templates?.some((template) => template.id === privateTemplate.id));
     } finally {
       await deleteManagedTemplate(sharedTemplate.id);
       await deleteManagedTemplate(privateTemplate.id);
@@ -442,46 +447,47 @@ test("redactor can update a managed template when it is assigned to an editable 
   });
 });
 
-test("system managed templates reject direct update and delete requests", async () => {
+test("workspace default template is editable but the last template cannot be deleted", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
-      workspaceName: "System Template Guard Workspace",
+      workspaceName: "Workspace Template Guard Workspace",
       email: "owner@example.com",
       password: "Password123!",
       displayName: "Owner"
     });
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
 
     const updateResponse = await updateManagedTemplateRoute(
-      new Request(`http://localhost/api/design/templates/${STAGE3_TEMPLATE_ID}`, {
+      new Request(`http://localhost/api/design/templates/${defaultTemplateId}`, {
         method: "PUT",
         headers: {
           cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          name: "Should Not Save"
+          name: "Updated Default Template"
         })
       }),
-      { params: Promise.resolve({ templateId: STAGE3_TEMPLATE_ID }) }
+      { params: Promise.resolve({ templateId: defaultTemplateId }) }
     );
-    const updateBody = (await updateResponse.json()) as { error?: string };
+    const updateBody = (await updateResponse.json()) as { error?: string; template?: { name?: string } };
 
-    assert.equal(updateResponse.status, 403);
-    assert.equal(updateBody.error, "Системный шаблон нельзя менять напрямую. Создай копию и редактируй её.");
+    assert.equal(updateResponse.status, 200);
+    assert.equal(updateBody.template?.name, "Updated Default Template");
 
     const deleteResponse = await deleteManagedTemplateRoute(
-      new Request(`http://localhost/api/design/templates/${STAGE3_TEMPLATE_ID}`, {
+      new Request(`http://localhost/api/design/templates/${defaultTemplateId}`, {
         method: "DELETE",
         headers: {
           cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`
         }
       }),
-      { params: Promise.resolve({ templateId: STAGE3_TEMPLATE_ID }) }
+      { params: Promise.resolve({ templateId: defaultTemplateId }) }
     );
     const deleteBody = (await deleteResponse.json()) as { error?: string };
 
-    assert.equal(deleteResponse.status, 403);
-    assert.equal(deleteBody.error, "Системный шаблон нельзя менять напрямую. Создай копию и редактируй её.");
+    assert.equal(deleteResponse.status, 409);
+    assert.equal(deleteBody.error, "Нельзя удалить последний шаблон workspace.");
   });
 });
 
@@ -494,6 +500,7 @@ test("channels self-heal to the default template when a custom managed template 
       displayName: "Owner"
     });
     const chatHistory = await import("../lib/chat-history");
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
     const template = await createManagedTemplate(
       {
         name: "Ephemeral Template",
@@ -517,14 +524,14 @@ test("channels self-heal to the default template when a custom managed template 
     await deleteManagedTemplate(template.id);
 
     const reloaded = await chatHistory.getChannelById(channel.id);
-    assert.equal(reloaded?.templateId, STAGE3_TEMPLATE_ID);
+    assert.equal(reloaded?.templateId, defaultTemplateId);
 
     const listed = await chatHistory.listChannels(owner.workspace.id);
-    assert.equal(listed.find((item) => item.id === channel.id)?.templateId, STAGE3_TEMPLATE_ID);
+    assert.equal(listed.find((item) => item.id === channel.id)?.templateId, defaultTemplateId);
   });
 });
 
-test("channel setup rejects assigning a template that is not visible to the current editor", async () => {
+test("channel setup allows assigning any template from the same workspace library", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Channel Template Scope Workspace",
@@ -597,9 +604,9 @@ test("channel setup rejects assigning a template that is not visible to the curr
       const body = (await response.json()) as { error?: string };
       const reloaded = await chatHistory.getChannelById(channel.id);
 
-      assert.equal(response.status, 404);
-      assert.equal(body.error, "Template not found.");
-      assert.equal(reloaded?.templateId, sharedTemplate.id);
+      assert.equal(response.status, 200);
+      assert.equal(body.error, undefined);
+      assert.equal(reloaded?.templateId, privateTemplate.id);
     } finally {
       await deleteManagedTemplate(privateTemplate.id);
       await deleteManagedTemplate(sharedTemplate.id);
@@ -616,6 +623,7 @@ test("deleting a custom template reassigns channels to the stable default templa
       displayName: "Owner"
     });
     const chatHistory = await import("../lib/chat-history");
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
     const template = await createManagedTemplate(
       {
         name: "Delete Me",
@@ -654,8 +662,8 @@ test("deleting a custom template reassigns channels to the stable default templa
 
     assert.equal(response.status, 200);
     assert.equal(body.deletedId, template.id);
-    assert.equal(body.fallbackTemplateId, STAGE3_TEMPLATE_ID);
+    assert.equal(body.fallbackTemplateId, defaultTemplateId);
     assert.equal(body.reassignedChannels, 1);
-    assert.equal(reloaded?.templateId, STAGE3_TEMPLATE_ID);
+    assert.equal(reloaded?.templateId, defaultTemplateId);
   });
 });

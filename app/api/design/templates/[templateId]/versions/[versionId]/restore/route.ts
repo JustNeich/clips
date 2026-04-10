@@ -1,23 +1,8 @@
-import { restoreManagedTemplateVersion } from "../../../../../../../../lib/managed-template-store";
-import { requireManagedTemplateEditAccess } from "../../../../../../../../lib/managed-template-guards";
-
 export const runtime = "nodejs";
 
-type Context = { params: Promise<{ templateId: string; versionId: string }> };
-
-export async function POST(request: Request, context: Context): Promise<Response> {
-  try {
-    const { templateId, versionId } = await context.params;
-    await requireManagedTemplateEditAccess(templateId, request);
-    const template = await restoreManagedTemplateVersion(templateId, versionId);
-    if (!template) {
-      return Response.json({ error: "Version not found." }, { status: 404 });
-    }
-    return Response.json({ template }, { status: 200 });
-  } catch (error) {
-    if (error instanceof Response) {
-      return error;
-    }
-    throw error;
-  }
+export async function POST(): Promise<Response> {
+  return Response.json(
+    { error: "Template versions are no longer supported." },
+    { status: 410 }
+  );
 }

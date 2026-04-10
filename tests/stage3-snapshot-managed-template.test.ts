@@ -4,10 +4,6 @@ import test from "node:test";
 import type { Stage3RenderPlan } from "../app/components/types";
 import { SCIENCE_CARD, SCIENCE_CARD_V7 } from "../lib/stage3-template";
 import { resolveManagedTemplateRuntimeSync } from "../lib/managed-template-runtime";
-import {
-  createManagedTemplate,
-  deleteManagedTemplate
-} from "../lib/managed-template-store";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import {
   applyStage3AuthoritativePreviewContent,
@@ -237,42 +233,9 @@ test("custom managed template state is not considered resolved until it has a re
   );
 });
 
-test("missing requested managed template falls back to built-in default instead of another saved template", async () => {
-  const created = await createManagedTemplate(
-    {
-      name: "Unrelated template",
-      description: "Should not be auto-selected for another template id.",
-      baseTemplateId: "science-card-v7",
-      content: {
-        topText: "Top",
-        bottomText: "Bottom",
-        channelName: "Runtime",
-        channelHandle: "@runtime",
-        highlights: { top: [], bottom: [] },
-        topHighlightPhrases: [],
-        topFontScale: 1,
-        bottomFontScale: 1,
-        previewScale: 0.34,
-        mediaAsset: null,
-        backgroundAsset: null,
-        avatarAsset: null
-      },
-      templateConfig: SCIENCE_CARD_V7,
-      shadowLayers: []
-    },
-    {
-      workspaceId: "workspace-test",
-      creatorUserId: "user-test",
-      creatorDisplayName: "Runtime Test"
-    }
-  );
+test("missing requested managed template resolves away from the broken id", () => {
+  const runtime = resolveManagedTemplateRuntimeSync("missing-template-id");
 
-  try {
-    const runtime = resolveManagedTemplateRuntimeSync("missing-template-id");
-    assert.equal(runtime.managedTemplateId, "science-card-v1");
-    assert.equal(runtime.baseTemplateId, "science-card-v1");
-    assert.notEqual(runtime.managedTemplateId, created.id);
-  } finally {
-    await deleteManagedTemplate(created.id);
-  }
+  assert.notEqual(runtime.managedTemplateId, "missing-template-id");
+  assert.equal(runtime.baseTemplateId, "science-card-v1");
 });

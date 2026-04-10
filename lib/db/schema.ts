@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
+  default_template_id TEXT,
   stage2_examples_corpus_json TEXT,
   stage2_hard_constraints_json TEXT,
   stage2_prompt_config_json TEXT,
@@ -106,6 +107,21 @@ CREATE TABLE IF NOT EXISTS channels (
   archived_at TEXT,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
   FOREIGN KEY (creator_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS workspace_templates (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  layout_family TEXT NOT NULL,
+  content_json TEXT NOT NULL,
+  template_config_json TEXT NOT NULL,
+  shadow_layers_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS channel_access (
@@ -425,6 +441,7 @@ CREATE TABLE IF NOT EXISTS channel_publications (
   attempts INTEGER NOT NULL DEFAULT 0,
   lease_token TEXT,
   lease_expires_at TEXT,
+  upload_session_url TEXT,
   created_by_user_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,

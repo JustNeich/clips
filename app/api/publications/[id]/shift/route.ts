@@ -1,6 +1,10 @@
 import { requireAuth, requireChannelOperate } from "../../../../../lib/auth/guards";
 import { scheduleChannelPublicationProcessing } from "../../../../../lib/channel-publication-runtime";
 import {
+  PublicationMutationError,
+  toPublicationMutationErrorPayload
+} from "../../../../../lib/publication-mutation-errors";
+import {
   getChannelPublicationById
 } from "../../../../../lib/publication-store";
 import {
@@ -42,10 +46,17 @@ export async function POST(request: Request, context: Context): Promise<Response
   const body = (await request.json().catch(() => null)) as Body | null;
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const publication = getChannelPublicationById(id);
     if (!publication) {
-      return Response.json({ error: "Publication not found." }, { status: 404 });
+      const payload = toPublicationMutationErrorPayload(
+        new PublicationMutationError("Публикация не найдена.", {
+          code: "PUBLICATION_NOT_FOUND",
+          status: 404
+        }),
+        "Не удалось быстро перенести публикацию."
+      );
+      return Response.json(payload.body, { status: payload.status });
     }
     await requireChannelOperate(auth, publication.channelId);
     const result =
@@ -65,7 +76,11 @@ export async function POST(request: Request, context: Context): Promise<Response
 
     if (!result) {
       return Response.json(
-        { error: "Передайте корректные axis/direction или slotDate/slotIndex." },
+        {
+          error: "Передайте корректные axis/direction или slotDate/slotIndex.",
+          code: "INVALID_SLOT",
+          field: "slot"
+        },
         { status: 400 }
       );
     }
@@ -76,9 +91,7 @@ export async function POST(request: Request, context: Context): Promise<Response
     if (error instanceof Response) {
       return error;
     }
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Не удалось быстро перенести публикацию." },
-      { status: 400 }
-    );
+    const payload = toPublicationMutationErrorPayload(error, "Не удалось быстро перенести публикацию.");
+    return Response.json(payload.body, { status: payload.status });
   }
 }

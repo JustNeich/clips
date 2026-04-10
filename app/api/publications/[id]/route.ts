@@ -1,6 +1,10 @@
 import { requireAuth, requireChannelOperate } from "../../../../lib/auth/guards";
 import { scheduleChannelPublicationProcessing } from "../../../../lib/channel-publication-runtime";
 import { updateChannelPublicationFromEditor } from "../../../../lib/channel-publication-service";
+import {
+  PublicationMutationError,
+  toPublicationMutationErrorPayload
+} from "../../../../lib/publication-mutation-errors";
 import { getChannelPublicationById } from "../../../../lib/publication-store";
 
 export const runtime = "nodejs";
@@ -26,10 +30,17 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
   }
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const publication = getChannelPublicationById(id);
     if (!publication) {
-      return Response.json({ error: "Publication not found." }, { status: 404 });
+      const payload = toPublicationMutationErrorPayload(
+        new PublicationMutationError("Публикация не найдена.", {
+          code: "PUBLICATION_NOT_FOUND",
+          status: 404
+        }),
+        "Не удалось обновить публикацию."
+      );
+      return Response.json(payload.body, { status: payload.status });
     }
     await requireChannelOperate(auth, publication.channelId);
     const updated = await updateChannelPublicationFromEditor({
@@ -42,9 +53,7 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
     if (error instanceof Response) {
       return error;
     }
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Не удалось обновить публикацию." },
-      { status: 400 }
-    );
+    const payload = toPublicationMutationErrorPayload(error, "Не удалось обновить публикацию.");
+    return Response.json(payload.body, { status: payload.status });
   }
 }

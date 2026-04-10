@@ -34,7 +34,11 @@ import {
 } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
-import { getTemplateById, type Stage3TemplateConfig } from "../../lib/stage3-template";
+import {
+  STAGE3_TEMPLATE_ID,
+  getTemplateById,
+  type Stage3TemplateConfig
+} from "../../lib/stage3-template";
 import {
   TemplateRenderSnapshot,
   buildTemplateRenderSnapshot
@@ -2128,9 +2132,9 @@ export function Step3RenderTemplate({
   const buildFallbackManagedTemplateState = useCallback(
     () => ({
       managedId: templateId,
-      name: getStage3DesignLabLabel(templateId),
-      baseTemplateId: templateId,
-      templateConfig: getTemplateById(templateId),
+      name: getStage3DesignLabLabel(STAGE3_TEMPLATE_ID),
+      baseTemplateId: STAGE3_TEMPLATE_ID,
+      templateConfig: getTemplateById(STAGE3_TEMPLATE_ID),
       updatedAt: null as string | null
     }),
     [templateId]
@@ -2160,7 +2164,7 @@ export function Step3RenderTemplate({
       setManagedTemplateState({
         managedId: managedTemplate.id,
         name: managedTemplate.name,
-        baseTemplateId: managedTemplate.baseTemplateId,
+        baseTemplateId: managedTemplate.layoutFamily ?? managedTemplate.baseTemplateId,
         templateConfig: managedTemplate.templateConfig,
         updatedAt: managedTemplate.updatedAt
       });

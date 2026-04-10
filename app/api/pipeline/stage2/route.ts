@@ -269,7 +269,9 @@ export async function POST(request: Request): Promise<Response> {
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
-          templateHighlightProfile: resolveManagedTemplateRuntimeSync(channel.templateId).templateConfig.highlights,
+          templateHighlightProfile: resolveManagedTemplateRuntimeSync(channel.templateId, null, {
+            workspaceId: auth.workspace.id
+          }).templateConfig.highlights,
           ...(() => {
             const resolution = resolveChannelEditorialMemory({
               channelId: channel.id,

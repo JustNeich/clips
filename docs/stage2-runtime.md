@@ -110,6 +110,15 @@ Run modes:
 - исторический quick regenerate для legacy/vnext payloads остаётся только для compatibility
 - regenerate по-прежнему использует coarse progress steps `База -> Перегенерация -> Сборка`
 
+Caption highlighting:
+- optional pass запускается только если active workspace template имеет включённый `highlights.enabled` и хотя бы один enabled slot;
+- input — финальные `captionOptions`, block scope `top` / `bottom` и resolved template highlight profile из snapshot request;
+- stored output — только structured spans `captionOptions[].highlights.top[]` / `bottom[]` с `{ start, end, slotId }`;
+- visible caption text не должен содержать marker-синтаксис или служебные кавычки;
+- если model возвращает phrase-level annotations, server normalization обязан сопоставить их с финальным текстом и сохранить exact char spans;
+- overlap rule: сортировать по `start ASC`, затем длинный span первым, оставить первый non-overlapping span и отбросить конфликтующие;
+- pass fail-open: invalid response, mismatch или runtime error дают empty highlights для блока и не валят весь Stage 2 run.
+
 Основной runtime entry:
 - `/Users/neich/dev/clips automations/lib/stage2-runner.ts`
 

@@ -6,10 +6,10 @@ export const runtime = "nodejs";
 
 type Context = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, context: Context): Promise<Response> {
+export async function GET(request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     await requireChannelVisibility(auth, id);
     scheduleChannelPublicationProcessing();
     return Response.json(
@@ -28,4 +28,3 @@ export async function GET(_request: Request, context: Context): Promise<Response
     );
   }
 }
-
