@@ -86,8 +86,16 @@ The worker receives explicit per-stage `model` values for:
 - `rewriter`
 - `finalSelector`
 - `titles`
+- `seo`
+- `contextPacket`
+- `candidateGenerator`
+- `qualityCourt`
+- `targetedRepair`
+- `captionHighlighting`
+- `captionTranslation`
+- `titleWriter`
 
-SEO is resolved separately in the Stage 2 runner because it still uses `runCodexExec` directly.
+SEO now runs inside the same Stage 2 worker flow and is persisted in the top-level Stage 2 response.
 
 ## Diagnostics
 

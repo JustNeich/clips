@@ -106,6 +106,12 @@ import {
   Stage2PromptConfigStageId
 } from "../stage2-prompt-specs";
 import { CommentItem } from "../comments";
+import {
+  buildStage2SeoPrompt,
+  parseStage2SeoOutput,
+  STAGE2_SEO_OUTPUT_SCHEMA,
+  type Stage2SeoOutput
+} from "../stage2-seo";
 import { JsonStageExecutor } from "./executor";
 import { buildSelectorExamplePool } from "./selector-example-pool";
 import {
@@ -774,6 +780,7 @@ type StageWarning = {
 
 type RunPipelineResult = {
   output: ViralShortsStage2Result;
+  seo: Stage2SeoOutput | null;
   warnings: StageWarning[];
   diagnostics: Stage2Diagnostics;
   rawDebugArtifact: Stage2RunDebugArtifact | null;
@@ -790,10 +797,7 @@ type ExecutedPromptStageRecord = {
   estimatedOutputTokens: number | null;
 };
 
-type Stage2PipelineModelMap = Record<
-  Exclude<Stage2PromptConfigStageId, "seo">,
-  string | null
->;
+type Stage2PipelineModelMap = Record<Stage2PromptConfigStageId, string | null>;
 
 type PipelineProgressEvent = {
   stageId: Stage2PipelineStageId;
@@ -3701,8 +3705,8 @@ function normalizeNativeCaptionTitleOptions(raw: unknown): NativeCaptionTitleOpt
   const normalized: NativeCaptionTitleOption[] = [];
   entries.forEach((entry, index) => {
       const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
-      const title = String(item.title ?? "").trim();
-      const titleRu = String(item.title_ru ?? item.titleRu ?? "").trim();
+      const title = normalizeAllCapsTitleText(String(item.title ?? "").trim());
+      const titleRu = normalizeAllCapsTitleText(String(item.title_ru ?? item.titleRu ?? "").trim());
       if (!title) {
         return;
       }
@@ -3713,6 +3717,153 @@ function normalizeNativeCaptionTitleOptions(raw: unknown): NativeCaptionTitleOpt
       });
     });
   return normalized.slice(0, 5);
+}
+
+function shouldRunStage2SeoGeneration(stageModels?: Partial<Stage2PipelineModelMap>): boolean {
+  return Object.prototype.hasOwnProperty.call(stageModels ?? {}, "seo");
+}
+
+function buildStage2SeoComments(
+  comments: ViralShortsVideoContext["comments"]
+): CommentItem[] {
+  return comments.map((comment, index) => ({
+    id: `comment_${index + 1}`,
+    author: comment.author,
+    text: comment.text,
+    likes: comment.likes,
+    timestamp: null,
+    postedAt: null
+  }));
+}
+
+async function runStage2SeoStage(input: {
+  enabled: boolean;
+  sourceUrl: string;
+  title: string;
+  comments: ViralShortsVideoContext["comments"];
+  omittedCommentsCount: number;
+  userInstruction?: string | null;
+  stage2Output: Pick<ViralShortsStage2Result, "inputAnalysis" | "captionOptions" | "finalPick">;
+  executor: JsonStageExecutor;
+  stageModels?: Partial<Stage2PipelineModelMap>;
+  promptConfig: Stage2PromptConfig;
+  warnings: StageWarning[];
+  promptInputManifests: Partial<
+    Record<Stage2PipelineStageId, Stage2DiagnosticsPromptStage["inputManifest"]>
+  >;
+  reportProgress: (event: PipelineProgressEvent) => Promise<void>;
+  recordExecutedStage: (
+    stageId: Stage2PipelineStageId,
+    promptText: string,
+    summary: string,
+    resultPayload: unknown,
+    options?: { usesImages?: boolean; model?: string | null }
+  ) => void;
+}): Promise<Stage2SeoOutput | null> {
+  if (!input.enabled) {
+    return null;
+  }
+
+  const seoPrompt = buildStage2SeoPrompt({
+    sourceUrl: input.sourceUrl,
+    title: input.title,
+    comments: buildStage2SeoComments(input.comments),
+    omittedCommentsCount: input.omittedCommentsCount,
+    stage2Output: input.stage2Output,
+    descriptionPrompt: resolveStage2PromptTemplate("seo", input.promptConfig).configuredPrompt,
+    userInstruction: input.userInstruction
+  });
+  const seoReasoningEffort = resolveStageReasoningEffort("seo", input.promptConfig);
+  input.promptInputManifests.seo = {
+    learningDetail: "none",
+    description: null,
+    transcript: null,
+    frames: null,
+    comments: {
+      availableCount: input.comments.length,
+      passedCount: Math.min(24, input.comments.length),
+      omittedCount: Math.max(0, input.omittedCommentsCount + Math.max(0, input.comments.length - 24)),
+      truncated: input.omittedCommentsCount > 0 || input.comments.length > 24,
+      limit: 24,
+      passedCommentIds: input.comments
+        .slice(0, 24)
+        .map((_, index) => `comment_${index + 1}`)
+    },
+    examples: null,
+    channelLearning: null,
+    candidates: {
+      passedCount: input.stage2Output.captionOptions.length,
+      passedCandidateIds: input.stage2Output.captionOptions
+        .map((option) => option.candidateId ?? `option_${option.option}`)
+        .filter(Boolean),
+      criticScoreCount: null,
+      shortlistCount: input.stage2Output.captionOptions.length
+    },
+    stageFlags: [
+      "seo description",
+      "17 english tags",
+      "15 long-tail search phrases",
+      "12 hashtags"
+    ]
+  };
+
+  await input.reportProgress({
+    stageId: "seo",
+    state: "running",
+    promptChars: seoPrompt.length,
+    reasoningEffort: seoReasoningEffort,
+    detail: "Generating SEO description and tags."
+  });
+  const seoStartedAt = Date.now();
+
+  try {
+    const rawSeo = await input.executor.runJson<unknown>({
+      prompt: seoPrompt,
+      schema: STAGE2_SEO_OUTPUT_SCHEMA,
+      model: input.stageModels?.seo ?? null,
+      reasoningEffort: seoReasoningEffort
+    });
+    const seo = parseStage2SeoOutput(rawSeo);
+    await input.reportProgress({
+      stageId: "seo",
+      state: "completed",
+      durationMs: Date.now() - seoStartedAt,
+      promptChars: seoPrompt.length,
+      reasoningEffort: seoReasoningEffort,
+      detail: "SEO description and tags generated."
+    });
+    input.recordExecutedStage(
+      "seo",
+      seoPrompt,
+      "LLM stage: writes one SEO description block plus comma-separated YouTube tags.",
+      seo,
+      { model: input.stageModels?.seo ?? null }
+    );
+    return seo;
+  } catch (error) {
+    const message =
+      error instanceof Error ? `SEO fallback used: ${error.message}` : "SEO fallback used.";
+    input.warnings.push({
+      field: "seo",
+      message
+    });
+    await input.reportProgress({
+      stageId: "seo",
+      state: "completed",
+      durationMs: Date.now() - seoStartedAt,
+      promptChars: seoPrompt.length,
+      reasoningEffort: seoReasoningEffort,
+      detail: message
+    });
+    input.recordExecutedStage(
+      "seo",
+      seoPrompt,
+      "LLM stage: writes one SEO description block plus comma-separated YouTube tags.",
+      { fallback: true, message },
+      { model: input.stageModels?.seo ?? null }
+    );
+    return null;
+  }
 }
 
 function buildNativeCaptionTranslationPrompt(input: {
@@ -6597,28 +6748,8 @@ function buildFallbackTitleOption(candidate: CandidateCaption, option: number): 
   };
 }
 
-function countTitleLettersByCase(value: string): { letters: number; uppercaseLetters: number } {
-  const letters = Array.from(value).filter((char) => /\p{L}/u.test(char));
-  const uppercaseLetters = letters.filter((char) => char === char.toUpperCase()).length;
-  return {
-    letters: letters.length,
-    uppercaseLetters
-  };
-}
-
-function shouldForceAllCapsTitles(
-  options: Array<{ title: string; titleRu: string }>
-): boolean {
-  const votes = options.reduce((count, option) => {
-    const titleMetrics = countTitleLettersByCase(option.title);
-    const titleRuMetrics = countTitleLettersByCase(option.titleRu);
-    const titleUppercaseShare =
-      titleMetrics.letters > 0 ? titleMetrics.uppercaseLetters / titleMetrics.letters : 0;
-    const titleRuUppercaseShare =
-      titleRuMetrics.letters > 0 ? titleRuMetrics.uppercaseLetters / titleRuMetrics.letters : 0;
-    return count + Number(titleUppercaseShare >= 0.6 || titleRuUppercaseShare >= 0.6);
-  }, 0);
-  return votes >= Math.max(1, Math.ceil(options.length / 2));
+function normalizeAllCapsTitleText(value: string): string {
+  return sanitizeTitleText(value).toUpperCase();
 }
 
 function sanitizeTitleText(value: string): string {
@@ -6640,7 +6771,7 @@ function normalizeTitleOptions(
       ? normalized.map((item, index) => ({ ...item, option: index + 1 }))
       : shortlist.slice(0, 5).map((candidate, index) => buildFallbackTitleOption(candidate, index + 1));
   const policy = {
-    forceAllCaps: shouldForceAllCapsTitles(baseOptions)
+    forceAllCaps: true
   };
 
   return baseOptions.map((item, index) => {
@@ -6652,9 +6783,7 @@ function normalizeTitleOptions(
     return {
       option: index + 1,
       title: validation.passed ? validation.normalizedTitle : fallbackValidation.normalizedTitle,
-      titleRu: policy.forceAllCaps
-        ? sanitizeTitleText(item.titleRu || fallback.titleRu).toUpperCase()
-        : sanitizeTitleText(item.titleRu || fallback.titleRu)
+      titleRu: normalizeAllCapsTitleText(item.titleRu || fallback.titleRu)
     };
   });
 }
@@ -7578,8 +7707,10 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       input.videoContext.title.trim() ||
       oneShotResult.analysis.keyPhraseToAdapt ||
       "Reference title";
-    const title = existing?.title?.trim() || `${seedTitle.slice(0, 70)}${option === 1 ? "" : ` ${option}`}`.trim();
-    const titleRu = existing?.titleRu?.trim() || title;
+    const title = normalizeAllCapsTitleText(
+      existing?.title?.trim() || `${seedTitle.slice(0, 70)}${option === 1 ? "" : ` ${option}`}`.trim()
+    );
+    const titleRu = normalizeAllCapsTitleText(existing?.titleRu?.trim() || title);
     const titleRuSource = existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";
     if (titleRuSource === "fallback") {
       titleFallbackOptions.push(option);
@@ -7604,6 +7735,31 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       message: `Russian title fallback used for ${titleTranslationCoverage.fallbackCount} title option${titleTranslationCoverage.fallbackCount === 1 ? "" : "s"}.`
     });
   }
+
+  const seo = await runStage2SeoStage({
+    enabled: shouldRunStage2SeoGeneration(input.stageModels),
+    sourceUrl: input.videoContext.sourceUrl,
+    title: input.videoContext.title,
+    comments: input.videoContext.comments,
+    omittedCommentsCount: 0,
+    userInstruction: input.videoContext.userInstruction,
+    stage2Output: {
+      inputAnalysis: {
+        visualAnchors: oneShotResult.analysis.visualAnchors,
+        commentVibe: oneShotResult.analysis.commentVibe,
+        keyPhraseToAdapt: oneShotResult.analysis.keyPhraseToAdapt
+      },
+      captionOptions: localizedCaptionOptions,
+      finalPick
+    },
+    executor: input.executor,
+    stageModels: input.stageModels,
+    promptConfig: input.promptConfig,
+    warnings,
+    promptInputManifests,
+    reportProgress,
+    recordExecutedStage
+  });
 
   await reportProgress({
     stageId: "assemble",
@@ -7855,6 +8011,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
 
   return {
     output,
+    seo,
     warnings,
     diagnostics,
     rawDebugArtifact:
@@ -9285,8 +9442,8 @@ export class ViralShortsWorkerService {
       const option = index + 1;
       const existing = titleByOption.get(option) ?? null;
       const fallbackTitle = `${seedTitle.replace(/\s+/g, " ").trim().slice(0, 70)}${index === 0 ? "" : ` ${option}`}`.trim();
-      const title = existing?.title?.trim() || fallbackTitle || `Option ${option}`;
-      const titleRu = existing?.titleRu?.trim() || title;
+      const title = normalizeAllCapsTitleText(existing?.title?.trim() || fallbackTitle || `Option ${option}`);
+      const titleRu = normalizeAllCapsTitleText(existing?.titleRu?.trim() || title);
       const titleRuSource = existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";
       if (titleRuSource === "fallback") {
         titleFallbackOptions.push(option);
@@ -9332,6 +9489,36 @@ export class ViralShortsWorkerService {
       },
       { model: input.stageModels?.titleWriter ?? null }
     );
+
+    const seo = await runStage2SeoStage({
+      enabled: shouldRunStage2SeoGeneration(input.stageModels),
+      sourceUrl: input.videoContext.sourceUrl,
+      title: input.videoContext.title,
+      comments: input.videoContext.comments,
+      omittedCommentsCount: 0,
+      userInstruction: input.videoContext.userInstruction,
+      stage2Output: {
+        inputAnalysis: {
+          visualAnchors: analyzerOutput.visualAnchors.slice(0, 3),
+          commentVibe: analyzerOutput.commentVibe,
+          keyPhraseToAdapt:
+            analyzerOutput.commentLanguageCues[0] ??
+            contextPacket.audienceWave.safeReusableCues[0] ??
+            contextPacket.strategy.hookSeeds[0] ??
+            analyzerOutput.visualAnchors[0] ??
+            input.videoContext.title
+        },
+        captionOptions: localizedCaptionOptions,
+        finalPick
+      },
+      executor: input.executor,
+      stageModels: input.stageModels,
+      promptConfig,
+      warnings,
+      promptInputManifests,
+      reportProgress,
+      recordExecutedStage
+    });
 
     const rawPromptStages = executedPromptStages.map((stage) =>
       buildPromptStageDiagnostics({
@@ -9542,6 +9729,7 @@ export class ViralShortsWorkerService {
     };
     return {
       output,
+      seo,
       warnings,
       diagnostics,
       rawDebugArtifact:
@@ -9604,6 +9792,9 @@ export class ViralShortsWorkerService {
     }
     const candidateLifecycle = stage2VNextEnabled ? new CandidateLifecycle() : null;
     const executedPromptStages: ExecutedPromptStageRecord[] = [];
+    const promptInputManifests: Partial<
+      Record<Stage2PipelineStageId, Stage2DiagnosticsPromptStage["inputManifest"]>
+    > = {};
     const recordExecutedStage = (
       stageId: Stage2PipelineStageId,
       promptText: string,
@@ -10556,26 +10747,6 @@ export class ViralShortsWorkerService {
       { model: input.stageModels?.titles ?? null }
     );
 
-    const diagnosticsBundle = buildRunDiagnosticsBundle({
-      channelConfig,
-      videoContext: input.videoContext,
-      analyzerOutput,
-      promptConfig,
-      debugMode,
-      executedPromptStages,
-      workspaceCorpusCount,
-      activeExamplesCount: availableExamples.length,
-      selectorExamples: selectorPromptExamples,
-      examplesAssessment: selectorPool.assessment,
-      exampleInsights: selectorPool.exampleInsights,
-      selectorOutput,
-      queryText,
-      writerCandidates: activeCandidates,
-      criticScores,
-      rewrittenCandidates,
-      shortlist
-    });
-
     const shortlistOptionMap = resolvedFinalSelectorState.candidateOptionMap;
     const captionOptions = shortlistEntries.map((entry, index) => {
       const candidate = entry.candidate;
@@ -10617,6 +10788,58 @@ export class ViralShortsWorkerService {
       candidateOptionMap: shortlistOptionMap,
       shortlistCandidateIds: resolvedFinalSelectorState.shortlistCandidateIds,
       finalPickCandidateId: resolvedFinalPickCandidateId
+    });
+    const finalPick = {
+      option: finalPickOption,
+      reason: operatorFacingFinalReason
+    };
+    const seo = await runStage2SeoStage({
+      enabled: shouldRunStage2SeoGeneration(input.stageModels),
+      sourceUrl: input.videoContext.sourceUrl,
+      title: input.videoContext.title,
+      comments: input.videoContext.comments,
+      omittedCommentsCount: 0,
+      userInstruction: input.videoContext.userInstruction,
+      stage2Output: {
+        inputAnalysis: {
+          visualAnchors: analyzerOutput.visualAnchors.slice(0, 3),
+          commentVibe: analyzerOutput.commentVibe,
+          keyPhraseToAdapt:
+            analyzerOutput.slangToAdapt[0] ??
+            analyzerOutput.extractableSlang[0] ??
+            analyzerOutput.payoff ??
+            analyzerOutput.subject
+        },
+        captionOptions,
+        finalPick
+      },
+      executor: input.executor,
+      stageModels: input.stageModels,
+      promptConfig,
+      warnings,
+      promptInputManifests,
+      reportProgress,
+      recordExecutedStage
+    });
+
+    const diagnosticsBundle = buildRunDiagnosticsBundle({
+      channelConfig,
+      videoContext: input.videoContext,
+      analyzerOutput,
+      promptConfig,
+      debugMode,
+      executedPromptStages,
+      workspaceCorpusCount,
+      activeExamplesCount: availableExamples.length,
+      selectorExamples: selectorPromptExamples,
+      examplesAssessment: selectorPool.assessment,
+      exampleInsights: selectorPool.exampleInsights,
+      selectorOutput,
+      queryText,
+      writerCandidates: activeCandidates,
+      criticScores,
+      rewrittenCandidates,
+      shortlist
     });
 
     let vnextPipeline:
@@ -10694,7 +10917,7 @@ export class ViralShortsWorkerService {
         judgeCards: vnextJudgeCards,
         selection: vnextSelection,
         titles: titleOptions,
-        seo: null,
+        seo,
         candidateLineage: candidateLifecycle?.list() ?? [],
         criticGate: vnextCriticGate,
         featureFlags: pipelineExecution.featureFlags,
@@ -10739,10 +10962,7 @@ export class ViralShortsWorkerService {
       },
       captionOptions,
       titleOptions,
-      finalPick: {
-        option: finalPickOption,
-        reason: operatorFacingFinalReason
-      },
+      finalPick,
       pipeline: {
         channelId: channelConfig.channelId,
         workerProfile: {
@@ -10778,6 +10998,7 @@ export class ViralShortsWorkerService {
 
     return {
       output,
+      seo,
       warnings,
       diagnostics: diagnosticsBundle.diagnostics,
       rawDebugArtifact: diagnosticsBundle.rawDebugArtifact,

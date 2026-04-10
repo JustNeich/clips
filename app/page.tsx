@@ -5184,6 +5184,9 @@ export default function HomePage() {
       return null;
     }
     if (isSourceJobVisibleRunning) {
+      if (visibleSourceJob?.progress.activeStageId === "retry") {
+        return "Retrying";
+      }
       return visibleSourceJob?.progress.activeStageId === "comments" ? "Comments" : "Fetching";
     }
     if (isStage2RunVisibleRunning) {

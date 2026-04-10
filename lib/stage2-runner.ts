@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { Stage2Response } from "../app/components/types";
+import { runWithHostedSubprocessGate } from "./hosted-subprocess";
 import { saveStage2RunDebugArtifact } from "./stage2-debug-artifacts";
 import {
   normalizeComments,
@@ -83,10 +84,17 @@ function resolveNativeStage2ResponseExecutionSettings(input: {
 }) {
   const isReferenceOneShot =
     input.output.pipeline?.execution?.pathVariant === "reference_one_shot_v1";
+  const referenceOneShotModel =
+    input.executorContext.resolvedCodexModelConfig.oneShotReference;
+  const referenceOneShotModelSummary =
+    referenceOneShotModel === input.executorContext.resolvedCodexModelConfig.captionTranslation &&
+    referenceOneShotModel === input.executorContext.resolvedCodexModelConfig.seo
+      ? referenceOneShotModel
+      : "per-stage policy";
   return {
     model:
       (isReferenceOneShot
-        ? input.executorContext.resolvedCodexModelConfig.oneShotReference
+        ? referenceOneShotModelSummary
         : input.executorContext.pipelineModelSummary) ?? "default",
     reasoningEffort: isReferenceOneShot
       ? input.promptConfig.stages.oneShotReference.reasoningEffort
@@ -99,13 +107,14 @@ function resolveNativeStage2ResponseExecutionSettings(input: {
         isReferenceOneShot ? "finalists(5 publishable options)" : "finalists(0-3)",
         "winner",
         "titleOptions(5 bilingual winner-only)",
+        "seo(description,tags)",
         "diagnostics(nativeCaptionV3,prompts)",
         "progress(stage snapshots)"
       ],
       hardConstraints: input.hardConstraints,
       enforcedVia: isReferenceOneShot
-        ? "One-shot reference baseline + caption translation + assemble"
-        : "Context packet + candidate batch + quality court + targeted repair + caption translation + title writer"
+        ? "One-shot reference baseline + caption translation + title writer + seo writer + assemble"
+        : "Context packet + candidate batch + quality court + targeted repair + caption translation + title writer + seo writer"
     })
   };
 }
@@ -353,6 +362,7 @@ export async function downloadVideoAndMetadata(
   downloadProvider: "visolix" | "ytDlp" | "upload";
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
+  providerErrorSummary: Stage2Response["source"]["providerErrorSummary"];
   commentsExtractionFallbackUsed: boolean;
   commentsAcquisition: {
     status: "primary_success" | "fallback_success" | "unavailable";
@@ -382,6 +392,7 @@ export async function downloadVideoAndMetadata(
     downloadProvider: cachedSource.downloadProvider,
     primaryProviderError: cachedSource.primaryProviderError,
     downloadFallbackUsed: cachedSource.downloadFallbackUsed,
+    providerErrorSummary: cachedSource.providerErrorSummary,
     commentsExtractionFallbackUsed: optionalInfo.commentsExtractionFallbackUsed,
     commentsAcquisition: optionalInfo.commentsAcquisition
   };
@@ -389,21 +400,23 @@ export async function downloadVideoAndMetadata(
 
 async function probeVideoDurationSeconds(videoPath: string): Promise<number | null> {
   try {
-    const { stdout } = await execFileAsync(
-      "ffprobe",
-      [
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        videoPath
-      ],
-      {
-        timeout: 30_000,
-        maxBuffer: 1024 * 1024
-      }
+    const { stdout } = await runWithHostedSubprocessGate(() =>
+      execFileAsync(
+        "ffprobe",
+        [
+          "-v",
+          "error",
+          "-show_entries",
+          "format=duration",
+          "-of",
+          "default=noprint_wrappers=1:nokey=1",
+          videoPath
+        ],
+        {
+          timeout: 30_000,
+          maxBuffer: 1024 * 1024
+        }
+      )
     );
     const value = Number.parseFloat(stdout.trim());
     return Number.isFinite(value) && value > 0 ? value : null;
@@ -484,13 +497,15 @@ async function extractFrameImages(
   for (let i = 0; i < framePlan.length; i += 1) {
     const second = framePlan[i]?.timestampSec ?? 0.1;
     const framePath = path.join(tmpDir, `frame-${i + 1}.jpg`);
-    await execFileAsync(
-      "ffmpeg",
-      ["-y", "-ss", second.toFixed(3), "-i", videoPath, "-frames:v", "1", "-q:v", "3", framePath],
-      {
-        timeout: 60_000,
-        maxBuffer: 1024 * 1024 * 2
-      }
+    await runWithHostedSubprocessGate(() =>
+      execFileAsync(
+        "ffmpeg",
+        ["-y", "-ss", second.toFixed(3), "-i", videoPath, "-frames:v", "1", "-q:v", "3", framePath],
+        {
+          timeout: 60_000,
+          maxBuffer: 1024 * 1024 * 2
+        }
+      )
     );
     framePaths.push(framePath);
     frameDescriptions.push(framePlan[i]?.description ?? `frame ${i + 1} at ${second.toFixed(2)}s`);
@@ -654,7 +669,8 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
           captionHighlighting: executorContext.resolvedCodexModelConfig.captionHighlighting,
           captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation,
-          titleWriter: executorContext.resolvedCodexModelConfig.titleWriter
+          titleWriter: executorContext.resolvedCodexModelConfig.titleWriter,
+          seo: executorContext.resolvedCodexModelConfig.seo
         },
         promptConfig: workspaceStage2PromptConfig,
         debugMode: run.request.debugMode
@@ -683,7 +699,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     const baseResponse = {
       ...baseResult,
       output: pipelineResult.output,
-      seo: null,
+      seo: pipelineResult.seo,
       warnings: [
         ...pipelineResult.warnings,
         ...validateStage2Output(pipelineResult.output, channel.stage2HardConstraints)
@@ -878,7 +894,8 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
         captionHighlighting: executorContext.resolvedCodexModelConfig.captionHighlighting,
         captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation,
-        titleWriter: executorContext.resolvedCodexModelConfig.titleWriter
+        titleWriter: executorContext.resolvedCodexModelConfig.titleWriter,
+        seo: executorContext.resolvedCodexModelConfig.seo
       },
       promptConfig: workspaceStage2PromptConfig,
       debugMode: run.request.debugMode,
@@ -941,6 +958,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         downloadProvider: downloaded.downloadProvider,
         primaryProviderError: downloaded.primaryProviderError,
         downloadFallbackUsed: downloaded.downloadFallbackUsed,
+        providerErrorSummary: downloaded.providerErrorSummary,
         totalComments: allComments.length,
         topComments: allComments.slice(0, 10),
         allComments,
@@ -960,7 +978,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         hardConstraints: channel.stage2HardConstraints
       }),
       output: parsedOutput,
-      seo: null,
+      seo: pipelineResult.seo,
       warnings,
       diagnostics,
       progress: getStage2Run(run.runId)?.snapshot ?? null,

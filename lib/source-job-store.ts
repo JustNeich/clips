@@ -1,4 +1,11 @@
-import type { CommentsPayload, SourceJobProgressSnapshot, SourceJobResult, SourceJobStageId, SourceJobStatus } from "../app/components/types";
+import type {
+  CommentsPayload,
+  SourceJobProgressSnapshot,
+  SourceJobResult,
+  SourceJobStageId,
+  SourceJobStatus,
+  SourceProviderErrorSummary
+} from "../app/components/types";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 
 export type SourceJobTrigger = "fetch" | "comments";
@@ -71,6 +78,11 @@ function createSourceJobProgressSnapshot(jobId: string): SourceJobProgressSnapsh
     status: "queued",
     activeStageId: "prepare",
     detail: `Job ${jobId.slice(0, 8)} ожидает запуска.`,
+    attempt: null,
+    maxAttempts: null,
+    nextRetryAt: null,
+    retryEligible: false,
+    providerErrorSummary: null,
     createdAt: stamp,
     startedAt: null,
     updatedAt: stamp,
@@ -79,10 +91,41 @@ function createSourceJobProgressSnapshot(jobId: string): SourceJobProgressSnapsh
   };
 }
 
+function normalizeSourceJobProgressSnapshot(
+  progress: SourceJobProgressSnapshot,
+  jobId: string
+): SourceJobProgressSnapshot {
+  const fallback = createSourceJobProgressSnapshot(jobId);
+  return {
+    ...fallback,
+    ...progress,
+    attempt:
+      typeof progress.attempt === "number" && Number.isFinite(progress.attempt)
+        ? progress.attempt
+        : fallback.attempt,
+    maxAttempts:
+      typeof progress.maxAttempts === "number" && Number.isFinite(progress.maxAttempts)
+        ? progress.maxAttempts
+        : fallback.maxAttempts,
+    nextRetryAt:
+      typeof progress.nextRetryAt === "string" && progress.nextRetryAt.trim()
+        ? progress.nextRetryAt
+        : fallback.nextRetryAt,
+    retryEligible: progress.retryEligible === true,
+    providerErrorSummary:
+      progress.providerErrorSummary && typeof progress.providerErrorSummary === "object"
+        ? progress.providerErrorSummary
+        : null
+  };
+}
+
 function mapSourceJob(row: SourceJobRow): SourceJobRecord {
   const progress =
-    parseJsonOrNull<SourceJobProgressSnapshot>(row.progress_json) ??
-    createSourceJobProgressSnapshot(String(row.job_id));
+    normalizeSourceJobProgressSnapshot(
+      parseJsonOrNull<SourceJobProgressSnapshot>(row.progress_json) ??
+        createSourceJobProgressSnapshot(String(row.job_id)),
+      String(row.job_id)
+    );
   const request = parseJsonOrNull<SourceJobRequest>(row.request_json);
   const sourceUrl = request?.sourceUrl?.trim() || String(row.source_url);
   const chatId = request?.chat.id?.trim() || String(row.chat_id);
@@ -198,7 +241,21 @@ function mutateSourceJob(
 
 function updateProgress(
   record: SourceJobRecord,
-  input: Partial<Pick<SourceJobProgressSnapshot, "status" | "activeStageId" | "detail" | "finishedAt" | "error">>
+  input: Partial<
+    Pick<
+      SourceJobProgressSnapshot,
+      | "status"
+      | "activeStageId"
+      | "detail"
+      | "attempt"
+      | "maxAttempts"
+      | "nextRetryAt"
+      | "retryEligible"
+      | "providerErrorSummary"
+      | "finishedAt"
+      | "error"
+    >
+  >
 ): SourceJobProgressSnapshot {
   return {
     ...record.progress,
@@ -332,6 +389,11 @@ export function claimNextQueuedSourceJob(): SourceJobRecord | null {
       status: "running",
       activeStageId: "prepare",
       detail: "Подготавливаем источник и чат.",
+      attempt: null,
+      maxAttempts: null,
+      nextRetryAt: null,
+      retryEligible: false,
+      providerErrorSummary: null,
       error: null
     });
     const startedAt = current.startedAt ?? progress.startedAt ?? nowIso();
@@ -365,6 +427,11 @@ export function recoverInterruptedSourceJobs(detail = "Recovered after process r
         ...record.progress,
         status: "queued" as const,
         detail,
+        attempt: null,
+        maxAttempts: null,
+        nextRetryAt: null,
+        retryEligible: false,
+        providerErrorSummary: null,
         error: null,
         updatedAt: nowIso(),
         startedAt: null,
@@ -405,6 +472,7 @@ export function interruptRunningSourceJobs(
         ...record.progress,
         status: "failed" as const,
         detail: message,
+        nextRetryAt: null,
         error: message,
         updatedAt: finishedAt,
         finishedAt,
@@ -435,6 +503,46 @@ export function markSourceJobStageRunning(
       status: "running",
       activeStageId: stageId,
       detail,
+      attempt: null,
+      maxAttempts: null,
+      nextRetryAt: null,
+      retryEligible: false,
+      providerErrorSummary: null,
+      error: null
+    });
+    return {
+      ...record,
+      progress,
+      status: progress.status,
+      errorMessage: null,
+      startedAt: progress.startedAt,
+      updatedAt: progress.updatedAt,
+      finishedAt: progress.finishedAt
+    };
+  });
+}
+
+export function markSourceJobRetryScheduled(
+  jobId: string,
+  input: {
+    detail: string;
+    attempt: number;
+    maxAttempts: number;
+    nextRetryAt: string;
+    retryEligible: boolean;
+    providerErrorSummary: SourceProviderErrorSummary | null;
+  }
+): SourceJobRecord | null {
+  return mutateSourceJob(jobId, (record) => {
+    const progress = updateProgress(record, {
+      status: "running",
+      activeStageId: "retry",
+      detail: input.detail,
+      attempt: input.attempt,
+      maxAttempts: input.maxAttempts,
+      nextRetryAt: input.nextRetryAt,
+      retryEligible: input.retryEligible,
+      providerErrorSummary: input.providerErrorSummary,
       error: null
     });
     return {
@@ -462,6 +570,11 @@ export function finalizeSourceJobSuccess(
       detail: resultData.commentsAvailable
         ? `Источник готов. Загружено ${resultData.commentsPayload?.totalComments ?? 0} комментариев.`
         : "Источник готов. Продолжаем без комментариев.",
+      attempt: null,
+      maxAttempts: null,
+      nextRetryAt: null,
+      retryEligible: false,
+      providerErrorSummary: null,
       error: null,
       updatedAt: finishedAt,
       finishedAt
@@ -478,12 +591,26 @@ export function finalizeSourceJobSuccess(
   });
 }
 
-export function finalizeSourceJobFailure(jobId: string, errorMessage: string): SourceJobRecord | null {
+export function finalizeSourceJobFailure(
+  jobId: string,
+  errorMessage: string,
+  options?: {
+    attempt?: number | null;
+    maxAttempts?: number | null;
+    retryEligible?: boolean;
+    providerErrorSummary?: SourceProviderErrorSummary | null;
+  }
+): SourceJobRecord | null {
   return mutateSourceJob(jobId, (record) => {
     const finishedAt = nowIso();
     const progress = {
       ...record.progress,
       status: "failed" as const,
+      attempt: options?.attempt ?? record.progress.attempt ?? null,
+      maxAttempts: options?.maxAttempts ?? record.progress.maxAttempts ?? null,
+      nextRetryAt: null,
+      retryEligible: options?.retryEligible ?? false,
+      providerErrorSummary: options?.providerErrorSummary ?? record.progress.providerErrorSummary ?? null,
       error: errorMessage,
       detail: errorMessage,
       updatedAt: finishedAt,

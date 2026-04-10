@@ -19,6 +19,7 @@ import {
   isSupportedUrl,
   normalizeSupportedUrl
 } from "./ytdlp";
+import { runWithHostedSubprocessGate } from "./hosted-subprocess";
 import { SUPPORTED_SOURCE_ERROR_MESSAGE } from "./supported-url";
 import { isUploadedSourceUrl } from "./uploaded-source";
 
@@ -114,10 +115,12 @@ export async function fetchCommentsPayloadViaYtDlp(input: {
       sourceUrl
     ];
 
-    await execFileAsync(ytDlpPath, args, {
-      timeout: 3 * 60 * 1000,
-      maxBuffer: 1024 * 1024 * 16
-    });
+    await runWithHostedSubprocessGate(() =>
+      execFileAsync(ytDlpPath, args, {
+        timeout: 3 * 60 * 1000,
+        maxBuffer: 1024 * 1024 * 16
+      })
+    );
 
     const { infoJson, comments } = await readYtDlpMetadataArtifacts(tmpDir, "metadata");
     if (!infoJson) {

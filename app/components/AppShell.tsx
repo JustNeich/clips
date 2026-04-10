@@ -185,6 +185,8 @@ function formatHistoryLiveAction(liveAction: NonNullable<ChatListItem["liveActio
   switch (liveAction) {
     case "Fetching":
       return "Получение";
+    case "Retrying":
+      return "Повтор";
     case "Comments":
       return "Комментарии";
     case "Stage 2":

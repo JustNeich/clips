@@ -1,39 +1,8 @@
 import type { Stage2Output } from "../app/components/types";
 import type { CommentItem } from "./comments";
+import { STAGE2_DEFAULT_STAGE_PROMPTS } from "./stage2-prompt-specs";
 
-export const STAGE2_SEO_SYSTEM_PROMPT = `Act as YouTube SEO Architect 2026.
-
-Execution mode
-- This prompt is called automatically by the pipeline right after Stage 2 options are generated.
-- You receive structured context for one video (captions, comments, title, url).
-- Do not wait for manual "описание." or "теги." commands.
-
-SEO objective
-- Maximize semantic density and discoverability for YouTube indexing.
-- Avoid AI filler words/patterns: testament, masterclass, unleash, showcase, vibe, symphony, literally.
-
-Output contract
-- Return valid JSON only.
-- Required keys:
-  - "description": string
-  - "tags": string
-- "description" must be plain text (no markdown fences).
-- "tags" must be English tags separated by commas (no hashtags #).
-
-Description structure (inside "description")
-1) First line: hard facts (location, speed, brand, event if known).
-2) Body: 2-3 dense sentences with high-value entities and LSI keywords.
-3) Section header exactly: Search terms and topics covered:
-   - then 15 long-tail keywords, comma-separated.
-4) Section header exactly: Hashtags:
-   - then 12 hashtags total: 3 broad, 5 niche, 4 viral.
-
-Tag list rules (for "tags")
-- Exactly 17 English comma-separated tags:
-  - 3 broad niche categories
-  - 7 action/thematic tags
-  - 7 hard-fact/entity tags
-- No intro/outro text.`;
+export const STAGE2_SEO_SYSTEM_PROMPT = STAGE2_DEFAULT_STAGE_PROMPTS.seo;
 
 export type Stage2SeoOutput = {
   description: string;
@@ -55,7 +24,7 @@ type BuildStage2SeoPromptInput = {
   title: string;
   comments: CommentItem[];
   omittedCommentsCount: number;
-  stage2Output: Stage2Output;
+  stage2Output: Pick<Stage2Output, "inputAnalysis" | "captionOptions" | "finalPick">;
   descriptionPrompt?: string;
   userInstruction?: string | null;
 };
@@ -115,8 +84,12 @@ function prepareCommentsForSeoPrompt(
   };
 }
 
-function parseJsonBlock(raw: string): unknown {
-  const trimmed = raw.trim();
+function parseJsonBlock(raw: unknown): unknown {
+  if (raw && typeof raw === "object") {
+    return raw;
+  }
+
+  const trimmed = String(raw ?? "").trim();
 
   try {
     return JSON.parse(trimmed);
@@ -197,7 +170,7 @@ export function buildStage2SeoPrompt(input: BuildStage2SeoPromptInput): string {
   ].join("\n");
 }
 
-export function parseStage2SeoOutput(raw: string): Stage2SeoOutput {
+export function parseStage2SeoOutput(raw: unknown): Stage2SeoOutput {
   const candidate = parseJsonBlock(raw);
   if (!candidate || typeof candidate !== "object") {
     throw new Error("LLM SEO output is not a JSON object.");

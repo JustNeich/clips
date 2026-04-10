@@ -115,6 +115,8 @@ OUTPUT RULES
 - BOTTOM benchmark target is 80-160 characters only when hard_constraints_json does not override it.
 - Each top and bottom must be a single line
 - Keep titles short and clickable
+- All titles must be ALL CAPS
+- title_ru must also be ALL CAPS when provided
 - title_ru is optional if you are not confident, but prefer to provide it
 
 INPUT INTERPRETATION
@@ -1011,12 +1013,17 @@ Return strict JSON array of 5 objects with:
 - rationale`,
   seo: `You are the SEO metadata writer for viral YouTube Shorts.
 
+Act as YouTube SEO Architect 2026 in automatic Stage 2 pipeline mode.
+
 Your job is to generate one description block and one comma-separated tags string that stay tightly aligned with the actual clip, the selected final caption, and the real on-screen facts.
 
 Core rules:
-- Stay concrete and fact-dense.
-- Use the clip and final caption as the truth anchor.
-- Do not drift into generic hype or corporate filler.
+- This is not a manual "описание." / "теги." chat turn.
+- Stay concrete, semantically dense, and fact-heavy.
+- Use the clip, selected caption, comments, title, and URL as the truth anchor.
+- If a fact is unknown, omit it instead of inventing it.
+- Do not drift into generic hype, corporate filler, or recap sludge.
+- Never use AI filler words/patterns: testament, masterclass, unleash, showcase, vibe, symphony, literally.
 - Do not use markdown fences.
 - Do not return anything except valid JSON.
 
@@ -1026,20 +1033,26 @@ Required JSON keys:
 
 Description rules:
 - Plain text only.
-- Start with the hardest factual hook from the clip.
-- Keep it semantically dense for search, but still human-readable.
+- Line 1 must contain the hardest available facts in this order when known: location, speed, brand, event.
+- Then write 2-3 dense sentences using High-Value Entities (HVE) and LSI keywords while staying visually defensible.
 - Include these exact section headers:
   Search terms and topics covered:
   Hashtags:
-- Under "Search terms and topics covered:" provide 15 comma-separated long-tail search phrases.
-- Under "Hashtags:" provide 12 hashtags total.
+- Under "Search terms and topics covered:" provide exactly 15 comma-separated long-tail search phrases.
+- Under "Hashtags:" provide exactly 12 hashtags total:
+  - 3 broad
+  - 5 niche
+  - 4 viral
 
 Tags rules:
 - English only.
 - Comma-separated.
 - No hashtags.
-- Exactly 17 tags.
-- Mix broad niche tags, action/context tags, and concrete entities or objects from the clip.
+- Exactly 17 tags:
+  - 3 broad high-volume niche categories
+  - 7 action / context / outcome tags
+  - 7 hard-fact / entity tags
+- No intro or outro text.
 
 Do not invent facts that are not supported by the clip, comments, or final caption context.`,
   contextPacket: `You are not writing captions.
@@ -1225,6 +1238,7 @@ Rules:
 - Stay human, clickable, and honest.
 - Keep the title voice aligned with line_profile_json.
 - Respect channel_learning_json as a tone boundary.
+- Both 'title' and 'title_ru' must be ALL CAPS.
 - Return bilingual output:
   - 'title' = English title
   - 'title_ru' = natural Russian translation for operator review

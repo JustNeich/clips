@@ -7,6 +7,7 @@ import {
   downloadSourceMedia,
   fetchSourceMetadata,
   fetchOptionalYtDlpInfo,
+  getSourceDownloadErrorContext,
   setSourceAcquisitionDownloadersForTests,
   summarizeProviderTextResponse
 } from "../lib/source-acquisition";
@@ -64,12 +65,219 @@ test("downloadSourceMedia keeps the primary provider error when yt-dlp fallback 
     assert.equal(result.provider, "ytDlp");
     assert.equal(result.downloadFallbackUsed, true);
     assert.equal(result.primaryProviderError, "Visolix: upstream вернул HTTP 502 (Bad gateway).");
+    assert.deepEqual(result.providerErrorSummary, {
+      primaryProvider: "visolix",
+      primaryProviderError: "upstream вернул HTTP 502 (Bad gateway).",
+      primaryRetryEligible: false,
+      fallbackProvider: "ytDlp",
+      fallbackProviderError: null,
+      hostedFallbackSkippedReason: null
+    });
   } finally {
     setSourceAcquisitionDownloadersForTests(null);
     if (previousVisolixApiKey === undefined) {
       delete process.env.VISOLIX_API_KEY;
     } else {
       process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceMedia retries hosted YouTube Visolix once after transient provider failure", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousRender = process.env.RENDER;
+  const previousRetryDelay = process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.RENDER = "true";
+  process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = "10";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-hosted-retry-test-"));
+  let visolixCalls = 0;
+  let ytDlpCalls = 0;
+  let retryNotice:
+    | {
+        attempt: number;
+        maxAttempts: number;
+        retryAt: string;
+      }
+    | null = null;
+
+  setSourceAcquisitionDownloadersForTests({
+    visolix: async (_rawUrl, dir) => {
+      visolixCalls += 1;
+      if (visolixCalls === 1) {
+        throw new Error("Database connection unavailable");
+      }
+      const filePath = path.join(dir, "source.mp4");
+      await fs.writeFile(filePath, "video");
+      return {
+        provider: "visolix",
+        filePath,
+        fileName: "source",
+        title: "Recovered via retry",
+        durationSec: 14,
+        videoSizeBytes: 5
+      };
+    },
+    ytDlp: async () => {
+      ytDlpCalls += 1;
+      throw new Error("yt-dlp should not run on hosted YouTube retry path");
+    }
+  });
+
+  try {
+    const startedAt = Date.now();
+    const result = await downloadSourceMedia("https://www.youtube.com/watch?v=abc123XYZ89", tmpDir, {
+      onRetryScheduled: (notice) => {
+        retryNotice = {
+          attempt: notice.attempt,
+          maxAttempts: notice.maxAttempts,
+          retryAt: notice.retryAt
+        };
+      }
+    });
+
+    assert.equal(result.provider, "visolix");
+    assert.equal(result.primaryProviderError, null);
+    assert.equal(result.downloadFallbackUsed, false);
+    assert.equal(result.providerErrorSummary, null);
+    assert.equal(visolixCalls, 2);
+    assert.equal(ytDlpCalls, 0);
+    const scheduledRetry = retryNotice as { attempt: number; maxAttempts: number; retryAt: string } | null;
+    assert.ok(scheduledRetry);
+    assert.equal(scheduledRetry.attempt, 1);
+    assert.equal(scheduledRetry.maxAttempts, 2);
+    assert.ok(new Date(scheduledRetry.retryAt).getTime() >= startedAt + 5);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousRender === undefined) {
+      delete process.env.RENDER;
+    } else {
+      process.env.RENDER = previousRender;
+    }
+    if (previousRetryDelay === undefined) {
+      delete process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+    } else {
+      process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = previousRetryDelay;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceMedia fails hosted YouTube with Visolix-only diagnostics after two transient errors", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousRender = process.env.RENDER;
+  const previousRetryDelay = process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.RENDER = "true";
+  process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = "10";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-hosted-fail-test-"));
+  let visolixCalls = 0;
+  let ytDlpCalls = 0;
+
+  setSourceAcquisitionDownloadersForTests({
+    visolix: async () => {
+      visolixCalls += 1;
+      throw new Error("Bad gateway");
+    },
+    ytDlp: async () => {
+      ytDlpCalls += 1;
+      throw new Error("yt-dlp should not run for hosted YouTube media");
+    }
+  });
+
+  try {
+    await assert.rejects(
+      () => downloadSourceMedia("https://www.youtube.com/watch?v=abc123XYZ89", tmpDir),
+      (error: unknown) => {
+        assert.equal(error instanceof Error ? error.message : "", "Visolix: Bad gateway");
+        const context = getSourceDownloadErrorContext(error);
+        assert.deepEqual(context, {
+          attempt: 2,
+          maxAttempts: 2,
+          providerErrorSummary: {
+            primaryProvider: "visolix",
+            primaryProviderError: "Bad gateway",
+            primaryRetryEligible: true,
+            fallbackProvider: null,
+            fallbackProviderError: null,
+            hostedFallbackSkippedReason:
+              "Hosted policy: yt-dlp fallback для YouTube source download пропущен на этом runtime."
+          }
+        });
+        return true;
+      }
+    );
+    assert.equal(visolixCalls, 2);
+    assert.equal(ytDlpCalls, 0);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousRender === undefined) {
+      delete process.env.RENDER;
+    } else {
+      process.env.RENDER = previousRender;
+    }
+    if (previousRetryDelay === undefined) {
+      delete process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS;
+    } else {
+      process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS = previousRetryDelay;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceMedia does not retry hosted YouTube when Visolix error is not retryable", { concurrency: false }, async () => {
+  const previousVisolixApiKey = process.env.VISOLIX_API_KEY;
+  const previousRender = process.env.RENDER;
+  process.env.VISOLIX_API_KEY = "test-visolix-key";
+  process.env.RENDER = "true";
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "source-acquisition-hosted-no-retry-test-"));
+  let visolixCalls = 0;
+
+  setSourceAcquisitionDownloadersForTests({
+    visolix: async () => {
+      visolixCalls += 1;
+      throw new Error("YouTube отклонил запрос на этом сервере (anti-bot/auth).");
+    }
+  });
+
+  try {
+    await assert.rejects(
+      () => downloadSourceMedia("https://www.youtube.com/watch?v=abc123XYZ89", tmpDir),
+      (error: unknown) => {
+        assert.equal(
+          error instanceof Error ? error.message : "",
+          "Visolix: YouTube отклонил запрос на этом сервере (anti-bot/auth)."
+        );
+        const context = getSourceDownloadErrorContext(error);
+        assert.equal(context?.attempt, 1);
+        assert.equal(context?.maxAttempts, 1);
+        assert.equal(context?.providerErrorSummary.primaryRetryEligible, false);
+        return true;
+      }
+    );
+    assert.equal(visolixCalls, 1);
+  } finally {
+    setSourceAcquisitionDownloadersForTests(null);
+    if (previousVisolixApiKey === undefined) {
+      delete process.env.VISOLIX_API_KEY;
+    } else {
+      process.env.VISOLIX_API_KEY = previousVisolixApiKey;
+    }
+    if (previousRender === undefined) {
+      delete process.env.RENDER;
+    } else {
+      process.env.RENDER = previousRender;
     }
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

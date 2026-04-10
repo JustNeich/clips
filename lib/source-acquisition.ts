@@ -5,7 +5,9 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
+import type { SourceProviderErrorSummary, SourceProviderId } from "../app/components/types";
 import { resolveExecutableFromCandidates } from "./command-path";
+import { runWithHostedSubprocessGate, isHostedRenderRuntime } from "./hosted-subprocess";
 import { fetchCommentsForUrl } from "./source-comments";
 import { getUploadedSourceDisplayName, isUploadedSourceUrl } from "./uploaded-source";
 import { fetchTranscriptFromYtDlpInfo, type YtDlpCaptionInfo } from "./youtube-captions";
@@ -26,6 +28,7 @@ const DEFAULT_VISOLIX_BASE_URL = "https://developers.visolix.com";
 const DEFAULT_VISOLIX_TIMEOUT_MS = 120_000;
 const DEFAULT_VISOLIX_POLL_INTERVAL_MS = 1_200;
 const DEFAULT_VISOLIX_YOUTUBE_FORMAT = "720";
+const DEFAULT_SOURCE_DOWNLOAD_RETRY_DELAY_MS = 5_000;
 
 type VisolixInitResponse = {
   success?: unknown;
@@ -65,7 +68,7 @@ type YtDlpInfoJson = YtDlpCaptionInfo & {
   description?: unknown;
 };
 
-export type SourceAcquisitionProvider = "visolix" | "ytDlp";
+export type SourceAcquisitionProvider = SourceProviderId;
 export type SourceCommentsProvider = "youtubeDataApi" | "ytDlp";
 export type SourceCommentsStatus = "primary_success" | "fallback_success" | "unavailable";
 export type SourceCommentsAcquisition = {
@@ -92,14 +95,43 @@ export type SourceDownloadResult = {
   videoSizeBytes: number;
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
+  providerErrorSummary: SourceProviderErrorSummary | null;
 };
 
 type SourceDownloadCoreResult = Omit<
   SourceDownloadResult,
-  "primaryProviderError" | "downloadFallbackUsed"
+  "primaryProviderError" | "downloadFallbackUsed" | "providerErrorSummary"
 >;
 
 type SourceDownloadOverride = (rawUrl: string, tmpDir: string) => Promise<SourceDownloadCoreResult>;
+
+export type SourceDownloadRetryNotice = {
+  provider: SourceAcquisitionProvider;
+  attempt: number;
+  maxAttempts: number;
+  retryAt: string;
+  providerErrorSummary: SourceProviderErrorSummary;
+};
+
+export type SourceDownloadOptions = {
+  onRetryScheduled?: (notice: SourceDownloadRetryNotice) => Promise<void> | void;
+};
+
+export type SourceDownloadErrorContext = {
+  providerErrorSummary: SourceProviderErrorSummary;
+  attempt: number | null;
+  maxAttempts: number | null;
+};
+
+export class SourceDownloadError extends Error {
+  readonly context: SourceDownloadErrorContext;
+
+  constructor(message: string, context: SourceDownloadErrorContext) {
+    super(message);
+    this.name = "SourceDownloadError";
+    this.context = context;
+  }
+}
 
 let testVisolixDownloader: SourceDownloadOverride | null = null;
 let testYtDlpDownloader: SourceDownloadOverride | null = null;
@@ -163,6 +195,129 @@ function createCommentsAcquisition(input?: Partial<SourceCommentsAcquisition>) {
   } satisfies SourceCommentsAcquisition;
 }
 
+function createProviderErrorSummary(
+  input?: Partial<SourceProviderErrorSummary>
+): SourceProviderErrorSummary {
+  return {
+    primaryProvider: input?.primaryProvider ?? null,
+    primaryProviderError: input?.primaryProviderError ?? null,
+    primaryRetryEligible: input?.primaryRetryEligible ?? false,
+    fallbackProvider: input?.fallbackProvider ?? null,
+    fallbackProviderError: input?.fallbackProviderError ?? null,
+    hostedFallbackSkippedReason: input?.hostedFallbackSkippedReason ?? null
+  };
+}
+
+function providerLabel(provider: SourceAcquisitionProvider): string {
+  return provider === "visolix" ? "Visolix" : "yt-dlp";
+}
+
+function formatLegacyPrimaryProviderError(
+  provider: SourceAcquisitionProvider,
+  message: string | null
+): string | null {
+  const normalized = message?.trim();
+  if (!normalized) {
+    return null;
+  }
+  return `${providerLabel(provider)}: ${normalized}`;
+}
+
+function formatSourceDownloadFailureMessage(summary: SourceProviderErrorSummary): string {
+  const primaryError = formatLegacyPrimaryProviderError(
+    summary.primaryProvider ?? "visolix",
+    summary.primaryProviderError
+  );
+  if (!primaryError) {
+    return "Source fetch failed.";
+  }
+  if (!summary.fallbackProviderError) {
+    return primaryError;
+  }
+  return `${primaryError} Fallback ${providerLabel(summary.fallbackProvider ?? "ytDlp")}: ${summary.fallbackProviderError}`;
+}
+
+function isRetryableVisolixErrorMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const nonRetryablePatterns = [
+    "anti-bot",
+    "auth",
+    "unauthorized",
+    "forbidden",
+    "unsupported",
+    "не поддерж",
+    "validation",
+    "invalid",
+    "sign in",
+    "cookie",
+    "captcha",
+    "private",
+    "403",
+    "401",
+    "429"
+  ];
+  if (nonRetryablePatterns.some((pattern) => normalized.includes(pattern))) {
+    return false;
+  }
+
+  const retryablePatterns = [
+    "timeout",
+    "timed out",
+    "network",
+    "socket",
+    "fetch failed",
+    "econn",
+    "etimedout",
+    "bad gateway",
+    "gateway timeout",
+    "service unavailable",
+    "provider unavailable",
+    "database connection unavailable",
+    "temporarily unavailable",
+    "temporary",
+    "internal server error",
+    "upstream",
+    "http 500",
+    "http 502",
+    "http 503",
+    "http 504"
+  ];
+  return retryablePatterns.some((pattern) => normalized.includes(pattern));
+}
+
+function shouldSkipHostedYtDlpFallbackForSource(sourceUrl: string): boolean {
+  return isHostedRenderRuntime() && isYouTubeUrl(sourceUrl);
+}
+
+function buildHostedFallbackSkippedReason(sourceUrl: string): string | null {
+  if (!shouldSkipHostedYtDlpFallbackForSource(sourceUrl)) {
+    return null;
+  }
+  return "Hosted policy: yt-dlp fallback для YouTube source download пропущен на этом runtime.";
+}
+
+function buildSourceDownloadErrorContext(
+  providerErrorSummary: SourceProviderErrorSummary,
+  input?: {
+    attempt?: number | null;
+    maxAttempts?: number | null;
+  }
+): SourceDownloadErrorContext {
+  return {
+    providerErrorSummary,
+    attempt: input?.attempt ?? null,
+    maxAttempts: input?.maxAttempts ?? null
+  };
+}
+
+export function getSourceDownloadErrorContext(error: unknown): SourceDownloadErrorContext | null {
+  return error instanceof SourceDownloadError ? error.context : null;
+}
+
 function stripHtmlTags(value: string): string {
   return value.replace(/<[^>]+>/g, " ");
 }
@@ -217,6 +372,11 @@ function getVisolixTimeoutMs(): number {
 function getVisolixPollIntervalMs(): number {
   const parsed = Number.parseInt(process.env.VISOLIX_PROGRESS_POLL_INTERVAL_MS ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_VISOLIX_POLL_INTERVAL_MS;
+}
+
+function getSourceDownloadRetryDelayMs(): number {
+  const parsed = Number.parseInt(process.env.SOURCE_DOWNLOAD_RETRY_DELAY_MS ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SOURCE_DOWNLOAD_RETRY_DELAY_MS;
 }
 
 function getVisolixYoutubeFormat(): string {
@@ -584,10 +744,12 @@ async function downloadViaYtDlp(input: {
   ];
 
   try {
-    await execFileAsync(ytDlpPath, args, {
-      timeout: 5 * 60 * 1000,
-      maxBuffer: 1024 * 1024 * 16
-    });
+    await runWithHostedSubprocessGate(() =>
+      execFileAsync(ytDlpPath, args, {
+        timeout: 5 * 60 * 1000,
+        maxBuffer: 1024 * 1024 * 16
+      })
+    );
   } catch (error) {
     throw new Error(
       extractYtDlpErrorFromUnknown(error, { sourceUrl: input.errorContextUrl ?? input.sourceUrl }) ??
@@ -644,30 +806,92 @@ async function tryYtDlpDownload(rawUrl: string, tmpDir: string): Promise<SourceD
 
 export async function downloadSourceMedia(
   rawUrl: string,
-  tmpDir: string
+  tmpDir: string,
+  options: SourceDownloadOptions = {}
 ): Promise<SourceDownloadResult> {
   const sourceUrl = normalizeSupportedUrl(rawUrl);
   if (isUploadedSourceUrl(sourceUrl)) {
     throw new Error("Загруженный mp4 уже хранится локально и не должен скачиваться повторно.");
   }
 
-  const errors: string[] = [];
   const visolixDownloader = testVisolixDownloader ?? tryVisolixDownload;
   const ytDlpDownloader = testYtDlpDownloader ?? tryYtDlpDownload;
+  const hostedFallbackSkippedReason = buildHostedFallbackSkippedReason(sourceUrl);
+  const shouldAttemptVisolix = Boolean(hostedFallbackSkippedReason) || isVisolixConfigured();
+  const shouldSkipHostedFallback = Boolean(hostedFallbackSkippedReason);
+  let summary = createProviderErrorSummary({
+    primaryProvider: shouldAttemptVisolix ? "visolix" : "ytDlp",
+    hostedFallbackSkippedReason
+  });
   let primaryProviderError: string | null = null;
 
-  if (isVisolixConfigured()) {
+  if (shouldAttemptVisolix) {
     try {
       const downloaded = await visolixDownloader(sourceUrl, tmpDir);
       return {
         ...downloaded,
         primaryProviderError: null,
-        downloadFallbackUsed: false
+        downloadFallbackUsed: false,
+        providerErrorSummary: null
       };
     } catch (error) {
-      primaryProviderError =
-        error instanceof Error ? `Visolix: ${error.message}` : "Visolix: source fetch failed.";
-      errors.push(primaryProviderError);
+      const primaryErrorMessage =
+        error instanceof Error ? error.message.trim() || "source fetch failed." : "source fetch failed.";
+      const retryEligible =
+        shouldSkipHostedFallback && isRetryableVisolixErrorMessage(primaryErrorMessage);
+      summary = createProviderErrorSummary({
+        primaryProvider: "visolix",
+        primaryProviderError: primaryErrorMessage,
+        primaryRetryEligible: retryEligible,
+        hostedFallbackSkippedReason
+      });
+      primaryProviderError = formatLegacyPrimaryProviderError("visolix", primaryErrorMessage);
+
+      if (retryEligible) {
+        const retryDelayMs = getSourceDownloadRetryDelayMs();
+        const retryAt = new Date(Date.now() + retryDelayMs).toISOString();
+        await options.onRetryScheduled?.({
+          provider: "visolix",
+          attempt: 1,
+          maxAttempts: 2,
+          retryAt,
+          providerErrorSummary: summary
+        });
+        await sleep(retryDelayMs);
+        try {
+          const downloaded = await visolixDownloader(sourceUrl, tmpDir);
+          return {
+            ...downloaded,
+            primaryProviderError: null,
+            downloadFallbackUsed: false,
+            providerErrorSummary: null
+          };
+        } catch (retryError) {
+          const retryErrorMessage =
+            retryError instanceof Error ? retryError.message.trim() || primaryErrorMessage : primaryErrorMessage;
+          summary = createProviderErrorSummary({
+            ...summary,
+            primaryProviderError: retryErrorMessage
+          });
+          throw new SourceDownloadError(
+            formatLegacyPrimaryProviderError("visolix", retryErrorMessage) ?? "Source fetch failed.",
+            buildSourceDownloadErrorContext(summary, {
+              attempt: 2,
+              maxAttempts: 2
+            })
+          );
+        }
+      }
+
+      if (shouldSkipHostedFallback) {
+        throw new SourceDownloadError(
+          primaryProviderError ?? "Source fetch failed.",
+          buildSourceDownloadErrorContext(summary, {
+            attempt: 1,
+            maxAttempts: 1
+          })
+        );
+      }
     }
   }
 
@@ -676,13 +900,35 @@ export async function downloadSourceMedia(
     return {
       ...downloaded,
       primaryProviderError,
-      downloadFallbackUsed: Boolean(primaryProviderError)
+      downloadFallbackUsed: Boolean(primaryProviderError),
+      providerErrorSummary: primaryProviderError
+        ? createProviderErrorSummary({
+            ...summary,
+            fallbackProvider: "ytDlp"
+          })
+        : null
     };
   } catch (error) {
-    errors.push(error instanceof Error ? error.message : "yt-dlp: source fetch failed.");
+    const fallbackError =
+      error instanceof Error ? error.message.trim() || "source fetch failed." : "source fetch failed.";
+    summary = shouldAttemptVisolix
+      ? createProviderErrorSummary({
+          ...summary,
+          fallbackProvider: "ytDlp",
+          fallbackProviderError: fallbackError
+        })
+      : createProviderErrorSummary({
+          primaryProvider: "ytDlp",
+          primaryProviderError: fallbackError
+        });
+    throw new SourceDownloadError(
+      formatSourceDownloadFailureMessage(summary),
+      buildSourceDownloadErrorContext(summary, {
+        attempt: 1,
+        maxAttempts: 1
+      })
+    );
   }
-
-  throw new Error(errors.join(" Fallback: "));
 }
 
 async function tryYtDlpMetadata(rawUrl: string): Promise<SourceMetadataResult> {
@@ -699,17 +945,19 @@ async function tryYtDlpMetadata(rawUrl: string): Promise<SourceMetadataResult> {
 
   try {
     const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
-    const { stdout } = await execFileAsync(
-      ytDlpPath,
-      [
-        ...ytDlpAuth.args,
-        "--dump-single-json",
-        "--skip-download",
-        "--no-warnings",
-        "--no-playlist",
-        rawUrl
-      ],
-      { timeout: 60_000, maxBuffer: 1024 * 1024 * 8 }
+    const { stdout } = await runWithHostedSubprocessGate(() =>
+      execFileAsync(
+        ytDlpPath,
+        [
+          ...ytDlpAuth.args,
+          "--dump-single-json",
+          "--skip-download",
+          "--no-warnings",
+          "--no-playlist",
+          rawUrl
+        ],
+        { timeout: 60_000, maxBuffer: 1024 * 1024 * 8 }
+      )
     );
 
     const meta = JSON.parse(stdout) as YtDlpInfoJson;
@@ -802,10 +1050,12 @@ export async function fetchOptionalYtDlpInfo(
       sourceUrl
     ];
 
-    await execFileAsync(ytDlpPath, args, {
-      timeout: 3 * 60 * 1000,
-      maxBuffer: 1024 * 1024 * 16
-    });
+    await runWithHostedSubprocessGate(() =>
+      execFileAsync(ytDlpPath, args, {
+        timeout: 3 * 60 * 1000,
+        maxBuffer: 1024 * 1024 * 16
+      })
+    );
   };
 
   let commentsExtractionFallbackUsed = false;
@@ -889,22 +1139,24 @@ async function fetchOptionalYouTubeInfo(
     const ytDlpAuth = await createYtDlpAuthContext(tmpDir);
 
     try {
-      await execFileAsync(
-        ytDlpPath,
-        [
-          ...ytDlpAuth.args,
-          "--skip-download",
-          "--no-playlist",
-          "--no-warnings",
-          "--write-info-json",
-          "-o",
-          outputTemplate,
-          sourceUrl
-        ],
-        {
-          timeout: 3 * 60 * 1000,
-          maxBuffer: 1024 * 1024 * 16
-        }
+      await runWithHostedSubprocessGate(() =>
+        execFileAsync(
+          ytDlpPath,
+          [
+            ...ytDlpAuth.args,
+            "--skip-download",
+            "--no-playlist",
+            "--no-warnings",
+            "--write-info-json",
+            "-o",
+            outputTemplate,
+            sourceUrl
+          ],
+          {
+            timeout: 3 * 60 * 1000,
+            maxBuffer: 1024 * 1024 * 16
+          }
+        )
       );
 
       const { infoJson } = await readYtDlpMetadataArtifacts(tmpDir, "metadata");

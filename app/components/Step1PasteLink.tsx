@@ -1,7 +1,7 @@
 "use client";
 
 import React, { FormEvent, useMemo, useRef, useState } from "react";
-import type { SourceJobDetail } from "./types";
+import type { SourceJobDetail, SourceProviderErrorSummary, SourceProviderId } from "./types";
 import { StepWorkspace } from "./StepWorkspace";
 import { getUploadedSourceDisplayName, isUploadedSourceUrl } from "../../lib/uploaded-source";
 
@@ -109,6 +109,19 @@ function resolveSourcePreview(rawUrl: string | null): SourcePreview | null {
   }
 }
 
+function formatProviderLabel(provider: SourceProviderId | null | undefined): string {
+  return provider === "visolix" ? "Visolix" : provider === "ytDlp" ? "yt-dlp" : "не задан";
+}
+
+function formatRetryCountdown(remainingMs: number): string {
+  const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  return `${seconds} с`;
+}
+
+function resolveProviderErrorSummary(sourceJob: SourceJobDetail | null): SourceProviderErrorSummary | null {
+  return sourceJob?.progress.providerErrorSummary ?? sourceJob?.result?.providerErrorSummary ?? null;
+}
+
 export function Step1PasteLink({
   draftUrl,
   activeUrl,
@@ -147,6 +160,12 @@ export function Step1PasteLink({
     : isAttachedStage2Run
       ? "Второй этап уже выполняется для этого чата. Прогресс подключён на шаге 2."
       : fetchBlockedReason ?? null;
+  const providerErrorSummary = resolveProviderErrorSummary(sourceJob);
+  const retryCountdownMs = sourceJob?.progress.nextRetryAt
+    ? Math.max(0, new Date(sourceJob.progress.nextRetryAt).getTime() - Date.now())
+    : null;
+  const retryCountdownLabel =
+    typeof retryCountdownMs === "number" ? formatRetryCountdown(retryCountdownMs) : null;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -311,8 +330,38 @@ export function Step1PasteLink({
                   {sourceJob.status === "running" ? (
                     <p className="subtle-text">Прошло: {(sourceJobElapsedMs / 1000).toFixed(1)}с</p>
                   ) : null}
-                  {sourceJob.status === "failed" && sourceJob.errorMessage ? (
+                  {sourceJob.progress.activeStageId === "retry" &&
+                  sourceJob.progress.attempt &&
+                  sourceJob.progress.maxAttempts ? (
+                    <p className="subtle-text">
+                      Попытка {sourceJob.progress.attempt} из {sourceJob.progress.maxAttempts}
+                      {retryCountdownLabel ? ` · следующий запрос через ${retryCountdownLabel}` : ""}
+                    </p>
+                  ) : null}
+                  {sourceJob.progress.activeStageId === "retry" &&
+                  providerErrorSummary?.primaryProviderError ? (
+                    <p className="subtle-text danger-text">
+                      {formatProviderLabel(providerErrorSummary.primaryProvider)}:{" "}
+                      {providerErrorSummary.primaryProviderError}
+                    </p>
+                  ) : null}
+                  {sourceJob.status === "failed" && sourceJob.errorMessage && !providerErrorSummary ? (
                     <p className="subtle-text danger-text">{sourceJob.errorMessage}</p>
+                  ) : null}
+                  {sourceJob.status === "failed" && providerErrorSummary?.primaryProviderError ? (
+                    <p className="subtle-text danger-text">
+                      Основной провайдер: {formatProviderLabel(providerErrorSummary.primaryProvider)}.{" "}
+                      {providerErrorSummary.primaryProviderError}
+                    </p>
+                  ) : null}
+                  {sourceJob.status === "failed" && providerErrorSummary?.fallbackProviderError ? (
+                    <p className="subtle-text danger-text">
+                      Fallback: {formatProviderLabel(providerErrorSummary.fallbackProvider)}.{" "}
+                      {providerErrorSummary.fallbackProviderError}
+                    </p>
+                  ) : null}
+                  {sourceJob.status === "failed" && providerErrorSummary?.hostedFallbackSkippedReason ? (
+                    <p className="subtle-text">{providerErrorSummary.hostedFallbackSkippedReason}</p>
                   ) : null}
                   {sourceJob.result ? (
                     <p className="subtle-text">

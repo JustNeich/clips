@@ -93,6 +93,9 @@ npm run dev
 - Каждый URL создает отдельный чат (или открывает уже существующий).
 - UI отправляет ссылку на `POST /api/download`.
 - API выбирает provider-specific source path, получает видео и возвращает клиенту `mp4` как attachment.
+  - для hosted `YouTube` media path использует `Visolix` и один автоматический retry на transient infra error;
+  - hosted `YouTube` source download не уходит в `yt-dlp` fallback;
+  - local/dev path по-прежнему может использовать `yt-dlp`, если это допустимо для конкретного runtime.
 - UI может отправить ссылку на `POST /api/comments`.
 - API получает комментарии провайдерно:
   - для `YouTube` сначала использует `YouTube Data API v3`;
@@ -331,9 +334,15 @@ Publishing / YouTube queue:
 - `APP_ENCRYPTION_KEY` — нужен для хранения OAuth credential payloads публикации. Для production задавайте стабильный ключ, а не dev fallback.
 - `YOUTUBE_DATA_API_KEY` — серверный API key для `YouTube Data API v3`. Это основной production path для комментариев YouTube с любых публичных каналов. Ownership/OAuth не нужны.
 - `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — обязательны для подключения YouTube канала и публикации через OAuth.
-- `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для YouTube comments/media, если официальный API временно недоступен и нужно попытаться пройти через `yt-dlp`.
+- `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для `yt-dlp` comments/metadata paths и локального worker media path. Для hosted YouTube source download production path теперь использует `Visolix` и не пытается идти в `yt-dlp`.
 
 Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Поэтому ситуация, когда Step 1/2 у всех проходит, а Stage 3 ломается только у одного пользователя, действительно может быть связана именно с его локальным runtime/IP.
+
+Hosted Step 1 YouTube media path:
+- primary path: `Visolix`
+- если Visolix вернул transient/infra error, backend автоматически ждёт 5 секунд и делает ровно один повторный запрос
+- если обе попытки не сработали, job падает с честной провайдерной причиной `Visolix`
+- hosted runtime сознательно не запускает `yt-dlp` fallback для YouTube source download; `yt-dlp` остаётся для comments/metadata путей и local/dev сценариев
 
 Ограничения comments fetch для YouTube:
 - `comments disabled` — YouTube API честно вернёт, что комментарии отключены.

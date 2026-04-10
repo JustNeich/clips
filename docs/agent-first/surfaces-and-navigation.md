@@ -539,7 +539,7 @@
   - `Добавьте 10+ референсных ссылок`
   - `Выберите стартовые стилистические направления`
 - `controls`:
-  - basic fields `Название канала`, `Username канала`, avatar upload
+  - basic fields `Название канала`, `Username канала`, avatar upload with positioning modal
   - Stage 2 fields: pipeline format, example corpus, hard constraints, banned words/openers
   - reference links textarea
   - style direction cards, selection toggles, exploration share slider
@@ -559,7 +559,7 @@
 - `controls`:
   - `Название канала`
   - `Username канала`
-  - `Загрузить аватар`
+  - `Загрузить аватар` with positioning modal
   - avatar asset select
 - `save model`: autosave.
 - `APIs`:

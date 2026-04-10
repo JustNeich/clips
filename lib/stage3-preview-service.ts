@@ -21,6 +21,7 @@ import {
 } from "./stage3-camera";
 import { getAppDataDir } from "./app-paths";
 import { createNodeStreamResponse } from "./node-stream-response";
+import { isHostedRenderRuntime } from "./hosted-subprocess";
 import {
   ensureStage3SourceCached,
   runHostedStage3HeavyJob
@@ -156,6 +157,21 @@ async function pruneCacheDirectory(dirPath: string, options: { maxFiles: number;
     totalBytes -= sized[index].sizeBytes;
     await fs.rm(sized[index].filePath, { force: true }).catch(() => undefined);
   }
+}
+
+function getPreviewCacheLimits() {
+  if (isHostedRenderRuntime()) {
+    return {
+      maxFiles: 12,
+      maxBytes: 128 * 1024 * 1024,
+      maxAgeMs: 20 * 60_000
+    };
+  }
+  return {
+    maxFiles: 32,
+    maxBytes: 512 * 1024 * 1024,
+    maxAgeMs: 45 * 60_000
+  };
 }
 
 async function createVideoFileResponse(
@@ -476,11 +492,7 @@ export async function prepareStage3Preview(
       throw new Error("Черновой предпросмотр не удалось подготовить. Повторите ещё раз.");
     }
 
-    await pruneCacheDirectory(PREVIEW_CACHE_DIR, {
-      maxFiles: 32,
-      maxBytes: 512 * 1024 * 1024,
-      maxAgeMs: 45 * 60_000
-    }).catch(() => undefined);
+    await pruneCacheDirectory(PREVIEW_CACHE_DIR, getPreviewCacheLimits()).catch(() => undefined);
 
     return {
       filePath: previewPath,

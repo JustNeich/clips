@@ -5,8 +5,13 @@ import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
+import type { SourceProviderErrorSummary } from "../app/components/types";
 import { getAppDataDir } from "./app-paths";
-import { downloadSourceMedia } from "./source-acquisition";
+import { isHostedRenderRuntime } from "./hosted-subprocess";
+import {
+  downloadSourceMedia,
+  type SourceDownloadOptions
+} from "./source-acquisition";
 import { isUploadedSourceUrl } from "./uploaded-source";
 import { normalizeSupportedUrl } from "./ytdlp";
 
@@ -21,6 +26,7 @@ export type CachedSourceMedia = {
   downloadProvider: "visolix" | "ytDlp" | "upload";
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
+  providerErrorSummary: SourceProviderErrorSummary | null;
   cacheState: SourceMediaCacheState;
 };
 
@@ -33,12 +39,37 @@ type CachedSourceMediaMeta = {
   downloadProvider: "visolix" | "ytDlp" | "upload";
   primaryProviderError: string | null;
   downloadFallbackUsed: boolean;
+  providerErrorSummary: SourceProviderErrorSummary | null;
   sticky?: boolean;
 };
 
 const SOURCE_MEDIA_CACHE_MAX_ENTRIES = 24;
+const HOSTED_SOURCE_MEDIA_CACHE_MAX_ENTRIES = 8;
 const SOURCE_MEDIA_CACHE_MAX_AGE_MS = 24 * 60 * 60_000;
+const HOSTED_SOURCE_MEDIA_CACHE_MAX_AGE_MS = 6 * 60 * 60_000;
+const HOSTED_SOURCE_MEDIA_CACHE_MAX_BYTES = 512 * 1024 * 1024;
 const sourceMediaInflight = new Map<string, Promise<CachedSourceMediaCore>>();
+
+type EnsureSourceMediaCachedOptions = SourceDownloadOptions;
+
+function createDefaultProviderErrorSummary(): SourceProviderErrorSummary | null {
+  return null;
+}
+
+function getSourceMediaCacheLimits() {
+  if (isHostedRenderRuntime()) {
+    return {
+      maxEntries: HOSTED_SOURCE_MEDIA_CACHE_MAX_ENTRIES,
+      maxAgeMs: HOSTED_SOURCE_MEDIA_CACHE_MAX_AGE_MS,
+      maxBytes: HOSTED_SOURCE_MEDIA_CACHE_MAX_BYTES
+    };
+  }
+  return {
+    maxEntries: SOURCE_MEDIA_CACHE_MAX_ENTRIES,
+    maxAgeMs: SOURCE_MEDIA_CACHE_MAX_AGE_MS,
+    maxBytes: Number.POSITIVE_INFINITY
+  };
+}
 
 function getSourceMediaCacheRoot(): string {
   return path.join(getAppDataDir(), "source-media-cache");
@@ -82,7 +113,8 @@ async function readMeta(sourceKey: string): Promise<CachedSourceMediaMeta> {
       videoSizeBytes: 0,
       downloadProvider: "ytDlp",
       primaryProviderError: null,
-      downloadFallbackUsed: false
+      downloadFallbackUsed: false,
+      providerErrorSummary: createDefaultProviderErrorSummary()
     };
   }
 
@@ -109,6 +141,39 @@ async function readMeta(sourceKey: string): Promise<CachedSourceMediaMeta> {
           ? parsed.primaryProviderError.trim()
           : null,
       downloadFallbackUsed: parsed.downloadFallbackUsed === true,
+      providerErrorSummary:
+        parsed.providerErrorSummary &&
+        typeof parsed.providerErrorSummary === "object" &&
+        !Array.isArray(parsed.providerErrorSummary)
+          ? {
+              primaryProvider:
+                parsed.providerErrorSummary.primaryProvider === "visolix" ||
+                parsed.providerErrorSummary.primaryProvider === "ytDlp"
+                  ? parsed.providerErrorSummary.primaryProvider
+                  : null,
+              primaryProviderError:
+                typeof parsed.providerErrorSummary.primaryProviderError === "string" &&
+                parsed.providerErrorSummary.primaryProviderError.trim()
+                  ? parsed.providerErrorSummary.primaryProviderError.trim()
+                  : null,
+              primaryRetryEligible: parsed.providerErrorSummary.primaryRetryEligible === true,
+              fallbackProvider:
+                parsed.providerErrorSummary.fallbackProvider === "visolix" ||
+                parsed.providerErrorSummary.fallbackProvider === "ytDlp"
+                  ? parsed.providerErrorSummary.fallbackProvider
+                  : null,
+              fallbackProviderError:
+                typeof parsed.providerErrorSummary.fallbackProviderError === "string" &&
+                parsed.providerErrorSummary.fallbackProviderError.trim()
+                  ? parsed.providerErrorSummary.fallbackProviderError.trim()
+                  : null,
+              hostedFallbackSkippedReason:
+                typeof parsed.providerErrorSummary.hostedFallbackSkippedReason === "string" &&
+                parsed.providerErrorSummary.hostedFallbackSkippedReason.trim()
+                  ? parsed.providerErrorSummary.hostedFallbackSkippedReason.trim()
+                  : null
+            }
+          : createDefaultProviderErrorSummary(),
       sticky: parsed.sticky === true
     };
   } catch {
@@ -119,6 +184,7 @@ async function readMeta(sourceKey: string): Promise<CachedSourceMediaMeta> {
       downloadProvider: "ytDlp",
       primaryProviderError: null,
       downloadFallbackUsed: false,
+      providerErrorSummary: createDefaultProviderErrorSummary(),
       sticky: false
     };
   }
@@ -130,6 +196,7 @@ async function writeMeta(sourceKey: string, meta: CachedSourceMediaMeta): Promis
 
 async function pruneSourceMediaCache(): Promise<void> {
   const now = Date.now();
+  const limits = getSourceMediaCacheLimits();
   const cacheDir = getSourceMediaCacheDir();
   const entries = await fs.readdir(cacheDir).catch(() => []);
   const filesWithMeta = (
@@ -147,16 +214,23 @@ async function pruneSourceMediaCache(): Promise<void> {
           return {
             filePath,
             metaPath: buildMetaPath(sourceKey),
+            sizeBytes: stat.size,
             mtimeMs: stat.mtimeMs,
             sticky: meta.sticky === true
           };
         })
     )
   ).filter(
-    (entry): entry is { filePath: string; metaPath: string; mtimeMs: number; sticky: boolean } => Boolean(entry)
+    (entry): entry is {
+      filePath: string;
+      metaPath: string;
+      sizeBytes: number;
+      mtimeMs: number;
+      sticky: boolean;
+    } => Boolean(entry)
   );
 
-  const stale = filesWithMeta.filter((entry) => !entry.sticky && now - entry.mtimeMs > SOURCE_MEDIA_CACHE_MAX_AGE_MS);
+  const stale = filesWithMeta.filter((entry) => !entry.sticky && now - entry.mtimeMs > limits.maxAgeMs);
   await Promise.all(
     stale.flatMap((entry) => [
       fs.rm(entry.filePath, { force: true }).catch(() => undefined),
@@ -166,11 +240,27 @@ async function pruneSourceMediaCache(): Promise<void> {
 
   const nonStale = filesWithMeta.filter((entry) => !stale.some((candidate) => candidate.filePath === entry.filePath));
   const stickyEntries = nonStale.filter((entry) => entry.sticky);
-  const recentNonSticky = nonStale
-    .filter((entry) => !entry.sticky)
-    .sort((left, right) => right.mtimeMs - left.mtimeMs)
-    .slice(0, SOURCE_MEDIA_CACHE_MAX_ENTRIES);
-  const keptPaths = new Set([...stickyEntries, ...recentNonSticky].map((entry) => entry.filePath));
+  const keptNonSticky: typeof nonStale = [];
+  let totalNonStickyBytes = 0;
+
+  for (const entry of nonStale
+    .filter((candidate) => !candidate.sticky)
+    .sort((left, right) => right.mtimeMs - left.mtimeMs)) {
+    if (keptNonSticky.length >= limits.maxEntries) {
+      continue;
+    }
+    if (
+      keptNonSticky.length > 0 &&
+      Number.isFinite(limits.maxBytes) &&
+      totalNonStickyBytes + entry.sizeBytes > limits.maxBytes
+    ) {
+      continue;
+    }
+    keptNonSticky.push(entry);
+    totalNonStickyBytes += entry.sizeBytes;
+  }
+
+  const keptPaths = new Set([...stickyEntries, ...keptNonSticky].map((entry) => entry.filePath));
   const overflow = nonStale.filter((entry) => !entry.sticky && !keptPaths.has(entry.filePath));
 
   await Promise.all(
@@ -181,7 +271,12 @@ async function pruneSourceMediaCache(): Promise<void> {
   );
 }
 
-export async function ensureSourceMediaCached(rawUrl: string): Promise<CachedSourceMedia> {
+export const pruneSourceMediaCacheForTests = pruneSourceMediaCache;
+
+export async function ensureSourceMediaCached(
+  rawUrl: string,
+  options: EnsureSourceMediaCachedOptions = {}
+): Promise<CachedSourceMedia> {
   const sourceUrl = normalizeSupportedUrl(rawUrl);
   const sourceKey = getSourceMediaCacheKey(sourceUrl);
   const sourcePath = buildSourcePath(sourceKey);
@@ -213,7 +308,7 @@ export async function ensureSourceMediaCached(rawUrl: string): Promise<CachedSou
     await fs.mkdir(getSourceMediaCacheDir(), { recursive: true });
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-source-cache-build-"));
     try {
-      const downloaded = await downloadSourceMedia(sourceUrl, tmpDir);
+      const downloaded = await downloadSourceMedia(sourceUrl, tmpDir, options);
       await fs.copyFile(downloaded.filePath, sourcePath);
       const meta: CachedSourceMediaMeta = {
         fileName: downloaded.fileName,
@@ -221,7 +316,8 @@ export async function ensureSourceMediaCached(rawUrl: string): Promise<CachedSou
         videoSizeBytes: downloaded.videoSizeBytes,
         downloadProvider: downloaded.provider,
         primaryProviderError: downloaded.primaryProviderError,
-        downloadFallbackUsed: downloaded.downloadFallbackUsed
+        downloadFallbackUsed: downloaded.downloadFallbackUsed,
+        providerErrorSummary: downloaded.providerErrorSummary
       };
       await writeMeta(sourceKey, meta);
       void pruneSourceMediaCache().catch(() => undefined);
@@ -288,6 +384,7 @@ export async function storeUploadedSourceMedia(input: {
       downloadProvider: "upload",
       primaryProviderError: null,
       downloadFallbackUsed: false,
+      providerErrorSummary: createDefaultProviderErrorSummary(),
       sticky: true
     };
     await writeMeta(sourceKey, meta);

@@ -8868,7 +8868,14 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(resolveStage2PromptTemplate("finalSelector", normalizeStage2PromptConfig({})).defaultPrompt, /candidate humanPhrasingSignals are provided/i);
   assert.match(titlesResolved.defaultPrompt, /title_ru/);
   assert.match(titlesResolved.defaultPrompt, /real Russian/);
+  assert.match(titlesResolved.defaultPrompt, /ALL CAPS/);
   assert.match(seoResolved.defaultPrompt, /Search terms and topics covered:/);
+  assert.match(seoResolved.defaultPrompt, /YouTube SEO Architect 2026/i);
+  assert.match(seoResolved.defaultPrompt, /High-Value Entities \(HVE\)/i);
+  assert.match(seoResolved.defaultPrompt, /LSI keywords/i);
+  assert.match(seoResolved.defaultPrompt, /3 broad/i);
+  assert.match(seoResolved.defaultPrompt, /5 niche/i);
+  assert.match(seoResolved.defaultPrompt, /4 viral/i);
   assert.match(seoResolved.defaultPrompt, /Exactly 17 tags/);
   assert.match(contextPacketResolved.defaultPrompt, /channel_learning_json/);
   assert.match(contextPacketResolved.defaultPrompt, /dominant harmless public handle/i);
@@ -8880,6 +8887,7 @@ test("default prompt templates expose the new analyzer and selector contracts", 
   assert.match(captionTranslationResolved.defaultPrompt, /natural Russian/i);
   assert.match(titleWriterResolved.defaultPrompt, /channel_learning_json/);
   assert.match(titleWriterResolved.defaultPrompt, /title_ru/);
+  assert.match(titleWriterResolved.defaultPrompt, /ALL CAPS/i);
 });
 
 test("writer prompt surfaces exact constraint targets and flags strict-length mode", () => {
@@ -10539,6 +10547,76 @@ test("step 1 shows attached source job as neutral live state instead of repeatin
   assert.doesNotMatch(html, /danger-text[^>]*>Для этого чата уже идёт получение источника\./);
 });
 
+test("step 1 renders hosted retry countdown and provider diagnostics while retry is pending", () => {
+  const sourceJob: SourceJobDetail = {
+    jobId: "job_retry",
+    chatId: "chat_retry",
+    channelId: "channel_retry",
+    sourceUrl: "https://www.youtube.com/watch?v=qQhqClv6fNo",
+    status: "running",
+    progress: {
+      status: "running",
+      activeStageId: "retry",
+      detail: "Visolix временно недоступен. Повторяем через 5 с.",
+      attempt: 1,
+      maxAttempts: 2,
+      nextRetryAt: new Date(Date.now() + 1_500).toISOString(),
+      retryEligible: true,
+      providerErrorSummary: {
+        primaryProvider: "visolix",
+        primaryProviderError: "Database connection unavailable",
+        primaryRetryEligible: true,
+        fallbackProvider: null,
+        fallbackProviderError: null,
+        hostedFallbackSkippedReason:
+          "Hosted policy: yt-dlp fallback для YouTube source download пропущен на этом runtime."
+      },
+      createdAt: nowIso(),
+      startedAt: nowIso(),
+      updatedAt: nowIso(),
+      finishedAt: null,
+      error: null
+    },
+    errorMessage: null,
+    hasResult: false,
+    createdAt: nowIso(),
+    startedAt: nowIso(),
+    updatedAt: nowIso(),
+    finishedAt: null,
+    result: null
+  };
+
+  const html = renderToStaticMarkup(
+    React.createElement(Step1PasteLink, {
+      draftUrl: "",
+      activeUrl: sourceJob.sourceUrl,
+      sourceJob,
+      sourceJobElapsedMs: 2_000,
+      commentsFallbackActive: false,
+      fetchBusy: false,
+      downloadBusy: false,
+      fetchAvailable: false,
+      fetchBlockedReason: "Для этого чата уже идёт получение источника.",
+      uploadBusy: false,
+      uploadAvailable: true,
+      uploadBlockedReason: null,
+      autoRunStage2Enabled: true,
+      downloadAvailable: true,
+      downloadBlockedReason: null,
+      onDraftUrlChange: () => undefined,
+      onPaste: () => undefined,
+      onFetch: () => undefined,
+      onUploadFile: () => undefined,
+      onAutoRunStage2Change: () => undefined,
+      onDownloadSource: () => undefined
+    })
+  );
+
+  assert.match(html, /Попытка 1 из 2/);
+  assert.match(html, /следующий запрос через/);
+  assert.match(html, /Visolix: Database connection unavailable/);
+});
+
 test("step 1 keeps an attached stage 2 run informational instead of rendering it as a blocking error", () => {
   const html = renderToStaticMarkup(
     React.createElement(Step1PasteLink, {
@@ -10787,6 +10865,70 @@ test("chat list items surface active source jobs as live fetching state", { conc
     const items = await chatHistory.listChatListItems(owner.user.id, channel.id, owner.workspace.id);
     assert.equal(items[0]?.id, chat.id);
     assert.equal(items[0]?.liveAction, "Fetching");
+    assert.equal(items[0]?.preferredStep, 1);
+  });
+});
+
+test("chat list items surface retrying source jobs with dedicated live action", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const sourceStore = await import("../lib/source-job-store");
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Source Retry Sidebar",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Retry Channel",
+      username: "retry_channel"
+    });
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/shorts/source-retry-live-state",
+      channel.id
+    );
+
+    const job = sourceStore.createSourceJob({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: {
+        sourceUrl: chat.url,
+        autoRunStage2: false,
+        trigger: "fetch",
+        chat: {
+          id: chat.id,
+          channelId: channel.id
+        },
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username
+        }
+      }
+    });
+    sourceStore.markSourceJobRetryScheduled(job.jobId, {
+      detail: "Visolix временно недоступен. Повторяем через 5 с.",
+      attempt: 1,
+      maxAttempts: 2,
+      nextRetryAt: new Date(Date.now() + 1_000).toISOString(),
+      retryEligible: true,
+      providerErrorSummary: {
+        primaryProvider: "visolix",
+        primaryProviderError: "Database connection unavailable",
+        primaryRetryEligible: true,
+        fallbackProvider: null,
+        fallbackProviderError: null,
+        hostedFallbackSkippedReason: null
+      }
+    });
+
+    const items = await chatHistory.listChatListItems(owner.user.id, channel.id, owner.workspace.id);
+    assert.equal(items[0]?.id, chat.id);
+    assert.equal(items[0]?.liveAction, "Retrying");
     assert.equal(items[0]?.preferredStep, 1);
   });
 });

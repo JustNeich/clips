@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getAppDataDir } from "./app-paths";
+import { isHostedRenderRuntime } from "./hosted-subprocess";
 import { STAGE3_EDITING_PROXY_CACHE_VERSION } from "./stage3-editing-proxy-contract";
 import { prepareStage3EditingProxy as buildStage3EditingProxy } from "./stage3-media-agent";
 import {
@@ -78,6 +79,21 @@ async function pruneCacheDirectory(dirPath: string, options: { maxFiles: number;
     totalBytes -= sized[index].sizeBytes;
     await fs.rm(sized[index].filePath, { force: true }).catch(() => undefined);
   }
+}
+
+function getEditingProxyCacheLimits() {
+  if (isHostedRenderRuntime()) {
+    return {
+      maxFiles: 8,
+      maxBytes: 256 * 1024 * 1024,
+      maxAgeMs: 90 * 60_000
+    };
+  }
+  return {
+    maxFiles: 24,
+    maxBytes: 768 * 1024 * 1024,
+    maxAgeMs: 6 * 60 * 60_000
+  };
 }
 
 function resolveSourceUrl(rawSource: string | undefined): string {
@@ -180,11 +196,7 @@ export async function prepareStage3EditingProxy(
     throw new Error("Не удалось подготовить proxy-видео для редактора. Повторите ещё раз.");
   }
 
-  await pruneCacheDirectory(EDITING_PROXY_CACHE_DIR, {
-    maxFiles: 24,
-    maxBytes: 768 * 1024 * 1024,
-    maxAgeMs: 6 * 60 * 60_000
-  }).catch(() => undefined);
+  await pruneCacheDirectory(EDITING_PROXY_CACHE_DIR, getEditingProxyCacheLimits()).catch(() => undefined);
 
   return {
     filePath: proxyPath,

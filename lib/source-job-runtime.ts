@@ -15,12 +15,14 @@ import {
   hasQueuedSourceJobs,
   interruptRunningSourceJobs,
   markSourceJobStageRunning,
+  markSourceJobRetryScheduled,
   recoverInterruptedSourceJobs,
   SourceJobRecord,
   SourceJobRequest
 } from "./source-job-store";
 import { fetchCommentsForUrl } from "./source-comments";
 import { ensureSourceMediaCached } from "./source-media-cache";
+import { getSourceDownloadErrorContext } from "./source-acquisition";
 import { getWorkspaceCodexIntegration } from "./team-store";
 
 type SourceRuntimeState = {
@@ -209,7 +211,18 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
       ? "Проверяем загруженный mp4 и фиксируем его в source cache."
       : "Скачиваем и кэшируем исходное видео."
   );
-  const cachedSource = await ensureSourceMediaCached(job.sourceUrl);
+  const cachedSource = await ensureSourceMediaCached(job.sourceUrl, {
+    onRetryScheduled: ({ attempt, maxAttempts, retryAt, providerErrorSummary }) => {
+      markSourceJobRetryScheduled(job.jobId, {
+        detail: "Visolix временно недоступен. Повторяем через 5 с.",
+        attempt,
+        maxAttempts,
+        nextRetryAt: retryAt,
+        retryEligible: providerErrorSummary.primaryRetryEligible,
+        providerErrorSummary
+      });
+    }
+  });
 
   let commentsPayload: CommentsPayload | null = null;
   let commentsAvailable = false;
@@ -243,6 +256,7 @@ export async function processSourceJob(job: SourceJobRecord): Promise<SourceJobR
     downloadProvider: cachedSource.downloadProvider,
     primaryProviderError: cachedSource.primaryProviderError,
     downloadFallbackUsed: cachedSource.downloadFallbackUsed,
+    providerErrorSummary: cachedSource.providerErrorSummary,
     commentsAvailable,
     commentsError,
     commentsPayload,
@@ -273,12 +287,18 @@ async function executeJob(job: SourceJobRecord): Promise<void> {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Source job failed.";
+    const errorContext = getSourceDownloadErrorContext(error);
     try {
       await appendSourceFailureEvent(job, message);
     } catch {
       // Keep durable failure even if chat event append also fails.
     }
-    finalizeSourceJobFailure(job.jobId, message);
+    finalizeSourceJobFailure(job.jobId, message, {
+      attempt: errorContext?.attempt ?? null,
+      maxAttempts: errorContext?.maxAttempts ?? null,
+      retryEligible: errorContext?.providerErrorSummary.primaryRetryEligible ?? false,
+      providerErrorSummary: errorContext?.providerErrorSummary ?? null
+    });
     logSourceRuntime("job_fail", {
       jobId: job.jobId,
       chatId: job.chatId,

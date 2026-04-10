@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { AvatarUploadButton } from "./AvatarUploadButton";
 import {
   collectWorkspaceStage2Examples,
   formatStage2DelimitedStringList,
@@ -537,29 +538,19 @@ export function ChannelOnboardingWizard({
                   )}
                 </div>
                 <div className="field-stack channel-onboarding-avatar-copy">
-                  <label className="field-label" htmlFor="channelOnboardingAvatarInput">
-                    Аватар канала
-                  </label>
+                  <span className="field-label">Аватар канала</span>
                   <p className="subtle-text">
-                    Небольшой аватар помогает быстрее отличать канал в списке и в Stage 3.
+                    Небольшой аватар помогает быстрее отличать канал в списке и в Stage 3. После
+                    выбора файла можно подвинуть кадр.
                   </p>
-                  <input
-                    id="channelOnboardingAvatarInput"
-                    type="file"
-                    accept="image/*"
-                    className="channel-onboarding-file-input"
-                    onChange={(event) => {
-                      setAvatarFile(event.target.files?.[0] ?? null);
-                      event.currentTarget.value = "";
-                    }}
-                  />
                   <div className="channel-onboarding-avatar-actions">
-                    <label
-                      htmlFor="channelOnboardingAvatarInput"
-                      className="btn btn-secondary channel-onboarding-file-btn"
-                    >
-                      {avatarFile ? "Заменить аватар" : "Загрузить аватар"}
-                    </label>
+                    <AvatarUploadButton
+                      buttonLabel={avatarFile ? "Заменить аватар" : "Загрузить аватар"}
+                      buttonClassName="btn btn-secondary channel-onboarding-file-btn"
+                      onAvatarReady={(file) => {
+                        setAvatarFile(file);
+                      }}
+                    />
                     {avatarFile ? (
                       <button
                         type="button"

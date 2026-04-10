@@ -47,6 +47,17 @@ export type CommentsPayload = {
   allComments: CommentItem[];
 };
 
+export type SourceProviderId = "visolix" | "ytDlp";
+
+export type SourceProviderErrorSummary = {
+  primaryProvider: SourceProviderId | null;
+  primaryProviderError: string | null;
+  primaryRetryEligible: boolean;
+  fallbackProvider: SourceProviderId | null;
+  fallbackProviderError: string | null;
+  hostedFallbackSkippedReason: string | null;
+};
+
 export type Stage2Output = {
   inputAnalysis: {
     visualAnchors: string[];
@@ -356,9 +367,10 @@ export type Stage2Response = {
     videoSizeBytes?: number;
     sourceCacheKey?: string;
     sourceCacheState?: "hit" | "miss" | "wait";
-    downloadProvider?: "visolix" | "ytDlp" | "upload";
+    downloadProvider?: SourceProviderId | "upload";
     primaryProviderError?: string | null;
     downloadFallbackUsed?: boolean;
+    providerErrorSummary?: SourceProviderErrorSummary | null;
     commentsOmittedFromPrompt?: number;
     frameDescriptions?: string[];
     commentsExtractionFallbackUsed?: boolean;
@@ -449,12 +461,17 @@ export type ChannelFeedbackResponse = {
 
 export type SourceJobStatus = "queued" | "running" | "completed" | "failed";
 
-export type SourceJobStageId = "prepare" | "comments" | "stage2";
+export type SourceJobStageId = "prepare" | "retry" | "comments" | "stage2";
 
 export type SourceJobProgressSnapshot = {
   status: SourceJobStatus;
   activeStageId: SourceJobStageId | null;
   detail: string | null;
+  attempt?: number | null;
+  maxAttempts?: number | null;
+  nextRetryAt?: string | null;
+  retryEligible?: boolean;
+  providerErrorSummary?: SourceProviderErrorSummary | null;
   createdAt: string;
   startedAt: string | null;
   updatedAt: string;
@@ -472,9 +489,10 @@ export type SourceJobResult = {
   videoSizeBytes?: number | null;
   sourceCacheKey?: string | null;
   sourceCacheState?: "hit" | "miss" | "wait";
-  downloadProvider?: "visolix" | "ytDlp" | "upload";
+  downloadProvider?: SourceProviderId | "upload";
   primaryProviderError?: string | null;
   downloadFallbackUsed?: boolean;
+  providerErrorSummary?: SourceProviderErrorSummary | null;
   commentsAvailable: boolean;
   commentsError: string | null;
   commentsPayload: CommentsPayload | null;
@@ -1171,7 +1189,7 @@ export type ChatListItem = {
   hasDraft: boolean;
   exportTitle: string | null;
   publication?: ChannelPublicationSummary | null;
-  liveAction?: "Fetching" | "Comments" | "Stage 2" | "Rendering" | null;
+  liveAction?: "Fetching" | "Retrying" | "Comments" | "Stage 2" | "Rendering" | null;
 };
 
 export type ChatEvent = {

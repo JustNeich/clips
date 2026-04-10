@@ -173,7 +173,7 @@ export function getHistoryProgressBadge(item: ChatListItem): HistoryProgressBadg
     };
   }
 
-  if (item.liveAction === "Fetching" || item.liveAction === "Comments") {
+  if (item.liveAction === "Fetching" || item.liveAction === "Retrying" || item.liveAction === "Comments") {
     return {
       label: "Шаг 1: в процессе",
       tone: "running"

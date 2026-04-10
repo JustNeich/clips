@@ -326,7 +326,13 @@ test("runNativeCaptionPipeline routes native stage models and translates caption
       option: index + 1,
       title: `Winner title ${index + 1}`,
       title_ru: `Заголовок победителя ${index + 1}`
-    }))
+    })),
+    {
+      description:
+        "Detroit, 25 MPH, Ford pickup, muddy axle failure\nThe truck bucks through the rut before the axle folds sideways under load, turning the whole clip into a visible mechanical breakdown. Viewers track the wobble, the mud spray, and the late collapse as the failure becomes impossible to miss.\nSearch terms and topics covered:\nford pickup axle failure, muddy rut truck breakdown, axle twists sideways under load, wheel collapse in mud, truck suspension failure clip, visible axle damage, mechanical failure caught on camera, pickup wheel folds sideways, off road truck failure, ford truck axle bend, muddy field breakdown, vehicle under load collapse, truck wheel wobble signs, axle failure reaction video, real mechanical failure short\nHashtags:\n#truck, #mechanicalfailure, #shorts, #fordpickup, #axlefailure, #mudrut, #wheelcollapse, #suspensiondamage, #caughtoncamera, #viralshorts, #mechaniclife, #fyp",
+      tags:
+        "Truck Failure, Mechanical Failure, Off Road Incident, axle bending, wheel collapse, truck under load, muddy rut, suspension damage, late mechanical failure, caught on camera, Ford, Ford pickup, axle, wheel, mud field, Detroit, 25 mph"
+    }
   ]);
 
   const result = await service.runNativeCaptionPipeline({
@@ -356,7 +362,8 @@ test("runNativeCaptionPipeline routes native stage models and translates caption
       qualityCourt: "gpt-5.3-codex-spark",
       targetedRepair: "gpt-5.4-mini",
       captionTranslation: "gpt-5.4-mini",
-      titleWriter: "gpt-5.4"
+      titleWriter: "gpt-5.4",
+      seo: "gpt-5.4-mini"
     }
   });
 
@@ -364,14 +371,17 @@ test("runNativeCaptionPipeline routes native stage models and translates caption
   assert.equal(result.output.finalists?.length, 3);
   assert.equal(result.output.winner?.candidateId, "cand_1");
   assert.equal(result.output.titleOptions.length, 5);
+  assert.equal(result.output.titleOptions[0]?.title, "WINNER TITLE 1");
+  assert.equal(result.output.titleOptions[0]?.titleRu, "ЗАГОЛОВОК ПОБЕДИТЕЛЯ 1");
+  assert.equal(result.seo?.description.includes("Search terms and topics covered:"), true);
   assert.equal(Boolean(result.output.captionOptions[0]?.topRu?.trim()), true);
   assert.equal(Boolean(result.output.titleOptions[0]?.titleRu?.trim()), true);
   assert.deepEqual(
     executor.calls.map((call) => call.model),
-    ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-5.4-mini", "gpt-5.4"]
+    ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
   );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
-  assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], [], [], []]);
+  assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], [], [], [], []]);
 });
 
 test("stable_reference_v6 routes the dedicated oneShotReference model and skips modular native judges", async () => {
@@ -409,7 +419,13 @@ test("stable_reference_v6 routes the dedicated oneShotReference model and skips 
       candidate_id: `ref_${index + 1}`,
       top_ru: `Русский верх ${index + 1}`,
       bottom_ru: `Русский низ ${index + 1}`
-    }))
+    })),
+    {
+      description:
+        "Garage bay, no stated speed, mechanic wrench pause, workshop reaction\nThe wrench stops mid-air before anyone says a word, and the room reads the repair outcome off the silence alone. The pause, the faces turning, and the unfinished motion make the social read land before the explanation does.\nSearch terms and topics covered:\nmechanic wrench pause, garage reaction moment, workshop silence reaction, repair bill realization, mechanic room freeze, wrench stops mid air, automotive shop reaction, visible awkward pause, repair gone wrong reaction, garage bay silence, mechanic social read, workshop tension moment, repair estimate reaction, automotive bay short, wrench pause caught on camera\nHashtags:\n#mechanic, #garage, #shorts, #wrenchpause, #workshopreaction, #repairbill, #automotiveshop, #awkwardsilence, #caughtoncamera, #viralvideo, #mechaniclife, #fyp",
+      tags:
+        "Mechanic, Garage Reaction, Auto Repair, wrench pause, room freeze, workshop silence, repair realization, social read, caught on camera, awkward pause, garage bay, mechanic shop, wrench, repair bill, automotive bay, workshop, reaction clip"
+    }
   ]);
 
   const result = await service.runNativeCaptionPipeline({
@@ -446,18 +462,20 @@ test("stable_reference_v6 routes the dedicated oneShotReference model and skips 
       qualityCourt: "gpt-5.4",
       targetedRepair: "gpt-5.4",
       captionTranslation: "gpt-5.4",
-      titleWriter: "gpt-5.3-codex-spark"
+      titleWriter: "gpt-5.3-codex-spark",
+      seo: "gpt-5.4-mini"
     }
   });
 
   assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1");
   assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(result.seo?.tags.includes("Mechanic"), true);
   assert.deepEqual(
     executor.calls.map((call) => call.model),
-    ["gpt-5.4-mini", "gpt-5.4"]
+    ["gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
   );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
-  assert.deepEqual(executor.calls[1]?.imagePaths, []);
+  assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], []]);
 });
 
 test("runQuickRegenerateModel forwards the dedicated regenerate model without images", async () => {

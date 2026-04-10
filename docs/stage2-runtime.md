@@ -16,9 +16,9 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 1. `oneShotReference`
 2. `captionHighlighting` (optional, fail-open)
 3. `captionTranslation`
-4. `assemble`
-5. human pick / review в UI
-6. optional publishing-time SEO generation outside Stage 2
+4. `seo`
+5. `assemble`
+6. human pick / review в UI
 
 Ключевая идея:
 - product-owned one-shot prompt получает video truth, current comment wave, line policy, channel narrative и editorial memory;
@@ -42,8 +42,8 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 7. `captionHighlighting` (optional, fail-open)
 8. `captionTranslation`
 9. `titleWriter`
-10. human pick / review в UI
-11. optional publishing-time SEO generation outside Stage 2
+10. `seo`
+11. human pick / review в UI
 
 Ключевой принцип:
 - Stage 2 всегда использует **один effective examples corpus на run**
@@ -55,7 +55,7 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
   - `experimental` = intentionally looser exploratory line
 - examples по умолчанию выключены в `native_caption_v3` hot path
 - RU translation display shortlist теперь входит в Stage 2 transaction
-- SEO по-прежнему живёт вне Stage 2 transaction
+- SEO generation теперь тоже входит в Stage 2 transaction и возвращается в top-level `stage2.seo`
 - deterministic validity и template backfill живут только в modular native path, а не в `stable_reference_v6`
 - `pipeline.execution.pipelineVersion` остаётся `native_caption_v3` для compatibility
 - trace / diagnostics дополнительно показывают `pipeline.execution.pathVariant`, чтобы baseline one-shot и modular native были различимы
@@ -77,6 +77,7 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 - `finalists` = finalist-grade options; в `reference_one_shot_v1` это тот же publishable visible five;
 - `winner` = в `reference_one_shot_v1` всегда приходит из `finalist`; в modular native может прийти из `finalist`, `recovery` или `template_backfill`;
 - `finalPick.option` = slot winner-а внутри `captionOptions`;
+- `seo` = top-level description + tags block, сгенерированный после title stage внутри того же Stage 2 run;
 - durable run storage по-прежнему остаётся только `completed` / `failed`.
 
 ## 2. End-to-end flow
@@ -668,7 +669,7 @@ These sections answer:
 - whether comments/examples were runtime-truncated or only export-truncated.
 
 Worker rollout behavior is fail-closed:
-- `processStage2Run` now aborts the run before SEO if `stage2.execution.pipelineVersion !== "vnext"`;
+- `processStage2Run` now aborts the run if `stage2.execution.pipelineVersion !== "native_caption_v3"`;
 - the worker also aborts if `stage2.execution.stageChainVersion` still contains transitional bridge naming;
 - the worker also aborts if `stage2.vnext` is missing canonical runtime sections (`exampleRouting`, `canonicalCounters`, `validation`, `candidateLineage`, `criticGate`);
 - the worker also aborts if canonical trace stage outputs are incomplete (`clipTruthExtractor`, `audienceMiner`) or if `compatibilityMode !== "none"`;

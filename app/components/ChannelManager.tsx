@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AppShellToastTone } from "./AppShell";
+import { AvatarUploadButton } from "./AvatarUploadButton";
 import { ChannelManagerPublishingTab } from "./ChannelManagerPublishingTab";
 import { ChannelManagerStage2Tab } from "./ChannelManagerStage2Tab";
 import {
@@ -1457,22 +1458,11 @@ export function ChannelManager({
                   {autosaveState.brand.message ?? "Изменения бренда сохраняются автоматически."}
                 </p>
                 <div className="control-actions">
-                  <label className="btn btn-ghost background-upload-btn">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="background-upload-input"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (!file) {
-                          return;
-                        }
-                        onUploadAsset("avatar", file);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                    Загрузить аватар
-                  </label>
+                  <AvatarUploadButton
+                    buttonLabel="Загрузить аватар"
+                    buttonClassName="btn btn-ghost background-upload-btn"
+                    onAvatarReady={(file) => onUploadAsset("avatar", file)}
+                  />
                   <select
                     className="text-input"
                     value={activeChannel?.avatarAssetId ?? ""}

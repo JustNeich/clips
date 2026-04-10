@@ -221,6 +221,7 @@ Style pool регенерируется только явно.
 Важно:
 - это best-effort client persistence, а не source of truth для finished channel;
 - `avatarFile` не сериализуется и после полного reload должен быть выбран заново;
+- перед сохранением avatar проходит client-side positioning step и сохраняется уже как подготовленный квадратный PNG;
 - close panel и discard draft не являются одним и тем же действием.
 
 ### Channel style profile

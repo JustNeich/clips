@@ -800,7 +800,11 @@ export async function listChatListItems(
     const activeSourceJob = activeSourceJobsByChatId.get(chat.id);
     if (activeSourceJob) {
       const liveAction =
-        activeSourceJob.progress.activeStageId === "comments" ? "Comments" : "Fetching";
+        activeSourceJob.progress.activeStageId === "retry"
+          ? "Retrying"
+          : activeSourceJob.progress.activeStageId === "comments"
+            ? "Comments"
+            : "Fetching";
       return {
         ...item,
         preferredStep: 1,
