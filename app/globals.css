@@ -2101,11 +2101,12 @@ select.text-input:focus {
   border-radius: 18px;
   background: color-mix(in srgb, var(--surface-2) 92%, black);
   display: grid;
+  gap: 12px;
   place-items: center;
 }
 
-.avatar-upload-preview {
-  width: min(280px, 72vw);
+.avatar-upload-stage {
+  width: min(360px, 78vw);
   aspect-ratio: 1;
   position: relative;
   border-radius: 32px;
@@ -2113,24 +2114,85 @@ select.text-input:focus {
   border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
   background:
     linear-gradient(135deg, rgba(33, 82, 148, 0.45) 0%, rgba(14, 20, 28, 0.92) 100%);
+  touch-action: none;
+  user-select: none;
 }
 
-.avatar-upload-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.avatar-upload-stage-image {
+  position: absolute;
   display: block;
+  pointer-events: none;
+  border-radius: 24px;
 }
 
-.avatar-upload-slider-grid {
-  display: grid;
-  gap: 10px;
+.avatar-upload-selection {
+  position: absolute;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--accent) 68%, white);
+  box-shadow:
+    0 0 0 999px rgba(5, 8, 12, 0.62),
+    0 12px 30px rgba(0, 0, 0, 0.38);
+  cursor: grab;
+  touch-action: none;
+}
+
+.avatar-upload-selection:active {
+  cursor: grabbing;
+}
+
+.avatar-upload-selection-grid {
+  position: absolute;
+  inset: 12%;
+  border: 1px dashed rgba(255, 255, 255, 0.48);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.avatar-upload-selection-handle {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
+  cursor: nwse-resize;
+}
+
+.avatar-upload-selection-handle::before,
+.avatar-upload-selection-handle::after {
+  content: "";
+  position: absolute;
+  background: rgba(10, 16, 24, 0.68);
+  border-radius: 999px;
+}
+
+.avatar-upload-selection-handle::before {
+  left: 7px;
+  top: 11px;
+  width: 10px;
+  height: 2px;
+}
+
+.avatar-upload-selection-handle::after {
+  left: 11px;
+  top: 7px;
+  width: 2px;
+  height: 10px;
 }
 
 .avatar-upload-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.avatar-upload-meta-badges {
+  display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -5218,6 +5280,16 @@ select.text-input:focus {
 .publishing-workspace-inspector {
   position: sticky;
   top: 18px;
+  align-self: start;
+  max-height: calc(100dvh - 36px);
+  min-height: 0;
+}
+
+.publishing-workspace-inspector .publishing-inspector-card {
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .publishing-queue-list {
@@ -5324,6 +5396,10 @@ select.text-input:focus {
 
 .publishing-row-actions.compact .btn {
   min-height: 34px;
+}
+
+.publishing-action-confirm {
+  background: rgba(154, 42, 42, 0.14);
 }
 
 .publishing-inspector-card {
@@ -5467,6 +5543,8 @@ select.text-input:focus {
 .publishing-inspector-card.mobile {
   border-radius: 24px 24px 0 0;
   padding-bottom: 20px;
+  max-height: none;
+  overflow: visible;
 }
 
 .publishing-guard-overlay {
@@ -5941,6 +6019,7 @@ select.text-input:focus {
 
   .publishing-workspace-inspector {
     position: static;
+    max-height: none;
   }
 
   .publishing-inspector-drawer-sheet {
@@ -5962,8 +6041,8 @@ select.text-input:focus {
     padding: 14px;
   }
 
-  .avatar-upload-preview {
-    width: min(250px, 76vw);
+  .avatar-upload-stage {
+    width: min(290px, 82vw);
   }
 }
 

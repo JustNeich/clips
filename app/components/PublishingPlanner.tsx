@@ -33,6 +33,7 @@ import {
   matchesPublicationWorkspaceFilter,
   resolvePublicationSelectionRequest,
   selectPreferredPublicationId,
+  shouldHydratePublicationInspectorDraft,
   summarizePublicationDay,
   type PublicationDayGroup,
   type PublicationFieldErrors,
@@ -192,6 +193,7 @@ export function PublishingPlanner({
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState(false);
   const [pendingSelectionGuard, setPendingSelectionGuard] = useState<PendingSelectionGuard | null>(null);
+  const [publishNowConfirmId, setPublishNowConfirmId] = useState<string | null>(null);
 
   const timeZone = settings?.timezone ?? "Europe/Moscow";
   const slotLabels = useMemo(() => buildSlotLabels(settings), [settings]);
@@ -243,6 +245,21 @@ export function PublishingPlanner({
     Boolean(draft) &&
     draftPublicationId === selectedPublication?.id &&
     isPublicationInspectorDirty(selectedPublication!, draft!, slotLabels, timeZone);
+  const draftRef = useRef<PublicationInspectorDraft | null>(null);
+  const draftPublicationIdRef = useRef<string | null>(null);
+  const draftDirtyRef = useRef(false);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
+    draftPublicationIdRef.current = draftPublicationId;
+  }, [draftPublicationId]);
+
+  useEffect(() => {
+    draftDirtyRef.current = Boolean(draftDirty);
+  }, [draftDirty]);
 
   useEffect(() => {
     if (!selectedPublication) {
@@ -252,15 +269,37 @@ export function PublishingPlanner({
       return;
     }
 
-    const selectedChanged = draftPublicationId !== selectedPublication.id;
-    if (selectedChanged || !draft || !draftDirty) {
+    const selectedChanged = draftPublicationIdRef.current !== selectedPublication.id;
+    const shouldHydrateDraft = shouldHydratePublicationInspectorDraft({
+      selectedPublicationId: selectedPublication.id,
+      draftPublicationId: draftPublicationIdRef.current,
+      hasDraft: Boolean(draftRef.current),
+      isDirty: draftDirtyRef.current
+    });
+    if (shouldHydrateDraft) {
       setDraft(buildPublicationInspectorDraft(selectedPublication, slotLabels, timeZone));
       setDraftPublicationId(selectedPublication.id);
-      if (selectedChanged || !draftDirty) {
+      if (selectedChanged || !draftDirtyRef.current) {
         setFieldErrors({});
       }
     }
-  }, [draft, draftDirty, draftPublicationId, selectedPublication, slotLabels, timeZone]);
+  }, [selectedPublication, slotLabels, timeZone]);
+
+  useEffect(() => {
+    if (!publishNowConfirmId) {
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setPublishNowConfirmId((current) => (current === publishNowConfirmId ? null : current));
+    }, 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [publishNowConfirmId]);
+
+  useEffect(() => {
+    if (publishNowConfirmId && !publicationsById.has(publishNowConfirmId)) {
+      setPublishNowConfirmId(null);
+    }
+  }, [publishNowConfirmId, publicationsById]);
 
   const filteredPublications = useMemo(
     () => publications.filter((publication) => matchesPublicationWorkspaceFilter(publication, filter)),
@@ -395,6 +434,13 @@ export function PublishingPlanner({
     publication: ChannelPublication,
     action: PublicationAction
   ): Promise<void> => {
+    if (action === "publish-now") {
+      if (publishNowConfirmId !== publication.id) {
+        setPublishNowConfirmId(publication.id);
+        return;
+      }
+      setPublishNowConfirmId(null);
+    }
     if (action === "delete" && !window.confirm("Удалить публикацию из очереди?")) {
       return;
     }
@@ -409,10 +455,16 @@ export function PublishingPlanner({
 
     try {
       await onRunAction(publication.id, action);
+      if (action === "publish-now") {
+        setPublishNowConfirmId(null);
+      }
       if (publication.id === selectedPublicationId && action !== "delete") {
         setFieldErrors({});
       }
     } catch (error) {
+      if (action === "publish-now") {
+        setPublishNowConfirmId(null);
+      }
       handleMutationError(error, publication.id);
     } finally {
       endBusy(busyKey);
@@ -650,18 +702,23 @@ export function PublishingPlanner({
     }
 
     if (publication.status !== "published" && publication.status !== "canceled" && !isUploading) {
+      const isPublishNowConfirming = publishNowConfirmId === publication.id;
       buttons.push(
         <button
           key={`${publication.id}:publish-now`}
           type="button"
-          className="btn btn-secondary"
+          className={`btn ${
+            isPublishNowConfirming
+              ? "btn-danger-soft publishing-action-confirm"
+              : "btn-secondary"
+          }`}
           disabled={disabled}
           onClick={(event) => {
             event.stopPropagation();
             void runAction(publication, "publish-now");
           }}
         >
-          Опубликовать сейчас
+          {isPublishNowConfirming ? "Подтвердить сейчас" : "Опубликовать сейчас"}
         </button>
       );
     }

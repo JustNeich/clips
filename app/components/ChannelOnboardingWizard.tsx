@@ -541,7 +541,7 @@ export function ChannelOnboardingWizard({
                   <span className="field-label">Аватар канала</span>
                   <p className="subtle-text">
                     Небольшой аватар помогает быстрее отличать канал в списке и в Stage 3. После
-                    выбора файла можно подвинуть кадр.
+                    выбора файла можно выставить круг кадра и размер области.
                   </p>
                   <div className="channel-onboarding-avatar-actions">
                     <AvatarUploadButton

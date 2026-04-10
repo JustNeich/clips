@@ -7,7 +7,8 @@ import {
   mapPublicationMutationPayloadToFieldErrors,
   mergePublicationMutationResult,
   resolvePublicationSelectionRequest,
-  selectPreferredPublicationId
+  selectPreferredPublicationId,
+  shouldHydratePublicationInspectorDraft
 } from "../app/components/publishing-workspace-support";
 import type { ChannelPublication } from "../app/components/types";
 
@@ -99,6 +100,28 @@ test("resolvePublicationSelectionRequest prompts when switching away from dirty 
       isDirty: true
     }),
     "ignore"
+  );
+});
+
+test("shouldHydratePublicationInspectorDraft keeps same dirty draft intact", () => {
+  assert.equal(
+    shouldHydratePublicationInspectorDraft({
+      selectedPublicationId: "publication-1",
+      draftPublicationId: "publication-1",
+      hasDraft: true,
+      isDirty: true
+    }),
+    false
+  );
+
+  assert.equal(
+    shouldHydratePublicationInspectorDraft({
+      selectedPublicationId: "publication-2",
+      draftPublicationId: "publication-1",
+      hasDraft: true,
+      isDirty: true
+    }),
+    true
   );
 });
 

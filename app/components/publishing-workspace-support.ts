@@ -549,6 +549,24 @@ export function isPublicationInspectorDirty(
   return publication.slotDate !== draft.slotDate || currentSlotIndex !== draft.slotIndex;
 }
 
+export function shouldHydratePublicationInspectorDraft(input: {
+  selectedPublicationId: string | null;
+  draftPublicationId: string | null;
+  hasDraft: boolean;
+  isDirty: boolean;
+}): boolean {
+  if (!input.selectedPublicationId) {
+    return false;
+  }
+  if (input.draftPublicationId !== input.selectedPublicationId) {
+    return true;
+  }
+  if (!input.hasDraft) {
+    return true;
+  }
+  return !input.isDirty;
+}
+
 export function resolvePublicationSelectionRequest(input: {
   currentSelectionId: string | null;
   nextSelectionId: string | null;

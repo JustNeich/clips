@@ -1,11 +1,16 @@
 "use client";
 
-import NextImage from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   buildPositionedAvatarUpload,
-  resolveAvatarCropBounds
+  createDefaultAvatarCropSelection,
+  resolveAvatarCropBounds,
+  resolveAvatarPreviewMetrics,
+  resizeAvatarCropSelection,
+  translateAvatarCropSelection,
+  type AvatarCropSelection,
+  type AvatarPreviewMetrics
 } from "./avatar-upload-support";
 
 type AvatarUploadPreview = {
@@ -13,6 +18,16 @@ type AvatarUploadPreview = {
   previewUrl: string;
   naturalWidth: number;
   naturalHeight: number;
+};
+
+type AvatarCropInteraction = {
+  mode: "move" | "resize";
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  stageRect: DOMRect;
+  previewMetrics: AvatarPreviewMetrics;
+  selection: AvatarCropSelection;
 };
 
 export type AvatarUploadButtonProps = {
@@ -61,10 +76,14 @@ export function AvatarUploadButton({
   onAvatarReady
 }: AvatarUploadButtonProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const previewStageRef = useRef<HTMLDivElement | null>(null);
+  const interactionRef = useRef<AvatarCropInteraction | null>(null);
   const [mounted, setMounted] = useState(false);
   const [editorState, setEditorState] = useState<AvatarUploadPreview | null>(null);
-  const [positionX, setPositionX] = useState(0.5);
-  const [positionY, setPositionY] = useState(0.5);
+  const [cropSelection, setCropSelection] = useState<AvatarCropSelection>(
+    createDefaultAvatarCropSelection()
+  );
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [isApplying, setIsApplying] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
 
@@ -89,6 +108,7 @@ export function AvatarUploadButton({
     document.body.style.overflow = "hidden";
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !isApplying) {
+        interactionRef.current = null;
         setEditorState(null);
         setEditorError(null);
       }
@@ -100,6 +120,135 @@ export function AvatarUploadButton({
     };
   }, [editorState, isApplying]);
 
+  useEffect(() => {
+    if (!editorState) {
+      return;
+    }
+    const element = previewStageRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateSize = () => {
+      const nextWidth = element.clientWidth;
+      const nextHeight = element.clientHeight;
+      setStageSize((current) => {
+        if (Math.abs(current.width - nextWidth) < 1 && Math.abs(current.height - nextHeight) < 1) {
+          return current;
+        }
+        return {
+          width: Math.max(0, nextWidth),
+          height: Math.max(0, nextHeight)
+        };
+      });
+    };
+
+    updateSize();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateSize);
+      return () => {
+        window.removeEventListener("resize", updateSize);
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [editorState]);
+
+  useEffect(() => {
+    if (!editorState) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const interaction = interactionRef.current;
+      if (!interaction || interaction.pointerId !== event.pointerId) {
+        return;
+      }
+      event.preventDefault();
+
+      if (interaction.mode === "move") {
+        const scale = interaction.previewMetrics.scale;
+        if (scale <= 0) {
+          return;
+        }
+        setCropSelection(
+          translateAvatarCropSelection({
+            sourceWidth: editorState.naturalWidth,
+            sourceHeight: editorState.naturalHeight,
+            selection: interaction.selection,
+            deltaSourceX: (event.clientX - interaction.startClientX) / scale,
+            deltaSourceY: (event.clientY - interaction.startClientY) / scale
+          })
+        );
+        return;
+      }
+
+      const scale = interaction.previewMetrics.scale;
+      if (scale <= 0) {
+        return;
+      }
+      const imageLeft = interaction.stageRect.left + interaction.previewMetrics.offsetX;
+      const imageTop = interaction.stageRect.top + interaction.previewMetrics.offsetY;
+      const centerClientX =
+        imageLeft + interaction.selection.centerX * interaction.previewMetrics.imageWidth;
+      const centerClientY =
+        imageTop + interaction.selection.centerY * interaction.previewMetrics.imageHeight;
+      const nextHalfSizePx = Math.max(
+        18,
+        Math.max(event.clientX - centerClientX, event.clientY - centerClientY)
+      );
+      const nextSourceSize = (nextHalfSizePx * 2) / scale;
+      const shortestSide = Math.max(
+        1,
+        Math.min(editorState.naturalWidth, editorState.naturalHeight)
+      );
+      setCropSelection(
+        resizeAvatarCropSelection({
+          sourceWidth: editorState.naturalWidth,
+          sourceHeight: editorState.naturalHeight,
+          selection: interaction.selection,
+          nextSize: nextSourceSize / shortestSide
+        })
+      );
+    };
+
+    const handlePointerFinish = (event: PointerEvent) => {
+      if (interactionRef.current?.pointerId !== event.pointerId) {
+        return;
+      }
+      interactionRef.current = null;
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerFinish);
+    window.addEventListener("pointercancel", handlePointerFinish);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerFinish);
+      window.removeEventListener("pointercancel", handlePointerFinish);
+    };
+  }, [editorState]);
+
+  const previewMetrics = useMemo(() => {
+    if (!editorState) {
+      return null;
+    }
+    return resolveAvatarPreviewMetrics({
+      viewportWidth: stageSize.width,
+      viewportHeight: stageSize.height,
+      sourceWidth: editorState.naturalWidth,
+      sourceHeight: editorState.naturalHeight
+    });
+  }, [editorState, stageSize.height, stageSize.width]);
+
   const cropBounds = useMemo(() => {
     if (!editorState) {
       return null;
@@ -107,15 +256,32 @@ export function AvatarUploadButton({
     return resolveAvatarCropBounds({
       sourceWidth: editorState.naturalWidth,
       sourceHeight: editorState.naturalHeight,
-      positionX,
-      positionY
+      centerX: cropSelection.centerX,
+      centerY: cropSelection.centerY,
+      size: cropSelection.size
     });
-  }, [editorState, positionX, positionY]);
+  }, [cropSelection.centerX, cropSelection.centerY, cropSelection.size, editorState]);
+
+  const cropPreviewStyle = useMemo(() => {
+    if (!previewMetrics || !cropBounds) {
+      return undefined;
+    }
+    const left = previewMetrics.offsetX + cropBounds.sourceX * previewMetrics.scale;
+    const top = previewMetrics.offsetY + cropBounds.sourceY * previewMetrics.scale;
+    const size = cropBounds.sourceSize * previewMetrics.scale;
+    return {
+      left,
+      top,
+      width: size,
+      height: size
+    };
+  }, [cropBounds, previewMetrics]);
 
   const resetEditor = () => {
+    interactionRef.current = null;
     setEditorState(null);
-    setPositionX(0.5);
-    setPositionY(0.5);
+    setCropSelection(createDefaultAvatarCropSelection());
+    setStageSize({ width: 0, height: 0 });
     setEditorError(null);
     setIsApplying(false);
   };
@@ -127,8 +293,7 @@ export function AvatarUploadButton({
     setEditorError(null);
     try {
       const preview = await readAvatarUploadPreview(file);
-      setPositionX(0.5);
-      setPositionY(0.5);
+      setCropSelection(createDefaultAvatarCropSelection());
       setEditorState((current) => {
         if (current) {
           URL.revokeObjectURL(current.previewUrl);
@@ -140,8 +305,31 @@ export function AvatarUploadButton({
     }
   };
 
+  const startInteraction = (
+    mode: AvatarCropInteraction["mode"],
+    event: ReactPointerEvent<HTMLElement>
+  ) => {
+    if (!editorState || !previewMetrics || !previewStageRef.current) {
+      return;
+    }
+    if (previewMetrics.scale <= 0 || isApplying) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    interactionRef.current = {
+      mode,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      stageRect: previewStageRef.current.getBoundingClientRect(),
+      previewMetrics,
+      selection: cropSelection
+    };
+  };
+
   const handleApply = async () => {
-    if (!editorState) {
+    if (!editorState || !cropBounds) {
       return;
     }
     setIsApplying(true);
@@ -149,8 +337,9 @@ export function AvatarUploadButton({
     try {
       const nextFile = await buildPositionedAvatarUpload({
         file: editorState.file,
-        positionX: cropBounds?.positionX ?? 0.5,
-        positionY: cropBounds?.positionY ?? 0.5
+        centerX: cropBounds.centerX,
+        centerY: cropBounds.centerY,
+        size: cropBounds.size
       });
       await Promise.resolve(onAvatarReady(nextFile));
       resetEditor();
@@ -185,7 +374,11 @@ export function AvatarUploadButton({
       />
       {mounted && editorState && cropBounds
         ? createPortal(
-            <div className="avatar-upload-overlay" role="presentation" onClick={() => !isApplying && resetEditor()}>
+            <div
+              className="avatar-upload-overlay"
+              role="presentation"
+              onClick={() => !isApplying && resetEditor()}
+            >
               <div
                 className="avatar-upload-dialog"
                 role="dialog"
@@ -208,69 +401,59 @@ export function AvatarUploadButton({
                   </button>
                 </div>
                 <p className="subtle-text">
-                  Выберите, какая часть изображения останется в квадратном аватаре после upload.
+                  Перетаскивайте круг по изображению и тяните маркер справа снизу. Все, что попадет
+                  внутрь круга, останется в аватаре после upload.
                 </p>
                 <div className="avatar-upload-preview-shell">
-                  <div className="avatar-upload-preview">
-                    <NextImage
-                      src={editorState.previewUrl}
-                      alt="Предпросмотр кадра аватара"
-                      fill
-                      unoptimized
-                      sizes="280px"
-                      style={{
-                        objectFit: "cover",
-                        objectPosition: `${(cropBounds.positionX * 100).toFixed(3)}% ${(cropBounds.positionY * 100).toFixed(3)}%`
-                      }}
-                    />
+                  <div ref={previewStageRef} className="avatar-upload-stage">
+                    {previewMetrics ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={editorState.previewUrl}
+                        alt="Предпросмотр кадра аватара"
+                        className="avatar-upload-stage-image"
+                        draggable={false}
+                        style={{
+                          left: previewMetrics.offsetX,
+                          top: previewMetrics.offsetY,
+                          width: previewMetrics.imageWidth,
+                          height: previewMetrics.imageHeight
+                        }}
+                      />
+                    ) : null}
+                    {cropPreviewStyle ? (
+                      <div
+                        className="avatar-upload-selection"
+                        style={cropPreviewStyle}
+                        onPointerDown={(event) => startInteraction("move", event)}
+                      >
+                        <div className="avatar-upload-selection-grid" aria-hidden="true" />
+                        <button
+                          type="button"
+                          className="avatar-upload-selection-handle"
+                          aria-label="Изменить размер кадра"
+                          onPointerDown={(event) => startInteraction("resize", event)}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-                <div className="avatar-upload-slider-grid">
-                  <label className="slider-field">
-                    <div className="quick-edit-label-row">
-                      <span className="field-label">Горизонталь</span>
-                      <strong>{Math.round(cropBounds.positionX * 100)}%</strong>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={Math.round(cropBounds.positionX * 100)}
-                      disabled={!cropBounds.canMoveX || isApplying}
-                      onChange={(event) => setPositionX(Number(event.target.value) / 100)}
-                    />
-                  </label>
-                  <label className="slider-field">
-                    <div className="quick-edit-label-row">
-                      <span className="field-label">Вертикаль</span>
-                      <strong>{Math.round(cropBounds.positionY * 100)}%</strong>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={Math.round(cropBounds.positionY * 100)}
-                      disabled={!cropBounds.canMoveY || isApplying}
-                      onChange={(event) => setPositionY(Number(event.target.value) / 100)}
-                    />
-                  </label>
-                </div>
                 <div className="avatar-upload-meta">
-                  <span className="badge muted">
-                    {editorState.naturalWidth} x {editorState.naturalHeight}
-                  </span>
+                  <div className="avatar-upload-meta-badges">
+                    <span className="badge muted">
+                      {editorState.naturalWidth} x {editorState.naturalHeight}
+                    </span>
+                    <span className="badge muted">
+                      Кадр {Math.round(cropBounds.size * 100)}%
+                    </span>
+                  </div>
                   <button
                     type="button"
                     className="btn btn-ghost"
-                    onClick={() => {
-                      setPositionX(0.5);
-                      setPositionY(0.5);
-                    }}
+                    onClick={() => setCropSelection(createDefaultAvatarCropSelection())}
                     disabled={isApplying}
                   >
-                    Центрировать
+                    Сбросить
                   </button>
                 </div>
                 {editorError ? <p className="subtle-text danger-text">{editorError}</p> : null}
@@ -283,7 +466,12 @@ export function AvatarUploadButton({
                   >
                     Отмена
                   </button>
-                  <button type="button" className="btn btn-primary" onClick={handleApply} disabled={isApplying}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleApply}
+                    disabled={isApplying}
+                  >
                     {isApplying ? "Подготавливаем..." : "Использовать кадр"}
                   </button>
                 </div>

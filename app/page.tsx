@@ -175,6 +175,8 @@ import {
   parseDownloadFileName,
   parseRetryAfterMs,
   PersistedFlowShellState,
+  resolveHydratedWorkflowStep,
+  resolveLiveHydratedWorkflowStep,
   responseLooksLikeHtml,
   responseLooksLikeJson,
   responseContentType,
@@ -1051,9 +1053,16 @@ export default function HomePage() {
         nextBottomText === (selectedCaptionForHydration?.bottom ?? "") &&
         getCaptionHighlightsSignature(nextCaptionHighlights) ===
           getCaptionHighlightsSignature(selectedCaptionForHydration?.highlights ?? null);
+      const resolvedStep = resolveHydratedWorkflowStep({
+        nextChatId: chat.id,
+        initializedChatId: initializedStage3ChatRef.current,
+        currentStep,
+        preferredStep: getPreferredStepForChat(chat, draft),
+        maxStep: getMaxStepForChat(chat)
+      });
 
       initializedStage3ChatRef.current = chat.id;
-      setCurrentStep(getPreferredStepForChat(chat, draft));
+      setCurrentStep(resolvedStep);
       setStage2Instruction(draft?.stage2.instruction ?? "");
       setSelectedOption(handoffSummary.selectedCaptionOption);
       setSelectedTitleOption(handoffSummary.selectedTitleOption);
@@ -1097,7 +1106,13 @@ export default function HomePage() {
       setStage3RenderState("idle");
       setStage3RenderJobId(null);
     },
-    [activeChannel, applyChannelToRenderPlan, channelAssets, getCaptionHighlightsSignature]
+    [
+      activeChannel,
+      applyChannelToRenderPlan,
+      channelAssets,
+      currentStep,
+      getCaptionHighlightsSignature
+    ]
   );
 
   const refreshChannels = useCallback(async (preferredChannelId?: string | null): Promise<Channel[]> => {
@@ -1396,15 +1411,13 @@ export default function HomePage() {
       sourceJobs: nextSourceJobs,
       stage2Runs: nextStage2Runs
     });
-    const cappedPreferredStep = Math.min(
-      options?.preferredStep ?? preferredStep,
-      getMaxStepForChat(chat)
-    ) as 1 | 2 | 3;
-    if (preferredStep === 1 || preferredStep === 2) {
-      setCurrentStep(preferredStep);
-      return { chat, draft };
-    }
-    setCurrentStep(cappedPreferredStep);
+    setCurrentStep(
+      resolveLiveHydratedWorkflowStep({
+        livePreferredStep: preferredStep,
+        maxStep: getMaxStepForChat(chat),
+        requestedStep: options?.preferredStep
+      })
+    );
     return { chat, draft };
   }, [refreshActiveChat, refreshSourceJobsForChat, refreshStage2RunsForChat]);
 

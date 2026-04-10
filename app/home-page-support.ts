@@ -512,6 +512,36 @@ export function deriveLivePreferredStep(params: {
   return getPreferredStepForChat(params.chat, params.draft);
 }
 
+export function resolveHydratedWorkflowStep(input: {
+  nextChatId: string | null;
+  initializedChatId: string | null;
+  currentStep: 1 | 2 | 3;
+  preferredStep: 1 | 2 | 3;
+  maxStep: 1 | 2 | 3;
+}): 1 | 2 | 3 {
+  if (!input.nextChatId) {
+    return 1;
+  }
+  if (input.initializedChatId === input.nextChatId) {
+    return Math.min(input.currentStep, input.maxStep) as 1 | 2 | 3;
+  }
+  return Math.min(input.preferredStep, input.maxStep) as 1 | 2 | 3;
+}
+
+export function resolveLiveHydratedWorkflowStep(input: {
+  livePreferredStep: 1 | 2 | 3;
+  maxStep: 1 | 2 | 3;
+  requestedStep?: 1 | 2 | 3;
+}): 1 | 2 | 3 {
+  if (input.requestedStep) {
+    return Math.min(input.requestedStep, input.maxStep) as 1 | 2 | 3;
+  }
+  if (input.livePreferredStep === 1 || input.livePreferredStep === 2) {
+    return input.livePreferredStep;
+  }
+  return Math.min(input.livePreferredStep, input.maxStep) as 1 | 2 | 3;
+}
+
 export function currentPollDelay(visibleMs: number, hiddenMs: number): number {
   if (typeof document === "undefined") {
     return visibleMs;
