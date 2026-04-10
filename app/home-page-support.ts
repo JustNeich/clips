@@ -542,6 +542,10 @@ export function resolveLiveHydratedWorkflowStep(input: {
   return Math.min(input.livePreferredStep, input.maxStep) as 1 | 2 | 3;
 }
 
+export function resolveCompletedStage2RefreshStep(currentStep: 1 | 2 | 3): 2 | 3 {
+  return currentStep === 3 ? 3 : 2;
+}
+
 export function currentPollDelay(visibleMs: number, hiddenMs: number): number {
   if (typeof document === "undefined") {
     return visibleMs;

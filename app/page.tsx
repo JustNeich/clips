@@ -175,6 +175,7 @@ import {
   parseDownloadFileName,
   parseRetryAfterMs,
   PersistedFlowShellState,
+  resolveCompletedStage2RefreshStep,
   resolveHydratedWorkflowStep,
   resolveLiveHydratedWorkflowStep,
   responseLooksLikeHtml,
@@ -1944,8 +1945,9 @@ export default function HomePage() {
             writeStage2DurationMetric(durationMs);
           }
           if (activeChat?.id === nextRun.chatId) {
+            const preferredStep = resolveCompletedStage2RefreshStep(currentStep);
             await Promise.allSettled([
-              hydrateChatLiveState(activeChat.id, { preferredStep: 2 }),
+              hydrateChatLiveState(activeChat.id, { preferredStep }),
               refreshChats()
             ]);
           } else {
@@ -1973,6 +1975,7 @@ export default function HomePage() {
     };
   }, [
     activeChat?.id,
+    currentStep,
     hydrateChatLiveState,
     refreshActiveChat,
     refreshChats,

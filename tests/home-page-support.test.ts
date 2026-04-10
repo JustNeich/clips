@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  resolveCompletedStage2RefreshStep,
   resolveHydratedWorkflowStep,
   resolveLiveHydratedWorkflowStep
 } from "../app/home-page-support";
@@ -51,4 +52,10 @@ test("resolveLiveHydratedWorkflowStep still follows live blockers when no step i
     }),
     2
   );
+});
+
+test("resolveCompletedStage2RefreshStep keeps Stage 3 open when the user is already there", () => {
+  assert.equal(resolveCompletedStage2RefreshStep(3), 3);
+  assert.equal(resolveCompletedStage2RefreshStep(2), 2);
+  assert.equal(resolveCompletedStage2RefreshStep(1), 2);
 });
