@@ -531,19 +531,20 @@ export function resolveHydratedWorkflowStep(input: {
 export function resolveLiveHydratedWorkflowStep(input: {
   livePreferredStep: 1 | 2 | 3;
   maxStep: 1 | 2 | 3;
+  currentStep: 1 | 2 | 3;
+  preserveCurrentStep?: boolean;
   requestedStep?: 1 | 2 | 3;
 }): 1 | 2 | 3 {
   if (input.requestedStep) {
     return Math.min(input.requestedStep, input.maxStep) as 1 | 2 | 3;
   }
+  if (input.preserveCurrentStep) {
+    return Math.min(input.currentStep, input.maxStep) as 1 | 2 | 3;
+  }
   if (input.livePreferredStep === 1 || input.livePreferredStep === 2) {
     return input.livePreferredStep;
   }
   return Math.min(input.livePreferredStep, input.maxStep) as 1 | 2 | 3;
-}
-
-export function resolveCompletedStage2RefreshStep(currentStep: 1 | 2 | 3): 2 | 3 {
-  return currentStep === 3 ? 3 : 2;
 }
 
 export function currentPollDelay(visibleMs: number, hiddenMs: number): number {

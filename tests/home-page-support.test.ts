@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  resolveCompletedStage2RefreshStep,
   resolveHydratedWorkflowStep,
   resolveLiveHydratedWorkflowStep
 } from "../app/home-page-support";
@@ -36,6 +35,7 @@ test("resolveHydratedWorkflowStep uses preferred step for a newly selected chat"
 test("resolveLiveHydratedWorkflowStep honors an explicitly requested step", () => {
   assert.equal(
     resolveLiveHydratedWorkflowStep({
+      currentStep: 2,
       livePreferredStep: 2,
       maxStep: 3,
       requestedStep: 3
@@ -47,6 +47,7 @@ test("resolveLiveHydratedWorkflowStep honors an explicitly requested step", () =
 test("resolveLiveHydratedWorkflowStep still follows live blockers when no step is requested", () => {
   assert.equal(
     resolveLiveHydratedWorkflowStep({
+      currentStep: 3,
       livePreferredStep: 2,
       maxStep: 3
     }),
@@ -54,8 +55,23 @@ test("resolveLiveHydratedWorkflowStep still follows live blockers when no step i
   );
 });
 
-test("resolveCompletedStage2RefreshStep keeps Stage 3 open when the user is already there", () => {
-  assert.equal(resolveCompletedStage2RefreshStep(3), 3);
-  assert.equal(resolveCompletedStage2RefreshStep(2), 2);
-  assert.equal(resolveCompletedStage2RefreshStep(1), 2);
+test("resolveLiveHydratedWorkflowStep preserves the current step for same-chat live refresh", () => {
+  assert.equal(
+    resolveLiveHydratedWorkflowStep({
+      currentStep: 3,
+      livePreferredStep: 2,
+      maxStep: 3,
+      preserveCurrentStep: true
+    }),
+    3
+  );
+  assert.equal(
+    resolveLiveHydratedWorkflowStep({
+      currentStep: 1,
+      livePreferredStep: 2,
+      maxStep: 3,
+      preserveCurrentStep: true
+    }),
+    1
+  );
 });

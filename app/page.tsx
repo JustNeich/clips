@@ -175,7 +175,6 @@ import {
   parseDownloadFileName,
   parseRetryAfterMs,
   PersistedFlowShellState,
-  resolveCompletedStage2RefreshStep,
   resolveHydratedWorkflowStep,
   resolveLiveHydratedWorkflowStep,
   responseLooksLikeHtml,
@@ -469,6 +468,7 @@ export default function HomePage() {
   const activeChatIdRef = useRef<string | null>(null);
   const activeChatRef = useRef<ChatThread | null>(null);
   const activeDraftRef = useRef<ChatDraft | null>(null);
+  const currentStepRef = useRef<1 | 2 | 3>(1);
   const stage3RenderContextRef = useRef<{
     chatId: string;
     snapshot: Stage3StateSnapshot;
@@ -477,6 +477,7 @@ export default function HomePage() {
   const stage3RenderPollIdRef = useRef(0);
   const publishingPlannerRef = useRef<HTMLDivElement | null>(null);
   const draftSaveTimerRef = useRef<number | null>(null);
+  currentStepRef.current = currentStep;
   const draftInFlightRef = useRef<Promise<void> | null>(null);
   const draftPayloadJsonRef = useRef<string>("");
 
@@ -1057,7 +1058,7 @@ export default function HomePage() {
       const resolvedStep = resolveHydratedWorkflowStep({
         nextChatId: chat.id,
         initializedChatId: initializedStage3ChatRef.current,
-        currentStep,
+        currentStep: currentStepRef.current,
         preferredStep: getPreferredStepForChat(chat, draft),
         maxStep: getMaxStepForChat(chat)
       });
@@ -1111,7 +1112,6 @@ export default function HomePage() {
       activeChannel,
       applyChannelToRenderPlan,
       channelAssets,
-      currentStep,
       getCaptionHighlightsSignature
     ]
   );
@@ -1396,6 +1396,7 @@ export default function HomePage() {
     chatId: string,
     options?: { preferredStep?: 1 | 2 | 3 }
   ): Promise<{ chat: ChatThread; draft: ChatDraft | null }> => {
+    const preserveCurrentStep = activeChatRef.current?.id === chatId;
     desiredActiveChatIdRef.current = chatId;
     activeChatIdRef.current = chatId;
     const { chat, draft } = await refreshActiveChat(chatId);
@@ -1414,8 +1415,10 @@ export default function HomePage() {
     });
     setCurrentStep(
       resolveLiveHydratedWorkflowStep({
+        currentStep: currentStepRef.current,
         livePreferredStep: preferredStep,
         maxStep: getMaxStepForChat(chat),
+        preserveCurrentStep,
         requestedStep: options?.preferredStep
       })
     );
@@ -1945,9 +1948,8 @@ export default function HomePage() {
             writeStage2DurationMetric(durationMs);
           }
           if (activeChat?.id === nextRun.chatId) {
-            const preferredStep = resolveCompletedStage2RefreshStep(currentStep);
             await Promise.allSettled([
-              hydrateChatLiveState(activeChat.id, { preferredStep }),
+              hydrateChatLiveState(activeChat.id),
               refreshChats()
             ]);
           } else {
@@ -1975,12 +1977,9 @@ export default function HomePage() {
     };
   }, [
     activeChat?.id,
-    currentStep,
     hydrateChatLiveState,
-    refreshActiveChat,
     refreshChats,
     refreshStage2RunDetail,
-    refreshStage2RunsForChat,
     stage2RunId,
     writeStage2DurationMetric
   ]);

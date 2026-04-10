@@ -37,7 +37,7 @@
   - на мобильных inspector открывается drawer-ом, а не ломает основной список;
   - save/action/shift обновляют очередь локально и затем делают background revalidate без полного blocking refresh;
   - exact-time toggle больше не сбрасывается сам при клике, `Опубликовать сейчас` требует явного подтверждения вторым нажатием, а desktop inspector скроллится независимо от страницы;
-  - фоновые refresh-и после render/save/publication actions, включая completed Stage 2 polling, сохраняют текущий Stage вместо случайного возврата на Step 2;
+  - фоновые refresh-и и same-chat live hydration после render/save/publication actions больше не перетягивают пользователя на Step 1/2 поверх его ручного выбора;
   - publication routes возвращают typed mutation errors (`code` + `field`), поэтому form-level и field-level ошибки показываются в правильном месте.
 
 ## 1. Установка зависимостей проекта
