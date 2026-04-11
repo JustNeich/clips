@@ -1,5 +1,7 @@
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
@@ -11,6 +13,7 @@ const publicDir = path.join(repoRoot, "public", "stage3-worker");
 const bundlePath = path.join(publicDir, "clips-stage3-worker.cjs");
 const manifestPath = path.join(publicDir, "manifest.json");
 const workerPackagePath = path.join(publicDir, "package.json");
+const runtimeDependenciesArchivePath = path.join(publicDir, "runtime-deps.tar.gz");
 const remotionPublicDir = path.join(publicDir, "remotion");
 const libPublicDir = path.join(publicDir, "lib");
 const designPublicDir = path.join(publicDir, "design");
@@ -125,6 +128,42 @@ function pickWorkerDependencies(rootPackageJson) {
   );
 }
 
+function runCommand(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+    ...options
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `Command failed: ${command} ${args.join(" ")}${typeof result.status === "number" ? ` (exit ${result.status})` : ""}`
+    );
+  }
+}
+
+function resolveNpmCommand() {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+async function buildWorkerRuntimeArchive(workerPackageJson) {
+  const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), "clips-stage3-worker-runtime-"));
+  try {
+    await fs.writeFile(
+      path.join(stagingDir, "package.json"),
+      `${JSON.stringify(workerPackageJson, null, 2)}\n`,
+      "utf-8"
+    );
+    runCommand(resolveNpmCommand(), ["install", "--omit=dev", "--no-fund", "--no-audit"], {
+      cwd: stagingDir
+    });
+    await fs.rm(runtimeDependenciesArchivePath, { force: true }).catch(() => undefined);
+    runCommand("tar", ["-czf", runtimeDependenciesArchivePath, "node_modules"], {
+      cwd: stagingDir
+    });
+  } finally {
+    await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 async function syncWorkerRuntimeSources() {
   await fs.rm(remotionPublicDir, { recursive: true, force: true }).catch(() => undefined);
   await fs.rm(libPublicDir, { recursive: true, force: true }).catch(() => undefined);
@@ -170,6 +209,16 @@ async function main() {
   const remotionFiles = await listWorkerRemotionRuntimeFiles();
   await fs.mkdir(publicDir, { recursive: true });
   const runtimeSources = await syncWorkerRuntimeSources();
+  const workerPackageJson = {
+    name: "clips-stage3-worker",
+    version,
+    private: true,
+    type: "commonjs",
+    engines: {
+      node: ">=22"
+    },
+    dependencies: pickWorkerDependencies(rootPackageJson)
+  };
 
   await build({
     entryPoints: [workerEntry],
@@ -208,6 +257,7 @@ async function main() {
         runtimeVersion,
         builtAt: new Date().toISOString(),
         bundleFile: path.basename(bundlePath),
+        runtimeDependenciesArchiveFile: path.basename(runtimeDependenciesArchivePath),
         remotionFiles,
         libFiles: WORKER_LIB_RUNTIME_FILES,
         designFiles: runtimeSources.designFiles,
@@ -220,22 +270,10 @@ async function main() {
   );
   await fs.writeFile(
     workerPackagePath,
-    JSON.stringify(
-      {
-        name: "clips-stage3-worker",
-        version,
-        private: true,
-        type: "commonjs",
-        engines: {
-          node: ">=22"
-        },
-        dependencies: pickWorkerDependencies(rootPackageJson)
-      },
-      null,
-      2
-    ),
+    JSON.stringify(workerPackageJson, null, 2),
     "utf-8"
   );
+  await buildWorkerRuntimeArchive(workerPackageJson);
 }
 
 main().catch((error) => {

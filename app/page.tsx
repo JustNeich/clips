@@ -191,6 +191,7 @@ import {
   normalizeStage3EditorPreviewNotice,
   normalizeStage3SourceFailureNotice
 } from "../lib/stage3-preview-notice";
+import { loadDynamicImportWithRecovery } from "../lib/dynamic-import-recovery";
 import {
   PublicationMutationError,
   type PublicationMutationErrorPayload
@@ -221,6 +222,10 @@ const STAGE2_POLL_RETRY_VISIBLE_MS = 1_500;
 const STAGE2_POLL_RETRY_HIDDEN_MS = 4_000;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
+function loadRecoverablePageChunk<T>(id: string, loader: () => Promise<T>): Promise<T> {
+  return loadDynamicImportWithRecovery(loader, { id });
+}
+
 function formatChannelPublicationMoment(iso: string, timeZone: string): string {
   return new Date(iso).toLocaleString("ru-RU", {
     timeZone,
@@ -232,21 +237,27 @@ function formatChannelPublicationMoment(iso: string, timeZone: string): string {
 }
 
 const Step1PasteLink = dynamic(
-  () => import("./components/Step1PasteLink").then((mod) => mod.Step1PasteLink),
+  () =>
+    loadRecoverablePageChunk("Step1PasteLink", () => import("./components/Step1PasteLink")).then(
+      (mod) => mod.Step1PasteLink
+    ),
   {
     loading: () => <p className="subtle-text">Загружаю шаг 1...</p>
   }
 );
 
 const Step3RenderTemplate = dynamic(
-  () => import("./components/Step3RenderTemplate").then((mod) => mod.Step3RenderTemplate),
+  () =>
+    loadRecoverablePageChunk("Step3RenderTemplate", () => import("./components/Step3RenderTemplate")).then(
+      (mod) => mod.Step3RenderTemplate
+    ),
   {
     loading: () => <p className="subtle-text">Подготавливаю редактор Stage 3...</p>
   }
 );
 
 const DetailsDrawer = dynamic(
-  () => import("./components/DetailsDrawer").then((mod) => mod.DetailsDrawer),
+  () => loadRecoverablePageChunk("DetailsDrawer", () => import("./components/DetailsDrawer")).then((mod) => mod.DetailsDrawer),
   {
     loading: () => <p className="subtle-text">Загружаю детали...</p>
   }
@@ -255,14 +266,20 @@ const DetailsDrawer = dynamic(
 const AUTH_REQUIRED_REDIRECT_MESSAGE = "AUTH_REQUIRED_REDIRECT";
 
 const ChannelManager = dynamic(
-  () => import("./components/ChannelManager").then((mod) => mod.ChannelManager),
+  () =>
+    loadRecoverablePageChunk("ChannelManager", () => import("./components/ChannelManager")).then(
+      (mod) => mod.ChannelManager
+    ),
   {
     loading: () => null
   }
 );
 
 const ChannelOnboardingWizard = dynamic(
-  () => import("./components/ChannelOnboardingWizard").then((mod) => mod.ChannelOnboardingWizard),
+  () =>
+    loadRecoverablePageChunk("ChannelOnboardingWizard", () => import("./components/ChannelOnboardingWizard")).then(
+      (mod) => mod.ChannelOnboardingWizard
+    ),
   {
     loading: () => null
   }
@@ -2612,6 +2629,23 @@ export default function HomePage() {
     return { chat: body.chat, job: body.job, reused: false, activeStage2Run: null };
   };
 
+  const refreshSourceUploadJobState = async (payload: {
+    chat: ChatThread;
+    job: SourceJobDetail;
+  }): Promise<void> => {
+    setSourceJobId(payload.job.jobId);
+    setSourceJobDetail(payload.job);
+    setSourceJobs((current) => {
+      const deduped = current.filter((item) => item.jobId !== payload.job.jobId);
+      return [payload.job, ...deduped].slice(0, 20);
+    });
+    await Promise.allSettled([
+      refreshActiveChat(payload.chat.id),
+      refreshSourceJobsForChat(payload.chat.id),
+      refreshChats()
+    ]);
+  };
+
   const uploadSourceFileToChannel = async (input: {
     channelId: string;
     file: File;
@@ -2640,19 +2674,65 @@ export default function HomePage() {
       job: SourceJobDetail;
     };
 
-    setSourceJobId(body.job.jobId);
-    setSourceJobDetail(body.job);
-    setSourceJobs((current) => {
-      const deduped = current.filter((item) => item.jobId !== body.job.jobId);
-      return [body.job, ...deduped].slice(0, 20);
-    });
-    await Promise.allSettled([
-      refreshActiveChat(body.chat.id),
-      refreshSourceJobsForChat(body.chat.id),
-      refreshChats()
-    ]);
+    await refreshSourceUploadJobState(body);
 
     return body;
+  };
+
+  const uploadSourceBatchToChannel = async (input: {
+    channelId: string;
+    files: File[];
+    autoRunStage2: boolean;
+  }): Promise<{
+    chat: ChatThread;
+    job: SourceJobDetail;
+  }> => {
+    const formData = new FormData();
+    formData.set("channelId", input.channelId);
+    formData.set("autoRunStage2", input.autoRunStage2 ? "1" : "0");
+    input.files.forEach((file) => {
+      formData.append("files", file, file.name);
+    });
+
+    const response = await fetch("/api/pipeline/source-upload", {
+      method: "POST",
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Не удалось загрузить несколько mp4."));
+    }
+
+    const body = (await response.json()) as {
+      chat: ChatThread;
+      job: SourceJobDetail;
+    };
+
+    await refreshSourceUploadJobState(body);
+
+    return body;
+  };
+
+  const uploadSourceFilesToChannel = async (input: {
+    channelId: string;
+    files: File[];
+    autoRunStage2: boolean;
+  }): Promise<{
+    chat: ChatThread;
+    job: SourceJobDetail;
+  }> => {
+    if (input.files.length === 1) {
+      const single = input.files[0];
+      if (!single) {
+        throw new Error("Не удалось определить mp4 для загрузки.");
+      }
+      return uploadSourceFileToChannel({
+        channelId: input.channelId,
+        file: single,
+        autoRunStage2: input.autoRunStage2
+      });
+    }
+    return uploadSourceBatchToChannel(input);
   };
 
   const runStage2ForChat = async (
@@ -2811,8 +2891,8 @@ export default function HomePage() {
     }
   };
 
-  const handleUploadSourceFile = async (file: File): Promise<void> => {
-    if (!file) {
+  const handleUploadSourceFiles = async (files: File[]): Promise<void> => {
+    if (!files.length) {
       return;
     }
     if (!activeChannelId) {
@@ -2820,9 +2900,9 @@ export default function HomePage() {
       setStatus("Сначала создайте/выберите канал.");
       return;
     }
-    if (!file.name.toLowerCase().endsWith(".mp4")) {
+    if (files.some((file) => !file.name.toLowerCase().endsWith(".mp4"))) {
       setStatusType("error");
-      setStatus("Загрузить можно только готовый mp4 файл.");
+      setStatus("Загрузить можно только готовые mp4 файлы.");
       return;
     }
     if (!canUploadSourceForChannel) {
@@ -2839,9 +2919,9 @@ export default function HomePage() {
     setStatusType("");
 
     try {
-      const { chat, job } = await uploadSourceFileToChannel({
+      const { chat, job } = await uploadSourceFilesToChannel({
         channelId: activeChannelId,
-        file,
+        files,
         autoRunStage2: autoRunStage2AfterSource && codexLoggedIn
       });
       setDraftUrl("");
@@ -2854,8 +2934,12 @@ export default function HomePage() {
       setStatus(
         job.progress.detail ??
           (codexLoggedIn
-            ? "mp4 загружен. Step 2 стартует автоматически после завершения Step 1."
-            : "mp4 загружен. Можно переключаться между чатами и вернуться позже.")
+            ? files.length > 1
+              ? "mp4 загружены. Step 2 стартует автоматически после завершения Step 1."
+              : "mp4 загружен. Step 2 стартует автоматически после завершения Step 1."
+            : files.length > 1
+              ? "mp4 загружены. Можно переключаться между чатами и вернуться позже."
+              : "mp4 загружен. Можно переключаться между чатами и вернуться позже.")
       );
     } catch (error) {
       const message = getUiErrorMessage(error, "Не удалось загрузить mp4.");
@@ -6495,8 +6579,8 @@ export default function HomePage() {
           onFetch={() => {
             void handleFetchSource();
           }}
-          onUploadFile={(file) => {
-            void handleUploadSourceFile(file);
+          onUploadFiles={(files) => {
+            void handleUploadSourceFiles(files);
           }}
           onAutoRunStage2Change={setAutoRunStage2AfterSource}
           onDownloadSource={() => {

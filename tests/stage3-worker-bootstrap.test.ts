@@ -34,11 +34,19 @@ test("powershell bootstrap command enables visible diagnostics and fail-fast set
 test("windows bootstrap script uses basic parsing and writes bootstrap logs", () => {
   const scriptPath = path.join(process.cwd(), "public", "stage3-worker", "bootstrap.ps1");
   const script = readFileSync(scriptPath, "utf8");
+  const manifestPath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+    runtimeDependenciesArchiveFile?: string;
+  };
 
   assert.match(script, /function Write-ClipsStage3BootstrapLog/);
+  assert.match(script, /function Expand-ClipsStage3RuntimeArchive/);
   assert.match(script, /Bootstrap log:/);
   assert.match(script, /Share this log with support:/);
   assert.match(script, /Invoke-WebRequest \$Uri -UseBasicParsing -ErrorAction Stop -OutFile \$OutFile/);
   assert.match(script, /Invoke-ClipsStage3Download -Uri "\$serverOrigin\/stage3-worker\/clips-stage3-worker\.cjs" -OutFile \$bundlePath -Label "worker bundle"/);
+  assert.equal(manifest.runtimeDependenciesArchiveFile, "runtime-deps.tar.gz");
+  assert.match(script, /runtimeDependenciesArchiveFile/);
+  assert.match(script, /Bundled runtime dependencies unpacked locally\. npm registry access is not required\./);
   assert.match(script, /Installing worker runtime dependencies with npm/);
 });

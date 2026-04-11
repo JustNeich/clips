@@ -26,19 +26,22 @@ export type ParsedMultipartFile = {
   sizeBytes: number;
 };
 
-export async function parseMultipartSingleFileRequest(
+type ParseMultipartRequestOptions = {
+  fileFieldName: string;
+  maxFileBytes?: number;
+  maxTotalFileBytes?: number;
+  maxFileCount?: number;
+  fileTooLargeMessage?: string;
+  totalFilesTooLargeMessage?: string;
+  tooManyFilesMessage?: string;
+  parseErrorMessage?: string;
+  missingBodyMessage?: string;
+};
+
+async function parseMultipartFilesInternal(
   request: Request,
-  options: {
-    fileFieldName: string;
-    maxFileBytes?: number;
-    fileTooLargeMessage?: string;
-    parseErrorMessage?: string;
-    missingBodyMessage?: string;
-  }
-): Promise<{
-  file: ParsedMultipartFile | null;
-  fields: Record<string, string>;
-}> {
+  options: ParseMultipartRequestOptions
+): Promise<{ files: ParsedMultipartFile[]; fields: Record<string, string> }> {
   const contentType = request.headers.get("content-type")?.trim() ?? "";
   if (!contentType.toLowerCase().includes("multipart/form-data") || !request.body) {
     throw new MultipartUploadError(
@@ -63,11 +66,13 @@ export async function parseMultipartSingleFileRequest(
 
     const fields: Record<string, string> = {};
     const pendingFiles: Array<Promise<void>> = [];
-    let targetFile: ParsedMultipartFile | null = null;
+    const files: ParsedMultipartFile[] = [];
     let deferredError: MultipartUploadError | null = null;
+    let totalSizeBytes = 0;
+    let matchingFileCount = 0;
     let settled = false;
 
-    const settleResolve = (value: { file: ParsedMultipartFile | null; fields: Record<string, string> }) => {
+    const settleResolve = (value: { files: ParsedMultipartFile[]; fields: Record<string, string> }) => {
       if (settled) {
         return;
       }
@@ -98,7 +103,16 @@ export async function parseMultipartSingleFileRequest(
     parser.on(
       "file",
       (name: string, stream: NodeJS.ReadableStream, info: unknown, legacyEncoding?: string, legacyMime?: string) => {
-        if (name !== options.fileFieldName || targetFile) {
+        if (name !== options.fileFieldName) {
+          stream.resume();
+          return;
+        }
+        matchingFileCount += 1;
+        if (options.maxFileCount && matchingFileCount > options.maxFileCount) {
+          deferredError = new MultipartUploadError(
+            options.tooManyFilesMessage ??
+              `Слишком много файлов. Максимум ${options.maxFileCount}.`
+          );
           stream.resume();
           return;
         }
@@ -130,6 +144,7 @@ export async function parseMultipartSingleFileRequest(
                 return;
               }
               const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+              totalSizeBytes += buffer.byteLength;
               sizeBytes += buffer.byteLength;
               if (options.maxFileBytes && sizeBytes > options.maxFileBytes) {
                 exceededSize = true;
@@ -141,17 +156,29 @@ export async function parseMultipartSingleFileRequest(
                 stream.resume();
                 return;
               }
+              if (options.maxTotalFileBytes && totalSizeBytes > options.maxTotalFileBytes) {
+                exceededSize = true;
+                deferredError = new MultipartUploadError(
+                  options.totalFilesTooLargeMessage ??
+                    `Суммарный размер файлов слишком большой. Максимум ${Math.round(
+                      options.maxTotalFileBytes / (1024 * 1024)
+                    )} MB.`
+                );
+                chunks.length = 0;
+                stream.resume();
+                return;
+              }
               chunks.push(buffer);
             });
             stream.on("end", () => {
               if (!exceededSize && !deferredError) {
-                targetFile = {
+                files.push({
                   fieldName: name,
                   name: fileName,
                   mimeType,
                   bytes: new Uint8Array(Buffer.concat(chunks)),
                   sizeBytes
-                };
+                });
               }
               finishFile();
             });
@@ -179,7 +206,7 @@ export async function parseMultipartSingleFileRequest(
             return;
           }
           settleResolve({
-            file: targetFile,
+            files,
             fields
           });
         })
@@ -192,4 +219,28 @@ export async function parseMultipartSingleFileRequest(
       })
       .pipe(parser as any);
   });
+}
+
+export async function parseMultipartSingleFileRequest(
+  request: Request,
+  options: ParseMultipartRequestOptions
+): Promise<{
+  file: ParsedMultipartFile | null;
+  fields: Record<string, string>;
+}> {
+  const parsed = await parseMultipartFilesInternal(request, options);
+  return {
+    file: parsed.files[0] ?? null,
+    fields: parsed.fields
+  };
+}
+
+export async function parseMultipartFilesRequest(
+  request: Request,
+  options: ParseMultipartRequestOptions
+): Promise<{
+  files: ParsedMultipartFile[];
+  fields: Record<string, string>;
+}> {
+  return parseMultipartFilesInternal(request, options);
 }

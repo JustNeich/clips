@@ -3707,6 +3707,9 @@ export function Step3RenderTemplate({
               <div className="executor-guide-note">
                 <strong>Ожидаемый результат:</strong> через несколько секунд статус в браузере должен стать <strong>Online</strong>.
               </div>
+              <div className="executor-guide-note">
+                Команда скачивает bootstrap и уже собранный runtime прямо с этого приложения, поэтому отдельный доступ к `npm registry` для обычного запуска больше не нужен.
+              </div>
             </>
           ) : (
             <div className="executor-guide-note">

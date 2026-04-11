@@ -94,7 +94,8 @@
 
 - скачает worker bundle с хоста
 - скачает worker runtime package descriptor с хоста
-- установит worker runtime зависимости через `npm install --omit=dev`
+- распакует уже собранные runtime зависимости прямо с хоста, без обращения к внешнему `npm registry`
+- использует `npm install --omit=dev` только как запасной fallback, если архив runtime недоступен
 - создаст локальный wrapper
 - выполнит pairing
 - проверит зависимости
@@ -117,6 +118,7 @@
 4. Для поддержки нужен либо текст из окна PowerShell, либо последний `bootstrap-*.log`.
 
 На старом Windows PowerShell причиной зависания часто был `Invoke-WebRequest` без `-UseBasicParsing`; bootstrap теперь принудительно использует basic parsing и пишет шаги установки в лог.
+Новая Windows/macOS bootstrap-команда также сначала тянет уже собранный runtime archive с вашего приложения, поэтому ограниченный интернет у редактора больше не должен ломать установку на шаге `npm install`.
 
 Если PowerShell пишет parser error еще до строк `Downloading Stage 3 bootstrap...` или ошибку вида `Invoke-Expression ... Cannot convert "System.Byte[]" to "System.String"`, значит была запущена старая версия команды. Откройте Step 3 заново и скопируйте свежую команду: теперь Windows-команда отправляется через `-EncodedCommand`, затем bootstrap сохраняется во временный `.ps1`-файл и запускается оттуда без исполнения `Content` из web response.
 

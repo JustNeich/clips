@@ -5,6 +5,10 @@ SERVER=""
 TOKEN=""
 LABEL=""
 
+log() {
+  printf '[Clips] %s\n' "$1"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --server)
@@ -47,20 +51,18 @@ BUNDLE_PATH="${BIN_DIR}/clips-stage3-worker.cjs"
 WRAPPER_PATH="${BIN_DIR}/clips-stage3-worker"
 PACKAGE_PATH="${INSTALL_ROOT}/package.json"
 MANIFEST_PATH="${INSTALL_ROOT}/manifest.json"
-
-if ! command -v npm >/dev/null 2>&1; then
-  echo "npm is required to install the Clips Stage 3 worker runtime." >&2
-  echo "Install Node.js with npm first, then rerun this command." >&2
-  exit 1
-fi
+RUNTIME_ARCHIVE_PATH="${INSTALL_ROOT}/runtime-deps.tar.gz"
 
 mkdir -p "$BIN_DIR"
 mkdir -p "$REMOTION_DIR"
 mkdir -p "$LIB_DIR"
 mkdir -p "$DESIGN_DIR"
 mkdir -p "$PUBLIC_DIR"
+log "Downloading worker bundle"
 curl -fsSL "${SERVER%/}/stage3-worker/clips-stage3-worker.cjs" -o "$BUNDLE_PATH"
+log "Downloading worker package.json"
 curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
+log "Downloading worker manifest"
 curl -fsSL "${SERVER%/}/stage3-worker/manifest.json" -o "$MANIFEST_PATH"
 while IFS= read -r FILE; do
   [[ -n "$FILE" ]] || continue
@@ -141,7 +143,49 @@ for (const file of files) {
 )
 chmod +x "$BUNDLE_PATH"
 
-(cd "$INSTALL_ROOT" && npm install --omit=dev --no-fund --no-audit)
+RUNTIME_ARCHIVE_FILE="$(
+  node -e '
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const archiveFile =
+  typeof manifest.runtimeDependenciesArchiveFile === "string" && manifest.runtimeDependenciesArchiveFile.trim()
+    ? manifest.runtimeDependenciesArchiveFile.trim()
+    : "";
+process.stdout.write(archiveFile);
+' "$MANIFEST_PATH"
+)"
+
+runtime_ready="false"
+if [[ -n "$RUNTIME_ARCHIVE_FILE" ]]; then
+  if command -v tar >/dev/null 2>&1; then
+    log "Downloading bundled runtime dependencies"
+    if curl -fsSL "${SERVER%/}/stage3-worker/${RUNTIME_ARCHIVE_FILE}" -o "$RUNTIME_ARCHIVE_PATH"; then
+      rm -rf "${INSTALL_ROOT}/node_modules"
+      log "Unpacking bundled runtime dependencies"
+      if tar -xzf "$RUNTIME_ARCHIVE_PATH" -C "$INSTALL_ROOT"; then
+        runtime_ready="true"
+        log "Bundled runtime dependencies unpacked locally. npm registry access is not required."
+      else
+        log "Bundled runtime archive extraction failed, falling back to npm install."
+      fi
+    else
+      log "Bundled runtime download failed, falling back to npm install."
+    fi
+  else
+    log "tar is unavailable on this machine, falling back to npm install."
+  fi
+  rm -f "$RUNTIME_ARCHIVE_PATH"
+fi
+
+if [[ "$runtime_ready" != "true" ]]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm is required to install the Clips Stage 3 worker runtime." >&2
+    echo "Install Node.js with npm first, then rerun this command." >&2
+    exit 1
+  fi
+  log "Installing worker runtime dependencies with npm"
+  (cd "$INSTALL_ROOT" && npm install --omit=dev --no-fund --no-audit)
+fi
 
 cat > "$WRAPPER_PATH" <<'EOF'
 #!/usr/bin/env bash

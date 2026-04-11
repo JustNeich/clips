@@ -203,6 +203,18 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
 
   const card = isRecord(raw.card) ? raw.card : null;
   if (card) {
+    if (typeof card.x === "number" && Number.isFinite(card.x)) {
+      base.card.x = clamp(card.x, 0, base.frame.width);
+    }
+    if (typeof card.y === "number" && Number.isFinite(card.y)) {
+      base.card.y = clamp(card.y, 0, base.frame.height);
+    }
+    if (typeof card.width === "number" && Number.isFinite(card.width)) {
+      base.card.width = clamp(card.width, 160, base.frame.width);
+    }
+    if (typeof card.height === "number" && Number.isFinite(card.height)) {
+      base.card.height = clamp(card.height, 160, base.frame.height);
+    }
     if (typeof card.radius === "number" && Number.isFinite(card.radius)) {
       base.card.radius = clamp(card.radius, 0, 80);
     }

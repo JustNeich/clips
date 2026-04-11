@@ -26,6 +26,28 @@ function Invoke-ClipsStage3Download {
   Invoke-WebRequest $Uri -UseBasicParsing -ErrorAction Stop -OutFile $OutFile
 }
 
+function Expand-ClipsStage3RuntimeArchive {
+  param(
+    [Parameter(Mandatory = $true)][string]$ArchivePath,
+    [Parameter(Mandatory = $true)][string]$Destination
+  )
+
+  $tar = Get-Command tar -ErrorAction SilentlyContinue
+  if (-not $tar) {
+    throw "tar is not available on this machine."
+  }
+
+  $nodeModulesPath = Join-Path $Destination "node_modules"
+  if (Test-Path $nodeModulesPath) {
+    Remove-Item $nodeModulesPath -Recurse -Force -ErrorAction SilentlyContinue
+  }
+
+  & $tar.Source -xzf $ArchivePath -C $Destination
+  if ($LASTEXITCODE -ne 0) {
+    throw "tar extraction failed with exit code $LASTEXITCODE."
+  }
+}
+
 function Install-ClipsStage3Worker {
   param(
     [Parameter(Mandatory = $true)][string]$Server,
@@ -50,12 +72,6 @@ function Install-ClipsStage3Worker {
     }
     Write-ClipsStage3BootstrapLog "Detected node: $($node.Source)"
 
-    $npm = Get-Command npm -ErrorAction SilentlyContinue
-    if (-not $npm) {
-      throw "npm is required to install the Clips Stage 3 worker runtime. Install Node.js with npm first, then rerun this command."
-    }
-    Write-ClipsStage3BootstrapLog "Detected npm: $($npm.Source)"
-
     $binDir = Join-Path $installRoot "bin"
     $remotionDir = Join-Path $installRoot "remotion"
     $libDir = Join-Path $installRoot "lib"
@@ -65,6 +81,7 @@ function Install-ClipsStage3Worker {
     $wrapperPath = Join-Path $binDir "clips-stage3-worker.cmd"
     $packagePath = Join-Path $installRoot "package.json"
     $manifestPath = Join-Path $installRoot "manifest.json"
+    $runtimeArchivePath = Join-Path $installRoot "runtime-deps.tar.gz"
 
     New-Item -ItemType Directory -Path $binDir -Force | Out-Null
     New-Item -ItemType Directory -Path $remotionDir -Force | Out-Null
@@ -118,6 +135,12 @@ function Install-ClipsStage3Worker {
         "stage3-template-backdrops/hedges-of-honor-v1-shell.svg"
       )
     }
+    $runtimeArchiveRelativePath =
+      if ($manifest.runtimeDependenciesArchiveFile -is [string]) {
+        $manifest.runtimeDependenciesArchiveFile.Trim()
+      } else {
+        ""
+      }
 
     Write-ClipsStage3BootstrapLog "Downloading remotion files: $($remotionFiles.Count)"
     foreach ($file in $remotionFiles) {
@@ -154,15 +177,43 @@ cd /d "%~dp0.."
 node "%~dp0clips-stage3-worker.cjs" %*
 "@ | Set-Content -Path $wrapperPath -Encoding Ascii
 
-    Write-ClipsStage3BootstrapLog "Installing worker runtime dependencies with npm"
-    Push-Location $installRoot
-    try {
-      & $npm.Source install --omit=dev --no-fund --no-audit
-      if ($LASTEXITCODE -ne 0) {
-        throw "npm install failed with exit code $LASTEXITCODE."
+    $runtimeReady = $false
+    if ($runtimeArchiveRelativePath) {
+      try {
+        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/$runtimeArchiveRelativePath" -OutFile $runtimeArchivePath -Label "bundled runtime dependencies"
+        Write-ClipsStage3BootstrapLog "Unpacking bundled runtime dependencies"
+        Expand-ClipsStage3RuntimeArchive -ArchivePath $runtimeArchivePath -Destination $installRoot
+        $runtimeReady = Test-Path (Join-Path $installRoot "node_modules")
+        if (-not $runtimeReady) {
+          throw "Bundled runtime archive did not create node_modules."
+        }
+        Write-ClipsStage3BootstrapLog "Bundled runtime dependencies unpacked locally. npm registry access is not required."
+      } catch {
+        $message = if ($_.Exception) { $_.Exception.Message } else { "$_" }
+        Write-ClipsStage3BootstrapLog "Bundled runtime install failed, falling back to npm install: $message" "WARN"
+      } finally {
+        if (Test-Path $runtimeArchivePath) {
+          Remove-Item $runtimeArchivePath -Force -ErrorAction SilentlyContinue
+        }
       }
-    } finally {
-      Pop-Location
+    }
+
+    if (-not $runtimeReady) {
+      $npm = Get-Command npm -ErrorAction SilentlyContinue
+      if (-not $npm) {
+        throw "npm is required to install the Clips Stage 3 worker runtime. Install Node.js with npm first, then rerun this command."
+      }
+      Write-ClipsStage3BootstrapLog "Detected npm: $($npm.Source)"
+      Write-ClipsStage3BootstrapLog "Installing worker runtime dependencies with npm"
+      Push-Location $installRoot
+      try {
+        & $npm.Source install --omit=dev --no-fund --no-audit
+        if ($LASTEXITCODE -ne 0) {
+          throw "npm install failed with exit code $LASTEXITCODE."
+        }
+      } finally {
+        Pop-Location
+      }
     }
 
     $pairArgs = @("pair", "--server", $Server, "--token", $Token)

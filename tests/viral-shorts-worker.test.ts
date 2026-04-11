@@ -10537,7 +10537,7 @@ test("step 1 shows attached source job as neutral live state instead of repeatin
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
-      onUploadFile: () => undefined,
+      onUploadFiles: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -10606,7 +10606,7 @@ test("step 1 renders hosted retry countdown and provider diagnostics while retry
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
-      onUploadFile: () => undefined,
+      onUploadFiles: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -10638,7 +10638,7 @@ test("step 1 keeps an attached stage 2 run informational instead of rendering it
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
-      onUploadFile: () => undefined,
+      onUploadFiles: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -10669,7 +10669,7 @@ test("step 1 preview makes the source link clickable and embeds a YouTube player
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
-      onUploadFile: () => undefined,
+      onUploadFiles: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -10702,7 +10702,7 @@ test("step 1 renders a custom mp4 upload panel and auto-stage2 checkbox", () => 
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
-      onUploadFile: () => undefined,
+      onUploadFiles: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined
     })
@@ -10769,7 +10769,7 @@ test("step 1 no longer renders an inline next-chat shortcut card inside the work
       onDraftUrlChange: () => undefined,
       onPaste: () => undefined,
       onFetch: () => undefined,
-      onUploadFile: () => undefined,
+      onUploadFiles: () => undefined,
       onAutoRunStage2Change: () => undefined,
       onDownloadSource: () => undefined,
       onCreateNextChat: () => undefined

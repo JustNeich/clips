@@ -24,6 +24,10 @@ pnpm-debug.log*
 /.codex-user-test
 /.codex
 /.data
+/.assistant/state-snapshots
+/data/*.db
+/data/*.db-shm
+/data/*.db-wal
 
 # local build/cache outputs
 /output
@@ -32,5 +36,6 @@ pnpm-debug.log*
 /public/stage3-worker/clips-stage3-worker.cjs
 /public/stage3-worker/manifest.json
 /public/stage3-worker/package.json
+/public/stage3-worker/runtime-deps.tar.gz
 /public/stage3-worker/remotion
 /public/stage3-worker/lib

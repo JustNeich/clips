@@ -278,7 +278,7 @@
 - `controls`:
   - поле `Ссылка на видео`
   - кнопка `Вставить`
-  - file input `Choose File`
+  - file input `Choose File` с `multiple`
   - кнопка `Выбрать mp4`
   - кнопка `Получить источник`
   - checkbox `Автоматически запускать Stage 2 после завершения Step 1`
@@ -293,6 +293,7 @@
 - `entities`: `source job`, `source media`, `comments payload`, `chat`
 - `success states`:
   - источник прикреплён к chat
+  - несколько uploaded mp4 могут быть собраны в один composite upload:// source перед Step 3
   - preview/context справа показывает source metadata
 - `failure states`:
   - invalid link

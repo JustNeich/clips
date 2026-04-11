@@ -162,7 +162,7 @@ const TOP_FONT_OPTIONS: FontOption[] = [
 const BODY_FONT_OPTIONS: FontOption[] = [
   {
     label: "Нейтральный гротеск",
-    value: '"Söhne","Inter","SF Pro Text",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
+    value: '"Aptos","Segoe UI","Helvetica Neue",Arial,sans-serif'
   },
   {
     label: "Чистый системный",
@@ -433,6 +433,12 @@ function resolveDefaultBodyFontValue(templateId: string): string {
     return BODY_FONT_OPTIONS[1].value;
   }
   return BODY_FONT_OPTIONS[0].value;
+}
+
+function buildFontSelectOptions(value: string, options: FontOption[]): FontOption[] {
+  return options.some((option) => option.value === value)
+    ? options
+    : [{ label: "Свой набор", value }, ...options];
 }
 
 function formatShadow(value: string | undefined): string {
@@ -1159,21 +1165,27 @@ export function TemplateStyleEditor({
     templateConfig.typography.top.fontFamily ?? resolveDefaultTopFontValue(baseTemplateId);
   const currentBottomFontFamily =
     templateConfig.typography.bottom.fontFamily ?? resolveDefaultBodyFontValue(baseTemplateId);
+  const currentAuthorNameFontFamily =
+    templateConfig.typography.authorName.fontFamily ?? currentBottomFontFamily;
+  const currentAuthorHandleFontFamily =
+    templateConfig.typography.authorHandle.fontFamily ?? currentBottomFontFamily;
   const currentBadgeAssetPath = templateConfig.author.checkAssetPath ?? "";
   const currentBadgeOption = BADGE_OPTIONS.find((option) => option.value === currentBadgeAssetPath);
   const topFontSelectOptions = useMemo(
-    () =>
-      TOP_FONT_OPTIONS.some((option) => option.value === currentTopFontFamily)
-        ? TOP_FONT_OPTIONS
-        : [{ label: "Свой набор", value: currentTopFontFamily }, ...TOP_FONT_OPTIONS],
+    () => buildFontSelectOptions(currentTopFontFamily, TOP_FONT_OPTIONS),
     [currentTopFontFamily]
   );
   const bottomFontSelectOptions = useMemo(
-    () =>
-      BODY_FONT_OPTIONS.some((option) => option.value === currentBottomFontFamily)
-        ? BODY_FONT_OPTIONS
-        : [{ label: "Свой набор", value: currentBottomFontFamily }, ...BODY_FONT_OPTIONS],
+    () => buildFontSelectOptions(currentBottomFontFamily, BODY_FONT_OPTIONS),
     [currentBottomFontFamily]
+  );
+  const authorNameFontSelectOptions = useMemo(
+    () => buildFontSelectOptions(currentAuthorNameFontFamily, BODY_FONT_OPTIONS),
+    [currentAuthorNameFontFamily]
+  );
+  const authorHandleFontSelectOptions = useMemo(
+    () => buildFontSelectOptions(currentAuthorHandleFontFamily, BODY_FONT_OPTIONS),
+    [currentAuthorHandleFontFamily]
   );
 
   const clearPendingAutosaveTimer = useCallback(() => {
@@ -2391,7 +2403,7 @@ export function TemplateStyleEditor({
             id="template-road-style-base"
             eyebrow="Основа"
             title="Базовая компоновка"
-            description="Здесь выбирается база сцены. Геометрия карточки и кадра остаётся фиксированной."
+            description="Здесь выбирается база сцены. Размер и позицию всей карточки потом можно подправить в блоке «Карточка»."
             isOpen={Boolean(openSections["template-road-style-base"])}
             onToggle={() => toggleSection("template-road-style-base")}
             meta={
@@ -2432,7 +2444,7 @@ export function TemplateStyleEditor({
               />
             </div>
             <div className="template-road-editor-meta-strip">
-              <span className="meta-pill">Позиция карточки зафиксирована</span>
+              <span className="meta-pill">Основа задаёт стартовую геометрию</span>
               <span className="meta-pill">Кадр всегда 1080x1920</span>
               <span className="meta-pill">Основа: {activeTemplate.label}</span>
             </div>
@@ -2756,16 +2768,63 @@ export function TemplateStyleEditor({
             id="template-road-style-card"
             eyebrow="Карточка"
             title="Силуэт и оболочка"
-            description="Обводка, фон и скругление карточки без изменения её расположения."
+            description="Размер всей рамки, её позиция, обводка, фон и скругление."
             isOpen={Boolean(openSections["template-road-style-card"])}
             onToggle={() => toggleSection("template-road-style-card")}
             meta={
               <>
+                <span className="meta-pill">
+                  {templateConfig.card.width}x{templateConfig.card.height}
+                </span>
                 <span className="meta-pill">Скругление: {templateConfig.card.radius}px</span>
                 <span className="meta-pill">Обводка: {templateConfig.card.borderWidth}px</span>
               </>
             }
           >
+            <div className="template-road-editor-grid two-up">
+              <SliderControl
+                label="Ширина карточки"
+                hint="Размер всей рамки вместе с бордером по горизонтали."
+                min={320}
+                max={templateConfig.frame.width}
+                step={1}
+                value={templateConfig.card.width}
+                formatValue={formatPxValue}
+                onChange={(value) => updateCard("width", value)}
+              />
+              <SliderControl
+                label="Высота карточки"
+                hint="Размер всей рамки вместе с бордером по вертикали."
+                min={480}
+                max={templateConfig.frame.height}
+                step={1}
+                value={templateConfig.card.height}
+                formatValue={formatPxValue}
+                onChange={(value) => updateCard("height", value)}
+              />
+            </div>
+            <div className="template-road-editor-grid two-up">
+              <SliderControl
+                label="Позиция X"
+                hint="Сдвиг всей карточки по ширине кадра."
+                min={0}
+                max={templateConfig.frame.width}
+                step={1}
+                value={templateConfig.card.x}
+                formatValue={formatPxValue}
+                onChange={(value) => updateCard("x", value)}
+              />
+              <SliderControl
+                label="Позиция Y"
+                hint="Сдвиг всей карточки по высоте кадра."
+                min={0}
+                max={templateConfig.frame.height}
+                step={1}
+                value={templateConfig.card.y}
+                formatValue={formatPxValue}
+                onChange={(value) => updateCard("y", value)}
+              />
+            </div>
             <div className="template-road-editor-grid two-up">
               <SliderControl
                 label="Скругление углов"
@@ -3080,6 +3139,48 @@ export function TemplateStyleEditor({
                 </span>
               </label>
             </div>
+            <div className="template-road-editor-grid two-up">
+              <SelectControl
+                label="Шрифт имени автора"
+                hint="Имя канала можно сделать ближе к нижнему тексту или, наоборот, выделить отдельно."
+                value={currentAuthorNameFontFamily}
+                options={authorNameFontSelectOptions}
+                onChange={(value) => updateAuthorNameTypography("fontFamily", value)}
+              />
+              <SelectControl
+                label="Шрифт ника автора"
+                hint="Помогает сделать строку автора цельной или добавить в ней контраст."
+                value={currentAuthorHandleFontFamily}
+                options={authorHandleFontSelectOptions}
+                onChange={(value) => updateAuthorHandleTypography("fontFamily", value)}
+              />
+            </div>
+            <div className="template-road-editor-grid two-up">
+              <label className="template-road-editor-field">
+                <span className="field-label">Свой стек имени автора</span>
+                <input
+                  className="text-input mono"
+                  type="text"
+                  value={currentAuthorNameFontFamily}
+                  onChange={(event) => updateAuthorNameTypography("fontFamily", event.target.value)}
+                />
+                <span className="template-road-editor-field-hint">
+                  Работает так же, как кастомный стек основного текста: можно вставить любой CSS `font-family`.
+                </span>
+              </label>
+              <label className="template-road-editor-field">
+                <span className="field-label">Свой стек ника автора</span>
+                <input
+                  className="text-input mono"
+                  type="text"
+                  value={currentAuthorHandleFontFamily}
+                  onChange={(event) => updateAuthorHandleTypography("fontFamily", event.target.value)}
+                />
+                <span className="template-road-editor-field-hint">
+                  Удобно, если ник хочется сделать более техническим, а имя оставить мягким.
+                </span>
+              </label>
+            </div>
             <div className="template-road-editor-grid three-up">
               <SliderControl
                 label="Насыщенность верхнего текста"
@@ -3349,11 +3450,11 @@ export function TemplateStyleEditor({
           >
             <BadgeOptionPicker
               label="Вариант галочки"
-              hint="Можно выбрать один из встроенных бейджей. Выбор сразу применяется в превью и в итоговом рендере."
+              hint="Можно выбрать встроенный бейдж или переключиться на «Цветную галочку», если нужно управлять оттенком через поле «Цвет бейджа»."
               value={currentBadgeAssetPath}
               options={BADGE_OPTIONS}
               fallbackColor={templateConfig.palette.checkBadgeColor}
-              onChange={(value) => updateAuthor("checkAssetPath", value || undefined)}
+              onChange={(value) => updateAuthor("checkAssetPath", value)}
             />
             <div className="template-road-editor-grid three-up">
               <SliderControl

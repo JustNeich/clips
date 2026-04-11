@@ -9,8 +9,10 @@ import {
   deleteManagedTemplateDetailed,
   getWorkspaceDefaultTemplateId,
   listManagedTemplates,
+  readManagedTemplateSync,
   resolveManagedTemplate,
-  resolveManagedTemplateSync
+  resolveManagedTemplateSync,
+  updateManagedTemplate
 } from "../lib/managed-template-store";
 import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { bootstrapOwner } from "../lib/team-store";
@@ -122,6 +124,89 @@ test("legacy repo-backed custom templates import into workspace_templates", asyn
     const templates = await listManagedTemplates(owner.workspace.id);
 
     assert.ok(templates.some((template) => template.id === legacyTemplateId));
+  });
+});
+
+test("managed templates preserve custom card geometry and author font stacks", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Geometry Control",
+        baseTemplateId: "science-card-v1",
+        templateConfig: {
+          card: {
+            x: 120,
+            y: 220,
+            width: 760,
+            height: 1360
+          },
+          typography: {
+            authorName: {
+              fontFamily: '"Aptos","Segoe UI","Helvetica Neue",Arial,sans-serif'
+            },
+            authorHandle: {
+              fontFamily: '"American Typewriter","Courier New","Georgia",serif'
+            }
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.equal(reloaded?.templateConfig.card.x, 120);
+    assert.equal(reloaded?.templateConfig.card.y, 220);
+    assert.equal(reloaded?.templateConfig.card.width, 760);
+    assert.equal(reloaded?.templateConfig.card.height, 1360);
+    assert.equal(
+      reloaded?.templateConfig.typography.authorName.fontFamily,
+      '"Aptos","Segoe UI","Helvetica Neue",Arial,sans-serif'
+    );
+    assert.equal(
+      reloaded?.templateConfig.typography.authorHandle.fontFamily,
+      '"American Typewriter","Courier New","Georgia",serif'
+    );
+  });
+});
+
+test("managed templates persist an explicit empty badge asset path", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Badge Color Mode",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const updated = await updateManagedTemplate(
+      template.id,
+      {
+        baseTemplateId: "science-card-v1",
+        templateConfig: {
+          author: {
+            checkAssetPath: ""
+          },
+          palette: {
+            checkBadgeColor: "#11aa77"
+          }
+        }
+      },
+      { workspaceId: owner.workspace.id }
+    );
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.equal(updated?.templateConfig.author.checkAssetPath, "");
+    assert.equal(updated?.templateConfig.palette.checkBadgeColor, "#11aa77");
+    assert.equal(reloaded?.templateConfig.author.checkAssetPath, "");
+    assert.equal(reloaded?.templateConfig.palette.checkBadgeColor, "#11aa77");
   });
 });
 

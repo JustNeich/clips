@@ -25,7 +25,7 @@ type Step1PasteLinkProps = {
   onDraftUrlChange: (value: string) => void;
   onPaste: () => void;
   onFetch: () => void;
-  onUploadFile: (file: File) => void;
+  onUploadFiles: (files: File[]) => void;
   onAutoRunStage2Change: (value: boolean) => void;
   onDownloadSource: () => void;
   onCreateNextChat?: () => void;
@@ -141,13 +141,13 @@ export function Step1PasteLink({
   onDraftUrlChange,
   onPaste,
   onFetch,
-  onUploadFile,
+  onUploadFiles,
   onAutoRunStage2Change,
   onDownloadSource
 }: Step1PasteLinkProps) {
   const sourcePreview = resolveSourcePreview(activeUrl);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedUploadFileName, setSelectedUploadFileName] = useState<string | null>(null);
+  const [selectedUploadFileNames, setSelectedUploadFileNames] = useState<string[] | null>(null);
   const isAttachedSourceJob =
     Boolean(sourceJob) &&
     (sourceJob?.status === "queued" || sourceJob?.status === "running") &&
@@ -178,15 +178,13 @@ export function Step1PasteLink({
 
   const uploadSummary = useMemo(() => {
     if (uploadBusy) {
+      const uploadLabel =
+        selectedUploadFileNames && selectedUploadFileNames.length > 1
+          ? `${selectedUploadFileNames[0]} и ещё ${selectedUploadFileNames.length - 1}`
+          : selectedUploadFileNames?.[0] ?? "Готовим загрузку";
       return {
-        title: selectedUploadFileName ?? "Готовим загрузку",
-        detail: "MP4 загружается и сразу попадёт в Step 1."
-      };
-    }
-    if (selectedUploadFileName) {
-      return {
-        title: selectedUploadFileName,
-        detail: "Файл выбран и будет загружен в Stage 1."
+        title: uploadLabel,
+        detail: "MP4 загружаются и будут склеены в один source для Step 3."
       };
     }
     if (sourcePreview?.kind === "video" && isUploadedSourceUrl(activeUrl ?? "")) {
@@ -195,11 +193,24 @@ export function Step1PasteLink({
         detail: "Этот mp4 уже загружен и используется как текущий источник."
       };
     }
+    if (selectedUploadFileNames && selectedUploadFileNames.length > 0) {
+      const uploadLabel =
+        selectedUploadFileNames.length > 1
+          ? `${selectedUploadFileNames[0]} и ещё ${selectedUploadFileNames.length - 1}`
+          : selectedUploadFileNames[0];
+      return {
+        title: uploadLabel,
+        detail:
+          selectedUploadFileNames.length > 1
+            ? "Выбраны несколько mp4. Они будут склеены в один source перед Step 3."
+            : "Файл выбран и будет загружен в Step 1."
+      };
+    }
     return {
       title: "Готовый mp4 не выбран",
-      detail: "Можно загрузить готовое видео вместо ссылки на Shorts или Reels."
+      detail: "Можно загрузить один или несколько готовых mp4 вместо ссылки на Shorts или Reels."
     };
-  }, [activeUrl, selectedUploadFileName, sourcePreview, uploadBusy]);
+  }, [activeUrl, selectedUploadFileNames, sourcePreview, uploadBusy]);
 
   return (
     <StepWorkspace
@@ -237,21 +248,22 @@ export function Step1PasteLink({
 
               <p className="subtle-text">
                 Примеры: `instagram.com/reel/...`, `instagram.com/share/reel/...`, `youtube.com/shorts/...`,
-                `facebook.com/reel/...` или загрузка готового `mp4`
+                `facebook.com/reel/...` или загрузка одного/нескольких готовых `mp4`
               </p>
 
-              <div className="source-upload-row" aria-label="Загрузка готового mp4">
+              <div className="source-upload-row" aria-label="Загрузка готовых mp4">
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   accept="video/mp4,.mp4"
                   className="sr-only"
                   onChange={(event) => {
-                    const file = event.target.files?.[0];
+                    const files = Array.from(event.target.files ?? []);
                     event.currentTarget.value = "";
-                    if (file) {
-                      setSelectedUploadFileName(file.name);
-                      onUploadFile(file);
+                    if (files.length > 0) {
+                      setSelectedUploadFileNames(files.map((file) => file.name));
+                      onUploadFiles(files);
                     }
                   }}
                 />
@@ -264,7 +276,7 @@ export function Step1PasteLink({
                 >
                   {uploadBusy ? "Загружаем..." : "Выбрать mp4"}
                 </button>
-                <div className={`source-upload-summary${selectedUploadFileName || uploadBusy ? " is-active" : ""}`}>
+                <div className={`source-upload-summary${selectedUploadFileNames?.length || uploadBusy ? " is-active" : ""}`}>
                   <p className="source-upload-summary-title">{uploadSummary.title}</p>
                   <p className="source-upload-summary-detail">{uploadSummary.detail}</p>
                 </div>
