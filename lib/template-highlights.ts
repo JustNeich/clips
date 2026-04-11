@@ -148,6 +148,33 @@ export function cloneTemplateHighlightConfig(config: TemplateHighlightConfig): T
   };
 }
 
+export function countEnabledTemplateHighlightSlots(
+  config: TemplateHighlightConfig | null | undefined
+): number {
+  return config?.slots.filter((slot) => slot.enabled).length ?? 0;
+}
+
+export function isTemplateHighlightingActive(
+  config: TemplateHighlightConfig | null | undefined
+): boolean {
+  return Boolean(
+    config &&
+      config.enabled &&
+      (config.topEnabled || config.bottomEnabled) &&
+      countEnabledTemplateHighlightSlots(config) > 0
+  );
+}
+
+export function countTemplateHighlightSpans(
+  highlights: TemplateCaptionHighlights | null | undefined,
+  block?: keyof TemplateCaptionHighlights
+): number {
+  if (block) {
+    return highlights?.[block]?.length ?? 0;
+  }
+  return (highlights?.top.length ?? 0) + (highlights?.bottom.length ?? 0);
+}
+
 export function normalizeTemplateHighlightConfig(
   raw: unknown,
   options?: { accentColor?: string | null }

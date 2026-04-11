@@ -21,6 +21,7 @@ import { clampStage3TextScaleUi } from "../../lib/stage3-text-fit";
 import type { TemplateContentFixture } from "../../lib/template-calibration-types";
 import {
   buildTemplateHighlightSpansFromPhrases,
+  countEnabledTemplateHighlightSlots,
   createEmptyTemplateCaptionHighlights,
   TEMPLATE_HIGHLIGHT_SLOT_IDS,
   type TemplateCaptionHighlights,
@@ -243,6 +244,7 @@ const BADGE_OPTIONS: BadgeOption[] = [
 const DEFAULT_OPEN_SECTION_IDS = new Set<string>([
   "template-road-style-library",
   "template-road-style-base",
+  "template-road-style-content",
   "template-road-style-card",
   "template-road-style-shadow",
   "template-road-style-color",
@@ -460,6 +462,10 @@ function formatPxValue(value: number): string {
 }
 
 function formatScaleValue(value: number): string {
+  return `${value.toFixed(2)}x`;
+}
+
+function formatLineHeightValue(value: number): string {
   return `${value.toFixed(2)}x`;
 }
 
@@ -1142,7 +1148,7 @@ export function TemplateStyleEditor({
   const scaledViewportHeight = Math.round(viewportMetrics.height * effectiveCanvasScale);
   const highlightConfig = templateConfig.highlights;
   const accentColor = templateConfig.palette.accentColor ?? templateConfig.palette.topTextColor;
-  const enabledHighlightSlotCount = highlightConfig.slots.filter((slot) => slot.enabled).length;
+  const enabledHighlightSlotCount = countEnabledTemplateHighlightSlots(highlightConfig);
   const shadowCss = useMemo(() => serializeShadowLayers(shadowLayers), [shadowLayers]);
   const editorSignature = useMemo(
     () =>
@@ -2453,8 +2459,8 @@ export function TemplateStyleEditor({
           <EditorSection
             id="template-road-style-content"
             eyebrow="Демо-контент"
-            title="Текст для предпросмотра"
-            description="Тестовый контент помогает быстро оценивать читаемость и баланс карточки."
+            title="Текст и highlight-профиль"
+            description="Здесь живут demo-текст и цветные выделения, которыми Stage 2 и Stage 3 пользуются дальше."
             isOpen={Boolean(openSections["template-road-style-content"])}
             onToggle={() => toggleSection("template-road-style-content")}
             meta={
@@ -2618,7 +2624,7 @@ export function TemplateStyleEditor({
                 <div className="template-road-editor-highlight-panel-copy">
                   <span className="field-label">Выделение ключевых слов</span>
                   <span className="template-road-editor-field-hint">
-                    Здесь настраивается palette для Stage 2 и demo-preview внутри редактора. Текст остаётся plain, а цвет хранится как spans.
+                    Здесь настраивается palette для Stage 2 и demo-preview внутри редактора. Если в Step 3 нет цветных слов, сначала включи profile здесь и затем заново прогони Stage 2.
                   </span>
                 </div>
                 <label className="template-road-editor-checkbox-row">
@@ -3213,6 +3219,30 @@ export function TemplateStyleEditor({
                 onChange={(value) =>
                   updateBottomTypography("fontStyle", value as "normal" | "italic")
                 }
+              />
+            </div>
+            <div className="template-road-editor-grid two-up">
+              <SliderControl
+                label="Межстрочный интервал сверху"
+                hint="Делает верхний блок плотнее или, наоборот, выше и воздушнее."
+                min={0.78}
+                max={1.4}
+                step={0.01}
+                nudgeStep={0.04}
+                value={templateConfig.typography.top.lineHeight}
+                formatValue={formatLineHeightValue}
+                onChange={(value) => updateTopTypography("lineHeight", value)}
+              />
+              <SliderControl
+                label="Межстрочный интервал снизу"
+                hint="Именно этот контрол растягивает bottom по высоте. Это не letter-spacing."
+                min={0.82}
+                max={1.45}
+                step={0.01}
+                nudgeStep={0.04}
+                value={templateConfig.typography.bottom.lineHeight}
+                formatValue={formatLineHeightValue}
+                onChange={(value) => updateBottomTypography("lineHeight", value)}
               />
             </div>
             <div className="template-road-editor-grid two-up">

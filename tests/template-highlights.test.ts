@@ -3,7 +3,10 @@ import test from "node:test";
 
 import {
   buildTemplateHighlightSpansFromPhrases,
+  countEnabledTemplateHighlightSlots,
+  countTemplateHighlightSpans,
   clearTemplateCaptionHighlightsBlock,
+  isTemplateHighlightingActive,
   normalizeTemplateHighlightConfig
 } from "../lib/template-highlights";
 
@@ -50,4 +53,35 @@ test("clearing one highlight block preserves the other block", () => {
 
   assert.deepEqual(cleared.top, []);
   assert.deepEqual(cleared.bottom, [{ start: 5, end: 9, slotId: "slot2" }]);
+});
+
+test("highlight status helpers distinguish configured profile from active runtime usage", () => {
+  const config = normalizeTemplateHighlightConfig(undefined, {
+    accentColor: "#47c96f"
+  });
+
+  assert.equal(countEnabledTemplateHighlightSlots(config), 1);
+  assert.equal(isTemplateHighlightingActive(config), false);
+
+  config.enabled = true;
+  assert.equal(isTemplateHighlightingActive(config), true);
+
+  config.topEnabled = false;
+  config.bottomEnabled = false;
+  assert.equal(isTemplateHighlightingActive(config), false);
+});
+
+test("highlight span counter reports both aggregate and per-block totals", () => {
+  const highlights = {
+    top: [
+      { start: 0, end: 4, slotId: "slot1" as const },
+      { start: 5, end: 9, slotId: "slot2" as const }
+    ],
+    bottom: [{ start: 2, end: 7, slotId: "slot3" as const }]
+  };
+
+  assert.equal(countTemplateHighlightSpans(highlights), 3);
+  assert.equal(countTemplateHighlightSpans(highlights, "top"), 2);
+  assert.equal(countTemplateHighlightSpans(highlights, "bottom"), 1);
+  assert.equal(countTemplateHighlightSpans(null), 0);
 });

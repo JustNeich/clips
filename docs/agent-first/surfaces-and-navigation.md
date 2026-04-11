@@ -393,7 +393,12 @@
   - card `Финальный текст`
     - textarea/inputs `TOP`, `BOTTOM`
     - actions to sync from Stage 2 / clear manual override / other quick edits
+    - inline status card `Подсветка слов и template customization`
+      - current template highlight status
+      - highlight count for current draft / selected option
+      - link `Открыть template customization`
   - details `Источники и быстрый mix`
+    - per-option highlight count pills
   - toggle for background/source modes
   - button `Очистить текущий flow и перейти к следующей ссылке`
   - button `Экспорт`
@@ -750,9 +755,15 @@
     - `Примечание`
   - section `Версии шаблона`
   - section `Базовая компоновка`
-  - section `Текст для предпросмотра`
+  - section `Текст и highlight-профиль`
+    - open by default
+    - demo TOP/BOTTOM
+    - highlight toggles / slots / colors / guidance
   - section `Силуэт и оболочка`
   - section `Генератор тени`
+  - section `Шрифты`
+    - font family presets / custom stacks
+    - line-height sliders for TOP/BOTTOM
   - dynamic shadow layer actions `Дублировать`, `Удалить`, `Добавить слой тени`
 - `related APIs`:
   - `app/api/design/templates/**`
