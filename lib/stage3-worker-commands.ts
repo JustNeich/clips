@@ -49,6 +49,10 @@ function hostLooksUnusable(host: string | null): boolean {
   );
 }
 
+function encodePowershellScript(script: string): string {
+  return Buffer.from(script, "utf16le").toString("base64");
+}
+
 export function isLocalStage3WorkerOrigin(origin: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin.trim());
 }
@@ -102,19 +106,20 @@ export function buildStage3WorkerCommands(params: {
   const origin = normalizeWorkerFacingOrigin(params.origin);
   const localDevCommand = `npm run stage3-worker -- pair --server ${origin} --token ${params.pairingToken}`;
   const shellBootstrapCommand = `curl -fsSL ${origin}/stage3-worker/bootstrap.sh | bash -s -- --server ${origin} --token ${params.pairingToken}`;
+  const powershellBootstrapScript = [
+    "$ErrorActionPreference = 'Stop'",
+    "$ProgressPreference = 'SilentlyContinue'",
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.ServicePointManager]::SecurityProtocol",
+    "$bootstrapPath = Join-Path ([System.IO.Path]::GetTempPath()) ('clips-stage3-bootstrap-' + [Guid]::NewGuid().ToString('N') + '.ps1')",
+    "Write-Host '[Clips] Downloading Stage 3 bootstrap...'",
+    `Invoke-WebRequest '${origin}/stage3-worker/bootstrap.ps1' -UseBasicParsing -ErrorAction Stop -OutFile $bootstrapPath`,
+    "Write-Host '[Clips] Running Stage 3 bootstrap...'",
+    "try { . $bootstrapPath } finally { Remove-Item $bootstrapPath -Force -ErrorAction SilentlyContinue }",
+    `Install-ClipsStage3Worker -Server '${origin}' -Token '${params.pairingToken}'`
+  ].join("; ");
   const powershellBootstrapCommand =
-    `powershell -NoProfile -ExecutionPolicy Bypass -Command ` +
-    `"& { ` +
-    `$ErrorActionPreference = 'Stop'; ` +
-    `$ProgressPreference = 'SilentlyContinue'; ` +
-    `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.ServicePointManager]::SecurityProtocol; ` +
-    `$bootstrapPath = Join-Path ([System.IO.Path]::GetTempPath()) ('clips-stage3-bootstrap-' + [Guid]::NewGuid().ToString('N') + '.ps1'); ` +
-    `Write-Host '[Clips] Downloading Stage 3 bootstrap...'; ` +
-    `Invoke-WebRequest '${origin}/stage3-worker/bootstrap.ps1' -UseBasicParsing -ErrorAction Stop -OutFile $bootstrapPath; ` +
-    `Write-Host '[Clips] Running Stage 3 bootstrap...'; ` +
-    `. $bootstrapPath; ` +
-    `Install-ClipsStage3Worker -Server '${origin}' -Token '${params.pairingToken}'; ` +
-    `}"`;
+    `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ` +
+    encodePowershellScript(powershellBootstrapScript);
   const isLocalOrigin = isLocalStage3WorkerOrigin(origin);
 
   return {

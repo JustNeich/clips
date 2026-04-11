@@ -5,6 +5,12 @@ import test from "node:test";
 
 import { buildStage3WorkerCommands } from "../lib/stage3-worker-commands";
 
+function decodePowershellEncodedCommand(command: string): string {
+  const match = command.match(/-EncodedCommand\s+([A-Za-z0-9+/=]+)/);
+  assert.ok(match, "expected -EncodedCommand payload");
+  return Buffer.from(match[1], "base64").toString("utf16le");
+}
+
 test("powershell bootstrap command enables visible diagnostics and fail-fast settings", () => {
   const commands = buildStage3WorkerCommands({
     origin: "https://clips-vy11.onrender.com",
@@ -12,12 +18,17 @@ test("powershell bootstrap command enables visible diagnostics and fail-fast set
   });
 
   assert.match(commands.powershell, /powershell -NoProfile -ExecutionPolicy Bypass/);
-  assert.match(commands.powershell, /\$ErrorActionPreference = 'Stop'/);
-  assert.match(commands.powershell, /\$ProgressPreference = 'SilentlyContinue'/);
-  assert.match(commands.powershell, /\$bootstrapPath = Join-Path \(\[System\.IO\.Path\]::GetTempPath\(\)\) \('clips-stage3-bootstrap-'/);
-  assert.match(commands.powershell, /Downloading Stage 3 bootstrap/);
-  assert.match(commands.powershell, /Invoke-WebRequest 'https:\/\/clips-vy11\.onrender\.com\/stage3-worker\/bootstrap\.ps1' -UseBasicParsing -ErrorAction Stop -OutFile \$bootstrapPath/);
-  assert.match(commands.powershell, /\. \$bootstrapPath; Install-ClipsStage3Worker/);
+  assert.match(commands.powershell, /-EncodedCommand\s+[A-Za-z0-9+/=]+$/);
+  assert.doesNotMatch(commands.powershell, /-Command\s+"/);
+
+  const decodedScript = decodePowershellEncodedCommand(commands.powershell);
+  assert.match(decodedScript, /\$ErrorActionPreference = 'Stop'/);
+  assert.match(decodedScript, /\$ProgressPreference = 'SilentlyContinue'/);
+  assert.match(decodedScript, /\$bootstrapPath = Join-Path \(\[System\.IO\.Path\]::GetTempPath\(\)\) \('clips-stage3-bootstrap-'/);
+  assert.match(decodedScript, /Downloading Stage 3 bootstrap/);
+  assert.match(decodedScript, /Invoke-WebRequest 'https:\/\/clips-vy11\.onrender\.com\/stage3-worker\/bootstrap\.ps1' -UseBasicParsing -ErrorAction Stop -OutFile \$bootstrapPath/);
+  assert.match(decodedScript, /try \{ \. \$bootstrapPath \} finally \{ Remove-Item \$bootstrapPath -Force -ErrorAction SilentlyContinue \}/);
+  assert.match(decodedScript, /Install-ClipsStage3Worker -Server 'https:\/\/clips-vy11\.onrender\.com' -Token 'token-123'/);
 });
 
 test("windows bootstrap script uses basic parsing and writes bootstrap logs", () => {

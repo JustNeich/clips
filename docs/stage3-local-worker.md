@@ -118,7 +118,7 @@
 
 На старом Windows PowerShell причиной зависания часто был `Invoke-WebRequest` без `-UseBasicParsing`; bootstrap теперь принудительно использует basic parsing и пишет шаги установки в лог.
 
-Если PowerShell пишет ошибку вида `Invoke-Expression ... Cannot convert "System.Byte[]" to "System.String"`, значит была запущена старая версия команды. Откройте Step 3 заново и скопируйте свежую команду: теперь bootstrap сначала сохраняется во временный `.ps1`-файл и запускается оттуда, без исполнения `Content` из web response.
+Если PowerShell пишет parser error еще до строк `Downloading Stage 3 bootstrap...` или ошибку вида `Invoke-Expression ... Cannot convert "System.Byte[]" to "System.String"`, значит была запущена старая версия команды. Откройте Step 3 заново и скопируйте свежую команду: теперь Windows-команда отправляется через `-EncodedCommand`, затем bootstrap сохраняется во временный `.ps1`-файл и запускается оттуда без исполнения `Content` из web response.
 
 ## Что ожидать в UI
 
