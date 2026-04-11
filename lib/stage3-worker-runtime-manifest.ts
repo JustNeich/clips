@@ -17,9 +17,53 @@ let manifestCache: {
   manifest: Stage3WorkerPublicManifest | null;
 } | null = null;
 
+type ParsedRuntimeVersion = {
+  normalized: string;
+  release: string;
+  build: string | null;
+};
+
 function normalizeRuntimeVersion(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function parseRuntimeVersion(value: string | null | undefined): ParsedRuntimeVersion | null {
+  const normalized = normalizeRuntimeVersion(value);
+  if (!normalized) {
+    return null;
+  }
+  const plusIndex = normalized.indexOf("+");
+  if (plusIndex < 0) {
+    return {
+      normalized,
+      release: normalized,
+      build: null
+    };
+  }
+  const release = normalized.slice(0, plusIndex).trim();
+  const build = normalized.slice(plusIndex + 1).trim();
+  return {
+    normalized,
+    release: release || normalized,
+    build: build || null
+  };
+}
+
+function compareRuntimeBuildStamp(left: string | null, right: string | null): number | null {
+  if (!left || !right) {
+    return null;
+  }
+  if (!/^\d+$/.test(left) || !/^\d+$/.test(right)) {
+    return null;
+  }
+  const width = Math.max(left.length, right.length);
+  const paddedLeft = left.padStart(width, "0");
+  const paddedRight = right.padStart(width, "0");
+  if (paddedLeft === paddedRight) {
+    return 0;
+  }
+  return paddedLeft > paddedRight ? 1 : -1;
 }
 
 async function readManifestFromDisk(): Promise<Stage3WorkerPublicManifest | null> {
@@ -57,10 +101,26 @@ export function isStage3WorkerRuntimeVersionCompatible(input: {
   workerAppVersion: string | null | undefined;
   expectedRuntimeVersion: string | null | undefined;
 }): boolean {
-  const expected = normalizeRuntimeVersion(input.expectedRuntimeVersion);
+  const expected = parseRuntimeVersion(input.expectedRuntimeVersion);
   if (!expected) {
     return true;
   }
-  return normalizeRuntimeVersion(input.workerAppVersion) === expected;
+  const worker = parseRuntimeVersion(input.workerAppVersion);
+  if (!worker) {
+    return false;
+  }
+  if (worker.normalized === expected.normalized) {
+    return true;
+  }
+  if (worker.release !== expected.release) {
+    return false;
+  }
+  if (!expected.build) {
+    return true;
+  }
+  const buildComparison = compareRuntimeBuildStamp(worker.build, expected.build);
+  if (buildComparison === null) {
+    return false;
+  }
+  return buildComparison >= 0;
 }
-
