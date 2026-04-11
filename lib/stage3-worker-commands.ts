@@ -108,10 +108,11 @@ export function buildStage3WorkerCommands(params: {
     `$ErrorActionPreference = 'Stop'; ` +
     `$ProgressPreference = 'SilentlyContinue'; ` +
     `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.ServicePointManager]::SecurityProtocol; ` +
+    `$bootstrapPath = Join-Path ([System.IO.Path]::GetTempPath()) ('clips-stage3-bootstrap-' + [Guid]::NewGuid().ToString('N') + '.ps1'); ` +
     `Write-Host '[Clips] Downloading Stage 3 bootstrap...'; ` +
-    `$bootstrap = Invoke-WebRequest '${origin}/stage3-worker/bootstrap.ps1' -UseBasicParsing -ErrorAction Stop; ` +
+    `Invoke-WebRequest '${origin}/stage3-worker/bootstrap.ps1' -UseBasicParsing -ErrorAction Stop -OutFile $bootstrapPath; ` +
     `Write-Host '[Clips] Running Stage 3 bootstrap...'; ` +
-    `Invoke-Expression $bootstrap.Content; ` +
+    `. $bootstrapPath; ` +
     `Install-ClipsStage3Worker -Server '${origin}' -Token '${params.pairingToken}'; ` +
     `}"`;
   const isLocalOrigin = isLocalStage3WorkerOrigin(origin);

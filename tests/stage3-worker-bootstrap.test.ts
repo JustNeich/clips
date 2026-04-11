@@ -14,8 +14,10 @@ test("powershell bootstrap command enables visible diagnostics and fail-fast set
   assert.match(commands.powershell, /powershell -NoProfile -ExecutionPolicy Bypass/);
   assert.match(commands.powershell, /\$ErrorActionPreference = 'Stop'/);
   assert.match(commands.powershell, /\$ProgressPreference = 'SilentlyContinue'/);
+  assert.match(commands.powershell, /\$bootstrapPath = Join-Path \(\[System\.IO\.Path\]::GetTempPath\(\)\) \('clips-stage3-bootstrap-'/);
   assert.match(commands.powershell, /Downloading Stage 3 bootstrap/);
-  assert.match(commands.powershell, /Invoke-WebRequest 'https:\/\/clips-vy11\.onrender\.com\/stage3-worker\/bootstrap\.ps1' -UseBasicParsing -ErrorAction Stop/);
+  assert.match(commands.powershell, /Invoke-WebRequest 'https:\/\/clips-vy11\.onrender\.com\/stage3-worker\/bootstrap\.ps1' -UseBasicParsing -ErrorAction Stop -OutFile \$bootstrapPath/);
+  assert.match(commands.powershell, /\. \$bootstrapPath; Install-ClipsStage3Worker/);
 });
 
 test("windows bootstrap script uses basic parsing and writes bootstrap logs", () => {
