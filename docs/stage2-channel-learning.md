@@ -60,6 +60,10 @@
 - banned openers
 - прочие существующие hard constraints
 
+UX note:
+- `banned words` и `banned openers` сохраняют raw текст во время ввода, поэтому редактор может печатать через запятую, `;` или перевод строки без "схлопывания" поля на каждом символе;
+- в create/update payload эти поля по-прежнему уходят как нормализованные массивы строк.
+
 Этот шаг intentionally light:
 - editor может оставить workspace defaults;
 - wizard не превращается в expert-only prompt form.

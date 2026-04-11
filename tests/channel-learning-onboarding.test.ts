@@ -15,6 +15,7 @@ import {
   canSubmitChannelOnboardingDraft,
   canContinueChannelOnboardingStep,
   clearChannelStyleProfileEditorDirectionSelection,
+  createChannelOnboardingDelimitedStringListDraft,
   createChannelStyleProfileEditorDraft,
   createChannelOnboardingDraft,
   getChannelStyleProfileEditorDiscoveryStatus,
@@ -31,7 +32,8 @@ import {
   selectAllChannelOnboardingStyleDirections,
   toggleChannelOnboardingStyleDirectionSelection,
   updateChannelStyleProfileEditorReferenceLinks,
-  updateChannelOnboardingReferenceLinks
+  updateChannelOnboardingReferenceLinks,
+  updateChannelOnboardingDelimitedStringListDraft
 } from "../app/components/channel-onboarding-support";
 import type { Stage2Response } from "../app/components/types";
 import {
@@ -51,7 +53,6 @@ import {
 } from "../lib/stage2-channel-learning";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
-  type Stage2HardConstraints
 } from "../lib/stage2-channel-config";
 import { DEFAULT_STAGE2_WORKER_PROFILE_ID } from "../lib/stage2-worker-profile";
 import { buildStage2RunRequestSnapshot } from "../lib/stage2-run-request";
@@ -351,6 +352,43 @@ test("channel onboarding support walks through the four-step wizard and builds a
   assert.equal(payload.stage2StyleProfile.explorationShare, 0.35);
   assert.deepEqual(payload.stage2StyleProfile.selectedDirectionIds, ["direction_1", "direction_3"]);
   assert.ok(payload.stage2StyleProfile.onboardingCompletedAt);
+});
+
+test("channel onboarding delimited hard constraint drafts preserve raw separators while parsed arrays stay normalized", () => {
+  const rawDraft = createChannelOnboardingDelimitedStringListDraft({
+    bannedWords: ["literal", "generic"],
+    bannedOpeners: ["Here is a", "This is"]
+  });
+
+  assert.equal(rawDraft.bannedWordsText, "literal, generic");
+  assert.equal(rawDraft.bannedOpenersText, "Here is a, This is");
+
+  const next = updateChannelOnboardingDelimitedStringListDraft(
+    rawDraft,
+    {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      bannedWords: ["literal", "generic"],
+      bannedOpeners: ["Here is a", "This is"]
+    },
+    "bannedWordsText",
+    "literal, generic, "
+  );
+
+  assert.equal(next.textDraft.bannedWordsText, "literal, generic, ");
+  assert.deepEqual(next.stage2HardConstraints.bannedWords, ["literal", "generic"]);
+  assert.deepEqual(next.stage2HardConstraints.bannedOpeners, ["Here is a", "This is"]);
+
+  const draft = createChannelOnboardingDraft({
+    workspaceStage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS
+  });
+  draft.name = "Raw Separator Channel";
+  draft.username = "raw_separator_channel";
+  draft.stage2HardConstraints = next.stage2HardConstraints;
+
+  const payload = buildChannelOnboardingCreatePayload(draft);
+
+  assert.deepEqual(payload.stage2HardConstraints.bannedWords, ["literal", "generic"]);
+  assert.deepEqual(payload.stage2HardConstraints.bannedOpeners, ["Here is a", "This is"]);
 });
 
 test("style selection supports selecting many directions without a hard cap", () => {

@@ -20,6 +20,7 @@
   - Stage 2 baseline settings;
   - 10+ reference links;
   - dynamic style discovery with a broad selectable startup pool, including explicit regeneration.
+  - `banned words` / `banned openers` fields now preserve raw separators while typing, while the saved Stage 2 arrays still normalize comma / semicolon / newline-delimited input.
   - bootstrap style discovery now weights liked comments more aggressively, samples real reference frames, and builds compact audience + packaging portraits.
   - onboarding draft persists across panel close/reopen and page reload;
   - bootstrap style discovery runs durably on the server and reattaches by `runId`.

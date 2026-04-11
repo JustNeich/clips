@@ -6,8 +6,6 @@ import { createPortal } from "react-dom";
 import { AvatarUploadButton } from "./AvatarUploadButton";
 import {
   collectWorkspaceStage2Examples,
-  formatStage2DelimitedStringList,
-  parseStage2DelimitedStringList,
   type Stage2ExamplesConfig,
   type Stage2HardConstraints
 } from "../../lib/stage2-channel-config";
@@ -26,6 +24,7 @@ import {
   CHANNEL_ONBOARDING_STEPS,
   clearChannelOnboardingStyleDirectionSelection,
   createChannelOnboardingDraft,
+  createChannelOnboardingDelimitedStringListDraft,
   getChannelOnboardingFurthestStep,
   getChannelOnboardingProgressStepState,
   getChannelOnboardingStyleDiscoveryStatus,
@@ -36,8 +35,10 @@ import {
   selectAllChannelOnboardingStyleDirections,
   setChannelOnboardingExplorationShare,
   toggleChannelOnboardingStyleDirectionSelection,
+  updateChannelOnboardingDelimitedStringListDraft,
   updateChannelOnboardingReferenceLinks,
   type ChannelOnboardingDraft,
+  type ChannelOnboardingDelimitedStringListDraft,
   type ChannelOnboardingStepId
 } from "./channel-onboarding-support";
 
@@ -132,6 +133,9 @@ export function ChannelOnboardingWizard({
       workspaceStage2HardConstraints
     })
   );
+  const [stage2DelimitedStringListDraft, setStage2DelimitedStringListDraft] = useState(() =>
+    createChannelOnboardingDelimitedStringListDraft(workspaceStage2HardConstraints)
+  );
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -156,6 +160,9 @@ export function ChannelOnboardingWizard({
       setStep("identity");
       setFurthestUnlockedStep("identity");
       setDraft(fallbackDraft);
+      setStage2DelimitedStringListDraft(
+        createChannelOnboardingDelimitedStringListDraft(fallbackDraft.stage2HardConstraints)
+      );
       setActiveStyleDiscoveryRunId(null);
       setHasHydratedPersistedState(true);
       return;
@@ -170,17 +177,26 @@ export function ChannelOnboardingWizard({
         setStep(persisted.step);
         setFurthestUnlockedStep(persisted.furthestUnlockedStep);
         setDraft(persisted.draft);
+        setStage2DelimitedStringListDraft(
+          createChannelOnboardingDelimitedStringListDraft(persisted.draft.stage2HardConstraints)
+        );
         setActiveStyleDiscoveryRunId(persisted.activeStyleDiscoveryRunId);
       } else {
         setStep("identity");
         setFurthestUnlockedStep("identity");
         setDraft(fallbackDraft);
+        setStage2DelimitedStringListDraft(
+          createChannelOnboardingDelimitedStringListDraft(fallbackDraft.stage2HardConstraints)
+        );
         setActiveStyleDiscoveryRunId(null);
       }
     } catch {
       setStep("identity");
       setFurthestUnlockedStep("identity");
       setDraft(fallbackDraft);
+      setStage2DelimitedStringListDraft(
+        createChannelOnboardingDelimitedStringListDraft(fallbackDraft.stage2HardConstraints)
+      );
       setActiveStyleDiscoveryRunId(null);
     } finally {
       setAvatarFile(null);
@@ -268,6 +284,9 @@ export function ChannelOnboardingWizard({
         workspaceStage2HardConstraints
       })
     );
+    setStage2DelimitedStringListDraft(
+      createChannelOnboardingDelimitedStringListDraft(workspaceStage2HardConstraints)
+    );
     setAvatarFile(null);
     setAvatarPreviewUrl(null);
     setIsDiscovering(false);
@@ -294,6 +313,23 @@ export function ChannelOnboardingWizard({
         ...current.stage2HardConstraints,
         [key]: value
       }
+    }));
+  };
+
+  const updateDelimitedConstraint = (
+    key: keyof ChannelOnboardingDelimitedStringListDraft,
+    value: string
+  ): void => {
+    const nextDelimitedDraft = updateChannelOnboardingDelimitedStringListDraft(
+      stage2DelimitedStringListDraft,
+      draft.stage2HardConstraints,
+      key,
+      value
+    );
+    setStage2DelimitedStringListDraft(nextDelimitedDraft.textDraft);
+    setDraft((current) => ({
+      ...current,
+      stage2HardConstraints: nextDelimitedDraft.stage2HardConstraints
     }));
   };
 
@@ -724,12 +760,9 @@ export function ChannelOnboardingWizard({
                   <textarea
                     className="text-area"
                     rows={4}
-                    value={formatStage2DelimitedStringList(draft.stage2HardConstraints.bannedWords)}
+                    value={stage2DelimitedStringListDraft.bannedWordsText}
                     onChange={(event) =>
-                      updateConstraint(
-                        "bannedWords",
-                        parseStage2DelimitedStringList(event.target.value)
-                      )
+                      updateDelimitedConstraint("bannedWordsText", event.target.value)
                     }
                   />
                 </div>
@@ -739,12 +772,9 @@ export function ChannelOnboardingWizard({
                   <textarea
                     className="text-area"
                     rows={4}
-                    value={formatStage2DelimitedStringList(draft.stage2HardConstraints.bannedOpeners)}
+                    value={stage2DelimitedStringListDraft.bannedOpenersText}
                     onChange={(event) =>
-                      updateConstraint(
-                        "bannedOpeners",
-                        parseStage2DelimitedStringList(event.target.value)
-                      )
+                      updateDelimitedConstraint("bannedOpenersText", event.target.value)
                     }
                   />
                 </div>

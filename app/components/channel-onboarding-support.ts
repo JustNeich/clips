@@ -2,8 +2,10 @@
 
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
+  formatStage2DelimitedStringList,
   normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
+  parseStage2DelimitedStringList,
   type Stage2ExamplesConfig,
   type Stage2HardConstraints
 } from "../../lib/stage2-channel-config";
@@ -61,6 +63,11 @@ export type ChannelOnboardingDraft = {
   explorationShare: number;
 };
 
+export type ChannelOnboardingDelimitedStringListDraft = {
+  bannedWordsText: string;
+  bannedOpenersText: string;
+};
+
 export type PersistedChannelOnboardingState = {
   step: ChannelOnboardingStepId;
   furthestUnlockedStep: ChannelOnboardingStepId;
@@ -95,6 +102,37 @@ export function createChannelOnboardingDraft(input: {
     styleProfile: null,
     selectedStyleDirectionIds: [],
     explorationShare: STAGE2_EDITORIAL_EXPLORATION_SHARE
+  };
+}
+
+export function createChannelOnboardingDelimitedStringListDraft(
+  constraints: Pick<Stage2HardConstraints, "bannedWords" | "bannedOpeners">
+): ChannelOnboardingDelimitedStringListDraft {
+  return {
+    bannedWordsText: formatStage2DelimitedStringList(constraints.bannedWords),
+    bannedOpenersText: formatStage2DelimitedStringList(constraints.bannedOpeners)
+  };
+}
+
+export function updateChannelOnboardingDelimitedStringListDraft(
+  current: ChannelOnboardingDelimitedStringListDraft,
+  currentConstraints: Stage2HardConstraints,
+  key: keyof ChannelOnboardingDelimitedStringListDraft,
+  value: string
+): {
+  textDraft: ChannelOnboardingDelimitedStringListDraft;
+  stage2HardConstraints: Stage2HardConstraints;
+} {
+  const constraintKey = key === "bannedWordsText" ? "bannedWords" : "bannedOpeners";
+  return {
+    textDraft: {
+      ...current,
+      [key]: value
+    },
+    stage2HardConstraints: {
+      ...currentConstraints,
+      [constraintKey]: parseStage2DelimitedStringList(value)
+    }
   };
 }
 
