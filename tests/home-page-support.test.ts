@@ -3,7 +3,8 @@ import test from "node:test";
 
 import {
   resolveHydratedWorkflowStep,
-  resolveLiveHydratedWorkflowStep
+  resolveLiveHydratedWorkflowStep,
+  shouldResetHydratedStage3TransientState
 } from "../app/home-page-support";
 
 test("resolveHydratedWorkflowStep preserves the current step while rehydrating the same chat", () => {
@@ -29,6 +30,30 @@ test("resolveHydratedWorkflowStep uses preferred step for a newly selected chat"
       maxStep: 3
     }),
     2
+  );
+});
+
+test("shouldResetHydratedStage3TransientState preserves preview jobs while rehydrating the same chat", () => {
+  assert.equal(
+    shouldResetHydratedStage3TransientState({
+      nextChatId: "chat-1",
+      initializedChatId: "chat-1"
+    }),
+    false
+  );
+  assert.equal(
+    shouldResetHydratedStage3TransientState({
+      nextChatId: "chat-2",
+      initializedChatId: "chat-1"
+    }),
+    true
+  );
+  assert.equal(
+    shouldResetHydratedStage3TransientState({
+      nextChatId: null,
+      initializedChatId: "chat-1"
+    }),
+    true
   );
 });
 

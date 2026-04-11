@@ -181,6 +181,7 @@ import {
   responseLooksLikeJson,
   responseContentType,
   shorten,
+  shouldResetHydratedStage3TransientState,
   syncChatListPublicationSummaries,
   toJsonDownload,
   triggerBlobDownload,
@@ -1079,6 +1080,10 @@ export default function HomePage() {
         preferredStep: getPreferredStepForChat(chat, draft),
         maxStep: getMaxStepForChat(chat)
       });
+      const shouldResetStage3TransientState = shouldResetHydratedStage3TransientState({
+        nextChatId: chat.id,
+        initializedChatId: initializedStage3ChatRef.current
+      });
 
       initializedStage3ChatRef.current = chat.id;
       setCurrentStep(resolvedStep);
@@ -1116,14 +1121,16 @@ export default function HomePage() {
             highlightsSignature: getCaptionHighlightsSignature(nextCaptionHighlights)
           }
         : null;
-      stage3PreviewRequestKeyRef.current = "";
-      stage3PreviewRequestIdRef.current += 1;
-      setStage3PreviewVideoUrl(null);
-      setStage3PreviewState("idle");
-      setStage3PreviewNotice(null);
-      setStage3PreviewJobId(null);
-      setStage3RenderState("idle");
-      setStage3RenderJobId(null);
+      if (shouldResetStage3TransientState) {
+        stage3PreviewRequestKeyRef.current = "";
+        stage3PreviewRequestIdRef.current += 1;
+        setStage3PreviewVideoUrl(null);
+        setStage3PreviewState("idle");
+        setStage3PreviewNotice(null);
+        setStage3PreviewJobId(null);
+        setStage3RenderState("idle");
+        setStage3RenderJobId(null);
+      }
     },
     [
       activeChannel,

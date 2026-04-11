@@ -528,6 +528,16 @@ export function resolveHydratedWorkflowStep(input: {
   return Math.min(input.preferredStep, input.maxStep) as 1 | 2 | 3;
 }
 
+export function shouldResetHydratedStage3TransientState(input: {
+  nextChatId: string | null;
+  initializedChatId: string | null;
+}): boolean {
+  if (!input.nextChatId) {
+    return true;
+  }
+  return input.initializedChatId !== input.nextChatId;
+}
+
 export function resolveLiveHydratedWorkflowStep(input: {
   livePreferredStep: 1 | 2 | 3;
   maxStep: 1 | 2 | 3;
