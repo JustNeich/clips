@@ -70,6 +70,7 @@
 - `ffmpeg`
 - `ffprobe`
 - `yt-dlp`
+- `Google Chrome` или `Microsoft Edge` желателен для Stage 3 render. Worker теперь сначала пытается использовать локальный Chromium-based browser и только потом уходит в Remotion-managed headless-shell download.
 
 Рекомендуемый текст для поддержки:
 
@@ -164,4 +165,5 @@ npm run stage3-worker -- start
 - Пользователь должен держать Terminal/PowerShell открытым.
 - Автоматической managed-install логики для `ffmpeg/ffprobe/yt-dlp` пока нет; есть doctor и install hints.
 - Bootstrap сам ставит только Node runtime dependencies worker’а; системные media tools пользователь по-прежнему ставит отдельно.
+- Browser runtime для Remotion теперь проверяется до входа worker в job loop: если локальный Chrome/Edge найден, он используется напрямую; если нет, worker пытается подготовить Remotion-managed browser заранее, а не во время render job.
 - Linux и Windows ARM не входят в v1 scope.

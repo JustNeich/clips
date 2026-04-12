@@ -49,6 +49,7 @@ import {
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
+import { ensureStage3RenderBrowser } from "./stage3-browser-runtime";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -59,6 +60,7 @@ const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
 let remotionRuntimePromise: Promise<RemotionModule> | null = null;
+let remotionBrowserExecutablePromise: Promise<string> | null = null;
 
 function shouldReuseRemotionBundle(): boolean {
   const override = process.env.STAGE3_REUSE_REMOTION_BUNDLE?.trim();
@@ -219,6 +221,24 @@ async function getRemotionServeUrl(): Promise<string> {
     });
   }
   return remotionServeUrlPromise;
+}
+
+async function getRemotionBrowserExecutable(): Promise<string> {
+  if (!remotionBrowserExecutablePromise) {
+    remotionBrowserExecutablePromise = ensureStage3RenderBrowser({
+      logLevel: "warn"
+    })
+      .then((prepared) => {
+        process.env.STAGE3_BROWSER_EXECUTABLE = prepared.browserExecutable;
+        return prepared.browserExecutable;
+      })
+      .catch((error) => {
+        remotionBrowserExecutablePromise = null;
+        throw error;
+      });
+  }
+
+  return remotionBrowserExecutablePromise;
 }
 
 function unwrapDefaultExport(value: unknown): unknown {
@@ -411,6 +431,7 @@ async function runRemotionRender(params: {
 }): Promise<Stage3VariationProfile> {
   const { getCompositions, renderMedia, selectComposition } = await ensureRemotionRuntime();
   const serveUrl = params.serveUrl;
+  const browserExecutable = await getRemotionBrowserExecutable();
 
   const buildInputProps = (variationProfile: Stage3VariationProfile) => ({
     templateId: params.templateId,
@@ -445,7 +466,13 @@ async function runRemotionRender(params: {
 
   const composition =
     (selectComposition
-      ? await selectComposition({ id: params.templateId, serveUrl, inputProps })
+      ? await selectComposition({
+          id: params.templateId,
+          serveUrl,
+          inputProps,
+          browserExecutable,
+          chromeMode: "headless-shell"
+        })
       : null) ??
     (await getCompositions(serveUrl)).find((item: { id?: string }) => item.id === params.templateId);
 
@@ -464,6 +491,8 @@ async function runRemotionRender(params: {
     x264Preset: params.variationProfile.encode.x264Preset,
     logLevel: "warn",
     timeoutInMilliseconds: params.timeoutMs,
+    browserExecutable,
+    chromeMode: "headless-shell",
     concurrency: isMemoryConstrainedRuntime() ? MEMORY_CONSTRAINED_REMOTION_CONCURRENCY : null,
     disallowParallelEncoding: isMemoryConstrainedRuntime(),
     chromiumOptions: isMemoryConstrainedRuntime()
@@ -667,6 +696,9 @@ function parseRenderError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
   const ytdlpMessage = extractYtDlpErrorFromUnknown(error);
+  if (lower.includes("chrome headless shell") || lower.includes("storage.googleapis.com")) {
+    return "Stage 3 worker не смог подготовить браузер для Remotion. Проверьте локальный Chrome/Edge или доступ к Remotion browser download.";
+  }
   if (lower.includes("ffmpeg")) {
     return "Ошибка ffmpeg/Remotion rendering. Проверьте ffmpeg и remotion runtime.";
   }

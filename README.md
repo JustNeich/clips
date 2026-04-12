@@ -220,6 +220,7 @@ npm run stage3-worker -- start
 - `ffmpeg`
 - `ffprobe`
 - `yt-dlp`
+- локальный `Google Chrome` или `Microsoft Edge` желателен для Stage 3 render; если браузера нет, worker попробует подготовить Remotion Headless Shell сам.
 
 ## Stage 1 sources
 

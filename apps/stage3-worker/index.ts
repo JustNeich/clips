@@ -4,6 +4,10 @@ import process from "node:process";
 import { promises as fs } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  detectPreferredStage3Browser,
+  ensureStage3RenderBrowser
+} from "../../lib/stage3-browser-runtime";
 
 type WorkerPlatform = "darwin-arm64" | "darwin-x64" | "win32-x64" | "unknown";
 
@@ -20,6 +24,7 @@ type WorkerCapabilities = {
   ffmpeg: { available: boolean; path: string | null };
   ffprobe: { available: boolean; path: string | null };
   ytDlp: { available: boolean; path: string | null };
+  browser: { available: boolean; path: string | null; source: string | null };
 };
 
 type Stage3JobEnvelope = {
@@ -161,11 +166,17 @@ async function detectCapabilities(): Promise<WorkerCapabilities> {
     resolveExecutable(ffprobeCandidates),
     resolveExecutable(ytDlpCandidates)
   ]);
+  const detectedBrowser = await detectPreferredStage3Browser();
 
   return {
     ffmpeg: { available: Boolean(ffmpeg), path: ffmpeg },
     ffprobe: { available: Boolean(ffprobe), path: ffprobe },
-    ytDlp: { available: Boolean(ytDlp), path: ytDlp }
+    ytDlp: { available: Boolean(ytDlp), path: ytDlp },
+    browser: {
+      available: Boolean(detectedBrowser?.browserExecutable),
+      path: detectedBrowser?.browserExecutable ?? null,
+      source: detectedBrowser?.source ?? null
+    }
   };
 }
 
@@ -411,6 +422,11 @@ function printDoctorResult(capabilities: WorkerCapabilities): void {
   for (const [label, value] of rows) {
     console.log(`${label}: ${value.available ? `OK (${value.path})` : "MISSING"}`);
   }
+  if (capabilities.browser.available) {
+    console.log(`browser: OK (${capabilities.browser.path})`);
+  } else {
+    console.log("browser: no local Chrome/Edge detected, worker will fall back to Remotion-managed browser setup");
+  }
   if (!capabilities.ffmpeg.available || !capabilities.ffprobe.available || !capabilities.ytDlp.available) {
     if (process.platform === "darwin") {
       console.log("Install hint: brew install ffmpeg yt-dlp");
@@ -599,6 +615,12 @@ async function startCommand(): Promise<void> {
   process.env.STAGE3_WORKER_SERVER_ORIGIN = config.serverOrigin;
   process.env.STAGE3_WORKER_SESSION_TOKEN = config.sessionToken;
   process.env.STAGE3_WORKER_INSTALL_ROOT = paths().root;
+
+  const preparedBrowser = await ensureStage3RenderBrowser({
+    logLevel: "info"
+  });
+  process.env.STAGE3_BROWSER_EXECUTABLE = preparedBrowser.browserExecutable;
+  console.log(preparedBrowser.description);
 
   const { classifyStage3HeavyJobError, executeStage3HeavyJobPayload } = await import("../../lib/stage3-job-executor");
 
