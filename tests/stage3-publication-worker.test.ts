@@ -7,13 +7,8 @@ import test from "node:test";
 import { POST as completeWorkerStage3Job } from "../app/api/stage3/worker/jobs/[id]/complete/route";
 import { createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import { getDb, newId, nowIso } from "../lib/db/client";
-import {
-  getRenderExportByStage3JobId,
-  listChannelPublications,
-  saveChannelPublishIntegration,
-  upsertChannelPublishSettings
-} from "../lib/publication-store";
-import { enqueueStage3Job, claimNextQueuedStage3JobForWorker } from "../lib/stage3-job-store";
+import { getRenderExportByStage3JobId, listChannelPublications, saveChannelPublishIntegration, upsertChannelPublishSettings } from "../lib/publication-store";
+import { claimNextQueuedStage3JobForWorker, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
 import {
   exchangeStage3WorkerPairingToken,
   issueStage3WorkerPairingToken
@@ -238,5 +233,78 @@ test("local worker render completion skips queued publication when publishAfterR
     assert.equal(response.status, 200);
     assert.ok(getRenderExportByStage3JobId(job.id));
     assert.equal(listChannelPublications(channel.id).length, 0);
+  });
+});
+
+test("local worker editing-proxy completion accepts multipart artifacts", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        sourceUrl: "https://youtube.com/watch?v=editing-proxy"
+      })
+    });
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy"]
+    });
+    assert.equal(claimed?.id, job.id);
+
+    const form = new FormData();
+    form.set("resultJson", JSON.stringify({ sourceKey: "proxy-source", sourceDurationSec: 42 }));
+    form.set("artifact", new Blob([new Uint8Array([1, 2, 3, 4])], { type: "video/mp4" }), "proxy.mp4");
+
+    const response = await completeWorkerStage3Job(
+      new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/complete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${exchanged.sessionToken}`
+        },
+        body: form
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+    const body = (await response.json()) as { job?: { status?: string; kind?: string } };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.job?.status, "completed");
+    assert.equal(body.job?.kind, "editing-proxy");
+
+    const completed = getStage3Job(job.id);
+    assert.equal(completed?.status, "completed");
+    assert.equal(completed?.kind, "editing-proxy");
+    assert.equal(completed?.artifact?.fileName, "proxy.mp4");
+    assert.ok(completed?.artifactFilePath?.endsWith(`${job.id}.mp4`));
   });
 });
