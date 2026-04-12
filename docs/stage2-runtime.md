@@ -142,14 +142,14 @@ Caption highlighting:
 - pass fail-open: invalid response, mismatch или runtime error дают empty highlights для блока и не валят весь Stage 2 run.
 
 Основной runtime entry:
-- `/Users/neich/dev/clips automations/lib/stage2-runner.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-runner.ts`
 
 Pipeline orchestration:
-- `/Users/neich/dev/clips automations/lib/viral-shorts-worker/service.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/viral-shorts-worker/service.ts`
 
 Durable store:
-- `/Users/neich/dev/clips automations/lib/stage2-progress-store.ts`
-- `/Users/neich/dev/clips automations/lib/stage2-run-runtime.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-progress-store.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-run-runtime.ts`
 
 ## 2.1 Source context quality inputs
 
@@ -195,8 +195,8 @@ Seed source:
 - runtime всё равно хранит совместимую внутреннюю config-модель
 
 Основной код:
-- `/Users/neich/dev/clips automations/lib/stage2-channel-config.ts`
-- `/Users/neich/dev/clips automations/app/components/ChannelManager.tsx`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-channel-config.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/app/components/ChannelManager.tsx`
 
 ## 4. Prompt model
 
@@ -235,9 +235,9 @@ Workspace owner редактирует defaults в `Default settings`:
 Channel-level prompt editing больше не является primary runtime path.
 
 Основной код:
-- `/Users/neich/dev/clips automations/lib/stage2-pipeline.ts`
-- `/Users/neich/dev/clips automations/lib/stage2-prompt-specs.ts`
-- `/Users/neich/dev/clips automations/lib/viral-shorts-worker/prompts.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-pipeline.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-prompt-specs.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/viral-shorts-worker/prompts.ts`
 
 ## 4.1 Channel onboarding and learning layer
 
@@ -272,11 +272,11 @@ Channel-level prompt editing больше не является primary runtime 
 - manager использует тот же `style-discovery` durable run contract и тот же `fresh / stale` semantics.
 
 Основной код:
-- `/Users/neich/dev/clips automations/app/components/ChannelOnboardingWizard.tsx`
-- `/Users/neich/dev/clips automations/lib/stage2-style-discovery.ts`
-- `/Users/neich/dev/clips automations/lib/channel-style-discovery-runtime.ts`
-- `/Users/neich/dev/clips automations/lib/channel-style-discovery-store.ts`
-- `/Users/neich/dev/clips automations/docs/stage2-channel-learning.md`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/app/components/ChannelOnboardingWizard.tsx`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-style-discovery.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-style-discovery-runtime.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-style-discovery-store.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage2-channel-learning.md`
 
 ## 4.2 Ongoing editorial learning
 
@@ -323,9 +323,9 @@ UI truth model:
 - downstream stages не должны терять dominant audience shorthand, если он clip-safe и реально sharpen'ит bottom.
 
 Основной код:
-- `/Users/neich/dev/clips automations/lib/stage2-channel-learning.ts`
-- `/Users/neich/dev/clips automations/lib/channel-editorial-feedback-store.ts`
-- `/Users/neich/dev/clips automations/lib/stage2-editorial-memory-resolution.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-channel-learning.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-editorial-feedback-store.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-editorial-memory-resolution.ts`
 
 ## 5. Selector contract
 
@@ -634,7 +634,7 @@ Important behavior:
 - `take TOP` / `take BOTTOM` are treated as explicit Stage 3 text overrides
 
 The shared helper for this contract lives in:
-- `/Users/neich/dev/clips automations/lib/stage2-stage3-handoff.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-stage3-handoff.ts`
 
 Trace export uses the same helper to explain:
 - which caption/title option is currently selected
@@ -728,19 +728,19 @@ Speech grounding is also explicit in trace export:
 ## 11. Related files
 
 - API:
-  - `/Users/neich/dev/clips automations/app/api/pipeline/source/route.ts`
-  - `/Users/neich/dev/clips automations/app/api/pipeline/stage2/route.ts`
-  - `/Users/neich/dev/clips automations/app/api/workspace/route.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/app/api/pipeline/source/route.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/app/api/pipeline/stage2/route.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/app/api/workspace/route.ts`
 - UI:
-  - `/Users/neich/dev/clips automations/app/page.tsx`
-  - `/Users/neich/dev/clips automations/app/components/Step1PasteLink.tsx`
-  - `/Users/neich/dev/clips automations/app/components/Step2PickCaption.tsx`
-  - `/Users/neich/dev/clips automations/app/components/ChannelManager.tsx`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/app/page.tsx`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/app/components/Step1PasteLink.tsx`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/app/components/Step2PickCaption.tsx`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/app/components/ChannelManager.tsx`
 - Stores / orchestration:
-  - `/Users/neich/dev/clips automations/lib/source-job-store.ts`
-  - `/Users/neich/dev/clips automations/lib/source-job-runtime.ts`
-  - `/Users/neich/dev/clips automations/lib/stage2-progress-store.ts`
-  - `/Users/neich/dev/clips automations/lib/stage2-stage3-handoff.ts`
-  - `/Users/neich/dev/clips automations/lib/stage2-run-runtime.ts`
-  - `/Users/neich/dev/clips automations/lib/stage2-runner.ts`
-  - `/Users/neich/dev/clips automations/lib/viral-shorts-worker/service.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/source-job-store.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/source-job-runtime.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-progress-store.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-stage3-handoff.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-run-runtime.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-runner.ts`
+  - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/viral-shorts-worker/service.ts`

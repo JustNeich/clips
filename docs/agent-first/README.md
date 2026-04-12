@@ -26,8 +26,8 @@
 Используйте их в таком порядке:
 
 1. Live UI evidence из `output/playwright/agent-docs/`
-2. Guard-ы и role logic в [`lib/acl.ts`](/Users/neich/dev/clips automations/lib/acl.ts), [`lib/team-store.ts`](/Users/neich/dev/clips automations/lib/team-store.ts), [`lib/auth/guards.ts`](/Users/neich/dev/clips automations/lib/auth/guards.ts), [`lib/channel-edit-permissions.ts`](/Users/neich/dev/clips automations/lib/channel-edit-permissions.ts)
-3. Реальный route/UI code в [`app/page.tsx`](/Users/neich/dev/clips automations/app/page.tsx), [`app/components/AppShell.tsx`](/Users/neich/dev/clips automations/app/components/AppShell.tsx) и связанных компонентах
+2. Guard-ы и role logic в [`lib/acl.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/acl.ts), [`lib/team-store.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/team-store.ts), [`lib/auth/guards.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/auth/guards.ts), [`lib/channel-edit-permissions.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-edit-permissions.ts)
+3. Реальный route/UI code в [`app/page.tsx`](/Users/neich/Documents/Macedonian Imperium/clips automations/app/page.tsx), [`app/components/AppShell.tsx`](/Users/neich/Documents/Macedonian Imperium/clips automations/app/components/AppShell.tsx) и связанных компонентах
 4. API contracts в `app/api/**/route.ts`
 5. Существующие feature docs в `docs/`
 
@@ -129,7 +129,7 @@
 | `redactor` | Ежедневный production flow и настройка доступных ему каналов | Не управляет командой и общими workspace defaults |
 | `redactor_limited` | Только рабочий цикл по выданным каналам | Не создаёт каналы, не меняет channel setup, не управляет доступами |
 
-Полная матрица находится в [`docs/agent-first/roles-and-permissions.md`](/Users/neich/dev/clips automations/docs/agent-first/roles-and-permissions.md).
+Полная матрица находится в [`docs/agent-first/roles-and-permissions.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/roles-and-permissions.md).
 
 ## Как агент должен пользоваться документацией
 
@@ -139,7 +139,7 @@
 2. Выделить surface, где это произошло.
 3. Нормализовать сущность: `channel`, `chat`, `stage2_run`, `stage3_version`, `publication`, `invite`, `template`.
 4. Проверить, была ли проблема на `browser-verified` поверхности или только в `code-verified` ветке.
-5. Собрать тикет по playbook из [`docs/agent-first/issue-intake-playbook.md`](/Users/neich/dev/clips automations/docs/agent-first/issue-intake-playbook.md).
+5. Собрать тикет по playbook из [`docs/agent-first/issue-intake-playbook.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/issue-intake-playbook.md).
 
 ### Если пришло пожелание
 
@@ -169,8 +169,8 @@
 
 ## Связанные документы
 
-- [`docs/agent-first/surfaces-and-navigation.md`](/Users/neich/dev/clips automations/docs/agent-first/surfaces-and-navigation.md)
-- [`docs/agent-first/roles-and-permissions.md`](/Users/neich/dev/clips automations/docs/agent-first/roles-and-permissions.md)
-- [`docs/agent-first/flows-and-state.md`](/Users/neich/dev/clips automations/docs/agent-first/flows-and-state.md)
-- [`docs/agent-first/glossary-and-entity-map.md`](/Users/neich/dev/clips automations/docs/agent-first/glossary-and-entity-map.md)
-- [`docs/agent-first/issue-intake-playbook.md`](/Users/neich/dev/clips automations/docs/agent-first/issue-intake-playbook.md)
+- [`docs/agent-first/surfaces-and-navigation.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/surfaces-and-navigation.md)
+- [`docs/agent-first/roles-and-permissions.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/roles-and-permissions.md)
+- [`docs/agent-first/flows-and-state.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/flows-and-state.md)
+- [`docs/agent-first/glossary-and-entity-map.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/glossary-and-entity-map.md)
+- [`docs/agent-first/issue-intake-playbook.md`](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/agent-first/issue-intake-playbook.md)

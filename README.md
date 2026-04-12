@@ -193,9 +193,9 @@ npm run stage2-worker
 - Запрещено менять поведение так, чтобы текст “выпадал” за границы секции или появлялись несоразмерные вертикальные gaps.
 
 Подробный guide по интеграции и калибровке новых Stage 3 шаблонов:
-- [docs/stage3-template-integration.md](/Users/neich/dev/clips automations/docs/stage3-template-integration.md)
+- [docs/stage3-template-integration.md](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage3-template-integration.md)
 
-Подробный rollout-гайд: [docs/stage3-local-worker.md](/Users/neich/dev/clips automations/docs/stage3-local-worker.md)
+Подробный rollout-гайд: [docs/stage3-local-worker.md](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage3-local-worker.md)
 
 ## Stage 3 local worker
 
@@ -296,7 +296,7 @@ Channel-specific mapping теперь задается через `Stage 2` в C
 - При этом около 25% option space всегда остаётся exploratory, чтобы канал мог эволюционировать.
 
 Подробная документация по новому learning layer:
-- [docs/stage2-channel-learning.md](/Users/neich/dev/clips automations/docs/stage2-channel-learning.md)
+- [docs/stage2-channel-learning.md](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage2-channel-learning.md)
 
 Primary Stage 2 control surface:
 - owner редактирует workspace-wide defaults через `Default settings`;
@@ -318,7 +318,7 @@ Publishing / YouTube queue:
 - YouTube upload использует сохранённый resumable session URL и lease heartbeat, поэтому после сбоя процесс продолжает тот же upload session вместо открытия дублирующего.
 
 Подробная документация по текущей Stage 2 архитектуре:
-- [docs/stage2-runtime.md](/Users/neich/dev/clips automations/docs/stage2-runtime.md)
+- [docs/stage2-runtime.md](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage2-runtime.md)
 
 ## Переменные окружения (опционально)
 

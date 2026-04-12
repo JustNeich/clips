@@ -33,7 +33,7 @@
 
 `PUBLIC_APP_ORIGIN` нужен только если прокси/рантайм подставляет во внутренние запросы адрес вида `0.0.0.0` вместо публичного домена.
 
-Эти значения уже добавлены в [render.yaml](/Users/neich/dev/clips automations/render.yaml), но их нужно реально задеплоить.
+Эти значения уже добавлены в [render.yaml](/Users/neich/Documents/Macedonian Imperium/clips automations/render.yaml), но их нужно реально задеплоить.
 
 ### 2. Задеплоить новую версию хоста
 

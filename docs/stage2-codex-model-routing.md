@@ -28,7 +28,7 @@ These stages work from textual digests, saved analysis, examples, or shortlisted
 
 ## Resolution Rules
 
-Model settings are stored in `workspace_codex_model_config_json` and normalized by `/Users/neich/dev/clips automations/lib/workspace-codex-models.ts`.
+Model settings are stored in `workspace_codex_model_config_json` and normalized by `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/workspace-codex-models.ts`.
 
 Resolution order per stage:
 
@@ -73,9 +73,9 @@ Normalization migrates that format into the new per-stage shape:
 
 Main Stage 2 paths now resolve models explicitly:
 
-- full pipeline: `/Users/neich/dev/clips automations/lib/stage2-runner.ts`
-- quick regenerate: `/Users/neich/dev/clips automations/lib/stage2-quick-regenerate.ts`
-- style discovery: `/Users/neich/dev/clips automations/lib/stage2-style-discovery.ts`
+- full pipeline: `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-runner.ts`
+- quick regenerate: `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-quick-regenerate.ts`
+- style discovery: `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-style-discovery.ts`
 
 The worker receives explicit per-stage `model` values for:
 

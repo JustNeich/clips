@@ -3,7 +3,7 @@
 ## Источники
 
 - `browser-verified`: owner, manager, redactor, redactor_limited walkthrough в изолированной среде
-- `code-verified`: [`lib/acl.ts`](/Users/neich/dev/clips automations/lib/acl.ts), [`lib/team-store.ts`](/Users/neich/dev/clips automations/lib/team-store.ts), [`lib/auth/guards.ts`](/Users/neich/dev/clips automations/lib/auth/guards.ts), [`lib/channel-edit-permissions.ts`](/Users/neich/dev/clips automations/lib/channel-edit-permissions.ts)
+- `code-verified`: [`lib/acl.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/acl.ts), [`lib/team-store.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/team-store.ts), [`lib/auth/guards.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/auth/guards.ts), [`lib/channel-edit-permissions.ts`](/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-edit-permissions.ts)
 - `db-verified`: cloned SQLite data и seeded role accounts
 
 ## Поддерживаемые роли

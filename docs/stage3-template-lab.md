@@ -3,7 +3,7 @@
 Отдельный стенд для последовательной сборки библиотеки шаблонов через живой preview и параллельный Playwright-pass.
 
 Перед началом нового шаблона или сложной калибровки сначала прочитайте:
-- [docs/stage3-template-integration.md](/Users/neich/dev/clips automations/docs/stage3-template-integration.md)
+- [docs/stage3-template-integration.md](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage3-template-integration.md)
 
 Там зафиксированы базовые понятия `frame / shell / card`, каноническая ScienceCard-геометрия, правила для border/shadow/background/badge и checklist по добавлению нового шаблона.
 
