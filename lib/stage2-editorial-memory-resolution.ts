@@ -18,6 +18,8 @@ import {
 export const STAGE2_EDITORIAL_MEMORY_EXPLICIT_LIMIT = 30;
 export const STAGE2_EDITORIAL_MEMORY_SELECTION_LIMIT = 12;
 export const STAGE2_EDITORIAL_MEMORY_SAME_LINE_EXPLICIT_MINIMUM = 6;
+const STAGE2_EDITORIAL_MEMORY_EXPERIMENTAL_SIGNAL_THRESHOLD = 3;
+const STAGE2_EDITORIAL_MEMORY_EXPERIMENTAL_PASSIVE_WEIGHT = 0.55;
 
 export type Stage2EditorialMemorySourceStrategy =
   | "channel_wide"
@@ -168,7 +170,12 @@ export function resolveChannelEditorialMemory(input: {
   }
 
   const resolvedWorkerProfile = resolveStage2WorkerProfile(input.stage2WorkerProfileId);
+  const isExperimentalReference =
+    resolvedWorkerProfile.executionMode === "one_shot_reference_v1_experimental";
   const hardRuleEvents = explicitEvents.filter(isHardRule);
+  const sameLineHardRuleEvents = hardRuleEvents.filter((event) =>
+    matchesWorkerProfile(event, resolvedWorkerProfile.resolvedId)
+  );
   const softExplicitEvents = explicitEvents.filter((event) => !isHardRule(event));
   const sameLineExplicitEvents = softExplicitEvents.filter((event) =>
     matchesWorkerProfile(event, resolvedWorkerProfile.resolvedId)
@@ -176,7 +183,22 @@ export function resolveChannelEditorialMemory(input: {
   const fallbackExplicitEvents = softExplicitEvents.filter(
     (event) => !matchesWorkerProfile(event, resolvedWorkerProfile.resolvedId)
   );
-  const supplementedWithFallback = sameLineExplicitEvents.length < explicitThreshold;
+
+  const sameLinePassiveEvents = passiveEvents.filter((event) =>
+    matchesWorkerProfile(event, resolvedWorkerProfile.resolvedId)
+  );
+  const fallbackPassiveEvents = passiveEvents.filter(
+    (event) => !matchesWorkerProfile(event, resolvedWorkerProfile.resolvedId)
+  );
+  const effectiveExplicitThreshold = isExperimentalReference
+    ? Math.min(explicitThreshold, STAGE2_EDITORIAL_MEMORY_EXPERIMENTAL_SIGNAL_THRESHOLD)
+    : explicitThreshold;
+  const sameLineSignalStrength = isExperimentalReference
+    ? sameLineExplicitEvents.length +
+      Math.min(2, sameLinePassiveEvents.length) +
+      sameLineHardRuleEvents.length
+    : sameLineExplicitEvents.length;
+  const supplementedWithFallback = sameLineSignalStrength < effectiveExplicitThreshold;
   const selectedExplicitEvents = sameLineExplicitEvents.slice(0, explicitLimit);
   if (supplementedWithFallback) {
     const selectedIds = new Set(selectedExplicitEvents.map((event) => event.id));
@@ -188,13 +210,6 @@ export function resolveChannelEditorialMemory(input: {
       selectedExplicitEvents.push(event);
     }
   }
-
-  const sameLinePassiveEvents = passiveEvents.filter((event) =>
-    matchesWorkerProfile(event, resolvedWorkerProfile.resolvedId)
-  );
-  const fallbackPassiveEvents = passiveEvents.filter(
-    (event) => !matchesWorkerProfile(event, resolvedWorkerProfile.resolvedId)
-  );
   const selectedPassiveEvents = sameLinePassiveEvents.slice(0, passiveLimit);
   if (supplementedWithFallback) {
     const selectedIds = new Set(selectedPassiveEvents.map((event) => event.id));
@@ -214,7 +229,7 @@ export function resolveChannelEditorialMemory(input: {
     ...selectedPassiveEvents
   ]);
   const strategy: Stage2EditorialMemorySourceStrategy =
-    sameLineExplicitEvents.length === 0
+    (isExperimentalReference ? sameLineSignalStrength : sameLineExplicitEvents.length) === 0
       ? "channel_fallback_only"
       : supplementedWithFallback
         ? "same_line_plus_channel_fallback"
@@ -224,7 +239,10 @@ export function resolveChannelEditorialMemory(input: {
     historyEvents,
     editorialMemory: buildStage2EditorialMemorySummary({
       profile,
-      feedbackEvents
+      feedbackEvents,
+      passiveSelectionWeight: isExperimentalReference
+        ? STAGE2_EDITORIAL_MEMORY_EXPERIMENTAL_PASSIVE_WEIGHT
+        : undefined
     }),
     source: {
       strategy,
@@ -235,7 +253,7 @@ export function resolveChannelEditorialMemory(input: {
       sameLineSelectionCount: sameLinePassiveEvents.length,
       fallbackSelectionCount: fallbackPassiveEvents.length,
       supplementedWithFallback,
-      explicitThreshold
+      explicitThreshold: effectiveExplicitThreshold
     }
   };
 }

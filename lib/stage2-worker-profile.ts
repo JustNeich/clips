@@ -1,5 +1,6 @@
 export const STAGE2_WORKER_PROFILE_IDS = [
   "stable_reference_v6",
+  "stable_reference_v6_experimental",
   "stable_social_wave_v1",
   "stable_skill_gap_v1",
   "experimental"
@@ -10,6 +11,7 @@ export type Stage2WorkerProfileId = (typeof STAGE2_WORKER_PROFILE_IDS)[number];
 export type Stage2WorkerProfileOrigin = "channel_setting" | "default_baseline";
 export type Stage2WorkerProfileExecutionMode =
   | "one_shot_reference_v1"
+  | "one_shot_reference_v1_experimental"
   | "native_modular_v1";
 
 export type Stage2WorkerProfileStyleCard = {
@@ -142,6 +144,101 @@ const STAGE2_WORKER_PROFILES: Record<Stage2WorkerProfileId, Stage2WorkerProfileD
         laneId: "earned_reaction",
         count: 1,
         purpose: "Catch the strongest grounded human reaction without going soft."
+      },
+      {
+        laneId: "plain_backup",
+        count: 1,
+        purpose: "Keep one cleaner fallback alive for display safety."
+      }
+    ]
+  },
+  stable_reference_v6_experimental: {
+    id: "stable_reference_v6_experimental",
+    label: "Stable Reference v6 Experimental",
+    description:
+      "Isolated experimental one-shot baseline for benchmark DNA with context-first anti-meta guardrails, stronger same-line learning, and weaker comment-wave steering under weak grounding.",
+    summary:
+      "Keep the benchmark explanatory density, but force context-first paraphrase instead of edit/commentary language. This line promotes matching-line editor feedback more aggressively and treats weakly grounded comments as secondary hints rather than narrator stance.",
+    executionMode: "one_shot_reference_v1_experimental",
+    styleCard: {
+      channel_voice: {
+        core_tone:
+          "dense, grounded, explanatory, context-first, human on the release, never documentary and never meta about the clip itself",
+        best_at: [
+          "compressed contextual paraphrase",
+          "paradox-first hooks without edit commentary",
+          "human release after the explanation",
+          "benchmark-like narrator density with stricter grounding",
+          "using channel rules as active framing boundaries"
+        ],
+        avoid: [
+          "edit or video commentary",
+          "comment-section narration",
+          "inventory openings",
+          "flat documentary recap",
+          "generic clean-English filler"
+        ]
+      },
+      hook_rules: [
+        "TOP should establish the event context first, then compress the contradiction or hidden rule",
+        "Paraphrase visible or textual context as the world of the clip, not as commentary about the clip",
+        "If grounding is weak, do not let audience reaction phrasing replace context"
+      ],
+      bottom_rules: [
+        "BOTTOM should release into a human or punchline read without talking about viewers or comments",
+        "BOTTOM must not restate the explanation verbatim",
+        "Editorial memory hard rules override comment-wave stylistic habits in this line"
+      ],
+      positive_micro_moves: [
+        "context before inference",
+        "anti-meta paraphrase",
+        "human release after the explanation",
+        "benchmark-style confidence without edit commentary"
+      ],
+      negative_micro_moves: [
+        "clip-edit commentary",
+        "comment-section narration",
+        "empty competence worship",
+        "clean but lifeless fallback copy"
+      ]
+    },
+    dominantWaveLanePlan: [
+      {
+        laneId: "context_first_reference",
+        count: 3,
+        purpose: "Open with the actual event context before the explanatory turn."
+      },
+      {
+        laneId: "explanatory_paradox",
+        count: 2,
+        purpose: "TOP should still explain the contradiction or hidden rule early."
+      },
+      {
+        laneId: "human_punchline",
+        count: 2,
+        purpose: "BOTTOM should release into a human or punchline read instead of audience commentary."
+      },
+      {
+        laneId: "plain_backup",
+        count: 1,
+        purpose: "Keep one cleaner fallback alive for display safety."
+      }
+    ],
+    defaultLanePlan: [
+      {
+        laneId: "context_first_reference",
+        count: 3,
+        purpose: "Open with the actual event context before the explanatory turn."
+      },
+      {
+        laneId: "explanatory_paradox",
+        count: 2,
+        purpose: "TOP should still explain the contradiction or hidden rule early."
+      },
+      {
+        laneId: "human_punchline",
+        count: 2,
+        purpose: "BOTTOM should release into a human or punchline read instead of audience commentary."
       },
       {
         laneId: "plain_backup",
@@ -477,6 +574,12 @@ export function resolveStage2WorkerProfile(value: unknown): ResolvedStage2Worker
 
 export function listStage2WorkerProfiles(): Stage2WorkerProfileDefinition[] {
   return STAGE2_WORKER_PROFILE_IDS.map((id) => STAGE2_WORKER_PROFILES[id]);
+}
+
+export function isReferenceOneShotExecutionMode(
+  value: Stage2WorkerProfileExecutionMode
+): boolean {
+  return value === "one_shot_reference_v1" || value === "one_shot_reference_v1_experimental";
 }
 
 export function buildStage2WorkerProfilePromptPayload(

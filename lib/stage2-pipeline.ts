@@ -5,7 +5,10 @@ import {
   Stage2PromptConfigStageId,
   Stage2ReasoningEffort
 } from "./stage2-prompt-specs";
-import { resolveStage2WorkerProfile } from "./stage2-worker-profile";
+import {
+  isReferenceOneShotExecutionMode,
+  resolveStage2WorkerProfile
+} from "./stage2-worker-profile";
 
 export {
   STAGE2_DEFAULT_REASONING_EFFORTS,
@@ -399,7 +402,7 @@ function resolveStage2ProgressDefinitions(
 
   if (
     workerProfileId !== undefined &&
-    resolveStage2WorkerProfile(workerProfileId).executionMode === "one_shot_reference_v1"
+    isReferenceOneShotExecutionMode(resolveStage2WorkerProfile(workerProfileId).executionMode)
   ) {
     return STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES;
   }

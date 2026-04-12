@@ -1438,6 +1438,153 @@ test("same-line-first editorial memory prefers matching worker-profile runs and 
   });
 });
 
+test("experimental reference editorial memory treats same-line hard rules plus passive selections as sufficient signal", async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Experimental Reference Memory",
+      email: "owner-experimental-reference-memory@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const styleProfile = createStyleProfile(["direction_1", "direction_2"]);
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Experimental Reference Channel",
+      username: "experimental_reference_channel",
+      stage2StyleProfile: styleProfile
+    });
+
+    const experimentalRun = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: buildStage2RunRequestSnapshot({
+        sourceUrl: "https://example.com/reference-experimental-run",
+        userInstruction: null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2WorkerProfileId: "stable_reference_v6_experimental",
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2StyleProfile: channel.stage2StyleProfile
+        }
+      })
+    });
+    const fallbackRun = createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: buildStage2RunRequestSnapshot({
+        sourceUrl: "https://example.com/reference-fallback-run",
+        userInstruction: null,
+        mode: "manual",
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username,
+          stage2WorkerProfileId: "stable_social_wave_v1",
+          stage2ExamplesConfig: channel.stage2ExamplesConfig,
+          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2StyleProfile: channel.stage2StyleProfile
+        }
+      })
+    });
+
+    createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      stage2RunId: experimentalRun.runId,
+      kind: "less_like_this",
+      noteMode: "hard_rule",
+      note: "Не уходи в clip/edit/comments meta, сначала контекст происходящего.",
+      optionSnapshot: {
+        candidateId: "experimental_hard_rule",
+        optionNumber: 1,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "context_first_reference",
+        styleDirectionIds: ["direction_1"],
+        explorationMode: "aligned"
+      }
+    });
+    createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      stage2RunId: experimentalRun.runId,
+      kind: "selected_option",
+      note: null,
+      optionSnapshot: {
+        candidateId: "experimental_selected_1",
+        optionNumber: 2,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "context_first_reference",
+        styleDirectionIds: ["direction_1"],
+        explorationMode: "aligned"
+      }
+    });
+    createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      stage2RunId: experimentalRun.runId,
+      kind: "selected_option",
+      note: null,
+      optionSnapshot: {
+        candidateId: "experimental_selected_2",
+        optionNumber: 3,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "human_punchline",
+        styleDirectionIds: ["direction_2"],
+        explorationMode: "aligned"
+      }
+    });
+    createChannelEditorialFeedbackEvent({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      stage2RunId: fallbackRun.runId,
+      kind: "more_like_this",
+      note: "Fallback social signal.",
+      optionSnapshot: {
+        candidateId: "fallback_signal",
+        optionNumber: 4,
+        top: "Top",
+        bottom: "Bottom",
+        angle: "comment-native lane",
+        styleDirectionIds: ["direction_1"],
+        explorationMode: "aligned"
+      }
+    });
+
+    const resolved = resolveChannelEditorialMemory({
+      channelId: channel.id,
+      stage2StyleProfile: channel.stage2StyleProfile,
+      stage2WorkerProfileId: "stable_reference_v6_experimental"
+    });
+
+    assert.equal(resolved.source.strategy, "same_line_only");
+    assert.equal(resolved.source.sameLineExplicitCount, 0);
+    assert.equal(resolved.source.sameLineSelectionCount, 2);
+    assert.equal(resolved.source.supplementedWithFallback, false);
+    assert.equal(resolved.source.explicitThreshold, 3);
+    assert.equal(resolved.editorialMemory.recentSelectionCount, 2);
+    assert.match(
+      resolved.editorialMemory.promptSummary,
+      /medium-strength same-line signals/i
+    );
+  });
+});
+
 test("explicit feedback events can be deleted and editorial memory recomputes from the remaining signals", async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");

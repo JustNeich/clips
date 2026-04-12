@@ -30,6 +30,25 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 - если one-shot ломает контракт, нарушает banned-content rules или выдаёт meta leakage, run завершается `failed`, а не silently деградирует;
 - если one-shot промахивается только по length window, runtime сохраняет shortlist с warnings и не переводит весь run в `failed`.
 
+### `stable_reference_v6_experimental` -> `reference_one_shot_v1_experimental`
+
+Это изолированный экспериментальный baseline line для проверки контекст-first и anti-meta поведения без изменения production stable line.
+
+Его hot path совпадает по форме:
+1. `oneShotReference`
+2. `captionHighlighting` (optional, fail-open)
+3. `captionTranslation`
+4. `seo`
+5. `assemble`
+6. human pick / review в UI
+
+Но contract другой:
+- использует отдельный product-owned prompt bundle и отдельный `pathVariant` в trace;
+- усиливает роль `editorial_memory`, особенно active hard rules;
+- при weak grounding ослабляет давление comment wave;
+- fail-closed режет media-commentary / audience-commentary phrasing, а не только schema/debug leakage;
+- усиливает same-line learning от matching-line signals по сравнению со stable.
+
 ### `stable_social_wave_v1` / `stable_skill_gap_v1` / `experimental` -> `modular_native_v1`
 
 Это текущий modular native flow:
@@ -50,6 +69,7 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 - prompt configuration хранится по stage
 - для `native_caption_v3` поверх stage prompts теперь есть явная platform-line policy:
   - `stable_reference_v6` = production baseline
+  - `stable_reference_v6_experimental` = isolated one-shot experiment for context-first anti-meta reference writing
   - `stable_social_wave_v1` = social/comment-wave line
   - `stable_skill_gap_v1` = competence-gap / skill-gap line
   - `experimental` = intentionally looser exploratory line
@@ -106,6 +126,7 @@ Run lifecycle:
 Run modes:
 - `manual` / `auto` проходят полный line-aware pipeline:
   - `stable_reference_v6` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> assemble`
+  - `stable_reference_v6_experimental` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> assemble`
   - остальные native lines -> `contextPacket -> candidateGenerator -> hardValidator -> qualityCourt -> targetedRepair? -> templateBackfill? -> captionHighlighting? -> captionTranslation -> titleWriter`
 - `regenerate` для `native_caption_v3` по-прежнему работает как lightweight rewrite path и не переключает line family
 - исторический quick regenerate для legacy/vnext payloads остаётся только для compatibility
@@ -194,7 +215,7 @@ Prompt configuration задаётся **по stage**, а не через vague g
 - channel learning задаёт мягкий channel prior;
 - platform line задаёт production family policy для style card / lane plan / judging boundary;
 - эти два слоя не должны подменять друг друга.
-- `stable_reference_v6` использует product-owned one-shot prompt и **не** редактируется через workspace stage prompts;
+- `stable_reference_v6` и `stable_reference_v6_experimental` используют product-owned one-shot prompts и **не** редактируются через workspace stage prompts;
 - остальные native lines продолжают жить на stage-configurable modular prompt stack.
 
 Workspace owner редактирует defaults в `Default settings`:

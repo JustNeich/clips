@@ -18,6 +18,7 @@ import type { JsonStageExecutor } from "../lib/viral-shorts-worker/executor";
 
 type ExecutorCall = {
   model: string | null;
+  prompt: string;
   imagePaths: string[];
 };
 
@@ -35,6 +36,7 @@ class CaptureQueueExecutor implements JsonStageExecutor {
   }): Promise<T> {
     this.calls.push({
       model: input.model ?? null,
+      prompt: input.prompt,
       imagePaths: input.imagePaths ?? []
     });
     if (this.responses.length === 0) {
@@ -476,6 +478,98 @@ test("stable_reference_v6 routes the dedicated oneShotReference model and skips 
   );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
   assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], []]);
+});
+
+test("stable_reference_v6_experimental routes the dedicated oneShotReference model through the experimental path variant", async () => {
+  const service = new ViralShortsWorkerService();
+  const executor = new CaptureQueueExecutor([
+    {
+      analysis: {
+        visual_anchors: [
+          "wrench stops mid-air",
+          "everyone turns toward the pause",
+          "the room reads it before he speaks"
+        ],
+        comment_vibe: "dry impressed side-eye",
+        key_phrase_to_adapt: "that pause said enough"
+      },
+      candidates: Array.from({ length: 5 }, (_, index) => ({
+        candidate_id: `ref_exp_${index + 1}`,
+        top:
+          index === 0
+            ? "The wrench freezes mid-air after the mistake lands, and the whole bay reads the cost of it before anybody there needs to say the next word out loud."
+            : `The mistake lands before the explanation does, and the whole bay starts reading his face instead of the part the second that wrench stops ${index + 1}.`,
+        bottom:
+          index === 0
+            ? "That pause turns a normal repair beat into the exact second everybody in the room realizes what the bill is about to become."
+            : `The room doesn't need extra narration after that pause, because the silence already cashes out the repair cost for everybody there ${index + 1}.`,
+        retained_handle: index < 2
+      })),
+      winner_candidate_id: "ref_exp_1",
+      titles: Array.from({ length: 5 }, (_, index) => ({
+        title: `WHY DID THE ROOM FREEZE ${index + 1}`,
+        title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
+      }))
+    },
+    Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `ref_exp_${index + 1}`,
+      top_ru: `Русский верх ${index + 1}`,
+      bottom_ru: `Русский низ ${index + 1}`
+    })),
+    {
+      description:
+        "Garage bay, no stated speed, mechanic wrench pause, workshop reaction\nThe wrench stops mid-air before anyone says a word, and the room reads the repair outcome off the silence alone. The pause, the faces turning, and the unfinished motion make the social read land before the explanation does.\nSearch terms and topics covered:\nmechanic wrench pause, garage reaction moment, workshop silence reaction, repair bill realization, mechanic room freeze, wrench stops mid air, automotive shop reaction, visible awkward pause, repair gone wrong reaction, garage bay silence, mechanic social read, workshop tension moment, repair estimate reaction, automotive bay short, wrench pause caught on camera\nHashtags:\n#mechanic, #garage, #shorts, #wrenchpause, #workshopreaction, #repairbill, #automotiveshop, #awkwardsilence, #caughtoncamera, #viralvideo, #mechaniclife, #fyp",
+      tags:
+        "Mechanic, Garage Reaction, Auto Repair, wrench pause, room freeze, workshop silence, repair realization, social read, caught on camera, awkward pause, garage bay, mechanic shop, wrench, repair bill, automotive bay, workshop, reaction clip"
+    }
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_ref_exp",
+      name: "Reference Channel Experimental",
+      username: "reference_channel_experimental",
+      stage2WorkerProfileId: "stable_reference_v6_experimental",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/reference-experimental",
+      title: "A wrench pause says enough",
+      description: "",
+      transcript: "",
+      comments: [
+        {
+          author: "viewer",
+          likes: 10,
+          text: "that pause said enough"
+        }
+      ],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "keep the benchmark density"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
+    executor,
+    stageModels: {
+      oneShotReference: "gpt-5.4-mini",
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.3-codex-spark",
+      qualityCourt: "gpt-5.4",
+      targetedRepair: "gpt-5.4",
+      captionTranslation: "gpt-5.4",
+      titleWriter: "gpt-5.3-codex-spark",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1_experimental");
+  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v6_experimental");
+  assert.deepEqual(
+    executor.calls.map((call) => call.model),
+    ["gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
+  );
+  assert.match(executor.calls[0]?.prompt ?? "", /experimental_contract_json/);
 });
 
 test("runQuickRegenerateModel forwards the dedicated regenerate model without images", async () => {

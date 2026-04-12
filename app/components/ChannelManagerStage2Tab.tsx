@@ -465,14 +465,14 @@ export function ChannelManagerStage2Tab({
               <div className="stage2-config-stage-copy">
                 <div className="quick-edit-label-row">
                   <label className="field-label">
-                    Stable Reference v6 <span className="badge">Product-owned one-shot</span>
+                    Stable Reference baselines <span className="badge">Product-owned one-shot</span>
                   </label>
                   <span className="badge muted">Prompt locked</span>
                 </div>
                 <p className="subtle-text">
-                  Этот baseline запускает `stable_reference_v6` через quality-first one-shot path.
-                  Здесь можно менять только модель и уровень рассуждений; сам промпт остаётся
-                  продуктовым и не редактируется из workspace UI.
+                  Эти baselines запускают `stable_reference_v6` и `stable_reference_v6_experimental`
+                  через quality-first one-shot path. Здесь можно менять только модель и уровень
+                  рассуждений; сами product-owned prompts не редактируются из workspace UI.
                 </p>
               </div>
             </div>
@@ -498,7 +498,7 @@ export function ChannelManagerStage2Tab({
                     ))}
                   </select>
                   <p className="subtle-text">
-                    Этим reasoning запускается product-owned reference baseline в `stable_reference_v6`.
+                    Этим reasoning запускаются product-owned reference baselines для stable и experimental v6.
                   </p>
                 </div>
                 {referenceOneShotModelField
@@ -960,7 +960,9 @@ export function ChannelManagerStage2Tab({
               <div>
                 <h3>Последние реакции канала</h3>
                 <p className="subtle-text">
-                  Здесь видны только явные лайки и дизлайки. Пассивный выбор варианта остаётся системным слабым сигналом и в эту историю не попадает.
+                  {resolvedWorkerProfile.resolvedId === "stable_reference_v6_experimental"
+                    ? "Здесь видны только явные лайки и дизлайки. Для experimental reference line matching-line passive selections тоже учитываются сильнее обычного, но в эту историю по-прежнему не попадают."
+                    : "Здесь видны только явные лайки и дизлайки. Пассивный выбор варианта остаётся системным слабым сигналом и в эту историю не попадает."}
                 </p>
               </div>
             </div>

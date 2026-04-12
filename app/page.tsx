@@ -6079,10 +6079,15 @@ export default function HomePage() {
         : input.noteMode === "situational_note"
           ? "Ситуативная заметка"
           : "Мягкое предпочтение";
+    const isExperimentalReferenceFlow =
+      visibleStage2Result.output.pipeline?.workerProfile?.resolvedId ===
+      "stable_reference_v6_experimental";
     setStatusType("ok");
     setStatus(
       input.kind === "selected_option"
-        ? "Выбор сохранён: канал воспримет его как лёгкий положительный сигнал."
+        ? isExperimentalReferenceFlow
+          ? "Выбор сохранён: experimental reference line воспримет его как усиленный same-line сигнал."
+          : "Выбор сохранён: канал воспримет его как лёгкий положительный сигнал."
         : input.noteMode === "hard_rule"
           ? `${savedModeLabel} сохранено: этот сигнал останется активным правилом канала, пока его не удалят.`
           : input.kind === "more_like_this"

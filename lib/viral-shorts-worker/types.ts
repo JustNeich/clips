@@ -370,6 +370,7 @@ export type Stage2ExecutionPathVariant =
   | "legacy_multistage_v1"
   | "modular_native_v1"
   | "reference_one_shot_v1"
+  | "reference_one_shot_v1_experimental"
   | "vnext_pipeline_v1";
 
 export type Stage2DiagnosticsPromptStage = {

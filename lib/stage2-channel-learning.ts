@@ -1041,6 +1041,7 @@ export function buildStage2EditorialMemorySummary(input: {
   profile: Stage2StyleProfile | null | undefined;
   feedbackEvents: ChannelEditorialFeedbackEvent[];
   windowSize?: number;
+  passiveSelectionWeight?: number;
 }): Stage2EditorialMemorySummary {
   const profile = normalizeStage2StyleProfile(input.profile);
   const selectedDirections = getSelectedStage2StyleDirections(profile);
@@ -1054,6 +1055,12 @@ export function buildStage2EditorialMemorySummary(input: {
   const hardRuleNotes: string[] = [];
   const recentNotes: string[] = [];
   const windowSize = Math.max(1, Math.floor(input.windowSize ?? STAGE2_EDITORIAL_MEMORY_WINDOW));
+  const passiveSelectionWeight = Math.max(
+    0,
+    Number.isFinite(input.passiveSelectionWeight)
+      ? Number(input.passiveSelectionWeight)
+      : 0.22
+  );
 
   let axisTotals = { ...EMPTY_STAGE2_STYLE_AXES };
   let axisWeight = 0;
@@ -1171,7 +1178,7 @@ export function buildStage2EditorialMemorySummary(input: {
     const recencyWeight = 1 - (index / Math.max(Math.max(recentPassiveSelectionEvents.length, 1) - 1, 1)) * 0.6;
     applyEventWeight(
       event,
-      Number((recencyWeight * 0.22 * getFeedbackModeWeight(event.noteMode)).toFixed(4))
+      Number((recencyWeight * passiveSelectionWeight * getFeedbackModeWeight(event.noteMode)).toFixed(4))
     );
   });
 
@@ -1236,7 +1243,9 @@ export function buildStage2EditorialMemorySummary(input: {
       ? `Recent editor notes: ${recentNotes.map((note) => `"${note}"`).join("; ")}.`
       : "",
     recentPassiveSelectionEvents.length > 0
-      ? `Passive option selections lately: ${recentPassiveSelectionEvents.length}. Treat them as weaker than explicit likes or dislikes.`
+      ? passiveSelectionWeight > 0.22
+        ? `Passive option selections lately: ${recentPassiveSelectionEvents.length}. Treat them as medium-strength same-line signals for this line, but still below explicit likes or dislikes.`
+        : `Passive option selections lately: ${recentPassiveSelectionEvents.length}. Treat them as weaker than explicit likes or dislikes.`
       : "",
     `Keep roughly ${Math.round(profile.explorationShare * 100)}% of the option space exploratory so the channel can keep learning.`
   ].filter(Boolean);

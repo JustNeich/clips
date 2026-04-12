@@ -642,8 +642,8 @@ export function ChannelOnboardingWizard({
                 </select>
                 <p className="subtle-text">
                   Этот переключатель задаёт базовую линию Stage 2: benchmark-reference,
-                  social-wave, skill-gap или experimental. Ниже по-прежнему можно оставлять
-                  общий корпус и обычные ограничения.
+                  benchmark-reference experimental, social-wave, skill-gap или experimental.
+                  Ниже по-прежнему можно оставлять общий корпус и обычные ограничения.
                 </p>
               </div>
               <div className="channel-onboarding-note-card">

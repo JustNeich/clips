@@ -10,9 +10,9 @@
 
 Важно:
 - channel learning не заменяет platform line policy в `native_caption_v3`;
-- line selector задаёт production family boundary (`stable_reference_v6`, `stable_social_wave_v1`, `stable_skill_gap_v1`, `experimental`);
+- line selector задаёт production family boundary (`stable_reference_v6`, `stable_reference_v6_experimental`, `stable_social_wave_v1`, `stable_skill_gap_v1`, `experimental`);
 - bootstrap style profile + editorial memory живут поверх этой boundary и уточняют channel-specific steering.
-- у `stable_reference_v6` эти сигналы теперь особенно важны, потому что baseline line работает через product-owned one-shot prompt:
+- у `stable_reference_v6` и `stable_reference_v6_experimental` эти сигналы теперь особенно важны, потому что baseline line работает через product-owned one-shot prompt:
   - current clip comments читаются как clip-local social read;
   - channel bootstrap и reaction history читаются как style/tone boundaries;
   - они не могут переопределять visible facts из текущего ролика.
@@ -34,6 +34,7 @@
 Ключевое правило:
 - references сужают proposal space, но не принимают финальное решение вместо редактора.
 - для `stable_reference_v6` выбранные directions и editorial memory влияют на narrator DNA внутри product-owned one-shot baseline, а не через внешний validator/repair loop.
+- `stable_reference_v6_experimental` использует тот же общий one-shot skeleton, но поверх него включает более жёсткий anti-meta contract, слабее опирается на comment wave при weak grounding и сильнее уважает same-line channel feedback.
 
 ## 2. Guided onboarding flow
 
@@ -507,7 +508,7 @@ Prompt payload строится в:
 - rolling editorial memory
 - exploration share
 
-Для `stable_reference_v6` этот слой дополнительно компактизируется в two steering packets:
+Для `stable_reference_v6` и `stable_reference_v6_experimental` этот слой дополнительно компактизируется в two steering packets:
 - `channel_narrative_json`
 - `editorial_memory_json`
 
@@ -543,6 +544,12 @@ Prompt payload строится в:
   4. channel bootstrap narrative
   5. editorial memory
 - historical feedback может калибровать tone и narrator habit, но не имеет права добавлять факты, которых нет в текущем ролике.
+
+`stable_reference_v6_experimental` one-shot baseline:
+- получает те же channel-learning packets, но подчиняет comment wave более жёсткому context-first contract;
+- воспринимает active hard rules как publishability guardrails, а не только soft steering;
+- усиливает same-line passive selections и matching-line hard rules при расчёте editorial memory;
+- fail-closed режет media-commentary и audience-commentary phrasing, даже если остальной one-shot contract формально выполнен.
 
 `critic` и `final selector`:
 - не должны автоматически убивать все exploratory кандидаты;

@@ -101,6 +101,8 @@ import {
   normalizeStage2PromptConfig
 } from "../stage2-pipeline";
 import {
+  STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT,
+  STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT_VERSION,
   STAGE2_REFERENCE_ONE_SHOT_PROMPT,
   STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION,
   Stage2PromptConfigStageId
@@ -123,6 +125,7 @@ import {
 import {
   buildStage2WorkerProfilePromptPayload,
   buildStage2WorkerProfileRequiredLanes,
+  isReferenceOneShotExecutionMode,
   resolveStage2WorkerProfile
 } from "../stage2-worker-profile";
 import {
@@ -1848,6 +1851,79 @@ function buildNativeCaptionChannelLearningPayload(
   };
 }
 
+type ReferenceOneShotVariantConfig = {
+  label: string;
+  promptText: string;
+  promptVersion: string;
+  pathVariant: Stage2PipelineExecution["pathVariant"];
+  stageSummary: string;
+  stageFlags: string[];
+  commentsLimit: number;
+  weakGroundingCommentsLimit: number;
+  failLabel: string;
+  antiMetaValidation: boolean;
+};
+
+function isWeakReferenceOneShotSourceGrounding(videoContext: ViralShortsVideoContext): boolean {
+  const sourceSummary = buildStage2SourceContextSummary(videoContext);
+  return (
+    videoContext.description.trim().length === 0 &&
+    videoContext.transcript.trim().length === 0 &&
+    sourceSummary.speechGroundingStatus !== "transcript_present"
+  );
+}
+
+function resolveReferenceOneShotVariantConfig(
+  channelConfig: Stage2RuntimeChannelConfig
+): ReferenceOneShotVariantConfig {
+  if (channelConfig.workerProfile?.executionMode === "one_shot_reference_v1_experimental") {
+    return {
+      label: "Reference one-shot experimental",
+      promptText: STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT,
+      promptVersion: STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT_VERSION,
+      pathVariant: "reference_one_shot_v1_experimental",
+      stageSummary:
+        "Product-owned experimental one-shot baseline: returns the final 5 publishable reference-style options with anti-meta guardrails, context-first paraphrase, and stronger editorial-memory steering.",
+      stageFlags: [
+        "one-shot baseline",
+        "product-owned prompt",
+        "context-first anti-meta contract",
+        "weak-grounding comment rebalance",
+        "same-line editorial memory promoted",
+        "quality-first fail hard",
+        "no deterministic backfill"
+      ],
+      commentsLimit: 14,
+      weakGroundingCommentsLimit: 8,
+      failLabel: "Reference one-shot experimental",
+      antiMetaValidation: true
+    };
+  }
+
+  return {
+    label: "Reference one-shot",
+    promptText: STAGE2_REFERENCE_ONE_SHOT_PROMPT,
+    promptVersion: STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION,
+    pathVariant: "reference_one_shot_v1",
+    stageSummary:
+      "Product-owned one-shot baseline: returns the final 5 publishable reference-style options directly from video truth, comments, line policy, channel narrative, and editorial memory.",
+    stageFlags: [
+      "one-shot baseline",
+      "product-owned prompt",
+      "video truth first",
+      "current comment wave",
+      "channel narrative",
+      "editorial memory",
+      "quality-first fail hard",
+      "no deterministic backfill"
+    ],
+    commentsLimit: 18,
+    weakGroundingCommentsLimit: 18,
+    failLabel: "Reference one-shot",
+    antiMetaValidation: false
+  };
+}
+
 function buildReferenceOneShotVideoTruthPayload(input: {
   videoContext: ViralShortsVideoContext;
   analyzerOutput: AnalyzerOutput;
@@ -1877,9 +1953,15 @@ function buildReferenceOneShotVideoTruthPayload(input: {
 function buildReferenceOneShotCommentWavePayload(input: {
   videoContext: ViralShortsVideoContext;
   analyzerOutput: AnalyzerOutput;
+  variant: ReferenceOneShotVariantConfig;
 }) {
+  const commentLimit =
+    input.variant.weakGroundingCommentsLimit < input.variant.commentsLimit &&
+    isWeakReferenceOneShotSourceGrounding(input.videoContext)
+      ? input.variant.weakGroundingCommentsLimit
+      : input.variant.commentsLimit;
   return {
-    comments: input.videoContext.comments.slice(0, 18).map((comment) => ({
+    comments: input.videoContext.comments.slice(0, commentLimit).map((comment) => ({
       author: comment.author,
       likes: comment.likes,
       text: comment.text
@@ -1972,8 +2054,9 @@ function buildReferenceOneShotPrompt(input: {
   videoContext: ViralShortsVideoContext;
   channelConfig: Stage2RuntimeChannelConfig;
   analyzerOutput: AnalyzerOutput;
+  variant: ReferenceOneShotVariantConfig;
 }): string {
-  return renderJsonPrompt(STAGE2_REFERENCE_ONE_SHOT_PROMPT, {
+  const basePayload = {
     video_truth_json: buildReferenceOneShotVideoTruthPayload(input),
     current_comment_wave_json: buildReferenceOneShotCommentWavePayload(input),
     line_profile_json: buildStage2WorkerProfilePromptPayload(
@@ -2000,6 +2083,28 @@ function buildReferenceOneShotPrompt(input: {
     },
     hard_constraints_json: input.channelConfig.hardConstraints,
     user_instruction: input.videoContext.userInstruction?.trim() || null
+  };
+  if (!input.variant.antiMetaValidation) {
+    return renderJsonPrompt(input.variant.promptText, basePayload);
+  }
+  return renderJsonPrompt(input.variant.promptText, {
+    ...basePayload,
+    experimental_contract_json: {
+      mode: "context_first_antimeta_reference",
+      weak_grounding_mode: isWeakReferenceOneShotSourceGrounding(input.videoContext)
+        ? "comments_secondary_hints_only"
+        : "comments_can_supply_harmless_phrasing",
+      anti_meta_bans: [
+        "the clip",
+        "the video",
+        "the edit",
+        "the footage",
+        "the comments",
+        "comment sections",
+        "viewers"
+      ],
+      editorial_memory_priority: "active_hard_rules_override_comment_wave_style"
+    }
   });
 }
 
@@ -2126,12 +2231,44 @@ const REFERENCE_ONE_SHOT_META_LEAKAGE_RULES = [
   }
 ] as const;
 
+const REFERENCE_ONE_SHOT_EXPERIMENTAL_META_COMMENTARY_RULES = [
+  {
+    regex: /\b(?:this|the)\s+(?:clip|video|edit|footage|scene|sequence)\b/i,
+    reason: "contains media-object commentary"
+  },
+  {
+    regex: /\bcomments?\b|\bcomment sections?\b/i,
+    reason: "contains comment-section commentary"
+  },
+  {
+    regex: /\bviewers?\b|\bpeople (?:watching|react(?:ing)?|aren't watching)\b/i,
+    reason: "contains audience-reaction commentary"
+  },
+  {
+    regex: /\bwhat makes this hit\b|\bthe part people react to\b|\bthe comments keep\b/i,
+    reason: "contains meta framing about how the clip plays"
+  }
+] as const;
+
 function findReferenceOneShotMetaLeakage(text: string): string | null {
   const normalized = text.trim();
   if (!normalized) {
     return null;
   }
   for (const rule of REFERENCE_ONE_SHOT_META_LEAKAGE_RULES) {
+    if (rule.regex.test(normalized)) {
+      return rule.reason;
+    }
+  }
+  return null;
+}
+
+function findReferenceOneShotExperimentalMetaCommentary(text: string): string | null {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+  for (const rule of REFERENCE_ONE_SHOT_EXPERIMENTAL_META_COMMENTARY_RULES) {
     if (rule.regex.test(normalized)) {
       return rule.reason;
     }
@@ -2146,6 +2283,7 @@ function isReferenceOneShotLengthConstraintIssue(issue: string): boolean {
 function collectReferenceOneShotContractDiagnostics(input: {
   result: NativeReferenceOneShotResult;
   hardConstraints: Stage2HardConstraints;
+  variant: ReferenceOneShotVariantConfig;
 }): {
   fatalIssues: string[];
   lengthWindowWarnings: string[];
@@ -2197,6 +2335,18 @@ function collectReferenceOneShotContractDiagnostics(input: {
     const bottomMetaLeakage = findReferenceOneShotMetaLeakage(candidate.bottom);
     if (bottomMetaLeakage) {
       fatalIssues.push(`candidate "${candidate.candidateId}" bottom ${bottomMetaLeakage}`);
+    }
+    if (input.variant.antiMetaValidation) {
+      const topExperimentalMeta = findReferenceOneShotExperimentalMetaCommentary(candidate.top);
+      if (topExperimentalMeta) {
+        fatalIssues.push(`candidate "${candidate.candidateId}" top ${topExperimentalMeta}`);
+      }
+      const bottomExperimentalMeta = findReferenceOneShotExperimentalMetaCommentary(
+        candidate.bottom
+      );
+      if (bottomExperimentalMeta) {
+        fatalIssues.push(`candidate "${candidate.candidateId}" bottom ${bottomExperimentalMeta}`);
+      }
     }
 
     const constraintCheck = evaluateNativeCaptionConstraintCheck(candidate, input.hardConstraints);
@@ -7217,6 +7367,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
 }): Promise<RunPipelineResult> {
   const warnings: StageWarning[] = [];
   const executedPromptStages: ExecutedPromptStageRecord[] = [];
+  const variantConfig = resolveReferenceOneShotVariantConfig(input.channelConfig);
   const promptInputManifests: Partial<
     Record<Stage2PipelineStageId, Stage2DiagnosticsPromptStage["inputManifest"]>
   > = {};
@@ -7250,6 +7401,11 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     input.channelConfig,
     "compact"
   );
+  const oneShotCommentLimit =
+    variantConfig.weakGroundingCommentsLimit < variantConfig.commentsLimit &&
+    isWeakReferenceOneShotSourceGrounding(input.videoContext)
+      ? variantConfig.weakGroundingCommentsLimit
+      : variantConfig.commentsLimit;
   const contextPacket =
     input.reusedContextPacket ??
     buildNativeCaptionFallbackContextPacket({
@@ -7261,7 +7417,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   const oneShotPrompt = buildReferenceOneShotPrompt({
     videoContext: input.videoContext,
     channelConfig: input.channelConfig,
-    analyzerOutput: input.analyzerOutput
+    analyzerOutput: input.analyzerOutput,
+    variant: variantConfig
   });
   const oneShotReasoningEffort = resolveStageReasoningEffort(
     "oneShotReference",
@@ -7297,34 +7454,25 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     },
     comments: {
       availableCount: input.videoContext.comments.length,
-      passedCount: Math.min(18, input.videoContext.comments.length),
-      omittedCount: Math.max(0, input.videoContext.comments.length - 18),
-      truncated: input.videoContext.comments.length > 18,
-      limit: 18,
+      passedCount: Math.min(oneShotCommentLimit, input.videoContext.comments.length),
+      omittedCount: Math.max(0, input.videoContext.comments.length - oneShotCommentLimit),
+      truncated: input.videoContext.comments.length > oneShotCommentLimit,
+      limit: oneShotCommentLimit,
       passedCommentIds: input.videoContext.comments
-        .slice(0, 18)
+        .slice(0, oneShotCommentLimit)
         .map((comment, index) => comment.id ?? `comment_${index + 1}`)
     },
     examples: null,
     channelLearning: compactChannelLearning.usage,
     candidates: null,
-    stageFlags: [
-      "one-shot baseline",
-      "product-owned prompt",
-      "video truth first",
-      "current comment wave",
-      "channel narrative",
-      "editorial memory",
-      "quality-first fail hard",
-      "no deterministic backfill"
-    ]
+    stageFlags: variantConfig.stageFlags
   };
   await reportProgress({
     stageId: "oneShotReference",
     state: "running",
     promptChars: oneShotPrompt.length,
     reasoningEffort: oneShotReasoningEffort,
-    detail: "Running the one-shot reference baseline."
+    detail: `Running the ${variantConfig.label.toLowerCase()} baseline.`
   });
   const oneShotStartedAt = Date.now();
   let oneShotResult: NativeReferenceOneShotResult;
@@ -7346,14 +7494,15 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     polishedCandidateIds = polished.polishedCandidateIds;
     const contractDiagnostics = collectReferenceOneShotContractDiagnostics({
       result: oneShotResult,
-      hardConstraints: input.channelConfig.hardConstraints
+      hardConstraints: input.channelConfig.hardConstraints,
+      variant: variantConfig
     });
     oneShotLengthWindowWarnings = contractDiagnostics.lengthWindowWarnings;
     if (contractDiagnostics.fatalIssues.length > 0) {
       throw new Error(contractDiagnostics.fatalIssues.join("; "));
     }
   } catch (error) {
-    const failureMessage = formatStageFailure("Reference one-shot", error);
+    const failureMessage = formatStageFailure(variantConfig.failLabel, error);
     await reportProgress({
       stageId: "oneShotReference",
       state: "failed",
@@ -7372,17 +7521,17 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     reasoningEffort: oneShotReasoningEffort,
     detail:
       oneShotLengthWindowWarnings.length > 0
-        ? `One-shot baseline produced 5 finalist options; ${oneShotLengthWindowWarnings.length} option(s) stayed outside the configured length window and were kept with warnings.`
+        ? `${variantConfig.label} produced 5 finalist options; ${oneShotLengthWindowWarnings.length} option(s) stayed outside the configured length window and were kept with warnings.`
         : polishedCandidateIds.length > 0
-          ? `One-shot baseline produced 5 publishable finalists; exact-length polish tightened ${polishedCandidateIds.length} candidate(s) without repair or backfill.`
-          : "One-shot baseline produced 5 publishable finalists without repair or backfill."
+          ? `${variantConfig.label} produced 5 publishable finalists; exact-length polish tightened ${polishedCandidateIds.length} candidate(s) without repair or backfill.`
+          : `${variantConfig.label} produced 5 publishable finalists without repair or backfill.`
   });
   recordExecutedStage(
     "oneShotReference",
     oneShotPrompt,
     polishedCandidateIds.length > 0
-      ? "Product-owned one-shot baseline: returns the final 5 publishable reference-style options directly from video truth, comments, line policy, channel narrative, and editorial memory, then applies tiny deterministic exact-length polish for near-miss overflows."
-      : "Product-owned one-shot baseline: returns the final 5 publishable reference-style options directly from video truth, comments, line policy, channel narrative, and editorial memory.",
+      ? `${variantConfig.stageSummary} Exact-length polish tightened the final wording for near-miss overflows without repair or backfill.`
+      : variantConfig.stageSummary,
     oneShotResult,
     { usesImages: input.imagePaths.length > 0, model: oneShotModel }
   );
@@ -7782,8 +7931,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
           serializedResultBytes: stage.serializedResultBytes,
           estimatedOutputTokens: stage.estimatedOutputTokens,
           inputManifest: promptInputManifests[stage.stageId],
-          defaultPrompt: STAGE2_REFERENCE_ONE_SHOT_PROMPT,
-          promptCompatibilityVersion: STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION
+          defaultPrompt: variantConfig.promptText,
+          promptCompatibilityVersion: variantConfig.promptVersion
         })
       : buildPromptStageDiagnostics({
           stageId: stage.stageId,
@@ -7811,8 +7960,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
           serializedResultBytes: stage.serializedResultBytes,
           estimatedOutputTokens: stage.estimatedOutputTokens,
           inputManifest: promptInputManifests[stage.stageId],
-          defaultPrompt: STAGE2_REFERENCE_ONE_SHOT_PROMPT,
-          promptCompatibilityVersion: STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION
+          defaultPrompt: variantConfig.promptText,
+          promptCompatibilityVersion: variantConfig.promptVersion
         })
       : buildPromptStageDiagnostics({
           stageId: stage.stageId,
@@ -8231,10 +8380,9 @@ export class ViralShortsWorkerService {
     });
     const resolvedNativeWorkerProfile = getResolvedStage2WorkerProfile(channelConfig);
     const workerBuild = getStage2WorkerBuildInfo();
-    const pathVariant =
-      resolvedNativeWorkerProfile.executionMode === "one_shot_reference_v1"
-        ? "reference_one_shot_v1"
-        : "modular_native_v1";
+    const pathVariant = isReferenceOneShotExecutionMode(resolvedNativeWorkerProfile.executionMode)
+      ? resolveReferenceOneShotVariantConfig(channelConfig).pathVariant
+      : "modular_native_v1";
     const pipelineExecution = buildStage2PipelineExecutionSnapshot({
       featureFlags: resolveStage2VNextFlagSnapshot(false),
       pipelineVersion: "native_caption_v3",
@@ -8294,7 +8442,7 @@ export class ViralShortsWorkerService {
       []
     );
 
-    if (pathVariant === "reference_one_shot_v1") {
+    if (pathVariant === "reference_one_shot_v1" || pathVariant === "reference_one_shot_v1_experimental") {
       return runReferenceOneShotNativeCaptionPipeline({
         channelConfig,
         workspaceCorpusCount,

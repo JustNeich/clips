@@ -49,6 +49,10 @@ import type {
   Stage2TokenUsage
 } from "./viral-shorts-worker/types";
 
+function isReferenceOneShotPathVariant(pathVariant: string | null | undefined): boolean {
+  return pathVariant === "reference_one_shot_v1" || pathVariant === "reference_one_shot_v1_experimental";
+}
+
 const execFileAsync = promisify(execFile);
 
 type VideoInfoJson = {
@@ -83,7 +87,7 @@ function resolveNativeStage2ResponseExecutionSettings(input: {
   hardConstraints: Stage2RunRecord["request"]["channel"]["stage2HardConstraints"];
 }) {
   const isReferenceOneShot =
-    input.output.pipeline?.execution?.pathVariant === "reference_one_shot_v1";
+    isReferenceOneShotPathVariant(input.output.pipeline?.execution?.pathVariant);
   const referenceOneShotModel =
     input.executorContext.resolvedCodexModelConfig.oneShotReference;
   const referenceOneShotModelSummary =
@@ -137,7 +141,7 @@ export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stag
   }
 
   if (execution.pipelineVersion === "native_caption_v3") {
-    const isReferenceOneShot = execution.pathVariant === "reference_one_shot_v1";
+    const isReferenceOneShot = isReferenceOneShotPathVariant(execution.pathVariant);
     if (!pipeline.nativeCaptionV3) {
       return {
         ok: false,

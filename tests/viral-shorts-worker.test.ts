@@ -7796,11 +7796,92 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
   assert.match(executor.calls[0]?.prompt ?? "", /"hard_constraints_json"/);
   assert.match(executor.calls[0]?.prompt ?? "", /even 1 character outside/i);
   assert.match(executor.calls[0]?.prompt ?? "", /that pause said enough/i);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /experimental_contract_json/i);
   assert.equal(executor.calls[0]?.reasoningEffort, "x-high");
   assert.equal(
     result.output.captionOptions.every((option) => Boolean(option.topRu) && Boolean(option.bottomRu)),
     true
   );
+});
+
+test("stable_reference_v6_experimental uses the isolated one-shot prompt contract and trims comment-wave pressure under weak grounding", async () => {
+  const videoContext = buildVideoContext({
+    sourceUrl: "https://example.com/reference-one-shot-experimental",
+    title: "A mechanic pauses before the whole room gets it",
+    description: "",
+    transcript: "",
+    comments: Array.from({ length: 12 }, (_, index) => ({
+      author: `viewer-${index + 1}`,
+      likes: 120 - index,
+      text: index % 2 === 0 ? "that pause said enough" : "everybody there heard the bill"
+    })),
+    frameDescriptions: [
+      "A mechanic freezes with the wrench still in his hand.",
+      "Everyone nearby turns toward the pause instead of the part."
+    ],
+    userInstruction: "keep the benchmark density"
+  });
+
+  const oneShotResponse = {
+    analysis: {
+      visual_anchors: [
+        "the wrench stops mid-air",
+        "everyone turns toward the pause",
+        "the room reads it before he speaks"
+      ],
+      comment_vibe: "dry, impressed side-eye",
+      key_phrase_to_adapt: "that pause said enough"
+    },
+    candidates: Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `ref_exp_${index + 1}`,
+      top:
+        index === 0
+          ? "The wrench freezes after the mistake lands, and the whole bay reads the cost of it before anybody there needs to hear the follow-up out loud."
+          : `The mistake lands before the explanation does, and the whole bay starts reading his face instead of the part the second that wrench stops ${index + 1}.`,
+      bottom:
+        index === 0
+          ? "That pause turns a normal repair beat into the exact second everybody in the room realizes what the bill is about to become."
+          : `Nobody in that bay needs extra narration after that pause, because the silence already cashes out the repair cost for everybody there ${index + 1}.`,
+      retained_handle: index < 2,
+      rationale: `Experimental variant ${index + 1}`
+    })),
+    winner_candidate_id: "ref_exp_1",
+    titles: Array.from({ length: 5 }, (_, index) => ({
+      title: `PAUSE SAID ENOUGH ${index + 1}`,
+      title_ru: `ПАУЗА СКАЗАЛА ВСЁ ${index + 1}`
+    }))
+  };
+
+  const { result, executor } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6_experimental",
+    promptConfig: normalizeStage2PromptConfig({
+      stages: {
+        oneShotReference: {
+          reasoningEffort: "x-high"
+        }
+      }
+    }),
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 120,
+      topLengthMax: 210,
+      bottomLengthMin: 80,
+      bottomLengthMax: 160
+    },
+    videoContext,
+    responses: [oneShotResponse]
+  });
+
+  const oneShotStage = result.diagnostics.effectivePrompting.promptStages.find(
+    (stage) => stage.stageId === "oneShotReference"
+  );
+  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1_experimental");
+  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v6_experimental");
+  assert.equal(oneShotStage?.promptCompatibilityVersion, "reference_one_shot_v1_experimental@2026-04-12");
+  assert.equal(oneShotStage?.inputManifest?.comments?.passedCount, 8);
+  assert.match(executor.calls[0]?.prompt ?? "", /experimental_contract_json/);
+  assert.match(executor.calls[0]?.prompt ?? "", /comments_secondary_hints_only/);
+  assert.match(executor.calls[0]?.prompt ?? "", /Do not talk about "the clip", "the video", "the edit"/);
 });
 
 test("caption highlighting skips the model pass when template highlighting is disabled", async () => {
@@ -8051,6 +8132,68 @@ test("stable_reference_v6 fails hard instead of backfilling meta-leaking one-sho
         ]
       }),
     /Reference one-shot failed\..*(frame index|seconds timestamp|pipeline slot|debug or schema wording)/i
+  );
+});
+
+test("stable_reference_v6_experimental fails hard on edit, comment-section, and viewer meta commentary", async () => {
+  await assert.rejects(
+    () =>
+      runNativeCaptionPipelineDirectFixture({
+        stage2WorkerProfileId: "stable_reference_v6_experimental",
+        hardConstraints: {
+          ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+          topLengthMin: 40,
+          topLengthMax: 240,
+          bottomLengthMin: 20,
+          bottomLengthMax: 180
+        },
+        responses: [
+          {
+            analysis: {
+              visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+              comment_vibe: "dry disbelief",
+              key_phrase_to_adapt: "that pause said enough"
+            },
+            candidates: [
+              {
+                candidate_id: "bad_1",
+                top: "The edit gives you the warning first, then the face, then the funeral, so the whole clip starts feeling like accusation instead of tribute.",
+                bottom: "The comments keep landing on the same read, and viewers don't need the narrator to push it once that silence takes over.",
+                retained_handle: false
+              },
+              {
+                candidate_id: "bad_2",
+                top: "Grounded context top 2 keeps the event readable and specific without slipping into commentary about the media object at all.",
+                bottom: "Grounded human bottom 2 keeps the reaction in-world and publishable without audience commentary.",
+                retained_handle: false
+              },
+              {
+                candidate_id: "bad_3",
+                top: "Grounded context top 3 keeps the event readable and specific without slipping into commentary about the media object at all.",
+                bottom: "Grounded human bottom 3 keeps the reaction in-world and publishable without audience commentary.",
+                retained_handle: false
+              },
+              {
+                candidate_id: "bad_4",
+                top: "Grounded context top 4 keeps the event readable and specific without slipping into commentary about the media object at all.",
+                bottom: "Grounded human bottom 4 keeps the reaction in-world and publishable without audience commentary.",
+                retained_handle: false
+              },
+              {
+                candidate_id: "bad_5",
+                top: "Grounded context top 5 keeps the event readable and specific without slipping into commentary about the media object at all.",
+                bottom: "Grounded human bottom 5 keeps the reaction in-world and publishable without audience commentary.",
+                retained_handle: false
+              }
+            ],
+            winner_candidate_id: "bad_2",
+            titles: Array.from({ length: 5 }, (_, index) => ({
+              title: `PUBLISHABLE TITLE ${index + 1}`
+            }))
+          }
+        ]
+      }),
+    /Reference one-shot experimental failed\..*(media-object commentary|comment-section commentary|audience-reaction commentary)/i
   );
 });
 
@@ -12302,6 +12445,414 @@ test("chat trace export assembles a full payload, truncates comments, and honors
       ((exportedStage2Event?.data as Stage2Response | null)?.source.topComments.length ?? 0),
       15
     );
+  });
+});
+
+test("chat trace export keeps stable and experimental reference one-shot flows isolated", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+    const sourceStore = await import("../lib/source-job-store");
+    const stage2Store = await import("../lib/stage2-progress-store");
+    const { buildChatTraceExport } = await import("../lib/chat-trace-export");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Reference Trace Isolation",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Reference Trace Channel",
+      username: "reference_trace_channel"
+    });
+    const traceChannel = await chatHistory.getChannelById(channel.id);
+    assert.ok(traceChannel);
+
+    const chat = await chatHistory.createOrGetChatByUrl(
+      "https://www.youtube.com/watch?v=traceReferenceIsolation",
+      channel.id
+    );
+    const comments = Array.from({ length: 12 }, (_, index) => ({
+      id: `comment_${index + 1}`,
+      author: `viewer_${index + 1}`,
+      text:
+        index % 2 === 0
+          ? "that pause said enough"
+          : "everybody in that bay heard the bill",
+      likes: 120 - index,
+      postedAt: null
+    }));
+    const commentsPayload = {
+      title: "Reference Trace Isolation",
+      totalComments: comments.length,
+      topComments: comments,
+      allComments: comments
+    };
+    const sourceJob = sourceStore.createSourceJob({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      request: {
+        sourceUrl: chat.url,
+        autoRunStage2: false,
+        trigger: "fetch",
+        chat: {
+          id: chat.id,
+          channelId: channel.id
+        },
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          username: channel.username
+        }
+      }
+    });
+    sourceStore.markSourceJobStageRunning(sourceJob.jobId, "comments", "Loading comments.");
+    sourceStore.finalizeSourceJobSuccess(sourceJob.jobId, {
+      chatId: chat.id,
+      channelId: channel.id,
+      sourceUrl: chat.url,
+      stage1Ready: true,
+      title: "Reference Trace Isolation",
+      commentsAvailable: true,
+      commentsError: null,
+      commentsPayload,
+      commentsAcquisitionStatus: "primary_success",
+      commentsAcquisitionProvider: "youtubeDataApi",
+      commentsAcquisitionNote: "Комментарии загружены через YouTube Data API.",
+      autoStage2RunId: null
+    });
+
+    const stage2StyleProfile = normalizeStage2StyleProfile({
+      version: 1,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      onboardingCompletedAt: nowIso(),
+      discoveryPromptVersion: "trace-reference-isolation",
+      referenceInfluenceSummary:
+        "References favor dense reference rewrites with controlled social release.",
+      explorationShare: 0.22,
+      referenceLinks: [],
+      candidateDirections: [
+        {
+          id: "direction_1",
+          fitBand: "core",
+          name: "Dense reference read",
+          description: "Turns the source beat into a precise human paraphrase.",
+          voice: "observational, compressed",
+          topPattern: "state the why-care immediately",
+          bottomPattern: "cash out the human cost without meta commentary",
+          humorLevel: "low",
+          sarcasmLevel: "low",
+          warmthLevel: "medium",
+          insiderDensityLevel: "low",
+          bestFor: "reference-driven reveal clips",
+          avoids: "meta narration about the edit or comment section",
+          microExample: "The room gets the cost before he says it.",
+          sourceReferenceIds: [],
+          internalPromptNotes: "",
+          axes: {
+            humor: 0.24,
+            sarcasm: 0.18,
+            warmth: 0.43,
+            insiderDensity: 0.19,
+            intensity: 0.55,
+            explanationDensity: 0.61,
+            quoteDensity: 0.15,
+            topCompression: 0.74
+          }
+        }
+      ],
+      selectedDirectionIds: ["direction_1"]
+    });
+    const editorialMemory = createEmptyStage2EditorialMemorySummary(stage2StyleProfile);
+    const weakGroundingVideoContext = buildVideoContext({
+      sourceUrl: chat.url,
+      title: "A mechanic pauses before the whole room gets it",
+      description: "",
+      transcript: "",
+      comments: comments.map((comment) => ({
+        author: comment.author,
+        likes: comment.likes,
+        text: comment.text
+      })),
+      frameDescriptions: [
+        "A mechanic freezes with the wrench still in his hand.",
+        "Everyone nearby turns toward the pause instead of the part.",
+        "The room reads the mistake before anyone speaks.",
+        "The silence lands harder than the explanation."
+      ],
+      userInstruction: "Keep the output grounded and human."
+    });
+
+    const stableOneShotResponse = {
+      analysis: {
+        visual_anchors: [
+          "the wrench stops mid-air",
+          "everyone turns toward the pause",
+          "the room gets the cost before he speaks"
+        ],
+        comment_vibe: "dry, impressed side-eye",
+        key_phrase_to_adapt: "that pause said enough"
+      },
+      candidates: Array.from({ length: 5 }, (_, index) => ({
+        candidate_id: `stable_ref_${index + 1}`,
+        top:
+          index === 0
+            ? "That wrench stops mid-air because everybody in that bay reads the cost of the mistake before he gets the sentence out."
+            : `The whole bay stops watching the part and starts reading his face the second that wrench freezes ${index + 1}.`,
+        bottom:
+          index === 0
+            ? "That pause lands like the repair bill already reached every mechanic in the room."
+            : `Nobody there needs a louder explanation after that pause, because the cost already hit the room ${index + 1}.`,
+        retained_handle: index < 2,
+        rationale: `Stable reference option ${index + 1}`
+      })),
+      winner_candidate_id: "stable_ref_1",
+      titles: Array.from({ length: 5 }, (_, index) => ({
+        title: `PAUSE SAID ENOUGH ${index + 1}`,
+        title_ru: `ПАУЗА СКАЗАЛА ВСЁ ${index + 1}`
+      }))
+    };
+    const experimentalOneShotResponse = {
+      analysis: {
+        visual_anchors: [
+          "the wrench stops mid-air",
+          "everyone turns toward the pause",
+          "the room gets the cost before he speaks"
+        ],
+        comment_vibe: "dry, impressed side-eye",
+        key_phrase_to_adapt: "that pause said enough"
+      },
+      candidates: Array.from({ length: 5 }, (_, index) => ({
+        candidate_id: `experimental_ref_${index + 1}`,
+        top:
+          index === 0
+            ? "The mistake lands before the explanation does, and the whole bay reads the bill in that frozen wrench before he says another word."
+            : `The room stops tracking the repair and starts reading the price of it off his face the second that wrench hangs there ${index + 1}.`,
+        bottom:
+          index === 0
+            ? "That silence turns a normal repair beat into the exact second everybody there realizes what this is going to cost."
+            : `The pause does the whole job by itself, because everyone in that bay already knows what the next sentence would say ${index + 1}.`,
+        retained_handle: index < 2,
+        rationale: `Experimental reference option ${index + 1}`
+      })),
+      winner_candidate_id: "experimental_ref_1",
+      titles: Array.from({ length: 5 }, (_, index) => ({
+        title: `PAUSE SAID ENOUGH ${index + 1}`,
+        title_ru: `ПАУЗА СКАЗАЛА ВСЁ ${index + 1}`
+      }))
+    };
+
+    const stablePipeline = await runNativeCaptionPipelineDirectFixture({
+      stage2WorkerProfileId: "stable_reference_v6",
+      promptConfig: normalizeStage2PromptConfig({
+        stages: {
+          oneShotReference: {
+            reasoningEffort: "high"
+          }
+        }
+      }),
+      hardConstraints: {
+        ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+        topLengthMin: 110,
+        topLengthMax: 210,
+        bottomLengthMin: 70,
+        bottomLengthMax: 160
+      },
+      videoContext: weakGroundingVideoContext,
+      stage2StyleProfile,
+      editorialMemory,
+      responses: [stableOneShotResponse]
+    });
+    const experimentalPipeline = await runNativeCaptionPipelineDirectFixture({
+      stage2WorkerProfileId: "stable_reference_v6_experimental",
+      promptConfig: normalizeStage2PromptConfig({
+        stages: {
+          oneShotReference: {
+            reasoningEffort: "high"
+          }
+        }
+      }),
+      hardConstraints: {
+        ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+        topLengthMin: 110,
+        topLengthMax: 210,
+        bottomLengthMin: 70,
+        bottomLengthMax: 160
+      },
+      videoContext: weakGroundingVideoContext,
+      stage2StyleProfile,
+      editorialMemory,
+      responses: [experimentalOneShotResponse]
+    });
+
+    const stableRun = stage2Store.createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: chat.id,
+      request: {
+        sourceUrl: chat.url,
+        userInstruction: "Stable trace comparison run",
+        mode: "manual",
+        channel: {
+          id: traceChannel.id,
+          name: traceChannel.name,
+          username: traceChannel.username,
+          stage2WorkerProfileId: "stable_reference_v6",
+          stage2ExamplesConfig: traceChannel.stage2ExamplesConfig,
+          stage2HardConstraints: traceChannel.stage2HardConstraints,
+          stage2StyleProfile,
+          editorialMemory,
+          editorialMemorySource: {
+            strategy: "channel_fallback_only",
+            requestedWorkerProfileId: "stable_reference_v6",
+            resolvedWorkerProfileId: "stable_reference_v6",
+            sameLineExplicitCount: 0,
+            fallbackExplicitCount: 1,
+            sameLineSelectionCount: 2,
+            fallbackSelectionCount: 0,
+            supplementedWithFallback: false,
+            explicitThreshold: 6
+          }
+        }
+      }
+    });
+    stage2Store.setStage2RunResultData(stableRun.runId, {
+      ...stablePipeline.result,
+      source: {
+        url: chat.url,
+        title: "Reference Trace Isolation",
+        totalComments: comments.length,
+        topComments: comments,
+        allComments: comments,
+        commentsUsedForPrompt: comments.length,
+        downloadProvider: "ytDlp",
+        primaryProviderError: null,
+        downloadFallbackUsed: false,
+        commentsAcquisitionStatus: "primary_success",
+        commentsAcquisitionProvider: "youtubeDataApi",
+        commentsAcquisitionNote: "Комментарии загружены через YouTube Data API.",
+        commentsExtractionFallbackUsed: false
+      },
+      stage2Run: {
+        runId: stableRun.runId,
+        mode: "manual",
+        createdAt: nowIso(),
+        startedAt: nowIso(),
+        finishedAt: nowIso()
+      }
+    });
+    stage2Store.finalizeStage2RunSuccess(stableRun.runId);
+
+    const experimentalRun = stage2Store.createStage2Run({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      chatId: chat.id,
+      request: {
+        sourceUrl: chat.url,
+        userInstruction: "Experimental trace comparison run",
+        mode: "manual",
+        channel: {
+          id: traceChannel.id,
+          name: traceChannel.name,
+          username: traceChannel.username,
+          stage2WorkerProfileId: "stable_reference_v6_experimental",
+          stage2ExamplesConfig: traceChannel.stage2ExamplesConfig,
+          stage2HardConstraints: traceChannel.stage2HardConstraints,
+          stage2StyleProfile,
+          editorialMemory,
+          editorialMemorySource: {
+            strategy: "same_line_only",
+            requestedWorkerProfileId: "stable_reference_v6_experimental",
+            resolvedWorkerProfileId: "stable_reference_v6_experimental",
+            sameLineExplicitCount: 0,
+            fallbackExplicitCount: 0,
+            sameLineSelectionCount: 2,
+            fallbackSelectionCount: 0,
+            supplementedWithFallback: false,
+            explicitThreshold: 3
+          }
+        }
+      }
+    });
+    stage2Store.setStage2RunResultData(experimentalRun.runId, {
+      ...experimentalPipeline.result,
+      source: {
+        url: chat.url,
+        title: "Reference Trace Isolation",
+        totalComments: comments.length,
+        topComments: comments,
+        allComments: comments,
+        commentsUsedForPrompt: comments.length,
+        downloadProvider: "ytDlp",
+        primaryProviderError: null,
+        downloadFallbackUsed: false,
+        commentsAcquisitionStatus: "primary_success",
+        commentsAcquisitionProvider: "youtubeDataApi",
+        commentsAcquisitionNote: "Комментарии загружены через YouTube Data API.",
+        commentsExtractionFallbackUsed: false
+      },
+      stage2Run: {
+        runId: experimentalRun.runId,
+        mode: "manual",
+        createdAt: nowIso(),
+        startedAt: nowIso(),
+        finishedAt: nowIso()
+      }
+    });
+    stage2Store.finalizeStage2RunSuccess(experimentalRun.runId);
+
+    const stableTrace = await buildChatTraceExport({
+      workspace: owner.workspace,
+      userId: owner.user.id,
+      chatId: chat.id,
+      selectedRunId: stableRun.runId
+    });
+    const experimentalTrace = await buildChatTraceExport({
+      workspace: owner.workspace,
+      userId: owner.user.id,
+      chatId: chat.id,
+      selectedRunId: experimentalRun.runId
+    });
+    assert.ok(stableTrace);
+    assert.ok(experimentalTrace);
+
+    const stableOneShotManifest = stableTrace?.stage2.stageManifests.find(
+      (stage) => stage.stageId === "oneShotReference"
+    );
+    const experimentalOneShotManifest = experimentalTrace?.stage2.stageManifests.find(
+      (stage) => stage.stageId === "oneShotReference"
+    );
+
+    assert.equal(stableTrace?.stage2.execution.pathVariant, "reference_one_shot_v1");
+    assert.equal(
+      experimentalTrace?.stage2.execution.pathVariant,
+      "reference_one_shot_v1_experimental"
+    );
+    assert.equal(stableTrace?.stage2.causalInputs.workerProfile.resolvedId, "stable_reference_v6");
+    assert.equal(
+      experimentalTrace?.stage2.causalInputs.workerProfile.resolvedId,
+      "stable_reference_v6_experimental"
+    );
+    assert.equal(
+      stableOneShotManifest?.promptCompatibilityVersion,
+      "reference_one_shot_v1@2026-04-03"
+    );
+    assert.equal(
+      experimentalOneShotManifest?.promptCompatibilityVersion,
+      "reference_one_shot_v1_experimental@2026-04-12"
+    );
+    assert.equal(stableOneShotManifest?.inputManifest?.comments?.passedCount, 12);
+    assert.equal(experimentalOneShotManifest?.inputManifest?.comments?.passedCount, 8);
+    assert.equal(stableTrace?.stage2.causalInputs.editorialMemorySource?.strategy, "channel_fallback_only");
+    assert.equal(experimentalTrace?.stage2.causalInputs.editorialMemorySource?.strategy, "same_line_only");
+    assert.equal(stableTrace?.stage2.causalInputs.editorialMemorySource?.explicitThreshold, 6);
+    assert.equal(experimentalTrace?.stage2.causalInputs.editorialMemorySource?.explicitThreshold, 3);
+    assert.equal(stableTrace?.stage2.currentResult?.output.captionOptions.length, 5);
+    assert.equal(experimentalTrace?.stage2.currentResult?.output.captionOptions.length, 5);
   });
 });
 
