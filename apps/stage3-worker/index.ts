@@ -2,12 +2,18 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { promises as fs } from "node:fs";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import {
   detectPreferredStage3Browser,
   ensureStage3RenderBrowser
 } from "../../lib/stage3-browser-runtime";
+import {
+  resolveStage3WorkerAdvertisedVersion,
+  shouldRestartStage3WorkerAfterSync
+} from "../../lib/stage3-worker-runtime-sync";
+
+declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
 
 type WorkerPlatform = "darwin-arm64" | "darwin-x64" | "win32-x64" | "unknown";
 
@@ -51,6 +57,11 @@ type WorkerRuntimeManifest = {
 };
 
 const execFileAsync = promisify(execFile);
+const BUNDLED_WORKER_RUNTIME_VERSION = normalizeRuntimeVersion(
+  typeof __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__ === "string"
+    ? __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__
+    : null
+);
 const DEFAULT_BUNDLE_FILE = "clips-stage3-worker.cjs";
 const DEFAULT_REMOTION_FILES = ["index.tsx", "science-card-v1.tsx"];
 const DEFAULT_LIB_FILES = [
@@ -244,7 +255,7 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   const localRuntimeVersion =
     normalizeRuntimeVersion(localManifest?.runtimeVersion) ??
     normalizeRuntimeVersion(localManifest?.version) ??
-    normalizeRuntimeVersion(process.env.CLIPS_STAGE3_WORKER_VERSION);
+    BUNDLED_WORKER_RUNTIME_VERSION;
   const workerPaths = paths();
   const remotionDir = path.join(workerPaths.root, "remotion");
   const libDir = path.join(workerPaths.root, "lib");
@@ -266,7 +277,6 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   ).some(Boolean);
 
   if (localRuntimeVersion === remoteRuntimeVersion && !runtimeFilesMissing) {
-    process.env.CLIPS_STAGE3_WORKER_VERSION = remoteRuntimeVersion;
     return { updated: false, runtimeVersion: remoteRuntimeVersion };
   }
 
@@ -314,8 +324,6 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   ], {
     cwd: workerPaths.root
   });
-  process.env.CLIPS_STAGE3_WORKER_VERSION = remoteRuntimeVersion;
-
   return {
     updated: true,
     runtimeVersion: remoteRuntimeVersion
@@ -354,17 +362,36 @@ function authHeaders(config: WorkerConfig): HeadersInit {
 }
 
 async function readAppVersion(): Promise<string> {
-  const fromEnv = process.env.CLIPS_STAGE3_WORKER_VERSION?.trim();
-  if (fromEnv) {
-    return fromEnv;
-  }
   try {
     const raw = await fs.readFile(path.join(process.cwd(), "package.json"), "utf-8");
     const parsed = JSON.parse(raw) as { version?: string };
-    return parsed.version?.trim() || "0.0.0";
+    return resolveStage3WorkerAdvertisedVersion({
+      bundledRuntimeVersion: BUNDLED_WORKER_RUNTIME_VERSION,
+      packageVersion: parsed.version ?? null
+    });
   } catch {
-    return "0.0.0";
+    return resolveStage3WorkerAdvertisedVersion({
+      bundledRuntimeVersion: BUNDLED_WORKER_RUNTIME_VERSION,
+      packageVersion: null
+    });
   }
+}
+
+async function restartCurrentWorkerProcess(runtimeVersion: string | null): Promise<void> {
+  const nextArgs = process.argv.slice(1);
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, nextArgs, {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: "inherit"
+    });
+    child.once("spawn", () => resolve());
+    child.once("error", (error) => reject(error));
+  });
+  console.log(
+    `Restarting Stage 3 worker to load runtime ${runtimeVersion ?? "latest"} before claiming jobs.`
+  );
+  process.exit(0);
 }
 
 async function pairCommand(): Promise<void> {
@@ -599,6 +626,15 @@ async function startCommand(): Promise<void> {
       console.log(
         `Updated local Stage 3 worker runtime to ${syncResult.runtimeVersion ?? "latest"}.`
       );
+    }
+    if (
+      shouldRestartStage3WorkerAfterSync({
+        bundledRuntimeVersion: BUNDLED_WORKER_RUNTIME_VERSION,
+        syncResult
+      })
+    ) {
+      await restartCurrentWorkerProcess(syncResult.runtimeVersion);
+      return;
     }
   } catch (error) {
     console.warn(

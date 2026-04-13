@@ -245,7 +245,7 @@ async function main() {
       "./channel-assets"
     ],
     define: {
-      "process.env.CLIPS_STAGE3_WORKER_VERSION": JSON.stringify(runtimeVersion)
+      __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: JSON.stringify(runtimeVersion)
     }
   });
 
