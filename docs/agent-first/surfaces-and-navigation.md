@@ -396,6 +396,8 @@
     - inline status card `Подсветка слов и template customization`
       - current template highlight status
       - highlight count for current draft / selected option
+      - count of caption options that already contain highlight-spans
+      - recovery CTA to apply the first option with color spans when the selected option has none
       - link `Открыть template customization`
   - details `Источники и быстрый mix`
     - per-option highlight count pills
@@ -759,6 +761,7 @@
     - open by default
     - demo TOP/BOTTOM
     - highlight toggles / slots / colors / guidance
+    - demo phrases expect exact substrings from the current demo copy, not semantic categories
   - section `Силуэт и оболочка`
   - section `Генератор тени`
   - section `Шрифты`

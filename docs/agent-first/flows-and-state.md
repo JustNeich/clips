@@ -342,7 +342,7 @@
 1. Step 2 handoff передаёт caption/title в Step 3.
 2. Live preview строится на каноническом 6-секундном timeline.
 3. Пользователь правит TOP/BOTTOM, typography, background, audio, fragments.
-4. Если нужны цветные слова, Step 3 показывает текущий highlight-status шаблона и ведёт в template customization; сами spans по-прежнему приходят из Stage 2.
+4. Если нужны цветные слова, Step 3 показывает текущий highlight-status шаблона, напоминает что demo phrases из template-road не красят Step 3 напрямую, и ведёт в template customization; сами spans по-прежнему приходят из Stage 2.
 5. При ручной правке TOP/BOTTOM соответствующий блок highlight-spans очищается, чтобы preview/render не использовали stale offsets.
 6. Preview обновляется.
 7. Пользователь экспортирует или запускает render.
@@ -544,7 +544,7 @@
 1. Пользователь открывает `/design/template-road`.
 2. Выбирает template.
 3. Секция `Текст и highlight-профиль` открыта сразу и даёт живой demo для Stage 2 / Stage 3.
-4. Пользователь правит inspector sections, включая TOP/BOTTOM line-height и highlight slots.
+4. Пользователь правит inspector sections, включая TOP/BOTTOM line-height и highlight slots; demo phrases используются как exact preview-substrings, а общая семантика цветов описывается через guidance.
 5. Автосохранение применяет изменения.
 6. После правки highlight-профиля оператор возвращается в основной flow и заново запускает Stage 2, если хочет получить новые цветные spans в Step 3.
 7. При необходимости сохраняет version.

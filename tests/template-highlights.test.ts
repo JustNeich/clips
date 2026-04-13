@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCaptionHighlightSourceState,
   buildTemplateHighlightSpansFromPhrases,
   countEnabledTemplateHighlightSlots,
   countTemplateHighlightSpans,
@@ -84,4 +85,60 @@ test("highlight span counter reports both aggregate and per-block totals", () =>
   assert.equal(countTemplateHighlightSpans(highlights, "top"), 2);
   assert.equal(countTemplateHighlightSpans(highlights, "bottom"), 1);
   assert.equal(countTemplateHighlightSpans(null), 0);
+});
+
+test("highlight source state recommends the first option that already has runtime spans", () => {
+  const state = buildCaptionHighlightSourceState(
+    [
+      {
+        option: 1,
+        highlights: { top: [], bottom: [] }
+      },
+      {
+        option: 2,
+        highlights: {
+          top: [{ start: 0, end: 4, slotId: "slot1" }],
+          bottom: []
+        }
+      },
+      {
+        option: 3,
+        highlights: {
+          top: [],
+          bottom: [{ start: 2, end: 7, slotId: "slot2" }]
+        }
+      }
+    ],
+    1
+  );
+
+  assert.deepEqual(state.highlightedSources, [
+    { option: 2, count: 1 },
+    { option: 3, count: 1 }
+  ]);
+  assert.equal(state.selectedHighlightedSource, null);
+  assert.deepEqual(state.suggestedHighlightedSource, { option: 2, count: 1 });
+});
+
+test("highlight source state keeps the selected option when it already has runtime spans", () => {
+  const state = buildCaptionHighlightSourceState(
+    [
+      {
+        option: 4,
+        highlights: {
+          top: [{ start: 0, end: 4, slotId: "slot1" }],
+          bottom: [{ start: 5, end: 9, slotId: "slot2" }]
+        }
+      },
+      {
+        option: 5,
+        highlights: { top: [], bottom: [] }
+      }
+    ],
+    4
+  );
+
+  assert.deepEqual(state.highlightedSources, [{ option: 4, count: 2 }]);
+  assert.deepEqual(state.selectedHighlightedSource, { option: 4, count: 2 });
+  assert.deepEqual(state.suggestedHighlightedSource, { option: 4, count: 2 });
 });

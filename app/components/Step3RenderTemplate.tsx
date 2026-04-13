@@ -45,6 +45,7 @@ import {
   buildTemplateRenderSnapshot
 } from "../../lib/stage3-template-core";
 import {
+  buildCaptionHighlightSourceState,
   countEnabledTemplateHighlightSlots,
   countTemplateHighlightSpans,
   createEmptyTemplateCaptionHighlights,
@@ -2344,8 +2345,16 @@ export function Step3RenderTemplate({
   const templateHighlightSlotCount = countEnabledTemplateHighlightSlots(templateHighlightProfile);
   const currentCaptionHighlightCount = countTemplateHighlightSpans(captionHighlights);
   const selectedSourceHighlightCount = countTemplateHighlightSpans(selectedCaptionSource?.highlights);
-  const anyCaptionSourceHasHighlights = captionSources.some(
-    (option) => countTemplateHighlightSpans(option.highlights) > 0
+  const {
+    highlightedSources: highlightedCaptionSources,
+    selectedHighlightedSource,
+    suggestedHighlightedSource
+  } = buildCaptionHighlightSourceState(captionSources, selectedCaptionOption);
+  const anyCaptionSourceHasHighlights = highlightedCaptionSources.length > 0;
+  const canRecoverHighlightsFromAnotherOption = Boolean(
+    suggestedHighlightedSource &&
+      suggestedHighlightedSource.option !== selectedCaptionSource?.option &&
+      currentCaptionHighlightCount === 0
   );
   const templateCustomizationHref = `/design/template-road?template=${encodeURIComponent(templateId)}`;
   const topTextSourceLabel = formatCaptionSourceLabel(handoffSummary?.topTextSource ?? "empty");
@@ -4490,7 +4499,9 @@ export function Step3RenderTemplate({
           <div>
             <h4>Подсветка слов и template customization</h4>
             <p className="subtle-text">
-              Цветные слова настраиваются в шаблоне и приходят сюда из Stage 2. В этом шаге можно менять TOP/BOTTOM текст, но сами highlight-spans вручную здесь не выбираются.
+              Цветные слова настраиваются в шаблоне, но в Step 3 приходят только через реальные
+              Stage 2 highlight-spans. Demo phrases из template-road помогают лишь проверить preview
+              редактора шаблона и сами по себе не красят текст в этом шаге.
             </p>
           </div>
         </div>
@@ -4501,6 +4512,7 @@ export function Step3RenderTemplate({
               : "Шаблон: highlighting выключен"}
           </span>
           <span className="meta-pill">Текущий текст: {formatHighlightCountLabel(currentCaptionHighlightCount)}</span>
+          <span className="meta-pill">Варианты с цветом: {highlightedCaptionSources.length}</span>
           {selectedCaptionSource ? (
             <span className="meta-pill">
               Option {selectedCaptionSource.option}: {formatHighlightCountLabel(selectedSourceHighlightCount)}
@@ -4510,8 +4522,19 @@ export function Step3RenderTemplate({
         <p className="subtle-text">
           {!templateHighlightProfileEnabled
             ? "Сейчас profile выключен на уровне шаблона. Включи highlight-профиль в template customization, чтобы Stage 2 вообще начал размечать цветные слова."
-            : selectedCaptionSource && selectedSourceHighlightCount === 0
+            : selectedCaptionSource &&
+                selectedSourceHighlightCount === 0 &&
+                suggestedHighlightedSource &&
+                suggestedHighlightedSource.option !== selectedCaptionSource.option
+              ? `У выбранного варианта сейчас нет color spans, но option ${suggestedHighlightedSource.option} уже содержит ${formatHighlightCountLabel(
+                  suggestedHighlightedSource.count
+                )}. Проще всего взять этот вариант целиком или отдельно TOP/BOTTOM ниже.`
+              : selectedCaptionSource && selectedSourceHighlightCount === 0
               ? "Для выбранного варианта Stage 2 ещё не дал ни одного highlight-span. После правки слотов и guidance заново запусти быстрый Stage 2 или полный цикл."
+              : !selectedCaptionSource && selectedHighlightedSource
+                ? `Вариант ${selectedHighlightedSource.option} уже содержит ${formatHighlightCountLabel(
+                    selectedHighlightedSource.count
+                  )}. Его можно сразу взять внизу, если нужен готовый цветной текст.`
               : currentCaptionHighlightCount > 0
                 ? "В текущий draft уже пришли выделения. Они участвуют и в live preview, и в финальном render."
                 : anyCaptionSourceHasHighlights
@@ -4519,6 +4542,15 @@ export function Step3RenderTemplate({
                   : "У текущих вариантов Stage 2 пока нет цветных слов. Обычно это значит, что template profile ещё не включён или Stage 2 не перегонялся после правки шаблона."}
         </p>
         <div className="control-actions">
+          {canRecoverHighlightsFromAnotherOption && suggestedHighlightedSource ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => onApplyCaptionSource(suggestedHighlightedSource.option, "all")}
+            >
+              Взять option {suggestedHighlightedSource.option} с выделениями
+            </button>
+          ) : null}
           <a className="btn btn-ghost" href={templateCustomizationHref} target="_blank" rel="noreferrer">
             Открыть template customization
           </a>
@@ -4539,6 +4571,7 @@ export function Step3RenderTemplate({
             <div className="stage3-caption-source-list">
               {captionSources.map((option) => {
                 const isSelectedSource = option.option === selectedCaptionOption;
+                const optionHighlightCount = countTemplateHighlightSpans(option.highlights);
                 return (
                   <article
                     key={`stage3-caption-source-${option.option}`}
@@ -4574,9 +4607,8 @@ export function Step3RenderTemplate({
                       </div>
                     </div>
                     <div className="editing-status-row">
-                      <span className="meta-pill">
-                        {formatHighlightCountLabel(countTemplateHighlightSpans(option.highlights))}
-                      </span>
+                      <span className="meta-pill">{formatHighlightCountLabel(optionHighlightCount)}</span>
+                      {optionHighlightCount > 0 ? <span className="meta-pill">готово к Step 3</span> : null}
                     </div>
                     <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
                     <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>

@@ -32,6 +32,16 @@ export type TemplateCaptionHighlights = {
   bottom: TemplateHighlightSpan[];
 };
 
+export type CaptionHighlightSourceLike = {
+  option: number;
+  highlights?: TemplateCaptionHighlights | null;
+};
+
+export type CaptionHighlightSourceSummary = {
+  option: number;
+  count: number;
+};
+
 export type TemplateHighlightPhraseAnnotation = {
   phrase: string;
   slotId: TemplateHighlightSlotId;
@@ -173,6 +183,29 @@ export function countTemplateHighlightSpans(
     return highlights?.[block]?.length ?? 0;
   }
   return (highlights?.top.length ?? 0) + (highlights?.bottom.length ?? 0);
+}
+
+export function buildCaptionHighlightSourceState(
+  captionSources: ReadonlyArray<CaptionHighlightSourceLike> | null | undefined,
+  selectedOption?: number | null
+): {
+  highlightedSources: CaptionHighlightSourceSummary[];
+  selectedHighlightedSource: CaptionHighlightSourceSummary | null;
+  suggestedHighlightedSource: CaptionHighlightSourceSummary | null;
+} {
+  const highlightedSources = (captionSources ?? [])
+    .map((source) => ({
+      option: source.option,
+      count: countTemplateHighlightSpans(source.highlights)
+    }))
+    .filter((source) => source.count > 0);
+  const selectedHighlightedSource =
+    highlightedSources.find((source) => source.option === (selectedOption ?? null)) ?? null;
+  return {
+    highlightedSources,
+    selectedHighlightedSource,
+    suggestedHighlightedSource: selectedHighlightedSource ?? highlightedSources[0] ?? null
+  };
 }
 
 export function normalizeTemplateHighlightConfig(

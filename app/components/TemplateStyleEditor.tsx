@@ -2735,33 +2735,36 @@ export function TemplateStyleEditor({
                       </span>
                     </label>
                     <label className="template-road-editor-field">
-                      <span className="field-label">Demo phrases для верхнего текста</span>
+                      <span className="field-label">Точные demo-фразы для верхнего текста</span>
                       <input
                         className="text-input"
                         type="text"
-                        placeholder="имя | год | action"
+                        placeholder="day discipline drill | radio discipline"
                         value={highlightDemoPhrases.top[slot.slotId]}
                         onChange={(event) =>
                           updateHighlightDemoPhraseBlock("top", slot.slotId, event.target.value)
                         }
                       />
                       <span className="template-road-editor-field-hint">
-                        Перечисляй фразы через `|`, чтобы сразу проверить этот цвет на верхнем блоке.
+                        Здесь нужны точные куски из текущего demo-текста через `|`. Если хочешь
+                        описать категорию вроде places или motor pool, пиши это в `Guidance для
+                        Stage 2`, а не сюда.
                       </span>
                     </label>
                     <label className="template-road-editor-field">
-                      <span className="field-label">Demo phrases для нижнего текста</span>
+                      <span className="field-label">Точные demo-фразы для нижнего текста</span>
                       <input
                         className="text-input"
                         type="text"
-                        placeholder="роль | место | факт"
+                        placeholder="motor pool | squad leader | 1987"
                         value={highlightDemoPhrases.bottom[slot.slotId]}
                         onChange={(event) =>
                           updateHighlightDemoPhraseBlock("bottom", slot.slotId, event.target.value)
                         }
                       />
                       <span className="template-road-editor-field-hint">
-                        Эти фразы нужны только для preview в редакторе. В runtime Stage 2 запишет реальные spans сам.
+                        Эти exact-фразы нужны только для preview в редакторе шаблона. В runtime
+                        Stage 2 запишет реальные spans сам по своему guidance.
                       </span>
                     </label>
                   </div>
