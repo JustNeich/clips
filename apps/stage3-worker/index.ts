@@ -57,6 +57,7 @@ const DEFAULT_LIB_FILES = [
   "stage3-template.ts",
   "stage3-constants.ts",
   "template-scene.tsx",
+  "stage3-verified-badge.tsx",
   "template-calibration-types.ts",
   "auto-fit-template-scene.tsx",
   "stage3-template-core.ts",

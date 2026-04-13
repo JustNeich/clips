@@ -86,10 +86,11 @@ done < <(
   node -e '
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-const files = Array.isArray(manifest.libFiles) ? manifest.libFiles : [
+  const files = Array.isArray(manifest.libFiles) ? manifest.libFiles : [
   "stage3-template.ts",
   "stage3-constants.ts",
   "template-scene.tsx",
+  "stage3-verified-badge.tsx",
   "template-calibration-types.ts",
   "auto-fit-template-scene.tsx",
   "stage3-template-core.ts",

@@ -37,6 +37,7 @@ test("windows bootstrap script uses basic parsing and writes bootstrap logs", ()
   const manifestPath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
     runtimeDependenciesArchiveFile?: string;
+    libFiles?: string[];
   };
 
   assert.match(script, /function Write-ClipsStage3BootstrapLog/);
@@ -46,7 +47,9 @@ test("windows bootstrap script uses basic parsing and writes bootstrap logs", ()
   assert.match(script, /Invoke-WebRequest \$Uri -UseBasicParsing -ErrorAction Stop -OutFile \$OutFile/);
   assert.match(script, /Invoke-ClipsStage3Download -Uri "\$serverOrigin\/stage3-worker\/clips-stage3-worker\.cjs" -OutFile \$bundlePath -Label "worker bundle"/);
   assert.equal(manifest.runtimeDependenciesArchiveFile, "runtime-deps.tar.gz");
+  assert.ok(manifest.libFiles?.includes("stage3-verified-badge.tsx"));
   assert.match(script, /runtimeDependenciesArchiveFile/);
+  assert.match(script, /stage3-verified-badge\.tsx/);
   assert.match(script, /Bundled runtime dependencies unpacked locally\. npm registry access is not required\./);
   assert.match(script, /Installing worker runtime dependencies with npm/);
 });
