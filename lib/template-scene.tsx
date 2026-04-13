@@ -27,6 +27,7 @@ import {
   type TemplateHighlightSlotId,
   type TemplateHighlightSpan
 } from "./template-highlights";
+import { Stage3VerifiedBadge } from "./stage3-verified-badge";
 
 export type TemplateSceneRect = {
   x: number;
@@ -37,6 +38,7 @@ export type TemplateSceneRect = {
 
 export type TemplateSceneRegions = {
   shell: TemplateSceneRect;
+  card: TemplateSceneRect;
   top: TemplateSceneRect;
   media: TemplateSceneRect;
   bottom: TemplateSceneRect;
@@ -345,6 +347,7 @@ export function getTemplateSceneLayout(
     computed,
     regions: {
       shell: layoutModel.shell,
+      card: layoutModel.card,
       top: layoutModel.top,
       media: layoutModel.media,
       bottom: layoutModel.bottom,
@@ -439,24 +442,7 @@ function renderVerificationBadge(
   }
 
   return (
-    <span
-      style={{
-        width: badgeSize,
-        height: badgeSize,
-        borderRadius: 999,
-        background: palette.checkBadgeColor,
-        color: "#ffffff",
-        display: "grid",
-        placeItems: "center",
-        fontWeight: 800,
-        fontFamily: '"Inter","Helvetica Neue",Helvetica,sans-serif',
-        fontSize: Math.round(badgeSize * 0.52),
-        lineHeight: 1,
-        flex: "0 0 auto"
-      }}
-    >
-      ✓
-    </span>
+    <Stage3VerifiedBadge color={palette.checkBadgeColor} size={badgeSize} />
   );
 }
 
@@ -570,6 +556,7 @@ export function TemplateScene({
   const chromeMetrics = resolveTemplateChromeMetrics(resolvedTemplateId, templateConfig, renderSnapshot.spec);
   const palette = resolvePalette(templateConfig);
   const cardSpec = renderSnapshot.spec.card;
+  const cardRect = regions.card;
   const usesSkyframeTypography =
     resolvedTemplateId === SCIENCE_CARD_V7_TEMPLATE_ID ||
     resolvedTemplateId === HEDGES_OF_HONOR_TEMPLATE_ID;
@@ -691,15 +678,15 @@ export function TemplateScene({
             />
           ) : null}
           <div
-            style={{
-              position: "absolute",
-              left: cardSpec.x - scienceCardChromeOutset,
-              top: cardSpec.y - scienceCardChromeOutset,
-              width: cardSpec.width + scienceCardChromeOutset * 2,
-              height: cardSpec.height + scienceCardChromeOutset * 2,
-              borderRadius: scienceCardOuterRadius,
-              background: cardBorderColor,
-              boxShadow: cardShadow,
+              style={{
+                position: "absolute",
+                left: cardRect.x - scienceCardChromeOutset,
+                top: cardRect.y - scienceCardChromeOutset,
+                width: cardRect.width + scienceCardChromeOutset * 2,
+                height: cardRect.height + scienceCardChromeOutset * 2,
+                borderRadius: scienceCardOuterRadius,
+                background: cardBorderColor,
+                boxShadow: cardShadow,
               overflow: "hidden"
             }}
           >
@@ -708,8 +695,8 @@ export function TemplateScene({
                 position: "absolute",
                 left: scienceCardChromeOutset,
                 top: scienceCardChromeOutset,
-                width: cardSpec.width,
-                height: cardSpec.height,
+                width: cardRect.width,
+                height: cardRect.height,
                 borderRadius: cardRadius,
                 background: cardFill,
                 overflow: "hidden"
@@ -720,7 +707,7 @@ export function TemplateScene({
                 position: "absolute",
                 left: scienceCardChromeOutset,
                 top: scienceCardChromeOutset,
-                width: cardSpec.width,
+                width: cardRect.width,
                 height: regions.top.height,
                 boxSizing: "border-box",
                 backgroundColor: palette.topSectionFill,
@@ -759,8 +746,8 @@ export function TemplateScene({
               style={{
                 position: "absolute",
                 left: scienceCardChromeOutset,
-                top: scienceCardChromeOutset + (regions.media.y - cardSpec.y),
-                width: cardSpec.width,
+                top: scienceCardChromeOutset + (regions.media.y - cardRect.y),
+                width: cardRect.width,
                 height: regions.media.height,
                 overflow: "hidden",
                 backgroundColor: "#545454"
@@ -773,8 +760,8 @@ export function TemplateScene({
               style={{
                 position: "absolute",
                 left: scienceCardChromeOutset,
-                top: scienceCardChromeOutset + (regions.bottom.y - cardSpec.y),
-                width: cardSpec.width,
+                top: scienceCardChromeOutset + (regions.bottom.y - cardRect.y),
+                width: cardRect.width,
                 height: regions.bottom.height,
                 boxSizing: "border-box",
                 backgroundColor: palette.bottomSectionFill,
@@ -867,15 +854,15 @@ export function TemplateScene({
         <>
           {scienceShellVisuals.shellBackdropNode}
           <div
-            style={{
-              position: "absolute",
-              left: cardSpec.x,
-              top: cardSpec.y,
-              width: cardSpec.width,
-              height: cardSpec.height,
-              borderRadius: cardRadius,
-              background: cardFill,
-              boxShadow:
+              style={{
+                position: "absolute",
+                left: cardRect.x,
+                top: cardRect.y,
+                width: cardRect.width,
+                height: cardRect.height,
+                borderRadius: cardRadius,
+                background: cardFill,
+                boxShadow:
                 !usesOverlayCardChrome && cardShadow
                   ? cardShadow
                   : "none",
@@ -888,10 +875,10 @@ export function TemplateScene({
             <div
               style={{
                 position: "absolute",
-                left: cardSpec.x,
-                top: cardSpec.y,
-                width: cardSpec.width,
-                height: cardSpec.height,
+                left: cardRect.x,
+                top: cardRect.y,
+                width: cardRect.width,
+                height: cardRect.height,
                 borderRadius: cardRadius,
                 border: `${cardBorderWidth}px solid ${cardBorderColor}`,
                 background: cardFill,
@@ -1067,10 +1054,10 @@ export function TemplateScene({
               <div
                 style={{
                   position: "absolute",
-                  left: cardSpec.x,
-                  top: cardSpec.y,
-                  width: cardSpec.width,
-                  height: cardSpec.height,
+                  left: cardRect.x,
+                  top: cardRect.y,
+                  width: cardRect.width,
+                  height: cardRect.height,
                   borderRadius: cardRadius,
                   boxSizing: "border-box",
                   boxShadow: overlayCardInsetShadow ?? "none",
@@ -1080,10 +1067,10 @@ export function TemplateScene({
               <div
                 style={{
                   position: "absolute",
-                  left: cardSpec.x,
-                  top: cardSpec.y,
-                  width: cardSpec.width,
-                  height: cardSpec.height,
+                  left: cardRect.x,
+                  top: cardRect.y,
+                  width: cardRect.width,
+                  height: cardRect.height,
                   borderRadius: cardRadius,
                   border: `${cardBorderWidth}px solid ${cardBorderColor}`,
                   boxSizing: "border-box",

@@ -233,7 +233,6 @@ function buildEffectiveTemplateConfig(
     },
     card: {
       ...templateConfig.card,
-      ...spec.card,
       radius: chromeMetrics.cardRadius,
       borderWidth: chromeMetrics.cardBorderWidth
     },
@@ -279,13 +278,24 @@ export function buildTemplateLayoutModel(
       height: spec.frame.height
     },
     shell: spec.shell,
-    card: spec.card,
-    top: spec.sections?.top ?? fallback.top,
-    media: spec.sections?.media ?? fallback.media,
-    bottom: spec.sections?.bottom ?? fallback.bottom,
-    author: spec.sections?.author ?? fallback.author,
+    card: {
+      ...spec.card,
+      x: resolvedTemplate.card.x,
+      y: resolvedTemplate.card.y,
+      width: resolvedTemplate.card.width,
+      height: resolvedTemplate.card.height,
+      radius: resolvedTemplate.card.radius,
+      borderWidth: resolvedTemplate.card.borderWidth,
+      borderColor: resolvedTemplate.card.borderColor,
+      fill: resolvedTemplate.card.fill,
+      shadow: resolvedTemplate.card.shadow
+    },
+    top: fallback.top,
+    media: fallback.media,
+    bottom: fallback.bottom,
+    author: fallback.author,
     avatar: fallback.avatar,
-    bottomText: spec.sections?.bottomText ?? fallback.bottomText
+    bottomText: fallback.bottomText
   };
 }
 

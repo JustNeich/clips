@@ -295,6 +295,9 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       if (typeof top.weight === "number" && Number.isFinite(top.weight)) {
         base.typography.top.weight = clamp(top.weight, 100, 900);
       }
+      if (typeof top.lineHeight === "number" && Number.isFinite(top.lineHeight)) {
+        base.typography.top.lineHeight = clamp(top.lineHeight, 0.7, 2);
+      }
       if (typeof top.letterSpacing === "string") {
         base.typography.top.letterSpacing = top.letterSpacing;
       }
@@ -310,6 +313,9 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     if (bottom) {
       if (typeof bottom.weight === "number" && Number.isFinite(bottom.weight)) {
         base.typography.bottom.weight = clamp(bottom.weight, 100, 900);
+      }
+      if (typeof bottom.lineHeight === "number" && Number.isFinite(bottom.lineHeight)) {
+        base.typography.bottom.lineHeight = clamp(bottom.lineHeight, 0.7, 2);
       }
       if (typeof bottom.letterSpacing === "string") {
         base.typography.bottom.letterSpacing = bottom.letterSpacing;
@@ -327,6 +333,9 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       if (typeof authorName.font === "number" && Number.isFinite(authorName.font)) {
         base.typography.authorName.font = clamp(authorName.font, 12, 96);
       }
+      if (typeof authorName.lineHeight === "number" && Number.isFinite(authorName.lineHeight)) {
+        base.typography.authorName.lineHeight = clamp(authorName.lineHeight, 0.7, 2);
+      }
       if (typeof authorName.weight === "number" && Number.isFinite(authorName.weight)) {
         base.typography.authorName.weight = clamp(authorName.weight, 100, 900);
       }
@@ -342,6 +351,9 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     if (authorHandle) {
       if (typeof authorHandle.font === "number" && Number.isFinite(authorHandle.font)) {
         base.typography.authorHandle.font = clamp(authorHandle.font, 12, 96);
+      }
+      if (typeof authorHandle.lineHeight === "number" && Number.isFinite(authorHandle.lineHeight)) {
+        base.typography.authorHandle.lineHeight = clamp(authorHandle.lineHeight, 0.7, 2);
       }
       if (typeof authorHandle.weight === "number" && Number.isFinite(authorHandle.weight)) {
         base.typography.authorHandle.weight = clamp(authorHandle.weight, 100, 900);

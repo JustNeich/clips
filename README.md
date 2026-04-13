@@ -181,6 +181,10 @@ npm run stage2-worker
   - queue/jobs
   - artifacts
   - Codex orchestration
+- `template-road` теперь считает card geometry и межстрочный интервал частью настоящего render contract:
+  - правки `width / height / x / y` карточки влияют и на preview, и на render;
+  - `line-height` верхнего и нижнего текста сохраняется без отката после autosave/reload;
+  - режим цветного бейджа использует twitter-style векторную галочку, а не круглый fallback.
 - Добавлен агент монтажер:
   - `POST /api/stage3/optimize` и `POST /api/stage3/agent/run` используют local media subjobs для тяжелого анализа.
   - `POST /api/video/meta` возвращает длительность источника для UI-слайдера.

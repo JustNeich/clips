@@ -210,6 +210,36 @@ test("managed templates persist an explicit empty badge asset path", async () =>
   });
 });
 
+test("managed templates persist custom top and bottom line heights", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Line Height Control",
+        baseTemplateId: "science-card-v1",
+        templateConfig: {
+          typography: {
+            top: {
+              lineHeight: 1.12
+            },
+            bottom: {
+              lineHeight: 1.24
+            }
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.equal(reloaded?.templateConfig.typography.top.lineHeight, 1.12);
+    assert.equal(reloaded?.templateConfig.typography.bottom.lineHeight, 1.24);
+  });
+});
+
 test("soft-deleted legacy templates are not resurrected by later imports", async () => {
   await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
     const legacyTemplateId = "legacy-delete-check";

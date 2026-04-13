@@ -3,6 +3,7 @@
 import Image from "next/image";
 import React, { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getStage3DesignLabPreset } from "../../lib/stage3-design-lab";
+import { Stage3VerifiedBadge } from "../../lib/stage3-verified-badge";
 import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
 import {
   STAGE3_TEMPLATE_ID,
@@ -206,7 +207,7 @@ const BODY_FONT_OPTIONS: FontOption[] = [
 
 const BADGE_OPTIONS: BadgeOption[] = [
   {
-    label: "Цветная галочка",
+    label: "Twitter цветная",
     value: ""
   },
   {
@@ -909,12 +910,11 @@ function BadgeOptionPicker({
                 {option.previewSrc ? (
                   <Image src={option.previewSrc} alt="" width={52} height={52} unoptimized />
                 ) : (
-                  <span
+                  <Stage3VerifiedBadge
                     className="template-road-editor-badge-preview-fallback"
-                    style={{ background: fallbackColor }}
-                  >
-                    ✓
-                  </span>
+                    color={fallbackColor}
+                    size={52}
+                  />
                 )}
               </span>
               <span className="template-road-editor-badge-label">{option.label}</span>
@@ -3473,14 +3473,14 @@ export function TemplateStyleEditor({
                 <span className="meta-pill">Аватар: {templateConfig.author.avatarSize}px</span>
                 <span className="meta-pill">Бейдж: {templateConfig.author.checkSize}px</span>
                 <span className="meta-pill">
-                  {currentBadgeOption?.label ?? (currentBadgeAssetPath ? "Свой бейдж" : "Цветная галочка")}
+                  {currentBadgeOption?.label ?? (currentBadgeAssetPath ? "Свой бейдж" : "Twitter цветная")}
                 </span>
               </>
             }
           >
             <BadgeOptionPicker
               label="Вариант галочки"
-              hint="Можно выбрать встроенный бейдж или переключиться на «Цветную галочку», если нужно управлять оттенком через поле «Цвет бейджа»."
+              hint="Можно выбрать встроенный бейдж или переключиться на цветную twitter-style галочку, если оттенок должен управляться через поле «Цвет бейджа»."
               value={currentBadgeAssetPath}
               options={BADGE_OPTIONS}
               fallbackColor={templateConfig.palette.checkBadgeColor}
