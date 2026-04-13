@@ -8,9 +8,9 @@ import {
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { sweepExpiredLocalStage3Jobs } from "./stage3-job-store";
 
-const PAIRING_TTL_MS = Number.parseInt(process.env.STAGE3_WORKER_PAIRING_TTL_SEC ?? "", 10) > 0
-  ? Number.parseInt(process.env.STAGE3_WORKER_PAIRING_TTL_SEC ?? "", 10) * 1000
-  : 10 * 60_000;
+const DEFAULT_PAIRING_TTL_MS = 60 * 60_000;
+const MIN_PAIRING_TTL_MS = DEFAULT_PAIRING_TTL_MS;
+const PAIRING_TTL_MS = resolveStage3WorkerPairingTtlMs();
 const SESSION_TTL_MS = Number.parseInt(process.env.STAGE3_WORKER_SESSION_TTL_SEC ?? "", 10) > 0
   ? Number.parseInt(process.env.STAGE3_WORKER_SESSION_TTL_SEC ?? "", 10) * 1000
   : 30 * 24 * 60 * 60_000;
@@ -62,6 +62,21 @@ type WorkerTokenRow = {
   created_at: string;
   updated_at: string;
 };
+
+function normalizeHostname(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toLowerCase() : null;
+}
+
+export function resolveStage3WorkerPairingTtlMs(
+  rawValue: string | null | undefined = process.env.STAGE3_WORKER_PAIRING_TTL_SEC
+): number {
+  const parsedSeconds = Number.parseInt(rawValue ?? "", 10);
+  if (!Number.isFinite(parsedSeconds) || parsedSeconds <= 0) {
+    return DEFAULT_PAIRING_TTL_MS;
+  }
+  return Math.max(parsedSeconds * 1000, MIN_PAIRING_TTL_MS);
+}
 
 export type Stage3WorkerRecord = Stage3WorkerSummary & {
   workspaceId: string;
@@ -204,6 +219,43 @@ function readWorkerRow(workerId: string): WorkerRow | null {
   return (db.prepare("SELECT * FROM stage3_workers WHERE id = ?").get(workerId) as WorkerRow | undefined) ?? null;
 }
 
+function mintStage3WorkerSessionToken(db: ReturnType<typeof getDb>, input: {
+  workspaceId: string;
+  userId: string;
+  workerId: string;
+  stamp: string;
+}): { sessionToken: string; expiresAt: string } {
+  db.prepare(
+    `UPDATE stage3_worker_tokens
+        SET revoked_at = ?, updated_at = ?
+      WHERE worker_id = ?
+        AND token_kind = 'session'
+        AND revoked_at IS NULL`
+  ).run(input.stamp, input.stamp, input.workerId);
+
+  const sessionToken = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  db.prepare(
+    `INSERT INTO stage3_worker_tokens
+      (id, workspace_id, user_id, worker_id, token_hash, token_kind, expires_at, consumed_at, revoked_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'session', ?, NULL, NULL, ?, ?)`
+  ).run(
+    newId(),
+    input.workspaceId,
+    input.userId,
+    input.workerId,
+    hashToken(sessionToken),
+    expiresAt,
+    input.stamp,
+    input.stamp
+  );
+
+  return {
+    sessionToken,
+    expiresAt
+  };
+}
+
 export function issueStage3WorkerPairingToken(input: {
   workspaceId: string;
   userId: string;
@@ -236,7 +288,6 @@ export function exchangeStage3WorkerPairingToken(input: {
           `SELECT * FROM stage3_worker_tokens
             WHERE token_hash = ?
               AND token_kind = 'pairing'
-              AND consumed_at IS NULL
               AND revoked_at IS NULL
             LIMIT 1`
         )
@@ -249,47 +300,82 @@ export function exchangeStage3WorkerPairingToken(input: {
     }
 
     const stamp = nowIso();
-    const workerId = newId();
-    db.prepare(
-      `INSERT INTO stage3_workers
-        (id, workspace_id, user_id, label, platform, hostname, app_version, capabilities_json, last_seen_at, revoked_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
-    ).run(
-      workerId,
-      tokenRow.workspace_id,
-      tokenRow.user_id,
-      input.label.trim() || "Local Worker",
-      normalizePlatform(input.platform),
-      input.hostname?.trim() || null,
-      input.appVersion?.trim() || null,
-      input.capabilitiesJson ?? null,
-      stamp,
-      stamp,
-      stamp
-    );
+    const normalizedLabel = input.label.trim() || "Local Worker";
+    const normalizedPlatform = normalizePlatform(input.platform);
+    const normalizedHostname = normalizeHostname(input.hostname);
+    let workerId = tokenRow.worker_id ? String(tokenRow.worker_id) : null;
 
-    db.prepare(
-      `UPDATE stage3_worker_tokens
-          SET consumed_at = ?, updated_at = ?
-        WHERE id = ?`
-    ).run(stamp, stamp, tokenRow.id);
+    if (tokenRow.consumed_at) {
+      if (!workerId) {
+        throw new Error("Pairing token is invalid.");
+      }
+      const existingWorkerRow = readWorkerRow(workerId);
+      if (!existingWorkerRow || existingWorkerRow.revoked_at) {
+        throw new Error("Pairing token is invalid.");
+      }
+      const existingHostname = normalizeHostname(existingWorkerRow.hostname);
+      const existingPlatform = normalizePlatform(existingWorkerRow.platform);
+      if (existingHostname && normalizedHostname && existingHostname !== normalizedHostname) {
+        throw new Error("Pairing token was already used on another machine. Open Step 3 and copy a fresh command.");
+      }
+      if (
+        existingPlatform !== "unknown" &&
+        normalizedPlatform !== "unknown" &&
+        existingPlatform !== normalizedPlatform
+      ) {
+        throw new Error("Pairing token was already used on another machine. Open Step 3 and copy a fresh command.");
+      }
+      db.prepare(
+        `UPDATE stage3_workers
+            SET label = ?,
+                platform = ?,
+                hostname = COALESCE(?, hostname),
+                app_version = ?,
+                capabilities_json = ?,
+                updated_at = ?
+          WHERE id = ?`
+      ).run(
+        normalizedLabel,
+        normalizedPlatform,
+        normalizedHostname,
+        input.appVersion?.trim() || null,
+        input.capabilitiesJson ?? null,
+        stamp,
+        workerId
+      );
+    } else {
+      workerId = newId();
+      db.prepare(
+        `INSERT INTO stage3_workers
+          (id, workspace_id, user_id, label, platform, hostname, app_version, capabilities_json, last_seen_at, revoked_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+      ).run(
+        workerId,
+        tokenRow.workspace_id,
+        tokenRow.user_id,
+        normalizedLabel,
+        normalizedPlatform,
+        normalizedHostname,
+        input.appVersion?.trim() || null,
+        input.capabilitiesJson ?? null,
+        stamp,
+        stamp,
+        stamp
+      );
 
-    const sessionToken = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
-    db.prepare(
-      `INSERT INTO stage3_worker_tokens
-        (id, workspace_id, user_id, worker_id, token_hash, token_kind, expires_at, consumed_at, revoked_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'session', ?, NULL, NULL, ?, ?)`
-    ).run(
-      newId(),
-      tokenRow.workspace_id,
-      tokenRow.user_id,
+      db.prepare(
+        `UPDATE stage3_worker_tokens
+            SET worker_id = ?, consumed_at = ?, updated_at = ?
+          WHERE id = ?`
+      ).run(workerId, stamp, stamp, tokenRow.id);
+    }
+
+    const { sessionToken, expiresAt } = mintStage3WorkerSessionToken(db, {
+      workspaceId: String(tokenRow.workspace_id),
+      userId: String(tokenRow.user_id),
       workerId,
-      hashToken(sessionToken),
-      expiresAt,
-      stamp,
       stamp
-    );
+    });
 
     const worker = mapWorkerRow(readWorkerRow(workerId));
     if (!worker) {
