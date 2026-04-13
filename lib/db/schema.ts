@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS channel_publish_settings (
   slot_interval_minutes INTEGER NOT NULL,
   auto_queue_enabled INTEGER NOT NULL DEFAULT 1,
   upload_lead_minutes INTEGER NOT NULL DEFAULT 120,
-  notify_subscribers_default INTEGER NOT NULL DEFAULT 1,
+  notify_subscribers_default INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   updated_by_user_id TEXT,

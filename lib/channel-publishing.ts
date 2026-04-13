@@ -12,7 +12,7 @@ export const DEFAULT_CHANNEL_PUBLISH_SETTINGS: ChannelPublishSettings = {
   slotIntervalMinutes: 15,
   autoQueueEnabled: true,
   uploadLeadMinutes: 120,
-  notifySubscribersByDefault: true
+  notifySubscribersByDefault: false
 };
 
 export type PublicationSlotCandidate = {

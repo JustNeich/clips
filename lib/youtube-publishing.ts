@@ -9,6 +9,7 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 const YOUTUBE_API_BASE_URL = "https://www.googleapis.com/youtube/v3";
 const YOUTUBE_UPLOAD_BASE_URL = "https://www.googleapis.com/upload/youtube/v3/videos";
+const DEFAULT_YOUTUBE_VIDEO_CATEGORY_ID = "22";
 
 export const YOUTUBE_PUBLISH_SCOPES = [
   "https://www.googleapis.com/auth/youtube.force-ssl",
@@ -82,6 +83,11 @@ function extractGoogleApiErrorMessage(payload: Record<string, unknown> | null | 
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   return (await response.json().catch(() => ({}))) as T;
+}
+
+function normalizeYouTubeVideoCategoryId(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  return raw || DEFAULT_YOUTUBE_VIDEO_CATEGORY_ID;
 }
 
 async function runWithRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
@@ -380,7 +386,8 @@ async function openYouTubeUploadSession(input: {
           snippet: {
             title: input.title,
             description: input.description,
-            tags: input.tags
+            tags: input.tags,
+            categoryId: DEFAULT_YOUTUBE_VIDEO_CATEGORY_ID
           },
           status: {
             privacyStatus: "private",
@@ -409,6 +416,24 @@ async function openYouTubeUploadSession(input: {
     });
   }
   return sessionUrl;
+}
+
+async function resolveYouTubeVideoCategoryId(input: {
+  accessToken: string;
+  videoId: string;
+}): Promise<string> {
+  const payload = await youtubeApiJson<{
+    items?: Array<{
+      snippet?: {
+        categoryId?: string;
+      };
+    }>;
+  }>({
+    accessToken: input.accessToken,
+    url: `${YOUTUBE_API_BASE_URL}/videos?part=snippet&id=${encodeURIComponent(input.videoId)}`
+  });
+
+  return normalizeYouTubeVideoCategoryId(payload.items?.[0]?.snippet?.categoryId);
 }
 
 async function inspectYouTubeUploadSession(input: {
@@ -598,6 +623,10 @@ export async function updateYouTubeScheduledVideo(input: {
   publishAt: string;
 }): Promise<void> {
   await runWithRetry(async () => {
+    const categoryId = await resolveYouTubeVideoCategoryId({
+      accessToken: input.accessToken,
+      videoId: input.videoId
+    });
     await youtubeApiJson<Record<string, unknown>>({
       accessToken: input.accessToken,
       url: `${YOUTUBE_API_BASE_URL}/videos?part=snippet,status`,
@@ -607,7 +636,8 @@ export async function updateYouTubeScheduledVideo(input: {
         snippet: {
           title: input.title,
           description: input.description,
-          tags: input.tags
+          tags: input.tags,
+          categoryId
         },
         status: {
           privacyStatus: "private",

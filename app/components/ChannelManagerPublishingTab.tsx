@@ -19,7 +19,7 @@ const FALLBACK_PUBLISH_SETTINGS: ChannelPublishSettings = {
   slotIntervalMinutes: 15,
   autoQueueEnabled: true,
   uploadLeadMinutes: 120,
-  notifySubscribersByDefault: true
+  notifySubscribersByDefault: false
 };
 
 function buildSlotPreview(settings: ChannelPublishSettings): string[] {

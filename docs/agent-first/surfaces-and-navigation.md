@@ -621,6 +621,7 @@
 ## Channel Manager tab: `Publishing`
 
 - `purpose`: YouTube OAuth + destination + channel slot grid defaults.
+- `default behavior`: новые каналы и fallback-state держат `notify subscribers` выключенным, пока оператор не включит его явно.
 - `controls`:
   - section `YouTube`
   - button `Подключить YouTube` / `Переподключить YouTube`

@@ -126,7 +126,7 @@ export function buildSlotLabels(settings: ChannelPublishSettings | null | undefi
     slotIntervalMinutes: 15,
     autoQueueEnabled: true,
     uploadLeadMinutes: 120,
-    notifySubscribersByDefault: true
+    notifySubscribersByDefault: false
   };
   const [hourString, minuteString] = resolved.firstSlotLocalTime.split(":");
   const baseHour = Number.parseInt(hourString ?? "21", 10);

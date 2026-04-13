@@ -318,8 +318,10 @@ Publishing / YouTube queue:
 - planner публикации остаётся offline, пока для канала не подключён YouTube OAuth и не выбран целевой YouTube-канал;
 - успешный render сохраняет `render export`, но не создаёт queued-публикацию, если publishing integration ещё не готова.
 - в Step 3 рядом с render доступен чекбокс `Опубликовать`: только при включённом флаге render ставится в publish queue, а UI заранее показывает ожидаемое время публикации.
+- новые queued-публикации по умолчанию стартуют с выключенным `notify subscribers`; оператор включает уведомление подписчиков только явно для нужного канала или ролика.
 - один chat/source clip не создаёт вторую активную публикацию: повторный render обновляет queued/paused/failed запись или возвращает уже uploading/scheduled/published запись без нового upload.
 - во время `uploading` planner блокирует конфликтующие действия, а сервер не принимает мутации, которые могли бы сбросить lease и породить второй YouTube upload.
+- YouTube metadata sync для уже загруженных роликов теперь сохраняет валидный `snippet.categoryId`, поэтому простое редактирование title/description не ломает `videos.update`.
 - YouTube upload использует сохранённый resumable session URL и lease heartbeat, поэтому после сбоя процесс продолжает тот же upload session вместо открытия дублирующего.
 
 Подробная документация по текущей Stage 2 архитектуре:

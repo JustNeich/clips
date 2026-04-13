@@ -189,7 +189,7 @@ function applyDbMigrations(db: DatabaseSync): void {
     db,
     "channel_publish_settings",
     "notify_subscribers_default",
-    "INTEGER NOT NULL DEFAULT 1"
+    "INTEGER NOT NULL DEFAULT 0"
   );
   addColumnIfMissing(
     db,
@@ -246,6 +246,14 @@ function applyDbMigrations(db: DatabaseSync): void {
       WHERE stage2_style_profile_json IS NULL
          OR trim(stage2_style_profile_json) = ''`
   ).run(stringifyStage2StyleProfile(DEFAULT_STAGE2_STYLE_PROFILE));
+  if (hasTable(db, "channel_publish_settings") && hasColumn(db, "channel_publish_settings", "notify_subscribers_default")) {
+    db.exec(
+      `UPDATE channel_publish_settings
+          SET notify_subscribers_default = 0
+        WHERE notify_subscribers_default IS NULL
+           OR notify_subscribers_default <> 0`
+    );
+  }
   migrateLegacyStage3WorkerTokens(db);
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_stage2_runs_workspace_updated ON stage2_runs(workspace_id, updated_at DESC)"
