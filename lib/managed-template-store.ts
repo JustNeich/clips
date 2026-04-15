@@ -31,6 +31,15 @@ import { assertServerRuntime } from "./server-runtime-guard";
 assertServerRuntime("managed-template-store");
 
 const SUPPORTED_LAYOUT_FAMILIES = new Set(listTemplateVariants().map((variant) => variant.id));
+const workspaceTemplateBootstrapRevisions = new Map<string, number>();
+let legacyTemplateSourceCache:
+  | {
+      fingerprint: string;
+      revision: number;
+      templates: ManagedTemplate[];
+    }
+  | null = null;
+let managedTemplateStoreCacheScopeKey: string | null = null;
 
 type ManagedTemplateInput = {
   name?: unknown;
@@ -74,6 +83,20 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 42);
   return slug || "template";
+}
+
+function getManagedTemplateStoreCacheScopeKey(): string {
+  return `${getAppDataDir()}::${getManagedTemplatesRoot()}::${getLegacyManagedTemplatesRoot()}`;
+}
+
+function resetManagedTemplateStoreCachesIfScopeChanged(): void {
+  const nextScopeKey = getManagedTemplateStoreCacheScopeKey();
+  if (managedTemplateStoreCacheScopeKey === nextScopeKey) {
+    return;
+  }
+  managedTemplateStoreCacheScopeKey = nextScopeKey;
+  workspaceTemplateBootstrapRevisions.clear();
+  legacyTemplateSourceCache = null;
 }
 
 function getManagedTemplatesRoot(): string {
@@ -620,7 +643,21 @@ function parseLegacyTemplateFile(filePath: string): ManagedTemplate | null {
 }
 
 function readLegacyTemplateSources(): ManagedTemplate[] {
+  resetManagedTemplateStoreCachesIfScopeChanged();
   const roots = [getManagedTemplatesRoot(), getLegacyManagedTemplatesRoot()];
+  const fingerprint = JSON.stringify(
+    roots.map((root) => ({
+      root,
+      entries: existsSync(root)
+        ? readdirSync(root)
+            .filter((item) => item.endsWith(".json"))
+            .sort()
+        : []
+    }))
+  );
+  if (legacyTemplateSourceCache?.fingerprint === fingerprint) {
+    return legacyTemplateSourceCache.templates;
+  }
   const byId = new Map<string, ManagedTemplate>();
 
   for (const root of roots) {
@@ -640,7 +677,13 @@ function readLegacyTemplateSources(): ManagedTemplate[] {
     }
   }
 
-  return [...byId.values()];
+  const templates = [...byId.values()];
+  legacyTemplateSourceCache = {
+    fingerprint,
+    revision: (legacyTemplateSourceCache?.revision ?? 0) + 1,
+    templates
+  };
+  return templates;
 }
 
 function serializeJson(value: unknown): string {
@@ -734,6 +777,7 @@ function insertOrUpdateTemplateRow(template: ManagedTemplate): void {
 }
 
 function workspaceIds(): string[] {
+  resetManagedTemplateStoreCachesIfScopeChanged();
   const db = getDb();
   const rows = db.prepare("SELECT id FROM workspaces ORDER BY created_at ASC").all() as Array<{ id: string }>;
   return rows.map((row) => String(row.id));
@@ -1045,8 +1089,13 @@ function migrateWorkspaceTemplateHighlightDefaults(workspaceId: string): number 
 }
 
 function ensureWorkspaceTemplateLibrarySync(workspaceId: string): string {
+  resetManagedTemplateStoreCachesIfScopeChanged();
   const legacyTemplates = readLegacyTemplateSources();
-  importLegacyCustomTemplatesForWorkspace(workspaceId, legacyTemplates);
+  const legacyRevision = legacyTemplateSourceCache?.revision ?? 0;
+  if (workspaceTemplateBootstrapRevisions.get(workspaceId) !== legacyRevision) {
+    importLegacyCustomTemplatesForWorkspace(workspaceId, legacyTemplates);
+    workspaceTemplateBootstrapRevisions.set(workspaceId, legacyRevision);
+  }
   migrateLegacyChannelTemplateRefs(workspaceId, legacyTemplates);
   migrateWorkspaceTemplateHighlightDefaults(workspaceId);
   const defaultTemplateId = ensureWorkspaceDefaultTemplate(workspaceId);
@@ -1160,16 +1209,17 @@ export function resolveManagedTemplateSync(
 ): ManagedTemplate | null {
   const candidate = typeof templateId === "string" && templateId.trim() ? templateId.trim() : "";
   if (candidate) {
-    const direct = readManagedTemplateSync(candidate, options);
-    if (direct) {
-      return direct;
-    }
     if (SUPPORTED_LAYOUT_FAMILIES.has(candidate)) {
       const workspaceId = options?.workspaceId?.trim();
       if (workspaceId) {
+        ensureWorkspaceTemplateLibrarySync(workspaceId);
         return insertPresetTemplateIfMissing(workspaceId, candidate);
       }
       return buildDetachedPresetTemplate(candidate, options?.workspaceId ?? "detached-workspace");
+    }
+    const direct = readManagedTemplateSync(candidate, options);
+    if (direct) {
+      return direct;
     }
     return resolveDefaultTemplateSync(options?.workspaceId);
   }

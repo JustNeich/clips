@@ -63,7 +63,8 @@ export async function GET(request: Request, context: Context): Promise<Response>
         "Content-Type": asset.mimeType,
         "Content-Length": String(file.size),
         "Cache-Control": "private, max-age=300",
-        "x-stage3-asset-file-name": asset.fileName
+        "x-stage3-asset-file-name": asset.fileName,
+        "x-stage3-asset-created-at": asset.createdAt
       }
     });
   } catch (error) {

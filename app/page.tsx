@@ -5255,6 +5255,105 @@ export default function HomePage() {
       }, delayMs);
     };
 
+    const pollAccuratePreviewJob = async (initialJob: Stage3JobEnvelope["job"]): Promise<void> => {
+      let job = initialJob;
+
+      while (!isStale()) {
+        if (job.status === "completed" && job.artifact?.downloadUrl) {
+          rememberPreviewUrl(job.artifact.downloadUrl);
+          return;
+        }
+        if (job.status === "failed" || job.status === "interrupted") {
+          const message =
+            normalizeStage3SourceFailureNotice(
+              job.errorMessage ?? "Не удалось обновить точный clip-preview.",
+              {
+                mode: "accurate-preview"
+              }
+            ) ?? "Не удалось обновить точный clip-preview.";
+          if (job.recoverable) {
+            scheduleRetry(message, 5000);
+            return;
+          }
+          setStage3AccuratePreviewState("error");
+          setStage3AccuratePreviewNotice(message);
+          return;
+        }
+
+        setStage3AccuratePreviewState(job.status === "queued" ? "retrying" : "loading");
+        if (job.executionTarget === "local") {
+          setStage3AccuratePreviewNotice(
+            job.status === "queued"
+              ? "Точный clip-preview ждёт локальный executor..."
+              : job.workerLabel
+                ? `Точный clip-preview собирается на ${job.workerLabel}...`
+                : "Локальный executor собирает точный clip-preview..."
+          );
+        } else {
+          setStage3AccuratePreviewNotice(
+            job.status === "queued" ? "Точный clip-preview в очереди..." : "Собираю точный clip-preview..."
+          );
+        }
+
+        await new Promise<void>((resolve) => {
+          const timer = window.setTimeout(() => resolve(), 1000);
+          controller.signal.addEventListener(
+            "abort",
+            () => {
+              window.clearTimeout(timer);
+              resolve();
+            },
+            { once: true }
+          );
+        });
+        if (isStale()) {
+          return;
+        }
+
+        try {
+          const response = await fetchWithTimeout(
+            `/api/stage3/preview/jobs/${job.id}`,
+            {
+              signal: controller.signal,
+              cache: "no-store"
+            },
+            15_000
+          );
+          if (!response.ok || !responseLooksLikeJson(response)) {
+            const message =
+              normalizeStage3SourceFailureNotice(
+                await parseError(response, "Не удалось обновить статус точного clip-preview."),
+                {
+                  mode: "accurate-preview"
+                }
+              ) ?? "Не удалось обновить статус точного clip-preview.";
+            scheduleRetry(message, parseRetryAfterMs(response.headers.get("retry-after"), 5000));
+            return;
+          }
+          const body = (await response.json()) as Stage3JobEnvelope;
+          job = body.job;
+        } catch (error) {
+          if (isStale()) {
+            return;
+          }
+          if (isAbortError(error)) {
+            scheduleRetry("Точный clip-preview готовится дольше обычного. Повторяю...", 5000);
+            return;
+          }
+          scheduleRetry(
+            normalizeStage3SourceFailureNotice(
+              getUiErrorMessage(error, "Не удалось обновить статус точного clip-preview."),
+              {
+                mode: "accurate-preview"
+              }
+            ) ?? "Не удалось обновить статус точного clip-preview.",
+            5000
+          );
+          return;
+        }
+      }
+    };
+
     const startAccuratePreviewRequest = async (): Promise<void> => {
       if (isStale()) {
         return;
@@ -5279,13 +5378,12 @@ export default function HomePage() {
             }),
             signal: controller.signal
           },
-          45_000
+          15_000
         );
-        if (isStale() || response.status === 204) {
+        if (isStale()) {
           return;
         }
-        const contentType = responseContentType(response);
-        if (!response.ok || !contentType.includes("video/")) {
+        if (!response.ok || !responseLooksLikeJson(response)) {
           const message =
             normalizeStage3SourceFailureNotice(await parseError(response, "Не удалось обновить точный clip-preview."), {
               mode: "accurate-preview"
@@ -5298,12 +5396,8 @@ export default function HomePage() {
           setStage3AccuratePreviewNotice(message);
           return;
         }
-
-        const blob = await response.blob();
-        if (isStale()) {
-          return;
-        }
-        rememberPreviewUrl(URL.createObjectURL(blob));
+        const body = (await response.json()) as Stage3JobEnvelope;
+        await pollAccuratePreviewJob(body.job);
       } catch (error) {
         if (isStale() || isAbortError(error)) {
           return;

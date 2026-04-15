@@ -40,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const executionTarget = resolveStage3ExecutionTarget("host");
+    const executionTarget = resolveStage3ExecutionTarget();
     if (executionTarget === "local") {
       const readiness = await resolveStage3LocalWorkerReadiness({
         workspaceId: auth.workspace.id,

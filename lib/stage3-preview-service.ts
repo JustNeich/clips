@@ -55,6 +55,7 @@ export const PREVIEW_WAIT_TIMEOUT_MS = 20_000;
 export type Stage3PreviewRequestBody = {
   sourceUrl?: string;
   channelId?: string;
+  workspaceId?: string;
   clipStartSec?: number;
   clipDurationSec?: number;
   agentPrompt?: string;
@@ -214,7 +215,8 @@ export async function tryCreateStage3PreviewResponse(
 function normalizeRenderPlan(
   rawPlan: Partial<Stage3RenderPlan> | undefined,
   sourceDurationSec: number | null,
-  managedTemplateState?: Stage3StateSnapshot["managedTemplateState"]
+  managedTemplateState?: Stage3StateSnapshot["managedTemplateState"],
+  workspaceId?: string | null
 ): Stage3RenderPlan {
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
@@ -222,7 +224,9 @@ function normalizeRenderPlan(
     typeof rawPlan?.templateId === "string" && rawPlan.templateId.trim()
       ? rawPlan.templateId.trim()
       : STAGE3_TEMPLATE_ID;
-  const template = resolveManagedTemplateRuntimeSync(templateId, managedTemplateState).templateConfig;
+  const template = resolveManagedTemplateRuntimeSync(templateId, managedTemplateState, {
+    workspaceId
+  }).templateConfig;
   const templateVideoAdjustments = template.videoAdjustments;
   const videoZoom =
     typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
@@ -376,11 +380,18 @@ export async function buildStage3PreviewDedupeKey(
 ): Promise<string> {
   const sourceUrl = resolveSourceUrl(body.sourceUrl);
   const snapshot = body.snapshot;
+  const workspaceId = scope?.workspaceId?.trim() || body.workspaceId?.trim() || "";
   const clipStartSec = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
-  const renderPlan = normalizeRenderPlan(snapshot?.renderPlan ?? body.renderPlan, null, snapshot?.managedTemplateState);
+  const renderPlan = normalizeRenderPlan(
+    snapshot?.renderPlan ?? body.renderPlan,
+    null,
+    snapshot?.managedTemplateState,
+    workspaceId || null
+  );
   const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(
     renderPlan.templateId,
-    snapshot?.managedTemplateState
+    snapshot?.managedTemplateState,
+    { workspaceId: workspaceId || null }
   );
   const previewKey = buildPreviewCacheKey({
     sourceKey: hashKey(sourceUrl),
@@ -388,7 +399,6 @@ export async function buildStage3PreviewDedupeKey(
     renderPlan,
     templateRevision: managedTemplateRuntime.updatedAt
   });
-  const workspaceId = scope?.workspaceId?.trim() ?? "";
   const userId = scope?.userId?.trim() ?? "";
   if (!workspaceId || !userId) {
     return `preview:${STAGE3_PREVIEW_CACHE_VERSION}:global:${previewKey}`;
@@ -413,14 +423,21 @@ export async function prepareStage3Preview(
   });
   const clipDurationSec = sanitizeClipDuration(body.clipDurationSec);
   const snapshot = body.snapshot;
+  const workspaceId = body.workspaceId?.trim() || null;
 
   const clipStartCandidate = parseFiniteNumber(snapshot?.clipStartSec) ?? parseFiniteNumber(body.clipStartSec) ?? 0;
   const clipStartSec = clampClipStart(clipStartCandidate, source.sourceDurationSec, clipDurationSec);
   const rawPlan = snapshot?.renderPlan ?? body.renderPlan;
-  const renderPlan = normalizeRenderPlan(rawPlan, source.sourceDurationSec, snapshot?.managedTemplateState);
+  const renderPlan = normalizeRenderPlan(
+    rawPlan,
+    source.sourceDurationSec,
+    snapshot?.managedTemplateState,
+    workspaceId
+  );
   const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(
     renderPlan.templateId,
-    snapshot?.managedTemplateState
+    snapshot?.managedTemplateState,
+    { workspaceId }
   );
   const assetTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-preview-assets-"));
   let musicFilePath: string | null = null;

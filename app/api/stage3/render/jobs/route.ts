@@ -83,7 +83,8 @@ export async function POST(request: Request): Promise<Response> {
       }),
       payloadJson: JSON.stringify({
         ...(body ?? {}),
-        sourceUrl
+        sourceUrl,
+        workspaceId: auth.workspace.id
       })
     });
 

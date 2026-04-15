@@ -591,6 +591,18 @@ function buildFragmentDraftInputs(params: {
   };
 }
 
+function areFragmentDraftInputsEqual(left: FragmentDraftInputs | undefined, right: FragmentDraftInputs | undefined): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    left.startSec === right.startSec &&
+    left.endSec === right.endSec &&
+    left.focusY === right.focusY &&
+    left.videoZoom === right.videoZoom
+  );
+}
+
 function normalizeSegmentSpeed(value: unknown): Stage3Segment["speed"] {
   if (typeof value === "number" && Number.isFinite(value) && SEGMENT_SPEED_SET.has(value)) {
     return value as Stage3Segment["speed"];
@@ -644,6 +656,25 @@ function normalizeEditorSegments(
     videoZoom: segment.videoZoomOverride,
     mirrorEnabled: segment.mirrorEnabledOverride
   }));
+}
+
+function areStage3SegmentsEqual(left: Stage3Segment, right: Stage3Segment): boolean {
+  return (
+    left.startSec === right.startSec &&
+    left.endSec === right.endSec &&
+    left.label === right.label &&
+    left.speed === right.speed &&
+    left.focusY === right.focusY &&
+    left.videoZoom === right.videoZoom &&
+    left.mirrorEnabled === right.mirrorEnabled
+  );
+}
+
+function areStage3SegmentListsEqual(left: Stage3Segment[], right: Stage3Segment[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((segment, index) => areStage3SegmentsEqual(segment, right[index] as Stage3Segment));
 }
 
 function sumSegmentsDuration(segments: Stage3Segment[], sourceDurationSec: number | null): number {
@@ -3138,7 +3169,7 @@ export function Step3RenderTemplate({
           fallbackVideoZoom: localVideoZoom
         });
         next[key] = prev[key] ?? fallbackDraft;
-        if (!prev[key] || JSON.stringify(prev[key]) !== JSON.stringify(next[key])) {
+        if (!areFragmentDraftInputsEqual(prev[key], next[key])) {
           changed = true;
         }
       });
@@ -4243,7 +4274,7 @@ export function Step3RenderTemplate({
     }
 
     const committedSegments = buildCommittedSegmentsFromDrafts();
-    const hasChanges = JSON.stringify(committedSegments) !== JSON.stringify(normalizedSegments);
+    const hasChanges = !areStage3SegmentListsEqual(committedSegments, normalizedSegments);
     const nextSelectionMode: Stage3EditorSelectionMode = committedSegments.length > 0 ? "fragments" : "window";
     const nextSession = buildStage3EditorSession({
       rawSegments: committedSegments,

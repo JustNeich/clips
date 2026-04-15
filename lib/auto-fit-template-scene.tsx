@@ -30,7 +30,7 @@ import { TemplateScene, type TemplateSceneProps } from "./template-scene";
 
 type TemplateSceneComputed = ReturnType<typeof getTemplateComputed>;
 
-type MeasuredSlotSpec = {
+export type MeasuredSlotSpec = {
   text: string;
   width: number;
   height: number;
@@ -51,12 +51,14 @@ type MeasuredSlotSpec = {
   lineHeightCeil: number;
 };
 
-type MeasuredSlotResult = {
+export type MeasuredSlotResult = {
   font: number;
   lineHeight: number;
 };
 
 const FIT_CACHE = new Map<string, TemplateSceneComputed>();
+const FIT_CACHE_MAX_ENTRIES = 120;
+const MAX_FONT_REFINEMENT_STEPS = 3;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -232,7 +234,71 @@ function resolveAdaptiveBottomLineHeightFloor(baseLineHeight: number, scale: num
   return Math.max(0.78, Number((baseLineHeight - reduction).toFixed(3)));
 }
 
-function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): MeasuredSlotResult {
+function snapLineHeight(value: number): number {
+  return Number(value.toFixed(3));
+}
+
+function buildLineHeightCandidates(spec: MeasuredSlotSpec): number[] {
+  const candidates = new Set<number>();
+  const midpoint = snapLineHeight((spec.lineHeightFloor + spec.lineHeightCeil) / 2);
+  const base = clamp(spec.baseLineHeight, spec.lineHeightFloor, spec.lineHeightCeil);
+  const offsets = [-0.04, -0.02, 0, 0.02, 0.04];
+
+  candidates.add(spec.lineHeightFloor);
+  candidates.add(spec.lineHeightCeil);
+  candidates.add(midpoint);
+  candidates.add(snapLineHeight(base));
+  candidates.add(snapLineHeight((spec.lineHeightFloor + base) / 2));
+  candidates.add(snapLineHeight((spec.lineHeightCeil + base) / 2));
+
+  for (const offset of offsets) {
+    candidates.add(snapLineHeight(clamp(base + offset, spec.lineHeightFloor, spec.lineHeightCeil)));
+  }
+
+  return [...candidates].sort((left, right) => left - right);
+}
+
+function getFontStepBounds(spec: MeasuredSlotSpec): { minStep: number; maxStep: number } {
+  return {
+    minStep: Math.round(spec.minFont / STAGE3_TEXT_FONT_STEP_PX),
+    maxStep: Math.round(spec.maxFont / STAGE3_TEXT_FONT_STEP_PX)
+  };
+}
+
+type SlotMeasurement = ReturnType<typeof measureSlot>;
+type SlotMeasureFn = (font: number, lineHeight: number) => SlotMeasurement;
+
+function findMaxFittingFontStep(
+  spec: MeasuredSlotSpec,
+  lineHeight: number,
+  safeHeight: number,
+  measure: SlotMeasureFn
+): { step: number; measurement: SlotMeasurement } | null {
+  const { minStep, maxStep } = getFontStepBounds(spec);
+  let low = minStep;
+  let high = maxStep;
+  let best: { step: number; measurement: SlotMeasurement } | null = null;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const font = Number((mid * STAGE3_TEXT_FONT_STEP_PX).toFixed(2));
+    const measurement = measure(font, lineHeight);
+    const fits = fitsSlot(measurement, spec) && measurement.height <= safeHeight;
+    if (fits) {
+      best = { step: mid, measurement };
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return best;
+}
+
+export function solveMeasuredSlotForMeasurements(
+  spec: MeasuredSlotSpec,
+  measure: SlotMeasureFn
+): MeasuredSlotResult {
   const scalePreference = normalizeScalePreference(spec.scale);
   const targetFill =
     spec.fillTargetMin + (spec.fillTargetMax - spec.fillTargetMin) * scalePreference;
@@ -244,17 +310,16 @@ function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): 
     baseScore: number;
   }> = [];
 
-  for (
-    let font = spec.minFont;
-    font <= spec.maxFont + 0.0001;
-    font = snapStage3TextFontPx(font + STAGE3_TEXT_FONT_STEP_PX)
-  ) {
-    for (
-      let lineHeight = spec.lineHeightFloor;
-      lineHeight <= spec.lineHeightCeil + 0.0001;
-      lineHeight = Number((lineHeight + 0.01).toFixed(3))
-    ) {
-      const measurement = measureSlot(node, spec, font, lineHeight);
+  for (const lineHeight of buildLineHeightCandidates(spec)) {
+    const maxFit = findMaxFittingFontStep(spec, lineHeight, safeHeight, measure);
+    if (!maxFit) {
+      continue;
+    }
+    const { minStep } = getFontStepBounds(spec);
+    const refinementStart = Math.max(minStep, maxFit.step - MAX_FONT_REFINEMENT_STEPS);
+    for (let step = refinementStart; step <= maxFit.step; step += 1) {
+      const font = Number((step * STAGE3_TEXT_FONT_STEP_PX).toFixed(2));
+      const measurement = step === maxFit.step ? maxFit.measurement : measure(font, lineHeight);
       if (!fitsSlot(measurement, spec) || measurement.height > safeHeight) {
         continue;
       }
@@ -318,6 +383,34 @@ function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): 
     font: spec.minFont,
     lineHeight: spec.baseLineHeight
   };
+}
+
+function solveMeasuredSlot(node: HTMLParagraphElement, spec: MeasuredSlotSpec): MeasuredSlotResult {
+  return solveMeasuredSlotForMeasurements(spec, (font, lineHeight) => measureSlot(node, spec, font, lineHeight));
+}
+
+function readFitCache(key: string): TemplateSceneComputed | null {
+  const cached = FIT_CACHE.get(key);
+  if (!cached) {
+    return null;
+  }
+  FIT_CACHE.delete(key);
+  FIT_CACHE.set(key, cached);
+  return cached;
+}
+
+function writeFitCache(key: string, computed: TemplateSceneComputed): void {
+  if (FIT_CACHE.has(key)) {
+    FIT_CACHE.delete(key);
+  }
+  FIT_CACHE.set(key, computed);
+  while (FIT_CACHE.size > FIT_CACHE_MAX_ENTRIES) {
+    const oldestKey = FIT_CACHE.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    FIT_CACHE.delete(oldestKey);
+  }
 }
 
 function buildMeasuredComputed(
@@ -501,7 +594,7 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
   const [ready, setReady] = useState<boolean>(() => FIT_CACHE.has(cacheKey));
 
   useLayoutEffect(() => {
-    const cached = FIT_CACHE.get(cacheKey);
+    const cached = readFitCache(cacheKey);
     if (cached) {
       setComputed(cached);
       setReady(true);
@@ -529,7 +622,7 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
         topMeasureRef.current,
         bottomMeasureRef.current
       );
-      FIT_CACHE.set(cacheKey, nextComputed);
+      writeFitCache(cacheKey, nextComputed);
       if (!cancelled) {
         setComputed(nextComputed);
         setReady(true);

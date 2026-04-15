@@ -92,6 +92,7 @@ export type Stage3RenderRequestBody = {
   requestId?: string;
   sourceUrl?: string;
   channelId?: string;
+  workspaceId?: string;
   chatId?: string;
   publishAfterRender?: boolean;
   renderTitle?: string;
@@ -616,9 +617,12 @@ function normalizeRenderPlan(
   sourceDurationSec: number | null,
   fallbackTemplateId: string,
   agentPrompt: string | undefined,
-  managedTemplateState?: Stage3StateSnapshot["managedTemplateState"]
+  managedTemplateState?: Stage3StateSnapshot["managedTemplateState"],
+  workspaceId?: string | null
 ): Stage3RenderPlan {
-  const template = resolveManagedTemplateRuntimeSync(fallbackTemplateId, managedTemplateState).templateConfig;
+  const template = resolveManagedTemplateRuntimeSync(fallbackTemplateId, managedTemplateState, {
+    workspaceId
+  }).templateConfig;
   const templateVideoAdjustments = template.videoAdjustments;
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
@@ -781,6 +785,7 @@ export async function renderStage3Video(
     const sourceDurationSec = source.sourceDurationSec;
     const clipDurationSec = sanitizeClipDuration(body.clipDurationSec);
     const snapshot = body.snapshot;
+    const workspaceId = body.workspaceId?.trim() || null;
     const requestedClipStart =
       typeof snapshot?.clipStartSec === "number" && Number.isFinite(snapshot.clipStartSec)
         ? snapshot.clipStartSec
@@ -819,11 +824,13 @@ export async function renderStage3Video(
       sourceDurationSec,
       templateIdFromInput,
       body.agentPrompt,
-      snapshot?.managedTemplateState
+      snapshot?.managedTemplateState,
+      workspaceId
     );
     const managedTemplateRuntime = resolveManagedTemplateRuntimeSync(
       renderPlan.templateId,
-      snapshot?.managedTemplateState
+      snapshot?.managedTemplateState,
+      { workspaceId }
     );
     const templateSnapshotContent = {
       topText: snapshot?.topText ?? body.topText ?? "",

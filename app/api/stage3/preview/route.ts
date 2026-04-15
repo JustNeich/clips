@@ -1,14 +1,10 @@
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
 import { resolveStage3ExecutionTarget } from "../../../../lib/stage3-execution";
-import {
-  enqueueAndScheduleStage3Job,
-  waitForStage3Job
-} from "../../../../lib/stage3-job-runtime";
+import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../lib/stage3-job-http";
+import { enqueueAndScheduleStage3Job } from "../../../../lib/stage3-job-runtime";
 import {
   buildStage3PreviewDedupeKey,
-  PREVIEW_WAIT_TIMEOUT_MS,
-  Stage3PreviewRequestBody,
-  tryCreateStage3PreviewResponse
+  Stage3PreviewRequestBody
 } from "../../../../lib/stage3-preview-service";
 import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
@@ -48,9 +44,10 @@ export async function POST(request: Request): Promise<Response> {
 
     const normalizedBody = {
       ...(body ?? {}),
-      sourceUrl
+      sourceUrl,
+      workspaceId: auth.workspace.id
     } satisfies Stage3PreviewRequestBody;
-    const executionTarget = resolveStage3ExecutionTarget("host");
+    const executionTarget = resolveStage3ExecutionTarget();
     if (executionTarget === "local") {
       const readiness = await resolveStage3LocalWorkerReadiness({
         workspaceId: auth.workspace.id,
@@ -88,70 +85,21 @@ export async function POST(request: Request): Promise<Response> {
         userId: auth.user.id
       })
     });
-    const resolved =
-      job.status === "completed"
-        ? job
-        : await waitForStage3Job(job.id, {
-            timeoutMs: PREVIEW_WAIT_TIMEOUT_MS + 15_000,
-            signal: request.signal
-          });
-
-    if (request.signal.aborted) {
-      return new Response(null, { status: 204 });
-    }
-    if (resolved.status === "completed" && resolved.artifactFilePath) {
-      const response = await tryCreateStage3PreviewResponse(resolved.artifactFilePath, {
-        "Cache-Control": "private, max-age=300",
-        "x-stage3-preview": "1",
-        "x-stage3-job": resolved.id
-      });
-      if (response) {
-        return response;
-      }
-      return Response.json(
-        {
-          error: "Черновой предпросмотр не удалось подготовить. Повторите ещё раз."
-        },
-        { status: 503 }
-      );
-    }
-
     return Response.json(
-      {
-        error: resolved.errorMessage ?? "Черновой предпросмотр не удалось подготовить. Повторите ещё раз."
-      },
-      {
-        status: resolved.recoverable ? 503 : 500,
-        headers: resolved.recoverable
-          ? {
-              "Retry-After": PREVIEW_BUSY_RETRY_AFTER_SEC,
-              "x-stage3-busy": "1",
-              "x-stage3-job": resolved.id
-            }
-          : { "x-stage3-job": resolved.id }
-      }
+      buildStage3JobEnvelope(job, job.artifact ? `/api/stage3/preview/jobs/${job.id}?download=1` : null),
+      { status: job.status === "completed" ? 200 : 202 }
     );
   } catch (error) {
     if (error instanceof Response) {
       return error;
     }
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return new Response(null, { status: 204 });
-    }
     const message = error instanceof Error ? error.message : "Не удалось загрузить предпросмотр Stage 3.";
     return Response.json(
-      {
-        error: message
-      },
-      {
-        status: isPreviewInputError(message) ? 400 : 503,
-        headers: isPreviewInputError(message)
-          ? undefined
-          : {
-              "Retry-After": PREVIEW_BUSY_RETRY_AFTER_SEC,
-              "x-stage3-busy": "1"
-            }
-      }
+      buildStage3JobErrorBody({
+        message,
+        recoverable: !isPreviewInputError(message)
+      }),
+      { status: isPreviewInputError(message) ? 400 : 500 }
     );
   }
 }

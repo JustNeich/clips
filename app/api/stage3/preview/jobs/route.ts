@@ -70,7 +70,8 @@ export async function POST(request: Request): Promise<Response> {
       executionTarget,
       payloadJson: JSON.stringify({
         ...(body ?? {}),
-        sourceUrl: normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "")
+        sourceUrl: normalizeSupportedUrl(body?.sourceUrl?.trim() ?? ""),
+        workspaceId: auth.workspace.id
       }),
       dedupeKey
     });

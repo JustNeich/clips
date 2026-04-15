@@ -39,7 +39,7 @@ test("editing proxy ffmpeg args force dense keyframes for reliable fragment seek
 });
 
 test("editing proxy cache version is bumped when seek semantics change", () => {
-  assert.equal(STAGE3_EDITING_PROXY_CACHE_VERSION, "v3");
+  assert.equal(STAGE3_EDITING_PROXY_CACHE_VERSION, "v4");
 });
 
 test("fit clip filters always force even frame dimensions before libx264 encode", () => {
