@@ -117,6 +117,13 @@ import {
   resolveStage3ReportedSourceDuration
 } from "../../lib/stage3-preview-media";
 import {
+  buildStage3VideoFilterCss,
+  normalizeStage3VideoBrightness,
+  normalizeStage3VideoContrast,
+  normalizeStage3VideoExposure,
+  normalizeStage3VideoSaturation
+} from "../../lib/stage3-video-adjustments";
+import {
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride,
@@ -214,6 +221,10 @@ type Step3RenderTemplateProps = {
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   mirrorEnabled: boolean;
   videoZoom: number;
+  videoBrightness: number;
+  videoExposure: number;
+  videoContrast: number;
+  videoSaturation: number;
   topFontScale: number;
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
@@ -260,6 +271,10 @@ type Step3RenderTemplateProps = {
   onCameraScaleKeyframesChange: (value: Stage3ScaleKeyframe[]) => void;
   onMirrorEnabledChange: (value: boolean) => void;
   onVideoZoomChange: (value: number) => void;
+  onVideoBrightnessChange: (value: number) => void;
+  onVideoExposureChange: (value: number) => void;
+  onVideoContrastChange: (value: number) => void;
+  onVideoSaturationChange: (value: number) => void;
   onTopFontScaleChange: (value: number) => void;
   onBottomFontScaleChange: (value: number) => void;
   onSourceAudioEnabledChange: (value: boolean) => void;
@@ -705,6 +720,10 @@ function PreviewClipVideo({
   className,
   objectPosition,
   videoZoom,
+  videoBrightness,
+  videoExposure,
+  videoContrast,
+  videoSaturation,
   mirrorEnabled,
   muted,
   videoRef,
@@ -722,6 +741,10 @@ function PreviewClipVideo({
   className: string;
   objectPosition?: string;
   videoZoom?: number;
+  videoBrightness: number;
+  videoExposure: number;
+  videoContrast: number;
+  videoSaturation: number;
   mirrorEnabled: boolean;
   muted: boolean;
   videoRef: MutableRefObject<HTMLVideoElement | null>;
@@ -1035,6 +1058,13 @@ function PreviewClipVideo({
     };
   }, [isPlaying, sourceUrl, videoRef]);
 
+  const videoFilter = buildStage3VideoFilterCss({
+    brightness: videoBrightness,
+    exposure: videoExposure,
+    contrast: videoContrast,
+    saturation: videoSaturation
+  });
+
   return (
     <video
       ref={videoRef}
@@ -1045,6 +1075,7 @@ function PreviewClipVideo({
       preload="metadata"
       style={{
         ...(objectPosition ? { objectPosition } : {}),
+        ...(videoFilter ? { filter: videoFilter } : {}),
         transform: `scale(${(
           Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, videoZoom ?? 1)) *
             (mirrorEnabled ? -1 : 1)
@@ -1091,6 +1122,10 @@ type Stage3LivePreviewPanelProps = {
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   mirrorEnabled: boolean;
   videoZoom: number;
+  videoBrightness: number;
+  videoExposure: number;
+  videoContrast: number;
+  videoSaturation: number;
   topFontScale: number;
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
@@ -1146,6 +1181,10 @@ function Stage3LivePreviewPanel({
   cameraScaleKeyframes,
   mirrorEnabled,
   videoZoom,
+  videoBrightness,
+  videoExposure,
+  videoContrast,
+  videoSaturation,
   topFontScale,
   bottomFontScale,
   sourceAudioEnabled,
@@ -1286,6 +1325,19 @@ function Stage3LivePreviewPanel({
     ]
   );
   const objectPosition = `50% ${(cameraState.focusY * 100).toFixed(3)}%`;
+  const previewBackgroundVideoFilter = buildStage3VideoFilterCss(
+    {
+      brightness: videoBrightness,
+      exposure: videoExposure,
+      contrast: videoContrast,
+      saturation: videoSaturation
+    },
+    {
+      blurPx: 12,
+      baseBrightness: 0.8,
+      baseSaturation: 1.05
+    }
+  );
   const timelinePercent = clamp((timelineSec / Math.max(0.01, playbackDurationSec)) * 100, 0, 100);
   const activePositionKeyframes = cameraState.positionKeyframes;
   const activeScaleKeyframes = cameraState.scaleKeyframes;
@@ -1940,6 +1992,9 @@ function Stage3LivePreviewPanel({
                               preload="metadata"
                                 style={{
                                   objectPosition,
+                                  ...(previewBackgroundVideoFilter
+                                    ? { filter: previewBackgroundVideoFilter }
+                                    : {}),
                                   transform: playbackTransformState.mirrorEnabled ? "scaleX(-1)" : undefined,
                                   transformOrigin: "center center"
                                 }}
@@ -1981,6 +2036,10 @@ function Stage3LivePreviewPanel({
                         className="preview-slot-video"
                         objectPosition={objectPosition}
                         videoZoom={cameraState.zoom}
+                        videoBrightness={videoBrightness}
+                        videoExposure={videoExposure}
+                        videoContrast={videoContrast}
+                        videoSaturation={videoSaturation}
                         mirrorEnabled={playbackTransformState.mirrorEnabled}
                         muted={isMuted || !sourceAudioEnabled}
                         videoRef={slotPreviewRef}
@@ -2177,6 +2236,10 @@ export function Step3RenderTemplate({
   cameraScaleKeyframes,
   mirrorEnabled,
   videoZoom,
+  videoBrightness,
+  videoExposure,
+  videoContrast,
+  videoSaturation,
   topFontScale,
   bottomFontScale,
   sourceAudioEnabled,
@@ -2212,6 +2275,10 @@ export function Step3RenderTemplate({
   onCameraScaleKeyframesChange,
   onMirrorEnabledChange,
   onVideoZoomChange,
+  onVideoBrightnessChange,
+  onVideoExposureChange,
+  onVideoContrastChange,
+  onVideoSaturationChange,
   onTopFontScaleChange,
   onBottomFontScaleChange,
   onSourceAudioEnabledChange,
@@ -2224,6 +2291,10 @@ export function Step3RenderTemplate({
   const clipCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
   const videoZoomCommitTimerRef = useRef<number | null>(null);
+  const videoBrightnessCommitTimerRef = useRef<number | null>(null);
+  const videoExposureCommitTimerRef = useRef<number | null>(null);
+  const videoContrastCommitTimerRef = useRef<number | null>(null);
+  const videoSaturationCommitTimerRef = useRef<number | null>(null);
   const positionKeyframesCommitTimerRef = useRef<number | null>(null);
   const scaleKeyframesCommitTimerRef = useRef<number | null>(null);
   const topFontScaleCommitTimerRef = useRef<number | null>(null);
@@ -2234,6 +2305,10 @@ export function Step3RenderTemplate({
   const [localWholeClipWindowEndSec, setLocalWholeClipWindowEndSec] = useState(clipStartSec + clipDurationSec);
   const [localFocusY, setLocalFocusY] = useState(focusY);
   const [localVideoZoom, setLocalVideoZoom] = useState(videoZoom);
+  const [localVideoBrightness, setLocalVideoBrightness] = useState(videoBrightness);
+  const [localVideoExposure, setLocalVideoExposure] = useState(videoExposure);
+  const [localVideoContrast, setLocalVideoContrast] = useState(videoContrast);
+  const [localVideoSaturation, setLocalVideoSaturation] = useState(videoSaturation);
   const [selectedPositionKeyframeId, setSelectedPositionKeyframeId] = useState<string | null>(null);
   const [selectedScaleKeyframeId, setSelectedScaleKeyframeId] = useState<string | null>(null);
   const previewTimelineSecRef = useRef(0);
@@ -2735,6 +2810,10 @@ export function Step3RenderTemplate({
       ? `Фрагменты ${normalizedSegments.length} · выход ${formatTimeSec(effectiveOutputDurationSec)}`
       : `Окно ${formatTimeSec(sourceDisplayDurationSec)}`;
   const editorZoomLabel = `x${localVideoZoom.toFixed(2)}`;
+  const videoBrightnessLabel = `${Math.round(localVideoBrightness * 100)}%`;
+  const videoExposureLabel = `${localVideoExposure >= 0 ? "+" : ""}${localVideoExposure.toFixed(2)} EV`;
+  const videoContrastLabel = `${Math.round(localVideoContrast * 100)}%`;
+  const videoSaturationLabel = `${Math.round(localVideoSaturation * 100)}%`;
   const nextFragmentSuggestion = useMemo(() => {
     if (!sourceUrl) {
       return null;
@@ -2962,6 +3041,22 @@ export function Step3RenderTemplate({
   }, [videoZoom]);
 
   useEffect(() => {
+    setLocalVideoBrightness(normalizeStage3VideoBrightness(videoBrightness));
+  }, [videoBrightness]);
+
+  useEffect(() => {
+    setLocalVideoExposure(normalizeStage3VideoExposure(videoExposure));
+  }, [videoExposure]);
+
+  useEffect(() => {
+    setLocalVideoContrast(normalizeStage3VideoContrast(videoContrast));
+  }, [videoContrast]);
+
+  useEffect(() => {
+    setLocalVideoSaturation(normalizeStage3VideoSaturation(videoSaturation));
+  }, [videoSaturation]);
+
+  useEffect(() => {
     setLocalPositionKeyframes(effectiveCameraTracks.positionKeyframes);
     setLocalScaleKeyframes(effectiveCameraTracks.scaleKeyframes);
   }, [effectiveCameraTracks]);
@@ -3102,6 +3197,18 @@ export function Step3RenderTemplate({
       if (videoZoomCommitTimerRef.current !== null) {
         window.clearTimeout(videoZoomCommitTimerRef.current);
       }
+      if (videoBrightnessCommitTimerRef.current !== null) {
+        window.clearTimeout(videoBrightnessCommitTimerRef.current);
+      }
+      if (videoExposureCommitTimerRef.current !== null) {
+        window.clearTimeout(videoExposureCommitTimerRef.current);
+      }
+      if (videoContrastCommitTimerRef.current !== null) {
+        window.clearTimeout(videoContrastCommitTimerRef.current);
+      }
+      if (videoSaturationCommitTimerRef.current !== null) {
+        window.clearTimeout(videoSaturationCommitTimerRef.current);
+      }
       if (positionKeyframesCommitTimerRef.current !== null) {
         window.clearTimeout(positionKeyframesCommitTimerRef.current);
       }
@@ -3183,6 +3290,86 @@ export function Step3RenderTemplate({
     videoZoomCommitTimerRef.current = window.setTimeout(() => {
       onVideoZoomChange(next);
       videoZoomCommitTimerRef.current = null;
+    }, 320);
+  };
+
+  const flushVideoBrightnessCommit = (value: number) => {
+    if (videoBrightnessCommitTimerRef.current !== null) {
+      window.clearTimeout(videoBrightnessCommitTimerRef.current);
+      videoBrightnessCommitTimerRef.current = null;
+    }
+    onVideoBrightnessChange(normalizeStage3VideoBrightness(value));
+  };
+
+  const scheduleVideoBrightnessCommit = (value: number) => {
+    const next = normalizeStage3VideoBrightness(value);
+    setLocalVideoBrightness(next);
+    if (videoBrightnessCommitTimerRef.current !== null) {
+      window.clearTimeout(videoBrightnessCommitTimerRef.current);
+    }
+    videoBrightnessCommitTimerRef.current = window.setTimeout(() => {
+      onVideoBrightnessChange(next);
+      videoBrightnessCommitTimerRef.current = null;
+    }, 320);
+  };
+
+  const flushVideoExposureCommit = (value: number) => {
+    if (videoExposureCommitTimerRef.current !== null) {
+      window.clearTimeout(videoExposureCommitTimerRef.current);
+      videoExposureCommitTimerRef.current = null;
+    }
+    onVideoExposureChange(normalizeStage3VideoExposure(value));
+  };
+
+  const scheduleVideoExposureCommit = (value: number) => {
+    const next = normalizeStage3VideoExposure(value);
+    setLocalVideoExposure(next);
+    if (videoExposureCommitTimerRef.current !== null) {
+      window.clearTimeout(videoExposureCommitTimerRef.current);
+    }
+    videoExposureCommitTimerRef.current = window.setTimeout(() => {
+      onVideoExposureChange(next);
+      videoExposureCommitTimerRef.current = null;
+    }, 320);
+  };
+
+  const flushVideoContrastCommit = (value: number) => {
+    if (videoContrastCommitTimerRef.current !== null) {
+      window.clearTimeout(videoContrastCommitTimerRef.current);
+      videoContrastCommitTimerRef.current = null;
+    }
+    onVideoContrastChange(normalizeStage3VideoContrast(value));
+  };
+
+  const scheduleVideoContrastCommit = (value: number) => {
+    const next = normalizeStage3VideoContrast(value);
+    setLocalVideoContrast(next);
+    if (videoContrastCommitTimerRef.current !== null) {
+      window.clearTimeout(videoContrastCommitTimerRef.current);
+    }
+    videoContrastCommitTimerRef.current = window.setTimeout(() => {
+      onVideoContrastChange(next);
+      videoContrastCommitTimerRef.current = null;
+    }, 320);
+  };
+
+  const flushVideoSaturationCommit = (value: number) => {
+    if (videoSaturationCommitTimerRef.current !== null) {
+      window.clearTimeout(videoSaturationCommitTimerRef.current);
+      videoSaturationCommitTimerRef.current = null;
+    }
+    onVideoSaturationChange(normalizeStage3VideoSaturation(value));
+  };
+
+  const scheduleVideoSaturationCommit = (value: number) => {
+    const next = normalizeStage3VideoSaturation(value);
+    setLocalVideoSaturation(next);
+    if (videoSaturationCommitTimerRef.current !== null) {
+      window.clearTimeout(videoSaturationCommitTimerRef.current);
+    }
+    videoSaturationCommitTimerRef.current = window.setTimeout(() => {
+      onVideoSaturationChange(next);
+      videoSaturationCommitTimerRef.current = null;
     }, 320);
   };
 
@@ -3336,6 +3523,10 @@ export function Step3RenderTemplate({
       clipStartSec: clamp(localClipStartSec, 0, maxStartSec),
       focusY: clampStage3FocusY(localFocusY),
       videoZoom: clampStage3CameraZoom(localVideoZoom),
+      videoBrightness: normalizeStage3VideoBrightness(localVideoBrightness),
+      videoExposure: normalizeStage3VideoExposure(localVideoExposure),
+      videoContrast: normalizeStage3VideoContrast(localVideoContrast),
+      videoSaturation: normalizeStage3VideoSaturation(localVideoSaturation),
       cameraKeyframes: [],
       cameraPositionKeyframes: [],
       cameraScaleKeyframes: [],
@@ -3351,6 +3542,10 @@ export function Step3RenderTemplate({
     flushClipCommit(overrides.clipStartSec);
     flushFocusCommit(overrides.focusY);
     flushVideoZoomCommit(overrides.videoZoom);
+    flushVideoBrightnessCommit(overrides.videoBrightness);
+    flushVideoExposureCommit(overrides.videoExposure);
+    flushVideoContrastCommit(overrides.videoContrast);
+    flushVideoSaturationCommit(overrides.videoSaturation);
     flushPositionKeyframesCommit(overrides.cameraPositionKeyframes);
     flushScaleKeyframesCommit(overrides.cameraScaleKeyframes);
     flushTopFontScaleCommit(overrides.topFontScale);
@@ -3669,6 +3864,30 @@ export function Step3RenderTemplate({
     const next = clampStage3CameraZoom(value);
     setLocalVideoZoom(next);
     flushVideoZoomCommit(next);
+  };
+
+  const applyVideoBrightnessImmediate = (value: number) => {
+    const next = normalizeStage3VideoBrightness(value);
+    setLocalVideoBrightness(next);
+    flushVideoBrightnessCommit(next);
+  };
+
+  const applyVideoExposureImmediate = (value: number) => {
+    const next = normalizeStage3VideoExposure(value);
+    setLocalVideoExposure(next);
+    flushVideoExposureCommit(next);
+  };
+
+  const applyVideoContrastImmediate = (value: number) => {
+    const next = normalizeStage3VideoContrast(value);
+    setLocalVideoContrast(next);
+    flushVideoContrastCommit(next);
+  };
+
+  const applyVideoSaturationImmediate = (value: number) => {
+    const next = normalizeStage3VideoSaturation(value);
+    setLocalVideoSaturation(next);
+    flushVideoSaturationCommit(next);
   };
 
   const positionKeyframeAtPlayhead = normalizedLocalPositionKeyframes.find(
@@ -5641,6 +5860,144 @@ export function Step3RenderTemplate({
                         </div>
                         <p className="subtle-text">Масштаб применяется ко всему клипу целиком.</p>
                       </div>
+
+                      <div className="quick-edit-card slider-field">
+                        <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="videoBrightnessRange">
+                            Яркость
+                          </label>
+                          <span className="quick-edit-value">{videoBrightnessLabel}</span>
+                        </div>
+                        <input
+                          id="videoBrightnessRange"
+                          type="range"
+                          min={0.4}
+                          max={1.8}
+                          step={0.01}
+                          value={localVideoBrightness}
+                          onChange={(event) =>
+                            scheduleVideoBrightnessCommit(Number.parseFloat(event.target.value))
+                          }
+                          onMouseUp={() => flushVideoBrightnessCommit(localVideoBrightness)}
+                          onTouchEnd={() => flushVideoBrightnessCommit(localVideoBrightness)}
+                          onBlur={() => flushVideoBrightnessCommit(localVideoBrightness)}
+                        />
+                        <div className="preset-row">
+                          {[0.85, 1, 1.15].map((value) => (
+                            <button
+                              key={`video-brightness-${value}`}
+                              type="button"
+                              className="preset-chip"
+                              onClick={() => applyVideoBrightnessImmediate(value)}
+                            >
+                              {Math.round(value * 100)}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="quick-edit-card slider-field">
+                        <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="videoExposureRange">
+                            Экспозиция
+                          </label>
+                          <span className="quick-edit-value">{videoExposureLabel}</span>
+                        </div>
+                        <input
+                          id="videoExposureRange"
+                          type="range"
+                          min={-1}
+                          max={1}
+                          step={0.05}
+                          value={localVideoExposure}
+                          onChange={(event) => scheduleVideoExposureCommit(Number.parseFloat(event.target.value))}
+                          onMouseUp={() => flushVideoExposureCommit(localVideoExposure)}
+                          onTouchEnd={() => flushVideoExposureCommit(localVideoExposure)}
+                          onBlur={() => flushVideoExposureCommit(localVideoExposure)}
+                        />
+                        <div className="preset-row">
+                          {[-0.3, 0, 0.3].map((value) => (
+                            <button
+                              key={`video-exposure-${value}`}
+                              type="button"
+                              className="preset-chip"
+                              onClick={() => applyVideoExposureImmediate(value)}
+                            >
+                              {value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="quick-edit-card slider-field">
+                        <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="videoContrastRange">
+                            Контраст
+                          </label>
+                          <span className="quick-edit-value">{videoContrastLabel}</span>
+                        </div>
+                        <input
+                          id="videoContrastRange"
+                          type="range"
+                          min={0.5}
+                          max={1.8}
+                          step={0.01}
+                          value={localVideoContrast}
+                          onChange={(event) =>
+                            scheduleVideoContrastCommit(Number.parseFloat(event.target.value))
+                          }
+                          onMouseUp={() => flushVideoContrastCommit(localVideoContrast)}
+                          onTouchEnd={() => flushVideoContrastCommit(localVideoContrast)}
+                          onBlur={() => flushVideoContrastCommit(localVideoContrast)}
+                        />
+                        <div className="preset-row">
+                          {[0.9, 1, 1.15].map((value) => (
+                            <button
+                              key={`video-contrast-${value}`}
+                              type="button"
+                              className="preset-chip"
+                              onClick={() => applyVideoContrastImmediate(value)}
+                            >
+                              {Math.round(value * 100)}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="quick-edit-card slider-field">
+                        <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="videoSaturationRange">
+                            Насыщенность
+                          </label>
+                          <span className="quick-edit-value">{videoSaturationLabel}</span>
+                        </div>
+                        <input
+                          id="videoSaturationRange"
+                          type="range"
+                          min={0}
+                          max={2}
+                          step={0.01}
+                          value={localVideoSaturation}
+                          onChange={(event) =>
+                            scheduleVideoSaturationCommit(Number.parseFloat(event.target.value))
+                          }
+                          onMouseUp={() => flushVideoSaturationCommit(localVideoSaturation)}
+                          onTouchEnd={() => flushVideoSaturationCommit(localVideoSaturation)}
+                          onBlur={() => flushVideoSaturationCommit(localVideoSaturation)}
+                        />
+                        <div className="preset-row">
+                          {[0.85, 1, 1.2].map((value) => (
+                            <button
+                              key={`video-saturation-${value}`}
+                              type="button"
+                              className="preset-chip"
+                              onClick={() => applyVideoSaturationImmediate(value)}
+                            >
+                              {Math.round(value * 100)}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </>
                   ) : (
                     <div className="quick-edit-card quick-edit-span-2">
@@ -5696,6 +6053,10 @@ export function Step3RenderTemplate({
             cameraScaleKeyframes={[]}
             mirrorEnabled={mirrorEnabled}
             videoZoom={previewVideoZoom}
+            videoBrightness={localVideoBrightness}
+            videoExposure={localVideoExposure}
+            videoContrast={localVideoContrast}
+            videoSaturation={localVideoSaturation}
             topFontScale={localTopFontScale}
             bottomFontScale={localBottomFontScale}
             sourceAudioEnabled={sourceAudioEnabled}

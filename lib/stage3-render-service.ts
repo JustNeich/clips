@@ -12,6 +12,12 @@ import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
 import { buildTemplateRenderSnapshot } from "./stage3-template-core";
 import { buildStage3TextFitHash, clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
+  normalizeStage3VideoBrightness,
+  normalizeStage3VideoContrast,
+  normalizeStage3VideoExposure,
+  normalizeStage3VideoSaturation
+} from "./stage3-video-adjustments";
+import {
   analyzeBestClipAndFocus,
   clampClipStart,
   prepareStage3SourceClip,
@@ -434,6 +440,10 @@ async function runRemotionRender(params: {
   cameraPositionKeyframes: Stage3RenderPlan["cameraPositionKeyframes"];
   cameraScaleKeyframes: Stage3RenderPlan["cameraScaleKeyframes"];
   videoZoom: number;
+  videoBrightness: number;
+  videoExposure: number;
+  videoContrast: number;
+  videoSaturation: number;
   topFontScale: number;
   bottomFontScale: number;
   authorName: string;
@@ -477,6 +487,10 @@ async function runRemotionRender(params: {
     cameraPositionKeyframes: params.cameraPositionKeyframes,
     cameraScaleKeyframes: params.cameraScaleKeyframes,
     videoZoom: params.videoZoom,
+    videoBrightness: params.videoBrightness,
+    videoExposure: params.videoExposure,
+    videoContrast: params.videoContrast,
+    videoSaturation: params.videoSaturation,
     topFontScale: params.topFontScale,
     bottomFontScale: params.bottomFontScale,
     authorName: params.authorName,
@@ -605,6 +619,7 @@ function normalizeRenderPlan(
   managedTemplateState?: Stage3StateSnapshot["managedTemplateState"]
 ): Stage3RenderPlan {
   const template = resolveManagedTemplateRuntimeSync(fallbackTemplateId, managedTemplateState).templateConfig;
+  const templateVideoAdjustments = template.videoAdjustments;
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
   const videoZoom =
@@ -650,6 +665,10 @@ function normalizeRenderPlan(
     cameraPositionKeyframes: cameraTracks.positionKeyframes,
     cameraScaleKeyframes: cameraTracks.scaleKeyframes,
     videoZoom,
+    videoBrightness: normalizeStage3VideoBrightness(rawPlan?.videoBrightness, templateVideoAdjustments.brightness),
+    videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),
+    videoContrast: normalizeStage3VideoContrast(rawPlan?.videoContrast, templateVideoAdjustments.contrast),
+    videoSaturation: normalizeStage3VideoSaturation(rawPlan?.videoSaturation, templateVideoAdjustments.saturation),
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
         ? clampStage3TextScaleUi(rawPlan.topFontScale)
@@ -990,6 +1009,10 @@ export async function renderStage3Video(
           cameraPositionKeyframes: renderPlan.cameraPositionKeyframes,
           cameraScaleKeyframes: renderPlan.cameraScaleKeyframes,
           videoZoom: renderPlan.videoZoom,
+          videoBrightness: renderPlan.videoBrightness,
+          videoExposure: renderPlan.videoExposure,
+          videoContrast: renderPlan.videoContrast,
+          videoSaturation: renderPlan.videoSaturation,
           topFontScale: renderPlan.topFontScale,
           bottomFontScale: renderPlan.bottomFontScale,
           authorName: renderPlan.authorName,

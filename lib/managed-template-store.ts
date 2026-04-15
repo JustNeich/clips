@@ -11,6 +11,7 @@ import {
   type Stage3TemplateConfig,
   getTemplateById
 } from "./stage3-template";
+import { normalizeStage3VideoAdjustments } from "./stage3-video-adjustments";
 import { listTemplateVariants } from "./stage3-template-registry";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
@@ -238,6 +239,10 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     if (typeof card.shadow === "string") {
       base.card.shadow = card.shadow;
     }
+  }
+
+  if (isRecord(raw.videoAdjustments)) {
+    base.videoAdjustments = normalizeStage3VideoAdjustments(raw.videoAdjustments, base.videoAdjustments);
   }
 
   const slot = isRecord(raw.slot) ? raw.slot : null;

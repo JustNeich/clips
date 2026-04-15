@@ -15,6 +15,12 @@ import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants
 import { STAGE3_TEMPLATE_ID } from "./stage3-template";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
+  normalizeStage3VideoBrightness,
+  normalizeStage3VideoContrast,
+  normalizeStage3VideoExposure,
+  normalizeStage3VideoSaturation
+} from "./stage3-video-adjustments";
+import {
   normalizeStage3CameraKeyframes,
   normalizeStage3CameraMotion,
   resolveStage3EffectiveCameraTracks
@@ -217,6 +223,7 @@ function normalizeRenderPlan(
       ? rawPlan.templateId.trim()
       : STAGE3_TEMPLATE_ID;
   const template = resolveManagedTemplateRuntimeSync(templateId, managedTemplateState).templateConfig;
+  const templateVideoAdjustments = template.videoAdjustments;
   const videoZoom =
     typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
@@ -262,6 +269,10 @@ function normalizeRenderPlan(
     cameraPositionKeyframes: cameraTracks.positionKeyframes,
     cameraScaleKeyframes: cameraTracks.scaleKeyframes,
     videoZoom,
+    videoBrightness: normalizeStage3VideoBrightness(rawPlan?.videoBrightness, templateVideoAdjustments.brightness),
+    videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),
+    videoContrast: normalizeStage3VideoContrast(rawPlan?.videoContrast, templateVideoAdjustments.contrast),
+    videoSaturation: normalizeStage3VideoSaturation(rawPlan?.videoSaturation, templateVideoAdjustments.saturation),
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
         ? clampStage3TextScaleUi(rawPlan.topFontScale)

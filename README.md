@@ -185,6 +185,7 @@ npm run stage2-worker
   - правки `width / height / x / y` карточки влияют и на preview, и на render;
   - `line-height` верхнего и нижнего текста сохраняется без отката после autosave/reload;
   - режим цветного бейджа использует twitter-style векторную галочку, а не круглый fallback.
+  - template defaults теперь могут задавать video adjustments (`brightness / exposure / contrast / saturation`), а Step 3 позволяет переопределить их отдельно для конкретного ролика без изменения самого шаблона.
 - Добавлен агент монтажер:
   - `POST /api/stage3/optimize` и `POST /api/stage3/agent/run` используют local media subjobs для тяжелого анализа.
   - `POST /api/video/meta` возвращает длительность источника для UI-слайдера.

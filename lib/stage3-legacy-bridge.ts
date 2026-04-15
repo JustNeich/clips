@@ -22,6 +22,13 @@ import {
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
+import {
+  DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
+  normalizeStage3VideoBrightness,
+  normalizeStage3VideoContrast,
+  normalizeStage3VideoExposure,
+  normalizeStage3VideoSaturation
+} from "./stage3-video-adjustments";
 
 const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEMPLATE_ID = "science-card-v1";
@@ -48,6 +55,10 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     cameraPositionKeyframes: [],
     cameraScaleKeyframes: [],
     videoZoom: 1,
+    videoBrightness: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.brightness,
+    videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
+    videoContrast: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.contrast,
+    videoSaturation: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.saturation,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
     musicGain: 0.65,
@@ -117,6 +128,10 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
     cameraPositionKeyframes: cameraTracks.positionKeyframes,
     cameraScaleKeyframes: cameraTracks.scaleKeyframes,
     videoZoom,
+    videoBrightness: normalizeStage3VideoBrightness(candidate?.videoBrightness, fallback.videoBrightness),
+    videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, fallback.videoExposure),
+    videoContrast: normalizeStage3VideoContrast(candidate?.videoContrast, fallback.videoContrast),
+    videoSaturation: normalizeStage3VideoSaturation(candidate?.videoSaturation, fallback.videoSaturation),
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
         ? clampStage3TextScaleUi(candidate.topFontScale)

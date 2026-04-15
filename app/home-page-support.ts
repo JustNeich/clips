@@ -39,6 +39,13 @@ import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { clampStage3TextScaleUi } from "../lib/stage3-text-fit";
 import { sanitizeDisplayText } from "../lib/ui-error";
 import {
+  DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
+  normalizeStage3VideoBrightness,
+  normalizeStage3VideoContrast,
+  normalizeStage3VideoExposure,
+  normalizeStage3VideoSaturation
+} from "../lib/stage3-video-adjustments";
+import {
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
@@ -586,6 +593,10 @@ export function fallbackRenderPlan(): Stage3RenderPlan {
     cameraPositionKeyframes: [],
     cameraScaleKeyframes: [],
     videoZoom: 1,
+    videoBrightness: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.brightness,
+    videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
+    videoContrast: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.contrast,
+    videoSaturation: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.saturation,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
     musicGain: 0.65,
@@ -693,6 +704,10 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
     cameraPositionKeyframes: plan.cameraPositionKeyframes,
     cameraScaleKeyframes: plan.cameraScaleKeyframes,
     videoZoom: plan.videoZoom,
+    videoBrightness: plan.videoBrightness,
+    videoExposure: plan.videoExposure,
+    videoContrast: plan.videoContrast,
+    videoSaturation: plan.videoSaturation,
     segments: plan.segments,
     policy: plan.policy,
     prompt: "",
@@ -778,6 +793,10 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
       fallbackZoom: videoZoom
     }),
     videoZoom,
+    videoBrightness: normalizeStage3VideoBrightness(candidate?.videoBrightness, base.videoBrightness),
+    videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, base.videoExposure),
+    videoContrast: normalizeStage3VideoContrast(candidate?.videoContrast, base.videoContrast),
+    videoSaturation: normalizeStage3VideoSaturation(candidate?.videoSaturation, base.videoSaturation),
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
         ? clampStage3TextScaleUi(candidate.topFontScale)

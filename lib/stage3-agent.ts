@@ -34,6 +34,12 @@ import {
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
+import {
+  normalizeStage3VideoBrightness,
+  normalizeStage3VideoContrast,
+  normalizeStage3VideoExposure,
+  normalizeStage3VideoSaturation
+} from "./stage3-video-adjustments";
 
 export type {
   Stage3RenderPlan,
@@ -671,6 +677,7 @@ function createDefaultRenderPlan(
 ): Stage3RenderPlan {
   const resolvedTemplateId = templateId?.trim() || SCIENCE_CARD_TEMPLATE_ID;
   const templateConfig = resolveManagedTemplateRuntimeSync(resolvedTemplateId).templateConfig;
+  const videoAdjustments = templateConfig.videoAdjustments;
   return {
     targetDurationSec: TARGET_DURATION_SEC,
     timingMode: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC ? "stretch" : "auto",
@@ -684,6 +691,10 @@ function createDefaultRenderPlan(
     cameraPositionKeyframes: [],
     cameraScaleKeyframes: [],
     videoZoom: 1,
+    videoBrightness: videoAdjustments.brightness,
+    videoExposure: videoAdjustments.exposure,
+    videoContrast: videoAdjustments.contrast,
+    videoSaturation: videoAdjustments.saturation,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
     musicGain: 0.65,
@@ -762,6 +773,10 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
     cameraPositionKeyframes: cameraTracks.positionKeyframes,
     cameraScaleKeyframes: cameraTracks.scaleKeyframes,
     videoZoom,
+    videoBrightness: normalizeStage3VideoBrightness(input?.videoBrightness, defaultPlan.videoBrightness),
+    videoExposure: normalizeStage3VideoExposure(input?.videoExposure, defaultPlan.videoExposure),
+    videoContrast: normalizeStage3VideoContrast(input?.videoContrast, defaultPlan.videoContrast),
+    videoSaturation: normalizeStage3VideoSaturation(input?.videoSaturation, defaultPlan.videoSaturation),
     topFontScale:
       typeof input?.topFontScale === "number" && Number.isFinite(input.topFontScale)
         ? clamp(input.topFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX)

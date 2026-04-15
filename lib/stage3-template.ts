@@ -9,6 +9,11 @@ import {
   createDefaultTemplateHighlightConfig,
   type TemplateHighlightConfig
 } from "./template-highlights";
+import {
+  cloneStage3VideoAdjustments,
+  DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
+  type Stage3VideoAdjustments
+} from "./stage3-video-adjustments";
 
 export const SCIENCE_CARD_TEMPLATE_ID = "science-card-v1";
 export const SCIENCE_CARD_BLUE_TEMPLATE_ID = "science-card-blue-v1";
@@ -87,6 +92,7 @@ export const SCIENCE_CARD = {
     checkBadgeColor: "#e985d6",
     borderColor: "#000000"
   },
+  videoAdjustments: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
   highlights: createDefaultTemplateHighlightConfig(),
   author: {
     name: "Science Snack",
@@ -500,6 +506,7 @@ export type Stage3TemplateConfig = {
     borderColor: string;
     accentColor?: string;
   };
+  videoAdjustments: Stage3VideoAdjustments;
   highlights: TemplateHighlightConfig;
 };
 
@@ -516,6 +523,7 @@ export function cloneStage3TemplateConfig(config: Stage3TemplateConfig): Stage3T
       authorHandle: { ...config.typography.authorHandle }
     },
     palette: { ...config.palette },
+    videoAdjustments: cloneStage3VideoAdjustments(config.videoAdjustments),
     highlights: cloneTemplateHighlightConfig(config.highlights)
   };
 }

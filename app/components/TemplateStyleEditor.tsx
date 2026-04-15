@@ -19,6 +19,13 @@ import {
   getTemplatePreviewViewportMetrics
 } from "../../lib/stage3-template-viewport";
 import { clampStage3TextScaleUi } from "../../lib/stage3-text-fit";
+import {
+  buildStage3VideoFilterCss,
+  normalizeStage3VideoBrightness,
+  normalizeStage3VideoContrast,
+  normalizeStage3VideoExposure,
+  normalizeStage3VideoSaturation
+} from "../../lib/stage3-video-adjustments";
 import type { TemplateContentFixture } from "../../lib/template-calibration-types";
 import {
   buildTemplateHighlightSpansFromPhrases,
@@ -250,6 +257,7 @@ const DEFAULT_OPEN_SECTION_IDS = new Set<string>([
   "template-road-style-card",
   "template-road-style-shadow",
   "template-road-style-color",
+  "template-road-style-video",
   "template-road-style-type"
 ]);
 
@@ -260,6 +268,7 @@ const SECTION_LINKS: SectionLink[] = [
   { id: "template-road-style-card", label: "Карточка" },
   { id: "template-road-style-shadow", label: "Тень" },
   { id: "template-road-style-color", label: "Цвета" },
+  { id: "template-road-style-video", label: "Видео" },
   { id: "template-road-style-type", label: "Шрифты" },
   { id: "template-road-style-spacing", label: "Отступы" },
   { id: "template-road-style-details", label: "Детали" }
@@ -973,11 +982,13 @@ function EditorSection({
 function EditorMediaPlaceholder({
   accentColor,
   baseColor,
-  label
+  label,
+  videoFilter
 }: {
   accentColor: string;
   baseColor: string;
   label: string;
+  videoFilter?: string;
 }) {
   return (
     <div
@@ -985,56 +996,64 @@ function EditorMediaPlaceholder({
         position: "relative",
         width: "100%",
         height: "100%",
-        overflow: "hidden",
-        background: `linear-gradient(145deg, ${accentColor} 0%, ${baseColor} 52%, #0f1722 100%)`
+        overflow: "hidden"
       }}
     >
       <div
         style={{
           position: "absolute",
-          inset: "12% 10% auto auto",
-          width: "46%",
-          height: "46%",
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(255,255,255,0.35), rgba(255,255,255,0))",
-          filter: "blur(2px)"
+          inset: 0,
+          background: `linear-gradient(145deg, ${accentColor} 0%, ${baseColor} 52%, #0f1722 100%)`,
+          filter: videoFilter
         }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: "8%",
-          right: "8%",
-          bottom: "9%",
-          height: "32%",
-          borderRadius: 34,
-          border: "1px solid rgba(255,255,255,0.24)",
-          background: "linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04))",
-          backdropFilter: "blur(10px)"
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: "8%",
-          top: "9%",
-          width: "34%",
-          height: "5px",
-          borderRadius: 999,
-          background: "rgba(255,255,255,0.58)"
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: "8%",
-          top: "16%",
-          width: "48%",
-          height: "5px",
-          borderRadius: 999,
-          background: "rgba(255,255,255,0.34)"
-        }}
-      />
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: "12% 10% auto auto",
+            width: "46%",
+            height: "46%",
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(255,255,255,0.35), rgba(255,255,255,0))",
+            filter: "blur(2px)"
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "8%",
+            right: "8%",
+            bottom: "9%",
+            height: "32%",
+            borderRadius: 34,
+            border: "1px solid rgba(255,255,255,0.24)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04))",
+            backdropFilter: "blur(10px)"
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "8%",
+            top: "9%",
+            width: "34%",
+            height: "5px",
+            borderRadius: 999,
+            background: "rgba(255,255,255,0.58)"
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "8%",
+            top: "16%",
+            width: "48%",
+            height: "5px",
+            borderRadius: 999,
+            background: "rgba(255,255,255,0.34)"
+          }}
+        />
+      </div>
       <span
         style={{
           position: "absolute",
@@ -1149,6 +1168,7 @@ export function TemplateStyleEditor({
   const scaledViewportHeight = Math.round(viewportMetrics.height * effectiveCanvasScale);
   const highlightConfig = templateConfig.highlights;
   const accentColor = templateConfig.palette.accentColor ?? templateConfig.palette.topTextColor;
+  const templateVideoFilter = buildStage3VideoFilterCss(templateConfig.videoAdjustments);
   const enabledHighlightSlotCount = countEnabledTemplateHighlightSlots(highlightConfig);
   const shadowCss = useMemo(() => serializeShadowLayers(shadowLayers), [shadowLayers]);
   const editorSignature = useMemo(
@@ -1841,6 +1861,19 @@ export function TemplateStyleEditor({
     }));
   }
 
+  function updateVideoAdjustments<K extends keyof Stage3TemplateConfig["videoAdjustments"]>(
+    key: K,
+    value: Stage3TemplateConfig["videoAdjustments"][K]
+  ) {
+    setTemplateConfig((current) => ({
+      ...current,
+      videoAdjustments: {
+        ...current.videoAdjustments,
+        [key]: value
+      }
+    }));
+  }
+
   function updateTopTypography<K extends keyof Stage3TemplateConfig["typography"]["top"]>(
     key: K,
     value: Stage3TemplateConfig["typography"]["top"][K]
@@ -2177,6 +2210,7 @@ export function TemplateStyleEditor({
                             accentColor={accentColor}
                             baseColor={templateConfig.palette.bottomSectionFill}
                             label={activeTemplate.label}
+                            videoFilter={templateVideoFilter}
                           />
                         ),
                         sceneDataId: `template-road-style-editor-${templateId ?? baseTemplateId}`
@@ -3088,6 +3122,91 @@ export function TemplateStyleEditor({
                 onChange={(value) => updatePalette("accentColor", value)}
               />
             </div>
+          </EditorSection>
+
+          <EditorSection
+            id="template-road-style-video"
+            eyebrow="Видео"
+            title="Дефолтная цветокоррекция"
+            description="Стартовые значения яркости, экспозиции, контраста и насыщенности для Step 3. На конкретном ролике их можно менять отдельно."
+            isOpen={Boolean(openSections["template-road-style-video"])}
+            onToggle={() => toggleSection("template-road-style-video")}
+            meta={
+              <>
+                <span className="meta-pill">
+                  Яркость: {Math.round(templateConfig.videoAdjustments.brightness * 100)}%
+                </span>
+                <span className="meta-pill">
+                  Экспозиция:{" "}
+                  {templateConfig.videoAdjustments.exposure >= 0 ? "+" : ""}
+                  {templateConfig.videoAdjustments.exposure.toFixed(2)} EV
+                </span>
+                <span className="meta-pill">
+                  Контраст: {Math.round(templateConfig.videoAdjustments.contrast * 100)}%
+                </span>
+              </>
+            }
+          >
+            <div className="template-road-editor-grid two-up">
+              <SliderControl
+                label="Яркость"
+                hint="Базовая яркость видео-слота и blur-фона в Stage 3."
+                min={0.4}
+                max={1.8}
+                step={0.01}
+                nudgeStep={0.05}
+                value={templateConfig.videoAdjustments.brightness}
+                formatValue={(value) => `${Math.round(value * 100)}%`}
+                onChange={(value) =>
+                  updateVideoAdjustments("brightness", normalizeStage3VideoBrightness(value))
+                }
+              />
+              <SliderControl
+                label="Экспозиция"
+                hint="Дополнительный световой сдвиг для тёмных или пережатых источников."
+                min={-1}
+                max={1}
+                step={0.05}
+                nudgeStep={0.1}
+                value={templateConfig.videoAdjustments.exposure}
+                formatValue={(value) => `${value >= 0 ? "+" : ""}${value.toFixed(2)} EV`}
+                onChange={(value) =>
+                  updateVideoAdjustments("exposure", normalizeStage3VideoExposure(value))
+                }
+              />
+            </div>
+            <div className="template-road-editor-grid two-up">
+              <SliderControl
+                label="Контраст"
+                hint="Поднимает разделение светлых и тёмных зон внутри видео."
+                min={0.5}
+                max={1.8}
+                step={0.01}
+                nudgeStep={0.05}
+                value={templateConfig.videoAdjustments.contrast}
+                formatValue={(value) => `${Math.round(value * 100)}%`}
+                onChange={(value) =>
+                  updateVideoAdjustments("contrast", normalizeStage3VideoContrast(value))
+                }
+              />
+              <SliderControl
+                label="Насыщенность"
+                hint="Управляет интенсивностью цвета и помогает сделать шаблон спокойнее или ярче."
+                min={0}
+                max={2}
+                step={0.01}
+                nudgeStep={0.05}
+                value={templateConfig.videoAdjustments.saturation}
+                formatValue={(value) => `${Math.round(value * 100)}%`}
+                onChange={(value) =>
+                  updateVideoAdjustments("saturation", normalizeStage3VideoSaturation(value))
+                }
+              />
+            </div>
+            <p className="template-road-editor-field-hint">
+              Здесь задаётся стартовый look для шаблона. В Stage 3 редактор увидит эти значения как initial
+              state и сможет докрутить их только для конкретного ролика, не меняя сам шаблон.
+            </p>
           </EditorSection>
 
           <EditorSection

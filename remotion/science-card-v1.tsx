@@ -15,6 +15,7 @@ import {
 import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
+import { buildStage3VideoFilterCss } from "../lib/stage3-video-adjustments";
 import {
   cloneTemplateCaptionHighlights,
   createEmptyTemplateCaptionHighlights,
@@ -63,6 +64,10 @@ type ScienceCardV1Props = {
   cameraPositionKeyframes: Stage3PositionKeyframe[];
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   videoZoom: number;
+  videoBrightness: number;
+  videoExposure: number;
+  videoContrast: number;
+  videoSaturation: number;
   topFontScale: number;
   bottomFontScale: number;
   authorName: string;
@@ -252,6 +257,10 @@ export function ScienceCardV1({
   clipDurationSec,
   focusY,
   videoZoom,
+  videoBrightness,
+  videoExposure,
+  videoContrast,
+  videoSaturation,
   topFontScale,
   bottomFontScale,
   authorName,
@@ -273,6 +282,25 @@ export function ScienceCardV1({
 }: ScienceCardV1Props): React.JSX.Element {
   const resolvedTemplateId = templateId ?? SCIENCE_CARD_TEMPLATE_ID;
   const templateConfig = templateConfigOverride ?? getTemplateById(resolvedTemplateId);
+  const videoFilter = buildStage3VideoFilterCss({
+    brightness: videoBrightness,
+    exposure: videoExposure,
+    contrast: videoContrast,
+    saturation: videoSaturation
+  });
+  const backgroundVideoFilter = buildStage3VideoFilterCss(
+    {
+      brightness: videoBrightness,
+      exposure: videoExposure,
+      contrast: videoContrast,
+      saturation: videoSaturation
+    },
+    {
+      blurPx: 12,
+      baseBrightness: 0.8,
+      baseSaturation: 1.05
+    }
+  );
   const frameNumber = useCurrentFrame();
   const frame = templateConfig.frame;
   const sourceUrl = sourceVideoFileName ? staticFile(sourceVideoFileName) : "";
@@ -380,7 +408,7 @@ export function ScienceCardV1({
             height: frame.height,
             objectFit: "cover",
             objectPosition,
-            filter: "blur(12px) brightness(0.8) saturate(1.05)",
+            ...(backgroundVideoFilter ? { filter: backgroundVideoFilter } : {}),
             transform: bgTransform,
             transformOrigin: "center center"
           }}
@@ -409,6 +437,7 @@ export function ScienceCardV1({
         height: "100%",
         objectFit: "cover",
         objectPosition,
+        ...(videoFilter ? { filter: videoFilter } : {}),
         transform: slotTransform,
         transformOrigin: "center center"
       }}

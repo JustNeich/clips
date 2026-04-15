@@ -620,6 +620,10 @@ export type Stage3EditorDraftOverrides = {
   clipStartSec: number;
   focusY: number;
   videoZoom: number;
+  videoBrightness: number;
+  videoExposure: number;
+  videoContrast: number;
+  videoSaturation: number;
   cameraKeyframes: Stage3CameraKeyframe[];
   cameraPositionKeyframes: Stage3PositionKeyframe[];
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
@@ -779,6 +783,10 @@ export type Stage3RenderPlan = {
   cameraPositionKeyframes: Stage3PositionKeyframe[];
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   videoZoom: number;
+  videoBrightness: number;
+  videoExposure: number;
+  videoContrast: number;
+  videoSaturation: number;
   topFontScale: number;
   bottomFontScale: number;
   musicGain: number;

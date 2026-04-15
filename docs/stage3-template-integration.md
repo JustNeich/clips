@@ -116,6 +116,26 @@ Source of truth:
 - у card должны читаться свои собственные границы;
 - backdrop не должен становиться белым полем карточки.
 
+## 4a. Video adjustment contract
+
+Шаблон теперь может задавать не только геометрию и palette, но и стартовую цветокоррекцию source-video:
+- `brightness`
+- `exposure`
+- `contrast`
+- `saturation`
+
+Это **template-level defaults**, а не жёсткий bake-in.
+
+Правила:
+- значения шаблона должны становиться initial state в Stage 3 для нового live draft;
+- редактор в Stage 3 может менять эти значения только для текущего ролика, не перетирая template defaults;
+- preview и final render обязаны использовать один и тот же video adjustment contract;
+- если template defaults меняются, старый draft не должен терять уже внесённый per-video override.
+
+Практический смысл:
+- template задаёт “look” канала по умолчанию;
+- конкретный ролик может стать чуть темнее/ярче/контрастнее без форка шаблона.
+
 ## 5. Border contract
 
 Если reference говорит, что у карточки есть border, border должен принадлежать именно **card**, а не frame/shell.

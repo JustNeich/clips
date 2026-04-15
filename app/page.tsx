@@ -107,6 +107,13 @@ import {
   createStage3TextFitSnapshot
 } from "../lib/stage3-text-fit";
 import {
+  applyStage3VideoAdjustmentsToRenderPlan,
+  areStage3VideoAdjustmentsEqual,
+  DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
+  readStage3VideoAdjustmentsFromRenderPlan,
+  type Stage3VideoAdjustments
+} from "../lib/stage3-video-adjustments";
+import {
   clearTemplateCaptionHighlightsBlock,
   cloneTemplateCaptionHighlights,
   createEmptyTemplateCaptionHighlights
@@ -385,6 +392,7 @@ export default function HomePage() {
   const [stage3ManagedTemplateState, setStage3ManagedTemplateState] = useState<Step3ManagedTemplateState | null>(
     null
   );
+  const stage3TemplateVideoDefaultsRef = useRef<Stage3VideoAdjustments | null>(null);
   const [sourceDurationSec, setSourceDurationSec] = useState<number | null>(null);
   const [stage3PreviewVideoUrl, setStage3PreviewVideoUrl] = useState<string | null>(null);
   const [stage3PreviewState, setStage3PreviewState] = useState<Stage3PreviewState>("idle");
@@ -2283,6 +2291,35 @@ export default function HomePage() {
     }
   }, []);
 
+  useEffect(() => {
+    const nextDefaults = stage3ManagedTemplateState?.templateConfig.videoAdjustments ?? DEFAULT_STAGE3_VIDEO_ADJUSTMENTS;
+    const previousDefaults = stage3TemplateVideoDefaultsRef.current;
+    stage3TemplateVideoDefaultsRef.current = nextDefaults;
+
+    setStage3RenderPlan((current) => {
+      const currentAdjustments = readStage3VideoAdjustmentsFromRenderPlan(current);
+      const matchesPreviousDefaults =
+        previousDefaults !== null && areStage3VideoAdjustmentsEqual(currentAdjustments, previousDefaults);
+      const matchesFallbackDefaults = areStage3VideoAdjustmentsEqual(
+        currentAdjustments,
+        DEFAULT_STAGE3_VIDEO_ADJUSTMENTS
+      );
+
+      if (!matchesPreviousDefaults && !matchesFallbackDefaults) {
+        return current;
+      }
+
+      return normalizeRenderPlan(
+        applyStage3VideoAdjustmentsToRenderPlan(current, nextDefaults),
+        fallbackRenderPlan()
+      );
+    });
+  }, [
+    stage3ManagedTemplateState?.managedId,
+    stage3ManagedTemplateState?.templateConfig.videoAdjustments,
+    stage3ManagedTemplateState?.updatedAt
+  ]);
+
   const makeLiveSnapshot = useCallback(
     (
       draftOverrides?: Partial<Stage3EditorDraftOverrides>,
@@ -2342,6 +2379,24 @@ export default function HomePage() {
             typeof draftOverrides?.videoZoom === "number" && Number.isFinite(draftOverrides.videoZoom)
               ? draftOverrides.videoZoom
               : stage3RenderPlan.videoZoom,
+          videoBrightness:
+            typeof draftOverrides?.videoBrightness === "number" &&
+            Number.isFinite(draftOverrides.videoBrightness)
+              ? draftOverrides.videoBrightness
+              : stage3RenderPlan.videoBrightness,
+          videoExposure:
+            typeof draftOverrides?.videoExposure === "number" && Number.isFinite(draftOverrides.videoExposure)
+              ? draftOverrides.videoExposure
+              : stage3RenderPlan.videoExposure,
+          videoContrast:
+            typeof draftOverrides?.videoContrast === "number" && Number.isFinite(draftOverrides.videoContrast)
+              ? draftOverrides.videoContrast
+              : stage3RenderPlan.videoContrast,
+          videoSaturation:
+            typeof draftOverrides?.videoSaturation === "number" &&
+            Number.isFinite(draftOverrides.videoSaturation)
+              ? draftOverrides.videoSaturation
+              : stage3RenderPlan.videoSaturation,
           topFontScale:
             typeof draftOverrides?.topFontScale === "number" && Number.isFinite(draftOverrides.topFontScale)
               ? draftOverrides.topFontScale
@@ -6730,6 +6785,10 @@ export default function HomePage() {
           cameraScaleKeyframes={stage3RenderPlan.cameraScaleKeyframes}
           mirrorEnabled={stage3RenderPlan.mirrorEnabled}
           videoZoom={stage3RenderPlan.videoZoom}
+          videoBrightness={stage3RenderPlan.videoBrightness}
+          videoExposure={stage3RenderPlan.videoExposure}
+          videoContrast={stage3RenderPlan.videoContrast}
+          videoSaturation={stage3RenderPlan.videoSaturation}
           topFontScale={stage3RenderPlan.topFontScale}
           bottomFontScale={stage3RenderPlan.bottomFontScale}
           sourceAudioEnabled={stage3RenderPlan.sourceAudioEnabled}
@@ -6910,6 +6969,50 @@ export default function HomePage() {
                 {
                   ...prev,
                   mirrorEnabled: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onVideoBrightnessChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  videoBrightness: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onVideoExposureChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  videoExposure: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onVideoContrastChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  videoContrast: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
+          onVideoSaturationChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  videoSaturation: value
                 },
                 fallbackRenderPlan()
               )

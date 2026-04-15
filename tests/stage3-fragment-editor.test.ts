@@ -154,3 +154,21 @@ test("normalizeRenderPlan widens too-short fragments to the editor minimum", () 
   assert.equal(normalized.segments[0]?.startSec, 9.1);
   assert.equal(normalized.segments[0]?.endSec, 10.1);
 });
+
+test("normalizeRenderPlan keeps per-video color adjustments inside the supported range", () => {
+  const normalized = normalizeRenderPlan(
+    {
+      ...fallbackRenderPlan(),
+      videoBrightness: 2.2,
+      videoExposure: -5,
+      videoContrast: 0.2,
+      videoSaturation: 9
+    },
+    fallbackRenderPlan()
+  );
+
+  assert.equal(normalized.videoBrightness, 1.8);
+  assert.equal(normalized.videoExposure, -1);
+  assert.equal(normalized.videoContrast, 0.5);
+  assert.equal(normalized.videoSaturation, 2);
+});

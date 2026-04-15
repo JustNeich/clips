@@ -270,6 +270,38 @@ test("managed templates persist custom top and bottom line heights", async () =>
   });
 });
 
+test("managed templates persist template-level video adjustment defaults", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Video Adjustments",
+        baseTemplateId: "science-card-v1",
+        templateConfig: {
+          videoAdjustments: {
+            brightness: 1.16,
+            exposure: -0.2,
+            contrast: 1.12,
+            saturation: 0.92
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.deepEqual(reloaded?.templateConfig.videoAdjustments, {
+      brightness: 1.16,
+      exposure: -0.2,
+      contrast: 1.12,
+      saturation: 0.92
+    });
+  });
+});
+
 test("soft-deleted legacy templates are not resurrected by later imports", async () => {
   await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
     const legacyTemplateId = "legacy-delete-check";
