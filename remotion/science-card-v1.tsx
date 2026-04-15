@@ -15,6 +15,11 @@ import {
 import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
+import {
+  cloneTemplateCaptionHighlights,
+  createEmptyTemplateCaptionHighlights,
+  type TemplateCaptionHighlights
+} from "../lib/template-highlights";
 import { RenderVariationOverlay } from "./render-variation-overlay";
 import { resolveCameraStateAtTime } from "../lib/stage3-camera";
 import type {
@@ -46,6 +51,7 @@ type ScienceCardV1Props = {
   sourceVideoFileName?: string | null;
   topText: string;
   bottomText: string;
+  captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
@@ -77,6 +83,43 @@ type ScienceCardV1Props = {
   } | null;
   variationProfile?: Stage3VariationProfile | null;
 };
+
+export function buildScienceCardRenderSnapshot(input: {
+  templateId?: string;
+  templateConfigOverride?: Stage3TemplateConfig | null;
+  topText: string;
+  bottomText: string;
+  captionHighlights?: TemplateCaptionHighlights | null;
+  topFontScale: number;
+  bottomFontScale: number;
+  authorName: string;
+  authorHandle: string;
+  sourceVideoFileName?: string | null;
+  backgroundAssetFileName?: string | null;
+  avatarAssetFileName?: string | null;
+  textFit?: ScienceCardV1Props["textFit"];
+}) {
+  const resolvedTemplateId = input.templateId ?? SCIENCE_CARD_TEMPLATE_ID;
+  const templateConfig = input.templateConfigOverride ?? getTemplateById(resolvedTemplateId);
+  return buildTemplateRenderSnapshot({
+    templateId: resolvedTemplateId,
+    templateConfigOverride: templateConfig,
+    content: {
+      topText: input.topText,
+      bottomText: input.bottomText,
+      channelName: input.authorName,
+      channelHandle: input.authorHandle,
+      highlights: cloneTemplateCaptionHighlights(input.captionHighlights) ?? createEmptyTemplateCaptionHighlights(),
+      topFontScale: input.topFontScale,
+      bottomFontScale: input.bottomFontScale,
+      previewScale: 1,
+      mediaAsset: input.sourceVideoFileName ?? null,
+      backgroundAsset: input.backgroundAssetFileName ?? null,
+      avatarAsset: input.avatarAssetFileName ?? null
+    },
+    fitOverride: input.textFit ?? undefined
+  });
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -204,6 +247,7 @@ export function ScienceCardV1({
   templateConfigOverride,
   topText,
   bottomText,
+  captionHighlights,
   clipStartSec,
   clipDurationSec,
   focusY,
@@ -275,23 +319,20 @@ export function ScienceCardV1({
     STAGE3_MAX_VIDEO_ZOOM,
     Math.max(STAGE3_MIN_VIDEO_ZOOM, Number.isFinite(cameraState.zoom) ? cameraState.zoom : 1)
   );
-  const renderSnapshot = buildTemplateRenderSnapshot({
+  const renderSnapshot = buildScienceCardRenderSnapshot({
     templateId: resolvedTemplateId,
     templateConfigOverride: templateConfig,
-    content: {
-      topText,
-      bottomText,
-      channelName: authorName,
-      channelHandle: authorHandle,
-      highlights: { top: [], bottom: [] },
-      topFontScale,
-      bottomFontScale,
-      previewScale: 1,
-      mediaAsset: sourceVideoFileName ?? null,
-      backgroundAsset: backgroundAssetFileName ?? null,
-      avatarAsset: avatarAssetFileName ?? null
-    },
-    fitOverride: textFit ?? undefined
+    topText,
+    bottomText,
+    captionHighlights,
+    topFontScale,
+    bottomFontScale,
+    authorName,
+    authorHandle,
+    sourceVideoFileName,
+    backgroundAssetFileName,
+    avatarAssetFileName,
+    textFit
   });
   const mirroredScale = segmentTransform.mirrorEnabled ? -normalizedZoom : normalizedZoom;
   const slotTransform = `scale(${mirroredScale.toFixed(3)}, ${normalizedZoom.toFixed(3)})`;

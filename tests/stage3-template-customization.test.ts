@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Stage3TemplateRenderer } from "../lib/stage3-template-renderer";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import { SCIENCE_CARD, cloneStage3TemplateConfig } from "../lib/stage3-template";
+import { buildScienceCardRenderSnapshot } from "../remotion/science-card-v1";
 import type { TemplateContentFixture } from "../lib/template-calibration-types";
 
 function buildDemoContent(): TemplateContentFixture {
@@ -98,6 +99,41 @@ test("classic science-card markup renders highlight spans for live preview text"
   assert.match(markup, /<span[^>]*>Marine officers<\/span>/);
   assert.match(markup, /<span[^>]*>Ace<\/span>/);
   assert.match(markup, /<span[^>]*>Luffy<\/span>/);
+});
+
+test("remotion science-card render snapshot preserves caption highlight spans", () => {
+  const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  const snapshot = buildScienceCardRenderSnapshot({
+    templateId: "science-card-v1",
+    templateConfigOverride: templateConfig,
+    topText: "Marine officers rush in while Ace shields Luffy.",
+    bottomText: "Fans still call Ace and Luffy completely unfair.",
+    captionHighlights: {
+      top: [
+        { start: 0, end: 15, slotId: "slot1" as const },
+        { start: 30, end: 33, slotId: "slot1" as const },
+        { start: 42, end: 47, slotId: "slot1" as const }
+      ],
+      bottom: [
+        { start: 17, end: 20, slotId: "slot1" as const },
+        { start: 25, end: 30, slotId: "slot1" as const }
+      ]
+    },
+    topFontScale: 1,
+    bottomFontScale: 1,
+    authorName: "Science Snack",
+    authorHandle: "@Science_Snack_1"
+  });
+
+  assert.deepEqual(snapshot.content.highlights.top, [
+    { start: 0, end: 15, slotId: "slot1" },
+    { start: 30, end: 33, slotId: "slot1" },
+    { start: 42, end: 47, slotId: "slot1" }
+  ]);
+  assert.deepEqual(snapshot.content.highlights.bottom, [
+    { start: 17, end: 20, slotId: "slot1" },
+    { start: 25, end: 30, slotId: "slot1" }
+  ]);
 });
 
 test("color badge mode renders a twitter-style vector instead of a round text fallback", () => {

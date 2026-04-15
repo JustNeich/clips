@@ -12,6 +12,7 @@ import {
   HEDGES_OF_HONOR_TEMPLATE_ID
 } from "../lib/stage3-template";
 import type { Stage3TemplateConfig } from "../lib/stage3-template";
+import type { TemplateCaptionHighlights } from "../lib/template-highlights";
 import type {
   Stage3CameraKeyframe,
   Stage3PositionKeyframe,
@@ -35,6 +36,7 @@ export type ScienceCardV1Props = {
   sourceVideoFileName?: string | null;
   topText: string;
   bottomText: string;
+  captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
@@ -83,6 +85,7 @@ function buildDefaultProps(templateId: string, authorName: string, authorHandle:
     sourceVideoFileName: "source.mp4",
     topText: "",
     bottomText: "",
+    captionHighlights: { top: [], bottom: [] },
     clipStartSec: 0,
     clipDurationSec: 6,
     focusY: 0.5,

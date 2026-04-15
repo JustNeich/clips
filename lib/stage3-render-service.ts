@@ -50,6 +50,7 @@ import {
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
 import { ensureStage3RenderBrowser } from "./stage3-browser-runtime";
+import type { TemplateCaptionHighlights } from "./template-highlights";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -397,6 +398,7 @@ async function runRemotionRender(params: {
   sourceVideoFileName: string;
   topText: string;
   bottomText: string;
+  captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
   focusY: number;
@@ -439,6 +441,7 @@ async function runRemotionRender(params: {
     sourceVideoFileName: params.sourceVideoFileName,
     topText: params.topText,
     bottomText: params.bottomText,
+    captionHighlights: params.captionHighlights,
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
     focusY: params.focusY,
@@ -951,6 +954,7 @@ export async function renderStage3Video(
           sourceVideoFileName,
           topText: templateSnapshot.content.topText,
           bottomText: templateSnapshot.content.bottomText,
+          captionHighlights: templateSnapshot.content.highlights,
           clipStartSec: prepared.clipStartSec,
           clipDurationSec: prepared.clipDurationSec,
           focusY,
