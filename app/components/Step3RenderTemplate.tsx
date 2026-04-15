@@ -185,6 +185,7 @@ type Step3RenderTemplateProps = {
   showWorkerControls: boolean;
   isOptimizing: boolean;
   isUploadingBackground: boolean;
+  isUploadingMusic: boolean;
   clipStartSec: number;
   clipDurationSec: number;
   sourceDurationSec: number | null;
@@ -2071,6 +2072,7 @@ export function Step3RenderTemplate({
   showWorkerControls,
   isOptimizing,
   isUploadingBackground,
+  isUploadingMusic,
   clipStartSec,
   clipDurationSec,
   sourceDurationSec,
@@ -4910,7 +4912,7 @@ export function Step3RenderTemplate({
                                 type="file"
                                 accept="audio/*"
                                 className="background-upload-input"
-                                disabled={isUploadingBackground}
+                                disabled={isUploadingMusic}
                                 onChange={(event) => {
                                   const file = event.target.files?.[0];
                                   if (!file) {
@@ -4920,11 +4922,12 @@ export function Step3RenderTemplate({
                                   event.currentTarget.value = "";
                                 }}
                               />
-                              Upload
+                              {isUploadingMusic ? "Загрузка..." : "Upload"}
                             </label>
                             <select
                               className="text-input"
                               value={selectedMusicAssetId ?? ""}
+                              disabled={isUploadingMusic}
                               onChange={(event) => onSelectMusicAssetId(event.target.value || null)}
                             >
                               <option value="">Без музыки</option>
@@ -4935,7 +4938,12 @@ export function Step3RenderTemplate({
                               ))}
                             </select>
                             {selectedMusicAssetId ? (
-                              <button type="button" className="btn btn-ghost" onClick={onClearMusic}>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={onClearMusic}
+                                disabled={isUploadingMusic}
+                              >
                                 Clear
                               </button>
                             ) : null}

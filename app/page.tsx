@@ -6720,6 +6720,7 @@ export default function HomePage() {
           renderState={stage3RenderState}
           isOptimizing={busyAction === "stage3-optimize"}
           isUploadingBackground={busyAction === "background-upload"}
+          isUploadingMusic={busyAction === "music-upload"}
           onPublishAfterRenderChange={setStage3PublishAfterRender}
 	          onRender={(overrides, textFitOverride, managedTemplateStateOverride) => {
 	            void handleRenderVideo(overrides, textFitOverride, managedTemplateStateOverride);

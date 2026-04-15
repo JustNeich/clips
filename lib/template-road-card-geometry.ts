@@ -27,11 +27,12 @@ export function updateTemplateRoadCard<K extends keyof Stage3CardConfig>(
 
   const currentCenterX = current.x + current.width / 2;
   const unclampedX = currentCenterX - nextWidth / 2;
-  const maxX = Math.max(0, frame.width - nextWidth);
+  const snappedX = Math.round(unclampedX);
+  const maxX = Math.floor(Math.max(0, frame.width - nextWidth));
 
   return {
     ...current,
     width: nextWidth,
-    x: clamp(unclampedX, 0, maxX)
+    x: clamp(snappedX, 0, maxX)
   };
 }

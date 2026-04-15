@@ -4,13 +4,13 @@ import test from "node:test";
 import { cloneStage3TemplateConfig, SCIENCE_CARD } from "../lib/stage3-template";
 import { updateTemplateRoadCard } from "../lib/template-road-card-geometry";
 
-test("width changes keep the card centered when there is room on both sides", () => {
+test("width changes keep the card centered and snap x to an integer pixel", () => {
   const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
 
-  const updated = updateTemplateRoadCard(templateConfig.card, templateConfig.frame, "width", 807);
+  const updated = updateTemplateRoadCard(templateConfig.card, templateConfig.frame, "width", 806);
 
-  assert.equal(updated.width, 807);
-  assert.equal(updated.x, 133);
+  assert.equal(updated.width, 806);
+  assert.equal(updated.x, 134);
   assert.equal(updated.y, templateConfig.card.y);
 });
 

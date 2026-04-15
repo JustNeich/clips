@@ -799,6 +799,7 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     showWorkerControls: false,
     isOptimizing: false,
     isUploadingBackground: false,
+    isUploadingMusic: false,
     clipStartSec: 0,
     clipDurationSec: 6,
     sourceDurationSec: 15,
