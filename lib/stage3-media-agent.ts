@@ -36,6 +36,11 @@ type EditingProxyProfile = {
 };
 
 export const STAGE3_EVEN_DIMENSIONS_FILTER = "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,setsar=1";
+export const STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER = [
+  "fps=30",
+  STAGE3_EVEN_DIMENSIONS_FILTER,
+  "format=yuv420p"
+].join(",");
 
 export type VideoDimensions = {
   width: number;
@@ -153,6 +158,50 @@ export function buildStage3EditingProxyFfmpegArgs(params: {
     "2",
     params.outputPath
   ];
+}
+
+export function buildNormalizeStage3SourceFfmpegArgs(params: {
+  sourcePath: string;
+  outputPath: string;
+  sourceHasAudio: boolean;
+}): string[] {
+  const threads = isMemoryConstrainedRuntime() ? "1" : "0";
+  const args = [
+    "-y",
+    "-i",
+    params.sourcePath,
+    "-vf",
+    STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER,
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "18",
+    "-threads",
+    threads,
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "-color_range",
+    "tv",
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709"
+  ];
+
+  if (params.sourceHasAudio) {
+    args.push("-c:a", "aac", "-ar", "48000", "-ac", "2");
+  } else {
+    args.push("-an");
+  }
+
+  args.push(params.outputPath);
+  return args;
 }
 
 function parseNumeric(value: unknown): number | null {
@@ -819,6 +868,22 @@ async function probeHasAudio(videoPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function normalizeStage3SourceVideo(params: {
+  sourcePath: string;
+  outputPath: string;
+}): Promise<void> {
+  const sourceHasAudio = await probeHasAudio(params.sourcePath);
+  const args = buildNormalizeStage3SourceFfmpegArgs({
+    sourcePath: params.sourcePath,
+    outputPath: params.outputPath,
+    sourceHasAudio
+  });
+  await execFileAsync("ffmpeg", args, {
+    timeout: 5 * 60_000,
+    maxBuffer: 1024 * 1024 * 16
+  });
 }
 
 function sortPreparedSegments(

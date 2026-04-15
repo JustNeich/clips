@@ -3,7 +3,11 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { downloadSourceVideo, probeVideoDurationSeconds } from "./stage3-media-agent";
+import {
+  downloadSourceVideo,
+  normalizeStage3SourceVideo,
+  probeVideoDurationSeconds
+} from "./stage3-media-agent";
 import { normalizeSupportedUrl } from "./ytdlp";
 
 export type Stage3CachedSource = {
@@ -20,6 +24,7 @@ export type Stage3HostedJobOptions = {
 
 const STAGE3_CACHE_ROOT = path.join(os.tmpdir(), "clip-stage3-cache");
 const SOURCE_CACHE_DIR = path.join(STAGE3_CACHE_ROOT, "sources");
+const STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION = 1;
 const sourceInflight = new Map<string, Promise<Stage3CachedSource>>();
 let hostedHeavyJobActive = 0;
 const hostedHeavyWaiters: Array<{
@@ -55,16 +60,25 @@ async function pathExists(filePath: string): Promise<boolean> {
 function readMetaFileName(
   rawMeta: string,
   sourceKey: string
-): { fileName: string; sourceDurationSec: number | null } {
+): {
+  fileName: string;
+  sourceDurationSec: number | null;
+  normalizationVersion: number;
+} {
   if (!rawMeta) {
     return {
       fileName: `${sourceKey}.mp4`,
-      sourceDurationSec: null
+      sourceDurationSec: null,
+      normalizationVersion: 0
     };
   }
 
   try {
-    const parsed = JSON.parse(rawMeta) as { fileName?: unknown; sourceDurationSec?: unknown };
+    const parsed = JSON.parse(rawMeta) as {
+      fileName?: unknown;
+      sourceDurationSec?: unknown;
+      normalizationVersion?: unknown;
+    };
     return {
       fileName:
         typeof parsed.fileName === "string" && parsed.fileName.trim()
@@ -73,13 +87,59 @@ function readMetaFileName(
       sourceDurationSec:
         typeof parsed.sourceDurationSec === "number" && Number.isFinite(parsed.sourceDurationSec)
           ? parsed.sourceDurationSec
-          : null
+          : null,
+      normalizationVersion:
+        typeof parsed.normalizationVersion === "number" &&
+        Number.isFinite(parsed.normalizationVersion) &&
+        parsed.normalizationVersion >= 0
+          ? parsed.normalizationVersion
+          : 0
     };
   } catch {
     return {
       fileName: `${sourceKey}.mp4`,
-      sourceDurationSec: null
+      sourceDurationSec: null,
+      normalizationVersion: 0
     };
+  }
+}
+
+async function writeSourceMeta(params: {
+  metaPath: string;
+  fileName: string;
+  sourceDurationSec: number | null;
+  normalizationVersion?: number;
+}): Promise<void> {
+  await fs
+    .writeFile(
+      params.metaPath,
+      JSON.stringify({
+        fileName: params.fileName,
+        sourceDurationSec: params.sourceDurationSec,
+        normalizationVersion: params.normalizationVersion ?? STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION
+      }),
+      "utf-8"
+    )
+    .catch(() => undefined);
+}
+
+async function normalizeCachedSourceIntoPlace(params: {
+  inputPath: string;
+  sourcePath: string;
+  sourceKey: string;
+}): Promise<void> {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-source-normalize-"));
+  try {
+    const normalizedPath = path.join(tmpDir, `${params.sourceKey}.normalized.mp4`);
+    await normalizeStage3SourceVideo({
+      sourcePath: params.inputPath,
+      outputPath: normalizedPath
+    });
+    const publishPath = `${params.sourcePath}.part-${hashKey(`${Date.now()}-${Math.random()}`)}`;
+    await fs.copyFile(normalizedPath, publishPath);
+    await fs.rename(publishPath, params.sourcePath);
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -250,19 +310,26 @@ export async function ensureStage3SourceCached(
   if (await pathExists(sourcePath)) {
     const rawMeta = await fs.readFile(metaPath, "utf-8").catch(() => "");
     const meta = readMetaFileName(rawMeta, sourceKey);
-    const sourceDurationSec = meta.sourceDurationSec ?? (await probeVideoDurationSeconds(sourcePath));
+    let sourceDurationSec = meta.sourceDurationSec ?? (await probeVideoDurationSeconds(sourcePath));
 
-    if (!rawMeta || meta.sourceDurationSec === null) {
-      await fs
-        .writeFile(
-          metaPath,
-          JSON.stringify({
-            fileName: meta.fileName,
-            sourceDurationSec
-          }),
-          "utf-8"
-        )
-        .catch(() => undefined);
+    if (meta.normalizationVersion < STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION) {
+      await normalizeCachedSourceIntoPlace({
+        inputPath: sourcePath,
+        sourcePath,
+        sourceKey
+      });
+      sourceDurationSec = await probeVideoDurationSeconds(sourcePath);
+      await writeSourceMeta({
+        metaPath,
+        fileName: meta.fileName,
+        sourceDurationSec
+      });
+    } else if (!rawMeta || meta.sourceDurationSec === null) {
+      await writeSourceMeta({
+        metaPath,
+        fileName: meta.fileName,
+        sourceDurationSec
+      });
     }
 
     return {
@@ -283,18 +350,17 @@ export async function ensureStage3SourceCached(
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-source-cache-"));
     try {
       const downloaded = await runHostedStage3HeavyJob(() => downloadSourceVideo(sourceUrl, tmpDir), options);
-      await fs.copyFile(downloaded.filePath, sourcePath);
+      await normalizeCachedSourceIntoPlace({
+        inputPath: downloaded.filePath,
+        sourcePath,
+        sourceKey
+      });
       const sourceDurationSec = await probeVideoDurationSeconds(sourcePath);
-      await fs
-        .writeFile(
-          metaPath,
-          JSON.stringify({
-            fileName: downloaded.fileName,
-            sourceDurationSec
-          }),
-          "utf-8"
-        )
-        .catch(() => undefined);
+      await writeSourceMeta({
+        metaPath,
+        fileName: downloaded.fileName,
+        sourceDurationSec
+      });
 
       return {
         sourcePath,

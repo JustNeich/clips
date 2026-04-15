@@ -308,13 +308,30 @@ async function finalizeRenderedOutput(params: {
   variationManifest: Stage3VariationManifest;
   variationManifestPath: string;
 }): Promise<void> {
+  const args = buildFinalizeRenderedOutputArgs(params);
+  await execFileAsync("ffmpeg", args, {
+    timeout: 90_000,
+    maxBuffer: 1024 * 1024 * 8
+  });
+
+  await fs.writeFile(params.variationManifestPath, JSON.stringify(params.variationManifest, null, 2), "utf-8");
+}
+
+export function buildFinalizeRenderedOutputArgs(params: {
+  inputPath: string;
+  outputPath: string;
+  metadataTitle: string | null;
+  variationProfile: Stage3VariationProfile;
+}): string[] {
   const variationEnabled = params.variationProfile.appliedMode !== "off";
   const args = [
     "-y",
     "-i",
     params.inputPath,
     "-map",
-    "0",
+    "0:v:0",
+    "-map",
+    "0:a?",
     "-map_metadata",
     "-1",
     "-map_metadata:s:v",
@@ -322,23 +339,36 @@ async function finalizeRenderedOutput(params: {
     "-map_metadata:s:a",
     "-1",
     "-map_chapters",
-    "-1"
+    "-1",
+    "-vf",
+    "format=yuv420p",
+    "-c:v",
+    "libx264",
+    "-preset",
+    params.variationProfile.encode.x264Preset,
+    "-crf",
+    String(params.variationProfile.encode.crf),
+    "-pix_fmt",
+    params.variationProfile.encode.pixelFormat,
+    "-g",
+    String(params.variationProfile.encode.keyintFrames),
+    "-keyint_min",
+    String(params.variationProfile.encode.keyintMinFrames),
+    "-sc_threshold",
+    "0",
+    "-color_range",
+    "tv",
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-c:a",
+    "copy"
   ];
 
-  if (!variationEnabled) {
-    args.push(
-      "-fflags",
-      "+bitexact",
-      "-flags:v",
-      "+bitexact",
-      "-flags:a",
-      "+bitexact"
-    );
-  }
-
   args.push(
-    "-c",
-    "copy",
     "-movflags",
     variationEnabled ? "+faststart+use_metadata_tags" : "+faststart",
     "-empty_hdlr_name",
@@ -381,13 +411,7 @@ async function finalizeRenderedOutput(params: {
   }
 
   args.push(params.outputPath);
-
-  await execFileAsync("ffmpeg", args, {
-    timeout: 90_000,
-    maxBuffer: 1024 * 1024 * 8
-  });
-
-  await fs.writeFile(params.variationManifestPath, JSON.stringify(params.variationManifest, null, 2), "utf-8");
+  return args;
 }
 
 async function runRemotionRender(params: {

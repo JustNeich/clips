@@ -39,6 +39,7 @@ import {
 
 const PREVIEW_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
+const STAGE3_PREVIEW_CACHE_VERSION = "v3";
 const DEFAULT_TEXT_SCALE = 1.25;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 const previewInflight = new Map<string, Promise<void>>();
@@ -346,6 +347,7 @@ function buildPreviewCacheKey(params: {
 }): string {
   return hashKey(
     JSON.stringify({
+      previewCacheVersion: STAGE3_PREVIEW_CACHE_VERSION,
       sourceKey: params.sourceKey,
       clipStartSec: Number(params.clipStartSec.toFixed(3)),
       clipDurationSec: params.renderPlan.targetDurationSec,
@@ -378,9 +380,9 @@ export async function buildStage3PreviewDedupeKey(
   const workspaceId = scope?.workspaceId?.trim() ?? "";
   const userId = scope?.userId?.trim() ?? "";
   if (!workspaceId || !userId) {
-    return `preview:v2:global:${previewKey}`;
+    return `preview:${STAGE3_PREVIEW_CACHE_VERSION}:global:${previewKey}`;
   }
-  return `preview:v2:${workspaceId}:${userId}:${previewKey}`;
+  return `preview:${STAGE3_PREVIEW_CACHE_VERSION}:${workspaceId}:${userId}:${previewKey}`;
 }
 
 export async function prepareStage3Preview(
