@@ -9699,6 +9699,136 @@ test("legacy diagnostics payload from older runs does not crash the Stage 2 UI",
   assert.match(html, /Эффективные промпты/);
 });
 
+test("normalizeStage2DiagnosticsForView dedupes legacy prompt stages by stageId", () => {
+  const diagnostics = normalizeStage2DiagnosticsForView(
+    {
+      channel: {
+        channelId: "channel_dup",
+        name: "Duplicate Channel",
+        username: "dup_channel",
+        examplesSource: "workspace_default",
+        hardConstraints: {
+          topLengthMin: 0,
+          topLengthMax: 0,
+          bottomLengthMin: 0,
+          bottomLengthMax: 0,
+          bannedWords: [],
+          bannedOpeners: []
+        }
+      },
+      selection: {
+        clipType: "dup_clip",
+        rankedAngles: [],
+        writerBrief: "stay sharp"
+      },
+      effectivePrompting: {
+        promptStages: [
+          {
+            stageId: "regenerate",
+            label: "Quick regenerate",
+            stageType: "llm_prompt",
+            defaultPrompt: "stale default",
+            configuredPrompt: "stale configured",
+            promptText: "stale prompt",
+            promptChars: 12,
+            usesImages: false,
+            summary: "stale regenerate stage"
+          },
+          {
+            stageId: "writer",
+            label: "Writer",
+            stageType: "llm_prompt",
+            defaultPrompt: "writer default",
+            configuredPrompt: "writer configured",
+            promptText: "writer prompt",
+            promptChars: 11,
+            usesImages: false,
+            summary: "writer stage"
+          },
+          {
+            stageId: "regenerate",
+            label: "Quick regenerate",
+            stageType: "llm_prompt",
+            defaultPrompt: "fresh default",
+            configuredPrompt: "fresh configured",
+            promptText: "fresh prompt",
+            promptChars: 11,
+            usesImages: false,
+            summary: "fresh regenerate stage"
+          }
+        ]
+      },
+      examples: {
+        source: "workspace_default",
+        workspaceCorpusCount: 0,
+        activeCorpusCount: 0,
+        selectorCandidateCount: 0,
+        retrievalConfidence: "low",
+        examplesMode: "style_guided",
+        explanation: "",
+        evidence: [],
+        retrievalWarning: null,
+        examplesRoleSummary: "",
+        primaryDriverSummary: "",
+        primaryDrivers: [],
+        channelStylePriority: "supporting",
+        editorialMemoryPriority: "supporting",
+        availableExamples: [],
+        selectedExamples: []
+      },
+      analysis: {
+        visualAnchors: [],
+        specificNouns: [],
+        visibleActions: [],
+        firstSecondsSignal: "",
+        sceneBeats: [],
+        revealMoment: "",
+        lateClipChange: "",
+        whyViewerCares: "",
+        bestBottomEnergy: "",
+        commentVibe: "",
+        commentConsensusLane: "",
+        commentJokeLane: "",
+        commentDissentLane: "",
+        commentSuspicionLane: "",
+        slangToAdapt: [],
+        commentLanguageCues: [],
+        hiddenDetail: "",
+        genericRisks: [],
+        uncertaintyNotes: [],
+        rawSummary: ""
+      },
+      sourceContext: {
+        sourceUrl: "https://example.com/dup",
+        title: "Duplicate run",
+        descriptionChars: 0,
+        transcriptChars: 0,
+        speechGroundingStatus: "speech_uncertain",
+        frameCount: 0,
+        runtimeCommentCount: 0,
+        runtimeCommentIds: [],
+        userInstructionChars: 0
+      }
+    } as unknown as Stage2Response["diagnostics"],
+    {
+      channelName: "Duplicate Channel",
+      channelUsername: "dup_channel"
+    }
+  );
+
+  assert.ok(diagnostics);
+  assert.equal(diagnostics.effectivePrompting.promptStages.length, 2);
+  assert.equal(
+    diagnostics.effectivePrompting.promptStages.filter((stage) => stage.stageId === "regenerate").length,
+    1
+  );
+  const regenerateStage = diagnostics.effectivePrompting.promptStages.find(
+    (stage) => stage.stageId === "regenerate"
+  );
+  assert.equal(regenerateStage?.summary, "fresh regenerate stage");
+  assert.equal(regenerateStage?.promptText, "fresh prompt");
+});
+
 test("partial native payload without guardSummary does not crash the Stage 2 UI", () => {
   const stage2 = {
     source: {
@@ -10405,6 +10535,19 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
           promptChars: 42,
           usesImages: false,
           summary: "writer stage"
+        },
+        {
+          stageId: "regenerate",
+          label: "Quick regenerate",
+          stageType: "llm_prompt",
+          defaultPrompt: "stale regenerate default",
+          configuredPrompt: "stale regenerate configured",
+          reasoningEffort: "minimal",
+          isCustomPrompt: false,
+          promptText: "stale regenerate prompt",
+          promptChars: 24,
+          usesImages: false,
+          summary: "stale regenerate stage"
         }
       ]
     },
@@ -10567,9 +10710,13 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
   assert.ok(
     result.diagnostics?.effectivePrompting.promptStages.some((stage) => stage.stageId === "regenerate")
   );
-  const regenerateStage = result.diagnostics?.effectivePrompting.promptStages.find(
+  const regenerateStages =
+    result.diagnostics?.effectivePrompting.promptStages.filter((stage) => stage.stageId === "regenerate") ?? [];
+  assert.equal(regenerateStages.length, 1);
+  const regenerateStage = regenerateStages.find(
     (stage) => stage.stageId === "regenerate"
   );
+  assert.equal(regenerateStage?.summary, "Single LLM stage: rewrites the visible shortlist and paired titles from the saved Stage 2 run.");
   assert.equal(regenerateStage?.inputManifest?.comments?.passedCount, 1);
   assert.deepEqual(regenerateStage?.inputManifest?.comments?.passedCommentIds, ["quick-1"]);
   assert.equal(regenerateStage?.inputManifest?.examples?.passedCount, 1);

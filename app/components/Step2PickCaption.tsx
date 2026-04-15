@@ -241,6 +241,27 @@ function formatRunStatusLabel(status: Stage2RunStatus): string {
   }
 }
 
+function dedupePromptStagesByStageId(promptStages: DiagnosticsPromptStage[]): DiagnosticsPromptStage[] {
+  const dedupedStages = [...promptStages];
+  for (let index = 0; index < dedupedStages.length; index += 1) {
+    const currentStage = dedupedStages[index];
+    if (!currentStage) {
+      continue;
+    }
+    const nextDuplicateIndex = dedupedStages.findIndex(
+      (stage, candidateIndex) =>
+        candidateIndex > index && stage?.stageId === currentStage.stageId
+    );
+    if (nextDuplicateIndex < 0) {
+      continue;
+    }
+    dedupedStages.splice(index, 1, dedupedStages[nextDuplicateIndex] as DiagnosticsPromptStage);
+    dedupedStages.splice(nextDuplicateIndex, 1);
+    index -= 1;
+  }
+  return dedupedStages;
+}
+
 function formatRunModeLabel(mode: Stage2RunSummary["mode"]): string {
   if (mode === "auto") {
     return "авто";
@@ -533,9 +554,11 @@ export function normalizeStage2DiagnosticsForView(
   const sourceContextCandidate = asObject(candidate.sourceContext);
 
   const promptStages = Array.isArray(promptingCandidate?.promptStages)
-    ? promptingCandidate.promptStages
-        .map((stage, index) => normalizePromptStage(stage, index))
-        .filter((stage): stage is DiagnosticsPromptStage => stage !== null)
+    ? dedupePromptStagesByStageId(
+        promptingCandidate.promptStages
+          .map((stage, index) => normalizePromptStage(stage, index))
+          .filter((stage): stage is DiagnosticsPromptStage => stage !== null)
+      )
     : [];
 
   const availableExamples =
@@ -1000,11 +1023,11 @@ export function Stage2RunDiagnosticsPanels({
             <p className="subtle-text danger-text">{rawDebugArtifactError}</p>
           ) : null}
           <div className="stage2-prompt-stage-list">
-            {diagnostics.effectivePrompting.promptStages.map((stage) => {
+            {diagnostics.effectivePrompting.promptStages.map((stage, index) => {
               const resolvedPromptText =
                 stage.promptText ?? rawPromptTextByStageId.get(stage.stageId) ?? null;
               return (
-                <article key={stage.stageId} className="stage2-prompt-stage-card">
+                <article key={`${stage.stageId}-${index}`} className="stage2-prompt-stage-card">
                   <div className="stage2-prompt-stage-head">
                     <div>
                       <strong>{stage.label}</strong>

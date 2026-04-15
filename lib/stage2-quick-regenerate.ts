@@ -411,6 +411,20 @@ function buildQuickPromptStageDiagnostics(input: {
   };
 }
 
+function upsertPromptStageByStageId(
+  promptStages: NonNullable<Stage2Diagnostics["effectivePrompting"]>["promptStages"],
+  nextStage: NonNullable<Stage2Diagnostics["effectivePrompting"]>["promptStages"][number]
+): NonNullable<Stage2Diagnostics["effectivePrompting"]>["promptStages"] {
+  const mergedStages = [...promptStages];
+  const existingIndex = mergedStages.findIndex((stage) => stage.stageId === nextStage.stageId);
+  if (existingIndex >= 0) {
+    mergedStages.splice(existingIndex, 1, nextStage);
+    return mergedStages;
+  }
+  mergedStages.push(nextStage);
+  return mergedStages;
+}
+
 function buildQuickDiagnostics(input: {
   baseResult: Stage2Response;
   channel: QuickRegenerateChannelContext;
@@ -483,10 +497,10 @@ function buildQuickDiagnostics(input: {
           userInstructionChars: input.baseResult.userInstructionUsed?.trim().length ?? 0
         },
       effectivePrompting: {
-        promptStages: [
-          ...(input.baseResult.diagnostics.effectivePrompting?.promptStages ?? []),
+        promptStages: upsertPromptStageByStageId(
+          input.baseResult.diagnostics.effectivePrompting?.promptStages ?? [],
           syntheticPromptStage
-        ]
+        )
       },
       examples: input.baseResult.diagnostics.examples
     };
