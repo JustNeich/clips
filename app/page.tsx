@@ -481,6 +481,7 @@ export default function HomePage() {
   const sourceJobsRequestVersionsRef = useRef<Record<string, number>>({});
   const stage2ProgressPollIdRef = useRef(0);
   const stage2RunsRequestVersionsRef = useRef<Record<string, number>>({});
+  const stage2RunSelectionModeRef = useRef<"auto" | "manual">("auto");
   const stage2SelectionSourceRef = useRef<string | null>(null);
   const desiredActiveChatIdRef = useRef<string | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
@@ -1472,6 +1473,15 @@ export default function HomePage() {
     );
   }, [activeChat?.id, activeDraft, applyPublicationSummary, parseError, patchChatListItem]);
 
+  const selectStage2Run = useCallback((runId: string | null, mode: "auto" | "manual" = "auto") => {
+    stage2RunSelectionModeRef.current = mode;
+    setStage2RunId(runId);
+  }, []);
+
+  const handleSelectStage2Run = useCallback((runId: string) => {
+    selectStage2Run(runId, "manual");
+  }, [selectStage2Run]);
+
   const loadStage3AgentTimeline = useCallback(
     async (sessionId: string): Promise<Stage3TimelineResponse> => {
       setIsStage3TimelineLoading(true);
@@ -1764,6 +1774,7 @@ export default function HomePage() {
       stage2RunsRequestVersionsRef.current = {};
       setStage2Runs([]);
       setStage2RunDetail(null);
+      stage2RunSelectionModeRef.current = "auto";
       setStage2RunId(null);
       setStage2ElapsedMs(0);
       stage2SelectionSourceRef.current = null;
@@ -1780,6 +1791,7 @@ export default function HomePage() {
     stage2RunsRequestVersionsRef.current = {};
     setStage2Runs([]);
     setStage2RunDetail(null);
+    stage2RunSelectionModeRef.current = "auto";
     setStage2RunId(null);
     setStage2ElapsedMs(0);
     void refreshSourceJobsForChat(activeChat.id).catch(() => undefined);
@@ -1933,7 +1945,11 @@ export default function HomePage() {
   }, [activeChat?.id, hasActiveSourceJobs, refreshSourceJobsForChat]);
 
   useEffect(() => {
-    setStage2RunId((current) => pickPreferredStage2RunId(stage2Runs, current));
+    setStage2RunId((current) =>
+      pickPreferredStage2RunId(stage2Runs, current, {
+        pinPreferredSelection: stage2RunSelectionModeRef.current === "manual"
+      })
+    );
   }, [stage2Runs]);
 
   useEffect(() => {
@@ -2600,7 +2616,7 @@ export default function HomePage() {
         return { chat: body.chat, job: body.job, reused: true, activeStage2Run: null };
       }
       if (body.error === "stage2_run_already_active" && body.chat && body.run) {
-        setStage2RunId(body.run.runId);
+        selectStage2Run(body.run.runId, "auto");
         setStage2RunDetail(body.run);
         setStage2Runs((current) => {
           const deduped = current.filter((item) => item.runId !== body.run!.runId);
@@ -2777,7 +2793,7 @@ export default function HomePage() {
         run?: Stage2RunDetail;
       };
       if (body.error === "stage2_run_already_active" && body.run) {
-        setStage2RunId(body.run.runId);
+        selectStage2Run(body.run.runId, "auto");
         setStage2RunDetail(body.run);
         setStage2Runs((current) => {
           const deduped = current.filter((item) => item.runId !== body.run!.runId);
@@ -2810,7 +2826,7 @@ export default function HomePage() {
             ? `Пользователь запустил Stage 2 с инструкцией: ${trimmedInstruction}`
             : "Пользователь запустил Stage 2."
     }).catch(() => undefined);
-    setStage2RunId(run.runId);
+    selectStage2Run(run.runId, "auto");
     setStage2RunDetail(run);
     setStage2Runs((current) => {
       const deduped = current.filter((item) => item.runId !== run.runId);
@@ -3134,7 +3150,7 @@ export default function HomePage() {
 
     try {
       const { run, reused } = await runStage2ForChat(chat, stage2Instruction, "manual");
-      setStage2RunId(run.runId);
+      selectStage2Run(run.runId, "auto");
       setCurrentStep(2);
       setStatusType("ok");
       setStatus(
@@ -3198,7 +3214,7 @@ export default function HomePage() {
       const { run, reused } = await runStage2ForChat(chat, stage2Instruction, "regenerate", {
         baseRunId: selectedStage2RunnableBaseRunId
       });
-      setStage2RunId(run.runId);
+      selectStage2Run(run.runId, "auto");
       setCurrentStep(2);
       setStatusType("ok");
       setStatus(
@@ -6638,7 +6654,7 @@ export default function HomePage() {
           onRunStage2={() => {
             void handleRunStage2();
           }}
-          onSelectRun={setStage2RunId}
+          onSelectRun={handleSelectStage2Run}
           onSelectOption={setSelectedOption}
           onSelectTitleOption={setSelectedTitleOption}
           feedbackHistory={channelFeedbackHistory}

@@ -10329,6 +10329,54 @@ test("pickPreferredStage2RunId heals a stale failed selection when a newer compl
   assert.equal(pickPreferredStage2RunId(runs, "run_failed_older"), "run_completed_newer");
 });
 
+test("pickPreferredStage2RunId follows the newest completed run when the UI selection is not manually pinned", () => {
+  const runs: Stage2RunSummary[] = [
+    {
+      runId: "run_completed_newer",
+      chatId: "chat_1",
+      channelId: "target",
+      sourceUrl: "https://example.com/newer",
+      userInstruction: null,
+      mode: "auto",
+      baseRunId: null,
+      status: "completed",
+      progress: createStage2ProgressSnapshot("run_completed_newer"),
+      errorMessage: null,
+      hasResult: true,
+      createdAt: "2026-04-15T15:02:52.611Z",
+      startedAt: "2026-04-15T15:02:52.633Z",
+      updatedAt: "2026-04-15T15:06:01.100Z",
+      finishedAt: "2026-04-15T15:06:01.100Z"
+    },
+    {
+      runId: "run_completed_older",
+      chatId: "chat_1",
+      channelId: "target",
+      sourceUrl: "https://example.com/older",
+      userInstruction: null,
+      mode: "auto",
+      baseRunId: null,
+      status: "completed",
+      progress: createStage2ProgressSnapshot("run_completed_older"),
+      errorMessage: null,
+      hasResult: true,
+      createdAt: "2026-04-15T14:56:08.521Z",
+      startedAt: "2026-04-15T14:56:08.540Z",
+      updatedAt: "2026-04-15T14:59:56.720Z",
+      finishedAt: "2026-04-15T14:59:56.688Z"
+    }
+  ];
+
+  assert.equal(
+    pickPreferredStage2RunId(runs, "run_completed_older", { pinPreferredSelection: false }),
+    "run_completed_newer"
+  );
+  assert.equal(
+    pickPreferredStage2RunId(runs, "run_completed_older", { pinPreferredSelection: true }),
+    "run_completed_older"
+  );
+});
+
 test("regenerate runs persist baseRunId and use lightweight progress stages", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");

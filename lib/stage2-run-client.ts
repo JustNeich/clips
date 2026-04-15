@@ -11,8 +11,10 @@ export function isStage2RunActive(
 
 export function pickPreferredStage2RunId(
   runs: Stage2RunSummary[],
-  preferredRunId?: string | null
+  preferredRunId?: string | null,
+  options?: { pinPreferredSelection?: boolean }
 ): string | null {
+  const pinPreferredSelection = options?.pinPreferredSelection ?? true;
   const getRunRecencyMs = (run: Stage2RunSummary): number => {
     const timestamps = [run.updatedAt, run.finishedAt, run.startedAt, run.createdAt];
     for (const value of timestamps) {
@@ -50,7 +52,7 @@ export function pickPreferredStage2RunId(
       ? runs.find((run) => run.runId === preferredRunId.trim()) ?? null
       : null;
 
-  if (preferredRun) {
+  if (preferredRun && pinPreferredSelection) {
     if (preferredRun.status === "failed") {
       const active = pickMostRecent((run) => isStage2RunActive(run));
       if (active) {
