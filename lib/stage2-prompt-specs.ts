@@ -1312,7 +1312,11 @@ Rules:
 - Use only enabled slots from template_highlight_profile_json.
 - Copy phrases exactly as they appear in the source text.
 - Each phrase must be a contiguous substring from that exact block.
-- Prefer 0-3 highlights per block. Skip weak guesses instead of forcing matches.
+- Prefer 3-6 short highlights per block when the text has enough signal. Skip weak guesses instead of forcing matches.
+- Spread highlights across the whole block instead of clustering them in one local chunk.
+- Prefer short cue phrases of 1-4 words, not whole clauses or long consecutive runs.
+- If the block has a clear beginning, middle, and ending beat, try to place highlights across those different beats.
+- If two phrases would sit almost adjacent, keep only the stronger one and leave white text between highlights.
 - If top_enabled is false, return an empty top array for every item.
 - If bottom_enabled is false, return an empty bottom array for every item.
 - Do not invent categories outside the provided slot labels and guidance.

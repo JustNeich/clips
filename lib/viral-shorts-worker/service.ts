@@ -129,7 +129,7 @@ import {
   resolveStage2WorkerProfile
 } from "../stage2-worker-profile";
 import {
-  buildTemplateHighlightSpansFromPhrases,
+  buildDistributedTemplateHighlightSpansFromPhrases,
   createEmptyTemplateCaptionHighlights,
   getEnabledTemplateHighlightSlots,
   hasEnabledTemplateHighlights,
@@ -4137,11 +4137,11 @@ function buildCaptionHighlightsFromPhraseMap(input: {
   phrases?: TemplateCaptionHighlightPhraseMap | null;
 }): TemplateCaptionHighlights {
   return {
-    top: buildTemplateHighlightSpansFromPhrases({
+    top: buildDistributedTemplateHighlightSpansFromPhrases({
       text: input.topText,
       annotations: input.phrases?.top ?? []
     }),
-    bottom: buildTemplateHighlightSpansFromPhrases({
+    bottom: buildDistributedTemplateHighlightSpansFromPhrases({
       text: input.bottomText,
       annotations: input.phrases?.bottom ?? []
     })

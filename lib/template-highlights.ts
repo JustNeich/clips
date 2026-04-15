@@ -349,6 +349,109 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const HIGHLIGHT_WORD_RE = /[#$]?[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g;
+const HIGHLIGHT_EDGE_STOPWORDS = new Set<string>([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "because",
+  "before",
+  "but",
+  "for",
+  "from",
+  "if",
+  "in",
+  "into",
+  "like",
+  "of",
+  "on",
+  "or",
+  "so",
+  "than",
+  "that",
+  "the",
+  "their",
+  "then",
+  "to",
+  "until",
+  "when",
+  "while",
+  "with"
+]);
+
+type HighlightWordMatch = {
+  raw: string;
+  normalized: string;
+  start: number;
+  end: number;
+};
+
+type HighlightCandidateSpan = TemplateHighlightSpan & {
+  wordStart: number;
+  wordEnd: number;
+  wordCount: number;
+  score: number;
+};
+
+function extractHighlightWordMatches(text: string): HighlightWordMatch[] {
+  return Array.from(text.matchAll(HIGHLIGHT_WORD_RE)).map((match) => {
+    const raw = match[0] ?? "";
+    const start = match.index ?? 0;
+    return {
+      raw,
+      normalized: raw.toLowerCase(),
+      start,
+      end: start + raw.length
+    };
+  });
+}
+
+function scoreHighlightWord(word: HighlightWordMatch): number {
+  if (/\d/.test(word.raw)) {
+    return 3;
+  }
+  if (/^[A-Z]{2,}$/.test(word.raw)) {
+    return 2.5;
+  }
+  if (!HIGHLIGHT_EDGE_STOPWORDS.has(word.normalized) && word.raw.length >= 6) {
+    return 2;
+  }
+  if (!HIGHLIGHT_EDGE_STOPWORDS.has(word.normalized)) {
+    return 1;
+  }
+  return 0;
+}
+
+function compactHighlightPhrase(phrase: string, maxWords = 4): string {
+  const words = extractHighlightWordMatches(phrase);
+  if (words.length <= maxWords) {
+    return phrase.trim();
+  }
+  let bestWindow: { start: number; end: number; score: number } | null = null;
+  for (let index = 0; index <= words.length - maxWords; index += 1) {
+    const window = words.slice(index, index + maxWords);
+    const rawStart = window[0]?.start ?? 0;
+    const rawEnd = window.at(-1)?.end ?? phrase.length;
+    let score = window.reduce((total, word) => total + scoreHighlightWord(word), 0);
+    if (!HIGHLIGHT_EDGE_STOPWORDS.has(window[0]?.normalized ?? "")) {
+      score += 0.5;
+    }
+    if (!HIGHLIGHT_EDGE_STOPWORDS.has(window.at(-1)?.normalized ?? "")) {
+      score += 0.5;
+    }
+    if (bestWindow === null || score > bestWindow.score) {
+      bestWindow = {
+        start: rawStart,
+        end: rawEnd,
+        score
+      };
+    }
+  }
+  return phrase.slice(bestWindow?.start ?? 0, bestWindow?.end ?? phrase.length).trim();
+}
+
 function findPhraseOccurrences(
   text: string,
   phrase: string
@@ -385,6 +488,148 @@ export function buildTemplateHighlightSpansFromPhrases(input: {
     }))
   );
   return normalizeTemplateHighlightSpans(spans, input.text);
+}
+
+function buildHighlightCandidateSpans(input: {
+  text: string;
+  annotations: TemplateHighlightPhraseAnnotation[];
+}): HighlightCandidateSpan[] {
+  const words = extractHighlightWordMatches(input.text);
+  const rawCandidates = input.annotations.flatMap((annotation) => {
+    const compactPhrase = compactHighlightPhrase(annotation.phrase);
+    const compactWordCount = extractHighlightWordMatches(compactPhrase).length;
+    return findPhraseOccurrences(input.text, compactPhrase).map((match) => {
+      const wordStart = words.findIndex((word) => word.start >= match.start || word.end > match.start);
+      const wordEndRaw = words.findIndex((word) => word.start < match.end && word.end >= match.end);
+      const resolvedWordStart = wordStart >= 0 ? wordStart : 0;
+      const resolvedWordEnd = wordEndRaw >= 0 ? wordEndRaw : Math.max(resolvedWordStart, words.length - 1);
+      return {
+        slotId: annotation.slotId,
+        start: match.start,
+        end: match.end,
+        wordStart: resolvedWordStart,
+        wordEnd: resolvedWordEnd,
+        wordCount: Math.max(1, compactWordCount),
+        score:
+          Math.max(0, 5 - Math.abs(Math.min(4, compactWordCount) - 2)) +
+          (/\d/.test(compactPhrase) ? 1 : 0) +
+          compactPhrase.length / 100
+      };
+    });
+  });
+
+  const unique = new Map<string, HighlightCandidateSpan>();
+  rawCandidates.forEach((candidate) => {
+    const key = `${candidate.slotId}:${candidate.start}:${candidate.end}`;
+    if (!unique.has(key)) {
+      unique.set(key, candidate);
+    }
+  });
+
+  return [...unique.values()].sort((left, right) => {
+    if (left.start !== right.start) {
+      return left.start - right.start;
+    }
+    return left.end - right.end;
+  });
+}
+
+function areHighlightCandidatesTooClose(
+  candidate: HighlightCandidateSpan,
+  selected: HighlightCandidateSpan
+): boolean {
+  return candidate.wordStart <= selected.wordEnd + 1 && candidate.wordEnd >= selected.wordStart - 1;
+}
+
+function pickBestHighlightCandidate(
+  candidates: HighlightCandidateSpan[]
+): HighlightCandidateSpan | null {
+  if (!candidates.length) {
+    return null;
+  }
+  return [...candidates].sort((left, right) => {
+    if (left.score !== right.score) {
+      return right.score - left.score;
+    }
+    if (left.wordCount !== right.wordCount) {
+      return left.wordCount - right.wordCount;
+    }
+    return left.start - right.start;
+  })[0] ?? null;
+}
+
+export function buildDistributedTemplateHighlightSpansFromPhrases(input: {
+  text: string;
+  annotations: TemplateHighlightPhraseAnnotation[];
+  maxHighlights?: number;
+}): TemplateHighlightSpan[] {
+  const candidates = buildHighlightCandidateSpans(input);
+  if (candidates.length <= 1) {
+    return normalizeTemplateHighlightSpans(candidates, input.text);
+  }
+
+  const maxHighlights = Math.max(1, Math.min(input.maxHighlights ?? 6, candidates.length));
+  const buckets = Array.from({ length: Math.min(4, Math.max(1, candidates.length)) }, () => [] as HighlightCandidateSpan[]);
+  candidates.forEach((candidate) => {
+    const midpoint = (candidate.start + candidate.end) / 2;
+    const normalizedMidpoint = input.text.length > 0 ? midpoint / input.text.length : 0;
+    const bucketIndex = Math.min(
+      buckets.length - 1,
+      Math.max(0, Math.floor(normalizedMidpoint * buckets.length))
+    );
+    buckets[bucketIndex]?.push(candidate);
+  });
+
+  const selected: HighlightCandidateSpan[] = [];
+  buckets.forEach((bucket) => {
+    const pick = pickBestHighlightCandidate(
+      bucket.filter((candidate) => !selected.some((entry) => areHighlightCandidatesTooClose(candidate, entry)))
+    );
+    if (pick) {
+      selected.push(pick);
+    }
+  });
+
+  const leftovers = candidates.filter(
+    (candidate) =>
+      !selected.some(
+        (entry) => entry.start === candidate.start && entry.end === candidate.end && entry.slotId === candidate.slotId
+      )
+  );
+  while (selected.length < maxHighlights) {
+    const next = [...leftovers]
+      .filter((candidate) => !selected.some((entry) => areHighlightCandidatesTooClose(candidate, entry)))
+      .sort((left, right) => {
+        const leftDistance =
+          selected.length === 0
+            ? Number.POSITIVE_INFINITY
+            : Math.min(...selected.map((entry) => Math.abs(left.wordStart - entry.wordStart)));
+        const rightDistance =
+          selected.length === 0
+            ? Number.POSITIVE_INFINITY
+            : Math.min(...selected.map((entry) => Math.abs(right.wordStart - entry.wordStart)));
+        if (leftDistance !== rightDistance) {
+          return rightDistance - leftDistance;
+        }
+        if (left.score !== right.score) {
+          return right.score - left.score;
+        }
+        return left.start - right.start;
+      })[0];
+    if (!next) {
+      break;
+    }
+    selected.push(next);
+  }
+
+  return normalizeTemplateHighlightSpans(
+    selected.map((candidate) => ({
+      start: candidate.start,
+      end: candidate.end,
+      slotId: candidate.slotId
+    })),
+    input.text
+  );
 }
 
 export function hasEnabledTemplateHighlights(config: TemplateHighlightConfig | null | undefined): boolean {

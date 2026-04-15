@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildDistributedTemplateHighlightSpansFromPhrases,
   buildCaptionHighlightSourceState,
   buildTemplateHighlightSpansFromPhrases,
   countEnabledTemplateHighlightSlots,
@@ -42,6 +43,31 @@ test("highlight spans keep the earliest longest non-overlapping matches", () => 
     { start: 32, end: 36, slotId: "slot3" },
     { start: 41, end: 45, slotId: "slot2" }
   ]);
+});
+
+test("distributed highlight helper shortens long phrases and keeps picks spread across the block", () => {
+  const text =
+    "Alpha bravo charlie delta echo foxtrot. Hotel india juliet kilo. November oscar papa quebec.";
+  const spans = buildDistributedTemplateHighlightSpansFromPhrases({
+    text,
+    annotations: [
+      { phrase: "bravo charlie delta echo foxtrot", slotId: "slot1" },
+      { phrase: "hotel india", slotId: "slot2" },
+      { phrase: "november oscar", slotId: "slot3" }
+    ]
+  });
+
+  assert.ok(spans.length >= 2);
+  const firstSnippet = text.slice(spans[0]?.start ?? 0, spans[0]?.end ?? 0);
+  assert.ok(firstSnippet.length < "bravo charlie delta echo foxtrot".length);
+  assert.ok((spans.at(-1)?.start ?? 0) - (spans[0]?.start ?? 0) > text.length / 2);
+  assert.ok(
+    spans.every((span) => {
+      const wordCount = Array.from(text.slice(span.start, span.end).matchAll(/[#$]?[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g))
+        .length;
+      return wordCount <= 4;
+    })
+  );
 });
 
 test("clearing one highlight block preserves the other block", () => {
