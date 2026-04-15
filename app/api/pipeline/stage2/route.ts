@@ -19,12 +19,9 @@ import {
   getStage2RunOrThrow,
   scheduleStage2RunProcessing
 } from "../../../../lib/stage2-run-runtime";
+import { buildStage2RunChannelSnapshot } from "../../../../lib/stage2-run-channel-snapshot";
 import { buildStage2RunRequestSnapshot } from "../../../../lib/stage2-run-request";
 import { getActiveSourceJobForChat } from "../../../../lib/source-job-runtime";
-import {
-  resolveChannelEditorialMemory
-} from "../../../../lib/stage2-editorial-memory-resolution";
-import { resolveManagedTemplateRuntimeSync } from "../../../../lib/managed-template-runtime";
 import type { Stage2Response } from "../../../components/types";
 import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../lib/ytdlp";
 import type { Stage2DebugMode } from "../../../../lib/viral-shorts-worker/types";
@@ -261,29 +258,7 @@ export async function POST(request: Request): Promise<Response> {
         mode,
         baseRunId: baseRun?.runId ?? null,
         debugMode,
-        channel: {
-          id: channel.id,
-          name: channel.name,
-          username: channel.username,
-          stage2WorkerProfileId: channel.stage2WorkerProfileId,
-          stage2ExamplesConfig: channel.stage2ExamplesConfig,
-          stage2HardConstraints: channel.stage2HardConstraints,
-          stage2StyleProfile: channel.stage2StyleProfile,
-          templateHighlightProfile: resolveManagedTemplateRuntimeSync(channel.templateId, null, {
-            workspaceId: auth.workspace.id
-          }).templateConfig.highlights,
-          ...(() => {
-            const resolution = resolveChannelEditorialMemory({
-              channelId: channel.id,
-              stage2StyleProfile: channel.stage2StyleProfile,
-              stage2WorkerProfileId: channel.stage2WorkerProfileId
-            });
-            return {
-              editorialMemory: resolution.editorialMemory,
-              editorialMemorySource: resolution.source
-            };
-          })()
-        }
+        channel: buildStage2RunChannelSnapshot(channel, { workspaceId: auth.workspace.id })
       })
     });
 

@@ -2,8 +2,8 @@ import type { CommentsPayload, SourceJobResult, Stage2Response } from "../app/co
 import { appendChatEvent, getChatById, getChannelById } from "./chat-history";
 import { enqueueAndScheduleStage2Run } from "./stage2-run-runtime";
 import { findActiveStage2RunForChat } from "./stage2-progress-store";
+import { buildStage2RunChannelSnapshot } from "./stage2-run-channel-snapshot";
 import { buildStage2RunRequestSnapshot } from "./stage2-run-request";
-import { resolveChannelEditorialMemory } from "./stage2-editorial-memory-resolution";
 import { isUploadedSourceUrl } from "./uploaded-source";
 import {
   claimNextQueuedSourceJob,
@@ -171,26 +171,7 @@ async function maybeEnqueueStage2(job: SourceJobRecord): Promise<string | null> 
       sourceUrl: chat.url,
       userInstruction: null,
       mode: "auto",
-      channel: {
-        id: channel.id,
-        name: channel.name,
-        username: channel.username,
-        stage2WorkerProfileId: channel.stage2WorkerProfileId,
-        stage2ExamplesConfig: channel.stage2ExamplesConfig,
-        stage2HardConstraints: channel.stage2HardConstraints,
-        stage2StyleProfile: channel.stage2StyleProfile,
-        ...(() => {
-          const resolution = resolveChannelEditorialMemory({
-            channelId: channel.id,
-            stage2StyleProfile: channel.stage2StyleProfile,
-            stage2WorkerProfileId: channel.stage2WorkerProfileId
-          });
-          return {
-            editorialMemory: resolution.editorialMemory,
-            editorialMemorySource: resolution.source
-          };
-        })()
-      }
+      channel: buildStage2RunChannelSnapshot(channel, { workspaceId: job.workspaceId })
     })
   });
   return run.runId;
