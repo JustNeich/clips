@@ -412,6 +412,24 @@ function mergeQueuedPublicationDefaults(input: {
   });
 }
 
+function buildPublishAfterRenderUnavailableMessage(
+  integration: ReturnType<typeof getChannelPublishIntegration>
+): string {
+  if (!integration) {
+    return "Рендер готов, но публикация не поставлена в очередь: подключите YouTube и выберите канал назначения.";
+  }
+  if (integration.status === "reauth_required") {
+    return integration.lastError?.trim() || "Рендер готов, но YouTube требует переподключения.";
+  }
+  if (!integration.selectedYoutubeChannelId?.trim()) {
+    return "Рендер готов, но публикация не поставлена в очередь: выберите канал назначения в Publishing.";
+  }
+  return (
+    integration.lastError?.trim() ||
+    "Рендер готов, но публикация не поставлена в очередь: YouTube publishing сейчас недоступен."
+  );
+}
+
 export function createOrUpdateQueuedPublicationFromRenderExport(input: {
   workspaceId: string;
   channelId: string;
@@ -428,9 +446,11 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
     if (!shouldPublishAfterRender) {
       return null;
     }
-    if (!isChannelPublishIntegrationReady(getChannelPublishIntegration(input.channelId))) {
-      return null;
-    }
+    const integration = getChannelPublishIntegration(input.channelId);
+    const isIntegrationReady = isChannelPublishIntegrationReady(integration);
+    const unavailableMessage = isIntegrationReady
+      ? null
+      : buildPublishAfterRenderUnavailableMessage(integration);
 
     const defaults = buildChannelPublicationMetadata({
       renderTitle: input.renderExport.renderTitle,
@@ -449,6 +469,9 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
           renderExport: input.renderExport,
           defaults
         });
+        if (!isIntegrationReady && unavailableMessage) {
+          return markChannelPublicationFailed(updated.id, unavailableMessage);
+        }
         appendChannelPublicationEvent(updated.id, "info", "Рендер повторно синхронизирован с текущей публикацией.");
         return updated;
       }
@@ -467,6 +490,9 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
           renderExport: input.renderExport,
           defaults
         });
+        if (!isIntegrationReady && unavailableMessage) {
+          return markChannelPublicationFailed(updated.id, unavailableMessage);
+        }
         appendChannelPublicationEvent(updated.id, "info", "Рендер обновлён, публикация синхронизирована с новым экспортом.");
         return updated;
       }
@@ -483,7 +509,7 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
       settings,
       existingPublications: listFutureActivePublicationsForChannel(input.channelId)
     });
-    return createChannelPublication({
+    const created = createChannelPublication({
       workspaceId: input.workspaceId,
       channelId: input.channelId,
       chatId: input.chatId,
@@ -500,6 +526,10 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
       needsReview: defaults.needsReview,
       createdByUserId: input.createdByUserId
     });
+    if (!isIntegrationReady && unavailableMessage) {
+      return markChannelPublicationFailed(created.id, unavailableMessage);
+    }
+    return created;
   });
 }
 

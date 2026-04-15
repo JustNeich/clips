@@ -1271,11 +1271,12 @@ export default function HomePage() {
       const body = (await response.json()) as { publications?: ChannelPublication[] };
       const nextPublications = body.publications ?? [];
       setChannelPublications(nextPublications);
+      void refreshChannels(channelId).catch(() => undefined);
       return nextPublications;
     } finally {
       setIsChannelPublicationsLoading(false);
     }
-  }, [parseError]);
+  }, [parseError, refreshChannels]);
 
   const revalidateChannelPublicationsInBackground = useCallback((channelId: string | null): void => {
     if (!channelId) {
