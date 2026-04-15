@@ -196,6 +196,22 @@ async function readMeta(sourceKey: string): Promise<CachedSourceMediaMeta> {
   }
 }
 
+export async function getCachedSourceMedia(rawUrl: string): Promise<CachedSourceMedia | null> {
+  const sourceUrl = normalizeSupportedUrl(rawUrl);
+  const sourceKey = getSourceMediaCacheKey(sourceUrl);
+  const sourcePath = buildSourcePath(sourceKey);
+  if (!(await pathExists(sourcePath))) {
+    return null;
+  }
+  const meta = await readMeta(sourceKey);
+  return {
+    sourcePath,
+    sourceKey,
+    ...meta,
+    cacheState: "hit"
+  };
+}
+
 async function writeMeta(sourceKey: string, meta: CachedSourceMediaMeta): Promise<void> {
   await fs.writeFile(buildMetaPath(sourceKey), `${JSON.stringify(meta)}\n`, "utf-8");
 }

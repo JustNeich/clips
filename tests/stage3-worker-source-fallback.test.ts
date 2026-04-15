@@ -9,6 +9,8 @@ import { ensureSourceMediaCached } from "../lib/source-media-cache";
 import { downloadSourceVideo } from "../lib/stage3-media-agent";
 import { setSourceAcquisitionDownloadersForTests } from "../lib/source-acquisition";
 import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
+import { buildUploadedSourceUrl } from "../lib/uploaded-source";
+import { storeUploadedSourceMedia } from "../lib/source-media-cache";
 
 test("downloadSourceVideo falls back to host source cache for local Stage 3 workers", { concurrency: false }, async () => {
   const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-source-cache-"));
@@ -156,6 +158,98 @@ test("downloadSourceVideo reuses shared source cache on server-side Stage 3 runs
     assert.equal(await fs.readFile(downloaded.filePath, "utf-8"), "server-cached-video");
   } finally {
     setSourceAcquisitionDownloadersForTests(null);
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
+    }
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    await fs.rm(tmpDir, { recursive: true, force: true });
+    await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadSourceVideo falls back to host cache for uploaded mp4 sources with non-ASCII filenames", { concurrency: false }, async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-upload-source-cache-"));
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  const originalFetch = globalThis.fetch;
+  const fileName = "хайлайт тест.mp4";
+  const url = buildUploadedSourceUrl(`upload-${Date.now()}`, fileName);
+
+  process.env.APP_DATA_DIR = appDataDir;
+  const db = getDb();
+  const stamp = nowIso();
+  db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+    "ws_stage3_upload",
+    "Stage 3 Upload Workspace",
+    "stage3-upload-workspace",
+    stamp,
+    stamp
+  );
+  db.prepare(
+    "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run("user_stage3_upload", "stage3-upload@example.com", "hash", "Stage 3 Upload User", "active", stamp, stamp);
+  db.prepare(
+    "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(newId(), "ws_stage3_upload", "user_stage3_upload", "owner", stamp, stamp);
+  const { token: pairingToken } = issueStage3WorkerPairingToken({
+    workspaceId: "ws_stage3_upload",
+    userId: "user_stage3_upload"
+  });
+  const { sessionToken } = exchangeStage3WorkerPairingToken({
+    pairingToken,
+    label: "Worker",
+    platform: "darwin-arm64"
+  });
+
+  process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+  process.env.STAGE3_WORKER_SESSION_TOKEN = sessionToken;
+
+  await storeUploadedSourceMedia({
+    sourceUrl: url,
+    fileName,
+    title: "Uploaded source",
+    sourceStream: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("uploaded-video"));
+        controller.close();
+      }
+    })
+  });
+
+  globalThis.fetch = (async (input, init) => {
+    const response = await postStage3WorkerSource(
+      new Request(String(input), {
+        method: "POST",
+        headers: init?.headers,
+        body: String(init?.body ?? "")
+      })
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-stage3-source-file-name"), encodeURIComponent(fileName));
+    return response;
+  }) as typeof fetch;
+
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-upload-source-fallback-"));
+
+  try {
+    const downloaded = await downloadSourceVideo(url, tmpDir);
+    assert.equal(downloaded.fileName, "_.mp4");
+    assert.equal(path.basename(downloaded.filePath), "worker-source-_.mp4.mp4");
+    assert.equal(await fs.readFile(downloaded.filePath, "utf-8"), "uploaded-video");
+  } finally {
+    globalThis.fetch = originalFetch;
     if (previousAppDataDir === undefined) {
       delete process.env.APP_DATA_DIR;
     } else {

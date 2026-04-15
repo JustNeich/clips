@@ -25,6 +25,17 @@ function sanitizeSourceFileName(value: string | null | undefined): string {
   return fallback.replace(/[^a-zA-Z0-9._-]+/g, "_");
 }
 
+function decodeStage3SourceFileNameHeader(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export async function maybeDownloadStage3WorkerSource(params: {
   sourceUrl: string;
   tmpDir: string;
@@ -53,7 +64,9 @@ export async function maybeDownloadStage3WorkerSource(params: {
     throw new Error(body?.error || "Failed to fetch Stage 3 source from host.");
   }
 
-  const fileName = sanitizeSourceFileName(response.headers.get("x-stage3-source-file-name"));
+  const fileName = sanitizeSourceFileName(
+    decodeStage3SourceFileNameHeader(response.headers.get("x-stage3-source-file-name"))
+  );
   const outputPath = path.join(params.tmpDir, `worker-source-${fileName}.mp4`);
   const bytes = Buffer.from(await response.arrayBuffer());
   await fs.writeFile(outputPath, bytes);

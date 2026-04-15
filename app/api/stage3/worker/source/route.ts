@@ -3,10 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { requireStage3WorkerAuth } from "../../../../../lib/auth/stage3-worker";
 import { createNodeStreamResponse } from "../../../../../lib/node-stream-response";
-import { ensureSourceMediaCached } from "../../../../../lib/source-media-cache";
+import { ensureSourceMediaCached, getCachedSourceMedia } from "../../../../../lib/source-media-cache";
+import { isUploadedSourceUrl } from "../../../../../lib/uploaded-source";
 import { isSupportedUrl, normalizeSupportedUrl, SUPPORTED_SOURCE_ERROR_MESSAGE } from "../../../../../lib/ytdlp";
 
 export const runtime = "nodejs";
+
+function encodeStage3SourceFileNameHeader(fileName: string): string {
+  return encodeURIComponent(fileName);
+}
 
 function scheduleDirectoryCleanup(dirPath: string): void {
   const timer = setTimeout(() => {
@@ -39,7 +44,12 @@ export async function POST(request: Request): Promise<Response> {
     let cleanupScheduled = false;
 
     try {
-      const cached = await ensureSourceMediaCached(sourceUrl);
+      const cached = isUploadedSourceUrl(sourceUrl)
+        ? await getCachedSourceMedia(sourceUrl)
+        : await ensureSourceMediaCached(sourceUrl);
+      if (!cached) {
+        throw new Error("Загруженный mp4 не найден в локальном хранилище. Загрузите файл заново.");
+      }
       const fileStat = await fs.stat(cached.sourcePath);
       const stream = createReadStream(cached.sourcePath);
 
@@ -53,7 +63,7 @@ export async function POST(request: Request): Promise<Response> {
           "Content-Type": "video/mp4",
           "Content-Length": String(fileStat.size),
           "Cache-Control": "private, no-store",
-          "x-stage3-source-file-name": cached.fileName,
+          "x-stage3-source-file-name": encodeStage3SourceFileNameHeader(cached.fileName),
           "x-stage3-source-provider": cached.downloadProvider
         }
       });
