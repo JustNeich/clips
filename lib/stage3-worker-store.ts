@@ -5,6 +5,7 @@ import {
   Stage3WorkerStatus,
   Stage3WorkerSummary
 } from "../app/components/types";
+import { getAppDataDir } from "./app-paths";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { sweepExpiredLocalStage3Jobs } from "./stage3-job-store";
 
@@ -15,6 +16,8 @@ const SESSION_TTL_MS = Number.parseInt(process.env.STAGE3_WORKER_SESSION_TTL_SEC
   ? Number.parseInt(process.env.STAGE3_WORKER_SESSION_TTL_SEC ?? "", 10) * 1000
   : 30 * 24 * 60 * 60_000;
 const ONLINE_WINDOW_MS = 30_000;
+const WORKER_SWEEP_INTERVAL_MS = 15_000;
+const workerSweepAtByAppDataDir = new Map<string, number>();
 
 type WorkerRow = {
   id: string;
@@ -474,44 +477,41 @@ export function touchStage3WorkerHeartbeat(input: {
 }
 
 export function listStage3Workers(input: { workspaceId: string; userId: string }): Stage3WorkerSummary[] {
-  sweepExpiredLocalStage3Jobs();
+  const appDataDir = getAppDataDir();
+  const now = Date.now();
+  const lastWorkerSweepAtMs = workerSweepAtByAppDataDir.get(appDataDir) ?? 0;
+  if (now - lastWorkerSweepAtMs >= WORKER_SWEEP_INTERVAL_MS) {
+    workerSweepAtByAppDataDir.set(appDataDir, now);
+    sweepExpiredLocalStage3Jobs();
+  }
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT w.*,
-              (
-                SELECT j.id
-                  FROM stage3_jobs j
-                 WHERE j.assigned_worker_id = w.id
-                   AND j.status = 'running'
-                 ORDER BY j.updated_at DESC
-                 LIMIT 1
-              ) AS current_job_id,
-              (
-                SELECT j.kind
-                  FROM stage3_jobs j
-                 WHERE j.assigned_worker_id = w.id
-                   AND j.status = 'running'
-                 ORDER BY j.updated_at DESC
-                 LIMIT 1
-              ) AS current_job_kind,
-              (
-                SELECT j.lease_expires_at
-                  FROM stage3_jobs j
-                 WHERE j.assigned_worker_id = w.id
-                   AND j.status = 'running'
-                 ORDER BY j.updated_at DESC
-                 LIMIT 1
-              ) AS current_job_lease_expires_at,
-              (
-                SELECT j.heartbeat_at
-                  FROM stage3_jobs j
-                 WHERE j.assigned_worker_id = w.id
-                   AND j.status = 'running'
-                 ORDER BY j.updated_at DESC
-                 LIMIT 1
-              ) AS current_job_heartbeat_at
+      `WITH ranked_jobs AS (
+          SELECT
+            j.assigned_worker_id,
+            j.id AS current_job_id,
+            j.kind AS current_job_kind,
+            j.lease_expires_at AS current_job_lease_expires_at,
+            j.heartbeat_at AS current_job_heartbeat_at,
+            ROW_NUMBER() OVER (
+              PARTITION BY j.assigned_worker_id
+              ORDER BY j.updated_at DESC, j.created_at DESC, j.id DESC
+            ) AS row_num
+          FROM stage3_jobs j
+          WHERE j.status = 'running'
+            AND j.assigned_worker_id IS NOT NULL
+        )
+        SELECT
+          w.*,
+          r.current_job_id,
+          r.current_job_kind,
+          r.current_job_lease_expires_at,
+          r.current_job_heartbeat_at
          FROM stage3_workers w
+         LEFT JOIN ranked_jobs r
+           ON r.assigned_worker_id = w.id
+          AND r.row_num = 1
         WHERE w.workspace_id = ?
           AND w.user_id = ?
           AND w.revoked_at IS NULL

@@ -10,6 +10,7 @@ import {
   ensureStage3SourceCached,
   runHostedStage3HeavyJob
 } from "./stage3-server-control";
+import { queueThrottledBackgroundTask } from "./throttled-background-task";
 import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } from "./ytdlp";
 
 export const EDITING_PROXY_WAIT_TIMEOUT_MS = 20_000;
@@ -94,6 +95,10 @@ function getEditingProxyCacheLimits() {
     maxBytes: 768 * 1024 * 1024,
     maxAgeMs: 6 * 60 * 60_000
   };
+}
+
+function getEditingProxyPruneIntervalMs(): number {
+  return isHostedRenderRuntime() ? 60_000 : 5 * 60_000;
 }
 
 function resolveSourceUrl(rawSource: string | undefined): string {
@@ -196,7 +201,11 @@ export async function prepareStage3EditingProxy(
     throw new Error("Не удалось подготовить proxy-видео для редактора. Повторите ещё раз.");
   }
 
-  await pruneCacheDirectory(EDITING_PROXY_CACHE_DIR, getEditingProxyCacheLimits()).catch(() => undefined);
+  queueThrottledBackgroundTask(
+    `stage3-editing-proxy-prune:${EDITING_PROXY_CACHE_DIR}`,
+    getEditingProxyPruneIntervalMs(),
+    () => pruneCacheDirectory(EDITING_PROXY_CACHE_DIR, getEditingProxyCacheLimits())
+  );
 
   return {
     filePath: proxyPath,

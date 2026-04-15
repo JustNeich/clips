@@ -2,6 +2,7 @@ import { createWriteStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { queueThrottledBackgroundTask } from "./throttled-background-task";
 
 export type Stage3WorkerDownloadedAsset = {
   filePath: string;
@@ -24,6 +25,7 @@ const WORKER_ASSET_CACHE_LIMITS = {
   maxBytes: 2 * 1024 * 1024 * 1024,
   maxAgeMs: 30 * 24 * 60 * 60_000
 } as const;
+const WORKER_ASSET_CACHE_PRUNE_INTERVAL_MS = 2 * 60_000;
 
 function readWorkerAssetEnv(): { serverOrigin: string; sessionToken: string } | null {
   const serverOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN?.trim();
@@ -269,7 +271,11 @@ export async function maybeDownloadStage3WorkerAsset(params: {
   if (previousMeta?.dataFileName && previousMeta.dataFileName !== path.basename(outputPath)) {
     await fs.rm(path.join(cacheRoot, previousMeta.dataFileName), { force: true }).catch(() => undefined);
   }
-  await pruneWorkerAssetCache(cacheRoot).catch(() => undefined);
+  queueThrottledBackgroundTask(
+    `stage3-worker-asset-prune:${cacheRoot}`,
+    WORKER_ASSET_CACHE_PRUNE_INTERVAL_MS,
+    () => pruneWorkerAssetCache(cacheRoot)
+  );
   return {
     filePath: outputPath,
     fileName,

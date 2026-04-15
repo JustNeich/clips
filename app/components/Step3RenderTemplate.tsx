@@ -158,6 +158,7 @@ const BUILT_IN_TEMPLATE_IDS = new Set([
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID
 ]);
+const MANAGED_TEMPLATE_REFRESH_COOLDOWN_MS = 15_000;
 
 type Step3RenderTemplateProps = {
   sourceUrl: string | null;
@@ -2370,6 +2371,9 @@ export function Step3RenderTemplate({
   } | null>(null);
   const [pendingTextFitAction, setPendingTextFitAction] = useState<PendingTextFitAction | null>(null);
   const managedTemplateLoadRequestIdRef = useRef(0);
+  const managedTemplateLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const managedTemplateReloadQueuedRef = useRef(false);
+  const managedTemplateLastLoadedAtRef = useRef(0);
   const buildFallbackManagedTemplateState = useCallback(
     () => {
       const fallbackBaseTemplateId = BUILT_IN_TEMPLATE_IDS.has(templateId) ? templateId : STAGE3_TEMPLATE_ID;
@@ -2389,37 +2393,62 @@ export function Step3RenderTemplate({
   const managedTemplateUpdatedAtRef = useRef<string | null>(managedTemplateState.updatedAt);
   managedTemplateUpdatedAtRef.current = managedTemplateState.updatedAt;
 
-  const loadManagedTemplate = useCallback(async () => {
+  const loadManagedTemplate = useCallback(async (options?: { force?: boolean }) => {
+    const force = options?.force === true;
+    const now = Date.now();
+    if (!force && now - managedTemplateLastLoadedAtRef.current < MANAGED_TEMPLATE_REFRESH_COOLDOWN_MS) {
+      return;
+    }
+    if (managedTemplateLoadPromiseRef.current) {
+      if (force) {
+        managedTemplateReloadQueuedRef.current = true;
+      }
+      return managedTemplateLoadPromiseRef.current;
+    }
+
     const requestId = managedTemplateLoadRequestIdRef.current + 1;
     managedTemplateLoadRequestIdRef.current = requestId;
 
-    try {
-      const response = await fetch(`/api/design/templates/${encodeURIComponent(templateId)}`, {
-        cache: "no-store"
-      });
-      if (!response.ok) {
-        throw new Error(`Managed template failed: ${response.status}`);
+    const task = (async () => {
+      try {
+        const response = await fetch(`/api/design/templates/${encodeURIComponent(templateId)}`, {
+          cache: "no-store"
+        });
+        if (!response.ok) {
+          throw new Error(`Managed template failed: ${response.status}`);
+        }
+        const payload = (await response.json()) as { template?: ManagedTemplate };
+        const managedTemplate = payload.template;
+        if (!managedTemplate || requestId !== managedTemplateLoadRequestIdRef.current) {
+          return;
+        }
+        setManagedTemplateState({
+          managedId: managedTemplate.id,
+          name: managedTemplate.name,
+          baseTemplateId: managedTemplate.layoutFamily ?? managedTemplate.baseTemplateId,
+          templateConfig: managedTemplate.templateConfig,
+          updatedAt: managedTemplate.updatedAt
+        });
+        managedTemplateLastLoadedAtRef.current = Date.now();
+      } catch {
+        if (requestId !== managedTemplateLoadRequestIdRef.current) {
+          return;
+        }
+        managedTemplateLastLoadedAtRef.current = Date.now();
+        setManagedTemplateState((current) =>
+          current.managedId === templateId && current.updatedAt ? current : buildFallbackManagedTemplateState()
+        );
+      } finally {
+        managedTemplateLoadPromiseRef.current = null;
+        if (managedTemplateReloadQueuedRef.current) {
+          managedTemplateReloadQueuedRef.current = false;
+          void loadManagedTemplate({ force: true });
+        }
       }
-      const payload = (await response.json()) as { template?: ManagedTemplate };
-      const managedTemplate = payload.template;
-      if (!managedTemplate || requestId !== managedTemplateLoadRequestIdRef.current) {
-        return;
-      }
-      setManagedTemplateState({
-        managedId: managedTemplate.id,
-        name: managedTemplate.name,
-        baseTemplateId: managedTemplate.layoutFamily ?? managedTemplate.baseTemplateId,
-        templateConfig: managedTemplate.templateConfig,
-        updatedAt: managedTemplate.updatedAt
-      });
-    } catch {
-      if (requestId !== managedTemplateLoadRequestIdRef.current) {
-        return;
-      }
-      setManagedTemplateState((current) =>
-        current.managedId === templateId && current.updatedAt ? current : buildFallbackManagedTemplateState()
-      );
-    }
+    })();
+
+    managedTemplateLoadPromiseRef.current = task;
+    return task;
   }, [buildFallbackManagedTemplateState, templateId]);
 
   useEffect(() => {
@@ -2431,7 +2460,7 @@ export function Step3RenderTemplate({
   }, [managedTemplateState, onManagedTemplateStateChange]);
 
   useEffect(() => {
-    void loadManagedTemplate();
+    void loadManagedTemplate({ force: true });
     function handleWindowFocus() {
       void loadManagedTemplate();
     }
@@ -2445,7 +2474,7 @@ export function Step3RenderTemplate({
         message.templateId === templateId &&
         managedTemplateUpdatedAtRef.current !== message.updatedAt
       ) {
-        void loadManagedTemplate();
+        void loadManagedTemplate({ force: true });
       }
     });
     window.addEventListener("focus", handleWindowFocus);

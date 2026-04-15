@@ -210,6 +210,7 @@ import {
   resolveStage3SnapshotManagedTemplateState,
   toSnapshotManagedTemplateState
 } from "../lib/stage3-snapshot-managed-template";
+import { resolveStage3JobPollIntervalMs } from "../lib/stage3-job-polling";
 import { resolveStage3WorkerRefreshIntervalMs } from "../lib/stage3-worker-polling";
 import { buildStage3EditorSession } from "../lib/stage3-editor-core";
 
@@ -228,6 +229,10 @@ const STAGE2_ELAPSED_TICK_MS = 250;
 const STAGE2_ELAPSED_TICK_HIDDEN_MS = 1_000;
 const STAGE2_POLL_RETRY_VISIBLE_MS = 1_500;
 const STAGE2_POLL_RETRY_HIDDEN_MS = 4_000;
+
+function isPageHidden(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
 function loadRecoverablePageChunk<T>(id: string, loader: () => Promise<T>): Promise<T> {
@@ -3446,6 +3451,7 @@ export default function HomePage() {
     const run = async (): Promise<void> => {
       let jobId = stage3RenderJobId;
       let transientFailures = 0;
+      const pollStartedAtMs = Date.now();
 
       while (!isStale()) {
         const response = await fetchWithTimeout(
@@ -3522,8 +3528,15 @@ export default function HomePage() {
           throw new Error(job.errorMessage ?? "Render export failed.");
         }
 
+        const pollDelayMs = resolveStage3JobPollIntervalMs({
+          kind: "render",
+          status: job.status === "queued" ? "queued" : "running",
+          executionTarget: job.executionTarget,
+          elapsedMs: Date.now() - pollStartedAtMs,
+          hidden: isPageHidden()
+        });
         await new Promise<void>((resolve) => {
-          const timer = window.setTimeout(() => resolve(), 1000);
+          const timer = window.setTimeout(() => resolve(), pollDelayMs);
           controller.signal.addEventListener(
             "abort",
             () => {
@@ -5008,6 +5021,7 @@ export default function HomePage() {
       initialJob: Stage3JobEnvelope["job"]
     ): Promise<void> => {
       let job = initialJob;
+      const pollStartedAtMs = Date.now();
 
       while (!isStale()) {
         setStage3PreviewJobId(job.id);
@@ -5044,8 +5058,15 @@ export default function HomePage() {
           setStage3PreviewNotice(job.status === "queued" ? "Proxy-видео в очереди..." : "Подготавливаю proxy-видео...");
         }
 
+        const pollDelayMs = resolveStage3JobPollIntervalMs({
+          kind: "editing-proxy",
+          status: job.status === "queued" ? "queued" : "running",
+          executionTarget: job.executionTarget,
+          elapsedMs: Date.now() - pollStartedAtMs,
+          hidden: isPageHidden()
+        });
         await new Promise<void>((resolve) => {
-          const timer = window.setTimeout(() => resolve(), 1000);
+          const timer = window.setTimeout(() => resolve(), pollDelayMs);
           controller.signal.addEventListener(
             "abort",
             () => {
@@ -5257,6 +5278,7 @@ export default function HomePage() {
 
     const pollAccuratePreviewJob = async (initialJob: Stage3JobEnvelope["job"]): Promise<void> => {
       let job = initialJob;
+      const pollStartedAtMs = Date.now();
 
       while (!isStale()) {
         if (job.status === "completed" && job.artifact?.downloadUrl) {
@@ -5295,8 +5317,15 @@ export default function HomePage() {
           );
         }
 
+        const pollDelayMs = resolveStage3JobPollIntervalMs({
+          kind: "preview",
+          status: job.status === "queued" ? "queued" : "running",
+          executionTarget: job.executionTarget,
+          elapsedMs: Date.now() - pollStartedAtMs,
+          hidden: isPageHidden()
+        });
         await new Promise<void>((resolve) => {
-          const timer = window.setTimeout(() => resolve(), 1000);
+          const timer = window.setTimeout(() => resolve(), pollDelayMs);
           controller.signal.addEventListener(
             "abort",
             () => {

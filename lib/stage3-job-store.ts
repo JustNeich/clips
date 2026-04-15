@@ -31,17 +31,15 @@ type JobRow = {
   updated_at: string;
   started_at: string | null;
   completed_at: string | null;
-};
-
-type JobArtifactRow = {
-  id: string;
-  job_id: string;
-  kind: string;
-  file_name: string;
-  mime_type: string;
-  file_path: string;
-  size_bytes: number;
-  created_at: string;
+  assigned_worker_label?: string | null;
+  artifact_id?: string | null;
+  artifact_job_id?: string | null;
+  artifact_kind?: string | null;
+  artifact_file_name?: string | null;
+  artifact_mime_type?: string | null;
+  artifact_file_path?: string | null;
+  artifact_size_bytes?: number | null;
+  artifact_created_at?: string | null;
 };
 
 export type Stage3JobRecord = Stage3JobSummary & {
@@ -125,19 +123,8 @@ function buildStage3JobPrioritySql(column = "kind"): string {
   END`;
 }
 
-function readWorkerLabel(workerId: string | null | undefined): string | null {
-  if (!workerId) {
-    return null;
-  }
-  const db = getDb();
-  const row = db.prepare("SELECT label FROM stage3_workers WHERE id = ? LIMIT 1").get(workerId) as
-    | { label?: string | null }
-    | undefined;
-  return row?.label ? String(row.label) : null;
-}
-
-function mapArtifactRow(row: JobArtifactRow | null): { artifact: Stage3JobArtifact | null; filePath: string | null } {
-  if (!row || !existsSync(row.file_path)) {
+function mapArtifactFromJobRow(row: JobRow): { artifact: Stage3JobArtifact | null; filePath: string | null } {
+  if (!row.artifact_file_path || !existsSync(row.artifact_file_path)) {
     return {
       artifact: null,
       filePath: null
@@ -146,26 +133,17 @@ function mapArtifactRow(row: JobArtifactRow | null): { artifact: Stage3JobArtifa
 
   return {
     artifact: {
-      id: String(row.id),
-      jobId: String(row.job_id),
+      id: String(row.artifact_id),
+      jobId: String(row.artifact_job_id ?? row.id),
       kind: "video",
-      fileName: String(row.file_name),
-      mimeType: String(row.mime_type),
-      sizeBytes: Number(row.size_bytes) || 0,
-      createdAt: String(row.created_at),
+      fileName: String(row.artifact_file_name),
+      mimeType: String(row.artifact_mime_type),
+      sizeBytes: Number(row.artifact_size_bytes) || 0,
+      createdAt: String(row.artifact_created_at),
       downloadUrl: null
     },
-    filePath: String(row.file_path)
+    filePath: String(row.artifact_file_path)
   };
-}
-
-function readArtifactRow(jobId: string): JobArtifactRow | null {
-  const db = getDb();
-  return (
-    (db
-      .prepare("SELECT * FROM stage3_job_artifacts WHERE job_id = ? ORDER BY created_at DESC LIMIT 1")
-      .get(jobId) as JobArtifactRow | undefined) ?? null
-  );
 }
 
 function mapJobRow(row: JobRow | null): Stage3JobRecord | null {
@@ -174,8 +152,7 @@ function mapJobRow(row: JobRow | null): Stage3JobRecord | null {
   }
 
   const kind = normalizeJobKind(String(row.kind));
-  const artifactRow = readArtifactRow(String(row.id));
-  const artifact = mapArtifactRow(artifactRow);
+  const artifact = mapArtifactFromJobRow(row);
   const baseStatus = normalizeJobStatus(String(row.status));
   const requiresArtifact = kind === "preview" || kind === "render" || kind === "editing-proxy";
   const status = baseStatus === "completed" && requiresArtifact && !artifact.filePath ? "interrupted" : baseStatus;
@@ -200,7 +177,7 @@ function mapJobRow(row: JobRow | null): Stage3JobRecord | null {
     status,
     executionTarget: normalizeExecutionTarget(row.execution_target),
     assignedWorkerId: row.assigned_worker_id ? String(row.assigned_worker_id) : null,
-    workerLabel: readWorkerLabel(row.assigned_worker_id),
+    workerLabel: row.assigned_worker_label ? String(row.assigned_worker_label) : null,
     leaseUntil: row.lease_expires_at ? String(row.lease_expires_at) : null,
     lastHeartbeatAt: row.heartbeat_at ? String(row.heartbeat_at) : null,
     dedupeKey: row.dedupe_key ? String(row.dedupe_key) : null,
@@ -223,7 +200,40 @@ function mapJobRow(row: JobRow | null): Stage3JobRecord | null {
 
 function readJobRow(jobId: string): JobRow | null {
   const db = getDb();
-  return (db.prepare("SELECT * FROM stage3_jobs WHERE id = ?").get(jobId) as JobRow | undefined) ?? null;
+  return (
+    (db
+      .prepare(
+        `WITH latest_artifacts AS (
+            SELECT
+              a.*,
+              ROW_NUMBER() OVER (
+                PARTITION BY a.job_id
+                ORDER BY a.created_at DESC, a.id DESC
+              ) AS row_num
+            FROM stage3_job_artifacts a
+          )
+          SELECT
+            j.*,
+            w.label AS assigned_worker_label,
+            a.id AS artifact_id,
+            a.job_id AS artifact_job_id,
+            a.kind AS artifact_kind,
+            a.file_name AS artifact_file_name,
+            a.mime_type AS artifact_mime_type,
+            a.file_path AS artifact_file_path,
+            a.size_bytes AS artifact_size_bytes,
+            a.created_at AS artifact_created_at
+          FROM stage3_jobs j
+          LEFT JOIN stage3_workers w
+            ON w.id = j.assigned_worker_id
+          LEFT JOIN latest_artifacts a
+            ON a.job_id = j.id
+           AND a.row_num = 1
+         WHERE j.id = ?
+         LIMIT 1`
+      )
+      .get(jobId) as JobRow | undefined) ?? null
+  );
 }
 
 export function appendStage3JobEvent(
@@ -297,7 +307,7 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
         (db
           .prepare("SELECT * FROM stage3_jobs WHERE kind = ? AND execution_target = ? AND dedupe_key = ? LIMIT 1")
           .get(input.kind, executionTarget, dedupeKey) as JobRow | undefined) ?? null;
-      const existing = mapJobRow(existingRow);
+      const existing = existingRow ? mapJobRow(readJobRow(String(existingRow.id))) : null;
       if (existing) {
         if (
           (existing.status === "queued" || existing.status === "running") &&

@@ -42,6 +42,7 @@ import {
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
+import { queueThrottledBackgroundTask } from "./throttled-background-task";
 
 const PREVIEW_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
@@ -180,6 +181,10 @@ function getPreviewCacheLimits() {
     maxBytes: 512 * 1024 * 1024,
     maxAgeMs: 45 * 60_000
   };
+}
+
+function getPreviewPruneIntervalMs(): number {
+  return isHostedRenderRuntime() ? 60_000 : 5 * 60_000;
 }
 
 async function createVideoFileResponse(
@@ -522,7 +527,11 @@ export async function prepareStage3Preview(
       throw new Error("Черновой предпросмотр не удалось подготовить. Повторите ещё раз.");
     }
 
-    await pruneCacheDirectory(PREVIEW_CACHE_DIR, getPreviewCacheLimits()).catch(() => undefined);
+    queueThrottledBackgroundTask(
+      `stage3-preview-prune:${PREVIEW_CACHE_DIR}`,
+      getPreviewPruneIntervalMs(),
+      () => pruneCacheDirectory(PREVIEW_CACHE_DIR, getPreviewCacheLimits())
+    );
 
     return {
       filePath: previewPath,
