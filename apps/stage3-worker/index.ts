@@ -12,6 +12,7 @@ import {
   resolveStage3WorkerAdvertisedVersion,
   shouldRestartStage3WorkerAfterSync
 } from "../../lib/stage3-worker-runtime-sync";
+import { ensureRspackRuntimeAvailable } from "../../lib/stage3-rspack-runtime";
 
 declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
 
@@ -466,6 +467,20 @@ function printDoctorResult(capabilities: WorkerCapabilities): void {
 
 async function doctorCommand(): Promise<void> {
   await ensureWorkerDirs();
+  const rspackRuntime = await ensureRspackRuntimeAvailable({
+    installRoot: paths().root,
+    log: (message) => console.log(message)
+  });
+  if (!rspackRuntime.ready) {
+    throw new Error(
+      `Stage 3 worker render runtime is broken: ${rspackRuntime.error ?? "missing rspack native binding"}`
+    );
+  }
+  if (rspackRuntime.repaired) {
+    console.log("rspack runtime: REPAIRED");
+  } else {
+    console.log("rspack runtime: OK");
+  }
   const capabilities = await detectCapabilities();
   printDoctorResult(capabilities);
   if (!capabilities.ffmpeg.available || !capabilities.ffprobe.available || !capabilities.ytDlp.available) {
@@ -640,6 +655,19 @@ async function startCommand(): Promise<void> {
     console.warn(
       `Worker runtime sync skipped: ${error instanceof Error ? error.message : String(error)}`
     );
+  }
+
+  const rspackRuntime = await ensureRspackRuntimeAvailable({
+    installRoot: paths().root,
+    log: (message) => console.log(message)
+  });
+  if (!rspackRuntime.ready) {
+    throw new Error(
+      `Stage 3 worker render runtime is broken: ${rspackRuntime.error ?? "missing rspack native binding"}. Rerun bootstrap if this keeps happening.`
+    );
+  }
+  if (rspackRuntime.repaired) {
+    console.log("Repaired local rspack runtime before claiming Stage 3 jobs.");
   }
 
   const capabilities = await detectCapabilities();
