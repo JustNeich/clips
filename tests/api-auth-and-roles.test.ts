@@ -7,7 +7,10 @@ import test from "node:test";
 import { POST as fetchComments } from "../app/api/comments/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
 import { PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
-import { GET as listManagedTemplatesRoute } from "../app/api/design/templates/route";
+import {
+  GET as listManagedTemplatesRoute,
+  POST as createManagedTemplateRoute
+} from "../app/api/design/templates/route";
 import { GET as getManagedTemplate } from "../app/api/design/templates/[templateId]/route";
 import {
   DELETE as deleteManagedTemplateRoute,
@@ -78,6 +81,26 @@ test("private API routes reject fake app-session cookies instead of trusting coo
         getRuntimeCapabilities(
           new Request("http://localhost/api/runtime/capabilities", {
             headers: { cookie: fakeCookie }
+          })
+        ),
+      () =>
+        listManagedTemplatesRoute(
+          new Request("http://localhost/api/design/templates", {
+            headers: { cookie: fakeCookie }
+          })
+        ),
+      () =>
+        createManagedTemplateRoute(
+          new Request("http://localhost/api/design/templates", {
+            method: "POST",
+            headers: {
+              cookie: fakeCookie,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              name: "Should Fail",
+              baseTemplateId: "science-card-v1"
+            })
           })
         ),
       () =>

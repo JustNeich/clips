@@ -35,6 +35,7 @@ import type {
   ManagedTemplateSummary
 } from "../../lib/managed-template-types";
 import { publishManagedTemplateSync } from "../../lib/managed-template-sync";
+import { updateTemplateRoadCard } from "../../lib/template-road-card-geometry";
 
 type TemplateStyleEditorProps = {
   initialTemplateId?: string | null;
@@ -1797,10 +1798,7 @@ export function TemplateStyleEditor({
   ) {
     setTemplateConfig((current) => ({
       ...current,
-      card: {
-        ...current.card,
-        [key]: value
-      }
+      card: updateTemplateRoadCard(current.card, current.frame, key, value)
     }));
   }
 
