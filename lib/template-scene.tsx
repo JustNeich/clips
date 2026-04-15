@@ -738,7 +738,7 @@ export function TemplateScene({
                   overflow: "hidden"
                 }}
               >
-                {topText}
+                {topHighlights.length > 0 ? renderHighlightedText(topText, topHighlights, highlightColors) : topText}
               </p>
             </section>
 
@@ -844,7 +844,9 @@ export function TemplateScene({
                     overflow: "hidden"
                   }}
                 >
-                  {bottomText}
+                  {bottomHighlights.length > 0
+                    ? renderHighlightedText(bottomText, bottomHighlights, highlightColors)
+                    : bottomText}
                 </p>
               </div>
             </section>

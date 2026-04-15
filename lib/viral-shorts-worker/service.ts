@@ -8341,6 +8341,44 @@ export class ViralShortsWorkerService {
     });
   }
 
+  async runNativeCaptionHighlighting(input: {
+    channel: {
+      id: string;
+      name: string;
+      username: string;
+      stage2WorkerProfileId?: string | null;
+      stage2ExamplesConfig: Stage2ExamplesConfig;
+      stage2HardConstraints: Stage2HardConstraints;
+      stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
+      editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
+      templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
+    };
+    captionOptions: Array<{
+      candidateId: string;
+      top: string;
+      bottom: string;
+    }>;
+    executor: JsonStageExecutor;
+    stageModels?: Partial<Stage2PipelineModelMap>;
+    promptConfig?: Stage2PromptConfig | null;
+  }): Promise<Map<string, TemplateCaptionHighlights>> {
+    const channelConfig = normalizeChannelConfig({
+      ...input.channel,
+      resolvedExamplesSource: "workspace_default"
+    });
+    return runNativeCaptionHighlightingStage({
+      channelConfig,
+      captionOptions: input.captionOptions,
+      executor: input.executor,
+      stageModels: input.stageModels,
+      promptConfig: normalizeStage2PromptConfig(input.promptConfig),
+      warnings: [],
+      promptInputManifests: {},
+      reportProgress: async () => undefined,
+      recordExecutedStage: () => undefined
+    });
+  }
+
   private async runNativeCaptionPipelineInternal(input: {
     channel: {
       id: string;

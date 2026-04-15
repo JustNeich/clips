@@ -733,6 +733,7 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     musicOptions: [],
     selectedBackgroundAssetId: null,
     selectedMusicAssetId: null,
+    selectedMusicAssetUrl: null,
     versions: [],
     selectedVersionId: null,
     selectedPassIndex: 0,
@@ -4183,6 +4184,7 @@ test("stage 3 draft render-plan override strips channel-managed template fields"
   assert.deepEqual(sanitizeStage3DraftRenderPlanOverride(rawOverride), {
     timingMode: base.timingMode,
     normalizeToTargetEnabled: base.normalizeToTargetEnabled,
+    editorSelectionMode: base.editorSelectionMode,
     audioMode: base.audioMode,
     sourceAudioEnabled: base.sourceAudioEnabled,
     smoothSlowMo: base.smoothSlowMo,
@@ -4453,6 +4455,7 @@ test("normalizeChatDraft removes legacy template id from stage 3 render-plan ove
   assert.deepEqual(draft?.stage3.renderPlan, {
     timingMode: "auto",
     normalizeToTargetEnabled: false,
+    editorSelectionMode: "window",
     audioMode: "source_only",
     sourceAudioEnabled: true,
     smoothSlowMo: false,
@@ -7889,6 +7892,7 @@ test("caption highlighting skips the model pass when template highlighting is di
   const disabledHighlightProfile = createDefaultTemplateHighlightConfig({
     accentColor: "#65d46e"
   });
+  disabledHighlightProfile.enabled = false;
 
   const { result, executor } = await runNativeCaptionPipelineDirectFixture({
     stage2WorkerProfileId: "stable_reference_v6",
@@ -8035,6 +8039,60 @@ test("caption highlighting turns phrase annotations into exact spans and drops o
       { start: 32, end: 36, slotId: "slot2" }
     ]
   );
+  assert.equal(
+    executor.calls.some((call) => /template_highlight_profile_json/i.test(call.prompt)),
+    true
+  );
+});
+
+test("quick regenerate highlighting helper tags rewritten caption options when template highlighting is enabled", async () => {
+  const highlightProfile = createDefaultTemplateHighlightConfig({
+    accentColor: "#65d46e"
+  });
+  highlightProfile.enabled = true;
+  highlightProfile.slots[0].enabled = true;
+  const service = new ViralShortsWorkerService();
+  const executor = new QueueExecutor([
+    [
+      {
+        candidate_id: "quick_highlight_1",
+        top: [{ phrase: "Ace", slotId: "slot1" }],
+        bottom: [{ phrase: "Luffy", slotId: "slot1" }]
+      }
+    ]
+  ]);
+  const candidateTop = "Ace steps in before the rifles can close the gap.";
+  const candidateBottom = "Luffy only survives because Ace takes that lane first.";
+
+  const highlightsById = await service.runNativeCaptionHighlighting({
+    channel: makeNativeCaptionChannel(
+      {
+        ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+        topLengthMin: 20,
+        topLengthMax: 220,
+        bottomLengthMin: 20,
+        bottomLengthMax: 180
+      },
+      "stable_reference_v6",
+      {
+        templateHighlightProfile: highlightProfile
+      }
+    ),
+    captionOptions: [
+      {
+        candidateId: "quick_highlight_1",
+        top: candidateTop,
+        bottom: candidateBottom
+      }
+    ],
+    executor,
+    promptConfig: normalizeStage2PromptConfig({})
+  });
+
+  assert.deepEqual(highlightsById.get("quick_highlight_1"), {
+    top: [{ start: 0, end: 3, slotId: "slot1" }],
+    bottom: [{ start: 0, end: 5, slotId: "slot1" }]
+  });
   assert.equal(
     executor.calls.some((call) => /template_highlight_profile_json/i.test(call.prompt)),
     true
@@ -13714,7 +13772,7 @@ test("step 3 render template defaults to the finalization surface with stage 2 m
   );
 
   assert.ok(html.indexOf("Финализация") < html.indexOf("Финальный текст"));
-  assert.match(html, /Открыть редактор/);
+  assert.match(html, /Открыть template customization/);
   assert.doesNotMatch(html, /details class="details-drawer stage3-caption-editor-drawer"/);
   assert.match(html, /Финальный текст/);
   assert.match(html, /Сбросить к выбранному варианту/);

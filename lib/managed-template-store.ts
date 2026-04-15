@@ -1,6 +1,6 @@
 import path from "node:path";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { getAppDataDir } from "./app-paths";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { getStage3DesignLabPreset } from "./stage3-design-lab";
@@ -128,6 +128,14 @@ function buildSeedSnapshot(layoutFamily: string): ManagedTemplateVersionSnapshot
     templateConfig: cloneStage3TemplateConfig(getTemplateById(layoutFamily)),
     shadowLayers: []
   };
+}
+
+function buildDetachedPresetRevision(layoutFamily: string): string {
+  const digest = createHash("sha1")
+    .update(JSON.stringify(buildSeedSnapshot(layoutFamily)))
+    .digest("hex");
+  const timestampMs = Number.parseInt(digest.slice(0, 12), 16) % Date.UTC(2100, 0, 1);
+  return new Date(timestampMs).toISOString();
 }
 
 function normalizeContent(raw: unknown, layoutFamily: string): TemplateContentFixture {
@@ -538,12 +546,12 @@ function buildManagedTemplateFromSnapshot(input: {
 
 function buildDetachedPresetTemplate(layoutFamilyRaw: string, workspaceId = "detached-workspace"): ManagedTemplate {
   const layoutFamily = resolveLayoutFamily(layoutFamilyRaw);
-  const now = nowIso();
+  const revision = buildDetachedPresetRevision(layoutFamily);
   return buildManagedTemplateFromSnapshot({
     id: layoutFamily,
     workspaceId,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: revision,
+    updatedAt: revision,
     snapshot: buildSeedSnapshot(layoutFamily)
   });
 }
@@ -972,10 +980,70 @@ function repairBrokenChannelTemplateRefs(workspaceId: string, fallbackTemplateId
   return Number(result.changes ?? 0);
 }
 
+function templateHighlightConfigMatchesSeedExceptEnabled(template: ManagedTemplate): boolean {
+  const seedHighlights = cloneStage3TemplateConfig(getTemplateById(template.layoutFamily)).highlights;
+  const currentHighlights = template.templateConfig.highlights;
+
+  if (
+    currentHighlights.enabled ||
+    currentHighlights.topEnabled !== seedHighlights.topEnabled ||
+    currentHighlights.bottomEnabled !== seedHighlights.bottomEnabled ||
+    currentHighlights.slots.length !== seedHighlights.slots.length
+  ) {
+    return false;
+  }
+
+  return currentHighlights.slots.every((slot, index) => {
+    const seedSlot = seedHighlights.slots[index];
+    return (
+      slot.slotId === seedSlot.slotId &&
+      slot.enabled === seedSlot.enabled &&
+      slot.color === seedSlot.color &&
+      slot.label === seedSlot.label &&
+      slot.guidance === seedSlot.guidance
+    );
+  });
+}
+
+function migrateWorkspaceTemplateHighlightDefaults(workspaceId: string): number {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT *
+       FROM workspace_templates
+       WHERE workspace_id = ? AND archived_at IS NULL`
+    )
+    .all(workspaceId) as Record<string, unknown>[];
+  let migrated = 0;
+
+  for (const row of rows) {
+    const template = mapTemplateRow(row);
+    if (!templateHighlightConfigMatchesSeedExceptEnabled(template)) {
+      continue;
+    }
+
+    insertOrUpdateTemplateRow({
+      ...template,
+      updatedAt: nowIso(),
+      templateConfig: {
+        ...template.templateConfig,
+        highlights: {
+          ...template.templateConfig.highlights,
+          enabled: true
+        }
+      }
+    });
+    migrated += 1;
+  }
+
+  return migrated;
+}
+
 function ensureWorkspaceTemplateLibrarySync(workspaceId: string): string {
   const legacyTemplates = readLegacyTemplateSources();
   importLegacyCustomTemplatesForWorkspace(workspaceId, legacyTemplates);
   migrateLegacyChannelTemplateRefs(workspaceId, legacyTemplates);
+  migrateWorkspaceTemplateHighlightDefaults(workspaceId);
   const defaultTemplateId = ensureWorkspaceDefaultTemplate(workspaceId);
   repairBrokenChannelTemplateRefs(workspaceId, defaultTemplateId);
   return defaultTemplateId;

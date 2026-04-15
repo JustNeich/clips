@@ -136,7 +136,7 @@ export function createDefaultTemplateHighlightConfig(options?: {
 }): TemplateHighlightConfig {
   const slot1Color = options?.accentColor?.trim() || DEFAULT_SLOT_COLORS.slot1;
   return {
-    enabled: false,
+    enabled: true,
     topEnabled: true,
     bottomEnabled: true,
     slots: TEMPLATE_HIGHLIGHT_SLOT_IDS.map((slotId) => ({
@@ -320,7 +320,13 @@ export function normalizeTemplateHighlightPhraseAnnotations(
         if (!isRecord(item)) {
           return null;
         }
-        const slotId = TEMPLATE_HIGHLIGHT_SLOT_IDS.find((candidateSlot) => candidateSlot === item.slotId);
+        const rawSlotId =
+          typeof item.slotId === "string"
+            ? item.slotId
+            : typeof item.slot_id === "string"
+              ? item.slot_id
+              : null;
+        const slotId = TEMPLATE_HIGHLIGHT_SLOT_IDS.find((candidateSlot) => candidateSlot === rawSlotId);
         const phrase = typeof item.phrase === "string" ? item.phrase.trim() : "";
         if (!slotId || !phrase) {
           return null;

@@ -17,6 +17,7 @@ import {
   runQuickRegenerateModel
 } from "./stage2-quick-regenerate";
 import { validateStage2Output } from "./stage2-output-validation";
+import { createEmptyTemplateCaptionHighlights } from "./template-highlights";
 import {
   getStage2Run,
   markStage2RunStageCompleted,
@@ -757,6 +758,8 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
 
   const channel = run.request.channel;
   const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
+  const workerService = new ViralShortsWorkerService();
+  const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
   markStage2RunStageRunning(run.runId, "regenerate", {
     detail: "Quick-regenerating the visible shortlist and paired titles.",
     reasoningEffort: executorContext.reasoningEffort
@@ -809,6 +812,36 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     rawOutput,
     debugMode: run.request.debugMode
   });
+  const quickRegenerateHighlights = await workerService.runNativeCaptionHighlighting({
+    channel: {
+      id: channel.id,
+      name: channel.name,
+      username: channel.username,
+      stage2WorkerProfileId: channel.stage2WorkerProfileId,
+      stage2ExamplesConfig: channel.stage2ExamplesConfig,
+      stage2HardConstraints: channel.stage2HardConstraints,
+      stage2StyleProfile: channel.stage2StyleProfile,
+      editorialMemory: channel.editorialMemory,
+      templateHighlightProfile: channel.templateHighlightProfile ?? null
+    },
+    captionOptions: assembled.response.output.captionOptions.map((option) => ({
+      candidateId: option.candidateId ?? `option_${option.option}`,
+      top: option.top,
+      bottom: option.bottom
+    })),
+    executor: executorContext.executor,
+    stageModels: {
+      captionHighlighting: executorContext.resolvedCodexModelConfig.captionHighlighting,
+      captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation
+    },
+    promptConfig: workspaceStage2PromptConfig
+  });
+  assembled.response.output.captionOptions = assembled.response.output.captionOptions.map((option) => ({
+    ...option,
+    highlights:
+      quickRegenerateHighlights.get(option.candidateId ?? `option_${option.option}`) ??
+      createEmptyTemplateCaptionHighlights()
+  }));
   const debugRef = await persistStage2RawDebugArtifact({
     runId: run.runId,
     rawDebugArtifact: assembled.rawDebugArtifact

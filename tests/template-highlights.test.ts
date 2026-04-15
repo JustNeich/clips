@@ -8,15 +8,16 @@ import {
   countTemplateHighlightSpans,
   clearTemplateCaptionHighlightsBlock,
   isTemplateHighlightingActive,
-  normalizeTemplateHighlightConfig
+  normalizeTemplateHighlightConfig,
+  normalizeTemplateHighlightPhraseAnnotations
 } from "../lib/template-highlights";
 
-test("highlight config defaults stay disabled and seed slot1 from accent color", () => {
+test("highlight config defaults stay enabled and seed slot1 from accent color", () => {
   const config = normalizeTemplateHighlightConfig(undefined, {
     accentColor: "#47c96f"
   });
 
-  assert.equal(config.enabled, false);
+  assert.equal(config.enabled, true);
   assert.equal(config.topEnabled, true);
   assert.equal(config.bottomEnabled, true);
   assert.equal(config.slots[0].slotId, "slot1");
@@ -62,10 +63,10 @@ test("highlight status helpers distinguish configured profile from active runtim
   });
 
   assert.equal(countEnabledTemplateHighlightSlots(config), 1);
-  assert.equal(isTemplateHighlightingActive(config), false);
-
-  config.enabled = true;
   assert.equal(isTemplateHighlightingActive(config), true);
+
+  config.enabled = false;
+  assert.equal(isTemplateHighlightingActive(config), false);
 
   config.topEnabled = false;
   config.bottomEnabled = false;
@@ -141,4 +142,16 @@ test("highlight source state keeps the selected option when it already has runti
   assert.deepEqual(state.highlightedSources, [{ option: 4, count: 2 }]);
   assert.deepEqual(state.selectedHighlightedSource, { option: 4, count: 2 });
   assert.deepEqual(state.suggestedHighlightedSource, { option: 4, count: 2 });
+});
+
+test("phrase annotation normalization accepts model slot_id wire format", () => {
+  const normalized = normalizeTemplateHighlightPhraseAnnotations({
+    top: [{ phrase: "Ace", slot_id: "slot1" }],
+    bottom: [{ phrase: "Luffy", slot_id: "slot1" }]
+  });
+
+  assert.deepEqual(normalized, {
+    top: [{ phrase: "Ace", slotId: "slot1" }],
+    bottom: [{ phrase: "Luffy", slotId: "slot1" }]
+  });
 });

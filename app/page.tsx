@@ -647,6 +647,10 @@ export default function HomePage() {
     activeChannelId && stage3RenderPlan.backgroundAssetId
       ? buildChannelAssetUrl(activeChannelId, stage3RenderPlan.backgroundAssetId)
       : null;
+  const stage3MusicUrl =
+    activeChannelId && stage3RenderPlan.musicAssetId
+      ? buildChannelAssetUrl(activeChannelId, stage3RenderPlan.musicAssetId)
+      : null;
   const stage3AvatarUrl =
     activeChannelId && stage3RenderPlan.avatarAssetId
       ? buildChannelAssetUrl(activeChannelId, stage3RenderPlan.avatarAssetId)
@@ -6666,6 +6670,7 @@ export default function HomePage() {
           musicOptions={musicOptions}
           selectedBackgroundAssetId={stage3RenderPlan.backgroundAssetId}
           selectedMusicAssetId={stage3RenderPlan.musicAssetId}
+          selectedMusicAssetUrl={stage3MusicUrl}
           versions={stage3Versions}
           selectedVersionId={stage3SelectedVersionId}
           selectedPassIndex={selectedStage3PassIndex}

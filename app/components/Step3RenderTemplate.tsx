@@ -36,6 +36,13 @@ import {
 import { StepWorkspace } from "./StepWorkspace";
 import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
 import {
+  AMERICAN_NEWS_TEMPLATE_ID,
+  HEDGES_OF_HONOR_TEMPLATE_ID,
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_TEMPLATE_ID,
+  SCIENCE_CARD_V7_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
   getTemplateById,
   type Stage3TemplateConfig
@@ -135,6 +142,16 @@ export type Step3AuthoritativePreviewSnapshot = {
   managedTemplateState: Stage3SnapshotManagedTemplateState | null;
 };
 
+const BUILT_IN_TEMPLATE_IDS = new Set([
+  SCIENCE_CARD_TEMPLATE_ID,
+  AMERICAN_NEWS_TEMPLATE_ID,
+  SCIENCE_CARD_BLUE_TEMPLATE_ID,
+  SCIENCE_CARD_RED_TEMPLATE_ID,
+  SCIENCE_CARD_GREEN_TEMPLATE_ID,
+  SCIENCE_CARD_V7_TEMPLATE_ID,
+  HEDGES_OF_HONOR_TEMPLATE_ID
+]);
+
 type Step3RenderTemplateProps = {
   sourceUrl: string | null;
   templateId: string;
@@ -149,6 +166,7 @@ type Step3RenderTemplateProps = {
   musicOptions: ChannelAsset[];
   selectedBackgroundAssetId: string | null;
   selectedMusicAssetId: string | null;
+  selectedMusicAssetUrl?: string | null;
   versions: Stage3Version[];
   selectedVersionId: string | null;
   selectedPassIndex: number;
@@ -421,6 +439,10 @@ function shortPrompt(value: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function resolveLoopedMediaTime(targetSec: number, durationSec: number | null): number {
+  return durationSec && durationSec > 0 ? targetSec % durationSec : targetSec;
 }
 
 function formatCaptionSourceLabel(value: Stage2ToStage3HandoffSummary["topTextSource"]): string {
@@ -1044,6 +1066,7 @@ type Stage3LivePreviewPanelProps = {
   finalArtifactUrl?: string | null;
   backgroundAssetUrl: string | null;
   backgroundAssetMimeType: string | null;
+  selectedMusicAssetUrl?: string | null;
   selectedVersion: Stage3Version | null;
   selectedVersionId: string | null;
   selectedPass: Stage3InternalPass | null;
@@ -1071,6 +1094,7 @@ type Stage3LivePreviewPanelProps = {
   topFontScale: number;
   bottomFontScale: number;
   sourceAudioEnabled: boolean;
+  musicGain: number;
   templateConfig: ReturnType<typeof getTemplateById>;
   selectedPositionKeyframeId: string | null;
   selectedScaleKeyframeId: string | null;
@@ -1097,6 +1121,7 @@ function Stage3LivePreviewPanel({
   finalArtifactUrl = null,
   backgroundAssetUrl,
   backgroundAssetMimeType,
+  selectedMusicAssetUrl = null,
   selectedVersion,
   selectedVersionId,
   selectedPass,
@@ -1124,6 +1149,7 @@ function Stage3LivePreviewPanel({
   topFontScale,
   bottomFontScale,
   sourceAudioEnabled,
+  musicGain,
   templateConfig,
   selectedPositionKeyframeId,
   selectedScaleKeyframeId,
@@ -1142,6 +1168,7 @@ function Stage3LivePreviewPanel({
 }: Stage3LivePreviewPanelProps) {
   const slotPreviewRef = useRef<HTMLVideoElement | null>(null);
   const backgroundPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const musicPreviewRef = useRef<HTMLAudioElement | null>(null);
   const previewCanvasRef = useRef<HTMLDivElement | null>(null);
   const previewSurfaceRef = useRef<HTMLDivElement | null>(null);
   const previewTransportRef = useRef<PreviewClipVideoController | null>(null);
@@ -1352,7 +1379,7 @@ function Stage3LivePreviewPanel({
     }
     const duration = Number.isFinite(bg.duration) && bg.duration > 0 ? bg.duration : null;
     const desiredSec = previewBackgroundMode === "source-blur" ? sourceSec : outputSec;
-    const next = duration ? desiredSec % duration : desiredSec;
+    const next = resolveLoopedMediaTime(desiredSec, duration);
     if (Math.abs(bg.currentTime - next) > 0.08) {
       bg.currentTime = next;
     }
@@ -1361,14 +1388,30 @@ function Stage3LivePreviewPanel({
     }
   }, [previewBackgroundMode]);
 
+  const syncMusicToOutputTime = useCallback((outputSec: number) => {
+    const music = musicPreviewRef.current;
+    if (!music || music.readyState < 1) {
+      return;
+    }
+    const duration = Number.isFinite(music.duration) && music.duration > 0 ? music.duration : null;
+    const next = resolveLoopedMediaTime(outputSec, duration);
+    if (Math.abs(music.currentTime - next) > 0.08) {
+      music.currentTime = next;
+    }
+    if (isPlayingRef.current && music.paused) {
+      void music.play().catch(() => undefined);
+    }
+  }, []);
+
   const handlePreviewPositionChange = useCallback(
     (outputSec: number, sourceSec: number) => {
       if (!isTimelineScrubbingRef.current) {
         setTimelineSec((prev) => (Math.abs(prev - outputSec) >= 1 / 240 ? outputSec : prev));
       }
       syncBackgroundTo(outputSec, sourceSec);
+      syncMusicToOutputTime(outputSec);
     },
-    [syncBackgroundTo]
+    [syncBackgroundTo, syncMusicToOutputTime]
   );
 
   const handlePreviewClipEnd = useCallback(() => {
@@ -1387,6 +1430,34 @@ function Stage3LivePreviewPanel({
     }
   }, [activePreviewVideoUrl, backgroundAssetUrl, isPlaying, previewBackgroundMode]);
 
+  useEffect(() => {
+    const music = musicPreviewRef.current;
+    if (!music) {
+      return;
+    }
+    music.volume = clamp(musicGain, 0, 1);
+    music.muted = isMuted;
+  }, [isMuted, musicGain, selectedMusicAssetUrl]);
+
+  useEffect(() => {
+    const music = musicPreviewRef.current;
+    if (!music) {
+      return;
+    }
+    if (isPlaying) {
+      void music.play().catch(() => undefined);
+    } else {
+      music.pause();
+    }
+  }, [isPlaying, selectedMusicAssetUrl]);
+
+  useEffect(() => {
+    if (isPlaying && !isTimelineScrubbing) {
+      return;
+    }
+    syncMusicToOutputTime(timelineSec);
+  }, [isPlaying, isTimelineScrubbing, syncMusicToOutputTime, timelineSec]);
+
   const seekTimeline = useCallback(
     (value: number) => {
       const clamped = clamp(value, 0, playbackDurationSec);
@@ -1396,11 +1467,13 @@ function Stage3LivePreviewPanel({
       });
       if (position) {
         syncBackgroundTo(position.outputTimeSec, position.sourceTimeSec);
+        syncMusicToOutputTime(position.outputTimeSec);
         return;
       }
       syncBackgroundTo(clamped, clamped);
+      syncMusicToOutputTime(clamped);
     },
-    [playbackDurationSec, syncBackgroundTo]
+    [playbackDurationSec, syncBackgroundTo, syncMusicToOutputTime]
   );
 
   useEffect(() => {
@@ -1786,6 +1859,26 @@ function Stage3LivePreviewPanel({
                 transform: `scale(${layoutScale})`
               }}
             >
+              {selectedMusicAssetUrl ? (
+                <audio
+                  key={selectedMusicAssetUrl}
+                  ref={musicPreviewRef}
+                  src={selectedMusicAssetUrl}
+                  preload="metadata"
+                  loop
+                  muted={isMuted}
+                  style={{ display: "none" }}
+                  onLoadedMetadata={() => {
+                    syncMusicToOutputTime(timelineSec);
+                    if (isPlaying) {
+                      const music = musicPreviewRef.current;
+                      if (music) {
+                        void music.play().catch(() => undefined);
+                      }
+                    }
+                  }}
+                />
+              ) : null}
               <Stage3TemplateViewport
                 templateId={templateId}
                 modeOverride="full-frame"
@@ -2036,6 +2129,7 @@ export function Step3RenderTemplate({
   musicOptions,
   selectedBackgroundAssetId,
   selectedMusicAssetId,
+  selectedMusicAssetUrl = null,
   versions,
   selectedVersionId,
   selectedPassIndex,
@@ -2171,13 +2265,16 @@ export function Step3RenderTemplate({
   const [pendingTextFitAction, setPendingTextFitAction] = useState<PendingTextFitAction | null>(null);
   const managedTemplateLoadRequestIdRef = useRef(0);
   const buildFallbackManagedTemplateState = useCallback(
-    () => ({
-      managedId: templateId,
-      name: getStage3DesignLabLabel(STAGE3_TEMPLATE_ID),
-      baseTemplateId: STAGE3_TEMPLATE_ID,
-      templateConfig: getTemplateById(STAGE3_TEMPLATE_ID),
+    () => {
+      const fallbackBaseTemplateId = BUILT_IN_TEMPLATE_IDS.has(templateId) ? templateId : STAGE3_TEMPLATE_ID;
+      return {
+        managedId: templateId,
+        name: getStage3DesignLabLabel(fallbackBaseTemplateId),
+        baseTemplateId: fallbackBaseTemplateId,
+        templateConfig: getTemplateById(fallbackBaseTemplateId),
       updatedAt: null as string | null
-    }),
+      };
+    },
     [templateId]
   );
   const [managedTemplateState, setManagedTemplateState] = useState<Step3ManagedTemplateState>(() =>
@@ -5573,6 +5670,7 @@ export function Step3RenderTemplate({
             finalArtifactUrl={finalArtifactUrl}
             backgroundAssetUrl={backgroundAssetUrl}
             backgroundAssetMimeType={backgroundAssetMimeType}
+            selectedMusicAssetUrl={selectedMusicAssetUrl}
             selectedVersion={selectedVersion}
             selectedVersionId={selectedVersionId}
             selectedPass={selectedPass}
@@ -5601,6 +5699,7 @@ export function Step3RenderTemplate({
             topFontScale={localTopFontScale}
             bottomFontScale={localBottomFontScale}
             sourceAudioEnabled={sourceAudioEnabled}
+            musicGain={musicGain}
             templateConfig={templateConfig}
             selectedPositionKeyframeId={null}
             selectedScaleKeyframeId={null}

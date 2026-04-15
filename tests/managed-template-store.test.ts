@@ -81,6 +81,36 @@ test("workspace template library seeds a DB-backed default template", async () =
   });
 });
 
+test("workspace template library re-enables dormant seed highlight profiles for existing templates", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const db = getDb();
+    const row = db
+      .prepare("SELECT template_config_json FROM workspace_templates WHERE id = ? AND workspace_id = ? LIMIT 1")
+      .get(defaultTemplateId, owner.workspace.id) as { template_config_json?: string } | undefined;
+    assert.ok(row?.template_config_json);
+
+    const templateConfig = JSON.parse(String(row?.template_config_json)) as {
+      highlights?: { enabled?: boolean };
+    };
+    templateConfig.highlights = {
+      ...(templateConfig.highlights ?? {}),
+      enabled: false
+    };
+
+    db.prepare("UPDATE workspace_templates SET template_config_json = ? WHERE id = ? AND workspace_id = ?").run(
+      JSON.stringify(templateConfig),
+      defaultTemplateId,
+      owner.workspace.id
+    );
+
+    const reloaded = await listManagedTemplates(owner.workspace.id);
+    const repaired = reloaded.find((template) => template.id === defaultTemplateId);
+
+    assert.equal(repaired?.templateConfig.highlights.enabled, true);
+  });
+});
+
 test("legacy repo-backed custom templates import into workspace_templates", async () => {
   await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
     const legacyTemplateId = "legacy-custom-template";

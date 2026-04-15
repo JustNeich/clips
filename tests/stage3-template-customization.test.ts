@@ -6,8 +6,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Stage3TemplateRenderer } from "../lib/stage3-template-renderer";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import { SCIENCE_CARD, cloneStage3TemplateConfig } from "../lib/stage3-template";
+import type { TemplateContentFixture } from "../lib/template-calibration-types";
 
-function buildDemoContent() {
+function buildDemoContent(): TemplateContentFixture {
   return {
     topText: "Scientists found a way to splice two living plant stems into one system.",
     bottomText: "The joined tissue starts rerouting fluids almost immediately after the cut heals.",
@@ -67,6 +68,36 @@ test("template scene markup uses managed card geometry instead of locked spec ge
   assert.match(markup, /left:105px;top:235px;width:713px;height:1398px/);
   assert.match(markup, /width:703px;height:1388px/);
   assert.doesNotMatch(markup, /width:907px;height:1461px/);
+});
+
+test("classic science-card markup renders highlight spans for live preview text", () => {
+  const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  const content = buildDemoContent();
+  content.topText = "Marine officers rush in while Ace shields Luffy.";
+  content.bottomText = "Fans still call Ace and Luffy completely unfair.";
+  content.highlights = {
+    top: [
+      { start: 0, end: 15, slotId: "slot1" as const },
+      { start: 30, end: 33, slotId: "slot1" as const },
+      { start: 42, end: 47, slotId: "slot1" as const }
+    ],
+    bottom: [
+      { start: 17, end: 20, slotId: "slot1" as const },
+      { start: 25, end: 30, slotId: "slot1" as const }
+    ]
+  };
+
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: "science-card-v1",
+      content,
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.match(markup, /<span[^>]*>Marine officers<\/span>/);
+  assert.match(markup, /<span[^>]*>Ace<\/span>/);
+  assert.match(markup, /<span[^>]*>Luffy<\/span>/);
 });
 
 test("color badge mode renders a twitter-style vector instead of a round text fallback", () => {
