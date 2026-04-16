@@ -77,7 +77,7 @@ test("host queue prefers editing proxy over older preview jobs", async () => {
   });
 });
 
-test("host queue prefers preview over older render jobs", async () => {
+test("host queue prefers render over newer preview jobs", async () => {
   await withIsolatedAppData(async () => {
     const db = getDb();
     const stamp = nowIso();
@@ -116,8 +116,8 @@ test("host queue prefers preview over older render jobs", async () => {
     const firstClaim = claimNextQueuedStage3Job();
     const secondClaim = claimNextQueuedStage3Job();
 
-    assert.equal(firstClaim?.id, preview.id);
-    assert.equal(secondClaim?.id, render.id);
+    assert.equal(firstClaim?.id, render.id);
+    assert.equal(secondClaim?.id, preview.id);
   });
 });
 

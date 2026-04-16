@@ -8,6 +8,7 @@ import {
   normalizeStage3SourceVideo,
   probeVideoDurationSeconds
 } from "./stage3-media-agent";
+import { queueThrottledBackgroundTask } from "./throttled-background-task";
 import { normalizeSupportedUrl } from "./ytdlp";
 
 export type Stage3CachedSource = {
@@ -22,9 +23,11 @@ export type Stage3HostedJobOptions = {
   waitTimeoutMs?: number | null;
 };
 
-const STAGE3_CACHE_ROOT = path.join(os.tmpdir(), "clip-stage3-cache");
-const SOURCE_CACHE_DIR = path.join(STAGE3_CACHE_ROOT, "sources");
 const STAGE3_SOURCE_CACHE_NORMALIZATION_VERSION = 1;
+const STAGE3_SOURCE_CACHE_MAX_ENTRIES = 24;
+const HOSTED_STAGE3_SOURCE_CACHE_MAX_ENTRIES = 8;
+const STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS = 5 * 60_000;
+const HOSTED_STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS = 60_000;
 const sourceInflight = new Map<string, Promise<Stage3CachedSource>>();
 let hostedHeavyJobActive = 0;
 const hostedHeavyWaiters: Array<{
@@ -46,6 +49,25 @@ export class Stage3HostedBusyError extends Error {
 
 function hashKey(value: string): string {
   return createHash("sha1").update(value).digest("hex");
+}
+
+function getStage3CacheRoot(): string {
+  const override = process.env.CLIPS_STAGE3_CACHE_ROOT?.trim();
+  return override ? path.resolve(override) : path.join(os.tmpdir(), "clip-stage3-cache");
+}
+
+function getStage3SourceCacheDir(): string {
+  return path.join(getStage3CacheRoot(), "sources");
+}
+
+function getStage3SourceCacheMaxEntries(): number {
+  return isStage3HostedRuntime() ? HOSTED_STAGE3_SOURCE_CACHE_MAX_ENTRIES : STAGE3_SOURCE_CACHE_MAX_ENTRIES;
+}
+
+function getStage3SourceCachePruneIntervalMs(): number {
+  return isStage3HostedRuntime()
+    ? HOSTED_STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS
+    : STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS;
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -143,29 +165,48 @@ async function normalizeCachedSourceIntoPlace(params: {
   }
 }
 
-async function pruneDirectory(dirPath: string, maxFiles: number): Promise<void> {
+async function pruneDirectory(dirPath: string, maxEntries: number): Promise<void> {
   const entries = await fs.readdir(dirPath).catch(() => []);
-  if (entries.length <= maxFiles) {
+  if (entries.length <= maxEntries * 2) {
     return;
   }
+  const grouped = new Map<string, { filePaths: string[]; mtimeMs: number }>();
 
-  const files = await Promise.all(
-    entries.map(async (name) => {
-      const filePath = path.join(dirPath, name);
-      const stat = await fs.stat(filePath).catch(() => null);
-      if (!stat?.isFile()) {
-        return null;
-      }
-      return { filePath, mtimeMs: stat.mtimeMs };
-    })
-  );
+  for (const name of entries) {
+    const filePath = path.join(dirPath, name);
+    const stat = await fs.stat(filePath).catch(() => null);
+    if (!stat?.isFile()) {
+      continue;
+    }
+    const sourceKey = name.replace(/\.(json|mp4)$/i, "");
+    const current = grouped.get(sourceKey);
+    if (current) {
+      current.filePaths.push(filePath);
+      current.mtimeMs = Math.max(current.mtimeMs, stat.mtimeMs);
+      continue;
+    }
+    grouped.set(sourceKey, {
+      filePaths: [filePath],
+      mtimeMs: stat.mtimeMs
+    });
+  }
 
-  const stale = files
-    .filter((item): item is { filePath: string; mtimeMs: number } => Boolean(item))
+  const stale = [...grouped.values()]
     .sort((left, right) => right.mtimeMs - left.mtimeMs)
-    .slice(maxFiles);
+    .slice(maxEntries);
 
-  await Promise.all(stale.map((item) => fs.rm(item.filePath, { force: true }).catch(() => undefined)));
+  await Promise.all(
+    stale.flatMap((entry) => entry.filePaths.map((filePath) => fs.rm(filePath, { force: true }).catch(() => undefined)))
+  );
+}
+
+function scheduleStage3SourceCachePrune(): void {
+  const cacheDir = getStage3SourceCacheDir();
+  queueThrottledBackgroundTask(
+    `stage3-source-prune:${cacheDir}`,
+    getStage3SourceCachePruneIntervalMs(),
+    () => pruneStage3SourceCache(getStage3SourceCacheMaxEntries())
+  );
 }
 
 export function isStage3HostedRuntime(): boolean {
@@ -304,8 +345,9 @@ export async function ensureStage3SourceCached(
 ): Promise<Stage3CachedSource> {
   const sourceUrl = normalizeSupportedUrl(rawSource);
   const sourceKey = hashKey(sourceUrl);
-  const sourcePath = path.join(SOURCE_CACHE_DIR, `${sourceKey}.mp4`);
-  const metaPath = path.join(SOURCE_CACHE_DIR, `${sourceKey}.json`);
+  const sourceCacheDir = getStage3SourceCacheDir();
+  const sourcePath = path.join(sourceCacheDir, `${sourceKey}.mp4`);
+  const metaPath = path.join(sourceCacheDir, `${sourceKey}.json`);
 
   if (await pathExists(sourcePath)) {
     const rawMeta = await fs.readFile(metaPath, "utf-8").catch(() => "");
@@ -346,7 +388,7 @@ export async function ensureStage3SourceCached(
   }
 
   const task = (async () => {
-    await fs.mkdir(SOURCE_CACHE_DIR, { recursive: true });
+    await fs.mkdir(sourceCacheDir, { recursive: true });
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "clip-stage3-source-cache-"));
     try {
       const downloaded = await runHostedStage3HeavyJob(() => downloadSourceVideo(sourceUrl, tmpDir), options);
@@ -361,6 +403,7 @@ export async function ensureStage3SourceCached(
         fileName: downloaded.fileName,
         sourceDurationSec
       });
+      scheduleStage3SourceCachePrune();
 
       return {
         sourcePath,
@@ -382,5 +425,5 @@ export async function ensureStage3SourceCached(
 }
 
 export async function pruneStage3SourceCache(maxFiles: number): Promise<void> {
-  await pruneDirectory(SOURCE_CACHE_DIR, maxFiles);
+  await pruneDirectory(getStage3SourceCacheDir(), maxFiles);
 }

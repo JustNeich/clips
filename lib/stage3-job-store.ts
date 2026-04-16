@@ -113,7 +113,18 @@ function normalizeJobStatus(value: string): Stage3JobStatus {
   return "failed";
 }
 
-function buildStage3JobPrioritySql(column = "kind"): string {
+function buildHostStage3JobPrioritySql(column = "kind"): string {
+  return `CASE
+    WHEN ${column} = 'editing-proxy' THEN 0
+    WHEN ${column} = 'render' THEN 1
+    WHEN ${column} = 'source-download' THEN 2
+    WHEN ${column} = 'agent-media-step' THEN 3
+    WHEN ${column} = 'preview' THEN 9
+    ELSE 4
+  END`;
+}
+
+function buildLocalStage3JobPrioritySql(column = "kind"): string {
   return `CASE
     WHEN ${column} = 'editing-proxy' THEN 0
     WHEN ${column} = 'preview' THEN 1
@@ -469,14 +480,14 @@ export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
     const row =
       (db
         .prepare(
-          `SELECT *
-             FROM stage3_jobs
-            WHERE execution_target = 'host'
-              AND status = 'queued'
-            ORDER BY
-              ${buildStage3JobPrioritySql("kind")} ASC,
-              created_at ASC
-            LIMIT 1`
+            `SELECT *
+               FROM stage3_jobs
+              WHERE execution_target = 'host'
+                AND status = 'queued'
+              ORDER BY
+                ${buildHostStage3JobPrioritySql("kind")} ASC,
+                created_at ASC
+              LIMIT 1`
         )
         .get() as JobRow | undefined) ?? null;
     if (!row) {
@@ -519,14 +530,14 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
             AND user_id = ?
             AND status = 'queued'
             AND kind IN (${kinds.map(() => "?").join(", ")})
-          ORDER BY ${buildStage3JobPrioritySql("kind")} ASC, created_at ASC
+          ORDER BY ${buildLocalStage3JobPrioritySql("kind")} ASC, created_at ASC
           LIMIT 1`
       : `SELECT * FROM stage3_jobs
           WHERE execution_target = 'local'
             AND workspace_id = ?
             AND user_id = ?
             AND status = 'queued'
-          ORDER BY ${buildStage3JobPrioritySql("kind")} ASC, created_at ASC
+          ORDER BY ${buildLocalStage3JobPrioritySql("kind")} ASC, created_at ASC
           LIMIT 1`;
     const params = kinds
       ? [input.workspaceId, input.userId, ...kinds]
