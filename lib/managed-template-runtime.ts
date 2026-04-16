@@ -5,6 +5,7 @@ import {
   getTemplateById,
   getScienceCardComputed
 } from "./stage3-template";
+import { getTemplateRegistryEntry } from "./stage3-template-registry";
 import type { TemplateContentFixture } from "./template-calibration-types";
 import type { ManagedTemplate, ManagedTemplateShadowLayer } from "./managed-template-types";
 import { assertServerRuntime } from "./server-runtime-guard";
@@ -101,6 +102,46 @@ function toResolvedRuntime(template: ManagedTemplate | null): ResolvedManagedTem
   };
 }
 
+function resolveBuiltInTemplateId(templateId: string | null | undefined): string | null {
+  const candidate = templateId?.trim();
+  if (!candidate) {
+    return null;
+  }
+  const resolved = getTemplateRegistryEntry(candidate).variant.id;
+  return resolved === candidate ? resolved : null;
+}
+
+function toResolvedBuiltInRuntime(templateId: string): ResolvedManagedTemplateRuntime {
+  const entry = getTemplateRegistryEntry(templateId);
+  const templateConfig = cloneStage3TemplateConfig(getTemplateById(templateId));
+  const stamp = new Date().toISOString();
+  return {
+    managedTemplateId: templateId,
+    name: entry.variant.label,
+    description: "",
+    baseTemplateId: templateId,
+    content: {
+      topText: "",
+      bottomText: "",
+      channelName: templateConfig.author.name,
+      channelHandle: templateConfig.author.handle,
+      highlights: createEmptyTemplateCaptionHighlights(),
+      topHighlightPhrases: [],
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 0.34,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfig,
+    shadowLayers: [],
+    versions: [],
+    updatedAt: stamp,
+    createdAt: stamp
+  };
+}
+
 function toResolvedRuntimeFromSnapshot(
   snapshotState: Stage3SnapshotManagedTemplateState
 ): ResolvedManagedTemplateRuntime {
@@ -142,6 +183,10 @@ export async function resolveManagedTemplateRuntime(
   if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
     return toResolvedRuntimeFromSnapshot(snapshotState);
   }
+  const builtInTemplateId = resolveBuiltInTemplateId(candidate);
+  if (builtInTemplateId) {
+    return toResolvedBuiltInRuntime(builtInTemplateId);
+  }
   return toResolvedRuntime(await resolveManagedTemplate(templateId, options));
 }
 
@@ -153,6 +198,10 @@ export function resolveManagedTemplateRuntimeSync(
   const candidate = typeof templateId === "string" ? templateId.trim() : "";
   if (snapshotState?.managedId === candidate && snapshotState.updatedAt) {
     return toResolvedRuntimeFromSnapshot(snapshotState);
+  }
+  const builtInTemplateId = resolveBuiltInTemplateId(candidate);
+  if (builtInTemplateId) {
+    return toResolvedBuiltInRuntime(builtInTemplateId);
   }
   return toResolvedRuntime(resolveManagedTemplateSync(templateId, options));
 }
