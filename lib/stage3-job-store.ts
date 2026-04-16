@@ -605,44 +605,73 @@ export function hasQueuedStage3Jobs(executionTarget: Stage3ExecutionTarget = "ho
   return row?.present === 1;
 }
 
+function buildStage3JobCompletionError(
+  db: ReturnType<typeof getDb>,
+  jobId: string,
+  step: string,
+  error: unknown
+): Error {
+  const row = db
+    .prepare("SELECT 1 as present FROM stage3_jobs WHERE id = ? LIMIT 1")
+    .get(jobId) as { present?: number } | undefined;
+  const rowState = row?.present === 1 ? "job row present" : "job row missing";
+  const message = error instanceof Error ? error.message : String(error);
+  return new Error(`Stage 3 completion failed during ${step} for ${jobId} (${rowState}): ${message}`);
+}
+
 export function completeStage3Job(jobId: string, input: CompleteStage3JobInput): Stage3JobRecord {
   return runInTransaction((db) => {
     const stamp = nowIso();
     if (input.artifact) {
-      clearStage3JobArtifacts(jobId);
-      db.prepare(
-        `INSERT INTO stage3_job_artifacts
-          (id, job_id, kind, file_name, mime_type, file_path, size_bytes, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        newId(),
-        jobId,
-        input.artifact.kind ?? "video",
-        input.artifact.fileName,
-        input.artifact.mimeType,
-        input.artifact.filePath,
-        input.artifact.sizeBytes,
-        stamp
-      );
+      try {
+        clearStage3JobArtifacts(jobId);
+        db.prepare(
+          `INSERT INTO stage3_job_artifacts
+            (id, job_id, kind, file_name, mime_type, file_path, size_bytes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          newId(),
+          jobId,
+          input.artifact.kind ?? "video",
+          input.artifact.fileName,
+          input.artifact.mimeType,
+          input.artifact.filePath,
+          input.artifact.sizeBytes,
+          stamp
+        );
+      } catch (error) {
+        throw buildStage3JobCompletionError(db, jobId, "artifact_persist", error);
+      }
     }
 
-    db.prepare(
-      `UPDATE stage3_jobs
-          SET status = 'completed',
-              result_json = ?,
-              error_code = NULL,
-              error_message = NULL,
-              recoverable = 1,
-              completed_at = ?,
-              updated_at = ?,
-              assigned_worker_id = NULL,
-              lease_expires_at = NULL,
-              heartbeat_at = NULL
-        WHERE id = ?`
-    ).run(input.resultJson ?? null, stamp, stamp, jobId);
-    appendStage3JobEvent(jobId, "info", "Completed job.", {
-      artifact: Boolean(input.artifact)
-    });
+    try {
+      const result = db.prepare(
+        `UPDATE stage3_jobs
+            SET status = 'completed',
+                result_json = ?,
+                error_code = NULL,
+                error_message = NULL,
+                recoverable = 1,
+                completed_at = ?,
+                updated_at = ?,
+                assigned_worker_id = NULL,
+                lease_expires_at = NULL,
+                heartbeat_at = NULL
+          WHERE id = ?`
+      ).run(input.resultJson ?? null, stamp, stamp, jobId);
+      if ((result.changes ?? 0) === 0) {
+        throw new Error("Stage 3 job row was not updated.");
+      }
+    } catch (error) {
+      throw buildStage3JobCompletionError(db, jobId, "job_update", error);
+    }
+    try {
+      appendStage3JobEvent(jobId, "info", "Completed job.", {
+        artifact: Boolean(input.artifact)
+      });
+    } catch (error) {
+      throw buildStage3JobCompletionError(db, jobId, "event_append", error);
+    }
     return mapJobRow(readJobRow(jobId)) as Stage3JobRecord;
   });
 }
