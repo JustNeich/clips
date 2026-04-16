@@ -36,6 +36,8 @@ type EditingProxyProfile = {
 };
 
 export const STAGE3_EVEN_DIMENSIONS_FILTER = "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,setsar=1";
+export const STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER =
+  "scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos";
 export const STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER = [
   "fps=30",
   STAGE3_EVEN_DIMENSIONS_FILTER,
@@ -99,8 +101,12 @@ function getEncodeProfile(profile: Stage3MediaProfile): EncodeProfile {
     preset: "veryfast",
     crf: "20",
     threads: constrained ? "1" : "0",
-    fitScalePrefix: ""
+    fitScalePrefix: STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER
   };
+}
+
+export function resolveStage3SourcePreparationScaleFilter(profile: Stage3MediaProfile): string | null {
+  return profile === "render" ? STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER : null;
 }
 
 function getEditingProxyProfile(): EditingProxyProfile {
@@ -943,8 +949,11 @@ async function extractSegmentsToFiles(
     const output = path.join(tmpDir, `seg-${i + 1}.mp4`);
     const speed = normalizeSegmentSpeed(segment.speed);
     const videoFilters: string[] = [];
+    const renderScaleFilter = resolveStage3SourcePreparationScaleFilter(profile);
     if (previewScaleFilter) {
       videoFilters.push(previewScaleFilter);
+    } else if (renderScaleFilter) {
+      videoFilters.push(renderScaleFilter);
     }
     if (Math.abs(speed - 1) > 0.001) {
       videoFilters.push(`setpts=PTS/${speed.toFixed(6)}`);

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildStage3FitClipVideoFilters,
   buildNormalizeStage3SourceFfmpegArgs,
+  resolveStage3SourcePreparationScaleFilter,
+  STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER,
   STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER
 } from "../lib/stage3-media-agent";
 import { buildFinalizeRenderedOutputArgs } from "../lib/stage3-render-service";
@@ -63,6 +66,20 @@ test("stage3 source normalization omits audio encoding when the source has no au
 
   assert.ok(args.includes("-an"));
   assert.equal(args.includes("-c:a"), false);
+});
+
+test("render source preparation caps oversized clips before remotion decodes them", () => {
+  assert.equal(resolveStage3SourcePreparationScaleFilter("preview"), null);
+  assert.equal(resolveStage3SourcePreparationScaleFilter("render"), STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER);
+  const filters = buildStage3FitClipVideoFilters({
+    effectiveRatio: 1,
+    smoothSlowMo: false,
+    pts: "1.000000",
+    scalePrefix: resolveStage3SourcePreparationScaleFilter("render") ?? undefined
+  });
+
+  assert.match(filters, /^scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,/);
+  assert.match(filters, /scale=trunc\(iw\/2\)\*2:trunc\(ih\/2\)\*2:flags=lanczos,setsar=1$/);
 });
 
 test("final render args re-encode video into a stable limited-range contract", () => {
