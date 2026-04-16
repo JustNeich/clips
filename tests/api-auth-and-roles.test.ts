@@ -690,3 +690,89 @@ test("deleting a custom template reassigns channels to the stable default templa
     assert.equal(reloaded?.templateId, defaultTemplateId);
   });
 });
+
+test("managed template GET reports archived references instead of a generic missing error", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Template Archived Ref Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const template = await createManagedTemplate(
+      {
+        name: "Archive Me",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    await deleteManagedTemplate(template.id, { workspaceId: owner.workspace.id });
+
+    const response = await getManagedTemplate(
+      new Request(`http://localhost/api/design/templates/${template.id}`, {
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`
+        }
+      }),
+      { params: Promise.resolve({ templateId: template.id }) }
+    );
+    const body = (await response.json()) as {
+      error?: string;
+      referenceStatus?: string;
+    };
+
+    assert.equal(response.status, 404);
+    assert.equal(body.error, "Template is archived.");
+    assert.equal(body.referenceStatus, "archived");
+  });
+});
+
+test("deleting an already archived template is idempotent and returns a recovery fallback", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Template Idempotent Delete Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const template = await createManagedTemplate(
+      {
+        name: "Archive Me Twice",
+        baseTemplateId: "science-card-v1"
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    await deleteManagedTemplate(template.id, { workspaceId: owner.workspace.id });
+
+    const response = await deleteManagedTemplateRoute(
+      new Request(`http://localhost/api/design/templates/${template.id}`, {
+        method: "DELETE",
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`
+        }
+      }),
+      { params: Promise.resolve({ templateId: template.id }) }
+    );
+    const body = (await response.json()) as {
+      deletedId?: string;
+      fallbackTemplateId?: string | null;
+      alreadyDeleted?: boolean;
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.deletedId, template.id);
+    assert.equal(body.fallbackTemplateId, defaultTemplateId);
+    assert.equal(body.alreadyDeleted, true);
+  });
+});

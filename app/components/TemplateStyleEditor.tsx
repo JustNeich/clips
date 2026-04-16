@@ -36,6 +36,12 @@ import {
   type TemplateHighlightPhraseAnnotation,
   type TemplateHighlightSlotId
 } from "../../lib/template-highlights";
+import {
+  buildTemplateRoadTemplateOptions,
+  describeUnavailableTemplate,
+  type TemplateRoadUnavailableStatus,
+  type TemplateRoadUnavailableTemplate
+} from "../../lib/template-road-library";
 import type {
   ManagedTemplate,
   ManagedTemplateShadowLayer,
@@ -56,6 +62,12 @@ type ManagedTemplateListCapabilities = {
 type ManagedTemplateListResponse = {
   templates?: ManagedTemplateSummary[];
   capabilities?: Partial<ManagedTemplateListCapabilities>;
+};
+
+type ManagedTemplateDetailResponse = {
+  template?: ManagedTemplate;
+  error?: string;
+  referenceStatus?: TemplateRoadUnavailableStatus;
 };
 
 type ComputedSnapshot = ReturnType<typeof getTemplateComputed>;
@@ -1098,6 +1110,7 @@ export function TemplateStyleEditor({
   );
   const [computed, setComputed] = useState<ComputedSnapshot | null>(null);
   const [templates, setTemplates] = useState<ManagedTemplateSummary[]>([]);
+  const [unavailableTemplate, setUnavailableTemplate] = useState<TemplateRoadUnavailableTemplate | null>(null);
   const [templateCapabilities, setTemplateCapabilities] = useState<ManagedTemplateListCapabilities>({
     canCreate: true,
     visibilityScope: initialTemplateAccessScope
@@ -1133,6 +1146,7 @@ export function TemplateStyleEditor({
   const autosaveFeedbackRevisionRef = useRef(0);
   const activeTemplateIdRef = useRef<string | null>(initialTemplateId?.trim() || null);
   const latestEditorSignatureRef = useRef<string>("");
+  const templatesRef = useRef<ManagedTemplateSummary[]>([]);
 
   const activeTemplate = useMemo(
     () => TEMPLATE_VARIANTS.find((variant) => variant.id === baseTemplateId) ?? TEMPLATE_VARIANTS[0],
@@ -1143,6 +1157,11 @@ export function TemplateStyleEditor({
     () => templates.find((template) => template.id === templateId) ?? null,
     [templateId, templates]
   );
+  const templateSelectOptions = useMemo(
+    () => buildTemplateRoadTemplateOptions({ templates, unavailableTemplate }),
+    [templates, unavailableTemplate]
+  );
+  const deleteTargetTemplateId = unavailableTemplate?.templateId ?? templateId;
   const canCreateTemplates = templateCapabilities.canCreate;
   const emptyLibraryMessage = canCreateTemplates
     ? "У тебя пока нет доступных шаблонов. Создай первый, и он сразу появится в настройках канала и в Stage 3."
@@ -1186,8 +1205,10 @@ export function TemplateStyleEditor({
   activeTemplateIdRef.current = templateId;
   latestEditorSignatureRef.current = editorSignature;
   const isDirty = lastSavedSignature !== null ? editorSignature !== lastSavedSignature : true;
-  const editorUrl = templateId ? `/design/template-road?template=${templateId}` : null;
-  const renderUrl = templateId ? `/design/science-card?template=${templateId}` : null;
+  const editorUrl =
+    !unavailableTemplate && templateId ? `/design/template-road?template=${templateId}` : null;
+  const renderUrl =
+    !unavailableTemplate && templateId ? `/design/science-card?template=${templateId}` : null;
   const currentTopFontFamily =
     templateConfig.typography.top.fontFamily ?? resolveDefaultTopFontValue(baseTemplateId);
   const currentBottomFontFamily =
@@ -1227,6 +1248,10 @@ export function TemplateStyleEditor({
     clearPendingAutosaveTimer();
   }, [clearPendingAutosaveTimer]);
 
+  useEffect(() => {
+    templatesRef.current = templates;
+  }, [templates]);
+
   const applyManagedTemplate = useCallback((managedTemplate: ManagedTemplate) => {
     loadTemplateRequestIdRef.current += 1;
     cancelPendingAutosaveCycle();
@@ -1247,6 +1272,7 @@ export function TemplateStyleEditor({
     setComputed(null);
     setBackgroundUploadState("idle");
     setBackgroundUploadMessage("");
+    setUnavailableTemplate(null);
     setSaveState("idle");
     setSaveMessage("Изменения синхронизируются автоматически.");
     window.setTimeout(() => {
@@ -1283,6 +1309,36 @@ export function TemplateStyleEditor({
       }, 0);
     },
     [cancelPendingAutosaveCycle, emptyLibraryMessage]
+  );
+
+  const openUnavailableTemplateRecovery = useCallback(
+    (
+      nextTemplateId: string,
+      status: TemplateRoadUnavailableStatus,
+      availableTemplates: ManagedTemplateSummary[]
+    ) => {
+      const fallbackSummary =
+        availableTemplates.find((template) => template.id === activeTemplateIdRef.current) ??
+        availableTemplates[0] ??
+        null;
+      const fallbackBaseTemplateId = fallbackSummary?.baseTemplateId ?? initialResolvedTemplateId;
+      const message = describeUnavailableTemplate({
+        templateId: nextTemplateId,
+        status
+      });
+
+      applyDraftTemplate(fallbackBaseTemplateId, message);
+      setTemplateId(nextTemplateId);
+      setTemplateName("Недоступный шаблон");
+      setTemplateDescription("");
+      setUnavailableTemplate({
+        templateId: nextTemplateId,
+        status
+      });
+      setSaveState("error");
+      setSaveMessage(message);
+    },
+    [applyDraftTemplate, initialResolvedTemplateId]
   );
 
   const fetchTemplateList = useCallback(async (): Promise<{
@@ -1324,45 +1380,46 @@ export function TemplateStyleEditor({
       nextTemplateId: string | null | undefined,
       options?: {
         fallbackTemplates?: ManagedTemplateSummary[];
-        fallbackToFirst?: boolean;
       }
     ) => {
       const requestId = loadTemplateRequestIdRef.current + 1;
       loadTemplateRequestIdRef.current = requestId;
       const candidate = nextTemplateId?.trim();
-      const availableTemplates = options?.fallbackTemplates ?? templates;
+      const availableTemplates = options?.fallbackTemplates ?? templatesRef.current;
       const targetTemplateId = candidate || availableTemplates[0]?.id || null;
       if (!targetTemplateId) {
-        applyDraftTemplate(baseTemplateId);
+        setUnavailableTemplate(null);
+        applyDraftTemplate(initialResolvedTemplateId);
         return;
       }
       const response = await fetch(`/api/design/templates/${encodeURIComponent(targetTemplateId)}`, {
         cache: "no-store"
       });
       if (!response.ok) {
-        if (
-          options?.fallbackToFirst &&
-          availableTemplates.length > 0 &&
-          availableTemplates[0].id !== targetTemplateId
+        const payload = (await response.json().catch(() => null)) as ManagedTemplateDetailResponse | null;
+        if (requestId === loadTemplateRequestIdRef.current && availableTemplates.length === 0) {
+          applyDraftTemplate(
+            initialResolvedTemplateId,
+            payload?.error || emptyLibraryMessage
+          );
+        } else if (
+          requestId === loadTemplateRequestIdRef.current &&
+          candidate &&
+          (payload?.referenceStatus === "archived" || payload?.referenceStatus === "missing")
         ) {
-          await loadTemplate(availableTemplates[0].id, {
-            fallbackTemplates: availableTemplates,
-            fallbackToFirst: false
-          });
-        } else if (requestId === loadTemplateRequestIdRef.current && availableTemplates.length === 0) {
-          applyDraftTemplate(candidate ?? baseTemplateId);
+          openUnavailableTemplateRecovery(candidate, payload.referenceStatus, availableTemplates);
         } else if (requestId === loadTemplateRequestIdRef.current) {
           setSaveState("error");
-          setSaveMessage("Не удалось открыть выбранный шаблон.");
+          setSaveMessage(payload?.error || "Не удалось открыть выбранный шаблон.");
         }
         return;
       }
-      const payload = (await response.json()) as { template?: ManagedTemplate };
+      const payload = (await response.json()) as ManagedTemplateDetailResponse;
       if (payload.template && requestId === loadTemplateRequestIdRef.current) {
         applyManagedTemplate(payload.template);
       }
     },
-    [applyDraftTemplate, applyManagedTemplate, baseTemplateId, templates]
+    [applyDraftTemplate, applyManagedTemplate, emptyLibraryMessage, initialResolvedTemplateId, openUnavailableTemplateRecovery]
   );
 
   useEffect(() => {
@@ -1509,12 +1566,9 @@ export function TemplateStyleEditor({
         }
 
         const requestedTemplateId = initialTemplateId?.trim() || null;
-        const preferredTemplateId = nextTemplates.some((template) => template.id === requestedTemplateId)
-          ? requestedTemplateId
-          : nextTemplates[0]?.id ?? null;
+        const preferredTemplateId = requestedTemplateId || (nextTemplates[0]?.id ?? null);
         await loadTemplate(preferredTemplateId, {
-          fallbackTemplates: nextTemplates,
-          fallbackToFirst: true
+          fallbackTemplates: nextTemplates
         });
       } catch {
         if (!cancelled) {
@@ -1534,6 +1588,9 @@ export function TemplateStyleEditor({
   useEffect(() => {
     function handleWindowFocus() {
       void (async () => {
+        if (unavailableTemplate) {
+          return;
+        }
         try {
           const { templates: nextTemplates } = await fetchTemplateList();
           const currentTemplateId = templateId?.trim() || null;
@@ -1545,9 +1602,9 @@ export function TemplateStyleEditor({
             const fallbackTemplateId = nextTemplates[0]?.id ?? null;
             if (fallbackTemplateId) {
               await loadTemplate(fallbackTemplateId, {
-                fallbackTemplates: nextTemplates,
-                fallbackToFirst: true
+                fallbackTemplates: nextTemplates
               });
+              setUnavailableTemplate(null);
               setSaveState("error");
               setSaveMessage("Текущий шаблон был удалён или восстановлен системой. Открыл доступный workspace-шаблон.");
               return;
@@ -1573,6 +1630,7 @@ export function TemplateStyleEditor({
     initialResolvedTemplateId,
     loadTemplate,
     templateId,
+    unavailableTemplate,
   ]);
 
   const persistCurrentTemplate = useCallback(async (): Promise<ManagedTemplate | null> => {
@@ -1657,7 +1715,7 @@ export function TemplateStyleEditor({
   ]);
 
   useEffect(() => {
-    if (!templateId || !hydrationReadyRef.current || loadingTemplateRef.current) {
+    if (!templateId || unavailableTemplate || !hydrationReadyRef.current || loadingTemplateRef.current) {
       return;
     }
     if (!isDirty) {
@@ -1703,7 +1761,8 @@ export function TemplateStyleEditor({
     editorSignature,
     isDirty,
     persistCurrentTemplate,
-    templateId
+    templateId,
+    unavailableTemplate
   ]);
 
   function jumpToSection(sectionId: string) {
@@ -2088,7 +2147,8 @@ export function TemplateStyleEditor({
   }
 
   async function handleDeleteTemplate() {
-    if (!templateId) {
+    const targetTemplateId = unavailableTemplate?.templateId ?? templateId;
+    if (!targetTemplateId) {
       return;
     }
     cancelPendingAutosaveCycle();
@@ -2105,7 +2165,7 @@ export function TemplateStyleEditor({
     setSaveMessage("Удаляю шаблон...");
 
     try {
-      const response = await fetch(`/api/design/templates/${encodeURIComponent(templateId)}`, {
+      const response = await fetch(`/api/design/templates/${encodeURIComponent(targetTemplateId)}`, {
         method: "DELETE"
       });
       if (!response.ok) {
@@ -2114,6 +2174,7 @@ export function TemplateStyleEditor({
       const payload = (await response.json()) as {
         deletedId?: string;
         fallbackTemplateId?: string | null;
+        alreadyDeleted?: boolean;
       };
       const { templates: nextTemplates } = await fetchTemplateList();
       const fallbackTemplateId =
@@ -2123,8 +2184,7 @@ export function TemplateStyleEditor({
       const canOpenFallbackTemplate = nextTemplates.some((template) => template.id === fallbackTemplateId);
       if (fallbackTemplateId && canOpenFallbackTemplate) {
         await loadTemplate(fallbackTemplateId, {
-          fallbackTemplates: nextTemplates,
-          fallbackToFirst: true
+          fallbackTemplates: nextTemplates
         });
       } else {
         applyDraftTemplate(
@@ -2134,12 +2194,14 @@ export function TemplateStyleEditor({
       }
       setSaveState("saved");
       setSaveMessage(
-        fallbackTemplateId && canOpenFallbackTemplate
-          ? "Шаблон удалён."
-          : "Шаблон удалён. Сейчас в библиотеке пусто, можно сразу создать новый."
+        payload.alreadyDeleted
+          ? "Недоступный шаблон уже был архивирован. Открыт доступный workspace-шаблон."
+          : fallbackTemplateId && canOpenFallbackTemplate
+            ? "Шаблон удалён."
+            : "Шаблон удалён. Сейчас в библиотеке пусто, можно сразу создать новый."
       );
       publishManagedTemplateSync({
-        templateId,
+        templateId: targetTemplateId,
         updatedAt: new Date().toISOString(),
         reason: "deleted"
       });
@@ -2299,7 +2361,7 @@ export function TemplateStyleEditor({
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => void handleDeleteTemplate()}
-                disabled={!templateId || saveState === "saving"}
+                disabled={!deleteTargetTemplateId || saveState === "saving"}
               >
                 Удалить шаблон
               </button>
@@ -2355,22 +2417,51 @@ export function TemplateStyleEditor({
             }
           >
             <div className="template-road-editor-grid two-up">
+              {unavailableTemplate ? (
+                <div className="template-road-editor-field" style={{ gridColumn: "1 / -1" }}>
+                  <span className="field-label">Недоступный шаблон</span>
+                  <p className="subtle-text">{describeUnavailableTemplate(unavailableTemplate)}</p>
+                  <div className="template-road-editor-header-actions">
+                    {templates[0] ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => void loadTemplate(templates[0].id, { fallbackTemplates: templates })}
+                      >
+                        Открыть первый доступный
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => void handleCreateTemplate()}
+                      disabled={saveState === "saving" || !canCreateTemplates}
+                    >
+                      Создать новый шаблон
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {templates.length > 0 ? (
                 <label className="template-road-editor-field">
                   <span className="field-label">Открыть шаблон</span>
                   <select
                     className="text-input"
-                    value={templateId ?? templates[0]?.id ?? ""}
+                    value={templateId ?? templateSelectOptions[0]?.value ?? ""}
                     onChange={(event) => void loadTemplate(event.target.value)}
                   >
-                    {templates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
+                    {templateSelectOptions.map((template) => (
+                      <option
+                        key={`${template.unavailable ? "unavailable" : "active"}-${template.value}`}
+                        value={template.value}
+                        disabled={template.unavailable}
+                      >
+                        {template.label}
                       </option>
                     ))}
                   </select>
                   <span className="template-road-editor-field-hint">
-                    После выбора весь редактор переключится на этот шаблон.
+                    После выбора весь редактор переключится на этот шаблон. Недоступные записи больше не перекидывают молча на чужой workspace-шаблон.
                   </span>
                 </label>
               ) : (

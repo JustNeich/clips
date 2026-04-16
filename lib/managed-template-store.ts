@@ -61,7 +61,12 @@ export type ManagedTemplateDeleteResult = {
   deleted: boolean;
   fallbackTemplateId: string | null;
   reassignedChannels: number;
-  reason?: "not_found" | "last_template";
+  reason?: "not_found" | "last_template" | "already_archived";
+};
+
+export type ManagedTemplateReferenceInspection = {
+  templateId: string;
+  status: "active" | "archived" | "missing";
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -821,6 +826,36 @@ function templateRowExists(templateId: string, workspaceId?: string | null): boo
   return Boolean((row as Record<string, unknown> | undefined)?.id);
 }
 
+export function inspectManagedTemplateReferenceSync(
+  templateId: string,
+  options?: { workspaceId?: string | null }
+): ManagedTemplateReferenceInspection {
+  const safeId = sanitizeTemplateId(templateId);
+  if (!safeId) {
+    return {
+      templateId: "",
+      status: "missing"
+    };
+  }
+  if (activeTemplateExists(safeId, options?.workspaceId)) {
+    return {
+      templateId: safeId,
+      status: "active"
+    };
+  }
+  return {
+    templateId: safeId,
+    status: templateRowExists(safeId, options?.workspaceId) ? "archived" : "missing"
+  };
+}
+
+export async function inspectManagedTemplateReference(
+  templateId: string,
+  options?: { workspaceId?: string | null }
+): Promise<ManagedTemplateReferenceInspection> {
+  return inspectManagedTemplateReferenceSync(templateId, options);
+}
+
 function getTemplateRowWorkspaceId(templateId: string): string | null {
   const db = getDb();
   const row = db
@@ -1286,6 +1321,13 @@ export function deleteManagedTemplateDetailedSync(
   templateId: string,
   options?: { workspaceId?: string | null }
 ): ManagedTemplateDeleteResult {
+  const inspection = inspectManagedTemplateReferenceSync(templateId, options);
+  if (inspection.status === "archived") {
+    return { deleted: false, fallbackTemplateId: null, reassignedChannels: 0, reason: "already_archived" };
+  }
+  if (inspection.status === "missing") {
+    return { deleted: false, fallbackTemplateId: null, reassignedChannels: 0, reason: "not_found" };
+  }
   const template = readManagedTemplateSync(templateId, options);
   if (!template) {
     return { deleted: false, fallbackTemplateId: null, reassignedChannels: 0, reason: "not_found" };

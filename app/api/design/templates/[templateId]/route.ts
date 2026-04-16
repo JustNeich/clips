@@ -1,6 +1,8 @@
 import { requireAuth } from "../../../../../lib/auth/guards";
 import {
   deleteManagedTemplateDetailed,
+  getWorkspaceDefaultTemplateId,
+  inspectManagedTemplateReference,
   readManagedTemplate,
   updateManagedTemplate
 } from "../../../../../lib/managed-template-store";
@@ -15,7 +17,20 @@ export async function GET(_request: Request, context: Context): Promise<Response
     const auth = await requireAuth(_request);
     const template = await readManagedTemplate(templateId, { workspaceId: auth.workspace.id });
     if (!template) {
-      return Response.json({ error: "Template not found." }, { status: 404 });
+      const reference = await inspectManagedTemplateReference(templateId, {
+        workspaceId: auth.workspace.id
+      });
+      const error =
+        reference.status === "archived"
+          ? "Template is archived."
+          : "Template not found.";
+      return Response.json(
+        {
+          error,
+          referenceStatus: reference.status
+        },
+        { status: 404 }
+      );
     }
     return Response.json({ template }, { status: 200 });
   } catch (error) {
@@ -55,6 +70,17 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
       workspaceId: auth.workspace.id
     });
     if (!result.deleted) {
+      if (result.reason === "already_archived") {
+        return Response.json(
+          {
+            deletedId: templateId,
+            fallbackTemplateId: await getWorkspaceDefaultTemplateId(auth.workspace.id),
+            reassignedChannels: 0,
+            alreadyDeleted: true
+          },
+          { status: 200 }
+        );
+      }
       const message =
         result.reason === "last_template"
           ? "Нельзя удалить последний шаблон workspace."
