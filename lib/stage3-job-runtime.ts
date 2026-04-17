@@ -11,6 +11,7 @@ import { completeRenderExportAndMaybeQueue } from "./channel-publication-service
 import { scheduleChannelPublicationProcessing } from "./channel-publication-runtime";
 import { appendChatEvent, getChatById } from "./chat-history";
 import { findLatestStage2Event } from "./chat-workflow";
+import { persistRenderExportArtifact } from "./render-export-artifacts";
 import {
   appendStage3JobEvent,
   claimNextQueuedStage3Job,
@@ -315,6 +316,12 @@ async function ensureRenderExportCompletionState(
     return null;
   }
 
+  const durableArtifact = await persistRenderExportArtifact({
+    stage3JobId: completedArtifact.jobId,
+    sourcePath: completedArtifact.artifactFilePath,
+    fileName: completedArtifact.artifactFileName
+  });
+
   const stage2Result = findLatestStage2Event(chat)?.payload ?? null;
   const completion = completeRenderExportAndMaybeQueue({
     workspaceId: initialJob.workspaceId,
@@ -323,9 +330,9 @@ async function ensureRenderExportCompletionState(
     chatTitle: chat.title,
     stage3JobId: completedArtifact.jobId,
     artifactFileName: completedArtifact.artifactFileName,
-    artifactFilePath: completedArtifact.artifactFilePath,
+    artifactFilePath: durableArtifact.filePath,
     artifactMimeType: completedArtifact.artifactMimeType,
-    artifactSizeBytes: completedArtifact.artifactSizeBytes,
+    artifactSizeBytes: durableArtifact.sizeBytes,
     renderTitle: payload.renderTitle?.trim() || null,
     sourceUrl: payload.sourceUrl?.trim() || chat.url,
     snapshotJson: JSON.stringify(payload.snapshot ?? null),

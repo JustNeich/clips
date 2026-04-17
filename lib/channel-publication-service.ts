@@ -11,6 +11,7 @@ import {
   cancelChannelPublication,
   createChannelPublication,
   createRenderExport,
+  ensureRenderExportArtifactAvailable,
   extendChannelPublicationLease,
   findLatestPublicationForChat,
   findLatestPublicationForRenderExport,
@@ -848,9 +849,12 @@ export async function processQueuedChannelPublication(
       });
     }
 
-    const renderExport = getRenderExportById(latest.renderExportId);
+    const renderExport = await ensureRenderExportArtifactAvailable(latest.renderExportId);
     if (!renderExport) {
-      throw new Error("Не найден render export для публикации.");
+      throw new YouTubePublishError(
+        "Не найден сохранённый render artifact для этой публикации. Повторите рендер, чтобы поставить ролик в очередь заново.",
+        { recoverable: true }
+      );
     }
     const processingState = getChannelPublicationProcessingState(latest.id);
     const remote = await uploadYouTubeVideo({

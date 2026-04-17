@@ -689,8 +689,12 @@ test("completeRenderExportAndMaybeQueue keeps render export but skips queued pub
     });
 
     assert.ok(completion.renderExport.id);
-    assert.equal(completion.publication, null);
-    assert.equal(listChannelPublications(scenario.channelId).length, 0);
+    assert.equal(completion.publication?.status, "failed");
+    assert.match(
+      completion.publication?.lastError ?? "",
+      /не поставлена в очередь|подключите YouTube/i
+    );
+    assert.equal(listChannelPublications(scenario.channelId).length, 1);
   });
 });
 

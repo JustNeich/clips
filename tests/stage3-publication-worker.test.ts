@@ -153,6 +153,7 @@ test("local worker render completion creates a render export and queued publicat
 
     const renderExport = getRenderExportByStage3JobId(job.id);
     assert.ok(renderExport, "expected local render completion to persist render export");
+    assert.match(renderExport?.artifactFilePath ?? "", /render-exports/);
 
     const publications = listChannelPublications(channel.id);
     assert.equal(publications.length, 1);

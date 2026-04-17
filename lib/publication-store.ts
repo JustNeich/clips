@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import type {
   ChannelPublication,
   ChannelPublicationEvent,
@@ -17,6 +18,11 @@ import {
 } from "./channel-publishing";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { PublicationMutationError } from "./publication-mutation-errors";
+import {
+  isRenderExportArtifactPath,
+  persistRenderExportArtifact
+} from "./render-export-artifacts";
+import { getStage3Job } from "./stage3-job-store";
 
 export type StoredYoutubeCredential = {
   refreshToken: string;
@@ -697,6 +703,31 @@ export function getRenderExportByStage3JobId(stage3JobId: string): RenderExportR
   );
 }
 
+function updateRenderExportArtifact(input: {
+  renderExportId: string;
+  artifactFileName: string;
+  artifactFilePath: string;
+  artifactMimeType: string;
+  artifactSizeBytes: number;
+}): RenderExportRecord | null {
+  const db = getDb();
+  db.prepare(
+    `UPDATE render_exports
+        SET artifact_file_name = ?,
+            artifact_file_path = ?,
+            artifact_mime_type = ?,
+            artifact_size_bytes = ?
+      WHERE id = ?`
+  ).run(
+    input.artifactFileName,
+    input.artifactFilePath,
+    input.artifactMimeType,
+    input.artifactSizeBytes,
+    input.renderExportId
+  );
+  return getRenderExportById(input.renderExportId);
+}
+
 export function getRenderExportById(renderExportId: string): RenderExportRecord | null {
   const db = getDb();
   return mapRenderExportRow(
@@ -721,6 +752,23 @@ export function createRenderExport(input: {
 }): RenderExportRecord {
   const existing = getRenderExportByStage3JobId(input.stage3JobId);
   if (existing) {
+    if (
+      existing.artifactFileName !== input.artifactFileName ||
+      existing.artifactFilePath !== input.artifactFilePath ||
+      existing.artifactMimeType !== input.artifactMimeType ||
+      existing.artifactSizeBytes !== input.artifactSizeBytes ||
+      !existsSync(existing.artifactFilePath)
+    ) {
+      return (
+        updateRenderExportArtifact({
+          renderExportId: existing.id,
+          artifactFileName: input.artifactFileName,
+          artifactFilePath: input.artifactFilePath,
+          artifactMimeType: input.artifactMimeType,
+          artifactSizeBytes: input.artifactSizeBytes
+        }) ?? existing
+      );
+    }
     return existing;
   }
   const record: RenderExportRecord = {
@@ -761,6 +809,51 @@ export function createRenderExport(input: {
     record.createdAt
   );
   return record;
+}
+
+export async function ensureRenderExportArtifactAvailable(
+  renderExportId: string
+): Promise<RenderExportRecord | null> {
+  const current = getRenderExportById(renderExportId);
+  if (!current) {
+    return null;
+  }
+
+  if (current.artifactFilePath && existsSync(current.artifactFilePath)) {
+    if (isRenderExportArtifactPath(current.artifactFilePath)) {
+      return current;
+    }
+    const persisted = await persistRenderExportArtifact({
+      stage3JobId: current.stage3JobId,
+      sourcePath: current.artifactFilePath,
+      fileName: current.artifactFileName
+    });
+    return updateRenderExportArtifact({
+      renderExportId: current.id,
+      artifactFileName: current.artifactFileName,
+      artifactFilePath: persisted.filePath,
+      artifactMimeType: current.artifactMimeType,
+      artifactSizeBytes: persisted.sizeBytes
+    });
+  }
+
+  const job = getStage3Job(current.stage3JobId);
+  if (!job?.artifactFilePath || !job.artifact || !existsSync(job.artifactFilePath)) {
+    return null;
+  }
+
+  const persisted = await persistRenderExportArtifact({
+    stage3JobId: current.stage3JobId,
+    sourcePath: job.artifactFilePath,
+    fileName: current.artifactFileName || job.artifact.fileName
+  });
+  return updateRenderExportArtifact({
+    renderExportId: current.id,
+    artifactFileName: current.artifactFileName || job.artifact.fileName,
+    artifactFilePath: persisted.filePath,
+    artifactMimeType: current.artifactMimeType || job.artifact.mimeType,
+    artifactSizeBytes: persisted.sizeBytes
+  });
 }
 
 export function appendChannelPublicationEvent(
