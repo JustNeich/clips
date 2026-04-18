@@ -148,6 +148,51 @@ export function applyStage2CaptionToStage3Text(input: {
   };
 }
 
+export function recoverMissingStage3CaptionBlocks(input: {
+  currentTopText: string;
+  currentBottomText: string;
+  currentCaptionHighlights?: TemplateCaptionHighlights | null;
+  caption: Pick<Stage2CaptionOption, "top" | "bottom" | "highlights"> | null;
+  draftTopText?: string | null;
+  draftBottomText?: string | null;
+}): {
+  topText: string;
+  bottomText: string;
+  captionHighlights: TemplateCaptionHighlights;
+  recoveredMode: Stage3CaptionApplyMode | null;
+} {
+  const currentTopText = input.currentTopText ?? "";
+  const currentBottomText = input.currentBottomText ?? "";
+  const emptyTop = currentTopText.trim().length === 0;
+  const emptyBottom = currentBottomText.trim().length === 0;
+  const canRecoverTop = emptyTop && input.draftTopText == null;
+  const canRecoverBottom = emptyBottom && input.draftBottomText == null;
+
+  if (!input.caption || (!canRecoverTop && !canRecoverBottom)) {
+    return {
+      topText: currentTopText,
+      bottomText: currentBottomText,
+      captionHighlights: cloneTemplateCaptionHighlights(input.currentCaptionHighlights),
+      recoveredMode: null
+    };
+  }
+
+  const recoveredMode: Stage3CaptionApplyMode =
+    canRecoverTop && canRecoverBottom ? "all" : canRecoverTop ? "top" : "bottom";
+  const recovered = applyStage2CaptionToStage3Text({
+    currentTopText,
+    currentBottomText,
+    currentCaptionHighlights: input.currentCaptionHighlights,
+    caption: input.caption,
+    mode: recoveredMode
+  });
+
+  return {
+    ...recovered,
+    recoveredMode
+  };
+}
+
 function resolveStage3TextSource(input: {
   currentText: string | null;
   selectedText: string | null;

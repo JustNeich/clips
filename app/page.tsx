@@ -143,7 +143,8 @@ import {
   buildStage2ToStage3HandoffSummary,
   getSelectedStage2Caption,
   getSelectedStage2Title,
-  getStage2SelectionDefaults
+  getStage2SelectionDefaults,
+  recoverMissingStage3CaptionBlocks
 } from "../lib/stage2-stage3-handoff";
 import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 import {
@@ -1078,13 +1079,13 @@ export default function HomePage() {
         selectedCaptionOption: preferredCaptionOption,
         selectedTitleOption: preferredTitleOption
       });
-      const nextTopText = handoffSummary.topText ?? "";
-      const nextBottomText = handoffSummary.bottomText ?? "";
       const nextCaptionHighlights =
         draft?.stage3.captionHighlights ??
         latestVersion?.final.captionHighlights ??
         handoffSummary.caption?.highlights ??
         createEmptyTemplateCaptionHighlights();
+      const nextTopText = handoffSummary.topText ?? "";
+      const nextBottomText = handoffSummary.bottomText ?? "";
       const hydratedFromSelectedCaption =
         Boolean(selectedCaptionForHydration) &&
         nextTopText === (selectedCaptionForHydration?.top ?? "") &&
@@ -4823,6 +4824,40 @@ export default function HomePage() {
       return;
     }
 
+    const recovered = recoverMissingStage3CaptionBlocks({
+      currentTopText: stage3TopText,
+      currentBottomText: stage3BottomText,
+      currentCaptionHighlights: stage3CaptionHighlights,
+      caption: selectedCaption,
+      draftTopText: activeDraft?.stage3.topText ?? null,
+      draftBottomText: activeDraft?.stage3.bottomText ?? null
+    });
+    const recoveredHighlightsSignature = getCaptionHighlightsSignature(recovered.captionHighlights);
+    const recoveredCurrentSelection =
+      recovered.recoveredMode &&
+      (recovered.topText !== stage3TopText ||
+        recovered.bottomText !== stage3BottomText ||
+        recoveredHighlightsSignature !== getCaptionHighlightsSignature(stage3CaptionHighlights));
+
+    if (recoveredCurrentSelection) {
+      autoAppliedCaptionRef.current = {
+        chatId: activeChat.id,
+        option: selectedCaption?.option ?? null,
+        top: recovered.topText,
+        bottom: recovered.bottomText,
+        highlightsSignature: recoveredHighlightsSignature
+      };
+      setStage3TopText(recovered.topText);
+      setStage3BottomText(recovered.bottomText);
+      setStage3CaptionHighlights(recovered.captionHighlights);
+      setStage3SelectedVersionId(null);
+      setStage3PassSelectionByVersion({});
+      setStage3AgentSessionId(null);
+      setStage3AgentTimeline(null);
+      setIgnoreStage3ChatSessionRef(true);
+      return;
+    }
+
     const currentMatchesLastAutoApplied =
       currentAutoApplied?.chatId === activeChat.id &&
       stage3TopText === currentAutoApplied.top &&
@@ -4850,6 +4885,9 @@ export default function HomePage() {
     setIgnoreStage3ChatSessionRef(true);
   }, [
     activeChat?.id,
+    activeDraft?.stage3.bottomText,
+    activeDraft?.stage3.topText,
+    selectedCaption,
     selectedCaption?.option,
     selectedCaption?.top,
     selectedCaption?.bottom,

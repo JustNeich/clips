@@ -149,7 +149,8 @@ import {
 import { prepareCodexSchemaTransport } from "../lib/viral-shorts-worker/executor";
 import {
   applyStage2CaptionToStage3Text,
-  buildStage2ToStage3HandoffSummary
+  buildStage2ToStage3HandoffSummary,
+  recoverMissingStage3CaptionBlocks
 } from "../lib/stage2-stage3-handoff";
 import {
   buildStage3DraftRenderPlanOverride,
@@ -4095,6 +4096,33 @@ test("applyStage2CaptionToStage3Text merges highlight metadata by block", () => 
   assert.equal(applied.bottomText, "Current bottom");
   assert.deepEqual(applied.captionHighlights.top, [{ start: 0, end: 8, slotId: "slot1" }]);
   assert.deepEqual(applied.captionHighlights.bottom, [{ start: 8, end: 14, slotId: "slot3" }]);
+});
+
+test("recoverMissingStage3CaptionBlocks restores only the missing block from the selected caption", () => {
+  const recovered = recoverMissingStage3CaptionBlocks({
+    currentTopText: "",
+    currentBottomText: "Manual bottom override",
+    currentCaptionHighlights: {
+      top: [],
+      bottom: [{ start: 0, end: 6, slotId: "slot3" }]
+    },
+    caption: {
+      top: "Recovered top",
+      bottom: "Selected bottom",
+      highlights: {
+        top: [{ start: 0, end: 9, slotId: "slot1" }],
+        bottom: [{ start: 0, end: 8, slotId: "slot2" }]
+      }
+    },
+    draftTopText: null,
+    draftBottomText: "Manual bottom override"
+  });
+
+  assert.equal(recovered.recoveredMode, "top");
+  assert.equal(recovered.topText, "Recovered top");
+  assert.equal(recovered.bottomText, "Manual bottom override");
+  assert.deepEqual(recovered.captionHighlights.top, [{ start: 0, end: 9, slotId: "slot1" }]);
+  assert.deepEqual(recovered.captionHighlights.bottom, [{ start: 0, end: 6, slotId: "slot3" }]);
 });
 
 test("stage 2 to stage 3 handoff blocks an invalid selected caption instead of leaking it downstream", () => {
