@@ -5421,6 +5421,10 @@ function startsWithBannedOpener(text: string, constraints: Stage2HardConstraints
   return constraints.bannedOpeners.some((opener) => lower.startsWith(opener.toLowerCase()));
 }
 
+function containsCyrillicCharacters(text: string): boolean {
+  return /[\u0400-\u04FF]/u.test(text);
+}
+
 type CandidateConstraintCheck = {
   passed: boolean;
   repaired: boolean;
@@ -5881,6 +5885,9 @@ export function evaluateCandidateHardConstraints(
   }
   if (startsWithBannedOpener(candidate.top, constraints)) {
     issues.push("TOP начинается с banned opener.");
+  }
+  if (containsCyrillicCharacters(candidate.top) || containsCyrillicCharacters(candidate.bottom)) {
+    issues.push("TOP/BOTTOM must stay English-only; Russian belongs only in topRu/bottomRu.");
   }
   return {
     passed: issues.length === 0,

@@ -111,6 +111,65 @@ export function clearTemplateCaptionHighlightsBlock(
   return next;
 }
 
+function resolveSharedPrefixLength(previousText: string, nextText: string): number {
+  const max = Math.min(previousText.length, nextText.length);
+  let index = 0;
+  while (index < max && previousText[index] === nextText[index]) {
+    index += 1;
+  }
+  return index;
+}
+
+function resolveSharedSuffixLength(previousText: string, nextText: string, prefixLength: number): number {
+  const max = Math.min(previousText.length, nextText.length) - prefixLength;
+  let index = 0;
+  while (
+    index < max &&
+    previousText[previousText.length - 1 - index] === nextText[nextText.length - 1 - index]
+  ) {
+    index += 1;
+  }
+  return index;
+}
+
+export function remapTemplateHighlightSpansForTextEdit(input: {
+  previousText: string;
+  nextText: string;
+  spans: TemplateHighlightSpan[] | null | undefined;
+}): TemplateHighlightSpan[] {
+  const currentSpans = normalizeTemplateHighlightSpans(input.spans, input.previousText);
+  if (currentSpans.length === 0) {
+    return [];
+  }
+  if (input.previousText === input.nextText) {
+    return normalizeTemplateHighlightSpans(currentSpans, input.nextText);
+  }
+
+  const prefixLength = resolveSharedPrefixLength(input.previousText, input.nextText);
+  const suffixLength = resolveSharedSuffixLength(input.previousText, input.nextText, prefixLength);
+  const previousChangedEnd = input.previousText.length - suffixLength;
+  const nextChangedEnd = input.nextText.length - suffixLength;
+  const delta = nextChangedEnd - previousChangedEnd;
+
+  const remapped = currentSpans.flatMap((span) => {
+    if (span.end <= prefixLength) {
+      return [{ ...span }];
+    }
+    if (span.start >= previousChangedEnd) {
+      return [
+        {
+          ...span,
+          start: span.start + delta,
+          end: span.end + delta
+        }
+      ];
+    }
+    return [];
+  });
+
+  return normalizeTemplateHighlightSpans(remapped, input.nextText);
+}
+
 export function mergeTemplateCaptionHighlightsByMode(input: {
   current: TemplateCaptionHighlights | null | undefined;
   next: TemplateCaptionHighlights | null | undefined;

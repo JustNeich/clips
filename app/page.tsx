@@ -114,9 +114,9 @@ import {
   type Stage3VideoAdjustments
 } from "../lib/stage3-video-adjustments";
 import {
-  clearTemplateCaptionHighlightsBlock,
   cloneTemplateCaptionHighlights,
-  createEmptyTemplateCaptionHighlights
+  createEmptyTemplateCaptionHighlights,
+  remapTemplateHighlightSpansForTextEdit
 } from "../lib/template-highlights";
 import {
   buildLegacyTimelineEntries,
@@ -4444,22 +4444,36 @@ export default function HomePage() {
 
   const handleStage3TopTextChange = useCallback(
     (value: string) => {
-      const nextCaptionHighlights = clearTemplateCaptionHighlightsBlock(stage3CaptionHighlights, "top");
+      const nextCaptionHighlights = {
+        ...cloneTemplateCaptionHighlights(stage3CaptionHighlights),
+        top: remapTemplateHighlightSpansForTextEdit({
+          previousText: stage3TopText,
+          nextText: value,
+          spans: stage3CaptionHighlights.top
+        })
+      };
       setStage3TopText(value);
       setStage3CaptionHighlights(nextCaptionHighlights);
       syncStage3AutoAppliedCaption(value, stage3BottomText, nextCaptionHighlights);
     },
-    [stage3BottomText, stage3CaptionHighlights, syncStage3AutoAppliedCaption]
+    [stage3BottomText, stage3CaptionHighlights, stage3TopText, syncStage3AutoAppliedCaption]
   );
 
   const handleStage3BottomTextChange = useCallback(
     (value: string) => {
-      const nextCaptionHighlights = clearTemplateCaptionHighlightsBlock(stage3CaptionHighlights, "bottom");
+      const nextCaptionHighlights = {
+        ...cloneTemplateCaptionHighlights(stage3CaptionHighlights),
+        bottom: remapTemplateHighlightSpansForTextEdit({
+          previousText: stage3BottomText,
+          nextText: value,
+          spans: stage3CaptionHighlights.bottom
+        })
+      };
       setStage3BottomText(value);
       setStage3CaptionHighlights(nextCaptionHighlights);
       syncStage3AutoAppliedCaption(stage3TopText, value, nextCaptionHighlights);
     },
-    [stage3CaptionHighlights, stage3TopText, syncStage3AutoAppliedCaption]
+    [stage3BottomText, stage3CaptionHighlights, stage3TopText, syncStage3AutoAppliedCaption]
   );
 
   const handleApplyStage2CaptionToStage3 = useCallback(

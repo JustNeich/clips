@@ -56,6 +56,8 @@ NON-NEGOTIABLE RULES
 - Do your critique and filtering internally, then return only the final publishable set.
 - Never leak frame indexes, shot indexes, timestamps, lane labels, manifest wording, schema words, or debug language into captions or titles.
 - Never mention seconds, frame numbers, option numbers, candidate ids, JSON fields, or any other pipeline artifact.
+- Final 'top', 'bottom', and 'title' outputs must stay English-only even if user_instruction is written in Russian.
+- Use Russian only in 'title_ru' and any downstream translation fields.
 
 STYLE FINGERPRINT
 - Voice: conversational, observant, present-tense, grounded, witty without sounding written by a copywriter
@@ -160,6 +162,8 @@ NON-NEGOTIABLE RULES
 - Do your critique and filtering internally, then return only the final publishable set.
 - Never leak frame indexes, shot indexes, timestamps, lane labels, manifest wording, schema words, or debug language into captions or titles.
 - Never mention seconds, frame numbers, option numbers, candidate ids, JSON fields, or any other pipeline artifact.
+- Final 'top', 'bottom', and 'title' outputs must stay English-only even if user_instruction is written in Russian.
+- Use Russian only in 'title_ru' and any downstream translation fields.
 
 ANTI-META RULES
 - Do not talk about "the clip", "the video", "the edit", "the footage", "the scene", "the sequence", "the narrator", "the comments", "comment sections", or "viewers".

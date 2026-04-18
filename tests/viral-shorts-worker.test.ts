@@ -157,6 +157,7 @@ import {
 } from "../lib/stage3-draft-render-plan";
 import {
   buildVideoContext,
+  evaluateCandidateHardConstraints,
   repairCandidateForHardConstraints,
   ViralShortsWorkerService
 } from "../lib/viral-shorts-worker/service";
@@ -6631,6 +6632,31 @@ test("repairCandidateForHardConstraints rejects short bottoms trimmed from repor
   assert.doesNotMatch(repaired.candidate.bottom, /\bsays\.$/i);
 });
 
+test("hard constraints reject Cyrillic in English caption fields", () => {
+  const constraintCheck = evaluateCandidateHardConstraints(
+    {
+      candidateId: "cand_cyrillic",
+      angle: "language_guard",
+      top: "Это должен быть английский top line only.",
+      bottom: "This bottom stays English-only for the runtime contract.",
+      topRu: "Это русский верх.",
+      bottomRu: "Это русский низ.",
+      rationale: "Language guard regression fixture."
+    },
+    {
+      topLengthMin: 5,
+      topLengthMax: 120,
+      bottomLengthMin: 5,
+      bottomLengthMax: 120,
+      bannedWords: [],
+      bannedOpeners: []
+    }
+  );
+
+  assert.equal(constraintCheck.passed, false);
+  assert.match(constraintCheck.issues.join(" "), /English-only/i);
+});
+
 test("comment intelligence keeps high-like acronym shorthand and self-own punchlines from non-TCG clips", async () => {
   const { result } = await runSuccessfulPipeline({
     comments: [
@@ -10729,10 +10755,14 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
         top:
           index === 1
             ? "bad"
+            : index === 2
+              ? "Русский top не должен пройти даже при regenerate."
             : `Quick rewrite ${index + 1} keeps the axle twist visible and the joke dry.`,
         bottom:
           index === 1
             ? "bad"
+            : index === 2
+              ? "И русский bottom тоже должен упасть обратно в English base."
             : `"Nobody in that cab had a backup plan," and the whole lane feels it ${index + 1}.`,
         top_ru: `Быстрая версия ${index + 1}.`,
         bottom_ru: `"У них не было плана Б", и это чувствует вся колонна ${index + 1}.`,
@@ -10762,10 +10792,15 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
   assert.deepEqual(finalSelector.shortlistCandidateIds, candidateIds);
   assert.equal(finalSelector.rationaleRaw, result.output.finalPick.reason);
   assert.equal(result.output.captionOptions[1]?.top, baseStage2.output.captionOptions[1]?.top);
+  assert.equal(result.output.captionOptions[2]?.top, baseStage2.output.captionOptions[2]?.top);
   assert.equal(result.output.titleOptions[1]?.title, baseStage2.output.titleOptions[1]?.title);
   assert.match(result.warnings.map((warning) => warning.message).join(" "), /SEO reused from base run/);
   assert.match(result.warnings.map((warning) => warning.message).join(" "), /restored from the base run/);
+  assert.ok(
+    result.output.captionOptions.every((option) => !/[\u0400-\u04FF]/u.test(`${option.top}\n${option.bottom}`))
+  );
   assert.match(promptText, /Preserve style_direction_ids and exploration_mode/i);
+  assert.match(promptText, /Keep final top, bottom, and title text in English only/i);
   assert.match(promptText, /Remove stock tails like 'the reaction basically writes itself'/i);
   assert.match(promptText, /"retrieval":/);
   assert.match(promptText, /"analysis":/);

@@ -10,7 +10,8 @@ import {
   clearTemplateCaptionHighlightsBlock,
   isTemplateHighlightingActive,
   normalizeTemplateHighlightConfig,
-  normalizeTemplateHighlightPhraseAnnotations
+  normalizeTemplateHighlightPhraseAnnotations,
+  remapTemplateHighlightSpansForTextEdit
 } from "../lib/template-highlights";
 
 test("highlight config defaults stay enabled and seed slot1 from accent color", () => {
@@ -81,6 +82,45 @@ test("clearing one highlight block preserves the other block", () => {
 
   assert.deepEqual(cleared.top, []);
   assert.deepEqual(cleared.bottom, [{ start: 5, end: 9, slotId: "slot2" }]);
+});
+
+test("remapping highlight spans preserves unaffected spans and shifts later spans after an edit", () => {
+  const previousText = "Alpha bravo charlie delta";
+  const nextText = "Alpha brave charlie delta";
+  const remapped = remapTemplateHighlightSpansForTextEdit({
+    previousText,
+    nextText,
+    spans: [
+      { start: 0, end: 5, slotId: "slot1" },
+      { start: 12, end: 19, slotId: "slot2" },
+      { start: 20, end: 25, slotId: "slot3" }
+    ]
+  });
+
+  assert.deepEqual(remapped, [
+    { start: 0, end: 5, slotId: "slot1" },
+    { start: 12, end: 19, slotId: "slot2" },
+    { start: 20, end: 25, slotId: "slot3" }
+  ]);
+});
+
+test("remapping highlight spans drops only the span that overlaps the edited region", () => {
+  const previousText = "Alpha bravo charlie delta";
+  const nextText = "Alpha bravo charm delta";
+  const remapped = remapTemplateHighlightSpansForTextEdit({
+    previousText,
+    nextText,
+    spans: [
+      { start: 0, end: 5, slotId: "slot1" },
+      { start: 12, end: 19, slotId: "slot2" },
+      { start: 20, end: 25, slotId: "slot3" }
+    ]
+  });
+
+  assert.deepEqual(remapped, [
+    { start: 0, end: 5, slotId: "slot1" },
+    { start: 18, end: 23, slotId: "slot3" }
+  ]);
 });
 
 test("highlight status helpers distinguish configured profile from active runtime usage", () => {

@@ -45,6 +45,8 @@ const QUICK_REGENERATE_PROMPT = [
   "- final_pick_option must point to one of the visible options.",
   "- Stay specific, visual, and grounded in the provided source context.",
   "- Respect hard constraints exactly.",
+  "- Keep final top, bottom, and title text in English only, even if user_instruction is written in Russian.",
+  "- Use Russian only in top_ru, bottom_ru, and title_ru.",
   "- Do not mention hidden candidates or rerunning the pipeline.",
   "- Titles should feel like export-safe file titles, not subtitles.",
   "",

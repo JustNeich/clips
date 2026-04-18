@@ -84,6 +84,7 @@ Stage 2 больше не строится вокруг competitor-sync / hot-po
 
 Для processable `native_caption_v3` run runtime теперь обязан:
 - всегда вернуть `output.captionOptions.length === 5`;
+- держать `output.captionOptions[].top` и `bottom` strictly English-only; русский допускается только в `topRu` / `bottomRu`;
 - отдельно хранить цветовые подсветки в `output.captionOptions[].highlights`, не добавляя marker-синтаксис в сами строки;
 - для `reference_one_shot_v1` возвращать 5 finalist-grade options без filler slots;
 - для modular native держать `output.finalists` как finalist-grade subset, а не зеркало visible shortlist;
@@ -137,6 +138,7 @@ Caption highlighting:
 - input — финальные `captionOptions`, block scope `top` / `bottom` и resolved template highlight profile из snapshot request;
 - stored output — только structured spans `captionOptions[].highlights.top[]` / `bottom[]` с `{ start, end, slotId }`;
 - visible caption text не должен содержать marker-синтаксис или служебные кавычки;
+- ручная правка текста в Stage 3 должна сохранять все spans вне реально изменённого участка строки; нельзя очищать весь block из-за одного символа;
 - если model возвращает phrase-level annotations, server normalization обязан сопоставить их с финальным текстом и сохранить exact char spans;
 - overlap rule: сортировать по `start ASC`, затем длинный span первым, оставить первый non-overlapping span и отбросить конфликтующие;
 - pass fail-open: invalid response, mismatch или runtime error дают empty highlights для блока и не валят весь Stage 2 run.
