@@ -15,10 +15,10 @@ export const STAGE3_VIDEO_SATURATION_MIN = 0;
 export const STAGE3_VIDEO_SATURATION_MAX = 2;
 
 export const DEFAULT_STAGE3_VIDEO_ADJUSTMENTS: Stage3VideoAdjustments = {
-  brightness: 1,
-  exposure: 0,
-  contrast: 1,
-  saturation: 1
+  brightness: 0.97,
+  exposure: -0.1,
+  contrast: 0.97,
+  saturation: 0.96
 };
 
 function clamp(value: number, min: number, max: number): number {

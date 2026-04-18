@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { DEFAULT_STAGE3_VIDEO_ADJUSTMENTS } from "../lib/stage3-video-adjustments";
 import { resolveManagedTemplateRuntimeSync } from "../lib/managed-template-runtime";
 
 async function withIsolatedWorkerAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -34,6 +35,6 @@ test("built-in managed template runtime resolves without a workspace DB bootstra
     assert.equal(resolved.managedTemplateId, "science-card-red-v1");
     assert.equal(resolved.baseTemplateId, "science-card-red-v1");
     assert.equal(resolved.templateConfig.card.borderColor, "#d33f49");
-    assert.equal(resolved.templateConfig.videoAdjustments.brightness, 1);
+    assert.deepEqual(resolved.templateConfig.videoAdjustments, DEFAULT_STAGE3_VIDEO_ADJUSTMENTS);
   });
 });

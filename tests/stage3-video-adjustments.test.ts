@@ -25,6 +25,18 @@ test("normalizeStage3VideoAdjustments clamps all controls into the supported ran
   });
 });
 
+test("default Stage 3 video adjustments bias toward a safer, less blown-out baseline", () => {
+  assert.deepEqual(DEFAULT_STAGE3_VIDEO_ADJUSTMENTS, {
+    brightness: 0.97,
+    exposure: -0.1,
+    contrast: 0.97,
+    saturation: 0.96
+  });
+
+  const filter = buildStage3VideoFilterCss(DEFAULT_STAGE3_VIDEO_ADJUSTMENTS);
+  assert.equal(filter, "brightness(0.905) contrast(0.970) saturate(0.960)");
+});
+
 test("buildStage3VideoFilterCss combines brightness, exposure, contrast, saturation and blur", () => {
   const filter = buildStage3VideoFilterCss(
     {

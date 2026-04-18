@@ -14096,6 +14096,36 @@ test("step 3 background UI reflects the actual resolved background mode", () => 
   assert.match(builtInHtml, /<span class="quick-edit-value">Template backdrop<\/span>/);
 });
 
+test("step 3 keeps global video filters visible while editing fragments", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      Step3RenderTemplate,
+      makeStep3RenderTemplateProps({
+        segments: [
+          {
+            startSec: 0.5,
+            endSec: 2.4,
+            label: "Fragment 1",
+            focusY: 0.42,
+            videoZoom: 1.15,
+            mirrorEnabled: false,
+            speed: 1
+          }
+        ]
+      })
+    )
+  );
+
+  assert.match(html, /Покадровый кадринг по фрагментам/);
+  assert.match(html, /глобальные фильтры ниже продолжают применяться ко всему клипу/i);
+  assert.match(html, /id="videoBrightnessRange"/);
+  assert.match(html, /id="videoExposureRange"/);
+  assert.match(html, /id="videoContrastRange"/);
+  assert.match(html, /id="videoSaturationRange"/);
+  assert.doesNotMatch(html, /id="focusRange"/);
+  assert.doesNotMatch(html, /id="videoZoomRange"/);
+});
+
 test("stage 3 preview dedupe is scoped to workspace and user so only owned previews are reused", async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");

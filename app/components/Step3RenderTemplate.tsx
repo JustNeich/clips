@@ -5920,144 +5920,6 @@ export function Step3RenderTemplate({
                         </div>
                         <p className="subtle-text">Масштаб применяется ко всему клипу целиком.</p>
                       </div>
-
-                      <div className="quick-edit-card slider-field">
-                        <div className="quick-edit-label-row">
-                          <label className="field-label" htmlFor="videoBrightnessRange">
-                            Яркость
-                          </label>
-                          <span className="quick-edit-value">{videoBrightnessLabel}</span>
-                        </div>
-                        <input
-                          id="videoBrightnessRange"
-                          type="range"
-                          min={0.4}
-                          max={1.8}
-                          step={0.01}
-                          value={localVideoBrightness}
-                          onChange={(event) =>
-                            scheduleVideoBrightnessCommit(Number.parseFloat(event.target.value))
-                          }
-                          onMouseUp={() => flushVideoBrightnessCommit(localVideoBrightness)}
-                          onTouchEnd={() => flushVideoBrightnessCommit(localVideoBrightness)}
-                          onBlur={() => flushVideoBrightnessCommit(localVideoBrightness)}
-                        />
-                        <div className="preset-row">
-                          {[0.85, 1, 1.15].map((value) => (
-                            <button
-                              key={`video-brightness-${value}`}
-                              type="button"
-                              className="preset-chip"
-                              onClick={() => applyVideoBrightnessImmediate(value)}
-                            >
-                              {Math.round(value * 100)}%
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="quick-edit-card slider-field">
-                        <div className="quick-edit-label-row">
-                          <label className="field-label" htmlFor="videoExposureRange">
-                            Экспозиция
-                          </label>
-                          <span className="quick-edit-value">{videoExposureLabel}</span>
-                        </div>
-                        <input
-                          id="videoExposureRange"
-                          type="range"
-                          min={-1}
-                          max={1}
-                          step={0.05}
-                          value={localVideoExposure}
-                          onChange={(event) => scheduleVideoExposureCommit(Number.parseFloat(event.target.value))}
-                          onMouseUp={() => flushVideoExposureCommit(localVideoExposure)}
-                          onTouchEnd={() => flushVideoExposureCommit(localVideoExposure)}
-                          onBlur={() => flushVideoExposureCommit(localVideoExposure)}
-                        />
-                        <div className="preset-row">
-                          {[-0.3, 0, 0.3].map((value) => (
-                            <button
-                              key={`video-exposure-${value}`}
-                              type="button"
-                              className="preset-chip"
-                              onClick={() => applyVideoExposureImmediate(value)}
-                            >
-                              {value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="quick-edit-card slider-field">
-                        <div className="quick-edit-label-row">
-                          <label className="field-label" htmlFor="videoContrastRange">
-                            Контраст
-                          </label>
-                          <span className="quick-edit-value">{videoContrastLabel}</span>
-                        </div>
-                        <input
-                          id="videoContrastRange"
-                          type="range"
-                          min={0.5}
-                          max={1.8}
-                          step={0.01}
-                          value={localVideoContrast}
-                          onChange={(event) =>
-                            scheduleVideoContrastCommit(Number.parseFloat(event.target.value))
-                          }
-                          onMouseUp={() => flushVideoContrastCommit(localVideoContrast)}
-                          onTouchEnd={() => flushVideoContrastCommit(localVideoContrast)}
-                          onBlur={() => flushVideoContrastCommit(localVideoContrast)}
-                        />
-                        <div className="preset-row">
-                          {[0.9, 1, 1.15].map((value) => (
-                            <button
-                              key={`video-contrast-${value}`}
-                              type="button"
-                              className="preset-chip"
-                              onClick={() => applyVideoContrastImmediate(value)}
-                            >
-                              {Math.round(value * 100)}%
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="quick-edit-card slider-field">
-                        <div className="quick-edit-label-row">
-                          <label className="field-label" htmlFor="videoSaturationRange">
-                            Насыщенность
-                          </label>
-                          <span className="quick-edit-value">{videoSaturationLabel}</span>
-                        </div>
-                        <input
-                          id="videoSaturationRange"
-                          type="range"
-                          min={0}
-                          max={2}
-                          step={0.01}
-                          value={localVideoSaturation}
-                          onChange={(event) =>
-                            scheduleVideoSaturationCommit(Number.parseFloat(event.target.value))
-                          }
-                          onMouseUp={() => flushVideoSaturationCommit(localVideoSaturation)}
-                          onTouchEnd={() => flushVideoSaturationCommit(localVideoSaturation)}
-                          onBlur={() => flushVideoSaturationCommit(localVideoSaturation)}
-                        />
-                        <div className="preset-row">
-                          {[0.85, 1, 1.2].map((value) => (
-                            <button
-                              key={`video-saturation-${value}`}
-                              type="button"
-                              className="preset-chip"
-                              onClick={() => applyVideoSaturationImmediate(value)}
-                            >
-                              {Math.round(value * 100)}%
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                     </>
                   ) : (
                     <div className="quick-edit-card quick-edit-span-2">
@@ -6069,10 +5931,148 @@ export function Step3RenderTemplate({
                       </div>
                       <p className="subtle-text">
                         Перетаскивайте и тяните фрагменты прямо на ленте исходника. Для каждого фрагмента отдельно
-                        доступны свои Y, Zoom и Mirror.
+                        доступны свои Y, Zoom и Mirror, а глобальные фильтры ниже продолжают применяться ко всему клипу.
                       </p>
                     </div>
                   )}
+
+                  <div className="quick-edit-card slider-field">
+                    <div className="quick-edit-label-row">
+                      <label className="field-label" htmlFor="videoBrightnessRange">
+                        Яркость
+                      </label>
+                      <span className="quick-edit-value">{videoBrightnessLabel}</span>
+                    </div>
+                    <input
+                      id="videoBrightnessRange"
+                      type="range"
+                      min={0.4}
+                      max={1.8}
+                      step={0.01}
+                      value={localVideoBrightness}
+                      onChange={(event) =>
+                        scheduleVideoBrightnessCommit(Number.parseFloat(event.target.value))
+                      }
+                      onMouseUp={() => flushVideoBrightnessCommit(localVideoBrightness)}
+                      onTouchEnd={() => flushVideoBrightnessCommit(localVideoBrightness)}
+                      onBlur={() => flushVideoBrightnessCommit(localVideoBrightness)}
+                    />
+                    <div className="preset-row">
+                      {[0.85, 1, 1.15].map((value) => (
+                        <button
+                          key={`video-brightness-${value}`}
+                          type="button"
+                          className="preset-chip"
+                          onClick={() => applyVideoBrightnessImmediate(value)}
+                        >
+                          {Math.round(value * 100)}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="quick-edit-card slider-field">
+                    <div className="quick-edit-label-row">
+                      <label className="field-label" htmlFor="videoExposureRange">
+                        Экспозиция
+                      </label>
+                      <span className="quick-edit-value">{videoExposureLabel}</span>
+                    </div>
+                    <input
+                      id="videoExposureRange"
+                      type="range"
+                      min={-1}
+                      max={1}
+                      step={0.05}
+                      value={localVideoExposure}
+                      onChange={(event) => scheduleVideoExposureCommit(Number.parseFloat(event.target.value))}
+                      onMouseUp={() => flushVideoExposureCommit(localVideoExposure)}
+                      onTouchEnd={() => flushVideoExposureCommit(localVideoExposure)}
+                      onBlur={() => flushVideoExposureCommit(localVideoExposure)}
+                    />
+                    <div className="preset-row">
+                      {[-0.3, 0, 0.3].map((value) => (
+                        <button
+                          key={`video-exposure-${value}`}
+                          type="button"
+                          className="preset-chip"
+                          onClick={() => applyVideoExposureImmediate(value)}
+                        >
+                          {value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="quick-edit-card slider-field">
+                    <div className="quick-edit-label-row">
+                      <label className="field-label" htmlFor="videoContrastRange">
+                        Контраст
+                      </label>
+                      <span className="quick-edit-value">{videoContrastLabel}</span>
+                    </div>
+                    <input
+                      id="videoContrastRange"
+                      type="range"
+                      min={0.5}
+                      max={1.8}
+                      step={0.01}
+                      value={localVideoContrast}
+                      onChange={(event) =>
+                        scheduleVideoContrastCommit(Number.parseFloat(event.target.value))
+                      }
+                      onMouseUp={() => flushVideoContrastCommit(localVideoContrast)}
+                      onTouchEnd={() => flushVideoContrastCommit(localVideoContrast)}
+                      onBlur={() => flushVideoContrastCommit(localVideoContrast)}
+                    />
+                    <div className="preset-row">
+                      {[0.9, 1, 1.15].map((value) => (
+                        <button
+                          key={`video-contrast-${value}`}
+                          type="button"
+                          className="preset-chip"
+                          onClick={() => applyVideoContrastImmediate(value)}
+                        >
+                          {Math.round(value * 100)}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="quick-edit-card slider-field">
+                    <div className="quick-edit-label-row">
+                      <label className="field-label" htmlFor="videoSaturationRange">
+                        Насыщенность
+                      </label>
+                      <span className="quick-edit-value">{videoSaturationLabel}</span>
+                    </div>
+                    <input
+                      id="videoSaturationRange"
+                      type="range"
+                      min={0}
+                      max={2}
+                      step={0.01}
+                      value={localVideoSaturation}
+                      onChange={(event) =>
+                        scheduleVideoSaturationCommit(Number.parseFloat(event.target.value))
+                      }
+                      onMouseUp={() => flushVideoSaturationCommit(localVideoSaturation)}
+                      onTouchEnd={() => flushVideoSaturationCommit(localVideoSaturation)}
+                      onBlur={() => flushVideoSaturationCommit(localVideoSaturation)}
+                    />
+                    <div className="preset-row">
+                      {[0.85, 1, 1.2].map((value) => (
+                        <button
+                          key={`video-saturation-${value}`}
+                          type="button"
+                          className="preset-chip"
+                          onClick={() => applyVideoSaturationImmediate(value)}
+                        >
+                          {Math.round(value * 100)}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </section>
           </div>
