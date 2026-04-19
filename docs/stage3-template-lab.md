@@ -51,15 +51,16 @@
 3. Справа через inspector крутить radius, border, fill, shadow, font stacks, weights, colors и внутренние отступы.
 4. В секции `Демо-контент` при необходимости настроить `Highlighting`: включить top/bottom, выбрать до 3 слотов, задать `label/guidance` и demo phrases для проверки палитры.
 4. Слева смотреть только на live canvas и оценивать hierarchy / breathing room без reference diff.
-5. Для `Channel + Story` в секции `Детали` отдельно проверить `leadMode`, alignment header/body и media/accent chrome.
-6. Когда нужна именно калибровка под референс, открыть `template-lab`.
-7. В `template-lab` подгрузить reference image или URL и провести diff-pass.
-8. После завершения calibration-pass поменять статус шаблона:
+5. Для `Channel + Story` сначала пройти сверху вниз секцию `Канал и lead-политика`: channel row, бейдж, `leadMode`, template/default lead и alignment header/body.
+6. После этого уже докручивать `Карточка`, `Цвета`, `Видео`, `Шрифты`, `Отступы` и только потом финальные мелочи в `Детали`.
+7. Когда нужна именно калибровка под референс, открыть `template-lab`.
+8. В `template-lab` подгрузить reference image или URL и провести diff-pass.
+9. После завершения calibration-pass поменять статус шаблона:
    - `Queue`
    - `In Progress`
    - `Review`
    - `Approved`
-9. Зафиксировать следующие шаги в `Заметки по проходу`.
+10. Зафиксировать следующие шаги в `Заметки по проходу`.
 
 ## Preset workflow
 
@@ -78,6 +79,13 @@
 - Если вы открываете `template-lab` на `localhost:3000`, файлы лежат в вашей локальной версии репозитория (`design/templates/<template-id>/`).
 - Если открываете на staging/production, reference должен существовать на этом host.
 - В текущей реализации `production` design-API (`/api/design/template-sessions/*`) не открыт, поэтому reference management через UI доступен только в non-production окружении.
+
+## Draft mode без auth
+
+`template-road` теперь fail-open для локального style-pass даже без авторизации:
+- если `/api/design/templates` отвечает `401/403`, редактор не должен показывать критическую поломку;
+- вместо этого открывается локальный draft выбранного формата (`Top & Bottom` или `Channel + Story`);
+- библиотека workspace-шаблонов в таком режиме недоступна, но preview, geometry, palette и typography остаются рабочими.
 
 Практически:
 

@@ -1,6 +1,7 @@
 import type { TemplateContentFixture } from "./template-calibration-types";
 import { normalizeTemplateCaptionHighlights } from "./template-highlights";
 import {
+  getStage3CardInnerRect,
   isClassicScienceCardTemplateId,
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
@@ -134,8 +135,8 @@ export function resolveTemplateChromeMetrics(
 
   if (!isClassicScienceCardTemplateId(templateId)) {
     return {
-      cardRadius: spec.card.radius,
-      cardBorderWidth: spec.card.borderWidth,
+      cardRadius: templateConfig.card.radius,
+      cardBorderWidth: templateConfig.card.borderWidth,
       topPaddingX: templateConfig.slot.topPaddingX,
       topPaddingTop: baseTopPaddingTop,
       topPaddingBottom: baseTopPaddingBottom
@@ -167,9 +168,10 @@ function buildFallbackSectionRects(
 ) {
   if (templateConfig.layoutKind === "channel_story") {
     const channelStory = templateConfig.channelStory!;
-    const contentX = templateConfig.card.x + channelStory.contentPaddingX;
-    const contentWidth = templateConfig.card.width - channelStory.contentPaddingX * 2;
-    const headerY = computed.headerY ?? templateConfig.card.y + channelStory.contentPaddingTop;
+    const cardInnerRect = getStage3CardInnerRect(templateConfig);
+    const contentX = cardInnerRect.x + channelStory.contentPaddingX;
+    const contentWidth = Math.max(120, cardInnerRect.width - channelStory.contentPaddingX * 2);
+    const headerY = computed.headerY ?? cardInnerRect.y + channelStory.contentPaddingTop;
     const leadY =
       computed.topY ?? headerY + channelStory.headerHeight + channelStory.headerToLeadGap;
     const bodyY =
@@ -193,9 +195,9 @@ function buildFallbackSectionRects(
         height: computed.videoHeight
       },
       bottom: {
-        x: templateConfig.card.x,
+        x: cardInnerRect.x,
         y: computed.videoY + computed.videoHeight,
-        width: templateConfig.card.width,
+        width: cardInnerRect.width,
         height: computed.bottomBlockHeight
       },
       author: {

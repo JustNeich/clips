@@ -613,6 +613,9 @@
     - action `Отключить OpenRouter`
     - links `API keys`, `Billing`, `Pricing`
     - links `OpenRouter API keys`, `OpenRouter Credits`, `OpenRouter Pricing`
+  - важная semantics:
+    - возврат select обратно на `Shared Codex` не отключает внешний key сам по себе; integration может остаться `connected`, но inactive
+    - disconnect удаляет сохранённый key и одновременно fail-safe демотит active external provider обратно на `Shared Codex`
   - owner-only block `Маршрутизация моделей Stage 2`
   - owner-only model controls:
     - `Stable Reference v6`

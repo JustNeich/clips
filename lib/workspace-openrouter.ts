@@ -1,6 +1,8 @@
 import type { AuthContext } from "./team-store";
 import {
+  getWorkspaceStage2CaptionProviderConfig,
   getWorkspaceOpenRouterIntegration,
+  updateWorkspaceStage2CaptionProviderConfig,
   upsertWorkspaceOpenRouterIntegration,
   type WorkspaceOpenRouterIntegrationRecord
 } from "./team-store";
@@ -39,7 +41,7 @@ export async function mutateWorkspaceOpenRouterIntegration(input: {
   }
 
   if (input.action === "disconnect") {
-    return upsertWorkspaceOpenRouterIntegration({
+    const disconnected = upsertWorkspaceOpenRouterIntegration({
       workspaceId: input.auth.workspace.id,
       ownerUserId: input.auth.user.id,
       status: "disconnected",
@@ -47,6 +49,14 @@ export async function mutateWorkspaceOpenRouterIntegration(input: {
       lastError: null,
       connectedAt: null
     });
+    const captionProviderConfig = getWorkspaceStage2CaptionProviderConfig(input.auth.workspace.id);
+    if (captionProviderConfig.provider === "openrouter") {
+      updateWorkspaceStage2CaptionProviderConfig(input.auth.workspace.id, {
+        ...captionProviderConfig,
+        provider: "codex"
+      });
+    }
+    return disconnected;
   }
 
   const apiKey = input.apiKey?.trim() ?? "";

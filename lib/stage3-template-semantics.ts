@@ -31,6 +31,56 @@ function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function resolveChannelStoryClipCustomLengthTargets(
+  templateConfig: Stage3TemplateConfig | null | undefined
+): {
+  topLengthMin: number;
+  topLengthMax: number;
+  bottomLengthMin: number;
+  bottomLengthMax: number;
+} {
+  const channelStory = templateConfig?.channelStory;
+  if (!templateConfig || !channelStory) {
+    return {
+      topLengthMin: 6,
+      topLengthMax: 42,
+      bottomLengthMin: 72,
+      bottomLengthMax: 220
+    };
+  }
+
+  const leadMaxChars = Math.max(
+    24,
+    Math.min(
+      templateConfig.typography.top.maxChars ?? 56,
+      Math.round(Math.max(48, channelStory.leadHeight) * 0.58)
+    )
+  );
+  const bodyMaxChars = Math.max(
+    120,
+    Math.min(
+      templateConfig.typography.bottom.maxChars ?? 240,
+      Math.round(Math.max(180, channelStory.bodyHeight) * 0.62)
+    )
+  );
+
+  const topLengthMax = clampNumber(leadMaxChars, 24, 56);
+  const topLengthMin = clampNumber(Math.round(topLengthMax * 0.22), 6, 18);
+  const bottomLengthMax = clampNumber(bodyMaxChars, 120, 260);
+  const bottomLengthMin = clampNumber(Math.round(bottomLengthMax * 0.38), 40, 120);
+
+  return {
+    topLengthMin,
+    topLengthMax,
+    bottomLengthMin,
+    bottomLengthMax
+  };
+}
+
 export function resolveTemplateLayoutKind(
   templateConfig: Pick<Stage3TemplateConfig, "layoutKind"> | null | undefined
 ): Stage3TemplateLayoutKind {
@@ -169,6 +219,8 @@ export function resolveTemplateStage2HardConstraints<
   T extends {
     topLengthMin: number;
     topLengthMax: number;
+    bottomLengthMin: number;
+    bottomLengthMax: number;
   }
 >(
   constraints: T,
@@ -179,7 +231,14 @@ export function resolveTemplateStage2HardConstraints<
     return { ...constraints };
   }
   if (leadMode === "clip_custom") {
-    return { ...constraints };
+    const targetWindow = resolveChannelStoryClipCustomLengthTargets(templateConfig);
+    return {
+      ...constraints,
+      topLengthMin: targetWindow.topLengthMin,
+      topLengthMax: targetWindow.topLengthMax,
+      bottomLengthMin: targetWindow.bottomLengthMin,
+      bottomLengthMax: targetWindow.bottomLengthMax
+    };
   }
   return {
     ...constraints,

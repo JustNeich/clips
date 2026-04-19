@@ -7332,6 +7332,9 @@ export default function HomePage() {
           onDeleteFeedbackEvent={handleDeleteChannelFeedbackEvent}
           deletingFeedbackEventId={deletingChannelFeedbackEventId}
           onSaveWorkspaceStage2Defaults={handleSaveWorkspaceStage2Defaults}
+          onRefreshWorkspaceState={async () => {
+            await refreshChannels(activeChannelId);
+          }}
           onUploadAsset={(kind, file) => {
             void handleUploadChannelAsset(kind, file);
           }}

@@ -233,6 +233,7 @@ type ChannelManagerProps = {
       codexModelConfig: WorkspaceCodexModelConfig;
     }>
   ) => Promise<void>;
+  onRefreshWorkspaceState?: () => Promise<void>;
   onUploadAsset: (kind: ChannelAssetKind, file: File) => void;
   onDeleteAsset: (assetId: string) => void;
   canManageAccess: boolean;
@@ -289,6 +290,7 @@ export function ChannelManager({
   onDeleteFeedbackEvent,
   deletingFeedbackEventId,
   onSaveWorkspaceStage2Defaults,
+  onRefreshWorkspaceState = async () => undefined,
   onUploadAsset,
   onDeleteAsset,
   canManageAccess,
@@ -1354,13 +1356,63 @@ export function ChannelManager({
     }
   };
 
-  const updateWorkspaceCaptionProvider = (provider: Stage2CaptionProvider) => {
-    setWorkspaceStage2CaptionProviderConfig((current) =>
-      normalizeStage2CaptionProviderConfig({
-        ...current,
-        provider
-      })
+  const persistWorkspaceCaptionProviderConfig = async (
+    nextConfig: Stage2CaptionProviderConfig,
+    previousConfig: Stage2CaptionProviderConfig
+  ): Promise<void> => {
+    const nextSnapshot = buildStage2DefaultsSnapshot(
+      workspaceExamplesJson,
+      stage2HardConstraints,
+      workspaceStage2PromptConfig,
+      nextConfig,
+      workspaceCodexModelConfig
     );
+    const saveRevision = ++autosaveRevisionRef.current.stage2Defaults;
+    clearAutosaveReset("stage2Defaults");
+    setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем общие AI-настройки…");
+    try {
+      await saveWorkspaceStage2DefaultsRef.current({
+        stage2ExamplesCorpusJson: workspaceExamplesJson,
+        stage2HardConstraints,
+        stage2PromptConfig: workspaceStage2PromptConfig,
+        stage2CaptionProviderConfig: nextConfig,
+        codexModelConfig: workspaceCodexModelConfig
+      });
+      if (autosaveRevisionRef.current.stage2Defaults !== saveRevision) {
+        return;
+      }
+      persistedSnapshotRef.current.stage2Defaults = nextSnapshot;
+      skipAutosaveRef.current.stage2Defaults = true;
+      setAutosaveFeedback("stage2Defaults", "saved", "Общие AI-настройки сохранены.");
+      scheduleAutosaveReset("stage2Defaults");
+    } catch (error) {
+      if (autosaveRevisionRef.current.stage2Defaults !== saveRevision) {
+        return;
+      }
+      skipAutosaveRef.current.stage2Defaults = true;
+      setWorkspaceStage2CaptionProviderConfig(previousConfig);
+      setAutosaveFeedback(
+        "stage2Defaults",
+        "error",
+        error instanceof Error && error.message
+          ? error.message
+          : "Не удалось сохранить общие AI-настройки."
+      );
+    }
+  };
+
+  const updateWorkspaceCaptionProvider = (provider: Stage2CaptionProvider) => {
+    if (!canEditWorkspaceDefaults) {
+      return;
+    }
+    const previousConfig = workspaceStage2CaptionProviderConfig;
+    const nextConfig = normalizeStage2CaptionProviderConfig({
+      ...workspaceStage2CaptionProviderConfig,
+      provider
+    });
+    skipAutosaveRef.current.stage2Defaults = true;
+    setWorkspaceStage2CaptionProviderConfig(nextConfig);
+    void persistWorkspaceCaptionProviderConfig(nextConfig, previousConfig);
   };
 
   const updateWorkspaceAnthropicModel = (value: string) => {
@@ -1415,6 +1467,7 @@ export function ChannelManager({
       setWorkspaceAnthropicIntegration(integration);
       if (integration?.status === "connected") {
         setAnthropicApiKeyInput("");
+        await onRefreshWorkspaceState().catch(() => undefined);
         setAnthropicIntegrationActionState({
           status: "saved",
           message: "Anthropic captions подключены и проверены."
@@ -1443,6 +1496,8 @@ export function ChannelManager({
   };
 
   const disconnectWorkspaceAnthropicIntegration = async (): Promise<void> => {
+    const previousConfig = workspaceStage2CaptionProviderConfig;
+    const wasAnthropicProviderActive = previousConfig.provider === "anthropic";
     setAnthropicIntegrationActionState({
       status: "saving",
       message: "Отключаем Anthropic captions…"
@@ -1464,14 +1519,16 @@ export function ChannelManager({
       };
       setWorkspaceAnthropicIntegration(body.integration ?? null);
       setAnthropicApiKeyInput("");
-      setWorkspaceStage2CaptionProviderConfig((current) =>
-        current.provider === "anthropic"
-          ? {
-              ...current,
-              provider: "codex"
-            }
-          : current
-      );
+      await onRefreshWorkspaceState().catch(() => undefined);
+      if (wasAnthropicProviderActive) {
+        const nextConfig = normalizeStage2CaptionProviderConfig({
+          ...previousConfig,
+          provider: "codex"
+        });
+        skipAutosaveRef.current.stage2Defaults = true;
+        setWorkspaceStage2CaptionProviderConfig(nextConfig);
+        void persistWorkspaceCaptionProviderConfig(nextConfig, previousConfig);
+      }
       setAnthropicIntegrationActionState({
         status: "saved",
         message: "Anthropic captions отключены."
@@ -1528,6 +1585,7 @@ export function ChannelManager({
       setWorkspaceOpenRouterIntegration(integration);
       if (integration?.status === "connected") {
         setOpenRouterApiKeyInput("");
+        await onRefreshWorkspaceState().catch(() => undefined);
         setOpenRouterIntegrationActionState({
           status: "saved",
           message: "OpenRouter captions подключены и проверены."
@@ -1556,6 +1614,8 @@ export function ChannelManager({
   };
 
   const disconnectWorkspaceOpenRouterIntegration = async (): Promise<void> => {
+    const previousConfig = workspaceStage2CaptionProviderConfig;
+    const wasOpenRouterProviderActive = previousConfig.provider === "openrouter";
     setOpenRouterIntegrationActionState({
       status: "saving",
       message: "Отключаем OpenRouter captions…"
@@ -1577,14 +1637,16 @@ export function ChannelManager({
       };
       setWorkspaceOpenRouterIntegration(body.integration ?? null);
       setOpenRouterApiKeyInput("");
-      setWorkspaceStage2CaptionProviderConfig((current) =>
-        current.provider === "openrouter"
-          ? {
-              ...current,
-              provider: "codex"
-            }
-          : current
-      );
+      await onRefreshWorkspaceState().catch(() => undefined);
+      if (wasOpenRouterProviderActive) {
+        const nextConfig = normalizeStage2CaptionProviderConfig({
+          ...previousConfig,
+          provider: "codex"
+        });
+        skipAutosaveRef.current.stage2Defaults = true;
+        setWorkspaceStage2CaptionProviderConfig(nextConfig);
+        void persistWorkspaceCaptionProviderConfig(nextConfig, previousConfig);
+      }
       setOpenRouterIntegrationActionState({
         status: "saved",
         message: "OpenRouter captions отключены."

@@ -563,6 +563,14 @@ export type Stage3TemplateChannelStoryConfig = {
   accentBottomLineColor?: string;
 };
 
+export type Stage3CardInnerRect = {
+  inset: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type Stage3TemplateConfig = {
   layoutKind: Stage3TemplateLayoutKind;
   frame: { width: number; height: number };
@@ -671,6 +679,19 @@ export type Stage3TemplateConfig = {
   highlights: TemplateHighlightConfig;
   channelStory?: Stage3TemplateChannelStoryConfig;
 };
+
+export function getStage3CardInnerRect(
+  templateConfig: Pick<Stage3TemplateConfig, "card">
+): Stage3CardInnerRect {
+  const inset = Math.max(0, Math.round(templateConfig.card.borderWidth));
+  return {
+    inset,
+    x: templateConfig.card.x + inset,
+    y: templateConfig.card.y + inset,
+    width: Math.max(0, templateConfig.card.width - inset * 2),
+    height: Math.max(0, templateConfig.card.height - inset * 2)
+  };
+}
 
 export function cloneStage3TemplateConfig(config: Stage3TemplateConfig): Stage3TemplateConfig {
   return {
@@ -1225,7 +1246,8 @@ export function getChannelStoryComputed(
   const topScale = normalizeFontScale(fontOverrides?.topFontScale);
   const bottomScale = normalizeFontScale(fontOverrides?.bottomFontScale);
   const channelStory = templateConfig.channelStory ?? CHANNEL_STORY.channelStory!;
-  const contentWidth = Math.max(120, templateConfig.card.width - channelStory.contentPaddingX * 2);
+  const cardInnerRect = getStage3CardInnerRect(templateConfig);
+  const contentWidth = Math.max(120, cardInnerRect.width - channelStory.contentPaddingX * 2);
   const leadVisible = topText.trim().length > 0 && channelStory.leadMode !== "off";
   const topTypography = {
     ...templateConfig.typography.top,
@@ -1243,7 +1265,7 @@ export function getChannelStoryComputed(
     width: contentWidth,
     height: Math.max(1, channelStory.bodyHeight)
   };
-  const headerY = templateConfig.card.y + channelStory.contentPaddingTop;
+  const headerY = cardInnerRect.y + channelStory.contentPaddingTop;
   const leadY = headerY + channelStory.headerHeight + channelStory.headerToLeadGap;
   const bodyY = leadVisible
     ? leadY + channelStory.leadHeight + channelStory.leadToBodyGap
@@ -1277,12 +1299,14 @@ export function getChannelStoryComputed(
     config: bottomTypography,
     scale: bottomScale
   });
-  const topBlockHeight =
-    bodyY + channelStory.bodyHeight + channelStory.bodyToMediaGap - templateConfig.card.y;
-  const bottomBlockHeight = channelStory.footerHeight + channelStory.contentPaddingBottom;
-  const videoX = templateConfig.card.x + channelStory.mediaInsetX;
-  const videoWidth = Math.max(120, templateConfig.card.width - channelStory.mediaInsetX * 2);
-  const videoHeight = Math.max(120, templateConfig.card.height - topBlockHeight - bottomBlockHeight);
+  const topContentHeight =
+    bodyY + channelStory.bodyHeight + channelStory.bodyToMediaGap - cardInnerRect.y;
+  const bottomContentHeight = channelStory.footerHeight + channelStory.contentPaddingBottom;
+  const topBlockHeight = cardInnerRect.inset + topContentHeight;
+  const bottomBlockHeight = cardInnerRect.inset + bottomContentHeight;
+  const videoX = cardInnerRect.x + channelStory.mediaInsetX;
+  const videoWidth = Math.max(120, cardInnerRect.width - channelStory.mediaInsetX * 2);
+  const videoHeight = Math.max(120, cardInnerRect.height - topContentHeight - bottomContentHeight);
 
   return {
     layoutKind: "channel_story",
@@ -1301,7 +1325,7 @@ export function getChannelStoryComputed(
     bottomBodyHeight: channelStory.bodyHeight,
     topBlockHeight,
     bottomBlockHeight,
-    videoY: templateConfig.card.y + topBlockHeight,
+    videoY: cardInnerRect.y + topContentHeight,
     videoX,
     videoWidth,
     topY: leadY,

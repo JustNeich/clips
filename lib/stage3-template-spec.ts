@@ -2,6 +2,7 @@ import scienceCardV1SpecJson from "../design/templates/science-card-v1/figma-spe
 import scienceCardV7SpecJson from "../design/templates/science-card-v7/figma-spec.json";
 import hedgesOfHonorV1SpecJson from "../design/templates/hedges-of-honor-v1/figma-spec.json";
 import {
+  getStage3CardInnerRect,
   SCIENCE_CARD_BLUE_TEMPLATE_ID,
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_RED_TEMPLATE_ID,
@@ -156,8 +157,9 @@ function buildGeneratedSpec(templateId: string): TemplateFigmaSpec {
   const computed = getTemplateComputed(templateId, "Top text", "Bottom text");
   if (template.layoutKind === "channel_story") {
     const channelStory = template.channelStory!;
-    const contentWidth = template.card.width - channelStory.contentPaddingX * 2;
-    const headerY = computed.headerY ?? template.card.y + channelStory.contentPaddingTop;
+    const cardInnerRect = getStage3CardInnerRect(template);
+    const contentWidth = Math.max(120, cardInnerRect.width - channelStory.contentPaddingX * 2);
+    const headerY = computed.headerY ?? cardInnerRect.y + channelStory.contentPaddingTop;
     const leadY =
       computed.topY ?? headerY + channelStory.headerHeight + channelStory.headerToLeadGap;
     const bodyY =
@@ -183,7 +185,7 @@ function buildGeneratedSpec(templateId: string): TemplateFigmaSpec {
       },
       sections: {
         top: {
-          x: template.card.x + channelStory.contentPaddingX,
+          x: cardInnerRect.x + channelStory.contentPaddingX,
           y: leadY,
           width: contentWidth,
           height: computed.leadVisible === false ? 0 : channelStory.leadHeight
@@ -195,25 +197,25 @@ function buildGeneratedSpec(templateId: string): TemplateFigmaSpec {
           height: computed.videoHeight
         },
         bottom: {
-          x: template.card.x,
+          x: cardInnerRect.x,
           y: computed.videoY + computed.videoHeight,
-          width: template.card.width,
+          width: cardInnerRect.width,
           height: computed.bottomBlockHeight
         },
         author: {
-          x: template.card.x + channelStory.contentPaddingX,
+          x: cardInnerRect.x + channelStory.contentPaddingX,
           y: headerY,
           width: contentWidth,
           height: channelStory.headerHeight
         },
         avatar: {
-          x: template.card.x + channelStory.contentPaddingX,
+          x: cardInnerRect.x + channelStory.contentPaddingX,
           y: headerY + Math.max(0, Math.round((channelStory.headerHeight - template.author.avatarSize) / 2)),
           width: template.author.avatarSize,
           height: template.author.avatarSize
         },
         bottomText: {
-          x: template.card.x + channelStory.contentPaddingX,
+          x: cardInnerRect.x + channelStory.contentPaddingX,
           y: bodyY,
           width: contentWidth,
           height: channelStory.bodyHeight

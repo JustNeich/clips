@@ -244,6 +244,34 @@ function formatProviderIntegrationStatus(
   return "Подключено";
 }
 
+function describeCaptionProviderIntegration(input: {
+  provider: Stage2CaptionProvider;
+  integration:
+    | WorkspaceAnthropicIntegrationRecord
+    | WorkspaceOpenRouterIntegrationRecord
+    | null
+    | undefined;
+  providerValue: "anthropic" | "openrouter";
+  providerLabel: string;
+}): { note: string | null; disconnectLabel: string } {
+  if (input.integration?.status !== "connected") {
+    return {
+      note: null,
+      disconnectLabel: `Отключить ${input.providerLabel}`
+    };
+  }
+  if (input.provider === input.providerValue) {
+    return {
+      note: `${input.providerLabel} сейчас активен для caption-этапов Stage 2.`,
+      disconnectLabel: `Отключить ${input.providerLabel}`
+    };
+  }
+  return {
+    note: `${input.providerLabel} подключён, но captions сейчас идут через Shared Codex.`,
+    disconnectLabel: `Отключить сохранённый key ${input.providerLabel}`
+  };
+}
+
 function resolveEffectiveStageModelLabel(input: {
   fieldId: WorkspaceCodexModelStageId;
   resolvedWorkspaceCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
@@ -437,6 +465,18 @@ export function ChannelManagerStage2Tab({
     workspaceStage2CaptionProviderConfig.openrouterModel ?? DEFAULT_OPENROUTER_CAPTION_MODEL;
   const anthropicIntegrationConnected = workspaceAnthropicIntegration?.status === "connected";
   const openRouterIntegrationConnected = workspaceOpenRouterIntegration?.status === "connected";
+  const anthropicIntegrationDetails = describeCaptionProviderIntegration({
+    provider: workspaceStage2CaptionProviderConfig.provider,
+    integration: workspaceAnthropicIntegration,
+    providerValue: "anthropic",
+    providerLabel: "Anthropic"
+  });
+  const openRouterIntegrationDetails = describeCaptionProviderIntegration({
+    provider: workspaceStage2CaptionProviderConfig.provider,
+    integration: workspaceOpenRouterIntegration,
+    providerValue: "openrouter",
+    providerLabel: "OpenRouter"
+  });
   const referenceOneShotModelField = STAGE2_PROMPT_MODEL_STAGE_FIELDS.find(
     (field) => field.id === "oneShotReference"
   );
@@ -673,6 +713,9 @@ export function ChannelManagerStage2Tab({
                 {workspaceAnthropicIntegration?.lastError ? (
                   <p className="subtle-text danger-text">{workspaceAnthropicIntegration.lastError}</p>
                 ) : null}
+                {anthropicIntegrationDetails.note ? (
+                  <p className="subtle-text">{anthropicIntegrationDetails.note}</p>
+                ) : null}
                 {anthropicIntegrationActionState.message ? (
                   <p
                     className={`subtle-text ${anthropicIntegrationActionState.status === "error" ? "danger-text" : ""}`}
@@ -709,7 +752,7 @@ export function ChannelManagerStage2Tab({
                       void disconnectWorkspaceAnthropicIntegration();
                     }}
                   >
-                    Отключить Anthropic
+                    {anthropicIntegrationDetails.disconnectLabel}
                   </button>
                 </div>
                 <p className="subtle-text">
@@ -759,6 +802,9 @@ export function ChannelManagerStage2Tab({
                 {workspaceOpenRouterIntegration?.lastError ? (
                   <p className="subtle-text danger-text">{workspaceOpenRouterIntegration.lastError}</p>
                 ) : null}
+                {openRouterIntegrationDetails.note ? (
+                  <p className="subtle-text">{openRouterIntegrationDetails.note}</p>
+                ) : null}
                 {openRouterIntegrationActionState.message ? (
                   <p
                     className={`subtle-text ${openRouterIntegrationActionState.status === "error" ? "danger-text" : ""}`}
@@ -793,7 +839,7 @@ export function ChannelManagerStage2Tab({
                       void disconnectWorkspaceOpenRouterIntegration();
                     }}
                   >
-                    Отключить OpenRouter
+                    {openRouterIntegrationDetails.disconnectLabel}
                   </button>
                 </div>
                 <p className="subtle-text">

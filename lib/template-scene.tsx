@@ -7,6 +7,7 @@ import {
   SCIENCE_CARD,
   SCIENCE_CARD_V7_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
+  getStage3CardInnerRect,
   isClassicScienceCardTemplateId,
   STAGE3_TEMPLATE_ID,
   Stage3TemplateConfig,
@@ -76,6 +77,20 @@ export type TemplateSceneProps = {
   sceneReady?: boolean;
   sceneRef?: React.Ref<HTMLDivElement>;
 };
+
+function localizeRectToCardPaddingBox(
+  rect: TemplateSceneRect,
+  cardRect: TemplateSceneRect,
+  borderWidth: number
+): TemplateSceneRect {
+  const inset = Math.max(0, Math.round(borderWidth));
+  return {
+    x: rect.x - (cardRect.x + inset),
+    y: rect.y - (cardRect.y + inset),
+    width: rect.width,
+    height: rect.height
+  };
+}
 
 function avatarInitials(name: string): string {
   const parts = name
@@ -635,6 +650,15 @@ export function TemplateScene({
     const mediaRadius = computed.mediaRadius ?? channelStory.mediaRadius;
     const mediaBorderWidth = computed.mediaBorderWidth ?? channelStory.mediaBorderWidth;
     const mediaBorderColor = computed.mediaBorderColor ?? channelStory.mediaBorderColor;
+    const cardInnerRect = getStage3CardInnerRect(templateConfig);
+    const localizedAuthorRect = localizeRectToCardPaddingBox(regions.author, cardRect, cardInnerRect.inset);
+    const localizedTopRect = localizeRectToCardPaddingBox(regions.top, cardRect, cardInnerRect.inset);
+    const localizedBottomTextRect = localizeRectToCardPaddingBox(
+      regions.bottomText,
+      cardRect,
+      cardInnerRect.inset
+    );
+    const localizedMediaRect = localizeRectToCardPaddingBox(regions.media, cardRect, cardInnerRect.inset);
 
     return (
       <div
@@ -712,10 +736,10 @@ export function TemplateScene({
           <section
             style={{
               position: "absolute",
-              left: regions.author.x,
-              top: regions.author.y,
-              width: regions.author.width,
-              height: regions.author.height,
+              left: localizedAuthorRect.x,
+              top: localizedAuthorRect.y,
+              width: localizedAuthorRect.width,
+              height: localizedAuthorRect.height,
               display: "flex",
               alignItems: "center",
               justifyContent: headerJustifyContent,
@@ -760,10 +784,10 @@ export function TemplateScene({
             <section
               style={{
                 position: "absolute",
-                left: regions.top.x,
-                top: regions.top.y,
-                width: regions.top.width,
-                height: regions.top.height,
+                left: localizedTopRect.x,
+                top: localizedTopRect.y,
+                width: localizedTopRect.width,
+                height: localizedTopRect.height,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -798,10 +822,10 @@ export function TemplateScene({
           <section
             style={{
               position: "absolute",
-              left: regions.bottomText.x,
-              top: regions.bottomText.y,
-              width: regions.bottomText.width,
-              height: regions.bottomText.height,
+              left: localizedBottomTextRect.x,
+              top: localizedBottomTextRect.y,
+              width: localizedBottomTextRect.width,
+              height: localizedBottomTextRect.height,
               display: "flex",
               alignItems: "flex-start",
               justifyContent: bodyTextAlign === "center" ? "center" : "flex-start",
@@ -836,10 +860,10 @@ export function TemplateScene({
           <section
             style={{
               position: "absolute",
-              left: regions.media.x,
-              top: regions.media.y,
-              width: regions.media.width,
-              height: regions.media.height,
+              left: localizedMediaRect.x,
+              top: localizedMediaRect.y,
+              width: localizedMediaRect.width,
+              height: localizedMediaRect.height,
               overflow: "hidden",
               borderRadius: mediaRadius,
               border:

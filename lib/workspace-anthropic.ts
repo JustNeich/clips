@@ -1,6 +1,8 @@
 import type { AuthContext } from "./team-store";
 import {
+  getWorkspaceStage2CaptionProviderConfig,
   getWorkspaceAnthropicIntegration,
+  updateWorkspaceStage2CaptionProviderConfig,
   upsertWorkspaceAnthropicIntegration,
   type WorkspaceAnthropicIntegrationRecord
 } from "./team-store";
@@ -39,7 +41,7 @@ export async function mutateWorkspaceAnthropicIntegration(input: {
   }
 
   if (input.action === "disconnect") {
-    return upsertWorkspaceAnthropicIntegration({
+    const disconnected = upsertWorkspaceAnthropicIntegration({
       workspaceId: input.auth.workspace.id,
       ownerUserId: input.auth.user.id,
       status: "disconnected",
@@ -47,6 +49,14 @@ export async function mutateWorkspaceAnthropicIntegration(input: {
       lastError: null,
       connectedAt: null
     });
+    const captionProviderConfig = getWorkspaceStage2CaptionProviderConfig(input.auth.workspace.id);
+    if (captionProviderConfig.provider === "anthropic") {
+      updateWorkspaceStage2CaptionProviderConfig(input.auth.workspace.id, {
+        ...captionProviderConfig,
+        provider: "codex"
+      });
+    }
+    return disconnected;
   }
 
   const apiKey = input.apiKey?.trim() ?? "";

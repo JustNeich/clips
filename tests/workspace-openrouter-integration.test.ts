@@ -18,6 +18,7 @@ import {
   updateWorkspaceStage2CaptionProviderConfig,
   upsertWorkspaceOpenRouterIntegration
 } from "../lib/team-store";
+import { mutateWorkspaceOpenRouterIntegration } from "../lib/workspace-openrouter";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-workspace-openrouter-test-"));
@@ -116,4 +117,43 @@ test("normalizeStage2CaptionProviderConfig fills the default OpenRouter model", 
       openrouterModel: DEFAULT_OPENROUTER_CAPTION_MODEL
     }
   );
+});
+
+test("disconnecting OpenRouter demotes the workspace caption provider back to Shared Codex", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "OpenRouter Disconnect",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    upsertWorkspaceOpenRouterIntegration({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      status: "connected",
+      apiKey: "sk-or-v1-1234567890abcdef",
+      lastError: null,
+      connectedAt: "2026-04-19T12:00:00.000Z"
+    });
+    updateWorkspaceStage2CaptionProviderConfig(owner.workspace.id, {
+      provider: "openrouter",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    });
+
+    const integration = await mutateWorkspaceOpenRouterIntegration({
+      auth: owner,
+      action: "disconnect"
+    });
+
+    assert.equal(integration.status, "disconnected");
+    assert.equal(getWorkspaceOpenRouterApiKey(owner.workspace.id), null);
+    assert.equal(getWorkspaceOpenRouterIntegration(owner.workspace.id)?.status, "disconnected");
+    assert.deepEqual(getWorkspaceStage2CaptionProviderConfig(owner.workspace.id), {
+      provider: "codex",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    });
+  });
 });

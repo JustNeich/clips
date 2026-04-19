@@ -280,6 +280,8 @@ Anthropic/OpenRouter integrations живут отдельно от prompt/model 
 - tables `workspace_anthropic_integrations`, `workspace_openrouter_integrations`
 - keys хранятся зашифрованно через `lib/app-crypto.ts`
 - UI surface: `Channel Manager -> Общие настройки -> Caption provider`
+- возврат на `provider = codex` не удаляет внешний key: Anthropic/OpenRouter integration остаётся подключённой, но inactive, пока owner явно не нажмёт `Отключить ... key`
+- disconnect Anthropic/OpenRouter now fail-safe сразу демотит workspace caption provider обратно на `codex`, даже если локальный UI autosave был прерван
 - setup links:
   - [API keys](https://platform.claude.com/settings/keys)
   - [Billing](https://platform.claude.com/settings/billing)

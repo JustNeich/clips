@@ -26,7 +26,11 @@ import {
   Stage3TemplateViewport,
   getTemplatePreviewViewportMetrics
 } from "../../lib/stage3-template-viewport";
-import { clampStage3TextScaleUi } from "../../lib/stage3-text-fit";
+import {
+  STAGE3_TEXT_SCALE_UI_MAX,
+  STAGE3_TEXT_SCALE_UI_MIN,
+  clampStage3TextScaleUi
+} from "../../lib/stage3-text-fit";
 import {
   buildStage3VideoFilterCss,
   normalizeStage3VideoBrightness,
@@ -276,6 +280,7 @@ const BADGE_OPTIONS: BadgeOption[] = [
 const DEFAULT_OPEN_SECTION_IDS = new Set<string>([
   "template-road-style-library",
   "template-road-style-base",
+  "template-road-style-channel-row",
   "template-road-style-content",
   "template-road-style-card",
   "template-road-style-shadow",
@@ -287,6 +292,7 @@ const DEFAULT_OPEN_SECTION_IDS = new Set<string>([
 const SECTION_LINKS: SectionLink[] = [
   { id: "template-road-style-library", label: "Шаблон" },
   { id: "template-road-style-base", label: "Основа" },
+  { id: "template-road-style-channel-row", label: "Канал" },
   { id: "template-road-style-content", label: "Демо-текст" },
   { id: "template-road-style-card", label: "Карточка" },
   { id: "template-road-style-shadow", label: "Тень" },
@@ -516,6 +522,17 @@ function formatPxValue(value: number): string {
 
 function formatScaleValue(value: number): string {
   return `${value.toFixed(2)}x`;
+}
+
+function buildDraftFormatMessage(formatGroup: Stage3TemplateFormatGroup): string {
+  return `Открыт черновик формата ${resolveTemplateFormatGroupLabel(formatGroup)}. Сохрани его как новый шаблон, чтобы он появился в библиотеке.`;
+}
+
+function getTemplateVariantFormatGroup(templateId: string | null | undefined): Stage3TemplateFormatGroup {
+  return (
+    TEMPLATE_VARIANTS.find((variant) => variant.id === templateId)?.formatGroup ??
+    "classic_top_bottom"
+  );
 }
 
 function formatLineHeightValue(value: number): string {
@@ -1196,6 +1213,11 @@ export function TemplateStyleEditor({
   );
   const isChannelStoryTemplate =
     activeTemplateSemantics.formatGroup === "channel_story" && Boolean(templateConfig.channelStory);
+  const channelStoryLeadMode = templateConfig.channelStory?.leadMode ?? "clip_custom";
+  const showChannelStoryDemoLeadField =
+    isChannelStoryTemplate && channelStoryLeadMode === "clip_custom";
+  const showChannelStoryTemplateManagedLeadNote =
+    isChannelStoryTemplate && channelStoryLeadMode !== "clip_custom";
   const availableBaseVariants = useMemo(
     () => TEMPLATE_VARIANTS.filter((variant) => variant.formatGroup === selectedFormatGroup),
     [selectedFormatGroup]
@@ -1277,6 +1299,13 @@ export function TemplateStyleEditor({
     templateConfig.typography.authorHandle.fontFamily ?? currentBottomFontFamily;
   const currentBadgeAssetPath = templateConfig.author.checkAssetPath ?? "";
   const currentBadgeOption = BADGE_OPTIONS.find((option) => option.value === currentBadgeAssetPath);
+  const sectionLinks = useMemo(
+    () =>
+      SECTION_LINKS.filter((section) =>
+        section.id === "template-road-style-channel-row" ? isChannelStoryTemplate : true
+      ),
+    [isChannelStoryTemplate]
+  );
   const topFontSelectOptions = useMemo(
     () => buildFontSelectOptions(currentTopFontFamily, TOP_FONT_OPTIONS),
     [currentTopFontFamily]
@@ -1414,7 +1443,11 @@ export function TemplateStyleEditor({
   }> => {
     const response = await fetch("/api/design/templates", { cache: "no-store" });
     if (!response.ok) {
-      throw new Error(`Failed to load templates: ${response.status}`);
+      const error = new Error(`Failed to load templates: ${response.status}`) as Error & {
+        status?: number;
+      };
+      error.status = response.status;
+      throw error;
     }
     const payload = (await response.json()) as ManagedTemplateListResponse;
     const nextTemplates = Array.isArray(payload.templates) ? payload.templates : [];
@@ -1510,10 +1543,7 @@ export function TemplateStyleEditor({
       }
       const fallbackVariant =
         TEMPLATE_VARIANTS.find((variant) => variant.formatGroup === nextGroup) ?? TEMPLATE_VARIANTS[0];
-      applyDraftTemplate(
-        fallbackVariant.id,
-        `Открыт черновик формата ${resolveTemplateFormatGroupLabel(nextGroup)}. Сохрани его как новый шаблон, чтобы он появился в библиотеке.`
-      );
+      applyDraftTemplate(fallbackVariant.id, buildDraftFormatMessage(nextGroup));
     },
     [applyDraftTemplate, baseTemplateId, loadTemplate]
   );
@@ -1666,8 +1696,20 @@ export function TemplateStyleEditor({
         await loadTemplate(preferredTemplateId, {
           fallbackTemplates: nextTemplates
         });
-      } catch {
+      } catch (error) {
         if (!cancelled) {
+          const status =
+            typeof error === "object" && error && "status" in error
+              ? Number((error as { status?: unknown }).status)
+              : null;
+          if (status === 401 || status === 403) {
+            const fallbackFormatGroup = getTemplateVariantFormatGroup(initialResolvedTemplateId);
+            applyDraftTemplate(
+              initialResolvedTemplateId,
+              buildDraftFormatMessage(fallbackFormatGroup)
+            );
+            return;
+          }
           setSaveState("error");
           setSaveMessage("Библиотека шаблонов сейчас недоступна.");
         }
@@ -2501,7 +2543,7 @@ export function TemplateStyleEditor({
               </h3>
             </div>
             <div className="template-road-editor-quick-nav">
-              {SECTION_LINKS.map((section) => (
+              {sectionLinks.map((section) => (
                 <button
                   key={section.id}
                   type="button"
@@ -2726,6 +2768,163 @@ export function TemplateStyleEditor({
             </div>
           </EditorSection>
 
+          {isChannelStoryTemplate ? (
+            <EditorSection
+              id="template-road-style-channel-row"
+              eyebrow="Канал"
+              title="Канал и lead-политика"
+              description="Самые базовые controls для верхней части композиции: channel row, бейдж, lead-режим и то, как шаблон живёт в Stage 2."
+              isOpen={Boolean(openSections["template-road-style-channel-row"])}
+              onToggle={() => toggleSection("template-road-style-channel-row")}
+              meta={
+                templateConfig.channelStory ? (
+                  <>
+                    <span className="meta-pill">Lead mode: {templateConfig.channelStory.leadMode}</span>
+                    <span className="meta-pill">
+                      Header: {templateConfig.channelStory.headerAlign === "center" ? "center" : "left"}
+                    </span>
+                    <span className="meta-pill">
+                      Body: {templateConfig.channelStory.bodyTextAlign ?? "center"}
+                    </span>
+                  </>
+                ) : null
+              }
+            >
+              <div className="template-road-editor-grid two-up">
+                <label className="template-road-editor-field">
+                  <span className="field-label">Название канала</span>
+                  <input
+                    className="text-input"
+                    type="text"
+                    value={content.channelName}
+                    onChange={(event) => updateContent("channelName", event.target.value)}
+                  />
+                  <span className="template-road-editor-field-hint">
+                    Появляется в верхнем channel row и сразу показывает, насколько живо выглядит header.
+                  </span>
+                </label>
+                <label className="template-road-editor-field">
+                  <span className="field-label">Хэндл / ник</span>
+                  <input
+                    className="text-input mono"
+                    type="text"
+                    value={content.channelHandle}
+                    onChange={(event) => updateContent("channelHandle", event.target.value)}
+                  />
+                  <span className="template-road-editor-field-hint">
+                    Обычно это короткий `@handle` или лаконичный username.
+                  </span>
+                </label>
+              </div>
+              {templateConfig.channelStory ? (
+                <>
+                  <div className="template-road-editor-grid two-up">
+                    <SelectControl
+                      label="Режим lead"
+                      hint="`Clip custom` просит Stage 2 генерировать отдельный короткий lead. `Template default` подставляет шаблонный текст. `Off` убирает эту строку совсем."
+                      value={templateConfig.channelStory.leadMode}
+                      options={[
+                        { label: "Clip custom", value: "clip_custom" },
+                        { label: "Template default", value: "template_default" },
+                        { label: "Off", value: "off" }
+                      ]}
+                      onChange={(value) =>
+                        updateChannelStory(
+                          "leadMode",
+                          value as NonNullable<Stage3TemplateConfig["channelStory"]>["leadMode"]
+                        )
+                      }
+                    />
+                    <label className="template-road-editor-field">
+                      <span className="field-label">
+                        {channelStoryLeadMode === "clip_custom" ? "Demo lead" : "Шаблонный lead"}
+                      </span>
+                      <input
+                        className="text-input"
+                        type="text"
+                        value={content.topText}
+                        onChange={(event) => updateContent("topText", event.target.value)}
+                      />
+                      <span className="template-road-editor-field-hint">
+                        {channelStoryLeadMode === "clip_custom"
+                          ? "Короткий demo-kicker для превью и быстрых проверок. В живом Step 2 отдельный lead сгенерирует модель."
+                          : channelStoryLeadMode === "template_default"
+                            ? "Этот текст синхронизируется в `defaultLeadText` и автоматически подставляется в operator flow."
+                            : "Lead сейчас скрыт из композиции, но этот текст можно сохранить как резервный пресет на будущее."}
+                      </span>
+                    </label>
+                  </div>
+                  <div className="template-road-editor-grid two-up">
+                    <SelectControl
+                      label="Выравнивание header row"
+                      hint="`Left` ближе к референсам с channel row. `Center` подходит для более плакатной композиции."
+                      value={templateConfig.channelStory.headerAlign ?? "left"}
+                      options={[
+                        { label: "Left", value: "left" },
+                        { label: "Center", value: "center" }
+                      ]}
+                      onChange={(value) =>
+                        updateChannelStory("headerAlign", value as "left" | "center")
+                      }
+                    />
+                    <SelectControl
+                      label="Выравнивание body"
+                      hint="`Center` даёт poster feel, `Left` помогает для более редакционного dense-story вида."
+                      value={templateConfig.channelStory.bodyTextAlign ?? "center"}
+                      options={[
+                        { label: "Center", value: "center" },
+                        { label: "Left", value: "left" }
+                      ]}
+                      onChange={(value) =>
+                        updateChannelStory("bodyTextAlign", value as "left" | "center")
+                      }
+                    />
+                  </div>
+                </>
+              ) : null}
+              <BadgeOptionPicker
+                label="Вариант галочки"
+                hint="Поставь сюда тот бейдж, который будет сопровождать channel row во всех preview и финальных роликах."
+                value={currentBadgeAssetPath}
+                options={BADGE_OPTIONS}
+                fallbackColor={templateConfig.palette.checkBadgeColor}
+                onChange={(value) => updateAuthor("checkAssetPath", value)}
+              />
+              <div className="template-road-editor-grid three-up">
+                <SliderControl
+                  label="Размер аватара"
+                  hint="Крупнее делает header row заметнее, меньше — чище и плотнее."
+                  min={56}
+                  max={180}
+                  step={1}
+                  value={templateConfig.author.avatarSize}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateAuthor("avatarSize", value)}
+                />
+                <SliderControl
+                  label="Размер бейджа"
+                  hint="Размер галочки или статусного маркера рядом с названием канала."
+                  min={24}
+                  max={96}
+                  step={1}
+                  value={templateConfig.author.checkSize}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateAuthor("checkSize", value)}
+                />
+                <SliderControl
+                  label="Обводка аватара"
+                  hint="Полезно, если аватар теряется на сложном фоне header row."
+                  min={0}
+                  max={12}
+                  step={1}
+                  value={templateConfig.author.avatarBorder}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateAuthor("avatarBorder", value)}
+                />
+              </div>
+            </EditorSection>
+          ) : null}
+
           <EditorSection
             id="template-road-style-content"
             eyebrow="Демо-контент"
@@ -2744,13 +2943,9 @@ export function TemplateStyleEditor({
             }
           >
             <div className="template-road-editor-grid">
-              {isChannelStoryTemplate ? (
+              {showChannelStoryDemoLeadField ? (
                 <label className="template-road-editor-field">
-                  <span className="field-label">
-                    {templateConfig.channelStory?.leadMode === "template_default"
-                      ? "Шаблонный lead"
-                      : activeTemplateSemantics.topLabel}
-                  </span>
+                  <span className="field-label">{activeTemplateSemantics.topLabel}</span>
                   <textarea
                     className="text-area template-road-editor-textarea"
                     rows={4}
@@ -2758,14 +2953,10 @@ export function TemplateStyleEditor({
                     onChange={(event) => updateContent("topText", event.target.value)}
                   />
                   <span className="template-road-editor-field-hint">
-                    {templateConfig.channelStory?.leadMode === "off"
-                      ? "Lead сейчас выключен, но demo-текст можно оставить для быстрых экспериментов при смене режима."
-                      : templateConfig.channelStory?.leadMode === "template_default"
-                        ? "Этот текст используется как дефолтный lead шаблона и подставляется автоматически в operator flow."
-                        : "Короткая строка под header row: например `Did you know?` или `Cried for life`."}
+                    Короткая строка под header row: например `Did you know?` или `Cried for life`.
                   </span>
                 </label>
-              ) : (
+              ) : !isChannelStoryTemplate ? (
                 <label className="template-road-editor-field">
                   <span className="field-label">Верхний текст</span>
                   <textarea
@@ -2778,7 +2969,15 @@ export function TemplateStyleEditor({
                     Основной крупный текст верхнего блока.
                   </span>
                 </label>
-              )}
+              ) : null}
+              {showChannelStoryTemplateManagedLeadNote ? (
+                <div className="template-road-editor-shadow-empty">
+                  <p className="subtle-text">
+                    {activeTemplateSemantics.topNote ??
+                      "Lead управляется в блоке «Канал» и не редактируется как отдельный clip field в этом режиме."}
+                  </p>
+                </div>
+              ) : null}
               <label className="template-road-editor-field">
                 <span className="field-label">
                   {activeTemplateSemantics.bottomLabel}
@@ -2796,34 +2995,34 @@ export function TemplateStyleEditor({
                 </span>
               </label>
             </div>
-            <div className="template-road-editor-grid two-up">
-              <label className="template-road-editor-field">
-                <span className="field-label">Название канала</span>
-                <input
-                  className="text-input"
-                  type="text"
-                  value={content.channelName}
-                  onChange={(event) => updateContent("channelName", event.target.value)}
-                />
-                <span className="template-road-editor-field-hint">
-                  {activeTemplateSemantics.formatGroup === "channel_story"
-                    ? "Появляется в верхнем channel row."
-                    : "Появляется в строке автора внизу карточки."}
-                </span>
-              </label>
-              <label className="template-road-editor-field">
-                <span className="field-label">Хэндл / ник</span>
-                <input
-                  className="text-input mono"
-                  type="text"
-                  value={content.channelHandle}
-                  onChange={(event) => updateContent("channelHandle", event.target.value)}
-                />
-                <span className="template-road-editor-field-hint">
-                  Обычно это короткий ник или `@handle`.
-                </span>
-              </label>
-            </div>
+            {!isChannelStoryTemplate ? (
+              <div className="template-road-editor-grid two-up">
+                <label className="template-road-editor-field">
+                  <span className="field-label">Название канала</span>
+                  <input
+                    className="text-input"
+                    type="text"
+                    value={content.channelName}
+                    onChange={(event) => updateContent("channelName", event.target.value)}
+                  />
+                  <span className="template-road-editor-field-hint">
+                    Появляется в строке автора внизу карточки.
+                  </span>
+                </label>
+                <label className="template-road-editor-field">
+                  <span className="field-label">Хэндл / ник</span>
+                  <input
+                    className="text-input mono"
+                    type="text"
+                    value={content.channelHandle}
+                    onChange={(event) => updateContent("channelHandle", event.target.value)}
+                  />
+                  <span className="template-road-editor-field-hint">
+                    Обычно это короткий ник или `@handle`.
+                  </span>
+                </label>
+              </div>
+            ) : null}
             <div className="template-road-editor-field">
               <span className="field-label">Фон холста</span>
               <div className="template-road-editor-upload-card">
@@ -2900,8 +3099,8 @@ export function TemplateStyleEditor({
                     ? "Ручная коррекция размера lead / заголовка."
                     : "Лёгкая ручная коррекция поверх автоматического подбора."
                 }
-                min={0.8}
-                max={1.6}
+                min={STAGE3_TEXT_SCALE_UI_MIN}
+                max={STAGE3_TEXT_SCALE_UI_MAX}
                 step={0.01}
                 nudgeStep={0.02}
                 value={content.topFontScale}
@@ -2915,8 +3114,8 @@ export function TemplateStyleEditor({
                     ? "Полезно, если body кажется слишком плотным или слишком пустым."
                     : "Полезно, если нижний блок кажется слишком тяжёлым или слишком пустым."
                 }
-                min={0.8}
-                max={1.6}
+                min={STAGE3_TEXT_SCALE_UI_MIN}
+                max={STAGE3_TEXT_SCALE_UI_MAX}
                 step={0.01}
                 nudgeStep={0.02}
                 value={content.bottomFontScale}
@@ -3160,7 +3359,7 @@ export function TemplateStyleEditor({
                 label="Скругление углов"
                 hint="Чем больше значение, тем мягче выглядит форма карточки."
                 min={0}
-                max={52}
+                max={120}
                 step={1}
                 value={templateConfig.card.radius}
                 formatValue={formatPxValue}
@@ -3170,7 +3369,7 @@ export function TemplateStyleEditor({
                 label="Толщина обводки"
                 hint="Полезно, когда нужно сделать карточку более графичной или отделить от фона."
                 min={0}
-                max={24}
+                max={40}
                 step={1}
                 value={templateConfig.card.borderWidth}
                 formatValue={formatPxValue}
@@ -3576,7 +3775,7 @@ export function TemplateStyleEditor({
                     label="Боковой inset видео"
                     hint="Позволяет сделать окно исходного видео уже shell-оболочки."
                     min={0}
-                    max={40}
+                    max={140}
                     step={1}
                     value={templateConfig.channelStory.mediaInsetX}
                     formatValue={formatPxValue}
@@ -3586,7 +3785,7 @@ export function TemplateStyleEditor({
                     label="Скругление видео"
                     hint="Подходит для rounded-вариантов из референсов."
                     min={0}
-                    max={48}
+                    max={120}
                     step={1}
                     value={templateConfig.channelStory.mediaRadius}
                     formatValue={formatPxValue}
@@ -3596,7 +3795,7 @@ export function TemplateStyleEditor({
                     label="Обводка видео"
                     hint="Толщина отдельной рамки вокруг исходного видео."
                     min={0}
-                    max={12}
+                    max={24}
                     step={1}
                     value={templateConfig.channelStory.mediaBorderWidth}
                     formatValue={formatPxValue}
@@ -3869,7 +4068,7 @@ export function TemplateStyleEditor({
                     label="Внутренние поля по бокам"
                     hint="Общий горизонтальный воздух для header, lead и body."
                     min={0}
-                    max={80}
+                    max={180}
                     step={1}
                     value={templateConfig.channelStory.contentPaddingX}
                     formatValue={formatPxValue}
@@ -3879,7 +4078,7 @@ export function TemplateStyleEditor({
                     label="Верхний внутренний отступ"
                     hint="Сколько воздуха оставить над channel row."
                     min={0}
-                    max={80}
+                    max={180}
                     step={1}
                     value={templateConfig.channelStory.contentPaddingTop}
                     formatValue={formatPxValue}
@@ -3889,7 +4088,7 @@ export function TemplateStyleEditor({
                     label="Нижний внутренний отступ"
                     hint="Воздух под видео внутри shell."
                     min={0}
-                    max={120}
+                    max={220}
                     step={1}
                     value={templateConfig.channelStory.contentPaddingBottom}
                     formatValue={formatPxValue}
@@ -3901,7 +4100,7 @@ export function TemplateStyleEditor({
                     label="Высота channel row"
                     hint="Высота верхней строки с аватаром, названием и ником."
                     min={72}
-                    max={180}
+                    max={240}
                     step={1}
                     value={templateConfig.channelStory.headerHeight}
                     formatValue={formatPxValue}
@@ -3911,7 +4110,7 @@ export function TemplateStyleEditor({
                     label="Высота lead"
                     hint="Резерв под короткую строку `Did you know?` или похожий kicker."
                     min={0}
-                    max={160}
+                    max={240}
                     step={1}
                     value={templateConfig.channelStory.leadHeight}
                     formatValue={formatPxValue}
@@ -3921,7 +4120,7 @@ export function TemplateStyleEditor({
                     label="Высота body"
                     hint="Основной текстовый блок над видео."
                     min={120}
-                    max={520}
+                    max={760}
                     step={1}
                     value={templateConfig.channelStory.bodyHeight}
                     formatValue={formatPxValue}
@@ -3933,7 +4132,7 @@ export function TemplateStyleEditor({
                     label="Header -> lead"
                     hint="Зазор между channel row и lead."
                     min={0}
-                    max={48}
+                    max={120}
                     step={1}
                     value={templateConfig.channelStory.headerToLeadGap}
                     formatValue={formatPxValue}
@@ -3943,7 +4142,7 @@ export function TemplateStyleEditor({
                     label="Lead -> body"
                     hint="Зазор между короткой строкой и основным текстом."
                     min={0}
-                    max={48}
+                    max={120}
                     step={1}
                     value={templateConfig.channelStory.leadToBodyGap}
                     formatValue={formatPxValue}
@@ -3953,7 +4152,7 @@ export function TemplateStyleEditor({
                     label="Body -> video"
                     hint="Отступ между текстом и окном исходного видео."
                     min={0}
-                    max={64}
+                    max={180}
                     step={1}
                     value={templateConfig.channelStory.bodyToMediaGap}
                     formatValue={formatPxValue}
@@ -3965,7 +4164,7 @@ export function TemplateStyleEditor({
                     label="Нижний footer-space"
                     hint="Чёрная зона под видео внутри shell."
                     min={0}
-                    max={180}
+                    max={320}
                     step={1}
                     value={templateConfig.channelStory.footerHeight}
                     formatValue={formatPxValue}
@@ -3975,7 +4174,7 @@ export function TemplateStyleEditor({
                     label="Аватар -> текст"
                     hint="Плотность верхнего channel row."
                     min={0}
-                    max={32}
+                    max={56}
                     step={1}
                     value={templateConfig.author.gap ?? 11}
                     formatValue={formatPxValue}
@@ -3985,7 +4184,7 @@ export function TemplateStyleEditor({
                     label="Имя -> бейдж"
                     hint="Зазор между названием канала и галочкой."
                     min={0}
-                    max={24}
+                    max={48}
                     step={1}
                     value={templateConfig.author.nameCheckGap ?? 8}
                     formatValue={formatPxValue}
@@ -4107,7 +4306,7 @@ export function TemplateStyleEditor({
                 label="Расстояние между именем и ником"
                 hint="Вертикальный зазор внутри текстовой части строки автора."
                 min={0}
-                max={16}
+                max={28}
                 step={1}
                 value={templateConfig.author.copyGap ?? 1}
                 formatValue={formatPxValue}
@@ -4117,7 +4316,7 @@ export function TemplateStyleEditor({
                 label="Расстояние между именем и бейджем"
                 hint="Сколько места оставить между названием канала и галочкой."
                 min={0}
-                max={18}
+                max={48}
                 step={1}
                 value={templateConfig.author.nameCheckGap ?? 8}
                 formatValue={formatPxValue}
@@ -4127,7 +4326,7 @@ export function TemplateStyleEditor({
                 label="Толщина обводки аватара"
                 hint="Помогает отделить аватар от фона или сделать его более собранным."
                 min={0}
-                max={6}
+                max={12}
                 step={1}
                 value={templateConfig.author.avatarBorder}
                 formatValue={formatPxValue}
@@ -4167,68 +4366,15 @@ export function TemplateStyleEditor({
           >
             {isChannelStoryTemplate && templateConfig.channelStory ? (
               <>
-                <div className="template-road-editor-grid two-up">
-                  <SelectControl
-                    label="Режим lead"
-                    hint="Определяет, генерирует ли Stage 2 отдельный lead, подставляет ли шаблон свой текст или полностью скрывает эту строку."
-                    value={templateConfig.channelStory.leadMode}
-                    options={[
-                      { label: "Clip custom", value: "clip_custom" },
-                      { label: "Template default", value: "template_default" },
-                      { label: "Off", value: "off" }
-                    ]}
-                    onChange={(value) =>
-                      updateChannelStory(
-                        "leadMode",
-                        value as NonNullable<Stage3TemplateConfig["channelStory"]>["leadMode"]
-                      )
-                    }
-                  />
-                  <label className="template-road-editor-field">
-                    <span className="field-label">Шаблонный lead</span>
-                    <input
-                      className="text-input"
-                      type="text"
-                      value={content.topText}
-                      onChange={(event) => updateContent("topText", event.target.value)}
-                    />
-                    <span className="template-road-editor-field-hint">
-                      Этот текст синхронизируется в `defaultLeadText` и используется при режиме `template_default`.
-                    </span>
-                  </label>
-                </div>
-                <div className="template-road-editor-grid two-up">
-                  <SelectControl
-                    label="Выравнивание header row"
-                    hint="Левое выравнивание ближе к референсам с channel row, центр подходит для более плакатной композиции."
-                    value={templateConfig.channelStory.headerAlign ?? "left"}
-                    options={[
-                      { label: "Left", value: "left" },
-                      { label: "Center", value: "center" }
-                    ]}
-                    onChange={(value) =>
-                      updateChannelStory("headerAlign", value as "left" | "center")
-                    }
-                  />
-                  <SelectControl
-                    label="Выравнивание body"
-                    hint="Центр для viral poster feel, left — для более редакционного story-block."
-                    value={templateConfig.channelStory.bodyTextAlign ?? "center"}
-                    options={[
-                      { label: "Center", value: "center" },
-                      { label: "Left", value: "left" }
-                    ]}
-                    onChange={(value) =>
-                      updateChannelStory("bodyTextAlign", value as "left" | "center")
-                    }
-                  />
-                </div>
+                <p className="template-road-editor-field-hint">
+                  Базовые controls channel row перенесены выше, чтобы inspector шёл сверху вниз по композиции. Здесь остаются только accent-элементы и финальная полировка.
+                </p>
                 <div className="template-road-editor-grid two-up">
                   <SliderControl
                     label="Толщина верхней accent-линии"
                     hint="Для сигнальной зелёной/красной полосы по верхнему краю."
                     min={0}
-                    max={12}
+                    max={28}
                     step={1}
                     value={templateConfig.channelStory.accentTopLineWidth ?? 0}
                     formatValue={formatPxValue}
@@ -4238,7 +4384,7 @@ export function TemplateStyleEditor({
                     label="Толщина нижней accent-линии"
                     hint="Нижняя сигнальная линия или разделитель у footer-space."
                     min={0}
-                    max={12}
+                    max={28}
                     step={1}
                     value={templateConfig.channelStory.accentBottomLineWidth ?? 0}
                     formatValue={formatPxValue}
@@ -4246,36 +4392,41 @@ export function TemplateStyleEditor({
                   />
                 </div>
               </>
-            ) : null}
-            <BadgeOptionPicker
-              label="Вариант галочки"
-              hint="Можно выбрать встроенный бейдж или переключиться на цветную twitter-style галочку, если оттенок должен управляться через поле «Цвет бейджа»."
-              value={currentBadgeAssetPath}
-              options={BADGE_OPTIONS}
-              fallbackColor={templateConfig.palette.checkBadgeColor}
-              onChange={(value) => updateAuthor("checkAssetPath", value)}
-            />
+            ) : (
+              <BadgeOptionPicker
+                label="Вариант галочки"
+                hint="Можно выбрать встроенный бейдж или переключиться на цветную twitter-style галочку, если оттенок должен управляться через поле «Цвет бейджа»."
+                value={currentBadgeAssetPath}
+                options={BADGE_OPTIONS}
+                fallbackColor={templateConfig.palette.checkBadgeColor}
+                onChange={(value) => updateAuthor("checkAssetPath", value)}
+              />
+            )}
             <div className="template-road-editor-grid three-up">
-              <SliderControl
-                label="Размер аватара"
-                hint="Крупнее делает строку автора заметнее, меньше — деликатнее."
-                min={72}
-                max={126}
-                step={1}
-                value={templateConfig.author.avatarSize}
-                formatValue={formatPxValue}
-                onChange={(value) => updateAuthor("avatarSize", value)}
-              />
-              <SliderControl
-                label="Размер бейджа"
-                hint="Размер галочки или статусного маркера рядом с именем."
-                min={34}
-                max={72}
-                step={1}
-                value={templateConfig.author.checkSize}
-                formatValue={formatPxValue}
-                onChange={(value) => updateAuthor("checkSize", value)}
-              />
+              {!isChannelStoryTemplate ? (
+                <>
+                  <SliderControl
+                    label="Размер аватара"
+                    hint="Крупнее делает строку автора заметнее, меньше — деликатнее."
+                    min={56}
+                    max={180}
+                    step={1}
+                    value={templateConfig.author.avatarSize}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateAuthor("avatarSize", value)}
+                  />
+                  <SliderControl
+                    label="Размер бейджа"
+                    hint="Размер галочки или статусного маркера рядом с именем."
+                    min={24}
+                    max={96}
+                    step={1}
+                    value={templateConfig.author.checkSize}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateAuthor("checkSize", value)}
+                  />
+                </>
+              ) : null}
               <SliderControl
                 label="Насыщенность ника автора"
                 hint="Если ник теряется, можно слегка поднять вес."

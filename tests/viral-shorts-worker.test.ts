@@ -1854,6 +1854,100 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   assert.doesNotMatch(markup, /disabled=""/);
 });
 
+test("workspace Stage 2 tab distinguishes a connected OpenRouter key from the active caption provider", () => {
+  const element = ChannelManagerStage2Tab({
+    isWorkspaceDefaultsSelection: true,
+    workspaceExamplesCount: 12,
+    workspaceExamplesJson: "[]",
+    workspaceExamplesError: null,
+    stage2HardConstraints: {
+      topLengthMin: 18,
+      topLengthMax: 80,
+      bottomLengthMin: 22,
+      bottomLengthMax: 110,
+      bannedWords: [],
+      bannedOpeners: []
+    },
+    bannedWordsInput: "",
+    bannedOpenersInput: "",
+    workspaceStage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+    workspaceStage2CaptionProviderConfig: {
+      provider: "codex",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    workspaceOpenRouterIntegration: {
+      id: "integration_openrouter_1",
+      workspaceId: "workspace_1",
+      provider: "openrouter",
+      status: "connected",
+      ownerUserId: "user_1",
+      apiKeyHint: "sk-or-v1-db6...765a",
+      lastError: null,
+      connectedAt: "2026-04-19T12:00:00.000Z",
+      updatedAt: "2026-04-19T12:00:00.000Z"
+    },
+    stage2PromptStages: [],
+    autosaveState: {
+      brand: { status: "idle", message: null },
+      stage2: { status: "idle", message: null },
+      stage2Defaults: { status: "idle", message: null },
+      render: { status: "idle", message: null }
+    },
+    canEditWorkspaceDefaults: true,
+    canEditHardConstraints: true,
+    canEditChannelExamples: false,
+    stage2WorkerProfileId: "stable_reference_v6",
+    canEditStage2WorkerProfile: false,
+    updateStage2WorkerProfileId: () => undefined,
+    activeExamplesPreview: {
+      source: "workspace_default",
+      corpus: [],
+      workspaceCorpusCount: 12
+    },
+    channelStyleProfile: null,
+    channelStyleProfileDraft: null,
+    channelStyleProfileStatus: "missing",
+    channelStyleProfileDirty: false,
+    channelStyleProfileFeedbackHistory: [],
+    channelStyleProfileFeedbackHistoryLoading: false,
+    channelEditorialMemory: null,
+    canEditChannelStyleProfile: false,
+    channelStyleProfileDiscovering: false,
+    channelStyleProfileDiscoveryError: null,
+    channelStyleProfileSaveState: { status: "idle", message: null },
+    updateChannelStyleProfileReferenceLinks: () => undefined,
+    updateChannelStyleProfileExplorationShare: () => undefined,
+    toggleChannelStyleProfileDirectionSelection: () => undefined,
+    selectAllChannelStyleProfileDirections: () => undefined,
+    clearChannelStyleProfileDirectionSelection: () => undefined,
+    startChannelStyleProfileDiscovery: async () => undefined,
+    saveChannelStyleProfileDraft: async () => undefined,
+    discardChannelStyleProfileDraft: () => undefined,
+    customExamplesJson: "[]",
+    customExamplesError: null,
+    updateWorkspaceExamplesJson: () => undefined,
+    updateCustomExamplesJson: () => undefined,
+    updateStage2HardConstraint: () => undefined,
+    updateBannedWordsInput: () => undefined,
+    updateBannedOpenersInput: () => undefined,
+    updateStage2PromptTemplate: () => undefined,
+    updateStage2PromptReasoning: () => undefined,
+    resetStage2PromptStage: () => undefined,
+    updateWorkspaceCaptionProvider: () => undefined,
+    updateWorkspaceAnthropicModel: () => undefined,
+    updateWorkspaceOpenRouterModel: () => undefined,
+    updateOpenRouterApiKeyInput: () => undefined,
+    saveWorkspaceOpenRouterIntegration: async () => undefined,
+    disconnectWorkspaceOpenRouterIntegration: async () => undefined
+  });
+  const markup = renderToStaticMarkup(element);
+
+  assert.match(markup, /OpenRouter подключён, но captions сейчас идут через Shared Codex\./);
+  assert.match(markup, /Отключить сохранённый key OpenRouter/);
+  assert.match(markup, /option value="codex" selected=""/);
+});
+
 test("channel manager save notices classify Stage 2 and style-profile saves with visible copy", () => {
   assert.deepEqual(
     describeChannelManagerSavePatch({
@@ -4274,7 +4368,7 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
   const persistedOverride = buildStage3DraftRenderPlanOverride(current, originalBase);
   assert.deepEqual(persistedOverride, {
     videoZoom: 1.35,
-    topFontScale: 1.35
+    topFontScale: 1.55
   });
 
   const updatedChannelBase = normalizeRenderPlan(
@@ -4300,7 +4394,7 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
   assert.equal(hydrated.backgroundAssetId, "background_next");
   assert.equal(hydrated.backgroundAssetMimeType, "video/mp4");
   assert.equal(hydrated.videoZoom, 1.35);
-  assert.equal(hydrated.topFontScale, 1.35);
+  assert.equal(hydrated.topFontScale, 1.55);
 });
 
 test("stage 3 draft render-plan hydration keeps channel avatar while preserving explicit asset clears", () => {

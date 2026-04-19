@@ -258,3 +258,69 @@ test("channel story markup renders highlight spans and media chrome", () => {
   assert.match(markup, /border:3px solid #ff0033/);
   assert.match(markup, /height:5px;background:#20df49/);
 });
+
+test("channel story snapshot measures inner content from the bordered card safe area", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.card.x = 110;
+  templateConfig.card.width = 860;
+  templateConfig.card.borderWidth = 14;
+  templateConfig.channelStory!.contentPaddingX = 60;
+  templateConfig.channelStory!.mediaInsetX = 22;
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: "Did you know?",
+      bottomText: "This body block should stay optically centered inside the bordered shell.",
+      channelName: "History Explained",
+      channelHandle: "@HistoryExplained13",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+
+  assert.equal(snapshot.layout.author.x, 184);
+  assert.equal(snapshot.layout.author.width, 712);
+  assert.equal(snapshot.layout.media.x, 146);
+  assert.equal(snapshot.layout.media.width, 788);
+});
+
+test("channel story scene markup keeps localized content inside the centered card shell", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.card.x = 110;
+  templateConfig.card.width = 860;
+  templateConfig.card.borderWidth = 14;
+  templateConfig.channelStory!.contentPaddingX = 60;
+  templateConfig.channelStory!.mediaInsetX = 22;
+
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      content: {
+        topText: "Did you know?",
+        bottomText: "This body block should stay optically centered inside the bordered shell.",
+        channelName: "History Explained",
+        channelHandle: "@HistoryExplained13",
+        highlights: { top: [], bottom: [] },
+        topFontScale: 1,
+        bottomFontScale: 1,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      },
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.match(markup, /left:110px;top:24px;width:860px;height:1848px/);
+  assert.match(markup, /data-template-slot="top-text"/);
+  assert.match(markup, /left:60px;top:34px;width:712px;height:118px/);
+  assert.match(markup, /left:22px;top:[0-9.]+px;width:788px;height:[0-9.]+px/);
+});

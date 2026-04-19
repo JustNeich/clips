@@ -1,6 +1,6 @@
-export const STAGE3_TEXT_SCALE_UI_MIN = 0.85;
-export const STAGE3_TEXT_SCALE_UI_MAX = 1.35;
-export const STAGE3_TEXT_SCALE_UI_PRESETS = [0.9, 1, 1.15, 1.3] as const;
+export const STAGE3_TEXT_SCALE_UI_MIN = 0.65;
+export const STAGE3_TEXT_SCALE_UI_MAX = 1.8;
+export const STAGE3_TEXT_SCALE_UI_PRESETS = [0.75, 1, 1.25, 1.5] as const;
 export const STAGE3_TEXT_FONT_STEP_PX = 0.25;
 
 type Stage3TextFitHashParams = {

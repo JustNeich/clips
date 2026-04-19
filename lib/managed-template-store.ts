@@ -257,7 +257,7 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       base.card.height = clamp(card.height, 160, base.frame.height);
     }
     if (typeof card.radius === "number" && Number.isFinite(card.radius)) {
-      base.card.radius = clamp(card.radius, 0, 80);
+      base.card.radius = clamp(card.radius, 0, 140);
     }
     if (typeof card.borderWidth === "number" && Number.isFinite(card.borderWidth)) {
       base.card.borderWidth = clamp(card.borderWidth, 0, 40);
