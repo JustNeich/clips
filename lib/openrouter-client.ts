@@ -20,13 +20,51 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function parseNestedOpenRouterProviderError(payload: unknown): {
+  providerName: string | null;
+  rawMessage: string | null;
+} {
+  const record = asRecord(payload);
+  const nestedError = asRecord(record?.error);
+  const metadata = asRecord(nestedError?.metadata);
+  const providerName =
+    typeof metadata?.provider_name === "string" && metadata.provider_name.trim()
+      ? metadata.provider_name.trim()
+      : null;
+  const raw = typeof metadata?.raw === "string" ? metadata.raw.trim() : "";
+  if (!raw) {
+    return { providerName, rawMessage: null };
+  }
+
+  try {
+    const rawRecord = asRecord(JSON.parse(raw));
+    const rawError = asRecord(rawRecord?.error);
+    const rawMessage =
+      (typeof rawError?.message === "string" && rawError.message.trim()) ||
+      (typeof rawRecord?.message === "string" && rawRecord.message.trim()) ||
+      null;
+    return {
+      providerName,
+      rawMessage
+    };
+  } catch {
+    return { providerName, rawMessage: null };
+  }
+}
+
 function getOpenRouterErrorMessage(payload: unknown, status: number): string {
   const record = asRecord(payload);
   const nestedError = asRecord(record?.error);
+  const { providerName, rawMessage } = parseNestedOpenRouterProviderError(payload);
   const message =
     (typeof nestedError?.message === "string" && nestedError.message.trim()) ||
     (typeof record?.message === "string" && record.message.trim()) ||
     "";
+  if (rawMessage) {
+    return providerName
+      ? `OpenRouter provider ${providerName}: ${rawMessage}`
+      : rawMessage;
+  }
   return message || `OpenRouter API request failed (HTTP ${status}).`;
 }
 
