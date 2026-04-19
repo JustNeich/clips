@@ -627,6 +627,236 @@ export function TemplateScene({
   const scienceCardChromeOutset = usesClassicScienceCardChrome ? Math.max(1, Math.round(cardBorderWidth / 2)) : 0;
   const scienceCardOuterRadius = cardRadius + scienceCardChromeOutset;
 
+  if (templateConfig.layoutKind === "channel_story" && templateConfig.channelStory) {
+    const channelStory = templateConfig.channelStory;
+    const leadVisible = Boolean(topText.trim()) && computed.leadVisible !== false && regions.top.height > 0;
+    const bodyTextAlign = channelStory.bodyTextAlign ?? "center";
+    const headerJustifyContent = channelStory.headerAlign === "center" ? "center" : "flex-start";
+    const mediaRadius = computed.mediaRadius ?? channelStory.mediaRadius;
+    const mediaBorderWidth = computed.mediaBorderWidth ?? channelStory.mediaBorderWidth;
+    const mediaBorderColor = computed.mediaBorderColor ?? channelStory.mediaBorderColor;
+
+    return (
+      <div
+        ref={sceneRef}
+        className={className}
+        data-template-scene={sceneDataId ?? resolvedTemplateId}
+        data-template-scene-ready={sceneReady ? "1" : "0"}
+        style={{
+          position: "relative",
+          width: frame.width,
+          height: frame.height,
+          overflow: "hidden",
+          ...style
+        }}
+      >
+        {backgroundNode}
+        {overlayNode}
+
+        {showSafeArea ? (
+          <div
+            style={{
+              position: "absolute",
+              left: regions.shell.x,
+              top: regions.shell.y,
+              width: regions.shell.width,
+              height: regions.shell.height,
+              border: "1px dashed rgba(255,255,255,0.12)",
+              boxSizing: "border-box",
+              pointerEvents: "none"
+            }}
+          />
+        ) : null}
+
+        <div
+          style={{
+            position: "absolute",
+            left: cardRect.x,
+            top: cardRect.y,
+            width: cardRect.width,
+            height: cardRect.height,
+            borderRadius: cardRadius,
+            background: cardFill,
+            border: `${cardBorderWidth}px solid ${cardBorderColor}`,
+            boxShadow: cardShadow ?? "none",
+            overflow: "hidden",
+            boxSizing: "border-box"
+          }}
+        >
+          {(channelStory.accentTopLineWidth ?? 0) > 0 ? (
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                width: "100%",
+                height: channelStory.accentTopLineWidth,
+                background: channelStory.accentTopLineColor ?? palette.accentColor ?? cardBorderColor
+              }}
+            />
+          ) : null}
+
+          {(channelStory.accentBottomLineWidth ?? 0) > 0 ? (
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                bottom: 0,
+                width: "100%",
+                height: channelStory.accentBottomLineWidth,
+                background: channelStory.accentBottomLineColor ?? palette.accentColor ?? cardBorderColor
+              }}
+            />
+          ) : null}
+
+          <section
+            style={{
+              position: "absolute",
+              left: regions.author.x,
+              top: regions.author.y,
+              width: regions.author.width,
+              height: regions.author.height,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: headerJustifyContent,
+              gap: authorGap,
+              boxSizing: "border-box"
+            }}
+          >
+            {avatarNode ?? renderDefaultAvatar(resolvedTemplateId, templateConfig, authorName, authorAvatarSize)}
+            <div style={{ minWidth: 0, display: "grid", gap: authorCopyGap }}>
+              <div style={{ display: "flex", alignItems: "center", gap: authorNameCheckGap }}>
+                <span
+                  style={{
+                    color: palette.authorNameColor,
+                    fontWeight: authorNameWeight,
+                    fontFamily: authorNameFontFamily,
+                    letterSpacing: authorNameLetterSpacing,
+                    fontSize: authorNameFontSize,
+                    lineHeight: templateConfig.typography.authorName.lineHeight,
+                    whiteSpace: "nowrap"
+                  }}
+                >
+                  {authorName}
+                </span>
+                {renderVerificationBadge(templateConfig, palette, verificationBadgeNode, authorCheckSize)}
+              </div>
+              <span
+                style={{
+                  color: palette.authorHandleColor,
+                  fontFamily: authorHandleFontFamily,
+                  fontSize: authorHandleFontSize,
+                  lineHeight: templateConfig.typography.authorHandle.lineHeight,
+                  letterSpacing: authorHandleLetterSpacing,
+                  fontWeight: authorHandleWeight
+                }}
+              >
+                {authorHandle}
+              </span>
+            </div>
+          </section>
+
+          {leadVisible ? (
+            <section
+              style={{
+                position: "absolute",
+                left: regions.top.x,
+                top: regions.top.y,
+                width: regions.top.width,
+                height: regions.top.height,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                overflow: "hidden"
+              }}
+            >
+              <p
+                data-template-slot="top-text"
+                style={{
+                  margin: 0,
+                  width: "100%",
+                  color: palette.topTextColor,
+                  fontFamily: topTextFontFamily,
+                  fontWeight: topTextWeight,
+                  letterSpacing: topTextLetterSpacing,
+                  fontSize: computed.topFont,
+                  lineHeight: computed.topLineHeight,
+                  display: "-webkit-box",
+                  WebkitBoxOrient: "vertical",
+                  WebkitLineClamp: topMaxLines,
+                  overflow: "hidden"
+                }}
+              >
+                {topHighlights.length > 0
+                  ? renderHighlightedText(topText, topHighlights, highlightColors)
+                  : topText}
+              </p>
+            </section>
+          ) : null}
+
+          <section
+            style={{
+              position: "absolute",
+              left: regions.bottomText.x,
+              top: regions.bottomText.y,
+              width: regions.bottomText.width,
+              height: regions.bottomText.height,
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: bodyTextAlign === "center" ? "center" : "flex-start",
+              textAlign: bodyTextAlign,
+              overflow: "hidden"
+            }}
+          >
+            <p
+              data-template-slot="bottom-text"
+              style={{
+                margin: 0,
+                width: "100%",
+                color: palette.bottomTextColor,
+                fontFamily: bottomTextFontFamily,
+                fontWeight: bottomTextWeight,
+                fontStyle: bottomTextFontStyle,
+                letterSpacing: bottomTextLetterSpacing,
+                fontSize: computed.bottomFont,
+                lineHeight: computed.bottomLineHeight,
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp: bottomMaxLines,
+                overflow: "hidden"
+              }}
+            >
+              {bottomHighlights.length > 0
+                ? renderHighlightedText(bottomText, bottomHighlights, highlightColors)
+                : bottomText}
+            </p>
+          </section>
+
+          <section
+            style={{
+              position: "absolute",
+              left: regions.media.x,
+              top: regions.media.y,
+              width: regions.media.width,
+              height: regions.media.height,
+              overflow: "hidden",
+              borderRadius: mediaRadius,
+              border:
+                mediaBorderWidth > 0 ? `${mediaBorderWidth}px solid ${mediaBorderColor}` : "none",
+              boxSizing: "border-box",
+              background: "#101216"
+            }}
+          >
+            {mediaNode}
+          </section>
+        </div>
+
+        {showGuides ? <TemplateSceneGuides guides={getSceneGuides(regions)} compareScope={compareScope} /> : null}
+      </div>
+    );
+  }
+
   return (
     <div
       ref={sceneRef}

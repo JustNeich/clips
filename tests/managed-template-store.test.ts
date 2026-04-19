@@ -14,7 +14,7 @@ import {
   resolveManagedTemplateSync,
   updateManagedTemplate
 } from "../lib/managed-template-store";
-import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
+import { CHANNEL_STORY_TEMPLATE_ID, STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { bootstrapOwner } from "../lib/team-store";
 import { getDb } from "../lib/db/client";
 
@@ -428,5 +428,43 @@ test("broken channel template references self-heal to the workspace default", as
     const repaired = await chatHistory.getChannelById(channel.id);
 
     assert.equal(repaired?.templateId, defaultTemplateId);
+  });
+});
+
+test("channel story templates persist lead mode and sync default lead text from content", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Channel Story Template",
+        baseTemplateId: CHANNEL_STORY_TEMPLATE_ID,
+        content: {
+          topText: "Did you know?",
+          bottomText: "A short dense body block above the source clip.",
+          channelName: "History Explained",
+          channelHandle: "@HistoryExplained13"
+        },
+        templateConfig: {
+          channelStory: {
+            leadMode: "template_default",
+            defaultLeadText: "stale lead",
+            mediaRadius: 28,
+            accentTopLineWidth: 4
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.equal(reloaded?.layoutFamily, CHANNEL_STORY_TEMPLATE_ID);
+    assert.equal(reloaded?.templateConfig.layoutKind, "channel_story");
+    assert.equal(reloaded?.templateConfig.channelStory?.leadMode, "template_default");
+    assert.equal(reloaded?.templateConfig.channelStory?.defaultLeadText, "Did you know?");
+    assert.equal(reloaded?.templateConfig.channelStory?.mediaRadius, 28);
+    assert.equal(reloaded?.templateConfig.channelStory?.accentTopLineWidth, 4);
   });
 });

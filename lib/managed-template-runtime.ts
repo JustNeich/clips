@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import type { Stage3TemplateConfig } from "./stage3-template";
 import {
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
   getTemplateById,
-  getScienceCardComputed
+  getTemplateComputedForConfig
 } from "./stage3-template";
 import { getTemplateRegistryEntry } from "./stage3-template-registry";
 import type { TemplateContentFixture } from "./template-calibration-types";
@@ -62,6 +63,14 @@ function toRgba(color: string, opacity: number): string {
   return `rgba(${red}, ${green}, ${blue}, ${Math.max(0, Math.min(1, opacity)).toFixed(3)})`;
 }
 
+function buildBuiltInTemplateRevision(templateId: string, templateConfig: Stage3TemplateConfig): string {
+  return createHash("sha1")
+    .update(templateId)
+    .update("\u0000")
+    .update(JSON.stringify(templateConfig))
+    .digest("hex");
+}
+
 function toResolvedRuntime(template: ManagedTemplate | null): ResolvedManagedTemplateRuntime {
   const fallbackConfig = cloneStage3TemplateConfig(getTemplateById(STAGE3_TEMPLATE_ID));
   const shadowCss = template ? serializeShadowLayers(template.shadowLayers) : undefined;
@@ -114,7 +123,7 @@ function resolveBuiltInTemplateId(templateId: string | null | undefined): string
 function toResolvedBuiltInRuntime(templateId: string): ResolvedManagedTemplateRuntime {
   const entry = getTemplateRegistryEntry(templateId);
   const templateConfig = cloneStage3TemplateConfig(getTemplateById(templateId));
-  const stamp = new Date().toISOString();
+  const revision = buildBuiltInTemplateRevision(templateId, templateConfig);
   return {
     managedTemplateId: templateId,
     name: entry.variant.label,
@@ -137,8 +146,8 @@ function toResolvedBuiltInRuntime(templateId: string): ResolvedManagedTemplateRu
     templateConfig,
     shadowLayers: [],
     versions: [],
-    updatedAt: stamp,
-    createdAt: stamp
+    updatedAt: revision,
+    createdAt: revision
   };
 }
 
@@ -214,7 +223,7 @@ export function computeManagedTemplateTextFit(input: {
   bottomFontScale?: number;
   templateConfigOverride?: Stage3TemplateConfig;
 }) {
-  return getScienceCardComputed(
+  return getTemplateComputedForConfig(
     input.topText,
     input.bottomText,
     {

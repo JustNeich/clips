@@ -37,6 +37,7 @@ import { StepWorkspace } from "./StepWorkspace";
 import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
 import {
   AMERICAN_NEWS_TEMPLATE_ID,
+  CHANNEL_STORY_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID,
   SCIENCE_CARD_BLUE_TEMPLATE_ID,
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
@@ -67,6 +68,7 @@ import {
   resolveTemplateAvatarBorderColor,
   resolveTemplateOverlayTint
 } from "../../lib/stage3-template-registry";
+import { resolveTemplateTextFieldSemantics } from "../../lib/stage3-template-semantics";
 import { resolveStage3BackgroundMode } from "../../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
 import {
@@ -152,6 +154,7 @@ export type Step3AuthoritativePreviewSnapshot = {
 const BUILT_IN_TEMPLATE_IDS = new Set([
   SCIENCE_CARD_TEMPLATE_ID,
   AMERICAN_NEWS_TEMPLATE_ID,
+  CHANNEL_STORY_TEMPLATE_ID,
   SCIENCE_CARD_BLUE_TEMPLATE_ID,
   SCIENCE_CARD_RED_TEMPLATE_ID,
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
@@ -2498,6 +2501,12 @@ export function Step3RenderTemplate({
   const runtimeTemplateId = managedTemplateState.baseTemplateId;
   const templateConfig = managedTemplateState.templateConfig;
   const templateLabel = managedTemplateState.name;
+  const templateTextSemantics = useMemo(
+    () => resolveTemplateTextFieldSemantics(templateConfig),
+    [templateConfig]
+  );
+  const topFieldLabel = templateTextSemantics.topLabel;
+  const bottomFieldLabel = templateTextSemantics.bottomLabel;
   const effectiveCameraTracks = useMemo(
     () =>
       resolveStage3EffectiveCameraTracks({
@@ -4817,33 +4826,36 @@ export function Step3RenderTemplate({
         <div>
           <h3>Финальный текст</h3>
           <p className="subtle-text">
-            Здесь редактируется итоговый TOP/BOTTOM, который реально уйдет в preview и render.
+            Здесь редактируется итоговый {topFieldLabel}/{bottomFieldLabel}, который реально уйдет в preview и render.
           </p>
         </div>
       </div>
 
       <div className="stage3-caption-editor-grid">
+        {templateTextSemantics.topVisible ? (
+          <label className="field-stack">
+            <span className="field-label">{topFieldLabel}</span>
+            <textarea
+              className="text-area stage3-caption-textarea"
+              rows={4}
+              value={topText}
+              onChange={(event) => onTopTextChange(event.target.value)}
+              placeholder={`Финальный ${topFieldLabel} для рендера`}
+            />
+          </label>
+        ) : null}
         <label className="field-stack">
-          <span className="field-label">TOP</span>
-          <textarea
-            className="text-area stage3-caption-textarea"
-            rows={4}
-            value={topText}
-            onChange={(event) => onTopTextChange(event.target.value)}
-            placeholder="Финальный TOP для рендера"
-          />
-        </label>
-        <label className="field-stack">
-          <span className="field-label">BOTTOM</span>
+          <span className="field-label">{bottomFieldLabel}</span>
           <textarea
             className="text-area stage3-caption-textarea"
             rows={4}
             value={bottomText}
             onChange={(event) => onBottomTextChange(event.target.value)}
-            placeholder="Финальный BOTTOM для рендера"
+            placeholder={`Финальный ${bottomFieldLabel} для рендера`}
           />
         </label>
       </div>
+      {templateTextSemantics.topNote ? <p className="subtle-text">{templateTextSemantics.topNote}</p> : null}
 
       <div className="control-actions stage3-caption-editor-actions">
         <button
@@ -4854,21 +4866,23 @@ export function Step3RenderTemplate({
         >
           Сбросить к выбранному варианту
         </button>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => onResetCaptionText("top")}
-          disabled={!selectedCaptionSource || handoffSummary?.topText === selectedCaptionSource.top}
-        >
-          Сбросить TOP
-        </button>
+        {templateTextSemantics.topVisible ? (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => onResetCaptionText("top")}
+            disabled={!selectedCaptionSource || handoffSummary?.topText === selectedCaptionSource.top}
+          >
+            Сбросить {topFieldLabel}
+          </button>
+        ) : null}
         <button
           type="button"
           className="btn btn-ghost"
           onClick={() => onResetCaptionText("bottom")}
           disabled={!selectedCaptionSource || handoffSummary?.bottomText === selectedCaptionSource.bottom}
         >
-          Сбросить BOTTOM
+          Сбросить {bottomFieldLabel}
         </button>
       </div>
 
@@ -4906,7 +4920,7 @@ export function Step3RenderTemplate({
                 suggestedHighlightedSource.option !== selectedCaptionSource.option
               ? `У выбранного варианта сейчас нет color spans, но option ${suggestedHighlightedSource.option} уже содержит ${formatHighlightCountLabel(
                   suggestedHighlightedSource.count
-                )}. Проще всего взять этот вариант целиком или отдельно TOP/BOTTOM ниже.`
+                )}. Проще всего взять этот вариант целиком или отдельно ${topFieldLabel}/${bottomFieldLabel} ниже.`
               : selectedCaptionSource && selectedSourceHighlightCount === 0
               ? "Для выбранного варианта Stage 2 ещё не дал ни одного highlight-span. После правки слотов и guidance заново запусти быстрый Stage 2 или полный цикл."
               : !selectedCaptionSource && selectedHighlightedSource
@@ -4939,8 +4953,10 @@ export function Step3RenderTemplate({
         <summary>Источники и быстрый mix</summary>
         <div className="advanced-content">
           <div className="editing-status-row">
-            <span className="meta-pill">TOP: {topTextSourceLabel}</span>
-            <span className="meta-pill">BOTTOM: {bottomTextSourceLabel}</span>
+            {templateTextSemantics.topVisible ? (
+              <span className="meta-pill">{topFieldLabel}: {topTextSourceLabel}</span>
+            ) : null}
+            <span className="meta-pill">{bottomFieldLabel}: {bottomTextSourceLabel}</span>
             {selectedCaptionSource ? (
               <span className="subtle-text">База сейчас: option {selectedCaptionSource.option}</span>
             ) : null}
@@ -4968,19 +4984,21 @@ export function Step3RenderTemplate({
                         >
                           Взять всё
                         </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => onApplyCaptionSource(option.option, "top")}
-                        >
-                          Взять TOP
-                        </button>
+                        {templateTextSemantics.topVisible ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => onApplyCaptionSource(option.option, "top")}
+                          >
+                            Взять {topFieldLabel}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="btn btn-ghost"
                           onClick={() => onApplyCaptionSource(option.option, "bottom")}
                         >
-                          Взять BOTTOM
+                          Взять {bottomFieldLabel}
                         </button>
                       </div>
                     </div>
@@ -4988,8 +5006,10 @@ export function Step3RenderTemplate({
                       <span className="meta-pill">{formatHighlightCountLabel(optionHighlightCount)}</span>
                       {optionHighlightCount > 0 ? <span className="meta-pill">готово к Step 3</span> : null}
                     </div>
-                    <p className="subtle-text">TOP: {truncateCaptionPreview(option.top)}</p>
-                    <p className="subtle-text">BOTTOM: {truncateCaptionPreview(option.bottom)}</p>
+                    {templateTextSemantics.topVisible ? (
+                      <p className="subtle-text">{topFieldLabel}: {truncateCaptionPreview(option.top)}</p>
+                    ) : null}
+                    <p className="subtle-text">{bottomFieldLabel}: {truncateCaptionPreview(option.bottom)}</p>
                   </article>
                 );
               })}

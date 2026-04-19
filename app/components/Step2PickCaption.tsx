@@ -16,10 +16,12 @@ import {
   normalizeStage2StyleProfile
 } from "../../lib/stage2-channel-learning";
 import type { Stage2RunDebugArtifact } from "../../lib/viral-shorts-worker/types";
+import { useResolvedTemplateTextSemantics } from "./useResolvedTemplateTextSemantics";
 
 type Step2PickCaptionProps = {
   channelName?: string | null;
   channelUsername?: string | null;
+  templateId?: string | null;
   stage2: Stage2Response | null;
   progress: Stage2Response["progress"] | null;
   stageCreatedAt: string | null;
@@ -111,16 +113,6 @@ function formatCommentsAcquisitionLabel(source: Stage2Response["source"] | null 
     return "Комментарии получены напрямую через yt-dlp.";
   }
   return source.commentsAcquisitionNote || null;
-}
-
-function formatFeedbackScopeLabel(scope: "option" | "top" | "bottom"): string {
-  if (scope === "top") {
-    return "TOP";
-  }
-  if (scope === "bottom") {
-    return "BOTTOM";
-  }
-  return "Опция";
 }
 
 function formatFeedbackHistoryTimestamp(value: string): string {
@@ -302,12 +294,16 @@ function buildCaptionCopyPayload(input: {
   bottom: string;
   topRu?: string;
   bottomRu?: string;
+  topLabel?: string;
+  bottomLabel?: string;
 }): string {
+  const topLabel = input.topLabel?.trim() || "TOP";
+  const bottomLabel = input.bottomLabel?.trim() || "BOTTOM";
   return [
-    `TOP RU: ${input.topRu?.trim() || input.top}`,
-    `TOP EN: ${input.top}`,
-    `BOTTOM RU: ${input.bottomRu?.trim() || input.bottom}`,
-    `BOTTOM EN: ${input.bottom}`
+    `${topLabel} RU: ${input.topRu?.trim() || input.top}`,
+    `${topLabel} EN: ${input.top}`,
+    `${bottomLabel} RU: ${input.bottomRu?.trim() || input.bottom}`,
+    `${bottomLabel} EN: ${input.bottom}`
   ].join("\n");
 }
 
@@ -1214,6 +1210,7 @@ export function Stage2RunDiagnosticsPanels({
 export function Step2PickCaption({
   channelName,
   channelUsername,
+  templateId,
   stage2,
   progress,
   stageCreatedAt,
@@ -1247,6 +1244,7 @@ export function Step2PickCaption({
   deletingFeedbackEventId = null,
   onCopy
 }: Step2PickCaptionProps) {
+  const templateTextSemantics = useResolvedTemplateTextSemantics(templateId);
   const [jsonOpen, setJsonOpen] = useState(false);
   const [regenerationDetailsOpen, setRegenerationDetailsOpen] = useState(false);
   const [runStatusOpen, setRunStatusOpen] = useState(false);
@@ -1301,6 +1299,20 @@ export function Step2PickCaption({
       null
     );
   }, [selectedTitleOption, stage2]);
+  const topFieldLabel = templateTextSemantics.topLabel;
+  const bottomFieldLabel = templateTextSemantics.bottomLabel;
+  const formatScopeLabel = useCallback(
+    (scope: "option" | "top" | "bottom") => {
+      if (scope === "top") {
+        return topFieldLabel;
+      }
+      if (scope === "bottom") {
+        return bottomFieldLabel;
+      }
+      return "Опция";
+    },
+    [bottomFieldLabel, topFieldLabel]
+  );
   const isNativeCaptionV3 = Boolean(
     stage2?.output.pipeline?.execution?.pipelineVersion === "native_caption_v3" ||
       stage2?.output.finalists?.length
@@ -1503,14 +1515,18 @@ export function Step2PickCaption({
   const renderScopeFeedbackActions = (
     option: number,
     scope: "top" | "bottom"
-  ): React.ReactNode =>
-    canSubmitFeedback ? (
+  ): React.ReactNode => {
+    if (!canSubmitFeedback) {
+      return null;
+    }
+    const scopeLabel = formatScopeLabel(scope);
+    return (
       <div className="option-feedback-scope-actions">
         <button
           type="button"
           className="btn btn-ghost option-feedback-icon-btn"
-          title={`Лайкнуть только ${scope.toUpperCase()}`}
-          aria-label={`Лайкнуть ${scope.toUpperCase()} варианта ${option}`}
+          title={`Лайкнуть только ${scopeLabel}`}
+          aria-label={`Лайкнуть ${scopeLabel} варианта ${option}`}
           onClick={() => openFeedbackComposer(option, scope, "more_like_this")}
         >
           <span aria-hidden="true">👍</span>
@@ -1518,14 +1534,15 @@ export function Step2PickCaption({
         <button
           type="button"
           className="btn btn-ghost option-feedback-icon-btn"
-          title={`Дизлайкнуть только ${scope.toUpperCase()}`}
-          aria-label={`Дизлайкнуть ${scope.toUpperCase()} варианта ${option}`}
+          title={`Дизлайкнуть только ${scopeLabel}`}
+          aria-label={`Дизлайкнуть ${scopeLabel} варианта ${option}`}
           onClick={() => openFeedbackComposer(option, scope, "less_like_this")}
         >
           <span aria-hidden="true">👎</span>
         </button>
       </div>
-    ) : null;
+    );
+  };
 
   const renderBilingualTextSection = (input: {
     option: number;
@@ -1565,7 +1582,7 @@ export function Step2PickCaption({
             <h2>Выбор</h2>
             <p>
               Сгенерируйте варианты, быстро сравните их и выберите основу для рендера. Финальную ручную
-              правку TOP/BOTTOM лучше делать уже на шаге 3.
+              правку {topFieldLabel}/{bottomFieldLabel} лучше делать уже на шаге 3.
             </p>
             {channelName ||
             stageCreatedAt ||
@@ -1922,7 +1939,9 @@ export function Step2PickCaption({
                                       top: option.top,
                                       bottom: option.bottom,
                                       topRu,
-                                      bottomRu
+                                      bottomRu,
+                                      topLabel: topFieldLabel,
+                                      bottomLabel: bottomFieldLabel
                                     }),
                                     `Вариант ${option.option} скопирован.`
                                   )
@@ -1959,18 +1978,20 @@ export function Step2PickCaption({
                             </div>
                           </div>
 
+                          {templateTextSemantics.topVisible
+                            ? renderBilingualTextSection({
+                                option: option.option,
+                                fieldLabel: topFieldLabel,
+                                primaryLabel: "RU",
+                                primaryText: topRu,
+                                secondaryLabel: "EN original",
+                                secondaryText: option.top,
+                                feedbackScope: "top"
+                              })
+                            : null}
                           {renderBilingualTextSection({
                             option: option.option,
-                            fieldLabel: "TOP",
-                            primaryLabel: "RU",
-                            primaryText: topRu,
-                            secondaryLabel: "EN original",
-                            secondaryText: option.top,
-                            feedbackScope: "top"
-                          })}
-                          {renderBilingualTextSection({
-                            option: option.option,
-                            fieldLabel: "BOTTOM",
+                            fieldLabel: bottomFieldLabel,
                             primaryLabel: "RU",
                             primaryText: bottomRu,
                             secondaryLabel: "EN original",
@@ -1984,7 +2005,7 @@ export function Step2PickCaption({
                                   {feedbackDraft.kind === "more_like_this" ? "Лайк" : "Дизлайк"}
                                 </strong>
                                 <span className="subtle-text">
-                                  {formatFeedbackScopeLabel(feedbackDraft.scope)} ·{" "}
+                                  {formatScopeLabel(feedbackDraft.scope)} ·{" "}
                                   {formatFeedbackNoteModeLabel(feedbackDraft.noteMode)}
                                 </span>
                               </div>
@@ -2177,7 +2198,9 @@ export function Step2PickCaption({
                                       top: option.top,
                                       bottom: option.bottom,
                                       topRu,
-                                      bottomRu
+                                      bottomRu,
+                                      topLabel: topFieldLabel,
+                                      bottomLabel: bottomFieldLabel
                                     }),
                                     `Вариант ${option.option} скопирован.`
                                   )
@@ -2210,18 +2233,20 @@ export function Step2PickCaption({
                             </div>
                           </div>
 
+                          {templateTextSemantics.topVisible
+                            ? renderBilingualTextSection({
+                                option: option.option,
+                                fieldLabel: topFieldLabel,
+                                primaryLabel: "RU",
+                                primaryText: topRu,
+                                secondaryLabel: "EN original",
+                                secondaryText: option.top,
+                                feedbackScope: "top"
+                              })
+                            : null}
                           {renderBilingualTextSection({
                             option: option.option,
-                            fieldLabel: "TOP",
-                            primaryLabel: "RU",
-                            primaryText: topRu,
-                            secondaryLabel: "EN original",
-                            secondaryText: option.top,
-                            feedbackScope: "top"
-                          })}
-                          {renderBilingualTextSection({
-                            option: option.option,
-                            fieldLabel: "BOTTOM",
+                            fieldLabel: bottomFieldLabel,
                             primaryLabel: "RU",
                             primaryText: bottomRu,
                             secondaryLabel: "EN original",
@@ -2237,7 +2262,7 @@ export function Step2PickCaption({
                                     : "Дизлайк"}
                                 </strong>
                                 <span className="subtle-text">
-                                  {formatFeedbackScopeLabel(feedbackDraft.scope)} · {formatFeedbackNoteModeLabel(feedbackDraft.noteMode)}
+                                  {formatScopeLabel(feedbackDraft.scope)} · {formatFeedbackNoteModeLabel(feedbackDraft.noteMode)}
                                 </span>
                               </div>
                               <div className="compact-field">
@@ -2454,7 +2479,7 @@ export function Step2PickCaption({
                       <div>
                         <h3>Последние реакции канала</h3>
                         <p className="subtle-text">
-                          Здесь видны только явные лайки и дизлайки по whole option, TOP или BOTTOM.
+                          Здесь видны только явные лайки и дизлайки по whole option, {topFieldLabel} или {bottomFieldLabel}.
                           Автосигнал от простого выбора варианта в эту историю не попадает.
                         </p>
                       </div>
@@ -2467,7 +2492,7 @@ export function Step2PickCaption({
                           <article key={event.id} className="stage2-example-card">
                             <div className="quick-edit-label-row">
                               <strong>
-                                {event.kind === "more_like_this" ? "👍" : "👎"} {formatFeedbackScopeLabel(event.scope)}
+                                {event.kind === "more_like_this" ? "👍" : "👎"} {formatScopeLabel(event.scope)}
                               </strong>
                               <div className="history-item-actions">
                                 <span className="subtle-text">{formatFeedbackHistoryTimestamp(event.createdAt)}</span>

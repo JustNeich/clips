@@ -91,6 +91,26 @@
 Практическое правило:
 - не называйте шаблон “новым ScienceCard”, если вы на самом деле строите другой shell/card contract.
 
+## 3a. Family-aware text contract
+
+Stage 3 теперь поддерживает не одну, а две независимые семьи шаблонов:
+- `Top & Bottom` — классический `TOP / media / BOTTOM` контракт;
+- `Channel + Story` — `channel row / optional lead / body / media`.
+
+Ключевое правило:
+- UI, snapshot builder, autofit, preview, Remotion render и managed-template persistence должны читать не “сырой top/bottom смысл”, а `layoutKind` и `leadMode`.
+
+Совместимость со старым wire-контрактом сохраняется так:
+- для `classic_top_bottom` `topText` остаётся `TOP`, а `bottomText` остаётся `BOTTOM`;
+- для `channel_story + clip_custom` `topText` становится `lead`, а `bottomText` становится `body`;
+- для `channel_story + template_default` операторский flow не редактирует `topText` напрямую, но `content.topText` всё ещё хранит template-level default lead;
+- для `channel_story + off` `topText` исключается из operator flow, а `bottomText` остаётся единственным body-блоком.
+
+Практический смысл:
+- не ломаем legacy Stage 2/Stage 3 storage;
+- не плодим отдельную wire-модель ради новой семьи;
+- но всё пользовательское поведение обязано быть family-aware в `Template Road`, `template-lab`, channel assignment, Step 2 и Step 3.
+
 ## 4. Background contract
 
 Фон выбирается не “по шаблону вообще”, а по явному приоритету:

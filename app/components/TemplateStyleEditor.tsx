@@ -12,7 +12,15 @@ import {
   getTemplateById,
   getTemplateComputed
 } from "../../lib/stage3-template";
-import { listTemplateVariants } from "../../lib/stage3-template-registry";
+import {
+  listTemplateVariants,
+  type TemplateVariant
+} from "../../lib/stage3-template-registry";
+import {
+  resolveTemplateFormatGroupLabel,
+  resolveTemplateTextFieldSemantics,
+  type Stage3TemplateFormatGroup
+} from "../../lib/stage3-template-semantics";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
 import {
   Stage3TemplateViewport,
@@ -136,6 +144,9 @@ type HighlightDemoPhrases = Record<
 
 const TEMPLATE_VARIANTS = listTemplateVariants();
 const TEMPLATE_IDS = new Set(TEMPLATE_VARIANTS.map((variant) => variant.id));
+const TEMPLATE_FORMAT_GROUPS = Array.from(
+  new Set(TEMPLATE_VARIANTS.map((variant) => variant.formatGroup))
+) as Stage3TemplateFormatGroup[];
 
 const TOP_FONT_OPTIONS: FontOption[] = [
   {
@@ -422,6 +433,25 @@ function resolveTemplateId(value: string | null | undefined): string {
 
 function cloneTemplateConfig(config: Stage3TemplateConfig): Stage3TemplateConfig {
   return cloneStage3TemplateConfig(config);
+}
+
+function syncChannelStoryDefaultLead(
+  templateConfig: Stage3TemplateConfig,
+  defaultLeadText: string
+): Stage3TemplateConfig {
+  if (templateConfig.layoutKind !== "channel_story" || !templateConfig.channelStory) {
+    return templateConfig;
+  }
+  if ((templateConfig.channelStory.defaultLeadText ?? "") === defaultLeadText) {
+    return templateConfig;
+  }
+  return {
+    ...templateConfig,
+    channelStory: {
+      ...templateConfig.channelStory,
+      defaultLeadText
+    }
+  };
 }
 
 function createDefaultContent(templateId: string): TemplateContentFixture {
@@ -751,7 +781,10 @@ function buildManagedTemplateEditorState(managedTemplate: ManagedTemplate): {
   shadowLayers: ManagedTemplateShadowLayer[];
   signature: string;
 } {
-  const nextTemplateConfig = cloneTemplateConfig(managedTemplate.templateConfig);
+  const nextTemplateConfig = syncChannelStoryDefaultLead(
+    cloneTemplateConfig(managedTemplate.templateConfig),
+    managedTemplate.content.topText
+  );
   const nextShadowLayers =
     managedTemplate.shadowLayers.length > 0
       ? managedTemplate.shadowLayers.map((layer) => ({ ...layer }))
@@ -1092,10 +1125,15 @@ export function TemplateStyleEditor({
   initialTemplateId = null
 }: TemplateStyleEditorProps): React.JSX.Element {
   const initialResolvedTemplateId = resolveTemplateId(initialTemplateId);
+  const initialFormatGroup =
+    TEMPLATE_VARIANTS.find((variant) => variant.id === initialResolvedTemplateId)?.formatGroup ??
+    "classic_top_bottom";
   const initialTemplateAccessScope =
     initialTemplateId?.trim() && TEMPLATE_IDS.has(initialTemplateId.trim()) ? "all" : "own";
   const [templateId, setTemplateId] = useState<string | null>(initialTemplateId?.trim() || null);
   const [baseTemplateId, setBaseTemplateId] = useState(initialResolvedTemplateId);
+  const [selectedFormatGroup, setSelectedFormatGroup] =
+    useState<Stage3TemplateFormatGroup>(initialFormatGroup);
   const [content, setContent] = useState<TemplateContentFixture>(() =>
     createDefaultContent(initialResolvedTemplateId)
   );
@@ -1152,14 +1190,34 @@ export function TemplateStyleEditor({
     () => TEMPLATE_VARIANTS.find((variant) => variant.id === baseTemplateId) ?? TEMPLATE_VARIANTS[0],
     [baseTemplateId]
   );
+  const activeTemplateSemantics = useMemo(
+    () => resolveTemplateTextFieldSemantics(templateConfig),
+    [templateConfig]
+  );
+  const isChannelStoryTemplate =
+    activeTemplateSemantics.formatGroup === "channel_story" && Boolean(templateConfig.channelStory);
+  const availableBaseVariants = useMemo(
+    () => TEMPLATE_VARIANTS.filter((variant) => variant.formatGroup === selectedFormatGroup),
+    [selectedFormatGroup]
+  );
   const activeTemplatePreset = useMemo(() => getStage3DesignLabPreset(baseTemplateId), [baseTemplateId]);
   const activeTemplateSummary = useMemo(
     () => templates.find((template) => template.id === templateId) ?? null,
     [templateId, templates]
   );
+  const visibleTemplates = useMemo(
+    () =>
+      templates.filter((template) => {
+        const variant =
+          TEMPLATE_VARIANTS.find((item) => item.id === (template.layoutFamily ?? template.baseTemplateId)) ??
+          TEMPLATE_VARIANTS[0];
+        return variant.formatGroup === selectedFormatGroup;
+      }),
+    [selectedFormatGroup, templates]
+  );
   const templateSelectOptions = useMemo(
-    () => buildTemplateRoadTemplateOptions({ templates, unavailableTemplate }),
-    [templates, unavailableTemplate]
+    () => buildTemplateRoadTemplateOptions({ templates: visibleTemplates, unavailableTemplate }),
+    [visibleTemplates, unavailableTemplate]
   );
   const deleteTargetTemplateId = unavailableTemplate?.templateId ?? templateId;
   const canCreateTemplates = templateCapabilities.canCreate;
@@ -1261,6 +1319,10 @@ export function TemplateStyleEditor({
     loadingTemplateRef.current = true;
     setTemplateId(managedTemplate.id);
     setBaseTemplateId(managedTemplate.baseTemplateId);
+    setSelectedFormatGroup(
+      TEMPLATE_VARIANTS.find((variant) => variant.id === managedTemplate.baseTemplateId)?.formatGroup ??
+        "classic_top_bottom"
+    );
     setContent(nextContent);
     setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
     setTemplateConfig(nextState.templateConfig);
@@ -1288,14 +1350,19 @@ export function TemplateStyleEditor({
       const resolvedTemplateId = resolveTemplateId(nextBaseTemplateId);
       const nextConfig = cloneTemplateConfig(getTemplateById(resolvedTemplateId));
       const nextContent = createDefaultContent(resolvedTemplateId);
+      const nextSyncedConfig = syncChannelStoryDefaultLead(nextConfig, nextContent.topText);
 
       loadingTemplateRef.current = true;
       setTemplateId(null);
       setBaseTemplateId(resolvedTemplateId);
+      setSelectedFormatGroup(
+        TEMPLATE_VARIANTS.find((variant) => variant.id === resolvedTemplateId)?.formatGroup ??
+          "classic_top_bottom"
+      );
       setContent(nextContent);
     setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
-    setTemplateConfig(nextConfig);
-    setShadowLayers(parseShadowLayersFromValue(nextConfig.card.shadow));
+    setTemplateConfig(nextSyncedConfig);
+    setShadowLayers(parseShadowLayersFromValue(nextSyncedConfig.card.shadow));
     setTemplateName(buildDefaultTemplateName(resolvedTemplateId));
       setTemplateDescription("");
       setUpdatedAt(null);
@@ -1420,6 +1487,35 @@ export function TemplateStyleEditor({
       }
     },
     [applyDraftTemplate, applyManagedTemplate, emptyLibraryMessage, initialResolvedTemplateId, openUnavailableTemplateRecovery]
+  );
+
+  const switchFormatGroup = useCallback(
+    async (nextGroup: Stage3TemplateFormatGroup) => {
+      setSelectedFormatGroup(nextGroup);
+      const currentGroup =
+        TEMPLATE_VARIANTS.find((variant) => variant.id === baseTemplateId)?.formatGroup ??
+        "classic_top_bottom";
+      if (currentGroup === nextGroup) {
+        return;
+      }
+      const nextTemplate = templatesRef.current.find((template) => {
+        const variant =
+          TEMPLATE_VARIANTS.find((item) => item.id === (template.layoutFamily ?? template.baseTemplateId)) ??
+          TEMPLATE_VARIANTS[0];
+        return variant.formatGroup === nextGroup;
+      });
+      if (nextTemplate) {
+        await loadTemplate(nextTemplate.id, { fallbackTemplates: templatesRef.current });
+        return;
+      }
+      const fallbackVariant =
+        TEMPLATE_VARIANTS.find((variant) => variant.formatGroup === nextGroup) ?? TEMPLATE_VARIANTS[0];
+      applyDraftTemplate(
+        fallbackVariant.id,
+        `Открыт черновик формата ${resolveTemplateFormatGroupLabel(nextGroup)}. Сохрани его как новый шаблон, чтобы он появился в библиотеке.`
+      );
+    },
+    [applyDraftTemplate, baseTemplateId, loadTemplate]
   );
 
   useEffect(() => {
@@ -1789,7 +1885,10 @@ export function TemplateStyleEditor({
   }
 
   function resetStyle() {
-    const baseConfig = cloneTemplateConfig(getTemplateById(baseTemplateId));
+    const baseConfig = syncChannelStoryDefaultLead(
+      cloneTemplateConfig(getTemplateById(baseTemplateId)),
+      content.topText
+    );
     setTemplateConfig(baseConfig);
     setShadowLayers(parseShadowLayersFromValue(baseConfig.card.shadow));
   }
@@ -1797,6 +1896,7 @@ export function TemplateStyleEditor({
   function resetContent() {
     const nextContent = createDefaultContent(baseTemplateId);
     setContent(nextContent);
+    setTemplateConfig((current) => syncChannelStoryDefaultLead(current, nextContent.topText));
     setHighlightDemoPhrases(buildHighlightDemoPhrasesFromContent(nextContent));
     setComputed(null);
     setBackgroundUploadState("idle");
@@ -1818,6 +1918,9 @@ export function TemplateStyleEditor({
         [key]: value
       };
     });
+    if (key === "topText" && typeof value === "string") {
+      setTemplateConfig((current) => syncChannelStoryDefaultLead(current, value));
+    }
   }
 
   function updateTemplateHighlights<K extends keyof Stage3TemplateConfig["highlights"]>(
@@ -1892,6 +1995,24 @@ export function TemplateStyleEditor({
         [key]: value
       }
     }));
+  }
+
+  function updateChannelStory<K extends keyof NonNullable<Stage3TemplateConfig["channelStory"]>>(
+    key: K,
+    value: NonNullable<Stage3TemplateConfig["channelStory"]>[K]
+  ) {
+    setTemplateConfig((current) => {
+      if (!current.channelStory) {
+        return current;
+      }
+      return {
+        ...current,
+        channelStory: {
+          ...current.channelStory,
+          [key]: value
+        }
+      };
+    });
   }
 
   function updateAuthor<K extends keyof Stage3TemplateConfig["author"]>(
@@ -2289,11 +2410,15 @@ export function TemplateStyleEditor({
               <p className="kicker">Живые метрики</p>
               <div className="template-road-editor-summary-stats">
                 <span>
-                  Верхний текст:{" "}
-                  {computed ? `${computed.topFont}px / ${computed.topLines} строк` : "считаем"}
+                  {activeTemplateSemantics.topLabel}:{" "}
+                  {computed
+                    ? computed.leadVisible === false
+                      ? "скрыт"
+                      : `${computed.topFont}px / ${computed.topLines} строк`
+                    : "считаем"}
                 </span>
                 <span>
-                  Нижний текст:{" "}
+                  {activeTemplateSemantics.bottomLabel}:{" "}
                   {computed ? `${computed.bottomFont}px / ${computed.bottomLines} строк` : "считаем"}
                 </span>
                 <span>
@@ -2400,6 +2525,7 @@ export function TemplateStyleEditor({
               <>
                 {templateId ? <span className="meta-pill mono">ID: {templateId}</span> : null}
                 <span className="meta-pill">Основа: {activeTemplate.label}</span>
+                <span className="meta-pill">Формат: {activeTemplate.formatLabel}</span>
                 <span className="meta-pill">
                   {templateCapabilities.visibilityScope === "workspace"
                     ? "Workspace-библиотека"
@@ -2417,6 +2543,25 @@ export function TemplateStyleEditor({
             }
           >
             <div className="template-road-editor-grid two-up">
+              <label className="template-road-editor-field">
+                <span className="field-label">Формат</span>
+                <select
+                  className="text-input"
+                  value={selectedFormatGroup}
+                  onChange={(event) =>
+                    void switchFormatGroup(event.target.value as Stage3TemplateFormatGroup)
+                  }
+                >
+                  {TEMPLATE_FORMAT_GROUPS.map((group) => (
+                    <option key={group} value={group}>
+                      {resolveTemplateFormatGroupLabel(group)}
+                    </option>
+                  ))}
+                </select>
+                <span className="template-road-editor-field-hint">
+                  Переключает библиотеку и базовые шаблоны между семьями `Top & Bottom` и `Channel + Story`.
+                </span>
+              </label>
               {unavailableTemplate ? (
                 <div className="template-road-editor-field" style={{ gridColumn: "1 / -1" }}>
                   <span className="field-label">Недоступный шаблон</span>
@@ -2461,7 +2606,7 @@ export function TemplateStyleEditor({
                     ))}
                   </select>
                   <span className="template-road-editor-field-hint">
-                    После выбора весь редактор переключится на этот шаблон. Недоступные записи больше не перекидывают молча на чужой workspace-шаблон.
+                    Показываются только шаблоны выбранного формата. После выбора весь редактор переключится на этот шаблон.
                   </span>
                 </label>
               ) : (
@@ -2539,6 +2684,7 @@ export function TemplateStyleEditor({
               <>
                 <span className="meta-pill">Кадр: 1080x1920</span>
                 <span className="meta-pill">Основа: {activeTemplate.label}</span>
+                <span className="meta-pill">{activeTemplate.formatLabel}</span>
               </>
             }
           >
@@ -2550,14 +2696,14 @@ export function TemplateStyleEditor({
                   value={baseTemplateId}
                   onChange={(event) => setBaseTemplateId(event.target.value)}
                 >
-                  {TEMPLATE_VARIANTS.map((variant) => (
+                  {availableBaseVariants.map((variant) => (
                     <option key={variant.id} value={variant.id}>
                       {variant.label}
                     </option>
                   ))}
                 </select>
                 <span className="template-road-editor-field-hint">
-                  Это исходная геометрия и композиция, поверх которой строится стиль.
+                  Это исходная геометрия и композиция внутри выбранного формата.
                 </span>
               </label>
               <SliderControl
@@ -2576,6 +2722,7 @@ export function TemplateStyleEditor({
               <span className="meta-pill">Основа задаёт стартовую геометрию</span>
               <span className="meta-pill">Кадр всегда 1080x1920</span>
               <span className="meta-pill">Основа: {activeTemplate.label}</span>
+              <span className="meta-pill">{activeTemplate.formatLabel}</span>
             </div>
           </EditorSection>
 
@@ -2588,8 +2735,8 @@ export function TemplateStyleEditor({
             onToggle={() => toggleSection("template-road-style-content")}
             meta={
               <>
-                <span className="meta-pill">Верх: {content.topText.length} символов</span>
-                <span className="meta-pill">Низ: {content.bottomText.length} символов</span>
+                <span className="meta-pill">{activeTemplateSemantics.topLabel}: {content.topText.length} символов</span>
+                <span className="meta-pill">{activeTemplateSemantics.bottomLabel}: {content.bottomText.length} символов</span>
                 <span className="meta-pill">
                   Выделение: {highlightConfig.enabled ? `${enabledHighlightSlotCount} слота` : "выкл"}
                 </span>
@@ -2597,20 +2744,45 @@ export function TemplateStyleEditor({
             }
           >
             <div className="template-road-editor-grid">
+              {isChannelStoryTemplate ? (
+                <label className="template-road-editor-field">
+                  <span className="field-label">
+                    {templateConfig.channelStory?.leadMode === "template_default"
+                      ? "Шаблонный lead"
+                      : activeTemplateSemantics.topLabel}
+                  </span>
+                  <textarea
+                    className="text-area template-road-editor-textarea"
+                    rows={4}
+                    value={content.topText}
+                    onChange={(event) => updateContent("topText", event.target.value)}
+                  />
+                  <span className="template-road-editor-field-hint">
+                    {templateConfig.channelStory?.leadMode === "off"
+                      ? "Lead сейчас выключен, но demo-текст можно оставить для быстрых экспериментов при смене режима."
+                      : templateConfig.channelStory?.leadMode === "template_default"
+                        ? "Этот текст используется как дефолтный lead шаблона и подставляется автоматически в operator flow."
+                        : "Короткая строка под header row: например `Did you know?` или `Cried for life`."}
+                  </span>
+                </label>
+              ) : (
+                <label className="template-road-editor-field">
+                  <span className="field-label">Верхний текст</span>
+                  <textarea
+                    className="text-area template-road-editor-textarea"
+                    rows={5}
+                    value={content.topText}
+                    onChange={(event) => updateContent("topText", event.target.value)}
+                  />
+                  <span className="template-road-editor-field-hint">
+                    Основной крупный текст верхнего блока.
+                  </span>
+                </label>
+              )}
               <label className="template-road-editor-field">
-                <span className="field-label">Верхний текст</span>
-                <textarea
-                  className="text-area template-road-editor-textarea"
-                  rows={5}
-                  value={content.topText}
-                  onChange={(event) => updateContent("topText", event.target.value)}
-                />
-                <span className="template-road-editor-field-hint">
-                  Основной крупный текст верхнего блока.
+                <span className="field-label">
+                  {activeTemplateSemantics.bottomLabel}
                 </span>
-              </label>
-              <label className="template-road-editor-field">
-                <span className="field-label">Нижний текст</span>
                 <textarea
                   className="text-area template-road-editor-textarea"
                   rows={4}
@@ -2618,7 +2790,9 @@ export function TemplateStyleEditor({
                   onChange={(event) => updateContent("bottomText", event.target.value)}
                 />
                 <span className="template-road-editor-field-hint">
-                  Дополнительный текст нижнего блока.
+                  {activeTemplateSemantics.formatGroup === "channel_story"
+                    ? "Основной плотный текстовый блок между header row и source video."
+                    : "Дополнительный текст нижнего блока."}
                 </span>
               </label>
             </div>
@@ -2632,7 +2806,9 @@ export function TemplateStyleEditor({
                   onChange={(event) => updateContent("channelName", event.target.value)}
                 />
                 <span className="template-road-editor-field-hint">
-                  Появляется в строке автора внизу карточки.
+                  {activeTemplateSemantics.formatGroup === "channel_story"
+                    ? "Появляется в верхнем channel row."
+                    : "Появляется в строке автора внизу карточки."}
                 </span>
               </label>
               <label className="template-road-editor-field">
@@ -2718,8 +2894,12 @@ export function TemplateStyleEditor({
             </div>
             <div className="template-road-editor-grid two-up">
               <SliderControl
-                label="Крупность верхнего текста"
-                hint="Лёгкая ручная коррекция поверх автоматического подбора."
+                label={`Крупность ${activeTemplateSemantics.topLabel.toLowerCase()}`}
+                hint={
+                  isChannelStoryTemplate
+                    ? "Ручная коррекция размера lead / заголовка."
+                    : "Лёгкая ручная коррекция поверх автоматического подбора."
+                }
                 min={0.8}
                 max={1.6}
                 step={0.01}
@@ -2729,8 +2909,12 @@ export function TemplateStyleEditor({
                 onChange={(value) => updateContent("topFontScale", clampStage3TextScaleUi(value))}
               />
               <SliderControl
-                label="Крупность нижнего текста"
-                hint="Полезно, если нижний блок кажется слишком тяжёлым или слишком пустым."
+                label={`Крупность ${activeTemplateSemantics.bottomLabel.toLowerCase()}`}
+                hint={
+                  isChannelStoryTemplate
+                    ? "Полезно, если body кажется слишком плотным или слишком пустым."
+                    : "Полезно, если нижний блок кажется слишком тяжёлым или слишком пустым."
+                }
                 min={0.8}
                 max={1.6}
                 step={0.01}
@@ -2761,21 +2945,27 @@ export function TemplateStyleEditor({
               </div>
               <div className="template-road-editor-grid two-up">
                 <div className="template-road-editor-field template-road-editor-checkbox-field">
-                  <span className="field-label">Верхний блок</span>
+                  <span className="field-label">{activeTemplateSemantics.topLabel}</span>
                   <label className="template-road-editor-checkbox-row">
                     <input
                       type="checkbox"
                       checked={highlightConfig.topEnabled}
                       onChange={(event) => updateTemplateHighlights("topEnabled", event.target.checked)}
                     />
-                    <span>{highlightConfig.topEnabled ? "Подсветка top включена" : "Подсветка top выключена"}</span>
+                    <span>
+                      {highlightConfig.topEnabled
+                        ? `Подсветка ${activeTemplateSemantics.topLabel.toLowerCase()} включена`
+                        : `Подсветка ${activeTemplateSemantics.topLabel.toLowerCase()} выключена`}
+                    </span>
                   </label>
                   <span className="template-road-editor-field-hint">
-                    Stage 2 сможет размечать цветные слова в верхнем тексте и тут же показывать их в preview.
+                    {activeTemplateSemantics.topVisible
+                      ? `Stage 2 сможет размечать цветные слова в блоке ${activeTemplateSemantics.topLabel} и тут же показывать их в preview.`
+                      : "Этот профиль сейчас не участвует в operator flow, но его можно подготовить заранее на случай включения lead."}
                   </span>
                 </div>
                 <div className="template-road-editor-field template-road-editor-checkbox-field">
-                  <span className="field-label">Нижний блок</span>
+                  <span className="field-label">{activeTemplateSemantics.bottomLabel}</span>
                   <label className="template-road-editor-checkbox-row">
                     <input
                       type="checkbox"
@@ -2783,11 +2973,15 @@ export function TemplateStyleEditor({
                       onChange={(event) => updateTemplateHighlights("bottomEnabled", event.target.checked)}
                     />
                     <span>
-                      {highlightConfig.bottomEnabled ? "Подсветка bottom включена" : "Подсветка bottom выключена"}
+                      {highlightConfig.bottomEnabled
+                        ? `Подсветка ${activeTemplateSemantics.bottomLabel.toLowerCase()} включена`
+                        : `Подсветка ${activeTemplateSemantics.bottomLabel.toLowerCase()} выключена`}
                     </span>
                   </label>
                   <span className="template-road-editor-field-hint">
-                    Полезно для шаблонов, где цветом нужно подсвечивать только нижний пояс или оба блока сразу.
+                    {isChannelStoryTemplate
+                      ? "Полезно для плотного story-body, где акцентные слова должны собирать ритм текста."
+                      : "Полезно для шаблонов, где цветом нужно подсвечивать только нижний пояс или оба блока сразу."}
                   </span>
                 </div>
               </div>
@@ -2858,7 +3052,9 @@ export function TemplateStyleEditor({
                       </span>
                     </label>
                     <label className="template-road-editor-field">
-                      <span className="field-label">Точные demo-фразы для верхнего текста</span>
+                      <span className="field-label">
+                        Точные demo-фразы для {activeTemplateSemantics.topLabel}
+                      </span>
                       <input
                         className="text-input"
                         type="text"
@@ -2875,7 +3071,9 @@ export function TemplateStyleEditor({
                       </span>
                     </label>
                     <label className="template-road-editor-field">
-                      <span className="field-label">Точные demo-фразы для нижнего текста</span>
+                      <span className="field-label">
+                        Точные demo-фразы для {activeTemplateSemantics.bottomLabel}
+                      </span>
                       <input
                         className="text-input"
                         type="text"
@@ -3154,65 +3352,138 @@ export function TemplateStyleEditor({
               <>
                 <span className="meta-pill">Акцент: {accentColor}</span>
                 <span className="meta-pill">Фон карточки: {templateConfig.card.fill}</span>
+                {isChannelStoryTemplate && templateConfig.channelStory ? (
+                  <span className="meta-pill">
+                    Линии: {(templateConfig.channelStory.accentTopLineWidth ?? 0) > 0 ? "top" : "off"} /{" "}
+                    {(templateConfig.channelStory.accentBottomLineWidth ?? 0) > 0 ? "bottom" : "off"}
+                  </span>
+                ) : null}
               </>
             }
           >
-            <div className="template-road-editor-grid two-up">
-              <ColorControl
-                label="Фон верхнего блока"
-                hint="Основной цвет секции с крупным заголовком."
-                value={templateConfig.palette.topSectionFill}
-                onChange={(value) => updatePalette("topSectionFill", value)}
-              />
-              <ColorControl
-                label="Фон нижнего блока"
-                hint="Фон для дополнительного текста и строки автора."
-                value={templateConfig.palette.bottomSectionFill}
-                onChange={(value) => updatePalette("bottomSectionFill", value)}
-              />
-            </div>
-            <div className="template-road-editor-grid two-up">
-              <ColorControl
-                label="Цвет верхнего текста"
-                hint="Обычно это самый контрастный текст на карточке."
-                value={templateConfig.palette.topTextColor}
-                onChange={(value) => updatePalette("topTextColor", value)}
-              />
-              <ColorControl
-                label="Цвет нижнего текста"
-                hint="Тон нижнего блока можно сделать мягче, чем у заголовка."
-                value={templateConfig.palette.bottomTextColor}
-                onChange={(value) => updatePalette("bottomTextColor", value)}
-              />
-            </div>
-            <div className="template-road-editor-grid two-up">
-              <ColorControl
-                label="Цвет имени автора"
-                hint="Цвет названия канала или автора в нижней строке."
-                value={templateConfig.palette.authorNameColor}
-                onChange={(value) => updatePalette("authorNameColor", value)}
-              />
-              <ColorControl
-                label="Цвет ника автора"
-                hint="Обычно немного мягче имени, чтобы не спорить с ним по важности."
-                value={templateConfig.palette.authorHandleColor}
-                onChange={(value) => updatePalette("authorHandleColor", value)}
-              />
-            </div>
-            <div className="template-road-editor-grid two-up">
-              <ColorControl
-                label="Цвет бейджа"
-                hint="Цвет галочки, маркера или маленького статусного элемента."
-                value={templateConfig.palette.checkBadgeColor}
-                onChange={(value) => updatePalette("checkBadgeColor", value)}
-              />
-              <ColorControl
-                label="Цвет выделений"
-                hint="Используется для акцентных слов и визуальных подсветок."
-                value={accentColor}
-                onChange={(value) => updatePalette("accentColor", value)}
-              />
-            </div>
+            {isChannelStoryTemplate && templateConfig.channelStory ? (
+              <>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label={`Цвет ${activeTemplateSemantics.topLabel.toLowerCase()}`}
+                    hint="Короткая lead-строка часто задаёт первый ритм и должна хорошо читаться на shell-фоне."
+                    value={templateConfig.palette.topTextColor}
+                    onChange={(value) => updatePalette("topTextColor", value)}
+                  />
+                  <ColorControl
+                    label={`Цвет ${activeTemplateSemantics.bottomLabel.toLowerCase()}`}
+                    hint="Главный плотный текстовый блок над видео."
+                    value={templateConfig.palette.bottomTextColor}
+                    onChange={(value) => updatePalette("bottomTextColor", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label="Цвет названия канала"
+                    hint="Основной цвет channel row."
+                    value={templateConfig.palette.authorNameColor}
+                    onChange={(value) => updatePalette("authorNameColor", value)}
+                  />
+                  <ColorControl
+                    label="Цвет юзернейма"
+                    hint="Обычно мягче названия, чтобы сохранить иерархию header row."
+                    value={templateConfig.palette.authorHandleColor}
+                    onChange={(value) => updatePalette("authorHandleColor", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label="Цвет бейджа"
+                    hint="Цвет галочки или другого статусного маркера."
+                    value={templateConfig.palette.checkBadgeColor}
+                    onChange={(value) => updatePalette("checkBadgeColor", value)}
+                  />
+                  <ColorControl
+                    label="Цвет выделений"
+                    hint="Используется для highlight-слов внутри lead и body."
+                    value={accentColor}
+                    onChange={(value) => updatePalette("accentColor", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label="Цвет верхней accent-линии"
+                    hint="Подходит для яркой зелёной/красной полосы вдоль shell."
+                    value={templateConfig.channelStory.accentTopLineColor ?? accentColor}
+                    onChange={(value) => updateChannelStory("accentTopLineColor", value)}
+                  />
+                  <ColorControl
+                    label="Цвет нижней accent-линии"
+                    hint="Можно использовать как вторую сигнальную линию или выключить толщиной 0."
+                    value={templateConfig.channelStory.accentBottomLineColor ?? accentColor}
+                    onChange={(value) => updateChannelStory("accentBottomLineColor", value)}
+                  />
+                </div>
+                <p className="template-road-editor-field-hint">
+                  Цвет shell-фона и основной border живут в секции «Карточка». Здесь собраны только текст,
+                  header row и accent chrome.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label="Фон верхнего блока"
+                    hint="Основной цвет секции с крупным заголовком."
+                    value={templateConfig.palette.topSectionFill}
+                    onChange={(value) => updatePalette("topSectionFill", value)}
+                  />
+                  <ColorControl
+                    label="Фон нижнего блока"
+                    hint="Фон для дополнительного текста и строки автора."
+                    value={templateConfig.palette.bottomSectionFill}
+                    onChange={(value) => updatePalette("bottomSectionFill", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label="Цвет верхнего текста"
+                    hint="Обычно это самый контрастный текст на карточке."
+                    value={templateConfig.palette.topTextColor}
+                    onChange={(value) => updatePalette("topTextColor", value)}
+                  />
+                  <ColorControl
+                    label="Цвет нижнего текста"
+                    hint="Тон нижнего блока можно сделать мягче, чем у заголовка."
+                    value={templateConfig.palette.bottomTextColor}
+                    onChange={(value) => updatePalette("bottomTextColor", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label="Цвет имени автора"
+                    hint="Цвет названия канала или автора в нижней строке."
+                    value={templateConfig.palette.authorNameColor}
+                    onChange={(value) => updatePalette("authorNameColor", value)}
+                  />
+                  <ColorControl
+                    label="Цвет ника автора"
+                    hint="Обычно немного мягче имени, чтобы не спорить с ним по важности."
+                    value={templateConfig.palette.authorHandleColor}
+                    onChange={(value) => updatePalette("authorHandleColor", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label="Цвет бейджа"
+                    hint="Цвет галочки, маркера или маленького статусного элемента."
+                    value={templateConfig.palette.checkBadgeColor}
+                    onChange={(value) => updatePalette("checkBadgeColor", value)}
+                  />
+                  <ColorControl
+                    label="Цвет выделений"
+                    hint="Используется для акцентных слов и визуальных подсветок."
+                    value={accentColor}
+                    onChange={(value) => updatePalette("accentColor", value)}
+                  />
+                </div>
+              </>
+            )}
           </EditorSection>
 
           <EditorSection
@@ -3298,6 +3569,48 @@ export function TemplateStyleEditor({
               Здесь задаётся стартовый look для шаблона. В Stage 3 редактор увидит эти значения как initial
               state и сможет докрутить их только для конкретного ролика, не меняя сам шаблон.
             </p>
+            {isChannelStoryTemplate && templateConfig.channelStory ? (
+              <>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Боковой inset видео"
+                    hint="Позволяет сделать окно исходного видео уже shell-оболочки."
+                    min={0}
+                    max={40}
+                    step={1}
+                    value={templateConfig.channelStory.mediaInsetX}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("mediaInsetX", value)}
+                  />
+                  <SliderControl
+                    label="Скругление видео"
+                    hint="Подходит для rounded-вариантов из референсов."
+                    min={0}
+                    max={48}
+                    step={1}
+                    value={templateConfig.channelStory.mediaRadius}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("mediaRadius", value)}
+                  />
+                  <SliderControl
+                    label="Обводка видео"
+                    hint="Толщина отдельной рамки вокруг исходного видео."
+                    min={0}
+                    max={12}
+                    step={1}
+                    value={templateConfig.channelStory.mediaBorderWidth}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("mediaBorderWidth", value)}
+                  />
+                </div>
+                <ColorControl
+                  label="Цвет обводки видео"
+                  hint="Можно оставить прозрачным или сделать тонкую белую/цветную рамку."
+                  value={templateConfig.channelStory.mediaBorderColor}
+                  onChange={(value) => updateChannelStory("mediaBorderColor", value)}
+                />
+              </>
+            ) : null}
           </EditorSection>
 
           <EditorSection
@@ -3309,22 +3622,22 @@ export function TemplateStyleEditor({
             onToggle={() => toggleSection("template-road-style-type")}
             meta={
               <>
-                <span className="meta-pill">Верх: {currentTopFontFamily.split(",")[0]}</span>
-                <span className="meta-pill">Низ: {currentBottomFontFamily.split(",")[0]}</span>
+                <span className="meta-pill">{activeTemplateSemantics.topLabel}: {currentTopFontFamily.split(",")[0]}</span>
+                <span className="meta-pill">{activeTemplateSemantics.bottomLabel}: {currentBottomFontFamily.split(",")[0]}</span>
               </>
             }
           >
             <div className="template-road-editor-grid two-up">
               <SelectControl
-                label="Шрифт верхнего текста"
+                label={`Шрифт ${activeTemplateSemantics.topLabel.toLowerCase()}`}
                 hint="Главный голос карточки. Часто именно он задаёт стиль шаблона."
                 value={currentTopFontFamily}
                 options={topFontSelectOptions}
                 onChange={(value) => updateTopTypography("fontFamily", value)}
               />
               <SelectControl
-                label="Шрифт нижнего текста"
-                hint="Можно поддержать верхний текст или, наоборот, дать более спокойный контраст."
+                label={`Шрифт ${activeTemplateSemantics.bottomLabel.toLowerCase()}`}
+                hint="Можно поддержать главный текст или, наоборот, дать ему более спокойный контраст."
                 value={currentBottomFontFamily}
                 options={bottomFontSelectOptions}
                 onChange={(value) => updateBottomTypography("fontFamily", value)}
@@ -3332,7 +3645,9 @@ export function TemplateStyleEditor({
             </div>
             <div className="template-road-editor-grid two-up">
               <label className="template-road-editor-field">
-                <span className="field-label">Свой стек шрифтов сверху</span>
+                <span className="field-label">
+                  Свой стек для {activeTemplateSemantics.topLabel.toLowerCase()}
+                </span>
                 <input
                   className="text-input mono"
                   type="text"
@@ -3344,7 +3659,9 @@ export function TemplateStyleEditor({
                 </span>
               </label>
               <label className="template-road-editor-field">
-                <span className="field-label">Свой стек шрифтов снизу</span>
+                <span className="field-label">
+                  Свой стек для {activeTemplateSemantics.bottomLabel.toLowerCase()}
+                </span>
                 <input
                   className="text-input mono"
                   type="text"
@@ -3400,7 +3717,7 @@ export function TemplateStyleEditor({
             </div>
             <div className="template-road-editor-grid three-up">
               <SliderControl
-                label="Насыщенность верхнего текста"
+                label={`Насыщенность ${activeTemplateSemantics.topLabel.toLowerCase()}`}
                 hint="Больше вес, больше визуальное давление и драматизм."
                 min={400}
                 max={900}
@@ -3410,7 +3727,7 @@ export function TemplateStyleEditor({
                 onChange={(value) => updateTopTypography("weight", value)}
               />
               <SliderControl
-                label="Насыщенность нижнего текста"
+                label={`Насыщенность ${activeTemplateSemantics.bottomLabel.toLowerCase()}`}
                 hint="Помогает сделать низ либо спокойнее, либо плотнее."
                 min={300}
                 max={900}
@@ -3420,7 +3737,7 @@ export function TemplateStyleEditor({
                 onChange={(value) => updateBottomTypography("weight", value)}
               />
               <SelectControl
-                label="Стиль нижнего текста"
+                label={`Стиль ${activeTemplateSemantics.bottomLabel.toLowerCase()}`}
                 hint="Курсив добавляет журнальный или редакционный характер."
                 value={templateConfig.typography.bottom.fontStyle ?? "normal"}
                 options={[
@@ -3434,7 +3751,7 @@ export function TemplateStyleEditor({
             </div>
             <div className="template-road-editor-grid two-up">
               <SliderControl
-                label="Межстрочный интервал сверху"
+                label={`Межстрочный интервал ${activeTemplateSemantics.topLabel.toLowerCase()}`}
                 hint="Делает верхний блок плотнее или, наоборот, выше и воздушнее."
                 min={0.78}
                 max={1.4}
@@ -3445,7 +3762,7 @@ export function TemplateStyleEditor({
                 onChange={(value) => updateTopTypography("lineHeight", value)}
               />
               <SliderControl
-                label="Межстрочный интервал снизу"
+                label={`Межстрочный интервал ${activeTemplateSemantics.bottomLabel.toLowerCase()}`}
                 hint="Именно этот контрол растягивает bottom по высоте. Это не letter-spacing."
                 min={0.82}
                 max={1.45}
@@ -3458,7 +3775,9 @@ export function TemplateStyleEditor({
             </div>
             <div className="template-road-editor-grid two-up">
               <label className="template-road-editor-field">
-                <span className="field-label">Интервал между буквами сверху</span>
+                <span className="field-label">
+                  Интервал между буквами {activeTemplateSemantics.topLabel.toLowerCase()}
+                </span>
                 <input
                   className="text-input mono"
                   type="text"
@@ -3470,7 +3789,9 @@ export function TemplateStyleEditor({
                 </span>
               </label>
               <label className="template-road-editor-field">
-                <span className="field-label">Интервал между буквами снизу</span>
+                <span className="field-label">
+                  Интервал между буквами {activeTemplateSemantics.bottomLabel.toLowerCase()}
+                </span>
                 <input
                   className="text-input mono"
                   type="text"
@@ -3524,120 +3845,263 @@ export function TemplateStyleEditor({
             isOpen={Boolean(openSections["template-road-style-spacing"])}
             onToggle={() => toggleSection("template-road-style-spacing")}
             meta={
-              <>
-                <span className="meta-pill">Автор: gap {templateConfig.author.gap ?? 11}px</span>
-                <span className="meta-pill">
-                  Верхние поля: {templateConfig.slot.topPaddingX}px /{" "}
-                  {templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY}px
-                </span>
-              </>
+              isChannelStoryTemplate && templateConfig.channelStory ? (
+                <>
+                  <span className="meta-pill">Header: {templateConfig.channelStory.headerHeight}px</span>
+                  <span className="meta-pill">Body: {templateConfig.channelStory.bodyHeight}px</span>
+                  <span className="meta-pill">Padding X: {templateConfig.channelStory.contentPaddingX}px</span>
+                </>
+              ) : (
+                <>
+                  <span className="meta-pill">Автор: gap {templateConfig.author.gap ?? 11}px</span>
+                  <span className="meta-pill">
+                    Верхние поля: {templateConfig.slot.topPaddingX}px /{" "}
+                    {templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY}px
+                  </span>
+                </>
+              )
             }
           >
-            <div className="template-road-editor-grid three-up">
-              <SliderControl
-                label="Поля верхнего текста по бокам"
-                hint="Горизонтальные поля внутри верхнего блока."
-                min={0}
-                max={48}
-                step={1}
-                value={templateConfig.slot.topPaddingX}
-                formatValue={formatPxValue}
-                onChange={(value) => updateSlot("topPaddingX", value)}
-              />
-              <SliderControl
-                label="Отступ сверху у верхнего текста"
-                hint="Воздух над заголовком."
-                min={0}
-                max={48}
-                step={1}
-                value={templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY}
-                formatValue={formatPxValue}
-                onChange={(value) => updateSlot("topPaddingTop", value)}
-              />
-              <SliderControl
-                label="Отступ снизу у верхнего текста"
-                hint="Воздух под заголовком перед границей секции."
-                min={0}
-                max={48}
-                step={1}
-                value={templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY}
-                formatValue={formatPxValue}
-                onChange={(value) => updateSlot("topPaddingBottom", value)}
-              />
-            </div>
-            <div className="template-road-editor-grid three-up">
-              <SliderControl
-                label="Поля строки автора по бокам"
-                hint="Горизонтальные отступы у нижней строки с автором."
-                min={0}
-                max={48}
-                step={1}
-                value={templateConfig.slot.bottomMetaPaddingX}
-                formatValue={formatPxValue}
-                onChange={(value) => updateSlot("bottomMetaPaddingX", value)}
-              />
-              <SliderControl
-                label="Отступ слева у нижнего текста"
-                hint="Сколько воздуха слева у абзаца нижнего блока."
-                min={0}
-                max={64}
-                step={1}
-                value={
-                  templateConfig.slot.bottomTextPaddingLeft ?? templateConfig.slot.bottomTextPaddingX
-                }
-                formatValue={formatPxValue}
-                onChange={(value) => updateSlot("bottomTextPaddingLeft", value)}
-              />
-              <SliderControl
-                label="Отступ справа у нижнего текста"
-                hint="Балансирует нижний текст относительно правого края."
-                min={0}
-                max={64}
-                step={1}
-                value={
-                  templateConfig.slot.bottomTextPaddingRight ?? templateConfig.slot.bottomTextPaddingX
-                }
-                formatValue={formatPxValue}
-                onChange={(value) => updateSlot("bottomTextPaddingRight", value)}
-              />
-            </div>
-            <div className="template-road-editor-grid three-up">
-              <SliderControl
-                label="Отступ сверху у нижнего текста"
-                hint="Воздух над абзацем нижнего блока."
-                min={0}
-                max={36}
-                step={1}
-                value={
-                  templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY
-                }
-                formatValue={formatPxValue}
-                onChange={(value) => updateSlot("bottomTextPaddingTop", value)}
-              />
-              <SliderControl
-                label="Отступ снизу у нижнего текста"
-                hint="Воздух между нижним текстом и строкой автора."
-                min={0}
-                max={36}
-                step={1}
-                value={
-                  templateConfig.slot.bottomTextPaddingBottom ??
-                  templateConfig.slot.bottomTextPaddingY
-                }
-                formatValue={formatPxValue}
-                onChange={(value) => updateSlot("bottomTextPaddingBottom", value)}
-              />
-              <SliderControl
-                label="Расстояние между аватаром и текстом"
-                hint="Сдвигает строку автора между более плотным и более расслабленным состоянием."
-                min={0}
-                max={24}
-                step={1}
-                value={templateConfig.author.gap ?? 11}
-                formatValue={formatPxValue}
-                onChange={(value) => updateAuthor("gap", value)}
-              />
-            </div>
+            {isChannelStoryTemplate && templateConfig.channelStory ? (
+              <>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Внутренние поля по бокам"
+                    hint="Общий горизонтальный воздух для header, lead и body."
+                    min={0}
+                    max={80}
+                    step={1}
+                    value={templateConfig.channelStory.contentPaddingX}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("contentPaddingX", value)}
+                  />
+                  <SliderControl
+                    label="Верхний внутренний отступ"
+                    hint="Сколько воздуха оставить над channel row."
+                    min={0}
+                    max={80}
+                    step={1}
+                    value={templateConfig.channelStory.contentPaddingTop}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("contentPaddingTop", value)}
+                  />
+                  <SliderControl
+                    label="Нижний внутренний отступ"
+                    hint="Воздух под видео внутри shell."
+                    min={0}
+                    max={120}
+                    step={1}
+                    value={templateConfig.channelStory.contentPaddingBottom}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("contentPaddingBottom", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Высота channel row"
+                    hint="Высота верхней строки с аватаром, названием и ником."
+                    min={72}
+                    max={180}
+                    step={1}
+                    value={templateConfig.channelStory.headerHeight}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("headerHeight", value)}
+                  />
+                  <SliderControl
+                    label="Высота lead"
+                    hint="Резерв под короткую строку `Did you know?` или похожий kicker."
+                    min={0}
+                    max={160}
+                    step={1}
+                    value={templateConfig.channelStory.leadHeight}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("leadHeight", value)}
+                  />
+                  <SliderControl
+                    label="Высота body"
+                    hint="Основной текстовый блок над видео."
+                    min={120}
+                    max={520}
+                    step={1}
+                    value={templateConfig.channelStory.bodyHeight}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("bodyHeight", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Header -> lead"
+                    hint="Зазор между channel row и lead."
+                    min={0}
+                    max={48}
+                    step={1}
+                    value={templateConfig.channelStory.headerToLeadGap}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("headerToLeadGap", value)}
+                  />
+                  <SliderControl
+                    label="Lead -> body"
+                    hint="Зазор между короткой строкой и основным текстом."
+                    min={0}
+                    max={48}
+                    step={1}
+                    value={templateConfig.channelStory.leadToBodyGap}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("leadToBodyGap", value)}
+                  />
+                  <SliderControl
+                    label="Body -> video"
+                    hint="Отступ между текстом и окном исходного видео."
+                    min={0}
+                    max={64}
+                    step={1}
+                    value={templateConfig.channelStory.bodyToMediaGap}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("bodyToMediaGap", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Нижний footer-space"
+                    hint="Чёрная зона под видео внутри shell."
+                    min={0}
+                    max={180}
+                    step={1}
+                    value={templateConfig.channelStory.footerHeight}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("footerHeight", value)}
+                  />
+                  <SliderControl
+                    label="Аватар -> текст"
+                    hint="Плотность верхнего channel row."
+                    min={0}
+                    max={32}
+                    step={1}
+                    value={templateConfig.author.gap ?? 11}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateAuthor("gap", value)}
+                  />
+                  <SliderControl
+                    label="Имя -> бейдж"
+                    hint="Зазор между названием канала и галочкой."
+                    min={0}
+                    max={24}
+                    step={1}
+                    value={templateConfig.author.nameCheckGap ?? 8}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateAuthor("nameCheckGap", value)}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Поля верхнего текста по бокам"
+                    hint="Горизонтальные поля внутри верхнего блока."
+                    min={0}
+                    max={48}
+                    step={1}
+                    value={templateConfig.slot.topPaddingX}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateSlot("topPaddingX", value)}
+                  />
+                  <SliderControl
+                    label="Отступ сверху у верхнего текста"
+                    hint="Воздух над заголовком."
+                    min={0}
+                    max={48}
+                    step={1}
+                    value={templateConfig.slot.topPaddingTop ?? templateConfig.slot.topPaddingY}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateSlot("topPaddingTop", value)}
+                  />
+                  <SliderControl
+                    label="Отступ снизу у верхнего текста"
+                    hint="Воздух под заголовком перед границей секции."
+                    min={0}
+                    max={48}
+                    step={1}
+                    value={templateConfig.slot.topPaddingBottom ?? templateConfig.slot.topPaddingY}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateSlot("topPaddingBottom", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Поля строки автора по бокам"
+                    hint="Горизонтальные отступы у нижней строки с автором."
+                    min={0}
+                    max={48}
+                    step={1}
+                    value={templateConfig.slot.bottomMetaPaddingX}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateSlot("bottomMetaPaddingX", value)}
+                  />
+                  <SliderControl
+                    label="Отступ слева у нижнего текста"
+                    hint="Сколько воздуха слева у абзаца нижнего блока."
+                    min={0}
+                    max={64}
+                    step={1}
+                    value={
+                      templateConfig.slot.bottomTextPaddingLeft ?? templateConfig.slot.bottomTextPaddingX
+                    }
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateSlot("bottomTextPaddingLeft", value)}
+                  />
+                  <SliderControl
+                    label="Отступ справа у нижнего текста"
+                    hint="Балансирует нижний текст относительно правого края."
+                    min={0}
+                    max={64}
+                    step={1}
+                    value={
+                      templateConfig.slot.bottomTextPaddingRight ?? templateConfig.slot.bottomTextPaddingX
+                    }
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateSlot("bottomTextPaddingRight", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Отступ сверху у нижнего текста"
+                    hint="Воздух над абзацем нижнего блока."
+                    min={0}
+                    max={36}
+                    step={1}
+                    value={
+                      templateConfig.slot.bottomTextPaddingTop ?? templateConfig.slot.bottomTextPaddingY
+                    }
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateSlot("bottomTextPaddingTop", value)}
+                  />
+                  <SliderControl
+                    label="Отступ снизу у нижнего текста"
+                    hint="Воздух между нижним текстом и строкой автора."
+                    min={0}
+                    max={36}
+                    step={1}
+                    value={
+                      templateConfig.slot.bottomTextPaddingBottom ??
+                      templateConfig.slot.bottomTextPaddingY
+                    }
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateSlot("bottomTextPaddingBottom", value)}
+                  />
+                  <SliderControl
+                    label="Расстояние между аватаром и текстом"
+                    hint="Сдвигает строку автора между более плотным и более расслабленным состоянием."
+                    min={0}
+                    max={24}
+                    step={1}
+                    value={templateConfig.author.gap ?? 11}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateAuthor("gap", value)}
+                  />
+                </div>
+              </>
+            )}
             <div className="template-road-editor-grid three-up">
               <SliderControl
                 label="Расстояние между именем и ником"
@@ -3680,15 +4144,109 @@ export function TemplateStyleEditor({
             isOpen={Boolean(openSections["template-road-style-details"])}
             onToggle={() => toggleSection("template-road-style-details")}
             meta={
-              <>
-                <span className="meta-pill">Аватар: {templateConfig.author.avatarSize}px</span>
-                <span className="meta-pill">Бейдж: {templateConfig.author.checkSize}px</span>
-                <span className="meta-pill">
-                  {currentBadgeOption?.label ?? (currentBadgeAssetPath ? "Свой бейдж" : "Twitter цветная")}
-                </span>
-              </>
+              isChannelStoryTemplate && templateConfig.channelStory ? (
+                <>
+                  <span className="meta-pill">Lead mode: {templateConfig.channelStory.leadMode}</span>
+                  <span className="meta-pill">
+                    Header: {templateConfig.channelStory.headerAlign === "center" ? "center" : "left"}
+                  </span>
+                  <span className="meta-pill">
+                    Body: {templateConfig.channelStory.bodyTextAlign ?? "center"}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="meta-pill">Аватар: {templateConfig.author.avatarSize}px</span>
+                  <span className="meta-pill">Бейдж: {templateConfig.author.checkSize}px</span>
+                  <span className="meta-pill">
+                    {currentBadgeOption?.label ?? (currentBadgeAssetPath ? "Свой бейдж" : "Twitter цветная")}
+                  </span>
+                </>
+              )
             }
           >
+            {isChannelStoryTemplate && templateConfig.channelStory ? (
+              <>
+                <div className="template-road-editor-grid two-up">
+                  <SelectControl
+                    label="Режим lead"
+                    hint="Определяет, генерирует ли Stage 2 отдельный lead, подставляет ли шаблон свой текст или полностью скрывает эту строку."
+                    value={templateConfig.channelStory.leadMode}
+                    options={[
+                      { label: "Clip custom", value: "clip_custom" },
+                      { label: "Template default", value: "template_default" },
+                      { label: "Off", value: "off" }
+                    ]}
+                    onChange={(value) =>
+                      updateChannelStory(
+                        "leadMode",
+                        value as NonNullable<Stage3TemplateConfig["channelStory"]>["leadMode"]
+                      )
+                    }
+                  />
+                  <label className="template-road-editor-field">
+                    <span className="field-label">Шаблонный lead</span>
+                    <input
+                      className="text-input"
+                      type="text"
+                      value={content.topText}
+                      onChange={(event) => updateContent("topText", event.target.value)}
+                    />
+                    <span className="template-road-editor-field-hint">
+                      Этот текст синхронизируется в `defaultLeadText` и используется при режиме `template_default`.
+                    </span>
+                  </label>
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <SelectControl
+                    label="Выравнивание header row"
+                    hint="Левое выравнивание ближе к референсам с channel row, центр подходит для более плакатной композиции."
+                    value={templateConfig.channelStory.headerAlign ?? "left"}
+                    options={[
+                      { label: "Left", value: "left" },
+                      { label: "Center", value: "center" }
+                    ]}
+                    onChange={(value) =>
+                      updateChannelStory("headerAlign", value as "left" | "center")
+                    }
+                  />
+                  <SelectControl
+                    label="Выравнивание body"
+                    hint="Центр для viral poster feel, left — для более редакционного story-block."
+                    value={templateConfig.channelStory.bodyTextAlign ?? "center"}
+                    options={[
+                      { label: "Center", value: "center" },
+                      { label: "Left", value: "left" }
+                    ]}
+                    onChange={(value) =>
+                      updateChannelStory("bodyTextAlign", value as "left" | "center")
+                    }
+                  />
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <SliderControl
+                    label="Толщина верхней accent-линии"
+                    hint="Для сигнальной зелёной/красной полосы по верхнему краю."
+                    min={0}
+                    max={12}
+                    step={1}
+                    value={templateConfig.channelStory.accentTopLineWidth ?? 0}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("accentTopLineWidth", value)}
+                  />
+                  <SliderControl
+                    label="Толщина нижней accent-линии"
+                    hint="Нижняя сигнальная линия или разделитель у footer-space."
+                    min={0}
+                    max={12}
+                    step={1}
+                    value={templateConfig.channelStory.accentBottomLineWidth ?? 0}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("accentBottomLineWidth", value)}
+                  />
+                </div>
+              </>
+            ) : null}
             <BadgeOptionPicker
               label="Вариант галочки"
               hint="Можно выбрать встроенный бейдж или переключиться на цветную twitter-style галочку, если оттенок должен управляться через поле «Цвет бейджа»."

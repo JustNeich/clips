@@ -238,6 +238,10 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     return base;
   }
 
+  if (raw.layoutKind === "channel_story") {
+    base.layoutKind = "channel_story";
+  }
+
   const card = isRecord(raw.card) ? raw.card : null;
   if (card) {
     if (typeof card.x === "number" && Number.isFinite(card.x)) {
@@ -430,6 +434,74 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     }
   }
 
+  if (base.layoutKind === "channel_story" && base.channelStory && isRecord(raw.channelStory)) {
+    const channelStory = raw.channelStory;
+    const numericChannelStoryKeys: Array<
+      | "contentPaddingX"
+      | "contentPaddingTop"
+      | "contentPaddingBottom"
+      | "headerHeight"
+      | "leadHeight"
+      | "bodyHeight"
+      | "headerToLeadGap"
+      | "leadToBodyGap"
+      | "bodyToMediaGap"
+      | "footerHeight"
+      | "mediaInsetX"
+      | "mediaRadius"
+      | "mediaBorderWidth"
+      | "accentTopLineWidth"
+      | "accentBottomLineWidth"
+    > = [
+      "contentPaddingX",
+      "contentPaddingTop",
+      "contentPaddingBottom",
+      "headerHeight",
+      "leadHeight",
+      "bodyHeight",
+      "headerToLeadGap",
+      "leadToBodyGap",
+      "bodyToMediaGap",
+      "footerHeight",
+      "mediaInsetX",
+      "mediaRadius",
+      "mediaBorderWidth",
+      "accentTopLineWidth",
+      "accentBottomLineWidth"
+    ];
+    for (const key of numericChannelStoryKeys) {
+      const value = channelStory[key];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        base.channelStory[key] = Math.max(0, Math.round(value));
+      }
+    }
+    if (
+      channelStory.leadMode === "off" ||
+      channelStory.leadMode === "template_default" ||
+      channelStory.leadMode === "clip_custom"
+    ) {
+      base.channelStory.leadMode = channelStory.leadMode;
+    }
+    if (typeof channelStory.defaultLeadText === "string") {
+      base.channelStory.defaultLeadText = channelStory.defaultLeadText;
+    }
+    if (typeof channelStory.mediaBorderColor === "string") {
+      base.channelStory.mediaBorderColor = channelStory.mediaBorderColor;
+    }
+    if (typeof channelStory.accentTopLineColor === "string") {
+      base.channelStory.accentTopLineColor = channelStory.accentTopLineColor;
+    }
+    if (typeof channelStory.accentBottomLineColor === "string") {
+      base.channelStory.accentBottomLineColor = channelStory.accentBottomLineColor;
+    }
+    if (channelStory.headerAlign === "left" || channelStory.headerAlign === "center") {
+      base.channelStory.headerAlign = channelStory.headerAlign;
+    }
+    if (channelStory.bodyTextAlign === "left" || channelStory.bodyTextAlign === "center") {
+      base.channelStory.bodyTextAlign = channelStory.bodyTextAlign;
+    }
+  }
+
   base.highlights = normalizeTemplateHighlightConfig(raw.highlights, {
     accentColor: base.palette.accentColor ?? base.palette.topTextColor
   });
@@ -479,6 +551,14 @@ function normalizeSnapshot(
     input.layoutFamily ?? input.baseTemplateId ?? fallback?.layoutFamily ?? fallback?.baseTemplateId
   );
   const seed = buildSeedSnapshot(layoutFamily);
+  const content = normalizeContent(input.content ?? fallback?.content, layoutFamily);
+  const templateConfig = normalizeTemplateConfig(
+    input.templateConfig ?? fallback?.templateConfig,
+    layoutFamily
+  );
+  if (templateConfig.layoutKind === "channel_story" && templateConfig.channelStory) {
+    templateConfig.channelStory.defaultLeadText = content.topText;
+  }
   return {
     name:
       typeof input.name === "string" && input.name.trim()
@@ -490,11 +570,8 @@ function normalizeSnapshot(
         : fallback?.description?.trim() || seed.description,
     layoutFamily,
     baseTemplateId: layoutFamily,
-    content: normalizeContent(input.content ?? fallback?.content, layoutFamily),
-    templateConfig: normalizeTemplateConfig(
-      input.templateConfig ?? fallback?.templateConfig,
-      layoutFamily
-    ),
+    content,
+    templateConfig,
     shadowLayers: normalizeShadowLayers(input.shadowLayers ?? fallback?.shadowLayers)
   };
 }

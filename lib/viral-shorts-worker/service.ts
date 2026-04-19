@@ -302,9 +302,9 @@ const CANDIDATES_SCHEMA = {
         properties: {
           candidate_id: { type: "string", minLength: 1 },
           angle: { type: "string", minLength: 1 },
-          top: { type: "string", minLength: 1 },
+          top: { type: "string", minLength: 0 },
           bottom: { type: "string", minLength: 1 },
-          top_ru: { type: "string", minLength: 1 },
+          top_ru: { type: "string", minLength: 0 },
           bottom_ru: { type: "string", minLength: 1 },
           rationale: { type: "string", minLength: 1 },
           style_direction_ids: {
@@ -531,7 +531,7 @@ const NATIVE_CANDIDATE_BATCH_SCHEMA = {
     properties: {
       candidate_id: { type: "string", minLength: 1 },
       lane_id: { type: "string", minLength: 1 },
-      top: { type: "string", minLength: 1 },
+      top: { type: "string", minLength: 0 },
       bottom: { type: "string", minLength: 1 },
       retained_handle: { type: "boolean" },
       display_intent: { type: "string", const: "finalist_or_display_safe" }
@@ -632,7 +632,7 @@ const NATIVE_TARGETED_REPAIR_SCHEMA = {
     properties: {
       candidate_id: { type: "string", minLength: 1 },
       lane_id: { type: "string", minLength: 1 },
-      top: { type: "string", minLength: 1 },
+      top: { type: "string", minLength: 0 },
       bottom: { type: "string", minLength: 1 },
       retained_handle: { type: "boolean" },
       display_intent: { type: "string", const: "recovery" }
@@ -664,7 +664,7 @@ const NATIVE_TRANSLATION_SCHEMA = {
     required: ["candidate_id", "top_ru", "bottom_ru"],
     properties: {
       candidate_id: { type: "string", minLength: 1 },
-      top_ru: { type: "string", minLength: 1 },
+      top_ru: { type: "string", minLength: 0 },
       bottom_ru: { type: "string", minLength: 1 }
     }
   }
@@ -736,7 +736,7 @@ const NATIVE_REFERENCE_ONE_SHOT_SCHEMA = {
         required: ["candidate_id", "top", "bottom", "retained_handle"],
         properties: {
           candidate_id: { type: "string", minLength: 1 },
-          top: { type: "string", minLength: 1 },
+          top: { type: "string", minLength: 0 },
           bottom: { type: "string", minLength: 1 },
           retained_handle: { type: "boolean" },
           rationale: { type: "string", minLength: 1 }
@@ -2123,7 +2123,7 @@ function normalizeReferenceOneShotResult(
       const item = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
       const top = String(item.top ?? "").trim();
       const bottom = String(item.bottom ?? "").trim();
-      if (!top || !bottom) {
+      if (!bottom) {
         return null;
       }
       const baseId = String(item.candidate_id ?? item.candidateId ?? `cand_${index + 1}`)
@@ -2834,7 +2834,7 @@ function normalizeNativeCaptionCandidateBatch(raw: unknown): NativeCaptionCandid
       const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
       const top = String(item.top ?? "").trim();
       const bottom = String(item.bottom ?? "").trim();
-      if (!top || !bottom) {
+      if (!bottom) {
         return null;
       }
       const baseId = String(item.candidate_id ?? item.candidateId ?? `cand_${index + 1}`)
@@ -2891,7 +2891,7 @@ function evaluateNativeCaptionConstraintCheck(
   const base = evaluateCandidateHardConstraints(toLegacyCandidate(candidate), constraints, false);
   const extraIssues: string[] = [];
   const combinedText = `${candidate.top}\n${candidate.bottom}`;
-  if (!candidate.top.trim()) {
+  if (!candidate.top.trim() && constraints.topLengthMin > 0) {
     extraIssues.push("TOP is empty.");
   }
   if (!candidate.bottom.trim()) {
@@ -4165,7 +4165,7 @@ function normalizeNativeCaptionTranslationArtifact(
       const candidateId = String(item.candidate_id ?? item.candidateId ?? "").trim();
       const topRu = String(item.top_ru ?? item.topRu ?? "").trim();
       const bottomRu = String(item.bottom_ru ?? item.bottomRu ?? "").trim();
-      if (!optionIds.has(candidateId) || !topRu || !bottomRu) {
+      if (!optionIds.has(candidateId) || !bottomRu) {
         return;
       }
       items.push({
@@ -4622,7 +4622,7 @@ function normalizeCandidates(
       }
       const top = String(item.top ?? "").trim();
       const bottom = String(item.bottom ?? "").trim();
-      if (!top || !bottom) {
+      if (!bottom) {
         return null;
       }
       emittedCandidateIds.add(candidateId);

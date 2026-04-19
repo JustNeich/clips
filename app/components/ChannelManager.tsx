@@ -18,6 +18,7 @@ import {
 } from "./types";
 import { STAGE3_TEMPLATE_ID } from "../../lib/stage3-template";
 import type { ManagedTemplateSummary } from "../../lib/managed-template-types";
+import { getTemplateVariant } from "../../lib/stage3-template-registry";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   listStage2PromptConfigStages,
@@ -103,6 +104,22 @@ type ChannelSavePatch = Partial<{
 type ManagedTemplateListResponse = {
   templates?: ManagedTemplateSummary[];
 };
+
+export function groupManagedTemplatesByFormat(
+  managedTemplates: ManagedTemplateSummary[]
+): Array<{ label: string; options: Array<{ value: string; label: string }> }> {
+  const groups = new Map<string, Array<{ value: string; label: string }>>();
+  managedTemplates.forEach((template) => {
+    const formatLabel = getTemplateVariant(template.layoutFamily ?? template.baseTemplateId).formatLabel;
+    const existing = groups.get(formatLabel) ?? [];
+    existing.push({
+      value: template.id,
+      label: template.name
+    });
+    groups.set(formatLabel, existing);
+  });
+  return Array.from(groups.entries()).map(([label, options]) => ({ label, options }));
+}
 
 export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
   saving: string;
@@ -320,14 +337,8 @@ export function ChannelManager({
     render: { status: "idle", message: null }
   });
   const stage2PromptStages = useMemo(() => listStage2PromptConfigStages(), []);
-  const renderTemplateOptions = useMemo(
-    () => {
-      const options = managedTemplates.map((template) => ({
-        value: template.id,
-        label: template.name
-      }));
-      return options;
-    },
+  const renderTemplateGroups = useMemo(
+    () => groupManagedTemplatesByFormat(managedTemplates),
     [managedTemplates]
   );
   const skipAutosaveRef = useRef<Record<AutosaveScope, boolean>>({
@@ -1583,10 +1594,14 @@ export function ChannelManager({
                   disabled={!canEditSetup}
                   onChange={(event) => setTemplateId(event.target.value)}
                 >
-                  {renderTemplateOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
+                  {renderTemplateGroups.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 <p className="subtle-text">

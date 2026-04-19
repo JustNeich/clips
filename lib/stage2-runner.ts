@@ -17,6 +17,7 @@ import {
   runQuickRegenerateModel
 } from "./stage2-quick-regenerate";
 import { validateStage2Output } from "./stage2-output-validation";
+import { resolveEffectiveStage2HardConstraints } from "./stage2-template-contract";
 import { createEmptyTemplateCaptionHighlights } from "./template-highlights";
 import {
   getStage2Run,
@@ -122,6 +123,17 @@ function resolveNativeStage2ResponseExecutionSettings(input: {
         : "Context packet + candidate batch + quality court + targeted repair + caption translation + title writer + seo writer"
     })
   };
+}
+
+function resolveChannelStage2HardConstraints(
+  channel: Stage2RunRecord["request"]["channel"],
+  workspaceId: string
+) {
+  return resolveEffectiveStage2HardConstraints({
+    hardConstraints: channel.stage2HardConstraints,
+    templateId: channel.templateId,
+    workspaceId
+  });
 }
 
 export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stage2WorkerRolloutAudit {
@@ -632,6 +644,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
     const workerService = new ViralShortsWorkerService();
     const channel = run.request.channel;
+    const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
     const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
     const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
     markStage2RunStageRunning(run.runId, "regenerate", {
@@ -649,7 +662,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           username: channel.username,
           stage2WorkerProfileId: channel.stage2WorkerProfileId,
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
-          stage2HardConstraints: channel.stage2HardConstraints,
+          stage2HardConstraints: effectiveHardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
           editorialMemory: channel.editorialMemory,
           templateHighlightProfile: channel.templateHighlightProfile ?? null
@@ -707,7 +720,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       seo: pipelineResult.seo,
       warnings: [
         ...pipelineResult.warnings,
-        ...validateStage2Output(pipelineResult.output, channel.stage2HardConstraints)
+        ...validateStage2Output(pipelineResult.output, effectiveHardConstraints)
       ],
       diagnostics: pipelineResult.diagnostics,
       progress: getStage2Run(run.runId)?.snapshot ?? null,
@@ -715,7 +728,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
         output: pipelineResult.output,
         promptConfig: workspaceStage2PromptConfig,
         executorContext,
-        hardConstraints: channel.stage2HardConstraints
+        hardConstraints: effectiveHardConstraints
       }),
       userInstructionUsed: run.userInstruction,
       debugMode: run.request.debugMode === "raw" ? "raw" : "summary",
@@ -757,6 +770,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
   }
 
   const channel = run.request.channel;
+  const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
   const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
   const workerService = new ViralShortsWorkerService();
   const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
@@ -771,7 +785,10 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
   try {
     const quickResult = await runQuickRegenerateModel({
       stage2: baseResult,
-      channel,
+      channel: {
+        ...channel,
+        stage2HardConstraints: effectiveHardConstraints
+      },
       userInstruction: run.userInstruction,
       executor: executorContext.executor,
       model: executorContext.resolvedCodexModelConfig.regenerate,
@@ -804,7 +821,10 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     mode: "regenerate",
     baseRunId,
     baseResult,
-    channel,
+    channel: {
+      ...channel,
+      stage2HardConstraints: effectiveHardConstraints
+    },
     userInstruction: run.userInstruction,
     promptText,
     reasoningEffort: executorContext.reasoningEffort,
@@ -819,7 +839,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       username: channel.username,
       stage2WorkerProfileId: channel.stage2WorkerProfileId,
       stage2ExamplesConfig: channel.stage2ExamplesConfig,
-      stage2HardConstraints: channel.stage2HardConstraints,
+      stage2HardConstraints: effectiveHardConstraints,
       stage2StyleProfile: channel.stage2StyleProfile,
       editorialMemory: channel.editorialMemory,
       templateHighlightProfile: channel.templateHighlightProfile ?? null
@@ -879,6 +899,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
 
     const channel = run.request.channel;
+    const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
     markStage2RunStageRunning(
       run.runId,
       getStage2ProgressStartStageId(run.mode, channel.stage2WorkerProfileId),
@@ -914,7 +935,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         username: channel.username,
         stage2WorkerProfileId: channel.stage2WorkerProfileId,
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
-        stage2HardConstraints: channel.stage2HardConstraints,
+        stage2HardConstraints: effectiveHardConstraints,
         stage2StyleProfile: channel.stage2StyleProfile,
         editorialMemory: channel.editorialMemory,
         templateHighlightProfile: channel.templateHighlightProfile ?? null
@@ -970,7 +991,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     }
     const warnings = [
       ...pipelineResult.warnings,
-      ...validateStage2Output(parsedOutput, channel.stage2HardConstraints)
+      ...validateStage2Output(parsedOutput, effectiveHardConstraints)
     ];
     const diagnostics = pipelineResult.diagnostics;
     const rawDebugArtifact =
@@ -1012,7 +1033,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         output: parsedOutput,
         promptConfig: workspaceStage2PromptConfig,
         executorContext,
-        hardConstraints: channel.stage2HardConstraints
+        hardConstraints: effectiveHardConstraints
       }),
       output: parsedOutput,
       seo: pipelineResult.seo,

@@ -28,10 +28,15 @@ import {
 } from "../../lib/stage3-design-lab";
 import { getTemplateById } from "../../lib/stage3-template";
 import {
+  getTemplateVariant,
   resolveTemplateAvatarBorderColor
 } from "../../lib/stage3-template-registry";
 import { resolveTemplateBackdropNode } from "../../lib/stage3-template-runtime";
 import { buildTemplateRenderSnapshot } from "../../lib/stage3-template-core";
+import {
+  resolveTemplateLeadMode,
+  resolveTemplateTextFieldSemantics
+} from "../../lib/stage3-template-semantics";
 
 type Stage3TemplateLabProps = {
   initialTemplateId?: string | null;
@@ -57,6 +62,13 @@ type ReferenceRect = {
   height: number;
 };
 
+type TemplateLabFieldCopy = {
+  topLabel: string;
+  topHint: string;
+  bottomLabel: string;
+  bottomHint: string;
+};
+
 const STATUS_OPTIONS: TemplateCalibrationStatus[] = ["queued", "in-progress", "review", "approved"];
 
 function clamp(value: number, min: number, max: number): number {
@@ -71,6 +83,49 @@ function getReferenceRect(session: TemplateCalibrationSession): ReferenceRect {
     y: clamp(session.referenceCropY, 0, Math.max(0, 1 - height)),
     width,
     height
+  };
+}
+
+function resolveTemplateLabFieldCopy(templateId: string): TemplateLabFieldCopy {
+  const templateConfig = getTemplateById(templateId);
+  const semantics = resolveTemplateTextFieldSemantics(templateConfig);
+  if (semantics.formatGroup === "classic_top_bottom") {
+    return {
+      topLabel: "Верхний текст",
+      topHint: "Крупный верхний блок классического шаблона.",
+      bottomLabel: "Нижний текст",
+      bottomHint: "Нижний текстовый блок под исходным видео."
+    };
+  }
+
+  const leadMode = resolveTemplateLeadMode(templateConfig);
+  if (leadMode === "template_default") {
+    return {
+      topLabel: "Шаблонный lead",
+      topHint:
+        semantics.topNote ??
+        "Этот текст живёт на уровне шаблона и подставляется автоматически при калибровке и runtime-рендере.",
+      bottomLabel: "Body",
+      bottomHint: "Основной story-блок между channel row и исходным видео."
+    };
+  }
+
+  if (leadMode === "off") {
+    return {
+      topLabel: "Lead fixture",
+      topHint:
+        semantics.topNote ??
+        "Отдельный lead сейчас скрыт, но fixture можно оставить для быстрых переключений и визуальных проходов.",
+      bottomLabel: "Body",
+      bottomHint: "Единственный текстовый блок, который реально участвует в рендере."
+    };
+  }
+
+  return {
+    topLabel: "Lead",
+    topHint: "Короткая строка сразу под channel row, например `Did you know?`.",
+    bottomLabel: "Body",
+    bottomHint: "Основной плотный текстовый блок перед media window."
   };
 }
 
@@ -439,6 +494,8 @@ export function Stage3TemplateLab({
 
   const activeBundle = bundleMap[activeTemplateId] ?? initialBundles[0];
   const activePreset = useMemo(() => getStage3DesignLabPreset(activeTemplateId), [activeTemplateId]);
+  const activeTemplateVariant = useMemo(() => getTemplateVariant(activeTemplateId), [activeTemplateId]);
+  const activeFieldCopy = useMemo(() => resolveTemplateLabFieldCopy(activeTemplateId), [activeTemplateId]);
   const activeReferenceRect = useMemo(() => getReferenceRect(activeBundle.session), [activeBundle.session]);
   const frame = getTemplateById(activeTemplateId).frame;
   const previewViewport = useMemo(() => getTemplatePreviewViewportMetrics(activeTemplateId), [activeTemplateId]);
@@ -936,6 +993,7 @@ export function Stage3TemplateLab({
         <div className="template-road-header-pills">
           <span className="meta-pill">Repo-backed session</span>
           <span className="meta-pill">{activeTemplateId}</span>
+          <span className="meta-pill">{activeTemplateVariant.formatLabel}</span>
           <span className={`meta-pill ${saveState === "saved" ? "ok" : saveState === "error" ? "warn" : ""}`}>
             {saveState === "saving"
               ? "Saving..."
@@ -967,6 +1025,7 @@ export function Stage3TemplateLab({
               {presets.map((preset) => {
                 const bundle = bundleMap[preset.templateId];
                 const isActive = activeTemplateId === preset.templateId;
+                const templateVariant = getTemplateVariant(preset.templateId);
                 return (
                   <button
                     key={preset.templateId}
@@ -978,6 +1037,7 @@ export function Stage3TemplateLab({
                     <div>
                       <strong>{preset.label}</strong>
                       <p>{preset.note}</p>
+                      <span className="meta-pill">{templateVariant.formatLabel}</span>
                     </div>
                     <div className="template-road-template-meta">
                       <span className={`template-lab-template-status status-${bundle.session.status}`}>
@@ -995,8 +1055,12 @@ export function Stage3TemplateLab({
 
           <section className="control-card template-road-card">
             <h3>Контент</h3>
+            <p className="subtle-text">
+              Калибровочный стенд использует те же family-aware семантики, что и operator flow:{" "}
+              {activeTemplateVariant.formatLabel}.
+            </p>
             <label className="field-label">
-              Верхний текст
+              {activeFieldCopy.topLabel}
               <textarea
                 className="text-input template-road-textarea"
                 rows={6}
@@ -1004,8 +1068,9 @@ export function Stage3TemplateLab({
                 onChange={(event) => updateContent({ topText: event.target.value })}
               />
             </label>
+            <p className="subtle-text">{activeFieldCopy.topHint}</p>
             <label className="field-label">
-              Нижний текст
+              {activeFieldCopy.bottomLabel}
               <textarea
                 className="text-input template-road-textarea"
                 rows={4}
@@ -1013,6 +1078,7 @@ export function Stage3TemplateLab({
                 onChange={(event) => updateContent({ bottomText: event.target.value })}
               />
             </label>
+            <p className="subtle-text">{activeFieldCopy.bottomHint}</p>
             <div className="template-road-field-grid">
               <label className="field-label">
                 Канал

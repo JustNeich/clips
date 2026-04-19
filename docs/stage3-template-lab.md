@@ -16,6 +16,15 @@
 - `template-road` — style editor: фиксированный canvas слева, scrollable inspector справа. Нужен для быстрой настройки chrome, palette, typography и spacing.
 - `template-lab` — calibration lab: reference/diff/artifacts и проходы до визуального совпадения.
 
+Семейства шаблонов теперь разделены на два независимых формата:
+- `Top & Bottom` — классическая карточка с верхним и нижним текстовым блоком.
+- `Channel + Story` — channel row сверху, опциональный `lead`, один плотный `body`, затем source video внутри shell.
+
+Для `Channel + Story` действует совместимая с legacy wire-схемой семантика:
+- `topText` = `lead`, `bottomText` = `body`, если `leadMode=clip_custom`;
+- `topText` игнорируется оператором, а `bottomText` = `body`, если `leadMode=off`;
+- `topText` хранит шаблонный `lead`, который синхронизируется в `templateConfig.channelStory.defaultLeadText`, если `leadMode=template_default`.
+
 С недавнего обновления `template-road` также хранит template-level highlighting profile:
 - master toggle `Highlighting`
 - отдельные тумблеры для `top` и `bottom`
@@ -38,17 +47,19 @@
 ## Как использовать
 
 1. Для style-прохода открыть `template-road` и выбрать базовый шаблон.
-2. Справа через inspector крутить radius, border, fill, shadow, font stacks, weights, colors и внутренние отступы.
-3. В секции `Демо-контент` при необходимости настроить `Highlighting`: включить top/bottom, выбрать до 3 слотов, задать `label/guidance` и demo phrases для проверки палитры.
+2. В самом верху выбрать семейство `Top & Bottom` или `Channel + Story`, чтобы редактор и библиотека работали только внутри нужного формата.
+3. Справа через inspector крутить radius, border, fill, shadow, font stacks, weights, colors и внутренние отступы.
+4. В секции `Демо-контент` при необходимости настроить `Highlighting`: включить top/bottom, выбрать до 3 слотов, задать `label/guidance` и demo phrases для проверки палитры.
 4. Слева смотреть только на live canvas и оценивать hierarchy / breathing room без reference diff.
-5. Когда нужна именно калибровка под референс, открыть `template-lab`.
-6. В `template-lab` подгрузить reference image или URL и провести diff-pass.
-7. После завершения calibration-pass поменять статус шаблона:
+5. Для `Channel + Story` в секции `Детали` отдельно проверить `leadMode`, alignment header/body и media/accent chrome.
+6. Когда нужна именно калибровка под референс, открыть `template-lab`.
+7. В `template-lab` подгрузить reference image или URL и провести diff-pass.
+8. После завершения calibration-pass поменять статус шаблона:
    - `Queue`
    - `In Progress`
    - `Review`
    - `Approved`
-8. Зафиксировать следующие шаги в `Заметки по проходу`.
+9. Зафиксировать следующие шаги в `Заметки по проходу`.
 
 ## Preset workflow
 

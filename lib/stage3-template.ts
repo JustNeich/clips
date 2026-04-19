@@ -14,6 +14,10 @@ import {
   DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
   type Stage3VideoAdjustments
 } from "./stage3-video-adjustments";
+import type {
+  Stage3TemplateLayoutKind,
+  Stage3TemplateLeadMode
+} from "./stage3-template-semantics";
 
 export const SCIENCE_CARD_TEMPLATE_ID = "science-card-v1";
 export const SCIENCE_CARD_BLUE_TEMPLATE_ID = "science-card-blue-v1";
@@ -22,6 +26,7 @@ export const SCIENCE_CARD_GREEN_TEMPLATE_ID = "science-card-green-v1";
 export const AMERICAN_NEWS_TEMPLATE_ID = "american-news-v1";
 export const SCIENCE_CARD_V7_TEMPLATE_ID = "science-card-v7";
 export const HEDGES_OF_HONOR_TEMPLATE_ID = "hedges-of-honor-v1";
+export const CHANNEL_STORY_TEMPLATE_ID = "channel-story-v1";
 export const STAGE3_TEMPLATE_ID = SCIENCE_CARD_TEMPLATE_ID;
 
 const SHARED_STAGE3_CARD_METRICS = {
@@ -52,6 +57,7 @@ const SCIENCE_CARD_AUTHOR_METRICS = {
 const SCIENCE_CARD_BORDER_VARIANT_BORDER_WIDTH = 16 as const;
 
 export const SCIENCE_CARD = {
+  layoutKind: "classic_top_bottom",
   frame: { width: 1080, height: 1920 },
   card: {
     x: 83,
@@ -388,6 +394,135 @@ export const HEDGES_OF_HONOR = {
   })
 } as const;
 
+export const CHANNEL_STORY = {
+  layoutKind: "channel_story",
+  frame: { width: 1080, height: 1920 },
+  card: {
+    x: 14,
+    y: 24,
+    width: 1052,
+    height: 1848,
+    radius: 34,
+    borderWidth: 6,
+    borderColor: "#20df49",
+    fill: "#050607",
+    shadow: "0 14px 40px rgba(0,0,0,0.45)"
+  },
+  slot: {
+    topHeight: 96,
+    bottomHeight: 86,
+    topPaddingX: 34,
+    topPaddingY: 0,
+    topPaddingTop: 0,
+    topPaddingBottom: 0,
+    bottomMetaHeight: 126,
+    bottomMetaPaddingX: 34,
+    bottomMetaPaddingY: 0,
+    bottomTextPaddingX: 34,
+    bottomTextPaddingY: 0,
+    bottomTextPaddingTop: 0,
+    bottomTextPaddingBottom: 0,
+    bottomTextPaddingLeft: 34,
+    bottomTextPaddingRight: 34
+  },
+  author: {
+    name: "History Explained",
+    handle: "@HistoryExplained13",
+    avatarSize: 112,
+    avatarBorder: 0,
+    checkSize: 58,
+    gap: 18,
+    copyGap: 2,
+    nameCheckGap: 12,
+    checkAssetPath: "/stage3-template-badges/science-card-v1-check.png"
+  },
+  typography: {
+    top: {
+      min: 34,
+      max: 88,
+      softLimit: 70,
+      penalty: 0.12,
+      lineHeight: 0.92,
+      maxLines: 2,
+      maxChars: 56,
+      horizontalSafety: 0.98,
+      glyphFactor: 0.51,
+      fillTargetMin: 0.84,
+      fillTargetMax: 0.95,
+      weight: 900,
+      letterSpacing: "-0.04em"
+    },
+    bottom: {
+      min: 28,
+      max: 56,
+      softLimit: 260,
+      penalty: 0.14,
+      lineHeight: 0.95,
+      maxLines: 8,
+      maxChars: 360,
+      horizontalSafety: 0.985,
+      glyphFactor: 0.5,
+      fillTargetMin: 0.88,
+      fillTargetMax: 0.97,
+      weight: 800,
+      letterSpacing: "-0.025em",
+      fontStyle: "normal"
+    },
+    authorName: {
+      font: 32,
+      lineHeight: 0.98,
+      weight: 800,
+      letterSpacing: "-0.03em"
+    },
+    authorHandle: {
+      font: 24,
+      lineHeight: 1,
+      weight: 500,
+      letterSpacing: "-0.02em"
+    }
+  },
+  palette: {
+    cardFill: "#050607",
+    topSectionFill: "#050607",
+    bottomSectionFill: "#050607",
+    topTextColor: "#22ff29",
+    bottomTextColor: "#f5f7f8",
+    authorNameColor: "#f5f7f8",
+    authorHandleColor: "#d4d7dc",
+    checkBadgeColor: "#22b8ff",
+    borderColor: "#20df49",
+    accentColor: "#20df49"
+  },
+  videoAdjustments: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
+  highlights: createDefaultTemplateHighlightConfig({
+    accentColor: "#f4df36"
+  }),
+  channelStory: {
+    leadMode: "clip_custom",
+    defaultLeadText: "Did you know?",
+    contentPaddingX: 34,
+    contentPaddingTop: 34,
+    contentPaddingBottom: 40,
+    headerHeight: 118,
+    leadHeight: 96,
+    bodyHeight: 356,
+    headerToLeadGap: 18,
+    leadToBodyGap: 14,
+    bodyToMediaGap: 28,
+    footerHeight: 86,
+    mediaInsetX: 10,
+    mediaRadius: 30,
+    mediaBorderWidth: 0,
+    mediaBorderColor: "rgba(255,255,255,0)",
+    headerAlign: "left",
+    bodyTextAlign: "center",
+    accentTopLineWidth: 0,
+    accentTopLineColor: "#20df49",
+    accentBottomLineWidth: 0,
+    accentBottomLineColor: "#20df49"
+  }
+} as const;
+
 const CLASSIC_SCIENCE_CARD_TEMPLATE_IDS = new Set([
   SCIENCE_CARD_TEMPLATE_ID,
   SCIENCE_CARD_BLUE_TEMPLATE_ID,
@@ -403,7 +538,33 @@ export const STAGE3_TEMPLATE_SHELL = {
   radius: 30
 } as const;
 
+export type Stage3TemplateChannelStoryConfig = {
+  leadMode: Stage3TemplateLeadMode;
+  defaultLeadText?: string;
+  contentPaddingX: number;
+  contentPaddingTop: number;
+  contentPaddingBottom: number;
+  headerHeight: number;
+  leadHeight: number;
+  bodyHeight: number;
+  headerToLeadGap: number;
+  leadToBodyGap: number;
+  bodyToMediaGap: number;
+  footerHeight: number;
+  mediaInsetX: number;
+  mediaRadius: number;
+  mediaBorderWidth: number;
+  mediaBorderColor: string;
+  headerAlign?: "left" | "center";
+  bodyTextAlign?: "left" | "center";
+  accentTopLineWidth?: number;
+  accentTopLineColor?: string;
+  accentBottomLineWidth?: number;
+  accentBottomLineColor?: string;
+};
+
 export type Stage3TemplateConfig = {
+  layoutKind: Stage3TemplateLayoutKind;
   frame: { width: number; height: number };
   card: {
     x: number;
@@ -508,10 +669,12 @@ export type Stage3TemplateConfig = {
   };
   videoAdjustments: Stage3VideoAdjustments;
   highlights: TemplateHighlightConfig;
+  channelStory?: Stage3TemplateChannelStoryConfig;
 };
 
 export function cloneStage3TemplateConfig(config: Stage3TemplateConfig): Stage3TemplateConfig {
   return {
+    layoutKind: config.layoutKind,
     frame: { ...config.frame },
     card: { ...config.card },
     slot: { ...config.slot },
@@ -524,7 +687,8 @@ export function cloneStage3TemplateConfig(config: Stage3TemplateConfig): Stage3T
     },
     palette: { ...config.palette },
     videoAdjustments: cloneStage3VideoAdjustments(config.videoAdjustments),
-    highlights: cloneTemplateHighlightConfig(config.highlights)
+    highlights: cloneTemplateHighlightConfig(config.highlights),
+    channelStory: config.channelStory ? { ...config.channelStory } : undefined
   };
 }
 
@@ -548,6 +712,35 @@ type SlotSize = {
 type FontScaleOverrides = {
   topFontScale?: number;
   bottomFontScale?: number;
+};
+
+export type Stage3TemplateComputed = {
+  layoutKind: Stage3TemplateLayoutKind;
+  top: string;
+  bottom: string;
+  topFont: number;
+  bottomFont: number;
+  topLineHeight: number;
+  bottomLineHeight: number;
+  topLines: number;
+  bottomLines: number;
+  topCompacted: boolean;
+  bottomCompacted: boolean;
+  videoHeight: number;
+  bottomMetaHeight: number;
+  bottomBodyHeight: number;
+  topBlockHeight: number;
+  bottomBlockHeight: number;
+  videoY: number;
+  videoX: number;
+  videoWidth: number;
+  topY?: number;
+  bottomTextY?: number;
+  headerY?: number;
+  mediaRadius?: number;
+  mediaBorderWidth?: number;
+  mediaBorderColor?: string;
+  leadVisible?: boolean;
 };
 
 function getBottomTextPaddingTop(template: Stage3TemplateConfig): number {
@@ -945,26 +1138,7 @@ export function getScienceCardComputed(
   bottomText: string,
   fontOverrides?: FontScaleOverrides,
   templateConfig: Stage3TemplateConfig = SCIENCE_CARD
-): {
-  top: string;
-  bottom: string;
-  topFont: number;
-  bottomFont: number;
-  topLineHeight: number;
-  bottomLineHeight: number;
-  topLines: number;
-  bottomLines: number;
-  topCompacted: boolean;
-  bottomCompacted: boolean;
-  videoHeight: number;
-  bottomMetaHeight: number;
-  bottomBodyHeight: number;
-  topBlockHeight: number;
-  bottomBlockHeight: number;
-  videoY: number;
-  videoX: number;
-  videoWidth: number;
-} {
+): Stage3TemplateComputed {
   const topScale = normalizeFontScale(fontOverrides?.topFontScale);
   const bottomScale = normalizeFontScale(fontOverrides?.bottomFontScale);
   const topTypography = {
@@ -1020,6 +1194,7 @@ export function getScienceCardComputed(
   const videoHeight = templateConfig.card.height - topBlockHeight - bottomBlockHeight;
 
   return {
+    layoutKind: "classic_top_bottom",
     top: topFit.text,
     bottom: bottomFit.text,
     topFont: topSized.font,
@@ -1041,12 +1216,113 @@ export function getScienceCardComputed(
   };
 }
 
+export function getChannelStoryComputed(
+  topText: string,
+  bottomText: string,
+  fontOverrides?: FontScaleOverrides,
+  templateConfig: Stage3TemplateConfig = CHANNEL_STORY
+): Stage3TemplateComputed {
+  const topScale = normalizeFontScale(fontOverrides?.topFontScale);
+  const bottomScale = normalizeFontScale(fontOverrides?.bottomFontScale);
+  const channelStory = templateConfig.channelStory ?? CHANNEL_STORY.channelStory!;
+  const contentWidth = Math.max(120, templateConfig.card.width - channelStory.contentPaddingX * 2);
+  const leadVisible = topText.trim().length > 0 && channelStory.leadMode !== "off";
+  const topTypography = {
+    ...templateConfig.typography.top,
+    maxLines: resolveScaledMaxLines(templateConfig.typography.top.maxLines, topScale, "top")
+  };
+  const bottomTypography = {
+    ...templateConfig.typography.bottom,
+    maxLines: resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom")
+  };
+  const leadSlot: SlotSize = {
+    width: contentWidth,
+    height: leadVisible ? Math.max(1, channelStory.leadHeight) : 1
+  };
+  const bodySlot: SlotSize = {
+    width: contentWidth,
+    height: Math.max(1, channelStory.bodyHeight)
+  };
+  const headerY = templateConfig.card.y + channelStory.contentPaddingTop;
+  const leadY = headerY + channelStory.headerHeight + channelStory.headerToLeadGap;
+  const bodyY = leadVisible
+    ? leadY + channelStory.leadHeight + channelStory.leadToBodyGap
+    : headerY + channelStory.headerHeight + Math.max(channelStory.headerToLeadGap, 12);
+  const topFit = leadVisible
+    ? optimizeTextForSlot(topText, leadSlot, topTypography, "Lead text")
+    : {
+        text: "",
+        font: ceilStage3TextFontPx(templateConfig.typography.top.min),
+        lines: 0,
+        compacted: false
+      };
+  const topSized = leadVisible
+    ? applyFontScaleWithSafety({
+        text: topFit.text,
+        baseFont: topFit.font,
+        slot: leadSlot,
+        config: topTypography,
+        scale: topScale
+      })
+    : {
+        font: ceilStage3TextFontPx(templateConfig.typography.top.min),
+        lines: 0,
+        lineHeight: Number(templateConfig.typography.top.lineHeight.toFixed(3))
+      };
+  const bottomFit = optimizeTextForSlot(bottomText, bodySlot, bottomTypography, "Body text");
+  const bottomSized = applyFontScaleWithSafety({
+    text: bottomFit.text,
+    baseFont: bottomFit.font,
+    slot: bodySlot,
+    config: bottomTypography,
+    scale: bottomScale
+  });
+  const topBlockHeight =
+    bodyY + channelStory.bodyHeight + channelStory.bodyToMediaGap - templateConfig.card.y;
+  const bottomBlockHeight = channelStory.footerHeight + channelStory.contentPaddingBottom;
+  const videoX = templateConfig.card.x + channelStory.mediaInsetX;
+  const videoWidth = Math.max(120, templateConfig.card.width - channelStory.mediaInsetX * 2);
+  const videoHeight = Math.max(120, templateConfig.card.height - topBlockHeight - bottomBlockHeight);
+
+  return {
+    layoutKind: "channel_story",
+    top: topFit.text,
+    bottom: bottomFit.text,
+    topFont: topSized.font,
+    bottomFont: bottomSized.font,
+    topLineHeight: topSized.lineHeight,
+    bottomLineHeight: bottomSized.lineHeight,
+    topLines: topSized.lines,
+    bottomLines: bottomSized.lines,
+    topCompacted: topFit.compacted,
+    bottomCompacted: bottomFit.compacted,
+    videoHeight,
+    bottomMetaHeight: channelStory.headerHeight,
+    bottomBodyHeight: channelStory.bodyHeight,
+    topBlockHeight,
+    bottomBlockHeight,
+    videoY: templateConfig.card.y + topBlockHeight,
+    videoX,
+    videoWidth,
+    topY: leadY,
+    bottomTextY: bodyY,
+    headerY,
+    mediaRadius: channelStory.mediaRadius,
+    mediaBorderWidth: channelStory.mediaBorderWidth,
+    mediaBorderColor: channelStory.mediaBorderColor,
+    leadVisible
+  };
+}
+
 export function getTemplateComputed(
   templateId: string,
   topText: string,
   bottomText: string,
   fontOverrides?: FontScaleOverrides
-): ReturnType<typeof getScienceCardComputed> {
+): Stage3TemplateComputed {
+  if (templateId === CHANNEL_STORY_TEMPLATE_ID) {
+    return getChannelStoryComputed(topText, bottomText, fontOverrides, CHANNEL_STORY);
+  }
   if (templateId === AMERICAN_NEWS_TEMPLATE_ID) {
     return getScienceCardComputed(topText, bottomText, fontOverrides, AMERICAN_NEWS);
   }
@@ -1068,7 +1344,22 @@ export function getTemplateComputed(
   return getScienceCardComputed(topText, bottomText, fontOverrides, SCIENCE_CARD);
 }
 
+export function getTemplateComputedForConfig(
+  topText: string,
+  bottomText: string,
+  fontOverrides: FontScaleOverrides | undefined,
+  templateConfig: Stage3TemplateConfig
+): Stage3TemplateComputed {
+  if (templateConfig.layoutKind === "channel_story") {
+    return getChannelStoryComputed(topText, bottomText, fontOverrides, templateConfig);
+  }
+  return getScienceCardComputed(topText, bottomText, fontOverrides, templateConfig);
+}
+
 export function getTemplateById(templateId: string): Stage3TemplateConfig {
+  if (templateId === CHANNEL_STORY_TEMPLATE_ID) {
+    return CHANNEL_STORY;
+  }
   if (templateId === AMERICAN_NEWS_TEMPLATE_ID) {
     return AMERICAN_NEWS;
   }
@@ -1097,4 +1388,8 @@ export function templateUsesBuiltInBackdrop(templateId: string | null | undefine
 export function isClassicScienceCardTemplateId(templateId: string | null | undefined): boolean {
   const candidate = templateId?.trim();
   return candidate ? CLASSIC_SCIENCE_CARD_TEMPLATE_IDS.has(candidate) : false;
+}
+
+export function isChannelStoryTemplateId(templateId: string | null | undefined): boolean {
+  return templateId?.trim() === CHANNEL_STORY_TEMPLATE_ID;
 }

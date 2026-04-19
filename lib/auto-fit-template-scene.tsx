@@ -443,11 +443,16 @@ function buildMeasuredComputed(
   const sectionBorderLosses = getSectionBorderLosses(templateId);
   const usesWideHeadlineScaling =
     templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID;
+  const usesChannelStoryLayout = templateConfig.layoutKind === "channel_story";
 
   const topSpec: MeasuredSlotSpec = {
     text: baseComputed.top,
-    width: layout.top.width - sectionBorderLosses.topWidth - chromeMetrics.topPaddingX * 2,
-    height: layout.top.height - sectionBorderLosses.topHeight - topPaddingTop - topPaddingBottom,
+    width: usesChannelStoryLayout
+      ? layout.top.width
+      : layout.top.width - sectionBorderLosses.topWidth - chromeMetrics.topPaddingX * 2,
+    height: usesChannelStoryLayout
+      ? layout.top.height
+      : layout.top.height - sectionBorderLosses.topHeight - topPaddingTop - topPaddingBottom,
     minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.top.min * 0.58))),
     maxFont: Math.max(
       topFigmaFont,
@@ -535,7 +540,13 @@ function buildMeasuredComputed(
     );
   }
 
-  const topResult = solveMeasuredSlot(topMeasureNode, topSpec);
+  const topResult =
+    topSpec.height <= 1 || !topSpec.text.trim()
+      ? {
+          font: baseComputed.topFont,
+          lineHeight: baseComputed.topLineHeight
+        }
+      : solveMeasuredSlot(topMeasureNode, topSpec);
   const bottomResult = solveMeasuredSlot(bottomMeasureNode, bottomSpec);
 
   return {

@@ -50,6 +50,7 @@ export type Stage2RunRequest = {
     id: string;
     name: string;
     username: string;
+    templateId?: string | null;
     stage2WorkerProfileId?: string | null;
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
@@ -149,6 +150,10 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
       id: String(channelCandidate?.id ?? record.channel_id ?? "").trim(),
       name: String(channelCandidate?.name ?? "").trim(),
       username: String(channelCandidate?.username ?? "").trim(),
+      templateId:
+        typeof channelCandidate?.templateId === "string" && channelCandidate.templateId.trim()
+          ? channelCandidate.templateId.trim()
+          : null,
       stage2WorkerProfileId:
         typeof channelCandidate?.stage2WorkerProfileId === "string" &&
         channelCandidate.stage2WorkerProfileId.trim()

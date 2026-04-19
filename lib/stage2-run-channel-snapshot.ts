@@ -35,6 +35,7 @@ export function buildStage2RunChannelSnapshot(
     id: channel.id,
     name: channel.name,
     username: channel.username,
+    templateId: channel.templateId,
     stage2WorkerProfileId: channel.stage2WorkerProfileId,
     stage2ExamplesConfig: channel.stage2ExamplesConfig,
     stage2HardConstraints: channel.stage2HardConstraints,

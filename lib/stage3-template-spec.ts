@@ -154,6 +154,73 @@ function getGeneratedTemplateShell(templateId: string, template: Stage3TemplateC
 function buildGeneratedSpec(templateId: string): TemplateFigmaSpec {
   const template = getTemplateById(templateId);
   const computed = getTemplateComputed(templateId, "Top text", "Bottom text");
+  if (template.layoutKind === "channel_story") {
+    const channelStory = template.channelStory!;
+    const contentWidth = template.card.width - channelStory.contentPaddingX * 2;
+    const headerY = computed.headerY ?? template.card.y + channelStory.contentPaddingTop;
+    const leadY =
+      computed.topY ?? headerY + channelStory.headerHeight + channelStory.headerToLeadGap;
+    const bodyY =
+      computed.bottomTextY ??
+      leadY +
+        (computed.leadVisible === false ? 0 : channelStory.leadHeight + channelStory.leadToBodyGap);
+    return {
+      templateId,
+      source: "generated",
+      frame: {
+        width: template.frame.width,
+        height: template.frame.height
+      },
+      shell: {
+        x: template.card.x,
+        y: template.card.y,
+        width: template.card.width,
+        height: template.card.height,
+        radius: Math.max(template.card.radius, 18)
+      },
+      card: {
+        ...template.card
+      },
+      sections: {
+        top: {
+          x: template.card.x + channelStory.contentPaddingX,
+          y: leadY,
+          width: contentWidth,
+          height: computed.leadVisible === false ? 0 : channelStory.leadHeight
+        },
+        media: {
+          x: computed.videoX,
+          y: computed.videoY,
+          width: computed.videoWidth,
+          height: computed.videoHeight
+        },
+        bottom: {
+          x: template.card.x,
+          y: computed.videoY + computed.videoHeight,
+          width: template.card.width,
+          height: computed.bottomBlockHeight
+        },
+        author: {
+          x: template.card.x + channelStory.contentPaddingX,
+          y: headerY,
+          width: contentWidth,
+          height: channelStory.headerHeight
+        },
+        avatar: {
+          x: template.card.x + channelStory.contentPaddingX,
+          y: headerY + Math.max(0, Math.round((channelStory.headerHeight - template.author.avatarSize) / 2)),
+          width: template.author.avatarSize,
+          height: template.author.avatarSize
+        },
+        bottomText: {
+          x: template.card.x + channelStory.contentPaddingX,
+          y: bodyY,
+          width: contentWidth,
+          height: channelStory.bodyHeight
+        }
+      }
+    };
+  }
   const shell = getGeneratedTemplateShell(templateId, template);
   const bottomTextTop =
     template.card.y +

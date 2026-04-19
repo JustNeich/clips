@@ -87,9 +87,9 @@ export const QUICK_REGENERATE_SCHEMA = {
           option: { type: "integer", minimum: 1 },
           candidate_id: { type: "string", minLength: 1 },
           angle: { type: "string", minLength: 1 },
-          top: { type: "string", minLength: 1 },
+          top: { type: "string", minLength: 0 },
           bottom: { type: "string", minLength: 1 },
-          top_ru: { type: "string", minLength: 1 },
+          top_ru: { type: "string", minLength: 0 },
           bottom_ru: { type: "string", minLength: 1 },
           title: { type: "string", minLength: 1 },
           title_ru: { type: "string", minLength: 1 }

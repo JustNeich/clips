@@ -1,0 +1,64 @@
+{
+  "templateId": "channel-story-v1",
+  "source": "generated",
+  "frame": {
+    "width": 1080,
+    "height": 1920
+  },
+  "shell": {
+    "x": 14,
+    "y": 24,
+    "width": 1052,
+    "height": 1848,
+    "radius": 34
+  },
+  "card": {
+    "x": 14,
+    "y": 24,
+    "width": 1052,
+    "height": 1848,
+    "radius": 34,
+    "borderWidth": 6,
+    "borderColor": "#20df49",
+    "fill": "#050607",
+    "shadow": "0 14px 40px rgba(0,0,0,0.45)"
+  },
+  "sections": {
+    "top": {
+      "x": 48,
+      "y": 194,
+      "width": 984,
+      "height": 96
+    },
+    "media": {
+      "x": 24,
+      "y": 688,
+      "width": 1032,
+      "height": 1058
+    },
+    "bottom": {
+      "x": 14,
+      "y": 1746,
+      "width": 1052,
+      "height": 126
+    },
+    "author": {
+      "x": 48,
+      "y": 58,
+      "width": 984,
+      "height": 118
+    },
+    "avatar": {
+      "x": 48,
+      "y": 61,
+      "width": 112,
+      "height": 112
+    },
+    "bottomText": {
+      "x": 48,
+      "y": 304,
+      "width": 984,
+      "height": 356
+    }
+  }
+}

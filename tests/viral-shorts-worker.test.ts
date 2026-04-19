@@ -21,6 +21,7 @@ import {
   CHANNEL_MANAGER_DEFAULT_SETTINGS_ID,
   canDeleteManagedChannel,
   describeChannelManagerSavePatch,
+  groupManagedTemplatesByFormat,
   listChannelManagerTargets
 } from "../app/components/ChannelManager";
 import { ChannelManagerStage2Tab } from "../app/components/ChannelManagerStage2Tab";
@@ -134,6 +135,7 @@ import { shouldUseCodexPlanner } from "../lib/stage3-agent-autonomous";
 import { getTemplateFigmaSpec } from "../lib/stage3-template-spec";
 import {
   AMERICAN_NEWS_TEMPLATE_ID,
+  CHANNEL_STORY_TEMPLATE_ID,
   getTemplateById,
   HEDGES_OF_HONOR_TEMPLATE_ID,
   SCIENCE_CARD_BLUE_TEMPLATE_ID,
@@ -14040,6 +14042,130 @@ test("app shell labels the account exit action explicitly", () => {
   assert.equal(getWorkspaceLogoutLabel(), "Выйти из приложения");
 });
 
+test("channel manager groups render templates by format label", () => {
+  const groups = groupManagedTemplatesByFormat([
+    {
+      id: "classic-template",
+      name: "Classic Template",
+      description: "",
+      layoutFamily: SCIENCE_CARD_TEMPLATE_ID,
+      baseTemplateId: SCIENCE_CARD_TEMPLATE_ID,
+      workspaceId: "workspace-1",
+      creatorUserId: null,
+      creatorDisplayName: null,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      versionsCount: 0
+    },
+    {
+      id: "channel-story-template",
+      name: "Channel Story Template",
+      description: "",
+      layoutFamily: CHANNEL_STORY_TEMPLATE_ID,
+      baseTemplateId: CHANNEL_STORY_TEMPLATE_ID,
+      workspaceId: "workspace-1",
+      creatorUserId: null,
+      creatorDisplayName: null,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      versionsCount: 0
+    }
+  ]);
+
+  assert.deepEqual(groups, [
+    {
+      label: "Top & Bottom",
+      options: [{ value: "classic-template", label: "Classic Template" }]
+    },
+    {
+      label: "Channel + Story",
+      options: [{ value: "channel-story-template", label: "Channel Story Template" }]
+    }
+  ]);
+});
+
+test("step 2 uses lead/body wording for channel story templates", () => {
+  const stage2: Stage2Response = {
+    source: {
+      url: "https://example.com/short",
+      title: "Lead and body clip",
+      totalComments: 1,
+      commentsUsedForPrompt: 1,
+      topComments: [],
+      allComments: [],
+      frameDescriptions: ["frame one"]
+    },
+    output: {
+      inputAnalysis: {
+        visualAnchors: ["frame one"],
+        commentVibe: "dry disbelief",
+        keyPhraseToAdapt: "quiet disbelief"
+      },
+      captionOptions: [
+        {
+          option: 1,
+          candidateId: "candidate_1",
+          angle: "angle_1",
+          top: "Did you know?",
+          bottom: "This is the body block above the source clip.",
+          topRu: "А вы знали?",
+          bottomRu: "Это основной body-блок над исходным видео."
+        }
+      ],
+      titleOptions: [
+        {
+          option: 1,
+          title: "Title one",
+          titleRu: "Заголовок один"
+        }
+      ],
+      finalPick: {
+        option: 1,
+        reason: "Best fit."
+      }
+    },
+    seo: null,
+    warnings: []
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(Step2PickCaption, {
+      channelName: "History Channel",
+      channelUsername: "history_channel",
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      stage2,
+      progress: null,
+      stageCreatedAt: nowIso(),
+      commentsAvailable: true,
+      instruction: "",
+      runs: [],
+      selectedRunId: null,
+      currentRunStatus: null,
+      currentRunError: null,
+      canRunStage2: true,
+      canQuickRegenerate: true,
+      runBlockedReason: null,
+      quickRegenerateBlockedReason: null,
+      isLaunching: false,
+      isRunning: false,
+      expectedDurationMs: 40_000,
+      elapsedMs: 12_000,
+      selectedOption: 1,
+      selectedTitleOption: 1,
+      onInstructionChange: () => undefined,
+      onQuickRegenerate: () => undefined,
+      onRunStage2: () => undefined,
+      onSelectRun: () => undefined,
+      onSelectOption: () => undefined,
+      onSelectTitleOption: () => undefined,
+      onCopy: () => undefined
+    })
+  );
+
+  assert.match(html, /правку Lead\/Body лучше делать уже на шаге 3/);
+  assert.match(html, /<span class="field-label">Lead<\/span>/);
+  assert.match(html, /<span class="field-label">Body<\/span>/);
+});
+
 test("step 3 render template defaults to the finalization surface with stage 2 mix actions", () => {
   const html = renderToStaticMarkup(
     React.createElement(Step3RenderTemplate, makeStep3RenderTemplateProps())
@@ -14054,6 +14180,57 @@ test("step 3 render template defaults to the finalization surface with stage 2 m
   assert.match(html, /Взять TOP/);
   assert.match(html, /Взять BOTTOM/);
   assert.match(html, /Используется текущий live draft без сохраненной версии/);
+});
+
+test("step 3 uses lead/body mix actions for channel story templates", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      Step3RenderTemplate,
+      makeStep3RenderTemplateProps({
+        templateId: CHANNEL_STORY_TEMPLATE_ID,
+        topText: "Did you know?",
+        bottomText: "This is the body block above the source clip.",
+        captionSources: [
+          {
+            option: 1,
+            top: "Lead one",
+            bottom: "Body one",
+            highlights: { top: [], bottom: [] }
+          }
+        ],
+        selectedCaptionOption: 1,
+        handoffSummary: {
+          stage2Available: true,
+          defaultCaptionOption: 1,
+          selectedCaptionOption: 1,
+          defaultTitleOption: 1,
+          selectedTitleOption: 1,
+          caption: {
+            option: 1,
+            top: "Lead one",
+            bottom: "Body one",
+            highlights: { top: [], bottom: [] }
+          },
+          title: {
+            option: 1,
+            title: "Title one"
+          },
+          topText: "Did you know?",
+          bottomText: "This is the body block above the source clip.",
+          topTextSource: "selected_caption",
+          bottomTextSource: "selected_caption",
+          hasManualTextOverride: false,
+          canResetToSelectedCaption: true,
+          latestVersionId: null,
+          hasStage3Overrides: false
+        }
+      })
+    )
+  );
+
+  assert.match(html, /итоговый Lead\/Body/);
+  assert.match(html, /Взять Lead/);
+  assert.match(html, /Взять Body/);
 });
 
 test("step 3 background UI reflects the actual resolved background mode", () => {

@@ -6856,6 +6856,7 @@ export default function HomePage() {
         <Step2PickCaption
           channelName={activeChannel?.name ?? null}
           channelUsername={activeChannel?.username ?? null}
+          templateId={stage3RenderPlan.templateId}
           stage2={visibleStage2Result}
           progress={visibleStage2Progress}
           stageCreatedAt={visibleStage2CreatedAt}

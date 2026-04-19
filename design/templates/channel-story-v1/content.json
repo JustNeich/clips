@@ -1,0 +1,16 @@
+{
+  "topText": "Did you know?",
+  "bottomText": "Cleopatra said no man would find her tomb in 30 BC. For more than two thousand years emperors, rulers, and treasure hunters all failed to prove her wrong.",
+  "channelName": "History Explained",
+  "channelHandle": "@HistoryExplained13",
+  "highlights": {
+    "top": [],
+    "bottom": []
+  },
+  "topFontScale": 1,
+  "bottomFontScale": 1,
+  "previewScale": 0.28,
+  "mediaAsset": "media.png",
+  "backgroundAsset": "background.png",
+  "avatarAsset": "avatar.png"
+}

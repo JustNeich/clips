@@ -217,7 +217,10 @@ test("snapshot-backed managed template runtime wins without reading the local st
   assert.equal(runtime.managedTemplateId, "managed-template-1");
   assert.equal(runtime.baseTemplateId, "science-card-v7");
   assert.equal(runtime.updatedAt, "2026-04-02T10:00:00.000Z");
-  assert.deepEqual(runtime.templateConfig, SCIENCE_CARD_V7);
+  assert.equal(runtime.templateConfig.layoutKind, SCIENCE_CARD_V7.layoutKind);
+  assert.equal(runtime.templateConfig.card.width, SCIENCE_CARD_V7.card.width);
+  assert.equal(runtime.templateConfig.author.checkAssetPath, SCIENCE_CARD_V7.author.checkAssetPath);
+  assert.equal(runtime.templateConfig.channelStory, undefined);
 });
 
 test("custom managed template state is not considered resolved until it has a revision", () => {

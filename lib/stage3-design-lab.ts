@@ -1,5 +1,6 @@
 import {
   AMERICAN_NEWS_TEMPLATE_ID,
+  CHANNEL_STORY_TEMPLATE_ID,
   SCIENCE_CARD_TEMPLATE_ID,
   SCIENCE_CARD_BLUE_TEMPLATE_ID,
   SCIENCE_CARD_RED_TEMPLATE_ID,
@@ -56,6 +57,24 @@ function createScienceCardBorderPreset(input: {
 }
 
 export const STAGE3_DESIGN_LAB_PRESETS: Stage3DesignLabPreset[] = [
+  {
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    label: getTemplateVariant(CHANNEL_STORY_TEMPLATE_ID).label,
+    channelName: "History Explained",
+    channelHandle: "@HistoryExplained13",
+    topText: "Did you know?",
+    bottomText:
+      "Cleopatra said no man would find her tomb in 30 BC. For more than two thousand years emperors, rulers, and treasure hunters all failed to prove her wrong.",
+    note:
+      "Новая семья Channel + Story: сначала channel row, затем optional lead, один плотный body-блок и уже после него исходное видео внутри тёмной оболочки.",
+    defaultPreviewScale: 0.28,
+    initialStatus: "queued",
+    checklist: [
+      "Header row должен сразу считываться как соцсеточный канал, а не как footer old-school шаблона.",
+      "Lead может отсутствовать, быть шаблонным или clip-specific без ломки общей геометрии.",
+      "Video window и accent chrome должны настраиваться независимо от типографики body."
+    ]
+  },
   {
     templateId: SCIENCE_CARD_TEMPLATE_ID,
     label: getTemplateVariant(SCIENCE_CARD_TEMPLATE_ID).label,

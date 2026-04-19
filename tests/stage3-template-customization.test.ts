@@ -5,7 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { Stage3TemplateRenderer } from "../lib/stage3-template-renderer";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
-import { SCIENCE_CARD, cloneStage3TemplateConfig } from "../lib/stage3-template";
+import {
+  CHANNEL_STORY,
+  CHANNEL_STORY_TEMPLATE_ID,
+  SCIENCE_CARD,
+  cloneStage3TemplateConfig
+} from "../lib/stage3-template";
 import { buildScienceCardRenderSnapshot } from "../remotion/science-card-v1";
 import type { TemplateContentFixture } from "../lib/template-calibration-types";
 
@@ -151,4 +156,105 @@ test("color badge mode renders a twitter-style vector instead of a round text fa
 
   assert.match(markup, /data-template-badge-kind="twitter-color"/);
   assert.doesNotMatch(markup, />✓</);
+});
+
+test("channel story snapshot injects template default lead text when lead mode is template_default", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.leadMode = "template_default";
+  templateConfig.channelStory!.defaultLeadText = "Did you know?";
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: "",
+      bottomText: "The search is still active and the sealed chambers changed the story.",
+      channelName: "History Explained",
+      channelHandle: "@HistoryExplained13",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+
+  assert.equal(snapshot.content.topText, "Did you know?");
+  assert.equal(snapshot.computed.leadVisible, true);
+  assert.ok(snapshot.layout.top.height > 1);
+  assert.ok(snapshot.layout.bottomText.y > snapshot.layout.author.y);
+});
+
+test("channel story snapshot drops lead layout when lead mode is off", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.leadMode = "off";
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: "This lead should be ignored.",
+      bottomText: "Only the body should remain visible above the source video.",
+      channelName: "History Explained",
+      channelHandle: "@HistoryExplained13",
+      highlights: {
+        top: [{ start: 0, end: 4, slotId: "slot1" }],
+        bottom: []
+      },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+
+  assert.equal(snapshot.content.topText, "");
+  assert.equal(snapshot.computed.leadVisible, false);
+  assert.ok(snapshot.layout.top.height <= 1);
+  assert.deepEqual(snapshot.content.highlights.top, []);
+});
+
+test("channel story markup renders highlight spans and media chrome", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.leadMode = "clip_custom";
+  templateConfig.channelStory!.mediaRadius = 28;
+  templateConfig.channelStory!.mediaBorderWidth = 3;
+  templateConfig.channelStory!.mediaBorderColor = "#ff0033";
+  templateConfig.channelStory!.accentTopLineWidth = 5;
+  templateConfig.channelStory!.accentTopLineColor = "#20df49";
+
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      content: {
+        topText: "Did you know this?",
+        bottomText: "Erica Marshall and the chamber accident still define this case.",
+        channelName: "Human History",
+        channelHandle: "@HISTORY.",
+        highlights: {
+          top: [{ start: 0, end: 12, slotId: "slot1" }],
+          bottom: [{ start: 0, end: 14, slotId: "slot1" }]
+        },
+        topFontScale: 1,
+        bottomFontScale: 1,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      },
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.match(markup, /data-template-slot="top-text"/);
+  assert.match(markup, /data-template-slot="bottom-text"/);
+  assert.match(markup, /<span[^>]*>Did you know<\/span>/);
+  assert.match(markup, /<span[^>]*>Erica Marshall<\/span>/);
+  assert.match(markup, /border-radius:28px/);
+  assert.match(markup, /border:3px solid #ff0033/);
+  assert.match(markup, /height:5px;background:#20df49/);
 });

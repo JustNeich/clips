@@ -4,11 +4,12 @@ import {
   isClassicScienceCardTemplateId,
   SCIENCE_CARD_TEMPLATE_ID,
   STAGE3_TEMPLATE_ID,
+  Stage3TemplateComputed,
   Stage3TemplateConfig,
   getTemplateById,
-  getScienceCardComputed,
-  getTemplateComputed
+  getTemplateComputedForConfig
 } from "./stage3-template";
+import { resolveTemplateRenderText } from "./stage3-template-semantics";
 import {
   TemplateCardSpec,
   TemplateFigmaSpec,
@@ -75,10 +76,10 @@ export type TemplateRenderSnapshot = {
   content: TemplateContentFixture;
   fit: TemplateTextFitResult;
   layout: TemplateLayoutModel;
-  computed: ReturnType<typeof getTemplateComputed>;
+  computed: Stage3TemplateComputed;
 };
 
-export type TemplateLayoutOutput = ReturnType<typeof getTemplateComputed>;
+export type TemplateLayoutOutput = Stage3TemplateComputed;
 
 const TEMPLATE_FIT_REVISION = "template-fit-v1";
 
@@ -162,8 +163,61 @@ export function resolveTemplateChromeMetrics(
 
 function buildFallbackSectionRects(
   templateConfig: Stage3TemplateConfig,
-  computed: ReturnType<typeof getTemplateComputed>
+  computed: Stage3TemplateComputed
 ) {
+  if (templateConfig.layoutKind === "channel_story") {
+    const channelStory = templateConfig.channelStory!;
+    const contentX = templateConfig.card.x + channelStory.contentPaddingX;
+    const contentWidth = templateConfig.card.width - channelStory.contentPaddingX * 2;
+    const headerY = computed.headerY ?? templateConfig.card.y + channelStory.contentPaddingTop;
+    const leadY =
+      computed.topY ?? headerY + channelStory.headerHeight + channelStory.headerToLeadGap;
+    const bodyY =
+      computed.bottomTextY ??
+      headerY +
+        channelStory.headerHeight +
+        (computed.leadVisible === false
+          ? Math.max(channelStory.headerToLeadGap, 12)
+          : channelStory.headerToLeadGap + channelStory.leadHeight + channelStory.leadToBodyGap);
+    return {
+      top: {
+        x: contentX,
+        y: leadY,
+        width: contentWidth,
+        height: computed.leadVisible === false ? 0 : channelStory.leadHeight
+      },
+      media: {
+        x: computed.videoX,
+        y: computed.videoY,
+        width: computed.videoWidth,
+        height: computed.videoHeight
+      },
+      bottom: {
+        x: templateConfig.card.x,
+        y: computed.videoY + computed.videoHeight,
+        width: templateConfig.card.width,
+        height: computed.bottomBlockHeight
+      },
+      author: {
+        x: contentX,
+        y: headerY,
+        width: contentWidth,
+        height: channelStory.headerHeight
+      },
+      avatar: {
+        x: contentX,
+        y: headerY + Math.max(0, Math.round((channelStory.headerHeight - templateConfig.author.avatarSize) / 2)),
+        width: templateConfig.author.avatarSize,
+        height: templateConfig.author.avatarSize
+      },
+      bottomText: {
+        x: contentX,
+        y: bodyY,
+        width: contentWidth,
+        height: channelStory.bodyHeight
+      }
+    };
+  }
   return {
     top: {
       x: templateConfig.card.x,
@@ -264,7 +318,7 @@ function buildEffectiveTemplateConfig(
 
 export function buildTemplateLayoutModel(
   templateId: string,
-  computed: ReturnType<typeof getTemplateComputed>,
+  computed: Stage3TemplateComputed,
   templateConfig?: Stage3TemplateConfig
 ): TemplateLayoutModel {
   const resolvedTemplateId = templateId?.trim() || STAGE3_TEMPLATE_ID;
@@ -308,9 +362,15 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
     baseTemplateConfig,
     spec
   );
-  const computed = getScienceCardComputed(
-    input.content.topText,
-    input.content.bottomText,
+  const resolvedText = resolveTemplateRenderText({
+    templateConfig: effectiveTemplateConfig,
+    topText: input.content.topText,
+    bottomText: input.content.bottomText,
+    highlights: input.content.highlights
+  });
+  const computed = getTemplateComputedForConfig(
+    resolvedText.topText,
+    resolvedText.bottomText,
     {
       topFontScale: input.content.topFontScale,
       bottomFontScale: input.content.bottomFontScale
@@ -322,7 +382,7 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
     ...input.content,
     topText: computed.top,
     bottomText: computed.bottom,
-    highlights: normalizeTemplateCaptionHighlights(input.content.highlights, {
+    highlights: normalizeTemplateCaptionHighlights(resolvedText.highlights, {
       top: computed.top,
       bottom: computed.bottom
     })
@@ -352,7 +412,7 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
     topCompacted: fit.topCompacted,
     bottomCompacted: fit.bottomCompacted
   };
-  const layout = buildTemplateLayoutModel(resolvedTemplateId, computed, effectiveTemplateConfig);
+  const layout = buildTemplateLayoutModel(resolvedTemplateId, snapshotComputed, effectiveTemplateConfig);
   const snapshotHash = stableHash(
     JSON.stringify({
       templateId: resolvedTemplateId,
