@@ -1,4 +1,3 @@
-import type { Stage2HardConstraints } from "./stage2-channel-config";
 import type { Stage3TemplateConfig } from "./stage3-template";
 import {
   cloneTemplateCaptionHighlights,
@@ -166,10 +165,15 @@ export function resolveTemplateRenderText(input: {
   };
 }
 
-export function resolveTemplateStage2HardConstraints(
-  constraints: Stage2HardConstraints,
+export function resolveTemplateStage2HardConstraints<
+  T extends {
+    topLengthMin: number;
+    topLengthMax: number;
+  }
+>(
+  constraints: T,
   templateConfig: Stage3TemplateConfig | null | undefined
-): Stage2HardConstraints {
+): T {
   const leadMode = resolveTemplateLeadMode(templateConfig);
   if (resolveTemplateLayoutKind(templateConfig) !== "channel_story") {
     return { ...constraints };

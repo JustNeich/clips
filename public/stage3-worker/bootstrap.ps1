@@ -106,22 +106,33 @@ function Install-ClipsStage3Worker {
     if ($libFiles.Count -eq 0) {
       $libFiles = @(
         "stage3-template.ts",
+        "stage3-template-semantics.ts",
         "stage3-constants.ts",
         "template-scene.tsx",
         "stage3-verified-badge.tsx",
         "template-calibration-types.ts",
         "auto-fit-template-scene.tsx",
         "stage3-template-core.ts",
+        "template-highlights.ts",
         "stage3-render-variation.ts",
+        "stage3-camera.ts",
+        "stage3-text-fit.ts",
         "stage3-template-spec.ts",
         "stage3-template-renderer.tsx",
         "stage3-template-runtime.tsx",
-        "stage3-template-registry.ts"
+        "stage3-template-registry.ts",
+        "stage3-background-mode.ts",
+        "stage3-video-adjustments.ts"
       )
     }
     $designFiles = @($manifest.designFiles)
     if ($designFiles.Count -eq 0) {
       $designFiles = @(
+        "templates/american-news-v1/figma-spec.json",
+        "templates/channel-story-v1/figma-spec.json",
+        "templates/science-card-blue-v1/figma-spec.json",
+        "templates/science-card-green-v1/figma-spec.json",
+        "templates/science-card-red-v1/figma-spec.json",
         "templates/science-card-v1/figma-spec.json",
         "templates/science-card-v7/figma-spec.json",
         "templates/hedges-of-honor-v1/figma-spec.json"
