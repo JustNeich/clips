@@ -18,6 +18,7 @@ const MOTION_SAMPLE_FPS = 8;
 const DEFAULT_CLIP_DURATION_SEC = 6;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 type Stage3MediaProfile = "preview" | "render";
+export type Stage3SegmentExtractionMode = "fast" | "accurate";
 
 type EncodeProfile = {
   preset: string;
@@ -107,6 +108,10 @@ function getEncodeProfile(profile: Stage3MediaProfile): EncodeProfile {
 
 export function resolveStage3SourcePreparationScaleFilter(profile: Stage3MediaProfile): string | null {
   return profile === "render" ? STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER : null;
+}
+
+export function resolveStage3SegmentExtractionMode(profile: Stage3MediaProfile): Stage3SegmentExtractionMode {
+  return profile === "render" ? "accurate" : "fast";
 }
 
 function getEditingProxyProfile(): EditingProxyProfile {
@@ -947,63 +952,14 @@ async function extractSegmentsToFiles(
   for (let i = 0; i < segments.length; i += 1) {
     const segment = segments[i];
     const output = path.join(tmpDir, `seg-${i + 1}.mp4`);
-    const speed = normalizeSegmentSpeed(segment.speed);
-    const videoFilters: string[] = [];
-    const renderScaleFilter = resolveStage3SourcePreparationScaleFilter(profile);
-    if (previewScaleFilter) {
-      videoFilters.push(previewScaleFilter);
-    } else if (renderScaleFilter) {
-      videoFilters.push(renderScaleFilter);
-    }
-    if (Math.abs(speed - 1) > 0.001) {
-      videoFilters.push(`setpts=PTS/${speed.toFixed(6)}`);
-    }
-    videoFilters.push(STAGE3_EVEN_DIMENSIONS_FILTER);
-
-    const args = [
-      "-y",
-      "-ss",
-      segment.startSec.toFixed(3),
-      "-to",
-      segment.endSec.toFixed(3),
-      "-i",
-      sourcePath
-    ];
-
-    if (Math.abs(speed - 1) > 0.001 && sourceHasAudio) {
-      args.push(
-        "-filter_complex",
-        `[0:v]${videoFilters.join(",")}[v];[0:a]${buildAtempoChain(speed)}[a]`,
-        "-map",
-        "[v]",
-        "-map",
-        "[a]"
-      );
-    } else if (videoFilters.length > 0) {
-      args.push("-vf", videoFilters.join(","));
-      if (!sourceHasAudio) {
-        args.push("-an");
-      }
-    } else if (!sourceHasAudio) {
-      args.push("-an");
-    }
-
-    args.push(
-      "-c:v",
-      "libx264",
-      "-preset",
-      encode.preset,
-      "-crf",
-      encode.crf,
-      "-threads",
-      encode.threads
-    );
-
-    if (sourceHasAudio) {
-      args.push("-c:a", "aac", "-ar", "48000", "-ac", "2");
-    }
-
-    args.push(output);
+    const args = buildStage3ExtractSegmentFfmpegArgs({
+      sourcePath,
+      outputPath: output,
+      segment,
+      profile,
+      sourceHasAudio,
+      encode
+    });
 
     await execFileAsync("ffmpeg", args, {
       timeout: 2 * 60_000,
@@ -1013,6 +969,97 @@ async function extractSegmentsToFiles(
   }
 
   return outputs;
+}
+
+export function buildStage3ExtractSegmentFfmpegArgs(params: {
+  sourcePath: string;
+  outputPath: string;
+  segment: { startSec: number; endSec: number; speed: number };
+  profile: Stage3MediaProfile;
+  sourceHasAudio: boolean;
+  encode?: EncodeProfile;
+}): string[] {
+  const encode = params.encode ?? getEncodeProfile(params.profile);
+  const extractionMode = resolveStage3SegmentExtractionMode(params.profile);
+  const previewScaleFilter =
+    params.profile === "preview" ? "scale=540:-2:force_original_aspect_ratio=decrease,setsar=1" : null;
+  const renderScaleFilter = resolveStage3SourcePreparationScaleFilter(params.profile);
+  const speed = normalizeSegmentSpeed(params.segment.speed);
+  const durationSec = Math.max(0.05, params.segment.endSec - params.segment.startSec);
+  const videoFilters: string[] = [];
+
+  if (previewScaleFilter) {
+    videoFilters.push(previewScaleFilter);
+  } else if (renderScaleFilter) {
+    videoFilters.push(renderScaleFilter);
+  }
+  if (Math.abs(speed - 1) > 0.001) {
+    videoFilters.push(`setpts=PTS/${speed.toFixed(6)}`);
+  }
+  videoFilters.push(STAGE3_EVEN_DIMENSIONS_FILTER);
+
+  const args = ["-y"];
+  if (extractionMode === "fast") {
+    args.push(
+      "-ss",
+      params.segment.startSec.toFixed(3),
+      "-t",
+      durationSec.toFixed(3),
+      "-i",
+      params.sourcePath
+    );
+  } else {
+    // Decode-accurate segment extraction avoids keyframe-boundary artifacts leaking
+    // into the render-safe prepared clip on real social mp4 sources.
+    args.push(
+      "-i",
+      params.sourcePath,
+      "-ss",
+      params.segment.startSec.toFixed(3),
+      "-t",
+      durationSec.toFixed(3),
+      "-fflags",
+      "+genpts",
+      "-avoid_negative_ts",
+      "make_zero"
+    );
+  }
+
+  if (Math.abs(speed - 1) > 0.001 && params.sourceHasAudio) {
+    args.push(
+      "-filter_complex",
+      `[0:v]${videoFilters.join(",")}[v];[0:a]${buildAtempoChain(speed)}[a]`,
+      "-map",
+      "[v]",
+      "-map",
+      "[a]"
+    );
+  } else if (videoFilters.length > 0) {
+    args.push("-vf", videoFilters.join(","));
+    if (!params.sourceHasAudio) {
+      args.push("-an");
+    }
+  } else if (!params.sourceHasAudio) {
+    args.push("-an");
+  }
+
+  args.push(
+    "-c:v",
+    "libx264",
+    "-preset",
+    encode.preset,
+    "-crf",
+    encode.crf,
+    "-threads",
+    encode.threads
+  );
+
+  if (params.sourceHasAudio) {
+    args.push("-c:a", "aac", "-ar", "48000", "-ac", "2");
+  }
+
+  args.push(params.outputPath);
+  return args;
 }
 
 async function concatSegments(
@@ -1367,10 +1414,21 @@ export async function prepareStage3SourceClip(params: {
     musicGain: params.renderPlan.musicGain,
     musicFilePath: params.musicFilePath
   });
+  const stabilized =
+    profile === "render"
+      ? await (async () => {
+          const outputPath = path.join(params.tmpDir, "source.render-safe.mp4");
+          await normalizeStage3SourceVideo({
+            sourcePath: mixed,
+            outputPath
+          });
+          return outputPath;
+        })()
+      : mixed;
 
   const finalPath = path.join(params.tmpDir, "source.mp4");
-  if (mixed !== finalPath) {
-    await fs.copyFile(mixed, finalPath);
+  if (stabilized !== finalPath) {
+    await fs.copyFile(stabilized, finalPath);
   }
 
   return {

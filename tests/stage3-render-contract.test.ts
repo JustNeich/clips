@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildStage3ExtractSegmentFfmpegArgs,
   buildStage3FitClipVideoFilters,
   buildNormalizeStage3SourceFfmpegArgs,
+  resolveStage3SegmentExtractionMode,
   resolveStage3SourcePreparationScaleFilter,
   STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER,
   STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER
 } from "../lib/stage3-media-agent";
 import { buildFinalizeRenderedOutputArgs } from "../lib/stage3-render-service";
-import type { Stage3VariationProfile } from "../lib/stage3-render-variation";
+import {
+  createStage3VariationProfile,
+  resolveStage3RenderVariationMode,
+  type Stage3VariationProfile
+} from "../lib/stage3-render-variation";
 
 function createVariationProfile(mode: Stage3VariationProfile["appliedMode"]): Stage3VariationProfile {
   return {
@@ -82,6 +88,51 @@ test("render source preparation caps oversized clips before remotion decodes the
   assert.match(filters, /scale=trunc\(iw\/2\)\*2:trunc\(ih\/2\)\*2:flags=lanczos,setsar=1$/);
 });
 
+test("render segment extraction uses decode-accurate timestamps to reduce boundary flashes", () => {
+  assert.equal(resolveStage3SegmentExtractionMode("render"), "accurate");
+  const args = buildStage3ExtractSegmentFfmpegArgs({
+    sourcePath: "/tmp/in.mp4",
+    outputPath: "/tmp/out.mp4",
+    segment: {
+      startSec: 1.2,
+      endSec: 2.7,
+      speed: 1
+    },
+    profile: "render",
+    sourceHasAudio: true
+  });
+
+  assert.deepEqual(args.slice(0, 6), ["-y", "-i", "/tmp/in.mp4", "-ss", "1.200", "-t"]);
+  assert.equal(args[6], "1.500");
+  assert.ok(args.includes("-fflags"));
+  assert.ok(args.includes("+genpts"));
+  assert.ok(args.includes("-avoid_negative_ts"));
+  assert.ok(args.includes("make_zero"));
+  assert.ok(args.some((value) => value.includes(STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER)));
+  assert.ok(args.includes("-c:a"));
+});
+
+test("preview segment extraction keeps the fast seek path for editor responsiveness", () => {
+  assert.equal(resolveStage3SegmentExtractionMode("preview"), "fast");
+  const args = buildStage3ExtractSegmentFfmpegArgs({
+    sourcePath: "/tmp/in.mp4",
+    outputPath: "/tmp/out.mp4",
+    segment: {
+      startSec: 1.2,
+      endSec: 2.7,
+      speed: 1
+    },
+    profile: "preview",
+    sourceHasAudio: false
+  });
+
+  assert.deepEqual(args.slice(0, 6), ["-y", "-ss", "1.200", "-t", "1.500", "-i"]);
+  assert.equal(args[6], "/tmp/in.mp4");
+  assert.equal(args.includes("-fflags"), false);
+  assert.equal(args.includes("-avoid_negative_ts"), false);
+  assert.ok(args.includes("-an"));
+});
+
 test("final render args re-encode video into a stable limited-range contract", () => {
   const args = buildFinalizeRenderedOutputArgs({
     inputPath: "/tmp/raw.mp4",
@@ -114,4 +165,23 @@ test("final render args preserve variation metadata when variation is enabled", 
   assert.ok(args.includes("variation_profile_version=1"));
   assert.ok(args.includes("variation_mode=hybrid"));
   assert.ok(args.includes("variation_seed=0123456789abcdef0123456789abcdef"));
+});
+
+test("stage3 render variation defaults to encode mode when no override is set", () => {
+  const previous = process.env.STAGE3_RENDER_VARIATION_MODE;
+  delete process.env.STAGE3_RENDER_VARIATION_MODE;
+
+  try {
+    assert.equal(resolveStage3RenderVariationMode(), "encode");
+    const profile = createStage3VariationProfile();
+    assert.equal(profile.requestedMode, "encode");
+    assert.equal(profile.appliedMode, "encode");
+    assert.equal(profile.signal.enabled, false);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.STAGE3_RENDER_VARIATION_MODE;
+    } else {
+      process.env.STAGE3_RENDER_VARIATION_MODE = previous;
+    }
+  }
 });

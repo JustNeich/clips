@@ -55,7 +55,7 @@ export type Stage3VariationManifest = {
   container: Stage3VariationContainerProfile;
 };
 
-const DEFAULT_MODE: Stage3VariationMode = "hybrid";
+const DEFAULT_MODE: Stage3VariationMode = "encode";
 const HEX_SEED_RE = /^[0-9a-f]{32}$/i;
 
 function clamp(value: number, min: number, max: number): number {
