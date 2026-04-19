@@ -3,6 +3,7 @@ import path from "node:path";
 import { prepareJsonSchemaTransport } from "./json-stage-transport";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MAX_REDIRECTS = 3;
 const OPENROUTER_TEST_PROMPT = "Return a short machine-readable acknowledgement.";
 const OPENROUTER_TEST_SCHEMA = {
   type: "object",
@@ -41,6 +42,50 @@ function inferImageMediaType(imagePath: string): string {
     return "image/gif";
   }
   return "image/jpeg";
+}
+
+function buildOpenRouterHeaders(apiKey: string): Headers {
+  const headers = new Headers();
+  headers.set("Authorization", `Bearer ${apiKey}`);
+  headers.set("Content-Type", "application/json");
+  headers.set("Accept", "application/json");
+  headers.set("User-Agent", "clips-automations-openrouter/1.0");
+  headers.set("X-Title", "Clips Automations");
+  return headers;
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+async function postOpenRouterJson(input: {
+  apiKey: string;
+  body: string;
+  signal: AbortSignal;
+}): Promise<Response> {
+  let requestUrl = OPENROUTER_CHAT_COMPLETIONS_URL;
+
+  for (let redirectIndex = 0; redirectIndex <= OPENROUTER_MAX_REDIRECTS; redirectIndex += 1) {
+    const response = await fetch(requestUrl, {
+      method: "POST",
+      headers: buildOpenRouterHeaders(input.apiKey),
+      body: input.body,
+      signal: input.signal,
+      redirect: "manual"
+    });
+
+    if (!isRedirectStatus(response.status)) {
+      return response;
+    }
+
+    const location = response.headers.get("location")?.trim();
+    if (!location) {
+      throw new Error(`OpenRouter redirected without a location header (HTTP ${response.status}).`);
+    }
+    requestUrl = new URL(location, requestUrl).toString();
+  }
+
+  throw new Error("OpenRouter redirected too many times.");
 }
 
 async function buildOpenRouterUserContent(
@@ -122,34 +167,32 @@ async function fetchOpenRouterStructuredOutput<T>(input: {
     schema: input.schema,
     prompt: input.prompt
   });
-  const headers = new Headers();
-  headers.set("Authorization", `Bearer ${input.apiKey}`);
-  headers.set("Content-Type", "application/json");
+  const userContent = await buildOpenRouterUserContent(input.imagePaths ?? [], transport.prompt);
+  const requestBody = JSON.stringify({
+    model: input.model,
+    max_tokens: input.maxTokens ?? 8_192,
+    messages: [
+      {
+        role: "user",
+        content: userContent
+      }
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "record_result",
+        strict: true,
+        schema: transport.schema
+      }
+    }
+  });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 8 * 60_000);
 
   try {
-    const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: input.model,
-        max_tokens: input.maxTokens ?? 8_192,
-        messages: [
-          {
-            role: "user",
-            content: await buildOpenRouterUserContent(input.imagePaths ?? [], transport.prompt)
-          }
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "record_result",
-            strict: true,
-            schema: transport.schema
-          }
-        }
-      }),
+    const response = await postOpenRouterJson({
+      apiKey: input.apiKey,
+      body: requestBody,
       signal: controller.signal
     });
 
