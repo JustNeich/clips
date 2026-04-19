@@ -122,16 +122,16 @@ async function fetchOpenRouterStructuredOutput<T>(input: {
     schema: input.schema,
     prompt: input.prompt
   });
+  const headers = new Headers();
+  headers.set("Authorization", `Bearer ${input.apiKey}`);
+  headers.set("Content-Type", "application/json");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 8 * 60_000);
 
   try {
     const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
       method: "POST",
-      headers: {
-        authorization: `Bearer ${input.apiKey}`,
-        "content-type": "application/json"
-      },
+      headers,
       body: JSON.stringify({
         model: input.model,
         max_tokens: input.maxTokens ?? 8_192,

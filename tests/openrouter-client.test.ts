@@ -6,6 +6,7 @@ import { runOpenRouterStructuredOutput } from "../lib/openrouter-client";
 test("runOpenRouterStructuredOutput unwraps structured JSON responses", async () => {
   const originalFetch = globalThis.fetch;
   const fetchMock: typeof fetch = async (_input, init) => {
+    const headers = new Headers(init?.headers);
     const body = JSON.parse(String(init?.body ?? "{}")) as {
       model?: string;
       response_format?: {
@@ -13,6 +14,8 @@ test("runOpenRouterStructuredOutput unwraps structured JSON responses", async ()
         json_schema?: { name?: string };
       };
     };
+    assert.equal(headers.get("Authorization"), "Bearer sk-or-v1-test");
+    assert.equal(headers.get("Content-Type"), "application/json");
     assert.equal(body.model, "anthropic/claude-opus-4.7");
     assert.equal(body.response_format?.type, "json_schema");
     assert.equal(body.response_format?.json_schema?.name, "record_result");
