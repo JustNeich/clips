@@ -926,6 +926,7 @@ export async function runQuickRegenerateModel(input: {
     userInstruction: input.userInstruction
   });
   const rawOutput = await input.executor.runJson<QuickRegenerateModelOutput>({
+    stageId: "regenerate",
     prompt: promptText,
     schema: QUICK_REGENERATE_SCHEMA,
     model: input.model ?? null,

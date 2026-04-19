@@ -157,18 +157,20 @@
   - правый user/Codex блок с именем, ролью, статусом Shared Codex и кнопкой `Управление`
   - step nav: `Шаг 1`, `Шаг 2`, `Шаг 3`
   - collapsible zone `Логи и комментарии`
+- `terminology note`:
+  - `Shared Codex` в header — это текущее UI имя baseline workspace AI integration, а не название всего Stage 2 runtime целиком
 - `resulting actions`:
   - открывает history panel
   - переключает канал
   - вызывает Channel Manager
   - открывает team page
-  - управляет shared Codex auth/logout/refresh
+  - управляет baseline Shared Codex integration auth/logout/refresh
 - `related APIs`:
   - `GET /api/auth/me`
   - `GET /api/workspace`
   - `GET /api/channels`
   - `GET /api/workspace/integrations/codex`
-- `related entities`: `workspace`, `membership`, `channel`, `codex connection`, `chat history`
+- `related entities`: `workspace`, `membership`, `channel`, `workspace AI integrations`, `chat history`
 - `common user phrasings`:
   - "слева пропала история"
   - "не тот канал выбран"
@@ -242,19 +244,21 @@
 ## User / Codex menu `Управление`
 
 - `entrypoint`: кнопка `Управление` в правом верхнем user block.
-- `purpose`: управление shared Codex connection и logout.
+- `purpose`: управление baseline Shared Codex integration и logout.
 - `browser-verified owner controls`:
   - `Переподключить`
   - `Отключить`
   - `Обновить`
   - `Выйти из приложения`
 - `role semantics`:
-  - `owner` управляет shared Codex полностью
-  - `manager` и редакторы видят connection state, но их полномочия уже описываются guard-ами и workspace permissions
+  - `owner` управляет Shared Codex полностью
+  - `manager` и редакторы видят connection state, но owner-only workspace integration authority у них нет
 - `related APIs`:
   - `app/api/codex/auth/route.ts`
   - `app/api/workspace/integrations/codex/route.ts`
   - `app/api/auth/logout/route.ts`
+- `alias note`:
+  - жалоба "Shared Codex не подключен" может означать либо реальную проблему baseline integration, либо более широкий blocked state Stage 2 runtime; это нужно сверять с owner defaults и выбранным `Caption provider`
 - `common user phrasings`:
   - "Codex слетел"
   - "не обновляется статус подключения"
@@ -300,6 +304,7 @@
   - comments unavailable on current server
   - upload blocked
   - fetch blocked by active chat reuse / runtime capability
+  - auto-run blocked because required workspace AI integration/provider is not ready; current UI often surfaces this as Shared Codex not connected
 - `common user phrasings`:
   - "ссылка не вставляется"
   - "mp4 не загружается"
@@ -310,6 +315,8 @@
 
 - `surface`: Step 2 внутри `/`
 - `purpose`: сгенерировать shortlist caption/title вариантов, выбрать основу, отправить editorial feedback.
+- `runtime note`:
+  - Stage 2 использует owner-managed workspace integrations; `Shared Codex` в shell остаётся baseline runtime alias, а owner defaults дополнительно определяют `Caption provider` для eligible caption-writing stages
 - `controls`:
   - header `Выбор`
   - details `Контекст запуска`
@@ -576,7 +583,7 @@
 
 ## Channel Manager tab: `Stage 2`
 
-- `purpose`: pipeline profile, style profile, example corpus, hard constraints, model routing.
+- `purpose`: pipeline profile, style profile, example corpus, hard constraints, caption provider routing, model routing.
 - `controls`:
   - block `Формат pipeline`
   - `Активная линия`
@@ -594,6 +601,18 @@
   - `Запрещённые слова`
   - `Запрещённые начала`
   - owner-only block `Общие настройки`
+  - owner-only block `Caption provider`
+  - owner-only controls inside `Caption provider`:
+    - select `Shared Codex` / `Anthropic API` / `OpenRouter API`
+    - field `Anthropic model`
+    - field `Anthropic API key`
+    - field `OpenRouter model`
+    - field `OpenRouter API key`
+    - actions `Подключить key и проверить` / `Обновить key и проверить`
+    - action `Отключить Anthropic`
+    - action `Отключить OpenRouter`
+    - links `API keys`, `Billing`, `Pricing`
+    - links `OpenRouter API keys`, `OpenRouter Credits`, `OpenRouter Pricing`
   - owner-only block `Маршрутизация моделей Stage 2`
   - owner-only model controls:
     - `Stable Reference v6`
@@ -605,7 +624,16 @@
 - `related APIs`:
   - `PATCH /api/channels/[id]`
   - `POST /api/channels/style-discovery`
+  - `GET /api/workspace`
+  - `PATCH /api/workspace`
+  - `GET /api/workspace/integrations/codex`
+  - `POST /api/workspace/integrations/codex`
+  - `GET /api/workspace/integrations/anthropic`
+  - `POST /api/workspace/integrations/anthropic`
   - workspace defaults save through workspace endpoints
+- `alias note`:
+  - `Shared Codex` в owner controls — baseline integration path
+  - `Caption provider` — overlay для eligible caption stages, а не отдельный полный Stage 2 executor
 
 ## Channel Manager tab: `Рендер`
 

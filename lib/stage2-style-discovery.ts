@@ -1550,6 +1550,7 @@ export async function runStage2StyleDiscovery(input: {
   });
 
   const rawResult = await input.executor.runJson<unknown>({
+    stageId: "styleDiscovery",
     prompt,
     schema: STYLE_DISCOVERY_SCHEMA,
     imagePaths: input.imagePaths ?? [],

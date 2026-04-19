@@ -14,9 +14,13 @@ import {
   buildVideoContext,
   ViralShortsWorkerService
 } from "../lib/viral-shorts-worker/service";
-import type { JsonStageExecutor } from "../lib/viral-shorts-worker/executor";
+import {
+  HybridJsonStageExecutor,
+  type JsonStageExecutor
+} from "../lib/viral-shorts-worker/executor";
 
 type ExecutorCall = {
+  stageId: string;
   model: string | null;
   prompt: string;
   imagePaths: string[];
@@ -28,13 +32,16 @@ class CaptureQueueExecutor implements JsonStageExecutor {
   constructor(private readonly responses: unknown[]) {}
 
   async runJson<T>(input: {
+    stageId: string;
     prompt: string;
     schema: unknown;
     imagePaths?: string[];
+    timeoutMs?: number;
     model?: string | null;
     reasoningEffort?: string | null;
   }): Promise<T> {
     this.calls.push({
+      stageId: input.stageId,
       model: input.model ?? null,
       prompt: input.prompt,
       imagePaths: input.imagePaths ?? []
@@ -59,6 +66,14 @@ function makeCandidate(index: number) {
     top_ru: `Конкретный верх ${index}`,
     bottom_ru: `Конкретный низ ${index}`
   };
+}
+
+function makeTranslationEntries(candidateIds: string[]) {
+  return candidateIds.map((candidateId, index) => ({
+    candidate_id: candidateId,
+    top_ru: `Перевод верх ${index + 1}`,
+    bottom_ru: `Перевод низ ${index + 1}`
+  }));
 }
 
 const RELAXED_HARD_CONSTRAINTS = {
@@ -675,4 +690,654 @@ test("runStage2StyleDiscovery forwards the dedicated multimodal model and refere
   assert.equal(executor.calls.length, 1);
   assert.equal(executor.calls[0]?.model, "gpt-5.4-mini");
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/ref-1.jpg", "/tmp/ref-2.jpg"]);
+});
+
+test("HybridJsonStageExecutor routes stable_reference_v6 caption generation through Anthropic only", async () => {
+  const service = new ViralShortsWorkerService();
+  const codexExecutor = new CaptureQueueExecutor([
+    makeTranslationEntries(["ref_1", "ref_2", "ref_3", "ref_4", "ref_5"]),
+    {
+      description:
+        "Garage bay, no stated speed, mechanic wrench pause, workshop reaction\nThe wrench stops mid-air before anyone says a word, and the room reads the repair outcome off the silence alone.\nSearch terms and topics covered:\nmechanic wrench pause, garage reaction moment\nHashtags:\n#mechanic, #garage, #shorts",
+      tags: "Mechanic, Garage, Reaction"
+    }
+  ]);
+  const anthropicExecutor = new CaptureQueueExecutor([
+    {
+      analysis: {
+        visual_anchors: [
+          "wrench stops mid-air",
+          "everyone turns toward the pause",
+          "the room reads it before he speaks"
+        ],
+        comment_vibe: "dry impressed side-eye",
+        key_phrase_to_adapt: "that pause said enough"
+      },
+      candidates: Array.from({ length: 5 }, (_, index) => ({
+        candidate_id: `ref_${index + 1}`,
+        top: `Reference top ${index + 1}`,
+        bottom: `Reference bottom ${index + 1}`,
+        retained_handle: index < 2
+      })),
+      winner_candidate_id: "ref_1",
+      titles: Array.from({ length: 5 }, (_, index) => ({
+        title: `WHY DID THE ROOM FREEZE ${index + 1}`,
+        title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
+      }))
+    }
+  ]);
+
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "anthropic",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor,
+    openRouterExecutor: null
+  });
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_ref_hybrid",
+      name: "Reference Channel",
+      username: "reference_channel",
+      stage2WorkerProfileId: "stable_reference_v6",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/reference",
+      title: "A wrench pause says enough",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [
+        {
+          author: "viewer",
+          likes: 10,
+          text: "that pause said enough"
+        }
+      ],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "keep the benchmark density"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
+    executor,
+    stageModels: {
+      oneShotReference: "gpt-5.4-mini",
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.3-codex-spark",
+      qualityCourt: "gpt-5.4",
+      targetedRepair: "gpt-5.4",
+      captionTranslation: "gpt-5.4",
+      titleWriter: "gpt-5.3-codex-spark",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.winner?.candidateId, "ref_1");
+  assert.deepEqual(anthropicExecutor.calls.map((call) => call.stageId), ["oneShotReference"]);
+  assert.equal(anthropicExecutor.calls[0]?.model, null);
+  assert.deepEqual(anthropicExecutor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
+  assert.deepEqual(codexExecutor.calls.map((call) => call.stageId), ["captionTranslation", "seo"]);
+  assert.deepEqual(codexExecutor.calls.map((call) => call.model), ["gpt-5.4", "gpt-5.4-mini"]);
+});
+
+test("HybridJsonStageExecutor keeps native judges on Codex while routing candidate generation and repair through Anthropic", async () => {
+  const service = new ViralShortsWorkerService();
+  const codexExecutor = new CaptureQueueExecutor([
+    {
+      grounding: {
+        observed_facts: ["two people pause before reacting"],
+        visible_sequence: ["one freezes", "the other looks over"],
+        micro_turn: "the pause lands harder than the action",
+        first_seconds_signal: "the room goes quiet immediately",
+        uncertainties: [],
+        forbidden_claims: ["do not invent dialogue"],
+        safe_inferences: ["awkward energy", "shared hesitation"]
+      },
+      audience_wave: {
+        exists: true,
+        emotional_temperature: "quiet disbelief",
+        dominant_harmless_handle: "that pause said enough",
+        consensus_lane: "everyone clocked the hesitation",
+        joke_lane: "that pause said enough",
+        dissent_lane: "",
+        safe_reusable_cues: ["that pause said enough"],
+        blocked_cues: [],
+        flattening_risks: ["generic awkward pause copy"],
+        must_not_lose: ["that pause said enough"]
+      },
+      strategy: {
+        primary_angle: "awkward_pause",
+        secondary_angles: ["quiet_social_read"],
+        hook_seeds: ["the pause said enough"],
+        bottom_functions: ["sharpen the social read"],
+        required_lanes: [
+          {
+            lane_id: "audience_locked",
+            count: 2,
+            purpose: "Preserve the harmless public handle."
+          },
+          {
+            lane_id: "balanced_clean",
+            count: 2,
+            purpose: "Keep strong native phrasing."
+          },
+          {
+            lane_id: "backup_simple",
+            count: 1,
+            purpose: "Hold a plain live backup."
+          }
+        ],
+        must_do: ["land why-care immediately"],
+        must_avoid: ["inventory openings"]
+      }
+    },
+    {
+      finalists: [
+        {
+          candidate_id: "cand_1",
+          why_chosen: ["It lands the social read fast."],
+          preserved_handle: true
+        },
+        {
+          candidate_id: "cand_2",
+          why_chosen: ["Still feels lived-in."],
+          preserved_handle: false
+        }
+      ],
+      display_safe_extras: [
+        {
+          candidate_id: "cand_3",
+          why_display_safe: ["Keeps a cleaner reserve alive."]
+        },
+        {
+          candidate_id: "cand_4",
+          why_display_safe: ["Still visible without flattening the clip."]
+        }
+      ],
+      hard_rejected: [],
+      winner_candidate_id: "cand_1",
+      recovery_plan: {
+        required: true,
+        missing_count: 1,
+        briefs: [
+          {
+            lane_id: "backup_simple",
+            goal: "Restore one plain backup option.",
+            must_keep: ["quiet disbelief"],
+            must_avoid: ["generic reaction copy"]
+          }
+        ]
+      }
+    },
+    makeTranslationEntries(["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"]),
+    Array.from({ length: 5 }, (_, index) => ({
+      option: index + 1,
+      title: `Winner title ${index + 1}`,
+      title_ru: `Заголовок победителя ${index + 1}`
+    })),
+    {
+      description:
+        "Detroit, 25 MPH, Ford pickup, muddy axle failure\nThe truck bucks through the rut before the axle folds sideways under load.\nSearch terms and topics covered:\nford pickup axle failure, muddy rut truck breakdown\nHashtags:\n#truck, #mechanicalfailure, #shorts",
+      tags: "Truck Failure, Mechanical Failure, Ford"
+    }
+  ]);
+  const anthropicExecutor = new CaptureQueueExecutor([
+    Array.from({ length: 4 }, (_, index) => ({
+      candidate_id: `cand_${index + 1}`,
+      lane_id: index < 2 ? "audience_locked" : "balanced_clean",
+      top: `That pause told the whole room what was happening ${index + 1}.`,
+      bottom: `Nobody needed the follow-up once that look landed ${index + 1}.`,
+      retained_handle: index < 2,
+      display_intent: "finalist_or_display_safe"
+    })),
+    [
+      {
+        candidate_id: "cand_5",
+        lane_id: "backup_simple",
+        top: "That pause did the talking before anyone else had to.",
+        bottom: "The whole room heard the outcome in the silence first.",
+        retained_handle: false,
+        display_intent: "recovery"
+      }
+    ]
+  ]);
+
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "anthropic",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor,
+    openRouterExecutor: null
+  });
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_native_hybrid",
+      name: "Channel 1",
+      username: "channel_1",
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/short",
+      title: "A grounded clip",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "keep it dry"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
+    executor,
+    stageModels: {
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.4-mini",
+      qualityCourt: "gpt-5.3-codex-spark",
+      targetedRepair: "gpt-5.4-mini",
+      captionTranslation: "gpt-5.4-mini",
+      titleWriter: "gpt-5.4",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.deepEqual(
+    anthropicExecutor.calls.map((call) => call.stageId),
+    ["candidateGenerator", "targetedRepair"]
+  );
+  assert.deepEqual(anthropicExecutor.calls.map((call) => call.model), [null, null]);
+  assert.deepEqual(
+    codexExecutor.calls.map((call) => call.stageId),
+    ["contextPacket", "qualityCourt", "captionTranslation", "titleWriter", "seo"]
+  );
+  assert.deepEqual(
+    codexExecutor.calls.map((call) => call.model),
+    ["gpt-5.4", "gpt-5.3-codex-spark", "gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
+  );
+});
+
+test("HybridJsonStageExecutor routes quick regenerate through Anthropic only", async () => {
+  const codexExecutor = new CaptureQueueExecutor([]);
+  const anthropicExecutor = new CaptureQueueExecutor([
+    {
+      options: Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        candidate_id: `candidate_${index + 1}`,
+        angle: `angle_${index + 1}`,
+        top: `New top ${index + 1}`,
+        bottom: `New bottom ${index + 1}`,
+        top_ru: `Новый верх ${index + 1}`,
+        bottom_ru: `Новый низ ${index + 1}`,
+        title: `New title ${index + 1}`,
+        title_ru: `Новый заголовок ${index + 1}`
+      })),
+      final_pick_option: 1,
+      selection_rationale: "Keep option 1."
+    }
+  ]);
+
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "anthropic",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor,
+    openRouterExecutor: null
+  });
+
+  await runQuickRegenerateModel({
+    stage2: buildBaseStage2Response(),
+    channel: {
+      id: "channel_regen_hybrid",
+      name: "Channel 1",
+      username: "channel_1",
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    userInstruction: "make it shorter",
+    executor,
+    model: "gpt-5.3-codex-spark",
+    reasoningEffort: "medium"
+  });
+
+  assert.deepEqual(anthropicExecutor.calls.map((call) => call.stageId), ["regenerate"]);
+  assert.equal(anthropicExecutor.calls[0]?.model, null);
+  assert.deepEqual(anthropicExecutor.calls[0]?.imagePaths, []);
+  assert.equal(codexExecutor.calls.length, 0);
+});
+
+test("HybridJsonStageExecutor routes stable_reference_v6 caption generation through OpenRouter only", async () => {
+  const service = new ViralShortsWorkerService();
+  const codexExecutor = new CaptureQueueExecutor([
+    makeTranslationEntries(["ref_1", "ref_2", "ref_3", "ref_4", "ref_5"]),
+    {
+      description:
+        "Garage bay, no stated speed, mechanic wrench pause, workshop reaction\nThe wrench stops mid-air before anyone says a word, and the room reads the repair outcome off the silence alone.\nSearch terms and topics covered:\nmechanic wrench pause, garage reaction moment\nHashtags:\n#mechanic, #garage, #shorts",
+      tags: "Mechanic, Garage, Reaction"
+    }
+  ]);
+  const openRouterExecutor = new CaptureQueueExecutor([
+    {
+      analysis: {
+        visual_anchors: [
+          "wrench stops mid-air",
+          "everyone turns toward the pause",
+          "the room reads it before he speaks"
+        ],
+        comment_vibe: "dry impressed side-eye",
+        key_phrase_to_adapt: "that pause said enough"
+      },
+      candidates: Array.from({ length: 5 }, (_, index) => ({
+        candidate_id: `ref_${index + 1}`,
+        top: `Reference top ${index + 1}`,
+        bottom: `Reference bottom ${index + 1}`,
+        retained_handle: index < 2
+      })),
+      winner_candidate_id: "ref_1",
+      titles: Array.from({ length: 5 }, (_, index) => ({
+        title: `WHY DID THE ROOM FREEZE ${index + 1}`,
+        title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
+      }))
+    }
+  ]);
+
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "openrouter",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor: null,
+    openRouterExecutor
+  });
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_ref_openrouter",
+      name: "Reference Channel",
+      username: "reference_channel",
+      stage2WorkerProfileId: "stable_reference_v6",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/reference",
+      title: "A wrench pause says enough",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [
+        {
+          author: "viewer",
+          likes: 10,
+          text: "that pause said enough"
+        }
+      ],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "keep the benchmark density"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
+    executor,
+    stageModels: {
+      oneShotReference: "gpt-5.4-mini",
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.3-codex-spark",
+      qualityCourt: "gpt-5.4",
+      targetedRepair: "gpt-5.4",
+      captionTranslation: "gpt-5.4",
+      titleWriter: "gpt-5.3-codex-spark",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.winner?.candidateId, "ref_1");
+  assert.deepEqual(openRouterExecutor.calls.map((call) => call.stageId), ["oneShotReference"]);
+  assert.equal(openRouterExecutor.calls[0]?.model, null);
+  assert.deepEqual(openRouterExecutor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
+  assert.deepEqual(codexExecutor.calls.map((call) => call.stageId), ["captionTranslation", "seo"]);
+  assert.deepEqual(codexExecutor.calls.map((call) => call.model), ["gpt-5.4", "gpt-5.4-mini"]);
+});
+
+test("HybridJsonStageExecutor keeps native judges on Codex while routing candidate generation and repair through OpenRouter", async () => {
+  const service = new ViralShortsWorkerService();
+  const codexExecutor = new CaptureQueueExecutor([
+    {
+      grounding: {
+        observed_facts: ["two people pause before reacting"],
+        visible_sequence: ["one freezes", "the other looks over"],
+        micro_turn: "the pause lands harder than the action",
+        first_seconds_signal: "the room goes quiet immediately",
+        uncertainties: [],
+        forbidden_claims: ["do not invent dialogue"],
+        safe_inferences: ["awkward energy", "shared hesitation"]
+      },
+      audience_wave: {
+        exists: true,
+        emotional_temperature: "quiet disbelief",
+        dominant_harmless_handle: "that pause said enough",
+        consensus_lane: "everyone clocked the hesitation",
+        joke_lane: "that pause said enough",
+        dissent_lane: "",
+        safe_reusable_cues: ["that pause said enough"],
+        blocked_cues: [],
+        flattening_risks: ["generic awkward pause copy"],
+        must_not_lose: ["that pause said enough"]
+      },
+      strategy: {
+        primary_angle: "awkward_pause",
+        secondary_angles: ["quiet_social_read"],
+        hook_seeds: ["the pause said enough"],
+        bottom_functions: ["sharpen the social read"],
+        required_lanes: [
+          {
+            lane_id: "audience_locked",
+            count: 2,
+            purpose: "Preserve the harmless public handle."
+          },
+          {
+            lane_id: "balanced_clean",
+            count: 2,
+            purpose: "Keep strong native phrasing."
+          },
+          {
+            lane_id: "backup_simple",
+            count: 1,
+            purpose: "Hold a plain live backup."
+          }
+        ],
+        must_do: ["land why-care immediately"],
+        must_avoid: ["inventory openings"]
+      }
+    },
+    {
+      finalists: [
+        {
+          candidate_id: "cand_1",
+          why_chosen: ["It lands the social read fast."],
+          preserved_handle: true
+        },
+        {
+          candidate_id: "cand_2",
+          why_chosen: ["Still feels lived-in."],
+          preserved_handle: false
+        }
+      ],
+      display_safe_extras: [
+        {
+          candidate_id: "cand_3",
+          why_display_safe: ["Keeps a cleaner reserve alive."]
+        },
+        {
+          candidate_id: "cand_4",
+          why_display_safe: ["Still visible without flattening the clip."]
+        }
+      ],
+      hard_rejected: [],
+      winner_candidate_id: "cand_1",
+      recovery_plan: {
+        required: true,
+        missing_count: 1,
+        briefs: [
+          {
+            lane_id: "backup_simple",
+            goal: "Restore one plain backup option.",
+            must_keep: ["quiet disbelief"],
+            must_avoid: ["generic reaction copy"]
+          }
+        ]
+      }
+    },
+    makeTranslationEntries(["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"]),
+    Array.from({ length: 5 }, (_, index) => ({
+      option: index + 1,
+      title: `Winner title ${index + 1}`,
+      title_ru: `Заголовок победителя ${index + 1}`
+    })),
+    {
+      description:
+        "Detroit, 25 MPH, Ford pickup, muddy axle failure\nThe truck bucks through the rut before the axle folds sideways under load.\nSearch terms and topics covered:\nford pickup axle failure, muddy rut truck breakdown\nHashtags:\n#truck, #mechanicalfailure, #shorts",
+      tags: "Truck Failure, Mechanical Failure, Ford"
+    }
+  ]);
+  const openRouterExecutor = new CaptureQueueExecutor([
+    Array.from({ length: 4 }, (_, index) => ({
+      candidate_id: `cand_${index + 1}`,
+      lane_id: index < 2 ? "audience_locked" : "balanced_clean",
+      top: `That pause told the whole room what was happening ${index + 1}.`,
+      bottom: `Nobody needed the follow-up once that look landed ${index + 1}.`,
+      retained_handle: index < 2,
+      display_intent: "finalist_or_display_safe"
+    })),
+    [
+      {
+        candidate_id: "cand_5",
+        lane_id: "backup_simple",
+        top: "That pause did the talking before anyone else had to.",
+        bottom: "The whole room heard the outcome in the silence first.",
+        retained_handle: false,
+        display_intent: "recovery"
+      }
+    ]
+  ]);
+
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "openrouter",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor: null,
+    openRouterExecutor
+  });
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_native_openrouter",
+      name: "Channel 1",
+      username: "channel_1",
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/short",
+      title: "A grounded clip",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "keep it dry"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
+    executor,
+    stageModels: {
+      contextPacket: "gpt-5.4",
+      candidateGenerator: "gpt-5.4-mini",
+      qualityCourt: "gpt-5.3-codex-spark",
+      targetedRepair: "gpt-5.4-mini",
+      captionTranslation: "gpt-5.4-mini",
+      titleWriter: "gpt-5.4",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.deepEqual(
+    openRouterExecutor.calls.map((call) => call.stageId),
+    ["candidateGenerator", "targetedRepair"]
+  );
+  assert.deepEqual(openRouterExecutor.calls.map((call) => call.model), [null, null]);
+  assert.deepEqual(
+    codexExecutor.calls.map((call) => call.stageId),
+    ["contextPacket", "qualityCourt", "captionTranslation", "titleWriter", "seo"]
+  );
+  assert.deepEqual(
+    codexExecutor.calls.map((call) => call.model),
+    ["gpt-5.4", "gpt-5.3-codex-spark", "gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
+  );
+});
+
+test("HybridJsonStageExecutor routes quick regenerate through OpenRouter only", async () => {
+  const codexExecutor = new CaptureQueueExecutor([]);
+  const openRouterExecutor = new CaptureQueueExecutor([
+    {
+      options: Array.from({ length: 5 }, (_, index) => ({
+        option: index + 1,
+        candidate_id: `candidate_${index + 1}`,
+        angle: `angle_${index + 1}`,
+        top: `New top ${index + 1}`,
+        bottom: `New bottom ${index + 1}`,
+        top_ru: `Новый верх ${index + 1}`,
+        bottom_ru: `Новый низ ${index + 1}`,
+        title: `New title ${index + 1}`,
+        title_ru: `Новый заголовок ${index + 1}`
+      })),
+      final_pick_option: 1,
+      selection_rationale: "Keep option 1."
+    }
+  ]);
+
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "openrouter",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor: null,
+    openRouterExecutor
+  });
+
+  await runQuickRegenerateModel({
+    stage2: buildBaseStage2Response(),
+    channel: {
+      id: "channel_regen_openrouter",
+      name: "Channel 1",
+      username: "channel_1",
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    userInstruction: "make it shorter",
+    executor,
+    model: "gpt-5.3-codex-spark",
+    reasoningEffort: "medium"
+  });
+
+  assert.deepEqual(openRouterExecutor.calls.map((call) => call.stageId), ["regenerate"]);
+  assert.equal(openRouterExecutor.calls[0]?.model, null);
+  assert.deepEqual(openRouterExecutor.calls[0]?.imagePaths, []);
+  assert.equal(codexExecutor.calls.length, 0);
 });

@@ -94,7 +94,8 @@ notes:
 | "очередь", "слот", "опубликовать" | Publishing Planner |
 | "команда", "приглашение", "роль" | `/team` |
 | "доступ к каналу", "выдать доступ" | Channel Manager → `Доступ` |
-| "общие настройки", "stable reference", "модели" | Channel Manager → owner defaults |
+| "общие настройки", "stable reference", "модели", "caption provider", "Anthropic" | Channel Manager → owner defaults |
+| "Shared Codex", "Connect Codex" | Header user block / owner integration controls |
 | "template-lab", "overlay", "capture snapshot" | `/design/template-lab` |
 | "шаблон", "тень", "цвета", "сохранить версию шаблона" | `/design/template-road` |
 
@@ -169,6 +170,7 @@ notes:
 | Не могу войти / создать аккаунт | `/api/auth/**` |
 | Не грузится источник / mp4 / комментарии | `/api/pipeline/source*`, `/api/comments`, `/api/source-media` |
 | Не запускается второй этап | `/api/pipeline/stage2`, `/api/pipeline/stage2/debug` |
+| Shared Codex / Anthropic не подключаются | `/api/workspace`, `/api/workspace/integrations/codex`, `/api/workspace/integrations/anthropic` |
 | Не сохраняется лайк/дизлайк | `/api/channels/[id]/feedback` |
 | Не строится preview / render | `/api/stage3/preview*`, `/api/stage3/render*`, `/api/stage3/agent/**` |
 | Executor offline | `/api/stage3/workers/**`, `/api/stage3/worker/**` |
@@ -205,6 +207,7 @@ notes:
 ### Для Step 2 issues
 
 - Это было на `Перегенерировать варианты` или на `Полный прогон Stage 2`?
+- Какой provider сейчас выбран в owner defaults: `Shared Codex` или `Anthropic API`, если это известно?
 - Какая именно карточка ломается: `Вариант {n}` или `Заголовок {n}`?
 - Лайк/дизлайк сохранился или открылся с ошибкой?
 
@@ -327,6 +330,6 @@ state_hypothesis: "YouTube integration is connected but channel publish state or
 
 - пользователь видит internal admin surface, который по role model должен быть hidden;
 - `redactor_limited` может менять channel setup;
-- любой non-owner управляет shared Codex как owner-level сущностью;
+- любой non-owner управляет workspace AI integrations как owner-level сущностью;
 - route guard пропускает на `/team` неподходящую роль;
 - internal design tooling unexpectedly public и меняет production artifacts.

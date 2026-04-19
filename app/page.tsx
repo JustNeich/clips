@@ -57,7 +57,9 @@ import {
   Stage2RunDetail,
   Stage2RunSummary,
   Stage2Response,
-  UserRecord
+  UserRecord,
+  WorkspaceAnthropicIntegrationRecord,
+  WorkspaceOpenRouterIntegrationRecord
 } from "./components/types";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
@@ -75,6 +77,11 @@ import {
   DEFAULT_CHANNEL_PUBLISH_SETTINGS,
   pickNextPublicationSlot
 } from "../lib/channel-publishing";
+import {
+  DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+  normalizeStage2CaptionProviderConfig,
+  type Stage2CaptionProviderConfig
+} from "../lib/stage2-caption-provider";
 import {
   DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
   normalizeWorkspaceCodexModelConfig,
@@ -353,6 +360,12 @@ export default function HomePage() {
   const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
     DEFAULT_STAGE2_PROMPT_CONFIG
   );
+  const [workspaceStage2CaptionProviderConfig, setWorkspaceStage2CaptionProviderConfig] =
+    useState<Stage2CaptionProviderConfig>(DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG);
+  const [workspaceAnthropicIntegration, setWorkspaceAnthropicIntegration] =
+    useState<WorkspaceAnthropicIntegrationRecord | null>(null);
+  const [workspaceOpenRouterIntegration, setWorkspaceOpenRouterIntegration] =
+    useState<WorkspaceOpenRouterIntegrationRecord | null>(null);
   const [workspaceCodexModelConfig, setWorkspaceCodexModelConfig] =
     useState<WorkspaceCodexModelConfig>(DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG);
   const [workspaceResolvedCodexModelConfig, setWorkspaceResolvedCodexModelConfig] =
@@ -1169,6 +1182,9 @@ export default function HomePage() {
       workspaceStage2ExamplesCorpusJson?: string;
       workspaceStage2HardConstraints?: Stage2HardConstraints;
       workspaceStage2PromptConfig?: Stage2PromptConfig;
+      workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
+      workspaceAnthropicIntegration?: WorkspaceAnthropicIntegrationRecord | null;
+      workspaceOpenRouterIntegration?: WorkspaceOpenRouterIntegrationRecord | null;
       workspaceCodexModelConfig?: WorkspaceCodexModelConfig;
       workspaceResolvedCodexModelConfig?: ResolvedWorkspaceCodexModelConfig;
     };
@@ -1181,6 +1197,11 @@ export default function HomePage() {
       normalizeStage2HardConstraints(body.workspaceStage2HardConstraints)
     );
     setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.workspaceStage2PromptConfig));
+    setWorkspaceStage2CaptionProviderConfig(
+      normalizeStage2CaptionProviderConfig(body.workspaceStage2CaptionProviderConfig)
+    );
+    setWorkspaceAnthropicIntegration(body.workspaceAnthropicIntegration ?? null);
+    setWorkspaceOpenRouterIntegration(body.workspaceOpenRouterIntegration ?? null);
     setWorkspaceCodexModelConfig(nextWorkspaceCodexModelConfig);
     setWorkspaceResolvedCodexModelConfig(
       body.workspaceResolvedCodexModelConfig ??
@@ -6234,6 +6255,7 @@ export default function HomePage() {
       stage2ExamplesCorpusJson: string;
       stage2HardConstraints: Stage2HardConstraints;
       stage2PromptConfig: Stage2PromptConfig;
+      stage2CaptionProviderConfig: Stage2CaptionProviderConfig;
       codexModelConfig: WorkspaceCodexModelConfig;
     }>
   ): Promise<void> => {
@@ -6251,6 +6273,9 @@ export default function HomePage() {
         stage2ExamplesCorpusJson?: string;
         stage2HardConstraints?: Stage2HardConstraints;
         stage2PromptConfig?: Stage2PromptConfig;
+        stage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
+        workspaceAnthropicIntegration?: WorkspaceAnthropicIntegrationRecord | null;
+        workspaceOpenRouterIntegration?: WorkspaceOpenRouterIntegrationRecord | null;
         codexModelConfig?: WorkspaceCodexModelConfig;
         resolvedCodexModelConfig?: ResolvedWorkspaceCodexModelConfig;
       };
@@ -6262,6 +6287,17 @@ export default function HomePage() {
       }
       if (body.stage2PromptConfig) {
         setWorkspaceStage2PromptConfig(normalizeStage2PromptConfig(body.stage2PromptConfig));
+      }
+      if (body.stage2CaptionProviderConfig) {
+        setWorkspaceStage2CaptionProviderConfig(
+          normalizeStage2CaptionProviderConfig(body.stage2CaptionProviderConfig)
+        );
+      }
+      if ("workspaceAnthropicIntegration" in body) {
+        setWorkspaceAnthropicIntegration(body.workspaceAnthropicIntegration ?? null);
+      }
+      if ("workspaceOpenRouterIntegration" in body) {
+        setWorkspaceOpenRouterIntegration(body.workspaceOpenRouterIntegration ?? null);
       }
       if (body.codexModelConfig) {
         const nextWorkspaceCodexModelConfig = normalizeWorkspaceCodexModelConfig(
@@ -7267,6 +7303,9 @@ export default function HomePage() {
           workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
           workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+          workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}
+          workspaceAnthropicIntegration={workspaceAnthropicIntegration}
+          workspaceOpenRouterIntegration={workspaceOpenRouterIntegration}
           workspaceCodexModelConfig={workspaceCodexModelConfig}
           workspaceResolvedCodexModelConfig={workspaceResolvedCodexModelConfig}
           activeChannelId={activeChannelId}

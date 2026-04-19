@@ -9,7 +9,19 @@ import {
   Stage2PromptConfig
 } from "../../lib/stage2-pipeline";
 import { Stage2CorpusExample, Stage2HardConstraints } from "../../lib/stage2-channel-config";
-import type { ChannelFeedbackResponse } from "./types";
+import {
+  DEFAULT_ANTHROPIC_CAPTION_MODEL,
+  DEFAULT_OPENROUTER_CAPTION_MODEL,
+  DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+  isCaptionProviderRoutedStage,
+  type Stage2CaptionProvider,
+  type Stage2CaptionProviderConfig
+} from "../../lib/stage2-caption-provider";
+import type {
+  ChannelFeedbackResponse,
+  WorkspaceAnthropicIntegrationRecord,
+  WorkspaceOpenRouterIntegrationRecord
+} from "./types";
 import {
   getSelectedStage2StyleDirections,
   type Stage2EditorialMemorySummary,
@@ -58,6 +70,19 @@ type ChannelManagerStage2TabProps = {
   bannedWordsInput: string;
   bannedOpenersInput: string;
   workspaceStage2PromptConfig: Stage2PromptConfig;
+  workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
+  workspaceAnthropicIntegration?: WorkspaceAnthropicIntegrationRecord | null;
+  workspaceOpenRouterIntegration?: WorkspaceOpenRouterIntegrationRecord | null;
+  anthropicApiKeyInput?: string;
+  anthropicIntegrationActionState?: {
+    status: "idle" | "saving" | "saved" | "error";
+    message: string | null;
+  };
+  openRouterApiKeyInput?: string;
+  openRouterIntegrationActionState?: {
+    status: "idle" | "saving" | "saved" | "error";
+    message: string | null;
+  };
   workspaceCodexModelConfig?: WorkspaceCodexModelConfig;
   resolvedWorkspaceCodexModelConfig?: ResolvedWorkspaceCodexModelConfig;
   stage2PromptStages: Stage2PromptStageMeta[];
@@ -96,6 +121,15 @@ type ChannelManagerStage2TabProps = {
   customExamplesJson: string;
   customExamplesError: string | null;
   updateWorkspaceExamplesJson: (value: string) => void;
+  updateWorkspaceCaptionProvider?: (value: Stage2CaptionProvider) => void;
+  updateWorkspaceAnthropicModel?: (value: string) => void;
+  updateWorkspaceOpenRouterModel?: (value: string) => void;
+  updateAnthropicApiKeyInput?: (value: string) => void;
+  saveWorkspaceAnthropicIntegration?: () => Promise<void>;
+  disconnectWorkspaceAnthropicIntegration?: () => Promise<void>;
+  updateOpenRouterApiKeyInput?: (value: string) => void;
+  saveWorkspaceOpenRouterIntegration?: () => Promise<void>;
+  disconnectWorkspaceOpenRouterIntegration?: () => Promise<void>;
   updateCustomExamplesJson: (value: string) => void;
   updateStage2HardConstraint: (
     key: keyof Stage2HardConstraints,
@@ -194,6 +228,55 @@ function formatEffectiveCodexModel(model: string | null): string {
   return known?.label ?? model;
 }
 
+function formatProviderIntegrationStatus(
+  integration:
+    | WorkspaceAnthropicIntegrationRecord
+    | WorkspaceOpenRouterIntegrationRecord
+    | null
+    | undefined
+): string {
+  if (!integration || integration.status === "disconnected") {
+    return "Не подключено";
+  }
+  if (integration.status === "error") {
+    return "Ошибка проверки";
+  }
+  return "Подключено";
+}
+
+function resolveEffectiveStageModelLabel(input: {
+  fieldId: WorkspaceCodexModelStageId;
+  resolvedWorkspaceCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
+  workspaceStage2CaptionProviderConfig: Stage2CaptionProviderConfig;
+}): {
+  label: string;
+  note: string | null;
+} {
+  if (
+    input.workspaceStage2CaptionProviderConfig.provider !== "codex" &&
+    isCaptionProviderRoutedStage(input.fieldId)
+  ) {
+    const providerLabel =
+      input.workspaceStage2CaptionProviderConfig.provider === "openrouter"
+        ? "OpenRouter"
+        : "Anthropic";
+    const providerModel =
+      input.workspaceStage2CaptionProviderConfig.provider === "openrouter"
+        ? input.workspaceStage2CaptionProviderConfig.openrouterModel?.trim() ||
+          DEFAULT_OPENROUTER_CAPTION_MODEL
+        : input.workspaceStage2CaptionProviderConfig.anthropicModel?.trim() ||
+          DEFAULT_ANTHROPIC_CAPTION_MODEL;
+    return {
+      label: providerModel,
+      note: `Сейчас captions для этого этапа идут через ${providerLabel}. Выбор Codex ниже сохранится для возврата на Shared Codex.`
+    };
+  }
+  return {
+    label: formatEffectiveCodexModel(input.resolvedWorkspaceCodexModelConfig[input.fieldId]),
+    note: null
+  };
+}
+
 function renderModelSettingField(input: {
   field: {
     id: WorkspaceCodexModelStageId;
@@ -203,6 +286,7 @@ function renderModelSettingField(input: {
   };
   workspaceCodexModelConfig: WorkspaceCodexModelConfig;
   resolvedWorkspaceCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
+  workspaceStage2CaptionProviderConfig: Stage2CaptionProviderConfig;
   canEditWorkspaceDefaults: boolean;
   updateWorkspaceCodexModelSetting: (
     stageId: WorkspaceCodexModelStageId,
@@ -210,7 +294,11 @@ function renderModelSettingField(input: {
   ) => void;
 }): React.ReactNode {
   const selectedValue = input.workspaceCodexModelConfig[input.field.id];
-  const effectiveModel = input.resolvedWorkspaceCodexModelConfig[input.field.id];
+  const effectiveModel = resolveEffectiveStageModelLabel({
+    fieldId: input.field.id,
+    resolvedWorkspaceCodexModelConfig: input.resolvedWorkspaceCodexModelConfig,
+    workspaceStage2CaptionProviderConfig: input.workspaceStage2CaptionProviderConfig
+  });
   return (
     <div key={input.field.id} className="compact-field">
       <label className="field-label">{input.field.label}</label>
@@ -234,8 +322,9 @@ function renderModelSettingField(input: {
       </select>
       <p className="subtle-text">{input.field.description}</p>
       <p className="subtle-text">
-        Сейчас применяется: <strong>{formatEffectiveCodexModel(effectiveModel)}</strong>
+        Сейчас применяется: <strong>{effectiveModel.label}</strong>
       </p>
+      {effectiveModel.note ? <p className="subtle-text">{effectiveModel.note}</p> : null}
       {input.field.allowsImages ? (
         <p className="subtle-text">Этот маршрут мультимодальный, поэтому Spark здесь скрыт и не используется.</p>
       ) : (
@@ -254,6 +343,19 @@ export function ChannelManagerStage2Tab({
   bannedWordsInput,
   bannedOpenersInput,
   workspaceStage2PromptConfig,
+  workspaceStage2CaptionProviderConfig = DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+  workspaceAnthropicIntegration = null,
+  workspaceOpenRouterIntegration = null,
+  anthropicApiKeyInput = "",
+  anthropicIntegrationActionState = {
+    status: "idle",
+    message: null
+  },
+  openRouterApiKeyInput = "",
+  openRouterIntegrationActionState = {
+    status: "idle",
+    message: null
+  },
   workspaceCodexModelConfig = DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
   resolvedWorkspaceCodexModelConfig = {
     oneShotReference: null,
@@ -309,6 +411,15 @@ export function ChannelManagerStage2Tab({
   customExamplesJson,
   customExamplesError,
   updateWorkspaceExamplesJson,
+  updateWorkspaceCaptionProvider = () => undefined,
+  updateWorkspaceAnthropicModel = () => undefined,
+  updateWorkspaceOpenRouterModel = () => undefined,
+  updateAnthropicApiKeyInput = () => undefined,
+  saveWorkspaceAnthropicIntegration = async () => undefined,
+  disconnectWorkspaceAnthropicIntegration = async () => undefined,
+  updateOpenRouterApiKeyInput = () => undefined,
+  saveWorkspaceOpenRouterIntegration = async () => undefined,
+  disconnectWorkspaceOpenRouterIntegration = async () => undefined,
   updateCustomExamplesJson,
   updateStage2HardConstraint,
   updateBannedWordsInput,
@@ -320,6 +431,12 @@ export function ChannelManagerStage2Tab({
 }: ChannelManagerStage2TabProps) {
   const workerProfiles = listStage2WorkerProfiles();
   const resolvedWorkerProfile = resolveStage2WorkerProfile(stage2WorkerProfileId);
+  const anthropicModelValue =
+    workspaceStage2CaptionProviderConfig.anthropicModel ?? DEFAULT_ANTHROPIC_CAPTION_MODEL;
+  const openRouterModelValue =
+    workspaceStage2CaptionProviderConfig.openrouterModel ?? DEFAULT_OPENROUTER_CAPTION_MODEL;
+  const anthropicIntegrationConnected = workspaceAnthropicIntegration?.status === "connected";
+  const openRouterIntegrationConnected = workspaceOpenRouterIntegration?.status === "connected";
   const referenceOneShotModelField = STAGE2_PROMPT_MODEL_STAGE_FIELDS.find(
     (field) => field.id === "oneShotReference"
   );
@@ -451,6 +568,252 @@ export function ChannelManagerStage2Tab({
           </div>
 
           <div className="compact-field">
+            <p className="field-label">Caption provider</p>
+            <p className="subtle-text">
+              Caption-генерация может идти через Shared Codex, Anthropic API или OpenRouter API.
+              Внешний provider влияет только на `oneShotReference`, `candidateGenerator`,
+              `targetedRepair` и `regenerate`. Перевод, titles, SEO, style discovery и Stage 3
+              остаются на Shared Codex.
+            </p>
+            <div className="compact-grid">
+              <div className="compact-field">
+                <label className="field-label">Провайдер captions</label>
+                <select
+                  className="text-input"
+                  value={workspaceStage2CaptionProviderConfig.provider}
+                  disabled={!canEditWorkspaceDefaults}
+                  onChange={(event) =>
+                    updateWorkspaceCaptionProvider(event.target.value as Stage2CaptionProvider)
+                  }
+                >
+                  <option value="codex">Shared Codex</option>
+                  <option value="anthropic" disabled={!anthropicIntegrationConnected}>
+                    Anthropic API
+                  </option>
+                  <option value="openrouter" disabled={!openRouterIntegrationConnected}>
+                    OpenRouter API
+                  </option>
+                </select>
+                {!anthropicIntegrationConnected || !openRouterIntegrationConnected ? (
+                  <p className="subtle-text">
+                    Внешний provider станет доступен после успешной проверки соответствующего API key.
+                  </p>
+                ) : null}
+              </div>
+              <div className="compact-field">
+                <p className="subtle-text">
+                  Shared Codex остаётся baseline executor даже при внешнем provider, потому что
+                  non-caption stages и Stage 3 не уходят в Anthropic/OpenRouter.
+                </p>
+                <p className="subtle-text">
+                  Для `stable_reference_v6` внешний provider должен поддерживать и structured JSON,
+                  и vision input, потому что `oneShotReference` получает кадры.
+                </p>
+              </div>
+            </div>
+
+            <div className="compact-grid">
+              <div className="compact-field">
+                <label className="field-label">Anthropic model</label>
+                <input
+                  className="text-input mono"
+                  value={anthropicModelValue}
+                  disabled={!canEditWorkspaceDefaults}
+                  onChange={(event) => updateWorkspaceAnthropicModel(event.target.value)}
+                  placeholder={DEFAULT_ANTHROPIC_CAPTION_MODEL}
+                />
+                <p className="subtle-text">
+                  По умолчанию: <code>{DEFAULT_ANTHROPIC_CAPTION_MODEL}</code>. Поле свободное, чтобы
+                  новые model ids можно было переключать без миграции схемы.
+                </p>
+              </div>
+              <div className="compact-field">
+                <label className="field-label">OpenRouter model</label>
+                <input
+                  className="text-input mono"
+                  value={openRouterModelValue}
+                  disabled={!canEditWorkspaceDefaults}
+                  onChange={(event) => updateWorkspaceOpenRouterModel(event.target.value)}
+                  placeholder={DEFAULT_OPENROUTER_CAPTION_MODEL}
+                />
+                <p className="subtle-text">
+                  По умолчанию: <code>{DEFAULT_OPENROUTER_CAPTION_MODEL}</code>. Обычно это slug вроде
+                  <code>anthropic/claude-opus-4.7</code>.
+                </p>
+              </div>
+            </div>
+
+            <div className="compact-grid">
+              <div className="compact-field">
+                <label className="field-label">Anthropic API key</label>
+                <input
+                  className="text-input mono"
+                  type="password"
+                  value={anthropicApiKeyInput}
+                  disabled={!canEditWorkspaceDefaults || anthropicIntegrationActionState.status === "saving"}
+                  placeholder={
+                    workspaceAnthropicIntegration?.apiKeyHint
+                      ? `Сохранён ${workspaceAnthropicIntegration.apiKeyHint}`
+                      : "sk-ant-api03-..."
+                  }
+                  onChange={(event) => updateAnthropicApiKeyInput(event.target.value)}
+                />
+                <p className="subtle-text">
+                  Статус: <strong>{formatProviderIntegrationStatus(workspaceAnthropicIntegration)}</strong>
+                  {workspaceAnthropicIntegration?.apiKeyHint
+                    ? ` · ${workspaceAnthropicIntegration.apiKeyHint}`
+                    : ""}
+                </p>
+                {workspaceAnthropicIntegration?.connectedAt ? (
+                  <p className="subtle-text">
+                    Последняя успешная проверка:{" "}
+                    {new Date(workspaceAnthropicIntegration.connectedAt).toLocaleString("ru-RU")}
+                  </p>
+                ) : null}
+                {workspaceAnthropicIntegration?.lastError ? (
+                  <p className="subtle-text danger-text">{workspaceAnthropicIntegration.lastError}</p>
+                ) : null}
+                {anthropicIntegrationActionState.message ? (
+                  <p
+                    className={`subtle-text ${anthropicIntegrationActionState.status === "error" ? "danger-text" : ""}`}
+                  >
+                    {anthropicIntegrationActionState.message}
+                  </p>
+                ) : null}
+              </div>
+              <div className="compact-field">
+                <label className="field-label">Настройка Anthropic</label>
+                <div className="control-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={!canEditWorkspaceDefaults || anthropicIntegrationActionState.status === "saving"}
+                    onClick={() => {
+                      void saveWorkspaceAnthropicIntegration();
+                    }}
+                  >
+                    {workspaceAnthropicIntegration?.status === "connected"
+                      ? "Обновить key и проверить"
+                      : "Подключить key и проверить"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={
+                      !canEditWorkspaceDefaults ||
+                      anthropicIntegrationActionState.status === "saving" ||
+                      !workspaceAnthropicIntegration ||
+                      workspaceAnthropicIntegration.status === "disconnected"
+                    }
+                    onClick={() => {
+                      void disconnectWorkspaceAnthropicIntegration();
+                    }}
+                  >
+                    Отключить Anthropic
+                  </button>
+                </div>
+                <p className="subtle-text">
+                  <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noreferrer">
+                    API keys
+                  </a>
+                  {" · "}
+                  <a href="https://platform.claude.com/settings/billing" target="_blank" rel="noreferrer">
+                    Billing
+                  </a>
+                  {" · "}
+                  <a
+                    href="https://docs.anthropic.com/en/docs/about-claude/pricing"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Pricing
+                  </a>
+                </p>
+              </div>
+              <div className="compact-field">
+                <label className="field-label">OpenRouter API key</label>
+                <input
+                  className="text-input mono"
+                  type="password"
+                  value={openRouterApiKeyInput}
+                  disabled={!canEditWorkspaceDefaults || openRouterIntegrationActionState.status === "saving"}
+                  placeholder={
+                    workspaceOpenRouterIntegration?.apiKeyHint
+                      ? `Сохранён ${workspaceOpenRouterIntegration.apiKeyHint}`
+                      : "sk-or-v1-..."
+                  }
+                  onChange={(event) => updateOpenRouterApiKeyInput(event.target.value)}
+                />
+                <p className="subtle-text">
+                  Статус: <strong>{formatProviderIntegrationStatus(workspaceOpenRouterIntegration)}</strong>
+                  {workspaceOpenRouterIntegration?.apiKeyHint
+                    ? ` · ${workspaceOpenRouterIntegration.apiKeyHint}`
+                    : ""}
+                </p>
+                {workspaceOpenRouterIntegration?.connectedAt ? (
+                  <p className="subtle-text">
+                    Последняя успешная проверка:{" "}
+                    {new Date(workspaceOpenRouterIntegration.connectedAt).toLocaleString("ru-RU")}
+                  </p>
+                ) : null}
+                {workspaceOpenRouterIntegration?.lastError ? (
+                  <p className="subtle-text danger-text">{workspaceOpenRouterIntegration.lastError}</p>
+                ) : null}
+                {openRouterIntegrationActionState.message ? (
+                  <p
+                    className={`subtle-text ${openRouterIntegrationActionState.status === "error" ? "danger-text" : ""}`}
+                  >
+                    {openRouterIntegrationActionState.message}
+                  </p>
+                ) : null}
+                <label className="field-label">Настройка OpenRouter</label>
+                <div className="control-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={!canEditWorkspaceDefaults || openRouterIntegrationActionState.status === "saving"}
+                    onClick={() => {
+                      void saveWorkspaceOpenRouterIntegration();
+                    }}
+                  >
+                    {workspaceOpenRouterIntegration?.status === "connected"
+                      ? "Обновить key и проверить"
+                      : "Подключить key и проверить"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={
+                      !canEditWorkspaceDefaults ||
+                      openRouterIntegrationActionState.status === "saving" ||
+                      !workspaceOpenRouterIntegration ||
+                      workspaceOpenRouterIntegration.status === "disconnected"
+                    }
+                    onClick={() => {
+                      void disconnectWorkspaceOpenRouterIntegration();
+                    }}
+                  >
+                    Отключить OpenRouter
+                  </button>
+                </div>
+                <p className="subtle-text">
+                  <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">
+                    API keys
+                  </a>
+                  {" · "}
+                  <a href="https://openrouter.ai/settings/credits/" target="_blank" rel="noreferrer">
+                    Credits
+                  </a>
+                  {" · "}
+                  <a href="https://openrouter.ai/pricing" target="_blank" rel="noreferrer">
+                    Pricing
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="compact-field">
             <p className="field-label">Маршрутизация моделей Stage 2</p>
             <p className="subtle-text">
               Модель выбирается отдельно для каждого LLM-подэтапа. Мультимодальные шаги
@@ -506,6 +869,7 @@ export function ChannelManagerStage2Tab({
                       field: referenceOneShotModelField,
                       workspaceCodexModelConfig,
                       resolvedWorkspaceCodexModelConfig,
+                      workspaceStage2CaptionProviderConfig,
                       canEditWorkspaceDefaults,
                       updateWorkspaceCodexModelSetting
                     })
@@ -577,6 +941,7 @@ export function ChannelManagerStage2Tab({
                             field: modelField,
                             workspaceCodexModelConfig,
                             resolvedWorkspaceCodexModelConfig,
+                            workspaceStage2CaptionProviderConfig,
                             canEditWorkspaceDefaults,
                             updateWorkspaceCodexModelSetting
                           })
@@ -606,6 +971,7 @@ export function ChannelManagerStage2Tab({
                   field,
                   workspaceCodexModelConfig,
                   resolvedWorkspaceCodexModelConfig,
+                  workspaceStage2CaptionProviderConfig,
                   canEditWorkspaceDefaults,
                   updateWorkspaceCodexModelSetting
                 })
@@ -621,6 +987,7 @@ export function ChannelManagerStage2Tab({
                   field,
                   workspaceCodexModelConfig,
                   resolvedWorkspaceCodexModelConfig,
+                  workspaceStage2CaptionProviderConfig,
                   canEditWorkspaceDefaults,
                   updateWorkspaceCodexModelSetting
                 })

@@ -1,20 +1,29 @@
 import { requireAuth } from "../../../lib/auth/guards";
 import {
   getWorkspaceCodexModelConfig,
+  getWorkspaceStage2CaptionProviderConfig,
   getWorkspaceStage2PromptConfig,
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints,
   updateWorkspaceCodexModelConfig,
+  updateWorkspaceStage2CaptionProviderConfig,
   updateWorkspaceStage2PromptConfig,
   updateWorkspaceStage2HardConstraints,
   updateWorkspaceStage2ExamplesCorpusJson
 } from "../../../lib/team-store";
+import {
+  getWorkspaceAnthropicStatus
+} from "../../../lib/workspace-anthropic";
+import {
+  getWorkspaceOpenRouterStatus
+} from "../../../lib/workspace-openrouter";
 import { type Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { type Stage2HardConstraints } from "../../../lib/stage2-channel-config";
 import {
   resolveWorkspaceCodexModelConfig,
   type WorkspaceCodexModelConfig
 } from "../../../lib/workspace-codex-models";
+import { type Stage2CaptionProviderConfig } from "../../../lib/stage2-caption-provider";
 
 export const runtime = "nodejs";
 
@@ -23,17 +32,29 @@ type PatchBody = {
   stage2HardConstraints?: Stage2HardConstraints;
   stage2PromptConfig?: Stage2PromptConfig;
   codexModelConfig?: WorkspaceCodexModelConfig;
+  stage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
 };
 
 export async function GET(): Promise<Response> {
   try {
     const auth = await requireAuth();
+    const workspaceAnthropicIntegration =
+      auth.membership.role === "owner"
+        ? await getWorkspaceAnthropicStatus(auth)
+        : null;
+    const workspaceOpenRouterIntegration =
+      auth.membership.role === "owner"
+        ? await getWorkspaceOpenRouterStatus(auth)
+        : null;
     return Response.json(
       {
         stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
         stage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
         stage2PromptConfig: getWorkspaceStage2PromptConfig(auth.workspace.id),
         codexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
+        stage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(auth.workspace.id),
+        workspaceAnthropicIntegration,
+        workspaceOpenRouterIntegration,
         resolvedCodexModelConfig: resolveWorkspaceCodexModelConfig({
           config: getWorkspaceCodexModelConfig(auth.workspace.id),
           deployStage2Model: process.env.CODEX_STAGE2_MODEL,
@@ -63,7 +84,8 @@ export async function PATCH(request: Request): Promise<Response> {
       body.stage2ExamplesCorpusJson === undefined &&
       body.stage2HardConstraints === undefined &&
       body.stage2PromptConfig === undefined &&
-      body.codexModelConfig === undefined
+      body.codexModelConfig === undefined &&
+      body.stage2CaptionProviderConfig === undefined
     )
   ) {
     return Response.json({ error: "Invalid body." }, { status: 400 });
@@ -90,12 +112,21 @@ export async function PATCH(request: Request): Promise<Response> {
     if (body.codexModelConfig) {
       workspace = updateWorkspaceCodexModelConfig(auth.workspace.id, body.codexModelConfig);
     }
+    if (body.stage2CaptionProviderConfig) {
+      workspace = updateWorkspaceStage2CaptionProviderConfig(
+        auth.workspace.id,
+        body.stage2CaptionProviderConfig
+      );
+    }
     return Response.json(
       {
         stage2ExamplesCorpusJson: workspace.stage2ExamplesCorpusJson,
         stage2HardConstraints: workspace.stage2HardConstraints,
         stage2PromptConfig: workspace.stage2PromptConfig,
         codexModelConfig: workspace.codexModelConfig,
+        stage2CaptionProviderConfig: workspace.stage2CaptionProviderConfig,
+        workspaceAnthropicIntegration: await getWorkspaceAnthropicStatus(auth),
+        workspaceOpenRouterIntegration: await getWorkspaceOpenRouterStatus(auth),
         resolvedCodexModelConfig: resolveWorkspaceCodexModelConfig({
           config: workspace.codexModelConfig,
           deployStage2Model: process.env.CODEX_STAGE2_MODEL,

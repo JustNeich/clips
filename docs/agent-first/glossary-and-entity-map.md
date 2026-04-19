@@ -58,6 +58,9 @@
 | "ограничения" | hard constraints for TOP/BOTTOM and banned phrases | Stage 2 tab |
 | "линия" / "формат пайплайна" | selected Stage 2 worker profile | Stage 2 tab |
 | "модели" | workspace Stage 2 / Stage 3 routing | owner `Общие настройки` |
+| "Shared Codex" / "Connect Codex" | baseline workspace AI integration и owner device-auth control | Header user block, owner menu `Управление` |
+| "Anthropic" / "caption provider" | owner-only caption-provider overlay for eligible Stage 2 caption stages | Channel Manager → `Общие настройки` → `Caption provider` |
+| "интеграции" / "подключения AI" | workspace-level readiness layer for Stage 2 runtime | Header `Shared Codex`, owner defaults, `/api/workspace/integrations/**` |
 | "template-lab" | calibration workbench | `/design/template-lab` |
 | "template-road" | live template style editor | `/design/template-road` |
 | "шаблон" | Stage 3 visual template or template record | Step 3 render config / internal design tooling |
@@ -66,7 +69,7 @@
 
 ## Workspace
 
-- контейнер команды, shared Codex и owner-wide defaults;
+- контейнер команды, workspace AI integrations и owner-wide defaults;
 - пользователь почти никогда не называет его прямо;
 - сигналы:
   - "у всей команды сломалось одно и то же"

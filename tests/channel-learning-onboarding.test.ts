@@ -70,7 +70,15 @@ import { ViralShortsWorkerService } from "../lib/viral-shorts-worker/service";
 class StaticExecutor implements JsonStageExecutor {
   constructor(private readonly response: unknown) {}
 
-  async runJson<T>(): Promise<T> {
+  async runJson<T>(_input: {
+    stageId: string;
+    prompt: string;
+    schema: unknown;
+    imagePaths?: string[];
+    timeoutMs?: number;
+    model?: string | null;
+    reasoningEffort?: string | null;
+  }): Promise<T> {
     return this.response as T;
   }
 }
@@ -82,8 +90,13 @@ class CaptureExecutor implements JsonStageExecutor {
   constructor(private readonly response: unknown) {}
 
   async runJson<T>(input: {
+    stageId: string;
     prompt: string;
+    schema: unknown;
     imagePaths?: string[];
+    timeoutMs?: number;
+    model?: string | null;
+    reasoningEffort?: string | null;
   }): Promise<T> {
     this.prompt = input.prompt;
     this.imagePaths = input.imagePaths ?? [];

@@ -13,10 +13,13 @@ import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2
 import { Stage2StyleProfile } from "../../../lib/stage2-channel-learning";
 import {
   getWorkspaceCodexModelConfig,
+  getWorkspaceStage2CaptionProviderConfig,
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints
 } from "../../../lib/team-store";
 import { resolveWorkspaceCodexModelConfig } from "../../../lib/workspace-codex-models";
+import { getWorkspaceAnthropicStatus } from "../../../lib/workspace-anthropic";
+import { getWorkspaceOpenRouterStatus } from "../../../lib/workspace-openrouter";
 
 export const runtime = "nodejs";
 
@@ -50,6 +53,14 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const auth = await requireAuth(request);
     const channels = await listChannelsWithStats(auth.workspace.id);
+    const workspaceAnthropicIntegration =
+      auth.membership.role === "owner"
+        ? await getWorkspaceAnthropicStatus(auth)
+        : null;
+    const workspaceOpenRouterIntegration =
+      auth.membership.role === "owner"
+        ? await getWorkspaceOpenRouterStatus(auth)
+        : null;
     const visibleChannels = await Promise.all(
       channels.map(async (channel) => {
         const explicitAccess = await getChannelAccessForUser(channel.id, auth.user.id);
@@ -81,6 +92,9 @@ export async function GET(request: Request): Promise<Response> {
         workspaceStage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
         workspaceStage2PromptConfig: auth.workspace.stage2PromptConfig,
         workspaceCodexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
+        workspaceStage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(auth.workspace.id),
+        workspaceAnthropicIntegration,
+        workspaceOpenRouterIntegration,
         workspaceResolvedCodexModelConfig: resolveWorkspaceCodexModelConfig({
           config: getWorkspaceCodexModelConfig(auth.workspace.id),
           deployStage2Model: process.env.CODEX_STAGE2_MODEL,

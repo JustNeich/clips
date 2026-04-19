@@ -13,6 +13,8 @@ import {
   ChannelAsset,
   ChannelAssetKind,
   ChannelFeedbackResponse,
+  WorkspaceAnthropicIntegrationRecord,
+  WorkspaceOpenRouterIntegrationRecord,
   WorkspaceMemberRecord,
   UserRecord
 } from "./types";
@@ -41,6 +43,14 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../../lib/stage2-channel-config";
+import {
+  DEFAULT_ANTHROPIC_CAPTION_MODEL,
+  DEFAULT_OPENROUTER_CAPTION_MODEL,
+  DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+  normalizeStage2CaptionProviderConfig,
+  type Stage2CaptionProvider,
+  type Stage2CaptionProviderConfig
+} from "../../lib/stage2-caption-provider";
 import {
   normalizeWorkspaceCodexModelConfig,
   type ResolvedWorkspaceCodexModelConfig,
@@ -175,6 +185,9 @@ type ChannelManagerProps = {
   workspaceStage2ExamplesCorpusJson: string;
   workspaceStage2HardConstraints: Stage2HardConstraints;
   workspaceStage2PromptConfig: Stage2PromptConfig;
+  workspaceStage2CaptionProviderConfig: Stage2CaptionProviderConfig;
+  workspaceAnthropicIntegration: WorkspaceAnthropicIntegrationRecord | null;
+  workspaceOpenRouterIntegration: WorkspaceOpenRouterIntegrationRecord | null;
   workspaceCodexModelConfig: WorkspaceCodexModelConfig;
   workspaceResolvedCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
   activeChannelId: string | null;
@@ -216,6 +229,7 @@ type ChannelManagerProps = {
       stage2ExamplesCorpusJson: string;
       stage2HardConstraints: Stage2HardConstraints;
       stage2PromptConfig: Stage2PromptConfig;
+      stage2CaptionProviderConfig: Stage2CaptionProviderConfig;
       codexModelConfig: WorkspaceCodexModelConfig;
     }>
   ) => Promise<void>;
@@ -234,6 +248,16 @@ type ChannelManagerProps = {
   onSelectYouTubeDestination: (channelId: string, selectedYoutubeChannelId: string) => Promise<void>;
 };
 
+type AnthropicIntegrationActionState = {
+  status: "idle" | "saving" | "saved" | "error";
+  message: string | null;
+};
+
+type OpenRouterIntegrationActionState = {
+  status: "idle" | "saving" | "saved" | "error";
+  message: string | null;
+};
+
 export function ChannelManager({
   open,
   initialTab = null,
@@ -241,6 +265,9 @@ export function ChannelManager({
   workspaceStage2ExamplesCorpusJson,
   workspaceStage2HardConstraints: workspaceStage2HardConstraintsProp,
   workspaceStage2PromptConfig: workspaceStage2PromptConfigProp,
+  workspaceStage2CaptionProviderConfig: workspaceStage2CaptionProviderConfigProp,
+  workspaceAnthropicIntegration: workspaceAnthropicIntegrationProp,
+  workspaceOpenRouterIntegration: workspaceOpenRouterIntegrationProp,
   workspaceCodexModelConfig: workspaceCodexModelConfigProp,
   workspaceResolvedCodexModelConfig,
   activeChannelId,
@@ -324,6 +351,26 @@ export function ChannelManager({
   const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
     normalizeStage2PromptConfig(workspaceStage2PromptConfigProp)
   );
+  const [workspaceStage2CaptionProviderConfig, setWorkspaceStage2CaptionProviderConfig] =
+    useState<Stage2CaptionProviderConfig>(
+      normalizeStage2CaptionProviderConfig(workspaceStage2CaptionProviderConfigProp)
+    );
+  const [workspaceAnthropicIntegration, setWorkspaceAnthropicIntegration] =
+    useState<WorkspaceAnthropicIntegrationRecord | null>(workspaceAnthropicIntegrationProp);
+  const [workspaceOpenRouterIntegration, setWorkspaceOpenRouterIntegration] =
+    useState<WorkspaceOpenRouterIntegrationRecord | null>(workspaceOpenRouterIntegrationProp);
+  const [anthropicApiKeyInput, setAnthropicApiKeyInput] = useState("");
+  const [anthropicIntegrationActionState, setAnthropicIntegrationActionState] =
+    useState<AnthropicIntegrationActionState>({
+      status: "idle",
+      message: null
+    });
+  const [openRouterApiKeyInput, setOpenRouterApiKeyInput] = useState("");
+  const [openRouterIntegrationActionState, setOpenRouterIntegrationActionState] =
+    useState<OpenRouterIntegrationActionState>({
+      status: "idle",
+      message: null
+    });
   const [workspaceCodexModelConfig, setWorkspaceCodexModelConfig] =
     useState<WorkspaceCodexModelConfig>(
       normalizeWorkspaceCodexModelConfig(workspaceCodexModelConfigProp)
@@ -404,6 +451,7 @@ export function ChannelManager({
         stage2ExamplesCorpusJson: string;
         stage2HardConstraints: Stage2HardConstraints;
         stage2PromptConfig: Stage2PromptConfig;
+        stage2CaptionProviderConfig: Stage2CaptionProviderConfig;
         codexModelConfig: WorkspaceCodexModelConfig;
       }>
     ): Promise<void> => {
@@ -644,12 +692,14 @@ export function ChannelManager({
     nextWorkspaceExamplesJson: string,
     nextHardConstraints: Stage2HardConstraints,
     nextPromptConfig: Stage2PromptConfig,
+    nextCaptionProviderConfig: Stage2CaptionProviderConfig,
     nextCodexModelConfig: WorkspaceCodexModelConfig
   ): string =>
     JSON.stringify({
       workspaceStage2ExamplesCorpusJson: nextWorkspaceExamplesJson,
       workspaceStage2HardConstraints: nextHardConstraints,
       workspaceStage2PromptConfig: nextPromptConfig,
+      workspaceStage2CaptionProviderConfig: nextCaptionProviderConfig,
       workspaceCodexModelConfig: nextCodexModelConfig
     });
 
@@ -661,6 +711,9 @@ export function ChannelManager({
   useEffect(() => {
     const normalizedHardConstraints = normalizeStage2HardConstraints(workspaceStage2HardConstraintsProp);
     const normalizedPromptConfig = normalizeStage2PromptConfig(workspaceStage2PromptConfigProp);
+    const normalizedCaptionProviderConfig = normalizeStage2CaptionProviderConfig(
+      workspaceStage2CaptionProviderConfigProp
+    );
     const normalizedCodexModelConfig = normalizeWorkspaceCodexModelConfig(
       workspaceCodexModelConfigProp
     );
@@ -670,6 +723,13 @@ export function ChannelManager({
     setWorkspaceExamplesJson(workspaceStage2ExamplesCorpusJson);
     setWorkspaceExamplesError(null);
     setWorkspaceStage2PromptConfig(normalizedPromptConfig);
+    setWorkspaceStage2CaptionProviderConfig(normalizedCaptionProviderConfig);
+    setWorkspaceAnthropicIntegration(workspaceAnthropicIntegrationProp);
+    setWorkspaceOpenRouterIntegration(workspaceOpenRouterIntegrationProp);
+    setAnthropicApiKeyInput("");
+    setAnthropicIntegrationActionState({ status: "idle", message: null });
+    setOpenRouterApiKeyInput("");
+    setOpenRouterIntegrationActionState({ status: "idle", message: null });
     setWorkspaceCodexModelConfig(normalizedCodexModelConfig);
     clearAutosaveReset("stage2Defaults");
 
@@ -677,6 +737,7 @@ export function ChannelManager({
       workspaceStage2ExamplesCorpusJson,
       normalizedHardConstraints,
       normalizedPromptConfig,
+      normalizedCaptionProviderConfig,
       normalizedCodexModelConfig
     );
     skipAutosaveRef.current.stage2Defaults = true;
@@ -723,6 +784,7 @@ export function ChannelManager({
         workspaceStage2ExamplesCorpusJson,
         normalizedHardConstraints,
         normalizedPromptConfig,
+        normalizedCaptionProviderConfig,
         normalizedCodexModelConfig
       ),
       render: buildRenderSnapshot(activeChannel.templateId)
@@ -749,6 +811,9 @@ export function ChannelManager({
     workspaceStage2ExamplesCorpusJson,
     workspaceStage2HardConstraintsProp,
     workspaceStage2PromptConfigProp,
+    workspaceStage2CaptionProviderConfigProp,
+    workspaceAnthropicIntegrationProp,
+    workspaceOpenRouterIntegrationProp,
     workspaceCodexModelConfigProp
   ]);
 
@@ -934,6 +999,7 @@ export function ChannelManager({
       workspaceExamplesJson,
       stage2HardConstraints,
       workspaceStage2PromptConfig,
+      workspaceStage2CaptionProviderConfig,
       workspaceCodexModelConfig
     );
     if (nextSnapshot === persistedSnapshotRef.current.stage2Defaults) {
@@ -949,6 +1015,7 @@ export function ChannelManager({
         stage2ExamplesCorpusJson: workspaceExamplesJson,
         stage2HardConstraints,
         stage2PromptConfig: workspaceStage2PromptConfig,
+        stage2CaptionProviderConfig: workspaceStage2CaptionProviderConfig,
         codexModelConfig: workspaceCodexModelConfig
       })
         .then(() => {
@@ -982,6 +1049,7 @@ export function ChannelManager({
     workspaceExamplesJson,
     stage2HardConstraints,
     workspaceStage2PromptConfig,
+    workspaceStage2CaptionProviderConfig,
     workspaceCodexModelConfig
   ]);
 
@@ -1286,6 +1354,255 @@ export function ChannelManager({
     }
   };
 
+  const updateWorkspaceCaptionProvider = (provider: Stage2CaptionProvider) => {
+    setWorkspaceStage2CaptionProviderConfig((current) =>
+      normalizeStage2CaptionProviderConfig({
+        ...current,
+        provider
+      })
+    );
+  };
+
+  const updateWorkspaceAnthropicModel = (value: string) => {
+    setWorkspaceStage2CaptionProviderConfig((current) => ({
+      ...current,
+      anthropicModel: value
+    }));
+  };
+
+  const updateWorkspaceOpenRouterModel = (value: string) => {
+    setWorkspaceStage2CaptionProviderConfig((current) => ({
+      ...current,
+      openrouterModel: value
+    }));
+  };
+
+  const saveWorkspaceAnthropicIntegration = async (): Promise<void> => {
+    const model =
+      workspaceStage2CaptionProviderConfig.anthropicModel?.trim() ||
+      DEFAULT_ANTHROPIC_CAPTION_MODEL;
+    const apiKey = anthropicApiKeyInput.trim();
+    if (!apiKey) {
+      setAnthropicIntegrationActionState({
+        status: "error",
+        message: "Введите Anthropic API key, чтобы подключить captions."
+      });
+      return;
+    }
+
+    setAnthropicIntegrationActionState({
+      status: "saving",
+      message: "Проверяем Anthropic API key…"
+    });
+    showManagerSaveNotice("neutral", "Проверяем Anthropic API key…");
+    try {
+      const response = await fetch("/api/workspace/integrations/anthropic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save",
+          apiKey,
+          model
+        })
+      });
+      if (!response.ok) {
+        throw new Error("Не удалось сохранить Anthropic integration.");
+      }
+      const body = (await response.json()) as {
+        integration?: WorkspaceAnthropicIntegrationRecord;
+      };
+      const integration = body.integration ?? null;
+      setWorkspaceAnthropicIntegration(integration);
+      if (integration?.status === "connected") {
+        setAnthropicApiKeyInput("");
+        setAnthropicIntegrationActionState({
+          status: "saved",
+          message: "Anthropic captions подключены и проверены."
+        });
+        showManagerSaveNotice("success", "Anthropic captions подключены.", true);
+        return;
+      }
+      const message =
+        integration?.lastError?.trim() || "Anthropic API key не прошёл проверку.";
+      setAnthropicIntegrationActionState({
+        status: "error",
+        message
+      });
+      showManagerSaveNotice("error", message);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Не удалось сохранить Anthropic integration.";
+      setAnthropicIntegrationActionState({
+        status: "error",
+        message
+      });
+      showManagerSaveNotice("error", message);
+    }
+  };
+
+  const disconnectWorkspaceAnthropicIntegration = async (): Promise<void> => {
+    setAnthropicIntegrationActionState({
+      status: "saving",
+      message: "Отключаем Anthropic captions…"
+    });
+    showManagerSaveNotice("neutral", "Отключаем Anthropic captions…");
+    try {
+      const response = await fetch("/api/workspace/integrations/anthropic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "disconnect"
+        })
+      });
+      if (!response.ok) {
+        throw new Error("Не удалось отключить Anthropic integration.");
+      }
+      const body = (await response.json()) as {
+        integration?: WorkspaceAnthropicIntegrationRecord;
+      };
+      setWorkspaceAnthropicIntegration(body.integration ?? null);
+      setAnthropicApiKeyInput("");
+      setWorkspaceStage2CaptionProviderConfig((current) =>
+        current.provider === "anthropic"
+          ? {
+              ...current,
+              provider: "codex"
+            }
+          : current
+      );
+      setAnthropicIntegrationActionState({
+        status: "saved",
+        message: "Anthropic captions отключены."
+      });
+      showManagerSaveNotice("success", "Anthropic captions отключены.", true);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Не удалось отключить Anthropic integration.";
+      setAnthropicIntegrationActionState({
+        status: "error",
+        message
+      });
+      showManagerSaveNotice("error", message);
+    }
+  };
+
+  const saveWorkspaceOpenRouterIntegration = async (): Promise<void> => {
+    const model =
+      workspaceStage2CaptionProviderConfig.openrouterModel?.trim() ||
+      DEFAULT_OPENROUTER_CAPTION_MODEL;
+    const apiKey = openRouterApiKeyInput.trim();
+    if (!apiKey) {
+      setOpenRouterIntegrationActionState({
+        status: "error",
+        message: "Введите OpenRouter API key, чтобы подключить captions."
+      });
+      return;
+    }
+
+    setOpenRouterIntegrationActionState({
+      status: "saving",
+      message: "Проверяем OpenRouter API key…"
+    });
+    showManagerSaveNotice("neutral", "Проверяем OpenRouter API key…");
+    try {
+      const response = await fetch("/api/workspace/integrations/openrouter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save",
+          apiKey,
+          model
+        })
+      });
+      if (!response.ok) {
+        throw new Error("Не удалось сохранить OpenRouter integration.");
+      }
+      const body = (await response.json()) as {
+        integration?: WorkspaceOpenRouterIntegrationRecord;
+      };
+      const integration = body.integration ?? null;
+      setWorkspaceOpenRouterIntegration(integration);
+      if (integration?.status === "connected") {
+        setOpenRouterApiKeyInput("");
+        setOpenRouterIntegrationActionState({
+          status: "saved",
+          message: "OpenRouter captions подключены и проверены."
+        });
+        showManagerSaveNotice("success", "OpenRouter captions подключены.", true);
+        return;
+      }
+      const message =
+        integration?.lastError?.trim() || "OpenRouter API key не прошёл проверку.";
+      setOpenRouterIntegrationActionState({
+        status: "error",
+        message
+      });
+      showManagerSaveNotice("error", message);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Не удалось сохранить OpenRouter integration.";
+      setOpenRouterIntegrationActionState({
+        status: "error",
+        message
+      });
+      showManagerSaveNotice("error", message);
+    }
+  };
+
+  const disconnectWorkspaceOpenRouterIntegration = async (): Promise<void> => {
+    setOpenRouterIntegrationActionState({
+      status: "saving",
+      message: "Отключаем OpenRouter captions…"
+    });
+    showManagerSaveNotice("neutral", "Отключаем OpenRouter captions…");
+    try {
+      const response = await fetch("/api/workspace/integrations/openrouter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "disconnect"
+        })
+      });
+      if (!response.ok) {
+        throw new Error("Не удалось отключить OpenRouter integration.");
+      }
+      const body = (await response.json()) as {
+        integration?: WorkspaceOpenRouterIntegrationRecord;
+      };
+      setWorkspaceOpenRouterIntegration(body.integration ?? null);
+      setOpenRouterApiKeyInput("");
+      setWorkspaceStage2CaptionProviderConfig((current) =>
+        current.provider === "openrouter"
+          ? {
+              ...current,
+              provider: "codex"
+            }
+          : current
+      );
+      setOpenRouterIntegrationActionState({
+        status: "saved",
+        message: "OpenRouter captions отключены."
+      });
+      showManagerSaveNotice("success", "OpenRouter captions отключены.", true);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Не удалось отключить OpenRouter integration.";
+      setOpenRouterIntegrationActionState({
+        status: "error",
+        message
+      });
+      showManagerSaveNotice("error", message);
+    }
+  };
+
   const updateCustomExamplesJson = (value: string) => {
     setCustomExamplesJson(value);
     try {
@@ -1506,6 +1823,13 @@ export function ChannelManager({
                 bannedWordsInput={bannedWordsInput}
                 bannedOpenersInput={bannedOpenersInput}
                 workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+                workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}
+                workspaceAnthropicIntegration={workspaceAnthropicIntegration}
+                workspaceOpenRouterIntegration={workspaceOpenRouterIntegration}
+                anthropicApiKeyInput={anthropicApiKeyInput}
+                anthropicIntegrationActionState={anthropicIntegrationActionState}
+                openRouterApiKeyInput={openRouterApiKeyInput}
+                openRouterIntegrationActionState={openRouterIntegrationActionState}
                 workspaceCodexModelConfig={workspaceCodexModelConfig}
                 resolvedWorkspaceCodexModelConfig={workspaceResolvedCodexModelConfig}
                 stage2PromptStages={stage2PromptStages}
@@ -1569,6 +1893,15 @@ export function ChannelManager({
                 customExamplesJson={customExamplesJson}
                 customExamplesError={customExamplesError}
                 updateWorkspaceExamplesJson={updateWorkspaceExamplesJson}
+                updateWorkspaceCaptionProvider={updateWorkspaceCaptionProvider}
+                updateWorkspaceAnthropicModel={updateWorkspaceAnthropicModel}
+                updateWorkspaceOpenRouterModel={updateWorkspaceOpenRouterModel}
+                updateAnthropicApiKeyInput={setAnthropicApiKeyInput}
+                saveWorkspaceAnthropicIntegration={saveWorkspaceAnthropicIntegration}
+                disconnectWorkspaceAnthropicIntegration={disconnectWorkspaceAnthropicIntegration}
+                updateOpenRouterApiKeyInput={setOpenRouterApiKeyInput}
+                saveWorkspaceOpenRouterIntegration={saveWorkspaceOpenRouterIntegration}
+                disconnectWorkspaceOpenRouterIntegration={disconnectWorkspaceOpenRouterIntegration}
                 updateCustomExamplesJson={updateCustomExamplesJson}
                 updateStage2HardConstraint={updateStage2HardConstraint}
                 updateBannedWordsInput={updateBannedWordsInput}

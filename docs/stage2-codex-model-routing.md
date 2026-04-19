@@ -1,40 +1,92 @@
-# Stage 2 Codex Model Routing
+# Stage 2 Provider And Model Routing
+
+Файл сохранён под историческим именем `stage2-codex-model-routing.md`, но теперь он описывает всю текущую routing-модель Stage 2, а не только Codex model policy.
 
 ## Purpose
 
-Stage 2 no longer uses one shared Codex model for the whole pipeline. Model policy is now stored and resolved per substage so text-only routes can use `gpt-5.3-codex-spark`, while multimodal routes stay on an image-capable model.
+В Stage 2 сейчас есть две независимые оси маршрутизации:
 
-## Stage Mapping
+1. `caption provider routing`
+   - решает, остаются ли eligible caption-writing stages на Shared Codex или уходят на Anthropic/OpenRouter API
+2. `Codex model routing`
+   - решает, какие модели использует Codex-backed часть Stage 2 по конкретным stage-ам
 
-### Multimodal stages
+Главная инварианта: Stage 2 больше нельзя описывать как single-provider или single-model pipeline.
+
+## 1. Baseline executor truth
+
+- Shared Codex остаётся baseline workspace integration для Stage 2.
+- Anthropic/OpenRouter не заменяют Shared Codex целиком; они only overlay eligible caption-writing stages.
+- Поэтому любой Stage 2 run по-прежнему требует готовую Shared Codex integration.
+- Если `provider = anthropic` или `provider = openrouter`, но внешний integration не готов, runtime падает fail-closed и не делает silent fallback обратно на Codex.
+
+Основной runtime entry:
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-codex-executor.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/viral-shorts-worker/executor.ts`
+
+## 2. Caption provider routing
+
+Workspace setting:
+- `workspaces.stage2_caption_provider_json`
+
+Нормализованный config:
+
+```ts
+type Stage2CaptionProviderConfig = {
+  provider: "codex" | "anthropic" | "openrouter";
+  anthropicModel: string | null;
+  openrouterModel: string | null;
+};
+```
+
+Current default:
+- `provider = "codex"`
+- `anthropicModel = "claude-opus-4-6"`
+- `openrouterModel = "anthropic/claude-opus-4.7"`
+
+### Eligible external-provider stages
+
+Только эти stages могут уйти на Anthropic/OpenRouter:
+
+- `oneShotReference`
+- `candidateGenerator`
+- `targetedRepair`
+- `regenerate`
+
+### Always-Codex stages
+
+Эти stages остаются на Shared Codex даже при `provider = anthropic` или `provider = openrouter`:
 
 - `analyzer`
 - `styleDiscovery`
-
-These stages may send real `imagePaths` into Codex. Spark is never used here.
-
-### Text-only stages
-
-- `selector`
-- `writer`
-- `critic`
-- `rewriter`
-- `finalSelector`
-- `titles`
+- `contextPacket`
+- `qualityCourt`
+- `captionHighlighting`
+- `captionTranslation`
+- `titleWriter`
 - `seo`
-- `regenerate`
+- Stage 3 planner / agent flows
 
-These stages work from textual digests, saved analysis, examples, or shortlisted options. Spark is allowed here.
+### Runtime behavior
 
-## Resolution Rules
+- `createStage2CodexExecutorContext()` всегда сначала поднимает Shared Codex integration.
+- Если provider = `anthropic` или `provider = openrouter`, runtime дополнительно поднимает внешний executor и подменяет effective model только для eligible stages.
+- `HybridJsonStageExecutor` маршрутизирует eligible stages во внешний executor, а все остальные — в Codex executor.
+- На Anthropic/OpenRouter stages runtime не передаёт Codex-specific `reasoningEffort`.
 
-Model settings are stored in `workspace_codex_model_config_json` and normalized by `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/workspace-codex-models.ts`.
+## 3. Codex model routing
 
-Resolution order per stage:
+Workspace store:
+- `workspaces.workspace_codex_model_config_json`
 
-1. explicit workspace override for that stage
-2. deploy default from env
-3. safe built-in fallback when needed
+Нормализация:
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/workspace-codex-models.ts`
+
+Resolution order per Codex-backed stage:
+
+1. explicit workspace override
+2. deploy env default
+3. safe built-in fallback
 
 Current deploy env inputs:
 
@@ -42,66 +94,60 @@ Current deploy env inputs:
 - `CODEX_STAGE2_DESCRIPTION_MODEL`
 - `CODEX_STAGE3_MODEL`
 
-`seo` resolves from `CODEX_STAGE2_DESCRIPTION_MODEL` first and falls back to `CODEX_STAGE2_MODEL`.
+`seo` сначала смотрит в `CODEX_STAGE2_DESCRIPTION_MODEL`, затем падает обратно в `CODEX_STAGE2_MODEL`.
 
-## Spark Safety
+## 4. Effective runtime configs
 
-Spark cannot accept images. To keep Stage 2 safe:
+Runtime строит два разных snapshot-а:
 
-- the UI hides Spark for `analyzer` and `styleDiscovery`
-- config normalization coerces invalid multimodal Spark selections back to `deploy_default`
-- if deploy env still resolves a multimodal stage to Spark, runtime upgrades that stage to `gpt-5.4`
+- `resolvedCodexModelConfig`
+  - только Codex policy, как если бы Anthropic overlay не был включён
+- `resolvedStageModelConfig`
+  - реальная effective stage policy для текущего run
+  - при `provider = anthropic` подменяет eligible caption stages на `anthropicModel`
+  - при `provider = openrouter` подменяет eligible caption stages на `openrouterModel`
 
-This keeps deploy defaults backward-compatible without allowing a broken multimodal route.
+Это distinction важно:
 
-## Legacy Migration
+- UI owner defaults по-прежнему хранит Codex selections даже для Anthropic/OpenRouter-eligible stages;
+- diagnostics, pipeline summary и trace должны показывать `resolvedStageModelConfig`, а не только historical Codex defaults;
+- возврат с Anthropic/OpenRouter на `codex` использует сохранённые Codex stage selections без новой миграции.
 
-Older workspaces may still have the coarse config shape:
+## 5. Spark safety
 
-- `stage2Pipeline`
-- `stage2Seo`
-- `stage3Planner`
+Spark по-прежнему не может принимать images. Поэтому для Codex-backed multimodal stages сохраняются прежние guard-ы:
 
-Normalization migrates that format into the new per-stage shape:
+- UI не должен предлагать Spark для multimodal Codex stages
+- normalization вычищает Spark из multimodal selections
+- если deploy env всё же резолвит multimodal stage в Spark, runtime повышает stage до image-capable fallback
 
-- `stage2Pipeline` fans out to all Stage 2 text routes
-- valid image-capable values also propagate to multimodal routes
-- Spark is stripped from multimodal routes during migration
-- `stage2Seo` still overrides only `seo`
+Anthropic overlay не отменяет эти правила; они всё ещё действуют для всех stages, которые остаются на Codex.
 
-## Runtime Application
+## 6. Diagnostics and operator truth
 
-Main Stage 2 paths now resolve models explicitly:
+Stage 2 diagnostics должны позволять ответить на два вопроса отдельно:
 
-- full pipeline: `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-runner.ts`
-- quick regenerate: `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-quick-regenerate.ts`
-- style discovery: `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-style-discovery.ts`
+1. какой provider реально выполнял stage
+2. какая model policy реально была применена
 
-The worker receives explicit per-stage `model` values for:
+Поэтому current truth model такая:
 
-- `analyzer`
-- `selector`
-- `writer`
-- `critic`
-- `rewriter`
-- `finalSelector`
-- `titles`
-- `seo`
-- `contextPacket`
-- `candidateGenerator`
-- `qualityCourt`
-- `targetedRepair`
-- `captionHighlighting`
-- `captionTranslation`
-- `titleWriter`
+- Shared Codex status в shell = baseline workspace integration readiness
+- `Caption provider` в owner defaults = routing policy только для eligible caption-writing stages
+- prompt-stage diagnostics / `pipelineModelSummary` должны отражать effective mixed policy, если в run участвуют и Anthropic, и Codex stages
 
-SEO now runs inside the same Stage 2 worker flow and is persisted in the top-level Stage 2 response.
+## 7. Related interfaces
 
-## Diagnostics
+- `GET /api/workspace`
+- `PATCH /api/workspace`
+- `GET /api/workspace/integrations/codex`
+- `POST /api/workspace/integrations/codex`
+- `GET /api/workspace/integrations/anthropic`
+- `POST /api/workspace/integrations/anthropic`
 
-Prompt-stage diagnostics now include the effective model per LLM stage. The top-level Stage 2 response shows:
+## 8. Compatibility
 
-- one concrete model if all visible Stage 2 prompt stages use the same model
-- `per-stage policy` if multiple models are active
-
-This keeps the UI honest when Stage 2 is split across multiple models.
+- Внешний Stage 2 wire contract не меняется:
+  - captions по-прежнему живут в `top` / `bottom`
+  - Stage 3 handoff по-прежнему живёт на `topText` / `bottomText`
+- Anthropic overlay — это runtime routing change, а не новая caption schema.

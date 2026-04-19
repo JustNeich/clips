@@ -91,10 +91,10 @@ function resolveNativeStage2ResponseExecutionSettings(input: {
   const isReferenceOneShot =
     isReferenceOneShotPathVariant(input.output.pipeline?.execution?.pathVariant);
   const referenceOneShotModel =
-    input.executorContext.resolvedCodexModelConfig.oneShotReference;
+    input.executorContext.resolvedStageModelConfig.oneShotReference;
   const referenceOneShotModelSummary =
-    referenceOneShotModel === input.executorContext.resolvedCodexModelConfig.captionTranslation &&
-    referenceOneShotModel === input.executorContext.resolvedCodexModelConfig.seo
+    referenceOneShotModel === input.executorContext.resolvedStageModelConfig.captionTranslation &&
+    referenceOneShotModel === input.executorContext.resolvedStageModelConfig.seo
       ? referenceOneShotModel
       : "per-stage policy";
   return {
@@ -680,15 +680,15 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
         contextPacket: contextPacket as NativeCaptionContextPacket,
         executor: executorContext.executor,
         stageModels: {
-          oneShotReference: executorContext.resolvedCodexModelConfig.oneShotReference,
-          contextPacket: executorContext.resolvedCodexModelConfig.contextPacket,
-          candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
-          qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
-          targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
-          captionHighlighting: executorContext.resolvedCodexModelConfig.captionHighlighting,
-          captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation,
-          titleWriter: executorContext.resolvedCodexModelConfig.titleWriter,
-          seo: executorContext.resolvedCodexModelConfig.seo
+          oneShotReference: executorContext.resolvedStageModelConfig.oneShotReference,
+          contextPacket: executorContext.resolvedStageModelConfig.contextPacket,
+          candidateGenerator: executorContext.resolvedStageModelConfig.candidateGenerator,
+          qualityCourt: executorContext.resolvedStageModelConfig.qualityCourt,
+          targetedRepair: executorContext.resolvedStageModelConfig.targetedRepair,
+          captionHighlighting: executorContext.resolvedStageModelConfig.captionHighlighting,
+          captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation,
+          titleWriter: executorContext.resolvedStageModelConfig.titleWriter,
+          seo: executorContext.resolvedStageModelConfig.seo
         },
         promptConfig: workspaceStage2PromptConfig,
         debugMode: run.request.debugMode
@@ -791,7 +791,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       },
       userInstruction: run.userInstruction,
       executor: executorContext.executor,
-      model: executorContext.resolvedCodexModelConfig.regenerate,
+      model: executorContext.resolvedStageModelConfig.regenerate,
       reasoningEffort: executorContext.reasoningEffort
     });
     promptText = quickResult.promptText;
@@ -828,7 +828,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     userInstruction: run.userInstruction,
     promptText,
     reasoningEffort: executorContext.reasoningEffort,
-    model: executorContext.resolvedCodexModelConfig.regenerate,
+    model: executorContext.resolvedStageModelConfig.regenerate,
     rawOutput,
     debugMode: run.request.debugMode
   });
@@ -851,8 +851,8 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     })),
     executor: executorContext.executor,
     stageModels: {
-      captionHighlighting: executorContext.resolvedCodexModelConfig.captionHighlighting,
-      captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation
+      captionHighlighting: executorContext.resolvedStageModelConfig.captionHighlighting,
+      captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation
     },
     promptConfig: workspaceStage2PromptConfig
   });
@@ -945,15 +945,15 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       imagePaths: frames.framePaths,
       executor: executorContext.executor,
       stageModels: {
-        oneShotReference: executorContext.resolvedCodexModelConfig.oneShotReference,
-        contextPacket: executorContext.resolvedCodexModelConfig.contextPacket,
-        candidateGenerator: executorContext.resolvedCodexModelConfig.candidateGenerator,
-        qualityCourt: executorContext.resolvedCodexModelConfig.qualityCourt,
-        targetedRepair: executorContext.resolvedCodexModelConfig.targetedRepair,
-        captionHighlighting: executorContext.resolvedCodexModelConfig.captionHighlighting,
-        captionTranslation: executorContext.resolvedCodexModelConfig.captionTranslation,
-        titleWriter: executorContext.resolvedCodexModelConfig.titleWriter,
-        seo: executorContext.resolvedCodexModelConfig.seo
+        oneShotReference: executorContext.resolvedStageModelConfig.oneShotReference,
+        contextPacket: executorContext.resolvedStageModelConfig.contextPacket,
+        candidateGenerator: executorContext.resolvedStageModelConfig.candidateGenerator,
+        qualityCourt: executorContext.resolvedStageModelConfig.qualityCourt,
+        targetedRepair: executorContext.resolvedStageModelConfig.targetedRepair,
+        captionHighlighting: executorContext.resolvedStageModelConfig.captionHighlighting,
+        captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation,
+        titleWriter: executorContext.resolvedStageModelConfig.titleWriter,
+        seo: executorContext.resolvedStageModelConfig.seo
       },
       promptConfig: workspaceStage2PromptConfig,
       debugMode: run.request.debugMode,

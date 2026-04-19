@@ -248,7 +248,8 @@
 
 1. Нет source URL и нет mp4.
 2. Runtime capability не позволяет upload/fetch.
-3. Shared Codex не подключён и auto-run не запускает Stage 2.
+3. Required workspace AI integration/provider не ready, поэтому auto-run не запускает Stage 2.
+4. Текущий UI чаще всего формулирует этот blocked state как `Shared Codex не подключен`, даже если operator говорит в терминах caption provider.
 
 ### Failure / recovery
 
@@ -282,12 +283,16 @@
 1. Stage 2 может работать без comments payload.
 2. Native caption v3 surface может показывать richer badges и bilingual blocks.
 3. Run warnings могут существовать даже при usable shortlist.
+4. Owner может оставить весь run на Shared Codex или перевести eligible caption-writing stages на Anthropic через `Caption provider`.
 
 ### Blocked path
 
 1. Нет source.
 2. Уже идёт attached Stage 2 run.
 3. Есть run-blocked reason от runtime/guard.
+4. Workspace integration/provider не ready:
+  - baseline Shared Codex не подключён;
+  - или выбран `Anthropic API`, но owner не завершил setup / verification key.
 
 ### Failure / recovery
 
@@ -296,6 +301,10 @@
   - quick regenerate;
   - full rerun;
   - ручная диагностика warnings/prompt/debug.
+3. Для integration-related failure agent должен различать:
+  - broken baseline Shared Codex integration;
+  - broken Anthropic overlay только на eligible caption stages;
+  - stale operator interpretation, когда UI alias `Shared Codex` подменяет более широкий runtime issue.
 
 ### Ключевые состояния
 

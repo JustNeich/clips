@@ -3968,6 +3968,7 @@ async function runStage2SeoStage(input: {
 
   try {
     const rawSeo = await input.executor.runJson<unknown>({
+      stageId: "seo",
       prompt: seoPrompt,
       schema: STAGE2_SEO_OUTPUT_SCHEMA,
       model: input.stageModels?.seo ?? null,
@@ -4775,6 +4776,7 @@ async function runNativeCaptionHighlightingStage(input: {
   let artifact: NativeCaptionHighlightingArtifact;
   try {
     const raw = await input.executor.runJson<unknown>({
+      stageId: "captionHighlighting",
       prompt: promptText,
       schema: NATIVE_CAPTION_HIGHLIGHTING_SCHEMA,
       model,
@@ -7487,6 +7489,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   let oneShotLengthWindowWarnings: string[] = [];
   try {
     const rawOneShot = await input.executor.runJson<unknown>({
+      stageId: "oneShotReference",
       prompt: oneShotPrompt,
       schema: NATIVE_REFERENCE_ONE_SHOT_SCHEMA,
       imagePaths: input.imagePaths,
@@ -7731,6 +7734,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     });
     captionTranslationPromptTexts.push(translationPrompt);
     const rawTranslation = await input.executor.runJson<unknown>({
+      stageId: "captionTranslation",
       prompt: translationPrompt,
       schema: NATIVE_TRANSLATION_SCHEMA,
       model: input.stageModels?.captionTranslation ?? null,
@@ -7754,6 +7758,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
         });
         captionTranslationPromptTexts.push(retryPrompt);
         const retryRawTranslation = await input.executor.runJson<unknown>({
+          stageId: "captionTranslation",
           prompt: retryPrompt,
           schema: NATIVE_TRANSLATION_SCHEMA,
           model: input.stageModels?.captionTranslation ?? null,
@@ -8569,6 +8574,7 @@ export class ViralShortsWorkerService {
       });
       try {
         const rawContextPacket = await input.executor.runJson<unknown>({
+          stageId: "contextPacket",
           prompt: contextPacketPrompt,
           schema: NATIVE_CONTEXT_PACKET_SCHEMA,
           imagePaths: input.imagePaths,
@@ -8649,6 +8655,7 @@ export class ViralShortsWorkerService {
     let candidates: NativeCaptionCandidate[];
     try {
       const rawCandidates = await input.executor.runJson<unknown>({
+        stageId: "candidateGenerator",
         prompt: candidatePrompt,
         schema: NATIVE_CANDIDATE_BATCH_SCHEMA,
         model: input.stageModels?.candidateGenerator ?? null,
@@ -8745,6 +8752,7 @@ export class ViralShortsWorkerService {
     let qualityCourt: NativeCaptionQualityCourt;
     try {
       const rawQualityCourt = await input.executor.runJson<unknown>({
+        stageId: "qualityCourt",
         prompt: qualityCourtPrompt,
         schema: NATIVE_QUALITY_COURT_SCHEMA,
         model: input.stageModels?.qualityCourt ?? null,
@@ -8936,6 +8944,7 @@ export class ViralShortsWorkerService {
       const repairStartedAt = Date.now();
       try {
         const rawRepair = await input.executor.runJson<unknown>({
+          stageId: "targetedRepair",
           prompt: repairPrompt,
           schema: NATIVE_TARGETED_REPAIR_SCHEMA,
           model: input.stageModels?.targetedRepair ?? null,
@@ -9411,6 +9420,7 @@ export class ViralShortsWorkerService {
       });
       captionTranslationPromptTexts.push(translationPrompt);
       const rawTranslation = await input.executor.runJson<unknown>({
+        stageId: "captionTranslation",
         prompt: translationPrompt,
         schema: NATIVE_TRANSLATION_SCHEMA,
         model: input.stageModels?.captionTranslation ?? null,
@@ -9434,6 +9444,7 @@ export class ViralShortsWorkerService {
           });
           captionTranslationPromptTexts.push(retryPrompt);
           const retryRawTranslation = await input.executor.runJson<unknown>({
+            stageId: "captionTranslation",
             prompt: retryPrompt,
             schema: NATIVE_TRANSLATION_SCHEMA,
             model: input.stageModels?.captionTranslation ?? null,
@@ -9574,6 +9585,7 @@ export class ViralShortsWorkerService {
     let retriedTitleOptions: number[] = [];
     try {
       const rawTitles = await input.executor.runJson<unknown>({
+        stageId: "titleWriter",
         prompt: titlePrompt,
         schema: NATIVE_TITLE_WRITER_SCHEMA,
         model: input.stageModels?.titleWriter ?? null,
@@ -9589,6 +9601,7 @@ export class ViralShortsWorkerService {
         try {
           titlePromptTexts.push(titlePrompt);
           const retryRawTitles = await input.executor.runJson<unknown>({
+            stageId: "titleWriter",
             prompt: titlePrompt,
             schema: NATIVE_TITLE_WRITER_SCHEMA,
             model: input.stageModels?.titleWriter ?? null,
@@ -10060,6 +10073,7 @@ export class ViralShortsWorkerService {
     const analyzerStartedAt = Date.now();
     try {
       const analyzerRaw = await input.executor.runJson<unknown>({
+        stageId: "analyzer",
         prompt: analyzerPrompt,
         schema: ANALYZER_SCHEMA,
         imagePaths: input.imagePaths,
@@ -10200,6 +10214,7 @@ export class ViralShortsWorkerService {
     );
     try {
       const selectorRaw = await input.executor.runJson<unknown>({
+        stageId: "selector",
         prompt: selectorPrompt,
         schema: SELECTOR_SCHEMA,
         model: input.stageModels?.selector ?? null,
@@ -10272,6 +10287,7 @@ export class ViralShortsWorkerService {
     let writerRaw: unknown;
     try {
       writerRaw = await input.executor.runJson<unknown>({
+        stageId: "writer",
         prompt: writerPrompt,
         schema: CANDIDATES_SCHEMA,
         model: input.stageModels?.writer ?? null,
@@ -10412,6 +10428,7 @@ export class ViralShortsWorkerService {
     let criticScores: CriticScore[];
     try {
       const criticRaw = await input.executor.runJson<unknown>({
+        stageId: "critic",
         prompt: criticPrompt,
         schema: CRITIC_SCHEMA,
         model: input.stageModels?.critic ?? null,
@@ -10533,6 +10550,7 @@ export class ViralShortsWorkerService {
       let recoveryWriterRaw: unknown;
       try {
         recoveryWriterRaw = await input.executor.runJson<unknown>({
+          stageId: "writer",
           prompt: recoveryWriterPrompt,
           schema: CANDIDATES_SCHEMA,
           model: input.stageModels?.writer ?? null,
@@ -10626,6 +10644,7 @@ export class ViralShortsWorkerService {
         criticPromptTexts.push(recoveryCriticPrompt);
         try {
           const recoveryCriticRaw = await input.executor.runJson<unknown>({
+            stageId: "critic",
             prompt: recoveryCriticPrompt,
             schema: CRITIC_SCHEMA,
             model: input.stageModels?.critic ?? null,
@@ -10720,6 +10739,7 @@ export class ViralShortsWorkerService {
     const rewriterStartedAt = Date.now();
     try {
       const rewriterRaw = await input.executor.runJson<unknown>({
+        stageId: "rewriter",
         prompt: rewriterPrompt,
         schema: CANDIDATES_SCHEMA,
         model: input.stageModels?.rewriter ?? null,
@@ -10815,6 +10835,7 @@ export class ViralShortsWorkerService {
     let finalSelector: FinalSelectorOutput;
     try {
       const finalRaw = await input.executor.runJson<unknown>({
+        stageId: "finalSelector",
         prompt: finalSelectorPrompt,
         schema: FINAL_SELECTOR_SCHEMA,
         model: input.stageModels?.finalSelector ?? null,
@@ -10900,6 +10921,7 @@ export class ViralShortsWorkerService {
     const titleStartedAt = Date.now();
     const titleOptions = await input.executor
       .runJson<unknown>({
+        stageId: "titles",
         prompt: titlePrompt,
         schema: TITLE_SCHEMA,
         model: input.stageModels?.titles ?? null,

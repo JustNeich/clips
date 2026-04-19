@@ -13,6 +13,15 @@ import {
   type Stage2HardConstraints
 } from "./stage2-channel-config";
 import {
+  DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+  normalizeStage2CaptionProviderConfig,
+  parseStage2CaptionProviderConfigJson,
+  stringifyStage2CaptionProviderConfig,
+  type Stage2CaptionProviderConfig,
+  type WorkspaceAnthropicIntegrationStatus,
+  type WorkspaceOpenRouterIntegrationStatus
+} from "./stage2-caption-provider";
+import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   parseStage2PromptConfigJson,
   prepareStage2PromptConfigForExplicitSave,
@@ -28,6 +37,7 @@ import {
   type WorkspaceCodexModelConfig
 } from "./workspace-codex-models";
 import { ensureWorkspaceTemplateLibrary } from "./managed-template-store";
+import { decryptJsonPayload, encryptJsonPayload } from "./app-crypto";
 
 export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
 export type WorkspaceCodexStatus = "connected" | "disconnected" | "connecting" | "error";
@@ -42,6 +52,7 @@ export type WorkspaceRecord = {
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
   codexModelConfig: WorkspaceCodexModelConfig;
+  stage2CaptionProviderConfig: Stage2CaptionProviderConfig;
   createdAt: string;
   updatedAt: string;
 };
@@ -88,6 +99,30 @@ export type WorkspaceCodexIntegrationRecord = {
   deviceAuthOutput: string | null;
   deviceAuthLoginUrl: string | null;
   deviceAuthUserCode: string | null;
+  connectedAt: string | null;
+  updatedAt: string;
+};
+
+export type WorkspaceAnthropicIntegrationRecord = {
+  id: string;
+  workspaceId: string;
+  provider: "anthropic";
+  status: WorkspaceAnthropicIntegrationStatus;
+  ownerUserId: string;
+  apiKeyHint: string | null;
+  lastError: string | null;
+  connectedAt: string | null;
+  updatedAt: string;
+};
+
+export type WorkspaceOpenRouterIntegrationRecord = {
+  id: string;
+  workspaceId: string;
+  provider: "openrouter";
+  status: WorkspaceOpenRouterIntegrationStatus;
+  ownerUserId: string;
+  apiKeyHint: string | null;
+  lastError: string | null;
   connectedAt: string | null;
   updatedAt: string;
 };
@@ -209,6 +244,9 @@ function mapWorkspace(row: Record<string, unknown>): WorkspaceRecord {
     codexModelConfig: normalizeWorkspaceCodexModelConfig(
       row.workspace_codex_model_config_json ? String(row.workspace_codex_model_config_json) : null
     ),
+    stage2CaptionProviderConfig: normalizeWorkspaceStage2CaptionProviderConfig(
+      row.stage2_caption_provider_json ? String(row.stage2_caption_provider_json) : null
+    ),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
@@ -246,6 +284,12 @@ function normalizeWorkspaceStage2PromptConfig(value: string | null | undefined):
 
 function normalizeWorkspaceCodexModelConfig(value: string | null | undefined): WorkspaceCodexModelConfig {
   return parseWorkspaceCodexModelConfigJson(value);
+}
+
+function normalizeWorkspaceStage2CaptionProviderConfig(
+  value: string | null | undefined
+): Stage2CaptionProviderConfig {
+  return parseStage2CaptionProviderConfigJson(value);
 }
 
 function mapUser(row: Record<string, unknown>): UserRecord {
@@ -297,6 +341,38 @@ function mapIntegration(row: Record<string, unknown>): WorkspaceCodexIntegration
     deviceAuthOutput: row.device_auth_output ? String(row.device_auth_output) : null,
     deviceAuthLoginUrl: row.device_auth_login_url ? String(row.device_auth_login_url) : null,
     deviceAuthUserCode: row.device_auth_user_code ? String(row.device_auth_user_code) : null,
+    connectedAt: row.connected_at ? String(row.connected_at) : null,
+    updatedAt: String(row.updated_at)
+  };
+}
+
+function mapAnthropicIntegration(
+  row: Record<string, unknown>
+): WorkspaceAnthropicIntegrationRecord {
+  return {
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    provider: "anthropic",
+    status: String(row.status) as WorkspaceAnthropicIntegrationStatus,
+    ownerUserId: String(row.owner_user_id),
+    apiKeyHint: row.api_key_hint ? String(row.api_key_hint) : null,
+    lastError: row.last_error ? String(row.last_error) : null,
+    connectedAt: row.connected_at ? String(row.connected_at) : null,
+    updatedAt: String(row.updated_at)
+  };
+}
+
+function mapOpenRouterIntegration(
+  row: Record<string, unknown>
+): WorkspaceOpenRouterIntegrationRecord {
+  return {
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    provider: "openrouter",
+    status: String(row.status) as WorkspaceOpenRouterIntegrationStatus,
+    ownerUserId: String(row.owner_user_id),
+    apiKeyHint: row.api_key_hint ? String(row.api_key_hint) : null,
+    lastError: row.last_error ? String(row.last_error) : null,
     connectedAt: row.connected_at ? String(row.connected_at) : null,
     updatedAt: String(row.updated_at)
   };
@@ -411,6 +487,33 @@ export function getWorkspaceCodexModelConfig(workspaceId: string): WorkspaceCode
       : null) !== serialized
   ) {
     db.prepare("UPDATE workspaces SET workspace_codex_model_config_json = ? WHERE id = ?").run(
+      serialized,
+      workspaceId
+    );
+  }
+  return normalized;
+}
+
+export function getWorkspaceStage2CaptionProviderConfig(
+  workspaceId: string
+): Stage2CaptionProviderConfig {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT stage2_caption_provider_json FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  const normalized = normalizeWorkspaceStage2CaptionProviderConfig(
+    row.stage2_caption_provider_json ? String(row.stage2_caption_provider_json) : null
+  );
+  const serialized = stringifyStage2CaptionProviderConfig(normalized);
+  if (
+    (row.stage2_caption_provider_json
+      ? String(row.stage2_caption_provider_json)
+      : null) !== serialized
+  ) {
+    db.prepare("UPDATE workspaces SET stage2_caption_provider_json = ? WHERE id = ?").run(
       serialized,
       workspaceId
     );
@@ -560,6 +663,44 @@ export function updateWorkspaceCodexModelConfig(
   return mapWorkspace(row);
 }
 
+export function updateWorkspaceStage2CaptionProviderConfig(
+  workspaceId: string,
+  captionProviderConfig: Stage2CaptionProviderConfig
+): WorkspaceRecord {
+  const normalized = normalizeStage2CaptionProviderConfig(captionProviderConfig);
+  if (normalized.provider === "anthropic") {
+    const integration = getWorkspaceAnthropicIntegration(workspaceId);
+    if (!integration || integration.status !== "connected" || !getWorkspaceAnthropicApiKey(workspaceId)) {
+      throw new Error("Anthropic captions недоступны: сначала подключите и проверьте API key.");
+    }
+    if (!normalized.anthropicModel?.trim()) {
+      throw new Error("Укажите модель Anthropic для captions.");
+    }
+  }
+  if (normalized.provider === "openrouter") {
+    const integration = getWorkspaceOpenRouterIntegration(workspaceId);
+    if (!integration || integration.status !== "connected" || !getWorkspaceOpenRouterApiKey(workspaceId)) {
+      throw new Error("OpenRouter captions недоступны: сначала подключите и проверьте API key.");
+    }
+    if (!normalized.openrouterModel?.trim()) {
+      throw new Error("Укажите модель OpenRouter для captions.");
+    }
+  }
+  const serialized = stringifyStage2CaptionProviderConfig(normalized);
+  const updatedAt = nowIso();
+  const db = getDb();
+  db.prepare(
+    "UPDATE workspaces SET stage2_caption_provider_json = ?, updated_at = ? WHERE id = ?"
+  ).run(serialized, updatedAt, workspaceId);
+  const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  return mapWorkspace(row);
+}
+
 export function getUserById(userId: string): UserRecord | null {
   const db = getDb();
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as
@@ -687,6 +828,7 @@ export async function bootstrapOwner(input: {
     stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
     stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
     codexModelConfig: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
+    stage2CaptionProviderConfig: DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
     createdAt: now,
     updatedAt: now
   };
@@ -711,7 +853,7 @@ export async function bootstrapOwner(input: {
 
   runInTransaction((db) => {
     db.prepare(
-      "INSERT INTO workspaces (id, name, slug, default_template_id, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO workspaces (id, name, slug, default_template_id, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, stage2_caption_provider_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       workspace.id,
       workspace.name,
@@ -721,6 +863,7 @@ export async function bootstrapOwner(input: {
       stringifyStage2HardConstraints(workspace.stage2HardConstraints),
       stringifyStage2PromptConfig(workspace.stage2PromptConfig),
       stringifyWorkspaceCodexModelConfig(workspace.codexModelConfig),
+      stringifyStage2CaptionProviderConfig(workspace.stage2CaptionProviderConfig),
       workspace.createdAt,
       workspace.updatedAt
     );
@@ -1062,6 +1205,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
       stage2HardConstraints: getWorkspaceStage2HardConstraints(String(row.workspace_id)),
       stage2PromptConfig: getWorkspaceStage2PromptConfig(String(row.workspace_id)),
       codexModelConfig: getWorkspaceCodexModelConfig(String(row.workspace_id)),
+      stage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(String(row.workspace_id)),
       createdAt: String(row.workspace_created_at),
       updatedAt: String(row.workspace_updated_at)
     },
@@ -1111,6 +1255,62 @@ export function getWorkspaceCodexIntegration(
     .prepare("SELECT * FROM workspace_codex_integrations WHERE workspace_id = ?")
     .get(workspaceId) as Record<string, unknown> | undefined;
   return row ? mapIntegration(row) : null;
+}
+
+export function getWorkspaceAnthropicIntegration(
+  workspaceId: string
+): WorkspaceAnthropicIntegrationRecord | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM workspace_anthropic_integrations WHERE workspace_id = ?")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  return row ? mapAnthropicIntegration(row) : null;
+}
+
+export function getWorkspaceOpenRouterIntegration(
+  workspaceId: string
+): WorkspaceOpenRouterIntegrationRecord | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM workspace_openrouter_integrations WHERE workspace_id = ?")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  return row ? mapOpenRouterIntegration(row) : null;
+}
+
+function maskApiKeyHint(apiKey: string): string {
+  const trimmed = apiKey.trim();
+  if (trimmed.length <= 12) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 12)}...${trimmed.slice(-4)}`;
+}
+
+export function getWorkspaceAnthropicApiKey(workspaceId: string): string | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT encrypted_api_key_json FROM workspace_anthropic_integrations WHERE workspace_id = ? LIMIT 1"
+    )
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  const stored = decryptJsonPayload<{ apiKey?: string }>(
+    row?.encrypted_api_key_json ? String(row.encrypted_api_key_json) : null
+  );
+  const apiKey = typeof stored?.apiKey === "string" ? stored.apiKey.trim() : "";
+  return apiKey || null;
+}
+
+export function getWorkspaceOpenRouterApiKey(workspaceId: string): string | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT encrypted_api_key_json FROM workspace_openrouter_integrations WHERE workspace_id = ? LIMIT 1"
+    )
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  const stored = decryptJsonPayload<{ apiKey?: string }>(
+    row?.encrypted_api_key_json ? String(row.encrypted_api_key_json) : null
+  );
+  const apiKey = typeof stored?.apiKey === "string" ? stored.apiKey.trim() : "";
+  return apiKey || null;
 }
 
 export function upsertWorkspaceCodexIntegration(input: {
@@ -1182,6 +1382,144 @@ export function upsertWorkspaceCodexIntegration(input: {
   );
 
   return record;
+}
+
+export function upsertWorkspaceAnthropicIntegration(input: {
+  workspaceId: string;
+  ownerUserId: string;
+  status: WorkspaceAnthropicIntegrationStatus;
+  apiKey?: string | null;
+  lastError?: string | null;
+  connectedAt?: string | null;
+}): WorkspaceAnthropicIntegrationRecord {
+  const current = getWorkspaceAnthropicIntegration(input.workspaceId);
+  const currentApiKey = getWorkspaceAnthropicApiKey(input.workspaceId);
+  const nextApiKey = input.apiKey === undefined ? currentApiKey : input.apiKey?.trim() || null;
+  const encryptedApiKey =
+    nextApiKey !== null ? encryptJsonPayload({ apiKey: nextApiKey }) : null;
+  const record = {
+    id: current?.id ?? newId(),
+    workspaceId: input.workspaceId,
+    provider: "anthropic" as const,
+    status: input.status,
+    ownerUserId: input.ownerUserId,
+    encryptedApiKeyJson: encryptedApiKey,
+    apiKeyHint: nextApiKey ? maskApiKeyHint(nextApiKey) : null,
+    lastError:
+      input.lastError === undefined
+        ? current?.lastError ?? null
+        : input.lastError,
+    connectedAt:
+      input.connectedAt === undefined ? current?.connectedAt ?? null : input.connectedAt,
+    updatedAt: nowIso()
+  };
+
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO workspace_anthropic_integrations
+    (id, workspace_id, provider, status, owner_user_id, encrypted_api_key_json, api_key_hint, last_error, connected_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(workspace_id) DO UPDATE SET
+      status = excluded.status,
+      owner_user_id = excluded.owner_user_id,
+      encrypted_api_key_json = excluded.encrypted_api_key_json,
+      api_key_hint = excluded.api_key_hint,
+      last_error = excluded.last_error,
+      connected_at = excluded.connected_at,
+      updated_at = excluded.updated_at`
+  ).run(
+    record.id,
+    record.workspaceId,
+    record.provider,
+    record.status,
+    record.ownerUserId,
+    record.encryptedApiKeyJson,
+    record.apiKeyHint,
+    record.lastError,
+    record.connectedAt,
+    record.updatedAt
+  );
+
+  return {
+    id: record.id,
+    workspaceId: record.workspaceId,
+    provider: record.provider,
+    status: record.status,
+    ownerUserId: record.ownerUserId,
+    apiKeyHint: record.apiKeyHint,
+    lastError: record.lastError,
+    connectedAt: record.connectedAt,
+    updatedAt: record.updatedAt
+  };
+}
+
+export function upsertWorkspaceOpenRouterIntegration(input: {
+  workspaceId: string;
+  ownerUserId: string;
+  status: WorkspaceOpenRouterIntegrationStatus;
+  apiKey?: string | null;
+  lastError?: string | null;
+  connectedAt?: string | null;
+}): WorkspaceOpenRouterIntegrationRecord {
+  const current = getWorkspaceOpenRouterIntegration(input.workspaceId);
+  const currentApiKey = getWorkspaceOpenRouterApiKey(input.workspaceId);
+  const nextApiKey = input.apiKey === undefined ? currentApiKey : input.apiKey?.trim() || null;
+  const encryptedApiKey =
+    nextApiKey !== null ? encryptJsonPayload({ apiKey: nextApiKey }) : null;
+  const record = {
+    id: current?.id ?? newId(),
+    workspaceId: input.workspaceId,
+    provider: "openrouter" as const,
+    status: input.status,
+    ownerUserId: input.ownerUserId,
+    encryptedApiKeyJson: encryptedApiKey,
+    apiKeyHint: nextApiKey ? maskApiKeyHint(nextApiKey) : null,
+    lastError:
+      input.lastError === undefined
+        ? current?.lastError ?? null
+        : input.lastError,
+    connectedAt:
+      input.connectedAt === undefined ? current?.connectedAt ?? null : input.connectedAt,
+    updatedAt: nowIso()
+  };
+
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO workspace_openrouter_integrations
+    (id, workspace_id, provider, status, owner_user_id, encrypted_api_key_json, api_key_hint, last_error, connected_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(workspace_id) DO UPDATE SET
+      status = excluded.status,
+      owner_user_id = excluded.owner_user_id,
+      encrypted_api_key_json = excluded.encrypted_api_key_json,
+      api_key_hint = excluded.api_key_hint,
+      last_error = excluded.last_error,
+      connected_at = excluded.connected_at,
+      updated_at = excluded.updated_at`
+  ).run(
+    record.id,
+    record.workspaceId,
+    record.provider,
+    record.status,
+    record.ownerUserId,
+    record.encryptedApiKeyJson,
+    record.apiKeyHint,
+    record.lastError,
+    record.connectedAt,
+    record.updatedAt
+  );
+
+  return {
+    id: record.id,
+    workspaceId: record.workspaceId,
+    provider: record.provider,
+    status: record.status,
+    ownerUserId: record.ownerUserId,
+    apiKeyHint: record.apiKeyHint,
+    lastError: record.lastError,
+    connectedAt: record.connectedAt,
+    updatedAt: record.updatedAt
+  };
 }
 
 export function listChannelAccess(channelId: string): ChannelAccessRecord[] {

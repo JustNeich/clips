@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   stage2_hard_constraints_json TEXT,
   stage2_prompt_config_json TEXT,
   workspace_codex_model_config_json TEXT,
+  stage2_caption_provider_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -78,6 +79,36 @@ CREATE TABLE IF NOT EXISTS workspace_codex_integrations (
   device_auth_output TEXT,
   device_auth_login_url TEXT,
   device_auth_user_code TEXT,
+  connected_at TEXT,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS workspace_anthropic_integrations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  encrypted_api_key_json TEXT,
+  api_key_hint TEXT,
+  last_error TEXT,
+  connected_at TEXT,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS workspace_openrouter_integrations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  encrypted_api_key_json TEXT,
+  api_key_hint TEXT,
+  last_error TEXT,
   connected_at TEXT,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,

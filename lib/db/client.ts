@@ -9,6 +9,10 @@ import {
   getBundledStage2ExamplesSeedJson,
   stringifyStage2HardConstraints
 } from "../stage2-channel-config";
+import {
+  DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+  stringifyStage2CaptionProviderConfig
+} from "../stage2-caption-provider";
 import { stringifyStage2PromptConfig, DEFAULT_STAGE2_PROMPT_CONFIG } from "../stage2-pipeline";
 import {
   DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
@@ -151,6 +155,7 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "workspaces", "stage2_hard_constraints_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_prompt_config_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "workspace_codex_model_config_json", "TEXT");
+  addColumnIfMissing(db, "workspaces", "stage2_caption_provider_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_worker_profile_id", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_examples_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_hard_constraints_json", "TEXT");
@@ -240,6 +245,12 @@ function applyDbMigrations(db: DatabaseSync): void {
       WHERE workspace_codex_model_config_json IS NULL
          OR trim(workspace_codex_model_config_json) = ''`
   ).run(stringifyWorkspaceCodexModelConfig(DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG));
+  db.prepare(
+    `UPDATE workspaces
+        SET stage2_caption_provider_json = ?
+      WHERE stage2_caption_provider_json IS NULL
+         OR trim(stage2_caption_provider_json) = ''`
+  ).run(stringifyStage2CaptionProviderConfig(DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG));
   db.prepare(
     `UPDATE channels
         SET stage2_style_profile_json = ?

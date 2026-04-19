@@ -2,6 +2,16 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { runCodexExec } from "../codex-runner";
+import { runAnthropicStructuredOutput } from "../anthropic-client";
+import { runOpenRouterStructuredOutput } from "../openrouter-client";
+import {
+  isCaptionProviderRoutedStage,
+  type Stage2CaptionProviderConfig
+} from "../stage2-caption-provider";
+import { prepareJsonSchemaTransport } from "../json-stage-transport";
+import type { Stage2PipelineStageId, Stage2RegenerateStageId } from "../stage2-pipeline";
+
+export { prepareJsonSchemaTransport as prepareCodexSchemaTransport } from "../json-stage-transport";
 
 function parseJsonBlock(raw: string): unknown {
   const trimmed = raw.trim();
@@ -20,6 +30,7 @@ function parseJsonBlock(raw: string): unknown {
 
 export type JsonStageExecutor = {
   runJson<T>(input: {
+    stageId: JsonStageExecutorStageId;
     prompt: string;
     schema: unknown;
     imagePaths?: string[];
@@ -29,132 +40,10 @@ export type JsonStageExecutor = {
   }): Promise<T>;
 };
 
-type CodexSchemaTransport = {
-  schema: unknown;
-  prompt: string;
-  unwrap: (value: unknown) => unknown;
-};
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function allowNullInSchema(schema: unknown): unknown {
-  if (!isPlainObject(schema)) {
-    return schema;
-  }
-
-  const typeValue = schema.type;
-  if (typeof typeValue === "string") {
-    if (typeValue === "null") {
-      return schema;
-    }
-    return {
-      ...schema,
-      type: [typeValue, "null"]
-    };
-  }
-
-  if (Array.isArray(typeValue)) {
-    if (typeValue.includes("null")) {
-      return schema;
-    }
-    return {
-      ...schema,
-      type: [...typeValue, "null"]
-    };
-  }
-
-  return schema;
-}
-
-function strictifyCodexSchema(schema: unknown): unknown {
-  if (Array.isArray(schema)) {
-    return schema.map((item) => strictifyCodexSchema(item));
-  }
-
-  if (!isPlainObject(schema)) {
-    return schema;
-  }
-
-  const next: Record<string, unknown> = { ...schema };
-
-  if ("items" in schema) {
-    next.items = strictifyCodexSchema(schema.items);
-  }
-
-  if (isPlainObject(schema.additionalProperties)) {
-    next.additionalProperties = strictifyCodexSchema(schema.additionalProperties);
-  }
-
-  if (!isPlainObject(schema.properties)) {
-    return next;
-  }
-
-  const originalRequired = Array.isArray(schema.required)
-    ? schema.required.map((value) => String(value))
-    : [];
-  const propertyEntries = Object.entries(schema.properties);
-  const strictProperties = Object.fromEntries(
-    propertyEntries.map(([key, value]) => {
-      const normalizedProperty = strictifyCodexSchema(value);
-      return [
-        key,
-        originalRequired.includes(key)
-          ? normalizedProperty
-          : allowNullInSchema(normalizedProperty)
-      ];
-    })
-  );
-
-  next.properties = strictProperties;
-  next.required = propertyEntries.map(([key]) => key);
-  return next;
-}
-
-export function prepareCodexSchemaTransport(input: {
-  schema: unknown;
-  prompt: string;
-}): CodexSchemaTransport {
-  const strictSchema = strictifyCodexSchema(input.schema);
-  const schemaObject = isPlainObject(strictSchema) ? strictSchema : null;
-  if (schemaObject?.type === "object") {
-    return {
-      schema: strictSchema,
-      prompt: input.prompt,
-      unwrap: (value) => value
-    };
-  }
-
-  const wrappedSchema = {
-    type: "object",
-    additionalProperties: false,
-    required: ["result"],
-    properties: {
-      result: strictSchema
-    }
-  };
-
-  const wrappedPrompt = [
-    input.prompt.trim(),
-    "",
-    "TRANSPORT FORMAT RULE:",
-    '- The response must be a single JSON object with exactly one key: "result".',
-    '- Put the actual requested payload inside "result".',
-    '- The value of "result" must satisfy the requested schema.'
-  ].join("\n");
-
-  return {
-    schema: wrappedSchema,
-    prompt: wrappedPrompt,
-    unwrap: (value) => {
-      if (isPlainObject(value) && "result" in value) {
-        return value.result;
-      }
-      return value;
-    }
-  };
-}
+export type JsonStageExecutorStageId =
+  | Stage2PipelineStageId
+  | Stage2RegenerateStageId
+  | "styleDiscovery";
 
 export class CodexJsonStageExecutor implements JsonStageExecutor {
   constructor(
@@ -168,6 +57,7 @@ export class CodexJsonStageExecutor implements JsonStageExecutor {
   ) {}
 
   async runJson<T>(input: {
+    stageId: JsonStageExecutorStageId;
     prompt: string;
     schema: unknown;
     imagePaths?: string[];
@@ -178,7 +68,7 @@ export class CodexJsonStageExecutor implements JsonStageExecutor {
     const tmpDir = await mkdtemp(path.join(os.tmpdir(), "viral-shorts-stage-"));
     const schemaPath = path.join(tmpDir, "schema.json");
     const outputPath = path.join(tmpDir, "output.json");
-    const transport = prepareCodexSchemaTransport({
+    const transport = prepareJsonSchemaTransport({
       schema: input.schema,
       prompt: input.prompt
     });
@@ -202,5 +92,108 @@ export class CodexJsonStageExecutor implements JsonStageExecutor {
     } finally {
       await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
     }
+  }
+}
+
+export class AnthropicJsonStageExecutor implements JsonStageExecutor {
+  constructor(
+    private readonly params: {
+      apiKey: string;
+      defaultModel: string;
+      defaultTimeoutMs?: number;
+    }
+  ) {}
+
+  async runJson<T>(input: {
+    stageId: JsonStageExecutorStageId;
+    prompt: string;
+    schema: unknown;
+    imagePaths?: string[];
+    timeoutMs?: number;
+    model?: string | null;
+    reasoningEffort?: string | null;
+  }): Promise<T> {
+    return runAnthropicStructuredOutput<T>({
+      apiKey: this.params.apiKey,
+      model: input.model?.trim() || this.params.defaultModel,
+      prompt: input.prompt,
+      schema: input.schema,
+      imagePaths: input.imagePaths ?? [],
+      timeoutMs: input.timeoutMs ?? this.params.defaultTimeoutMs
+    });
+  }
+}
+
+export class OpenRouterJsonStageExecutor implements JsonStageExecutor {
+  constructor(
+    private readonly params: {
+      apiKey: string;
+      defaultModel: string;
+      defaultTimeoutMs?: number;
+    }
+  ) {}
+
+  async runJson<T>(input: {
+    stageId: JsonStageExecutorStageId;
+    prompt: string;
+    schema: unknown;
+    imagePaths?: string[];
+    timeoutMs?: number;
+    model?: string | null;
+    reasoningEffort?: string | null;
+  }): Promise<T> {
+    return runOpenRouterStructuredOutput<T>({
+      apiKey: this.params.apiKey,
+      model: input.model?.trim() || this.params.defaultModel,
+      prompt: input.prompt,
+      schema: input.schema,
+      imagePaths: input.imagePaths ?? [],
+      timeoutMs: input.timeoutMs ?? this.params.defaultTimeoutMs
+    });
+  }
+}
+
+export class HybridJsonStageExecutor implements JsonStageExecutor {
+  constructor(
+    private readonly params: {
+      captionProviderConfig: Stage2CaptionProviderConfig;
+      codexExecutor: JsonStageExecutor;
+      anthropicExecutor: JsonStageExecutor | null;
+      openRouterExecutor: JsonStageExecutor | null;
+    }
+  ) {}
+
+  async runJson<T>(input: {
+    stageId: JsonStageExecutorStageId;
+    prompt: string;
+    schema: unknown;
+    imagePaths?: string[];
+    timeoutMs?: number;
+    model?: string | null;
+    reasoningEffort?: string | null;
+  }): Promise<T> {
+    if (isCaptionProviderRoutedStage(input.stageId)) {
+      if (this.params.captionProviderConfig.provider === "anthropic") {
+        if (!this.params.anthropicExecutor) {
+          throw new Error("Anthropic captions включены, но Anthropic executor не настроен.");
+        }
+        return this.params.anthropicExecutor.runJson<T>({
+          ...input,
+          model: null,
+          reasoningEffort: null
+        });
+      }
+      if (this.params.captionProviderConfig.provider === "openrouter") {
+        if (!this.params.openRouterExecutor) {
+          throw new Error("OpenRouter captions включены, но OpenRouter executor не настроен.");
+        }
+        return this.params.openRouterExecutor.runJson<T>({
+          ...input,
+          model: null,
+          reasoningEffort: null
+        });
+      }
+    }
+    return this.params.codexExecutor.runJson<T>(input);
   }
 }

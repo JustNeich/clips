@@ -20,7 +20,8 @@
 | Permission | owner | manager | redactor | redactor_limited | Источник |
 | --- | --- | --- | --- | --- | --- |
 | Manage members | yes | yes | no | no | `team-store.ts`, browser `/team` |
-| Manage shared Codex | yes | no | no | no | `team-store.ts` |
+| Manage Shared Codex integration | yes | no | no | no | `team-store.ts`, `workspace-codex.ts` |
+| Manage Anthropic caption integration | yes | no | no | no | `team-store.ts`, `workspace-anthropic.ts` |
 | Create channel | yes | yes | yes | no | `team-store.ts` |
 | Manage any channel access | yes | yes | no | no | `team-store.ts`, `acl.ts` |
 | View internal design routes | yes | yes | yes | yes / unguarded | browser + code pages |
@@ -67,8 +68,8 @@
 | Surface | owner | manager | redactor | redactor_limited | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Role label in header | `Владелец` | `Менеджер` | `Редактор` | `Редактор (ограниченный)` | browser-verified |
-| Shared Codex status line | visible | visible | visible | visible | browser-verified |
-| Codex reconnect/disconnect authority | full | limited / read-mostly | limited / read-mostly | limited / read-mostly | code-verified, owner verified live |
+| Shared Codex status line | visible | visible | visible | visible | browser-verified, current UI alias for baseline integration |
+| Shared Codex reconnect/disconnect authority | full | limited / read-mostly | limited / read-mostly | limited / read-mostly | code-verified, owner verified live |
 
 ## Channel Manager modal
 
@@ -86,6 +87,7 @@
 | Tab `Publishing` | yes | yes | yes | no modal | browser-verified |
 | Tab `Ассеты` | yes | yes | yes | no modal | browser-verified |
 | Tab `Доступ` | yes | yes | no | no | browser-verified |
+| Block `Caption provider` in `Общие настройки` | yes | no | no | no | browser + code |
 
 ## Team page `/team`
 
@@ -152,7 +154,7 @@
 
 - видит `Общие настройки` в Channel Manager;
 - редактирует workspace-wide Stage 2 defaults;
-- управляет shared Codex на уровне workspace;
+- управляет workspace AI integrations на уровне workspace;
 - может выдавать роль `manager`;
 - может управлять всеми каналами и всем team composition без ограничений.
 
@@ -161,7 +163,7 @@
 `manager` по UX почти совпадает с `owner`, но с двумя ключевыми ограничениями:
 
 - нет owner-wide `Общие настройки`;
-- нет owner-only управления shared Codex как системной сущностью.
+- нет owner-only управления workspace AI integrations как системной сущностью.
 
 Зато `manager` всё ещё:
 

@@ -4,6 +4,11 @@ import type {
   ResolvedWorkspaceCodexModelConfig,
   WorkspaceCodexModelConfig
 } from "../../lib/workspace-codex-models";
+import type {
+  Stage2CaptionProviderConfig,
+  WorkspaceAnthropicIntegrationStatus,
+  WorkspaceOpenRouterIntegrationStatus
+} from "../../lib/stage2-caption-provider";
 import type { Stage3TemplateConfig } from "../../lib/stage3-template";
 import type { TemplateCaptionHighlights } from "../../lib/template-highlights";
 import type {
@@ -1321,6 +1326,7 @@ export type WorkspaceRecord = {
   stage2ExamplesCorpusJson?: string;
   stage2PromptConfig?: Stage2PromptConfig;
   codexModelConfig?: WorkspaceCodexModelConfig;
+  stage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
   createdAt: string;
   updatedAt: string;
 };
@@ -1328,6 +1334,30 @@ export type WorkspaceRecord = {
 export type WorkspaceCodexModelConfigResponse = {
   codexModelConfig: WorkspaceCodexModelConfig;
   resolvedCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
+};
+
+export type WorkspaceAnthropicIntegrationRecord = {
+  id: string;
+  workspaceId: string;
+  provider: "anthropic";
+  status: WorkspaceAnthropicIntegrationStatus;
+  ownerUserId: string;
+  apiKeyHint: string | null;
+  lastError: string | null;
+  connectedAt: string | null;
+  updatedAt: string;
+};
+
+export type WorkspaceOpenRouterIntegrationRecord = {
+  id: string;
+  workspaceId: string;
+  provider: "openrouter";
+  status: WorkspaceOpenRouterIntegrationStatus;
+  ownerUserId: string;
+  apiKeyHint: string | null;
+  lastError: string | null;
+  connectedAt: string | null;
+  updatedAt: string;
 };
 
 export type UserRecord = {

@@ -21,6 +21,13 @@
 | `docs/agent-first/glossary-and-entity-map.md` | Перевод пользовательского языка в доменные сущности и UI-термины |
 | `docs/agent-first/issue-intake-playbook.md` | Как превращать жалобу или запрос в тикет инженерного качества |
 
+## Терминология и alias-ы
+
+- `Shared Codex` = текущее UI имя baseline workspace AI integration.
+- `Connect Codex` = owner-managed device-auth control для этой baseline integration.
+- `Stage 2 caption provider` = workspace-level routing policy для eligible caption-writing stages: `codex` или `anthropic`.
+- `workspace integrations` = owner-managed readiness layer для Stage 2 runtime; жалобы нельзя нормализовать как purely per-user auth issue без проверки этого слоя.
+
 ## Источники истины
 
 Используйте их в таком порядке:
@@ -94,7 +101,7 @@
 
 ### Верхнеуровневая модель
 
-1. `Workspace` задаёт команду, общие Stage 2 defaults и Codex routing.
+1. `Workspace` задаёт команду, общие Stage 2 defaults, workspace AI integrations и provider/model routing.
 2. `Channel` задаёт бренд, Stage 2 style profile, render defaults, assets и publishing settings.
 3. `Chat` — единица рабочего цикла по одному источнику видео.
 4. `Source job` — получение/нормализация источника на Step 1.
@@ -124,8 +131,8 @@
 
 | Роль | Основная зона ответственности | Ключевое ограничение |
 | --- | --- | --- |
-| `owner` | Полный контроль workspace, каналов, команды, Codex, Stage 2 defaults | Ограничений нет |
-| `manager` | Операционное управление каналами и участниками | Не управляет shared Codex и owner-wide bootstrap |
+| `owner` | Полный контроль workspace, каналов, команды, AI integrations и Stage 2 defaults | Ограничений нет |
+| `manager` | Операционное управление каналами и участниками | Не управляет owner-only workspace integrations и owner-wide bootstrap |
 | `redactor` | Ежедневный production flow и настройка доступных ему каналов | Не управляет командой и общими workspace defaults |
 | `redactor_limited` | Только рабочий цикл по выданным каналам | Не создаёт каналы, не меняет channel setup, не управляет доступами |
 

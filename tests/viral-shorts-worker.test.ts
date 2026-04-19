@@ -466,6 +466,7 @@ class QueueExecutor implements JsonStageExecutor {
   constructor(private readonly responses: unknown[]) {}
 
   async runJson<T>(input: {
+    stageId: string;
     prompt: string;
     schema: unknown;
     imagePaths?: string[];

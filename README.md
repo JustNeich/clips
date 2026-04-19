@@ -7,14 +7,13 @@
 - загрузка комментариев;
 - загрузка до 300 самых залайканных комментариев;
 - экспорт всех комментариев в `json`;
-- Stage 2 пайплайн генерации контента через LLM (Codex auth):
+- Stage 2 пайплайн генерации контента через owner-managed workspace AI integrations:
   - скачивание видео + комментариев;
   - анализ кадров видео + комментариев;
-  - `native_caption_v3` hot path:
-    - `contextPacket -> candidateGenerator -> qualityCourt -> targetedRepair? -> titleWriter`;
-    - 1-3 finalists + winner-first titles;
-    - без hot-path SEO и без hot-path RU перевода;
-    - отдельный optional action для перевода finalists после завершения run.
+  - `native_caption_v3` теперь поддерживает line-aware hot paths:
+    - `stable_reference_v6` / `stable_reference_v6_experimental` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`;
+    - `stable_social_wave_v1` / `stable_skill_gap_v1` / `experimental` -> `contextPacket -> candidateGenerator -> qualityCourt -> targetedRepair? -> captionTranslation -> titleWriter -> seo`;
+  - Shared Codex остаётся baseline runtime для всего Stage 2, а owner может отдельно перевести eligible caption-writing stages на Anthropic API или OpenRouter API без смены внешнего контракта.
 - Channel onboarding теперь проходит через guided wizard:
   - basic setup;
   - Stage 2 baseline settings;
@@ -89,6 +88,7 @@ npm run dev
 - Публичная регистрация создаёт активный аккаунт редактора с ролью `redactor`.
 - В интерфейсе команды приглашение по умолчанию тоже создаётся для полного редактора (`redactor`).
 - `redactor_limited` остаётся отдельной явной ролью для случаев, когда нужно оставить доступ к работе с каналом без права менять setup.
+- `owner` управляет workspace-wide AI integrations: Shared Codex как baseline executor и Anthropic/OpenRouter caption provider overlays.
 
 ## Как это работает
 
@@ -147,7 +147,16 @@ npm run dev
     - Stage 2 run aborts if `native_caption_v3` metadata is missing for new runs;
     - historical `vnext` payloads stay readable in trace/export and UI;
   - `data/examples.json` используется только один раз как seed для нового workspace, а не как live runtime source;
-  - вызывает `codex exec` по stage-этапам с авторизацией пользователя через кнопку `Connect Codex` (device auth);
+  - использует workspace-level AI integrations:
+    - Shared Codex остаётся baseline executor и проходит owner-managed device auth через текущий UI control `Connect Codex`;
+    - при `provider = codex` все Stage 2 stages идут через Shared Codex;
+    - при `provider = anthropic` eligible caption-only stages идут через Anthropic API, а остальная orchestration остаётся на Shared Codex;
+    - при `provider = openrouter` eligible caption-only stages идут через OpenRouter API, а остальная orchestration остаётся на Shared Codex;
+  - workspace owner может переключить eligible caption-only stages на Anthropic API или OpenRouter API:
+    - `oneShotReference`, `candidateGenerator`, `targetedRepair`, `regenerate`;
+    - `qualityCourt`, `captionTranslation`, `titleWriter`, `seo`, `styleDiscovery` и Stage 3 planner остаются на Shared Codex;
+    - ни Anthropic, ни OpenRouter не заменяют baseline Shared Codex integration целиком;
+    - wire contract не меняется: Stage 2 хранит только `top` / `bottom`, а Stage 3 продолжает жить на `topText` / `bottomText`, включая `channel_story` family;
   - отдает live progress snapshot по шагам pipeline (`GET /api/pipeline/stage2?runId=...`);
   - возвращает структурированный JSON:
     - `finalists` (1-3)
@@ -162,6 +171,10 @@ npm run dev
   - queued/running/completed/failed status;
   - per-stage progress snapshot;
   - result payload и error payload.
+- Workspace integration state для Stage 2 живёт отдельно от run-ов:
+  - Shared Codex integration хранит workspace-scoped device-auth session и `CODEX_HOME`;
+  - Anthropic/OpenRouter integrations хранят owner-managed API key + model и включаются только для eligible caption stages;
+  - Stage 2 runtime fail-closed не делает silent fallback с Anthropic/OpenRouter обратно на Codex, если внешний provider выбран, но не готов.
 - Старый Stage 2 refresh CLI оставлен только как compatibility stub и больше не обновляет examples corpus:
 
 ```bash
@@ -240,30 +253,77 @@ npm run stage3-worker -- start
 - Для загруженного `mp4` комментарии недоступны, но Step 2 и Step 3 продолжают работать по видеоконтексту.
 - Если выбрать несколько `mp4`, Step 1 соберет их в один composite `upload://` source, после чего Stage 3 segment editor продолжит работать на единой таймлинии.
 
-## Connect Codex (device auth)
+## Workspace AI integrations
 
-- В UI есть кнопка `Connect Codex`.
-- Приложение запускает `codex login --device-auth` для пользовательской session-id.
-- Пользователь завершает вход по URL/коду, показанным в интерфейсе.
-- После статуса `Logged in` можно запускать Stage 2.
-- Каждая browser-session использует отдельный `CODEX_HOME` в `.codex-user-sessions/<session-id>`.
+Короткие термины, которые важно читать одинаково:
+
+- `Shared Codex` = текущее UI имя baseline workspace integration, через которую проходит codex-backed часть Stage 2 и сопутствующие flows.
+- `Stage 2 caption provider` = workspace-level routing policy для eligible caption-writing stages: `codex`, `anthropic` или `openrouter`.
+- `workspace integrations` = owner-managed credentials/readiness layer для Stage 2 runtime.
+
+### Shared Codex / `Connect Codex`
+
+- В header UI по-прежнему есть статус `Shared Codex` и кнопка `Connect Codex`.
+- Это owner-managed workspace integration, а не per-user feature toggle для конкретного редактора.
+- При подключении приложение запускает `codex login --device-auth` и создаёт workspace-scoped `CODEX_HOME` внутри `CODEX_SESSIONS_DIR` (по умолчанию `.codex-user-sessions`).
+- После статуса `Logged in` Shared Codex становится доступен как baseline executor для Stage 2 и связанных flows.
+
+### Anthropic caption provider
+
+- Owner настраивает его в `Channel Manager -> Общие настройки -> Caption provider`.
+- Доступные поля:
+  - `Shared Codex` / `Anthropic API`
+  - `Anthropic model`
+  - `Anthropic API key`
+- Отдельный API surface:
+  - `GET /api/workspace/integrations/anthropic`
+  - `POST /api/workspace/integrations/anthropic` с `save` / `disconnect`
+- Даже при включённом Anthropic provider Stage 2 всё ещё зависит от baseline Shared Codex, потому что non-eligible stages остаются на Codex path.
+
+### OpenRouter caption provider
+
+- Owner настраивает его в `Channel Manager -> Общие настройки -> Caption provider`.
+- Доступные поля:
+  - `Shared Codex` / `OpenRouter API`
+  - `OpenRouter model`
+  - `OpenRouter API key`
+- Отдельный API surface:
+  - `GET /api/workspace/integrations/openrouter`
+  - `POST /api/workspace/integrations/openrouter` с `save` / `disconnect`
+- Default OpenRouter model сейчас: `anthropic/claude-opus-4.7`.
+- Даже при включённом OpenRouter provider Stage 2 всё ещё зависит от baseline Shared Codex, потому что non-eligible stages остаются на Codex path.
 
 ## Stage 2 спецификация
 
-Этап 2 реализован как multi-stage viral worker с строго-структурированными JSON stage-ответами:
-- `analyzer` -> visual anchors / vibe / reusable phrasing
-- `selector` -> clip type / top 3 angles / chosen examples from the active corpus
-- `writer` -> 20 candidate overlays
-- `critic` -> rescoring / keep set
-- `rewriter` -> sharpened shortlist candidates
-- `final selector` -> 5 final options for human pick
-- `titles` -> 5 title options for the shortlist
+Этап 2 реализован как line-aware hybrid worker с одним внешним контрактом и несколькими runtime path внутри `native_caption_v3`.
+
+Production line families:
+
+- `stable_reference_v6` -> `reference_one_shot_v1`
+  - `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`
+- `stable_reference_v6_experimental` -> `reference_one_shot_v1_experimental`
+  - тот же shape, но отдельный prompt bundle и более жёсткое context-first / anti-meta поведение
+- `stable_social_wave_v1` / `stable_skill_gap_v1` / `experimental` -> `modular_native_v1`
+  - `contextPacket -> candidateGenerator -> hardValidator -> qualityCourt -> targetedRepair? -> templateBackfill? -> captionHighlighting? -> captionTranslation -> titleWriter -> seo`
+
+Provider-aware routing overlay:
+
+- workspace хранит `stage2_caption_provider_json` с `provider: codex | anthropic | openrouter`, `anthropicModel` и `openrouterModel`;
+- Anthropic или OpenRouter могут принимать только eligible caption-writing stages:
+  - `oneShotReference`
+  - `candidateGenerator`
+  - `targetedRepair`
+  - `regenerate`
+- остальные stages продолжают идти через Shared Codex;
+- если Anthropic/OpenRouter provider выбран, но integration/model/output невалидны, runtime падает fail-closed и не уходит в silent Codex fallback.
 
 Финальный API-ответ по-прежнему содержит:
-- `inputAnalysis`: 3 visual anchors + comment vibe + key phrase;
+- `inputAnalysis`: grounding / audience summary / key cues;
 - `captionOptions`: ровно 5 опций, каждая с `TOP` и `BOTTOM`;
 - `titleOptions`: ровно 5 заголовков;
-- `finalPick`: выбор лучшей опции + причина.
+- `finalPick`: выбор лучшей опции + причина;
+- `seo`: description + tags block внутри того же Stage 2 run;
+- `pipeline.execution.pathVariant`: явное различие между one-shot baseline и modular native path.
 
 Инвариант success-path:
 - successful Stage 2 run должен завершаться ровно 5 visible caption options;
@@ -310,10 +370,27 @@ Primary Stage 2 control surface:
   - `workspace default corpus`
   - `hard constraints`
   - default prompt + default thinking по стадиям `analyzer, selector, writer, critic, rewriter, final selector, titles, seo`
+  - `Caption provider` для caption-only stages:
+    - `Shared Codex`, `Anthropic API` или `OpenRouter API`
+    - свободный `Anthropic model` field с дефолтом `claude-opus-4-6`
+    - свободный `OpenRouter model` field с дефолтом `anthropic/claude-opus-4.7`
+    - owner-only connect / update / disconnect для Anthropic API key
+    - owner-only connect / update / disconnect для OpenRouter API key
+- owner отдельно управляет baseline Shared Codex integration через header block `Shared Codex` / `Connect Codex`;
 - у конкретного канала теперь есть **одно** editable поле `Examples corpus JSON`;
 - это поле по умолчанию заполняется workspace default corpus, но может быть полностью заменено локальной версией для канала;
 - `selector` является реальным LLM stage и сам выбирает angle и релевантные examples из доступного corpus;
 - UI во время генерации показывает активный pipeline step в реальном времени.
+
+Anthropic setup links:
+- [API keys](https://platform.claude.com/settings/keys)
+- [Billing](https://platform.claude.com/settings/billing)
+- [Pricing](https://docs.anthropic.com/en/docs/about-claude/pricing)
+
+OpenRouter setup links:
+- [API keys](https://openrouter.ai/settings/keys)
+- [Credits](https://openrouter.ai/settings/credits/)
+- [Pricing](https://openrouter.ai/pricing)
 
 Publishing / YouTube queue:
 - planner публикации остаётся offline, пока для канала не подключён YouTube OAuth и не выбран целевой YouTube-канал;
@@ -380,7 +457,7 @@ cp .env.example .env.local
 
 Из-за этого на Vercel:
 - UI и базовый auth shell могут собраться;
-- полный `Step 2`, `Step 3`, shared Codex integration и media pipeline в текущем виде не гарантированно заработают.
+- полный `Step 2`, `Step 3`, workspace AI integrations и media pipeline в текущем виде не гарантированно заработают.
 
 Если всё же нужен preview deploy:
 
@@ -441,6 +518,9 @@ cp .env.example .env.local
 
 - Работают только публичные ссылки.
 - Если у пользователя нет `yt-dlp`/`ffmpeg`/`ffprobe`, Stage 3 local worker не сможет выполнять preview/render/source-download.
-- Для Stage 2 нужен успешный `Connect Codex` в текущей browser-session.
+- Для полноценного Stage 2 нужен готовый workspace AI runtime:
+  - Shared Codex должен быть подключён владельцем как baseline executor;
+  - если `Caption provider = Anthropic API`, дополнительно нужен проверенный Anthropic API key и model;
+  - если `Caption provider = OpenRouter API`, дополнительно нужен проверенный OpenRouter API key и model.
 - Количество комментариев зависит от того, что реально отдаёт источник/экстрактор `yt-dlp`.
 - Используйте только контент, на который у вас есть права.

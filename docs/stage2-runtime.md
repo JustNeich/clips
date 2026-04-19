@@ -2,6 +2,13 @@
 
 Этот документ описывает **текущую** Stage 2 архитектуру проекта. Он отражает упрощённую продуктовую модель и должен читаться как source of truth для разработчиков.
 
+## 0. Workspace integrations and terminology
+
+- `Shared Codex` = baseline workspace integration и текущий UI label для codex-backed runtime path.
+- `Stage 2 caption provider` = workspace-level routing policy для eligible caption-writing stages: `codex`, `anthropic` или `openrouter`.
+- `workspace integrations` = owner-managed readiness layer для Stage 2 runtime; run нельзя корректно описывать как purely per-user auth flow.
+- Anthropic и OpenRouter сейчас являются caption-provider overlays, а не полной заменой Shared Codex: baseline Codex integration всё ещё обязательна для non-eligible Stage 2 stages и сопутствующих flows.
+
 ## 1. Что такое Stage 2 сейчас
 
 Stage 2 больше не строится вокруг competitor-sync / hot-pool / profile-driven preset architecture.
@@ -126,12 +133,40 @@ Run lifecycle:
 
 Run modes:
 - `manual` / `auto` проходят полный line-aware pipeline:
-  - `stable_reference_v6` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> assemble`
-  - `stable_reference_v6_experimental` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> assemble`
+  - `stable_reference_v6` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`
+  - `stable_reference_v6_experimental` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`
   - остальные native lines -> `contextPacket -> candidateGenerator -> hardValidator -> qualityCourt -> targetedRepair? -> templateBackfill? -> captionHighlighting? -> captionTranslation -> titleWriter`
 - `regenerate` для `native_caption_v3` по-прежнему работает как lightweight rewrite path и не переключает line family
 - исторический quick regenerate для legacy/vnext payloads остаётся только для compatibility
 - regenerate по-прежнему использует coarse progress steps `База -> Перегенерация -> Сборка`
+
+Caption provider overlay:
+- persisted workspace setting: `workspaces.stage2_caption_provider_json`
+- baseline requirement:
+  - Shared Codex integration должна быть `connected` для любого Stage 2 run, даже если caption provider = `anthropic` или `openrouter`
+  - причина: non-eligible stages и общая Stage 2 orchestration по-прежнему живут на Codex path
+- allowed values:
+  - `provider: "codex"` -> все Stage 2 LLM stages идут через Shared Codex
+  - `provider: "anthropic"` -> только `oneShotReference`, `candidateGenerator`, `targetedRepair` и `regenerate` идут через Anthropic Messages API
+  - `provider: "openrouter"` -> только `oneShotReference`, `candidateGenerator`, `targetedRepair` и `regenerate` идут через OpenRouter Chat Completions API
+- даже при `provider: "anthropic"` или `provider: "openrouter"` следующие stages остаются на Shared Codex:
+  - `qualityCourt`
+  - `captionTranslation`
+  - `titleWriter`
+  - `seo`
+  - `styleDiscovery`
+  - все Stage 3 agent / planner flows
+- fail-closed rule:
+  - если Anthropic/OpenRouter key, model или structured output невалидны, caption stage падает явно
+  - runtime не делает silent fallback обратно на Codex
+- resolved runtime shape:
+  - `resolvedCodexModelConfig` хранит effective Codex-only model policy
+  - `resolvedStageModelConfig` строится поверх него и подменяет eligible caption stages на Anthropic/OpenRouter model, если внешний provider активен
+  - diagnostics / pipeline model summary должны смотреть на `resolvedStageModelConfig`, а не на старый Codex-only snapshot
+- caption wire contract не меняется:
+  - Stage 2 продолжает хранить только `top` / `bottom`
+  - Stage 3 продолжает жить на `topText` / `bottomText`
+  - `channel_story` family не вводит отдельный single-text payload: основной body остаётся в `bottomText`, а `topText` зависит от `leadMode`
 
 Caption highlighting:
 - optional pass запускается только если active workspace template имеет включённый `highlights.enabled` и хотя бы один enabled slot;
@@ -204,6 +239,14 @@ Seed source:
 
 Prompt configuration задаётся **по stage**, а не через vague guidance.
 
+Для текущего Stage 2 теперь всегда нужно мыслить в двух routing layers:
+
+1. `caption provider routing`
+   - решает, останутся ли eligible caption-writing stages на Shared Codex или уйдут на Anthropic/OpenRouter
+2. `Codex model routing`
+   - задаёт per-stage model policy для Codex-backed stages
+   - при `provider = anthropic` или `provider = openrouter` Codex selections для eligible stages сохраняются как dormant config и снова становятся active после возврата на `codex`
+
 Дополнительно для native hot path существует явный line selector:
 - persisted field: `channels.stage2_worker_profile_id`
 - runtime snapshot: `stage2_runs.request_json.channel.stage2WorkerProfileId`
@@ -224,15 +267,36 @@ Workspace owner редактирует defaults в `Default settings`:
 - default prompt
 - default thinking / reasoning effort
 - hard constraints
+- caption provider policy
+- per-stage Codex model policy
 
 Эти defaults живут на workspace уровне:
 - `workspaces.stage2_prompt_config_json`
 - `workspaces.stage2_hard_constraints_json`
+- `workspaces.stage2_caption_provider_json`
+- `workspaces.workspace_codex_model_config_json`
+
+Anthropic/OpenRouter integrations живут отдельно от prompt/model defaults:
+- tables `workspace_anthropic_integrations`, `workspace_openrouter_integrations`
+- keys хранятся зашифрованно через `lib/app-crypto.ts`
+- UI surface: `Channel Manager -> Общие настройки -> Caption provider`
+- setup links:
+  - [API keys](https://platform.claude.com/settings/keys)
+  - [Billing](https://platform.claude.com/settings/billing)
+  - [Pricing](https://docs.anthropic.com/en/docs/about-claude/pricing)
+  - [OpenRouter API keys](https://openrouter.ai/settings/keys)
+  - [OpenRouter Credits](https://openrouter.ai/settings/credits/)
+  - [OpenRouter Pricing](https://openrouter.ai/pricing)
 
 Отдельно для `stable_reference_v6` теперь есть workspace-only control surface:
 - `Default settings -> Stage 2 model routing -> Stable Reference v6`
 - там можно выбрать только `model` и `reasoning effort` для `oneShotReference`
 - prompt text для этого baseline остаётся product-owned и не редактируется через UI
+
+Runtime resolution:
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-codex-executor.ts` поднимает baseline Shared Codex integration и, при необходимости, Anthropic/OpenRouter executor
+- `HybridJsonStageExecutor` маршрутизирует только eligible caption stages во внешний provider, а всё остальное оставляет на Codex executor
+- если provider = `anthropic` или `provider = openrouter`, Stage 2 worker получает внешний model как effective model только для eligible stages; `reasoningEffort` на этих stages больше не идёт из Codex policy
 
 Channel-level prompt editing больше не является primary runtime path.
 
@@ -241,7 +305,7 @@ Channel-level prompt editing больше не является primary runtime 
 - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-prompt-specs.ts`
 - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/viral-shorts-worker/prompts.ts`
 
-## 4.1 Channel onboarding and learning layer
+## 4.2 Channel onboarding and learning layer
 
 Поверх текущей Stage 2 architecture добавлен отдельный channel bootstrap + learning layer.
 
@@ -280,7 +344,7 @@ Channel-level prompt editing больше не является primary runtime 
 - `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/channel-style-discovery-store.ts`
 - `/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage2-channel-learning.md`
 
-## 4.2 Ongoing editorial learning
+## 4.3 Ongoing editorial learning
 
 После onboarding канал получает lightweight feedback loop:
 - явный `лайк` / `дизлайк` по whole option;
