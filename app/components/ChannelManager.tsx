@@ -1241,19 +1241,6 @@ export function ChannelManager({
     }));
   };
 
-  const updateWorkspaceExamplesJson = (value: string) => {
-    setWorkspaceExamplesJson(value);
-    try {
-      const parsed = JSON.parse(value) as unknown;
-      if (!Array.isArray(parsed)) {
-        throw new Error("JSON общего корпуса должен быть JSON-массивом.");
-      }
-      setWorkspaceExamplesError(null);
-    } catch {
-      setWorkspaceExamplesError("JSON общего корпуса должен быть валидным JSON-массивом.");
-    }
-  };
-
   const persistWorkspaceCaptionProviderConfig = async (
     nextConfig: Stage2CaptionProviderConfig,
     previousConfig: Stage2CaptionProviderConfig
