@@ -1,4 +1,10 @@
-export const STAGE2_WORKER_PROFILE_IDS = [
+export const STAGE2_SINGLE_BASELINE_PROFILE_ID = "stable_reference_v7" as const;
+
+export const STAGE2_ACTIVE_WORKER_PROFILE_IDS = [
+  STAGE2_SINGLE_BASELINE_PROFILE_ID
+] as const;
+
+export const STAGE2_HISTORICAL_WORKER_PROFILE_IDS = [
   "stable_reference_v6",
   "stable_reference_v6_experimental",
   "stable_social_wave_v1",
@@ -6,10 +12,19 @@ export const STAGE2_WORKER_PROFILE_IDS = [
   "experimental"
 ] as const;
 
+export const STAGE2_WORKER_PROFILE_IDS = [
+  ...STAGE2_ACTIVE_WORKER_PROFILE_IDS,
+  ...STAGE2_HISTORICAL_WORKER_PROFILE_IDS
+] as const;
+
 export type Stage2WorkerProfileId = (typeof STAGE2_WORKER_PROFILE_IDS)[number];
 
-export type Stage2WorkerProfileOrigin = "channel_setting" | "default_baseline";
+export type Stage2WorkerProfileOrigin =
+  | "channel_setting"
+  | "default_baseline";
+
 export type Stage2WorkerProfileExecutionMode =
+  | "one_shot_reference_v2"
   | "one_shot_reference_v1"
   | "one_shot_reference_v1_experimental"
   | "native_modular_v1";
@@ -41,6 +56,7 @@ export type Stage2WorkerProfileDefinition = {
   styleCard: Stage2WorkerProfileStyleCard;
   dominantWaveLanePlan: Stage2WorkerProfileLanePreset[];
   defaultLanePlan: Stage2WorkerProfileLanePreset[];
+  active: boolean;
 };
 
 export type ResolvedStage2WorkerProfile = {
@@ -54,486 +70,138 @@ export type ResolvedStage2WorkerProfile = {
   styleCard: Stage2WorkerProfileStyleCard;
 };
 
-export const DEFAULT_STAGE2_WORKER_PROFILE_ID: Stage2WorkerProfileId = "stable_reference_v6";
+export const DEFAULT_STAGE2_WORKER_PROFILE_ID: Stage2WorkerProfileId =
+  STAGE2_SINGLE_BASELINE_PROFILE_ID;
+
+const SINGLE_BASELINE_STYLE_CARD: Stage2WorkerProfileStyleCard = {
+  channel_voice: {
+    core_tone:
+      "dense, grounded, context-first, anti-meta, human on the release, never documentary and never commentary about the audience or the edit",
+    best_at: [
+      "compressed contextual paraphrase",
+      "fast event grounding before inference",
+      "paradox-first hooks without media commentary",
+      "human release after the explanation",
+      "clean one-shot caption writing from video truth"
+    ],
+    avoid: [
+      "edit commentary",
+      "comment-section narration",
+      "preset lane logic",
+      "style-library borrowing",
+      "generic clean-English filler"
+    ]
+  },
+  hook_rules: [
+    "Ground the event before the inference.",
+    "Use comments only as weak phrasing hints, never as the narrator stance.",
+    "Treat video truth and hard constraints as the real authority."
+  ],
+  bottom_rules: [
+    "Release into the human read, consequence, or punchline without audience commentary.",
+    "Do not restate the top.",
+    "Keep the line human, lived-in, and visually defensible."
+  ],
+  positive_micro_moves: [
+    "context before inference",
+    "anti-meta paraphrase",
+    "specific visible nouns",
+    "human release",
+    "exact-length discipline"
+  ],
+  negative_micro_moves: [
+    "clip commentary",
+    "comment-section narration",
+    "borrowed stylistic presets",
+    "lane-filler variants",
+    "generic safe sludge"
+  ]
+};
+
+function createProfile(
+  definition: Omit<Stage2WorkerProfileDefinition, "styleCard"> & {
+    styleCard?: Stage2WorkerProfileStyleCard;
+  }
+): Stage2WorkerProfileDefinition {
+  return {
+    ...definition,
+    styleCard: definition.styleCard ?? SINGLE_BASELINE_STYLE_CARD
+  };
+}
 
 const STAGE2_WORKER_PROFILES: Record<Stage2WorkerProfileId, Stage2WorkerProfileDefinition> = {
-  stable_reference_v6: {
+  stable_reference_v7: createProfile({
+    id: "stable_reference_v7",
+    label: "Stable Reference",
+    description:
+      "The only active Stage 2 baseline: a video-first, context-first one-shot pipeline with weak comments hints and no style-learning steering.",
+    summary:
+      "Writes captions directly from video truth, bounded comments hints, hard constraints, and user instruction. No line selector, lane plan, examples corpus, or editorial-memory steering is active.",
+    executionMode: "one_shot_reference_v2",
+    dominantWaveLanePlan: [],
+    defaultLanePlan: [],
+    active: true
+  }),
+  stable_reference_v6: createProfile({
     id: "stable_reference_v6",
     label: "Stable Reference v6",
     description:
-      "Production baseline for the proven benchmark DNA: dense explanatory or paradox-forward TOP, human or punchline BOTTOM, grounded in benchmark-style narration.",
-    summary:
-      "Use the benchmark narrator DNA as the baseline. TOP should explain the contradiction or hidden rule early; BOTTOM should cash it out with a human or punchline read instead of generic commentary.",
+      "Historical one-shot reference profile kept only for read compatibility with older runs and snapshots.",
+    summary: "Historical profile. New Stage 2 runs no longer resolve to this line.",
     executionMode: "one_shot_reference_v1",
-    styleCard: {
-      channel_voice: {
-        core_tone:
-          "dense, grounded, explanatory, paradox-aware, human on the release, never documentary",
-        best_at: [
-          "compressed explanatory turns",
-          "paradox-first hooks",
-          "earned respect without ad copy",
-          "human punchline payoffs",
-          "benchmark-like narrator density"
-        ],
-        avoid: [
-          "inventory openings",
-          "flat documentary recap",
-          "marketing awe language",
-          "vague editorial abstraction",
-          "generic clean-English filler"
-        ]
-      },
-      hook_rules: [
-        "TOP should explain the contradiction or hidden rule in the first clause",
-        "Prefer explanatory compression over scene logging",
-        "If the benchmark DNA fits, let the hook feel denser than casual social copy"
-      ],
-      bottom_rules: [
-        "BOTTOM should pivot into a human or punchline release",
-        "BOTTOM must not restate the explanation verbatim",
-        "Respect warmth or amused disbelief when the clip earns it"
-      ],
-      positive_micro_moves: [
-        "dense but readable first clause",
-        "paradox or hidden-rule framing",
-        "human release after the explanation",
-        "benchmark-style confidence without hype"
-      ],
-      negative_micro_moves: [
-        "beat logging",
-        "documentary nouns before the hook",
-        "empty competence worship",
-        "clean but lifeless fallback copy"
-      ]
-    },
-    dominantWaveLanePlan: [
-      {
-        laneId: "audience_locked_reference",
-        count: 2,
-        purpose: "Preserve the harmless public handle without losing the benchmark explanatory DNA."
-      },
-      {
-        laneId: "explanatory_paradox",
-        count: 3,
-        purpose: "TOP should explain the contradiction or hidden rule as early as possible."
-      },
-      {
-        laneId: "human_punchline",
-        count: 2,
-        purpose: "BOTTOM should release into a human or punchline read rather than abstract commentary."
-      },
-      {
-        laneId: "plain_backup",
-        count: 1,
-        purpose: "Keep one cleaner fallback alive for display safety."
-      }
-    ],
-    defaultLanePlan: [
-      {
-        laneId: "explanatory_paradox",
-        count: 4,
-        purpose: "TOP should explain the contradiction or hidden rule as early as possible."
-      },
-      {
-        laneId: "human_punchline",
-        count: 2,
-        purpose: "BOTTOM should release into a human or punchline read rather than abstract commentary."
-      },
-      {
-        laneId: "earned_reaction",
-        count: 1,
-        purpose: "Catch the strongest grounded human reaction without going soft."
-      },
-      {
-        laneId: "plain_backup",
-        count: 1,
-        purpose: "Keep one cleaner fallback alive for display safety."
-      }
-    ]
-  },
-  stable_reference_v6_experimental: {
+    dominantWaveLanePlan: [],
+    defaultLanePlan: [],
+    active: false
+  }),
+  stable_reference_v6_experimental: createProfile({
     id: "stable_reference_v6_experimental",
     label: "Stable Reference v6 Experimental",
     description:
-      "Isolated experimental one-shot baseline for benchmark DNA with context-first anti-meta guardrails, stronger same-line learning, and weaker comment-wave steering under weak grounding.",
-    summary:
-      "Keep the benchmark explanatory density, but force context-first paraphrase instead of edit/commentary language. This line promotes matching-line editor feedback more aggressively and treats weakly grounded comments as secondary hints rather than narrator stance.",
+      "Historical experimental one-shot profile kept only for read compatibility with older runs and snapshots.",
+    summary: "Historical profile. Its behavior has been promoted into the current single baseline.",
     executionMode: "one_shot_reference_v1_experimental",
-    styleCard: {
-      channel_voice: {
-        core_tone:
-          "dense, grounded, explanatory, context-first, human on the release, never documentary and never meta about the clip itself",
-        best_at: [
-          "compressed contextual paraphrase",
-          "paradox-first hooks without edit commentary",
-          "human release after the explanation",
-          "benchmark-like narrator density with stricter grounding",
-          "using channel rules as active framing boundaries"
-        ],
-        avoid: [
-          "edit or video commentary",
-          "comment-section narration",
-          "inventory openings",
-          "flat documentary recap",
-          "generic clean-English filler"
-        ]
-      },
-      hook_rules: [
-        "TOP should establish the event context first, then compress the contradiction or hidden rule",
-        "Paraphrase visible or textual context as the world of the clip, not as commentary about the clip",
-        "If grounding is weak, do not let audience reaction phrasing replace context"
-      ],
-      bottom_rules: [
-        "BOTTOM should release into a human or punchline read without talking about viewers or comments",
-        "BOTTOM must not restate the explanation verbatim",
-        "Editorial memory hard rules override comment-wave stylistic habits in this line"
-      ],
-      positive_micro_moves: [
-        "context before inference",
-        "anti-meta paraphrase",
-        "human release after the explanation",
-        "benchmark-style confidence without edit commentary"
-      ],
-      negative_micro_moves: [
-        "clip-edit commentary",
-        "comment-section narration",
-        "empty competence worship",
-        "clean but lifeless fallback copy"
-      ]
-    },
-    dominantWaveLanePlan: [
-      {
-        laneId: "context_first_reference",
-        count: 3,
-        purpose: "Open with the actual event context before the explanatory turn."
-      },
-      {
-        laneId: "explanatory_paradox",
-        count: 2,
-        purpose: "TOP should still explain the contradiction or hidden rule early."
-      },
-      {
-        laneId: "human_punchline",
-        count: 2,
-        purpose: "BOTTOM should release into a human or punchline read instead of audience commentary."
-      },
-      {
-        laneId: "plain_backup",
-        count: 1,
-        purpose: "Keep one cleaner fallback alive for display safety."
-      }
-    ],
-    defaultLanePlan: [
-      {
-        laneId: "context_first_reference",
-        count: 3,
-        purpose: "Open with the actual event context before the explanatory turn."
-      },
-      {
-        laneId: "explanatory_paradox",
-        count: 2,
-        purpose: "TOP should still explain the contradiction or hidden rule early."
-      },
-      {
-        laneId: "human_punchline",
-        count: 2,
-        purpose: "BOTTOM should release into a human or punchline read instead of audience commentary."
-      },
-      {
-        laneId: "plain_backup",
-        count: 1,
-        purpose: "Keep one cleaner fallback alive for display safety."
-      }
-    ]
-  },
-  stable_social_wave_v1: {
+    dominantWaveLanePlan: [],
+    defaultLanePlan: [],
+    active: false
+  }),
+  stable_social_wave_v1: createProfile({
     id: "stable_social_wave_v1",
     label: "Stable Social Wave v1",
     description:
-      "For Popvein-like social clips where public handle, comment wave, and comment-native phrasing must survive the pipeline instead of being sanded into clean generic English.",
-    summary:
-      "Let the dominant harmless handle and comment-native wave stay alive. Prioritize social-read pressure, comment-native phrasing, and sharp human observation over benchmark density.",
+      "Historical modular profile kept only so older runs and traces can still render truthfully.",
+    summary: "Historical modular profile. New Stage 2 runs no longer use modular native flow.",
     executionMode: "native_modular_v1",
-    styleCard: {
-      channel_voice: {
-        core_tone:
-          "human, public-facing, socially observant, comment-native, quick to read, never synthetic",
-        best_at: [
-          "dominant harmless handles",
-          "comment-native phrasing",
-          "social pressure and public read",
-          "micro-hesitation or side-eye",
-          "clean but lived-in wave preservation"
-        ],
-        avoid: [
-          "benchmark-style over-explaining when the clip wants social wave",
-          "sanding the public handle into generic English",
-          "fake pseudo-slang",
-          "PR or analyst tone",
-          "sterile summary copy"
-        ]
-      },
-      hook_rules: [
-        "If a harmless public handle exists, preserve it naturally",
-        "TOP should carry the social wave early instead of replacing it with cleaner copy",
-        "Use comment-native phrasing when it sharpens the clip safely"
-      ],
-      bottom_rules: [
-        "BOTTOM should feel like a lived-in reaction from the same public wave",
-        "BOTTOM should sharpen the social consequence or room read",
-        "Do not over-explain what the audience already named well"
-      ],
-      positive_micro_moves: [
-        "public-handle retention",
-        "comment-native but still readable",
-        "human room read",
-        "quick social consequence"
-      ],
-      negative_micro_moves: [
-        "generic clean-English smoothing",
-        "synthetic editorial slang",
-        "benchmark-density where the clip wants breezier public phrasing",
-        "dead fallback wording"
-      ]
-    },
-    dominantWaveLanePlan: [
-      {
-        laneId: "audience_locked",
-        count: 3,
-        purpose: "Preserve the dominant harmless handle or public read directly."
-      },
-      {
-        laneId: "comment_native",
-        count: 2,
-        purpose: "Keep the copy comment-native instead of smoothing it into generic English."
-      },
-      {
-        laneId: "human_observational",
-        count: 2,
-        purpose: "Catch the strongest human micro-read without losing the public wave."
-      },
-      {
-        laneId: "plain_backup",
-        count: 1,
-        purpose: "Keep one simpler fallback that is still socially alive."
-      }
-    ],
-    defaultLanePlan: [
-      {
-        laneId: "comment_native",
-        count: 3,
-        purpose: "Keep the copy comment-native instead of smoothing it into generic English."
-      },
-      {
-        laneId: "balanced_clean",
-        count: 2,
-        purpose: "Stay clear and readable without erasing the social read."
-      },
-      {
-        laneId: "human_observational",
-        count: 2,
-        purpose: "Catch the strongest human micro-read without meme overkill."
-      },
-      {
-        laneId: "plain_backup",
-        count: 1,
-        purpose: "Keep one simpler fallback that is still socially alive."
-      }
-    ]
-  },
-  stable_skill_gap_v1: {
+    dominantWaveLanePlan: [],
+    defaultLanePlan: [],
+    active: false
+  }),
+  stable_skill_gap_v1: createProfile({
     id: "stable_skill_gap_v1",
     label: "Stable Skill Gap v1",
     description:
-      "For LaunchMind-like clips where the caption wins by compressing a competence gap, hidden process miss, or painful contrast between what should happen and what actually happens.",
-    summary:
-      "Prioritize skill-gap explanation, hidden process misses, and practical consequence. Let TOP compress the competence gap fast; let BOTTOM land the human or consequence read without jargon sludge.",
+      "Historical modular profile kept only so older runs and traces can still render truthfully.",
+    summary: "Historical modular profile. New Stage 2 runs no longer use modular native flow.",
     executionMode: "native_modular_v1",
-    styleCard: {
-      channel_voice: {
-        core_tone:
-          "clear, compressed, process-aware, competence-gap focused, human on consequence, never corporate",
-        best_at: [
-          "skill-gap explanation",
-          "hidden process miss",
-          "practical consequence",
-          "compressed teacherly clarity",
-          "human frustration without boardroom tone"
-        ],
-        avoid: [
-          "social-wave phrasing when the clip needs explanation",
-          "benchmark poetry without concrete mechanism",
-          "startup or productivity cliches",
-          "consulting English",
-          "template-safe vagueness"
-        ]
-      },
-      hook_rules: [
-        "TOP should compress the competence gap or hidden miss immediately",
-        "Explain what is wrong, missing, or mismatched without turning into a lecture",
-        "Prefer concrete process contrast over abstract motivation talk"
-      ],
-      bottom_rules: [
-        "BOTTOM should land the practical consequence, frustration, or human cost",
-        "BOTTOM must stay human instead of sounding like a postmortem",
-        "If there is a mild public read, keep it supporting rather than primary"
-      ],
-      positive_micro_moves: [
-        "competence-gap compression",
-        "practical consequence",
-        "clear process contrast",
-        "human frustration or respect"
-      ],
-      negative_micro_moves: [
-        "startup cliches",
-        "social-wave copy pasted onto process clips",
-        "generic inspiration language",
-        "flat tutorial recap"
-      ]
-    },
-    dominantWaveLanePlan: [
-      {
-        laneId: "skill_gap_explainer",
-        count: 3,
-        purpose: "Compress the competence gap or hidden miss quickly."
-      },
-      {
-        laneId: "competence_consequence",
-        count: 2,
-        purpose: "Land the practical outcome or human cost of the gap."
-      },
-      {
-        laneId: "audience_locked_supporting",
-        count: 1,
-        purpose: "Keep one public-handle-aware route only if the harmless handle is genuinely useful."
-      },
-      {
-        laneId: "plain_backup",
-        count: 2,
-        purpose: "Hold cleaner backup routes that stay explanatory."
-      }
-    ],
-    defaultLanePlan: [
-      {
-        laneId: "skill_gap_explainer",
-        count: 4,
-        purpose: "Compress the competence gap or hidden miss quickly."
-      },
-      {
-        laneId: "competence_consequence",
-        count: 2,
-        purpose: "Land the practical outcome or human cost of the gap."
-      },
-      {
-        laneId: "human_process_read",
-        count: 1,
-        purpose: "Catch the most human or practical process read."
-      },
-      {
-        laneId: "plain_backup",
-        count: 1,
-        purpose: "Hold a cleaner explanatory fallback."
-      }
-    ]
-  },
-  experimental: {
+    dominantWaveLanePlan: [],
+    defaultLanePlan: [],
+    active: false
+  }),
+  experimental: createProfile({
     id: "experimental",
     label: "Experimental",
     description:
-      "Looser exploratory line for side-by-side experiments. Keeps stronger novelty pressure and a wider risk envelope, but still respects hard validity.",
-    summary:
-      "Use broader exploratory space and permit one or two bolder framing attempts, while still obeying visual truth and deterministic validity.",
+      "Historical modular profile kept only so older runs and traces can still render truthfully.",
+    summary: "Historical modular profile. New Stage 2 runs no longer use modular native flow.",
     executionMode: "native_modular_v1",
-    styleCard: {
-      channel_voice: {
-        core_tone:
-          "adaptive, sharp, novelty-seeking, still grounded, willing to push one bolder read",
-        best_at: [
-          "novel but safe hook attempts",
-          "strong contrast experiments",
-          "alternative framing pressure",
-          "finding one sharper angle without full derailment"
-        ],
-        avoid: [
-          "reckless invention",
-          "non-native flourishes",
-          "novelty for its own sake",
-          "template-safe blandness"
-        ]
-      },
-      hook_rules: [
-        "Keep visual truth first even when exploring harder angles",
-        "At least one route may push a bolder but still defensible read",
-        "Do not let experimentation collapse the whole batch into one gimmick"
-      ],
-      bottom_rules: [
-        "BOTTOM may push a sharper payoff, but still has to feel human",
-        "Keep one cleaner route in reserve",
-        "Novelty should improve why-care, not just sound different"
-      ],
-      positive_micro_moves: [
-        "one sharper read",
-        "novel but grounded phrasing",
-        "clear why-care contrast",
-        "exploratory variety"
-      ],
-      negative_micro_moves: [
-        "wild unsupported claims",
-        "all eight candidates feeling like experiments",
-        "forced novelty",
-        "losing the display-safe reserve"
-      ]
-    },
-    dominantWaveLanePlan: [
-      {
-        laneId: "audience_locked",
-        count: 2,
-        purpose: "Keep the harmless public read alive if it is clearly dominant."
-      },
-      {
-        laneId: "bolder_safe",
-        count: 2,
-        purpose: "Push one or two sharper but still defensible reads."
-      },
-      {
-        laneId: "human_observational",
-        count: 2,
-        purpose: "Keep the strongest human micro-read in the batch."
-      },
-      {
-        laneId: "plain_backup",
-        count: 2,
-        purpose: "Reserve cleaner display-safe options."
-      }
-    ],
-    defaultLanePlan: [
-      {
-        laneId: "bolder_safe",
-        count: 3,
-        purpose: "Push one or two sharper but still defensible reads."
-      },
-      {
-        laneId: "human_observational",
-        count: 2,
-        purpose: "Keep the strongest human micro-read in the batch."
-      },
-      {
-        laneId: "contrast_first",
-        count: 2,
-        purpose: "Try a stronger contrast framing if the clip supports it."
-      },
-      {
-        laneId: "plain_backup",
-        count: 1,
-        purpose: "Reserve one cleaner display-safe option."
-      }
-    ]
-  }
+    dominantWaveLanePlan: [],
+    defaultLanePlan: [],
+    active: false
+  })
 };
 
 function sanitizeStage2WorkerProfileId(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || null;
 }
 
 export function isStage2WorkerProfileId(value: unknown): value is Stage2WorkerProfileId {
@@ -558,7 +226,8 @@ export function parseStage2WorkerProfileId(value: unknown): string | null {
 
 export function resolveStage2WorkerProfile(value: unknown): ResolvedStage2WorkerProfile {
   const requestedId = sanitizeStage2WorkerProfileId(value);
-  const resolvedId = normalizeStage2WorkerProfileId(requestedId) ?? DEFAULT_STAGE2_WORKER_PROFILE_ID;
+  const normalizedRequestedId = normalizeStage2WorkerProfileId(requestedId);
+  const resolvedId = normalizedRequestedId ?? DEFAULT_STAGE2_WORKER_PROFILE_ID;
   const definition = STAGE2_WORKER_PROFILES[resolvedId];
   return {
     requestedId,
@@ -566,20 +235,24 @@ export function resolveStage2WorkerProfile(value: unknown): ResolvedStage2Worker
     label: definition.label,
     description: definition.description,
     summary: definition.summary,
-    origin: normalizeStage2WorkerProfileId(requestedId) ? "channel_setting" : "default_baseline",
+    origin: normalizedRequestedId ? "channel_setting" : "default_baseline",
     executionMode: definition.executionMode,
     styleCard: definition.styleCard
   };
 }
 
 export function listStage2WorkerProfiles(): Stage2WorkerProfileDefinition[] {
-  return STAGE2_WORKER_PROFILE_IDS.map((id) => STAGE2_WORKER_PROFILES[id]);
+  return STAGE2_ACTIVE_WORKER_PROFILE_IDS.map((id) => STAGE2_WORKER_PROFILES[id]);
 }
 
 export function isReferenceOneShotExecutionMode(
   value: Stage2WorkerProfileExecutionMode
 ): boolean {
-  return value === "one_shot_reference_v1" || value === "one_shot_reference_v1_experimental";
+  return (
+    value === "one_shot_reference_v2" ||
+    value === "one_shot_reference_v1" ||
+    value === "one_shot_reference_v1_experimental"
+  );
 }
 
 export function buildStage2WorkerProfilePromptPayload(
@@ -601,7 +274,7 @@ export function buildStage2WorkerProfileRequiredLanes(input: {
   dominantWave: boolean;
   weakWave: boolean;
 }): Stage2WorkerProfileLanePreset[] {
-  const profile = STAGE2_WORKER_PROFILES[input.profileId];
+  const profile = STAGE2_WORKER_PROFILES[input.profileId] ?? STAGE2_WORKER_PROFILES[DEFAULT_STAGE2_WORKER_PROFILE_ID];
   if (input.dominantWave && !input.weakWave) {
     return profile.dominantWaveLanePlan.map((entry) => ({ ...entry }));
   }

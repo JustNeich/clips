@@ -3,9 +3,8 @@ import type { Stage2HardConstraints } from "./stage2-channel-config";
 import { validateStage2Output } from "./stage2-output-validation";
 import { buildStage2Spec } from "./stage2-spec";
 import {
-  buildStage2LearningPromptContext,
-  normalizeStage2EditorialMemorySummary,
-  normalizeStage2StyleProfile,
+  createEmptyStage2EditorialMemorySummary,
+  DEFAULT_STAGE2_STYLE_PROFILE,
   type Stage2EditorialMemorySummary,
   type Stage2StyleProfile
 } from "./stage2-channel-learning";
@@ -40,10 +39,9 @@ const QUICK_REGENERATE_PROMPT = [
   "- Keep the same option numbers.",
   "- Keep the same candidate_id values.",
   "- Keep the same angle labels.",
-  "- Preserve style_direction_ids and exploration_mode unless the rewrite clearly changes the lane.",
   "- Return one revised title paired with each revised caption option.",
   "- final_pick_option must point to one of the visible options.",
-  "- Stay specific, visual, and grounded in the provided source context.",
+  "- Stay specific, visual, and grounded in the provided video-first source context.",
   "- Respect hard constraints exactly.",
   "- Keep final top, bottom, and title text in English only, even if user_instruction is written in Russian.",
   "- Use Russian only in top_ru, bottom_ru, and title_ru.",
@@ -56,7 +54,7 @@ const QUICK_REGENERATE_PROMPT = [
   "- Preserve diversity across options instead of making five near-duplicates.",
   "- Do not smooth every bottom into the same continuation logic.",
   "- Remove stock tails like 'the reaction basically writes itself' or 'the whole room feels it immediately'.",
-  "- If the saved analysis includes strong audience shorthand or acronyms, let at least one revised option use that language naturally when it sharpens the bottom.",
+  "- Weak comments hints may help with harmless phrasing, but the video remains the main authority.",
   "- If a quoted opener is not earning its place, replace it with a more natural clip-specific start.",
   "- Never leave broken fragments after tightening."
 ].join("\n");
@@ -229,12 +227,7 @@ function buildQuickRegeneratePromptPayload(
   baseOptions: QuickRegenerateBaseOption[],
   userInstruction: string | null
 ): Stage2RegenerateBaseSnapshot {
-  const selectorOutput = buildFallbackSelectorOutput(stage2, baseOptions);
-  const channelLearning = buildStage2LearningPromptContext({
-    profile: channel.stage2StyleProfile,
-    editorialMemory: channel.editorialMemory,
-    detail: "minimal"
-  });
+  const passedComments = stage2.source.topComments.slice(0, 6);
   return {
     channel: {
       id: channel.id,
@@ -242,45 +235,21 @@ function buildQuickRegeneratePromptPayload(
       username: channel.username,
       constraints: channel.stage2HardConstraints
     },
-    channelLearning,
     source: {
       url: stage2.source.url,
       title: stage2.source.title,
       frameDescriptions: (stage2.source.frameDescriptions ?? []).slice(0, 4),
-      topComments: stage2.source.topComments.slice(0, 6).map((comment) => ({
+      topComments: passedComments.map((comment) => ({
         author: comment.author,
         likes: comment.likes,
         text: comment.text
       }))
     },
     analysis: {
+      keyPhraseToAdapt: stage2.output.inputAnalysis.keyPhraseToAdapt,
+      commentVibe: stage2.output.inputAnalysis.commentVibe,
       whyViewerCares: stage2.diagnostics?.selection?.whyViewerCares ?? "",
-      bottomEnergy: stage2.diagnostics?.selection?.bottomEnergy ?? "",
-      commentVibe: stage2.diagnostics?.analysis?.commentVibe ?? "",
-      commentConsensusLane: stage2.diagnostics?.analysis?.commentConsensusLane ?? "",
-      commentJokeLane: stage2.diagnostics?.analysis?.commentJokeLane ?? "",
-      commentDissentLane: stage2.diagnostics?.analysis?.commentDissentLane ?? "",
-      commentSuspicionLane: stage2.diagnostics?.analysis?.commentSuspicionLane ?? "",
-      commentLanguageCues: stage2.diagnostics?.analysis?.commentLanguageCues ?? []
-    },
-    retrieval: {
-      retrievalConfidence: stage2.diagnostics?.examples?.retrievalConfidence ?? null,
-      examplesMode: stage2.diagnostics?.examples?.examplesMode ?? null,
-      examplesRoleSummary: stage2.diagnostics?.examples?.examplesRoleSummary ?? null,
-      primaryDriverSummary: stage2.diagnostics?.examples?.primaryDriverSummary ?? null,
-      selectedExamples: (stage2.diagnostics?.examples?.selectedExamples ?? []).slice(0, 4).map((example) => ({
-        id: example.id,
-        title: example.title,
-        channelName: example.channelName
-      }))
-    },
-    selection: {
-      clipType: selectorOutput.clipType,
-      primaryAngle: selectorOutput.primaryAngle,
-      secondaryAngles: selectorOutput.secondaryAngles,
-      rankedAngles: selectorOutput.rankedAngles,
-      writerBrief: selectorOutput.writerBrief,
-      rationale: selectorOutput.rationale ?? null
+      weakCommentHints: passedComments.slice(0, 4).map((comment) => comment.text)
     },
     currentOptions: baseOptions,
     currentFinalPick: {
@@ -297,21 +266,54 @@ export function buildQuickRegeneratePrompt(input: {
   userInstruction: string | null;
 }): string {
   const baseOptions = buildBaseOptions(input.stage2);
+  const promptPayload = buildQuickRegeneratePromptPayload(
+    input.stage2,
+    input.channel,
+    baseOptions,
+    input.userInstruction
+  );
   return [
     "SYSTEM",
     QUICK_REGENERATE_PROMPT,
     "",
-    "USER CONTEXT JSON",
+    "video_truth_json",
+    JSON.stringify(promptPayload.source, null, 2),
+    "",
+    "comments_hint_json",
     JSON.stringify(
-      buildQuickRegeneratePromptPayload(
-        input.stage2,
-        input.channel,
-        baseOptions,
-        input.userInstruction
-      ),
+      {
+        topComments: promptPayload.source.topComments,
+        weakCommentHints: promptPayload.analysis.weakCommentHints ?? []
+      },
       null,
       2
-    )
+    ),
+    "",
+    "hard_constraints_json",
+    JSON.stringify(promptPayload.channel.constraints, null, 2),
+    "",
+    "regenerate_context_json",
+    JSON.stringify(
+      {
+        channel: {
+          id: promptPayload.channel.id,
+          name: promptPayload.channel.name,
+          username: promptPayload.channel.username
+        },
+        analysis: {
+          keyPhraseToAdapt: promptPayload.analysis.keyPhraseToAdapt,
+          commentVibe: promptPayload.analysis.commentVibe,
+          whyViewerCares: promptPayload.analysis.whyViewerCares
+        },
+        currentOptions: promptPayload.currentOptions,
+        currentFinalPick: promptPayload.currentFinalPick
+      },
+      null,
+      2
+    ),
+    "",
+    "user_instruction",
+    JSON.stringify(promptPayload.userInstruction)
   ].join("\n");
 }
 
@@ -325,13 +327,6 @@ function buildQuickPromptStageDiagnostics(input: {
 }): NonNullable<Stage2Diagnostics["effectivePrompting"]>["promptStages"][number] {
   const visibleOptions = input.baseResult.output.captionOptions ?? [];
   const passedQuickComments = input.baseResult.source.topComments.slice(0, 6);
-  const selectedQuickExamples = (input.baseResult.diagnostics?.examples?.selectedExamples ?? []).slice(0, 4);
-  const availablePromptPoolCount = input.baseResult.diagnostics?.examples?.selectorCandidateCount ?? 0;
-  const channelLearning = buildStage2LearningPromptContext({
-    profile: input.channel.stage2StyleProfile,
-    editorialMemory: input.channel.editorialMemory,
-    detail: "minimal"
-  });
   return {
     stageId: "regenerate",
     label: "Quick regenerate",
@@ -347,7 +342,7 @@ function buildQuickPromptStageDiagnostics(input: {
     usesImages: false,
     summary: "Single LLM stage: rewrites the visible shortlist and paired titles from the saved Stage 2 run.",
     inputManifest: {
-      learningDetail: "minimal",
+      learningDetail: "none",
       description: null,
       transcript: null,
       frames: {
@@ -372,32 +367,22 @@ function buildQuickPromptStageDiagnostics(input: {
         passedCommentIds: passedQuickComments.map((comment) => comment.id)
       },
       examples: {
-        availableCount: availablePromptPoolCount,
-        passedCount: selectedQuickExamples.length,
-        omittedCount: Math.max(0, availablePromptPoolCount - selectedQuickExamples.length),
-        truncated: availablePromptPoolCount > selectedQuickExamples.length,
+        availableCount: 0,
+        passedCount: 0,
+        omittedCount: 0,
+        truncated: false,
         limit: null,
-        activeCorpusCount: input.baseResult.diagnostics?.examples?.activeCorpusCount ?? 0,
-        promptPoolCount: availablePromptPoolCount,
-        passedExampleIds: selectedQuickExamples.map((example) => example.id),
-        selectedExampleIds: input.baseResult.diagnostics?.selection?.selectedExampleIds ?? [],
+        activeCorpusCount: 0,
+        promptPoolCount: 0,
+        passedExampleIds: [],
+        selectedExampleIds: [],
         rejectedExampleIds: [],
-        retrievalConfidence: input.baseResult.diagnostics?.examples?.retrievalConfidence ?? "low",
-        examplesMode: input.baseResult.diagnostics?.examples?.examplesMode ?? "style_guided",
-        examplesRoleSummary: input.baseResult.diagnostics?.examples?.examplesRoleSummary ?? "",
-        primaryDriverSummary: input.baseResult.diagnostics?.examples?.primaryDriverSummary ?? ""
+        retrievalConfidence: "low",
+        examplesMode: "style_guided",
+        examplesRoleSummary: "",
+        primaryDriverSummary: ""
       },
-      channelLearning: {
-        detail: "minimal",
-        selectedDirectionCount: channelLearning.bootstrap.selectedDirectionCount,
-        highlightedDirectionIds: channelLearning.bootstrap.directionHighlights
-          .map((direction) => direction.id)
-          .slice(0, 4),
-        explorationShare: channelLearning.bootstrap.explorationShare ?? null,
-        recentFeedbackCount: channelLearning.editorialMemory.recentFeedbackCount,
-        recentSelectionCount: channelLearning.editorialMemory.recentSelectionCount,
-        promptSummary: channelLearning.editorialMemory.promptSummary
-      },
+      channelLearning: null,
       candidates: {
         passedCount: visibleOptions.length,
         passedCandidateIds: visibleOptions.map((option) => option.candidateId ?? `option_${option.option}`),
@@ -406,7 +391,8 @@ function buildQuickPromptStageDiagnostics(input: {
       },
       stageFlags: [
         "single-stage quick regenerate",
-        "reuses analyzer, selector, and examples from the base run",
+        "video-first base context",
+        "weak comments hints only",
         "rewrites only the visible shortlist and paired titles"
       ]
     }
@@ -436,11 +422,6 @@ function buildQuickDiagnostics(input: {
   selectorOutput: SelectorOutput;
   debugMode: Stage2DebugMode;
 }): Stage2Diagnostics {
-  const channelStyleProfile = normalizeStage2StyleProfile(input.channel.stage2StyleProfile);
-  const editorialMemory = normalizeStage2EditorialMemorySummary(
-    input.channel.editorialMemory,
-    channelStyleProfile
-  );
   const syntheticPromptStage = buildQuickPromptStageDiagnostics({
     baseResult: input.baseResult,
     channel: input.channel,
@@ -458,8 +439,8 @@ function buildQuickDiagnostics(input: {
         name: input.channel.name,
         username: input.channel.username,
         hardConstraints: input.channel.stage2HardConstraints,
-        styleProfile: channelStyleProfile,
-        editorialMemory
+        styleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
+        editorialMemory: createEmptyStage2EditorialMemorySummary(DEFAULT_STAGE2_STYLE_PROFILE)
       },
       selection: input.baseResult.diagnostics.selection ?? {
         ...input.selectorOutput,
@@ -505,6 +486,43 @@ function buildQuickDiagnostics(input: {
         )
       },
       examples: input.baseResult.diagnostics.examples
+        ? {
+            ...input.baseResult.diagnostics.examples,
+            source: "workspace_default",
+            workspaceCorpusCount: 0,
+            activeCorpusCount: 0,
+            selectorCandidateCount: 0,
+            retrievalConfidence: "low",
+            examplesMode: "style_guided",
+            explanation: "",
+            evidence: [],
+            retrievalWarning: null,
+            examplesRoleSummary: "",
+            primaryDriverSummary: "",
+            primaryDrivers: [],
+            channelStylePriority: "supporting",
+            editorialMemoryPriority: "supporting",
+            availableExamples: [],
+            selectedExamples: []
+          }
+        : {
+            source: "workspace_default",
+            workspaceCorpusCount: 0,
+            activeCorpusCount: 0,
+            selectorCandidateCount: 0,
+            retrievalConfidence: "low",
+            examplesMode: "style_guided",
+            explanation: "",
+            evidence: [],
+            retrievalWarning: null,
+            examplesRoleSummary: "",
+            primaryDriverSummary: "",
+            primaryDrivers: [],
+            channelStylePriority: "supporting",
+            editorialMemoryPriority: "supporting",
+            availableExamples: [],
+            selectedExamples: []
+          }
     };
   }
 
@@ -515,8 +533,8 @@ function buildQuickDiagnostics(input: {
         username: input.channel.username,
         examplesSource: "workspace_default",
         hardConstraints: input.channel.stage2HardConstraints,
-        styleProfile: channelStyleProfile,
-        editorialMemory,
+        styleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
+        editorialMemory: createEmptyStage2EditorialMemorySummary(DEFAULT_STAGE2_STYLE_PROFILE),
         workspaceCorpusCount: 0,
         activeCorpusCount: 0
       },
@@ -584,8 +602,8 @@ function buildQuickDiagnostics(input: {
       examplesRoleSummary: "",
       primaryDriverSummary: "",
       primaryDrivers: [],
-      channelStylePriority: "primary",
-      editorialMemoryPriority: "primary",
+      channelStylePriority: "supporting",
+      editorialMemoryPriority: "supporting",
       availableExamples: [],
       selectedExamples: []
     }
@@ -639,29 +657,12 @@ export function buildQuickRegenerateResult(input: {
 } {
   const baseOptions = buildBaseOptions(input.baseResult);
   const rawEntries = sanitizeModelEntries(input.rawOutput);
-  const currentEditorialMemory = normalizeStage2EditorialMemorySummary(
-    input.channel.editorialMemory,
-    input.channel.stage2StyleProfile
-  );
-  const baseEditorialMemory = normalizeStage2EditorialMemorySummary(
-    input.baseResult.diagnostics?.channel?.editorialMemory,
-    input.baseResult.diagnostics?.channel?.styleProfile
-  );
   const warnings: Stage2Response["warnings"] = [
     {
       field: "regenerate",
-      message: "Quick regenerate reused analyzer/selector/examples from the saved base run."
+      message: "Quick regenerate reused the saved video-first base context and rewrote only the visible shortlist."
     }
   ];
-  if (
-    currentEditorialMemory.recentFeedbackCount > baseEditorialMemory.recentFeedbackCount ||
-    currentEditorialMemory.activeHardRuleCount > baseEditorialMemory.activeHardRuleCount
-  ) {
-    warnings.push({
-      field: "regenerate",
-      message: "Quick regenerate also applied the latest channel feedback collected after the base run."
-    });
-  }
   if (input.baseResult.seo) {
     warnings.push({
       field: "seo",

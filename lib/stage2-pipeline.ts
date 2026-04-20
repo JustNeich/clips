@@ -41,7 +41,7 @@ const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
     label: "Running one-shot reference baseline",
     shortLabel: "One-shot",
     description:
-      "Product-owned one-shot prompt reads video truth, comment wave, channel narrative, and editorial memory in one pass.",
+      "Product-owned one-shot prompt reads video truth, bounded comments hints, hard constraints, and user instruction in one pass.",
     promptConfigurable: false,
     promptStageType: "llm"
   },
@@ -334,11 +334,12 @@ export function listStage2PromptConfigStages(): Array<{
   description: string;
   promptStageType: "llm" | "deterministic";
 }> {
-  return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS.filter((stage) => stage.promptConfigurable).map((stage) => ({
+  return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS.filter((stage) => stage.id === "oneShotReference").map((stage) => ({
     id: stage.id as Stage2PromptConfigStageId,
     label: stage.label,
     shortLabel: stage.shortLabel,
-    description: stage.description,
+    description:
+      "Единственный редактируемый Stage 2 prompt: video-first stable one-shot baseline.",
     promptStageType: stage.promptStageType
   }));
 }
@@ -407,14 +408,14 @@ function resolveStage2ProgressDefinitions(
     return STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES;
   }
 
-  return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS;
+  return STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES;
 }
 
 export function getStage2ProgressStartStageId(
   mode?: string | null,
   workerProfileId?: string | null
 ): Stage2ProgressStageId {
-  return resolveStage2ProgressDefinitions(mode, undefined, workerProfileId)[0]?.id ?? "contextPacket";
+  return resolveStage2ProgressDefinitions(mode, undefined, workerProfileId)[0]?.id ?? "oneShotReference";
 }
 
 function sanitizePrompt(value: unknown, fallback: string): string {

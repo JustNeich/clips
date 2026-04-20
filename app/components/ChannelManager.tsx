@@ -23,7 +23,6 @@ import type { ManagedTemplateSummary } from "../../lib/managed-template-types";
 import { getTemplateVariant } from "../../lib/stage3-template-registry";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
-  listStage2PromptConfigStages,
   STAGE2_DEFAULT_REASONING_EFFORTS,
   STAGE2_DEFAULT_STAGE_PROMPTS,
   STAGE2_REASONING_EFFORT_OPTIONS,
@@ -31,15 +30,11 @@ import {
   normalizeStage2PromptConfig
 } from "../../lib/stage2-pipeline";
 import {
-  collectWorkspaceStage2Examples,
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
   formatStage2DelimitedStringList,
-  normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
   parseStage2DelimitedStringList,
-  resolveStage2ExamplesCorpus,
-  type Stage2CorpusExample,
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../../lib/stage2-channel-config";
@@ -56,10 +51,6 @@ import {
   type ResolvedWorkspaceCodexModelConfig,
   type WorkspaceCodexModelConfig
 } from "../../lib/workspace-codex-models";
-import {
-  resolveStage2WorkerProfile,
-  type Stage2WorkerProfileId
-} from "../../lib/stage2-worker-profile";
 import {
   applyChannelStyleProfileEditorDiscoveryResult,
   buildChannelStyleProfileFromEditorDraft,
@@ -90,8 +81,6 @@ import {
   listByKind,
   canDeleteManagedChannel,
   listChannelManagerTargets,
-  stringifyCorpusExamples,
-  areCorpusExamplesEquivalent,
   TabId
 } from "./channel-manager-support";
 
@@ -182,7 +171,6 @@ type ChannelManagerProps = {
   open: boolean;
   initialTab?: TabId | null;
   channels: Channel[];
-  workspaceStage2ExamplesCorpusJson: string;
   workspaceStage2HardConstraints: Stage2HardConstraints;
   workspaceStage2PromptConfig: Stage2PromptConfig;
   workspaceStage2CaptionProviderConfig: Stage2CaptionProviderConfig;
@@ -263,7 +251,6 @@ export function ChannelManager({
   open,
   initialTab = null,
   channels,
-  workspaceStage2ExamplesCorpusJson,
   workspaceStage2HardConstraints: workspaceStage2HardConstraintsProp,
   workspaceStage2PromptConfig: workspaceStage2PromptConfigProp,
   workspaceStage2CaptionProviderConfig: workspaceStage2CaptionProviderConfigProp,
@@ -335,21 +322,11 @@ export function ChannelManager({
 
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
-  const [stage2WorkerProfileId, setStage2WorkerProfileId] = useState<Stage2WorkerProfileId>(
-    resolveStage2WorkerProfile(null).resolvedId
-  );
-  const [stage2ExamplesConfig, setStage2ExamplesConfig] = useState<Stage2ExamplesConfig>(
-    DEFAULT_STAGE2_EXAMPLES_CONFIG
-  );
   const [stage2HardConstraints, setStage2HardConstraints] = useState<Stage2HardConstraints>(
     DEFAULT_STAGE2_HARD_CONSTRAINTS
   );
   const [bannedWordsInput, setBannedWordsInput] = useState("");
   const [bannedOpenersInput, setBannedOpenersInput] = useState("");
-  const [workspaceExamplesJson, setWorkspaceExamplesJson] = useState("[]");
-  const [workspaceExamplesError, setWorkspaceExamplesError] = useState<string | null>(null);
-  const [customExamplesJson, setCustomExamplesJson] = useState("[]");
-  const [customExamplesError, setCustomExamplesError] = useState<string | null>(null);
   const [workspaceStage2PromptConfig, setWorkspaceStage2PromptConfig] = useState<Stage2PromptConfig>(
     normalizeStage2PromptConfig(workspaceStage2PromptConfigProp)
   );
@@ -385,7 +362,6 @@ export function ChannelManager({
     stage2Defaults: { status: "idle", message: null },
     render: { status: "idle", message: null }
   });
-  const stage2PromptStages = useMemo(() => listStage2PromptConfigStages(), []);
   const renderTemplateGroups = useMemo(
     () => groupManagedTemplatesByFormat(managedTemplates),
     [managedTemplates]
@@ -680,25 +656,19 @@ export function ChannelManager({
     });
 
   const buildStage2Snapshot = (
-    nextWorkerProfileId: string | null,
-    nextExamplesConfig: Stage2ExamplesConfig,
     nextHardConstraints: Stage2HardConstraints
   ): string =>
     JSON.stringify({
-      stage2WorkerProfileId: resolveStage2WorkerProfile(nextWorkerProfileId).resolvedId,
-      stage2ExamplesConfig: nextExamplesConfig,
       stage2HardConstraints: nextHardConstraints
     });
 
   const buildStage2DefaultsSnapshot = (
-    nextWorkspaceExamplesJson: string,
     nextHardConstraints: Stage2HardConstraints,
     nextPromptConfig: Stage2PromptConfig,
     nextCaptionProviderConfig: Stage2CaptionProviderConfig,
     nextCodexModelConfig: WorkspaceCodexModelConfig
   ): string =>
     JSON.stringify({
-      workspaceStage2ExamplesCorpusJson: nextWorkspaceExamplesJson,
       workspaceStage2HardConstraints: nextHardConstraints,
       workspaceStage2PromptConfig: nextPromptConfig,
       workspaceStage2CaptionProviderConfig: nextCaptionProviderConfig,
@@ -722,8 +692,6 @@ export function ChannelManager({
     setStage2HardConstraints(normalizedHardConstraints);
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedWords));
     setBannedOpenersInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedOpeners));
-    setWorkspaceExamplesJson(workspaceStage2ExamplesCorpusJson);
-    setWorkspaceExamplesError(null);
     setWorkspaceStage2PromptConfig(normalizedPromptConfig);
     setWorkspaceStage2CaptionProviderConfig(normalizedCaptionProviderConfig);
     setWorkspaceAnthropicIntegration(workspaceAnthropicIntegrationProp);
@@ -736,7 +704,6 @@ export function ChannelManager({
     clearAutosaveReset("stage2Defaults");
 
     persistedSnapshotRef.current.stage2Defaults = buildStage2DefaultsSnapshot(
-      workspaceStage2ExamplesCorpusJson,
       normalizedHardConstraints,
       normalizedPromptConfig,
       normalizedCaptionProviderConfig,
@@ -752,38 +719,23 @@ export function ChannelManager({
       return;
     }
 
-    const normalizedExamplesConfig = normalizeStage2ExamplesConfig(activeChannel.stage2ExamplesConfig, {
-      channelId: activeChannel.id,
-      channelName: activeChannel.name
-    });
-    const resolvedWorkerProfile = resolveStage2WorkerProfile(activeChannel.stage2WorkerProfileId);
     setName(activeChannel.name);
     setUsername(activeChannel.username);
-    setStage2WorkerProfileId(resolvedWorkerProfile.resolvedId);
-    const initialChannelExamples = normalizedExamplesConfig.useWorkspaceDefault
-      ? collectWorkspaceStage2Examples(workspaceStage2ExamplesCorpusJson)
-      : normalizedExamplesConfig.customExamples ?? [];
     const normalizedChannelHardConstraints = normalizeStage2HardConstraints(
       activeChannel.stage2HardConstraints
     );
-    setStage2ExamplesConfig(normalizedExamplesConfig);
     setStage2HardConstraints(normalizedChannelHardConstraints);
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedWords));
     setBannedOpenersInput(
       formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedOpeners)
     );
-    setCustomExamplesJson(stringifyCorpusExamples(initialChannelExamples));
-    setCustomExamplesError(null);
     setTemplateId(activeChannel.templateId);
     persistedSnapshotRef.current = {
       brand: buildBrandSnapshot(activeChannel.name, activeChannel.username),
       stage2: buildStage2Snapshot(
-        activeChannel.stage2WorkerProfileId,
-        normalizedExamplesConfig,
         normalizedChannelHardConstraints
       ),
       stage2Defaults: buildStage2DefaultsSnapshot(
-        workspaceStage2ExamplesCorpusJson,
         normalizedHardConstraints,
         normalizedPromptConfig,
         normalizedCaptionProviderConfig,
@@ -810,7 +762,6 @@ export function ChannelManager({
     activeChannel,
     clearAutosaveReset,
     isWorkspaceDefaultsSelection,
-    workspaceStage2ExamplesCorpusJson,
     workspaceStage2HardConstraintsProp,
     workspaceStage2PromptConfigProp,
     workspaceStage2CaptionProviderConfigProp,
@@ -837,31 +788,9 @@ export function ChannelManager({
     };
   }, [open, mounted, onClose]);
 
-  const workspaceExamplesCount = useMemo(
-    () => collectWorkspaceStage2Examples(workspaceExamplesJson).length,
-    [workspaceExamplesJson]
-  );
   const canEditSetup = Boolean(activeChannel?.currentUserCanEditSetup);
   const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
-  const canEditChannelExamples = canEditSetup;
   const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditSetup;
-  const activeExamplesPreview = useMemo(() => {
-    if (!activeChannel) {
-      return {
-        source: "workspace_default" as const,
-        corpus: collectWorkspaceStage2Examples(workspaceExamplesJson),
-        workspaceCorpusCount: workspaceExamplesCount
-      };
-    }
-    return resolveStage2ExamplesCorpus({
-      channel: {
-        id: activeChannel.id,
-        name: activeChannel.name,
-        stage2ExamplesConfig
-      },
-      workspaceStage2ExamplesCorpusJson: workspaceExamplesJson
-    });
-  }, [activeChannel, stage2ExamplesConfig, workspaceExamplesCount, workspaceExamplesJson]);
 
   useEffect(() => {
     if (!activeChannel || !canEditSetup) {
@@ -913,27 +842,14 @@ export function ChannelManager({
   ]);
 
   useEffect(() => {
-    if (!activeChannel || !canEditChannelExamples) {
+    if (!activeChannel || !canEditHardConstraints) {
       return;
     }
     if (skipAutosaveRef.current.stage2) {
       skipAutosaveRef.current.stage2 = false;
       return;
     }
-    if (customExamplesError) {
-      clearAutosaveReset("stage2");
-      setAutosaveFeedback(
-        "stage2",
-        "error",
-        "Исправьте JSON собственного корпуса, чтобы сохранить настройки второго этапа."
-      );
-      return;
-    }
-    const nextSnapshot = buildStage2Snapshot(
-      stage2WorkerProfileId,
-      stage2ExamplesConfig,
-      stage2HardConstraints
-    );
+    const nextSnapshot = buildStage2Snapshot(stage2HardConstraints);
     if (nextSnapshot === persistedSnapshotRef.current.stage2) {
       resetAutosaveFeedbackIfNeeded("stage2");
       return;
@@ -944,8 +860,6 @@ export function ChannelManager({
     const timerId = window.setTimeout(() => {
       setAutosaveFeedback("stage2", "saving", "Сохраняем настройки второго этапа…");
       void saveChannelRef.current(activeChannel.id, {
-        stage2WorkerProfileId,
-        stage2ExamplesConfig,
         stage2HardConstraints
       })
         .then(() => {
@@ -969,14 +883,11 @@ export function ChannelManager({
     };
   }, [
     activeChannel,
-    canEditChannelExamples,
+    canEditHardConstraints,
     clearAutosaveReset,
-    customExamplesError,
     resetAutosaveFeedbackIfNeeded,
     scheduleAutosaveReset,
     setAutosaveFeedback,
-    stage2WorkerProfileId,
-    stage2ExamplesConfig,
     stage2HardConstraints
   ]);
 
@@ -988,17 +899,7 @@ export function ChannelManager({
       skipAutosaveRef.current.stage2Defaults = false;
       return;
     }
-    if (workspaceExamplesError) {
-      clearAutosaveReset("stage2Defaults");
-      setAutosaveFeedback(
-        "stage2Defaults",
-        "error",
-        "Исправьте JSON общего корпуса, чтобы сохранить общие AI-настройки."
-      );
-      return;
-    }
     const nextSnapshot = buildStage2DefaultsSnapshot(
-      workspaceExamplesJson,
       stage2HardConstraints,
       workspaceStage2PromptConfig,
       workspaceStage2CaptionProviderConfig,
@@ -1014,7 +915,6 @@ export function ChannelManager({
     const timerId = window.setTimeout(() => {
       setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем общие AI-настройки…");
       void saveWorkspaceStage2DefaultsRef.current({
-        stage2ExamplesCorpusJson: workspaceExamplesJson,
         stage2HardConstraints,
         stage2PromptConfig: workspaceStage2PromptConfig,
         stage2CaptionProviderConfig: workspaceStage2CaptionProviderConfig,
@@ -1047,8 +947,6 @@ export function ChannelManager({
     resetAutosaveFeedbackIfNeeded,
     scheduleAutosaveReset,
     setAutosaveFeedback,
-    workspaceExamplesError,
-    workspaceExamplesJson,
     stage2HardConstraints,
     workspaceStage2PromptConfig,
     workspaceStage2CaptionProviderConfig,
@@ -1361,7 +1259,6 @@ export function ChannelManager({
     previousConfig: Stage2CaptionProviderConfig
   ): Promise<void> => {
     const nextSnapshot = buildStage2DefaultsSnapshot(
-      workspaceExamplesJson,
       stage2HardConstraints,
       workspaceStage2PromptConfig,
       nextConfig,
@@ -1372,7 +1269,6 @@ export function ChannelManager({
     setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем общие AI-настройки…");
     try {
       await saveWorkspaceStage2DefaultsRef.current({
-        stage2ExamplesCorpusJson: workspaceExamplesJson,
         stage2HardConstraints,
         stage2PromptConfig: workspaceStage2PromptConfig,
         stage2CaptionProviderConfig: nextConfig,
@@ -1665,42 +1561,6 @@ export function ChannelManager({
     }
   };
 
-  const updateCustomExamplesJson = (value: string) => {
-    setCustomExamplesJson(value);
-    try {
-      const parsed = JSON.parse(value) as unknown;
-      const normalizedExamplesConfig = normalizeStage2ExamplesConfig(
-        {
-          version: 1,
-          useWorkspaceDefault: false,
-          customExamples: Array.isArray(parsed) ? parsed : []
-        },
-        {
-          channelId: activeChannel?.id ?? "",
-          channelName: activeChannel?.name ?? ""
-        }
-      );
-      const workspaceExamples = collectWorkspaceStage2Examples(workspaceExamplesJson);
-      const shouldUseWorkspaceDefault = areCorpusExamplesEquivalent(
-        normalizedExamplesConfig.customExamples,
-        workspaceExamples
-      );
-      setStage2ExamplesConfig((current) =>
-        normalizeStage2ExamplesConfig({
-          ...current,
-          useWorkspaceDefault: shouldUseWorkspaceDefault,
-          customExamples: shouldUseWorkspaceDefault ? [] : normalizedExamplesConfig.customExamples
-        }, {
-          channelId: activeChannel?.id ?? "",
-          channelName: activeChannel?.name ?? ""
-        })
-      );
-      setCustomExamplesError(null);
-    } catch {
-      setCustomExamplesError("JSON корпуса примеров должен быть валидным JSON-массивом.");
-    }
-  };
-
   const updateStage2HardConstraint = (
     key: keyof Stage2HardConstraints,
     value: string | boolean | string[]
@@ -1878,9 +1738,6 @@ export function ChannelManager({
             {tab === "stage2" ? (
               <ChannelManagerStage2Tab
                 isWorkspaceDefaultsSelection={isWorkspaceDefaultsSelection}
-                workspaceExamplesCount={workspaceExamplesCount}
-                workspaceExamplesJson={workspaceExamplesJson}
-                workspaceExamplesError={workspaceExamplesError}
                 stage2HardConstraints={stage2HardConstraints}
                 bannedWordsInput={bannedWordsInput}
                 bannedOpenersInput={bannedOpenersInput}
@@ -1894,67 +1751,9 @@ export function ChannelManager({
                 openRouterIntegrationActionState={openRouterIntegrationActionState}
                 workspaceCodexModelConfig={workspaceCodexModelConfig}
                 resolvedWorkspaceCodexModelConfig={workspaceResolvedCodexModelConfig}
-                stage2PromptStages={stage2PromptStages}
                 autosaveState={autosaveState}
                 canEditWorkspaceDefaults={canEditWorkspaceDefaults}
                 canEditHardConstraints={canEditHardConstraints}
-                canEditChannelExamples={canEditChannelExamples}
-                stage2WorkerProfileId={stage2WorkerProfileId}
-                canEditStage2WorkerProfile={canEditSetup}
-                updateStage2WorkerProfileId={(value) => setStage2WorkerProfileId(value)}
-                activeExamplesPreview={activeExamplesPreview}
-                channelStyleProfile={activeChannel?.stage2StyleProfile ?? null}
-                channelStyleProfileDraft={styleProfileDraft}
-                channelStyleProfileStatus={styleProfileStatus}
-                channelStyleProfileDirty={styleProfileDraftHasChanges}
-                channelStyleProfileFeedbackHistory={feedbackHistory}
-                channelStyleProfileFeedbackHistoryLoading={feedbackHistoryLoading}
-                onDeleteChannelFeedbackEvent={onDeleteFeedbackEvent}
-                deletingChannelFeedbackEventId={deletingFeedbackEventId}
-                channelEditorialMemory={editorialMemory}
-                canEditChannelStyleProfile={canEditSetup}
-                channelStyleProfileDiscovering={styleProfileIsDiscovering}
-                channelStyleProfileDiscoveryError={styleProfileDiscoveryError}
-                channelStyleProfileSaveState={styleProfileSaveState}
-                updateChannelStyleProfileReferenceLinks={(value) => {
-                  setStyleProfileDiscoveryError(null);
-                  setStyleProfileSaveState({ status: "idle", message: null });
-                  setStyleProfileDraft((current) =>
-                    current ? updateChannelStyleProfileEditorReferenceLinks(current, value) : current
-                  );
-                }}
-                updateChannelStyleProfileExplorationShare={(value) => {
-                  setStyleProfileSaveState({ status: "idle", message: null });
-                  setStyleProfileDraft((current) =>
-                    current ? setChannelStyleProfileEditorExplorationShare(current, value) : current
-                  );
-                }}
-                toggleChannelStyleProfileDirectionSelection={(directionId) => {
-                  setStyleProfileSaveState({ status: "idle", message: null });
-                  setStyleProfileDraft((current) =>
-                    current
-                      ? toggleChannelStyleProfileEditorDirectionSelection(current, directionId)
-                      : current
-                  );
-                }}
-                selectAllChannelStyleProfileDirections={() => {
-                  setStyleProfileSaveState({ status: "idle", message: null });
-                  setStyleProfileDraft((current) =>
-                    current ? selectAllChannelStyleProfileEditorDirections(current) : current
-                  );
-                }}
-                clearChannelStyleProfileDirectionSelection={() => {
-                  setStyleProfileSaveState({ status: "idle", message: null });
-                  setStyleProfileDraft((current) =>
-                    current ? clearChannelStyleProfileEditorDirectionSelection(current) : current
-                  );
-                }}
-                startChannelStyleProfileDiscovery={handleStartStyleProfileDiscovery}
-                saveChannelStyleProfileDraft={handleSaveStyleProfileDraft}
-                discardChannelStyleProfileDraft={handleDiscardStyleProfileDraft}
-                customExamplesJson={customExamplesJson}
-                customExamplesError={customExamplesError}
-                updateWorkspaceExamplesJson={updateWorkspaceExamplesJson}
                 updateWorkspaceCaptionProvider={updateWorkspaceCaptionProvider}
                 updateWorkspaceAnthropicModel={updateWorkspaceAnthropicModel}
                 updateWorkspaceOpenRouterModel={updateWorkspaceOpenRouterModel}
@@ -1964,7 +1763,6 @@ export function ChannelManager({
                 updateOpenRouterApiKeyInput={setOpenRouterApiKeyInput}
                 saveWorkspaceOpenRouterIntegration={saveWorkspaceOpenRouterIntegration}
                 disconnectWorkspaceOpenRouterIntegration={disconnectWorkspaceOpenRouterIntegration}
-                updateCustomExamplesJson={updateCustomExamplesJson}
                 updateStage2HardConstraint={updateStage2HardConstraint}
                 updateBannedWordsInput={updateBannedWordsInput}
                 updateBannedOpenersInput={updateBannedOpenersInput}

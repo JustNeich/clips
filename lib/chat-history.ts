@@ -383,9 +383,9 @@ export async function createChannel(input: {
   name?: string;
   username?: string;
   systemPrompt?: string;
-    descriptionPrompt?: string;
-    examplesJson?: string;
-    stage2WorkerProfileId?: string | null;
+  descriptionPrompt?: string;
+  examplesJson?: string;
+  stage2WorkerProfileId?: string | null;
   stage2ExamplesConfig?: Stage2ExamplesConfig;
   stage2HardConstraints?: Stage2HardConstraints;
   stage2PromptConfig?: Stage2PromptConfig;
@@ -404,25 +404,13 @@ export async function createChannel(input: {
     systemPrompt: sanitizeTextBlock(input.systemPrompt, ""),
     descriptionPrompt: sanitizeTextBlock(input.descriptionPrompt, ""),
     examplesJson: typeof input.examplesJson === "string" ? ensureValidJsonString(input.examplesJson) : "[]",
-    stage2WorkerProfileId: parseStage2WorkerProfileId(input.stage2WorkerProfileId),
-    stage2ExamplesConfig: input.stage2ExamplesConfig
-      ? parseStage2ExamplesConfigJson(
-          stringifyStage2ExamplesConfig(input.stage2ExamplesConfig, {
-            channelId: "",
-            channelName: ""
-          }),
-          { channelId: "", channelName: "" }
-        )
-      : DEFAULT_STAGE2_EXAMPLES_CONFIG,
+    stage2WorkerProfileId: null,
+    stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
     stage2HardConstraints: input.stage2HardConstraints
       ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(input.stage2HardConstraints))
       : getWorkspaceStage2HardConstraints(input.workspaceId),
-    stage2PromptConfig: input.stage2PromptConfig
-      ? parseStage2PromptConfigJson(stringifyStage2PromptConfig(input.stage2PromptConfig))
-      : DEFAULT_STAGE2_PROMPT_CONFIG,
-    stage2StyleProfile: input.stage2StyleProfile
-      ? parseStage2StyleProfileJson(stringifyStage2StyleProfile(input.stage2StyleProfile))
-      : DEFAULT_STAGE2_STYLE_PROFILE,
+    stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+    stage2StyleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
     templateId,
     avatarAssetId: null,
     defaultBackgroundAssetId: null,
@@ -515,35 +503,14 @@ export async function updateChannelById(
       typeof patch.examplesJson === "string"
         ? ensureValidJsonString(patch.examplesJson)
         : channel.examplesJson,
-    stage2WorkerProfileId:
-      "stage2WorkerProfileId" in patch
-        ? parseStage2WorkerProfileId(patch.stage2WorkerProfileId)
-        : channel.stage2WorkerProfileId,
-    stage2ExamplesConfig:
-      "stage2ExamplesConfig" in patch && patch.stage2ExamplesConfig
-        ? parseStage2ExamplesConfigJson(
-            stringifyStage2ExamplesConfig(patch.stage2ExamplesConfig, {
-              channelId,
-              channelName: patch.name ?? channel.name
-            }),
-            {
-              channelId,
-              channelName: patch.name ?? channel.name
-            }
-          )
-        : channel.stage2ExamplesConfig,
+    stage2WorkerProfileId: channel.stage2WorkerProfileId,
+    stage2ExamplesConfig: channel.stage2ExamplesConfig,
     stage2HardConstraints:
       "stage2HardConstraints" in patch && patch.stage2HardConstraints
         ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(patch.stage2HardConstraints))
         : channel.stage2HardConstraints,
-    stage2PromptConfig:
-      "stage2PromptConfig" in patch && patch.stage2PromptConfig
-        ? parseStage2PromptConfigJson(stringifyStage2PromptConfig(patch.stage2PromptConfig))
-        : channel.stage2PromptConfig,
-    stage2StyleProfile:
-      "stage2StyleProfile" in patch && patch.stage2StyleProfile
-        ? parseStage2StyleProfileJson(stringifyStage2StyleProfile(patch.stage2StyleProfile))
-        : channel.stage2StyleProfile,
+    stage2PromptConfig: channel.stage2PromptConfig,
+    stage2StyleProfile: channel.stage2StyleProfile,
     templateId: nextTemplateId,
     avatarAssetId:
       "avatarAssetId" in patch

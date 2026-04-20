@@ -9,25 +9,18 @@
 - экспорт всех комментариев в `json`;
 - Stage 2 пайплайн генерации контента через owner-managed workspace AI integrations:
   - скачивание видео + комментариев;
-  - анализ кадров видео + комментариев;
-  - `native_caption_v3` теперь поддерживает line-aware hot paths:
-    - `stable_reference_v6` / `stable_reference_v6_experimental` -> `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`;
-    - `stable_social_wave_v1` / `stable_skill_gap_v1` / `experimental` -> `contextPacket -> candidateGenerator -> qualityCourt -> targetedRepair? -> captionTranslation -> titleWriter -> seo`;
-  - Shared Codex остаётся baseline runtime для всего Stage 2, а owner может отдельно перевести eligible caption-writing stages на Anthropic API или OpenRouter API без смены внешнего контракта.
-- Channel onboarding теперь проходит через guided wizard:
-  - basic setup;
-  - Stage 2 baseline settings;
-  - 10+ reference links;
-  - dynamic style discovery with a broad selectable startup pool, including explicit regeneration.
-  - `banned words` / `banned openers` fields now preserve raw separators while typing, while the saved Stage 2 arrays still normalize comma / semicolon / newline-delimited input.
-  - bootstrap style discovery now weights liked comments more aggressively, samples real reference frames, and builds compact audience + packaging portraits.
-  - onboarding draft persists across panel close/reopen and page reload;
-  - bootstrap style discovery runs durably on the server and reattaches by `runId`.
-- После onboarding редактор канала может донастраивать style profile без повторного wizard:
-  - менять reference links;
-  - явно перегенерировать pool направлений;
-  - менять selected directions;
-  - менять exploration share.
+  - единый single-baseline `native_caption_v3` path:
+    - `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`;
+  - быстрый `regenerate` использует тот же video-first baseline и переписывает только visible shortlist;
+  - Shared Codex остаётся baseline runtime, а owner может отдельно перевести только `oneShotReference` и `regenerate` на Anthropic API или OpenRouter API без смены внешнего wire contract.
+- Channel onboarding теперь проходит через простой identity flow:
+  - name;
+  - username;
+  - avatar optional;
+  - Stage 2 дальше автоматически наследует workspace baseline.
+- В Channel Manager -> Stage 2:
+  - workspace defaults редактируют hard constraints, caption provider, one-shot model и one-shot prompt;
+  - на уровне канала редактируются только hard constraints.
 - В Stage 3 publication planner удаление ролика из очереди не сбрасывает пользователя со страницы рендера:
   - карточка исчезает после локальной синхронизации очереди;
   - UI показывает success toast об удалении.
@@ -118,23 +111,14 @@ npm run dev
   - если комментарии недоступны, продолжает пайплайн с доступными видео-метаданными;
   - извлекает адаптивно сэмплированный набор кадров из видео, а не фиксированные 3 stills;
   - ставит durable background run в очередь и продолжает его независимо от открытой вкладки;
-  - использует pipeline `contextPacket -> candidateGenerator -> qualityCourt -> targetedRepair? -> titleWriter`;
-  - использует один effective examples corpus на run: либо `workspace default corpus`, либо `channel custom corpus`;
-  - использует channel learning layer:
-    - bootstrap style profile из onboarding;
-    - rolling editorial memory из последних explicit feedback events;
-  - separate weaker passive `selected_option` signal;
-  - removable explicit like/dislike reactions with immediate editorial-memory recompute;
-  - confidence-aware examples mode: `domain_guided`, `form_guided`, or `style_guided` depending on retrieval quality;
-    - controlled exploratory share, чтобы варианты не схлопывались в один mode;
-  - поддерживает editor feedback по трём scope:
-    - whole option;
-    - top only;
-    - bottom only;
-  - использует comments-aware prompt stack:
-    - analyzer separates mixed audience lanes instead of flattening them;
-    - writer/critic/rewriter suppress stock generic tails and batch sameness;
-    - final selector keeps real stylistic alternatives in the visible five;
+  - использует единственный active pipeline `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`;
+  - использует video-first minimal prompt contract:
+    - `video_truth_json`;
+    - bounded `comments_hint_json`;
+    - `hard_constraints_json`;
+    - `user_instruction`;
+  - трактует comments как weak hints, а не как narrator-steering или line-selection engine;
+  - quick regenerate переписывает только видимый shortlist без writer/critic/review loops;
   - clip trace export is forensic-oriented:
     - canonical causal inputs live in `stage2.causalInputs`;
     - per-stage prompt manifests live in `stage2.stageManifests`;
@@ -146,15 +130,14 @@ npm run dev
   - worker rollout is fail-closed:
     - Stage 2 run aborts if `native_caption_v3` metadata is missing for new runs;
     - historical `vnext` payloads stay readable in trace/export and UI;
-  - `data/examples.json` используется только один раз как seed для нового workspace, а не как live runtime source;
   - использует workspace-level AI integrations:
     - Shared Codex остаётся baseline executor и проходит owner-managed device auth через текущий UI control `Connect Codex`;
     - при `provider = codex` все Stage 2 stages идут через Shared Codex;
-    - при `provider = anthropic` eligible caption-only stages идут через Anthropic API, а остальная orchestration остаётся на Shared Codex;
-    - при `provider = openrouter` eligible caption-only stages идут через OpenRouter API, а остальная orchestration остаётся на Shared Codex;
+    - при `provider = anthropic` только `oneShotReference` и `regenerate` идут через Anthropic API, а остальная orchestration остаётся на Shared Codex;
+    - при `provider = openrouter` только `oneShotReference` и `regenerate` идут через OpenRouter API, а остальная orchestration остаётся на Shared Codex;
   - workspace owner может переключить eligible caption-only stages на Anthropic API или OpenRouter API:
-    - `oneShotReference`, `candidateGenerator`, `targetedRepair`, `regenerate`;
-    - `qualityCourt`, `captionTranslation`, `titleWriter`, `seo`, `styleDiscovery` и Stage 3 planner остаются на Shared Codex;
+    - `oneShotReference`, `regenerate`;
+    - `captionTranslation`, `seo` и Stage 3 planner остаются на Shared Codex;
     - ни Anthropic, ни OpenRouter не заменяют baseline Shared Codex integration целиком;
     - wire contract не меняется: Stage 2 хранит только `top` / `bottom`, а Stage 3 продолжает жить на `topText` / `bottomText`, включая `channel_story` family;
     - length-only hard-constraint misses больше не обнуляют Stage 3 handoff: оператор всё равно получает выбранный caption в Step 3 и может дочистить длину уже там;

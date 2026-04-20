@@ -1,35 +1,22 @@
 # Stage 2 Provider And Model Routing
 
-Файл сохранён под историческим именем `stage2-codex-model-routing.md`, но теперь он описывает всю текущую routing-модель Stage 2, а не только Codex model policy.
+Файл сохранён под историческим именем `stage2-codex-model-routing.md`, но теперь он описывает routing для **single-baseline Stage 2**, а не старый multi-line мир.
 
-## Purpose
+## 0. Current truth
 
-В Stage 2 сейчас есть две независимые оси маршрутизации:
+В Stage 2 теперь есть только один active caption-writing baseline:
 
-1. `caption provider routing`
-   - решает, остаются ли eligible caption-writing stages на Shared Codex или уходят на Anthropic/OpenRouter API
-2. `Codex model routing`
-   - решает, какие модели использует Codex-backed часть Stage 2 по конкретным stage-ам
+- profile id: `stable_reference_v7`
+- path variant: `reference_one_shot_v2`
 
-Главная инварианта: Stage 2 больше нельзя описывать как single-provider или single-model pipeline.
+Routing больше не выбирает между line families. Он решает только:
 
-## 1. Baseline executor truth
+1. какой provider исполняет caption-writing stage
+2. какая модель используется внутри этого provider path
 
-- Shared Codex остаётся baseline workspace integration для Stage 2.
-- Anthropic/OpenRouter не заменяют Shared Codex целиком; они only overlay eligible caption-writing stages.
-- Поэтому любой Stage 2 run по-прежнему требует готовую Shared Codex integration.
-- Если `provider = anthropic` или `provider = openrouter`, но внешний integration не готов, runtime падает fail-closed и не делает silent fallback обратно на Codex.
-
-Основной runtime entry:
-- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-codex-executor.ts`
-- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/viral-shorts-worker/executor.ts`
-
-## 2. Caption provider routing
+## 1. Provider routing
 
 Workspace setting:
-- `workspaces.stage2_caption_provider_json`
-
-Нормализованный config:
 
 ```ts
 type Stage2CaptionProviderConfig = {
@@ -39,115 +26,100 @@ type Stage2CaptionProviderConfig = {
 };
 ```
 
-Current default:
-- `provider = "codex"`
-- `anthropicModel = "claude-opus-4-6"`
-- `openrouterModel = "anthropic/claude-opus-4.7"`
-
 ### Eligible external-provider stages
 
-Только эти stages могут уйти на Anthropic/OpenRouter:
+Только эти Stage 2 stages могут уходить во внешний provider:
 
 - `oneShotReference`
-- `candidateGenerator`
-- `targetedRepair`
 - `regenerate`
 
 ### Always-Codex stages
 
-Эти stages остаются на Shared Codex даже при `provider = anthropic` или `provider = openrouter`:
+Эти product stages остаются на Shared Codex:
 
-- `analyzer`
-- `styleDiscovery`
-- `contextPacket`
-- `qualityCourt`
 - `captionHighlighting`
 - `captionTranslation`
-- `titleWriter`
 - `seo`
 - Stage 3 planner / agent flows
 
-### Runtime behavior
+## 2. Baseline executor rule
 
-- `createStage2CodexExecutorContext()` всегда сначала поднимает Shared Codex integration.
-- Если provider = `anthropic` или `provider = openrouter`, runtime дополнительно поднимает внешний executor и подменяет effective model только для eligible stages.
-- `HybridJsonStageExecutor` маршрутизирует eligible stages во внешний executor, а все остальные — в Codex executor.
-- На Anthropic/OpenRouter stages runtime не передаёт Codex-specific `reasoningEffort`.
+- Shared Codex остаётся baseline workspace integration.
+- Anthropic/OpenRouter являются overlay, а не полной заменой Stage 2 runtime.
+- Поэтому Stage 2 нельзя описывать как “весь pipeline исполняется Anthropic” или “весь pipeline исполняется OpenRouter”.
+
+### Fail-closed behavior
+
+- если внешний provider выбран, но integration/model не ready, caption stage падает явно;
+- silent fallback обратно на Codex не допускается.
 
 ## 3. Codex model routing
 
 Workspace store:
+
 - `workspaces.workspace_codex_model_config_json`
 
-Нормализация:
-- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/workspace-codex-models.ts`
+Но в single-baseline мире active Codex authority сужена:
 
-Resolution order per Codex-backed stage:
+- `oneShotReference`
+- `regenerate`
 
-1. explicit workspace override
-2. deploy env default
-3. safe built-in fallback
-
-Current deploy env inputs:
-
-- `CODEX_STAGE2_MODEL`
-- `CODEX_STAGE2_DESCRIPTION_MODEL`
-- `CODEX_STAGE3_MODEL`
-
-`seo` сначала смотрит в `CODEX_STAGE2_DESCRIPTION_MODEL`, затем падает обратно в `CODEX_STAGE2_MODEL`.
+Скрытые legacy stage selections могут сохраняться в JSON ради compatibility, но не должны считаться active runtime authority.
 
 ## 4. Effective runtime configs
 
-Runtime строит два разных snapshot-а:
+Runtime по-прежнему различает:
 
 - `resolvedCodexModelConfig`
-  - только Codex policy, как если бы Anthropic overlay не был включён
+  - Codex-only policy
 - `resolvedStageModelConfig`
-  - реальная effective stage policy для текущего run
-  - при `provider = anthropic` подменяет eligible caption stages на `anthropicModel`
-  - при `provider = openrouter` подменяет eligible caption stages на `openrouterModel`
+  - реальная effective policy для текущего run
 
-Это distinction важно:
+Когда `provider = anthropic` или `provider = openrouter`:
 
-- UI owner defaults по-прежнему хранит Codex selections даже для Anthropic/OpenRouter-eligible stages;
-- diagnostics, pipeline summary и trace должны показывать `resolvedStageModelConfig`, а не только historical Codex defaults;
-- возврат с Anthropic/OpenRouter на `codex` использует сохранённые Codex stage selections без новой миграции.
+- `resolvedStageModelConfig.oneShotReference`
+- `resolvedStageModelConfig.regenerate`
 
-## 5. Spark safety
+подменяются provider-specific model id.
 
-Spark по-прежнему не может принимать images. Поэтому для Codex-backed multimodal stages сохраняются прежние guard-ы:
+Остальные Stage 2 / Stage 3 product stages смотрят на Codex-backed resolution.
 
-- UI не должен предлагать Spark для multimodal Codex stages
-- normalization вычищает Spark из multimodal selections
-- если deploy env всё же резолвит multimodal stage в Spark, runtime повышает stage до image-capable fallback
+## 5. UI implications
 
-Anthropic overlay не отменяет эти правила; они всё ещё действуют для всех stages, которые остаются на Codex.
+В owner defaults Stage 2 surface теперь должны существовать только:
 
-## 6. Diagnostics and operator truth
+- provider selector
+- one-shot model selector
+- one-shot prompt
+- hard constraints
 
-Stage 2 diagnostics должны позволять ответить на два вопроса отдельно:
+В Channel Manager на уровне канала:
 
-1. какой provider реально выполнял stage
-2. какая model policy реально была применена
+- provider/model/prompt read-only inherited from workspace
+- editable only hard constraints
 
-Поэтому current truth model такая:
+## 6. Historical compatibility
 
-- Shared Codex status в shell = baseline workspace integration readiness
-- `Caption provider` в owner defaults = routing policy только для eligible caption-writing stages
-- prompt-stage diagnostics / `pipelineModelSummary` должны отражать effective mixed policy, если в run участвуют и Anthropic, и Codex stages
+Старые поля и старые stage names ещё могут встречаться в:
 
-## 7. Related interfaces
+- persisted configs
+- historical run payloads
+- trace/export
+- docs/archive context
 
-- `GET /api/workspace`
-- `PATCH /api/workspace`
-- `GET /api/workspace/integrations/codex`
-- `POST /api/workspace/integrations/codex`
-- `GET /api/workspace/integrations/anthropic`
-- `POST /api/workspace/integrations/anthropic`
+Но routing новых run-ов не должен использовать:
 
-## 8. Compatibility
+- `candidateGenerator`
+- `targetedRepair`
+- `qualityCourt`
+- `contextPacket`
+- line family selection
 
-- Внешний Stage 2 wire contract не меняется:
-  - captions по-прежнему живут в `top` / `bottom`
-  - Stage 3 handoff по-прежнему живёт на `topText` / `bottomText`
-- Anthropic overlay — это runtime routing change, а не новая caption schema.
+как active provider-routing choices.
+
+## 7. Relevant files
+
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-caption-provider.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-codex-executor.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/workspace-codex-models.ts`
+- `/Users/neich/Documents/Macedonian Imperium/clips automations/lib/stage2-runner.ts`

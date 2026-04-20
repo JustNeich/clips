@@ -1,4 +1,5 @@
 import {
+  DEFAULT_STAGE2_EXAMPLES_CONFIG,
   parseStage2ExamplesConfigJson,
   parseStage2HardConstraintsJson,
   stringifyStage2ExamplesConfig,
@@ -7,14 +8,10 @@ import {
   type Stage2HardConstraints
 } from "./stage2-channel-config";
 import {
-  createEmptyStage2EditorialMemorySummary,
-  normalizeStage2EditorialMemorySummary,
-  normalizeStage2StyleProfile,
   type Stage2EditorialMemorySummary,
   type Stage2StyleProfile
 } from "./stage2-channel-learning";
 import {
-  normalizeStage2EditorialMemorySource,
   type Stage2EditorialMemorySource
 } from "./stage2-editorial-memory-resolution";
 import type { Stage2RunMode, Stage2RunRequest } from "./stage2-progress-store";
@@ -58,28 +55,17 @@ export function buildStage2RunRequestSnapshot(input: {
       id: input.channel.id,
       name: channelName,
       username: input.channel.username.trim(),
-      stage2WorkerProfileId: input.channel.stage2WorkerProfileId,
+      stage2WorkerProfileId: null,
       stage2ExamplesConfig: parseStage2ExamplesConfigJson(
-        stringifyStage2ExamplesConfig(input.channel.stage2ExamplesConfig, fallbackOwner),
+        stringifyStage2ExamplesConfig(DEFAULT_STAGE2_EXAMPLES_CONFIG, fallbackOwner),
         fallbackOwner
       ),
       stage2HardConstraints: parseStage2HardConstraintsJson(
         stringifyStage2HardConstraints(input.channel.stage2HardConstraints)
       ),
-      stage2StyleProfile: normalizeStage2StyleProfile(
-        input.channel.stage2StyleProfile
-      ),
-      editorialMemory: normalizeStage2EditorialMemorySummary(
-        input.channel.editorialMemory ?? createEmptyStage2EditorialMemorySummary(
-          input.channel.stage2StyleProfile
-            ? normalizeStage2StyleProfile(input.channel.stage2StyleProfile)
-            : undefined
-        ),
-        input.channel.stage2StyleProfile
-      ),
-      editorialMemorySource: normalizeStage2EditorialMemorySource(
-        input.channel.editorialMemorySource ?? null
-      ),
+      stage2StyleProfile: undefined,
+      editorialMemory: undefined,
+      editorialMemorySource: null,
       templateHighlightProfile: input.channel.templateHighlightProfile
         ? cloneTemplateHighlightConfig(input.channel.templateHighlightProfile)
         : null

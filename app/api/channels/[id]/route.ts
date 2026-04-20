@@ -103,7 +103,18 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
     if (typeof body.templateId === "string" && !(await ensureChannelTemplateSelectable(auth, body.templateId))) {
       return Response.json({ error: "Template not found." }, { status: 404 });
     }
-    const channel = await updateChannelById(id, body);
+    const channel = await updateChannelById(id, {
+      name: body.name,
+      username: body.username,
+      systemPrompt: body.systemPrompt,
+      descriptionPrompt: body.descriptionPrompt,
+      examplesJson: body.examplesJson,
+      stage2HardConstraints: body.stage2HardConstraints,
+      templateId: body.templateId,
+      avatarAssetId: body.avatarAssetId,
+      defaultBackgroundAssetId: body.defaultBackgroundAssetId,
+      defaultMusicAssetId: body.defaultMusicAssetId
+    });
     return Response.json({ channel }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {

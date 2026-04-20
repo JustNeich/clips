@@ -87,14 +87,10 @@ export function stringifyStage2CaptionProviderConfig(
 
 export type Stage2HybridCaptionStageId =
   | "oneShotReference"
-  | "candidateGenerator"
-  | "targetedRepair"
   | "regenerate";
 
 const ANTHROPIC_CAPTION_STAGE_IDS = new Set<Stage2HybridCaptionStageId>([
   "oneShotReference",
-  "candidateGenerator",
-  "targetedRepair",
   "regenerate"
 ]);
 

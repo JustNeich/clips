@@ -439,7 +439,17 @@ export function resolveWorkspaceCodexModelConfig(input: {
       const deployFallback =
         stageId === "seo" ? deployStage2SeoModel ?? deployStage2Model : deployStage2Model;
       const selectedModel =
-        normalized[stageId] === "deploy_default" ? deployFallback : normalized[stageId];
+        stageId === "oneShotReference"
+          ? normalized.oneShotReference === "deploy_default"
+            ? deployFallback
+            : normalized.oneShotReference
+          : stageId === "regenerate"
+            ? normalized.regenerate === "deploy_default"
+              ? normalized.oneShotReference === "deploy_default"
+                ? deployFallback
+                : normalized.oneShotReference
+              : normalized.regenerate
+            : deployFallback;
       return [stageId, sanitizeResolvedStageModel(stageId, selectedModel)];
     })
   ) as Record<Stage2CodexModelStageId, string | null>;

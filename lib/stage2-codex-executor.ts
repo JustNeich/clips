@@ -72,8 +72,6 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
       throw new Error("Anthropic model для captions не задана.");
     }
     resolvedStageModelConfig.oneShotReference = anthropicModel;
-    resolvedStageModelConfig.candidateGenerator = anthropicModel;
-    resolvedStageModelConfig.targetedRepair = anthropicModel;
     resolvedStageModelConfig.regenerate = anthropicModel;
     anthropicExecutor = new AnthropicJsonStageExecutor({
       apiKey: anthropicApiKey,
@@ -92,8 +90,6 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
       throw new Error("OpenRouter model для captions не задана.");
     }
     resolvedStageModelConfig.oneShotReference = openRouterModel;
-    resolvedStageModelConfig.candidateGenerator = openRouterModel;
-    resolvedStageModelConfig.targetedRepair = openRouterModel;
     resolvedStageModelConfig.regenerate = openRouterModel;
     openRouterExecutor = new OpenRouterJsonStageExecutor({
       apiKey: openRouterApiKey,
@@ -103,8 +99,7 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
   }
   const model =
     resolvedCodexModelConfig.oneShotReference ??
-    resolvedCodexModelConfig.contextPacket ??
-    resolvedCodexModelConfig.analyzer;
+    resolvedCodexModelConfig.regenerate;
   const pipelineModelSummary = summarizeResolvedStage2ModelUsage({
     resolvedConfig: resolvedStageModelConfig,
     stageIds: STAGE2_PROMPT_MODEL_STAGE_IDS

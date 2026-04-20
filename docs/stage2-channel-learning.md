@@ -1,5 +1,8 @@
 # Stage 2 Channel Learning
 
+> Historical note: этот документ больше не описывает active Stage 2 runtime truth.
+> После single-baseline cleanup style discovery, examples-driven steering и editorial-memory routing остаются только как historical context для старых run-ов и archived design history. Актуальную модель см. в [docs/stage2-runtime.md](/Users/neich/Documents/Macedonian Imperium/clips automations/docs/stage2-runtime.md).
+
 Этот документ описывает новый слой channel bootstrap + adaptive learning для Stage 2.
 
 Цель системы:

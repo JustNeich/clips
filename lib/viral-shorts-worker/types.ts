@@ -369,6 +369,7 @@ export type Stage2TokenUsage = {
 export type Stage2ExecutionPathVariant =
   | "legacy_multistage_v1"
   | "modular_native_v1"
+  | "reference_one_shot_v2"
   | "reference_one_shot_v1"
   | "reference_one_shot_v1_experimental"
   | "vnext_pipeline_v1";
@@ -720,22 +721,6 @@ export type Stage2RegenerateBaseSnapshot = {
     username: string;
     constraints: Stage2HardConstraints;
   };
-  channelLearning: {
-    bootstrap: Record<string, unknown>;
-    editorialMemory: {
-      recentFeedbackCount: number;
-      recentSelectionCount: number;
-      activeHardRuleCount: number;
-      promptSummary: string;
-      directionScores: Array<{ label: string; score: number }>;
-      angleScores: Array<{ label: string; score: number }>;
-      preferredTextCues: string[];
-      discouragedTextCues: string[];
-      hardRuleNotes: string[];
-      recentNotes: string[];
-      normalizedAxes?: Record<string, number>;
-    };
-  };
   source: {
     url: string;
     title: string;
@@ -747,33 +732,10 @@ export type Stage2RegenerateBaseSnapshot = {
     }>;
   };
   analysis: {
-    whyViewerCares: string;
-    bottomEnergy: string;
+    keyPhraseToAdapt?: string;
     commentVibe: string;
-    commentConsensusLane: string;
-    commentJokeLane: string;
-    commentDissentLane: string;
-    commentSuspicionLane: string;
-    commentLanguageCues: string[];
-  };
-  retrieval: {
-    retrievalConfidence: Stage2RetrievalConfidence | null;
-    examplesMode: Stage2ExamplesMode | null;
-    examplesRoleSummary: string | null;
-    primaryDriverSummary: string | null;
-    selectedExamples: Array<{
-      id: string;
-      title: string;
-      channelName: string;
-    }>;
-  };
-  selection: {
-    clipType: string;
-    primaryAngle: string;
-    secondaryAngles: string[];
-    rankedAngles: RankedAngle[];
-    writerBrief: string;
-    rationale: string | null;
+    whyViewerCares: string;
+    weakCommentHints?: string[];
   };
   currentOptions: Array<{
     option: number;

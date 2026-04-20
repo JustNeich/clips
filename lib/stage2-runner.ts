@@ -28,7 +28,6 @@ import {
 } from "./stage2-progress-store";
 import { getStage2ProgressStartStageId } from "./stage2-pipeline";
 import {
-  getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2PromptConfig
 } from "./team-store";
 import {
@@ -52,7 +51,11 @@ import type {
 } from "./viral-shorts-worker/types";
 
 function isReferenceOneShotPathVariant(pathVariant: string | null | undefined): boolean {
-  return pathVariant === "reference_one_shot_v1" || pathVariant === "reference_one_shot_v1_experimental";
+  return (
+    pathVariant === "reference_one_shot_v2" ||
+    pathVariant === "reference_one_shot_v1" ||
+    pathVariant === "reference_one_shot_v1_experimental"
+  );
 }
 
 const execFileAsync = promisify(execFile);
@@ -645,7 +648,6 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     const workerService = new ViralShortsWorkerService();
     const channel = run.request.channel;
     const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
-    const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
     const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
     markStage2RunStageRunning(run.runId, "regenerate", {
       detail: "Reusing the saved context packet and rerunning native caption generation.",
@@ -667,7 +669,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           editorialMemory: channel.editorialMemory,
           templateHighlightProfile: channel.templateHighlightProfile ?? null
         },
-        workspaceStage2ExamplesCorpusJson,
+        workspaceStage2ExamplesCorpusJson: null,
         videoContext: buildStage2RuntimeVideoContext({
           sourceUrl: baseResult.source.url,
           title: baseResult.source.title,
@@ -681,13 +683,8 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
         executor: executorContext.executor,
         stageModels: {
           oneShotReference: executorContext.resolvedStageModelConfig.oneShotReference,
-          contextPacket: executorContext.resolvedStageModelConfig.contextPacket,
-          candidateGenerator: executorContext.resolvedStageModelConfig.candidateGenerator,
-          qualityCourt: executorContext.resolvedStageModelConfig.qualityCourt,
-          targetedRepair: executorContext.resolvedStageModelConfig.targetedRepair,
           captionHighlighting: executorContext.resolvedStageModelConfig.captionHighlighting,
           captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation,
-          titleWriter: executorContext.resolvedStageModelConfig.titleWriter,
           seo: executorContext.resolvedStageModelConfig.seo
         },
         promptConfig: workspaceStage2PromptConfig,
@@ -786,7 +783,9 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     const quickResult = await runQuickRegenerateModel({
       stage2: baseResult,
       channel: {
-        ...channel,
+        id: channel.id,
+        name: channel.name,
+        username: channel.username,
         stage2HardConstraints: effectiveHardConstraints
       },
       userInstruction: run.userInstruction,
@@ -822,7 +821,9 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     baseRunId,
     baseResult,
     channel: {
-      ...channel,
+      id: channel.id,
+      name: channel.name,
+      username: channel.username,
       stage2HardConstraints: effectiveHardConstraints
     },
     userInstruction: run.userInstruction,
@@ -917,7 +918,6 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     const frames = await extractFrameImages(downloaded.videoPath, tmpDir);
 
     const workerService = new ViralShortsWorkerService();
-    const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
     const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
     const videoContext = buildStage2RuntimeVideoContext({
       sourceUrl: run.sourceUrl,
@@ -940,19 +940,14 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         editorialMemory: channel.editorialMemory,
         templateHighlightProfile: channel.templateHighlightProfile ?? null
       },
-      workspaceStage2ExamplesCorpusJson,
+      workspaceStage2ExamplesCorpusJson: null,
       videoContext,
       imagePaths: frames.framePaths,
       executor: executorContext.executor,
       stageModels: {
         oneShotReference: executorContext.resolvedStageModelConfig.oneShotReference,
-        contextPacket: executorContext.resolvedStageModelConfig.contextPacket,
-        candidateGenerator: executorContext.resolvedStageModelConfig.candidateGenerator,
-        qualityCourt: executorContext.resolvedStageModelConfig.qualityCourt,
-        targetedRepair: executorContext.resolvedStageModelConfig.targetedRepair,
         captionHighlighting: executorContext.resolvedStageModelConfig.captionHighlighting,
         captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation,
-        titleWriter: executorContext.resolvedStageModelConfig.titleWriter,
         seo: executorContext.resolvedStageModelConfig.seo
       },
       promptConfig: workspaceStage2PromptConfig,

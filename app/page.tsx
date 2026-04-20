@@ -2764,15 +2764,14 @@ export default function HomePage() {
     chat: ChatThread;
     job: SourceJobDetail;
   }> => {
+    const formData = new FormData();
+    formData.set("channelId", input.channelId);
+    formData.set("autoRunStage2", input.autoRunStage2 ? "1" : "0");
+    formData.append("files", input.file, input.file.name);
+
     const response = await fetch("/api/pipeline/source-upload", {
       method: "POST",
-      headers: {
-        "Content-Type": input.file.type || "video/mp4",
-        "X-Channel-Id": input.channelId,
-        "X-File-Name": encodeURIComponent(input.file.name),
-        "X-Auto-Run-Stage2": input.autoRunStage2 ? "1" : "0"
-      },
-      body: input.file
+      body: formData
     });
 
     if (!response.ok) {
@@ -3034,22 +3033,39 @@ export default function HomePage() {
         files,
         autoRunStage2: autoRunStage2AfterSource && codexLoggedIn
       });
+      let hydrateFailed = false;
       setDraftUrl("");
-      await hydrateChatLiveState(chat.id, {
-        preferredStep: 1
-      });
-      showNextChatShortcutToast(chat.id);
+      try {
+        await hydrateChatLiveState(chat.id, {
+          preferredStep: 1
+        });
+        showNextChatShortcutToast(chat.id);
+      } catch {
+        hydrateFailed = true;
+        desiredActiveChatIdRef.current = chat.id;
+        activeChatIdRef.current = chat.id;
+        activeChatRef.current = chat;
+        activeDraftRef.current = null;
+        setActiveChat(chat);
+        setActiveDraft(null);
+        patchChatListItem(applyPublicationSummary(buildChatListItem(chat, null)));
+        await refreshChats().catch(() => undefined);
+      }
       setCurrentStep(1);
       setStatusType("ok");
-      setStatus(
+      const successStatus =
         job.progress.detail ??
-          (codexLoggedIn
-            ? files.length > 1
-              ? "mp4 загружены. Step 2 стартует автоматически после завершения Step 1."
-              : "mp4 загружен. Step 2 стартует автоматически после завершения Step 1."
-            : files.length > 1
-              ? "mp4 загружены. Можно переключаться между чатами и вернуться позже."
-              : "mp4 загружен. Можно переключаться между чатами и вернуться позже.")
+        (codexLoggedIn
+          ? files.length > 1
+            ? "mp4 загружены. Step 2 стартует автоматически после завершения Step 1."
+            : "mp4 загружен. Step 2 стартует автоматически после завершения Step 1."
+          : files.length > 1
+            ? "mp4 загружены. Можно переключаться между чатами и вернуться позже."
+            : "mp4 загружен. Можно переключаться между чатами и вернуться позже.");
+      setStatus(
+        hydrateFailed
+          ? `${successStatus} Чат обновился не сразу: если он не открылся автоматически, выберите его в истории.`
+          : successStatus
       );
     } catch (error) {
       const message = getUiErrorMessage(error, "Не удалось загрузить mp4.");
@@ -5866,14 +5882,9 @@ export default function HomePage() {
   const handleCreateChannelFromOnboarding = async (input: {
     name: string;
     username: string;
-    stage2WorkerProfileId: string;
-    stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
-    stage2StyleProfile: Channel["stage2StyleProfile"];
-    referenceUrls: string[];
     avatarFile: File | null;
   }): Promise<void> => {
-    void input.referenceUrls;
     setBusyAction("channel-create");
     try {
       const response = await fetch("/api/channels", {
@@ -5882,10 +5893,7 @@ export default function HomePage() {
         body: JSON.stringify({
           name: input.name,
           username: input.username,
-          stage2WorkerProfileId: input.stage2WorkerProfileId,
-          stage2ExamplesConfig: input.stage2ExamplesConfig,
-          stage2HardConstraints: input.stage2HardConstraints,
-          stage2StyleProfile: input.stage2StyleProfile
+          stage2HardConstraints: input.stage2HardConstraints
         })
       });
       if (!response.ok) {
@@ -5914,7 +5922,7 @@ export default function HomePage() {
       handleSwitchChannel(body.channel.id);
       setIsChannelOnboardingOpen(false);
       setStatusType("ok");
-      setStatus(avatarNotice ?? "Канал создан через новый пошаговый мастер.");
+      setStatus(avatarNotice ?? "Канал создан через упрощённый identity flow.");
     } catch (error) {
       setStatusType("error");
       setStatus(getUiErrorMessage(error, "Не удалось создать канал."));
@@ -7300,7 +7308,6 @@ export default function HomePage() {
           open={isChannelManagerOpen}
           initialTab={channelManagerInitialTab}
           channels={channels}
-          workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
           workspaceStage2PromptConfig={workspaceStage2PromptConfig}
           workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}
@@ -7357,11 +7364,8 @@ export default function HomePage() {
         <ChannelOnboardingWizard
           open={isChannelOnboardingOpen}
           storageKey={channelOnboardingStorageKey}
-          workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
           onClose={() => setIsChannelOnboardingOpen(false)}
-          onStartStyleDiscovery={handleStartChannelStyleDiscovery}
-          onGetStyleDiscoveryRun={handleGetChannelStyleDiscoveryRun}
           onSubmit={handleCreateChannelFromOnboarding}
         />
       ) : null}
