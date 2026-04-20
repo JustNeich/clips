@@ -32,12 +32,16 @@ const JOB_POLL_INTERVAL_MS = 350;
 
 type Stage3RuntimeState = {
   initialized: boolean;
-  runnerPromise: Promise<void> | null;
+  activeJobs: Set<string>;
+  schedulerPromise: Promise<void> | null;
 };
 
 type Stage3RuntimeGlobal = typeof globalThis & {
   __clipsStage3JobRuntimeState__?: Stage3RuntimeState;
+  __clipsStage3JobProcessorOverride__?: Stage3JobProcessor | null;
 };
+
+export type Stage3JobProcessor = (job: Stage3JobRecord) => Promise<void>;
 
 type RenderExportCompletionState = {
   renderExport: ReturnType<typeof completeRenderExportAndMaybeQueue>["renderExport"];
@@ -60,10 +64,20 @@ function getStage3RuntimeState(): Stage3RuntimeState {
   if (!scope.__clipsStage3JobRuntimeState__) {
     scope.__clipsStage3JobRuntimeState__ = {
       initialized: false,
-      runnerPromise: null
+      activeJobs: new Set<string>(),
+      schedulerPromise: null
     };
   }
   return scope.__clipsStage3JobRuntimeState__;
+}
+
+function getProcessor(): Stage3JobProcessor {
+  const scope = globalThis as Stage3RuntimeGlobal;
+  return scope.__clipsStage3JobProcessorOverride__ ?? executeStage3Job;
+}
+
+export function setStage3JobProcessorForTests(processor: Stage3JobProcessor | null): void {
+  (globalThis as Stage3RuntimeGlobal).__clipsStage3JobProcessorOverride__ = processor;
 }
 
 function memorySnapshotMb(): Record<string, number> {
@@ -96,6 +110,14 @@ function delay(ms: number): Promise<void> {
 
 function isTerminalStatus(status: Stage3JobStatus): boolean {
   return status === "completed" || status === "failed" || status === "interrupted";
+}
+
+function getStage3HostConcurrencyLimit(): number {
+  const raw = Number.parseInt(process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS ?? "", 10);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 1;
+  }
+  return Math.max(1, Math.min(8, Math.floor(raw)));
 }
 
 async function classifyJobFailure(job: Stage3JobRecord, error: unknown): Promise<{
@@ -430,13 +452,31 @@ function ensureStage3JobRuntime(): void {
   }
 }
 
-async function runStage3JobLoop(): Promise<void> {
-  while (true) {
-    const job = claimNextQueuedStage3Job();
-    if (!job) {
+function startClaimedJob(job: Stage3JobRecord): void {
+  const state = getStage3RuntimeState();
+  if (state.activeJobs.has(job.id)) {
+    return;
+  }
+
+  state.activeJobs.add(job.id);
+  void Promise.resolve()
+    .then(() => getProcessor()(job))
+    .finally(() => {
+      const latestState = getStage3RuntimeState();
+      latestState.activeJobs.delete(job.id);
+      scheduleStage3JobProcessing();
+    });
+}
+
+function runSchedulerPass(): void {
+  const state = getStage3RuntimeState();
+  const limit = getStage3HostConcurrencyLimit();
+  while (state.activeJobs.size < limit) {
+    const claimed = claimNextQueuedStage3Job();
+    if (!claimed) {
       break;
     }
-    await executeStage3Job(job);
+    startClaimedJob(claimed);
   }
 }
 
@@ -446,16 +486,20 @@ export function scheduleStage3JobProcessing(): void {
   }
   ensureStage3JobRuntime();
   const state = getStage3RuntimeState();
-  if (state.runnerPromise) {
+  if (state.schedulerPromise) {
     return;
   }
-  state.runnerPromise = runStage3JobLoop().finally(() => {
-    const latestState = getStage3RuntimeState();
-    latestState.runnerPromise = null;
-    if (hasQueuedStage3Jobs("host")) {
-      scheduleStage3JobProcessing();
-    }
-  });
+  state.schedulerPromise = Promise.resolve()
+    .then(() => {
+      runSchedulerPass();
+    })
+    .finally(() => {
+      const latestState = getStage3RuntimeState();
+      latestState.schedulerPromise = null;
+      if (latestState.activeJobs.size < getStage3HostConcurrencyLimit() && hasQueuedStage3Jobs("host")) {
+        scheduleStage3JobProcessing();
+      }
+    });
 }
 
 export function enqueueAndScheduleStage3Job(input: EnqueueJobInput): Stage3JobRecord {

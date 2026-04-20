@@ -4,7 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { pruneStage3SourceCache } from "../lib/stage3-server-control";
+import { pruneStage3SourceCache, runHostedStage3HeavyJob } from "../lib/stage3-server-control";
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 test("pruneStage3SourceCache removes oldest source entries together with metadata", { concurrency: false }, async () => {
   const cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), "clips-stage3-cache-prune-test-"));
@@ -48,5 +54,49 @@ test("pruneStage3SourceCache removes oldest source entries together with metadat
       process.env.CLIPS_STAGE3_CACHE_ROOT = previousCacheRoot;
     }
     await fs.rm(cacheRoot, { recursive: true, force: true });
+  }
+});
+
+test("runHostedStage3HeavyJob honors configured hosted concurrency", { concurrency: false }, async () => {
+  const previousRender = process.env.RENDER;
+  const previousLimit = process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT;
+  process.env.RENDER = "1";
+  process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT = "2";
+
+  try {
+    let active = 0;
+    let maxActive = 0;
+
+    const results = await Promise.all(
+      ["job-1", "job-2", "job-3"].map((jobId) =>
+        runHostedStage3HeavyJob(
+          async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            try {
+              await delay(40);
+              return jobId;
+            } finally {
+              active = Math.max(0, active - 1);
+            }
+          },
+          { waitTimeoutMs: 500 }
+        )
+      )
+    );
+
+    assert.equal(maxActive, 2);
+    assert.deepEqual(results, ["job-1", "job-2", "job-3"]);
+  } finally {
+    if (previousRender === undefined) {
+      delete process.env.RENDER;
+    } else {
+      process.env.RENDER = previousRender;
+    }
+    if (previousLimit === undefined) {
+      delete process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT;
+    } else {
+      process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT = previousLimit;
+    }
   }
 });

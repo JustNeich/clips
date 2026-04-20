@@ -414,9 +414,15 @@ Publishing / YouTube queue:
 - `CODEX_STAGE2_DESCRIPTION_REASONING_EFFORT` — отдельный reasoning effort для SEO-генерации.
 - `CODEX_BIN` — путь к бинарнику codex, если Next.js не видит его в PATH.
   Пример для macOS app: `/Applications/Codex.app/Contents/Resources/codex`
+- `STAGE2_MAX_CONCURRENT_RUNS` — параллелизм hosted Stage 2 run-ов. После апгрейда Render-плана разумный production starting point: `4`.
+- `SOURCE_MAX_CONCURRENT_JOBS` — параллелизм hosted source intake/download jobs. Для production после scale-up обычно достаточно `4`.
+- `CHANNEL_STYLE_DISCOVERY_MAX_CONCURRENT_RUNS` — параллелизм bootstrap style discovery/onboarding run-ов. Для production после scale-up обычно достаточно `4`.
+- `HOSTED_SUBPROCESS_MAX_CONCURRENT` — общий лимит параллельных hosted subprocess-heavy задач (`codex`, `yt-dlp`, часть media/runtime helper paths). После апгрейда плана разумный starting point: `4`.
 - `REMOTION_RENDER_TIMEOUT_MS` — таймаут Stage 3 рендера в миллисекундах.
 - `STAGE3_DEFAULT_EXECUTION_TARGET` — `local|host`, по умолчанию должен быть `local`.
 - `STAGE3_ALLOW_HOST_EXECUTION` — аварийный fallback на host-heavy execution. Для production должен быть `0`.
+- `STAGE3_HOST_MAX_CONCURRENT_JOBS` — сколько host Stage 3 job-ов можно выполнять одновременно, если аварийный host execution всё же включён. Безопасный production starting point после scale-up: `4`.
+- `STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT` — shared slot gate для hosted `preview` / `render` / `editing-proxy` / `source-download`. После апгрейда плана разумный starting point: `4`.
 - `STAGE3_WORKER_PAIRING_TTL_SEC` — TTL pairing token в секундах.
 - `STAGE3_WORKER_SESSION_TTL_SEC` — TTL worker session token в секундах.
 - `APP_BOOTSTRAP_SECRET` — обязателен в production и на Vercel для one-time owner bootstrap.

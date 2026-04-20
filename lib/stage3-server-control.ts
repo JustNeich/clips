@@ -28,6 +28,7 @@ const STAGE3_SOURCE_CACHE_MAX_ENTRIES = 24;
 const HOSTED_STAGE3_SOURCE_CACHE_MAX_ENTRIES = 8;
 const STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS = 5 * 60_000;
 const HOSTED_STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS = 60_000;
+const DEFAULT_HOSTED_STAGE3_HEAVY_JOB_LIMIT = 1;
 const sourceInflight = new Map<string, Promise<Stage3CachedSource>>();
 let hostedHeavyJobActive = 0;
 const hostedHeavyWaiters: Array<{
@@ -68,6 +69,17 @@ function getStage3SourceCachePruneIntervalMs(): number {
   return isStage3HostedRuntime()
     ? HOSTED_STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS
     : STAGE3_SOURCE_CACHE_PRUNE_INTERVAL_MS;
+}
+
+function getHostedStage3HeavyJobLimit(): number {
+  if (!isStage3HostedRuntime()) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const raw = Number.parseInt(process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT ?? "", 10);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return DEFAULT_HOSTED_STAGE3_HEAVY_JOB_LIMIT;
+  }
+  return Math.max(1, Math.min(8, Math.floor(raw)));
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -243,7 +255,8 @@ function createHostedSlotRelease(): () => void {
     }
     released = true;
     hostedHeavyJobActive = Math.max(0, hostedHeavyJobActive - 1);
-    while (hostedHeavyJobActive === 0 && hostedHeavyWaiters.length > 0) {
+    const limit = getHostedStage3HeavyJobLimit();
+    while (hostedHeavyJobActive < limit && hostedHeavyWaiters.length > 0) {
       const next = hostedHeavyWaiters.shift();
       if (!next || next.settled) {
         continue;
@@ -261,7 +274,8 @@ async function acquireHostedStage3Slot(options?: Stage3HostedJobOptions): Promis
   if (!isStage3HostedRuntime() || hostedHeavyJobContext.getStore()) {
     return () => undefined;
   }
-  if (hostedHeavyJobActive === 0 && hostedHeavyWaiters.length === 0) {
+  const limit = getHostedStage3HeavyJobLimit();
+  if (hostedHeavyJobActive < limit && hostedHeavyWaiters.length === 0) {
     hostedHeavyJobActive += 1;
     return createHostedSlotRelease();
   }

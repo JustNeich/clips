@@ -12,18 +12,39 @@ import {
   enqueueStage3Job,
   getStage3Job
 } from "../lib/stage3-job-store";
+import {
+  scheduleStage3JobProcessing,
+  setStage3JobProcessorForTests
+} from "../lib/stage3-job-runtime";
 import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
+
+async function waitForCondition(check: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    if (check()) {
+      return;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+  }
+  throw new Error("Timed out waiting for Stage 3 jobs to settle.");
+}
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-stage3-job-priority-test-"));
   const previousAppDataDir = process.env.APP_DATA_DIR;
   process.env.APP_DATA_DIR = appDataDir;
   delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+  delete (globalThis as { __clipsStage3JobRuntimeState__?: unknown }).__clipsStage3JobRuntimeState__;
+  delete (globalThis as { __clipsStage3JobProcessorOverride__?: unknown }).__clipsStage3JobProcessorOverride__;
 
   try {
     return await run();
   } finally {
     delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+    delete (globalThis as { __clipsStage3JobRuntimeState__?: unknown }).__clipsStage3JobRuntimeState__;
+    delete (globalThis as { __clipsStage3JobProcessorOverride__?: unknown }).__clipsStage3JobProcessorOverride__;
     if (previousAppDataDir === undefined) {
       delete process.env.APP_DATA_DIR;
     } else {
@@ -118,6 +139,98 @@ test("host queue prefers render over newer preview jobs", async () => {
 
     assert.equal(firstClaim?.id, render.id);
     assert.equal(secondClaim?.id, preview.id);
+  });
+});
+
+test("host runtime processes multiple jobs up to configured concurrency", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const previousLimit = process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
+    const previousHostExecution = process.env.STAGE3_ALLOW_HOST_EXECUTION;
+    process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = "2";
+    process.env.STAGE3_ALLOW_HOST_EXECUTION = "1";
+
+    try {
+      const db = getDb();
+      const stamp = nowIso();
+      const workspaceId = "w1";
+      const userId = "u1";
+
+      db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+        workspaceId,
+        "Test workspace",
+        "test-workspace",
+        stamp,
+        stamp
+      );
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+      db.prepare(
+        "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+      let active = 0;
+      let maxActive = 0;
+      setStage3JobProcessorForTests(async (job) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        try {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 40);
+          });
+          completeStage3Job(job.id, {
+            resultJson: JSON.stringify({ ok: true }),
+            artifact: null
+          });
+        } finally {
+          active = Math.max(0, active - 1);
+        }
+      });
+      scheduleStage3JobProcessing();
+
+      const jobs = [
+        enqueueStage3Job({
+          workspaceId,
+          userId,
+          kind: "source-download",
+          executionTarget: "host",
+          payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=job-1" })
+        }),
+        enqueueStage3Job({
+          workspaceId,
+          userId,
+          kind: "source-download",
+          executionTarget: "host",
+          payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=job-2" })
+        }),
+        enqueueStage3Job({
+          workspaceId,
+          userId,
+          kind: "source-download",
+          executionTarget: "host",
+          payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=job-3" })
+        })
+      ];
+
+      scheduleStage3JobProcessing();
+      await waitForCondition(() => jobs.every((job) => getStage3Job(job.id)?.status === "completed"));
+      const completed = jobs.map((job) => getStage3Job(job.id));
+
+      assert.equal(maxActive, 2);
+      assert.ok(completed.every((job) => job?.status === "completed"));
+    } finally {
+      setStage3JobProcessorForTests(null);
+      if (previousLimit === undefined) {
+        delete process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
+      } else {
+        process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = previousLimit;
+      }
+      if (previousHostExecution === undefined) {
+        delete process.env.STAGE3_ALLOW_HOST_EXECUTION;
+      } else {
+        process.env.STAGE3_ALLOW_HOST_EXECUTION = previousHostExecution;
+      }
+    }
   });
 });
 
