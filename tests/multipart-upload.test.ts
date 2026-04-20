@@ -104,6 +104,29 @@ test("parseMultipartSingleFileRequest reads a file and text fields from browser 
   assert.deepEqual(Array.from(parsed.file?.bytes ?? []), [1, 2, 3, 4]);
 });
 
+test("parseMultipartSingleFileRequest preserves UTF-8 file names from browser FormData", async () => {
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new File([Buffer.from([1, 2, 3, 4])], "тест upload.mp4", {
+      type: "video/mp4"
+    })
+  );
+
+  const parsed = await parseMultipartSingleFileRequest(
+    new Request("http://localhost/api/upload", {
+      method: "POST",
+      body: formData
+    }),
+    {
+      fileFieldName: "file",
+      maxFileBytes: 1024
+    }
+  );
+
+  assert.equal(parsed.file?.name, "тест upload.mp4");
+});
+
 test("parseMultipartSingleFileRequest rejects oversized uploads with a stable 400-class error", async () => {
   const formData = new FormData();
   formData.append(
@@ -347,6 +370,75 @@ test("source upload route handles multi-mp4 batch uploads as one atomic source f
 
       const cached = await ensureSourceMediaCached(body.chat?.url ?? "");
       assert.equal(cached.fileName, "before + after.mp4");
+      assert.equal(cached.downloadProvider, "upload");
+    } finally {
+      await rm(mediaDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("source upload route accepts a single multipart mp4 and preserves its readable file name", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Source Upload Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const sourceJobs = await import("../lib/source-job-store");
+    const mediaDir = await mkdtemp(path.join(os.tmpdir(), "clips-source-upload-single-"));
+
+    try {
+      const channel = await chatHistory.createChannel({
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        name: "Single Upload Channel",
+        username: "single_upload"
+      });
+
+      const filePath = path.join(mediaDir, "single.mp4");
+      await createTinyMp4File({ outputPath: filePath, color: "purple" });
+      const fileBytes = await readFile(filePath);
+
+      const formData = new FormData();
+      formData.append("channelId", channel.id);
+      formData.append("autoRunStage2", "0");
+      formData.append(
+        "files",
+        new File([fileBytes], "тест upload.mp4", {
+          type: "video/mp4"
+        })
+      );
+
+      const response = await uploadSourceRoute(
+        new Request("http://localhost/api/pipeline/source-upload", {
+          method: "POST",
+          headers: buildAuthedHeaders(owner.sessionToken),
+          body: formData
+        })
+      );
+      const body = (await response.json()) as {
+        chat?: { id?: string; title?: string; url?: string };
+        job?: { sourceUrl?: string };
+      };
+
+      assert.equal(response.status, 202);
+      assert.ok(body.chat?.id);
+      assert.equal(body.chat?.title, "тест upload");
+      assert.equal(body.job?.sourceUrl, body.chat?.url);
+
+      const chats = await chatHistory.listChats(channel.id);
+      assert.equal(chats.length, 1);
+      assert.equal(chats[0]?.title, "тест upload");
+
+      const jobs = sourceJobs.listSourceJobsForChat(body.chat?.id ?? "", owner.workspace.id, 10);
+      assert.equal(jobs.length, 1);
+      assert.equal(jobs[0]?.sourceUrl, body.chat?.url);
+
+      const cached = await ensureSourceMediaCached(body.chat?.url ?? "");
+      assert.equal(cached.fileName, "тест upload.mp4");
+      assert.equal(cached.title, "тест upload");
       assert.equal(cached.downloadProvider, "upload");
     } finally {
       await rm(mediaDir, { recursive: true, force: true });

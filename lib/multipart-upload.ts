@@ -26,6 +26,15 @@ export type ParsedMultipartFile = {
   sizeBytes: number;
 };
 
+function decodeMultipartFileName(fileName: string): string {
+  const trimmed = fileName.trim();
+  if (!trimmed) {
+    return "upload.bin";
+  }
+  const utf8Candidate = Buffer.from(trimmed, "latin1").toString("utf8");
+  return utf8Candidate.includes("\uFFFD") ? trimmed : utf8Candidate;
+}
+
 type ParseMultipartRequestOptions = {
   fileFieldName: string;
   maxFileBytes?: number;
@@ -121,7 +130,7 @@ async function parseMultipartFilesInternal(
           info && typeof info === "object"
             ? (info as { filename?: string; mimeType?: string })
             : null;
-        const fileName = meta?.filename?.trim() || "upload.bin";
+        const fileName = decodeMultipartFileName(meta?.filename ?? "");
         const mimeType = meta?.mimeType?.trim() || legacyMime?.trim() || "application/octet-stream";
         const chunks: Buffer[] = [];
         let sizeBytes = 0;

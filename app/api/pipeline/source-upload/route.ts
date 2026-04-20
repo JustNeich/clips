@@ -42,6 +42,19 @@ function normalizeAutoRunValue(value: string | undefined): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
+function sanitizeUploadedFileName(fileName: string): string {
+  return path.basename(fileName).replace(/["\r\n]/g, "_");
+}
+
+function isAcceptedUploadedVideoMime(mimeType: string | null | undefined): boolean {
+  const normalized = mimeType?.trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === "application/octet-stream" ||
+    normalized.includes("mp4")
+  );
+}
+
 function buildCompositeUploadFileName(fileNames: string[]): string {
   const labels = fileNames
     .map((name) => path.parse(name).name)
@@ -52,6 +65,15 @@ function buildCompositeUploadFileName(fileNames: string[]): string {
 
 function normalizeMultipartAutoRunField(fields: Record<string, string>): boolean {
   return normalizeAutoRunValue(fields.autoRunStage2 ?? fields.auto_run_stage2);
+}
+
+function createReadableStreamFromBytes(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    }
+  });
 }
 
 function serializeSourceJobDetail(job: {
@@ -152,22 +174,44 @@ export async function POST(request: Request): Promise<Response> {
       if (!channelId) {
         return Response.json({ error: "Передайте channelId." }, { status: 400 });
       }
-      if (parsed.files.length < 2) {
-        return Response.json({ error: "Для batch upload передайте минимум 2 mp4." }, { status: 400 });
+      if (parsed.files.length < 1) {
+        return Response.json({ error: "Передайте минимум 1 mp4." }, { status: 400 });
       }
 
       const invalidFile = parsed.files.find(
         (file) =>
           !file.name.toLowerCase().endsWith(".mp4") ||
-          (file.mimeType &&
-            file.mimeType !== "application/octet-stream" &&
-            !file.mimeType.toLowerCase().includes("mp4"))
+          !isAcceptedUploadedVideoMime(file.mimeType)
       );
       if (invalidFile) {
         return Response.json({ error: "Загружать можно только готовые mp4 файлы." }, { status: 400 });
       }
 
       const operate = await requireChannelOperate(auth, channelId);
+      if (parsed.files.length === 1) {
+        const singleFile = parsed.files[0]!;
+        const fileName = sanitizeUploadedFileName(singleFile.name);
+        const title = path.parse(fileName).name;
+        const sourceUrl = buildUploadedSourceUrl(newId(), fileName);
+        await storeUploadedSourceMedia({
+          sourceUrl,
+          fileName,
+          title,
+          sourceStream: createReadableStreamFromBytes(singleFile.bytes),
+          maxBytes: MAX_UPLOADED_SOURCE_BYTES
+        });
+
+        return enqueueUploadedSourceJob({
+          auth,
+          operate,
+          channelId,
+          sourceUrl,
+          title,
+          eventText: `Видео загружено: ${fileName}`,
+          autoRunStage2Requested: normalizeMultipartAutoRunField(parsed.fields)
+        });
+      }
+
       const fileName = buildCompositeUploadFileName(parsed.files.map((file) => file.name));
       const sourceUrl = buildUploadedSourceUrl(newId(), fileName);
       await storeUploadedCompositeSourceMedia({
@@ -205,12 +249,12 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Тело запроса пустое." }, { status: 400 });
     }
 
-    const fileName = path.basename(decodeHeaderFileName(fileNameHeader)).replace(/["\r\n]/g, "_");
+    const fileName = sanitizeUploadedFileName(decodeHeaderFileName(fileNameHeader));
     if (!fileName.toLowerCase().endsWith(".mp4")) {
       return Response.json({ error: "Загружать можно только готовый mp4 файл." }, { status: 400 });
     }
 
-    if (contentType && contentType !== "video/mp4" && contentType !== "application/octet-stream") {
+    if (!isAcceptedUploadedVideoMime(contentType)) {
       return Response.json({ error: "Загрузите mp4 с Content-Type video/mp4." }, { status: 400 });
     }
 
