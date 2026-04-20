@@ -149,6 +149,10 @@ Caption provider overlay:
   - `provider: "codex"` -> все Stage 2 LLM stages идут через Shared Codex
   - `provider: "anthropic"` -> только `oneShotReference`, `candidateGenerator`, `targetedRepair` и `regenerate` идут через Anthropic Messages API
   - `provider: "openrouter"` -> только `oneShotReference`, `candidateGenerator`, `targetedRepair` и `regenerate` идут через OpenRouter Chat Completions API
+- transport detail:
+  - Anthropic models through OpenRouter не должны использовать `response_format.json_schema` для caption stages
+  - причина: Anthropic-via-OpenRouter режет часть array keyword-ов (`minItems` / `maxItems`) в `output_config.format.schema`
+  - runtime поэтому использует strict tool-calling transport с Anthropic beta header и downstream contract validation остаётся fail-closed на нашей стороне
 - даже при `provider: "anthropic"` или `provider: "openrouter"` следующие stages остаются на Shared Codex:
   - `qualityCourt`
   - `captionTranslation`

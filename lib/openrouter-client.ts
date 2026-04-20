@@ -4,6 +4,7 @@ import { prepareJsonSchemaTransport } from "./json-stage-transport";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_MAX_REDIRECTS = 3;
+const OPENROUTER_ANTHROPIC_STRUCTURED_OUTPUTS_BETA = "structured-outputs-2025-11-13";
 const OPENROUTER_TEST_PROMPT = "Return a short machine-readable acknowledgement.";
 const OPENROUTER_TEST_SCHEMA = {
   type: "object",
@@ -82,47 +83,25 @@ function inferImageMediaType(imagePath: string): string {
   return "image/jpeg";
 }
 
-function buildOpenRouterHeaders(apiKey: string): Headers {
+function buildOpenRouterHeaders(
+  apiKey: string,
+  options?: { anthropicBeta?: string | null }
+): Headers {
   const headers = new Headers();
   headers.set("Authorization", `Bearer ${apiKey}`);
   headers.set("Content-Type", "application/json");
   headers.set("Accept", "application/json");
   headers.set("User-Agent", "clips-automations-openrouter/1.0");
   headers.set("X-Title", "Clips Automations");
+  const anthropicBeta = options?.anthropicBeta?.trim();
+  if (anthropicBeta) {
+    headers.set("anthropic-beta", anthropicBeta);
+  }
   return headers;
 }
 
-function schemaSupportsArrayType(typeValue: unknown): boolean {
-  return (
-    typeValue === "array" ||
-    (Array.isArray(typeValue) && typeValue.includes("array"))
-  );
-}
-
-function sanitizeOpenRouterJsonSchema(schema: unknown): unknown {
-  if (Array.isArray(schema)) {
-    return schema.map((entry) => sanitizeOpenRouterJsonSchema(entry));
-  }
-
-  const record = asRecord(schema);
-  if (!record) {
-    return schema;
-  }
-
-  const next = Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [key, sanitizeOpenRouterJsonSchema(value)])
-  );
-
-  // Anthropic through OpenRouter currently rejects array schemas whose minItems is > 1.
-  // We keep downstream contract validation strict and only relax the transport shim here.
-  if (schemaSupportsArrayType(next.type)) {
-    const minItems = next.minItems;
-    if (typeof minItems === "number" && minItems > 1) {
-      next.minItems = 1;
-    }
-  }
-
-  return next;
+function isAnthropicOpenRouterModel(model: string): boolean {
+  return model.trim().toLowerCase().startsWith("anthropic/");
 }
 
 function isRedirectStatus(status: number): boolean {
@@ -130,7 +109,7 @@ function isRedirectStatus(status: number): boolean {
 }
 
 async function postOpenRouterJson(input: {
-  apiKey: string;
+  headers: Headers;
   body: string;
   signal: AbortSignal;
 }): Promise<Response> {
@@ -139,7 +118,7 @@ async function postOpenRouterJson(input: {
   for (let redirectIndex = 0; redirectIndex <= OPENROUTER_MAX_REDIRECTS; redirectIndex += 1) {
     const response = await fetch(requestUrl, {
       method: "POST",
-      headers: buildOpenRouterHeaders(input.apiKey),
+      headers: input.headers,
       body: input.body,
       signal: input.signal,
       redirect: "manual"
@@ -196,11 +175,51 @@ function parseJsonContent(raw: string): unknown {
   }
 }
 
-function extractStructuredResult(payload: unknown): unknown {
+function schemaUsesWrappedResultEnvelope(schema: unknown): boolean {
+  const record = asRecord(schema);
+  const properties = asRecord(record?.properties);
+  return Boolean(
+    record?.type === "object" &&
+      properties &&
+      Object.keys(properties).length === 1 &&
+      "result" in properties
+  );
+}
+
+function maybeUnwrapUnexpectedResultEnvelope(value: unknown, schema: unknown): unknown {
+  const record = asRecord(value);
+  if (!record || Object.keys(record).length !== 1 || !("result" in record)) {
+    return value;
+  }
+  if (schemaUsesWrappedResultEnvelope(schema)) {
+    return value;
+  }
+  return record.result;
+}
+
+function parseToolCallArguments(raw: unknown): unknown {
+  if (typeof raw === "string") {
+    return parseJsonContent(raw);
+  }
+  return raw;
+}
+
+function extractStructuredResult(payload: unknown, schema: unknown): unknown {
   const record = asRecord(payload);
   const choices = Array.isArray(record?.choices) ? record.choices : [];
   const firstChoice = asRecord(choices[0]);
   const message = asRecord(firstChoice?.message);
+  const toolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+  const toolCall = toolCalls.find((entry) => {
+    const candidate = asRecord(entry);
+    const fn = asRecord(candidate?.function);
+    return fn?.name === "record_result";
+  });
+  if (toolCall) {
+    const functionPayload = asRecord(toolCall)?.function;
+    const argumentsValue = asRecord(functionPayload)?.arguments;
+    return maybeUnwrapUnexpectedResultEnvelope(parseToolCallArguments(argumentsValue), schema);
+  }
   if (message?.parsed !== undefined) {
     return message.parsed;
   }
@@ -239,30 +258,69 @@ async function fetchOpenRouterStructuredOutput<T>(input: {
     prompt: input.prompt
   });
   const userContent = await buildOpenRouterUserContent(input.imagePaths ?? [], transport.prompt);
-  const requestBody = JSON.stringify({
-    model: input.model,
-    max_tokens: input.maxTokens ?? 8_192,
-    messages: [
-      {
-        role: "user",
-        content: userContent
-      }
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "record_result",
-        strict: true,
-        schema: sanitizeOpenRouterJsonSchema(transport.schema)
-      }
-    }
-  });
+  const usesStrictToolTransport = isAnthropicOpenRouterModel(input.model);
+  const requestBody = JSON.stringify(
+    usesStrictToolTransport
+      ? {
+          model: input.model,
+          max_tokens: input.maxTokens ?? 8_192,
+          messages: [
+            {
+              role: "user",
+              content: userContent
+            }
+          ],
+          tool_choice: {
+            type: "function",
+            function: {
+              name: "record_result"
+            }
+          },
+          parallel_tool_calls: false,
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "record_result",
+                description: "Return the final JSON payload exactly in the required schema.",
+                strict: true,
+                parameters: transport.schema
+              }
+            }
+          ]
+        }
+      : {
+          model: input.model,
+          max_tokens: input.maxTokens ?? 8_192,
+          messages: [
+            {
+              role: "user",
+              content: userContent
+            }
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "record_result",
+              strict: true,
+              schema: transport.schema
+            }
+          },
+          provider: {
+            require_parameters: true
+          }
+        }
+  );
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 8 * 60_000);
 
   try {
     const response = await postOpenRouterJson({
-      apiKey: input.apiKey,
+      headers: buildOpenRouterHeaders(input.apiKey, {
+        anthropicBeta: usesStrictToolTransport
+          ? OPENROUTER_ANTHROPIC_STRUCTURED_OUTPUTS_BETA
+          : null
+      }),
       body: requestBody,
       signal: controller.signal
     });
@@ -271,7 +329,7 @@ async function fetchOpenRouterStructuredOutput<T>(input: {
     if (!response.ok) {
       throw new Error(getOpenRouterErrorMessage(payload, response.status));
     }
-    return transport.unwrap(extractStructuredResult(payload)) as T;
+    return transport.unwrap(extractStructuredResult(payload, transport.schema)) as T;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error("OpenRouter generation timed out.");

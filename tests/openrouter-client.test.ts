@@ -3,12 +3,17 @@ import test from "node:test";
 
 import { runOpenRouterStructuredOutput } from "../lib/openrouter-client";
 
-test("runOpenRouterStructuredOutput unwraps structured JSON responses", async () => {
+test("runOpenRouterStructuredOutput keeps response_format transport for non-Anthropic models", async () => {
   const originalFetch = globalThis.fetch;
   const fetchMock: typeof fetch = async (_input, init) => {
     const headers = new Headers(init?.headers);
     const body = JSON.parse(String(init?.body ?? "{}")) as {
       model?: string;
+      provider?: {
+        require_parameters?: boolean;
+        allow_fallbacks?: boolean;
+        order?: string[];
+      };
       response_format?: {
         type?: string;
         json_schema?: {
@@ -23,17 +28,24 @@ test("runOpenRouterStructuredOutput unwraps structured JSON responses", async ()
           };
         };
       };
+      tools?: unknown;
+      tool_choice?: unknown;
     };
     assert.equal(headers.get("Authorization"), "Bearer sk-or-v1-test");
     assert.equal(headers.get("Content-Type"), "application/json");
     assert.equal(headers.get("Accept"), "application/json");
     assert.equal(headers.get("X-Title"), "Clips Automations");
+    assert.equal(headers.get("anthropic-beta"), null);
     assert.equal(init?.redirect, "manual");
-    assert.equal(body.model, "anthropic/claude-opus-4.7");
+    assert.equal(body.model, "openai/gpt-4.1-mini");
+    assert.equal(body.provider?.require_parameters, true);
     assert.equal(body.response_format?.type, "json_schema");
     assert.equal(body.response_format?.json_schema?.name, "record_result");
-    assert.equal(body.response_format?.json_schema?.schema?.properties?.result?.minItems, 1);
+    assert.equal(body.response_format?.json_schema?.schema?.properties?.result?.minItems, 8);
     assert.equal(body.response_format?.json_schema?.schema?.properties?.result?.maxItems, 8);
+    assert.equal(Array.isArray(body.tools), false);
+    assert.equal(body.tool_choice ?? null, null);
+
     return new Response(
       JSON.stringify({
         choices: [
@@ -57,7 +69,7 @@ test("runOpenRouterStructuredOutput unwraps structured JSON responses", async ()
   try {
     const result = await runOpenRouterStructuredOutput<string[]>({
       apiKey: "sk-or-v1-test",
-      model: "anthropic/claude-opus-4.7",
+      model: "openai/gpt-4.1-mini",
       prompt: "Return two strings.",
       schema: {
         type: "array",
@@ -75,13 +87,24 @@ test("runOpenRouterStructuredOutput unwraps structured JSON responses", async ()
   }
 });
 
-test("runOpenRouterStructuredOutput clamps unsupported OpenRouter array minItems values", async () => {
+test("runOpenRouterStructuredOutput uses strict tool transport for Anthropic models and unwraps stray result envelopes", async () => {
   const originalFetch = globalThis.fetch;
   const fetchMock: typeof fetch = async (_input, init) => {
+    const headers = new Headers(init?.headers);
     const body = JSON.parse(String(init?.body ?? "{}")) as {
-      response_format?: {
-        json_schema?: {
-          schema?: {
+      model?: string;
+      parallel_tool_calls?: boolean;
+      response_format?: unknown;
+      tool_choice?: {
+        type?: string;
+        function?: { name?: string };
+      };
+      tools?: Array<{
+        type?: string;
+        function?: {
+          name?: string;
+          strict?: boolean;
+          parameters?: {
             properties?: {
               analysis?: {
                 properties?: {
@@ -102,20 +125,25 @@ test("runOpenRouterStructuredOutput clamps unsupported OpenRouter array minItems
             };
           };
         };
-      };
+      }>;
     };
-    const schema = body.response_format?.json_schema?.schema;
-    assert.equal(
-      schema?.properties?.analysis?.properties?.visual_anchors?.minItems,
-      1
-    );
-    assert.equal(
-      schema?.properties?.analysis?.properties?.visual_anchors?.maxItems,
-      3
-    );
-    assert.equal(schema?.properties?.candidates?.minItems, 1);
+    const tool = body.tools?.[0]?.function;
+    const schema = tool?.parameters;
+    assert.equal(headers.get("Authorization"), "Bearer sk-or-v1-test");
+    assert.equal(headers.get("anthropic-beta"), "structured-outputs-2025-11-13");
+    assert.equal(body.model, "anthropic/claude-opus-4.7");
+    assert.equal(body.parallel_tool_calls, false);
+    assert.equal(body.response_format ?? null, null);
+    assert.equal(body.tool_choice?.type, "function");
+    assert.equal(body.tool_choice?.function?.name, "record_result");
+    assert.equal(body.tools?.[0]?.type, "function");
+    assert.equal(tool?.name, "record_result");
+    assert.equal(tool?.strict, true);
+    assert.equal(schema?.properties?.analysis?.properties?.visual_anchors?.minItems, 3);
+    assert.equal(schema?.properties?.analysis?.properties?.visual_anchors?.maxItems, 3);
+    assert.equal(schema?.properties?.candidates?.minItems, 5);
     assert.equal(schema?.properties?.candidates?.maxItems, 5);
-    assert.equal(schema?.properties?.titles?.minItems, 1);
+    assert.equal(schema?.properties?.titles?.minItems, 5);
     assert.equal(schema?.properties?.titles?.maxItems, 5);
 
     return new Response(
@@ -123,23 +151,33 @@ test("runOpenRouterStructuredOutput clamps unsupported OpenRouter array minItems
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                analysis: {
-                  visual_anchors: ["a", "b", "c"],
-                  comment_vibe: "observant",
-                  key_phrase_to_adapt: "clock it"
-                },
-                candidates: Array.from({ length: 5 }, (_, index) => ({
-                  candidate_id: `cand_${index + 1}`,
-                  top: "",
-                  bottom: `Bottom ${index + 1}`,
-                  retained_handle: false
-                })),
-                winner_candidate_id: "cand_1",
-                titles: Array.from({ length: 5 }, (_, index) => ({
-                  title: `Title ${index + 1}`
-                }))
-              })
+              tool_calls: [
+                {
+                  type: "function",
+                  function: {
+                    name: "record_result",
+                    arguments: JSON.stringify({
+                      result: {
+                        analysis: {
+                          visual_anchors: ["a", "b", "c"],
+                          comment_vibe: "observant",
+                          key_phrase_to_adapt: "clock it"
+                        },
+                        candidates: Array.from({ length: 5 }, (_, index) => ({
+                          candidate_id: `cand_${index + 1}`,
+                          top: "",
+                          bottom: `Bottom ${index + 1}`,
+                          retained_handle: false
+                        })),
+                        winner_candidate_id: "cand_1",
+                        titles: Array.from({ length: 5 }, (_, index) => ({
+                          title: `Title ${index + 1}`
+                        }))
+                      }
+                    })
+                  }
+                }
+              ]
             }
           }
         ]
@@ -216,6 +254,7 @@ test("runOpenRouterStructuredOutput clamps unsupported OpenRouter array minItems
       }
     });
 
+    assert.equal(result.analysis.visual_anchors.length, 3);
     assert.equal(result.candidates.length, 5);
     assert.equal(result.titles.length, 5);
   } finally {
@@ -223,13 +262,14 @@ test("runOpenRouterStructuredOutput clamps unsupported OpenRouter array minItems
   }
 });
 
-test("runOpenRouterStructuredOutput preserves Authorization across OpenRouter redirects", async () => {
+test("runOpenRouterStructuredOutput preserves Authorization and anthropic beta headers across OpenRouter redirects", async () => {
   const originalFetch = globalThis.fetch;
   let callCount = 0;
   const fetchMock: typeof fetch = async (input, init) => {
     callCount += 1;
     const headers = new Headers(init?.headers);
     assert.equal(headers.get("Authorization"), "Bearer sk-or-v1-test");
+    assert.equal(headers.get("anthropic-beta"), "structured-outputs-2025-11-13");
     if (callCount === 1) {
       assert.equal(String(input), "https://openrouter.ai/api/v1/chat/completions");
       return new Response(null, {
@@ -245,9 +285,17 @@ test("runOpenRouterStructuredOutput preserves Authorization across OpenRouter re
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                ok: true
-              })
+              tool_calls: [
+                {
+                  type: "function",
+                  function: {
+                    name: "record_result",
+                    arguments: JSON.stringify({
+                      ok: true
+                    })
+                  }
+                }
+              ]
             }
           }
         ]
@@ -282,7 +330,7 @@ test("runOpenRouterStructuredOutput preserves Authorization across OpenRouter re
   }
 });
 
-test("runOpenRouterStructuredOutput fails closed when OpenRouter skips structured JSON content", async () => {
+test("runOpenRouterStructuredOutput fails closed when OpenRouter returns neither tool calls nor structured JSON", async () => {
   const originalFetch = globalThis.fetch;
   const fetchMock: typeof fetch = async () =>
     new Response(
