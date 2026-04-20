@@ -38,6 +38,8 @@ type EnsureStage3BrowserOptions = DetectBrowserOptions & {
   logLevel?: EnsureBrowserOptions["logLevel"];
 };
 
+export type Stage3BrowserChromeMode = "chrome-for-testing" | "headless-shell";
+
 type BrowserCandidate = {
   executablePath: string;
   label: string;
@@ -53,6 +55,7 @@ export type Stage3PreparedBrowser = {
   browserExecutable: string;
   description: string;
   source: "configured-path" | "local-install" | "remotion-managed";
+  chromeMode: Stage3BrowserChromeMode;
 };
 
 async function defaultFileExists(filePath: string): Promise<boolean> {
@@ -275,12 +278,13 @@ export async function ensureStage3RenderBrowser(
   options: EnsureStage3BrowserOptions = {}
 ): Promise<Stage3PreparedBrowser> {
   const detected = await detectPreferredStage3Browser(options);
+  const chromeMode = resolveStage3BrowserChromeMode(detected, options.chromeMode);
   const ensureBrowserImpl =
     options.ensureBrowserImpl ??
     ((await import("@remotion/renderer")).ensureBrowser as EnsureBrowserFn);
   const status = await ensureBrowserImpl({
     browserExecutable: detected?.browserExecutable ?? null,
-    chromeMode: options.chromeMode ?? "headless-shell",
+    chromeMode,
     logLevel: options.logLevel ?? "info"
   });
 
@@ -289,14 +293,16 @@ export async function ensureStage3RenderBrowser(
       return {
         browserExecutable: status.path,
         description: `Using configured Stage 3 browser: ${status.path}`,
-        source: "configured-path"
+        source: "configured-path",
+        chromeMode
       };
     }
 
     return {
       browserExecutable: status.path,
       description: `Using local Stage 3 browser (${detected?.label ?? "Chromium"}): ${status.path}`,
-      source: "local-install"
+      source: "local-install",
+      chromeMode
     };
   }
 
@@ -304,7 +310,8 @@ export async function ensureStage3RenderBrowser(
     return {
       browserExecutable: status.path,
       description: `Using Remotion-managed Stage 3 browser: ${status.path}`,
-      source: "remotion-managed"
+      source: "remotion-managed",
+      chromeMode
     };
   }
 
@@ -312,4 +319,25 @@ export async function ensureStage3RenderBrowser(
     "Stage 3 could not prepare a browser for Remotion rendering. " +
       "Install Google Chrome or Microsoft Edge locally, or allow the worker to download Remotion Headless Shell."
   );
+}
+
+function resolveStage3BrowserChromeMode(
+  detected: Stage3DetectedBrowser | null,
+  explicitMode: Stage3BrowserChromeMode | undefined
+): Stage3BrowserChromeMode {
+  if (explicitMode) {
+    return explicitMode;
+  }
+
+  if (!detected) {
+    return "headless-shell";
+  }
+
+  if (detected.source === "configured-path") {
+    return /headless-shell/i.test(path.basename(detected.browserExecutable))
+      ? "headless-shell"
+      : "chrome-for-testing";
+  }
+
+  return "chrome-for-testing";
 }

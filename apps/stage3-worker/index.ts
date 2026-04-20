@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import {
@@ -12,6 +12,7 @@ import {
   resolveStage3WorkerAdvertisedVersion,
   shouldRestartStage3WorkerAfterSync
 } from "../../lib/stage3-worker-runtime-sync";
+import { resolveStage3WorkerRestartLaunch } from "../../lib/stage3-worker-restart";
 import { ensureRspackRuntimeAvailable } from "../../lib/stage3-rspack-runtime";
 
 declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
@@ -379,10 +380,18 @@ async function readAppVersion(): Promise<string> {
 }
 
 async function restartCurrentWorkerProcess(runtimeVersion: string | null): Promise<void> {
-  const nextArgs = process.argv.slice(1);
+  const wrapperPath = path.join(paths().root, "bin", "clips-stage3-worker.cmd");
+  const launch = resolveStage3WorkerRestartLaunch({
+    execPath: process.execPath,
+    argv: process.argv,
+    cwd: process.cwd(),
+    installRoot: paths().root,
+    comspec: process.env.ComSpec ?? process.env.COMSPEC ?? null,
+    wrapperExists: process.platform === "win32" ? existsSync(wrapperPath) : false
+  });
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(process.execPath, nextArgs, {
-      cwd: process.cwd(),
+    const child = spawn(launch.command, launch.args, {
+      cwd: launch.cwd,
       env: process.env,
       stdio: "inherit"
     });
@@ -635,26 +644,36 @@ async function startCommand(): Promise<void> {
   }
 
   await ensureWorkerDirs();
+  let syncResult: { updated: boolean; runtimeVersion: string | null } | null = null;
   try {
-    const syncResult = await syncWorkerRuntime(config.serverOrigin);
+    syncResult = await syncWorkerRuntime(config.serverOrigin);
     if (syncResult.updated) {
       console.log(
         `Updated local Stage 3 worker runtime to ${syncResult.runtimeVersion ?? "latest"}.`
       );
     }
-    if (
-      shouldRestartStage3WorkerAfterSync({
-        bundledRuntimeVersion: BUNDLED_WORKER_RUNTIME_VERSION,
-        syncResult
-      })
-    ) {
-      await restartCurrentWorkerProcess(syncResult.runtimeVersion);
-      return;
-    }
   } catch (error) {
     console.warn(
       `Worker runtime sync skipped: ${error instanceof Error ? error.message : String(error)}`
     );
+  }
+  if (
+    syncResult &&
+    shouldRestartStage3WorkerAfterSync({
+      bundledRuntimeVersion: BUNDLED_WORKER_RUNTIME_VERSION,
+      syncResult
+    })
+  ) {
+    try {
+      await restartCurrentWorkerProcess(syncResult.runtimeVersion);
+      return;
+    } catch (error) {
+      throw new Error(
+        `Updated local Stage 3 worker runtime to ${syncResult.runtimeVersion ?? "latest"}, ` +
+          `but automatic restart failed: ${error instanceof Error ? error.message : String(error)}. ` +
+          "Rerun the Stage 3 bootstrap command or restart the worker manually before claiming jobs."
+      );
+    }
   }
 
   const rspackRuntime = await ensureRspackRuntimeAvailable({

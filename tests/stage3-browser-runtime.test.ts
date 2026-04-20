@@ -87,8 +87,9 @@ test("ensureStage3RenderBrowser passes the detected browser path into Remotion",
   });
 
   assert.equal(receivedOptions?.browserExecutable, chromePath);
-  assert.equal(receivedOptions?.chromeMode, "headless-shell");
+  assert.equal(receivedOptions?.chromeMode, "chrome-for-testing");
   assert.equal(prepared.browserExecutable, chromePath);
+  assert.equal(prepared.chromeMode, "chrome-for-testing");
   assert.equal(prepared.source, "local-install");
 });
 
@@ -111,6 +112,34 @@ test("ensureStage3RenderBrowser falls back to Remotion-managed browser when no l
   });
 
   assert.equal(receivedOptions?.browserExecutable, null);
+  assert.equal(receivedOptions?.chromeMode, "headless-shell");
   assert.equal(prepared.browserExecutable, "/Users/tester/.cache/remotion/headless-shell");
+  assert.equal(prepared.chromeMode, "headless-shell");
   assert.equal(prepared.source, "remotion-managed");
+});
+
+test("ensureStage3RenderBrowser keeps headless-shell mode for configured headless-shell paths", async () => {
+  const browserPath = "/Users/tester/.cache/remotion/headless-shell";
+  let receivedOptions: EnsureBrowserOptions | undefined;
+
+  const prepared = await ensureStage3RenderBrowser({
+    env: testEnv({
+      STAGE3_BROWSER_EXECUTABLE: browserPath
+    }),
+    fileExists: async (filePath) => filePath === browserPath,
+    homeDir: "/Users/tester",
+    platform: "darwin",
+    ensureBrowserImpl: async (options) => {
+      receivedOptions = options;
+      return {
+        type: "user-defined-path",
+        path: browserPath
+      };
+    },
+    logLevel: "warn"
+  });
+
+  assert.equal(receivedOptions?.chromeMode, "headless-shell");
+  assert.equal(prepared.chromeMode, "headless-shell");
+  assert.equal(prepared.source, "configured-path");
 });

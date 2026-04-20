@@ -56,6 +56,7 @@ import {
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
 import { ensureStage3RenderBrowser } from "./stage3-browser-runtime";
+import type { Stage3PreparedBrowser } from "./stage3-browser-runtime";
 import type { TemplateCaptionHighlights } from "./template-highlights";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
@@ -67,7 +68,7 @@ const MEMORY_CONSTRAINED_REMOTION_CONCURRENCY = 1;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
 let remotionRuntimePromise: Promise<RemotionModule> | null = null;
-let remotionBrowserExecutablePromise: Promise<string> | null = null;
+let remotionBrowserPromise: Promise<Stage3PreparedBrowser> | null = null;
 
 function shouldReuseRemotionBundle(): boolean {
   const override = process.env.STAGE3_REUSE_REMOTION_BUNDLE?.trim();
@@ -231,22 +232,22 @@ async function getRemotionServeUrl(): Promise<string> {
   return remotionServeUrlPromise;
 }
 
-async function getRemotionBrowserExecutable(): Promise<string> {
-  if (!remotionBrowserExecutablePromise) {
-    remotionBrowserExecutablePromise = ensureStage3RenderBrowser({
+async function getRemotionBrowser(): Promise<Stage3PreparedBrowser> {
+  if (!remotionBrowserPromise) {
+    remotionBrowserPromise = ensureStage3RenderBrowser({
       logLevel: "warn"
     })
       .then((prepared) => {
         process.env.STAGE3_BROWSER_EXECUTABLE = prepared.browserExecutable;
-        return prepared.browserExecutable;
+        return prepared;
       })
       .catch((error) => {
-        remotionBrowserExecutablePromise = null;
+        remotionBrowserPromise = null;
         throw error;
       });
   }
 
-  return remotionBrowserExecutablePromise;
+  return remotionBrowserPromise;
 }
 
 function unwrapDefaultExport(value: unknown): unknown {
@@ -468,7 +469,9 @@ async function runRemotionRender(params: {
 }): Promise<Stage3VariationProfile> {
   const { getCompositions, renderMedia, selectComposition } = await ensureRemotionRuntime();
   const serveUrl = params.serveUrl;
-  const browserExecutable = await getRemotionBrowserExecutable();
+  const preparedBrowser = await getRemotionBrowser();
+  const browserExecutable = preparedBrowser.browserExecutable;
+  const chromeMode = preparedBrowser.chromeMode;
 
   const buildInputProps = (variationProfile: Stage3VariationProfile) => ({
     templateId: params.templateId,
@@ -513,7 +516,7 @@ async function runRemotionRender(params: {
           serveUrl,
           inputProps,
           browserExecutable,
-          chromeMode: "headless-shell"
+          chromeMode
         })
       : null) ??
     (await getCompositions(serveUrl)).find((item: { id?: string }) => item.id === params.templateId);
@@ -534,7 +537,7 @@ async function runRemotionRender(params: {
     logLevel: "warn",
     timeoutInMilliseconds: params.timeoutMs,
     browserExecutable,
-    chromeMode: "headless-shell",
+    chromeMode,
     concurrency: isMemoryConstrainedRuntime() ? MEMORY_CONSTRAINED_REMOTION_CONCURRENCY : null,
     disallowParallelEncoding: isMemoryConstrainedRuntime(),
     chromiumOptions: isMemoryConstrainedRuntime()
