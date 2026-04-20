@@ -283,7 +283,8 @@
 1. Stage 2 может работать без comments payload.
 2. Native caption v3 surface может показывать richer badges и bilingual blocks.
 3. Run warnings могут существовать даже при usable shortlist.
-4. Owner может оставить весь run на Shared Codex или перевести eligible caption-writing stages на Anthropic через `Caption provider`.
+4. Length-only hard-constraint misses больше не блокируют Step 3 handoff: оператор всё равно может открыть Step 3 и вручную дочистить текст там.
+5. Owner может оставить весь run на Shared Codex или перевести eligible caption-writing stages на Anthropic через `Caption provider`.
 
 ### Blocked path
 

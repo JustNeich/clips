@@ -7,6 +7,28 @@ import {
 
 type Stage2CaptionOption = Stage2Response["output"]["captionOptions"][number];
 
+function isRecoverableStage3LengthConstraintIssue(issue: string): boolean {
+  const normalized = issue.trim();
+  return (
+    /^(TOP|BOTTOM) length \d+ вне диапазона \d+-\d+\.$/u.test(normalized) ||
+    /^(TOP|BOTTOM) length is \d+, expected \d+-\d+\.$/u.test(normalized) ||
+    /^(TOP|BOTTOM) length \d+ outside \d+-\d+\.$/u.test(normalized)
+  );
+}
+
+function canSelectedCaptionHydrateStage3(
+  caption: Stage2CaptionOption | null | undefined
+): boolean {
+  if (!caption) {
+    return false;
+  }
+  if (caption.constraintCheck?.passed !== false) {
+    return true;
+  }
+  const issues = caption.constraintCheck.issues.filter((issue) => issue.trim().length > 0);
+  return issues.length > 0 && issues.every(isRecoverableStage3LengthConstraintIssue);
+}
+
 export type Stage2SelectionDefaults = {
   captionOption: number | null;
   titleOption: number | null;
@@ -80,7 +102,7 @@ export function getSelectedStage2Caption(
   if (!selected) {
     return null;
   }
-  if (selected.constraintCheck?.passed === false) {
+  if (!canSelectedCaptionHydrateStage3(selected)) {
     return null;
   }
   return selected;
@@ -274,7 +296,7 @@ export function buildStage2ToStage3HandoffSummary(input: {
     defaultCaptionOption: defaults.captionOption,
     selectedCaptionOption: caption?.option ?? null,
     captionBlockedReason:
-      requestedCaption?.constraintCheck?.passed === false
+      requestedCaption && !canSelectedCaptionHydrateStage3(requestedCaption)
         ? "selected_stage2_caption_failed_hard_constraints"
         : null,
     defaultTitleOption: defaults.titleOption,

@@ -4222,7 +4222,7 @@ test("recoverMissingStage3CaptionBlocks restores only the missing block from the
   assert.deepEqual(recovered.captionHighlights.bottom, [{ start: 0, end: 6, slotId: "slot3" }]);
 });
 
-test("stage 2 to stage 3 handoff blocks an invalid selected caption instead of leaking it downstream", () => {
+test("stage 2 to stage 3 handoff keeps a length-invalid selected caption available for Stage 3 editing", () => {
   const stage2 = makeRuntimeStage2Response("run_invalid_handoff", "invalid");
   stage2.output.finalPick.option = 1;
   stage2.output.captionOptions[0] = {
@@ -4233,6 +4233,35 @@ test("stage 2 to stage 3 handoff blocks an invalid selected caption instead of l
       topLength: 170,
       bottomLength: 455,
       issues: ["BOTTOM length is 455, expected 140-150."]
+    }
+  };
+
+  const handoff = buildStage2ToStage3HandoffSummary({
+    stage2,
+    draft: null,
+    latestVersion: null,
+    selectedCaptionOption: 1,
+    selectedTitleOption: 1
+  });
+
+  assert.equal(handoff.caption?.option, 1);
+  assert.equal(handoff.selectedCaptionOption, 1);
+  assert.equal(handoff.captionBlockedReason ?? null, null);
+  assert.equal(handoff.topText, stage2.output.captionOptions[0]?.top ?? null);
+  assert.equal(handoff.bottomText, stage2.output.captionOptions[0]?.bottom ?? null);
+});
+
+test("stage 2 to stage 3 handoff still blocks a selected caption with non-length hard-constraint issues", () => {
+  const stage2 = makeRuntimeStage2Response("run_invalid_handoff_blocked", "invalid");
+  stage2.output.finalPick.option = 1;
+  stage2.output.captionOptions[0] = {
+    ...stage2.output.captionOptions[0],
+    constraintCheck: {
+      passed: false,
+      repaired: false,
+      topLength: 170,
+      bottomLength: 145,
+      issues: ["Caption contains banned words."]
     }
   };
 

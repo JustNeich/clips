@@ -679,6 +679,8 @@ This means:
   1. draft overrides
   2. latest saved Stage 3 version
   3. selected Stage 2 caption
+- length-window misses from Stage 2 do not block Stage 3 hydration anymore: if the selected caption is only invalid by `TOP` / `BOTTOM` length, Step 3 still receives it as the editable baseline
+- non-length hard-constraint failures remain blocked at handoff time, so banned-word / banned-opener / malformed captions still do not silently leak into Stage 3
 
 ### Final caption editing lives in Step 3
 
@@ -701,6 +703,7 @@ Step 3 is now the official place to:
 
 Important behavior:
 - while the operator has not manually changed the text, Step 3 may auto-inherit the selected Stage 2 caption
+- if the selected Stage 2 caption only missed the configured length window, Step 3 still auto-inherits it and becomes the place where the operator can tighten or expand the final text
 - once the operator changes the text in Step 3, that text becomes the active render draft and must not be silently overwritten by later selection changes
 - `take all` from a Stage 2 option re-establishes that option as the current default source
 - `take TOP` / `take BOTTOM` are treated as explicit Stage 3 text overrides

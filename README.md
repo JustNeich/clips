@@ -157,6 +157,7 @@ npm run dev
     - `qualityCourt`, `captionTranslation`, `titleWriter`, `seo`, `styleDiscovery` и Stage 3 planner остаются на Shared Codex;
     - ни Anthropic, ни OpenRouter не заменяют baseline Shared Codex integration целиком;
     - wire contract не меняется: Stage 2 хранит только `top` / `bottom`, а Stage 3 продолжает жить на `topText` / `bottomText`, включая `channel_story` family;
+    - length-only hard-constraint misses больше не обнуляют Stage 3 handoff: оператор всё равно получает выбранный caption в Step 3 и может дочистить длину уже там;
   - отдает live progress snapshot по шагам pipeline (`GET /api/pipeline/stage2?runId=...`);
   - возвращает структурированный JSON:
     - `finalists` (1-3)
