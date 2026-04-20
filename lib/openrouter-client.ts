@@ -92,6 +92,39 @@ function buildOpenRouterHeaders(apiKey: string): Headers {
   return headers;
 }
 
+function schemaSupportsArrayType(typeValue: unknown): boolean {
+  return (
+    typeValue === "array" ||
+    (Array.isArray(typeValue) && typeValue.includes("array"))
+  );
+}
+
+function sanitizeOpenRouterJsonSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map((entry) => sanitizeOpenRouterJsonSchema(entry));
+  }
+
+  const record = asRecord(schema);
+  if (!record) {
+    return schema;
+  }
+
+  const next = Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, sanitizeOpenRouterJsonSchema(value)])
+  );
+
+  // Anthropic through OpenRouter currently rejects array schemas whose minItems is > 1.
+  // We keep downstream contract validation strict and only relax the transport shim here.
+  if (schemaSupportsArrayType(next.type)) {
+    const minItems = next.minItems;
+    if (typeof minItems === "number" && minItems > 1) {
+      next.minItems = 1;
+    }
+  }
+
+  return next;
+}
+
 function isRedirectStatus(status: number): boolean {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
@@ -220,7 +253,7 @@ async function fetchOpenRouterStructuredOutput<T>(input: {
       json_schema: {
         name: "record_result",
         strict: true,
-        schema: transport.schema
+        schema: sanitizeOpenRouterJsonSchema(transport.schema)
       }
     }
   });
