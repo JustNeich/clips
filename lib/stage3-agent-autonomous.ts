@@ -27,6 +27,10 @@ import {
   Stage3Operation,
   Stage3StateSnapshot
 } from "../app/components/types";
+import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  normalizeStage3ClipDurationSec
+} from "./stage3-duration";
 import { ensureCodexHomeForSession, normalizeCodexSessionId } from "./codex-session";
 import { ensureCodexLoggedIn } from "./codex-runner";
 import {
@@ -71,7 +75,7 @@ const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_OPERATION_BUDGET = 5;
 const MAX_OPERATION_BUDGET = 6;
 const DEFAULT_SAFETY_THRESHOLD = 0.3;
-const CLIP_DURATION_SEC = 6;
+const CLIP_DURATION_SEC = DEFAULT_STAGE3_CLIP_DURATION_SEC;
 const DEFAULT_TEXT_SCALE = 1.25;
 const AUTONOMOUS_ENGINE_VERSION = "stage3-autonomous-2026-03-06-directive-composite-v5";
 const HOSTED_AGENT_MEDIA_WAIT_TIMEOUT_MS = 45_000;
@@ -1768,21 +1772,25 @@ function resolveDefaultSnapshot(
   }
 ): Stage3StateSnapshot {
   const renderPlan = input.currentSnapshot?.renderPlan as Partial<Stage3StateSnapshot["renderPlan"]> | undefined;
+  const targetDurationSec = normalizeStage3ClipDurationSec(
+    renderPlan?.targetDurationSec,
+    input.currentSnapshot?.clipDurationSec ?? CLIP_DURATION_SEC
+  );
   return createSnapshot({
     topText: typeof input.currentSnapshot?.topText === "string" ? input.currentSnapshot.topText : "",
     bottomText: typeof input.currentSnapshot?.bottomText === "string" ? input.currentSnapshot.bottomText : "",
     clipStartSec: clampClipStart(
       parseFiniteNumber(input.currentSnapshot?.clipStartSec) ?? input.autoClipStartSec,
       input.sourceDurationSec,
-      CLIP_DURATION_SEC
+      targetDurationSec
     ),
-    clipDurationSec: CLIP_DURATION_SEC,
+    clipDurationSec: targetDurationSec,
     focusY: sanitizeFocusY(
       parseFiniteNumber(input.currentSnapshot?.focusY) ?? input.autoFocusY
     ),
     sourceDurationSec: input.sourceDurationSec,
     renderPlan: {
-      targetDurationSec: 6,
+      targetDurationSec,
       ...renderPlan,
       prompt: typeof renderPlan?.prompt === "string" ? renderPlan.prompt : ""
     } as Stage3StateSnapshot["renderPlan"]

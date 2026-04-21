@@ -122,6 +122,7 @@ import {
   readStage3VideoAdjustmentsFromRenderPlan,
   type Stage3VideoAdjustments
 } from "../lib/stage3-video-adjustments";
+import { normalizeStage3ClipDurationSec } from "../lib/stage3-duration";
 import {
   cloneTemplateCaptionHighlights,
   createEmptyTemplateCaptionHighlights,
@@ -224,8 +225,6 @@ import {
 import { resolveStage3JobPollIntervalMs } from "../lib/stage3-job-polling";
 import { resolveStage3WorkerRefreshIntervalMs } from "../lib/stage3-worker-polling";
 import { buildStage3EditorSession } from "../lib/stage3-editor-core";
-
-const CLIP_DURATION_SEC = 6;
 const DEFAULT_TEXT_SCALE = 1.25;
 const DEFAULT_STAGE2_EXPECTED_DURATION_MS = 40_000;
 const STAGE2_DETAIL_POLL_VISIBLE_MS = 900;
@@ -1095,6 +1094,10 @@ export default function HomePage() {
       return normalizeRenderPlan(
         {
           ...base,
+          targetDurationSec: normalizeStage3ClipDurationSec(
+            channel.defaultClipDurationSec,
+            base.targetDurationSec
+          ),
           templateId: resolvedTemplateId,
           authorName: channel.name || base.authorName,
           authorHandle: channel.username.startsWith("@")
@@ -1113,6 +1116,7 @@ export default function HomePage() {
     },
     []
   );
+  const resolvedStage3ClipDurationSec = normalizeStage3ClipDurationSec(stage3RenderPlan.targetDurationSec);
 
   const getCaptionHighlightsSignature = useCallback((value: unknown): string => {
     return JSON.stringify(value ?? createEmptyTemplateCaptionHighlights());
@@ -2547,8 +2551,8 @@ export default function HomePage() {
         legacyRenderPolicy: normalizedRenderPlan.policy,
         legacyNormalizeToTargetEnabled: normalizedRenderPlan.normalizeToTargetEnabled,
         clipStartSec: snapshotClipStart,
-        clipDurationSec: CLIP_DURATION_SEC,
-        targetDurationSec: CLIP_DURATION_SEC,
+        clipDurationSec: normalizedRenderPlan.targetDurationSec,
+        targetDurationSec: normalizedRenderPlan.targetDurationSec,
         sourceDurationSec
       });
       const authoritativeTemplateSnapshot = authoritativePreviewSnapshot?.templateSnapshot ?? null;
@@ -2600,7 +2604,7 @@ export default function HomePage() {
         bottomText: templateSnapshot.content.bottomText,
         captionHighlights: cloneTemplateCaptionHighlights(templateSnapshot.content.highlights),
         clipStartSec: snapshotClipStart,
-        clipDurationSec: CLIP_DURATION_SEC,
+        clipDurationSec: normalizedRenderPlan.targetDurationSec,
         focusY: snapshotFocusY,
         renderPlan: effectiveRenderPlan,
         sourceDurationSec,
@@ -3507,7 +3511,7 @@ export default function HomePage() {
             topText: renderSnapshot.topText,
             bottomText: renderSnapshot.bottomText,
             clipStartSec: renderSnapshot.clipStartSec,
-            clipDurationSec: CLIP_DURATION_SEC,
+            clipDurationSec: renderSnapshot.renderPlan.targetDurationSec,
             focusY: renderSnapshot.focusY,
             agentPrompt: stage3AgentPrompt.trim() || undefined,
             renderPlan: renderSnapshot.renderPlan,
@@ -5113,10 +5117,10 @@ export default function HomePage() {
           );
         });
         setStage3ClipStartSec((prev) => {
-          if (!duration || duration <= CLIP_DURATION_SEC) {
+          if (!duration || duration <= resolvedStage3ClipDurationSec) {
             return 0;
           }
-          const maxStart = Math.max(0, duration - CLIP_DURATION_SEC);
+          const maxStart = Math.max(0, duration - resolvedStage3ClipDurationSec);
           return Math.min(prev, maxStart);
         });
       } catch {
@@ -5127,7 +5131,14 @@ export default function HomePage() {
     })();
 
     return () => controller.abort();
-  }, [activeChat?.url, currentStep, parseError, sourceDurationSec, stage3RenderInProgress]);
+  }, [
+    activeChat?.url,
+    currentStep,
+    parseError,
+    resolvedStage3ClipDurationSec,
+    sourceDurationSec,
+    stage3RenderInProgress
+  ]);
 
   useEffect(() => {
     if (currentStep !== 3 || !activeChat?.url) {
@@ -5589,7 +5600,7 @@ export default function HomePage() {
               sourceUrl: activeChat.url,
               channelId: activeChannelId ?? undefined,
               clipStartSec: stage3LivePreviewSnapshot.clipStartSec,
-              clipDurationSec: CLIP_DURATION_SEC,
+              clipDurationSec: stage3LivePreviewSnapshot.renderPlan.targetDurationSec,
               agentPrompt: stage3AgentPrompt.trim() || undefined,
               renderPlan: stage3LivePreviewSnapshot.renderPlan,
               snapshot: stage3LivePreviewSnapshot
@@ -6046,6 +6057,7 @@ export default function HomePage() {
       avatarAssetId: string | null;
       defaultBackgroundAssetId: string | null;
       defaultMusicAssetId: string | null;
+      defaultClipDurationSec: number;
     }>
   ): Promise<void> => {
     setBusyAction("channel-save");
@@ -6069,6 +6081,10 @@ export default function HomePage() {
           normalizeRenderPlan(
             {
               ...prev,
+              targetDurationSec:
+                patch.defaultClipDurationSec !== undefined
+                  ? normalizeStage3ClipDurationSec(body.channel.defaultClipDurationSec, prev.targetDurationSec)
+                  : prev.targetDurationSec,
               templateId: resolvedTemplateId,
               authorName: body.channel.name || prev.authorName,
               authorHandle: body.channel.username.startsWith("@")
@@ -6102,6 +6118,16 @@ export default function HomePage() {
             fallbackRenderPlan()
           )
         );
+        if (patch.defaultClipDurationSec !== undefined) {
+          const nextClipDurationSec = normalizeStage3ClipDurationSec(body.channel.defaultClipDurationSec);
+          setStage3ClipStartSec((prev) => {
+            if (!sourceDurationSec || sourceDurationSec <= nextClipDurationSec) {
+              return 0;
+            }
+            const maxStart = Math.max(0, sourceDurationSec - nextClipDurationSec);
+            return Math.min(prev, maxStart);
+          });
+        }
       }
       setStatusType("ok");
       setStatus("Канал сохранен.");
@@ -6757,7 +6783,7 @@ export default function HomePage() {
       bottom: stage3BottomText,
       captionHighlights: stage3CaptionHighlights,
       clipStartSec: stage3ClipStartSec,
-      clipDurationSec: CLIP_DURATION_SEC,
+      clipDurationSec: stage3RenderPlan.targetDurationSec,
       focusY: stage3FocusY,
       renderPlan: stage3RenderPlan,
       agentPrompt: stage3AgentPrompt,
@@ -7132,7 +7158,7 @@ export default function HomePage() {
           isWorkerPairing={isStage3WorkerPairing}
           showWorkerControls={stage3WorkerControlsEnabled}
           clipStartSec={stage3ClipStartSec}
-          clipDurationSec={CLIP_DURATION_SEC}
+          clipDurationSec={resolvedStage3ClipDurationSec}
           sourceDurationSec={sourceDurationSec}
           focusY={stage3FocusY}
           cameraMotion={stage3RenderPlan.cameraMotion}
@@ -7213,8 +7239,8 @@ export default function HomePage() {
               rawSegments: normalizedSegments,
               selectionMode: editorSelectionMode,
               clipStartSec: stage3ClipStartSec,
-              clipDurationSec: CLIP_DURATION_SEC,
-              targetDurationSec: CLIP_DURATION_SEC,
+              clipDurationSec: resolvedStage3ClipDurationSec,
+              targetDurationSec: resolvedStage3ClipDurationSec,
               sourceDurationSec
             });
 

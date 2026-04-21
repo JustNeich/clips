@@ -5,10 +5,13 @@ import type {
   Stage3Segment,
   Stage3TimingMode
 } from "../app/components/types";
+import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  normalizeStage3ClipDurationSec
+} from "./stage3-duration";
 
 const MIN_EDITOR_TIMING_GUARD_SEC = 0.1;
 export const STAGE3_EDITOR_MIN_SELECTION_DURATION_SEC = 1;
-const DEFAULT_TARGET_DURATION_SEC = 6;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -425,7 +428,10 @@ function buildOutputPlan(params: {
   source: Stage3EditorSourceSelection;
   targetDurationSec: number;
 }): Stage3EditorOutputPlan {
-  const targetDurationSec = Math.max(DEFAULT_TARGET_DURATION_SEC, params.targetDurationSec);
+  const targetDurationSec = normalizeStage3ClipDurationSec(
+    params.targetDurationSec,
+    DEFAULT_STAGE3_CLIP_DURATION_SEC
+  );
   const totalBaseOutputDurationSec = Math.max(
     MIN_EDITOR_TIMING_GUARD_SEC,
     params.source.totalBaseOutputDurationSec || targetDurationSec

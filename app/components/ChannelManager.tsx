@@ -86,6 +86,10 @@ import {
   listChannelManagerTargets,
   TabId
 } from "./channel-manager-support";
+import {
+  buildStage3ClipDurationOptions,
+  normalizeStage3ClipDurationSec
+} from "../../lib/stage3-duration";
 
 export { CHANNEL_MANAGER_DEFAULT_SETTINGS_ID, canDeleteManagedChannel, listChannelManagerTargets };
 
@@ -111,6 +115,7 @@ type ChannelSavePatch = Partial<{
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
   defaultMusicAssetId: string | null;
+  defaultClipDurationSec: number;
 }>;
 
 type ManagedTemplateListResponse = {
@@ -159,7 +164,12 @@ export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
       error: "Не удалось сохранить формат pipeline."
     };
   }
-  if ("templateId" in patch || "defaultBackgroundAssetId" in patch || "defaultMusicAssetId" in patch) {
+  if (
+    "templateId" in patch ||
+    "defaultBackgroundAssetId" in patch ||
+    "defaultMusicAssetId" in patch ||
+    "defaultClipDurationSec" in patch
+  ) {
     return {
       saving: "Сохраняем настройки рендера…",
       saved: "Настройки рендера сохранены.",
@@ -389,6 +399,7 @@ export function ChannelManager({
     message: null
   });
   const [templateId, setTemplateId] = useState(STAGE3_TEMPLATE_ID);
+  const [defaultClipDurationSec, setDefaultClipDurationSec] = useState(6);
   const [managedTemplates, setManagedTemplates] = useState<ManagedTemplateSummary[]>([]);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>({
     brand: { status: "idle", message: null },
@@ -400,6 +411,7 @@ export function ChannelManager({
     () => groupManagedTemplatesByFormat(managedTemplates),
     [managedTemplates]
   );
+  const clipDurationOptions = useMemo(() => buildStage3ClipDurationOptions(), []);
   const skipAutosaveRef = useRef<Record<AutosaveScope, boolean>>({
     brand: true,
     stage2: true,
@@ -710,9 +722,10 @@ export function ChannelManager({
       workspaceCodexModelConfig: nextCodexModelConfig
     });
 
-  const buildRenderSnapshot = (nextTemplateId: string): string =>
+  const buildRenderSnapshot = (nextTemplateId: string, nextClipDurationSec: number): string =>
     JSON.stringify({
-      templateId: nextTemplateId
+      templateId: nextTemplateId,
+      defaultClipDurationSec: normalizeStage3ClipDurationSec(nextClipDurationSec)
     });
 
   useEffect(() => {
@@ -769,6 +782,7 @@ export function ChannelManager({
       formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedOpeners)
     );
     setTemplateId(activeChannel.templateId);
+    setDefaultClipDurationSec(normalizeStage3ClipDurationSec(activeChannel.defaultClipDurationSec));
     persistedSnapshotRef.current = {
       brand: buildBrandSnapshot(activeChannel.name, activeChannel.username),
       stage2: buildStage2Snapshot(
@@ -780,7 +794,10 @@ export function ChannelManager({
         normalizedCaptionProviderConfig,
         normalizedCodexModelConfig
       ),
-      render: buildRenderSnapshot(activeChannel.templateId)
+      render: buildRenderSnapshot(
+        activeChannel.templateId,
+        normalizeStage3ClipDurationSec(activeChannel.defaultClipDurationSec)
+      )
     };
     skipAutosaveRef.current = {
       brand: true,
@@ -1003,7 +1020,7 @@ export function ChannelManager({
       skipAutosaveRef.current.render = false;
       return;
     }
-    const nextSnapshot = buildRenderSnapshot(templateId);
+    const nextSnapshot = buildRenderSnapshot(templateId, defaultClipDurationSec);
     if (nextSnapshot === persistedSnapshotRef.current.render) {
       resetAutosaveFeedbackIfNeeded("render");
       return;
@@ -1013,7 +1030,10 @@ export function ChannelManager({
     const revision = ++autosaveRevisionRef.current.render;
     const timerId = window.setTimeout(() => {
       setAutosaveFeedback("render", "saving", "Сохраняем рендер…");
-      void saveChannelRef.current(activeChannel.id, { templateId })
+      void saveChannelRef.current(activeChannel.id, {
+        templateId,
+        defaultClipDurationSec
+      })
         .then(() => {
           if (autosaveRevisionRef.current.render !== revision) {
             return;
@@ -1040,6 +1060,7 @@ export function ChannelManager({
     resetAutosaveFeedbackIfNeeded,
     scheduleAutosaveReset,
     setAutosaveFeedback,
+    defaultClipDurationSec,
     templateId
   ]);
 
@@ -1886,6 +1907,25 @@ export function ChannelManager({
                     </a>
                   </p>
                   <div className="compact-grid">
+                    <div className="compact-field">
+                      <label className="field-label">Хронометраж по умолчанию</label>
+                      <select
+                        className="text-input"
+                        value={String(defaultClipDurationSec)}
+                        disabled={!canEditSetup}
+                        onChange={(event) =>
+                          setDefaultClipDurationSec(
+                            normalizeStage3ClipDurationSec(Number.parseInt(event.target.value, 10))
+                          )
+                        }
+                      >
+                        {clipDurationOptions.map((value) => (
+                          <option key={value} value={String(value)}>
+                            {value} сек
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="compact-field">
                       <label className="field-label">Фон по умолчанию</label>
                       <select

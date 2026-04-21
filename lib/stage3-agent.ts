@@ -40,6 +40,7 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
+import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
 
 export type {
   Stage3RenderPlan,
@@ -51,7 +52,6 @@ export type {
   Stage3Segment
 } from "../app/components/types";
 
-const TARGET_DURATION_SEC = 6 as const;
 const MAX_PASSES = 12;
 const SCORE_STOP_THRESHOLD = 91;
 const SCORE_EPSILON = 0.45;
@@ -488,13 +488,13 @@ function detectTimingMode(
   if (hasExactTargetDurationCue(promptLower)) {
     const requestedSourceDuration =
       segments.length > 0
-        ? approxSegmentsDuration(segments, sourceDurationSec, TARGET_DURATION_SEC)
+        ? approxSegmentsDuration(segments, sourceDurationSec, DEFAULT_STAGE3_CLIP_DURATION_SEC)
         : sourceDurationSec;
     if (requestedSourceDuration !== null) {
-      if (requestedSourceDuration > TARGET_DURATION_SEC + 0.12) {
+      if (requestedSourceDuration > DEFAULT_STAGE3_CLIP_DURATION_SEC + 0.12) {
         return "compress";
       }
-      if (requestedSourceDuration < TARGET_DURATION_SEC - 0.12) {
+      if (requestedSourceDuration < DEFAULT_STAGE3_CLIP_DURATION_SEC - 0.12) {
         return "stretch";
       }
       return "auto";
@@ -673,15 +673,16 @@ function inferPolicyFromSourceDuration(sourceDurationSec: number | null): Stage3
 
 function createDefaultRenderPlan(
   sourceDurationSec: number | null,
-  templateId?: string
+  templateId?: string,
+  targetDurationSec = DEFAULT_STAGE3_CLIP_DURATION_SEC
 ): Stage3RenderPlan {
   const resolvedTemplateId = templateId?.trim() || SCIENCE_CARD_TEMPLATE_ID;
   const templateConfig = resolveManagedTemplateRuntimeSync(resolvedTemplateId).templateConfig;
   const videoAdjustments = templateConfig.videoAdjustments;
   return {
-    targetDurationSec: TARGET_DURATION_SEC,
-    timingMode: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC ? "stretch" : "auto",
-    normalizeToTargetEnabled: sourceDurationSec !== null && sourceDurationSec < TARGET_DURATION_SEC,
+    targetDurationSec,
+    timingMode: sourceDurationSec !== null && sourceDurationSec < targetDurationSec ? "stretch" : "auto",
+    normalizeToTargetEnabled: sourceDurationSec !== null && sourceDurationSec < targetDurationSec,
     audioMode: "source_only",
     sourceAudioEnabled: true,
     smoothSlowMo: false,
@@ -717,7 +718,11 @@ function createDefaultRenderPlan(
 function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurationSec: number | null): Stage3RenderPlan {
   const incomingTemplateId =
     typeof input?.templateId === "string" && input.templateId.trim() ? input.templateId.trim() : undefined;
-  const defaultPlan = createDefaultRenderPlan(sourceDurationSec, incomingTemplateId);
+  const targetDurationSec = normalizeStage3ClipDurationSec(
+    input?.targetDurationSec,
+    DEFAULT_STAGE3_CLIP_DURATION_SEC
+  );
+  const defaultPlan = createDefaultRenderPlan(sourceDurationSec, incomingTemplateId, targetDurationSec);
   const timingMode = input?.timingMode;
   const audioMode = input?.audioMode;
   const policy = input?.policy;
@@ -731,7 +736,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
     cameraScaleKeyframes: input?.cameraScaleKeyframes,
     cameraKeyframes: input?.cameraKeyframes ?? defaultPlan.cameraKeyframes,
     cameraMotion: input?.cameraMotion,
-    clipDurationSec: TARGET_DURATION_SEC,
+    clipDurationSec: targetDurationSec,
     baseFocusY: 0.5,
     baseZoom: videoZoom
   });
@@ -751,7 +756,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
           defaultPlan.normalizeToTargetEnabled;
 
   return {
-    targetDurationSec: TARGET_DURATION_SEC,
+    targetDurationSec,
     timingMode:
       timingMode === "auto" || timingMode === "compress" || timingMode === "stretch"
         ? timingMode
@@ -766,7 +771,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
     mirrorEnabled: Boolean(input?.mirrorEnabled ?? defaultPlan.mirrorEnabled),
     cameraMotion: normalizeStage3CameraMotion(input?.cameraMotion),
     cameraKeyframes: normalizeStage3CameraKeyframes(input?.cameraKeyframes ?? defaultPlan.cameraKeyframes, {
-      clipDurationSec: TARGET_DURATION_SEC,
+      clipDurationSec: targetDurationSec,
       fallbackFocusY: 0.5,
       fallbackZoom: videoZoom
     }),
@@ -884,7 +889,14 @@ export function createSnapshot(input: {
   renderPlan: Stage3RenderPlan;
   managedTemplateState?: Stage3StateSnapshot["managedTemplateState"];
 }): Stage3StateSnapshot {
-  const normalizedPlan = normalizePlan(input.renderPlan, input.sourceDurationSec);
+  const normalizedPlan = normalizePlan(
+    {
+      ...input.renderPlan,
+      targetDurationSec: input.clipDurationSec
+    },
+    input.sourceDurationSec
+  );
+  const targetDurationSec = normalizedPlan.targetDurationSec;
   const fit = computeTextFit(
     normalizedPlan.templateId || "science-card-v1",
     input.topText,
@@ -897,7 +909,7 @@ export function createSnapshot(input: {
     bottomText: fit.bottomText,
     captionHighlights: { top: [], bottom: [] },
     clipStartSec: Math.max(0, input.clipStartSec),
-    clipDurationSec: TARGET_DURATION_SEC,
+    clipDurationSec: targetDurationSec,
     focusY: clamp(input.focusY, 0.12, 0.88),
     sourceDurationSec: input.sourceDurationSec,
     renderPlan: normalizedPlan,
@@ -972,8 +984,8 @@ function evaluateInstructionCompliance(
         if (!actual) {
           return acc + 2;
         }
-        const actualEnd = actual.endSec ?? snapshot.sourceDurationSec ?? actual.startSec + TARGET_DURATION_SEC;
-        const intentEnd = segment.endSec ?? snapshot.sourceDurationSec ?? segment.startSec + TARGET_DURATION_SEC;
+        const actualEnd = actual.endSec ?? snapshot.sourceDurationSec ?? actual.startSec + snapshot.clipDurationSec;
+        const intentEnd = segment.endSec ?? snapshot.sourceDurationSec ?? segment.startSec + snapshot.clipDurationSec;
         return acc + Math.abs(actual.startSec - segment.startSec) + Math.abs(actualEnd - intentEnd);
       }, 0);
       penalty += clamp(segmentDelta * 3.2, 0, 18);
@@ -1049,7 +1061,8 @@ function evaluateRenderStability(snapshot: Stage3StateSnapshot): number {
 
 export function evaluateScore(snapshot: Stage3StateSnapshot, context: Stage3EvaluationContext): Stage3EvaluatedScore {
   const durationOut = estimateOutputDuration(snapshot);
-  const durationError = (Math.abs(durationOut - TARGET_DURATION_SEC) / TARGET_DURATION_SEC) * 28;
+  const targetDurationSec = Math.max(0.001, snapshot.clipDurationSec);
+  const durationError = (Math.abs(durationOut - targetDurationSec) / targetDurationSec) * 28;
 
   let textReadability = 0;
   const computed = computeManagedTemplateTextFit({
@@ -1246,7 +1259,7 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
     summary.push("Пересобран монтаж по фрагментам.");
   }
   if (timingChanged) {
-    summary.push("Обновлен режим длительности/темпа до ровно 6 секунд.");
+    summary.push(`Обновлен режим длительности/темпа до ${final.clipDurationSec.toFixed(0)} секунд.`);
   }
   if (audioChanged) {
     summary.push("Изменен аудиомикс исходника и музыки.");
@@ -1473,14 +1486,18 @@ export function inferHeuristicOperations(input: {
       )
     });
   } else if (input.intent.timingMode) {
+    const targetDurationSec = input.snapshot.clipDurationSec;
     const implicitDuration =
       input.intent.timingMode === "stretch"
-        ? Math.min(input.sourceDurationSec ?? TARGET_DURATION_SEC, Math.max(1.8, TARGET_DURATION_SEC * 0.78))
-        : Math.min(input.sourceDurationSec ?? TARGET_DURATION_SEC, Math.max(TARGET_DURATION_SEC + 1.2, TARGET_DURATION_SEC * 1.35));
+        ? Math.min(input.sourceDurationSec ?? targetDurationSec, Math.max(1.8, targetDurationSec * 0.78))
+        : Math.min(
+            input.sourceDurationSec ?? targetDurationSec,
+            Math.max(targetDurationSec + 1.2, targetDurationSec * 1.35)
+          );
     const shouldSeedTimingSegments =
       input.sourceDurationSec !== null &&
-      ((input.intent.timingMode === "stretch" && implicitDuration < TARGET_DURATION_SEC - 0.08) ||
-        (input.intent.timingMode === "compress" && implicitDuration > TARGET_DURATION_SEC + 0.08));
+      ((input.intent.timingMode === "stretch" && implicitDuration < targetDurationSec - 0.08) ||
+        (input.intent.timingMode === "compress" && implicitDuration > targetDurationSec + 0.08));
 
     if (shouldSeedTimingSegments) {
       const implicitStart =
@@ -1616,7 +1633,10 @@ export async function optimizeStage3Version(
     clipStartSec: Number.isFinite(input.currentSnapshot?.clipStartSec ?? NaN)
       ? Number(input.currentSnapshot?.clipStartSec)
       : input.manualClipStartSec,
-    clipDurationSec: TARGET_DURATION_SEC,
+    clipDurationSec:
+      input.currentSnapshot?.clipDurationSec ??
+      input.currentSnapshot?.renderPlan?.targetDurationSec ??
+      input.clipDurationSec,
     focusY: Number.isFinite(input.currentSnapshot?.focusY ?? NaN)
       ? Number(input.currentSnapshot?.focusY)
       : input.manualFocusY,
@@ -1805,7 +1825,10 @@ export async function buildStage3Version(input: BuildStage3VersionInput): Promis
     clipStartSec: Number.isFinite(input.currentSnapshot?.clipStartSec ?? NaN)
       ? Number(input.currentSnapshot?.clipStartSec)
       : input.manualClipStartSec,
-    clipDurationSec: TARGET_DURATION_SEC,
+    clipDurationSec:
+      input.currentSnapshot?.clipDurationSec ??
+      input.currentSnapshot?.renderPlan?.targetDurationSec ??
+      input.clipDurationSec,
     focusY: Number.isFinite(input.currentSnapshot?.focusY ?? NaN)
       ? Number(input.currentSnapshot?.focusY)
       : input.manualFocusY,

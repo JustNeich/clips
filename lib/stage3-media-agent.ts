@@ -9,13 +9,13 @@ import { ensureSourceMediaCached } from "./source-media-cache";
 import { Stage3RenderPlan, Stage3StateSnapshot } from "./stage3-agent";
 import { computeManagedTemplateTextFit } from "./managed-template-runtime";
 import { maybeDownloadStage3WorkerSource } from "./stage3-worker-source-client";
+import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
 import { sanitizeFileName } from "./ytdlp";
 import { buildStage3EditorSession } from "./stage3-editor-core";
 
 const execFileAsync = promisify(execFile);
 
 const MOTION_SAMPLE_FPS = 8;
-const DEFAULT_CLIP_DURATION_SEC = 6;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 type Stage3MediaProfile = "preview" | "render";
 export type Stage3SegmentExtractionMode = "fast" | "accurate";
@@ -270,11 +270,7 @@ export function sanitizeFocusY(rawFocusY?: number | null): number {
 }
 
 export function sanitizeClipDuration(rawDuration?: number | null): number {
-  const value = parseNumeric(rawDuration);
-  if (value === null) {
-    return DEFAULT_CLIP_DURATION_SEC;
-  }
-  return clampNumber(value, DEFAULT_CLIP_DURATION_SEC, DEFAULT_CLIP_DURATION_SEC);
+  return normalizeStage3ClipDurationSec(parseNumeric(rawDuration), DEFAULT_STAGE3_CLIP_DURATION_SEC);
 }
 
 export function clampClipStart(
@@ -805,7 +801,7 @@ export async function analyzeBestClipAndFocus(
   videoPath: string,
   tmpDir: string,
   sourceDurationSec: number | null,
-  clipDurationSec = DEFAULT_CLIP_DURATION_SEC
+  clipDurationSec = DEFAULT_STAGE3_CLIP_DURATION_SEC
 ): Promise<{ clipStartSec: number; focusY: number }> {
   try {
     const [topScores, midScores, bottomScores] = await Promise.all([
@@ -1200,7 +1196,8 @@ async function ensureAudioTrack(inputPath: string, tmpDir: string, durationSec?:
   if (hasAudio) {
     return inputPath;
   }
-  const inferredDuration = durationSec ?? (await probeVideoDurationSeconds(inputPath)) ?? DEFAULT_CLIP_DURATION_SEC;
+  const inferredDuration =
+    durationSec ?? (await probeVideoDurationSeconds(inputPath)) ?? DEFAULT_STAGE3_CLIP_DURATION_SEC;
   const output = path.join(tmpDir, "clip-audio.mp4");
   await execFileAsync(
     "ffmpeg",

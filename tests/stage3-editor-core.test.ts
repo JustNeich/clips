@@ -25,6 +25,24 @@ test("single window without manual fragments produces an exact 6 second output p
   assert.equal(session.output.timingMode, "auto");
 });
 
+test("window mode preserves a longer per-channel target duration instead of snapping back to 6 seconds", () => {
+  const session = buildStage3EditorSession({
+    rawSegments: [],
+    selectionMode: "window",
+    clipStartSec: 4,
+    clipDurationSec: 9,
+    targetDurationSec: 9,
+    sourceDurationSec: 85.4
+  });
+
+  assert.equal(session.source.selectionMode, "window");
+  assert.equal(session.renderPlanPatch.segments[0]?.startSec, 4);
+  assert.equal(session.renderPlanPatch.segments[0]?.endSec, 13);
+  assert.equal(session.output.totalOutputDurationSec, 9);
+  assert.equal(session.output.targetDurationSec, 9);
+  assert.equal(session.output.timingMode, "auto");
+});
+
 test("window mode can keep an explicit source window longer than 6 seconds and compress it into the fixed output", () => {
   const session = buildStage3EditorSession({
     rawSegments: [{ startSec: 10, endSec: 30, speed: 1, label: "Main window" }],

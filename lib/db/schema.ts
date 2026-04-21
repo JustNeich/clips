@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS channels (
   avatar_asset_id TEXT,
   default_background_asset_id TEXT,
   default_music_asset_id TEXT,
+  default_clip_duration_sec INTEGER NOT NULL DEFAULT 6,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   archived_at TEXT,

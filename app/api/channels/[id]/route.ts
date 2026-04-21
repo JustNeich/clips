@@ -35,6 +35,7 @@ type PatchBody = Partial<{
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
   defaultMusicAssetId: string | null;
+  defaultClipDurationSec: number;
 }>;
 
 async function ensureChannelTemplateSelectable(
@@ -113,7 +114,8 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
       templateId: body.templateId,
       avatarAssetId: body.avatarAssetId,
       defaultBackgroundAssetId: body.defaultBackgroundAssetId,
-      defaultMusicAssetId: body.defaultMusicAssetId
+      defaultMusicAssetId: body.defaultMusicAssetId,
+      defaultClipDurationSec: body.defaultClipDurationSec
     });
     return Response.json({ channel }, { status: 200 });
   } catch (error) {

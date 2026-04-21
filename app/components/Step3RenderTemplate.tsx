@@ -5455,7 +5455,7 @@ export function Step3RenderTemplate({
                       {unusedSourceDurationSec !== null ? (
                         <span className="meta-pill">Свободно {formatTimeSec(unusedSourceDurationSec)}</span>
                       ) : null}
-                      <span className="meta-pill">{normalizationModeLabel ?? "Ровно 6с"}</span>
+                      <span className="meta-pill">{normalizationModeLabel ?? `Ровно ${clipDurationSec}с`}</span>
                     </div>
 
 	                    <section className="fragment-source-overview">
@@ -5468,7 +5468,7 @@ export function Step3RenderTemplate({
 	                              : fragmentSourceDurationSec !== null
 	                                ? resolvedEditorSelectionMode === "window"
 	                                  ? canDragWholeClipWindow
-	                                    ? "Перетаскивайте синее окно по линии и тяните его края, чтобы выбрать нужный диапазон источника перед сжатием или растяжением в 6 секунд."
+	                                    ? `Перетаскивайте синее окно по линии и тяните его края, чтобы выбрать нужный диапазон источника перед сжатием или растяжением в ${clipDurationSec} секунд.`
 	                                    : "Цельное окно можно растягивать по краям, как только станет доступна точная длина исходника."
 	                                  : "Лента показывает весь MP4-источник: синие участки задействованы, тёмные будут пропущены."
 	                                : "Длительность исходника появится, когда источник полностью определится."}

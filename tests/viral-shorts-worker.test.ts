@@ -977,6 +977,7 @@ function makeChannelForManager(input: { id: string; name: string; username: stri
     avatarAssetId: null,
     defaultBackgroundAssetId: null,
     defaultMusicAssetId: null,
+    defaultClipDurationSec: 6,
     createdAt: nowIso(),
     updatedAt: nowIso(),
     currentUserCanOperate: true,
@@ -1356,6 +1357,7 @@ test("new channels no longer auto-populate a viral worker profile", { concurrenc
     assert.equal(channel.stage2ExamplesConfig.useWorkspaceDefault, true);
     assert.equal(channel.systemPrompt, "");
     assert.equal(channel.descriptionPrompt, "");
+    assert.equal(channel.defaultClipDurationSec, 6);
   });
 });
 
@@ -1381,12 +1383,15 @@ test("channels persist an explicit Stage 2 platform line when one is chosen", { 
     assert.equal(channel.stage2WorkerProfileId, "stable_skill_gap_v1");
 
     const updated = await chatHistory.updateChannelById(channel.id, {
-      stage2WorkerProfileId: "stable_social_wave_v1"
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      defaultClipDurationSec: 9
     });
     assert.equal(updated.stage2WorkerProfileId, "stable_social_wave_v1");
+    assert.equal(updated.defaultClipDurationSec, 9);
 
     const reloaded = await chatHistory.getChannelById(channel.id);
     assert.equal(reloaded?.stage2WorkerProfileId, "stable_social_wave_v1");
+    assert.equal(reloaded?.defaultClipDurationSec, 9);
   });
 });
 

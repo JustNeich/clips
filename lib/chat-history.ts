@@ -29,6 +29,7 @@ import { listLatestPublicationSummariesByChatIds } from "./publication-store";
 import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
 import { getWorkspaceDefaultTemplateId, readManagedTemplate } from "./managed-template-store";
+import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
 import { getWorkspace, getWorkspaceStage2HardConstraints } from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
 
@@ -94,6 +95,7 @@ export type Channel = {
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
   defaultMusicAssetId: string | null;
+  defaultClipDurationSec: number;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -236,6 +238,10 @@ function mapChannel(row: Record<string, unknown>): Channel {
       ? String(row.default_background_asset_id)
       : null,
     defaultMusicAssetId: row.default_music_asset_id ? String(row.default_music_asset_id) : null,
+    defaultClipDurationSec: normalizeStage3ClipDurationSec(
+      row.default_clip_duration_sec,
+      DEFAULT_STAGE3_CLIP_DURATION_SEC
+    ),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     archivedAt: row.archived_at ? String(row.archived_at) : null
@@ -391,6 +397,7 @@ export async function createChannel(input: {
   stage2PromptConfig?: Stage2PromptConfig;
   stage2StyleProfile?: Stage2StyleProfile;
   templateId?: string;
+  defaultClipDurationSec?: number;
 }): Promise<Channel> {
   const now = nowIso();
   const username = sanitizeUsername(input.username ?? "channel");
@@ -415,6 +422,7 @@ export async function createChannel(input: {
     avatarAssetId: null,
     defaultBackgroundAssetId: null,
     defaultMusicAssetId: null,
+    defaultClipDurationSec: normalizeStage3ClipDurationSec(input.defaultClipDurationSec),
     createdAt: now,
     updatedAt: now,
     archivedAt: null
@@ -431,8 +439,8 @@ export async function createChannel(input: {
   const db = getDb();
   db.prepare(
     `INSERT INTO channels
-    (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_examples_config_json, stage2_hard_constraints_json, stage2_prompt_config_json, stage2_style_profile_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, created_at, updated_at, archived_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)`
+    (id, workspace_id, creator_user_id, name, username, system_prompt, description_prompt, examples_json, stage2_worker_profile_id, stage2_examples_config_json, stage2_hard_constraints_json, stage2_prompt_config_json, stage2_style_profile_json, template_id, avatar_asset_id, default_background_asset_id, default_music_asset_id, default_clip_duration_sec, created_at, updated_at, archived_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, NULL)`
   ).run(
     channel.id,
     channel.workspaceId,
@@ -451,6 +459,7 @@ export async function createChannel(input: {
     stringifyStage2PromptConfig(channel.stage2PromptConfig),
     stringifyStage2StyleProfile(channel.stage2StyleProfile),
     channel.templateId,
+    channel.defaultClipDurationSec,
     channel.createdAt,
     channel.updatedAt
   );
@@ -474,6 +483,7 @@ export async function updateChannelById(
     avatarAssetId: string | null;
     defaultBackgroundAssetId: string | null;
     defaultMusicAssetId: string | null;
+    defaultClipDurationSec: number;
   }>
 ): Promise<Channel> {
   const channel = await getChannelById(channelId);
@@ -530,6 +540,10 @@ export async function updateChannelById(
           ? patch.defaultMusicAssetId
           : null
         : channel.defaultMusicAssetId,
+    defaultClipDurationSec:
+      "defaultClipDurationSec" in patch
+        ? normalizeStage3ClipDurationSec(patch.defaultClipDurationSec, channel.defaultClipDurationSec)
+        : channel.defaultClipDurationSec,
     updatedAt: nowIso()
   };
 
@@ -550,6 +564,7 @@ export async function updateChannelById(
       avatar_asset_id = ?,
       default_background_asset_id = ?,
       default_music_asset_id = ?,
+      default_clip_duration_sec = ?,
       updated_at = ?
     WHERE id = ?`
   ).run(
@@ -570,6 +585,7 @@ export async function updateChannelById(
     next.avatarAssetId,
     next.defaultBackgroundAssetId,
     next.defaultMusicAssetId,
+    next.defaultClipDurationSec,
     next.updatedAt,
     channelId
   );

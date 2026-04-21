@@ -23,6 +23,11 @@ import {
   stringifyStage2StyleProfile
 } from "../stage2-channel-learning";
 import { getDefaultStage3ExecutionTarget } from "../stage3-execution";
+import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  MAX_STAGE3_CLIP_DURATION_SEC,
+  MIN_STAGE3_CLIP_DURATION_SEC
+} from "../stage3-duration";
 
 type GlobalDbScope = typeof globalThis & {
   __clipsAppDb?: DatabaseSync;
@@ -163,6 +168,12 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "channels", "stage2_hard_constraints_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_prompt_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_style_profile_json", "TEXT");
+  addColumnIfMissing(
+    db,
+    "channels",
+    "default_clip_duration_sec",
+    `INTEGER NOT NULL DEFAULT ${DEFAULT_STAGE3_CLIP_DURATION_SEC}`
+  );
   addColumnIfMissing(db, "stage2_runs", "creator_user_id", "TEXT");
   addColumnIfMissing(db, "stage2_runs", "channel_id", "TEXT");
   addColumnIfMissing(db, "stage2_runs", "source_url", "TEXT");
@@ -265,6 +276,17 @@ function applyDbMigrations(db: DatabaseSync): void {
       WHERE stage2_style_profile_json IS NULL
          OR trim(stage2_style_profile_json) = ''`
   ).run(stringifyStage2StyleProfile(DEFAULT_STAGE2_STYLE_PROFILE));
+  db.prepare(
+    `UPDATE channels
+        SET default_clip_duration_sec = ?
+      WHERE default_clip_duration_sec IS NULL
+         OR default_clip_duration_sec < ?
+         OR default_clip_duration_sec > ?`
+  ).run(
+    DEFAULT_STAGE3_CLIP_DURATION_SEC,
+    MIN_STAGE3_CLIP_DURATION_SEC,
+    MAX_STAGE3_CLIP_DURATION_SEC
+  );
   if (hasTable(db, "channel_publish_settings") && hasColumn(db, "channel_publish_settings", "notify_subscribers_default")) {
     db.exec(
       `UPDATE channel_publish_settings

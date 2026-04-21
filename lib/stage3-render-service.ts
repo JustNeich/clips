@@ -58,6 +58,7 @@ import {
 import { ensureStage3RenderBrowser } from "./stage3-browser-runtime";
 import type { Stage3PreparedBrowser } from "./stage3-browser-runtime";
 import type { TemplateCaptionHighlights } from "./template-highlights";
+import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -629,6 +630,10 @@ function normalizeRenderPlan(
   const templateVideoAdjustments = template.videoAdjustments;
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
+  const targetDurationSec = normalizeStage3ClipDurationSec(
+    rawPlan?.targetDurationSec,
+    DEFAULT_STAGE3_CLIP_DURATION_SEC
+  );
   const videoZoom =
     typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
@@ -638,7 +643,7 @@ function normalizeRenderPlan(
     cameraScaleKeyframes: rawPlan?.cameraScaleKeyframes,
     cameraKeyframes: rawPlan?.cameraKeyframes,
     cameraMotion: rawPlan?.cameraMotion,
-    clipDurationSec: 6,
+    clipDurationSec: targetDurationSec,
     baseFocusY: 0.5,
     baseZoom: videoZoom
   });
@@ -650,7 +655,7 @@ function normalizeRenderPlan(
           rawPlan?.timingMode === "stretch" ||
           rawPlan?.policy === "full_source_normalize";
   return {
-    targetDurationSec: 6,
+    targetDurationSec,
     timingMode:
       rawPlan?.timingMode === "compress" || rawPlan?.timingMode === "stretch" || rawPlan?.timingMode === "auto"
         ? rawPlan.timingMode
@@ -665,7 +670,7 @@ function normalizeRenderPlan(
     mirrorEnabled: Boolean(rawPlan?.mirrorEnabled ?? true),
     cameraMotion: normalizeStage3CameraMotion(rawPlan?.cameraMotion),
     cameraKeyframes: normalizeStage3CameraKeyframes(rawPlan?.cameraKeyframes, {
-      clipDurationSec: 6,
+      clipDurationSec: targetDurationSec,
       fallbackFocusY: 0.5,
       fallbackZoom: videoZoom
     }),

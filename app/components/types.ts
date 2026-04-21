@@ -780,7 +780,7 @@ export type Stage3Operation =
   | { op: "rewrite_bottom_text"; bottomText: string };
 
 export type Stage3RenderPlan = {
-  targetDurationSec: 6;
+  targetDurationSec: number;
   timingMode: Stage3TimingMode;
   normalizeToTargetEnabled: boolean;
   editorSelectionMode?: Stage3EditorSelectionMode;
@@ -1262,6 +1262,7 @@ export type Channel = {
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
   defaultMusicAssetId: string | null;
+  defaultClipDurationSec: number;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;

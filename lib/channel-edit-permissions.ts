@@ -12,6 +12,7 @@ type RestrictedChannelPatch = Partial<{
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
   defaultMusicAssetId: string | null;
+  defaultClipDurationSec: number;
 }>;
 
 export function getRestrictedChannelEditError(

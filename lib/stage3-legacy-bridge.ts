@@ -29,8 +29,12 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
+import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  normalizeStage3ClipDurationSec
+} from "./stage3-duration";
 
-const CLIP_DURATION_SEC = 6;
+const CLIP_DURATION_SEC = DEFAULT_STAGE3_CLIP_DURATION_SEC;
 const DEFAULT_TEMPLATE_ID = "science-card-v1";
 const DEFAULT_TEXT_SCALE = 1.25;
 
@@ -43,7 +47,7 @@ export type Stage3AgentSessionRef = {
 
 function fallbackRenderPlan(): Stage3RenderPlan {
   return {
-    targetDurationSec: 6,
+    targetDurationSec: CLIP_DURATION_SEC,
     timingMode: "auto",
     normalizeToTargetEnabled: false,
     audioMode: "source_only",
@@ -80,6 +84,7 @@ function fallbackRenderPlan(): Stage3RenderPlan {
 
 function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): Stage3RenderPlan {
   const candidate = value && typeof value === "object" ? (value as Partial<Stage3RenderPlan>) : undefined;
+  const targetDurationSec = normalizeStage3ClipDurationSec(candidate?.targetDurationSec, fallback.targetDurationSec);
   const videoZoom =
     typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
@@ -89,7 +94,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
     cameraScaleKeyframes: candidate?.cameraScaleKeyframes,
     cameraKeyframes: candidate?.cameraKeyframes ?? fallback.cameraKeyframes,
     cameraMotion: candidate?.cameraMotion ?? fallback.cameraMotion,
-    clipDurationSec: fallback.targetDurationSec,
+    clipDurationSec: targetDurationSec,
     baseFocusY: 0.5,
     baseZoom: videoZoom
   });
@@ -104,7 +109,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
           candidate?.policy === "full_source_normalize";
 
   return {
-    targetDurationSec: 6,
+    targetDurationSec,
     timingMode:
       candidate?.timingMode === "auto" ||
       candidate?.timingMode === "compress" ||
@@ -121,7 +126,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
     mirrorEnabled: Boolean(candidate?.mirrorEnabled ?? fallback.mirrorEnabled),
     cameraMotion: normalizeStage3CameraMotion(candidate?.cameraMotion ?? fallback.cameraMotion),
     cameraKeyframes: normalizeStage3CameraKeyframes(candidate?.cameraKeyframes ?? fallback.cameraKeyframes, {
-      clipDurationSec: fallback.targetDurationSec,
+      clipDurationSec: targetDurationSec,
       fallbackFocusY: 0.5,
       fallbackZoom: videoZoom
     }),

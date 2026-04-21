@@ -46,6 +46,10 @@ import {
   normalizeStage3VideoSaturation
 } from "../lib/stage3-video-adjustments";
 import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  normalizeStage3ClipDurationSec
+} from "../lib/stage3-duration";
+import {
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
@@ -580,7 +584,7 @@ export function mergeSavedChannelIntoList(channels: Channel[], savedChannel: Cha
 
 export function fallbackRenderPlan(): Stage3RenderPlan {
   return {
-    targetDurationSec: 6,
+    targetDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
     timingMode: "auto",
     normalizeToTargetEnabled: false,
     editorSelectionMode: "window",
@@ -720,12 +724,13 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
 export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage3RenderPlan {
   const candidate = value && typeof value === "object" ? (value as Partial<Stage3RenderPlan>) : undefined;
   const base = fallback ?? fallbackRenderPlan();
+  const targetDurationSec = normalizeStage3ClipDurationSec(candidate?.targetDurationSec, base.targetDurationSec);
   const videoZoom =
     typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
       : base.videoZoom;
   const legacyCameraKeyframes = normalizeStage3CameraKeyframes(candidate?.cameraKeyframes ?? base.cameraKeyframes, {
-    clipDurationSec: base.targetDurationSec,
+    clipDurationSec: targetDurationSec,
     fallbackFocusY: 0.5,
     fallbackZoom: videoZoom
   });
@@ -734,7 +739,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
     cameraScaleKeyframes: candidate?.cameraScaleKeyframes,
     cameraKeyframes: candidate?.cameraKeyframes ?? base.cameraKeyframes,
     cameraMotion: candidate?.cameraMotion ?? base.cameraMotion,
-    clipDurationSec: base.targetDurationSec,
+    clipDurationSec: targetDurationSec,
     baseFocusY: 0.5,
     baseZoom: videoZoom
   });
@@ -760,7 +765,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
   });
 
   return {
-    targetDurationSec: 6,
+    targetDurationSec,
     timingMode:
       candidate?.timingMode === "auto" ||
       candidate?.timingMode === "compress" ||
@@ -784,12 +789,12 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
     cameraPositionKeyframes: normalizeStage3PositionKeyframes(
       effectiveCameraTracks.positionKeyframes,
       {
-        clipDurationSec: base.targetDurationSec,
+        clipDurationSec: targetDurationSec,
         fallbackFocusY: 0.5
       }
     ),
     cameraScaleKeyframes: normalizeStage3ScaleKeyframes(effectiveCameraTracks.scaleKeyframes, {
-      clipDurationSec: base.targetDurationSec,
+      clipDurationSec: targetDurationSec,
       fallbackZoom: videoZoom
     }),
     videoZoom,
