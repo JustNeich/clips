@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   stage2_prompt_config_json TEXT,
   workspace_codex_model_config_json TEXT,
   stage2_caption_provider_json TEXT,
+  stage3_execution_target TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

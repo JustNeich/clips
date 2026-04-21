@@ -375,10 +375,11 @@
 ## Step 3: `Финализация и монтаж`
 
 - `surface`: Step 3 внутри `/`
-- `purpose`: финальный preview, монтаж окна/фрагментов, typography, audio/background, versions, executor-based render.
+- `purpose`: финальный preview, монтаж окна/фрагментов, typography, audio/background, versions, Stage 3 heavy execution через `Локальный executor` или `Хостинг` в зависимости от workspace default.
 - `controls`:
   - header `Финализация и монтаж`
-  - executor chip и кнопка `Подключить executor` / `Executor`
+  - execution chip `Execution: Локальный executor` или `Execution: Хостинг`
+  - при local-mode: executor chip и кнопка `Подключить executor` / `Executor`
   - details `Контекст шага`
   - section `Единый preview`
   - status pills `Executor`, `Фон`, `Звук`, `Таймлайн 0 → 6с`
@@ -447,6 +448,8 @@
 - `common user phrasings`:
   - "preview не обновляется"
   - "executor не коннектится"
+  - "почему теперь рендер идёт на хостинге"
+  - "куда пропала кнопка executor"
   - "версия пропала"
   - "камера съехала"
   - "экспорт не стартует"
@@ -640,12 +643,21 @@
 
 ## Channel Manager tab: `Рендер`
 
-- `purpose`: template selection and channel render defaults.
+- `purpose`:
+  - для `Общие настройки`: workspace-level `Stage 3 execution mode`
+  - для конкретного канала: template selection and channel render defaults
 - `controls`:
-  - template picker
-  - background/music default selects
-  - asset-dependent render defaults
+  - в `Общие настройки`:
+    - select `Режим выполнения`
+    - pills `Выбрано` / `Сейчас работает`
+    - warning text при configured/effective mismatch
+  - в канале:
+    - template picker
+    - background/music default selects
+    - asset-dependent render defaults
 - `related APIs`:
+  - `GET /api/workspace`
+  - `PATCH /api/workspace`
   - `PATCH /api/channels/[id]`
   - assets APIs
 

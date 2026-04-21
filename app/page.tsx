@@ -36,6 +36,8 @@ import {
   RuntimeCapabilitiesResponse,
   Stage3AgentRunResponse,
   Stage3CameraMotion,
+  Stage3ExecutionCapabilities,
+  Stage3ExecutionTarget,
   Stage3EditorDraftOverrides,
   Stage3JobEnvelope,
   Stage3PreviewState,
@@ -374,6 +376,15 @@ export default function HomePage() {
         config: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG
       })
     );
+  const [workspaceStage3ExecutionTarget, setWorkspaceStage3ExecutionTarget] =
+    useState<Stage3ExecutionTarget>("local");
+  const [workspaceResolvedStage3ExecutionTarget, setWorkspaceResolvedStage3ExecutionTarget] =
+    useState<Stage3ExecutionTarget>("local");
+  const [workspaceStage3ExecutionCapabilities, setWorkspaceStage3ExecutionCapabilities] =
+    useState<Stage3ExecutionCapabilities>({
+      localAvailable: false,
+      hostAvailable: false
+    });
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelAssets, setChannelAssets] = useState<ChannelAsset[]>([]);
   const [channelPublications, setChannelPublications] = useState<ChannelPublication[]>([]);
@@ -538,6 +549,8 @@ export default function HomePage() {
   const stage2RuntimeAvailable = runtimeCapabilities?.features.stage2 ?? true;
   const stage3LocalExecutorAvailable =
     runtimeCapabilities?.features.stage3LocalExecutor ?? process.env.NODE_ENV === "production";
+  const stage3WorkerControlsEnabled =
+    workspaceResolvedStage3ExecutionTarget === "local" && stage3LocalExecutorAvailable;
   const codexBlockedReason = runtimeCapabilities?.tools.codex.message ?? null;
   const currentSourceIsUploaded = Boolean(activeChat?.url && isUploadedSourceUrl(activeChat.url));
   const sourceAcquisitionBlockedReason = runtimeCapabilities
@@ -920,6 +933,10 @@ export default function HomePage() {
     }
     const body = (await response.json()) as AuthMeResponse;
     setAuthState(body);
+    if (body.workspace.stage3ExecutionTarget) {
+      setWorkspaceStage3ExecutionTarget(body.workspace.stage3ExecutionTarget);
+      setWorkspaceResolvedStage3ExecutionTarget(body.workspace.stage3ExecutionTarget);
+    }
     setAuthRecoveryMessage(null);
     return body;
   }, [parseError]);
@@ -934,8 +951,26 @@ export default function HomePage() {
     return body;
   }, [parseError]);
 
+  const applyWorkspaceStage3ExecutionState = useCallback((input: {
+    stage3ExecutionTarget?: Stage3ExecutionTarget;
+    resolvedStage3ExecutionTarget?: Stage3ExecutionTarget;
+    stage3ExecutionCapabilities?: Stage3ExecutionCapabilities;
+  }): void => {
+    if (input.stage3ExecutionTarget) {
+      setWorkspaceStage3ExecutionTarget(input.stage3ExecutionTarget);
+    }
+    if (input.resolvedStage3ExecutionTarget) {
+      setWorkspaceResolvedStage3ExecutionTarget(input.resolvedStage3ExecutionTarget);
+    } else if (input.stage3ExecutionTarget) {
+      setWorkspaceResolvedStage3ExecutionTarget(input.stage3ExecutionTarget);
+    }
+    if (input.stage3ExecutionCapabilities) {
+      setWorkspaceStage3ExecutionCapabilities(input.stage3ExecutionCapabilities);
+    }
+  }, []);
+
   const refreshStage3Workers = useCallback(async (): Promise<Stage3WorkerSummary[]> => {
-    if (!stage3LocalExecutorAvailable) {
+    if (!stage3WorkerControlsEnabled) {
       setStage3Workers([]);
       return [];
     }
@@ -948,14 +983,18 @@ export default function HomePage() {
     const body = (await response.json()) as Stage3WorkerListResponse;
     setStage3Workers(body.workers ?? []);
     return body.workers ?? [];
-  }, [parseError, stage3LocalExecutorAvailable]);
+  }, [parseError, stage3WorkerControlsEnabled]);
 
   const createStage3WorkerPairing = useCallback(async (): Promise<void> => {
-    if (!stage3LocalExecutorAvailable) {
+    if (!stage3WorkerControlsEnabled) {
       setStage3WorkerPairing(null);
       setStage3Workers([]);
       setStatusType("ok");
-      setStatus("На localhost локальный executor отключен. Stage 3 выполняется прямо на хосте.");
+      setStatus(
+        workspaceResolvedStage3ExecutionTarget === "host"
+          ? "Stage 3 сейчас настроен на хостинг. Локальный executor для этого режима не нужен."
+          : "На localhost локальный executor отключен. Stage 3 выполняется прямо на хосте."
+      );
       return;
     }
     setIsStage3WorkerPairing(true);
@@ -988,7 +1027,13 @@ export default function HomePage() {
     } finally {
       setIsStage3WorkerPairing(false);
     }
-  }, [getUiErrorMessage, parseError, refreshStage3Workers, stage3LocalExecutorAvailable]);
+  }, [
+    getUiErrorMessage,
+    parseError,
+    refreshStage3Workers,
+    stage3WorkerControlsEnabled,
+    workspaceResolvedStage3ExecutionTarget
+  ]);
 
   const applyChannelToRenderPlan = useCallback(
     (channel: Channel | null, assets: ChannelAsset[] = []): Stage3RenderPlan => {
@@ -1183,6 +1228,9 @@ export default function HomePage() {
       workspaceStage2HardConstraints?: Stage2HardConstraints;
       workspaceStage2PromptConfig?: Stage2PromptConfig;
       workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
+      workspaceStage3ExecutionTarget?: Stage3ExecutionTarget;
+      workspaceResolvedStage3ExecutionTarget?: Stage3ExecutionTarget;
+      workspaceStage3ExecutionCapabilities?: Stage3ExecutionCapabilities;
       workspaceAnthropicIntegration?: WorkspaceAnthropicIntegrationRecord | null;
       workspaceOpenRouterIntegration?: WorkspaceOpenRouterIntegrationRecord | null;
       workspaceCodexModelConfig?: WorkspaceCodexModelConfig;
@@ -1200,6 +1248,11 @@ export default function HomePage() {
     setWorkspaceStage2CaptionProviderConfig(
       normalizeStage2CaptionProviderConfig(body.workspaceStage2CaptionProviderConfig)
     );
+    applyWorkspaceStage3ExecutionState({
+      stage3ExecutionTarget: body.workspaceStage3ExecutionTarget,
+      resolvedStage3ExecutionTarget: body.workspaceResolvedStage3ExecutionTarget,
+      stage3ExecutionCapabilities: body.workspaceStage3ExecutionCapabilities
+    });
     setWorkspaceAnthropicIntegration(body.workspaceAnthropicIntegration ?? null);
     setWorkspaceOpenRouterIntegration(body.workspaceOpenRouterIntegration ?? null);
     setWorkspaceCodexModelConfig(nextWorkspaceCodexModelConfig);
@@ -1220,7 +1273,7 @@ export default function HomePage() {
       return nextChannels[0]?.id ?? null;
     });
     return nextChannels;
-  }, [parseError]);
+  }, [applyWorkspaceStage3ExecutionState, parseError]);
 
   const refreshChannelAssets = useCallback(async (channelId: string): Promise<ChannelAsset[]> => {
     const response = await fetch(`/api/channels/${channelId}/assets`);
@@ -2140,7 +2193,7 @@ export default function HomePage() {
   }, [refreshWorkspaceMembers]);
 
   useEffect(() => {
-    if (isAuthLoading || currentStep !== 3 || !stage3LocalExecutorAvailable) {
+    if (isAuthLoading || currentStep !== 3 || !stage3WorkerControlsEnabled) {
       setStage3Workers([]);
       setStage3WorkerPairing(null);
       stage3WorkerStatusAnnouncementRef.current = null;
@@ -2157,7 +2210,7 @@ export default function HomePage() {
     currentStep,
     isAuthLoading,
     refreshStage3Workers,
-    stage3LocalExecutorAvailable,
+    stage3WorkerControlsEnabled,
     stage3WorkerRefreshIntervalMs
   ]);
 
@@ -6258,7 +6311,7 @@ export default function HomePage() {
     revalidateChannelPublicationsInBackground
   ]);
 
-  const handleSaveWorkspaceStage2Defaults = async (
+  const handleSaveWorkspaceStage2Defaults = useCallback(async (
     patch: Partial<{
       stage2ExamplesCorpusJson: string;
       stage2HardConstraints: Stage2HardConstraints;
@@ -6282,6 +6335,9 @@ export default function HomePage() {
         stage2HardConstraints?: Stage2HardConstraints;
         stage2PromptConfig?: Stage2PromptConfig;
         stage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
+        stage3ExecutionTarget?: Stage3ExecutionTarget;
+        resolvedStage3ExecutionTarget?: Stage3ExecutionTarget;
+        stage3ExecutionCapabilities?: Stage3ExecutionCapabilities;
         workspaceAnthropicIntegration?: WorkspaceAnthropicIntegrationRecord | null;
         workspaceOpenRouterIntegration?: WorkspaceOpenRouterIntegrationRecord | null;
         codexModelConfig?: WorkspaceCodexModelConfig;
@@ -6301,6 +6357,11 @@ export default function HomePage() {
           normalizeStage2CaptionProviderConfig(body.stage2CaptionProviderConfig)
         );
       }
+      applyWorkspaceStage3ExecutionState({
+        stage3ExecutionTarget: body.stage3ExecutionTarget,
+        resolvedStage3ExecutionTarget: body.resolvedStage3ExecutionTarget,
+        stage3ExecutionCapabilities: body.stage3ExecutionCapabilities
+      });
       if ("workspaceAnthropicIntegration" in body) {
         setWorkspaceAnthropicIntegration(body.workspaceAnthropicIntegration ?? null);
       }
@@ -6322,7 +6383,33 @@ export default function HomePage() {
     } finally {
       setBusyAction("");
     }
-  };
+  }, [applyWorkspaceStage3ExecutionState, parseError]);
+
+  const handleSaveWorkspaceStage3ExecutionTarget = useCallback(async (
+    stage3ExecutionTarget: Stage3ExecutionTarget
+  ): Promise<void> => {
+    setBusyAction("channel-save");
+    try {
+      const response = await fetch("/api/workspace", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage3ExecutionTarget })
+      });
+      if (!response.ok) {
+        throw new Error(
+          await parseError(response, "Не удалось сохранить режим выполнения Stage 3.")
+        );
+      }
+      const body = (await response.json()) as {
+        stage3ExecutionTarget?: Stage3ExecutionTarget;
+        resolvedStage3ExecutionTarget?: Stage3ExecutionTarget;
+        stage3ExecutionCapabilities?: Stage3ExecutionCapabilities;
+      };
+      applyWorkspaceStage3ExecutionState(body);
+    } finally {
+      setBusyAction("");
+    }
+  }, [applyWorkspaceStage3ExecutionState, parseError]);
 
   const handleSubmitStage2OptionFeedback = async (input: {
     option: number;
@@ -6988,6 +7075,7 @@ export default function HomePage() {
           editorSelectionMode={stage3RenderPlan.editorSelectionMode}
           timingMode={stage3RenderPlan.timingMode}
           renderPolicy={stage3RenderPlan.policy}
+          executionTarget={workspaceResolvedStage3ExecutionTarget}
           workerState={stage3WorkerPanelState}
           workerLabel={activeStage3Worker?.label ?? null}
           workerPlatform={activeStage3Worker?.platform ?? null}
@@ -6995,7 +7083,7 @@ export default function HomePage() {
           workerCurrentJobKind={activeStage3Worker?.currentJobKind ?? null}
           workerPairing={stage3WorkerPairing}
           isWorkerPairing={isStage3WorkerPairing}
-          showWorkerControls={stage3LocalExecutorAvailable}
+          showWorkerControls={stage3WorkerControlsEnabled}
           clipStartSec={stage3ClipStartSec}
           clipDurationSec={CLIP_DURATION_SEC}
           sourceDurationSec={sourceDurationSec}
@@ -7315,6 +7403,9 @@ export default function HomePage() {
           workspaceOpenRouterIntegration={workspaceOpenRouterIntegration}
           workspaceCodexModelConfig={workspaceCodexModelConfig}
           workspaceResolvedCodexModelConfig={workspaceResolvedCodexModelConfig}
+          workspaceStage3ExecutionTarget={workspaceStage3ExecutionTarget}
+          workspaceResolvedStage3ExecutionTarget={workspaceResolvedStage3ExecutionTarget}
+          workspaceStage3ExecutionCapabilities={workspaceStage3ExecutionCapabilities}
           activeChannelId={activeChannelId}
           assets={channelAssets}
           currentUserRole={authState?.membership.role ?? null}
@@ -7339,6 +7430,7 @@ export default function HomePage() {
           onDeleteFeedbackEvent={handleDeleteChannelFeedbackEvent}
           deletingFeedbackEventId={deletingChannelFeedbackEventId}
           onSaveWorkspaceStage2Defaults={handleSaveWorkspaceStage2Defaults}
+          onSaveWorkspaceStage3ExecutionTarget={handleSaveWorkspaceStage3ExecutionTarget}
           onRefreshWorkspaceState={async () => {
             await refreshChannels(activeChannelId);
           }}

@@ -1,5 +1,5 @@
 import { requireAuth } from "../../../../../lib/auth/guards";
-import { resolveStage3ExecutionTarget } from "../../../../../lib/stage3-execution";
+import { resolveStage3Execution } from "../../../../../lib/stage3-execution";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../lib/stage3-job-http";
 import { enqueueAndScheduleStage3Job } from "../../../../../lib/stage3-job-runtime";
 import {
@@ -19,7 +19,7 @@ export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Stage3EditingProxyRequestBody | null;
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
     if (!sourceUrl) {
       return Response.json(
@@ -40,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const executionTarget = resolveStage3ExecutionTarget();
+    const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
     if (executionTarget === "local") {
       const readiness = await resolveStage3LocalWorkerReadiness({
         workspaceId: auth.workspace.id,

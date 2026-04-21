@@ -1,6 +1,17 @@
-import { Stage3ExecutionTarget } from "../app/components/types";
+import {
+  Stage3ExecutionCapabilities,
+  Stage3ExecutionTarget
+} from "../app/components/types";
 
-function normalizeExecutionTarget(value: string | null | undefined): Stage3ExecutionTarget | null {
+export type Stage3ExecutionResolution = {
+  configuredTarget: Stage3ExecutionTarget;
+  resolvedTarget: Stage3ExecutionTarget;
+  capabilities: Stage3ExecutionCapabilities;
+};
+
+export function normalizeStage3ExecutionTarget(
+  value: string | null | undefined
+): Stage3ExecutionTarget | null {
   if (value === "host" || value === "local") {
     return value;
   }
@@ -27,8 +38,15 @@ export function isHostStage3ExecutionAllowed(): boolean {
   return readBooleanEnv("STAGE3_ALLOW_HOST_EXECUTION", isLocalDevelopmentRuntime());
 }
 
+export function getStage3ExecutionCapabilities(): Stage3ExecutionCapabilities {
+  return {
+    localAvailable: isStage3LocalExecutorEnabled(),
+    hostAvailable: isHostStage3ExecutionAllowed()
+  };
+}
+
 export function getDefaultStage3ExecutionTarget(): Stage3ExecutionTarget {
-  const configured = normalizeExecutionTarget(process.env.STAGE3_DEFAULT_EXECUTION_TARGET?.trim());
+  const configured = normalizeStage3ExecutionTarget(process.env.STAGE3_DEFAULT_EXECUTION_TARGET?.trim());
   if (configured === "local" && !isStage3LocalExecutorEnabled()) {
     return "host";
   }
@@ -52,4 +70,18 @@ export function resolveStage3ExecutionTarget(preferred?: Stage3ExecutionTarget |
     return "local";
   }
   return getDefaultStage3ExecutionTarget();
+}
+
+export function resolveStage3Execution(preferred?: Stage3ExecutionTarget | null): Stage3ExecutionResolution {
+  const configuredTarget = normalizeStage3ExecutionTarget(preferred) ?? getDefaultStage3ExecutionTarget();
+  return {
+    configuredTarget,
+    resolvedTarget: resolveStage3ExecutionTarget(configuredTarget),
+    capabilities: getStage3ExecutionCapabilities()
+  };
+}
+
+export function isStage3ExecutionTargetSelectable(target: Stage3ExecutionTarget): boolean {
+  const capabilities = getStage3ExecutionCapabilities();
+  return target === "local" ? capabilities.localAvailable : capabilities.hostAvailable;
 }

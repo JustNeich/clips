@@ -6,7 +6,7 @@ import {
 import { parseUserIntent } from "../../../../lib/stage3-agent";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
 import { runAutonomousOptimization } from "../../../../lib/stage3-agent-autonomous";
-import { resolveStage3ExecutionTarget } from "../../../../lib/stage3-execution";
+import { resolveStage3Execution } from "../../../../lib/stage3-execution";
 import { Stage3StateSnapshot } from "../../../../app/components/types";
 import { getChatById } from "../../../../lib/chat-history";
 import { getWorkspaceCodexModelConfig } from "../../../../lib/team-store";
@@ -140,7 +140,7 @@ export async function POST(request: Request): Promise<Response> {
   const intent = parseUserIntent(goalText, null);
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const chat = await getChatById(projectId);
     if (!chat) {
       return Response.json({ error: "Project chat not found." }, { status: 404 });
@@ -161,7 +161,7 @@ export async function POST(request: Request): Promise<Response> {
       mediaId: sourceUrl,
       workspaceId: auth.workspace.id,
       userId: auth.user.id,
-      executionTarget: resolveStage3ExecutionTarget(),
+      executionTarget: resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget,
       sourceUrl,
       goalText,
       options: {

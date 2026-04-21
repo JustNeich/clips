@@ -1,7 +1,7 @@
 import { getSession } from "../../../../../../../lib/stage3-session-store";
 import { resumeAutonomousSession } from "../../../../../../../lib/stage3-agent-autonomous";
 import { applyHostedStage3Limits } from "../../../../../../../lib/stage3-hosted-limits";
-import { resolveStage3ExecutionTarget } from "../../../../../../../lib/stage3-execution";
+import { resolveStage3Execution } from "../../../../../../../lib/stage3-execution";
 import { isStage3HostedBusyError } from "../../../../../../../lib/stage3-server-control";
 import { summarizeUserFacingError } from "../../../../../../../lib/ui-error";
 import { getChatById } from "../../../../../../../lib/chat-history";
@@ -52,7 +52,7 @@ export async function POST(
   const requestIdempotencyKey = request.headers.get("idempotency-key");
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const session = await getSession(id);
     if (!session) {
       return Response.json({ error: "Session not found." }, { status: 404 });
@@ -92,7 +92,7 @@ export async function POST(
       body?.plannerModel?.trim() || resolvedWorkspaceCodexModels.stage3Planner,
       tuning.plannerReasoningEffort,
       tuning.plannerTimeoutMs,
-      resolveStage3ExecutionTarget()
+      resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget
     );
 
     return Response.json(result, { status: 200 });

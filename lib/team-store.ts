@@ -36,8 +36,13 @@ import {
   stringifyWorkspaceCodexModelConfig,
   type WorkspaceCodexModelConfig
 } from "./workspace-codex-models";
+import {
+  getDefaultStage3ExecutionTarget,
+  normalizeStage3ExecutionTarget
+} from "./stage3-execution";
 import { ensureWorkspaceTemplateLibrary } from "./managed-template-store";
 import { decryptJsonPayload, encryptJsonPayload } from "./app-crypto";
+import type { Stage3ExecutionTarget } from "../app/components/types";
 
 export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
 export type WorkspaceCodexStatus = "connected" | "disconnected" | "connecting" | "error";
@@ -53,6 +58,7 @@ export type WorkspaceRecord = {
   stage2PromptConfig: Stage2PromptConfig;
   codexModelConfig: WorkspaceCodexModelConfig;
   stage2CaptionProviderConfig: Stage2CaptionProviderConfig;
+  stage3ExecutionTarget: Stage3ExecutionTarget;
   createdAt: string;
   updatedAt: string;
 };
@@ -247,6 +253,10 @@ function mapWorkspace(row: Record<string, unknown>): WorkspaceRecord {
     stage2CaptionProviderConfig: normalizeWorkspaceStage2CaptionProviderConfig(
       row.stage2_caption_provider_json ? String(row.stage2_caption_provider_json) : null
     ),
+    stage3ExecutionTarget:
+      normalizeStage3ExecutionTarget(
+        row.stage3_execution_target ? String(row.stage3_execution_target) : null
+      ) ?? getDefaultStage3ExecutionTarget(),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
@@ -407,10 +417,12 @@ export function getWorkspace(): WorkspaceRecord | null {
     return null;
   }
   const stage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(String(row.id));
+  const stage3ExecutionTarget = getWorkspaceStage3ExecutionTarget(String(row.id));
   return {
     ...mapWorkspace({
       ...row,
-      stage2_examples_corpus_json: stage2ExamplesCorpusJson
+      stage2_examples_corpus_json: stage2ExamplesCorpusJson,
+      stage3_execution_target: stage3ExecutionTarget
     })
   };
 }
@@ -515,6 +527,27 @@ export function getWorkspaceStage2CaptionProviderConfig(
   ) {
     db.prepare("UPDATE workspaces SET stage2_caption_provider_json = ? WHERE id = ?").run(
       serialized,
+      workspaceId
+    );
+  }
+  return normalized;
+}
+
+export function getWorkspaceStage3ExecutionTarget(workspaceId: string): Stage3ExecutionTarget {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT stage3_execution_target FROM workspaces WHERE id = ? LIMIT 1")
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  const normalized =
+    normalizeStage3ExecutionTarget(
+      row.stage3_execution_target ? String(row.stage3_execution_target) : null
+    ) ?? getDefaultStage3ExecutionTarget();
+  if ((row.stage3_execution_target ? String(row.stage3_execution_target) : null) !== normalized) {
+    db.prepare("UPDATE workspaces SET stage3_execution_target = ? WHERE id = ?").run(
+      normalized,
       workspaceId
     );
   }
@@ -701,6 +734,28 @@ export function updateWorkspaceStage2CaptionProviderConfig(
   return mapWorkspace(row);
 }
 
+export function updateWorkspaceStage3ExecutionTarget(
+  workspaceId: string,
+  stage3ExecutionTarget: Stage3ExecutionTarget
+): WorkspaceRecord {
+  const normalized = normalizeStage3ExecutionTarget(stage3ExecutionTarget);
+  if (!normalized) {
+    throw new Error("Stage 3 execution target is invalid.");
+  }
+  const updatedAt = nowIso();
+  const db = getDb();
+  db.prepare(
+    "UPDATE workspaces SET stage3_execution_target = ?, updated_at = ? WHERE id = ?"
+  ).run(normalized, updatedAt, workspaceId);
+  const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  return mapWorkspace(row);
+}
+
 export function getUserById(userId: string): UserRecord | null {
   const db = getDb();
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as
@@ -829,6 +884,7 @@ export async function bootstrapOwner(input: {
     stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
     codexModelConfig: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
     stage2CaptionProviderConfig: DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+    stage3ExecutionTarget: getDefaultStage3ExecutionTarget(),
     createdAt: now,
     updatedAt: now
   };
@@ -853,7 +909,7 @@ export async function bootstrapOwner(input: {
 
   runInTransaction((db) => {
     db.prepare(
-      "INSERT INTO workspaces (id, name, slug, default_template_id, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, stage2_caption_provider_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO workspaces (id, name, slug, default_template_id, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, stage2_caption_provider_json, stage3_execution_target, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       workspace.id,
       workspace.name,
@@ -864,6 +920,7 @@ export async function bootstrapOwner(input: {
       stringifyStage2PromptConfig(workspace.stage2PromptConfig),
       stringifyWorkspaceCodexModelConfig(workspace.codexModelConfig),
       stringifyStage2CaptionProviderConfig(workspace.stage2CaptionProviderConfig),
+      workspace.stage3ExecutionTarget,
       workspace.createdAt,
       workspace.updatedAt
     );
@@ -1206,6 +1263,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
       stage2PromptConfig: getWorkspaceStage2PromptConfig(String(row.workspace_id)),
       codexModelConfig: getWorkspaceCodexModelConfig(String(row.workspace_id)),
       stage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(String(row.workspace_id)),
+      stage3ExecutionTarget: getWorkspaceStage3ExecutionTarget(String(row.workspace_id)),
       createdAt: String(row.workspace_created_at),
       updatedAt: String(row.workspace_updated_at)
     },

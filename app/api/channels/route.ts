@@ -12,11 +12,13 @@ import { Stage2PromptConfig } from "../../../lib/stage2-pipeline";
 import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../lib/stage2-channel-learning";
 import {
+  getWorkspaceStage3ExecutionTarget,
   getWorkspaceCodexModelConfig,
   getWorkspaceStage2CaptionProviderConfig,
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints
 } from "../../../lib/team-store";
+import { resolveStage3Execution } from "../../../lib/stage3-execution";
 import { resolveWorkspaceCodexModelConfig } from "../../../lib/workspace-codex-models";
 import { getWorkspaceAnthropicStatus } from "../../../lib/workspace-anthropic";
 import { getWorkspaceOpenRouterStatus } from "../../../lib/workspace-openrouter";
@@ -61,6 +63,8 @@ export async function GET(request: Request): Promise<Response> {
       auth.membership.role === "owner"
         ? await getWorkspaceOpenRouterStatus(auth)
         : null;
+    const stage3ExecutionTarget = getWorkspaceStage3ExecutionTarget(auth.workspace.id);
+    const stage3Execution = resolveStage3Execution(stage3ExecutionTarget);
     const visibleChannels = await Promise.all(
       channels.map(async (channel) => {
         const explicitAccess = await getChannelAccessForUser(channel.id, auth.user.id);
@@ -93,6 +97,9 @@ export async function GET(request: Request): Promise<Response> {
         workspaceStage2PromptConfig: auth.workspace.stage2PromptConfig,
         workspaceCodexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
         workspaceStage2CaptionProviderConfig: getWorkspaceStage2CaptionProviderConfig(auth.workspace.id),
+        workspaceStage3ExecutionTarget: stage3Execution.configuredTarget,
+        workspaceResolvedStage3ExecutionTarget: stage3Execution.resolvedTarget,
+        workspaceStage3ExecutionCapabilities: stage3Execution.capabilities,
         workspaceAnthropicIntegration,
         workspaceOpenRouterIntegration,
         workspaceResolvedCodexModelConfig: resolveWorkspaceCodexModelConfig({

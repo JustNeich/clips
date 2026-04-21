@@ -6,6 +6,7 @@ import type { AppShellToastTone } from "./AppShell";
 import { AvatarUploadButton } from "./AvatarUploadButton";
 import { ChannelManagerPublishingTab } from "./ChannelManagerPublishingTab";
 import { ChannelManagerStage2Tab } from "./ChannelManagerStage2Tab";
+import { ChannelManagerWorkspaceRenderTab } from "./ChannelManagerWorkspaceRenderTab";
 import {
   AppRole,
   Channel,
@@ -13,6 +14,8 @@ import {
   ChannelAsset,
   ChannelAssetKind,
   ChannelFeedbackResponse,
+  Stage3ExecutionCapabilities,
+  Stage3ExecutionTarget,
   WorkspaceAnthropicIntegrationRecord,
   WorkspaceOpenRouterIntegrationRecord,
   WorkspaceMemberRecord,
@@ -85,6 +88,16 @@ import {
 } from "./channel-manager-support";
 
 export { CHANNEL_MANAGER_DEFAULT_SETTINGS_ID, canDeleteManagedChannel, listChannelManagerTargets };
+
+export function normalizeChannelManagerTabForSelection(
+  tab: TabId,
+  isWorkspaceDefaultsSelection: boolean
+): TabId {
+  if (!isWorkspaceDefaultsSelection) {
+    return tab;
+  }
+  return tab === "stage2" || tab === "render" ? tab : "stage2";
+}
 
 type ChannelSavePatch = Partial<{
   name: string;
@@ -178,6 +191,9 @@ type ChannelManagerProps = {
   workspaceOpenRouterIntegration: WorkspaceOpenRouterIntegrationRecord | null;
   workspaceCodexModelConfig: WorkspaceCodexModelConfig;
   workspaceResolvedCodexModelConfig: ResolvedWorkspaceCodexModelConfig;
+  workspaceStage3ExecutionTarget: Stage3ExecutionTarget;
+  workspaceResolvedStage3ExecutionTarget: Stage3ExecutionTarget;
+  workspaceStage3ExecutionCapabilities: Stage3ExecutionCapabilities;
   activeChannelId: string | null;
   assets: ChannelAsset[];
   currentUserRole: AppRole | null;
@@ -221,6 +237,7 @@ type ChannelManagerProps = {
       codexModelConfig: WorkspaceCodexModelConfig;
     }>
   ) => Promise<void>;
+  onSaveWorkspaceStage3ExecutionTarget: (target: Stage3ExecutionTarget) => Promise<void>;
   onRefreshWorkspaceState?: () => Promise<void>;
   onUploadAsset: (kind: ChannelAssetKind, file: File) => void;
   onDeleteAsset: (assetId: string) => void;
@@ -258,6 +275,9 @@ export function ChannelManager({
   workspaceOpenRouterIntegration: workspaceOpenRouterIntegrationProp,
   workspaceCodexModelConfig: workspaceCodexModelConfigProp,
   workspaceResolvedCodexModelConfig,
+  workspaceStage3ExecutionTarget: workspaceStage3ExecutionTargetProp,
+  workspaceResolvedStage3ExecutionTarget: workspaceResolvedStage3ExecutionTargetProp,
+  workspaceStage3ExecutionCapabilities: workspaceStage3ExecutionCapabilitiesProp,
   activeChannelId,
   assets,
   currentUserRole,
@@ -277,6 +297,7 @@ export function ChannelManager({
   onDeleteFeedbackEvent,
   deletingFeedbackEventId,
   onSaveWorkspaceStage2Defaults,
+  onSaveWorkspaceStage3ExecutionTarget,
   onRefreshWorkspaceState = async () => undefined,
   onUploadAsset,
   onDeleteAsset,
@@ -354,6 +375,19 @@ export function ChannelManager({
     useState<WorkspaceCodexModelConfig>(
       normalizeWorkspaceCodexModelConfig(workspaceCodexModelConfigProp)
     );
+  const [workspaceStage3ExecutionTarget, setWorkspaceStage3ExecutionTarget] =
+    useState<Stage3ExecutionTarget>(workspaceStage3ExecutionTargetProp);
+  const [workspaceResolvedStage3ExecutionTarget, setWorkspaceResolvedStage3ExecutionTarget] =
+    useState<Stage3ExecutionTarget>(workspaceResolvedStage3ExecutionTargetProp);
+  const [workspaceStage3ExecutionCapabilities, setWorkspaceStage3ExecutionCapabilities] =
+    useState<Stage3ExecutionCapabilities>(workspaceStage3ExecutionCapabilitiesProp);
+  const [workspaceStage3ExecutionSaveState, setWorkspaceStage3ExecutionSaveState] = useState<{
+    status: "idle" | "saving" | "saved" | "error";
+    message: string | null;
+  }>({
+    status: "idle",
+    message: null
+  });
   const [templateId, setTemplateId] = useState(STAGE3_TEMPLATE_ID);
   const [managedTemplates, setManagedTemplates] = useState<ManagedTemplateSummary[]>([]);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>({
@@ -539,8 +573,9 @@ export function ChannelManager({
   }, [managerSelectionId, onDismissGlobalToast]);
 
   useEffect(() => {
-    if (isWorkspaceDefaultsSelection && tab !== "stage2") {
-      setTab("stage2");
+    const normalizedTab = normalizeChannelManagerTabForSelection(tab, isWorkspaceDefaultsSelection);
+    if (normalizedTab !== tab) {
+      setTab(normalizedTab);
     }
   }, [isWorkspaceDefaultsSelection, tab]);
 
@@ -701,6 +736,10 @@ export function ChannelManager({
     setOpenRouterApiKeyInput("");
     setOpenRouterIntegrationActionState({ status: "idle", message: null });
     setWorkspaceCodexModelConfig(normalizedCodexModelConfig);
+    setWorkspaceStage3ExecutionTarget(workspaceStage3ExecutionTargetProp);
+    setWorkspaceResolvedStage3ExecutionTarget(workspaceResolvedStage3ExecutionTargetProp);
+    setWorkspaceStage3ExecutionCapabilities(workspaceStage3ExecutionCapabilitiesProp);
+    setWorkspaceStage3ExecutionSaveState({ status: "idle", message: null });
     clearAutosaveReset("stage2Defaults");
 
     persistedSnapshotRef.current.stage2Defaults = buildStage2DefaultsSnapshot(
@@ -767,7 +806,10 @@ export function ChannelManager({
     workspaceStage2CaptionProviderConfigProp,
     workspaceAnthropicIntegrationProp,
     workspaceOpenRouterIntegrationProp,
-    workspaceCodexModelConfigProp
+    workspaceCodexModelConfigProp,
+    workspaceStage3ExecutionCapabilitiesProp,
+    workspaceStage3ExecutionTargetProp,
+    workspaceResolvedStage3ExecutionTargetProp
   ]);
 
   useEffect(() => {
@@ -1298,6 +1340,44 @@ export function ChannelManager({
     void persistWorkspaceCaptionProviderConfig(nextConfig, previousConfig);
   };
 
+  const saveWorkspaceStage3ExecutionTarget = async (
+    nextTarget: Stage3ExecutionTarget
+  ): Promise<void> => {
+    if (!canEditWorkspaceDefaults || nextTarget === workspaceStage3ExecutionTarget) {
+      return;
+    }
+    const previousConfigured = workspaceStage3ExecutionTarget;
+    const previousResolved = workspaceResolvedStage3ExecutionTarget;
+    setWorkspaceStage3ExecutionTarget(nextTarget);
+    setWorkspaceResolvedStage3ExecutionTarget(nextTarget);
+    setWorkspaceStage3ExecutionSaveState({
+      status: "saving",
+      message: "Сохраняем режим выполнения Stage 3…"
+    });
+    showManagerSaveNotice("neutral", "Сохраняем режим выполнения Stage 3…");
+    try {
+      await onSaveWorkspaceStage3ExecutionTarget(nextTarget);
+      setWorkspaceStage3ExecutionSaveState({
+        status: "saved",
+        message: "Режим выполнения Stage 3 сохранён."
+      });
+      showManagerSaveNotice("success", "Режим выполнения Stage 3 сохранён.", true);
+    } catch (error) {
+      setWorkspaceStage3ExecutionTarget(previousConfigured);
+      setWorkspaceResolvedStage3ExecutionTarget(previousResolved);
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Не удалось сохранить режим выполнения Stage 3.";
+      setWorkspaceStage3ExecutionSaveState({
+        status: "error",
+        message
+      });
+      showManagerSaveNotice("error", message);
+      throw error;
+    }
+  };
+
   const updateWorkspaceAnthropicModel = (value: string) => {
     setWorkspaceStage2CaptionProviderConfig((current) => ({
       ...current,
@@ -1651,7 +1731,7 @@ export function ChannelManager({
 
         <div className="channel-tabs">
           {(isWorkspaceDefaultsSelection
-            ? (["stage2"] as const)
+            ? (["stage2", "render"] as const)
             : (["brand", "stage2", "render", "publishing", "assets", "access"] as const)
           ).map((item) => {
             if (item === "access" && !canManageAccess) {
@@ -1766,81 +1846,94 @@ export function ChannelManager({
             ) : null}
 
             {tab === "render" ? (
-              <div className="field-stack">
-                <label className="field-label">Шаблон</label>
-                <select
-                  className="text-input"
-                  value={templateId}
-                  disabled={!canEditSetup}
-                  onChange={(event) => setTemplateId(event.target.value)}
-                >
-                  {renderTemplateGroups.map((group) => (
-                    <optgroup key={group.label} label={group.label}>
-                      {group.options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <p className="subtle-text">
-                  {managedTemplates.length > 0
-                    ? "Новый шаблон из `Template Road` появится здесь автоматически."
-                    : "Пока у тебя нет доступных шаблонов. Сначала создай свой шаблон в `Template Road`, и он сразу появится здесь."}{" "}
-                  Редактор:{" "}
-                  <a href="/design/template-road" target="_blank" rel="noreferrer">
-                    открыть Template Road
-                  </a>
-                </p>
-                <div className="compact-grid">
-                  <div className="compact-field">
-                    <label className="field-label">Фон по умолчанию</label>
-                    <select
-                      className="text-input"
-                      value={activeChannel?.defaultBackgroundAssetId ?? ""}
-                      onChange={(event) =>
-                        activeChannel
-                          ? triggerManagedChannelSave(activeChannel.id, {
-                              defaultBackgroundAssetId: event.target.value || null
-                            })
-                          : undefined
-                      }
-                    >
-                      <option value="">Нет</option>
-                      {backgrounds.map((asset) => (
-                        <option key={asset.id} value={asset.id}>
-                          {asset.originalName}
-                        </option>
-                      ))}
-                    </select>
+              isWorkspaceDefaultsSelection ? (
+                <ChannelManagerWorkspaceRenderTab
+                  canEditWorkspaceDefaults={canEditWorkspaceDefaults}
+                  configuredTarget={workspaceStage3ExecutionTarget}
+                  resolvedTarget={workspaceResolvedStage3ExecutionTarget}
+                  capabilities={workspaceStage3ExecutionCapabilities}
+                  saveState={workspaceStage3ExecutionSaveState}
+                  onChangeTarget={(target) => {
+                    void saveWorkspaceStage3ExecutionTarget(target).catch(() => undefined);
+                  }}
+                />
+              ) : (
+                <div className="field-stack">
+                  <label className="field-label">Шаблон</label>
+                  <select
+                    className="text-input"
+                    value={templateId}
+                    disabled={!canEditSetup}
+                    onChange={(event) => setTemplateId(event.target.value)}
+                  >
+                    {renderTemplateGroups.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.options.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <p className="subtle-text">
+                    {managedTemplates.length > 0
+                      ? "Новый шаблон из `Template Road` появится здесь автоматически."
+                      : "Пока у тебя нет доступных шаблонов. Сначала создай свой шаблон в `Template Road`, и он сразу появится здесь."}{" "}
+                    Редактор:{" "}
+                    <a href="/design/template-road" target="_blank" rel="noreferrer">
+                      открыть Template Road
+                    </a>
+                  </p>
+                  <div className="compact-grid">
+                    <div className="compact-field">
+                      <label className="field-label">Фон по умолчанию</label>
+                      <select
+                        className="text-input"
+                        value={activeChannel?.defaultBackgroundAssetId ?? ""}
+                        onChange={(event) =>
+                          activeChannel
+                            ? triggerManagedChannelSave(activeChannel.id, {
+                                defaultBackgroundAssetId: event.target.value || null
+                              })
+                            : undefined
+                        }
+                      >
+                        <option value="">Нет</option>
+                        {backgrounds.map((asset) => (
+                          <option key={asset.id} value={asset.id}>
+                            {asset.originalName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="compact-field">
+                      <label className="field-label">Музыка по умолчанию</label>
+                      <select
+                        className="text-input"
+                        value={activeChannel?.defaultMusicAssetId ?? ""}
+                        onChange={(event) =>
+                          activeChannel
+                            ? triggerManagedChannelSave(activeChannel.id, {
+                                defaultMusicAssetId: event.target.value || null
+                              })
+                            : undefined
+                        }
+                      >
+                        <option value="">Нет</option>
+                        {music.map((asset) => (
+                          <option key={asset.id} value={asset.id}>
+                            {asset.originalName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <div className="compact-field">
-                    <label className="field-label">Музыка по умолчанию</label>
-                    <select
-                      className="text-input"
-                      value={activeChannel?.defaultMusicAssetId ?? ""}
-                      onChange={(event) =>
-                        activeChannel
-                          ? triggerManagedChannelSave(activeChannel.id, {
-                              defaultMusicAssetId: event.target.value || null
-                            })
-                          : undefined
-                      }
-                    >
-                      <option value="">Нет</option>
-                      {music.map((asset) => (
-                        <option key={asset.id} value={asset.id}>
-                          {asset.originalName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <p className={`subtle-text ${autosaveState.render.status === "error" ? "danger-text" : ""}`}>
+                    {autosaveState.render.message ?? "Настройки рендера сохраняются автоматически."}
+                  </p>
                 </div>
-                <p className={`subtle-text ${autosaveState.render.status === "error" ? "danger-text" : ""}`}>
-                  {autosaveState.render.message ?? "Настройки рендера сохраняются автоматически."}
-                </p>
-              </div>
+              )
             ) : null}
 
             {tab === "publishing" ? (

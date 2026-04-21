@@ -22,6 +22,7 @@ import {
   DEFAULT_STAGE2_STYLE_PROFILE,
   stringifyStage2StyleProfile
 } from "../stage2-channel-learning";
+import { getDefaultStage3ExecutionTarget } from "../stage3-execution";
 
 type GlobalDbScope = typeof globalThis & {
   __clipsAppDb?: DatabaseSync;
@@ -156,6 +157,7 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "workspaces", "stage2_prompt_config_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "workspace_codex_model_config_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_caption_provider_json", "TEXT");
+  addColumnIfMissing(db, "workspaces", "stage3_execution_target", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_worker_profile_id", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_examples_config_json", "TEXT");
   addColumnIfMissing(db, "channels", "stage2_hard_constraints_json", "TEXT");
@@ -251,6 +253,12 @@ function applyDbMigrations(db: DatabaseSync): void {
       WHERE stage2_caption_provider_json IS NULL
          OR trim(stage2_caption_provider_json) = ''`
   ).run(stringifyStage2CaptionProviderConfig(DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG));
+  db.prepare(
+    `UPDATE workspaces
+        SET stage3_execution_target = ?
+      WHERE stage3_execution_target IS NULL
+         OR trim(stage3_execution_target) = ''`
+  ).run(getDefaultStage3ExecutionTarget());
   db.prepare(
     `UPDATE channels
         SET stage2_style_profile_json = ?

@@ -661,6 +661,11 @@ export type Stage3JobStatus = "queued" | "running" | "completed" | "failed" | "i
 
 export type Stage3ExecutionTarget = "host" | "local";
 
+export type Stage3ExecutionCapabilities = {
+  localAvailable: boolean;
+  hostAvailable: boolean;
+};
+
 export type Stage3WorkerPlatform = "darwin-arm64" | "darwin-x64" | "win32-x64" | "unknown";
 
 export type Stage3WorkerStatus = "online" | "offline" | "busy";
@@ -1327,6 +1332,7 @@ export type WorkspaceRecord = {
   stage2PromptConfig?: Stage2PromptConfig;
   codexModelConfig?: WorkspaceCodexModelConfig;
   stage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
+  stage3ExecutionTarget?: Stage3ExecutionTarget;
   createdAt: string;
   updatedAt: string;
 };

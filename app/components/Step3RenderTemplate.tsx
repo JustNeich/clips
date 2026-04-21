@@ -15,6 +15,7 @@ import {
   Stage3CameraMotion,
   Stage3EditorDraftOverrides,
   Stage3EditorSelectionMode,
+  Stage3ExecutionTarget,
   Stage3JobKind,
   Stage3PositionKeyframe,
   Stage3PreviewState,
@@ -204,6 +205,7 @@ type Step3RenderTemplateProps = {
   timingMode?: Stage3TimingMode;
   renderPolicy?: Stage3RenderPolicy;
   renderState: Stage3RenderState;
+  executionTarget: Stage3ExecutionTarget;
   workerState: Stage3WorkerStatus | "not_paired";
   workerLabel: string | null;
   workerPlatform: string | null;
@@ -2250,6 +2252,7 @@ export function Step3RenderTemplate({
   timingMode = "auto",
   renderPolicy = "fixed_segments",
   renderState,
+  executionTarget,
   workerState,
   workerLabel,
   workerPlatform,
@@ -4025,6 +4028,14 @@ export function Step3RenderTemplate({
               : ""
           }`
         : "Локальный executor зарегистрирован.";
+  const executionModeLabel =
+    executionTarget === "host" ? "Execution: Хостинг" : "Execution: Локальный executor";
+  const executionModeDescription =
+    executionTarget === "host"
+      ? "Тяжёлые задачи Stage 3 выполняются на хостинге. Локальный executor для preview, render и соседних heavy-задач не требуется."
+      : showWorkerControls
+        ? workerStatusDescription
+        : "Этот deployment не показывает локальный executor, поэтому Stage 3 выполняется без пользовательского worker UX.";
 
   const workerSetupModal = showWorkerControls && workerSetupOpen ? (
     <div
@@ -5087,7 +5098,13 @@ export function Step3RenderTemplate({
               <p>
                 Один канонический live preview, а все финальные артефакты и история версий живут отдельно в drawer.
               </p>
-              {showWorkerControls ? (
+              {executionTarget === "host" ? (
+                <div className="executor-summary-row executor-summary-row-compact">
+                  <div className="executor-summary-copy">
+                    <span className="meta-pill ok">{executionModeLabel}</span>
+                  </div>
+                </div>
+              ) : showWorkerControls ? (
                 <div className="executor-summary-row executor-summary-row-compact">
                   <div className="executor-summary-copy">
                     <span
@@ -5095,6 +5112,7 @@ export function Step3RenderTemplate({
                     >
                       Executor: {workerStatusLabel}
                     </span>
+                    <span className="meta-pill">{executionModeLabel}</span>
                   </div>
                   <button
                     type="button"
@@ -5120,13 +5138,13 @@ export function Step3RenderTemplate({
                     </span>
                     <span className="meta-pill">Версий {displayVersions.length}</span>
                   </div>
-                  {showWorkerControls ? (
-                    <p className="subtle-text">
-                      {workerState === "not_paired"
+                  <p className="subtle-text">
+                    {executionTarget === "host"
+                      ? executionModeDescription
+                      : showWorkerControls && workerState === "not_paired"
                         ? "Executor подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
-                        : workerStatusDescription}
-                    </p>
-                  ) : null}
+                        : executionModeDescription}
+                  </p>
                 </div>
               </details>
             </header>

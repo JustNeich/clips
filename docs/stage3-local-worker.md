@@ -2,6 +2,13 @@
 
 Этот документ описывает, что нужно сделать владельцу проекта и конечным пользователям, чтобы Stage 3 preview/render/agent-media offload работал предсказуемо и не убивал web service на Render.
 
+Важно: теперь production execution mode живёт на двух уровнях:
+
+- env задаёт capability gates и seed default для новых workspace
+- owner в `Channel Manager -> Общие настройки -> Рендер` выбирает workspace default `Локальный executor` или `Хостинг`
+
+Если workspace сохранён на `Хостинг`, но `STAGE3_ALLOW_HOST_EXECUTION=0`, UI покажет честный fallback в `Локальный executor`, а новые heavy jobs пойдут локально.
+
 ## Что уже реализовано
 
 - Хост работает как control plane:
@@ -41,6 +48,12 @@
 
 Эти значения уже добавлены в [render.yaml](/Users/neich/Documents/Macedonian Imperium/clips automations/render.yaml), но их нужно реально задеплоить.
 
+После деплоя owner должен дополнительно проверить workspace default:
+
+1. Открыть `Каналы` -> `Общие настройки`.
+2. Перейти во вкладку `Рендер`.
+3. Убедиться, что `Stage 3 execution mode` стоит на `Локальный executor`.
+
 ### 2. Задеплоить новую версию хоста
 
 Нужен новый deploy, потому что production должен начать:
@@ -66,6 +79,13 @@
 6. Дождаться статуса `Online`.
 7. Изменить `clip start` или `music gain` и убедиться, что preview уходит в queue/running и возвращается.
 8. Нажать `Render` и убедиться, что job проходит через `queued -> running -> completed`.
+
+Если smoke делается для hosted режима:
+
+1. В `Общие настройки -> Рендер` переключить `Stage 3 execution mode` на `Хостинг`.
+2. Открыть Step 3 под редактором.
+3. Убедиться, что pairing/executor CTA исчезли и UI явно пишет, что heavy Stage 3 задачи идут на хостинге.
+4. Проверить `preview` и `render` в hosted path.
 
 ### 4. Подготовить поддержку пользователей
 

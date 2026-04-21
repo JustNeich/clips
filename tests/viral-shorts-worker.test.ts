@@ -796,6 +796,7 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     segments: [],
     compressionEnabled: false,
     renderState: "idle" as const,
+    executionTarget: "local" as const,
     workerState: "not_paired" as const,
     workerLabel: null,
     workerPlatform: null,
