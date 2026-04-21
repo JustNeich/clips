@@ -1,4 +1,5 @@
 import { resolveExecutableFromCandidates } from "./command-path";
+import { getAppBuildId } from "./app-build";
 import { isVisolixConfigured } from "./source-acquisition";
 import { isStage3LocalExecutorEnabled } from "./stage3-execution";
 
@@ -9,6 +10,7 @@ export type RuntimeToolCapability = {
 };
 
 export type RuntimeCapabilities = {
+  buildId: string;
   deployment: {
     vercel: boolean;
     nodeVersion: string;
@@ -136,6 +138,7 @@ export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
   const stage3 = sourceAcquisitionReady && ffmpeg.available && ffprobe.available;
 
   return {
+    buildId: getAppBuildId(),
     deployment: {
       vercel: process.env.VERCEL === "1",
       nodeVersion: process.version

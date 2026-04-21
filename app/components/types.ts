@@ -1300,6 +1300,7 @@ export type RuntimeToolCapability = {
 };
 
 export type RuntimeCapabilitiesResponse = {
+  buildId: string;
   deployment: {
     vercel: boolean;
     nodeVersion: string;

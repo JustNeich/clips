@@ -210,6 +210,7 @@ import {
   normalizeStage3SourceFailureNotice
 } from "../lib/stage3-preview-notice";
 import { loadDynamicImportWithRecovery } from "../lib/dynamic-import-recovery";
+import { APP_BUILD_META_NAME, shouldReloadForBuildMismatch } from "../lib/app-build";
 import {
   PublicationMutationError,
   type PublicationMutationErrorPayload
@@ -239,13 +240,59 @@ const STAGE2_ELAPSED_TICK_MS = 250;
 const STAGE2_ELAPSED_TICK_HIDDEN_MS = 1_000;
 const STAGE2_POLL_RETRY_VISIBLE_MS = 1_500;
 const STAGE2_POLL_RETRY_HIDDEN_MS = 4_000;
+let buildFreshnessCheckPromise: Promise<boolean> | null = null;
 
 function isPageHidden(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
 
-function loadRecoverablePageChunk<T>(id: string, loader: () => Promise<T>): Promise<T> {
+function readClientAppBuildId(): string | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const content = document
+    .querySelector(`meta[name="${APP_BUILD_META_NAME}"]`)
+    ?.getAttribute("content")
+    ?.trim();
+  return content || null;
+}
+
+async function reloadIfAppBuildChanged(): Promise<boolean> {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const clientBuildId = readClientAppBuildId();
+  if (!clientBuildId) {
+    return false;
+  }
+  const response = await fetch("/api/runtime/capabilities", {
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    return false;
+  }
+  const body = (await response.json()) as Pick<RuntimeCapabilitiesResponse, "buildId">;
+  if (!shouldReloadForBuildMismatch(clientBuildId, body.buildId)) {
+    return false;
+  }
+  window.location.reload();
+  return true;
+}
+
+async function ensureFreshPageBuild(): Promise<boolean> {
+  if (!buildFreshnessCheckPromise) {
+    buildFreshnessCheckPromise = reloadIfAppBuildChanged().finally(() => {
+      buildFreshnessCheckPromise = null;
+    });
+  }
+  return buildFreshnessCheckPromise;
+}
+
+async function loadRecoverablePageChunk<T>(id: string, loader: () => Promise<T>): Promise<T> {
+  if (await ensureFreshPageBuild()) {
+    return new Promise<T>(() => undefined);
+  }
   return loadDynamicImportWithRecovery(loader, { id });
 }
 
