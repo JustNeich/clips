@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { GET as getRuntimeCapabilities } from "../app/api/runtime/capabilities/route";
 import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
-import { getAppBuildId, shouldReloadForBuildMismatch } from "../lib/app-build";
+import { getAppBuildId, isFallbackAppBuildId, shouldReloadForBuildMismatch } from "../lib/app-build";
 import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -50,6 +50,13 @@ test("shouldReloadForBuildMismatch triggers only for distinct non-empty build id
   assert.equal(shouldReloadForBuildMismatch("build-a", " build-a "), false);
   assert.equal(shouldReloadForBuildMismatch("", "build-b"), false);
   assert.equal(shouldReloadForBuildMismatch("build-a", ""), false);
+});
+
+test("shouldReloadForBuildMismatch ignores local fallback build ids", () => {
+  assert.equal(isFallbackAppBuildId("local-2026-04-21T22:51:15.456Z"), true);
+  assert.equal(isFallbackAppBuildId("runtime-build-123"), false);
+  assert.equal(shouldReloadForBuildMismatch("local-2026-04-21T22:51:15.456Z", "runtime-build-123"), false);
+  assert.equal(shouldReloadForBuildMismatch("runtime-build-123", "local-2026-04-21T22:51:15.456Z"), false);
 });
 
 test("runtime capabilities expose the current app build id for authenticated clients", async () => {

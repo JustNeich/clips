@@ -239,6 +239,7 @@ const STAGE2_ELAPSED_TICK_MS = 250;
 const STAGE2_ELAPSED_TICK_HIDDEN_MS = 1_000;
 const STAGE2_POLL_RETRY_VISIBLE_MS = 1_500;
 const STAGE2_POLL_RETRY_HIDDEN_MS = 4_000;
+const BUILD_RELOAD_ATTEMPT_STORAGE_KEY = "clips-app-build-reload-attempt";
 let buildFreshnessCheckPromise: Promise<boolean> | null = null;
 
 function isPageHidden(): boolean {
@@ -257,6 +258,32 @@ function readClientAppBuildId(): string | null {
   return content || null;
 }
 
+function readBuildReloadAttempt(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return window.sessionStorage.getItem(BUILD_RELOAD_ATTEMPT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeBuildReloadAttempt(value: string | null): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    if (value) {
+      window.sessionStorage.setItem(BUILD_RELOAD_ATTEMPT_STORAGE_KEY, value);
+    } else {
+      window.sessionStorage.removeItem(BUILD_RELOAD_ATTEMPT_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage failures; the worst case is falling back to the previous reload behavior.
+  }
+}
+
 async function reloadIfAppBuildChanged(): Promise<boolean> {
   if (typeof window === "undefined") {
     return false;
@@ -273,8 +300,14 @@ async function reloadIfAppBuildChanged(): Promise<boolean> {
   }
   const body = (await response.json()) as Pick<RuntimeCapabilitiesResponse, "buildId">;
   if (!shouldReloadForBuildMismatch(clientBuildId, body.buildId)) {
+    writeBuildReloadAttempt(null);
     return false;
   }
+  const mismatchKey = `${clientBuildId}=>${body.buildId}`;
+  if (readBuildReloadAttempt() === mismatchKey) {
+    return false;
+  }
+  writeBuildReloadAttempt(mismatchKey);
   window.location.reload();
   return true;
 }
