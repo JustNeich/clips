@@ -14,6 +14,7 @@ import {
 } from "../../lib/stage3-worker-runtime-sync";
 import { resolveStage3WorkerRestartLaunch } from "../../lib/stage3-worker-restart";
 import { ensureRspackRuntimeAvailable } from "../../lib/stage3-rspack-runtime";
+import { completeRemoteStage3Artifact } from "../../lib/stage3-worker-completion";
 
 declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
 
@@ -542,10 +543,6 @@ async function completeRemoteJob(
     return body?.error || `Failed to complete remote Stage 3 job (status ${response.status}).`;
   }
 
-  function shouldRetryAlternateArtifactUpload(status: number | null): boolean {
-    return status !== 401 && status !== 403 && status !== 404 && status !== 409;
-  }
-
   if (!result.artifactPath) {
     const response = await fetch(url, {
       method: "POST",
@@ -566,52 +563,18 @@ async function completeRemoteJob(
   const bytes = await fs.readFile(result.artifactPath);
   const artifactName = result.artifactName || `${job.id}.mp4`;
   const artifactMimeType = result.artifactMimeType || "video/mp4";
-
-  try {
-    const form = new FormData();
-    if (result.resultJson) {
-      form.set("resultJson", result.resultJson);
+  await completeRemoteStage3Artifact({
+    url,
+    authHeaders: authHeaders(config),
+    jobId: job.id,
+    artifactBytes: bytes,
+    artifactName,
+    artifactMimeType,
+    resultJson: result.resultJson,
+    warn: (message) => {
+      console.warn(message);
     }
-    form.set("artifact", new Blob([bytes], { type: artifactMimeType }), artifactName);
-
-    const multipartResponse = await fetch(url, {
-      method: "POST",
-      headers: authHeaders(config),
-      body: form
-    });
-    if (multipartResponse.ok) {
-      return;
-    }
-
-    const multipartError = await readCompletionError(multipartResponse);
-    if (!shouldRetryAlternateArtifactUpload(multipartResponse.status)) {
-      throw new Error(multipartError);
-    }
-    console.warn(
-      `Multipart Stage 3 completion failed for ${job.id} (${multipartResponse.status}); retrying with raw artifact upload.`
-    );
-  } catch (error) {
-    const fallbackResponse = await fetch(url, {
-      method: "POST",
-      headers: {
-        ...authHeaders(config),
-        "Content-Type": artifactMimeType,
-        "x-stage3-artifact-name": encodeURIComponent(artifactName),
-        "x-stage3-artifact-mime-type": encodeURIComponent(artifactMimeType),
-        ...(result.resultJson
-          ? {
-              "x-stage3-result-json": Buffer.from(result.resultJson, "utf-8").toString("base64url")
-            }
-          : {})
-      },
-      body: bytes
-    });
-    if (!fallbackResponse.ok) {
-      const fallbackError = await readCompletionError(fallbackResponse);
-      const primaryError = error instanceof Error ? error.message : String(error);
-      throw new Error(`${primaryError}; raw upload retry failed: ${fallbackError}`);
-    }
-  }
+  });
 }
 
 async function failRemoteJob(
