@@ -403,8 +403,8 @@ Publishing / YouTube queue:
 - `CHANNEL_STYLE_DISCOVERY_MAX_CONCURRENT_RUNS` — параллелизм bootstrap style discovery/onboarding run-ов. Для production после scale-up обычно достаточно `4`.
 - `HOSTED_SUBPROCESS_MAX_CONCURRENT` — общий лимит параллельных hosted subprocess-heavy задач (`codex`, `yt-dlp`, часть media/runtime helper paths). После апгрейда плана разумный starting point: `4`.
 - `REMOTION_RENDER_TIMEOUT_MS` — таймаут Stage 3 рендера в миллисекундах.
-- `STAGE3_DEFAULT_EXECUTION_TARGET` — `local|host`, seed/fallback для новых workspace и пустых значений в БД. Production starting point обычно `local`.
-- `STAGE3_ALLOW_HOST_EXECUTION` — capability gate для host-heavy Stage 3 execution. Если `0`, owner не сможет выбрать `Хостинг` как workspace default, а уже сохранённый `host` будет честно fallback-иться в `local`.
+- `STAGE3_DEFAULT_EXECUTION_TARGET` — `local|host`, seed/fallback для новых workspace и пустых значений в БД. Production starting point обычно `local`, даже если owner может вручную переключать workspace на `Хостинг`.
+- `STAGE3_ALLOW_HOST_EXECUTION` — capability gate для host-heavy Stage 3 execution. Если `1`, owner увидит в `Channel Manager -> Общие настройки -> Рендер` оба режима: `Локальный executor` и `Хостинг`. Если `0`, owner не сможет выбрать `Хостинг` как workspace default, а уже сохранённый `host` будет честно fallback-иться в `local`.
 - `STAGE3_HOST_MAX_CONCURRENT_JOBS` — сколько host Stage 3 job-ов можно выполнять одновременно, если аварийный host execution всё же включён. Безопасный production starting point после scale-up: `4`.
 - `STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT` — shared slot gate для hosted `preview` / `render` / `editing-proxy` / `source-download`. После апгрейда плана разумный starting point: `4`.
 - `STAGE3_WORKER_PAIRING_TTL_SEC` — TTL pairing token в секундах.

@@ -28,12 +28,12 @@
 
 ## Что должен сделать владелец проекта
 
-### 1. Переключить production на local execution
+### 1. Включить workspace-level выбор execution mode
 
 Проверьте, что в Render заданы:
 
 - `STAGE3_DEFAULT_EXECUTION_TARGET=local`
-- `STAGE3_ALLOW_HOST_EXECUTION=0`
+- `STAGE3_ALLOW_HOST_EXECUTION=1`
 - `STAGE2_MAX_CONCURRENT_RUNS=4`
 - `SOURCE_MAX_CONCURRENT_JOBS=4`
 - `CHANNEL_STYLE_DISCOVERY_MAX_CONCURRENT_RUNS=4`
@@ -52,7 +52,8 @@
 
 1. Открыть `Каналы` -> `Общие настройки`.
 2. Перейти во вкладку `Рендер`.
-3. Убедиться, что `Stage 3 execution mode` стоит на `Локальный executor`.
+3. Убедиться, что в `Stage 3 execution mode` доступны оба режима: `Локальный executor` и `Хостинг`.
+4. Оставить `Локальный executor` как default или переключить workspace на `Хостинг`, если тяжёлые Stage 3 задачи должны идти на мощность Render.
 
 ### 2. Задеплоить новую версию хоста
 
