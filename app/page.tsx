@@ -2901,14 +2901,15 @@ export default function HomePage() {
     chat: ChatThread;
     job: SourceJobDetail;
   }> => {
-    const formData = new FormData();
-    formData.set("channelId", input.channelId);
-    formData.set("autoRunStage2", input.autoRunStage2 ? "1" : "0");
-    formData.append("files", input.file, input.file.name);
-
     const response = await fetch("/api/pipeline/source-upload", {
       method: "POST",
-      body: formData
+      headers: {
+        "Content-Type": input.file.type?.trim() || "video/mp4",
+        "X-Channel-Id": input.channelId,
+        "X-File-Name": encodeURIComponent(input.file.name || "upload.mp4"),
+        "X-Auto-Run-Stage2": input.autoRunStage2 ? "1" : "0"
+      },
+      body: input.file
     });
 
     if (!response.ok) {

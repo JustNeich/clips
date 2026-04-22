@@ -53,6 +53,7 @@ type WorkerRuntimeManifest = {
   runtimeVersion?: string;
   builtAt?: string;
   bundleFile?: string;
+  runtimeSourcesArchiveFile?: string;
   remotionFiles?: string[];
   libFiles?: string[];
   designFiles?: string[];
@@ -238,6 +239,25 @@ async function downloadBinaryFile(url: string, destination: string): Promise<voi
   await fs.writeFile(destination, bytes);
 }
 
+function resolveTarCommand(): string {
+  return process.platform === "win32" ? "tar.exe" : "tar";
+}
+
+async function replaceExtractedWorkerRuntimeSources(input: {
+  archivePath: string;
+  workerRoot: string;
+}): Promise<void> {
+  const targets = ["remotion", "lib", "design", "public"];
+  for (const relative of targets) {
+    await fs.rm(path.join(input.workerRoot, relative), {
+      recursive: true,
+      force: true
+    }).catch(() => undefined);
+  }
+  await fs.mkdir(input.workerRoot, { recursive: true });
+  await execFileAsync(resolveTarCommand(), ["-xzf", input.archivePath, "-C", input.workerRoot]);
+}
+
 async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boolean; runtimeVersion: string | null }> {
   const origin = serverOrigin.replace(/\/+$/, "");
   const remoteManifestResponse = await fetch(`${origin}/stage3-worker/manifest.json`, { cache: "no-store" });
@@ -265,7 +285,13 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   const designDir = path.join(workerPaths.root, "design");
   const publicDir = path.join(workerPaths.root, "public");
   const binDir = path.join(workerPaths.root, "bin");
+  const runtimeSourcesArchivePath = path.join(workerPaths.root, "runtime-sources.tar.gz");
   const bundleFile = remoteManifest.bundleFile?.trim() || DEFAULT_BUNDLE_FILE;
+  const runtimeSourcesArchiveFile =
+    typeof remoteManifest.runtimeSourcesArchiveFile === "string" &&
+    remoteManifest.runtimeSourcesArchiveFile.trim()
+      ? remoteManifest.runtimeSourcesArchiveFile.trim()
+      : "";
   const remotionFiles = sanitizeRelativeFileList(remoteManifest.remotionFiles, DEFAULT_REMOTION_FILES);
   const libFiles = sanitizeRelativeFileList(remoteManifest.libFiles, DEFAULT_LIB_FILES);
   const designFiles = sanitizeRelativeFileList(remoteManifest.designFiles, DEFAULT_DESIGN_FILES);
@@ -293,29 +319,50 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   await downloadBinaryFile(`${origin}/stage3-worker/package.json`, path.join(workerPaths.root, "package.json"));
   await downloadBinaryFile(`${origin}/stage3-worker/manifest.json`, path.join(workerPaths.root, "manifest.json"));
 
-  for (const fileName of remotionFiles) {
-    await downloadBinaryFile(
-      `${origin}/stage3-worker/remotion/${fileName}`,
-      path.join(remotionDir, fileName)
-    );
+  let runtimeSourcesHydrated = false;
+  if (runtimeSourcesArchiveFile) {
+    try {
+      await downloadBinaryFile(
+        `${origin}/stage3-worker/${runtimeSourcesArchiveFile}`,
+        runtimeSourcesArchivePath
+      );
+      await replaceExtractedWorkerRuntimeSources({
+        archivePath: runtimeSourcesArchivePath,
+        workerRoot: workerPaths.root
+      });
+      runtimeSourcesHydrated = true;
+    } catch {
+      runtimeSourcesHydrated = false;
+    } finally {
+      await fs.rm(runtimeSourcesArchivePath, { force: true }).catch(() => undefined);
+    }
   }
-  for (const fileName of libFiles) {
-    await downloadBinaryFile(
-      `${origin}/stage3-worker/lib/${fileName}`,
-      path.join(libDir, fileName)
-    );
-  }
-  for (const fileName of designFiles) {
-    await downloadBinaryFile(
-      `${origin}/stage3-worker/design/${fileName}`,
-      path.join(designDir, fileName)
-    );
-  }
-  for (const fileName of publicFiles) {
-    await downloadBinaryFile(
-      `${origin}/stage3-worker/public/${fileName}`,
-      path.join(publicDir, fileName)
-    );
+
+  if (!runtimeSourcesHydrated) {
+    for (const fileName of remotionFiles) {
+      await downloadBinaryFile(
+        `${origin}/stage3-worker/remotion/${fileName}`,
+        path.join(remotionDir, fileName)
+      );
+    }
+    for (const fileName of libFiles) {
+      await downloadBinaryFile(
+        `${origin}/stage3-worker/lib/${fileName}`,
+        path.join(libDir, fileName)
+      );
+    }
+    for (const fileName of designFiles) {
+      await downloadBinaryFile(
+        `${origin}/stage3-worker/design/${fileName}`,
+        path.join(designDir, fileName)
+      );
+    }
+    for (const fileName of publicFiles) {
+      await downloadBinaryFile(
+        `${origin}/stage3-worker/public/${fileName}`,
+        path.join(publicDir, fileName)
+      );
+    }
   }
 
   await fs.chmod(path.join(binDir, DEFAULT_BUNDLE_FILE), 0o755).catch(() => undefined);

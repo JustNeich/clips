@@ -52,6 +52,7 @@ WRAPPER_PATH="${BIN_DIR}/clips-stage3-worker"
 PACKAGE_PATH="${INSTALL_ROOT}/package.json"
 MANIFEST_PATH="${INSTALL_ROOT}/manifest.json"
 RUNTIME_ARCHIVE_PATH="${INSTALL_ROOT}/runtime-deps.tar.gz"
+RUNTIME_SOURCES_ARCHIVE_PATH="${INSTALL_ROOT}/runtime-sources.tar.gz"
 
 mkdir -p "$BIN_DIR"
 mkdir -p "$REMOTION_DIR"
@@ -64,11 +65,48 @@ log "Downloading worker package.json"
 curl -fsSL "${SERVER%/}/stage3-worker/package.json" -o "$PACKAGE_PATH"
 log "Downloading worker manifest"
 curl -fsSL "${SERVER%/}/stage3-worker/manifest.json" -o "$MANIFEST_PATH"
-while IFS= read -r FILE; do
-  [[ -n "$FILE" ]] || continue
-  mkdir -p "$(dirname "${REMOTION_DIR}/${FILE}")"
-  curl -fsSL "${SERVER%/}/stage3-worker/remotion/${FILE}" -o "${REMOTION_DIR}/${FILE}"
-done < <(
+
+RUNTIME_SOURCES_ARCHIVE_FILE="$(
+  node -e '
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const archiveFile =
+  typeof manifest.runtimeSourcesArchiveFile === "string" && manifest.runtimeSourcesArchiveFile.trim()
+    ? manifest.runtimeSourcesArchiveFile.trim()
+    : "";
+process.stdout.write(archiveFile);
+' "$MANIFEST_PATH"
+)"
+
+runtime_sources_ready="false"
+if [[ -n "$RUNTIME_SOURCES_ARCHIVE_FILE" ]]; then
+  if command -v tar >/dev/null 2>&1; then
+    log "Downloading bundled runtime sources"
+    if curl -fsSL "${SERVER%/}/stage3-worker/${RUNTIME_SOURCES_ARCHIVE_FILE}" -o "$RUNTIME_SOURCES_ARCHIVE_PATH"; then
+      rm -rf "$REMOTION_DIR" "$LIB_DIR" "$DESIGN_DIR" "$PUBLIC_DIR"
+      mkdir -p "$REMOTION_DIR" "$LIB_DIR" "$DESIGN_DIR" "$PUBLIC_DIR"
+      log "Unpacking bundled runtime sources"
+      if tar -xzf "$RUNTIME_SOURCES_ARCHIVE_PATH" -C "$INSTALL_ROOT"; then
+        runtime_sources_ready="true"
+        log "Bundled runtime sources unpacked locally."
+      else
+        log "Bundled runtime sources extraction failed, falling back to per-file downloads."
+      fi
+    else
+      log "Bundled runtime sources download failed, falling back to per-file downloads."
+    fi
+  else
+    log "tar is unavailable on this machine, falling back to per-file runtime downloads."
+  fi
+  rm -f "$RUNTIME_SOURCES_ARCHIVE_PATH"
+fi
+
+if [[ "$runtime_sources_ready" != "true" ]]; then
+  while IFS= read -r FILE; do
+    [[ -n "$FILE" ]] || continue
+    mkdir -p "$(dirname "${REMOTION_DIR}/${FILE}")"
+    curl -fsSL "${SERVER%/}/stage3-worker/remotion/${FILE}" -o "${REMOTION_DIR}/${FILE}"
+  done < <(
   node -e '
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -77,12 +115,12 @@ for (const file of files) {
   if (typeof file === "string" && file.trim()) console.log(file.trim());
 }
 ' "$MANIFEST_PATH"
-)
-while IFS= read -r FILE; do
-  [[ -n "$FILE" ]] || continue
-  mkdir -p "$(dirname "${LIB_DIR}/${FILE}")"
-  curl -fsSL "${SERVER%/}/stage3-worker/lib/${FILE}" -o "${LIB_DIR}/${FILE}"
-done < <(
+  )
+  while IFS= read -r FILE; do
+    [[ -n "$FILE" ]] || continue
+    mkdir -p "$(dirname "${LIB_DIR}/${FILE}")"
+    curl -fsSL "${SERVER%/}/stage3-worker/lib/${FILE}" -o "${LIB_DIR}/${FILE}"
+  done < <(
   node -e '
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -110,12 +148,12 @@ for (const file of files) {
   if (typeof file === "string" && file.trim()) console.log(file.trim());
 }
 ' "$MANIFEST_PATH"
-)
-while IFS= read -r FILE; do
-  [[ -n "$FILE" ]] || continue
-  mkdir -p "$(dirname "${DESIGN_DIR}/${FILE}")"
-  curl -fsSL "${SERVER%/}/stage3-worker/design/${FILE}" -o "${DESIGN_DIR}/${FILE}"
-done < <(
+  )
+  while IFS= read -r FILE; do
+    [[ -n "$FILE" ]] || continue
+    mkdir -p "$(dirname "${DESIGN_DIR}/${FILE}")"
+    curl -fsSL "${SERVER%/}/stage3-worker/design/${FILE}" -o "${DESIGN_DIR}/${FILE}"
+  done < <(
   node -e '
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -133,12 +171,12 @@ for (const file of files) {
   if (typeof file === "string" && file.trim()) console.log(file.trim());
 }
 ' "$MANIFEST_PATH"
-)
-while IFS= read -r FILE; do
-  [[ -n "$FILE" ]] || continue
-  mkdir -p "$(dirname "${PUBLIC_DIR}/${FILE}")"
-  curl -fsSL "${SERVER%/}/stage3-worker/public/${FILE}" -o "${PUBLIC_DIR}/${FILE}"
-done < <(
+  )
+  while IFS= read -r FILE; do
+    [[ -n "$FILE" ]] || continue
+    mkdir -p "$(dirname "${PUBLIC_DIR}/${FILE}")"
+    curl -fsSL "${SERVER%/}/stage3-worker/public/${FILE}" -o "${PUBLIC_DIR}/${FILE}"
+  done < <(
   node -e '
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -152,7 +190,8 @@ for (const file of files) {
   if (typeof file === "string" && file.trim()) console.log(file.trim());
 }
 ' "$MANIFEST_PATH"
-)
+  )
+fi
 chmod +x "$BUNDLE_PATH"
 
 RUNTIME_ARCHIVE_FILE="$(

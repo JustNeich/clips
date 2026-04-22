@@ -82,6 +82,7 @@ function Install-ClipsStage3Worker {
     $packagePath = Join-Path $installRoot "package.json"
     $manifestPath = Join-Path $installRoot "manifest.json"
     $runtimeArchivePath = Join-Path $installRoot "runtime-deps.tar.gz"
+    $runtimeSourcesArchivePath = Join-Path $installRoot "runtime-sources.tar.gz"
 
     New-Item -ItemType Directory -Path $binDir -Force | Out-Null
     New-Item -ItemType Directory -Path $remotionDir -Force | Out-Null
@@ -153,33 +154,74 @@ function Install-ClipsStage3Worker {
       } else {
         ""
       }
+    $runtimeSourcesArchiveRelativePath =
+      if ($manifest.runtimeSourcesArchiveFile -is [string]) {
+        $manifest.runtimeSourcesArchiveFile.Trim()
+      } else {
+        ""
+      }
 
-    Write-ClipsStage3BootstrapLog "Downloading remotion files: $($remotionFiles.Count)"
-    foreach ($file in $remotionFiles) {
-      $destination = Join-Path $remotionDir $file
-      New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-      Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/remotion/$file" -OutFile $destination -Label "remotion/$file"
+    $runtimeSourcesReady = $false
+    if ($runtimeSourcesArchiveRelativePath) {
+      try {
+        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/$runtimeSourcesArchiveRelativePath" -OutFile $runtimeSourcesArchivePath -Label "bundled runtime sources"
+        Remove-Item $remotionDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $libDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $designDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $publicDir -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $remotionDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $libDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $designDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $publicDir -Force | Out-Null
+        Write-ClipsStage3BootstrapLog "Unpacking bundled runtime sources"
+        Expand-ClipsStage3RuntimeArchive -ArchivePath $runtimeSourcesArchivePath -Destination $installRoot
+        $runtimeSourcesReady =
+          (Test-Path $remotionDir) -and
+          (Test-Path $libDir) -and
+          (Test-Path $designDir) -and
+          (Test-Path $publicDir)
+        if (-not $runtimeSourcesReady) {
+          throw "Bundled runtime sources archive did not recreate the expected folders."
+        }
+        Write-ClipsStage3BootstrapLog "Bundled runtime sources unpacked locally."
+      } catch {
+        $message = if ($_.Exception) { $_.Exception.Message } else { "$_" }
+        Write-ClipsStage3BootstrapLog "Bundled runtime sources failed, falling back to per-file downloads: $message" "WARN"
+      } finally {
+        if (Test-Path $runtimeSourcesArchivePath) {
+          Remove-Item $runtimeSourcesArchivePath -Force -ErrorAction SilentlyContinue
+        }
+      }
     }
 
-    Write-ClipsStage3BootstrapLog "Downloading lib files: $($libFiles.Count)"
-    foreach ($file in $libFiles) {
-      $destination = Join-Path $libDir $file
-      New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-      Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/lib/$file" -OutFile $destination -Label "lib/$file"
-    }
+    if (-not $runtimeSourcesReady) {
+      Write-ClipsStage3BootstrapLog "Downloading remotion files: $($remotionFiles.Count)"
+      foreach ($file in $remotionFiles) {
+        $destination = Join-Path $remotionDir $file
+        New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/remotion/$file" -OutFile $destination -Label "remotion/$file"
+      }
 
-    Write-ClipsStage3BootstrapLog "Downloading design files: $($designFiles.Count)"
-    foreach ($file in $designFiles) {
-      $destination = Join-Path $designDir $file
-      New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-      Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/design/$file" -OutFile $destination -Label "design/$file"
-    }
+      Write-ClipsStage3BootstrapLog "Downloading lib files: $($libFiles.Count)"
+      foreach ($file in $libFiles) {
+        $destination = Join-Path $libDir $file
+        New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/lib/$file" -OutFile $destination -Label "lib/$file"
+      }
 
-    Write-ClipsStage3BootstrapLog "Downloading public assets: $($publicFiles.Count)"
-    foreach ($file in $publicFiles) {
-      $destination = Join-Path $publicDir $file
-      New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
-      Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/public/$file" -OutFile $destination -Label "public/$file"
+      Write-ClipsStage3BootstrapLog "Downloading design files: $($designFiles.Count)"
+      foreach ($file in $designFiles) {
+        $destination = Join-Path $designDir $file
+        New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/design/$file" -OutFile $destination -Label "design/$file"
+      }
+
+      Write-ClipsStage3BootstrapLog "Downloading public assets: $($publicFiles.Count)"
+      foreach ($file in $publicFiles) {
+        $destination = Join-Path $publicDir $file
+        New-Item -ItemType Directory -Path (Split-Path $destination -Parent) -Force | Out-Null
+        Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/public/$file" -OutFile $destination -Label "public/$file"
+      }
     }
 
     @"

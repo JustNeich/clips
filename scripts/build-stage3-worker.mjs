@@ -14,6 +14,7 @@ const bundlePath = path.join(publicDir, "clips-stage3-worker.cjs");
 const manifestPath = path.join(publicDir, "manifest.json");
 const workerPackagePath = path.join(publicDir, "package.json");
 const runtimeDependenciesArchivePath = path.join(publicDir, "runtime-deps.tar.gz");
+const runtimeSourcesArchivePath = path.join(publicDir, "runtime-sources.tar.gz");
 const remotionPublicDir = path.join(publicDir, "remotion");
 const libPublicDir = path.join(publicDir, "lib");
 const designPublicDir = path.join(publicDir, "design");
@@ -167,6 +168,13 @@ async function buildWorkerRuntimeArchive(workerPackageJson) {
   }
 }
 
+async function buildWorkerSourcesArchive() {
+  await fs.rm(runtimeSourcesArchivePath, { force: true }).catch(() => undefined);
+  runCommand("tar", ["-czf", runtimeSourcesArchivePath, "remotion", "lib", "design", "public"], {
+    cwd: publicDir
+  });
+}
+
 async function syncWorkerRuntimeSources() {
   await fs.rm(remotionPublicDir, { recursive: true, force: true }).catch(() => undefined);
   await fs.rm(libPublicDir, { recursive: true, force: true }).catch(() => undefined);
@@ -261,6 +269,7 @@ async function main() {
         builtAt: new Date().toISOString(),
         bundleFile: path.basename(bundlePath),
         runtimeDependenciesArchiveFile: path.basename(runtimeDependenciesArchivePath),
+        runtimeSourcesArchiveFile: path.basename(runtimeSourcesArchivePath),
         remotionFiles,
         libFiles: WORKER_LIB_RUNTIME_FILES,
         designFiles: runtimeSources.designFiles,
@@ -277,6 +286,7 @@ async function main() {
     "utf-8"
   );
   await buildWorkerRuntimeArchive(workerPackageJson);
+  await buildWorkerSourcesArchive();
 }
 
 main().catch((error) => {
