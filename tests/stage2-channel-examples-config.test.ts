@@ -2,11 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyChannelStage2PromptSelection,
   collectChannelStage2Examples,
+  DEFAULT_STAGE2_EXAMPLES_CONFIG,
   normalizeStage2ExamplesConfig,
-  parseStage2ExamplesJson
+  parseStage2ExamplesJson,
+  resolveStage2ChannelPromptSelection,
+  resolveStage2ExamplesCorpus
 } from "../lib/stage2-channel-config";
-import { STAGE2_REFERENCE_ONE_SHOT_PROMPT } from "../lib/stage2-prompt-specs";
+import {
+  STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT,
+  STAGE2_REFERENCE_ONE_SHOT_PROMPT
+} from "../lib/stage2-prompt-specs";
+import { normalizeStage2PromptConfig } from "../lib/stage2-pipeline";
 
 const OWNER = {
   channelId: "channel-mobile-capture",
@@ -102,4 +110,81 @@ test("channel examples normalization is idempotent when raw JSON is stored with 
   assert.equal(firstPass.customExamples.length, 1);
   assert.equal(secondPass.customExamples.length, 1);
   assert.deepEqual(secondPass.customExamples, firstPass.customExamples);
+});
+
+test("channel prompt selection defaults to the system prompt and can switch to animals preset", () => {
+  const defaultSelection = resolveStage2ChannelPromptSelection({
+    stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+    workspacePromptConfig: normalizeStage2PromptConfig({})
+  });
+  const animalsSelection = resolveStage2ChannelPromptSelection({
+    stage2ExamplesConfig: normalizeStage2ExamplesConfig(
+      {
+        systemPromptPresetId: "animals_system_prompt"
+      },
+      OWNER
+    ),
+    workspacePromptConfig: normalizeStage2PromptConfig({})
+  });
+
+  assert.equal(defaultSelection.presetId, "system_prompt");
+  assert.equal(defaultSelection.promptText, STAGE2_REFERENCE_ONE_SHOT_PROMPT);
+  assert.equal(animalsSelection.presetId, "animals_system_prompt");
+  assert.equal(animalsSelection.promptText, STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT);
+});
+
+test("channel custom prompt overrides workspace one-shot prompt without touching other stages", () => {
+  const { promptConfig, promptConfigSource } = applyChannelStage2PromptSelection({
+    workspacePromptConfig: normalizeStage2PromptConfig({
+      stages: {
+        analyzer: {
+          prompt: "Analyzer override",
+          reasoningEffort: "high"
+        }
+      }
+    }),
+    stage2ExamplesConfig: normalizeStage2ExamplesConfig(
+      {
+        promptMode: "custom",
+        customSystemPrompt: "CUSTOM CHANNEL PROMPT"
+      },
+      OWNER
+    )
+  });
+
+  assert.equal(promptConfigSource, "channel_override");
+  assert.equal(promptConfig.stages.oneShotReference.prompt, "CUSTOM CHANNEL PROMPT");
+  assert.equal(promptConfig.stages.analyzer.prompt, "Analyzer override");
+});
+
+test("system examples preset can switch from workspace default corpus to animals corpus", () => {
+  const workspaceResolved = resolveStage2ExamplesCorpus({
+    channel: {
+      id: OWNER.channelId,
+      name: OWNER.channelName,
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG
+    },
+    workspaceStage2ExamplesCorpusJson: JSON.stringify([{ title: "workspace", top: "A", bottom: "B" }])
+  });
+  const animalsResolved = resolveStage2ExamplesCorpus({
+    channel: {
+      id: OWNER.channelId,
+      name: OWNER.channelName,
+      stage2ExamplesConfig: normalizeStage2ExamplesConfig(
+        {
+          systemExamplesPresetId: "animals_examples"
+        },
+        OWNER
+      )
+    },
+    workspaceStage2ExamplesCorpusJson: JSON.stringify([{ title: "workspace", top: "A", bottom: "B" }])
+  });
+
+  assert.equal(workspaceResolved.source, "workspace_default");
+  assert.equal(workspaceResolved.presetId, "system_examples");
+  assert.equal(workspaceResolved.corpus.length, 1);
+  assert.equal(animalsResolved.source, "system_preset");
+  assert.equal(animalsResolved.presetId, "animals_examples");
+  assert.equal(animalsResolved.corpus.length, 50);
+  assert.match(animalsResolved.rawJson ?? "", /PrimateShorts/);
 });

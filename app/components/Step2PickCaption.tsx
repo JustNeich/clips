@@ -331,8 +331,14 @@ function formatStageProgressStatusLabel(input: {
   return input.progressStatus === "queued" ? "В очереди" : "Ожидает запуска";
 }
 
-function formatExamplesSourceLabel(value: "workspace_default" | "channel_custom"): string {
-  return value === "channel_custom" ? "собственный корпус канала" : "общий корпус";
+function formatExamplesSourceLabel(value: DiagnosticsView["examples"]["source"]): string {
+  if (value === "channel_custom") {
+    return "собственный корпус канала";
+  }
+  if (value === "system_preset") {
+    return "системный preset";
+  }
+  return "общий корпус";
 }
 
 function formatRetrievalConfidenceLabel(value: DiagnosticsView["examples"]["retrievalConfidence"]): string {

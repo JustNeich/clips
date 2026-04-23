@@ -1,7 +1,10 @@
 import type {
   Stage2CorpusExample,
   Stage2ExamplesCorpusSource,
-  Stage2HardConstraints
+  Stage2HardConstraints,
+  Stage2PromptSelectionMode,
+  Stage2SystemExamplesPresetId,
+  Stage2SystemPromptPresetId
 } from "../stage2-channel-config";
 import type {
   Stage2EditorialMemorySummary,
@@ -324,6 +327,10 @@ export type Stage2RuntimeChannelConfig = {
   workerProfile?: ResolvedStage2WorkerProfile;
   hardConstraints: Stage2HardConstraints;
   examplesSource: Stage2ExamplesCorpusSource;
+  promptMode?: Stage2PromptSelectionMode;
+  systemPromptPresetId?: Stage2SystemPromptPresetId;
+  customSystemPrompt?: string;
+  systemExamplesPresetId?: Stage2SystemExamplesPresetId | null;
   customExamplesJson?: string;
   customExamplesText?: string;
   styleProfile?: Stage2StyleProfile;

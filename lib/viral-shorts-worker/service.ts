@@ -59,6 +59,8 @@ import {
   scoreTextMatch
 } from "./analysis";
 import {
+  applyChannelStage2PromptSelection,
+  normalizeStage2ExamplesConfig,
   resolveStage2ExamplesCorpus,
   Stage2CorpusExample,
   Stage2ExamplesConfig,
@@ -103,7 +105,6 @@ import {
 import {
   STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT,
   STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT_VERSION,
-  STAGE2_REFERENCE_ONE_SHOT_PROMPT,
   STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION,
   Stage2PromptConfigStageId
 } from "../stage2-prompt-specs";
@@ -1802,7 +1803,6 @@ function buildStage2PipelineExecutionSnapshot(input: {
 
 const NATIVE_CAPTION_MINIMUM_VALID_FINALISTS = 2;
 const STAGE2_PROMPT_POLICY_VERSION = "native_defaults_authoritative_v2_platform_lines";
-const STAGE2_ONE_SHOT_PROMPT_COMPATIBILITY_FAMILY = "native_caption_v3_product_owned";
 
 function buildNativeCaptionExamplesAssessment(
   channelConfig: Stage2RuntimeChannelConfig
@@ -1884,18 +1884,24 @@ function isWeakReferenceOneShotSourceGrounding(videoContext: ViralShortsVideoCon
 }
 
 function resolveReferenceOneShotVariantConfig(
-  _channelConfig: Stage2RuntimeChannelConfig
+  channelConfig: Stage2RuntimeChannelConfig,
+  promptConfig: Stage2PromptConfig,
+  promptConfigSource: "workspace_override" | "channel_override"
 ): ReferenceOneShotVariantConfig {
+  const resolvedPrompt = resolveStage2PromptTemplate("oneShotReference", promptConfig, {
+    overrideSource: promptConfigSource
+  });
   return {
     label: "Reference one-shot stable",
-    promptText: STAGE2_REFERENCE_ONE_SHOT_PROMPT,
-    promptVersion: STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION,
+    promptText: resolvedPrompt.configuredPrompt,
+    promptVersion:
+      resolvedPrompt.promptCompatibilityVersion ?? STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION,
     pathVariant: "reference_one_shot_v2",
     stageSummary:
       "Product-owned stable one-shot baseline: returns the final 5 publishable options directly from video truth, weak comments hints, hard constraints, and user instruction.",
     stageFlags: [
       "one-shot baseline",
-      "product-owned prompt",
+      channelConfig.promptMode === "custom" ? "channel custom prompt" : "system prompt preset",
       "video-first minimal inputs",
       "weak comments hints only",
       "no style-learning steering",
@@ -7004,54 +7010,6 @@ function buildPromptStageDiagnostics(input: {
   };
 }
 
-function buildProductOwnedPromptStageDiagnostics(input: {
-  stageId: Stage2PipelineStageId;
-  promptText: string | null;
-  includePromptText?: boolean;
-  usesImages?: boolean;
-  model?: string | null;
-  reasoningEffort?: string | null;
-  summary: string;
-  serializedResultBytes?: number | null;
-  estimatedOutputTokens?: number | null;
-  persistedPayloadBytes?: number | null;
-  inputManifest?: Stage2DiagnosticsPromptStage["inputManifest"];
-  defaultPrompt: string;
-  promptCompatibilityVersion: string;
-}): Stage2DiagnosticsPromptStage {
-  const stageMeta = STAGE2_PIPELINE_STAGES.find((stage) => stage.id === input.stageId);
-  const promptHash = computeStage2PromptHash(input.defaultPrompt);
-  return {
-    stageId: input.stageId,
-    label: stageMeta?.shortLabel ?? input.stageId,
-    stageType: "llm_prompt",
-    defaultPrompt: input.defaultPrompt,
-    configuredPrompt: input.defaultPrompt,
-    promptSource: "default",
-    promptCompatibilityFamily: STAGE2_ONE_SHOT_PROMPT_COMPATIBILITY_FAMILY,
-    promptCompatibilityVersion: input.promptCompatibilityVersion,
-    defaultPromptHash: promptHash,
-    configuredPromptHash: promptHash,
-    overrideAccepted: false,
-    overrideRejectedReason: "product_owned_prompt_not_workspace_editable",
-    overrideCandidatePresent: false,
-    legacyFallbackBypassed: true,
-    model: input.model ?? null,
-    reasoningEffort: input.reasoningEffort ?? null,
-    isCustomPrompt: false,
-    promptText: input.includePromptText ? input.promptText : null,
-    promptTextAvailable: Boolean(input.promptText),
-    promptChars: input.promptText ? input.promptText.length : null,
-    estimatedInputTokens: estimateTokensFromChars(input.promptText ? input.promptText.length : null),
-    estimatedOutputTokens: input.estimatedOutputTokens ?? null,
-    serializedResultBytes: input.serializedResultBytes ?? null,
-    persistedPayloadBytes: input.persistedPayloadBytes ?? null,
-    usesImages: Boolean(input.usesImages),
-    summary: input.summary,
-    ...(input.inputManifest ? { inputManifest: input.inputManifest } : {})
-  };
-}
-
 function buildDiagnosticsExample(
   bucket: Stage2DiagnosticsExample["bucket"],
   example: Stage2CorpusExample,
@@ -7327,7 +7285,14 @@ function normalizeChannelConfig(input: {
   editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
   templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
   resolvedExamplesSource?: Stage2RuntimeChannelConfig["examplesSource"];
+  resolvedExamplesJson?: string | null;
+  resolvedExamplesText?: string | null;
+  resolvedSystemExamplesPresetId?: Stage2RuntimeChannelConfig["systemExamplesPresetId"];
 }): Stage2RuntimeChannelConfig {
+  const normalizedExamplesConfig = normalizeStage2ExamplesConfig(input.stage2ExamplesConfig, {
+    channelId: input.id,
+    channelName: input.name
+  });
   return {
     channelId: input.id,
     name: input.name,
@@ -7339,14 +7304,12 @@ function normalizeChannelConfig(input: {
     editorialMemory: createEmptyStage2EditorialMemorySummary(DEFAULT_STAGE2_STYLE_PROFILE),
     templateHighlightProfile: input.templateHighlightProfile ?? null,
     examplesSource: input.resolvedExamplesSource ?? "workspace_default",
-    customExamplesJson:
-      input.resolvedExamplesSource === "channel_custom"
-        ? input.stage2ExamplesConfig.customExamplesJson
-        : "",
-    customExamplesText:
-      input.resolvedExamplesSource === "channel_custom"
-        ? input.stage2ExamplesConfig.customExamplesText
-        : ""
+    promptMode: normalizedExamplesConfig.promptMode,
+    systemPromptPresetId: normalizedExamplesConfig.systemPromptPresetId,
+    customSystemPrompt: normalizedExamplesConfig.customSystemPrompt,
+    systemExamplesPresetId: input.resolvedSystemExamplesPresetId ?? null,
+    customExamplesJson: input.resolvedExamplesJson ?? "",
+    customExamplesText: input.resolvedExamplesText ?? ""
   };
 }
 
@@ -7360,6 +7323,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   executor: JsonStageExecutor;
   stageModels?: Partial<Stage2PipelineModelMap>;
   promptConfig: Stage2PromptConfig;
+  promptConfigSource: "workspace_override" | "channel_override";
   debugMode: Stage2DebugMode;
   onProgress?: (event: PipelineProgressEvent) => void | Promise<void>;
   reusedContextPacket: NativeCaptionContextPacket | null;
@@ -7370,7 +7334,11 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
 }): Promise<RunPipelineResult> {
   const warnings: StageWarning[] = [];
   const executedPromptStages: ExecutedPromptStageRecord[] = [];
-  const variantConfig = resolveReferenceOneShotVariantConfig(input.channelConfig);
+  const variantConfig = resolveReferenceOneShotVariantConfig(
+    input.channelConfig,
+    input.promptConfig,
+    input.promptConfigSource
+  );
   const promptInputManifests: Partial<
     Record<Stage2PipelineStageId, Stage2DiagnosticsPromptStage["inputManifest"]>
   > = {};
@@ -7922,19 +7890,18 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
 
   const rawPromptStages = executedPromptStages.map((stage) =>
     stage.stageId === "oneShotReference"
-      ? buildProductOwnedPromptStageDiagnostics({
+      ? buildPromptStageDiagnostics({
           stageId: stage.stageId,
+          promptConfig: input.promptConfig,
+          promptConfigSource: input.promptConfigSource,
           promptText: stage.promptText,
           includePromptText: true,
           usesImages: stage.usesImages,
           model: stage.model,
-          reasoningEffort: oneShotReasoningEffort,
           summary: stage.summary,
           serializedResultBytes: stage.serializedResultBytes,
           estimatedOutputTokens: stage.estimatedOutputTokens,
-          inputManifest: promptInputManifests[stage.stageId],
-          defaultPrompt: variantConfig.promptText,
-          promptCompatibilityVersion: variantConfig.promptVersion
+          inputManifest: promptInputManifests[stage.stageId]
         })
       : buildPromptStageDiagnostics({
           stageId: stage.stageId,
@@ -7951,19 +7918,18 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   );
   const summaryPromptStages = executedPromptStages.map((stage) =>
     stage.stageId === "oneShotReference"
-      ? buildProductOwnedPromptStageDiagnostics({
+      ? buildPromptStageDiagnostics({
           stageId: stage.stageId,
+          promptConfig: input.promptConfig,
+          promptConfigSource: input.promptConfigSource,
           promptText: stage.promptText,
           includePromptText: false,
           usesImages: stage.usesImages,
           model: stage.model,
-          reasoningEffort: oneShotReasoningEffort,
           summary: stage.summary,
           serializedResultBytes: stage.serializedResultBytes,
           estimatedOutputTokens: stage.estimatedOutputTokens,
-          inputManifest: promptInputManifests[stage.stageId],
-          defaultPrompt: variantConfig.promptText,
-          promptCompatibilityVersion: variantConfig.promptVersion
+          inputManifest: promptInputManifests[stage.stageId]
         })
       : buildPromptStageDiagnostics({
           stageId: stage.stageId,
@@ -8218,6 +8184,9 @@ export class ViralShortsWorkerService {
     source: Stage2RuntimeChannelConfig["examplesSource"];
     corpus: Stage2CorpusExample[];
     workspaceCorpusCount: number;
+    rawJson: string | null;
+    rawText: string | null;
+    presetId: Stage2RuntimeChannelConfig["systemExamplesPresetId"];
   } {
     return resolveStage2ExamplesCorpus(input);
   }
@@ -8238,7 +8207,7 @@ export class ViralShortsWorkerService {
     videoContext: ViralShortsVideoContext;
     promptConfig?: Stage2PromptConfig | null;
   }): PromptPacket {
-    const { corpus, source } = this.resolveExamplesCorpus({
+    const resolvedExamples = this.resolveExamplesCorpus({
       channel: {
         id: input.channel.id,
         name: input.channel.name,
@@ -8246,9 +8215,16 @@ export class ViralShortsWorkerService {
       },
       workspaceStage2ExamplesCorpusJson: input.workspaceStage2ExamplesCorpusJson
     });
+    const { promptConfig: effectivePromptConfig } = applyChannelStage2PromptSelection({
+      workspacePromptConfig: input.promptConfig,
+      stage2ExamplesConfig: input.channel.stage2ExamplesConfig
+    });
     const channelConfig = normalizeChannelConfig({
       ...input.channel,
-      resolvedExamplesSource: source
+      resolvedExamplesSource: resolvedExamples.source,
+      resolvedExamplesJson: resolvedExamples.rawJson,
+      resolvedExamplesText: resolvedExamples.rawText,
+      resolvedSystemExamplesPresetId: resolvedExamples.presetId
     });
     const heuristicOutput = heuristicAnalyzer({
       title: input.videoContext.title,
@@ -8263,7 +8239,7 @@ export class ViralShortsWorkerService {
         : applyNoCommentsTruthfulnessGuard(heuristicOutput, false);
     const queryText = buildCorpusQueryText(input.videoContext, analyzedHeuristicOutput);
     const selectorPool = buildSelectorExamplePool({
-      examples: corpus,
+      examples: resolvedExamples.corpus,
       queryText
     });
     const selectorOutput = applyExamplesAssessmentToSelectorOutput(
@@ -8284,7 +8260,7 @@ export class ViralShortsWorkerService {
       selectorOutput,
       examplesAssessment: selectorPool.assessment,
       availableExamples: selectorPool.selectorExamples,
-      promptConfig: normalizeStage2PromptConfig(input.promptConfig)
+      promptConfig: effectivePromptConfig
     });
   }
 
@@ -8404,9 +8380,19 @@ export class ViralShortsWorkerService {
     reusedContextPacket: NativeCaptionContextPacket | null;
   }): Promise<RunPipelineResult> {
     const warnings: StageWarning[] = [];
-    const promptConfig = normalizeStage2PromptConfig(input.promptConfig);
+    const { promptConfig, promptConfigSource } = applyChannelStage2PromptSelection({
+      workspacePromptConfig: input.promptConfig,
+      stage2ExamplesConfig: input.channel.stage2ExamplesConfig
+    });
     const debugMode: Stage2DebugMode = input.debugMode === "raw" ? "raw" : "summary";
-    const { corpus, source, workspaceCorpusCount } = this.resolveExamplesCorpus({
+    const {
+      corpus,
+      source,
+      workspaceCorpusCount,
+      rawJson: resolvedExamplesJson,
+      rawText: resolvedExamplesText,
+      presetId: resolvedSystemExamplesPresetId
+    } = this.resolveExamplesCorpus({
       channel: {
         id: input.channel.id,
         name: input.channel.name,
@@ -8416,10 +8402,17 @@ export class ViralShortsWorkerService {
     });
     const channelConfig = normalizeChannelConfig({
       ...input.channel,
-      resolvedExamplesSource: source
+      resolvedExamplesSource: source,
+      resolvedExamplesJson,
+      resolvedExamplesText,
+      resolvedSystemExamplesPresetId
     });
     const workerBuild = getStage2WorkerBuildInfo();
-    const pathVariant = resolveReferenceOneShotVariantConfig(channelConfig).pathVariant;
+    const pathVariant = resolveReferenceOneShotVariantConfig(
+      channelConfig,
+      promptConfig,
+      promptConfigSource
+    ).pathVariant;
     const pipelineExecution = buildStage2PipelineExecutionSnapshot({
       featureFlags: resolveStage2VNextFlagSnapshot(false),
       pipelineVersion: "native_caption_v3",
@@ -8496,6 +8489,7 @@ export class ViralShortsWorkerService {
       executor: input.executor,
       stageModels: input.stageModels,
       promptConfig,
+      promptConfigSource,
       debugMode,
       onProgress: input.onProgress,
       reusedContextPacket: input.reusedContextPacket,
@@ -10033,7 +10027,14 @@ export class ViralShortsWorkerService {
       }
     };
 
-    const { corpus: availableExamples, workspaceCorpusCount, source } = this.resolveExamplesCorpus({
+    const {
+      corpus: availableExamples,
+      workspaceCorpusCount,
+      source,
+      rawJson: resolvedExamplesJson,
+      rawText: resolvedExamplesText,
+      presetId: resolvedSystemExamplesPresetId
+    } = this.resolveExamplesCorpus({
       channel: {
         id: input.channel.id,
         name: input.channel.name,
@@ -10043,7 +10044,10 @@ export class ViralShortsWorkerService {
     });
     const channelConfig = normalizeChannelConfig({
       ...input.channel,
-      resolvedExamplesSource: source
+      resolvedExamplesSource: source,
+      resolvedExamplesJson,
+      resolvedExamplesText,
+      resolvedSystemExamplesPresetId
     });
 
     const heuristicOutput = heuristicAnalyzer({

@@ -19,8 +19,8 @@
   - avatar optional;
   - Stage 2 дальше автоматически наследует workspace baseline.
 - В Channel Manager -> Stage 2:
-  - workspace defaults редактируют hard constraints, caption provider, one-shot model и one-shot prompt;
-  - на уровне канала редактируются только hard constraints.
+  - workspace defaults редактируют hard constraints, caption provider, one-shot model и baseline `system_prompt`;
+  - на уровне канала редактируются hard constraints, режим prompt (`system` / `custom`), системный prompt preset (`system_prompt` / `animals_system_prompt`) и examples surface (`system_examples` / `animals_examples` / custom JSON / custom plain text).
 - В Stage 3 publication planner удаление ролика из очереди не сбрасывает пользователя со страницы рендера:
   - карточка исчезает после локальной синхронизации очереди;
   - UI показывает success toast об удалении.
@@ -159,6 +159,10 @@ npm run dev
   - Shared Codex integration хранит workspace-scoped device-auth session и `CODEX_HOME`;
   - Anthropic/OpenRouter integrations хранят owner-managed API key + model и включаются только для eligible caption stages;
   - Stage 2 runtime fail-closed не делает silent fallback с Anthropic/OpenRouter обратно на Codex, если внешний provider выбран, но не готов.
+- Channel-scoped Stage 2 selection живёт в `channels.stage2_examples_config_json`:
+  - `promptMode` + `systemPromptPresetId` + `customSystemPrompt`;
+  - `systemExamplesPresetId` + `customExamplesJson` + `customExamplesText`;
+  - channel-level `customExamples` остаются derived/cache-friendly representation поверх raw inputs.
 - Старый Stage 2 refresh CLI оставлен только как compatibility stub и больше не обновляет examples corpus:
 
 ```bash

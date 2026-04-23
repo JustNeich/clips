@@ -1,4 +1,15 @@
 import bundledExamplesJson from "../data/examples.json";
+import animalsExamplesJson from "../data/stage2-animals-examples.json";
+import {
+  STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT,
+  STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT_VERSION,
+  STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION
+} from "./stage2-prompt-specs";
+import {
+  getStage2DefaultPromptCompatibility,
+  normalizeStage2PromptConfig,
+  type Stage2PromptConfig
+} from "./stage2-pipeline";
 
 export type Stage2HardConstraints = {
   topLengthMin: number;
@@ -24,11 +35,22 @@ export type Stage2CorpusExample = {
   qualityScore: number | null;
 };
 
-export type Stage2ExamplesCorpusSource = "workspace_default" | "channel_custom";
+export type Stage2ExamplesCorpusSource =
+  | "workspace_default"
+  | "system_preset"
+  | "channel_custom";
+
+export type Stage2PromptSelectionMode = "system" | "custom";
+export type Stage2SystemPromptPresetId = "system_prompt" | "animals_system_prompt";
+export type Stage2SystemExamplesPresetId = "system_examples" | "animals_examples";
 
 export type Stage2ExamplesConfig = {
-  version: 1;
+  version: 1 | 2;
   useWorkspaceDefault: boolean;
+  promptMode?: Stage2PromptSelectionMode;
+  systemPromptPresetId?: Stage2SystemPromptPresetId;
+  customSystemPrompt?: string;
+  systemExamplesPresetId?: Stage2SystemExamplesPresetId;
   customExamplesJson?: string;
   customExamplesText?: string;
   customExamples: Stage2CorpusExample[];
@@ -44,12 +66,50 @@ export const DEFAULT_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
 };
 
 export const DEFAULT_STAGE2_EXAMPLES_CONFIG: Stage2ExamplesConfig = {
-  version: 1,
+  version: 2,
   useWorkspaceDefault: true,
+  promptMode: "system",
+  systemPromptPresetId: "system_prompt",
+  customSystemPrompt: "",
+  systemExamplesPresetId: "system_examples",
   customExamplesJson: "",
   customExamplesText: "",
   customExamples: []
 };
+
+const STAGE2_SYSTEM_PROMPT_PRESET_OPTIONS: Array<{
+  value: Stage2SystemPromptPresetId;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "system_prompt",
+    label: "system_prompt",
+    description: "Текущий workspace baseline one-shot prompt."
+  },
+  {
+    value: "animals_system_prompt",
+    label: "animals_system_prompt",
+    description: "Animal / nature stakes-driven preset."
+  }
+];
+
+const STAGE2_SYSTEM_EXAMPLES_PRESET_OPTIONS: Array<{
+  value: Stage2SystemExamplesPresetId;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "system_examples",
+    label: "system_examples",
+    description: "Текущий workspace corpus / bundled default examples."
+  },
+  {
+    value: "animals_examples",
+    label: "animals_examples",
+    description: "Animal / nature reference corpus."
+  }
+];
 const WORKSPACE_STAGE2_CORPUS_OWNER = {
   channelId: "workspace-default",
   channelName: "Workspace default"
@@ -59,9 +119,17 @@ function sanitizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function sanitizeExamplesTextBlock(value: unknown): string {
+function sanitizeBoundedText(value: unknown, limit: number): string {
   const text = typeof value === "string" ? value.trim() : "";
-  return text.length > 80_000 ? text.slice(0, 80_000) : text;
+  return text.length > limit ? text.slice(0, limit) : text;
+}
+
+function sanitizeExamplesTextBlock(value: unknown): string {
+  return sanitizeBoundedText(value, 80_000);
+}
+
+function sanitizePromptTextBlock(value: unknown): string {
+  return sanitizeBoundedText(value, 80_000);
 }
 
 const STAGE2_STRING_LIST_SPLIT_PATTERN = /(?:\r?\n|,|;)+/g;
@@ -260,6 +328,146 @@ export function getBundledStage2ExamplesSeedJson(): string {
   return JSON.stringify(getBundledStage2ExamplesSeed(), null, 2);
 }
 
+const ANIMALS_STAGE2_EXAMPLES_SEED = dedupeStage2CorpusExamples(
+  parseStage2ExamplesJson(JSON.stringify(animalsExamplesJson), WORKSPACE_STAGE2_CORPUS_OWNER).map(
+    (example) => ({
+      ...example,
+      ownerChannelId: WORKSPACE_STAGE2_CORPUS_OWNER.channelId,
+      ownerChannelName: WORKSPACE_STAGE2_CORPUS_OWNER.channelName,
+      sourceChannelId: example.sourceChannelId || WORKSPACE_STAGE2_CORPUS_OWNER.channelId,
+      sourceChannelName: example.sourceChannelName || WORKSPACE_STAGE2_CORPUS_OWNER.channelName
+    })
+  )
+);
+
+const ANIMALS_STAGE2_EXAMPLES_JSON = JSON.stringify(animalsExamplesJson, null, 2);
+
+function sanitizePromptMode(value: unknown): Stage2PromptSelectionMode {
+  return value === "custom" ? "custom" : "system";
+}
+
+function sanitizeSystemPromptPresetId(value: unknown): Stage2SystemPromptPresetId {
+  return value === "animals_system_prompt" ? "animals_system_prompt" : "system_prompt";
+}
+
+function sanitizeSystemExamplesPresetId(value: unknown): Stage2SystemExamplesPresetId {
+  return value === "animals_examples" ? "animals_examples" : "system_examples";
+}
+
+function resolveWorkspaceExamplesRawJson(
+  workspaceStage2ExamplesCorpusJson: string | null | undefined
+): string {
+  const trimmed = sanitizeString(workspaceStage2ExamplesCorpusJson);
+  if (!trimmed) {
+    return JSON.stringify(bundledExamplesJson, null, 2);
+  }
+  try {
+    JSON.parse(trimmed);
+    return trimmed;
+  } catch {
+    return JSON.stringify(bundledExamplesJson, null, 2);
+  }
+}
+
+export function getStage2SystemPromptPresetOptions(): Array<{
+  value: Stage2SystemPromptPresetId;
+  label: string;
+  description: string;
+}> {
+  return STAGE2_SYSTEM_PROMPT_PRESET_OPTIONS.map((option) => ({ ...option }));
+}
+
+export function getStage2SystemExamplesPresetOptions(): Array<{
+  value: Stage2SystemExamplesPresetId;
+  label: string;
+  description: string;
+}> {
+  return STAGE2_SYSTEM_EXAMPLES_PRESET_OPTIONS.map((option) => ({ ...option }));
+}
+
+export function resolveStage2ChannelPromptSelection(input: {
+  stage2ExamplesConfig?: Stage2ExamplesConfig | null;
+  workspacePromptConfig?: Stage2PromptConfig | null;
+}): {
+  source: "workspace_default" | "system_preset" | "channel_custom";
+  mode: Stage2PromptSelectionMode;
+  presetId: Stage2SystemPromptPresetId;
+  promptText: string;
+  promptVersion: string;
+} {
+  const workspacePromptConfig = normalizeStage2PromptConfig(input.workspacePromptConfig);
+  const config = normalizeStage2ExamplesConfig(
+    input.stage2ExamplesConfig,
+    WORKSPACE_STAGE2_CORPUS_OWNER
+  );
+  const customPrompt = sanitizePromptTextBlock(config.customSystemPrompt);
+  if (config.promptMode === "custom" && customPrompt) {
+    return {
+      source: "channel_custom",
+      mode: "custom",
+      presetId: config.systemPromptPresetId ?? "system_prompt",
+      promptText: customPrompt,
+      promptVersion: "channel_custom_prompt"
+    };
+  }
+  if (config.systemPromptPresetId === "animals_system_prompt") {
+    return {
+      source: "system_preset",
+      mode: "system",
+      presetId: "animals_system_prompt",
+      promptText: STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT,
+      promptVersion: STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT_VERSION
+    };
+  }
+  return {
+    source: "workspace_default",
+    mode: "system",
+    presetId: "system_prompt",
+    promptText: workspacePromptConfig.stages.oneShotReference.prompt,
+    promptVersion:
+      workspacePromptConfig.stages.oneShotReference.compatibility?.bundleVersion ??
+      STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION
+  };
+}
+
+export function applyChannelStage2PromptSelection(input: {
+  workspacePromptConfig?: Stage2PromptConfig | null;
+  stage2ExamplesConfig?: Stage2ExamplesConfig | null;
+}): {
+  promptConfig: Stage2PromptConfig;
+  promptConfigSource: "workspace_override" | "channel_override";
+  selection: ReturnType<typeof resolveStage2ChannelPromptSelection>;
+} {
+  const workspacePromptConfig = normalizeStage2PromptConfig(input.workspacePromptConfig);
+  const selection = resolveStage2ChannelPromptSelection({
+    stage2ExamplesConfig: input.stage2ExamplesConfig,
+    workspacePromptConfig
+  });
+  if (selection.source === "workspace_default") {
+    return {
+      promptConfig: workspacePromptConfig,
+      promptConfigSource: "workspace_override",
+      selection
+    };
+  }
+
+  return {
+    promptConfig: normalizeStage2PromptConfig({
+      ...workspacePromptConfig,
+      stages: {
+        ...workspacePromptConfig.stages,
+        oneShotReference: {
+          ...workspacePromptConfig.stages.oneShotReference,
+          prompt: selection.promptText,
+          compatibility: getStage2DefaultPromptCompatibility("oneShotReference")
+        }
+      }
+    }),
+    promptConfigSource: "channel_override",
+    selection
+  };
+}
+
 export function normalizeStage2HardConstraints(input: unknown): Stage2HardConstraints {
   const candidate =
     input && typeof input === "object" ? (input as Partial<Stage2HardConstraints>) : undefined;
@@ -315,6 +523,24 @@ export function normalizeStage2ExamplesConfig(
     typeof candidate?.useWorkspaceDefault === "boolean"
       ? candidate.useWorkspaceDefault
       : sanitizeString((candidate as { mode?: unknown } | undefined)?.mode) !== "manual";
+  const promptMode = sanitizePromptMode(
+    candidate?.promptMode ??
+      (candidate as { promptSource?: unknown } | undefined)?.promptSource ??
+      (candidate as { systemPromptMode?: unknown } | undefined)?.systemPromptMode
+  );
+  const systemPromptPresetId = sanitizeSystemPromptPresetId(
+    candidate?.systemPromptPresetId ??
+      (candidate as { promptPresetId?: unknown } | undefined)?.promptPresetId
+  );
+  const customSystemPrompt = sanitizePromptTextBlock(
+    candidate?.customSystemPrompt ??
+      (candidate as { customPromptText?: unknown } | undefined)?.customPromptText ??
+      (candidate as { systemPrompt?: unknown } | undefined)?.systemPrompt
+  );
+  const systemExamplesPresetId = sanitizeSystemExamplesPresetId(
+    (candidate as { systemExamplesPresetId?: unknown } | undefined)?.systemExamplesPresetId ??
+      (candidate as { examplesPresetId?: unknown } | undefined)?.examplesPresetId
+  );
   const customExamplesRaw = Array.isArray(candidate?.customExamples)
     ? candidate.customExamples
     : Array.isArray((candidate as { manualExamples?: unknown[] } | undefined)?.manualExamples)
@@ -338,8 +564,12 @@ export function normalizeStage2ExamplesConfig(
       .filter((entry): entry is Stage2CorpusExample => entry !== null);
 
   return {
-    version: 1,
+    version: 2,
     useWorkspaceDefault: useWorkspaceDefaultCandidate,
+    promptMode,
+    systemPromptPresetId,
+    customSystemPrompt,
+    systemExamplesPresetId,
     customExamplesJson,
     customExamplesText,
     customExamples: dedupeStage2CorpusExamples([...customExamplesFromJson, ...legacyCustomExamples])
@@ -426,7 +656,7 @@ export function collectWorkspaceStage2Examples(
 ): Stage2CorpusExample[] {
   return dedupeStage2CorpusExamples(
     parseStage2ExamplesJson(
-      workspaceStage2ExamplesCorpusJson,
+      resolveWorkspaceExamplesRawJson(workspaceStage2ExamplesCorpusJson),
       WORKSPACE_STAGE2_CORPUS_OWNER
     )
   );
@@ -443,19 +673,43 @@ export function resolveStage2ExamplesCorpus(input: {
   source: Stage2ExamplesCorpusSource;
   corpus: Stage2CorpusExample[];
   workspaceCorpusCount: number;
+  rawJson: string | null;
+  rawText: string | null;
+  presetId: Stage2SystemExamplesPresetId | null;
 } {
+  const workspaceRawJson = resolveWorkspaceExamplesRawJson(input.workspaceStage2ExamplesCorpusJson);
   const workspaceCorpus = collectWorkspaceStage2Examples(input.workspaceStage2ExamplesCorpusJson);
   if (!input.channel.stage2ExamplesConfig.useWorkspaceDefault) {
     return {
       source: "channel_custom",
       corpus: dedupeStage2CorpusExamples(input.channel.stage2ExamplesConfig.customExamples),
-      workspaceCorpusCount: workspaceCorpus.length
+      workspaceCorpusCount: workspaceCorpus.length,
+      rawJson: sanitizeString(input.channel.stage2ExamplesConfig.customExamplesJson) || null,
+      rawText: sanitizeString(input.channel.stage2ExamplesConfig.customExamplesText) || null,
+      presetId: null
+    };
+  }
+
+  if (input.channel.stage2ExamplesConfig.systemExamplesPresetId === "animals_examples") {
+    return {
+      source: "system_preset",
+      corpus: ANIMALS_STAGE2_EXAMPLES_SEED.map((example) => ({
+        ...example,
+        whyItWorks: [...example.whyItWorks]
+      })),
+      workspaceCorpusCount: workspaceCorpus.length,
+      rawJson: ANIMALS_STAGE2_EXAMPLES_JSON,
+      rawText: null,
+      presetId: "animals_examples"
     };
   }
 
   return {
     source: "workspace_default",
     corpus: workspaceCorpus,
-    workspaceCorpusCount: workspaceCorpus.length
+    workspaceCorpusCount: workspaceCorpus.length,
+    rawJson: workspaceRawJson,
+    rawText: null,
+    presetId: "system_examples"
   };
 }

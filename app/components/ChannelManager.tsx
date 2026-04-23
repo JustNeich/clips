@@ -39,8 +39,11 @@ import {
   normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
   parseStage2DelimitedStringList,
+  type Stage2PromptSelectionMode,
   Stage2ExamplesConfig,
-  Stage2HardConstraints
+  Stage2HardConstraints,
+  type Stage2SystemExamplesPresetId,
+  type Stage2SystemPromptPresetId
 } from "../../lib/stage2-channel-config";
 import {
   DEFAULT_ANTHROPIC_CAPTION_MODEL,
@@ -1701,6 +1704,71 @@ export function ChannelManager({
     );
   };
 
+  const updateChannelPromptMode = (promptMode: Stage2PromptSelectionMode) => {
+    setStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          promptMode
+        },
+        {
+          channelId: activeChannel?.id ?? "channel",
+          channelName: activeChannel?.name ?? name
+        }
+      )
+    );
+  };
+
+  const updateChannelSystemPromptPreset = (systemPromptPresetId: Stage2SystemPromptPresetId) => {
+    setStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          promptMode: "system",
+          systemPromptPresetId
+        },
+        {
+          channelId: activeChannel?.id ?? "channel",
+          channelName: activeChannel?.name ?? name
+        }
+      )
+    );
+  };
+
+  const updateCustomSystemPrompt = (value: string) => {
+    setStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          promptMode: "custom",
+          customSystemPrompt: value
+        },
+        {
+          channelId: activeChannel?.id ?? "channel",
+          channelName: activeChannel?.name ?? name
+        }
+      )
+    );
+  };
+
+  const updateChannelSystemExamplesPreset = (
+    systemExamplesPresetId: Stage2SystemExamplesPresetId
+  ) => {
+    setStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          useWorkspaceDefault: true,
+          systemExamplesPresetId
+        },
+        {
+          channelId: activeChannel?.id ?? "channel",
+          channelName: activeChannel?.name ?? name
+        }
+      )
+    );
+  };
+
   const updateCustomExamplesJson = (value: string) => {
     setStage2ExamplesConfig((current) =>
       normalizeStage2ExamplesConfig(
@@ -1909,7 +1977,11 @@ export function ChannelManager({
                 customExamplesJson={stage2ExamplesConfig.customExamplesJson}
                 customExamplesText={stage2ExamplesConfig.customExamplesText}
                 customExamplesCount={stage2ExamplesConfig.customExamples.length}
+                updateChannelPromptMode={updateChannelPromptMode}
+                updateChannelSystemPromptPreset={updateChannelSystemPromptPreset}
+                updateCustomSystemPrompt={updateCustomSystemPrompt}
                 updateChannelExamplesMode={updateChannelExamplesMode}
+                updateChannelSystemExamplesPreset={updateChannelSystemExamplesPreset}
                 updateCustomExamplesJson={updateCustomExamplesJson}
                 updateCustomExamplesText={updateCustomExamplesText}
                 updateWorkspaceCaptionProvider={updateWorkspaceCaptionProvider}

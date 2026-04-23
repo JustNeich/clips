@@ -76,6 +76,7 @@ import {
   formatStage2DelimitedStringList,
   getBundledStage2ExamplesSeed,
   getBundledStage2ExamplesSeedJson,
+  normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
   parseStage2DelimitedStringList,
   resolveStage2ExamplesCorpus,
@@ -345,6 +346,7 @@ function makeNativeCaptionChannel(
   hardConstraints: Stage2HardConstraints = DEFAULT_STAGE2_HARD_CONSTRAINTS,
   stage2WorkerProfileId: string | null = null,
   options?: {
+    stage2ExamplesConfig?: Stage2ExamplesConfig;
     templateHighlightProfile?: TemplateHighlightConfig | null;
   }
 ) {
@@ -353,7 +355,7 @@ function makeNativeCaptionChannel(
     name: "Native Channel",
     username: "native_channel",
     stage2WorkerProfileId,
-    stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+    stage2ExamplesConfig: options?.stage2ExamplesConfig ?? DEFAULT_STAGE2_EXAMPLES_CONFIG,
     stage2HardConstraints: hardConstraints,
     templateHighlightProfile: options?.templateHighlightProfile ?? null
   };
@@ -531,6 +533,7 @@ async function runNativeCaptionPipelineDirectFixture(input: {
   promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
   hardConstraints?: Stage2HardConstraints;
   stage2WorkerProfileId?: string | null;
+  stage2ExamplesConfig?: Stage2ExamplesConfig;
   templateHighlightProfile?: TemplateHighlightConfig | null;
   videoContext?: ReturnType<typeof buildVideoContext>;
   stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
@@ -542,12 +545,14 @@ async function runNativeCaptionPipelineDirectFixture(input: {
   const channel = input.stage2StyleProfile
     ? {
         ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
+          stage2ExamplesConfig: input.stage2ExamplesConfig,
           templateHighlightProfile: input.templateHighlightProfile
         }),
         stage2StyleProfile: input.stage2StyleProfile,
         editorialMemory: input.editorialMemory
       }
     : makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
+        stage2ExamplesConfig: input.stage2ExamplesConfig,
         templateHighlightProfile: input.templateHighlightProfile
       });
   const result = await service.runNativeCaptionPipeline({
@@ -8088,6 +8093,65 @@ test("stable_reference_v6_experimental uses the isolated one-shot prompt contrac
   assert.match(executor.calls[0]?.prompt ?? "", /experimental_contract_json/);
   assert.match(executor.calls[0]?.prompt ?? "", /comments_secondary_hints_only/);
   assert.match(executor.calls[0]?.prompt ?? "", /Do not talk about "the clip", "the video", "the edit"/);
+});
+
+test("channel system prompt and system examples presets flow into the reference one-shot payload", async () => {
+  const oneShotResponse = {
+    analysis: {
+      visual_anchors: ["the animal looks back", "water moves around it", "the frame stays close"],
+      comment_vibe: "quiet awe",
+      key_phrase_to_adapt: "nobody survives by accident"
+    },
+    candidates: Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `animals_${index + 1}`,
+      top: [
+        "There are barely any left, and this one keeps moving like the rule is simple, even though every quiet step on screen looks like something it can only afford once.",
+        "Most people will only see the water moving, but the whole clip is really about how one small turn can cost an animal the one safe margin it had left.",
+        "It looks calm enough to mistake for routine, and that is the cruel part, because the body on screen is spending real survival just to make the moment look easy.",
+        "The frame stays gentle, but the real fact is harsher: every careful motion here reads like a species carrying scarcity in its muscles without ever getting to rest.",
+        "Nothing dramatic happens at first glance, and that is exactly the point, because the clip shows how survival can look quiet right up until the cost becomes visible."
+      ][index] ?? "",
+      bottom: [
+        "We call that beautiful because we are not the ones living under the rule that one wrong move gets remembered forever.",
+        "That is why the clip feels sadder the longer you watch it: the calm is not comfort, it is what caution looks like from the outside.",
+        "We romanticize stillness because we do not have to spend our bodies protecting it every second.",
+        "That is not serenity, it is a life built around never getting the luxury of one careless second.",
+        "The viewer gets a quiet scene, and it gets another reminder that survival is always paid for in advance."
+      ][index] ?? "",
+      retained_handle: index === 0,
+      rationale: `animals ${index + 1}`
+    })),
+    winner_candidate_id: "animals_1",
+    titles: Array.from({ length: 5 }, (_, index) => ({
+      title: `QUIET RULE ${index + 1}`,
+      title_ru: `ТИХОЕ ПРАВИЛО ${index + 1}`
+    }))
+  };
+
+  const { executor } = await runNativeCaptionPipelineDirectFixture({
+    stage2ExamplesConfig: normalizeStage2ExamplesConfig(
+      {
+        systemPromptPresetId: "animals_system_prompt",
+        systemExamplesPresetId: "animals_examples"
+      },
+      {
+        channelId: "animals-channel",
+        channelName: "Animals Channel"
+      }
+    ),
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 140,
+      topLengthMax: 220,
+      bottomLengthMin: 80,
+      bottomLengthMax: 180
+    },
+    responses: [oneShotResponse]
+  });
+
+  assert.match(executor.calls[0]?.prompt ?? "", /Archetype-Anchored, Stakes-Driven/);
+  assert.match(executor.calls[0]?.prompt ?? "", /Do not re-name the species or subject in the bottom/i);
+  assert.match(executor.calls[0]?.prompt ?? "", /PrimateShorts/);
 });
 
 test("caption highlighting skips the model pass when template highlighting is disabled", async () => {

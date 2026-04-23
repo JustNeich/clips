@@ -25,7 +25,18 @@ import {
   type WorkspaceCodexModelSetting,
   type WorkspaceCodexModelStageId
 } from "../../lib/workspace-codex-models";
-import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../../lib/stage2-channel-config";
+import type {
+  Stage2ExamplesConfig,
+  Stage2HardConstraints,
+  Stage2PromptSelectionMode,
+  Stage2SystemExamplesPresetId,
+  Stage2SystemPromptPresetId
+} from "../../lib/stage2-channel-config";
+import {
+  getStage2SystemExamplesPresetOptions,
+  getStage2SystemPromptPresetOptions,
+  resolveStage2ChannelPromptSelection
+} from "../../lib/stage2-channel-config";
 import { AutosaveState } from "./channel-manager-support";
 
 type ChannelManagerStage2TabProps = {
@@ -96,7 +107,11 @@ type ChannelManagerStage2TabProps = {
   customExamplesJson?: string;
   customExamplesText?: string;
   customExamplesError?: string | null;
+  updateChannelPromptMode?: (value: Stage2PromptSelectionMode) => void;
+  updateChannelSystemPromptPreset?: (value: Stage2SystemPromptPresetId) => void;
+  updateCustomSystemPrompt?: (value: string) => void;
   updateChannelExamplesMode?: (useWorkspaceDefault: boolean) => void;
+  updateChannelSystemExamplesPreset?: (value: Stage2SystemExamplesPresetId) => void;
   updateWorkspaceExamplesJson?: (value: string) => void;
   updateWorkspaceCaptionProvider?: (value: Stage2CaptionProvider) => void;
   updateWorkspaceAnthropicModel?: (value: string) => void;
@@ -471,6 +486,7 @@ function renderProviderIntegrationBlock(input: {
 
 export function ChannelManagerStage2Tab({
   isWorkspaceDefaultsSelection,
+  workspaceExamplesCount,
   stage2HardConstraints,
   bannedWordsInput,
   bannedOpenersInput,
@@ -512,7 +528,11 @@ export function ChannelManagerStage2Tab({
   customExamplesJson = "",
   customExamplesText = "",
   customExamplesCount = 0,
+  updateChannelPromptMode = () => undefined,
+  updateChannelSystemPromptPreset = () => undefined,
+  updateCustomSystemPrompt = () => undefined,
   updateChannelExamplesMode = () => undefined,
+  updateChannelSystemExamplesPreset = () => undefined,
   updateCustomExamplesJson = () => undefined,
   updateCustomExamplesText = () => undefined,
   updateWorkspaceCaptionProvider = () => undefined,
@@ -539,8 +559,20 @@ export function ChannelManagerStage2Tab({
     workspaceStage2CaptionProviderConfig.openrouterModel ?? DEFAULT_OPENROUTER_CAPTION_MODEL;
   const anthropicIntegrationConnected = workspaceAnthropicIntegration?.status === "connected";
   const openRouterIntegrationConnected = workspaceOpenRouterIntegration?.status === "connected";
-  const channelExamplesMode = stage2ExamplesConfig?.useWorkspaceDefault === false ? "channel" : "workspace";
-  const customExamplesJsonError = React.useMemo(() => {
+  const systemPromptPresetOptions = getStage2SystemPromptPresetOptions();
+  const systemExamplesPresetOptions = getStage2SystemExamplesPresetOptions();
+  const channelPromptMode = stage2ExamplesConfig?.promptMode === "custom" ? "custom" : "system";
+  const channelExamplesMode = stage2ExamplesConfig?.useWorkspaceDefault === false ? "custom" : "system";
+  const resolvedPromptSelection = resolveStage2ChannelPromptSelection({
+    stage2ExamplesConfig,
+    workspacePromptConfig: workspaceStage2PromptConfig
+  });
+  const systemExamplesPresetId = stage2ExamplesConfig?.systemExamplesPresetId ?? "system_examples";
+  const systemPromptPresetId = stage2ExamplesConfig?.systemPromptPresetId ?? "system_prompt";
+  const customSystemPrompt = stage2ExamplesConfig?.customSystemPrompt ?? "";
+  const activeSystemExamplesCount =
+    systemExamplesPresetId === "animals_examples" ? 50 : (workspaceExamplesCount ?? "workspace");
+  const customExamplesJsonError = (() => {
     if (!customExamplesJson.trim()) {
       return null;
     }
@@ -550,19 +582,16 @@ export function ChannelManagerStage2Tab({
     } catch {
       return "JSON не парсится. Можно сохранить текстовые examples отдельно, но JSON-массив не попадёт в подборку.";
     }
-  }, [customExamplesJson]);
-  const readExamplesFile = React.useCallback(
-    async (
-      file: File | undefined,
-      applyValue: (value: string) => void
-    ): Promise<void> => {
-      if (!file) {
-        return;
-      }
-      applyValue(await file.text());
-    },
-    []
-  );
+  })();
+  const readExamplesFile = async (
+    file: File | undefined,
+    applyValue: (value: string) => void
+  ): Promise<void> => {
+    if (!file) {
+      return;
+    }
+    applyValue(await file.text());
+  };
 
   if (isWorkspaceDefaultsSelection) {
     return (
@@ -571,7 +600,7 @@ export function ChannelManagerStage2Tab({
           <p className="field-label">Single baseline Stage 2</p>
           <p className="subtle-text">
             Рабочее пространство теперь использует один stable one-shot pipeline. Активные настройки здесь:
-            hard constraints, caption provider, one-shot model и единый one-shot prompt.
+            hard constraints, caption provider, one-shot model и базовый `system_prompt`, который каналы могут использовать как системный preset.
           </p>
         </section>
 
@@ -729,7 +758,7 @@ export function ChannelManagerStage2Tab({
               }
             />
             <p className="subtle-text">
-              Активный prompt contract: `video_truth_json`, bounded `comments_hint_json`, `hard_constraints_json`, `user_instruction`.
+              Этот текст является текущим `system_prompt` preset для каналов, которые не ушли в `animals_system_prompt` или `custom`.
             </p>
             <div className="stage2-config-stage-actions">
               <button
@@ -758,7 +787,7 @@ export function ChannelManagerStage2Tab({
       <section className="control-card control-card-priority">
         <p className="field-label">Настройки Stage 2 канала</p>
         <p className="subtle-text">
-          На уровне канала теперь редактируются только hard constraints. Provider, model и one-shot prompt наследуются из workspace defaults.
+          На уровне канала можно отдельно выбрать one-shot prompt и examples: либо из системных preset-ов, либо в custom-режиме. Provider и model по-прежнему наследуются из workspace defaults.
         </p>
       </section>
 
@@ -776,8 +805,8 @@ export function ChannelManagerStage2Tab({
           </article>
           <article className="stage2-insight-card">
             <span className="field-label">Prompt</span>
-            <strong>One-shot workspace prompt</strong>
-            <p className="subtle-text">канал не переопределяет prompt family, examples corpus или worker profile</p>
+            <strong>{channelPromptMode === "custom" ? "Custom prompt" : systemPromptPresetId}</strong>
+            <p className="subtle-text">канал может переключаться между системным preset и собственным prompt</p>
           </article>
         </div>
 
@@ -792,26 +821,109 @@ export function ChannelManagerStage2Tab({
         })}
 
         <div className="compact-field">
-          <p className="field-label">Examples для этого канала</p>
+          <p className="field-label">One-shot prompt для этого канала</p>
           <p className="subtle-text">
-            JSON и plain text передаются в active one-shot prompt как style references. Они задают форму, темп и язык примеров, но не заменяют видимую правду текущего видео.
+            `system_prompt` использует текущий workspace baseline. `animals_system_prompt` включает animal/nature archetype. В custom-режиме канал хранит собственный текст prompt-а.
           </p>
           <div className="compact-grid">
             <label className="compact-field">
-              <span className="field-label">Источник examples</span>
+              <span className="field-label">Режим prompt</span>
+              <select
+                className="text-input"
+                value={channelPromptMode}
+                disabled={!canEditChannelExamples}
+                onChange={(event) =>
+                  updateChannelPromptMode(event.target.value as Stage2PromptSelectionMode)
+                }
+              >
+                <option value="system">System</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label className="compact-field">
+              <span className="field-label">Системный prompt</span>
+              <select
+                className="text-input"
+                value={systemPromptPresetId}
+                disabled={!canEditChannelExamples || channelPromptMode !== "system"}
+                onChange={(event) =>
+                  updateChannelSystemPromptPreset(
+                    event.target.value as Stage2SystemPromptPresetId
+                  )
+                }
+              >
+                {systemPromptPresetOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="subtle-text">
+                {systemPromptPresetOptions.find((option) => option.value === systemPromptPresetId)
+                  ?.description ?? null}
+              </p>
+            </label>
+          </div>
+          <label className="field-label">
+            {channelPromptMode === "custom" ? "Custom prompt" : "Активный системный prompt"}
+          </label>
+          <textarea
+            className="text-area mono"
+            rows={16}
+            value={channelPromptMode === "custom" ? customSystemPrompt : resolvedPromptSelection.promptText}
+            disabled={!canEditChannelExamples || channelPromptMode !== "custom"}
+            onChange={(event) => updateCustomSystemPrompt(event.target.value)}
+          />
+          <p className="subtle-text">
+            Активный prompt contract: `video_truth_json`, bounded `comments_hint_json`, `examples_json`,
+            `examples_text`, `hard_constraints_json`, `user_instruction`.
+          </p>
+        </div>
+
+        <div className="compact-field">
+          <p className="field-label">Examples для этого канала</p>
+          <p className="subtle-text">
+            Examples идут в active one-shot prompt как style references. Можно выбрать системный corpus или держать JSON/plain-text custom-настройку только для этого канала.
+          </p>
+          <div className="compact-grid">
+            <label className="compact-field">
+              <span className="field-label">Режим examples</span>
               <select
                 className="text-input"
                 value={channelExamplesMode}
                 disabled={!canEditChannelExamples}
-                onChange={(event) => updateChannelExamplesMode(event.target.value !== "channel")}
+                onChange={(event) => updateChannelExamplesMode(event.target.value === "system")}
               >
-                <option value="workspace">Workspace default</option>
-                <option value="channel">Channel custom</option>
+                <option value="system">System</option>
+                <option value="custom">Custom</option>
               </select>
+            </label>
+            <label className="compact-field">
+              <span className="field-label">Системный examples preset</span>
+              <select
+                className="text-input"
+                value={systemExamplesPresetId}
+                disabled={!canEditChannelExamples || channelExamplesMode !== "system"}
+                onChange={(event) =>
+                  updateChannelSystemExamplesPreset(
+                    event.target.value as Stage2SystemExamplesPresetId
+                  )
+                }
+              >
+                {systemExamplesPresetOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="subtle-text">
+                {systemExamplesPresetOptions.find((option) => option.value === systemExamplesPresetId)
+                  ?.description ?? null}
+              </p>
             </label>
             <div className="compact-field">
               <span className="field-label">Активных JSON examples</span>
-              <strong>{channelExamplesMode === "channel" ? customExamplesCount : "workspace"}</strong>
+              <strong>{channelExamplesMode === "custom" ? customExamplesCount : activeSystemExamplesCount}</strong>
               <p className="subtle-text">
                 Plain text examples добавляются отдельным блоком и не требуют строгих полей.
               </p>
@@ -822,18 +934,20 @@ export function ChannelManagerStage2Tab({
             className="text-area mono"
             rows={9}
             value={customExamplesJson}
-            disabled={!canEditChannelExamples}
+            disabled={!canEditChannelExamples || channelExamplesMode !== "custom"}
             placeholder='[{"top":"...", "bottom":"...", "note":"любые дополнительные поля"}]'
             onChange={(event) => updateCustomExamplesJson(event.target.value)}
           />
           <div className="control-actions">
-            <label className={`btn btn-ghost ${canEditChannelExamples ? "" : "disabled"}`}>
+            <label
+              className={`btn btn-ghost ${canEditChannelExamples && channelExamplesMode === "custom" ? "" : "disabled"}`}
+            >
               Upload JSON
               <input
                 type="file"
                 accept=".json,application/json"
                 hidden
-                disabled={!canEditChannelExamples}
+                disabled={!canEditChannelExamples || channelExamplesMode !== "custom"}
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
                   event.currentTarget.value = "";
@@ -844,7 +958,11 @@ export function ChannelManagerStage2Tab({
             <button
               type="button"
               className="btn btn-ghost"
-              disabled={!canEditChannelExamples || !customExamplesJson.trim()}
+              disabled={
+                !canEditChannelExamples ||
+                channelExamplesMode !== "custom" ||
+                !customExamplesJson.trim()
+              }
               onClick={() => updateCustomExamplesJson("")}
             >
               Очистить JSON
@@ -862,18 +980,20 @@ export function ChannelManagerStage2Tab({
             className="text-area"
             rows={8}
             value={customExamplesText}
-            disabled={!canEditChannelExamples}
+            disabled={!canEditChannelExamples || channelExamplesMode !== "custom"}
             placeholder="Вставьте примеры текстов, удачные формулировки, тональность или мини-корпус без JSON."
             onChange={(event) => updateCustomExamplesText(event.target.value)}
           />
           <div className="control-actions">
-            <label className={`btn btn-ghost ${canEditChannelExamples ? "" : "disabled"}`}>
+            <label
+              className={`btn btn-ghost ${canEditChannelExamples && channelExamplesMode === "custom" ? "" : "disabled"}`}
+            >
               Upload TXT
               <input
                 type="file"
                 accept=".txt,text/plain"
                 hidden
-                disabled={!canEditChannelExamples}
+                disabled={!canEditChannelExamples || channelExamplesMode !== "custom"}
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
                   event.currentTarget.value = "";
@@ -884,7 +1004,11 @@ export function ChannelManagerStage2Tab({
             <button
               type="button"
               className="btn btn-ghost"
-              disabled={!canEditChannelExamples || !customExamplesText.trim()}
+              disabled={
+                !canEditChannelExamples ||
+                channelExamplesMode !== "custom" ||
+                !customExamplesText.trim()
+              }
               onClick={() => updateCustomExamplesText("")}
             >
               Очистить текст
@@ -895,7 +1019,7 @@ export function ChannelManagerStage2Tab({
         <div className="channel-onboarding-note-card">
           <strong>Legacy context</strong>
           <p className="subtle-text">
-            Worker profile, style discovery и editorial memory остаются read-only context. Channel examples выше теперь являются активной surface для референсов текущего one-shot baseline.
+            Worker profile, style discovery и editorial memory остаются read-only context. Channel prompt и examples выше теперь являются активной surface для референсов текущего one-shot baseline.
           </p>
         </div>
 

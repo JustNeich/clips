@@ -140,7 +140,7 @@ test("quick regenerate prompt uses the minimal video-first contract", () => {
   assert.doesNotMatch(prompt, /retrieval/i);
 });
 
-test("channel persistence ignores legacy stage2 mutation authority for new and updated channels", async () => {
+test("channel persistence keeps channel Stage 2 prompt/examples config while still ignoring legacy worker profile mutations", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Single Baseline Workspace",
@@ -178,14 +178,22 @@ test("channel persistence ignores legacy stage2 mutation authority for new and u
     });
 
     assert.equal(channel.stage2WorkerProfileId, null);
-    assert.equal(channel.stage2ExamplesConfig.useWorkspaceDefault, true);
+    assert.equal(channel.stage2ExamplesConfig.useWorkspaceDefault, false);
+    assert.equal(channel.stage2ExamplesConfig.customExamples.length, 1);
 
     const updated = await updateChannelById(channel.id, {
       stage2WorkerProfileId: "stable_skill_gap_v1",
       stage2ExamplesConfig: {
         ...DEFAULT_STAGE2_EXAMPLES_CONFIG,
         useWorkspaceDefault: false,
-        customExamples: []
+        promptMode: "custom",
+        customSystemPrompt: "CUSTOM CHANNEL PROMPT",
+        customExamplesJson: JSON.stringify([
+          {
+            top: "A custom top",
+            bottom: "A custom bottom"
+          }
+        ])
       },
       stage2HardConstraints: {
         ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
@@ -194,12 +202,18 @@ test("channel persistence ignores legacy stage2 mutation authority for new and u
     });
 
     assert.equal(updated.stage2WorkerProfileId, null);
-    assert.equal(updated.stage2ExamplesConfig.useWorkspaceDefault, true);
+    assert.equal(updated.stage2ExamplesConfig.useWorkspaceDefault, false);
+    assert.equal(updated.stage2ExamplesConfig.promptMode, "custom");
+    assert.equal(updated.stage2ExamplesConfig.customSystemPrompt, "CUSTOM CHANNEL PROMPT");
+    assert.equal(updated.stage2ExamplesConfig.customExamples.length, 1);
     assert.equal(updated.stage2HardConstraints.topLengthMin, 18);
 
     const reloaded = await getChannelById(channel.id);
     assert.equal(reloaded?.stage2WorkerProfileId, null);
-    assert.equal(reloaded?.stage2ExamplesConfig.useWorkspaceDefault, true);
+    assert.equal(reloaded?.stage2ExamplesConfig.useWorkspaceDefault, false);
+    assert.equal(reloaded?.stage2ExamplesConfig.promptMode, "custom");
+    assert.equal(reloaded?.stage2ExamplesConfig.customSystemPrompt, "CUSTOM CHANNEL PROMPT");
+    assert.equal(reloaded?.stage2ExamplesConfig.customExamples.length, 1);
     assert.equal(reloaded?.stage2HardConstraints.topLengthMin, 18);
   });
 });

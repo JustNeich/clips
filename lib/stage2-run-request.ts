@@ -57,7 +57,7 @@ export function buildStage2RunRequestSnapshot(input: {
       username: input.channel.username.trim(),
       stage2WorkerProfileId: null,
       stage2ExamplesConfig: parseStage2ExamplesConfigJson(
-        stringifyStage2ExamplesConfig(DEFAULT_STAGE2_EXAMPLES_CONFIG, fallbackOwner),
+        stringifyStage2ExamplesConfig(input.channel.stage2ExamplesConfig, fallbackOwner),
         fallbackOwner
       ),
       stage2HardConstraints: parseStage2HardConstraintsJson(
