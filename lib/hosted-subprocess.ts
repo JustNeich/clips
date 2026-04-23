@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { clampHostedConcurrencyLimit, isHostedRenderRuntime } from "./hosted-resource-budget";
 
 const DEFAULT_HOSTED_SUBPROCESS_LIMIT = 1;
 
@@ -6,9 +7,7 @@ const hostedSubprocessContext = new AsyncLocalStorage<boolean>();
 let activeHostedSubprocesses = 0;
 const hostedSubprocessWaiters: Array<(release: () => void) => void> = [];
 
-export function isHostedRenderRuntime(): boolean {
-  return process.env.RENDER === "true" || process.env.RENDER === "1";
-}
+export { isHostedRenderRuntime } from "./hosted-resource-budget";
 
 function getHostedSubprocessLimit(): number {
   if (!isHostedRenderRuntime()) {
@@ -18,7 +17,7 @@ function getHostedSubprocessLimit(): number {
   if (!Number.isFinite(raw) || raw <= 0) {
     return DEFAULT_HOSTED_SUBPROCESS_LIMIT;
   }
-  return Math.max(1, Math.floor(raw));
+  return clampHostedConcurrencyLimit(Math.floor(raw));
 }
 
 async function acquireHostedSubprocessSlot(): Promise<() => void> {

@@ -27,6 +27,7 @@ import { publishStage3VideoArtifact } from "./stage3-job-artifacts";
 import { isHostStage3ExecutionAllowed } from "./stage3-execution";
 import { Stage3RenderRequestBody } from "./stage3-render-service";
 import { isStage3HostedBusyError } from "./stage3-server-control";
+import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
 
 const JOB_POLL_INTERVAL_MS = 350;
 
@@ -117,7 +118,7 @@ function getStage3HostConcurrencyLimit(): number {
   if (!Number.isFinite(raw) || raw <= 0) {
     return 1;
   }
-  return Math.max(1, Math.min(8, Math.floor(raw)));
+  return clampHostedConcurrencyLimit(Math.max(1, Math.min(8, Math.floor(raw))));
 }
 
 async function classifyJobFailure(job: Stage3JobRecord, error: unknown): Promise<{

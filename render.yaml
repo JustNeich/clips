@@ -47,13 +47,15 @@ services:
       - key: CODEX_STAGE2_DESCRIPTION_TIMEOUT_MS
         value: "90000"
       - key: STAGE2_MAX_CONCURRENT_RUNS
-        value: "4"
+        value: "1"
       - key: SOURCE_MAX_CONCURRENT_JOBS
-        value: "4"
+        value: "1"
       - key: CHANNEL_STYLE_DISCOVERY_MAX_CONCURRENT_RUNS
-        value: "4"
+        value: "1"
+      - key: HOSTED_CPU_CONCURRENCY_LIMIT
+        value: "1"
       - key: HOSTED_SUBPROCESS_MAX_CONCURRENT
-        value: "4"
+        value: "1"
       - key: CODEX_STAGE3_MODEL
         value: gpt-5.2
       - key: CODEX_STAGE3_REASONING_EFFORT
@@ -65,9 +67,9 @@ services:
       - key: STAGE3_ALLOW_HOST_EXECUTION
         value: "1"
       - key: STAGE3_HOST_MAX_CONCURRENT_JOBS
-        value: "4"
+        value: "1"
       - key: STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT
-        value: "4"
+        value: "1"
       - key: STAGE3_WORKER_PAIRING_TTL_SEC
         value: "3600"
       - key: STAGE3_WORKER_SESSION_TTL_SEC

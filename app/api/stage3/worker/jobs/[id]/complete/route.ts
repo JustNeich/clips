@@ -150,6 +150,19 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     if (!current || current.workspaceId !== auth.workspaceId || current.userId !== auth.userId) {
       return Response.json({ error: "Stage 3 job not found." }, { status: 404 });
     }
+    if (current.status === "completed") {
+      return Response.json(
+        buildStage3JobEnvelope(
+          current,
+          current.artifact
+            ? current.kind === "editing-proxy"
+              ? `/api/stage3/editing-proxy/jobs/${current.id}?download=1`
+              : `/api/stage3/${current.kind}/jobs/${current.id}?download=1`
+            : null
+        ),
+        { status: 200 }
+      );
+    }
     if (current.assignedWorkerId !== auth.worker.id) {
       return Response.json({ error: "Stage 3 job is not leased by this worker." }, { status: 409 });
     }

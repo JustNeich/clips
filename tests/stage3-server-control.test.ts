@@ -60,8 +60,10 @@ test("pruneStage3SourceCache removes oldest source entries together with metadat
 test("runHostedStage3HeavyJob honors configured hosted concurrency", { concurrency: false }, async () => {
   const previousRender = process.env.RENDER;
   const previousLimit = process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT;
+  const previousCpuLimit = process.env.HOSTED_CPU_CONCURRENCY_LIMIT;
   process.env.RENDER = "1";
   process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT = "2";
+  process.env.HOSTED_CPU_CONCURRENCY_LIMIT = "2";
 
   try {
     let active = 0;
@@ -97,6 +99,62 @@ test("runHostedStage3HeavyJob honors configured hosted concurrency", { concurren
       delete process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT;
     } else {
       process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT = previousLimit;
+    }
+    if (previousCpuLimit === undefined) {
+      delete process.env.HOSTED_CPU_CONCURRENCY_LIMIT;
+    } else {
+      process.env.HOSTED_CPU_CONCURRENCY_LIMIT = previousCpuLimit;
+    }
+  }
+});
+
+test("runHostedStage3HeavyJob clamps hosted concurrency to CPU budget", { concurrency: false }, async () => {
+  const previousRender = process.env.RENDER;
+  const previousLimit = process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT;
+  const previousCpuLimit = process.env.HOSTED_CPU_CONCURRENCY_LIMIT;
+  process.env.RENDER = "1";
+  process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT = "4";
+  process.env.HOSTED_CPU_CONCURRENCY_LIMIT = "1";
+
+  try {
+    let active = 0;
+    let maxActive = 0;
+
+    const results = await Promise.all(
+      ["job-1", "job-2", "job-3"].map((jobId) =>
+        runHostedStage3HeavyJob(
+          async () => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            try {
+              await delay(20);
+              return jobId;
+            } finally {
+              active = Math.max(0, active - 1);
+            }
+          },
+          { waitTimeoutMs: 500 }
+        )
+      )
+    );
+
+    assert.equal(maxActive, 1);
+    assert.deepEqual(results, ["job-1", "job-2", "job-3"]);
+  } finally {
+    if (previousRender === undefined) {
+      delete process.env.RENDER;
+    } else {
+      process.env.RENDER = previousRender;
+    }
+    if (previousLimit === undefined) {
+      delete process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT;
+    } else {
+      process.env.STAGE3_HOSTED_HEAVY_JOB_MAX_CONCURRENT = previousLimit;
+    }
+    if (previousCpuLimit === undefined) {
+      delete process.env.HOSTED_CPU_CONCURRENCY_LIMIT;
+    } else {
+      process.env.HOSTED_CPU_CONCURRENCY_LIMIT = previousCpuLimit;
     }
   }
 });

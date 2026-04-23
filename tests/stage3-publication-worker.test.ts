@@ -407,5 +407,24 @@ test("local worker editing-proxy completion accepts multipart artifacts", async 
     assert.equal(completed?.kind, "editing-proxy");
     assert.equal(completed?.artifact?.fileName, "proxy.mp4");
     assert.ok(completed?.artifactFilePath?.endsWith(`${job.id}.mp4`));
+
+    const duplicateResponse = await completeWorkerStage3Job(
+      new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/complete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${exchanged.sessionToken}`,
+          "Content-Type": "video/mp4",
+          "x-stage3-artifact-name": encodeURIComponent("proxy.mp4"),
+          "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4")
+        },
+        body: new Uint8Array([1, 2, 3, 4])
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+    const duplicateBody = (await duplicateResponse.json()) as { job?: { status?: string; kind?: string } };
+
+    assert.equal(duplicateResponse.status, 200);
+    assert.equal(duplicateBody.job?.status, "completed");
+    assert.equal(duplicateBody.job?.kind, "editing-proxy");
   });
 });

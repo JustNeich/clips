@@ -127,9 +127,10 @@ function buildHostStage3JobPrioritySql(column = "kind"): string {
 function buildLocalStage3JobPrioritySql(column = "kind"): string {
   return `CASE
     WHEN ${column} = 'editing-proxy' THEN 0
-    WHEN ${column} = 'preview' THEN 1
+    WHEN ${column} = 'render' THEN 1
     WHEN ${column} = 'source-download' THEN 2
     WHEN ${column} = 'agent-media-step' THEN 3
+    WHEN ${column} = 'preview' THEN 9
     ELSE 4
   END`;
 }

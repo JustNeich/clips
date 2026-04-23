@@ -8,6 +8,7 @@ import {
   normalizeStage3SourceVideo,
   probeVideoDurationSeconds
 } from "./stage3-media-agent";
+import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
 import { queueThrottledBackgroundTask } from "./throttled-background-task";
 import { normalizeSupportedUrl } from "./ytdlp";
 
@@ -79,7 +80,7 @@ function getHostedStage3HeavyJobLimit(): number {
   if (!Number.isFinite(raw) || raw <= 0) {
     return DEFAULT_HOSTED_STAGE3_HEAVY_JOB_LIMIT;
   }
-  return Math.max(1, Math.min(8, Math.floor(raw)));
+  return clampHostedConcurrencyLimit(Math.max(1, Math.min(8, Math.floor(raw))));
 }
 
 async function pathExists(filePath: string): Promise<boolean> {

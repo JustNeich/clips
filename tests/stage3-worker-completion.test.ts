@@ -26,6 +26,7 @@ test("completeRemoteStage3Artifact retries with raw upload after retryable multi
     artifactName: "preview.mp4",
     artifactMimeType: "video/mp4",
     resultJson: JSON.stringify({ ok: true }),
+    retryDelaysMs: [],
     warn: (message) => {
       warnings.push(message);
     },
@@ -72,6 +73,7 @@ test("completeRemoteStage3Artifact does not raw-retry after non-retryable multip
       artifactName: "render.mp4",
       artifactMimeType: "video/mp4",
       resultJson: null,
+      retryDelaysMs: [],
       fetchImpl: async () => {
         callCount += 1;
         return jsonErrorResponse(409, "Job already completed");
@@ -96,6 +98,7 @@ test("completeRemoteStage3Artifact retries with raw upload after multipart netwo
     artifactName: "proxy.mp4",
     artifactMimeType: "video/mp4",
     resultJson: null,
+    retryDelaysMs: [],
     fetchImpl: async (_input, init) => {
       calls.push({
         headers: init?.headers,
@@ -111,4 +114,39 @@ test("completeRemoteStage3Artifact retries with raw upload after multipart netwo
   assert.equal(result.mode, "raw");
   assert.equal(calls.length, 2);
   assert.ok(calls[1]?.body instanceof Uint8Array);
+});
+
+test("completeRemoteStage3Artifact keeps retrying raw upload after transient 502", async () => {
+  const calls: Array<{ body: BodyInit | null | undefined }> = [];
+  const warnings: string[] = [];
+
+  const result = await completeRemoteStage3Artifact({
+    url: "https://clips.example.com/api/stage3/worker/jobs/job-4/complete",
+    authHeaders: {
+      Authorization: "Bearer token-999"
+    },
+    jobId: "job-4",
+    artifactBytes: new Uint8Array([8, 8, 8]),
+    artifactName: "proxy.mp4",
+    artifactMimeType: "video/mp4",
+    resultJson: null,
+    retryDelaysMs: [0, 0],
+    warn: (message) => {
+      warnings.push(message);
+    },
+    fetchImpl: async (_input, init) => {
+      calls.push({ body: init?.body });
+      if (calls.length === 1 || calls.length === 2) {
+        return jsonErrorResponse(502, "Bad gateway");
+      }
+      return new Response(null, { status: 200 });
+    }
+  });
+
+  assert.equal(result.mode, "raw");
+  assert.equal(calls.length, 3);
+  assert.ok(calls[0]?.body instanceof FormData);
+  assert.ok(calls[1]?.body instanceof Uint8Array);
+  assert.ok(calls[2]?.body instanceof Uint8Array);
+  assert.match(warnings.join("\n"), /Raw Stage 3 completion retry 1 .* 502/);
 });

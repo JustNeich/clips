@@ -234,7 +234,111 @@ test("host runtime processes multiple jobs up to configured concurrency", { conc
   });
 });
 
-test("local worker queue prefers preview over older render jobs", async () => {
+test("host runtime clamps queued job concurrency to hosted CPU budget", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const previousRender = process.env.RENDER;
+    const previousLimit = process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
+    const previousCpuLimit = process.env.HOSTED_CPU_CONCURRENCY_LIMIT;
+    const previousHostExecution = process.env.STAGE3_ALLOW_HOST_EXECUTION;
+    process.env.RENDER = "1";
+    process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = "4";
+    process.env.HOSTED_CPU_CONCURRENCY_LIMIT = "1";
+    process.env.STAGE3_ALLOW_HOST_EXECUTION = "1";
+
+    try {
+      const db = getDb();
+      const stamp = nowIso();
+      const workspaceId = "w1";
+      const userId = "u1";
+
+      db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+        workspaceId,
+        "Test workspace",
+        "test-workspace",
+        stamp,
+        stamp
+      );
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+      db.prepare(
+        "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+      let active = 0;
+      let maxActive = 0;
+      setStage3JobProcessorForTests(async (job) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        try {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 30);
+          });
+          completeStage3Job(job.id, {
+            resultJson: JSON.stringify({ ok: true }),
+            artifact: null
+          });
+        } finally {
+          active = Math.max(0, active - 1);
+        }
+      });
+      scheduleStage3JobProcessing();
+
+      const jobs = [
+        enqueueStage3Job({
+          workspaceId,
+          userId,
+          kind: "source-download",
+          executionTarget: "host",
+          payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=job-1" })
+        }),
+        enqueueStage3Job({
+          workspaceId,
+          userId,
+          kind: "source-download",
+          executionTarget: "host",
+          payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=job-2" })
+        }),
+        enqueueStage3Job({
+          workspaceId,
+          userId,
+          kind: "source-download",
+          executionTarget: "host",
+          payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=job-3" })
+        })
+      ];
+
+      scheduleStage3JobProcessing();
+      await waitForCondition(() => jobs.every((job) => getStage3Job(job.id)?.status === "completed"));
+
+      assert.equal(maxActive, 1);
+    } finally {
+      setStage3JobProcessorForTests(null);
+      if (previousRender === undefined) {
+        delete process.env.RENDER;
+      } else {
+        process.env.RENDER = previousRender;
+      }
+      if (previousLimit === undefined) {
+        delete process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;
+      } else {
+        process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS = previousLimit;
+      }
+      if (previousCpuLimit === undefined) {
+        delete process.env.HOSTED_CPU_CONCURRENCY_LIMIT;
+      } else {
+        process.env.HOSTED_CPU_CONCURRENCY_LIMIT = previousCpuLimit;
+      }
+      if (previousHostExecution === undefined) {
+        delete process.env.STAGE3_ALLOW_HOST_EXECUTION;
+      } else {
+        process.env.STAGE3_ALLOW_HOST_EXECUTION = previousHostExecution;
+      }
+    }
+  });
+});
+
+test("local worker queue prefers render over newer preview jobs", async () => {
   await withIsolatedAppData(async () => {
     const db = getDb();
     const stamp = nowIso();
@@ -281,8 +385,8 @@ test("local worker queue prefers preview over older render jobs", async () => {
       userId
     });
 
-    assert.equal(firstClaim?.id, preview.id);
-    assert.equal(secondClaim?.id, render.id);
+    assert.equal(firstClaim?.id, render.id);
+    assert.equal(secondClaim?.id, preview.id);
   });
 });
 

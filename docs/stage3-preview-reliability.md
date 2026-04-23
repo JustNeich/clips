@@ -7,6 +7,7 @@
 - `editing-proxy` является базовой зависимостью editor-loop: без него нельзя быстро менять тайминг, кадр и фон.
 - `preview` является более дорогим и вторичным job kind'ом.
 - В host queue все non-preview job kinds теперь забираются раньше `preview`, даже если `preview` встал в очередь раньше.
+- Local worker queue использует тот же принцип: `render`, `source-download` и `agent-media-step` не должны голодать за новым `preview`.
 - Практический смысл: editor proxy и render больше не должны зависать за длинным accurate preview.
 
 ## 2. Live preview не должен стирать последнее рабочее видео

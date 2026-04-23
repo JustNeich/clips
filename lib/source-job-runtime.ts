@@ -24,6 +24,7 @@ import { fetchCommentsForUrl } from "./source-comments";
 import { ensureSourceMediaCached } from "./source-media-cache";
 import { getSourceDownloadErrorContext } from "./source-acquisition";
 import { getWorkspaceCodexIntegration } from "./team-store";
+import { clampHostedConcurrencyLimit, isHostedRenderRuntime } from "./hosted-resource-budget";
 
 type SourceRuntimeState = {
   initialized: boolean;
@@ -73,13 +74,9 @@ function logSourceRuntime(event: string, payload: Record<string, unknown>): void
 function getSourceConcurrencyLimit(): number {
   const raw = Number.parseInt(process.env.SOURCE_MAX_CONCURRENT_JOBS ?? "", 10);
   if (!Number.isFinite(raw) || raw <= 0) {
-    return 2;
+    return clampHostedConcurrencyLimit(2);
   }
-  return Math.max(1, Math.min(6, Math.floor(raw)));
-}
-
-function isHostedRenderRuntime(): boolean {
-  return process.env.RENDER === "true" || process.env.RENDER === "1";
+  return clampHostedConcurrencyLimit(Math.max(1, Math.min(6, Math.floor(raw))));
 }
 
 function ensureSourceRuntime(): void {

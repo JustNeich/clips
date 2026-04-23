@@ -14,6 +14,7 @@ import {
   Stage2RunRequest
 } from "./stage2-progress-store";
 import { processStage2Run } from "./stage2-runner";
+import { clampHostedConcurrencyLimit, isHostedRenderRuntime } from "./hosted-resource-budget";
 
 type Stage2RuntimeState = {
   initialized: boolean;
@@ -63,13 +64,9 @@ function logStage2Runtime(event: string, payload: Record<string, unknown>): void
 function getStage2ConcurrencyLimit(): number {
   const raw = Number.parseInt(process.env.STAGE2_MAX_CONCURRENT_RUNS ?? "", 10);
   if (!Number.isFinite(raw) || raw <= 0) {
-    return 4;
+    return clampHostedConcurrencyLimit(4);
   }
-  return Math.max(1, Math.min(12, Math.floor(raw)));
-}
-
-function isHostedRenderRuntime(): boolean {
-  return process.env.RENDER === "true" || process.env.RENDER === "1";
+  return clampHostedConcurrencyLimit(Math.max(1, Math.min(12, Math.floor(raw))));
 }
 
 function formatSourceProviderLabel(provider: Stage2Response["source"]["downloadProvider"]): string | null {

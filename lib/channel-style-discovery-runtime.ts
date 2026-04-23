@@ -12,6 +12,7 @@ import type {
   ChannelStyleDiscoveryRequest,
   ChannelStyleDiscoveryRunDetail
 } from "./channel-style-discovery-types";
+import { clampHostedConcurrencyLimit } from "./hosted-resource-budget";
 
 type ChannelStyleDiscoveryRuntimeState = {
   initialized: boolean;
@@ -71,9 +72,9 @@ function ensureChannelStyleDiscoveryRuntime(): void {
 function getChannelStyleDiscoveryConcurrencyLimit(): number {
   const raw = Number.parseInt(process.env.CHANNEL_STYLE_DISCOVERY_MAX_CONCURRENT_RUNS ?? "", 10);
   if (!Number.isFinite(raw) || raw <= 0) {
-    return 2;
+    return clampHostedConcurrencyLimit(2);
   }
-  return Math.max(1, Math.min(6, Math.floor(raw)));
+  return clampHostedConcurrencyLimit(Math.max(1, Math.min(6, Math.floor(raw))));
 }
 
 async function executeRun(run: ChannelStyleDiscoveryRunDetail): Promise<void> {
