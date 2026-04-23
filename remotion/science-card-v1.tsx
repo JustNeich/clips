@@ -35,12 +35,14 @@ type RemotionStage3Segment = {
   endSec: number | null;
   label: string;
   speed: number;
+  focusX?: number | null;
   focusY?: number | null;
   videoZoom?: number | null;
   mirrorEnabled?: boolean | null;
 };
 
 type RemotionSegmentTransformState = {
+  focusX: number;
   focusY: number;
   videoZoom: number;
   mirrorEnabled: boolean;
@@ -55,6 +57,7 @@ type ScienceCardV1Props = {
   captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
+  focusX: number;
   focusY: number;
   mirrorEnabled: boolean;
   timingMode: RemotionStage3TimingMode;
@@ -158,12 +161,14 @@ function resolveSegmentTransformAtOutputTime(params: {
   clipDurationSec: number;
   timingMode: RemotionStage3TimingMode;
   outputTimeSec: number;
+  fallbackFocusX: number;
   fallbackFocusY: number;
   fallbackVideoZoom: number;
   fallbackMirrorEnabled: boolean;
 }): RemotionSegmentTransformState {
   if (!params.segments.length) {
     return {
+      focusX: params.fallbackFocusX,
       focusY: params.fallbackFocusY,
       videoZoom: params.fallbackVideoZoom,
       mirrorEnabled: params.fallbackMirrorEnabled
@@ -202,6 +207,7 @@ function resolveSegmentTransformAtOutputTime(params: {
 
   if (!normalizedSegments.length) {
     return {
+      focusX: params.fallbackFocusX,
       focusY: params.fallbackFocusY,
       videoZoom: params.fallbackVideoZoom,
       mirrorEnabled: params.fallbackMirrorEnabled
@@ -225,6 +231,10 @@ function resolveSegmentTransformAtOutputTime(params: {
         : outputTimeSec >= cursor && outputTimeSec < outputEndSec;
     if (isActive) {
       return {
+        focusX:
+          typeof segment.focusX === "number" && Number.isFinite(segment.focusX)
+            ? clamp(segment.focusX, 0.12, 0.88)
+            : params.fallbackFocusX,
         focusY:
           typeof segment.focusY === "number" && Number.isFinite(segment.focusY)
             ? clamp(segment.focusY, 0.12, 0.88)
@@ -241,6 +251,7 @@ function resolveSegmentTransformAtOutputTime(params: {
   }
 
   return {
+    focusX: params.fallbackFocusX,
     focusY: params.fallbackFocusY,
     videoZoom: params.fallbackVideoZoom,
     mirrorEnabled: params.fallbackMirrorEnabled
@@ -255,6 +266,7 @@ export function ScienceCardV1({
   captionHighlights,
   clipStartSec,
   clipDurationSec,
+  focusX,
   focusY,
   videoZoom,
   videoBrightness,
@@ -325,11 +337,12 @@ export function ScienceCardV1({
         clipDurationSec,
         timingMode,
         outputTimeSec: currentTimeSec,
+        fallbackFocusX: focusX,
         fallbackFocusY: focusY,
         fallbackVideoZoom: videoZoom,
         fallbackMirrorEnabled: mirrorEnabled
       }),
-    [clipDurationSec, currentTimeSec, focusY, mirrorEnabled, segments, timingMode, videoZoom]
+    [clipDurationSec, currentTimeSec, focusX, focusY, mirrorEnabled, segments, timingMode, videoZoom]
   );
   const cameraState = resolveCameraStateAtTime({
     timeSec: currentTimeSec,
@@ -342,7 +355,9 @@ export function ScienceCardV1({
     baseZoom: segmentTransform.videoZoom
   });
   const animatedFocus = cameraState.focusY;
-  const objectPosition = `50% ${(Math.min(88, Math.max(12, animatedFocus * 100))).toFixed(3)}%`;
+  const objectPosition = `${(Math.min(88, Math.max(12, segmentTransform.focusX * 100))).toFixed(3)}% ${(
+    Math.min(88, Math.max(12, animatedFocus * 100))
+  ).toFixed(3)}%`;
   const normalizedZoom = Math.min(
     STAGE3_MAX_VIDEO_ZOOM,
     Math.max(STAGE3_MIN_VIDEO_ZOOM, Number.isFinite(cameraState.zoom) ? cameraState.zoom : 1)

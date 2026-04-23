@@ -110,6 +110,7 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
       systemPrompt: body.systemPrompt,
       descriptionPrompt: body.descriptionPrompt,
       examplesJson: body.examplesJson,
+      stage2ExamplesConfig: body.stage2ExamplesConfig,
       stage2HardConstraints: body.stage2HardConstraints,
       templateId: body.templateId,
       avatarAssetId: body.avatarAssetId,

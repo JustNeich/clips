@@ -23,6 +23,8 @@ export type Stage3ScaleKeyframe = {
 
 export const STAGE3_CAMERA_FOCUS_MIN = 0.12;
 export const STAGE3_CAMERA_FOCUS_MAX = 0.88;
+export const STAGE3_CAMERA_FOCUS_X_MIN = STAGE3_CAMERA_FOCUS_MIN;
+export const STAGE3_CAMERA_FOCUS_X_MAX = STAGE3_CAMERA_FOCUS_MAX;
 
 const DEFAULT_CLIP_DURATION_SEC = 6;
 const LEGACY_SWEEP = 0.28;
@@ -79,6 +81,10 @@ function collectTrackTimes(positionKeyframes: Stage3PositionKeyframe[], scaleKey
 
 export function clampStage3FocusY(value: number): number {
   return clamp(value, STAGE3_CAMERA_FOCUS_MIN, STAGE3_CAMERA_FOCUS_MAX);
+}
+
+export function clampStage3FocusX(value: number): number {
+  return clamp(value, STAGE3_CAMERA_FOCUS_X_MIN, STAGE3_CAMERA_FOCUS_X_MAX);
 }
 
 export function clampStage3CameraZoom(value: number): number {

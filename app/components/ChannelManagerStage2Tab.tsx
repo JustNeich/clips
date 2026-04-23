@@ -25,7 +25,7 @@ import {
   type WorkspaceCodexModelSetting,
   type WorkspaceCodexModelStageId
 } from "../../lib/workspace-codex-models";
-import type { Stage2HardConstraints } from "../../lib/stage2-channel-config";
+import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../../lib/stage2-channel-config";
 import { AutosaveState } from "./channel-manager-support";
 
 type ChannelManagerStage2TabProps = {
@@ -63,6 +63,8 @@ type ChannelManagerStage2TabProps = {
   canEditWorkspaceDefaults: boolean;
   canEditHardConstraints: boolean;
   canEditChannelExamples?: boolean;
+  stage2ExamplesConfig?: Stage2ExamplesConfig;
+  customExamplesCount?: number;
   stage2WorkerProfileId?: string | null;
   canEditStage2WorkerProfile?: boolean;
   updateStage2WorkerProfileId?: (value: string) => void;
@@ -92,7 +94,9 @@ type ChannelManagerStage2TabProps = {
   saveChannelStyleProfileDraft?: () => Promise<void>;
   discardChannelStyleProfileDraft?: () => void;
   customExamplesJson?: string;
+  customExamplesText?: string;
   customExamplesError?: string | null;
+  updateChannelExamplesMode?: (useWorkspaceDefault: boolean) => void;
   updateWorkspaceExamplesJson?: (value: string) => void;
   updateWorkspaceCaptionProvider?: (value: Stage2CaptionProvider) => void;
   updateWorkspaceAnthropicModel?: (value: string) => void;
@@ -104,6 +108,7 @@ type ChannelManagerStage2TabProps = {
   saveWorkspaceOpenRouterIntegration?: () => Promise<void>;
   disconnectWorkspaceOpenRouterIntegration?: () => Promise<void>;
   updateCustomExamplesJson?: (value: string) => void;
+  updateCustomExamplesText?: (value: string) => void;
   updateStage2HardConstraint: (
     key: keyof Stage2HardConstraints,
     value: string | boolean | string[]
@@ -502,6 +507,14 @@ export function ChannelManagerStage2Tab({
   autosaveState,
   canEditWorkspaceDefaults,
   canEditHardConstraints,
+  canEditChannelExamples = false,
+  stage2ExamplesConfig,
+  customExamplesJson = "",
+  customExamplesText = "",
+  customExamplesCount = 0,
+  updateChannelExamplesMode = () => undefined,
+  updateCustomExamplesJson = () => undefined,
+  updateCustomExamplesText = () => undefined,
   updateWorkspaceCaptionProvider = () => undefined,
   updateWorkspaceAnthropicModel = () => undefined,
   updateWorkspaceOpenRouterModel = () => undefined,
@@ -526,6 +539,30 @@ export function ChannelManagerStage2Tab({
     workspaceStage2CaptionProviderConfig.openrouterModel ?? DEFAULT_OPENROUTER_CAPTION_MODEL;
   const anthropicIntegrationConnected = workspaceAnthropicIntegration?.status === "connected";
   const openRouterIntegrationConnected = workspaceOpenRouterIntegration?.status === "connected";
+  const channelExamplesMode = stage2ExamplesConfig?.useWorkspaceDefault === false ? "channel" : "workspace";
+  const customExamplesJsonError = React.useMemo(() => {
+    if (!customExamplesJson.trim()) {
+      return null;
+    }
+    try {
+      JSON.parse(customExamplesJson);
+      return null;
+    } catch {
+      return "JSON не парсится. Можно сохранить текстовые examples отдельно, но JSON-массив не попадёт в подборку.";
+    }
+  }, [customExamplesJson]);
+  const readExamplesFile = React.useCallback(
+    async (
+      file: File | undefined,
+      applyValue: (value: string) => void
+    ): Promise<void> => {
+      if (!file) {
+        return;
+      }
+      applyValue(await file.text());
+    },
+    []
+  );
 
   if (isWorkspaceDefaultsSelection) {
     return (
@@ -754,10 +791,111 @@ export function ChannelManagerStage2Tab({
           updateBannedOpenersInput
         })}
 
+        <div className="compact-field">
+          <p className="field-label">Examples для этого канала</p>
+          <p className="subtle-text">
+            JSON и plain text передаются в active one-shot prompt как style references. Они задают форму, темп и язык примеров, но не заменяют видимую правду текущего видео.
+          </p>
+          <div className="compact-grid">
+            <label className="compact-field">
+              <span className="field-label">Источник examples</span>
+              <select
+                className="text-input"
+                value={channelExamplesMode}
+                disabled={!canEditChannelExamples}
+                onChange={(event) => updateChannelExamplesMode(event.target.value !== "channel")}
+              >
+                <option value="workspace">Workspace default</option>
+                <option value="channel">Channel custom</option>
+              </select>
+            </label>
+            <div className="compact-field">
+              <span className="field-label">Активных JSON examples</span>
+              <strong>{channelExamplesMode === "channel" ? customExamplesCount : "workspace"}</strong>
+              <p className="subtle-text">
+                Plain text examples добавляются отдельным блоком и не требуют строгих полей.
+              </p>
+            </div>
+          </div>
+          <label className="field-label">JSON examples</label>
+          <textarea
+            className="text-area mono"
+            rows={9}
+            value={customExamplesJson}
+            disabled={!canEditChannelExamples}
+            placeholder='[{"top":"...", "bottom":"...", "note":"любые дополнительные поля"}]'
+            onChange={(event) => updateCustomExamplesJson(event.target.value)}
+          />
+          <div className="control-actions">
+            <label className={`btn btn-ghost ${canEditChannelExamples ? "" : "disabled"}`}>
+              Upload JSON
+              <input
+                type="file"
+                accept=".json,application/json"
+                hidden
+                disabled={!canEditChannelExamples}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  void readExamplesFile(file, updateCustomExamplesJson);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={!canEditChannelExamples || !customExamplesJson.trim()}
+              onClick={() => updateCustomExamplesJson("")}
+            >
+              Очистить JSON
+            </button>
+          </div>
+          {customExamplesJsonError ? (
+            <p className="subtle-text danger-text">{customExamplesJsonError}</p>
+          ) : (
+            <p className="subtle-text">
+              Можно загружать массив с произвольными полями. `top`/`bottom` используются напрямую, остальные поля идут как style notes.
+            </p>
+          )}
+          <label className="field-label">Plain text examples</label>
+          <textarea
+            className="text-area"
+            rows={8}
+            value={customExamplesText}
+            disabled={!canEditChannelExamples}
+            placeholder="Вставьте примеры текстов, удачные формулировки, тональность или мини-корпус без JSON."
+            onChange={(event) => updateCustomExamplesText(event.target.value)}
+          />
+          <div className="control-actions">
+            <label className={`btn btn-ghost ${canEditChannelExamples ? "" : "disabled"}`}>
+              Upload TXT
+              <input
+                type="file"
+                accept=".txt,text/plain"
+                hidden
+                disabled={!canEditChannelExamples}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  void readExamplesFile(file, updateCustomExamplesText);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={!canEditChannelExamples || !customExamplesText.trim()}
+              onClick={() => updateCustomExamplesText("")}
+            >
+              Очистить текст
+            </button>
+          </div>
+        </div>
+
         <div className="channel-onboarding-note-card">
           <strong>Legacy context</strong>
           <p className="subtle-text">
-            Старые worker profile, examples corpus, style discovery и editorial memory больше не редактируются из active Stage 2 surface. Historical runs остаются открываемыми как read-only context.
+            Worker profile, style discovery и editorial memory остаются read-only context. Channel examples выше теперь являются активной surface для референсов текущего one-shot baseline.
           </p>
         </div>
 

@@ -1807,16 +1807,25 @@ const STAGE2_ONE_SHOT_PROMPT_COMPATIBILITY_FAMILY = "native_caption_v3_product_o
 function buildNativeCaptionExamplesAssessment(
   channelConfig: Stage2RuntimeChannelConfig
 ): Stage2ExamplesAssessment {
+  const hasChannelExamples =
+    channelConfig.examplesSource === "channel_custom" &&
+    (Boolean(channelConfig.customExamplesJson?.trim()) || Boolean(channelConfig.customExamplesText?.trim()));
   return {
-    retrievalConfidence: "low",
+    retrievalConfidence: hasChannelExamples ? "medium" : "low",
     examplesMode: "style_guided",
-    explanation: "Examples are disabled in native_caption_v3 by default.",
-    evidence: [],
+    explanation: hasChannelExamples
+      ? "Channel examples are attached directly to the one-shot prompt as style references."
+      : "No channel examples are attached to the active one-shot prompt.",
+    evidence: hasChannelExamples ? ["channel_custom_examples"] : [],
     retrievalWarning: null,
-    examplesRoleSummary: "Examples are disabled for native_caption_v3.",
+    examplesRoleSummary: hasChannelExamples
+      ? "Use channel examples for style, structure, and human phrasing only; video truth remains primary."
+      : "Examples are absent for this one-shot run.",
     primaryDriverSummary:
-      "Primary driver is the clip context packet, the selected platform line, and channel learning.",
-    primaryDrivers: ["clip_context", "platform_line", "style_card", "channel_learning"],
+      "Primary driver is visible clip truth; examples support phrasing and structure only.",
+    primaryDrivers: hasChannelExamples
+      ? ["clip_context", "channel_examples", "hard_constraints"]
+      : ["clip_context", "hard_constraints"],
     channelStylePriority: "primary",
     editorialMemoryPriority: "supporting"
   };
@@ -2034,9 +2043,57 @@ function buildReferenceOneShotPrompt(input: {
   return renderJsonPrompt(input.variant.promptText, {
     video_truth_json: buildReferenceOneShotVideoTruthPayload(input),
     comments_hint_json: buildReferenceOneShotCommentWavePayload(input),
+    examples_json: buildReferenceOneShotExamplesJsonPayload(input.channelConfig),
+    examples_text: buildReferenceOneShotExamplesTextPayload(input.channelConfig),
     hard_constraints_json: input.channelConfig.hardConstraints,
     user_instruction: input.videoContext.userInstruction?.trim() || null
   });
+}
+
+function truncateReferenceText(value: string, limit: number): string {
+  const normalized = value.replace(/\r\n/g, "\n").trim();
+  return normalized.length > limit ? `${normalized.slice(0, limit)}\n[truncated]` : normalized;
+}
+
+function buildReferenceOneShotExamplesJsonPayload(channelConfig: Stage2RuntimeChannelConfig): unknown {
+  const raw = channelConfig.customExamplesJson?.trim();
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.slice(0, 24);
+    }
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      if (Array.isArray(record.examples)) {
+        return {
+          ...record,
+          examples: record.examples.slice(0, 24)
+        };
+      }
+      if (Array.isArray(record.items)) {
+        return {
+          ...record,
+          items: record.items.slice(0, 24)
+        };
+      }
+    }
+    return parsed;
+  } catch {
+    return {
+      parse_error: "customExamplesJson is not valid JSON; ignore this field and use examples_text if present"
+    };
+  }
+}
+
+function buildReferenceOneShotExamplesTextPayload(channelConfig: Stage2RuntimeChannelConfig): string | null {
+  const raw = channelConfig.customExamplesText?.trim();
+  if (!raw) {
+    return null;
+  }
+  return truncateReferenceText(raw, 20_000);
 }
 
 function normalizeReferenceOneShotResult(
@@ -7281,13 +7338,23 @@ function normalizeChannelConfig(input: {
     styleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
     editorialMemory: createEmptyStage2EditorialMemorySummary(DEFAULT_STAGE2_STYLE_PROFILE),
     templateHighlightProfile: input.templateHighlightProfile ?? null,
-    examplesSource: "workspace_default"
+    examplesSource: input.resolvedExamplesSource ?? "workspace_default",
+    customExamplesJson:
+      input.resolvedExamplesSource === "channel_custom"
+        ? input.stage2ExamplesConfig.customExamplesJson
+        : "",
+    customExamplesText:
+      input.resolvedExamplesSource === "channel_custom"
+        ? input.stage2ExamplesConfig.customExamplesText
+        : ""
   };
 }
 
 async function runReferenceOneShotNativeCaptionPipeline(input: {
   channelConfig: Stage2RuntimeChannelConfig;
   workspaceCorpusCount: number;
+  activeCorpusCount: number;
+  selectorCandidateCount: number;
   videoContext: ViralShortsVideoContext;
   imagePaths: string[];
   executor: JsonStageExecutor;
@@ -7958,7 +8025,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       styleProfile: input.channelConfig.styleProfile,
       editorialMemory: input.channelConfig.editorialMemory,
       workspaceCorpusCount: input.workspaceCorpusCount,
-      activeCorpusCount: 0
+      activeCorpusCount: input.activeCorpusCount
     },
     selection: {
       clipType: input.selectorFallback.clipType,
@@ -8006,8 +8073,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     examples: {
       source: input.channelConfig.examplesSource,
       workspaceCorpusCount: input.workspaceCorpusCount,
-      activeCorpusCount: 0,
-      selectorCandidateCount: 0,
+      activeCorpusCount: input.activeCorpusCount,
+      selectorCandidateCount: input.selectorCandidateCount,
       retrievalConfidence: input.nativeExamplesAssessment.retrievalConfidence,
       examplesMode: input.nativeExamplesAssessment.examplesMode,
       explanation: input.nativeExamplesAssessment.explanation,
@@ -8061,8 +8128,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       mode: input.reusedContextPacket ? "regenerate" : "codex_pipeline",
       execution: input.pipelineExecution,
       selectorOutput: input.selectorFallback,
-      availableExamplesCount: 0,
-      selectedExamplesCount: 0,
+      availableExamplesCount: input.selectorCandidateCount,
+      selectedExamplesCount: input.selectorCandidateCount,
       retrievalConfidence: input.nativeExamplesAssessment.retrievalConfidence,
       examplesMode: input.nativeExamplesAssessment.examplesMode,
       retrievalExplanation: input.nativeExamplesAssessment.explanation,
@@ -8339,11 +8406,18 @@ export class ViralShortsWorkerService {
     const warnings: StageWarning[] = [];
     const promptConfig = normalizeStage2PromptConfig(input.promptConfig);
     const debugMode: Stage2DebugMode = input.debugMode === "raw" ? "raw" : "summary";
+    const { corpus, source, workspaceCorpusCount } = this.resolveExamplesCorpus({
+      channel: {
+        id: input.channel.id,
+        name: input.channel.name,
+        stage2ExamplesConfig: input.channel.stage2ExamplesConfig
+      },
+      workspaceStage2ExamplesCorpusJson: input.workspaceStage2ExamplesCorpusJson
+    });
     const channelConfig = normalizeChannelConfig({
       ...input.channel,
-      resolvedExamplesSource: "workspace_default"
+      resolvedExamplesSource: source
     });
-    const workspaceCorpusCount = 0;
     const workerBuild = getStage2WorkerBuildInfo();
     const pathVariant = resolveReferenceOneShotVariantConfig(channelConfig).pathVariant;
     const pipelineExecution = buildStage2PipelineExecutionSnapshot({
@@ -8395,18 +8469,28 @@ export class ViralShortsWorkerService {
       input.videoContext.comments.length > 0
         ? applyCommentIntelligenceBoost(analyzerFallback, input.videoContext.comments)
         : applyNoCommentsTruthfulnessGuard(analyzerFallback, false);
-    const nativeExamplesAssessment = buildNativeCaptionExamplesAssessment(channelConfig);
+    const queryText = buildCorpusQueryText(input.videoContext, analyzerOutput);
+    const selectorPool = buildSelectorExamplePool({
+      examples: corpus,
+      queryText
+    });
+    const nativeExamplesAssessment =
+      selectorPool.selectorExamples.length > 0
+        ? selectorPool.assessment
+        : buildNativeCaptionExamplesAssessment(channelConfig);
     const selectorFallback = fallbackSelectorOutput(
       channelConfig,
       analyzerOutput,
-      [],
+      selectorPool.selectorExamples,
       input.videoContext,
       nativeExamplesAssessment,
-      []
+      selectorPool.exampleInsights
     );
     return runReferenceOneShotNativeCaptionPipeline({
       channelConfig,
       workspaceCorpusCount,
+      activeCorpusCount: corpus.length,
+      selectorCandidateCount: selectorPool.selectorExamples.length,
       videoContext: input.videoContext,
       imagePaths: input.imagePaths,
       executor: input.executor,

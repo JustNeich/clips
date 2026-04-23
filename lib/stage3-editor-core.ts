@@ -132,6 +132,7 @@ export type Stage3EditorFragment = {
   endSec: number;
   sourceDurationSec: number;
   speed: Stage3Segment["speed"];
+  focusXOverride: number | null;
   focusYOverride: number | null;
   videoZoomOverride: number | null;
   mirrorEnabledOverride: boolean | null;
@@ -155,6 +156,7 @@ export type Stage3EditorOutputSegment = {
   sourceEndSec: number;
   sourceDurationSec: number;
   speed: Stage3Segment["speed"];
+  focusXOverride: number | null;
   focusYOverride: number | null;
   videoZoomOverride: number | null;
   mirrorEnabledOverride: boolean | null;
@@ -234,6 +236,8 @@ export function normalizeStage3EditorFragments(params: {
         endSec: normalizedRange.endSec,
         sourceDurationSec: normalizedRange.sourceDurationSec,
         speed: segment.speed,
+        focusXOverride:
+          typeof segment.focusX === "number" && Number.isFinite(segment.focusX) ? segment.focusX : null,
         focusYOverride:
           typeof segment.focusY === "number" && Number.isFinite(segment.focusY) ? segment.focusY : null,
         videoZoomOverride:
@@ -328,6 +332,7 @@ function buildWindowFragment(params: {
     endSec: normalizedRange.endSec,
     sourceDurationSec: normalizedRange.sourceDurationSec,
     speed: 1,
+    focusXOverride: null,
     focusYOverride: null,
     videoZoomOverride: null,
     mirrorEnabledOverride: null
@@ -366,6 +371,7 @@ function buildSourceSelection(params: {
         endSec: roundToTenth(Math.max(params.clipDurationSec, sourceDuration)),
         sourceDurationSec: roundToThousandth(Math.max(MIN_EDITOR_TIMING_GUARD_SEC, sourceDuration)),
         speed: 1,
+        focusXOverride: null,
         focusYOverride: null,
         videoZoomOverride: null,
         mirrorEnabledOverride: null
@@ -386,6 +392,7 @@ function buildSourceSelection(params: {
           Math.max(MIN_EDITOR_TIMING_GUARD_SEC, adaptiveWindow.endSec - adaptiveWindow.startSec)
         ),
         speed: 1,
+        focusXOverride: null,
         focusYOverride: null,
         videoZoomOverride: null,
         mirrorEnabledOverride: null
@@ -456,6 +463,7 @@ function buildOutputPlan(params: {
       sourceEndSec: fragment.endSec,
       sourceDurationSec: fragment.sourceDurationSec,
       speed: fragment.speed,
+      focusXOverride: fragment.focusXOverride,
       focusYOverride: fragment.focusYOverride,
       videoZoomOverride: fragment.videoZoomOverride,
       mirrorEnabledOverride: fragment.mirrorEnabledOverride,
@@ -510,6 +518,7 @@ export function buildStage3EditorSession(params: {
         endSec: fragment.endSec,
         speed: fragment.speed,
         label: fragment.label,
+        focusX: fragment.focusXOverride,
         focusY: fragment.focusYOverride,
         videoZoom: fragment.videoZoomOverride,
         mirrorEnabled: fragment.mirrorEnabledOverride

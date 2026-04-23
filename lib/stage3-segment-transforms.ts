@@ -1,11 +1,19 @@
 import { Stage3Segment } from "../app/components/types";
-import { clampStage3CameraZoom, clampStage3FocusY } from "./stage3-camera";
+import { clampStage3CameraZoom, clampStage3FocusX, clampStage3FocusY } from "./stage3-camera";
 
 export type Stage3SegmentTransformState = {
+  focusX: number;
   focusY: number;
   videoZoom: number;
   mirrorEnabled: boolean;
 };
+
+export function normalizeStage3SegmentFocusXOverride(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Number(clampStage3FocusX(value).toFixed(4));
+}
 
 export function normalizeStage3SegmentFocusOverride(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -30,11 +38,13 @@ export function normalizeStage3SegmentMirrorOverride(value: unknown): boolean | 
 
 export function resolveStage3SegmentTransformState(params: {
   segment?: Partial<Stage3Segment> | null;
+  fallbackFocusX: number;
   fallbackFocusY: number;
   fallbackVideoZoom: number;
   fallbackMirrorEnabled: boolean;
 }): Stage3SegmentTransformState {
   return {
+    focusX: normalizeStage3SegmentFocusXOverride(params.segment?.focusX) ?? clampStage3FocusX(params.fallbackFocusX),
     focusY: normalizeStage3SegmentFocusOverride(params.segment?.focusY) ?? clampStage3FocusY(params.fallbackFocusY),
     videoZoom:
       normalizeStage3SegmentZoomOverride(params.segment?.videoZoom) ?? clampStage3CameraZoom(params.fallbackVideoZoom),

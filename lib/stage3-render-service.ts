@@ -30,6 +30,7 @@ import { Stage3RenderPlan } from "./stage3-agent";
 import { Stage3StateSnapshot } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import {
+  clampStage3FocusX,
   normalizeStage3CameraKeyframes,
   normalizeStage3CameraMotion,
   resolveStage3EffectiveCameraTracks
@@ -434,6 +435,7 @@ async function runRemotionRender(params: {
   captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
+  focusX: number;
   focusY: number;
   mirrorEnabled: boolean;
   timingMode: Stage3RenderPlan["timingMode"];
@@ -483,6 +485,7 @@ async function runRemotionRender(params: {
     captionHighlights: params.captionHighlights,
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
+    focusX: params.focusX,
     focusY: params.focusY,
     mirrorEnabled: params.mirrorEnabled,
     timingMode: params.timingMode,
@@ -676,6 +679,10 @@ function normalizeRenderPlan(
     }),
     cameraPositionKeyframes: cameraTracks.positionKeyframes,
     cameraScaleKeyframes: cameraTracks.scaleKeyframes,
+    focusX:
+      typeof rawPlan?.focusX === "number" && Number.isFinite(rawPlan.focusX)
+        ? clampStage3FocusX(rawPlan.focusX)
+        : 0.5,
     videoZoom,
     videoBrightness: normalizeStage3VideoBrightness(rawPlan?.videoBrightness, templateVideoAdjustments.brightness),
     videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),
@@ -1015,6 +1022,7 @@ export async function renderStage3Video(
           captionHighlights: templateSnapshot.content.highlights,
           clipStartSec: prepared.clipStartSec,
           clipDurationSec: prepared.clipDurationSec,
+          focusX: renderPlan.focusX,
           focusY,
           mirrorEnabled: renderPlan.mirrorEnabled,
           timingMode: renderPlan.timingMode,

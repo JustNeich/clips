@@ -2506,6 +2506,10 @@ export default function HomePage() {
       const normalizedRenderPlan = normalizeRenderPlan(
         {
           ...stage3RenderPlan,
+          focusX:
+            typeof draftOverrides?.focusX === "number" && Number.isFinite(draftOverrides.focusX)
+              ? draftOverrides.focusX
+              : stage3RenderPlan.focusX,
           segments: Array.isArray(draftOverrides?.segments) ? draftOverrides.segments : stage3RenderPlan.segments,
           editorSelectionMode:
             draftOverrides?.editorSelectionMode === "window" || draftOverrides?.editorSelectionMode === "fragments"
@@ -2638,6 +2642,7 @@ export default function HomePage() {
         captionHighlights: cloneTemplateCaptionHighlights(templateSnapshot.content.highlights),
         clipStartSec: snapshotClipStart,
         clipDurationSec: normalizedRenderPlan.targetDurationSec,
+        focusX: effectiveRenderPlan.focusX,
         focusY: snapshotFocusY,
         renderPlan: effectiveRenderPlan,
         sourceDurationSec,
@@ -7194,6 +7199,7 @@ export default function HomePage() {
           clipStartSec={stage3ClipStartSec}
           clipDurationSec={resolvedStage3ClipDurationSec}
           sourceDurationSec={sourceDurationSec}
+          focusX={stage3RenderPlan.focusX}
           focusY={stage3FocusY}
           cameraMotion={stage3RenderPlan.cameraMotion}
           cameraKeyframes={stage3RenderPlan.cameraKeyframes}
@@ -7352,6 +7358,17 @@ export default function HomePage() {
               );
             });
           }}
+          onFocusXChange={(value) =>
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  focusX: value
+                },
+                fallbackRenderPlan()
+              )
+            )
+          }
           onFocusYChange={(value) => setStage3FocusY(value)}
           onCameraPositionKeyframesChange={(value) =>
             setStage3RenderPlan((prev) =>

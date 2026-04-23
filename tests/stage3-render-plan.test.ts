@@ -19,6 +19,7 @@ test("normalizeStage3RenderPlanSegments sorts fragments by source timing", () =>
       endSec: 2.4,
       speed: 1,
       label: "A",
+      focusX: 0.73,
       focusY: 0.21,
       videoZoom: 1.16
     }
@@ -26,6 +27,7 @@ test("normalizeStage3RenderPlanSegments sorts fragments by source timing", () =>
 
   assert.equal(normalized.length, 2);
   assert.equal(normalized[0]?.label, "A");
+  assert.equal(normalized[0]?.focusX, 0.73);
   assert.equal(normalized[0]?.focusY, 0.21);
   assert.equal(normalized[1]?.label, "B");
 });

@@ -84,6 +84,7 @@ import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../../lib/stage3-c
 import {
   buildLegacyPositionKeyframes,
   clampStage3CameraZoom,
+  clampStage3FocusX,
   clampStage3FocusY,
   normalizeStage3PositionKeyframes,
   normalizeStage3ScaleKeyframes,
@@ -127,6 +128,7 @@ import {
   normalizeStage3VideoSaturation
 } from "../../lib/stage3-video-adjustments";
 import {
+  normalizeStage3SegmentFocusXOverride,
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride,
@@ -220,6 +222,7 @@ type Step3RenderTemplateProps = {
   clipStartSec: number;
   clipDurationSec: number;
   sourceDurationSec: number | null;
+  focusX: number;
   focusY: number;
   cameraMotion: Stage3CameraMotion;
   cameraKeyframes: Array<{ id: string; timeSec: number; focusY: number; zoom: number }>;
@@ -272,6 +275,7 @@ type Step3RenderTemplateProps = {
     editorSelectionMode: Stage3EditorSelectionMode;
   }) => void;
   onClipStartChange: (value: number) => void;
+  onFocusXChange: (value: number) => void;
   onFocusYChange: (value: number) => void;
   onCameraPositionKeyframesChange: (value: Stage3PositionKeyframe[]) => void;
   onCameraScaleKeyframesChange: (value: Stage3ScaleKeyframe[]) => void;
@@ -305,10 +309,11 @@ type PendingTextFitAction = {
   fitHash: string | null;
 };
 
-type FragmentDraftField = "startSec" | "endSec" | "speed" | "focusY" | "videoZoom";
+type FragmentDraftField = "startSec" | "endSec" | "speed" | "focusX" | "focusY" | "videoZoom";
 type FragmentDraftInputs = {
   startSec: string;
   endSec: string;
+  focusX: string;
   focusY: string;
   videoZoom: string;
 };
@@ -573,6 +578,10 @@ function formatFragmentFocusPercent(value: number): string {
   return String(Math.round(clampStage3FocusY(value) * 100));
 }
 
+function formatFragmentFocusXPercent(value: number): string {
+  return String(Math.round(clampStage3FocusX(value) * 100));
+}
+
 function formatFragmentVideoZoom(value: number): string {
   return clampStage3CameraZoom(value).toFixed(2);
 }
@@ -580,11 +589,13 @@ function formatFragmentVideoZoom(value: number): string {
 function buildFragmentDraftInputs(params: {
   segment: Stage3Segment;
   sourceDurationSec: number | null;
+  fallbackFocusX: number;
   fallbackFocusY: number;
   fallbackVideoZoom: number;
 }): FragmentDraftInputs {
   const resolvedTransform = resolveStage3SegmentTransformState({
     segment: params.segment,
+    fallbackFocusX: params.fallbackFocusX,
     fallbackFocusY: params.fallbackFocusY,
     fallbackVideoZoom: params.fallbackVideoZoom,
     fallbackMirrorEnabled: true
@@ -592,6 +603,7 @@ function buildFragmentDraftInputs(params: {
   return {
     startSec: params.segment.startSec.toFixed(1),
     endSec: (params.segment.endSec ?? params.sourceDurationSec ?? params.segment.startSec + 0.5).toFixed(1),
+    focusX: formatFragmentFocusXPercent(resolvedTransform.focusX),
     focusY: formatFragmentFocusPercent(resolvedTransform.focusY),
     videoZoom: formatFragmentVideoZoom(resolvedTransform.videoZoom)
   };
@@ -604,6 +616,7 @@ function areFragmentDraftInputsEqual(left: FragmentDraftInputs | undefined, righ
   return (
     left.startSec === right.startSec &&
     left.endSec === right.endSec &&
+    left.focusX === right.focusX &&
     left.focusY === right.focusY &&
     left.videoZoom === right.videoZoom
   );
@@ -658,6 +671,7 @@ function normalizeEditorSegments(
     endSec: segment.endSec,
     speed: normalizeSegmentSpeed(segment.speed),
     label: segment.label,
+    focusX: segment.focusXOverride,
     focusY: segment.focusYOverride,
     videoZoom: segment.videoZoomOverride,
     mirrorEnabled: segment.mirrorEnabledOverride
@@ -670,6 +684,7 @@ function areStage3SegmentsEqual(left: Stage3Segment, right: Stage3Segment): bool
     left.endSec === right.endSec &&
     left.label === right.label &&
     left.speed === right.speed &&
+    left.focusX === right.focusX &&
     left.focusY === right.focusY &&
     left.videoZoom === right.videoZoom &&
     left.mirrorEnabled === right.mirrorEnabled
@@ -1152,6 +1167,7 @@ type Stage3LivePreviewPanelProps = {
   editorSelectionMode?: Stage3EditorSelectionMode;
   timingMode: Stage3TimingMode;
   renderPolicy: Stage3RenderPolicy;
+  focusX: number;
   focusY: number;
   cameraMotion: Stage3CameraMotion;
   cameraKeyframes: Array<{ id: string; timeSec: number; focusY: number; zoom: number }>;
@@ -1211,6 +1227,7 @@ function Stage3LivePreviewPanel({
   editorSelectionMode,
   timingMode,
   renderPolicy,
+  focusX,
   focusY,
   cameraMotion,
   cameraKeyframes,
@@ -1332,11 +1349,12 @@ function Stage3LivePreviewPanel({
       resolveStage3PlaybackTransformState({
         plan: playbackPlan,
         outputTimeSec: timelineSec,
+        fallbackFocusX: focusX,
         fallbackFocusY: focusY,
         fallbackVideoZoom: videoZoom,
         fallbackMirrorEnabled: mirrorEnabled
       }),
-    [focusY, mirrorEnabled, playbackPlan, timelineSec, videoZoom]
+    [focusX, focusY, mirrorEnabled, playbackPlan, timelineSec, videoZoom]
   );
   const cameraState = useMemo(
     () =>
@@ -1361,7 +1379,7 @@ function Stage3LivePreviewPanel({
       timelineSec
     ]
   );
-  const objectPosition = `50% ${(cameraState.focusY * 100).toFixed(3)}%`;
+  const objectPosition = `${(playbackTransformState.focusX * 100).toFixed(3)}% ${(cameraState.focusY * 100).toFixed(3)}%`;
   const previewBackgroundVideoFilter = buildStage3VideoFilterCss(
     {
       brightness: videoBrightness,
@@ -2267,6 +2285,7 @@ export function Step3RenderTemplate({
   clipStartSec,
   clipDurationSec,
   sourceDurationSec,
+  focusX,
   focusY,
   cameraMotion,
   cameraKeyframes,
@@ -2308,6 +2327,7 @@ export function Step3RenderTemplate({
   onAgentPromptChange,
   onFragmentStateChange,
   onClipStartChange,
+  onFocusXChange,
   onFocusYChange,
   onCameraPositionKeyframesChange,
   onCameraScaleKeyframesChange,
@@ -2327,6 +2347,7 @@ export function Step3RenderTemplate({
 }: Step3RenderTemplateProps) {
   const editorAlwaysNormalize = true;
   const clipCommitTimerRef = useRef<number | null>(null);
+  const focusXCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
   const videoZoomCommitTimerRef = useRef<number | null>(null);
   const videoBrightnessCommitTimerRef = useRef<number | null>(null);
@@ -2341,6 +2362,7 @@ export function Step3RenderTemplate({
 
   const [localClipStartSec, setLocalClipStartSec] = useState(clipStartSec);
   const [localWholeClipWindowEndSec, setLocalWholeClipWindowEndSec] = useState(clipStartSec + clipDurationSec);
+  const [localFocusX, setLocalFocusX] = useState(focusX);
   const [localFocusY, setLocalFocusY] = useState(focusY);
   const [localVideoZoom, setLocalVideoZoom] = useState(videoZoom);
   const [localVideoBrightness, setLocalVideoBrightness] = useState(videoBrightness);
@@ -2886,6 +2908,7 @@ export function Step3RenderTemplate({
   const videoExposureLabel = `${localVideoExposure >= 0 ? "+" : ""}${localVideoExposure.toFixed(2)} EV`;
   const videoContrastLabel = `${Math.round(localVideoContrast * 100)}%`;
   const videoSaturationLabel = `${Math.round(localVideoSaturation * 100)}%`;
+  const cameraFocusXPercent = Math.round(localFocusX * 100);
   const nextFragmentSuggestion = useMemo(() => {
     if (!sourceUrl) {
       return null;
@@ -2926,6 +2949,7 @@ export function Step3RenderTemplate({
         const rowKey = buildFragmentRowKey(index, segment);
         const resolvedTransform = resolveStage3SegmentTransformState({
           segment,
+          fallbackFocusX: localFocusX,
           fallbackFocusY: localFocusY,
           fallbackVideoZoom: localVideoZoom,
           fallbackMirrorEnabled: mirrorEnabled
@@ -2935,6 +2959,7 @@ export function Step3RenderTemplate({
           buildFragmentDraftInputs({
             segment,
             sourceDurationSec: fragmentSourceDurationSec,
+            fallbackFocusX: localFocusX,
             fallbackFocusY: localFocusY,
             fallbackVideoZoom: localVideoZoom
           });
@@ -2943,6 +2968,13 @@ export function Step3RenderTemplate({
         const playbackSegment = fragmentPlaybackPlan.segments[index] ?? null;
         const outputDuration = playbackSegment?.outputDurationSec ?? rawDuration / segment.speed;
         const outputStartSec = playbackSegment?.outputStartSec ?? 0;
+        const draftFocusXPercent = clamp(
+          Number.isFinite(Number.parseFloat(draft.focusX))
+            ? Number.parseFloat(draft.focusX)
+            : Math.round(resolvedTransform.focusX * 100),
+          12,
+          88
+        );
         const draftFocusPercent = clamp(
           Number.isFinite(Number.parseFloat(draft.focusY))
             ? Number.parseFloat(draft.focusY)
@@ -2974,6 +3006,7 @@ export function Step3RenderTemplate({
           rawDuration,
           outputDuration,
           outputStartSec,
+          draftFocusXPercent,
           draftFocusPercent,
           draftVideoZoom,
           sourceOffsetPercent,
@@ -2985,6 +3018,7 @@ export function Step3RenderTemplate({
     [
       fragmentPlaybackPlan.segments,
       fragmentSourceDurationSec,
+      localFocusX,
       localFocusY,
       localVideoZoom,
       mirrorEnabled,
@@ -3105,6 +3139,10 @@ export function Step3RenderTemplate({
   ]);
 
   useEffect(() => {
+    setLocalFocusX(clampStage3FocusX(focusX));
+  }, [focusX]);
+
+  useEffect(() => {
     setLocalFocusY(clamp(focusY, 0.12, 0.88));
   }, [focusY]);
 
@@ -3206,6 +3244,7 @@ export function Step3RenderTemplate({
         const fallbackDraft = buildFragmentDraftInputs({
           segment,
           sourceDurationSec: fragmentSourceDurationSec,
+          fallbackFocusX: localFocusX,
           fallbackFocusY: localFocusY,
           fallbackVideoZoom: localVideoZoom
         });
@@ -3219,7 +3258,7 @@ export function Step3RenderTemplate({
       }
       return next;
     });
-  }, [fragmentSourceDurationSec, localFocusY, localVideoZoom, normalizedSegments]);
+  }, [fragmentSourceDurationSec, localFocusX, localFocusY, localVideoZoom, normalizedSegments]);
 
   useEffect(() => {
     if (activeFragmentIndex === null) {
@@ -3262,6 +3301,9 @@ export function Step3RenderTemplate({
     return () => {
       if (clipCommitTimerRef.current !== null) {
         window.clearTimeout(clipCommitTimerRef.current);
+      }
+      if (focusXCommitTimerRef.current !== null) {
+        window.clearTimeout(focusXCommitTimerRef.current);
       }
       if (focusCommitTimerRef.current !== null) {
         window.clearTimeout(focusCommitTimerRef.current);
@@ -3310,6 +3352,14 @@ export function Step3RenderTemplate({
     [maxStartSec, onClipStartChange]
   );
 
+  const flushFocusXCommit = (value: number) => {
+    if (focusXCommitTimerRef.current !== null) {
+      window.clearTimeout(focusXCommitTimerRef.current);
+      focusXCommitTimerRef.current = null;
+    }
+    onFocusXChange(clampStage3FocusX(value));
+  };
+
   const flushFocusCommit = (value: number) => {
     if (focusCommitTimerRef.current !== null) {
       window.clearTimeout(focusCommitTimerRef.current);
@@ -3332,6 +3382,18 @@ export function Step3RenderTemplate({
     },
     [maxStartSec, onClipStartChange]
   );
+
+  const scheduleFocusXCommit = (value: number) => {
+    const next = clampStage3FocusX(value);
+    setLocalFocusX(next);
+    if (focusXCommitTimerRef.current !== null) {
+      window.clearTimeout(focusXCommitTimerRef.current);
+    }
+    focusXCommitTimerRef.current = window.setTimeout(() => {
+      onFocusXChange(next);
+      focusXCommitTimerRef.current = null;
+    }, 450);
+  };
 
   const scheduleFocusCommit = (value: number) => {
     const next = clamp(value, 0.12, 0.88);
@@ -3593,6 +3655,7 @@ export function Step3RenderTemplate({
     const fragmentOverrides = commitPendingFragmentDrafts();
     const overrides: Stage3EditorDraftOverrides = {
       clipStartSec: clamp(localClipStartSec, 0, maxStartSec),
+      focusX: clampStage3FocusX(localFocusX),
       focusY: clampStage3FocusY(localFocusY),
       videoZoom: clampStage3CameraZoom(localVideoZoom),
       videoBrightness: normalizeStage3VideoBrightness(localVideoBrightness),
@@ -3612,6 +3675,7 @@ export function Step3RenderTemplate({
       musicGain: clamp(localMusicGain, 0, 1)
     };
     flushClipCommit(overrides.clipStartSec);
+    flushFocusXCommit(overrides.focusX);
     flushFocusCommit(overrides.focusY);
     flushVideoZoomCommit(overrides.videoZoom);
     flushVideoBrightnessCommit(overrides.videoBrightness);
@@ -3914,6 +3978,12 @@ export function Step3RenderTemplate({
   const flushFocusValue = (value: number) => {
     const next = clampStage3FocusY(value);
     flushFocusCommit(next);
+  };
+
+  const applyFocusXImmediate = (value: number) => {
+    const next = clampStage3FocusX(value);
+    setLocalFocusX(next);
+    flushFocusXCommit(next);
   };
 
   const scheduleZoomValue = (value: number) => {
@@ -4265,6 +4335,7 @@ export function Step3RenderTemplate({
       const draft = segmentDraftInputs[key];
       const parsedStart = Number.parseFloat(draft?.startSec ?? "");
       const parsedEnd = Number.parseFloat(draft?.endSec ?? "");
+      const parsedFocusXPercent = Number.parseFloat(draft?.focusX ?? "");
       const parsedFocusPercent = Number.parseFloat(draft?.focusY ?? "");
       const parsedVideoZoom = Number.parseFloat(draft?.videoZoom ?? "");
       const nextStart = roundToTenth(
@@ -4288,6 +4359,9 @@ export function Step3RenderTemplate({
         ...segment,
         startSec: nextStart,
         endSec: nextEnd,
+        focusX: normalizeStage3SegmentFocusXOverride(
+          Number.isFinite(parsedFocusXPercent) ? parsedFocusXPercent / 100 : segment.focusX
+        ),
         focusY: normalizeStage3SegmentFocusOverride(
           Number.isFinite(parsedFocusPercent) ? parsedFocusPercent / 100 : segment.focusY
         ),
@@ -4402,6 +4476,7 @@ export function Step3RenderTemplate({
             endSec: nextEnd,
             label: `Фрагмент ${normalizedSegments.length + 1}`,
             speed: nextSpeed,
+            focusX: localFocusX,
             focusY: localFocusY,
             videoZoom: localVideoZoom,
             mirrorEnabled
@@ -4434,6 +4509,9 @@ export function Step3RenderTemplate({
           focusY: formatFragmentFocusPercent(
             normalizeStage3SegmentFocusOverride(focusedSegment.focusY) ?? localFocusY
           ),
+          focusX: formatFragmentFocusXPercent(
+            normalizeStage3SegmentFocusXOverride(focusedSegment.focusX) ?? localFocusX
+          ),
           videoZoom: formatFragmentVideoZoom(
             normalizeStage3SegmentZoomOverride(focusedSegment.videoZoom) ?? localVideoZoom
           )
@@ -4452,6 +4530,7 @@ export function Step3RenderTemplate({
       nextFragmentSuggestion,
       normalizedSegments,
       fragmentSourceDurationSec,
+      localFocusX,
       localFocusY,
       localVideoZoom,
       mirrorEnabled
@@ -4488,6 +4567,7 @@ export function Step3RenderTemplate({
     (
       index: number,
       updates: {
+        focusX?: number | null;
         focusY?: number | null;
         videoZoom?: number | null;
         mirrorEnabled?: boolean | null;
@@ -4499,6 +4579,10 @@ export function Step3RenderTemplate({
           itemIndex === index
             ? {
                 ...segment,
+                focusX:
+                  updates.focusX === undefined
+                    ? segment.focusX ?? null
+                    : normalizeStage3SegmentFocusXOverride(updates.focusX),
                 focusY:
                   updates.focusY === undefined
                     ? segment.focusY ?? null
@@ -4522,7 +4606,7 @@ export function Step3RenderTemplate({
   const setFragmentDraftField = (
     index: number,
     segment: Stage3Segment,
-    field: "startSec" | "endSec" | "focusY" | "videoZoom",
+    field: "startSec" | "endSec" | "focusX" | "focusY" | "videoZoom",
     value: string
   ) => {
     const key = buildFragmentRowKey(index, segment);
@@ -4538,6 +4622,13 @@ export function Step3RenderTemplate({
             ? value
             : (prev[key]?.endSec ??
                 (segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5).toFixed(1)),
+        focusX:
+          field === "focusX"
+            ? value
+            : (prev[key]?.focusX ??
+                formatFragmentFocusXPercent(
+                  normalizeStage3SegmentFocusXOverride(segment.focusX) ?? localFocusX
+                )),
         focusY:
           field === "focusY"
             ? value
@@ -4565,11 +4656,13 @@ export function Step3RenderTemplate({
 
     const parsedStart = Number.parseFloat(draft.startSec);
     const parsedEnd = Number.parseFloat(draft.endSec);
+    const parsedFocusXPercent = Number.parseFloat(draft.focusX);
     const parsedFocusPercent = Number.parseFloat(draft.focusY);
     const parsedVideoZoom = Number.parseFloat(draft.videoZoom);
     if (
       !Number.isFinite(parsedStart) ||
       !Number.isFinite(parsedEnd) ||
+      !Number.isFinite(parsedFocusXPercent) ||
       !Number.isFinite(parsedFocusPercent) ||
       !Number.isFinite(parsedVideoZoom)
     ) {
@@ -4578,6 +4671,7 @@ export function Step3RenderTemplate({
         [key]: buildFragmentDraftInputs({
           segment,
           sourceDurationSec: fragmentSourceDurationSec,
+          fallbackFocusX: localFocusX,
           fallbackFocusY: localFocusY,
           fallbackVideoZoom: localVideoZoom
         })
@@ -4598,6 +4692,7 @@ export function Step3RenderTemplate({
             ...item,
             startSec: nextStart,
             endSec: nextEnd,
+            focusX: normalizeStage3SegmentFocusXOverride(parsedFocusXPercent / 100),
             focusY: normalizeStage3SegmentFocusOverride(parsedFocusPercent / 100),
             videoZoom: normalizeStage3SegmentZoomOverride(parsedVideoZoom)
           }
@@ -5727,6 +5822,29 @@ export function Step3RenderTemplate({
 	                              <div className="fragment-slider-stack">
 	                                <label className="slider-field fragment-slider-card">
 	                                  <div className="quick-edit-label-row">
+	                                    <span className="field-label">Position X</span>
+	                                    <span className="quick-edit-value">{row.draftFocusXPercent}%</span>
+	                                  </div>
+	                                  <input
+	                                    ref={(node) => {
+	                                      fragmentFieldRefs.current[`${row.rowKey}:focusX`] = node;
+	                                    }}
+	                                    type="range"
+	                                    min={12}
+	                                    max={88}
+	                                    step={1}
+	                                    value={row.draftFocusXPercent}
+	                                    onFocus={() => setActiveFragmentIndex(row.index)}
+	                                    onChange={(event) =>
+	                                      setFragmentDraftField(row.index, row.segment, "focusX", event.target.value)
+	                                    }
+	                                    onMouseUp={() => commitFragmentDraft(row.index, row.segment)}
+	                                    onTouchEnd={() => commitFragmentDraft(row.index, row.segment)}
+	                                    onBlur={() => commitFragmentDraft(row.index, row.segment)}
+	                                  />
+	                                </label>
+	                                <label className="slider-field fragment-slider-card">
+	                                  <div className="quick-edit-label-row">
 	                                    <span className="field-label">Position Y</span>
 	                                    <span className="quick-edit-value">{row.draftFocusPercent}%</span>
 	                                  </div>
@@ -5879,6 +5997,38 @@ export function Step3RenderTemplate({
                     <>
                       <div className="quick-edit-card slider-field">
                         <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="focusXRange">
+                            Position X
+                          </label>
+                          <span className="quick-edit-value">{cameraFocusXPercent}%</span>
+                        </div>
+                        <input
+                          id="focusXRange"
+                          type="range"
+                          min={0.12}
+                          max={0.88}
+                          step={0.01}
+                          value={localFocusX}
+                          onChange={(event) => scheduleFocusXCommit(Number.parseFloat(event.target.value))}
+                          onMouseUp={() => flushFocusXCommit(localFocusX)}
+                          onTouchEnd={() => flushFocusXCommit(localFocusX)}
+                          onBlur={() => flushFocusXCommit(localFocusX)}
+                        />
+                        <div className="preset-row">
+                          <button type="button" className="preset-chip" onClick={() => applyFocusXImmediate(0.18)}>
+                            Лево
+                          </button>
+                          <button type="button" className="preset-chip" onClick={() => applyFocusXImmediate(0.5)}>
+                            Центр
+                          </button>
+                          <button type="button" className="preset-chip" onClick={() => applyFocusXImmediate(0.82)}>
+                            Право
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="quick-edit-card slider-field">
+                        <div className="quick-edit-label-row">
                           <label className="field-label" htmlFor="focusRange">
                             Position Y
                           </label>
@@ -5969,7 +6119,7 @@ export function Step3RenderTemplate({
                       </div>
                       <p className="subtle-text">
                         Перетаскивайте и тяните фрагменты прямо на ленте исходника. Для каждого фрагмента отдельно
-                        доступны свои Y, Zoom и Mirror, а глобальные фильтры ниже продолжают применяться ко всему клипу.
+                        доступны свои X, Y, Zoom и Mirror, а глобальные фильтры ниже продолжают применяться ко всему клипу.
                       </p>
                     </div>
                   )}
@@ -6144,6 +6294,7 @@ export function Step3RenderTemplate({
             editorSelectionMode={editorSession.renderPlanPatch.editorSelectionMode}
             timingMode={editorSession.renderPlanPatch.timingMode}
             renderPolicy={editorSession.renderPlanPatch.policy}
+            focusX={localFocusX}
             focusY={localFocusY}
             cameraMotion="disabled"
             cameraKeyframes={[]}

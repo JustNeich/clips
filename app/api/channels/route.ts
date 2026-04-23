@@ -144,6 +144,7 @@ export async function POST(request: Request): Promise<Response> {
       systemPrompt: body?.systemPrompt,
       descriptionPrompt: body?.descriptionPrompt,
       examplesJson: body?.examplesJson,
+      stage2ExamplesConfig: body?.stage2ExamplesConfig,
       stage2HardConstraints: body?.stage2HardConstraints,
       templateId: body?.templateId
     });

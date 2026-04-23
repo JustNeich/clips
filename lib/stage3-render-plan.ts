@@ -1,6 +1,7 @@
 import type { Stage3RenderPolicy, Stage3Segment } from "../app/components/types";
 import { normalizeStage3EditorFragments } from "./stage3-editor-core";
 import {
+  normalizeStage3SegmentFocusXOverride,
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
@@ -68,6 +69,7 @@ export function normalizeStage3RenderPlanSegments(
           typeof segment.label === "string" && segment.label.trim()
             ? segment.label.trim()
             : `${labelPrefix} ${index + 1}`,
+        focusX: normalizeStage3SegmentFocusXOverride((segment as { focusX?: unknown }).focusX),
         focusY: normalizeStage3SegmentFocusOverride((segment as { focusY?: unknown }).focusY),
         videoZoom: normalizeStage3SegmentZoomOverride((segment as { videoZoom?: unknown }).videoZoom),
         mirrorEnabled: normalizeStage3SegmentMirrorOverride((segment as { mirrorEnabled?: unknown }).mirrorEnabled)
@@ -83,6 +85,7 @@ export function normalizeStage3RenderPlanSegments(
     endSec: segment.endSec,
     speed: normalizeStage3RenderPlanSegmentSpeed(segment.speed),
     label: segment.label,
+    focusX: segment.focusXOverride,
     focusY: segment.focusYOverride,
     videoZoom: segment.videoZoomOverride,
     mirrorEnabled: segment.mirrorEnabledOverride

@@ -8,7 +8,7 @@ This note captures the reliability rules for the manual fragment editor in Stage
   - source-position rail,
   - meta/action header,
   - control area with separate `Тайминг` and `Кадрирование` cards.
-- `Position Y` and `Zoom` use sliders instead of numeric-only inputs because these values are tuned iteratively while watching preview.
+- `Position X`, `Position Y`, and `Zoom` use sliders instead of numeric-only inputs because these values are tuned iteratively while watching preview.
 - The destructive action stays in the header, isolated from the timing fields, so accidental deletes are less likely during rapid editing.
 - The editor now has a single canonical output model: every Stage 3 edit produces exactly `6.0s` of output.
 - The red playhead always represents output time `0..6s`; it is never allowed to drift onto source time.
@@ -24,7 +24,7 @@ This note captures the reliability rules for the manual fragment editor in Stage
 
 ## Per-fragment transforms
 
-- `focusY`, `videoZoom`, and `mirrorEnabled` are stored on each segment as optional overrides.
+- `focusX`, `focusY`, `videoZoom`, and `mirrorEnabled` are stored on each segment as optional overrides.
 - If a fragment does not define one of these fields, Stage 3 falls back to the global editor values.
 - New fragments inherit the current editor framing values at creation time so the first render stays predictable.
 
@@ -48,5 +48,5 @@ This note captures the reliability rules for the manual fragment editor in Stage
 - Stage 3 now exposes one canonical preview surface. There is no separate `Редактор / Финал` playback mode anymore.
 - Live editor preview resolves the active fragment by output timeline time and applies that fragment's framing overrides.
 - Saved versions and the heavier accurate/final artifact stay outside the main transport flow and are opened from the versions drawer instead of replacing the primary preview surface.
-- Final Remotion render resolves the same fragment transform on the same output timeline, so `Y / Zoom / Mirror` stay aligned with the editor.
+- Final Remotion render resolves the same fragment transform on the same output timeline, so `X / Y / Zoom / Mirror` stay aligned with the editor.
 - Segment-level framing does not require a separate FFmpeg preprocessing path; it is applied at preview/render composition time, while source extraction uses the same canonical fragment plan.

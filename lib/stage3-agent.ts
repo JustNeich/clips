@@ -21,11 +21,13 @@ import {
 } from "./managed-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import {
+  clampStage3FocusX,
   normalizeStage3CameraKeyframes,
   normalizeStage3CameraMotion,
   resolveStage3EffectiveCameraTracks
 } from "./stage3-camera";
 import {
+  normalizeStage3SegmentFocusXOverride,
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
@@ -377,6 +379,7 @@ function normalizeSegment(
       typeof segment.label === "string" && segment.label.trim()
         ? segment.label.trim()
         : `${start.toFixed(2)}-${end === null ? "end" : end.toFixed(2)}`,
+    focusX: normalizeStage3SegmentFocusXOverride(segment.focusX),
     focusY: normalizeStage3SegmentFocusOverride(segment.focusY),
     videoZoom: normalizeStage3SegmentZoomOverride(segment.videoZoom),
     mirrorEnabled: normalizeStage3SegmentMirrorOverride(segment.mirrorEnabled)
@@ -691,6 +694,7 @@ function createDefaultRenderPlan(
     cameraKeyframes: [],
     cameraPositionKeyframes: [],
     cameraScaleKeyframes: [],
+    focusX: 0.5,
     videoZoom: 1,
     videoBrightness: videoAdjustments.brightness,
     videoExposure: videoAdjustments.exposure,
@@ -777,6 +781,10 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
     }),
     cameraPositionKeyframes: cameraTracks.positionKeyframes,
     cameraScaleKeyframes: cameraTracks.scaleKeyframes,
+    focusX:
+      typeof input?.focusX === "number" && Number.isFinite(input.focusX)
+        ? clampStage3FocusX(input.focusX)
+        : defaultPlan.focusX,
     videoZoom,
     videoBrightness: normalizeStage3VideoBrightness(input?.videoBrightness, defaultPlan.videoBrightness),
     videoExposure: normalizeStage3VideoExposure(input?.videoExposure, defaultPlan.videoExposure),
@@ -884,6 +892,7 @@ export function createSnapshot(input: {
   bottomText: string;
   clipStartSec: number;
   clipDurationSec: number;
+  focusX?: number;
   focusY: number;
   sourceDurationSec: number | null;
   renderPlan: Stage3RenderPlan;
@@ -910,6 +919,7 @@ export function createSnapshot(input: {
     captionHighlights: { top: [], bottom: [] },
     clipStartSec: Math.max(0, input.clipStartSec),
     clipDurationSec: targetDurationSec,
+    focusX: clampStage3FocusX(input.focusX ?? normalizedPlan.focusX),
     focusY: clamp(input.focusY, 0.12, 0.88),
     sourceDurationSec: input.sourceDurationSec,
     renderPlan: normalizedPlan,
@@ -1139,6 +1149,9 @@ export function hasMeaningfulMediaChange(before: Stage3StateSnapshot, after: Sta
   if (Math.abs(before.focusY - after.focusY) >= 0.005) {
     return true;
   }
+  if (Math.abs(before.renderPlan.focusX - after.renderPlan.focusX) >= 0.005) {
+    return true;
+  }
   if (Math.abs(before.renderPlan.videoZoom - after.renderPlan.videoZoom) >= 0.01) {
     return true;
   }
@@ -1231,6 +1244,7 @@ function createDiff(baseline: Stage3StateSnapshot, final: Stage3StateSnapshot): 
     baseline.topText !== final.topText || baseline.bottomText !== final.bottomText || fontChanged;
   const framingChanged =
     Math.abs(baseline.clipStartSec - final.clipStartSec) >= 0.01 ||
+    Math.abs(baseline.renderPlan.focusX - final.renderPlan.focusX) >= 0.005 ||
     Math.abs(baseline.focusY - final.focusY) >= 0.005 ||
     Math.abs(baseline.renderPlan.videoZoom - final.renderPlan.videoZoom) >= 0.01 ||
     baseline.renderPlan.mirrorEnabled !== final.renderPlan.mirrorEnabled ||
@@ -1359,6 +1373,10 @@ export function applyOperations(
       case "set_focus_y":
         nextFocus = clamp(operation.focusY, 0.12, 0.88);
         changes.push(`Фокус Y: ${Math.round(nextFocus * 100)}%.`);
+        break;
+      case "set_focus_x":
+        nextPlan.focusX = clampStage3FocusX(operation.focusX);
+        changes.push(`Фокус X: ${Math.round(nextPlan.focusX * 100)}%.`);
         break;
       case "set_video_zoom":
         nextPlan.videoZoom = clamp(operation.videoZoom, STAGE3_MIN_VIDEO_ZOOM, STAGE3_MAX_VIDEO_ZOOM);

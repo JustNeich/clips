@@ -141,6 +141,7 @@ test("segment transform overrides follow the active playback fragment", () => {
         endSec: 2,
         speed: 1,
         label: "A",
+        focusX: 0.18,
         focusY: 0.22,
         videoZoom: 1.18,
         mirrorEnabled: false
@@ -150,6 +151,7 @@ test("segment transform overrides follow the active playback fragment", () => {
         endSec: 5,
         speed: 1,
         label: "B",
+        focusX: 0.82,
         focusY: 0.76,
         videoZoom: 1.34,
         mirrorEnabled: true
@@ -166,6 +168,7 @@ test("segment transform overrides follow the active playback fragment", () => {
   const first = resolveStage3PlaybackTransformState({
     plan,
     outputTimeSec: 1,
+    fallbackFocusX: 0.5,
     fallbackFocusY: 0.5,
     fallbackVideoZoom: 1,
     fallbackMirrorEnabled: true
@@ -173,16 +176,19 @@ test("segment transform overrides follow the active playback fragment", () => {
   const second = resolveStage3PlaybackTransformState({
     plan,
     outputTimeSec: 5,
+    fallbackFocusX: 0.5,
     fallbackFocusY: 0.5,
     fallbackVideoZoom: 1,
     fallbackMirrorEnabled: false
   });
 
   assert.equal(first.segmentIndex, 0);
+  assert.equal(first.focusX, 0.18);
   assert.equal(first.focusY, 0.22);
   assert.equal(first.videoZoom, 1.18);
   assert.equal(first.mirrorEnabled, false);
   assert.equal(second.segmentIndex, 1);
+  assert.equal(second.focusX, 0.82);
   assert.equal(second.focusY, 0.76);
   assert.equal(second.videoZoom, 1.34);
   assert.equal(second.mirrorEnabled, true);

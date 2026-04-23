@@ -324,6 +324,8 @@ export type Stage2RuntimeChannelConfig = {
   workerProfile?: ResolvedStage2WorkerProfile;
   hardConstraints: Stage2HardConstraints;
   examplesSource: Stage2ExamplesCorpusSource;
+  customExamplesJson?: string;
+  customExamplesText?: string;
   styleProfile?: Stage2StyleProfile;
   editorialMemory?: Stage2EditorialMemorySummary;
   templateHighlightProfile?: TemplateHighlightConfig | null;

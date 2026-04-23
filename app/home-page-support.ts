@@ -28,6 +28,7 @@ import { isSourceJobActive } from "../lib/source-job-client";
 import { isStage2RunActive } from "../lib/stage2-run-client";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
 import {
+  clampStage3FocusX,
   normalizeStage3CameraKeyframes,
   normalizeStage3CameraMotion,
   normalizeStage3PositionKeyframes,
@@ -596,6 +597,7 @@ export function fallbackRenderPlan(): Stage3RenderPlan {
     cameraKeyframes: [],
     cameraPositionKeyframes: [],
     cameraScaleKeyframes: [],
+    focusX: 0.5,
     videoZoom: 1,
     videoBrightness: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.brightness,
     videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
@@ -643,6 +645,7 @@ export function normalizeClientSegments(
     endSec: segment.endSec,
     speed: segment.speed,
     label: segment.label,
+    focusX: segment.focusXOverride,
     focusY: segment.focusYOverride,
     videoZoom: segment.videoZoomOverride,
     mirrorEnabled: segment.mirrorEnabledOverride
@@ -707,6 +710,7 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
     cameraKeyframes: plan.cameraKeyframes,
     cameraPositionKeyframes: plan.cameraPositionKeyframes,
     cameraScaleKeyframes: plan.cameraScaleKeyframes,
+    focusX: plan.focusX,
     videoZoom: plan.videoZoom,
     videoBrightness: plan.videoBrightness,
     videoExposure: plan.videoExposure,
@@ -729,6 +733,10 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
     typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
       : base.videoZoom;
+  const focusX =
+    typeof candidate?.focusX === "number" && Number.isFinite(candidate.focusX)
+      ? clampStage3FocusX(candidate.focusX)
+      : base.focusX;
   const legacyCameraKeyframes = normalizeStage3CameraKeyframes(candidate?.cameraKeyframes ?? base.cameraKeyframes, {
     clipDurationSec: targetDurationSec,
     fallbackFocusY: 0.5,
@@ -797,6 +805,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
       clipDurationSec: targetDurationSec,
       fallbackZoom: videoZoom
     }),
+    focusX,
     videoZoom,
     videoBrightness: normalizeStage3VideoBrightness(candidate?.videoBrightness, base.videoBrightness),
     videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, base.videoExposure),

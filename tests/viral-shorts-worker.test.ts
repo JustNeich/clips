@@ -810,6 +810,7 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     clipStartSec: 0,
     clipDurationSec: 6,
     sourceDurationSec: 15,
+    focusX: 0.5,
     focusY: 0.5,
     cameraMotion: "disabled" as const,
     cameraKeyframes: [],
@@ -846,6 +847,7 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     onAgentPromptChange: () => undefined,
     onFragmentStateChange: () => undefined,
     onClipStartChange: () => undefined,
+    onFocusXChange: () => undefined,
     onFocusYChange: () => undefined,
     onCameraPositionKeyframesChange: () => undefined,
     onCameraScaleKeyframesChange: () => undefined,
@@ -7964,8 +7966,8 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
   });
 
   assert.equal(result.output.pipeline.execution?.pipelineVersion, "native_caption_v3");
-  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1");
-  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v6");
+  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v2");
+  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v7");
   assert.equal(result.output.captionOptions.length, 5);
   assert.equal(result.output.titleOptions.length, 5);
   assert.equal(result.output.winner?.candidateId, "ref_1");
@@ -7994,11 +7996,9 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
     false
   );
   assert.match(executor.calls[0]?.prompt ?? "", /"video_truth_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"current_comment_wave_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"channel_narrative_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"editorial_memory_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"publishability_contract_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"line_profile_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"examples_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"examples_text"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"comments_hint_json"/);
   assert.match(executor.calls[0]?.prompt ?? "", /"hard_constraints_json"/);
   assert.match(executor.calls[0]?.prompt ?? "", /even 1 character outside/i);
   assert.match(executor.calls[0]?.prompt ?? "", /that pause said enough/i);
@@ -13292,10 +13292,10 @@ test("chat trace export keeps stable and experimental reference one-shot flows i
       (stage) => stage.stageId === "oneShotReference"
     );
 
-    assert.equal(stableTrace?.stage2.execution.pathVariant, "reference_one_shot_v1");
+    assert.equal(stableTrace?.stage2.execution.pathVariant, "reference_one_shot_v2");
     assert.equal(
       experimentalTrace?.stage2.execution.pathVariant,
-      "reference_one_shot_v1_experimental"
+      "reference_one_shot_v2"
     );
     assert.equal(stableTrace?.stage2.causalInputs.workerProfile.resolvedId, "stable_reference_v6");
     assert.equal(
@@ -13304,14 +13304,14 @@ test("chat trace export keeps stable and experimental reference one-shot flows i
     );
     assert.equal(
       stableOneShotManifest?.promptCompatibilityVersion,
-      "reference_one_shot_v1@2026-04-03"
+      "reference_one_shot_v6@2026-04-23-channel-examples"
     );
     assert.equal(
       experimentalOneShotManifest?.promptCompatibilityVersion,
-      "reference_one_shot_v1_experimental@2026-04-12"
+      "reference_one_shot_v6@2026-04-23-channel-examples"
     );
-    assert.equal(stableOneShotManifest?.inputManifest?.comments?.passedCount, 12);
-    assert.equal(experimentalOneShotManifest?.inputManifest?.comments?.passedCount, 8);
+    assert.equal(stableOneShotManifest?.inputManifest?.comments?.passedCount, 5);
+    assert.equal(experimentalOneShotManifest?.inputManifest?.comments?.passedCount, 5);
     assert.equal(stableTrace?.stage2.causalInputs.editorialMemorySource?.strategy, "channel_fallback_only");
     assert.equal(experimentalTrace?.stage2.causalInputs.editorialMemorySource?.strategy, "same_line_only");
     assert.equal(stableTrace?.stage2.causalInputs.editorialMemorySource?.explicitThreshold, 6);

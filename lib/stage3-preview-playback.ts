@@ -117,6 +117,7 @@ export function buildStage3PlaybackTimingKey(plan: Stage3PlaybackPlan): string {
         endSec: segment.sourceEndSec,
         sourceDurationSec: segment.sourceDurationSec,
         speed: segment.speed,
+        focusXOverride: segment.focusXOverride,
         focusYOverride: segment.focusYOverride,
         videoZoomOverride: segment.videoZoomOverride,
         mirrorEnabledOverride: segment.mirrorEnabledOverride
@@ -266,11 +267,13 @@ export function resolveStage3PlaybackSyncAction(params: {
 export function resolveStage3PlaybackTransformState(params: {
   plan: Stage3PlaybackPlan;
   outputTimeSec: number;
+  fallbackFocusX: number;
   fallbackFocusY: number;
   fallbackVideoZoom: number;
   fallbackMirrorEnabled: boolean;
 }): {
   segmentIndex: number | null;
+  focusX: number;
   focusY: number;
   videoZoom: number;
   mirrorEnabled: boolean;
@@ -279,11 +282,13 @@ export function resolveStage3PlaybackTransformState(params: {
   const effective = resolveStage3SegmentTransformState({
     segment: position?.segment
       ? {
+          focusX: position.segment.focusXOverride,
           focusY: position.segment.focusYOverride,
           videoZoom: position.segment.videoZoomOverride,
           mirrorEnabled: position.segment.mirrorEnabledOverride
         }
       : null,
+    fallbackFocusX: params.fallbackFocusX,
     fallbackFocusY: params.fallbackFocusY,
     fallbackVideoZoom: params.fallbackVideoZoom,
     fallbackMirrorEnabled: params.fallbackMirrorEnabled

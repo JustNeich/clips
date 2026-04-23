@@ -37,5 +37,6 @@ pnpm-debug.log*
 /public/stage3-worker/manifest.json
 /public/stage3-worker/package.json
 /public/stage3-worker/runtime-deps.tar.gz
+/public/stage3-worker/runtime-sources.tar.gz
 /public/stage3-worker/remotion
 /public/stage3-worker/lib

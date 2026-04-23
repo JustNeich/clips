@@ -8,15 +8,11 @@ import {
 } from "../app/components/types";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import {
+  clampStage3FocusX,
   normalizeStage3CameraKeyframes,
   normalizeStage3CameraMotion,
   resolveStage3EffectiveCameraTracks
 } from "./stage3-camera";
-import {
-  normalizeStage3SegmentFocusOverride,
-  normalizeStage3SegmentMirrorOverride,
-  normalizeStage3SegmentZoomOverride
-} from "./stage3-segment-transforms";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
   normalizeStage3RenderPlanSegments,
@@ -58,6 +54,7 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     cameraKeyframes: [],
     cameraPositionKeyframes: [],
     cameraScaleKeyframes: [],
+    focusX: 0.5,
     videoZoom: 1,
     videoBrightness: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.brightness,
     videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
@@ -132,6 +129,10 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
     }),
     cameraPositionKeyframes: cameraTracks.positionKeyframes,
     cameraScaleKeyframes: cameraTracks.scaleKeyframes,
+    focusX:
+      typeof candidate?.focusX === "number" && Number.isFinite(candidate.focusX)
+        ? clampStage3FocusX(candidate.focusX)
+        : fallback.focusX,
     videoZoom,
     videoBrightness: normalizeStage3VideoBrightness(candidate?.videoBrightness, fallback.videoBrightness),
     videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, fallback.videoExposure),
@@ -254,6 +255,7 @@ function passToSnapshot(pass: Stage3AgentPass, sourceDurationSec: number | null)
     captionHighlights: { top: [], bottom: [] },
     clipStartSec: pass.clipStartSec,
     clipDurationSec: pass.clipDurationSec,
+    focusX: pass.renderPlan.focusX,
     focusY: pass.focusY,
     renderPlan: normalizeRenderPlan(pass.renderPlan),
     sourceDurationSec,
@@ -290,6 +292,7 @@ function normalizeSnapshot(
       typeof candidate.clipStartSec === "number" ? candidate.clipStartSec : fallback.clipStartSec,
     clipDurationSec:
       typeof candidate.clipDurationSec === "number" ? candidate.clipDurationSec : fallback.clipDurationSec,
+    focusX: typeof candidate.focusX === "number" ? clampStage3FocusX(candidate.focusX) : fallback.focusX,
     focusY: typeof candidate.focusY === "number" ? candidate.focusY : fallback.focusY,
     renderPlan: normalizeRenderPlan(candidate.renderPlan, fallback.renderPlan),
     sourceDurationSec,

@@ -9,6 +9,7 @@ import {
   SCIENCE_CARD_RED_TEMPLATE_ID,
   SCIENCE_CARD_GREEN_TEMPLATE_ID,
   SCIENCE_CARD_V7_TEMPLATE_ID,
+  CHANNEL_STORY_TEMPLATE_ID,
   HEDGES_OF_HONOR_TEMPLATE_ID
 } from "../lib/stage3-template";
 import type { Stage3TemplateConfig } from "../lib/stage3-template";
@@ -25,6 +26,7 @@ type RemotionStage3Segment = {
   endSec: number | null;
   label: string;
   speed: number;
+  focusX?: number | null;
   focusY?: number | null;
   videoZoom?: number | null;
   mirrorEnabled?: boolean | null;
@@ -39,6 +41,7 @@ export type ScienceCardV1Props = {
   captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
+  focusX: number;
   focusY: number;
   mirrorEnabled: boolean;
   timingMode: RemotionStage3TimingMode;
@@ -79,6 +82,7 @@ export const SCIENCE_CARD_BLUE_SCENE_ID = SCIENCE_CARD_BLUE_TEMPLATE_ID;
 export const SCIENCE_CARD_RED_SCENE_ID = SCIENCE_CARD_RED_TEMPLATE_ID;
 export const SCIENCE_CARD_GREEN_SCENE_ID = SCIENCE_CARD_GREEN_TEMPLATE_ID;
 export const SCIENCE_CARD_V7_SCENE_ID = SCIENCE_CARD_V7_TEMPLATE_ID;
+export const CHANNEL_STORY_SCENE_ID = CHANNEL_STORY_TEMPLATE_ID;
 export const HEDGES_OF_HONOR_SCENE_ID = HEDGES_OF_HONOR_TEMPLATE_ID;
 const DEFAULT_TEXT_SCALE = 1.25;
 
@@ -92,6 +96,7 @@ function buildDefaultProps(templateId: string, authorName: string, authorHandle:
     captionHighlights: { top: [], bottom: [] },
     clipStartSec: 0,
     clipDurationSec: 6,
+    focusX: 0.5,
     focusY: 0.5,
     mirrorEnabled: true,
     timingMode: "auto",
@@ -174,6 +179,15 @@ export const RemotionRoot = () => {
         fps={30}
         durationInFrames={6 * 30}
         defaultProps={buildDefaultProps(SCIENCE_CARD_V7_TEMPLATE_ID, "Echoes Of Honor", "@EchoesOfHonor50")}
+      />
+      <Composition
+        id={CHANNEL_STORY_SCENE_ID}
+        component={ScienceCardV1}
+        width={1080}
+        height={1920}
+        fps={30}
+        durationInFrames={6 * 30}
+        defaultProps={buildDefaultProps(CHANNEL_STORY_TEMPLATE_ID, "History Club TV", "@historyclubtv")}
       />
       <Composition
         id={HEDGES_OF_HONOR_SCENE_ID}

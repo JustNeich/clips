@@ -36,6 +36,7 @@ import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
   formatStage2DelimitedStringList,
+  normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
   parseStage2DelimitedStringList,
   Stage2ExamplesConfig,
@@ -355,6 +356,9 @@ export function ChannelManager({
   const [username, setUsername] = useState("");
   const [stage2HardConstraints, setStage2HardConstraints] = useState<Stage2HardConstraints>(
     DEFAULT_STAGE2_HARD_CONSTRAINTS
+  );
+  const [stage2ExamplesConfig, setStage2ExamplesConfig] = useState<Stage2ExamplesConfig>(
+    DEFAULT_STAGE2_EXAMPLES_CONFIG
   );
   const [bannedWordsInput, setBannedWordsInput] = useState("");
   const [bannedOpenersInput, setBannedOpenersInput] = useState("");
@@ -703,10 +707,12 @@ export function ChannelManager({
     });
 
   const buildStage2Snapshot = (
-    nextHardConstraints: Stage2HardConstraints
+    nextHardConstraints: Stage2HardConstraints,
+    nextExamplesConfig: Stage2ExamplesConfig
   ): string =>
     JSON.stringify({
-      stage2HardConstraints: nextHardConstraints
+      stage2HardConstraints: nextHardConstraints,
+      stage2ExamplesConfig: nextExamplesConfig
     });
 
   const buildStage2DefaultsSnapshot = (
@@ -738,6 +744,7 @@ export function ChannelManager({
       workspaceCodexModelConfigProp
     );
     setStage2HardConstraints(normalizedHardConstraints);
+    setStage2ExamplesConfig(DEFAULT_STAGE2_EXAMPLES_CONFIG);
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedWords));
     setBannedOpenersInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedOpeners));
     setWorkspaceStage2PromptConfig(normalizedPromptConfig);
@@ -776,7 +783,12 @@ export function ChannelManager({
     const normalizedChannelHardConstraints = normalizeStage2HardConstraints(
       activeChannel.stage2HardConstraints
     );
+    const normalizedChannelExamplesConfig = normalizeStage2ExamplesConfig(
+      activeChannel.stage2ExamplesConfig,
+      { channelId: activeChannel.id, channelName: activeChannel.name }
+    );
     setStage2HardConstraints(normalizedChannelHardConstraints);
+    setStage2ExamplesConfig(normalizedChannelExamplesConfig);
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedWords));
     setBannedOpenersInput(
       formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedOpeners)
@@ -786,7 +798,8 @@ export function ChannelManager({
     persistedSnapshotRef.current = {
       brand: buildBrandSnapshot(activeChannel.name, activeChannel.username),
       stage2: buildStage2Snapshot(
-        normalizedChannelHardConstraints
+        normalizedChannelHardConstraints,
+        normalizedChannelExamplesConfig
       ),
       stage2Defaults: buildStage2DefaultsSnapshot(
         normalizedHardConstraints,
@@ -908,7 +921,7 @@ export function ChannelManager({
       skipAutosaveRef.current.stage2 = false;
       return;
     }
-    const nextSnapshot = buildStage2Snapshot(stage2HardConstraints);
+    const nextSnapshot = buildStage2Snapshot(stage2HardConstraints, stage2ExamplesConfig);
     if (nextSnapshot === persistedSnapshotRef.current.stage2) {
       resetAutosaveFeedbackIfNeeded("stage2");
       return;
@@ -919,7 +932,8 @@ export function ChannelManager({
     const timerId = window.setTimeout(() => {
       setAutosaveFeedback("stage2", "saving", "Сохраняем настройки второго этапа…");
       void saveChannelRef.current(activeChannel.id, {
-        stage2HardConstraints
+        stage2HardConstraints,
+        stage2ExamplesConfig
       })
         .then(() => {
           if (autosaveRevisionRef.current.stage2 !== revision) {
@@ -947,6 +961,7 @@ export function ChannelManager({
     resetAutosaveFeedbackIfNeeded,
     scheduleAutosaveReset,
     setAutosaveFeedback,
+    stage2ExamplesConfig,
     stage2HardConstraints
   ]);
 
@@ -1671,6 +1686,53 @@ export function ChannelManager({
     updateStage2HardConstraint("bannedOpeners", parseStage2DelimitedStringList(value));
   };
 
+  const updateChannelExamplesMode = (useWorkspaceDefault: boolean) => {
+    setStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          useWorkspaceDefault
+        },
+        {
+          channelId: activeChannel?.id ?? "channel",
+          channelName: activeChannel?.name ?? name
+        }
+      )
+    );
+  };
+
+  const updateCustomExamplesJson = (value: string) => {
+    setStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          useWorkspaceDefault: false,
+          customExamplesJson: value
+        },
+        {
+          channelId: activeChannel?.id ?? "channel",
+          channelName: activeChannel?.name ?? name
+        }
+      )
+    );
+  };
+
+  const updateCustomExamplesText = (value: string) => {
+    setStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          useWorkspaceDefault: false,
+          customExamplesText: value
+        },
+        {
+          channelId: activeChannel?.id ?? "channel",
+          channelName: activeChannel?.name ?? name
+        }
+      )
+    );
+  };
+
   const formatTabLabel = (value: "brand" | "stage2" | "render" | "publishing" | "assets" | "access") => {
     switch (value) {
       case "brand":
@@ -1842,6 +1904,14 @@ export function ChannelManager({
                 autosaveState={autosaveState}
                 canEditWorkspaceDefaults={canEditWorkspaceDefaults}
                 canEditHardConstraints={canEditHardConstraints}
+                canEditChannelExamples={canEditSetup}
+                stage2ExamplesConfig={stage2ExamplesConfig}
+                customExamplesJson={stage2ExamplesConfig.customExamplesJson}
+                customExamplesText={stage2ExamplesConfig.customExamplesText}
+                customExamplesCount={stage2ExamplesConfig.customExamples.length}
+                updateChannelExamplesMode={updateChannelExamplesMode}
+                updateCustomExamplesJson={updateCustomExamplesJson}
+                updateCustomExamplesText={updateCustomExamplesText}
                 updateWorkspaceCaptionProvider={updateWorkspaceCaptionProvider}
                 updateWorkspaceAnthropicModel={updateWorkspaceAnthropicModel}
                 updateWorkspaceOpenRouterModel={updateWorkspaceOpenRouterModel}

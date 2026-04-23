@@ -29,6 +29,8 @@ export type Stage2ExamplesCorpusSource = "workspace_default" | "channel_custom";
 export type Stage2ExamplesConfig = {
   version: 1;
   useWorkspaceDefault: boolean;
+  customExamplesJson?: string;
+  customExamplesText?: string;
   customExamples: Stage2CorpusExample[];
 };
 
@@ -44,6 +46,8 @@ export const DEFAULT_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
 export const DEFAULT_STAGE2_EXAMPLES_CONFIG: Stage2ExamplesConfig = {
   version: 1,
   useWorkspaceDefault: true,
+  customExamplesJson: "",
+  customExamplesText: "",
   customExamples: []
 };
 const WORKSPACE_STAGE2_CORPUS_OWNER = {
@@ -53,6 +57,11 @@ const WORKSPACE_STAGE2_CORPUS_OWNER = {
 
 function sanitizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function sanitizeExamplesTextBlock(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text.length > 80_000 ? text.slice(0, 80_000) : text;
 }
 
 const STAGE2_STRING_LIST_SPLIT_PATTERN = /(?:\r?\n|,|;)+/g;
@@ -88,6 +97,30 @@ function sanitizeStringList(value: unknown): string[] {
   return parseStage2DelimitedStringList(value);
 }
 
+function compactUnknownForExample(value: unknown, maxLength = 180): string {
+  if (typeof value === "string") {
+    return sanitizeString(value).slice(0, maxLength);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value).slice(0, maxLength);
+  } catch {
+    return "";
+  }
+}
+
+function findFirstMeaningfulString(candidate: Record<string, unknown>): string {
+  for (const value of Object.values(candidate)) {
+    const text = sanitizeString(value);
+    if (text.length >= 8) {
+      return text;
+    }
+  }
+  return "";
+}
+
 function sanitizeNumber(value: unknown, fallback: number): number {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -103,14 +136,37 @@ function normalizeCorpusExample(
     return null;
   }
 
-  const title = sanitizeString(candidate.title);
+  const title = sanitizeString(candidate.title ?? candidate.headline ?? candidate.name);
   const overlayTop = sanitizeString(
-    candidate.overlayTop ?? candidate.top ?? candidate.overlay_top ?? candidate.overlay_top_text
+    candidate.overlayTop ??
+      candidate.top ??
+      candidate.overlay_top ??
+      candidate.overlay_top_text ??
+      candidate.topText ??
+      candidate.top_caption
   );
   const overlayBottom = sanitizeString(
-    candidate.overlayBottom ?? candidate.bottom ?? candidate.overlay_bottom ?? candidate.overlay_bottom_text
+    candidate.overlayBottom ??
+      candidate.bottom ??
+      candidate.overlay_bottom ??
+      candidate.overlay_bottom_text ??
+      candidate.bottomText ??
+      candidate.bottom_caption
   );
-  if (!title && !overlayTop && !overlayBottom) {
+  const transcript = sanitizeString(
+    candidate.transcript ??
+      candidate.description ??
+      candidate.text ??
+      candidate.content ??
+      candidate.caption ??
+      candidate.overlayFull ??
+      candidate.full_caption
+  );
+  const fallbackCaptionText = sanitizeString(
+    candidate.text ?? candidate.content ?? candidate.caption ?? candidate.description ?? candidate.transcript
+  );
+  const firstFallbackText = findFirstMeaningfulString(candidate);
+  if (!title && !overlayTop && !overlayBottom && !transcript && !firstFallbackText) {
     return null;
   }
 
@@ -133,12 +189,19 @@ function normalizeCorpusExample(
     ownerChannelName,
     sourceChannelId,
     sourceChannelName,
-    title: title || overlayTop || overlayBottom,
-    overlayTop,
-    overlayBottom,
-    transcript: sanitizeString(candidate.transcript ?? candidate.description),
+    title: title || overlayTop || overlayBottom || firstFallbackText.slice(0, 120),
+    overlayTop: overlayTop || fallbackCaptionText.slice(0, 210) || firstFallbackText.slice(0, 210),
+    overlayBottom: overlayBottom || transcript.slice(0, 160),
+    transcript,
     clipType: sanitizeString(candidate.clipType ?? candidate.inferred_clip_type) || "general",
-    whyItWorks: sanitizeStringList(candidate.whyItWorks ?? candidate.why_it_works),
+    whyItWorks:
+      sanitizeStringList(candidate.whyItWorks ?? candidate.why_it_works).length > 0
+        ? sanitizeStringList(candidate.whyItWorks ?? candidate.why_it_works)
+        : Object.entries(candidate)
+            .slice(0, 10)
+            .map(([key, value]) => `${key}: ${compactUnknownForExample(value)}`)
+            .filter((entry) => entry.length > 3)
+            .slice(0, 6),
     qualityScore:
       candidate.qualityScore === null || candidate.qualityScore === undefined
         ? null
@@ -163,7 +226,7 @@ export function parseStage2ExamplesJson(
           ? ((parsed as { examples: unknown[] }).examples ?? [])
           : Array.isArray((parsed as { items?: unknown }).items)
             ? ((parsed as { items: unknown[] }).items ?? [])
-            : []
+            : [parsed]
         : [];
 
     return entries
@@ -257,15 +320,29 @@ export function normalizeStage2ExamplesConfig(
     : Array.isArray((candidate as { manualExamples?: unknown[] } | undefined)?.manualExamples)
       ? ((candidate as { manualExamples: unknown[] }).manualExamples ?? [])
       : [];
+  const customExamplesJson = sanitizeExamplesTextBlock(
+    candidate?.customExamplesJson ??
+      (candidate as { rawExamplesJson?: unknown } | undefined)?.rawExamplesJson ??
+      (candidate as { examplesJson?: unknown } | undefined)?.examplesJson
+  );
+  const customExamplesText = sanitizeExamplesTextBlock(
+    candidate?.customExamplesText ??
+      (candidate as { plainTextExamples?: unknown } | undefined)?.plainTextExamples ??
+      (candidate as { examplesText?: unknown } | undefined)?.examplesText
+  );
+  const customExamplesFromJson = parseStage2ExamplesJson(customExamplesJson, fallbackOwner);
+  const legacyCustomExamples = customExamplesJson
+    ? []
+    : customExamplesRaw
+      .map((entry, index) => normalizeCorpusExample(entry, fallbackOwner, index))
+      .filter((entry): entry is Stage2CorpusExample => entry !== null);
 
   return {
     version: 1,
     useWorkspaceDefault: useWorkspaceDefaultCandidate,
-    customExamples: dedupeStage2CorpusExamples(
-      customExamplesRaw
-      .map((entry, index) => normalizeCorpusExample(entry, fallbackOwner, index))
-      .filter((entry): entry is Stage2CorpusExample => entry !== null)
-    )
+    customExamplesJson,
+    customExamplesText,
+    customExamples: dedupeStage2CorpusExamples([...customExamplesFromJson, ...legacyCustomExamples])
   };
 }
 

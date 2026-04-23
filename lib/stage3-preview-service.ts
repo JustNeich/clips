@@ -22,6 +22,7 @@ import {
 } from "./stage3-video-adjustments";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
 import {
+  clampStage3FocusX,
   normalizeStage3CameraKeyframes,
   normalizeStage3CameraMotion,
   resolveStage3EffectiveCameraTracks
@@ -33,11 +34,6 @@ import {
   ensureStage3SourceCached,
   runHostedStage3HeavyJob
 } from "./stage3-server-control";
-import {
-  normalizeStage3SegmentFocusOverride,
-  normalizeStage3SegmentMirrorOverride,
-  normalizeStage3SegmentZoomOverride
-} from "./stage3-segment-transforms";
 import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
 import {
   normalizeStage3RenderPlanSegments,
@@ -282,6 +278,10 @@ function normalizeRenderPlan(
     }),
     cameraPositionKeyframes: cameraTracks.positionKeyframes,
     cameraScaleKeyframes: cameraTracks.scaleKeyframes,
+    focusX:
+      typeof rawPlan?.focusX === "number" && Number.isFinite(rawPlan.focusX)
+        ? clampStage3FocusX(rawPlan.focusX)
+        : 0.5,
     videoZoom,
     videoBrightness: normalizeStage3VideoBrightness(rawPlan?.videoBrightness, templateVideoAdjustments.brightness),
     videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),

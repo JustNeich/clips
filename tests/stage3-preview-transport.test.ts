@@ -22,6 +22,7 @@ function makePosition(overrides?: Partial<Stage3PlaybackPosition>): Stage3Playba
       sourceEndSec: 24.3,
       sourceDurationSec: 6,
       speed: 1,
+      focusXOverride: null,
       focusYOverride: null,
       videoZoomOverride: null,
       mirrorEnabledOverride: null,

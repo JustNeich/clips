@@ -412,7 +412,15 @@ export async function createChannel(input: {
     descriptionPrompt: sanitizeTextBlock(input.descriptionPrompt, ""),
     examplesJson: typeof input.examplesJson === "string" ? ensureValidJsonString(input.examplesJson) : "[]",
     stage2WorkerProfileId: null,
-    stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+    stage2ExamplesConfig: input.stage2ExamplesConfig
+      ? parseStage2ExamplesConfigJson(
+          stringifyStage2ExamplesConfig(input.stage2ExamplesConfig, {
+            channelId: "pending",
+            channelName: sanitizeName(input.name, "New channel")
+          }),
+          { channelId: "pending", channelName: sanitizeName(input.name, "New channel") }
+        )
+      : DEFAULT_STAGE2_EXAMPLES_CONFIG,
     stage2HardConstraints: input.stage2HardConstraints
       ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(input.stage2HardConstraints))
       : getWorkspaceStage2HardConstraints(input.workspaceId),
@@ -514,7 +522,16 @@ export async function updateChannelById(
         ? ensureValidJsonString(patch.examplesJson)
         : channel.examplesJson,
     stage2WorkerProfileId: channel.stage2WorkerProfileId,
-    stage2ExamplesConfig: channel.stage2ExamplesConfig,
+    stage2ExamplesConfig:
+      "stage2ExamplesConfig" in patch && patch.stage2ExamplesConfig
+        ? parseStage2ExamplesConfigJson(
+            stringifyStage2ExamplesConfig(patch.stage2ExamplesConfig, {
+              channelId: channel.id,
+              channelName: channel.name
+            }),
+            { channelId: channel.id, channelName: channel.name }
+          )
+        : channel.stage2ExamplesConfig,
     stage2HardConstraints:
       "stage2HardConstraints" in patch && patch.stage2HardConstraints
         ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(patch.stage2HardConstraints))

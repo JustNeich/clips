@@ -623,6 +623,7 @@ export type Stage3RenderState = "idle" | "queued" | "rendering" | "ready" | "err
 
 export type Stage3EditorDraftOverrides = {
   clipStartSec: number;
+  focusX: number;
   focusY: number;
   videoZoom: number;
   videoBrightness: number;
@@ -757,6 +758,7 @@ export type Stage3Segment = {
   endSec: number | null;
   label: string;
   speed: Stage3SegmentSpeed;
+  focusX?: number | null;
   focusY?: number | null;
   videoZoom?: number | null;
   mirrorEnabled?: boolean | null;
@@ -770,6 +772,7 @@ export type Stage3Operation =
   | { op: "set_audio_mode"; audioMode: Stage3AudioMode }
   | { op: "set_slowmo"; smoothSlowMo: boolean }
   | { op: "set_clip_start"; clipStartSec: number }
+  | { op: "set_focus_x"; focusX: number }
   | { op: "set_focus_y"; focusY: number }
   | { op: "set_video_zoom"; videoZoom: number }
   | { op: "set_top_font_scale"; topFontScale: number }
@@ -792,6 +795,7 @@ export type Stage3RenderPlan = {
   cameraKeyframes: Stage3CameraKeyframe[];
   cameraPositionKeyframes: Stage3PositionKeyframe[];
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
+  focusX: number;
   videoZoom: number;
   videoBrightness: number;
   videoExposure: number;
@@ -828,6 +832,7 @@ export type Stage3StateSnapshot = {
   captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
+  focusX?: number;
   focusY: number;
   renderPlan: Stage3RenderPlan;
   sourceDurationSec: number | null;
