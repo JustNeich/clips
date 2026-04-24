@@ -4910,6 +4910,7 @@ export default function HomePage() {
         (
           currentDraftPayload.stage3.topText !== null ||
           currentDraftPayload.stage3.bottomText !== null ||
+          currentDraftPayload.stage3.captionHighlights !== null ||
           currentDraftPayload.stage3.clipStartSec !== null ||
           currentDraftPayload.stage3.focusY !== null ||
           currentDraftPayload.stage3.renderPlan !== null ||
@@ -5041,7 +5042,8 @@ export default function HomePage() {
     const currentMatchesLastAutoApplied =
       currentAutoApplied?.chatId === activeChat.id &&
       stage3TopText === currentAutoApplied.top &&
-      stage3BottomText === currentAutoApplied.bottom;
+      stage3BottomText === currentAutoApplied.bottom &&
+      getCaptionHighlightsSignature(stage3CaptionHighlights) === currentAutoApplied.highlightsSignature;
     const currentTextEmpty = !stage3TopText && !stage3BottomText;
 
     if (!currentTextEmpty && !currentMatchesLastAutoApplied) {

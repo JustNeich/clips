@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildStage3ExtractSegmentFfmpegArgs,
   buildStage3FitClipVideoFilters,
+  buildStage3PreparedDurationGuardFfmpegArgs,
   buildNormalizeStage3SourceFfmpegArgs,
   resolveStage3SegmentExtractionMode,
   resolveStage3SourcePreparationScaleFilter,
@@ -10,6 +11,7 @@ import {
   STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER
 } from "../lib/stage3-media-agent";
 import { buildFinalizeRenderedOutputArgs } from "../lib/stage3-render-service";
+import { buildStage3VideoPlacementStyle } from "../lib/stage3-video-placement";
 import {
   createStage3VariationProfile,
   resolveStage3RenderVariationMode,
@@ -86,6 +88,50 @@ test("render source preparation caps oversized clips before remotion decodes the
 
   assert.match(filters, /^scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,/);
   assert.match(filters, /scale=trunc\(iw\/2\)\*2:trunc\(ih\/2\)\*2:flags=lanczos,setsar=1$/);
+});
+
+test("render source duration guard pads short prepared clips with the final frame", () => {
+  const args = buildStage3PreparedDurationGuardFfmpegArgs({
+    inputPath: "/tmp/in.mp4",
+    outputPath: "/tmp/out.mp4",
+    inputDurationSec: 5.1,
+    targetDurationSec: 6,
+    sourceHasAudio: true,
+    profile: "render"
+  });
+  const filter = args[args.indexOf("-filter_complex") + 1] ?? "";
+
+  assert.match(filter, /tpad=stop_mode=clone:stop_duration=0\.900/);
+  assert.match(filter, /trim=duration=6\.000/);
+  assert.match(filter, /apad=pad_dur=0\.900/);
+  assert.ok(args.includes("-t"));
+  assert.equal(args[args.indexOf("-t") + 1], "6.000");
+});
+
+test("stage3 video placement anchors zoom transform to Position X and Y", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.82,
+    focusY: 0.18,
+    videoZoom: 1.4,
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.objectPosition, "82.000% 18.000%");
+  assert.equal(style.transform, "scale(1.400, 1.400)");
+  assert.equal(style.transformOrigin, "82.000% 18.000%");
+});
+
+test("stage3 mirrored video placement keeps the same focus origin while flipping X scale", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.12,
+    focusY: 0.88,
+    videoZoom: 1.25,
+    mirrorEnabled: true
+  });
+
+  assert.equal(style.objectPosition, "12.000% 88.000%");
+  assert.equal(style.transform, "scale(-1.250, 1.250)");
+  assert.equal(style.transformOrigin, "12.000% 88.000%");
 });
 
 test("render segment extraction uses decode-accurate timestamps to reduce boundary flashes", () => {

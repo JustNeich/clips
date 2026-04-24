@@ -104,7 +104,7 @@ test("remapping highlight spans preserves unaffected spans and shifts later span
   ]);
 });
 
-test("remapping highlight spans drops only the span that overlaps the edited region", () => {
+test("remapping highlight spans preserves color anchors when a phrase is edited", () => {
   const previousText = "Alpha bravo charlie delta";
   const nextText = "Alpha bravo charm delta";
   const remapped = remapTemplateHighlightSpansForTextEdit({
@@ -119,8 +119,32 @@ test("remapping highlight spans drops only the span that overlaps the edited reg
 
   assert.deepEqual(remapped, [
     { start: 0, end: 5, slotId: "slot1" },
+    { start: 12, end: 17, slotId: "slot2" },
     { start: 18, end: 23, slotId: "slot3" }
   ]);
+});
+
+test("remapping highlight spans redistributes manual full-text rewrites instead of clearing all color", () => {
+  const previousText = "The fox freezes near the river before the hawk drops behind it.";
+  const nextText = "A young bear waits by the road, then bolts when the truck door slams.";
+  const remapped = remapTemplateHighlightSpansForTextEdit({
+    previousText,
+    nextText,
+    spans: [
+      { start: 4, end: 7, slotId: "slot1" },
+      { start: 25, end: 30, slotId: "slot2" },
+      { start: 42, end: 52, slotId: "slot3" }
+    ]
+  });
+
+  assert.equal(remapped.length, 3);
+  assert.deepEqual(
+    remapped.map((span) => span.slotId),
+    ["slot1", "slot2", "slot3"]
+  );
+  assert.ok(remapped[0]!.start < remapped[1]!.start);
+  assert.ok(remapped[1]!.start < remapped[2]!.start);
+  assert.ok(remapped.every((span) => nextText.slice(span.start, span.end).trim().length > 0));
 });
 
 test("highlight status helpers distinguish configured profile from active runtime usage", () => {

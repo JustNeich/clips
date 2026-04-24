@@ -181,3 +181,46 @@ test("neighboring top text scale values move smoothly for science-card-v1", () =
     `expected 101% -> 102% to avoid a 1px cliff, got ${at101.computed.topFont} -> ${at102.computed.topFont}`
   );
 });
+
+test("channel-story body text keeps descender-safe line height and responds to scale", () => {
+  const bottomText =
+    "A gray fox keeps dropping low by the icy river, then pops up again with a quiet little jog that makes every lowercase g, q, p, and y visible.";
+
+  const atDefault = buildTemplateRenderSnapshot({
+    templateId: "channel-story-v1",
+    content: {
+      topText: "",
+      bottomText,
+      channelName: "Marine Corps",
+      channelHandle: "@marinesdoingthings",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+  const reduced = buildTemplateRenderSnapshot({
+    templateId: "channel-story-v1",
+    content: {
+      ...atDefault.content,
+      bottomFontScale: 0.85
+    }
+  });
+  const increased = buildTemplateRenderSnapshot({
+    templateId: "channel-story-v1",
+    content: {
+      ...atDefault.content,
+      bottomFontScale: 1.15
+    }
+  });
+
+  assert.ok(
+    atDefault.computed.bottomLineHeight >= 1.05,
+    `expected descender-safe line-height, got ${atDefault.computed.bottomLineHeight}`
+  );
+  assert.ok(reduced.computed.bottomFont < atDefault.computed.bottomFont);
+  assert.ok(increased.computed.bottomFont >= atDefault.computed.bottomFont);
+});

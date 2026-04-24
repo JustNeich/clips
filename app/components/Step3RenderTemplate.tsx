@@ -128,6 +128,10 @@ import {
   normalizeStage3VideoSaturation
 } from "../../lib/stage3-video-adjustments";
 import {
+  buildStage3VideoPlacementStyle,
+  type Stage3VideoPlacementStyle
+} from "../../lib/stage3-video-placement";
+import {
   normalizeStage3SegmentFocusXOverride,
   normalizeStage3SegmentFocusOverride,
   normalizeStage3SegmentMirrorOverride,
@@ -770,13 +774,11 @@ function PreviewClipVideo({
   playbackPlan,
   playbackTimingKey,
   className,
-  objectPosition,
-  videoZoom,
+  placementStyle,
   videoBrightness,
   videoExposure,
   videoContrast,
   videoSaturation,
-  mirrorEnabled,
   muted,
   videoRef,
   isPlaying,
@@ -791,13 +793,11 @@ function PreviewClipVideo({
   playbackPlan: ReturnType<typeof buildStage3PlaybackPlan>;
   playbackTimingKey: string;
   className: string;
-  objectPosition?: string;
-  videoZoom?: number;
+  placementStyle: Stage3VideoPlacementStyle;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
   videoSaturation: number;
-  mirrorEnabled: boolean;
   muted: boolean;
   videoRef: MutableRefObject<HTMLVideoElement | null>;
   isPlaying: boolean;
@@ -1126,13 +1126,10 @@ function PreviewClipVideo({
       playsInline
       preload="metadata"
       style={{
-        ...(objectPosition ? { objectPosition } : {}),
+        objectPosition: placementStyle.objectPosition,
         ...(videoFilter ? { filter: videoFilter } : {}),
-        transform: `scale(${(
-          Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, videoZoom ?? 1)) *
-            (mirrorEnabled ? -1 : 1)
-        ).toFixed(3)}, ${Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, videoZoom ?? 1)).toFixed(3)})`,
-        transformOrigin: "center center"
+        transform: placementStyle.transform,
+        transformOrigin: placementStyle.transformOrigin
       }}
     />
   );
@@ -1379,7 +1376,18 @@ function Stage3LivePreviewPanel({
       timelineSec
     ]
   );
-  const objectPosition = `${(playbackTransformState.focusX * 100).toFixed(3)}% ${(cameraState.focusY * 100).toFixed(3)}%`;
+  const slotPlacementStyle = buildStage3VideoPlacementStyle({
+    focusX: playbackTransformState.focusX,
+    focusY: cameraState.focusY,
+    videoZoom: cameraState.zoom,
+    mirrorEnabled: playbackTransformState.mirrorEnabled
+  });
+  const backgroundPlacementStyle = buildStage3VideoPlacementStyle({
+    focusX: playbackTransformState.focusX,
+    focusY: cameraState.focusY,
+    videoZoom: 1,
+    mirrorEnabled: playbackTransformState.mirrorEnabled
+  });
   const previewBackgroundVideoFilter = buildStage3VideoFilterCss(
     {
       brightness: videoBrightness,
@@ -2046,12 +2054,12 @@ function Stage3LivePreviewPanel({
                               playsInline
                               preload="metadata"
                                 style={{
-                                  objectPosition,
+                                  objectPosition: backgroundPlacementStyle.objectPosition,
                                   ...(previewBackgroundVideoFilter
                                     ? { filter: previewBackgroundVideoFilter }
                                     : {}),
-                                  transform: playbackTransformState.mirrorEnabled ? "scaleX(-1)" : undefined,
-                                  transformOrigin: "center center"
+                                  transform: backgroundPlacementStyle.transform,
+                                  transformOrigin: backgroundPlacementStyle.transformOrigin
                                 }}
                               onLoadedMetadata={() => {
                                 const position = resolveStage3PlaybackPosition(playbackPlan, timelineSec);
@@ -2089,13 +2097,11 @@ function Stage3LivePreviewPanel({
                         playbackPlan={playbackPlan}
                         playbackTimingKey={playbackTimingKey}
                         className="preview-slot-video"
-                        objectPosition={objectPosition}
-                        videoZoom={cameraState.zoom}
+                        placementStyle={slotPlacementStyle}
                         videoBrightness={videoBrightness}
                         videoExposure={videoExposure}
                         videoContrast={videoContrast}
                         videoSaturation={videoSaturation}
-                        mirrorEnabled={playbackTransformState.mirrorEnabled}
                         muted={isMuted || !sourceAudioEnabled}
                         videoRef={slotPreviewRef}
                         isPlaying={isPlaying}

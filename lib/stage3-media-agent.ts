@@ -17,7 +17,7 @@ const execFileAsync = promisify(execFile);
 
 const MOTION_SAMPLE_FPS = 8;
 const SEGMENT_SPEED_SET = new Set<number>(STAGE3_SEGMENT_SPEED_OPTIONS);
-type Stage3MediaProfile = "preview" | "render";
+export type Stage3MediaProfile = "preview" | "render";
 export type Stage3SegmentExtractionMode = "fast" | "accurate";
 
 type EncodeProfile = {
@@ -44,6 +44,7 @@ export const STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER = [
   STAGE3_EVEN_DIMENSIONS_FILTER,
   "format=yuv420p"
 ].join(",");
+export const STAGE3_PREPARED_SOURCE_DURATION_EPSILON_SEC = 0.03;
 
 export type VideoDimensions = {
   width: number;
@@ -204,6 +205,67 @@ export function buildNormalizeStage3SourceFfmpegArgs(params: {
     "-color_trc",
     "bt709"
   ];
+
+  if (params.sourceHasAudio) {
+    args.push("-c:a", "aac", "-ar", "48000", "-ac", "2");
+  } else {
+    args.push("-an");
+  }
+
+  args.push(params.outputPath);
+  return args;
+}
+
+export function buildStage3PreparedDurationGuardFfmpegArgs(params: {
+  inputPath: string;
+  outputPath: string;
+  inputDurationSec: number;
+  targetDurationSec: number;
+  sourceHasAudio: boolean;
+  profile: Stage3MediaProfile;
+}): string[] {
+  const encode = getEncodeProfile(params.profile);
+  const target = Math.max(0.05, params.targetDurationSec);
+  const padDuration = Math.max(0, target - Math.max(0, params.inputDurationSec));
+  const videoFilters = [
+    padDuration > STAGE3_PREPARED_SOURCE_DURATION_EPSILON_SEC
+      ? `tpad=stop_mode=clone:stop_duration=${padDuration.toFixed(3)}`
+      : null,
+    `trim=duration=${target.toFixed(3)}`,
+    "setpts=PTS-STARTPTS",
+    STAGE3_EVEN_DIMENSIONS_FILTER,
+    "format=yuv420p"
+  ].filter((item): item is string => Boolean(item));
+  const args = [
+    "-y",
+    "-i",
+    params.inputPath,
+    "-filter_complex",
+    params.sourceHasAudio
+      ? `[0:v]${videoFilters.join(",")}[v];[0:a]${padDuration > STAGE3_PREPARED_SOURCE_DURATION_EPSILON_SEC ? `apad=pad_dur=${padDuration.toFixed(3)},` : ""}atrim=duration=${target.toFixed(3)},asetpts=PTS-STARTPTS[a]`
+      : `[0:v]${videoFilters.join(",")}[v]`,
+    "-map",
+    "[v]"
+  ];
+
+  if (params.sourceHasAudio) {
+    args.push("-map", "[a]");
+  }
+
+  args.push(
+    "-t",
+    target.toFixed(3),
+    "-c:v",
+    "libx264",
+    "-preset",
+    encode.preset,
+    "-crf",
+    encode.crf,
+    "-threads",
+    encode.threads,
+    "-pix_fmt",
+    "yuv420p"
+  );
 
   if (params.sourceHasAudio) {
     args.push("-c:a", "aac", "-ar", "48000", "-ac", "2");
@@ -1191,6 +1253,37 @@ async function fitClipToDuration(params: {
   return output;
 }
 
+async function guardPreparedClipDuration(params: {
+  inputPath: string;
+  tmpDir: string;
+  targetDurationSec: number;
+  profile: Stage3MediaProfile;
+}): Promise<string> {
+  const durationSec = await probeVideoDurationSeconds(params.inputPath);
+  if (
+    durationSec !== null &&
+    Math.abs(durationSec - params.targetDurationSec) <= STAGE3_PREPARED_SOURCE_DURATION_EPSILON_SEC
+  ) {
+    return params.inputPath;
+  }
+
+  const sourceHasAudio = await probeHasAudio(params.inputPath);
+  const output = path.join(params.tmpDir, "clip-duration-guard.mp4");
+  await execFileAsync(
+    "ffmpeg",
+    buildStage3PreparedDurationGuardFfmpegArgs({
+      inputPath: params.inputPath,
+      outputPath: output,
+      inputDurationSec: durationSec ?? 0,
+      targetDurationSec: params.targetDurationSec,
+      sourceHasAudio,
+      profile: params.profile
+    }),
+    { timeout: 2 * 60_000, maxBuffer: 1024 * 1024 * 16 }
+  );
+  return output;
+}
+
 async function ensureAudioTrack(inputPath: string, tmpDir: string, durationSec?: number): Promise<string> {
   const hasAudio = await probeHasAudio(inputPath);
   if (hasAudio) {
@@ -1411,17 +1504,23 @@ export async function prepareStage3SourceClip(params: {
     musicGain: params.renderPlan.musicGain,
     musicFilePath: params.musicFilePath
   });
+  const durationGuarded = await guardPreparedClipDuration({
+    inputPath: mixed,
+    tmpDir: params.tmpDir,
+    targetDurationSec: params.renderPlan.targetDurationSec,
+    profile
+  });
   const stabilized =
     profile === "render"
       ? await (async () => {
           const outputPath = path.join(params.tmpDir, "source.render-safe.mp4");
           await normalizeStage3SourceVideo({
-            sourcePath: mixed,
+            sourcePath: durationGuarded,
             outputPath
           });
           return outputPath;
         })()
-      : mixed;
+      : durationGuarded;
 
   const finalPath = path.join(params.tmpDir, "source.mp4");
   if (stabilized !== finalPath) {

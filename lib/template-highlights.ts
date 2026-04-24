@@ -132,6 +132,104 @@ function resolveSharedSuffixLength(previousText: string, nextText: string, prefi
   return index;
 }
 
+type HighlightToken = {
+  start: number;
+  end: number;
+};
+
+function collectHighlightTokens(text: string): HighlightToken[] {
+  return Array.from(text.matchAll(/[#$]?[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g)).map((match) => ({
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length
+  }));
+}
+
+function countHighlightTokens(text: string): number {
+  return collectHighlightTokens(text).length;
+}
+
+function findPhraseSpanInText(phrase: string, text: string): { start: number; end: number } | null {
+  const trimmedPhrase = phrase.trim();
+  if (!trimmedPhrase || !text.trim()) {
+    return null;
+  }
+
+  const exactIndex = text.indexOf(trimmedPhrase);
+  if (exactIndex >= 0) {
+    return {
+      start: exactIndex,
+      end: exactIndex + trimmedPhrase.length
+    };
+  }
+
+  const lowerText = text.toLocaleLowerCase("en-US");
+  const lowerPhrase = trimmedPhrase.toLocaleLowerCase("en-US");
+  const lowerIndex = lowerText.indexOf(lowerPhrase);
+  if (lowerIndex >= 0) {
+    return {
+      start: lowerIndex,
+      end: lowerIndex + trimmedPhrase.length
+    };
+  }
+
+  const pattern = trimmedPhrase
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  const match = text.match(new RegExp(pattern, "iu"));
+  if (!match || match.index === undefined) {
+    return null;
+  }
+  return {
+    start: match.index,
+    end: match.index + match[0].length
+  };
+}
+
+function rangesOverlap(left: { start: number; end: number }, right: { start: number; end: number }): boolean {
+  return left.start < right.end && right.start < left.end;
+}
+
+function buildFallbackSpanForEditedText(input: {
+  previousTextLength: number;
+  nextText: string;
+  sourceSpan: TemplateHighlightSpan;
+  sourceTokenCount: number;
+  usedRanges: Array<{ start: number; end: number }>;
+}): TemplateHighlightSpan | null {
+  const tokens = collectHighlightTokens(input.nextText);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  const sourceCenter =
+    input.previousTextLength > 0
+      ? (input.sourceSpan.start + (input.sourceSpan.end - input.sourceSpan.start) / 2) / input.previousTextLength
+      : 0.5;
+  const sourceTokenCount = Math.max(
+    1,
+    Math.min(4, input.sourceTokenCount || 1)
+  );
+  const preferredIndex = Math.min(tokens.length - 1, Math.max(0, Math.round(sourceCenter * (tokens.length - 1))));
+  const orderedIndexes = tokens
+    .map((_, index) => index)
+    .sort((left, right) => Math.abs(left - preferredIndex) - Math.abs(right - preferredIndex));
+
+  for (const tokenIndex of orderedIndexes) {
+    const endToken = tokens[Math.min(tokens.length - 1, tokenIndex + sourceTokenCount - 1)];
+    const candidate = {
+      start: tokens[tokenIndex].start,
+      end: endToken.end,
+      slotId: input.sourceSpan.slotId
+    };
+    if (!input.usedRanges.some((range) => rangesOverlap(candidate, range))) {
+      input.usedRanges.push({ start: candidate.start, end: candidate.end });
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 export function remapTemplateHighlightSpansForTextEdit(input: {
   previousText: string;
   nextText: string;
@@ -150,22 +248,45 @@ export function remapTemplateHighlightSpansForTextEdit(input: {
   const previousChangedEnd = input.previousText.length - suffixLength;
   const nextChangedEnd = input.nextText.length - suffixLength;
   const delta = nextChangedEnd - previousChangedEnd;
+  const usedRanges: Array<{ start: number; end: number }> = [];
+  const fallbackSourceSpans: TemplateHighlightSpan[] = [];
 
   const remapped = currentSpans.flatMap((span) => {
     if (span.end <= prefixLength) {
+      usedRanges.push({ start: span.start, end: span.end });
       return [{ ...span }];
     }
     if (span.start >= previousChangedEnd) {
-      return [
-        {
-          ...span,
-          start: span.start + delta,
-          end: span.end + delta
-        }
-      ];
+      const shifted = {
+        ...span,
+        start: span.start + delta,
+        end: span.end + delta
+      };
+      usedRanges.push({ start: shifted.start, end: shifted.end });
+      return [shifted];
     }
+
+    const phraseMatch = findPhraseSpanInText(input.previousText.slice(span.start, span.end), input.nextText);
+    if (phraseMatch && !usedRanges.some((range) => rangesOverlap(phraseMatch, range))) {
+      usedRanges.push(phraseMatch);
+      return [{ ...span, start: phraseMatch.start, end: phraseMatch.end }];
+    }
+    fallbackSourceSpans.push(span);
     return [];
   });
+
+  for (const span of fallbackSourceSpans) {
+    const fallback = buildFallbackSpanForEditedText({
+      previousTextLength: input.previousText.length,
+      nextText: input.nextText,
+      sourceSpan: span,
+      sourceTokenCount: countHighlightTokens(input.previousText.slice(span.start, span.end)),
+      usedRanges
+    });
+    if (fallback) {
+      remapped.push(fallback);
+    }
+  }
 
   return normalizeTemplateHighlightSpans(remapped, input.nextText);
 }

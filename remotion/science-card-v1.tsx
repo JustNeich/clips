@@ -16,6 +16,7 @@ import { resolveStage3BackgroundMode } from "../lib/stage3-background-mode";
 import { resolveTemplateBackdropNode } from "../lib/stage3-template-runtime";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
 import { buildStage3VideoFilterCss } from "../lib/stage3-video-adjustments";
+import { buildStage3VideoPlacementStyle } from "../lib/stage3-video-placement";
 import {
   cloneTemplateCaptionHighlights,
   createEmptyTemplateCaptionHighlights,
@@ -355,13 +356,23 @@ export function ScienceCardV1({
     baseZoom: segmentTransform.videoZoom
   });
   const animatedFocus = cameraState.focusY;
-  const objectPosition = `${(Math.min(88, Math.max(12, segmentTransform.focusX * 100))).toFixed(3)}% ${(
-    Math.min(88, Math.max(12, animatedFocus * 100))
-  ).toFixed(3)}%`;
   const normalizedZoom = Math.min(
     STAGE3_MAX_VIDEO_ZOOM,
     Math.max(STAGE3_MIN_VIDEO_ZOOM, Number.isFinite(cameraState.zoom) ? cameraState.zoom : 1)
   );
+  const slotPlacementStyle = buildStage3VideoPlacementStyle({
+    focusX: segmentTransform.focusX,
+    focusY: animatedFocus,
+    videoZoom: normalizedZoom,
+    mirrorEnabled: segmentTransform.mirrorEnabled
+  });
+  const backgroundPlacementStyle = buildStage3VideoPlacementStyle({
+    focusX: segmentTransform.focusX,
+    focusY: animatedFocus,
+    videoZoom: 1,
+    mirrorEnabled: segmentTransform.mirrorEnabled,
+    extraScale: 1.08
+  });
   const renderSnapshot = buildScienceCardRenderSnapshot({
     templateId: resolvedTemplateId,
     templateConfigOverride: templateConfig,
@@ -377,12 +388,6 @@ export function ScienceCardV1({
     avatarAssetFileName,
     textFit
   });
-  const mirroredScale = segmentTransform.mirrorEnabled ? -normalizedZoom : normalizedZoom;
-  const slotTransform = `scale(${mirroredScale.toFixed(3)}, ${normalizedZoom.toFixed(3)})`;
-  const backgroundScale = 1.08;
-  const bgTransform = segmentTransform.mirrorEnabled
-    ? `scale(${(-backgroundScale).toFixed(3)}, ${backgroundScale.toFixed(3)})`
-    : `scale(${backgroundScale.toFixed(3)})`;
   const backgroundMode = resolveStage3BackgroundMode(resolvedTemplateId, {
     hasCustomBackground: hasCustomBackground,
     hasSourceVideo: Boolean(sourceUrl)
@@ -422,10 +427,10 @@ export function ScienceCardV1({
             width: frame.width,
             height: frame.height,
             objectFit: "cover",
-            objectPosition,
+            objectPosition: backgroundPlacementStyle.objectPosition,
             ...(backgroundVideoFilter ? { filter: backgroundVideoFilter } : {}),
-            transform: bgTransform,
-            transformOrigin: "center center"
+            transform: backgroundPlacementStyle.transform,
+            transformOrigin: backgroundPlacementStyle.transformOrigin
           }}
           volume={0}
         />
@@ -451,10 +456,10 @@ export function ScienceCardV1({
         width: "100%",
         height: "100%",
         objectFit: "cover",
-        objectPosition,
+        objectPosition: slotPlacementStyle.objectPosition,
         ...(videoFilter ? { filter: videoFilter } : {}),
-        transform: slotTransform,
-        transformOrigin: "center center"
+        transform: slotPlacementStyle.transform,
+        transformOrigin: slotPlacementStyle.transformOrigin
       }}
       volume={1}
     />
