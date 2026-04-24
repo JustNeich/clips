@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import type { AppShellToastTone } from "./AppShell";
 import { AvatarUploadButton } from "./AvatarUploadButton";
@@ -24,6 +24,7 @@ import {
 import { STAGE3_TEMPLATE_ID } from "../../lib/stage3-template";
 import type { ManagedTemplateSummary } from "../../lib/managed-template-types";
 import { getTemplateVariant } from "../../lib/stage3-template-registry";
+import type { Stage3TemplateFormatGroup } from "../../lib/stage3-template-semantics";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   STAGE2_DEFAULT_REASONING_EFFORTS,
@@ -35,6 +36,7 @@ import {
 } from "../../lib/stage2-pipeline";
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
+  DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
   formatStage2DelimitedStringList,
   normalizeStage2ExamplesConfig,
@@ -149,6 +151,15 @@ export function groupManagedTemplatesByFormat(
   return Array.from(groups.entries()).map(([label, options]) => ({ label, options }));
 }
 
+export function resolveChannelManagerTemplateFormatGroup(
+  templateId: string,
+  managedTemplates: ManagedTemplateSummary[]
+): Stage3TemplateFormatGroup {
+  const managedTemplate = managedTemplates.find((template) => template.id === templateId);
+  const variantId = managedTemplate?.layoutFamily ?? managedTemplate?.baseTemplateId ?? templateId;
+  return getTemplateVariant(variantId).formatGroup;
+}
+
 export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
   saving: string;
   saved: string;
@@ -206,6 +217,7 @@ type ChannelManagerProps = {
   initialTab?: TabId | null;
   channels: Channel[];
   workspaceStage2ExamplesCorpusJson: string;
+  workspaceStage2ExamplesConfig: Stage2ExamplesConfig;
   workspaceStage2HardConstraints: Stage2HardConstraints;
   workspaceStage2PromptConfig: Stage2PromptConfig;
   workspaceStage2CaptionProviderConfig: Stage2CaptionProviderConfig;
@@ -253,6 +265,7 @@ type ChannelManagerProps = {
   onSaveWorkspaceStage2Defaults: (
     patch: Partial<{
       stage2ExamplesCorpusJson: string;
+      stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2PromptConfig: Stage2PromptConfig;
       stage2CaptionProviderConfig: Stage2CaptionProviderConfig;
@@ -291,6 +304,7 @@ export function ChannelManager({
   initialTab = null,
   channels,
   workspaceStage2ExamplesCorpusJson: workspaceStage2ExamplesCorpusJsonProp,
+  workspaceStage2ExamplesConfig: workspaceStage2ExamplesConfigProp,
   workspaceStage2HardConstraints: workspaceStage2HardConstraintsProp,
   workspaceStage2PromptConfig: workspaceStage2PromptConfigProp,
   workspaceStage2CaptionProviderConfig: workspaceStage2CaptionProviderConfigProp,
@@ -381,6 +395,13 @@ export function ChannelManager({
   const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState(
     workspaceStage2ExamplesCorpusJsonProp
   );
+  const [workspaceStage2ExamplesConfig, setWorkspaceStage2ExamplesConfig] =
+    useState<Stage2ExamplesConfig>(
+      normalizeStage2ExamplesConfig(workspaceStage2ExamplesConfigProp, {
+        channelId: "workspace-default",
+        channelName: "Workspace default"
+      })
+    );
   const [workspaceStage2ExamplesSourceMode, setWorkspaceStage2ExamplesSourceMode] =
     useState<Stage2ExamplesSourceMode>(
       findStage2SystemExamplesPresetByJson(workspaceStage2ExamplesCorpusJsonProp)
@@ -744,6 +765,7 @@ export function ChannelManager({
 
   const buildStage2DefaultsSnapshot = (
     nextExamplesCorpusJson: string,
+    nextExamplesConfig: Stage2ExamplesConfig,
     nextHardConstraints: Stage2HardConstraints,
     nextPromptConfig: Stage2PromptConfig,
     nextCaptionProviderConfig: Stage2CaptionProviderConfig,
@@ -751,6 +773,7 @@ export function ChannelManager({
   ): string =>
     JSON.stringify({
       workspaceStage2ExamplesCorpusJson: nextExamplesCorpusJson,
+      workspaceStage2ExamplesConfig: nextExamplesConfig,
       workspaceStage2HardConstraints: nextHardConstraints,
       workspaceStage2PromptConfig: nextPromptConfig,
       workspaceStage2CaptionProviderConfig: nextCaptionProviderConfig,
@@ -773,6 +796,13 @@ export function ChannelManager({
       workspaceCodexModelConfigProp
     );
     const normalizedWorkspaceExamplesJson = workspaceStage2ExamplesCorpusJsonProp;
+    const normalizedWorkspaceExamplesConfig = normalizeStage2ExamplesConfig(
+      workspaceStage2ExamplesConfigProp,
+      {
+        channelId: "workspace-default",
+        channelName: "Workspace default"
+      }
+    );
     setStage2HardConstraints(normalizedHardConstraints);
     setStage2ExamplesConfig(DEFAULT_STAGE2_EXAMPLES_CONFIG);
     setStage2PromptConfig({
@@ -782,6 +812,7 @@ export function ChannelManager({
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedWords));
     setBannedOpenersInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedOpeners));
     setWorkspaceStage2ExamplesCorpusJson(normalizedWorkspaceExamplesJson);
+    setWorkspaceStage2ExamplesConfig(normalizedWorkspaceExamplesConfig);
     setWorkspaceStage2ExamplesSourceMode(
       findStage2SystemExamplesPresetByJson(normalizedWorkspaceExamplesJson) ? "system" : "custom"
     );
@@ -802,6 +833,7 @@ export function ChannelManager({
 
     persistedSnapshotRef.current.stage2Defaults = buildStage2DefaultsSnapshot(
       normalizedWorkspaceExamplesJson,
+      normalizedWorkspaceExamplesConfig,
       normalizedHardConstraints,
       normalizedPromptConfig,
       normalizedCaptionProviderConfig,
@@ -845,6 +877,7 @@ export function ChannelManager({
       ),
       stage2Defaults: buildStage2DefaultsSnapshot(
         normalizedWorkspaceExamplesJson,
+        normalizedWorkspaceExamplesConfig,
         normalizedHardConstraints,
         normalizedPromptConfig,
         normalizedCaptionProviderConfig,
@@ -876,6 +909,7 @@ export function ChannelManager({
     isWorkspaceDefaultsSelection,
     workspaceStage2HardConstraintsProp,
     workspaceStage2ExamplesCorpusJsonProp,
+    workspaceStage2ExamplesConfigProp,
     workspaceStage2PromptConfigProp,
     workspaceStage2CaptionProviderConfigProp,
     workspaceAnthropicIntegrationProp,
@@ -1029,6 +1063,7 @@ export function ChannelManager({
     }
     const nextSnapshot = buildStage2DefaultsSnapshot(
       workspaceStage2ExamplesCorpusJson,
+      workspaceStage2ExamplesConfig,
       stage2HardConstraints,
       workspaceStage2PromptConfig,
       workspaceStage2CaptionProviderConfig,
@@ -1045,6 +1080,7 @@ export function ChannelManager({
       setAutosaveFeedback("stage2Defaults", "saving", "Сохраняем общие AI-настройки…");
       void saveWorkspaceStage2DefaultsRef.current({
         stage2ExamplesCorpusJson: workspaceStage2ExamplesCorpusJson,
+        stage2ExamplesConfig: workspaceStage2ExamplesConfig,
         stage2HardConstraints,
         stage2PromptConfig: workspaceStage2PromptConfig,
         stage2CaptionProviderConfig: workspaceStage2CaptionProviderConfig,
@@ -1079,6 +1115,7 @@ export function ChannelManager({
     setAutosaveFeedback,
     stage2HardConstraints,
     workspaceStage2ExamplesCorpusJson,
+    workspaceStage2ExamplesConfig,
     workspaceStage2PromptConfig,
     workspaceStage2CaptionProviderConfig,
     workspaceCodexModelConfig
@@ -1333,6 +1370,10 @@ export function ChannelManager({
   const music = listByKind(assets, "music");
   const activeGrantUserIds = new Set(accessGrants.map((grant) => grant.userId));
   const accessCandidates = workspaceMembers.filter((member) => member.role !== "owner");
+  const activeTemplateFormatGroup = resolveChannelManagerTemplateFormatGroup(
+    templateId,
+    managedTemplates
+  );
 
   const updateStage2PromptTemplate = (
     stageId: keyof Stage2PromptConfig["stages"],
@@ -1383,24 +1424,149 @@ export function ChannelManager({
     }));
   };
 
+  const buildPromptProfile = (input?: Partial<NonNullable<Stage2PromptConfig["formatProfiles"]>[Stage3TemplateFormatGroup]>) => {
+    const presetId = input?.systemPresetId ?? "system_prompt";
+    const sourceMode = input?.sourceMode ?? "system";
+    return {
+      useDefault: input?.useDefault ?? false,
+      sourceMode,
+      systemPresetId: presetId,
+      stages:
+        input?.stages ??
+        normalizeStage2PromptConfig({
+          ...DEFAULT_STAGE2_PROMPT_CONFIG,
+          sourceMode,
+          systemPresetId: presetId
+        }).stages
+    };
+  };
+
+  const buildExamplesProfile = (
+    input?: Partial<NonNullable<Stage2ExamplesConfig["formatProfiles"]>[Stage3TemplateFormatGroup]>
+  ) => {
+    const sourceMode = input?.sourceMode ?? "system";
+    const systemPresetId = input?.systemPresetId ?? "system_examples";
+    return {
+      useDefault: input?.useDefault ?? false,
+      sourceMode,
+      systemPresetId,
+      customInputMode: input?.customInputMode ?? "json",
+      customExamplesJson: input?.customExamplesJson ?? "",
+      customExamplesText: input?.customExamplesText ?? "",
+      customExamples: input?.customExamples ?? []
+    };
+  };
+
+  const updatePromptFormatProfile = (
+    setConfig: Dispatch<SetStateAction<Stage2PromptConfig>>,
+    formatGroup: Stage3TemplateFormatGroup,
+    updater: (current: ReturnType<typeof buildPromptProfile>) => ReturnType<typeof buildPromptProfile>
+  ) => {
+    setConfig((current) =>
+      normalizeStage2PromptConfig({
+        ...current,
+        formatProfiles: {
+          ...current.formatProfiles,
+          [formatGroup]: updater(buildPromptProfile(current.formatProfiles?.[formatGroup]))
+        }
+      })
+    );
+  };
+
+  const updateExamplesFormatProfile = (
+    setConfig: Dispatch<SetStateAction<Stage2ExamplesConfig>>,
+    formatGroup: Stage3TemplateFormatGroup,
+    updater: (current: ReturnType<typeof buildExamplesProfile>) => ReturnType<typeof buildExamplesProfile>,
+    owner: { channelId: string; channelName: string }
+  ) => {
+    setConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          formatProfiles: {
+            ...current.formatProfiles,
+            [formatGroup]: updater(buildExamplesProfile(current.formatProfiles?.[formatGroup]))
+          }
+        },
+        owner
+      )
+    );
+  };
+
   const updateWorkspaceExamplesSourceMode = (sourceMode: Stage2ExamplesSourceMode) => {
     setWorkspaceStage2ExamplesSourceMode(sourceMode);
+    setWorkspaceStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          useWorkspaceDefault: false,
+          sourceMode
+        },
+        {
+          channelId: "workspace-default",
+          channelName: "Workspace default"
+        }
+      )
+    );
     if (sourceMode === "system") {
       const presetId =
         findStage2SystemExamplesPresetByJson(workspaceStage2ExamplesCorpusJson) ??
         "system_examples";
       setWorkspaceStage2ExamplesCorpusJson(getStage2SystemExamplesPresetJson(presetId));
+      setWorkspaceStage2ExamplesConfig((current) =>
+        normalizeStage2ExamplesConfig(
+          {
+            ...current,
+            useWorkspaceDefault: false,
+            sourceMode: "system",
+            systemPresetId: presetId
+          },
+          {
+            channelId: "workspace-default",
+            channelName: "Workspace default"
+          }
+        )
+      );
     }
   };
 
   const updateWorkspaceExamplesPreset = (presetId: Stage2SystemExamplesPresetId) => {
     setWorkspaceStage2ExamplesSourceMode("system");
     setWorkspaceStage2ExamplesCorpusJson(getStage2SystemExamplesPresetJson(presetId));
+    setWorkspaceStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          useWorkspaceDefault: false,
+          sourceMode: "system",
+          systemPresetId: presetId
+        },
+        {
+          channelId: "workspace-default",
+          channelName: "Workspace default"
+        }
+      )
+    );
   };
 
   const updateWorkspaceExamplesJson = (value: string) => {
     setWorkspaceStage2ExamplesSourceMode("custom");
     setWorkspaceStage2ExamplesCorpusJson(value);
+    setWorkspaceStage2ExamplesConfig((current) =>
+      normalizeStage2ExamplesConfig(
+        {
+          ...current,
+          useWorkspaceDefault: false,
+          sourceMode: "custom",
+          customInputMode: "json",
+          customExamplesJson: value
+        },
+        {
+          channelId: "workspace-default",
+          channelName: "Workspace default"
+        }
+      )
+    );
   };
 
   const updateWorkspacePromptSourceMode = (sourceMode: Stage2PromptSourceMode) => {
@@ -1438,6 +1604,75 @@ export function ChannelManager({
         }
       })
     );
+  };
+
+  const updateWorkspaceFormatPromptMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    useDefault: boolean
+  ) => {
+    updatePromptFormatProfile(setWorkspaceStage2PromptConfig, formatGroup, (profile) => ({
+      ...profile,
+      useDefault
+    }));
+  };
+
+  const updateWorkspaceFormatPromptSourceMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    sourceMode: Stage2PromptSourceMode
+  ) => {
+    updatePromptFormatProfile(setWorkspaceStage2PromptConfig, formatGroup, (profile) => {
+      const preset = getStage2SystemPromptPreset(profile.systemPresetId);
+      return {
+        ...profile,
+        useDefault: false,
+        sourceMode,
+        stages: {
+          ...profile.stages,
+          oneShotReference: {
+            ...profile.stages.oneShotReference,
+            prompt: sourceMode === "system" ? preset.prompt : profile.stages.oneShotReference.prompt
+          }
+        }
+      };
+    });
+  };
+
+  const updateWorkspaceFormatPromptPreset = (
+    formatGroup: Stage3TemplateFormatGroup,
+    presetId: Stage2SystemPromptPresetId
+  ) => {
+    const preset = getStage2SystemPromptPreset(presetId);
+    updatePromptFormatProfile(setWorkspaceStage2PromptConfig, formatGroup, (profile) => ({
+      ...profile,
+      useDefault: false,
+      sourceMode: "system",
+      systemPresetId: preset.id,
+      stages: {
+        ...profile.stages,
+        oneShotReference: {
+          ...profile.stages.oneShotReference,
+          prompt: preset.prompt
+        }
+      }
+    }));
+  };
+
+  const updateWorkspaceFormatPromptTemplate = (
+    formatGroup: Stage3TemplateFormatGroup,
+    prompt: string
+  ) => {
+    updatePromptFormatProfile(setWorkspaceStage2PromptConfig, formatGroup, (profile) => ({
+      ...profile,
+      useDefault: false,
+      sourceMode: "custom",
+      stages: {
+        ...profile.stages,
+        oneShotReference: {
+          ...profile.stages.oneShotReference,
+          prompt
+        }
+      }
+    }));
   };
 
   const updateChannelPromptMode = (useWorkspaceDefault: boolean) => {
@@ -1542,12 +1777,82 @@ export function ChannelManager({
     );
   };
 
+  const updateChannelFormatPromptMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    useDefault: boolean
+  ) => {
+    updatePromptFormatProfile(setStage2PromptConfig, formatGroup, (profile) => ({
+      ...profile,
+      useDefault
+    }));
+  };
+
+  const updateChannelFormatPromptSourceMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    sourceMode: Stage2PromptSourceMode
+  ) => {
+    updatePromptFormatProfile(setStage2PromptConfig, formatGroup, (profile) => {
+      const preset = getStage2SystemPromptPreset(profile.systemPresetId);
+      return {
+        ...profile,
+        useDefault: false,
+        sourceMode,
+        stages: {
+          ...profile.stages,
+          oneShotReference: {
+            ...profile.stages.oneShotReference,
+            prompt: sourceMode === "system" ? preset.prompt : profile.stages.oneShotReference.prompt
+          }
+        }
+      };
+    });
+  };
+
+  const updateChannelFormatPromptPreset = (
+    formatGroup: Stage3TemplateFormatGroup,
+    presetId: Stage2SystemPromptPresetId
+  ) => {
+    const preset = getStage2SystemPromptPreset(presetId);
+    updatePromptFormatProfile(setStage2PromptConfig, formatGroup, (profile) => ({
+      ...profile,
+      useDefault: false,
+      sourceMode: "system",
+      systemPresetId: preset.id,
+      stages: {
+        ...profile.stages,
+        oneShotReference: {
+          ...profile.stages.oneShotReference,
+          prompt: preset.prompt
+        }
+      }
+    }));
+  };
+
+  const updateChannelFormatPromptTemplate = (
+    formatGroup: Stage3TemplateFormatGroup,
+    prompt: string
+  ) => {
+    updatePromptFormatProfile(setStage2PromptConfig, formatGroup, (profile) => ({
+      ...profile,
+      useDefault: false,
+      sourceMode: "custom",
+      stages: {
+        ...profile.stages,
+        oneShotReference: {
+          ...profile.stages.oneShotReference,
+          prompt
+        }
+      }
+    }));
+  };
+
   const persistWorkspaceCaptionProviderConfig = async (
     nextConfig: Stage2CaptionProviderConfig,
     previousConfig: Stage2CaptionProviderConfig
   ): Promise<void> => {
     const nextSnapshot = buildStage2DefaultsSnapshot(
       workspaceStage2ExamplesCorpusJson,
+      workspaceStage2ExamplesConfig,
       stage2HardConstraints,
       workspaceStage2PromptConfig,
       nextConfig,
@@ -1559,6 +1864,7 @@ export function ChannelManager({
     try {
       await saveWorkspaceStage2DefaultsRef.current({
         stage2ExamplesCorpusJson: workspaceStage2ExamplesCorpusJson,
+        stage2ExamplesConfig: workspaceStage2ExamplesConfig,
         stage2HardConstraints,
         stage2PromptConfig: workspaceStage2PromptConfig,
         stage2CaptionProviderConfig: nextConfig,
@@ -2012,6 +2318,203 @@ export function ChannelManager({
     );
   };
 
+  const workspaceExamplesOwner = {
+    channelId: "workspace-default",
+    channelName: "Workspace default"
+  };
+  const channelExamplesOwner = {
+    channelId: activeChannel?.id ?? "channel",
+    channelName: activeChannel?.name ?? name
+  };
+
+  const updateWorkspaceFormatExamplesMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    useDefault: boolean
+  ) => {
+    updateExamplesFormatProfile(
+      setWorkspaceStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({ ...profile, useDefault }),
+      workspaceExamplesOwner
+    );
+  };
+
+  const updateWorkspaceFormatExamplesSourceMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    sourceMode: Stage2ExamplesSourceMode
+  ) => {
+    updateExamplesFormatProfile(
+      setWorkspaceStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({ ...profile, useDefault: false, sourceMode }),
+      workspaceExamplesOwner
+    );
+  };
+
+  const updateWorkspaceFormatExamplesPreset = (
+    formatGroup: Stage3TemplateFormatGroup,
+    presetId: Stage2SystemExamplesPresetId
+  ) => {
+    updateExamplesFormatProfile(
+      setWorkspaceStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({
+        ...profile,
+        useDefault: false,
+        sourceMode: "system",
+        systemPresetId: presetId
+      }),
+      workspaceExamplesOwner
+    );
+  };
+
+  const updateWorkspaceFormatExamplesInputMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    customInputMode: Stage2ExamplesInputMode
+  ) => {
+    updateExamplesFormatProfile(
+      setWorkspaceStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({
+        ...profile,
+        useDefault: false,
+        sourceMode: "custom",
+        customInputMode
+      }),
+      workspaceExamplesOwner
+    );
+  };
+
+  const updateWorkspaceFormatExamplesJson = (
+    formatGroup: Stage3TemplateFormatGroup,
+    value: string
+  ) => {
+    updateExamplesFormatProfile(
+      setWorkspaceStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({
+        ...profile,
+        useDefault: false,
+        sourceMode: "custom",
+        customInputMode: "json",
+        customExamplesJson: value
+      }),
+      workspaceExamplesOwner
+    );
+  };
+
+  const updateWorkspaceFormatExamplesText = (
+    formatGroup: Stage3TemplateFormatGroup,
+    value: string
+  ) => {
+    updateExamplesFormatProfile(
+      setWorkspaceStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({
+        ...profile,
+        useDefault: false,
+        sourceMode: "custom",
+        customInputMode: "text",
+        customExamplesText: value
+      }),
+      workspaceExamplesOwner
+    );
+  };
+
+  const updateChannelFormatExamplesMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    useDefault: boolean
+  ) => {
+    updateExamplesFormatProfile(
+      setStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({ ...profile, useDefault }),
+      channelExamplesOwner
+    );
+  };
+
+  const updateChannelFormatExamplesSourceMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    sourceMode: Stage2ExamplesSourceMode
+  ) => {
+    updateExamplesFormatProfile(
+      setStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({ ...profile, useDefault: false, sourceMode }),
+      channelExamplesOwner
+    );
+  };
+
+  const updateChannelFormatExamplesSystemPreset = (
+    formatGroup: Stage3TemplateFormatGroup,
+    presetId: Stage2SystemExamplesPresetId
+  ) => {
+    updateExamplesFormatProfile(
+      setStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({
+        ...profile,
+        useDefault: false,
+        sourceMode: "system",
+        systemPresetId: presetId
+      }),
+      channelExamplesOwner
+    );
+  };
+
+  const updateChannelFormatExamplesInputMode = (
+    formatGroup: Stage3TemplateFormatGroup,
+    customInputMode: Stage2ExamplesInputMode
+  ) => {
+    updateExamplesFormatProfile(
+      setStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({
+        ...profile,
+        useDefault: false,
+        sourceMode: "custom",
+        customInputMode
+      }),
+      channelExamplesOwner
+    );
+  };
+
+  const updateChannelFormatExamplesJson = (
+    formatGroup: Stage3TemplateFormatGroup,
+    value: string
+  ) => {
+    updateExamplesFormatProfile(
+      setStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({
+        ...profile,
+        useDefault: false,
+        sourceMode: "custom",
+        customInputMode: "json",
+        customExamplesJson: value
+      }),
+      channelExamplesOwner
+    );
+  };
+
+  const updateChannelFormatExamplesText = (
+    formatGroup: Stage3TemplateFormatGroup,
+    value: string
+  ) => {
+    updateExamplesFormatProfile(
+      setStage2ExamplesConfig,
+      formatGroup,
+      (profile) => ({
+        ...profile,
+        useDefault: false,
+        sourceMode: "custom",
+        customInputMode: "text",
+        customExamplesText: value
+      }),
+      channelExamplesOwner
+    );
+  };
+
   const formatTabLabel = (value: "brand" | "stage2" | "render" | "publishing" | "assets" | "access") => {
     switch (value) {
       case "brand":
@@ -2171,7 +2674,9 @@ export function ChannelManager({
                 bannedWordsInput={bannedWordsInput}
                 bannedOpenersInput={bannedOpenersInput}
                 stage2PromptConfig={stage2PromptConfig}
+                activeTemplateFormatGroup={activeTemplateFormatGroup}
                 workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
+                workspaceStage2ExamplesConfig={workspaceStage2ExamplesConfig}
                 workspaceStage2ExamplesSourceMode={workspaceStage2ExamplesSourceMode}
                 workspaceStage2PromptConfig={workspaceStage2PromptConfig}
                 workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}
@@ -2196,9 +2701,19 @@ export function ChannelManager({
                 updateChannelExamplesSourceMode={updateChannelExamplesSourceMode}
                 updateChannelExamplesSystemPreset={updateChannelExamplesSystemPreset}
                 updateChannelExamplesInputMode={updateChannelExamplesInputMode}
+                updateChannelFormatExamplesMode={updateChannelFormatExamplesMode}
+                updateChannelFormatExamplesSourceMode={updateChannelFormatExamplesSourceMode}
+                updateChannelFormatExamplesSystemPreset={updateChannelFormatExamplesSystemPreset}
+                updateChannelFormatExamplesInputMode={updateChannelFormatExamplesInputMode}
+                updateChannelFormatExamplesJson={updateChannelFormatExamplesJson}
+                updateChannelFormatExamplesText={updateChannelFormatExamplesText}
                 updateChannelPromptMode={updateChannelPromptMode}
                 updateChannelPromptSourceMode={updateChannelPromptSourceMode}
                 updateChannelPromptPreset={updateChannelPromptPreset}
+                updateChannelFormatPromptMode={updateChannelFormatPromptMode}
+                updateChannelFormatPromptSourceMode={updateChannelFormatPromptSourceMode}
+                updateChannelFormatPromptPreset={updateChannelFormatPromptPreset}
+                updateChannelFormatPromptTemplate={updateChannelFormatPromptTemplate}
                 updateChannelPromptTemplate={updateChannelPromptTemplate}
                 updateChannelPromptReasoning={updateChannelPromptReasoning}
                 resetChannelPromptStage={resetChannelPromptStage}
@@ -2207,6 +2722,16 @@ export function ChannelManager({
                 updateWorkspaceExamplesSourceMode={updateWorkspaceExamplesSourceMode}
                 updateWorkspaceExamplesJson={updateWorkspaceExamplesJson}
                 updateWorkspaceExamplesPreset={updateWorkspaceExamplesPreset}
+                updateWorkspaceFormatPromptMode={updateWorkspaceFormatPromptMode}
+                updateWorkspaceFormatPromptSourceMode={updateWorkspaceFormatPromptSourceMode}
+                updateWorkspaceFormatPromptPreset={updateWorkspaceFormatPromptPreset}
+                updateWorkspaceFormatPromptTemplate={updateWorkspaceFormatPromptTemplate}
+                updateWorkspaceFormatExamplesMode={updateWorkspaceFormatExamplesMode}
+                updateWorkspaceFormatExamplesSourceMode={updateWorkspaceFormatExamplesSourceMode}
+                updateWorkspaceFormatExamplesPreset={updateWorkspaceFormatExamplesPreset}
+                updateWorkspaceFormatExamplesInputMode={updateWorkspaceFormatExamplesInputMode}
+                updateWorkspaceFormatExamplesJson={updateWorkspaceFormatExamplesJson}
+                updateWorkspaceFormatExamplesText={updateWorkspaceFormatExamplesText}
                 updateCustomExamplesJson={updateCustomExamplesJson}
                 updateCustomExamplesText={updateCustomExamplesText}
                 updateWorkspaceCaptionProvider={updateWorkspaceCaptionProvider}

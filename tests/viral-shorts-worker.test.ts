@@ -8008,6 +8008,7 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
   assert.match(executor.calls[0]?.prompt ?? "", /"examples_text"/);
   assert.match(executor.calls[0]?.prompt ?? "", /"comments_hint_json"/);
   assert.match(executor.calls[0]?.prompt ?? "", /"hard_constraints_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"template_semantics_json"/);
   assert.match(executor.calls[0]?.prompt ?? "", /even 1 character outside/i);
   assert.match(executor.calls[0]?.prompt ?? "", /that pause said enough/i);
   assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /experimental_contract_json/i);

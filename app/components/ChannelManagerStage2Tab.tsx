@@ -5,7 +5,8 @@ import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   STAGE2_REASONING_EFFORT_OPTIONS,
   type Stage2PromptSourceMode,
-  type Stage2PromptConfig
+  type Stage2PromptConfig,
+  type Stage2PromptProfileOverride
 } from "../../lib/stage2-pipeline";
 import {
   DEFAULT_ANTHROPIC_CAPTION_MODEL,
@@ -29,10 +30,15 @@ import {
 } from "../../lib/workspace-codex-models";
 import type {
   Stage2ExamplesConfig,
+  Stage2ExamplesProfileOverride,
   Stage2ExamplesInputMode,
   Stage2ExamplesSourceMode,
   Stage2HardConstraints
 } from "../../lib/stage2-channel-config";
+import {
+  resolveTemplateFormatGroupLabel,
+  type Stage3TemplateFormatGroup
+} from "../../lib/stage3-template-semantics";
 import {
   findStage2SystemExamplesPresetByJson,
   getStage2SystemExamplesPresetJson,
@@ -49,11 +55,13 @@ type ChannelManagerStage2TabProps = {
   workspaceExamplesCount?: number;
   workspaceExamplesJson?: string;
   workspaceExamplesError?: string | null;
+  activeTemplateFormatGroup?: Stage3TemplateFormatGroup;
   stage2HardConstraints: Stage2HardConstraints;
   bannedWordsInput: string;
   bannedOpenersInput: string;
   stage2PromptConfig?: Stage2PromptConfig;
   workspaceStage2ExamplesCorpusJson?: string;
+  workspaceStage2ExamplesConfig?: Stage2ExamplesConfig;
   workspaceStage2ExamplesSourceMode?: Stage2ExamplesSourceMode;
   workspaceStage2PromptConfig: Stage2PromptConfig;
   workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
@@ -120,9 +128,49 @@ type ChannelManagerStage2TabProps = {
   updateChannelExamplesSourceMode?: (sourceMode: Stage2ExamplesSourceMode) => void;
   updateChannelExamplesSystemPreset?: (presetId: Stage2SystemExamplesPresetId) => void;
   updateChannelExamplesInputMode?: (inputMode: Stage2ExamplesInputMode) => void;
+  updateChannelFormatExamplesMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    useDefault: boolean
+  ) => void;
+  updateChannelFormatExamplesSourceMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    sourceMode: Stage2ExamplesSourceMode
+  ) => void;
+  updateChannelFormatExamplesSystemPreset?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    presetId: Stage2SystemExamplesPresetId
+  ) => void;
+  updateChannelFormatExamplesInputMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    inputMode: Stage2ExamplesInputMode
+  ) => void;
+  updateChannelFormatExamplesJson?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    value: string
+  ) => void;
+  updateChannelFormatExamplesText?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    value: string
+  ) => void;
   updateChannelPromptMode?: (useWorkspaceDefault: boolean) => void;
   updateChannelPromptSourceMode?: (sourceMode: Stage2PromptSourceMode) => void;
   updateChannelPromptPreset?: (presetId: Stage2SystemPromptPresetId) => void;
+  updateChannelFormatPromptMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    useDefault: boolean
+  ) => void;
+  updateChannelFormatPromptSourceMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    sourceMode: Stage2PromptSourceMode
+  ) => void;
+  updateChannelFormatPromptPreset?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    presetId: Stage2SystemPromptPresetId
+  ) => void;
+  updateChannelFormatPromptTemplate?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    prompt: string
+  ) => void;
   updateChannelPromptTemplate?: (
     stageId: keyof Stage2PromptConfig["stages"],
     prompt: string
@@ -135,8 +183,48 @@ type ChannelManagerStage2TabProps = {
   updateWorkspaceExamplesJson?: (value: string) => void;
   updateWorkspaceExamplesSourceMode?: (sourceMode: Stage2ExamplesSourceMode) => void;
   updateWorkspaceExamplesPreset?: (presetId: Stage2SystemExamplesPresetId) => void;
+  updateWorkspaceFormatExamplesMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    useDefault: boolean
+  ) => void;
+  updateWorkspaceFormatExamplesSourceMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    sourceMode: Stage2ExamplesSourceMode
+  ) => void;
+  updateWorkspaceFormatExamplesPreset?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    presetId: Stage2SystemExamplesPresetId
+  ) => void;
+  updateWorkspaceFormatExamplesInputMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    inputMode: Stage2ExamplesInputMode
+  ) => void;
+  updateWorkspaceFormatExamplesJson?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    value: string
+  ) => void;
+  updateWorkspaceFormatExamplesText?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    value: string
+  ) => void;
   updateWorkspacePromptSourceMode?: (sourceMode: Stage2PromptSourceMode) => void;
   updateWorkspacePromptPreset?: (presetId: Stage2SystemPromptPresetId) => void;
+  updateWorkspaceFormatPromptMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    useDefault: boolean
+  ) => void;
+  updateWorkspaceFormatPromptSourceMode?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    sourceMode: Stage2PromptSourceMode
+  ) => void;
+  updateWorkspaceFormatPromptPreset?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    presetId: Stage2SystemPromptPresetId
+  ) => void;
+  updateWorkspaceFormatPromptTemplate?: (
+    formatGroup: Stage3TemplateFormatGroup,
+    prompt: string
+  ) => void;
   updateWorkspaceCaptionProvider?: (value: Stage2CaptionProvider) => void;
   updateWorkspaceAnthropicModel?: (value: string) => void;
   updateWorkspaceOpenRouterModel?: (value: string) => void;
@@ -579,7 +667,9 @@ export function ChannelManagerStage2Tab({
     ...DEFAULT_STAGE2_PROMPT_CONFIG,
     useWorkspaceDefault: true
   },
+  activeTemplateFormatGroup = "classic_top_bottom",
   workspaceStage2ExamplesCorpusJson = getStage2SystemExamplesPresetJson("system_examples"),
+  workspaceStage2ExamplesConfig,
   workspaceStage2ExamplesSourceMode,
   workspaceStage2PromptConfig,
   workspaceStage2CaptionProviderConfig = DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
@@ -624,9 +714,19 @@ export function ChannelManagerStage2Tab({
   updateChannelExamplesSourceMode = () => undefined,
   updateChannelExamplesSystemPreset = () => undefined,
   updateChannelExamplesInputMode = () => undefined,
+  updateChannelFormatExamplesMode = () => undefined,
+  updateChannelFormatExamplesSourceMode = () => undefined,
+  updateChannelFormatExamplesSystemPreset = () => undefined,
+  updateChannelFormatExamplesInputMode = () => undefined,
+  updateChannelFormatExamplesJson = () => undefined,
+  updateChannelFormatExamplesText = () => undefined,
   updateChannelPromptMode = () => undefined,
   updateChannelPromptSourceMode = () => undefined,
   updateChannelPromptPreset = () => undefined,
+  updateChannelFormatPromptMode = () => undefined,
+  updateChannelFormatPromptSourceMode = () => undefined,
+  updateChannelFormatPromptPreset = () => undefined,
+  updateChannelFormatPromptTemplate = () => undefined,
   updateChannelPromptTemplate = () => undefined,
   updateChannelPromptReasoning = () => undefined,
   resetChannelPromptStage = () => undefined,
@@ -635,8 +735,18 @@ export function ChannelManagerStage2Tab({
   updateWorkspaceExamplesJson = () => undefined,
   updateWorkspaceExamplesSourceMode = () => undefined,
   updateWorkspaceExamplesPreset = () => undefined,
+  updateWorkspaceFormatExamplesMode = () => undefined,
+  updateWorkspaceFormatExamplesSourceMode = () => undefined,
+  updateWorkspaceFormatExamplesPreset = () => undefined,
+  updateWorkspaceFormatExamplesInputMode = () => undefined,
+  updateWorkspaceFormatExamplesJson = () => undefined,
+  updateWorkspaceFormatExamplesText = () => undefined,
   updateWorkspacePromptSourceMode = () => undefined,
   updateWorkspacePromptPreset = () => undefined,
+  updateWorkspaceFormatPromptMode = () => undefined,
+  updateWorkspaceFormatPromptSourceMode = () => undefined,
+  updateWorkspaceFormatPromptPreset = () => undefined,
+  updateWorkspaceFormatPromptTemplate = () => undefined,
   updateWorkspaceCaptionProvider = () => undefined,
   updateWorkspaceAnthropicModel = () => undefined,
   updateWorkspaceOpenRouterModel = () => undefined,
@@ -679,6 +789,104 @@ export function ChannelManagerStage2Tab({
   const channelExamplesSourceMode = stage2ExamplesConfig?.sourceMode ?? "system";
   const channelExamplesInputMode = stage2ExamplesConfig?.customInputMode ?? "json";
   const channelExamplesSystemPresetId = stage2ExamplesConfig?.systemPresetId ?? "system_examples";
+  const normalizedWorkspaceExamplesConfig: Stage2ExamplesConfig =
+    workspaceStage2ExamplesConfig ?? {
+      version: 3,
+      useWorkspaceDefault: false,
+      sourceMode: resolvedWorkspaceExamplesSourceMode,
+      systemPresetId: workspaceExamplesPresetId,
+      customInputMode: "json" as const,
+      customExamplesJson: workspaceStage2ExamplesCorpusJson,
+      customExamplesText: "",
+      customExamples: []
+    };
+  const workspaceChannelStoryPromptProfile =
+    workspaceStage2PromptConfig.formatProfiles?.channel_story ?? null;
+  const workspaceChannelStoryExamplesProfile =
+    normalizedWorkspaceExamplesConfig.formatProfiles?.channel_story ?? null;
+  const channelStoryPromptProfile = stage2PromptConfig.formatProfiles?.channel_story ?? null;
+  const channelStoryExamplesProfile = stage2ExamplesConfig?.formatProfiles?.channel_story ?? null;
+  const activeTemplateLabel = resolveTemplateFormatGroupLabel(activeTemplateFormatGroup);
+  const workspacePromptDefaultLabel =
+    workspacePromptSourceMode === "system"
+      ? getStage2SystemPromptPreset(workspacePromptPresetId).label
+      : "Custom workspace prompt";
+  const workspaceExamplesDefaultLabel =
+    resolvedWorkspaceExamplesSourceMode === "system" ? "system examples" : "workspace custom JSON";
+  const describePromptProfile = (
+    profile: Stage2PromptProfileOverride | null | undefined,
+    fallbackLabel: string
+  ) => {
+    if (!profile || profile.useDefault !== false) {
+      return fallbackLabel;
+    }
+    return profile.sourceMode === "system"
+      ? getStage2SystemPromptPreset(profile.systemPresetId).label
+      : "Custom prompt";
+  };
+  const describeExamplesProfile = (
+    profile: Stage2ExamplesProfileOverride | null | undefined,
+    fallbackLabel: string
+  ) => {
+    if (!profile || profile.useDefault !== false) {
+      return fallbackLabel;
+    }
+    return profile.sourceMode === "system"
+      ? "System examples"
+      : profile.customInputMode === "json"
+        ? `${profile.customExamples.length} JSON examples`
+        : "Text examples";
+  };
+  const activePromptSummary =
+    activeTemplateFormatGroup === "channel_story" && channelStoryPromptProfile?.useDefault === false
+      ? {
+          label: "Channel + Story override",
+          detail: describePromptProfile(channelStoryPromptProfile, workspacePromptDefaultLabel)
+        }
+      : channelPromptMode === "channel"
+        ? {
+            label: "Channel default override",
+            detail:
+              channelPromptSourceMode === "system"
+                ? getStage2SystemPromptPreset(channelPromptPresetId).label
+                : "Custom prompt"
+          }
+        : activeTemplateFormatGroup === "channel_story" &&
+            workspaceChannelStoryPromptProfile?.useDefault === false
+          ? {
+              label: "Workspace format profile",
+              detail: describePromptProfile(workspaceChannelStoryPromptProfile, workspacePromptDefaultLabel)
+            }
+          : {
+              label: "Workspace default",
+              detail: workspacePromptDefaultLabel
+            };
+  const activeExamplesSummary =
+    activeTemplateFormatGroup === "channel_story" && channelStoryExamplesProfile?.useDefault === false
+      ? {
+          label: "Channel + Story override",
+          detail: describeExamplesProfile(channelStoryExamplesProfile, workspaceExamplesDefaultLabel)
+        }
+      : channelExamplesMode === "channel"
+        ? {
+            label: "Channel default override",
+            detail:
+              channelExamplesSourceMode === "system"
+                ? "system preset"
+                : channelExamplesInputMode === "json"
+                  ? `${customExamplesCount} JSON examples`
+                  : "plain text examples"
+          }
+        : activeTemplateFormatGroup === "channel_story" &&
+            workspaceChannelStoryExamplesProfile?.useDefault === false
+          ? {
+              label: "Workspace format profile",
+              detail: describeExamplesProfile(workspaceChannelStoryExamplesProfile, workspaceExamplesDefaultLabel)
+            }
+          : {
+              label: "Workspace default",
+              detail: workspaceExamplesDefaultLabel
+            };
   const customExamplesJsonError = (() => {
     if (!customExamplesJson.trim()) {
       return null;
@@ -1042,6 +1250,176 @@ export function ChannelManagerStage2Tab({
             {autosaveState.stage2Defaults.message ?? "Общие AI-настройки сохраняются автоматически."}
           </p>
         </section>
+
+        <section className="control-card control-card-subtle settings-section">
+          <div>
+            <p className="field-label">07 · Format profiles</p>
+            <h3 className="settings-section-title">Channel + Story profile</h3>
+            <p className="subtle-text">
+              Это общая база для шаблонов второго типа. Classic Top & Bottom продолжает использовать default profile, пока здесь не включён отдельный override.
+            </p>
+          </div>
+          <div className="stage2-insight-grid">
+            <article className="stage2-insight-card">
+              <span className="field-label">Top & Bottom</span>
+              <strong>Default profile</strong>
+              <p className="subtle-text">Старый контракт TOP/BOTTOM без изменения поведения.</p>
+            </article>
+            <article className="stage2-insight-card">
+              <span className="field-label">Channel + Story</span>
+              <strong>{describePromptProfile(workspaceChannelStoryPromptProfile, "Inherit default prompt")}</strong>
+              <p className="subtle-text">
+                Prompt для Lead/Body: {describeExamplesProfile(workspaceChannelStoryExamplesProfile, "inherit default examples")}
+              </p>
+            </article>
+          </div>
+          <div className="compact-grid">
+            <div className="compact-field">
+              <label className="field-label">Channel + Story prompt</label>
+              <div className="settings-choice-row">
+                <ChoiceButton
+                  active={!workspaceChannelStoryPromptProfile || workspaceChannelStoryPromptProfile.useDefault !== false}
+                  disabled={!canEditWorkspaceDefaults}
+                  label="Inherit"
+                  description="использовать default prompt"
+                  onClick={() => updateWorkspaceFormatPromptMode("channel_story", true)}
+                />
+                <ChoiceButton
+                  active={workspaceChannelStoryPromptProfile?.useDefault === false}
+                  disabled={!canEditWorkspaceDefaults}
+                  label="Custom profile"
+                  description="отдельно для Lead/Body"
+                  onClick={() => updateWorkspaceFormatPromptMode("channel_story", false)}
+                />
+              </div>
+              {workspaceChannelStoryPromptProfile?.useDefault === false ? (
+                <>
+                  <div className="settings-choice-row">
+                    <ChoiceButton
+                      active={workspaceChannelStoryPromptProfile.sourceMode === "system"}
+                      disabled={!canEditWorkspaceDefaults}
+                      label="System"
+                      description="готовый prompt"
+                      onClick={() => updateWorkspaceFormatPromptSourceMode("channel_story", "system")}
+                    />
+                    <ChoiceButton
+                      active={workspaceChannelStoryPromptProfile.sourceMode === "custom"}
+                      disabled={!canEditWorkspaceDefaults}
+                      label="Custom"
+                      description="ручной prompt"
+                      onClick={() => updateWorkspaceFormatPromptSourceMode("channel_story", "custom")}
+                    />
+                  </div>
+                  {workspaceChannelStoryPromptProfile.sourceMode === "system" ? (
+                    renderPromptPresetChoices({
+                      selectedId: workspaceChannelStoryPromptProfile.systemPresetId,
+                      disabled: !canEditWorkspaceDefaults,
+                      onSelect: (presetId) => updateWorkspaceFormatPromptPreset("channel_story", presetId)
+                    })
+                  ) : (
+                    <textarea
+                      className="text-area mono settings-textarea-large"
+                      rows={10}
+                      value={workspaceChannelStoryPromptProfile.stages.oneShotReference.prompt}
+                      disabled={!canEditWorkspaceDefaults}
+                      onChange={(event) =>
+                        updateWorkspaceFormatPromptTemplate("channel_story", event.target.value)
+                      }
+                    />
+                  )}
+                </>
+              ) : (
+                <p className="subtle-text">Скрыто, потому что этот format profile наследует default prompt.</p>
+              )}
+            </div>
+            <div className="compact-field">
+              <label className="field-label">Channel + Story examples</label>
+              <div className="settings-choice-row">
+                <ChoiceButton
+                  active={!workspaceChannelStoryExamplesProfile || workspaceChannelStoryExamplesProfile.useDefault !== false}
+                  disabled={!canEditWorkspaceDefaults}
+                  label="Inherit"
+                  description="использовать default examples"
+                  onClick={() => updateWorkspaceFormatExamplesMode("channel_story", true)}
+                />
+                <ChoiceButton
+                  active={workspaceChannelStoryExamplesProfile?.useDefault === false}
+                  disabled={!canEditWorkspaceDefaults}
+                  label="Custom profile"
+                  description="отдельно для Lead/Body"
+                  onClick={() => updateWorkspaceFormatExamplesMode("channel_story", false)}
+                />
+              </div>
+              {workspaceChannelStoryExamplesProfile?.useDefault === false ? (
+                <>
+                  <div className="settings-choice-row">
+                    <ChoiceButton
+                      active={workspaceChannelStoryExamplesProfile.sourceMode === "system"}
+                      disabled={!canEditWorkspaceDefaults}
+                      label="System"
+                      description="готовый corpus"
+                      onClick={() => updateWorkspaceFormatExamplesSourceMode("channel_story", "system")}
+                    />
+                    <ChoiceButton
+                      active={workspaceChannelStoryExamplesProfile.sourceMode === "custom"}
+                      disabled={!canEditWorkspaceDefaults}
+                      label="Custom"
+                      description="JSON или text"
+                      onClick={() => updateWorkspaceFormatExamplesSourceMode("channel_story", "custom")}
+                    />
+                  </div>
+                  {workspaceChannelStoryExamplesProfile.sourceMode === "system" ? (
+                    renderExamplesPresetChoices({
+                      selectedId: workspaceChannelStoryExamplesProfile.systemPresetId,
+                      disabled: !canEditWorkspaceDefaults,
+                      onSelect: (presetId) => updateWorkspaceFormatExamplesPreset("channel_story", presetId)
+                    })
+                  ) : (
+                    <>
+                      <div className="settings-choice-row">
+                        <ChoiceButton
+                          active={workspaceChannelStoryExamplesProfile.customInputMode === "json"}
+                          disabled={!canEditWorkspaceDefaults}
+                          label="JSON"
+                          onClick={() => updateWorkspaceFormatExamplesInputMode("channel_story", "json")}
+                        />
+                        <ChoiceButton
+                          active={workspaceChannelStoryExamplesProfile.customInputMode === "text"}
+                          disabled={!canEditWorkspaceDefaults}
+                          label="Text"
+                          onClick={() => updateWorkspaceFormatExamplesInputMode("channel_story", "text")}
+                        />
+                      </div>
+                      {workspaceChannelStoryExamplesProfile.customInputMode === "json" ? (
+                        <textarea
+                          className="text-area mono settings-textarea-large"
+                          rows={8}
+                          value={workspaceChannelStoryExamplesProfile.customExamplesJson}
+                          disabled={!canEditWorkspaceDefaults}
+                          onChange={(event) =>
+                            updateWorkspaceFormatExamplesJson("channel_story", event.target.value)
+                          }
+                        />
+                      ) : (
+                        <textarea
+                          className="text-area settings-textarea-large"
+                          rows={8}
+                          value={workspaceChannelStoryExamplesProfile.customExamplesText}
+                          disabled={!canEditWorkspaceDefaults}
+                          onChange={(event) =>
+                            updateWorkspaceFormatExamplesText("channel_story", event.target.value)
+                          }
+                        />
+                      )}
+                    </>
+                  )}
+                </>
+              ) : (
+                <p className="subtle-text">Скрыто, потому что этот format profile наследует default examples.</p>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     );
   }
@@ -1073,30 +1451,23 @@ export function ChannelManagerStage2Tab({
             <p className="subtle-text">управляется владельцем в общих настройках</p>
           </article>
           <article className="stage2-insight-card">
-            <span className="field-label">Prompt</span>
-            <strong>{channelPromptMode === "workspace" ? "Workspace default" : "Channel override"}</strong>
+            <span className="field-label">Active template</span>
+            <strong>{activeTemplateLabel}</strong>
             <p className="subtle-text">
-              {channelPromptMode === "workspace"
-                ? getStage2SystemPromptPreset(workspacePromptPresetId).label
-                : channelPromptSourceMode === "system"
-                  ? getStage2SystemPromptPreset(channelPromptPresetId).label
-                  : "Custom prompt"}
+              {activeTemplateFormatGroup === "channel_story"
+                ? "Stage 2 пишет Lead/Body, но сохраняет их в top/bottom."
+                : "Stage 2 пишет обычные TOP/BOTTOM."}
             </p>
           </article>
           <article className="stage2-insight-card">
+            <span className="field-label">Prompt</span>
+            <strong>{activePromptSummary.label}</strong>
+            <p className="subtle-text">{activePromptSummary.detail}</p>
+          </article>
+          <article className="stage2-insight-card">
             <span className="field-label">Examples</span>
-            <strong>{channelExamplesMode === "workspace" ? "Workspace default" : "Channel override"}</strong>
-            <p className="subtle-text">
-              {channelExamplesMode === "workspace"
-                ? resolvedWorkspaceExamplesSourceMode === "system"
-                  ? "system examples"
-                  : "workspace custom JSON"
-                : channelExamplesSourceMode === "system"
-                  ? "system preset"
-                  : channelExamplesInputMode === "json"
-                    ? `${customExamplesCount} JSON examples`
-                    : "plain text examples"}
-            </p>
+            <strong>{activeExamplesSummary.label}</strong>
+            <p className="subtle-text">{activeExamplesSummary.detail}</p>
           </article>
         </div>
       </section>
@@ -1118,8 +1489,179 @@ export function ChannelManagerStage2Tab({
       </section>
 
       <section className="control-card control-card-subtle settings-section">
+        <div>
+          <p className="field-label">03 · Active template contract</p>
+          <h3 className="settings-section-title">Профиль для {activeTemplateLabel}</h3>
+          <p className="subtle-text">
+            Classic template использует default profile. Для шаблонов Channel + Story можно включить отдельный prompt/examples, чтобы писать именно Lead/Body.
+          </p>
+        </div>
+        {activeTemplateFormatGroup === "channel_story" ? (
+          <div className="compact-grid">
+            <div className="compact-field">
+              <label className="field-label">Channel + Story prompt</label>
+              <div className="settings-choice-row">
+                <ChoiceButton
+                  active={!channelStoryPromptProfile || channelStoryPromptProfile.useDefault !== false}
+                  disabled={!canEditChannelPrompt}
+                  label="Inherit"
+                  description="workspace/default profile"
+                  onClick={() => updateChannelFormatPromptMode("channel_story", true)}
+                />
+                <ChoiceButton
+                  active={channelStoryPromptProfile?.useDefault === false}
+                  disabled={!canEditChannelPrompt}
+                  label="Custom profile"
+                  description="только этот канал"
+                  onClick={() => updateChannelFormatPromptMode("channel_story", false)}
+                />
+              </div>
+              {channelStoryPromptProfile?.useDefault === false ? (
+                <>
+                  <div className="settings-choice-row">
+                    <ChoiceButton
+                      active={channelStoryPromptProfile.sourceMode === "system"}
+                      disabled={!canEditChannelPrompt}
+                      label="System"
+                      onClick={() => updateChannelFormatPromptSourceMode("channel_story", "system")}
+                    />
+                    <ChoiceButton
+                      active={channelStoryPromptProfile.sourceMode === "custom"}
+                      disabled={!canEditChannelPrompt}
+                      label="Custom"
+                      onClick={() => updateChannelFormatPromptSourceMode("channel_story", "custom")}
+                    />
+                  </div>
+                  {channelStoryPromptProfile.sourceMode === "system" ? (
+                    renderPromptPresetChoices({
+                      selectedId: channelStoryPromptProfile.systemPresetId,
+                      disabled: !canEditChannelPrompt,
+                      onSelect: (presetId) => updateChannelFormatPromptPreset("channel_story", presetId)
+                    })
+                  ) : (
+                    <textarea
+                      className="text-area mono settings-textarea-large"
+                      rows={10}
+                      value={channelStoryPromptProfile.stages.oneShotReference.prompt}
+                      disabled={!canEditChannelPrompt}
+                      onChange={(event) =>
+                        updateChannelFormatPromptTemplate("channel_story", event.target.value)
+                      }
+                    />
+                  )}
+                </>
+              ) : (
+                <div className="settings-summary-card">
+                  <strong>Наследуется</strong>
+                  <p className="subtle-text">
+                    Сейчас используется {describePromptProfile(workspaceChannelStoryPromptProfile, getStage2SystemPromptPreset(workspacePromptPresetId).label)}.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="compact-field">
+              <label className="field-label">Channel + Story examples</label>
+              <div className="settings-choice-row">
+                <ChoiceButton
+                  active={!channelStoryExamplesProfile || channelStoryExamplesProfile.useDefault !== false}
+                  disabled={!canEditChannelExamples}
+                  label="Inherit"
+                  description="workspace/default examples"
+                  onClick={() => updateChannelFormatExamplesMode("channel_story", true)}
+                />
+                <ChoiceButton
+                  active={channelStoryExamplesProfile?.useDefault === false}
+                  disabled={!canEditChannelExamples}
+                  label="Custom profile"
+                  description="только этот канал"
+                  onClick={() => updateChannelFormatExamplesMode("channel_story", false)}
+                />
+              </div>
+              {channelStoryExamplesProfile?.useDefault === false ? (
+                <>
+                  <div className="settings-choice-row">
+                    <ChoiceButton
+                      active={channelStoryExamplesProfile.sourceMode === "system"}
+                      disabled={!canEditChannelExamples}
+                      label="System"
+                      onClick={() => updateChannelFormatExamplesSourceMode("channel_story", "system")}
+                    />
+                    <ChoiceButton
+                      active={channelStoryExamplesProfile.sourceMode === "custom"}
+                      disabled={!canEditChannelExamples}
+                      label="Custom"
+                      onClick={() => updateChannelFormatExamplesSourceMode("channel_story", "custom")}
+                    />
+                  </div>
+                  {channelStoryExamplesProfile.sourceMode === "system" ? (
+                    renderExamplesPresetChoices({
+                      selectedId: channelStoryExamplesProfile.systemPresetId,
+                      disabled: !canEditChannelExamples,
+                      onSelect: (presetId) => updateChannelFormatExamplesSystemPreset("channel_story", presetId)
+                    })
+                  ) : (
+                    <>
+                      <div className="settings-choice-row">
+                        <ChoiceButton
+                          active={channelStoryExamplesProfile.customInputMode === "json"}
+                          disabled={!canEditChannelExamples}
+                          label="JSON"
+                          onClick={() => updateChannelFormatExamplesInputMode("channel_story", "json")}
+                        />
+                        <ChoiceButton
+                          active={channelStoryExamplesProfile.customInputMode === "text"}
+                          disabled={!canEditChannelExamples}
+                          label="Text"
+                          onClick={() => updateChannelFormatExamplesInputMode("channel_story", "text")}
+                        />
+                      </div>
+                      {channelStoryExamplesProfile.customInputMode === "json" ? (
+                        <textarea
+                          className="text-area mono settings-textarea-large"
+                          rows={8}
+                          value={channelStoryExamplesProfile.customExamplesJson}
+                          disabled={!canEditChannelExamples}
+                          onChange={(event) =>
+                            updateChannelFormatExamplesJson("channel_story", event.target.value)
+                          }
+                        />
+                      ) : (
+                        <textarea
+                          className="text-area settings-textarea-large"
+                          rows={8}
+                          value={channelStoryExamplesProfile.customExamplesText}
+                          disabled={!canEditChannelExamples}
+                          onChange={(event) =>
+                            updateChannelFormatExamplesText("channel_story", event.target.value)
+                          }
+                        />
+                      )}
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="settings-summary-card">
+                  <strong>Наследуется</strong>
+                  <p className="subtle-text">
+                    Сейчас используется {describeExamplesProfile(workspaceChannelStoryExamplesProfile, resolvedWorkspaceExamplesSourceMode === "system" ? "system examples" : "workspace custom JSON")}.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="settings-summary-card">
+            <strong>Текущий template использует Top & Bottom</strong>
+            <p className="subtle-text">
+              Channel + Story overrides не применяются к этому шаблону, поэтому ниже видны только classic/default настройки.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="control-card control-card-subtle settings-section">
         <div className="compact-field">
-          <p className="field-label">03 · Prompt</p>
+          <p className="field-label">04 · Default prompt</p>
           <h3 className="settings-section-title">Prompt для этого канала</h3>
           <p className="subtle-text">
             Workspace default скрывает ручные поля. Channel override включает отдельный prompt только для выбранного канала.
@@ -1225,7 +1767,7 @@ export function ChannelManagerStage2Tab({
 
       <section className="control-card control-card-subtle settings-section">
         <div className="compact-field">
-          <p className="field-label">04 · Examples</p>
+          <p className="field-label">05 · Default examples</p>
           <h3 className="settings-section-title">Examples для этого канала</h3>
           <p className="subtle-text">
             Выберите один источник: workspace default, system preset или custom. Для custom показывается только JSON или только text, а не оба поля сразу.

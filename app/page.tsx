@@ -70,7 +70,9 @@ import {
   type Stage2PromptConfig
 } from "../lib/stage2-pipeline";
 import {
+  DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
   type Stage2ExamplesConfig,
   type Stage2HardConstraints
@@ -435,6 +437,8 @@ export default function HomePage() {
   const [autoRunStage2AfterSource, setAutoRunStage2AfterSource] = useState(true);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState("[]");
+  const [workspaceStage2ExamplesConfig, setWorkspaceStage2ExamplesConfig] =
+    useState<Stage2ExamplesConfig>(DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG);
   const [workspaceStage2HardConstraints, setWorkspaceStage2HardConstraints] = useState<Stage2HardConstraints>(
     DEFAULT_STAGE2_HARD_CONSTRAINTS
   );
@@ -1309,6 +1313,7 @@ export default function HomePage() {
     const body = (await response.json()) as {
       channels: Channel[];
       workspaceStage2ExamplesCorpusJson?: string;
+      workspaceStage2ExamplesConfig?: Stage2ExamplesConfig;
       workspaceStage2HardConstraints?: Stage2HardConstraints;
       workspaceStage2PromptConfig?: Stage2PromptConfig;
       workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
@@ -1325,6 +1330,12 @@ export default function HomePage() {
       body.workspaceCodexModelConfig
     );
     setWorkspaceStage2ExamplesCorpusJson(body.workspaceStage2ExamplesCorpusJson ?? "[]");
+    setWorkspaceStage2ExamplesConfig(
+      normalizeStage2ExamplesConfig(body.workspaceStage2ExamplesConfig, {
+        channelId: "workspace-default",
+        channelName: "Workspace default"
+      })
+    );
     setWorkspaceStage2HardConstraints(
       normalizeStage2HardConstraints(body.workspaceStage2HardConstraints)
     );
@@ -6428,6 +6439,7 @@ export default function HomePage() {
   const handleSaveWorkspaceStage2Defaults = useCallback(async (
     patch: Partial<{
       stage2ExamplesCorpusJson: string;
+      stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
       stage2PromptConfig: Stage2PromptConfig;
       stage2CaptionProviderConfig: Stage2CaptionProviderConfig;
@@ -6446,6 +6458,7 @@ export default function HomePage() {
       }
       const body = (await response.json()) as {
         stage2ExamplesCorpusJson?: string;
+        stage2ExamplesConfig?: Stage2ExamplesConfig;
         stage2HardConstraints?: Stage2HardConstraints;
         stage2PromptConfig?: Stage2PromptConfig;
         stage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
@@ -6459,6 +6472,14 @@ export default function HomePage() {
       };
       if (typeof body.stage2ExamplesCorpusJson === "string") {
         setWorkspaceStage2ExamplesCorpusJson(body.stage2ExamplesCorpusJson);
+      }
+      if (body.stage2ExamplesConfig) {
+        setWorkspaceStage2ExamplesConfig(
+          normalizeStage2ExamplesConfig(body.stage2ExamplesConfig, {
+            channelId: "workspace-default",
+            channelName: "Workspace default"
+          })
+        );
       }
       if (body.stage2HardConstraints) {
         setWorkspaceStage2HardConstraints(normalizeStage2HardConstraints(body.stage2HardConstraints));
@@ -7523,6 +7544,7 @@ export default function HomePage() {
           initialTab={channelManagerInitialTab}
           channels={channels}
           workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
+          workspaceStage2ExamplesConfig={workspaceStage2ExamplesConfig}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
           workspaceStage2PromptConfig={workspaceStage2PromptConfig}
           workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}

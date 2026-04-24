@@ -5,6 +5,7 @@ import {
   isStage2SystemExamplesPresetId,
   type Stage2SystemExamplesPresetId
 } from "./stage2-system-presets";
+import type { Stage3TemplateFormatGroup } from "./stage3-template-semantics";
 
 export type Stage2HardConstraints = {
   topLengthMin: number;
@@ -30,13 +31,28 @@ export type Stage2CorpusExample = {
   qualityScore: number | null;
 };
 
-export type Stage2ExamplesCorpusSource = "workspace_default" | "system_preset" | "channel_custom";
+export type Stage2ExamplesCorpusSource =
+  | "workspace_default"
+  | "workspace_format"
+  | "system_preset"
+  | "channel_custom"
+  | "channel_format";
 
 export type Stage2ExamplesSourceMode = "system" | "custom";
 export type Stage2ExamplesInputMode = "json" | "text";
 
+export type Stage2ExamplesProfileOverride = {
+  useDefault: boolean;
+  sourceMode: Stage2ExamplesSourceMode;
+  systemPresetId: Stage2SystemExamplesPresetId;
+  customInputMode: Stage2ExamplesInputMode;
+  customExamplesJson: string;
+  customExamplesText: string;
+  customExamples: Stage2CorpusExample[];
+};
+
 export type Stage2ExamplesConfig = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   useWorkspaceDefault: boolean;
   sourceMode?: Stage2ExamplesSourceMode;
   systemPresetId?: Stage2SystemExamplesPresetId;
@@ -44,6 +60,7 @@ export type Stage2ExamplesConfig = {
   customExamplesJson?: string;
   customExamplesText?: string;
   customExamples: Stage2CorpusExample[];
+  formatProfiles?: Partial<Record<Stage3TemplateFormatGroup, Stage2ExamplesProfileOverride>>;
 };
 
 export const DEFAULT_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
@@ -56,7 +73,7 @@ export const DEFAULT_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
 };
 
 export const DEFAULT_STAGE2_EXAMPLES_CONFIG: Stage2ExamplesConfig = {
-  version: 2,
+  version: 3,
   useWorkspaceDefault: true,
   sourceMode: "system",
   systemPresetId: DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID,
@@ -65,6 +82,16 @@ export const DEFAULT_STAGE2_EXAMPLES_CONFIG: Stage2ExamplesConfig = {
   customExamplesText: "",
   customExamples: []
 };
+
+export const DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG: Stage2ExamplesConfig = {
+  ...DEFAULT_STAGE2_EXAMPLES_CONFIG,
+  useWorkspaceDefault: false
+};
+
+export const STAGE2_EXAMPLES_FORMAT_GROUPS = [
+  "classic_top_bottom",
+  "channel_story"
+] as const satisfies readonly Stage3TemplateFormatGroup[];
 const WORKSPACE_STAGE2_CORPUS_OWNER = {
   channelId: "workspace-default",
   channelName: "Workspace default"
@@ -301,6 +328,83 @@ export function normalizeStage2HardConstraints(input: unknown): Stage2HardConstr
   };
 }
 
+function normalizeStage2ExamplesProfileOverride(
+  input: unknown,
+  fallbackOwner: { channelId: string; channelName: string }
+): Stage2ExamplesProfileOverride | null {
+  const candidate = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  if (!candidate) {
+    return null;
+  }
+  const normalized = normalizeStage2ExamplesConfig(
+    {
+      useWorkspaceDefault: false,
+      sourceMode: candidate.sourceMode,
+      systemPresetId: candidate.systemPresetId,
+      customInputMode: candidate.customInputMode,
+      customExamplesJson: candidate.customExamplesJson,
+      customExamplesText: candidate.customExamplesText,
+      customExamples: candidate.customExamples
+    },
+    fallbackOwner
+  );
+  return {
+    useDefault: candidate.useDefault === false ? false : true,
+    sourceMode: normalized.sourceMode ?? "system",
+    systemPresetId: normalized.systemPresetId ?? DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID,
+    customInputMode: normalized.customInputMode ?? "json",
+    customExamplesJson: normalized.customExamplesJson ?? "",
+    customExamplesText: normalized.customExamplesText ?? "",
+    customExamples: normalized.customExamples
+  };
+}
+
+function normalizeStage2ExamplesFormatProfiles(
+  input: unknown,
+  fallbackOwner: { channelId: string; channelName: string }
+): Partial<Record<Stage3TemplateFormatGroup, Stage2ExamplesProfileOverride>> {
+  const candidate = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  if (!candidate) {
+    return {};
+  }
+  const profiles: Partial<Record<Stage3TemplateFormatGroup, Stage2ExamplesProfileOverride>> = {};
+  for (const formatGroup of STAGE2_EXAMPLES_FORMAT_GROUPS) {
+    const normalized = normalizeStage2ExamplesProfileOverride(candidate[formatGroup], fallbackOwner);
+    if (normalized) {
+      profiles[formatGroup] = normalized;
+    }
+  }
+  return profiles;
+}
+
+function hasExamplesFormatProfiles(
+  profiles: Partial<Record<Stage3TemplateFormatGroup, Stage2ExamplesProfileOverride>> | undefined
+): profiles is Partial<Record<Stage3TemplateFormatGroup, Stage2ExamplesProfileOverride>> {
+  return Boolean(profiles && STAGE2_EXAMPLES_FORMAT_GROUPS.some((formatGroup) => profiles[formatGroup]));
+}
+
+function isActiveExamplesFormatProfile(
+  profile: Stage2ExamplesProfileOverride | null | undefined
+): profile is Stage2ExamplesProfileOverride {
+  return Boolean(profile && profile.useDefault === false);
+}
+
+function stage2ExamplesConfigFromProfile(input: {
+  profile: Stage2ExamplesProfileOverride;
+  useWorkspaceDefault?: boolean;
+}): Stage2ExamplesConfig {
+  return {
+    version: 3,
+    useWorkspaceDefault: input.useWorkspaceDefault ?? false,
+    sourceMode: input.profile.sourceMode,
+    systemPresetId: input.profile.systemPresetId,
+    customInputMode: input.profile.customInputMode,
+    customExamplesJson: input.profile.customExamplesJson,
+    customExamplesText: input.profile.customExamplesText,
+    customExamples: input.profile.customExamples
+  };
+}
+
 export function parseStage2HardConstraintsJson(
   raw: string | null | undefined
 ): Stage2HardConstraints {
@@ -369,9 +473,13 @@ export function normalizeStage2ExamplesConfig(
     : customExamplesRaw
       .map((entry, index) => normalizeCorpusExample(entry, fallbackOwner, index))
       .filter((entry): entry is Stage2CorpusExample => entry !== null);
+  const formatProfiles = normalizeStage2ExamplesFormatProfiles(
+    (candidate as { formatProfiles?: unknown } | undefined)?.formatProfiles,
+    fallbackOwner
+  );
 
   return {
-    version: 2,
+    version: 3,
     useWorkspaceDefault: useWorkspaceDefaultCandidate,
     sourceMode,
     systemPresetId,
@@ -381,7 +489,8 @@ export function normalizeStage2ExamplesConfig(
     customExamples:
       !useWorkspaceDefaultCandidate && sourceMode === "custom"
         ? dedupeStage2CorpusExamples([...customExamplesFromJson, ...legacyCustomExamples])
-        : []
+        : [],
+    ...(hasExamplesFormatProfiles(formatProfiles) ? { formatProfiles } : {})
   };
 }
 
@@ -479,6 +588,92 @@ export function collectWorkspaceStage2Examples(
   );
 }
 
+function collectStage2ExamplesFromConfig(
+  config: Stage2ExamplesConfig,
+  fallbackOwner: { channelId: string; channelName: string }
+): Stage2CorpusExample[] {
+  const normalized = normalizeStage2ExamplesConfig(config, fallbackOwner);
+  if (normalized.sourceMode === "system") {
+    return collectWorkspaceStage2Examples(
+      getStage2SystemExamplesPresetJson(normalized.systemPresetId)
+    );
+  }
+  return dedupeStage2CorpusExamples(normalized.customExamples);
+}
+
+export function resolveEffectiveStage2ExamplesConfigForFormat(input: {
+  workspaceStage2ExamplesConfig?: Stage2ExamplesConfig | null;
+  workspaceStage2ExamplesCorpusJson?: string | null;
+  channelStage2ExamplesConfig?: Stage2ExamplesConfig | null;
+  channelOwner: { channelId: string; channelName: string };
+  formatGroup?: Stage3TemplateFormatGroup | null;
+}): {
+  config: Stage2ExamplesConfig;
+  source: Stage2ExamplesCorpusSource;
+} {
+  const formatGroup =
+    input.formatGroup && STAGE2_EXAMPLES_FORMAT_GROUPS.includes(input.formatGroup)
+      ? input.formatGroup
+      : "classic_top_bottom";
+  const workspaceConfig = normalizeStage2ExamplesConfig(
+    input.workspaceStage2ExamplesConfig ?? {
+      ...DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG,
+      sourceMode: findSystemExamplesPresetForRawJson(input.workspaceStage2ExamplesCorpusJson)
+        ? "system"
+        : "custom",
+      systemPresetId:
+        findSystemExamplesPresetForRawJson(input.workspaceStage2ExamplesCorpusJson) ??
+        DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID,
+      customInputMode: "json",
+      customExamplesJson:
+        findSystemExamplesPresetForRawJson(input.workspaceStage2ExamplesCorpusJson)
+          ? ""
+          : input.workspaceStage2ExamplesCorpusJson ?? getBundledStage2ExamplesSeedJson()
+    },
+    WORKSPACE_STAGE2_CORPUS_OWNER
+  );
+  let config = normalizeStage2ExamplesConfig(
+    {
+      ...workspaceConfig,
+      formatProfiles: undefined,
+      useWorkspaceDefault: false
+    },
+    WORKSPACE_STAGE2_CORPUS_OWNER
+  );
+  let source: Stage2ExamplesCorpusSource = "workspace_default";
+  const workspaceFormatProfile = workspaceConfig.formatProfiles?.[formatGroup];
+  if (isActiveExamplesFormatProfile(workspaceFormatProfile)) {
+    config = stage2ExamplesConfigFromProfile({ profile: workspaceFormatProfile });
+    source = "workspace_format";
+  }
+
+  const channelConfig = input.channelStage2ExamplesConfig
+    ? normalizeStage2ExamplesConfig(input.channelStage2ExamplesConfig, input.channelOwner)
+    : null;
+  if (channelConfig?.useWorkspaceDefault === false) {
+    config = normalizeStage2ExamplesConfig(
+      {
+        ...channelConfig,
+        formatProfiles: undefined
+      },
+      input.channelOwner
+    );
+    source = channelConfig.sourceMode === "system" ? "system_preset" : "channel_custom";
+  }
+  const channelFormatProfile = channelConfig?.formatProfiles?.[formatGroup];
+  if (isActiveExamplesFormatProfile(channelFormatProfile)) {
+    config = stage2ExamplesConfigFromProfile({
+      profile: channelFormatProfile,
+      useWorkspaceDefault: false
+    });
+    source = "channel_format";
+  }
+  return {
+    config,
+    source
+  };
+}
+
 export function resolveStage2ExamplesCorpus(input: {
   channel: {
     id: string;
@@ -486,39 +681,57 @@ export function resolveStage2ExamplesCorpus(input: {
     stage2ExamplesConfig: Stage2ExamplesConfig;
   };
   workspaceStage2ExamplesCorpusJson: string | null | undefined;
+  workspaceStage2ExamplesConfig?: Stage2ExamplesConfig | null;
+  templateFormatGroup?: Stage3TemplateFormatGroup | null;
 }): {
   source: Stage2ExamplesCorpusSource;
   corpus: Stage2CorpusExample[];
   workspaceCorpusCount: number;
+  effectiveConfig: Stage2ExamplesConfig;
 } {
-  const workspaceCorpus = collectWorkspaceStage2Examples(input.workspaceStage2ExamplesCorpusJson);
-  const stage2ExamplesConfig = normalizeStage2ExamplesConfig(
-    input.channel.stage2ExamplesConfig,
-    {
+  const workspaceDefault = resolveEffectiveStage2ExamplesConfigForFormat({
+    workspaceStage2ExamplesConfig: input.workspaceStage2ExamplesConfig,
+    workspaceStage2ExamplesCorpusJson: input.workspaceStage2ExamplesCorpusJson,
+    channelOwner: WORKSPACE_STAGE2_CORPUS_OWNER,
+    formatGroup: "classic_top_bottom"
+  });
+  const workspaceCorpus = collectStage2ExamplesFromConfig(
+    workspaceDefault.config,
+    WORKSPACE_STAGE2_CORPUS_OWNER
+  );
+  const effective = resolveEffectiveStage2ExamplesConfigForFormat({
+    workspaceStage2ExamplesConfig: input.workspaceStage2ExamplesConfig,
+    workspaceStage2ExamplesCorpusJson: input.workspaceStage2ExamplesCorpusJson,
+    channelStage2ExamplesConfig: input.channel.stage2ExamplesConfig,
+    channelOwner: {
       channelId: input.channel.id,
       channelName: input.channel.name
-    }
-  );
-  if (!stage2ExamplesConfig.useWorkspaceDefault) {
-    if (stage2ExamplesConfig.sourceMode === "system") {
-      return {
-        source: "system_preset",
-        corpus: collectWorkspaceStage2Examples(
-          getStage2SystemExamplesPresetJson(stage2ExamplesConfig.systemPresetId)
-        ),
-        workspaceCorpusCount: workspaceCorpus.length
-      };
-    }
-    return {
-      source: "channel_custom",
-      corpus: dedupeStage2CorpusExamples(stage2ExamplesConfig.customExamples),
-      workspaceCorpusCount: workspaceCorpus.length
-    };
-  }
-
+    },
+    formatGroup: input.templateFormatGroup
+  });
+  const corpus = collectStage2ExamplesFromConfig(effective.config, {
+    channelId: input.channel.id,
+    channelName: input.channel.name
+  });
   return {
-    source: "workspace_default",
-    corpus: workspaceCorpus,
-    workspaceCorpusCount: workspaceCorpus.length
+    source: effective.source,
+    corpus,
+    workspaceCorpusCount: workspaceCorpus.length,
+    effectiveConfig: effective.config
   };
+}
+
+function findSystemExamplesPresetForRawJson(
+  rawJson: string | null | undefined
+): Stage2SystemExamplesPresetId | null {
+  const trimmed = typeof rawJson === "string" ? rawJson.trim() : "";
+  if (!trimmed) {
+    return DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID;
+  }
+  for (const presetId of ["system_examples", "animals_examples"] as const) {
+    if (getStage2SystemExamplesPresetJson(presetId).trim() === trimmed) {
+      return presetId;
+    }
+  }
+  return null;
 }

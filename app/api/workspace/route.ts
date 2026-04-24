@@ -4,12 +4,14 @@ import {
   getWorkspaceCodexModelConfig,
   getWorkspaceStage2CaptionProviderConfig,
   getWorkspaceStage2PromptConfig,
+  getWorkspaceStage2ExamplesConfig,
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints,
   updateWorkspaceStage3ExecutionTarget,
   updateWorkspaceCodexModelConfig,
   updateWorkspaceStage2CaptionProviderConfig,
   updateWorkspaceStage2PromptConfig,
+  updateWorkspaceStage2ExamplesConfig,
   updateWorkspaceStage2HardConstraints,
   updateWorkspaceStage2ExamplesCorpusJson
 } from "../../../lib/team-store";
@@ -20,7 +22,7 @@ import {
   getWorkspaceOpenRouterStatus
 } from "../../../lib/workspace-openrouter";
 import { type Stage2PromptConfig } from "../../../lib/stage2-pipeline";
-import { type Stage2HardConstraints } from "../../../lib/stage2-channel-config";
+import { type Stage2ExamplesConfig, type Stage2HardConstraints } from "../../../lib/stage2-channel-config";
 import {
   isStage3ExecutionTargetSelectable,
   resolveStage3Execution
@@ -36,6 +38,7 @@ export const runtime = "nodejs";
 
 type PatchBody = {
   stage2ExamplesCorpusJson?: string;
+  stage2ExamplesConfig?: Stage2ExamplesConfig;
   stage2HardConstraints?: Stage2HardConstraints;
   stage2PromptConfig?: Stage2PromptConfig;
   codexModelConfig?: WorkspaceCodexModelConfig;
@@ -59,6 +62,7 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json(
       {
         stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
+        stage2ExamplesConfig: getWorkspaceStage2ExamplesConfig(auth.workspace.id),
         stage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
         stage2PromptConfig: getWorkspaceStage2PromptConfig(auth.workspace.id),
         codexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),
@@ -95,6 +99,7 @@ export async function PATCH(request: Request): Promise<Response> {
     typeof body !== "object" ||
     (
       body.stage2ExamplesCorpusJson === undefined &&
+      body.stage2ExamplesConfig === undefined &&
       body.stage2HardConstraints === undefined &&
       body.stage2PromptConfig === undefined &&
       body.codexModelConfig === undefined &&
@@ -115,6 +120,12 @@ export async function PATCH(request: Request): Promise<Response> {
       workspace = updateWorkspaceStage2ExamplesCorpusJson(
         auth.workspace.id,
         body.stage2ExamplesCorpusJson
+      );
+    }
+    if (body.stage2ExamplesConfig) {
+      workspace = updateWorkspaceStage2ExamplesConfig(
+        auth.workspace.id,
+        body.stage2ExamplesConfig
       );
     }
     if (body.stage2HardConstraints) {
@@ -145,6 +156,7 @@ export async function PATCH(request: Request): Promise<Response> {
     return Response.json(
       {
         stage2ExamplesCorpusJson: workspace.stage2ExamplesCorpusJson,
+        stage2ExamplesConfig: workspace.stage2ExamplesConfig,
         stage2HardConstraints: workspace.stage2HardConstraints,
         stage2PromptConfig: workspace.stage2PromptConfig,
         codexModelConfig: workspace.codexModelConfig,

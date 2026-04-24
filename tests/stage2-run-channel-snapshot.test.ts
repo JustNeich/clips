@@ -7,6 +7,7 @@ import test from "node:test";
 import { createChannel, getChannelById, updateChannelById } from "../lib/chat-history";
 import { createManagedTemplate } from "../lib/managed-template-store";
 import { buildStage2RunChannelSnapshot } from "../lib/stage2-run-channel-snapshot";
+import { CHANNEL_STORY_TEMPLATE_ID } from "../lib/stage3-template";
 import { bootstrapOwner } from "../lib/team-store";
 import { createDefaultTemplateHighlightConfig } from "../lib/template-highlights";
 
@@ -85,5 +86,17 @@ test("stage 2 channel snapshots keep the assigned managed-template highlight pro
     });
 
     assert.deepEqual(snapshot.templateHighlightProfile, highlightProfile);
+    assert.equal(snapshot.templateFormatGroup, "classic_top_bottom");
+    assert.equal(snapshot.templateTextSemantics?.topLabel, "TOP");
+
+    const storySnapshot = buildStage2RunChannelSnapshot({
+      ...reloadedChannel,
+      templateId: CHANNEL_STORY_TEMPLATE_ID
+    }, {
+      workspaceId: owner.workspace.id
+    });
+    assert.equal(storySnapshot.templateFormatGroup, "channel_story");
+    assert.equal(storySnapshot.templateTextSemantics?.topLabel, "Lead");
+    assert.equal(storySnapshot.templateTextSemantics?.bottomLabel, "Body");
   });
 });

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   slug TEXT NOT NULL UNIQUE,
   default_template_id TEXT,
   stage2_examples_corpus_json TEXT,
+  stage2_examples_config_json TEXT,
   stage2_hard_constraints_json TEXT,
   stage2_prompt_config_json TEXT,
   workspace_codex_model_config_json TEXT,

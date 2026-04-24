@@ -82,6 +82,8 @@ Active prompt contract:
   optional plain-text channel examples or notes. It is available for channel custom examples and is a style/rhythm reference, not factual evidence.
 - `hard_constraints_json`
   обязательные length/content guardrails
+- `template_semantics_json`
+  assigned-template contract for this run. `classic_top_bottom` keeps `top` = TOP and `bottom` = BOTTOM. `channel_story` maps `top` to Lead and `bottom` to Body; when `topVisible` is false, Stage 2 must return empty `top`.
 - `user_instruction`
   ручная правка оператора
 
@@ -133,6 +135,10 @@ Active workspace Stage 2 settings теперь только такие:
   - system preset `system_examples`
   - system preset `animals_examples`
   - custom workspace JSON corpus
+- workspace format profiles:
+  - default profile stays backward-compatible for existing channels
+  - `Top & Bottom` inherits default unless explicitly changed later
+  - `Channel + Story` can override prompt/examples for Lead/Body without changing persisted `top` / `bottom`
 - default hard constraints
 
 ### Channel-level active authority
@@ -149,6 +155,9 @@ Active workspace Stage 2 settings теперь только такие:
   - system preset
   - custom JSON examples
   - custom plain-text examples
+- optional `formatProfiles.channel_story` inside prompt/examples config:
+  - inherit default/workspace by default
+  - custom prompt/examples apply only when the assigned template resolves to `channel_story`
 - render template отдельно в Channel Manager / Stage 3 surfaces
 
 Channel больше **не** должен активно управлять:
@@ -194,19 +203,23 @@ Workspace defaults tab:
 - one-shot model
 - one-shot prompt source: system/custom
 - examples source: system/custom JSON
+- format profiles for `Channel + Story` prompt/examples
 
 Channel tab:
 
 - hard constraints
+- active template contract summary (`Top & Bottom` vs `Channel + Story`)
 - optional channel prompt source:
   - workspace default
   - system preset
   - channel custom prompt
+- optional `Channel + Story` prompt override for Lead/Body only
 - optional channel examples source:
   - workspace default
   - system preset
   - channel custom JSON upload/paste
   - channel custom plain-text upload/paste
+- optional `Channel + Story` examples override for Lead/Body only
 - note о том, что provider/model наследуются из workspace
 
 ## 6. Historical compatibility
@@ -248,6 +261,8 @@ Quick regenerate теперь следует тем же принципам, ч�
 Примеры:
 
 - `workspaces.stage2_caption_provider_json` = active authority
+- `workspaces.stage2_examples_config_json` = workspace examples source plus format-profile overrides
+- `workspaces.stage2_examples_corpus_json` = legacy compatible default corpus mirror
 - `workspace_anthropic_integrations` / `workspace_openrouter_integrations` = active authority
 - `channels.stage2_worker_profile_id` = historical compatibility field
 - `channels.stage2_examples_config_json` = active optional channel examples input plus legacy compatibility wrapper

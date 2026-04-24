@@ -158,6 +158,7 @@ function migrateLegacyStage3WorkerTokens(db: DatabaseSync): void {
 function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "workspaces", "default_template_id", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_examples_corpus_json", "TEXT");
+  addColumnIfMissing(db, "workspaces", "stage2_examples_config_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_hard_constraints_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "stage2_prompt_config_json", "TEXT");
   addColumnIfMissing(db, "workspaces", "workspace_codex_model_config_json", "TEXT");

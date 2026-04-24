@@ -6,6 +6,9 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import {
+  resolveChannelManagerTemplateFormatGroup
+} from "../app/components/ChannelManager";
 import { ChannelManagerStage2Tab } from "../app/components/ChannelManagerStage2Tab";
 import { buildQuickRegeneratePrompt } from "../lib/stage2-quick-regenerate";
 import {
@@ -31,6 +34,7 @@ import {
 } from "../lib/workspace-codex-models";
 import { createChannel, getChannelById, updateChannelById } from "../lib/chat-history";
 import { bootstrapOwner } from "../lib/team-store";
+import { CHANNEL_STORY_TEMPLATE_ID, STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-stage2-single-baseline-test-"));
@@ -245,6 +249,31 @@ test("channel persistence keeps channel prompt and examples overrides while igno
   });
 });
 
+test("ChannelManager resolves active format from managed template layout family", () => {
+  assert.equal(
+    resolveChannelManagerTemplateFormatGroup("workspace-story-template", [
+      {
+        id: "workspace-story-template",
+        name: "Workspace Story Template",
+        description: "",
+        layoutFamily: CHANNEL_STORY_TEMPLATE_ID,
+        baseTemplateId: CHANNEL_STORY_TEMPLATE_ID,
+        workspaceId: "workspace_1",
+        creatorUserId: "owner_1",
+        creatorDisplayName: "Owner",
+        createdAt: "2026-04-24T00:00:00.000Z",
+        updatedAt: "2026-04-24T00:00:00.000Z",
+        versionsCount: 0
+      }
+    ]),
+    "channel_story"
+  );
+  assert.equal(
+    resolveChannelManagerTemplateFormatGroup(STAGE3_TEMPLATE_ID, []),
+    "classic_top_bottom"
+  );
+});
+
 test("ChannelManagerStage2Tab renders the minimal single-baseline Stage 2 surface", () => {
   const html = renderToStaticMarkup(
     React.createElement(ChannelManagerStage2Tab, {
@@ -288,6 +317,8 @@ test("ChannelManagerStage2Tab renders the minimal single-baseline Stage 2 surfac
   assert.match(html, /Stage 2 caption engine/);
   assert.match(html, /System prompt/);
   assert.match(html, /Animals system prompt/);
+  assert.match(html, /Channel \+ Story profile/);
+  assert.match(html, /Top &amp; Bottom/);
   assert.match(html, /Examples corpus/);
   assert.match(html, /One-shot model/);
   assert.match(html, /Caption provider/);

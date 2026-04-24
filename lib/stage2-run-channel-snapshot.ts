@@ -1,6 +1,7 @@
 import type { Channel } from "./chat-history";
 import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
 import { resolveChannelEditorialMemory } from "./stage2-editorial-memory-resolution";
+import { resolveStage2TemplateTextSemantics } from "./stage2-template-contract";
 import type { Stage2RunRequest } from "./stage2-progress-store";
 
 type Stage2RunChannelSnapshot = Stage2RunRequest["channel"];
@@ -31,6 +32,11 @@ export function buildStage2RunChannelSnapshot(
   const templateHighlightProfile = resolveManagedTemplateRuntimeSync(channel.templateId, null, {
     workspaceId: options?.workspaceId ?? channel.workspaceId
   }).templateConfig.highlights;
+  const templateTextSemantics = resolveStage2TemplateTextSemantics({
+    templateId: channel.templateId,
+    workspaceId: options?.workspaceId ?? channel.workspaceId,
+    hardConstraints: channel.stage2HardConstraints
+  });
 
   return {
     id: channel.id,
@@ -44,6 +50,8 @@ export function buildStage2RunChannelSnapshot(
     stage2StyleProfile: channel.stage2StyleProfile,
     editorialMemory: editorialMemoryResolution.editorialMemory,
     editorialMemorySource: editorialMemoryResolution.source,
-    templateHighlightProfile
+    templateHighlightProfile,
+    templateFormatGroup: templateTextSemantics.formatGroup,
+    templateTextSemantics
   };
 }

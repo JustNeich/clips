@@ -6,10 +6,15 @@ import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { hashPassword, verifyPassword } from "./auth/password";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG,
   getBundledStage2ExamplesSeedJson,
+  normalizeStage2ExamplesConfig,
+  parseStage2ExamplesConfigJson,
   parseStage2ExamplesJson,
   parseStage2HardConstraintsJson,
+  stringifyStage2ExamplesConfig,
   stringifyStage2HardConstraints,
+  type Stage2ExamplesConfig,
   type Stage2HardConstraints
 } from "./stage2-channel-config";
 import {
@@ -30,6 +35,7 @@ import {
   type Stage2PromptConfig,
   type Stage2PromptConfigStageId
 } from "./stage2-pipeline";
+import { getStage2SystemExamplesPresetJson } from "./stage2-system-presets";
 import {
   DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
   parseWorkspaceCodexModelConfigJson,
@@ -54,6 +60,7 @@ export type WorkspaceRecord = {
   slug: string;
   defaultTemplateId: string | null;
   stage2ExamplesCorpusJson: string;
+  stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
   codexModelConfig: WorkspaceCodexModelConfig;
@@ -241,6 +248,10 @@ function mapWorkspace(row: Record<string, unknown>): WorkspaceRecord {
     stage2ExamplesCorpusJson: normalizeWorkspaceStage2ExamplesCorpusJson(
       row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null
     ),
+    stage2ExamplesConfig: normalizeWorkspaceStage2ExamplesConfig(
+      row.stage2_examples_config_json ? String(row.stage2_examples_config_json) : null,
+      row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null
+    ),
     stage2HardConstraints: normalizeWorkspaceStage2HardConstraints(
       row.stage2_hard_constraints_json ? String(row.stage2_hard_constraints_json) : null
     ),
@@ -280,6 +291,37 @@ function normalizeWorkspaceStage2ExamplesCorpusJson(value: string | null | undef
   } catch {
     return getBundledStage2ExamplesSeedJson();
   }
+}
+
+function normalizeWorkspaceStage2ExamplesConfig(
+  value: string | null | undefined,
+  legacyCorpusJson?: string | null
+): Stage2ExamplesConfig {
+  const owner = {
+    channelId: "workspace-default",
+    channelName: "Workspace default"
+  };
+  const legacyJson = normalizeWorkspaceStage2ExamplesCorpusJson(legacyCorpusJson);
+  if (typeof value === "string" && value.trim()) {
+    const parsed = parseStage2ExamplesConfigJson(value, owner);
+    return normalizeStage2ExamplesConfig(
+      {
+        ...parsed,
+        useWorkspaceDefault: false
+      },
+      owner
+    );
+  }
+  return normalizeStage2ExamplesConfig(
+    {
+      ...DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG,
+      useWorkspaceDefault: false,
+      sourceMode: "custom",
+      customInputMode: "json",
+      customExamplesJson: legacyJson
+    },
+    owner
+  );
 }
 
 function normalizeWorkspaceStage2HardConstraints(
@@ -417,11 +459,16 @@ export function getWorkspace(): WorkspaceRecord | null {
     return null;
   }
   const stage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(String(row.id));
+  const stage2ExamplesConfig = getWorkspaceStage2ExamplesConfig(String(row.id));
   const stage3ExecutionTarget = getWorkspaceStage3ExecutionTarget(String(row.id));
   return {
     ...mapWorkspace({
       ...row,
       stage2_examples_corpus_json: stage2ExamplesCorpusJson,
+      stage2_examples_config_json: stringifyStage2ExamplesConfig(stage2ExamplesConfig, {
+        channelId: "workspace-default",
+        channelName: "Workspace default"
+      }),
       stage3_execution_target: stage3ExecutionTarget
     })
   };
@@ -441,6 +488,33 @@ export function getWorkspaceStage2ExamplesCorpusJson(workspaceId: string): strin
   if ((row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null) !== normalized) {
     db.prepare("UPDATE workspaces SET stage2_examples_corpus_json = ? WHERE id = ?").run(
       normalized,
+      workspaceId
+    );
+  }
+  return normalized;
+}
+
+export function getWorkspaceStage2ExamplesConfig(workspaceId: string): Stage2ExamplesConfig {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT stage2_examples_config_json, stage2_examples_corpus_json FROM workspaces WHERE id = ? LIMIT 1"
+    )
+    .get(workspaceId) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  const normalized = normalizeWorkspaceStage2ExamplesConfig(
+    row.stage2_examples_config_json ? String(row.stage2_examples_config_json) : null,
+    row.stage2_examples_corpus_json ? String(row.stage2_examples_corpus_json) : null
+  );
+  const serialized = stringifyStage2ExamplesConfig(normalized, {
+    channelId: "workspace-default",
+    channelName: "Workspace default"
+  });
+  if ((row.stage2_examples_config_json ? String(row.stage2_examples_config_json) : null) !== serialized) {
+    db.prepare("UPDATE workspaces SET stage2_examples_config_json = ? WHERE id = ?").run(
+      serialized,
       workspaceId
     );
   }
@@ -579,8 +653,66 @@ export function updateWorkspaceStage2ExamplesCorpusJson(
   const updatedAt = nowIso();
   const db = getDb();
   db.prepare(
-    "UPDATE workspaces SET stage2_examples_corpus_json = ?, updated_at = ? WHERE id = ?"
-  ).run(normalized, updatedAt, workspaceId);
+    "UPDATE workspaces SET stage2_examples_corpus_json = ?, stage2_examples_config_json = ?, updated_at = ? WHERE id = ?"
+  ).run(
+    normalized,
+    stringifyStage2ExamplesConfig(
+      normalizeStage2ExamplesConfig(
+        {
+          ...DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG,
+          sourceMode: "custom",
+          customInputMode: "json",
+          customExamplesJson: normalized
+        },
+        {
+          channelId: "workspace-default",
+          channelName: "Workspace default"
+        }
+      ),
+      {
+        channelId: "workspace-default",
+        channelName: "Workspace default"
+      }
+    ),
+    updatedAt,
+    workspaceId
+  );
+  const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) {
+    throw new Error("Workspace not found.");
+  }
+  return mapWorkspace(row);
+}
+
+export function updateWorkspaceStage2ExamplesConfig(
+  workspaceId: string,
+  examplesConfig: Stage2ExamplesConfig
+): WorkspaceRecord {
+  const owner = {
+    channelId: "workspace-default",
+    channelName: "Workspace default"
+  };
+  const normalized = normalizeStage2ExamplesConfig(
+    {
+      ...examplesConfig,
+      useWorkspaceDefault: false
+    },
+    owner
+  );
+  const serialized = stringifyStage2ExamplesConfig(normalized, owner);
+  const mirroredCorpusJson =
+    normalized.sourceMode === "system"
+      ? getStage2SystemExamplesPresetJson(normalized.systemPresetId)
+      : normalized.customExamplesJson?.trim()
+        ? JSON.stringify(parseStage2ExamplesJson(normalized.customExamplesJson, owner), null, 2)
+        : getBundledStage2ExamplesSeedJson();
+  const updatedAt = nowIso();
+  const db = getDb();
+  db.prepare(
+    "UPDATE workspaces SET stage2_examples_config_json = ?, stage2_examples_corpus_json = ?, updated_at = ? WHERE id = ?"
+  ).run(serialized, mirroredCorpusJson, updatedAt, workspaceId);
   const row = db.prepare("SELECT * FROM workspaces WHERE id = ?").get(workspaceId) as
     | Record<string, unknown>
     | undefined;
@@ -880,6 +1012,7 @@ export async function bootstrapOwner(input: {
     slug: sanitizeSlug(input.workspaceName),
     defaultTemplateId: null,
     stage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
+    stage2ExamplesConfig: DEFAULT_WORKSPACE_STAGE2_EXAMPLES_CONFIG,
     stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
     stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
     codexModelConfig: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
@@ -909,13 +1042,17 @@ export async function bootstrapOwner(input: {
 
   runInTransaction((db) => {
     db.prepare(
-      "INSERT INTO workspaces (id, name, slug, default_template_id, stage2_examples_corpus_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, stage2_caption_provider_json, stage3_execution_target, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO workspaces (id, name, slug, default_template_id, stage2_examples_corpus_json, stage2_examples_config_json, stage2_hard_constraints_json, stage2_prompt_config_json, workspace_codex_model_config_json, stage2_caption_provider_json, stage3_execution_target, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       workspace.id,
       workspace.name,
       workspace.slug,
       workspace.defaultTemplateId,
       workspace.stage2ExamplesCorpusJson,
+      stringifyStage2ExamplesConfig(workspace.stage2ExamplesConfig, {
+        channelId: "workspace-default",
+        channelName: "Workspace default"
+      }),
       stringifyStage2HardConstraints(workspace.stage2HardConstraints),
       stringifyStage2PromptConfig(workspace.stage2PromptConfig),
       stringifyWorkspaceCodexModelConfig(workspace.codexModelConfig),
@@ -1222,6 +1359,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
         w.slug as workspace_slug,
         w.default_template_id as workspace_default_template_id,
         w.stage2_examples_corpus_json as workspace_stage2_examples_corpus_json,
+        w.stage2_examples_config_json as workspace_stage2_examples_config_json,
         w.stage2_hard_constraints_json as workspace_stage2_hard_constraints_json,
         w.stage2_prompt_config_json as workspace_stage2_prompt_config_json,
         w.created_at as workspace_created_at,
@@ -1259,6 +1397,7 @@ export function getAuthContextByToken(sessionToken: string): AuthContext | null 
           ? String(row.workspace_default_template_id)
           : null,
       stage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(String(row.workspace_id)),
+      stage2ExamplesConfig: getWorkspaceStage2ExamplesConfig(String(row.workspace_id)),
       stage2HardConstraints: getWorkspaceStage2HardConstraints(String(row.workspace_id)),
       stage2PromptConfig: getWorkspaceStage2PromptConfig(String(row.workspace_id)),
       codexModelConfig: getWorkspaceCodexModelConfig(String(row.workspace_id)),

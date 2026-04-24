@@ -28,9 +28,10 @@ import {
 } from "./stage2-progress-store";
 import {
   getStage2ProgressStartStageId,
-  resolveEffectiveStage2PromptConfig
+  resolveEffectiveStage2PromptConfigForFormat
 } from "./stage2-pipeline";
 import {
+  getWorkspaceStage2ExamplesConfig,
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2PromptConfig
 } from "./team-store";
@@ -73,12 +74,14 @@ type VideoInfoJson = {
 
 function resolveRunStage2PromptConfig(
   workspaceId: string,
-  channelPromptConfig: Stage2RunRecord["request"]["channel"]["stage2PromptConfig"]
+  channelPromptConfig: Stage2RunRecord["request"]["channel"]["stage2PromptConfig"],
+  templateFormatGroup?: Stage2RunRecord["request"]["channel"]["templateFormatGroup"]
 ) {
-  return resolveEffectiveStage2PromptConfig({
+  return resolveEffectiveStage2PromptConfigForFormat({
     workspacePromptConfig: getWorkspaceStage2PromptConfig(workspaceId),
-    channelPromptConfig
-  });
+    channelPromptConfig,
+    formatGroup: templateFormatGroup
+  }).config;
 }
 
 type Stage2WorkerRolloutAudit =
@@ -664,9 +667,11 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
     const effectiveStage2PromptConfig = resolveRunStage2PromptConfig(
       run.workspaceId,
-      channel.stage2PromptConfig
+      channel.stage2PromptConfig,
+      channel.templateFormatGroup
     );
     const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
+    const workspaceStage2ExamplesConfig = getWorkspaceStage2ExamplesConfig(run.workspaceId);
     markStage2RunStageRunning(run.runId, "regenerate", {
       detail: "Reusing the saved context packet and rerunning native caption generation.",
       reasoningEffort: executorContext.reasoningEffort
@@ -685,9 +690,12 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           stage2HardConstraints: effectiveHardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
           editorialMemory: channel.editorialMemory,
-          templateHighlightProfile: channel.templateHighlightProfile ?? null
+          templateHighlightProfile: channel.templateHighlightProfile ?? null,
+          templateFormatGroup: channel.templateFormatGroup ?? null,
+          templateTextSemantics: channel.templateTextSemantics ?? null
         },
         workspaceStage2ExamplesCorpusJson,
+        workspaceStage2ExamplesConfig,
         videoContext: buildStage2RuntimeVideoContext({
           sourceUrl: baseResult.source.url,
           title: baseResult.source.title,
@@ -790,7 +798,8 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
   const workerService = new ViralShortsWorkerService();
   const effectiveStage2PromptConfig = resolveRunStage2PromptConfig(
     run.workspaceId,
-    channel.stage2PromptConfig
+    channel.stage2PromptConfig,
+    channel.templateFormatGroup
   );
   markStage2RunStageRunning(run.runId, "regenerate", {
     detail: "Quick-regenerating the visible shortlist and paired titles.",
@@ -941,9 +950,11 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     const workerService = new ViralShortsWorkerService();
     const effectiveStage2PromptConfig = resolveRunStage2PromptConfig(
       run.workspaceId,
-      channel.stage2PromptConfig
+      channel.stage2PromptConfig,
+      channel.templateFormatGroup
     );
     const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
+    const workspaceStage2ExamplesConfig = getWorkspaceStage2ExamplesConfig(run.workspaceId);
     const videoContext = buildStage2RuntimeVideoContext({
       sourceUrl: run.sourceUrl,
       title: downloaded.title,
@@ -963,9 +974,12 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         stage2HardConstraints: effectiveHardConstraints,
         stage2StyleProfile: channel.stage2StyleProfile,
         editorialMemory: channel.editorialMemory,
-        templateHighlightProfile: channel.templateHighlightProfile ?? null
+        templateHighlightProfile: channel.templateHighlightProfile ?? null,
+        templateFormatGroup: channel.templateFormatGroup ?? null,
+        templateTextSemantics: channel.templateTextSemantics ?? null
       },
       workspaceStage2ExamplesCorpusJson,
+      workspaceStage2ExamplesConfig,
       videoContext,
       imagePaths: frames.framePaths,
       executor: executorContext.executor,

@@ -15,6 +15,7 @@ import {
   getWorkspaceStage3ExecutionTarget,
   getWorkspaceCodexModelConfig,
   getWorkspaceStage2CaptionProviderConfig,
+  getWorkspaceStage2ExamplesConfig,
   getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2HardConstraints
 } from "../../../lib/team-store";
@@ -93,6 +94,7 @@ export async function GET(request: Request): Promise<Response> {
       {
         channels: visibleChannels.filter(Boolean),
         workspaceStage2ExamplesCorpusJson: getWorkspaceStage2ExamplesCorpusJson(auth.workspace.id),
+        workspaceStage2ExamplesConfig: getWorkspaceStage2ExamplesConfig(auth.workspace.id),
         workspaceStage2HardConstraints: getWorkspaceStage2HardConstraints(auth.workspace.id),
         workspaceStage2PromptConfig: auth.workspace.stage2PromptConfig,
         workspaceCodexModelConfig: getWorkspaceCodexModelConfig(auth.workspace.id),

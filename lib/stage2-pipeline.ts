@@ -16,6 +16,7 @@ import {
   isStage2SystemPromptPresetId,
   type Stage2SystemPromptPresetId
 } from "./stage2-system-presets";
+import type { Stage3TemplateFormatGroup } from "./stage3-template-semantics";
 
 export {
   STAGE2_DEFAULT_REASONING_EFFORTS,
@@ -25,7 +26,11 @@ export {
 } from "./stage2-prompt-specs";
 export type { Stage2PromptConfigStageId, Stage2ReasoningEffort } from "./stage2-prompt-specs";
 
-export const STAGE2_PROMPT_CONFIG_VERSION = 5 as const;
+export const STAGE2_PROMPT_CONFIG_VERSION = 6 as const;
+export const STAGE2_PROMPT_FORMAT_GROUPS = [
+  "classic_top_bottom",
+  "channel_story"
+] as const satisfies readonly Stage3TemplateFormatGroup[];
 export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY = "stage2_legacy";
 export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_NATIVE = "native_caption_v3";
 export const STAGE2_LEGACY_PROMPT_BUNDLE_VERSION = "stage2_legacy@2026-04-01";
@@ -270,12 +275,20 @@ export type Stage2PromptStageConfig = {
 
 export type Stage2PromptSourceMode = "system" | "custom";
 
+export type Stage2PromptProfileOverride = {
+  useDefault: boolean;
+  sourceMode: Stage2PromptSourceMode;
+  systemPresetId: Stage2SystemPromptPresetId;
+  stages: Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
+};
+
 export type Stage2PromptConfig = {
   version: typeof STAGE2_PROMPT_CONFIG_VERSION;
   useWorkspaceDefault?: boolean;
   sourceMode?: Stage2PromptSourceMode;
   systemPresetId?: Stage2SystemPromptPresetId;
   stages: Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
+  formatProfiles?: Partial<Record<Stage3TemplateFormatGroup, Stage2PromptProfileOverride>>;
 };
 
 export type Stage2ProgressStatus = "queued" | "running" | "completed" | "failed";
@@ -510,6 +523,66 @@ function normalizePromptCompatibility(
   };
 }
 
+function normalizeStage2PromptProfileOverride(input: unknown): Stage2PromptProfileOverride | null {
+  const candidate = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  if (!candidate) {
+    return null;
+  }
+  const normalized = normalizeStage2PromptConfig({
+    sourceMode: candidate.sourceMode,
+    systemPresetId: candidate.systemPresetId,
+    stages: candidate.stages
+  });
+  return {
+    useDefault: candidate.useDefault === false ? false : true,
+    sourceMode: normalized.sourceMode ?? "system",
+    systemPresetId: normalized.systemPresetId ?? DEFAULT_STAGE2_SYSTEM_PROMPT_PRESET_ID,
+    stages: normalized.stages
+  };
+}
+
+function normalizeStage2PromptFormatProfiles(
+  input: unknown
+): Partial<Record<Stage3TemplateFormatGroup, Stage2PromptProfileOverride>> {
+  const candidate = input && typeof input === "object" ? (input as Record<string, unknown>) : null;
+  if (!candidate) {
+    return {};
+  }
+  const profiles: Partial<Record<Stage3TemplateFormatGroup, Stage2PromptProfileOverride>> = {};
+  for (const formatGroup of STAGE2_PROMPT_FORMAT_GROUPS) {
+    const normalized = normalizeStage2PromptProfileOverride(candidate[formatGroup]);
+    if (normalized) {
+      profiles[formatGroup] = normalized;
+    }
+  }
+  return profiles;
+}
+
+function hasPromptFormatProfiles(
+  profiles: Partial<Record<Stage3TemplateFormatGroup, Stage2PromptProfileOverride>> | undefined
+): profiles is Partial<Record<Stage3TemplateFormatGroup, Stage2PromptProfileOverride>> {
+  return Boolean(profiles && STAGE2_PROMPT_FORMAT_GROUPS.some((formatGroup) => profiles[formatGroup]));
+}
+
+function isActivePromptFormatProfile(
+  profile: Stage2PromptProfileOverride | null | undefined
+): profile is Stage2PromptProfileOverride {
+  return Boolean(profile && profile.useDefault === false);
+}
+
+function stage2PromptConfigFromProfile(input: {
+  profile: Stage2PromptProfileOverride;
+  useWorkspaceDefault?: boolean;
+}): Stage2PromptConfig {
+  return normalizeStage2PromptConfig({
+    version: STAGE2_PROMPT_CONFIG_VERSION,
+    ...(input.useWorkspaceDefault === undefined ? {} : { useWorkspaceDefault: input.useWorkspaceDefault }),
+    sourceMode: input.profile.sourceMode,
+    systemPresetId: input.profile.systemPresetId,
+    stages: input.profile.stages
+  });
+}
+
 export function getStage2PromptOverrideCompatibility(input: {
   stageId: Stage2PromptConfigStageId;
   stageConfig: Stage2PromptStageConfig | null | undefined;
@@ -714,12 +787,17 @@ export function normalizeStage2PromptConfig(input: unknown): Stage2PromptConfig 
     })
   ) as Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
 
+  const formatProfiles = normalizeStage2PromptFormatProfiles(
+    (candidate as { formatProfiles?: unknown } | undefined)?.formatProfiles
+  );
+
   return {
     version: STAGE2_PROMPT_CONFIG_VERSION,
     ...(useWorkspaceDefault === undefined ? {} : { useWorkspaceDefault }),
     sourceMode,
     systemPresetId: inferredPresetId,
-    stages
+    stages,
+    ...(hasPromptFormatProfiles(formatProfiles) ? { formatProfiles } : {})
   };
 }
 
@@ -779,7 +857,10 @@ export function prepareStage2PromptConfigForExplicitSave(input: {
       : { useWorkspaceDefault: nextConfig.useWorkspaceDefault }),
     sourceMode: nextConfig.sourceMode,
     systemPresetId: nextConfig.systemPresetId,
-    stages
+    stages,
+    ...(hasPromptFormatProfiles(nextConfig.formatProfiles)
+      ? { formatProfiles: nextConfig.formatProfiles }
+      : {})
   };
 }
 
@@ -813,7 +894,10 @@ export function resetIncompatibleNativeStage2PromptOverrides(config: Stage2Promp
   return {
     config: {
       version: STAGE2_PROMPT_CONFIG_VERSION,
-      stages
+      stages,
+      ...(hasPromptFormatProfiles(normalized.formatProfiles)
+        ? { formatProfiles: normalized.formatProfiles }
+        : {})
     },
     removedStageIds
   };
@@ -822,6 +906,14 @@ export function resetIncompatibleNativeStage2PromptOverrides(config: Stage2Promp
 export function hasStage2PromptOverrides(config: Stage2PromptConfig): boolean {
   const normalized = normalizeStage2PromptConfig(config);
   if (normalized.useWorkspaceDefault === false) {
+    return true;
+  }
+  if (
+    normalized.formatProfiles &&
+    STAGE2_PROMPT_FORMAT_GROUPS.some(
+      (formatGroup) => normalized.formatProfiles?.[formatGroup]?.useDefault === false
+    )
+  ) {
     return true;
   }
   return STAGE2_PROMPT_STAGE_IDS.some((stageId) => {
@@ -843,14 +935,64 @@ export function hasStage2PromptOverrides(config: Stage2PromptConfig): boolean {
 export function resolveEffectiveStage2PromptConfig(input: {
   workspacePromptConfig: Stage2PromptConfig;
   channelPromptConfig?: Stage2PromptConfig | null;
+  formatGroup?: Stage3TemplateFormatGroup | null;
 }): Stage2PromptConfig {
+  return resolveEffectiveStage2PromptConfigForFormat(input).config;
+}
+
+export function resolveEffectiveStage2PromptConfigForFormat(input: {
+  workspacePromptConfig: Stage2PromptConfig;
+  channelPromptConfig?: Stage2PromptConfig | null;
+  formatGroup?: Stage3TemplateFormatGroup | null;
+}): {
+  config: Stage2PromptConfig;
+  source: "workspace_default" | "workspace_format" | "channel_default" | "channel_format";
+} {
+  const formatGroup =
+    input.formatGroup && STAGE2_PROMPT_FORMAT_GROUPS.includes(input.formatGroup)
+      ? input.formatGroup
+      : "classic_top_bottom";
   const workspacePromptConfig = normalizeStage2PromptConfig(input.workspacePromptConfig);
   const channelPromptConfig = input.channelPromptConfig
     ? normalizeStage2PromptConfig(input.channelPromptConfig)
     : null;
-  return channelPromptConfig?.useWorkspaceDefault === false
-    ? channelPromptConfig
-    : workspacePromptConfig;
+  let config = normalizeStage2PromptConfig({
+    ...workspacePromptConfig,
+    formatProfiles: undefined
+  });
+  let source: "workspace_default" | "workspace_format" | "channel_default" | "channel_format" =
+    "workspace_default";
+  const workspaceFormatProfile = workspacePromptConfig.formatProfiles?.[formatGroup];
+  if (isActivePromptFormatProfile(workspaceFormatProfile)) {
+    config = stage2PromptConfigFromProfile({
+      profile: workspaceFormatProfile
+    });
+    source = "workspace_format";
+  }
+  if (channelPromptConfig?.useWorkspaceDefault === false) {
+    config = normalizeStage2PromptConfig({
+      ...channelPromptConfig,
+      formatProfiles: undefined,
+      useWorkspaceDefault: false
+    });
+    source = "channel_default";
+  }
+  const channelFormatProfile = channelPromptConfig?.formatProfiles?.[formatGroup];
+  if (isActivePromptFormatProfile(channelFormatProfile)) {
+    config = stage2PromptConfigFromProfile({
+      profile: channelFormatProfile,
+      useWorkspaceDefault: false
+    });
+    source = "channel_format";
+  }
+  return {
+    config: normalizeStage2PromptConfig({
+      ...config,
+      formatProfiles: undefined,
+      ...(source.startsWith("channel") ? { useWorkspaceDefault: false } : { useWorkspaceDefault: undefined })
+    }),
+    source
+  };
 }
 
 export function createStage2ProgressSnapshot(

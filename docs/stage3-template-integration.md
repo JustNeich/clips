@@ -108,6 +108,8 @@ Runtime invariant:
 - для `channel_story + clip_custom` `topText` становится `lead`, а `bottomText` становится `body`;
 - для `channel_story + template_default` операторский flow не редактирует `topText` напрямую, но `content.topText` всё ещё хранит template-level default lead;
 - для `channel_story + off` `topText` исключается из operator flow, а `bottomText` остаётся единственным body-блоком.
+- Stage 2 run snapshot обязан фиксировать `templateFormatGroup` и `templateTextSemantics`, чтобы prompt/examples выбирались по формату назначенного шаблона на момент запуска, а не по будущему состоянию канала.
+- One-shot prompt получает `template_semantics_json`; для `channel_story` модель должна понимать persisted `top` как Lead, persisted `bottom` как Body, а при hidden lead возвращать пустой `top`.
 
 Практический смысл:
 - не ломаем legacy Stage 2/Stage 3 storage;

@@ -4,7 +4,10 @@ import test from "node:test";
 import type { Stage2Output } from "../app/components/types";
 import { validateStage2Output } from "../lib/stage2-output-validation";
 import { DEFAULT_STAGE2_HARD_CONSTRAINTS } from "../lib/stage2-channel-config";
-import { resolveEffectiveStage2HardConstraints } from "../lib/stage2-template-contract";
+import {
+  resolveEffectiveStage2HardConstraints,
+  resolveStage2TemplateTextSemantics
+} from "../lib/stage2-template-contract";
 import { CHANNEL_STORY, CHANNEL_STORY_TEMPLATE_ID, SCIENCE_CARD, cloneStage3TemplateConfig } from "../lib/stage3-template";
 import {
   resolveTemplateStage2HardConstraints,
@@ -156,4 +159,23 @@ test("channel story text semantics hide template-managed lead fields outside cli
   );
   assert.equal(offSemantics.topVisible, false);
   assert.equal(offSemantics.topNote, "Этот шаблон не использует отдельный lead.");
+});
+
+test("stage 2 template semantics snapshot carries format labels and effective length hints", () => {
+  const semantics = resolveStage2TemplateTextSemantics({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    hardConstraints: {
+      ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      topLengthMin: 22,
+      topLengthMax: 90,
+      bottomLengthMin: 22,
+      bottomLengthMax: 110
+    }
+  });
+
+  assert.equal(semantics.formatGroup, "channel_story");
+  assert.equal(semantics.topLabel, "Lead");
+  assert.equal(semantics.bottomLabel, "Body");
+  assert.equal(semantics.lengthHints.topLengthMax < 90, true);
+  assert.equal(semantics.lengthHints.bottomLengthMax > 110, true);
 });
