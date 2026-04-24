@@ -9,6 +9,13 @@ import {
   isReferenceOneShotExecutionMode,
   resolveStage2WorkerProfile
 } from "./stage2-worker-profile";
+import {
+  DEFAULT_STAGE2_SYSTEM_PROMPT_PRESET_ID,
+  findStage2SystemPromptPresetByPrompt,
+  getStage2SystemPromptPreset,
+  isStage2SystemPromptPresetId,
+  type Stage2SystemPromptPresetId
+} from "./stage2-system-presets";
 
 export {
   STAGE2_DEFAULT_REASONING_EFFORTS,
@@ -261,8 +268,13 @@ export type Stage2PromptStageConfig = {
   compatibility: Stage2PromptCompatibility | null;
 };
 
+export type Stage2PromptSourceMode = "system" | "custom";
+
 export type Stage2PromptConfig = {
   version: typeof STAGE2_PROMPT_CONFIG_VERSION;
+  useWorkspaceDefault?: boolean;
+  sourceMode?: Stage2PromptSourceMode;
+  systemPresetId?: Stage2SystemPromptPresetId;
   stages: Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
 };
 
@@ -315,6 +327,8 @@ function nowIso(): string {
 
 export const DEFAULT_STAGE2_PROMPT_CONFIG: Stage2PromptConfig = {
   version: STAGE2_PROMPT_CONFIG_VERSION,
+  sourceMode: "system",
+  systemPresetId: DEFAULT_STAGE2_SYSTEM_PROMPT_PRESET_ID,
   stages: Object.fromEntries(
     STAGE2_PROMPT_STAGE_IDS.map((stageId) => [
       stageId,
@@ -633,10 +647,38 @@ export function normalizeStage2PromptConfig(input: unknown): Stage2PromptConfig 
         >)
       : undefined;
 
+  const oneShotCandidate = stagesCandidate?.oneShotReference;
+  const candidatePrompt = sanitizePrompt(
+    oneShotCandidate?.prompt,
+    STAGE2_DEFAULT_STAGE_PROMPTS.oneShotReference
+  );
+  const inferredPresetId =
+    (isStage2SystemPromptPresetId((candidate as { systemPresetId?: unknown } | undefined)?.systemPresetId)
+      ? ((candidate as { systemPresetId: Stage2SystemPromptPresetId }).systemPresetId)
+      : findStage2SystemPromptPresetByPrompt(candidatePrompt)) ??
+    DEFAULT_STAGE2_SYSTEM_PROMPT_PRESET_ID;
+  const candidateSourceMode = (candidate as { sourceMode?: unknown } | undefined)?.sourceMode;
+  const promptMatchesSystemPreset = Boolean(findStage2SystemPromptPresetByPrompt(candidatePrompt));
+  const sourceMode: Stage2PromptSourceMode =
+    candidateSourceMode === "custom"
+      ? "custom"
+      : candidateSourceMode === "system" ||
+          promptMatchesSystemPreset ||
+          candidatePrompt === STAGE2_DEFAULT_STAGE_PROMPTS.oneShotReference
+        ? "system"
+        : "custom";
+  const useWorkspaceDefault =
+    typeof (candidate as { useWorkspaceDefault?: unknown } | undefined)?.useWorkspaceDefault === "boolean"
+      ? Boolean((candidate as { useWorkspaceDefault: boolean }).useWorkspaceDefault)
+      : undefined;
+
   const stages = Object.fromEntries(
     STAGE2_PROMPT_STAGE_IDS.map((stageId) => {
       const stageCandidate = stagesCandidate?.[stageId];
-      const defaultPrompt = STAGE2_DEFAULT_STAGE_PROMPTS[stageId];
+      const defaultPrompt =
+        stageId === "oneShotReference" && sourceMode === "system"
+          ? getStage2SystemPromptPreset(inferredPresetId).prompt
+          : STAGE2_DEFAULT_STAGE_PROMPTS[stageId];
       const legacyTemplateOverride = sanitizeLegacyPrompt(stageCandidate?.templateOverride);
       const legacyGuidance = sanitizeLegacyPrompt(stageCandidate?.guidance);
       const legacyTemplate = sanitizeLegacyPrompt(stageCandidate?.template);
@@ -674,6 +716,9 @@ export function normalizeStage2PromptConfig(input: unknown): Stage2PromptConfig 
 
   return {
     version: STAGE2_PROMPT_CONFIG_VERSION,
+    ...(useWorkspaceDefault === undefined ? {} : { useWorkspaceDefault }),
+    sourceMode,
+    systemPresetId: inferredPresetId,
     stages
   };
 }
@@ -729,6 +774,11 @@ export function prepareStage2PromptConfigForExplicitSave(input: {
   ) as Record<Stage2PromptConfigStageId, Stage2PromptStageConfig>;
   return {
     version: STAGE2_PROMPT_CONFIG_VERSION,
+    ...(nextConfig.useWorkspaceDefault === undefined
+      ? {}
+      : { useWorkspaceDefault: nextConfig.useWorkspaceDefault }),
+    sourceMode: nextConfig.sourceMode,
+    systemPresetId: nextConfig.systemPresetId,
     stages
   };
 }
@@ -771,6 +821,9 @@ export function resetIncompatibleNativeStage2PromptOverrides(config: Stage2Promp
 
 export function hasStage2PromptOverrides(config: Stage2PromptConfig): boolean {
   const normalized = normalizeStage2PromptConfig(config);
+  if (normalized.useWorkspaceDefault === false) {
+    return true;
+  }
   return STAGE2_PROMPT_STAGE_IDS.some((stageId) => {
     const stage = normalized.stages[stageId];
     const compatibility = getStage2PromptOverrideCompatibility({
@@ -785,6 +838,19 @@ export function hasStage2PromptOverrides(config: Stage2PromptConfig): boolean {
       stage.reasoningEffort !== STAGE2_DEFAULT_REASONING_EFFORTS[stageId]
     );
   });
+}
+
+export function resolveEffectiveStage2PromptConfig(input: {
+  workspacePromptConfig: Stage2PromptConfig;
+  channelPromptConfig?: Stage2PromptConfig | null;
+}): Stage2PromptConfig {
+  const workspacePromptConfig = normalizeStage2PromptConfig(input.workspacePromptConfig);
+  const channelPromptConfig = input.channelPromptConfig
+    ? normalizeStage2PromptConfig(input.channelPromptConfig)
+    : null;
+  return channelPromptConfig?.useWorkspaceDefault === false
+    ? channelPromptConfig
+    : workspacePromptConfig;
 }
 
 export function createStage2ProgressSnapshot(

@@ -7522,6 +7522,7 @@ export default function HomePage() {
           open={isChannelManagerOpen}
           initialTab={channelManagerInitialTab}
           channels={channels}
+          workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
           workspaceStage2HardConstraints={workspaceStage2HardConstraints}
           workspaceStage2PromptConfig={workspaceStage2PromptConfig}
           workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}

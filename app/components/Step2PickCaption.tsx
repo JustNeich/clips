@@ -16,6 +16,7 @@ import {
   normalizeStage2StyleProfile
 } from "../../lib/stage2-channel-learning";
 import type { Stage2RunDebugArtifact } from "../../lib/viral-shorts-worker/types";
+import type { Stage2ExamplesCorpusSource } from "../../lib/stage2-channel-config";
 import { useResolvedTemplateTextSemantics } from "./useResolvedTemplateTextSemantics";
 
 type Step2PickCaptionProps = {
@@ -331,8 +332,14 @@ function formatStageProgressStatusLabel(input: {
   return input.progressStatus === "queued" ? "В очереди" : "Ожидает запуска";
 }
 
-function formatExamplesSourceLabel(value: "workspace_default" | "channel_custom"): string {
-  return value === "channel_custom" ? "собственный корпус канала" : "общий корпус";
+function formatExamplesSourceLabel(value: Stage2ExamplesCorpusSource): string {
+  if (value === "channel_custom") {
+    return "собственный корпус канала";
+  }
+  if (value === "system_preset") {
+    return "системный preset";
+  }
+  return "общий корпус";
 }
 
 function formatRetrievalConfidenceLabel(value: DiagnosticsView["examples"]["retrievalConfidence"]): string {
@@ -604,7 +611,10 @@ export function normalizeStage2DiagnosticsForView(
       name: asString(currentChannel?.name) || asString(legacyProfile?.name) || fallback.channelName || "Текущий канал",
       username: asString(currentChannel?.username) || fallback.channelUsername || "",
       examplesSource:
-        currentChannel?.examplesSource === "channel_custom" ? "channel_custom" : "workspace_default",
+        currentChannel?.examplesSource === "channel_custom" ||
+        currentChannel?.examplesSource === "system_preset"
+          ? currentChannel.examplesSource
+          : "workspace_default",
       hardConstraints:
         asObject(currentChannel?.hardConstraints) && currentChannel?.hardConstraints
           ? (currentChannel.hardConstraints as DiagnosticsView["channel"]["hardConstraints"])
@@ -709,7 +719,10 @@ export function normalizeStage2DiagnosticsForView(
     },
     examples: {
       source:
-        examplesCandidate?.source === "channel_custom" ? "channel_custom" : "workspace_default",
+        examplesCandidate?.source === "channel_custom" ||
+        examplesCandidate?.source === "system_preset"
+          ? examplesCandidate.source
+          : "workspace_default",
       workspaceCorpusCount:
         asNumber(examplesCandidate?.workspaceCorpusCount) ?? availableExamples.length,
       activeCorpusCount: asNumber(examplesCandidate?.activeCorpusCount) ?? availableExamples.length,

@@ -23,8 +23,11 @@ export function getRestrictedChannelEditError(
     return null;
   }
 
-  if (patch.stage2PromptConfig) {
-    return "Только owner может менять Stage 2 prompt defaults.";
+  if (
+    (role === "redactor" || role === "redactor_limited") &&
+    patch.stage2PromptConfig
+  ) {
+    return "Редактор не может менять Stage 2 prompt канала.";
   }
 
   if (

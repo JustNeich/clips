@@ -112,6 +112,7 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
       examplesJson: body.examplesJson,
       stage2ExamplesConfig: body.stage2ExamplesConfig,
       stage2HardConstraints: body.stage2HardConstraints,
+      stage2PromptConfig: body.stage2PromptConfig,
       templateId: body.templateId,
       avatarAssetId: body.avatarAssetId,
       defaultBackgroundAssetId: body.defaultBackgroundAssetId,

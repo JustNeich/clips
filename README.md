@@ -19,8 +19,9 @@
   - avatar optional;
   - Stage 2 дальше автоматически наследует workspace baseline.
 - В Channel Manager -> Stage 2:
-  - workspace defaults редактируют hard constraints, caption provider, one-shot model и one-shot prompt;
-  - на уровне канала редактируются только hard constraints.
+  - workspace defaults редактируют hard constraints, caption provider, one-shot model, prompt source и examples source;
+  - prompt/examples имеют режимы system presets (`system_*`, `animals_*`) или custom;
+  - на уровне канала можно оставить workspace default или включить отдельный prompt/examples override.
 - В Stage 3 publication planner удаление ролика из очереди не сбрасывает пользователя со страницы рендера:
   - карточка исчезает после локальной синхронизации очереди;
   - UI показывает success toast об удалении.
@@ -115,6 +116,8 @@ npm run dev
   - использует video-first minimal prompt contract:
     - `video_truth_json`;
     - bounded `comments_hint_json`;
+    - optional `examples_json`;
+    - optional `examples_text`;
     - `hard_constraints_json`;
     - `user_instruction`;
   - трактует comments как weak hints, а не как narrator-steering или line-selection engine;
@@ -351,9 +354,10 @@ Channel-specific mapping теперь задается через `Stage 2` в C
 Primary Stage 2 control surface:
 - owner редактирует workspace-wide defaults через `Default settings`;
 - там же задаются:
-  - `workspace default corpus`
   - `hard constraints`
-  - default prompt + default thinking по стадиям `analyzer, selector, writer, critic, rewriter, final selector, titles, seo`
+  - prompt source: `system_prompt`, `animals_system_prompt` или custom workspace prompt
+  - examples source: `system_examples`, `animals_examples` или custom workspace JSON
+  - one-shot model + reasoning
   - `Caption provider` для caption-only stages:
     - `Shared Codex`, `Anthropic API` или `OpenRouter API`
     - свободный `Anthropic model` field с дефолтом `claude-opus-4-6`
@@ -361,9 +365,10 @@ Primary Stage 2 control surface:
     - owner-only connect / update / disconnect для Anthropic API key
     - owner-only connect / update / disconnect для OpenRouter API key
 - owner отдельно управляет baseline Shared Codex integration через header block `Shared Codex` / `Connect Codex`;
-- у конкретного канала теперь есть **одно** editable поле `Examples corpus JSON`;
-- это поле по умолчанию заполняется workspace default corpus, но может быть полностью заменено локальной версией для канала;
-- `selector` является реальным LLM stage и сам выбирает angle и релевантные examples из доступного corpus;
+- у конкретного канала есть channel-level hard constraints, optional prompt override и optional examples override;
+- prompt override может выбрать system preset или custom prompt;
+- examples override может выбрать system preset, custom JSON или custom plain text;
+- новых selector/writer/critic loops больше нет: active path идёт через единый video-first `oneShotReference`;
 - UI во время генерации показывает активный pipeline step в реальном времени.
 
 Anthropic setup links:

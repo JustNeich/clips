@@ -25,7 +25,7 @@
 
 - `Shared Codex` = текущее UI имя baseline workspace AI integration.
 - `Connect Codex` = owner-managed device-auth control для этой baseline integration.
-- `Stage 2 caption provider` = workspace-level routing policy для eligible caption-writing stages: `codex` или `anthropic`.
+- `Stage 2 caption provider` = workspace-level routing policy для eligible caption-writing stages: `codex`, `anthropic` или `openrouter`.
 - `workspace integrations` = owner-managed readiness layer для Stage 2 runtime; жалобы нельзя нормализовать как purely per-user auth issue без проверки этого слоя.
 
 ## Источники истины

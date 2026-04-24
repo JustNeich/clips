@@ -1804,6 +1804,7 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
     canEditWorkspaceDefaults: false,
     canEditHardConstraints: true,
     canEditChannelExamples: true,
+    canEditChannelPrompt: true,
     stage2WorkerProfileId: "stable_reference_v6",
     canEditStage2WorkerProfile: true,
     updateStage2WorkerProfileId: () => undefined,
@@ -1848,8 +1849,9 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   assert.match(markup, /TOP макс\./);
   assert.match(markup, /BOTTOM мин\./);
   assert.match(markup, /BOTTOM макс\./);
-  assert.match(markup, /Формат pipeline/);
-  assert.match(markup, /Stable Reference v6/);
+  assert.match(markup, /Workspace baseline/);
+  assert.match(markup, /Prompt для этого канала/);
+  assert.match(markup, /Examples для этого канала/);
   assert.match(markup, /Запрещённые слова/);
   assert.match(markup, /Запрещённые начала/);
   assert.match(markup, /type="number"/);
@@ -1995,7 +1997,7 @@ test("channel manager save notices classify Stage 2 and style-profile saves with
   );
 });
 
-test("channel Stage 2 tab exposes post-onboarding style profile editing and feedback history", () => {
+test("channel Stage 2 tab keeps channel settings grouped even when legacy style context exists", () => {
   const styleProfile = {
     version: 1 as const,
     createdAt: "2026-03-21T10:00:00.000Z",
@@ -2181,12 +2183,12 @@ test("channel Stage 2 tab exposes post-onboarding style profile editing and feed
   });
   const markup = renderToStaticMarkup(element);
 
-  assert.match(markup, /Стиль канала/);
-  assert.match(markup, /Перегенерировать направления/);
-  assert.match(markup, /Последние реакции канала/);
-  assert.match(markup, /Низ нужно суше/);
-  assert.match(markup, /Удалить реакцию feedback_1/);
-  assert.match(markup, /type="range"/);
+  assert.match(markup, /Channel Stage 2/);
+  assert.match(markup, /Что наследуется и что переопределено/);
+  assert.match(markup, /Prompt для этого канала/);
+  assert.match(markup, /Examples для этого канала/);
+  assert.match(markup, /Workspace default/);
+  assert.doesNotMatch(markup, /Перегенерировать направления/);
 });
 
 test("stage 2 output validation warns on banned words and banned openers", () => {
@@ -2513,7 +2515,13 @@ test("editor restrictions block only system prompts and thinking changes", () =>
     getRestrictedChannelEditError("redactor", {
       stage2PromptConfig: normalizeStage2PromptConfig({})
     }),
-    "Только owner может менять Stage 2 prompt defaults."
+    "Редактор не может менять Stage 2 prompt канала."
+  );
+  assert.equal(
+    getRestrictedChannelEditError("manager", {
+      stage2PromptConfig: normalizeStage2PromptConfig({})
+    }),
+    null
   );
   assert.equal(
     getRestrictedChannelEditError("manager", {

@@ -64,6 +64,7 @@ import {
   Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../stage2-channel-config";
+import { getStage2SystemExamplesPresetJson } from "../stage2-system-presets";
 import {
   type AudiencePacket,
   CandidateLifecycle,
@@ -97,7 +98,6 @@ import {
   STAGE2_PIPELINE_STAGES,
   Stage2PipelineStageId,
   Stage2PromptConfig,
-  computeStage2PromptHash,
   normalizeStage2PromptConfig
 } from "../stage2-pipeline";
 import {
@@ -1802,29 +1802,36 @@ function buildStage2PipelineExecutionSnapshot(input: {
 
 const NATIVE_CAPTION_MINIMUM_VALID_FINALISTS = 2;
 const STAGE2_PROMPT_POLICY_VERSION = "native_defaults_authoritative_v2_platform_lines";
-const STAGE2_ONE_SHOT_PROMPT_COMPATIBILITY_FAMILY = "native_caption_v3_product_owned";
 
 function buildNativeCaptionExamplesAssessment(
   channelConfig: Stage2RuntimeChannelConfig
 ): Stage2ExamplesAssessment {
-  const hasChannelExamples =
-    channelConfig.examplesSource === "channel_custom" &&
-    (Boolean(channelConfig.customExamplesJson?.trim()) || Boolean(channelConfig.customExamplesText?.trim()));
+  const hasExamples =
+    (channelConfig.examplesSource === "channel_custom" ||
+      channelConfig.examplesSource === "system_preset") &&
+    (Boolean(channelConfig.customExamplesJson?.trim()) ||
+      Boolean(channelConfig.customExamplesText?.trim()));
+  const evidence =
+    channelConfig.examplesSource === "system_preset"
+      ? ["system_examples_preset"]
+      : channelConfig.examplesSource === "channel_custom"
+        ? ["channel_custom_examples"]
+        : [];
   return {
-    retrievalConfidence: hasChannelExamples ? "medium" : "low",
+    retrievalConfidence: hasExamples ? "medium" : "low",
     examplesMode: "style_guided",
-    explanation: hasChannelExamples
-      ? "Channel examples are attached directly to the one-shot prompt as style references."
-      : "No channel examples are attached to the active one-shot prompt.",
-    evidence: hasChannelExamples ? ["channel_custom_examples"] : [],
+    explanation: hasExamples
+      ? "Configured examples are attached directly to the one-shot prompt as style references."
+      : "No examples are attached to the active one-shot prompt.",
+    evidence,
     retrievalWarning: null,
-    examplesRoleSummary: hasChannelExamples
-      ? "Use channel examples for style, structure, and human phrasing only; video truth remains primary."
+    examplesRoleSummary: hasExamples
+      ? "Use configured examples for style, structure, and human phrasing only; video truth remains primary."
       : "Examples are absent for this one-shot run.",
     primaryDriverSummary:
       "Primary driver is visible clip truth; examples support phrasing and structure only.",
-    primaryDrivers: hasChannelExamples
-      ? ["clip_context", "channel_examples", "hard_constraints"]
+    primaryDrivers: hasExamples
+      ? ["clip_context", "configured_examples", "hard_constraints"]
       : ["clip_context", "hard_constraints"],
     channelStylePriority: "primary",
     editorialMemoryPriority: "supporting"
@@ -2039,8 +2046,17 @@ function buildReferenceOneShotPrompt(input: {
   channelConfig: Stage2RuntimeChannelConfig;
   analyzerOutput: AnalyzerOutput;
   variant: ReferenceOneShotVariantConfig;
+  promptConfig: Stage2PromptConfig;
 }): string {
-  return renderJsonPrompt(input.variant.promptText, {
+  const resolvedPrompt = resolveStage2PromptTemplate(
+    "oneShotReference",
+    input.promptConfig,
+    {
+      overrideSource:
+        input.promptConfig.useWorkspaceDefault === false ? "channel_override" : "workspace_override"
+    }
+  );
+  return renderJsonPrompt(resolvedPrompt.configuredPrompt, {
     video_truth_json: buildReferenceOneShotVideoTruthPayload(input),
     comments_hint_json: buildReferenceOneShotCommentWavePayload(input),
     examples_json: buildReferenceOneShotExamplesJsonPayload(input.channelConfig),
@@ -7004,54 +7020,6 @@ function buildPromptStageDiagnostics(input: {
   };
 }
 
-function buildProductOwnedPromptStageDiagnostics(input: {
-  stageId: Stage2PipelineStageId;
-  promptText: string | null;
-  includePromptText?: boolean;
-  usesImages?: boolean;
-  model?: string | null;
-  reasoningEffort?: string | null;
-  summary: string;
-  serializedResultBytes?: number | null;
-  estimatedOutputTokens?: number | null;
-  persistedPayloadBytes?: number | null;
-  inputManifest?: Stage2DiagnosticsPromptStage["inputManifest"];
-  defaultPrompt: string;
-  promptCompatibilityVersion: string;
-}): Stage2DiagnosticsPromptStage {
-  const stageMeta = STAGE2_PIPELINE_STAGES.find((stage) => stage.id === input.stageId);
-  const promptHash = computeStage2PromptHash(input.defaultPrompt);
-  return {
-    stageId: input.stageId,
-    label: stageMeta?.shortLabel ?? input.stageId,
-    stageType: "llm_prompt",
-    defaultPrompt: input.defaultPrompt,
-    configuredPrompt: input.defaultPrompt,
-    promptSource: "default",
-    promptCompatibilityFamily: STAGE2_ONE_SHOT_PROMPT_COMPATIBILITY_FAMILY,
-    promptCompatibilityVersion: input.promptCompatibilityVersion,
-    defaultPromptHash: promptHash,
-    configuredPromptHash: promptHash,
-    overrideAccepted: false,
-    overrideRejectedReason: "product_owned_prompt_not_workspace_editable",
-    overrideCandidatePresent: false,
-    legacyFallbackBypassed: true,
-    model: input.model ?? null,
-    reasoningEffort: input.reasoningEffort ?? null,
-    isCustomPrompt: false,
-    promptText: input.includePromptText ? input.promptText : null,
-    promptTextAvailable: Boolean(input.promptText),
-    promptChars: input.promptText ? input.promptText.length : null,
-    estimatedInputTokens: estimateTokensFromChars(input.promptText ? input.promptText.length : null),
-    estimatedOutputTokens: input.estimatedOutputTokens ?? null,
-    serializedResultBytes: input.serializedResultBytes ?? null,
-    persistedPayloadBytes: input.persistedPayloadBytes ?? null,
-    usesImages: Boolean(input.usesImages),
-    summary: input.summary,
-    ...(input.inputManifest ? { inputManifest: input.inputManifest } : {})
-  };
-}
-
 function buildDiagnosticsExample(
   bucket: Stage2DiagnosticsExample["bucket"],
   example: Stage2CorpusExample,
@@ -7144,6 +7112,8 @@ function buildRunDiagnosticsBundle(input: {
       promptConfig: input.promptConfig,
       promptText: stage.promptText,
       includePromptText: true,
+      promptConfigSource:
+        input.promptConfig?.useWorkspaceDefault === false ? "channel_override" : "workspace_override",
       usesImages: stage.usesImages,
       model: stage.model,
       summary: stage.summary,
@@ -7158,6 +7128,8 @@ function buildRunDiagnosticsBundle(input: {
       promptConfig: input.promptConfig,
       promptText: stage.promptText,
       includePromptText: false,
+      promptConfigSource:
+        input.promptConfig?.useWorkspaceDefault === false ? "channel_override" : "workspace_override",
       usesImages: stage.usesImages,
       model: stage.model,
       summary: stage.summary,
@@ -7340,7 +7312,9 @@ function normalizeChannelConfig(input: {
     templateHighlightProfile: input.templateHighlightProfile ?? null,
     examplesSource: input.resolvedExamplesSource ?? "workspace_default",
     customExamplesJson:
-      input.resolvedExamplesSource === "channel_custom"
+      input.resolvedExamplesSource === "system_preset"
+        ? getStage2SystemExamplesPresetJson(input.stage2ExamplesConfig.systemPresetId)
+        : input.resolvedExamplesSource === "channel_custom"
         ? input.stage2ExamplesConfig.customExamplesJson
         : "",
     customExamplesText:
@@ -7417,7 +7391,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     videoContext: input.videoContext,
     channelConfig: input.channelConfig,
     analyzerOutput: input.analyzerOutput,
-    variant: variantConfig
+    variant: variantConfig,
+    promptConfig: input.promptConfig
   });
   const oneShotReasoningEffort = resolveStageReasoningEffort(
     "oneShotReference",
@@ -7921,62 +7896,36 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   });
 
   const rawPromptStages = executedPromptStages.map((stage) =>
-    stage.stageId === "oneShotReference"
-      ? buildProductOwnedPromptStageDiagnostics({
-          stageId: stage.stageId,
-          promptText: stage.promptText,
-          includePromptText: true,
-          usesImages: stage.usesImages,
-          model: stage.model,
-          reasoningEffort: oneShotReasoningEffort,
-          summary: stage.summary,
-          serializedResultBytes: stage.serializedResultBytes,
-          estimatedOutputTokens: stage.estimatedOutputTokens,
-          inputManifest: promptInputManifests[stage.stageId],
-          defaultPrompt: variantConfig.promptText,
-          promptCompatibilityVersion: variantConfig.promptVersion
-        })
-      : buildPromptStageDiagnostics({
-          stageId: stage.stageId,
-          promptConfig: input.promptConfig,
-          promptText: stage.promptText,
-          includePromptText: true,
-          usesImages: stage.usesImages,
-          model: stage.model,
-          summary: stage.summary,
-          serializedResultBytes: stage.serializedResultBytes,
-          estimatedOutputTokens: stage.estimatedOutputTokens,
-          inputManifest: promptInputManifests[stage.stageId]
-        })
+    buildPromptStageDiagnostics({
+      stageId: stage.stageId,
+      promptConfig: input.promptConfig,
+      promptText: stage.promptText,
+      includePromptText: true,
+      promptConfigSource:
+        input.promptConfig.useWorkspaceDefault === false ? "channel_override" : "workspace_override",
+      usesImages: stage.usesImages,
+      model: stage.model,
+      summary: stage.summary,
+      serializedResultBytes: stage.serializedResultBytes,
+      estimatedOutputTokens: stage.estimatedOutputTokens,
+      inputManifest: promptInputManifests[stage.stageId]
+    })
   );
   const summaryPromptStages = executedPromptStages.map((stage) =>
-    stage.stageId === "oneShotReference"
-      ? buildProductOwnedPromptStageDiagnostics({
-          stageId: stage.stageId,
-          promptText: stage.promptText,
-          includePromptText: false,
-          usesImages: stage.usesImages,
-          model: stage.model,
-          reasoningEffort: oneShotReasoningEffort,
-          summary: stage.summary,
-          serializedResultBytes: stage.serializedResultBytes,
-          estimatedOutputTokens: stage.estimatedOutputTokens,
-          inputManifest: promptInputManifests[stage.stageId],
-          defaultPrompt: variantConfig.promptText,
-          promptCompatibilityVersion: variantConfig.promptVersion
-        })
-      : buildPromptStageDiagnostics({
-          stageId: stage.stageId,
-          promptConfig: input.promptConfig,
-          promptText: stage.promptText,
-          includePromptText: false,
-          usesImages: stage.usesImages,
-          model: stage.model,
-          summary: stage.summary,
-          serializedResultBytes: stage.serializedResultBytes,
-          estimatedOutputTokens: stage.estimatedOutputTokens,
-          inputManifest: promptInputManifests[stage.stageId]
-        })
+    buildPromptStageDiagnostics({
+      stageId: stage.stageId,
+      promptConfig: input.promptConfig,
+      promptText: stage.promptText,
+      includePromptText: false,
+      promptConfigSource:
+        input.promptConfig.useWorkspaceDefault === false ? "channel_override" : "workspace_override",
+      usesImages: stage.usesImages,
+      model: stage.model,
+      summary: stage.summary,
+      serializedResultBytes: stage.serializedResultBytes,
+      estimatedOutputTokens: stage.estimatedOutputTokens,
+      inputManifest: promptInputManifests[stage.stageId]
+    })
   );
   const tokenUsageStages = rawPromptStages.map((stage) => ({
     stageId: stage.stageId,
@@ -9731,6 +9680,8 @@ export class ViralShortsWorkerService {
         promptConfig,
         promptText: stage.promptText,
         includePromptText: true,
+        promptConfigSource:
+          promptConfig.useWorkspaceDefault === false ? "channel_override" : "workspace_override",
         usesImages: stage.usesImages,
         model: stage.model,
         summary: stage.summary,
@@ -9745,6 +9696,8 @@ export class ViralShortsWorkerService {
         promptConfig,
         promptText: stage.promptText,
         includePromptText: false,
+        promptConfigSource:
+          promptConfig.useWorkspaceDefault === false ? "channel_override" : "workspace_override",
         usesImages: stage.usesImages,
         model: stage.model,
         summary: stage.summary,

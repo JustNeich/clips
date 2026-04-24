@@ -8,6 +8,10 @@ import {
   type Stage2HardConstraints
 } from "./stage2-channel-config";
 import {
+  normalizeStage2PromptConfig,
+  type Stage2PromptConfig
+} from "./stage2-pipeline";
+import {
   type Stage2EditorialMemorySummary,
   type Stage2StyleProfile
 } from "./stage2-channel-learning";
@@ -25,6 +29,7 @@ type Stage2RunChannelSnapshotInput = {
   stage2WorkerProfileId?: string | null;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
+  stage2PromptConfig?: Stage2PromptConfig | null;
   stage2StyleProfile?: Stage2StyleProfile;
   editorialMemory?: Stage2EditorialMemorySummary;
   editorialMemorySource?: Stage2EditorialMemorySource | null;
@@ -57,12 +62,15 @@ export function buildStage2RunRequestSnapshot(input: {
       username: input.channel.username.trim(),
       stage2WorkerProfileId: null,
       stage2ExamplesConfig: parseStage2ExamplesConfigJson(
-        stringifyStage2ExamplesConfig(DEFAULT_STAGE2_EXAMPLES_CONFIG, fallbackOwner),
+        stringifyStage2ExamplesConfig(input.channel.stage2ExamplesConfig ?? DEFAULT_STAGE2_EXAMPLES_CONFIG, fallbackOwner),
         fallbackOwner
       ),
       stage2HardConstraints: parseStage2HardConstraintsJson(
         stringifyStage2HardConstraints(input.channel.stage2HardConstraints)
       ),
+      stage2PromptConfig: input.channel.stage2PromptConfig
+        ? normalizeStage2PromptConfig(input.channel.stage2PromptConfig)
+        : undefined,
       stage2StyleProfile: undefined,
       editorialMemory: undefined,
       editorialMemorySource: null,

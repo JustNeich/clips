@@ -14,6 +14,7 @@ type Stage2RuntimeChannelSource = Pick<
   | "stage2WorkerProfileId"
   | "stage2ExamplesConfig"
   | "stage2HardConstraints"
+  | "stage2PromptConfig"
   | "stage2StyleProfile"
   | "templateId"
 >;
@@ -39,6 +40,7 @@ export function buildStage2RunChannelSnapshot(
     stage2WorkerProfileId: channel.stage2WorkerProfileId,
     stage2ExamplesConfig: channel.stage2ExamplesConfig,
     stage2HardConstraints: channel.stage2HardConstraints,
+    stage2PromptConfig: channel.stage2PromptConfig,
     stage2StyleProfile: channel.stage2StyleProfile,
     editorialMemory: editorialMemoryResolution.editorialMemory,
     editorialMemorySource: editorialMemoryResolution.source,

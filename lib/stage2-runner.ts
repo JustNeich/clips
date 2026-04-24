@@ -26,8 +26,12 @@ import {
   markStage2RunStageRunning,
   Stage2RunRecord
 } from "./stage2-progress-store";
-import { getStage2ProgressStartStageId } from "./stage2-pipeline";
 import {
+  getStage2ProgressStartStageId,
+  resolveEffectiveStage2PromptConfig
+} from "./stage2-pipeline";
+import {
+  getWorkspaceStage2ExamplesCorpusJson,
   getWorkspaceStage2PromptConfig
 } from "./team-store";
 import {
@@ -66,6 +70,16 @@ type VideoInfoJson = {
   transcript?: string;
   comments?: unknown;
 };
+
+function resolveRunStage2PromptConfig(
+  workspaceId: string,
+  channelPromptConfig: Stage2RunRecord["request"]["channel"]["stage2PromptConfig"]
+) {
+  return resolveEffectiveStage2PromptConfig({
+    workspacePromptConfig: getWorkspaceStage2PromptConfig(workspaceId),
+    channelPromptConfig
+  });
+}
 
 type Stage2WorkerRolloutAudit =
   | { ok: true }
@@ -648,7 +662,11 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     const workerService = new ViralShortsWorkerService();
     const channel = run.request.channel;
     const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
-    const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
+    const effectiveStage2PromptConfig = resolveRunStage2PromptConfig(
+      run.workspaceId,
+      channel.stage2PromptConfig
+    );
+    const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
     markStage2RunStageRunning(run.runId, "regenerate", {
       detail: "Reusing the saved context packet and rerunning native caption generation.",
       reasoningEffort: executorContext.reasoningEffort
@@ -669,7 +687,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           editorialMemory: channel.editorialMemory,
           templateHighlightProfile: channel.templateHighlightProfile ?? null
         },
-        workspaceStage2ExamplesCorpusJson: null,
+        workspaceStage2ExamplesCorpusJson,
         videoContext: buildStage2RuntimeVideoContext({
           sourceUrl: baseResult.source.url,
           title: baseResult.source.title,
@@ -687,7 +705,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation,
           seo: executorContext.resolvedStageModelConfig.seo
         },
-        promptConfig: workspaceStage2PromptConfig,
+        promptConfig: effectiveStage2PromptConfig,
         debugMode: run.request.debugMode
       });
       markStage2RunStageCompleted(run.runId, "regenerate", {
@@ -723,7 +741,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       progress: getStage2Run(run.runId)?.snapshot ?? null,
       ...resolveNativeStage2ResponseExecutionSettings({
         output: pipelineResult.output,
-        promptConfig: workspaceStage2PromptConfig,
+        promptConfig: effectiveStage2PromptConfig,
         executorContext,
         hardConstraints: effectiveHardConstraints
       }),
@@ -770,7 +788,10 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
   const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
   const executorContext = await createStage2CodexExecutorContext(run.workspaceId);
   const workerService = new ViralShortsWorkerService();
-  const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
+  const effectiveStage2PromptConfig = resolveRunStage2PromptConfig(
+    run.workspaceId,
+    channel.stage2PromptConfig
+  );
   markStage2RunStageRunning(run.runId, "regenerate", {
     detail: "Quick-regenerating the visible shortlist and paired titles.",
     reasoningEffort: executorContext.reasoningEffort
@@ -855,7 +876,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       captionHighlighting: executorContext.resolvedStageModelConfig.captionHighlighting,
       captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation
     },
-    promptConfig: workspaceStage2PromptConfig
+    promptConfig: effectiveStage2PromptConfig
   });
   assembled.response.output.captionOptions = assembled.response.output.captionOptions.map((option) => ({
     ...option,
@@ -918,7 +939,11 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     const frames = await extractFrameImages(downloaded.videoPath, tmpDir);
 
     const workerService = new ViralShortsWorkerService();
-    const workspaceStage2PromptConfig = getWorkspaceStage2PromptConfig(run.workspaceId);
+    const effectiveStage2PromptConfig = resolveRunStage2PromptConfig(
+      run.workspaceId,
+      channel.stage2PromptConfig
+    );
+    const workspaceStage2ExamplesCorpusJson = getWorkspaceStage2ExamplesCorpusJson(run.workspaceId);
     const videoContext = buildStage2RuntimeVideoContext({
       sourceUrl: run.sourceUrl,
       title: downloaded.title,
@@ -940,7 +965,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         editorialMemory: channel.editorialMemory,
         templateHighlightProfile: channel.templateHighlightProfile ?? null
       },
-      workspaceStage2ExamplesCorpusJson: null,
+      workspaceStage2ExamplesCorpusJson,
       videoContext,
       imagePaths: frames.framePaths,
       executor: executorContext.executor,
@@ -950,7 +975,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation,
         seo: executorContext.resolvedStageModelConfig.seo
       },
-      promptConfig: workspaceStage2PromptConfig,
+      promptConfig: effectiveStage2PromptConfig,
       debugMode: run.request.debugMode,
       onProgress: async (event) => {
         if (event.state === "running") {
@@ -1026,7 +1051,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       },
       ...resolveNativeStage2ResponseExecutionSettings({
         output: parsedOutput,
-        promptConfig: workspaceStage2PromptConfig,
+        promptConfig: effectiveStage2PromptConfig,
         executorContext,
         hardConstraints: effectiveHardConstraints
       }),

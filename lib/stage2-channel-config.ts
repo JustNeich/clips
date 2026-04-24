@@ -1,4 +1,10 @@
 import bundledExamplesJson from "../data/examples.json";
+import {
+  DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID,
+  getStage2SystemExamplesPresetJson,
+  isStage2SystemExamplesPresetId,
+  type Stage2SystemExamplesPresetId
+} from "./stage2-system-presets";
 
 export type Stage2HardConstraints = {
   topLengthMin: number;
@@ -24,11 +30,17 @@ export type Stage2CorpusExample = {
   qualityScore: number | null;
 };
 
-export type Stage2ExamplesCorpusSource = "workspace_default" | "channel_custom";
+export type Stage2ExamplesCorpusSource = "workspace_default" | "system_preset" | "channel_custom";
+
+export type Stage2ExamplesSourceMode = "system" | "custom";
+export type Stage2ExamplesInputMode = "json" | "text";
 
 export type Stage2ExamplesConfig = {
-  version: 1;
+  version: 1 | 2;
   useWorkspaceDefault: boolean;
+  sourceMode?: Stage2ExamplesSourceMode;
+  systemPresetId?: Stage2SystemExamplesPresetId;
+  customInputMode?: Stage2ExamplesInputMode;
   customExamplesJson?: string;
   customExamplesText?: string;
   customExamples: Stage2CorpusExample[];
@@ -44,8 +56,11 @@ export const DEFAULT_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
 };
 
 export const DEFAULT_STAGE2_EXAMPLES_CONFIG: Stage2ExamplesConfig = {
-  version: 1,
+  version: 2,
   useWorkspaceDefault: true,
+  sourceMode: "system",
+  systemPresetId: DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID,
+  customInputMode: "json",
   customExamplesJson: "",
   customExamplesText: "",
   customExamples: []
@@ -315,11 +330,6 @@ export function normalizeStage2ExamplesConfig(
     typeof candidate?.useWorkspaceDefault === "boolean"
       ? candidate.useWorkspaceDefault
       : sanitizeString((candidate as { mode?: unknown } | undefined)?.mode) !== "manual";
-  const customExamplesRaw = Array.isArray(candidate?.customExamples)
-    ? candidate.customExamples
-    : Array.isArray((candidate as { manualExamples?: unknown[] } | undefined)?.manualExamples)
-      ? ((candidate as { manualExamples: unknown[] }).manualExamples ?? [])
-      : [];
   const customExamplesJson = sanitizeExamplesTextBlock(
     candidate?.customExamplesJson ??
       (candidate as { rawExamplesJson?: unknown } | undefined)?.rawExamplesJson ??
@@ -330,6 +340,29 @@ export function normalizeStage2ExamplesConfig(
       (candidate as { plainTextExamples?: unknown } | undefined)?.plainTextExamples ??
       (candidate as { examplesText?: unknown } | undefined)?.examplesText
   );
+  const customExamplesRaw = Array.isArray(candidate?.customExamples)
+    ? candidate.customExamples
+    : Array.isArray((candidate as { manualExamples?: unknown[] } | undefined)?.manualExamples)
+      ? ((candidate as { manualExamples: unknown[] }).manualExamples ?? [])
+      : [];
+  const sourceModeCandidate = (candidate as { sourceMode?: unknown } | undefined)?.sourceMode;
+  const sourceMode: Stage2ExamplesSourceMode =
+    sourceModeCandidate === "custom" ||
+    (!sourceModeCandidate &&
+      !useWorkspaceDefaultCandidate &&
+      (customExamplesJson || customExamplesText || customExamplesRaw.length > 0))
+      ? "custom"
+      : "system";
+  const systemPresetId = isStage2SystemExamplesPresetId(
+    (candidate as { systemPresetId?: unknown } | undefined)?.systemPresetId
+  )
+    ? ((candidate as { systemPresetId: Stage2SystemExamplesPresetId }).systemPresetId)
+    : DEFAULT_STAGE2_SYSTEM_EXAMPLES_PRESET_ID;
+  const customInputMode: Stage2ExamplesInputMode =
+    (candidate as { customInputMode?: unknown } | undefined)?.customInputMode === "text" ||
+    (!customExamplesJson && Boolean(customExamplesText))
+      ? "text"
+      : "json";
   const customExamplesFromJson = parseStage2ExamplesJson(customExamplesJson, fallbackOwner);
   const legacyCustomExamples = customExamplesJson
     ? []
@@ -338,11 +371,17 @@ export function normalizeStage2ExamplesConfig(
       .filter((entry): entry is Stage2CorpusExample => entry !== null);
 
   return {
-    version: 1,
+    version: 2,
     useWorkspaceDefault: useWorkspaceDefaultCandidate,
+    sourceMode,
+    systemPresetId,
+    customInputMode,
     customExamplesJson,
     customExamplesText,
-    customExamples: dedupeStage2CorpusExamples([...customExamplesFromJson, ...legacyCustomExamples])
+    customExamples:
+      !useWorkspaceDefaultCandidate && sourceMode === "custom"
+        ? dedupeStage2CorpusExamples([...customExamplesFromJson, ...legacyCustomExamples])
+        : []
   };
 }
 
@@ -404,8 +443,16 @@ export function collectChannelStage2Examples(input: {
     channelId: input.channel.id,
     channelName: input.channel.name
   };
-  const configured = input.channel.stage2ExamplesConfig?.customExamples ?? [];
-  if (configured.length === 0) {
+  const stage2ExamplesConfig = normalizeStage2ExamplesConfig(
+    input.channel.stage2ExamplesConfig,
+    fallbackOwner
+  );
+  const configured = stage2ExamplesConfig.customExamples ?? [];
+  if (
+    stage2ExamplesConfig.useWorkspaceDefault !== false ||
+    stage2ExamplesConfig.sourceMode !== "custom" ||
+    configured.length === 0
+  ) {
     return [];
   }
 
@@ -445,10 +492,26 @@ export function resolveStage2ExamplesCorpus(input: {
   workspaceCorpusCount: number;
 } {
   const workspaceCorpus = collectWorkspaceStage2Examples(input.workspaceStage2ExamplesCorpusJson);
-  if (!input.channel.stage2ExamplesConfig.useWorkspaceDefault) {
+  const stage2ExamplesConfig = normalizeStage2ExamplesConfig(
+    input.channel.stage2ExamplesConfig,
+    {
+      channelId: input.channel.id,
+      channelName: input.channel.name
+    }
+  );
+  if (!stage2ExamplesConfig.useWorkspaceDefault) {
+    if (stage2ExamplesConfig.sourceMode === "system") {
+      return {
+        source: "system_preset",
+        corpus: collectWorkspaceStage2Examples(
+          getStage2SystemExamplesPresetJson(stage2ExamplesConfig.systemPresetId)
+        ),
+        workspaceCorpusCount: workspaceCorpus.length
+      };
+    }
     return {
       source: "channel_custom",
-      corpus: dedupeStage2CorpusExamples(input.channel.stage2ExamplesConfig.customExamples),
+      corpus: dedupeStage2CorpusExamples(stage2ExamplesConfig.customExamples),
       workspaceCorpusCount: workspaceCorpus.length
     };
   }

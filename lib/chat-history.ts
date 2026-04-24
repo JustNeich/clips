@@ -5,6 +5,7 @@ import { getDb, newId, nowIso } from "./db/client";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   parseStage2PromptConfigJson,
+  prepareStage2PromptConfigForExplicitSave,
   Stage2PromptConfig,
   stringifyStage2PromptConfig
 } from "./stage2-pipeline";
@@ -424,7 +425,18 @@ export async function createChannel(input: {
     stage2HardConstraints: input.stage2HardConstraints
       ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(input.stage2HardConstraints))
       : getWorkspaceStage2HardConstraints(input.workspaceId),
-    stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+    stage2PromptConfig: input.stage2PromptConfig
+      ? prepareStage2PromptConfigForExplicitSave({
+          nextConfig: {
+            ...input.stage2PromptConfig,
+            useWorkspaceDefault: input.stage2PromptConfig.useWorkspaceDefault ?? false
+          },
+          previousConfig: null
+        })
+      : {
+          ...DEFAULT_STAGE2_PROMPT_CONFIG,
+          useWorkspaceDefault: true
+        },
     stage2StyleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
     templateId,
     avatarAssetId: null,
@@ -536,7 +548,13 @@ export async function updateChannelById(
       "stage2HardConstraints" in patch && patch.stage2HardConstraints
         ? parseStage2HardConstraintsJson(stringifyStage2HardConstraints(patch.stage2HardConstraints))
         : channel.stage2HardConstraints,
-    stage2PromptConfig: channel.stage2PromptConfig,
+    stage2PromptConfig:
+      "stage2PromptConfig" in patch && patch.stage2PromptConfig
+        ? prepareStage2PromptConfigForExplicitSave({
+            nextConfig: patch.stage2PromptConfig,
+            previousConfig: channel.stage2PromptConfig
+          })
+        : channel.stage2PromptConfig,
     stage2StyleProfile: channel.stage2StyleProfile,
     templateId: nextTemplateId,
     avatarAssetId:

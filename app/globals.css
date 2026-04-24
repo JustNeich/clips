@@ -4907,6 +4907,99 @@ select.text-input:focus {
   padding-right: 6px;
 }
 
+.settings-section {
+  gap: 14px;
+  padding: 16px;
+}
+
+.settings-section-title {
+  margin: 3px 0 4px;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+
+.settings-choice-row,
+.settings-choice-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-choice-row {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.settings-choice-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.settings-choice {
+  min-height: 74px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, black), color-mix(in srgb, var(--surface-2) 92%, black)),
+    var(--surface-2);
+  color: var(--text-soft);
+  display: grid;
+  gap: 5px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.settings-choice:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  transform: translateY(-1px);
+}
+
+.settings-choice.active {
+  border-color: color-mix(in srgb, var(--accent) 68%, white 12%);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent-soft) 42%, transparent), transparent 48%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 24%, var(--surface-2)), color-mix(in srgb, var(--surface-2) 96%, black));
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-soft) 34%, transparent);
+}
+
+.settings-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.settings-choice strong {
+  font-size: 15px;
+}
+
+.settings-choice span {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.settings-summary-card {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px dashed color-mix(in srgb, var(--border) 88%, transparent);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.settings-summary-card strong,
+.settings-summary-card p {
+  margin: 0;
+}
+
+.settings-textarea-large {
+  min-height: 220px;
+  resize: vertical;
+}
+
 .publishing-manager-section {
   padding: 2px 0 10px;
 }

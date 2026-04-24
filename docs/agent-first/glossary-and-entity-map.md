@@ -52,11 +52,12 @@
 | "фон" | background mode or background asset | Step 3 or channel render defaults |
 | "музыка" | music asset + gain + source audio toggle | Step 3 |
 | "ассеты" | uploaded channel assets | Channel Manager → Ассеты |
-| "стиль канала" | Stage 2 style profile and directions | Channel Manager → Stage 2 |
-| "направления" | style directions generated from references | Stage 2 tab / onboarding step 4 |
-| "корпус" | example corpus JSON for Stage 2 | Stage 2 tab |
+| "стиль канала" | legacy Stage 2 style profile context, not active runtime steering | historical runs / old diagnostics |
+| "направления" | legacy style directions generated from references | historical runs / old diagnostics |
+| "корпус" | examples source for Stage 2: system preset, workspace custom JSON, channel custom JSON/text | Stage 2 tab |
 | "ограничения" | hard constraints for TOP/BOTTOM and banned phrases | Stage 2 tab |
-| "линия" / "формат пайплайна" | selected Stage 2 worker profile | Stage 2 tab |
+| "prompt" / "system prompt" | workspace or channel one-shot prompt source: system preset or custom | Stage 2 tab |
+| "линия" / "формат пайплайна" | historical Stage 2 worker profile label; no active selector in current UI | old traces / diagnostics |
 | "модели" | workspace Stage 2 / Stage 3 routing | owner `Общие настройки` |
 | "Shared Codex" / "Connect Codex" | baseline workspace AI integration и owner device-auth control | Header user block, owner menu `Управление` |
 | "Anthropic" / "caption provider" | owner-only caption-provider overlay for eligible Stage 2 caption stages | Channel Manager → `Общие настройки` → `Caption provider` |

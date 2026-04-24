@@ -9,11 +9,11 @@
 - Active Stage 2 path теперь **один**: `native_caption_v3` в one-shot режиме.
 - Единственный product baseline profile: `stable_reference_v7`.
 - Старые ids вроде `stable_reference_v6`, `stable_reference_v6_experimental`, `stable_social_wave_v1`, `stable_skill_gap_v1`, `experimental` оставлены только для historical read-compat.
-- Active prompt contract стал video-first minimal:
+- Active prompt contract стал video-first minimal, но теперь source-настройки явно выбираются в UI:
   - `video_truth_json`
   - bounded `comments_hint_json`
-  - optional per-channel `examples_json`
-  - optional per-channel `examples_text`
+  - optional `examples_json` из workspace default, system preset или channel custom
+  - optional `examples_text` из channel custom
   - `hard_constraints_json`
   - `user_instruction`
 - Comments больше не являются driver-ом угла, narrator stance или fallback mode. Это только weak hints.
@@ -77,9 +77,9 @@ Active prompt contract:
 - `comments_hint_json`
   bounded weak hints для harmless phrasing или weak consensus cues
 - `examples_json`
-  optional channel style references. JSON may be an array, an object with `examples/items`, or a single arbitrary object. Runtime normalizes it into style examples, but facts from examples never override current video truth.
+  optional style references. Source may be workspace default, system preset, or channel custom. JSON may be an array, an object with `examples/items`, or a single arbitrary object. Runtime normalizes it into style examples, but facts from examples never override current video truth.
 - `examples_text`
-  optional plain-text channel examples or notes. It is a style/rhythm reference, not factual evidence.
+  optional plain-text channel examples or notes. It is available for channel custom examples and is a style/rhythm reference, not factual evidence.
 - `hard_constraints_json`
   обязательные length/content guardrails
 - `user_instruction`
@@ -125,7 +125,14 @@ Active workspace Stage 2 settings теперь только такие:
 
 - `stage2_caption_provider_json`
 - `workspace_codex_model_config_json` для `oneShotReference` / `regenerate`
-- единый editable one-shot prompt
+- one-shot prompt source:
+  - system preset `system_prompt`
+  - system preset `animals_system_prompt`
+  - custom workspace prompt
+- workspace examples source:
+  - system preset `system_examples`
+  - system preset `animals_examples`
+  - custom workspace JSON corpus
 - default hard constraints
 
 ### Channel-level active authority
@@ -133,7 +140,15 @@ Active workspace Stage 2 settings теперь только такие:
 На уровне канала Stage 2 теперь редактируются:
 
 - `stage2HardConstraints`
-- optional `stage2ExamplesConfig` with channel-specific `examples_json` and `examples_text`
+- optional `stage2PromptConfig`:
+  - workspace default
+  - system preset
+  - custom channel prompt
+- optional `stage2ExamplesConfig`:
+  - workspace default
+  - system preset
+  - custom JSON examples
+  - custom plain-text examples
 - render template отдельно в Channel Manager / Stage 3 surfaces
 
 Channel больше **не** должен активно управлять:
@@ -143,7 +158,6 @@ Channel больше **не** должен активно управлять:
 - style discovery
 - stage2 style profile
 - editorial memory
-- channel-level prompt family
 
 ### Parse-tolerant legacy fields
 
@@ -178,16 +192,22 @@ Workspace defaults tab:
 - hard constraints
 - caption provider
 - one-shot model
-- one-shot prompt
+- one-shot prompt source: system/custom
+- examples source: system/custom JSON
 
 Channel tab:
 
 - hard constraints
+- optional channel prompt source:
+  - workspace default
+  - system preset
+  - channel custom prompt
 - optional channel examples source:
   - workspace default
+  - system preset
   - channel custom JSON upload/paste
   - channel custom plain-text upload/paste
-- note о том, что provider/model/prompt наследуются из workspace
+- note о том, что provider/model наследуются из workspace
 
 ## 6. Historical compatibility
 

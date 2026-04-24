@@ -5,6 +5,8 @@ import {
   runInTransaction
 } from "./db/client";
 import {
+  normalizeStage2PromptConfig,
+  type Stage2PromptConfig,
   createStage2ProgressSnapshot,
   finalizeStage2ProgressSuccess,
   getStage2ProgressStartStageId,
@@ -54,6 +56,7 @@ export type Stage2RunRequest = {
     stage2WorkerProfileId?: string | null;
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
+    stage2PromptConfig?: Stage2PromptConfig | null;
     stage2StyleProfile?: Stage2StyleProfile;
     editorialMemory?: Stage2EditorialMemorySummary;
     editorialMemorySource?: Stage2EditorialMemorySource | null;
@@ -169,6 +172,11 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
         typeof channelCandidate.stage2HardConstraints === "object"
           ? (channelCandidate.stage2HardConstraints as Stage2HardConstraints)
           : DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      stage2PromptConfig:
+        channelCandidate?.stage2PromptConfig &&
+        typeof channelCandidate.stage2PromptConfig === "object"
+          ? normalizeStage2PromptConfig(channelCandidate.stage2PromptConfig)
+          : undefined,
       stage2StyleProfile:
         channelCandidate?.stage2StyleProfile &&
         typeof channelCandidate.stage2StyleProfile === "object"

@@ -550,17 +550,12 @@
 ## Channel onboarding wizard
 
 - `entrypoint`: `+ Новый канал`
-- `purpose`: guided creation канала в 4 шага.
+- `purpose`: simplified identity-first channel creation.
 - `steps`:
   - `Базовая настройка канала`
-  - `Базовая настройка Stage 2`
-  - `Добавьте 10+ референсных ссылок`
-  - `Выберите стартовые стилистические направления`
+  - optional avatar setup
 - `controls`:
   - basic fields `Название канала`, `Username канала`, avatar upload with draggable circular crop modal
-  - Stage 2 fields: pipeline format, example corpus, hard constraints, banned words/openers
-  - reference links textarea
-  - style direction cards, selection toggles, exploration share slider
   - navigation buttons previous / next / finish / cancel
 - `related APIs`:
   - `POST /api/channels`
@@ -586,24 +581,25 @@
 
 ## Channel Manager tab: `Stage 2`
 
-- `purpose`: pipeline profile, style profile, example corpus, hard constraints, caption provider routing, model routing.
+- `purpose`: logical Stage 2 settings for workspace defaults and per-channel overrides.
 - `controls`:
-  - block `Формат pipeline`
-  - `Активная линия`
-  - block `Стиль канала`
-  - `Референсные ссылки`
-  - `Доля исследования`
-  - actions `Перегенерировать направления`, `Очистить выбор`, `Выбрать всё`, `Сохранить стиль`
-  - style direction cards with explanation fields
-  - block `Последние реакции канала`
-  - dynamic `Удалить реакцию`
-  - block `Корпус примеров`
-  - textarea `JSON корпуса примеров`
-  - block `Ограничения`
-  - `TOP мин.`, `TOP макс.`, `BOTTOM мин.`, `BOTTOM макс.`
-  - `Запрещённые слова`
-  - `Запрещённые начала`
-  - owner-only block `Общие настройки`
+  - workspace block `Stage 2 caption engine`
+  - workspace logical sections `01 · Обзор`, `02 · Hard rules`, `03 · Provider`, `04 · Model`, `05 · Prompt`, `06 · Examples`
+  - workspace prompt toggle `System` / `Custom`
+  - workspace prompt presets `System prompt`, `Animals system prompt`
+  - workspace examples toggle `System` / `Custom`
+  - workspace examples presets `System examples`, `Animals examples`
+  - channel block `Channel Stage 2`
+  - channel logical sections `01 · Обзор`, `02 · Hard rules`, `03 · Prompt`, `04 · Examples`
+  - channel prompt toggle `Workspace default` / `Channel override`
+  - channel prompt override toggle `System` / `Custom`
+  - channel examples toggle `Workspace default` / `Channel override`
+  - channel examples override toggle `System` / `Custom`
+  - custom examples input toggle `JSON` / `Text`
+  - hard constraints:
+    - `TOP мин.`, `TOP макс.`, `BOTTOM мин.`, `BOTTOM макс.`
+    - `Запрещённые слова`
+    - `Запрещённые начала`
   - owner-only block `Caption provider`
   - owner-only controls inside `Caption provider`:
     - select `Shared Codex` / `Anthropic API` / `OpenRouter API`
@@ -619,17 +615,11 @@
   - важная semantics:
     - возврат select обратно на `Shared Codex` не отключает внешний key сам по себе; integration может остаться `connected`, но inactive
     - disconnect удаляет сохранённый key и одновременно fail-safe демотит active external provider обратно на `Shared Codex`
-  - owner-only block `Маршрутизация моделей Stage 2`
   - owner-only model controls:
-    - `Stable Reference v6`
-    - per-stage reasoning/model selects
-    - repeated `Сбросить к продуктовым настройкам`
-    - `Quick regenerate`
-    - `Style discovery`
-    - `Stage 3 planner`
+    - `One-shot model`
+    - `One-shot reasoning`
 - `related APIs`:
   - `PATCH /api/channels/[id]`
-  - `POST /api/channels/style-discovery`
   - `GET /api/workspace`
   - `PATCH /api/workspace`
   - `GET /api/workspace/integrations/codex`

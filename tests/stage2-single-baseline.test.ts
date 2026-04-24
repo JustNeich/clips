@@ -10,9 +10,13 @@ import { ChannelManagerStage2Tab } from "../app/components/ChannelManagerStage2T
 import { buildQuickRegeneratePrompt } from "../lib/stage2-quick-regenerate";
 import {
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
-  DEFAULT_STAGE2_EXAMPLES_CONFIG
+  DEFAULT_STAGE2_EXAMPLES_CONFIG,
+  normalizeStage2ExamplesConfig
 } from "../lib/stage2-channel-config";
-import { DEFAULT_STAGE2_PROMPT_CONFIG } from "../lib/stage2-pipeline";
+import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
+  normalizeStage2PromptConfig
+} from "../lib/stage2-pipeline";
 import {
   DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG
 } from "../lib/stage2-caption-provider";
@@ -140,7 +144,7 @@ test("quick regenerate prompt uses the minimal video-first contract", () => {
   assert.doesNotMatch(prompt, /retrieval/i);
 });
 
-test("channel persistence ignores legacy stage2 mutation authority for new and updated channels", async () => {
+test("channel persistence keeps channel prompt and examples overrides while ignoring legacy worker profile", async () => {
   await withIsolatedAppData(async () => {
     const owner = await bootstrapOwner({
       workspaceName: "Single Baseline Workspace",
@@ -149,44 +153,72 @@ test("channel persistence ignores legacy stage2 mutation authority for new and u
       displayName: "Owner"
     });
 
+    const customExamplesConfig = normalizeStage2ExamplesConfig(
+      {
+        useWorkspaceDefault: false,
+        customExamplesJson: JSON.stringify([
+          {
+            top: "This guard isn't watching a concert, he's counting exits.",
+            bottom: "Somebody has to be allergic to chaos."
+          }
+        ]),
+        customExamplesText: "Use dry, specific, present-tense captions."
+      },
+      {
+        channelId: "channel",
+        channelName: "History Explained"
+      }
+    );
+    const customPromptConfig = normalizeStage2PromptConfig({
+      ...DEFAULT_STAGE2_PROMPT_CONFIG,
+      useWorkspaceDefault: false,
+      sourceMode: "custom",
+      stages: {
+        ...DEFAULT_STAGE2_PROMPT_CONFIG.stages,
+        oneShotReference: {
+          ...DEFAULT_STAGE2_PROMPT_CONFIG.stages.oneShotReference,
+          prompt: "Custom channel one-shot prompt with video_truth_json and examples_json."
+        }
+      }
+    });
+
     const channel = await createChannel({
       workspaceId: owner.workspace.id,
       creatorUserId: owner.user.id,
       name: "History Explained",
       username: "historyexplained13",
       stage2WorkerProfileId: "stable_social_wave_v1",
-      stage2ExamplesConfig: {
-        ...DEFAULT_STAGE2_EXAMPLES_CONFIG,
-        useWorkspaceDefault: false,
-        customExamples: [
-          {
-            id: "custom_1",
-            ownerChannelId: "legacy_owner",
-            ownerChannelName: "Legacy",
-            sourceChannelId: "legacy_source",
-            sourceChannelName: "Legacy",
-            title: "Legacy example",
-            overlayTop: "LEGACY",
-            overlayBottom: "EXAMPLE",
-            transcript: "",
-            clipType: "history",
-            whyItWorks: ["old"],
-            qualityScore: null
-          }
-        ]
-      }
+      stage2ExamplesConfig: customExamplesConfig,
+      stage2PromptConfig: customPromptConfig
     });
 
     assert.equal(channel.stage2WorkerProfileId, null);
-    assert.equal(channel.stage2ExamplesConfig.useWorkspaceDefault, true);
+    assert.equal(channel.stage2ExamplesConfig.useWorkspaceDefault, false);
+    assert.equal(channel.stage2ExamplesConfig.sourceMode, "custom");
+    assert.equal(channel.stage2ExamplesConfig.customExamples.length, 1);
+    assert.equal(channel.stage2PromptConfig.useWorkspaceDefault, false);
+    assert.equal(channel.stage2PromptConfig.sourceMode, "custom");
+    assert.match(channel.stage2PromptConfig.stages.oneShotReference.prompt, /Custom channel/);
 
     const updated = await updateChannelById(channel.id, {
       stage2WorkerProfileId: "stable_skill_gap_v1",
-      stage2ExamplesConfig: {
-        ...DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2ExamplesConfig: normalizeStage2ExamplesConfig(
+        {
+          useWorkspaceDefault: false,
+          sourceMode: "system",
+          systemPresetId: "animals_examples"
+        },
+        {
+          channelId: channel.id,
+          channelName: channel.name
+        }
+      ),
+      stage2PromptConfig: normalizeStage2PromptConfig({
+        ...DEFAULT_STAGE2_PROMPT_CONFIG,
         useWorkspaceDefault: false,
-        customExamples: []
-      },
+        sourceMode: "system",
+        systemPresetId: "animals_system_prompt"
+      }),
       stage2HardConstraints: {
         ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
         topLengthMin: 18
@@ -194,12 +226,21 @@ test("channel persistence ignores legacy stage2 mutation authority for new and u
     });
 
     assert.equal(updated.stage2WorkerProfileId, null);
-    assert.equal(updated.stage2ExamplesConfig.useWorkspaceDefault, true);
+    assert.equal(updated.stage2ExamplesConfig.useWorkspaceDefault, false);
+    assert.equal(updated.stage2ExamplesConfig.sourceMode, "system");
+    assert.equal(updated.stage2ExamplesConfig.systemPresetId, "animals_examples");
+    assert.equal(updated.stage2PromptConfig.useWorkspaceDefault, false);
+    assert.equal(updated.stage2PromptConfig.sourceMode, "system");
+    assert.equal(updated.stage2PromptConfig.systemPresetId, "animals_system_prompt");
     assert.equal(updated.stage2HardConstraints.topLengthMin, 18);
 
     const reloaded = await getChannelById(channel.id);
     assert.equal(reloaded?.stage2WorkerProfileId, null);
-    assert.equal(reloaded?.stage2ExamplesConfig.useWorkspaceDefault, true);
+    assert.equal(reloaded?.stage2ExamplesConfig.useWorkspaceDefault, false);
+    assert.equal(reloaded?.stage2ExamplesConfig.sourceMode, "system");
+    assert.equal(reloaded?.stage2ExamplesConfig.systemPresetId, "animals_examples");
+    assert.equal(reloaded?.stage2PromptConfig.useWorkspaceDefault, false);
+    assert.equal(reloaded?.stage2PromptConfig.systemPresetId, "animals_system_prompt");
     assert.equal(reloaded?.stage2HardConstraints.topLengthMin, 18);
   });
 });
@@ -244,11 +285,13 @@ test("ChannelManagerStage2Tab renders the minimal single-baseline Stage 2 surfac
     })
   );
 
-  assert.match(html, /Single baseline Stage 2/);
-  assert.match(html, /One-shot prompt/);
+  assert.match(html, /Stage 2 caption engine/);
+  assert.match(html, /System prompt/);
+  assert.match(html, /Animals system prompt/);
+  assert.match(html, /Examples corpus/);
   assert.match(html, /One-shot model/);
   assert.match(html, /Caption provider/);
   assert.doesNotMatch(html, /Формат pipeline/);
-  assert.doesNotMatch(html, /JSON общего корпуса/);
+  assert.doesNotMatch(html, /Custom examples JSON/);
   assert.doesNotMatch(html, /Стиль канала/);
 });
