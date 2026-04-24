@@ -117,11 +117,24 @@ test("stage3 video placement anchors zoom transform to Position X and Y", () => 
   });
 
   assert.equal(style.objectPosition, "82.000% 18.000%");
-  assert.equal(style.transform, "scale(1.400, 1.400)");
-  assert.equal(style.transformOrigin, "82.000% 18.000%");
+  assert.equal(style.transform, "translate(-12.800%, 12.800%) scale(1.400, 1.400)");
+  assert.equal(style.transformOrigin, "center center");
 });
 
-test("stage3 mirrored video placement keeps the same focus origin while flipping X scale", () => {
+test("stage3 video placement creates a safe crop reserve so Position X is visible at 1x zoom", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.82,
+    focusY: 0.18,
+    videoZoom: 1,
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.objectPosition, "82.000% 18.000%");
+  assert.equal(style.transform, "translate(-4.480%, 4.480%) scale(1.140, 1.140)");
+  assert.equal(style.transformOrigin, "center center");
+});
+
+test("stage3 mirrored video placement keeps the same visual pan while flipping X scale", () => {
   const style = buildStage3VideoPlacementStyle({
     focusX: 0.12,
     focusY: 0.88,
@@ -130,8 +143,8 @@ test("stage3 mirrored video placement keeps the same focus origin while flipping
   });
 
   assert.equal(style.objectPosition, "12.000% 88.000%");
-  assert.equal(style.transform, "scale(-1.250, 1.250)");
-  assert.equal(style.transformOrigin, "12.000% 88.000%");
+  assert.equal(style.transform, "translate(9.500%, -9.500%) scale(-1.250, 1.250)");
+  assert.equal(style.transformOrigin, "center center");
 });
 
 test("render segment extraction uses decode-accurate timestamps to reduce boundary flashes", () => {
