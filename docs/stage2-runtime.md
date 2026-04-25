@@ -151,6 +151,8 @@ Active workspace Stage 2 settings теперь только такие:
   - custom plain-text examples
 - render template отдельно в Channel Manager / Stage 3 surfaces
 
+Channel-level Stage 2 prompt/examples settings are editable by any user who has channel setup access for that channel (`owner`, `manager`, or `redactor` on a visible/owned/granted channel). Workspace defaults remain owner-only.
+
 Channel больше **не** должен активно управлять:
 
 - worker profile

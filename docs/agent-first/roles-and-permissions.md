@@ -188,6 +188,7 @@ Code-verified:
 
 - может удалять только собственные каналы;
 - может редактировать setup только тех каналов, которые ему видимы по ACL;
+- может менять channel-level Stage 2 prompt/examples, если канал доступен для setup;
 - не может управлять grants других пользователей.
 
 ## Redactor Limited behavior

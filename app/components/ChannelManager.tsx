@@ -114,6 +114,13 @@ export function normalizeChannelManagerTabForSelection(
   return tab === "stage2" || tab === "render" ? tab : "stage2";
 }
 
+export function resolveChannelManagerCanEditChannelPrompt(input: {
+  currentUserCanEditSetup: boolean;
+  isWorkspaceDefaultsSelection: boolean;
+}): boolean {
+  return !input.isWorkspaceDefaultsSelection && input.currentUserCanEditSetup;
+}
+
 type ChannelSavePatch = Partial<{
   name: string;
   username: string;
@@ -907,9 +914,10 @@ export function ChannelManager({
   const canEditSetup = Boolean(activeChannel?.currentUserCanEditSetup);
   const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
   const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditSetup;
-  const canEditChannelPrompt =
-    Boolean(activeChannel?.currentUserCanEditSetup) &&
-    (currentUserRole === "owner" || currentUserRole === "manager");
+  const canEditChannelPrompt = resolveChannelManagerCanEditChannelPrompt({
+    currentUserCanEditSetup: canEditSetup,
+    isWorkspaceDefaultsSelection
+  });
 
   useEffect(() => {
     if (!activeChannel || !canEditSetup) {

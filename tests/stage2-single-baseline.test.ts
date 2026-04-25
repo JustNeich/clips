@@ -6,6 +6,9 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import {
+  resolveChannelManagerCanEditChannelPrompt
+} from "../app/components/ChannelManager";
 import { ChannelManagerStage2Tab } from "../app/components/ChannelManagerStage2Tab";
 import { buildQuickRegeneratePrompt } from "../lib/stage2-quick-regenerate";
 import {
@@ -243,6 +246,30 @@ test("channel persistence keeps channel prompt and examples overrides while igno
     assert.equal(reloaded?.stage2PromptConfig.systemPresetId, "animals_system_prompt");
     assert.equal(reloaded?.stage2HardConstraints.topLengthMin, 18);
   });
+});
+
+test("ChannelManager lets any channel setup editor change channel Stage 2 prompt", () => {
+  assert.equal(
+    resolveChannelManagerCanEditChannelPrompt({
+      currentUserCanEditSetup: true,
+      isWorkspaceDefaultsSelection: false
+    }),
+    true
+  );
+  assert.equal(
+    resolveChannelManagerCanEditChannelPrompt({
+      currentUserCanEditSetup: false,
+      isWorkspaceDefaultsSelection: false
+    }),
+    false
+  );
+  assert.equal(
+    resolveChannelManagerCanEditChannelPrompt({
+      currentUserCanEditSetup: true,
+      isWorkspaceDefaultsSelection: true
+    }),
+    false
+  );
 });
 
 test("ChannelManagerStage2Tab renders the minimal single-baseline Stage 2 surface", () => {
