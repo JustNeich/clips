@@ -37,6 +37,8 @@ import {
   type Stage2EditorialMemorySource
 } from "./stage2-editorial-memory-resolution";
 import { normalizeStage2ResultTitleOptions } from "./stage2-title-options";
+import type { Stage2TemplateSemanticsSnapshot } from "./stage2-template-contract";
+import type { Stage3TemplateFormatGroup } from "./stage3-template-semantics";
 import { normalizeTemplateHighlightConfig, type TemplateHighlightConfig } from "./template-highlights";
 import type { Stage2DebugMode } from "./viral-shorts-worker/types";
 
@@ -61,6 +63,8 @@ export type Stage2RunRequest = {
     editorialMemory?: Stage2EditorialMemorySummary;
     editorialMemorySource?: Stage2EditorialMemorySource | null;
     templateHighlightProfile?: TemplateHighlightConfig | null;
+    templateFormatGroup?: Stage3TemplateFormatGroup | null;
+    templateTextSemantics?: Stage2TemplateSemanticsSnapshot | null;
   };
 };
 
@@ -203,7 +207,18 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
       ),
       templateHighlightProfile: normalizeTemplateHighlightConfig(
         channelCandidate?.templateHighlightProfile ?? null
-      )
+      ),
+      templateFormatGroup:
+        channelCandidate?.templateFormatGroup === "channel_story"
+          ? "channel_story"
+          : channelCandidate?.templateFormatGroup === "classic_top_bottom"
+            ? "classic_top_bottom"
+            : null,
+      templateTextSemantics:
+        channelCandidate?.templateTextSemantics &&
+        typeof channelCandidate.templateTextSemantics === "object"
+          ? (channelCandidate.templateTextSemantics as Stage2TemplateSemanticsSnapshot)
+          : null
     }
   };
 }

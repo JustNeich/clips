@@ -15,6 +15,7 @@
   - optional `examples_json` из workspace default, system preset или channel custom
   - optional `examples_text` из channel custom
   - `hard_constraints_json`
+  - `template_semantics_json`
   - `user_instruction`
 - Comments больше не являются driver-ом угла, narrator stance или fallback mode. Это только weak hints.
 - Multi-stage native flow, selector-style examples-routing, style discovery и editorial-memory steering больше не являются active runtime authority.
@@ -82,6 +83,8 @@ Active prompt contract:
   optional plain-text channel examples or notes. It is available for channel custom examples and is a style/rhythm reference, not factual evidence.
 - `hard_constraints_json`
   обязательные length/content guardrails
+- `template_semantics_json`
+  explains the assigned Stage 3 text contract. For `classic_top_bottom`, persisted `top`/`bottom` mean TOP/BOTTOM; for `channel_story`, persisted `top` is Lead and persisted `bottom` is Body, with `topVisible` telling the writer when the lead is template-managed or disabled.
 - `user_instruction`
   ручная правка оператора
 

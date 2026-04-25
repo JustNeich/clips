@@ -119,6 +119,7 @@ npm run dev
     - optional `examples_json`;
     - optional `examples_text`;
     - `hard_constraints_json`;
+    - `template_semantics_json`;
     - `user_instruction`;
   - трактует comments как weak hints, а не как narrator-steering или line-selection engine;
   - quick regenerate переписывает только видимый shortlist без writer/critic/review loops;

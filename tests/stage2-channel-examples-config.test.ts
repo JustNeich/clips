@@ -4,7 +4,8 @@ import test from "node:test";
 import {
   collectChannelStage2Examples,
   normalizeStage2ExamplesConfig,
-  parseStage2ExamplesJson
+  parseStage2ExamplesJson,
+  resolveStage2ExamplesCorpus
 } from "../lib/stage2-channel-config";
 import { STAGE2_REFERENCE_ONE_SHOT_PROMPT } from "../lib/stage2-prompt-specs";
 
@@ -102,4 +103,34 @@ test("channel examples normalization is idempotent when raw JSON is stored with 
   assert.equal(firstPass.customExamples.length, 1);
   assert.equal(secondPass.customExamples.length, 1);
   assert.deepEqual(secondPass.customExamples, firstPass.customExamples);
+});
+
+test("workspace default examples resolve to an effective prompt-ready examples config", () => {
+  const workspaceExamplesJson = JSON.stringify([
+    {
+      top: "This driver isn't parking, he's negotiating with physics.",
+      bottom: "The cone lost that argument before it started."
+    }
+  ]);
+
+  const resolved = resolveStage2ExamplesCorpus({
+    channel: {
+      id: OWNER.channelId,
+      name: OWNER.channelName,
+      stage2ExamplesConfig: normalizeStage2ExamplesConfig(
+        {
+          useWorkspaceDefault: true
+        },
+        OWNER
+      )
+    },
+    workspaceStage2ExamplesCorpusJson: workspaceExamplesJson
+  });
+
+  assert.equal(resolved.source, "workspace_default");
+  assert.equal(resolved.corpus.length, 1);
+  assert.equal(resolved.effectiveConfig.useWorkspaceDefault, false);
+  assert.equal(resolved.effectiveConfig.sourceMode, "custom");
+  assert.match(resolved.effectiveConfig.customExamplesJson ?? "", /negotiating with physics/);
+  assert.equal(resolved.effectiveConfig.customExamples.length, 1);
 });

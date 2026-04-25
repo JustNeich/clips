@@ -19,6 +19,8 @@ import {
   type Stage2EditorialMemorySource
 } from "./stage2-editorial-memory-resolution";
 import type { Stage2RunMode, Stage2RunRequest } from "./stage2-progress-store";
+import type { Stage2TemplateSemanticsSnapshot } from "./stage2-template-contract";
+import type { Stage3TemplateFormatGroup } from "./stage3-template-semantics";
 import { cloneTemplateHighlightConfig, type TemplateHighlightConfig } from "./template-highlights";
 import type { Stage2DebugMode } from "./viral-shorts-worker/types";
 
@@ -26,6 +28,7 @@ type Stage2RunChannelSnapshotInput = {
   id: string;
   name: string;
   username: string;
+  templateId?: string | null;
   stage2WorkerProfileId?: string | null;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
@@ -34,6 +37,8 @@ type Stage2RunChannelSnapshotInput = {
   editorialMemory?: Stage2EditorialMemorySummary;
   editorialMemorySource?: Stage2EditorialMemorySource | null;
   templateHighlightProfile?: TemplateHighlightConfig | null;
+  templateFormatGroup?: Stage3TemplateFormatGroup | null;
+  templateTextSemantics?: Stage2TemplateSemanticsSnapshot | null;
 };
 
 export function buildStage2RunRequestSnapshot(input: {
@@ -60,6 +65,7 @@ export function buildStage2RunRequestSnapshot(input: {
       id: input.channel.id,
       name: channelName,
       username: input.channel.username.trim(),
+      templateId: input.channel.templateId ?? null,
       stage2WorkerProfileId: null,
       stage2ExamplesConfig: parseStage2ExamplesConfigJson(
         stringifyStage2ExamplesConfig(input.channel.stage2ExamplesConfig ?? DEFAULT_STAGE2_EXAMPLES_CONFIG, fallbackOwner),
@@ -76,7 +82,9 @@ export function buildStage2RunRequestSnapshot(input: {
       editorialMemorySource: null,
       templateHighlightProfile: input.channel.templateHighlightProfile
         ? cloneTemplateHighlightConfig(input.channel.templateHighlightProfile)
-        : null
+        : null,
+      templateFormatGroup: input.channel.templateFormatGroup ?? null,
+      templateTextSemantics: input.channel.templateTextSemantics ?? null
     }
   };
 }

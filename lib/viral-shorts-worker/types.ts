@@ -1,8 +1,11 @@
 import type {
   Stage2CorpusExample,
   Stage2ExamplesCorpusSource,
+  Stage2ExamplesConfig,
   Stage2HardConstraints
 } from "../stage2-channel-config";
+import type { Stage2TemplateSemanticsSnapshot } from "../stage2-template-contract";
+import type { Stage3TemplateFormatGroup } from "../stage3-template-semantics";
 import type {
   Stage2EditorialMemorySummary,
   Stage2ExplorationMode,
@@ -324,11 +327,14 @@ export type Stage2RuntimeChannelConfig = {
   workerProfile?: ResolvedStage2WorkerProfile;
   hardConstraints: Stage2HardConstraints;
   examplesSource: Stage2ExamplesCorpusSource;
+  examplesConfig?: Stage2ExamplesConfig;
   customExamplesJson?: string;
   customExamplesText?: string;
   styleProfile?: Stage2StyleProfile;
   editorialMemory?: Stage2EditorialMemorySummary;
   templateHighlightProfile?: TemplateHighlightConfig | null;
+  templateFormatGroup?: Stage3TemplateFormatGroup | null;
+  templateTextSemantics?: Stage2TemplateSemanticsSnapshot | null;
 };
 
 export type PromptPacket = {

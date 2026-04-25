@@ -1807,8 +1807,6 @@ function buildNativeCaptionExamplesAssessment(
   channelConfig: Stage2RuntimeChannelConfig
 ): Stage2ExamplesAssessment {
   const hasExamples =
-    (channelConfig.examplesSource === "channel_custom" ||
-      channelConfig.examplesSource === "system_preset") &&
     (Boolean(channelConfig.customExamplesJson?.trim()) ||
       Boolean(channelConfig.customExamplesText?.trim()));
   const evidence =
@@ -1816,6 +1814,8 @@ function buildNativeCaptionExamplesAssessment(
       ? ["system_examples_preset"]
       : channelConfig.examplesSource === "channel_custom"
         ? ["channel_custom_examples"]
+        : channelConfig.examplesSource === "workspace_default"
+          ? ["workspace_default_examples"]
         : [];
   return {
     retrievalConfidence: hasExamples ? "medium" : "low",
@@ -2062,8 +2062,48 @@ function buildReferenceOneShotPrompt(input: {
     examples_json: buildReferenceOneShotExamplesJsonPayload(input.channelConfig),
     examples_text: buildReferenceOneShotExamplesTextPayload(input.channelConfig),
     hard_constraints_json: input.channelConfig.hardConstraints,
+    template_semantics_json: buildReferenceOneShotTemplateSemanticsPayload(input.channelConfig),
     user_instruction: input.videoContext.userInstruction?.trim() || null
   });
+}
+
+function buildReferenceOneShotTemplateSemanticsPayload(
+  channelConfig: Stage2RuntimeChannelConfig
+): unknown {
+  const semantics = channelConfig.templateTextSemantics;
+  if (!semantics) {
+    return {
+      formatGroup: channelConfig.templateFormatGroup ?? "classic_top_bottom",
+      topLabel: "TOP",
+      bottomLabel: "BOTTOM",
+      leadMode: "clip_custom",
+      topVisible: true,
+      bottomVisible: true,
+      topOptional: false,
+      topNote: null,
+      bottomNote: null,
+      lengthHints: {
+        topLengthMin: channelConfig.hardConstraints.topLengthMin,
+        topLengthMax: channelConfig.hardConstraints.topLengthMax,
+        bottomLengthMin: channelConfig.hardConstraints.bottomLengthMin,
+        bottomLengthMax: channelConfig.hardConstraints.bottomLengthMax
+      }
+    };
+  }
+
+  return {
+    formatGroup: semantics.formatGroup,
+    formatLabel: semantics.formatLabel,
+    topLabel: semantics.topLabel,
+    bottomLabel: semantics.bottomLabel,
+    leadMode: semantics.leadMode,
+    topVisible: semantics.topVisible,
+    bottomVisible: semantics.bottomVisible,
+    topOptional: semantics.topOptional,
+    topNote: semantics.topNote,
+    bottomNote: semantics.bottomNote,
+    lengthHints: semantics.lengthHints
+  };
 }
 
 function truncateReferenceText(value: string, limit: number): string {
@@ -2110,6 +2150,34 @@ function buildReferenceOneShotExamplesTextPayload(channelConfig: Stage2RuntimeCh
     return null;
   }
   return truncateReferenceText(raw, 20_000);
+}
+
+function buildReferenceOneShotExamplesManifest(input: {
+  activeCorpusCount: number;
+  selectorExamples: Stage2CorpusExample[];
+  selectorOutput: SelectorOutput;
+  examplesAssessment: Stage2ExamplesAssessment;
+}): NonNullable<Stage2DiagnosticsPromptStage["inputManifest"]>["examples"] {
+  const selectedExamples = input.selectorOutput.selectedExamples ?? [];
+  const selectedExampleIds = input.selectorOutput.selectedExampleIds ?? selectedExamples.map((example) => example.id);
+  const passedExamples = input.selectorExamples.length > 0 ? input.selectorExamples : selectedExamples;
+  const rejectedExampleIds = input.selectorOutput.rejectedExampleIds ?? [];
+  return {
+    availableCount: input.selectorExamples.length,
+    passedCount: passedExamples.length,
+    omittedCount: Math.max(0, input.activeCorpusCount - passedExamples.length),
+    truncated: input.activeCorpusCount > passedExamples.length,
+    limit: null,
+    activeCorpusCount: input.activeCorpusCount,
+    promptPoolCount: input.selectorExamples.length,
+    passedExampleIds: passedExamples.map((example) => example.id),
+    selectedExampleIds,
+    rejectedExampleIds,
+    retrievalConfidence: input.examplesAssessment.retrievalConfidence,
+    examplesMode: input.examplesAssessment.examplesMode,
+    examplesRoleSummary: input.examplesAssessment.examplesRoleSummary,
+    primaryDriverSummary: input.examplesAssessment.primaryDriverSummary
+  };
 }
 
 function normalizeReferenceOneShotResult(
@@ -7298,6 +7366,8 @@ function normalizeChannelConfig(input: {
   stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
   editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
   templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
+  templateFormatGroup?: Stage2RuntimeChannelConfig["templateFormatGroup"];
+  templateTextSemantics?: Stage2RuntimeChannelConfig["templateTextSemantics"];
   resolvedExamplesSource?: Stage2RuntimeChannelConfig["examplesSource"];
 }): Stage2RuntimeChannelConfig {
   return {
@@ -7310,15 +7380,18 @@ function normalizeChannelConfig(input: {
     styleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
     editorialMemory: createEmptyStage2EditorialMemorySummary(DEFAULT_STAGE2_STYLE_PROFILE),
     templateHighlightProfile: input.templateHighlightProfile ?? null,
+    templateFormatGroup: input.templateFormatGroup ?? input.templateTextSemantics?.formatGroup ?? null,
+    templateTextSemantics: input.templateTextSemantics ?? null,
     examplesSource: input.resolvedExamplesSource ?? "workspace_default",
+    examplesConfig: input.stage2ExamplesConfig,
     customExamplesJson:
-      input.resolvedExamplesSource === "system_preset"
+      input.stage2ExamplesConfig.sourceMode === "system"
         ? getStage2SystemExamplesPresetJson(input.stage2ExamplesConfig.systemPresetId)
-        : input.resolvedExamplesSource === "channel_custom"
+        : input.stage2ExamplesConfig.sourceMode === "custom"
         ? input.stage2ExamplesConfig.customExamplesJson
         : "",
     customExamplesText:
-      input.resolvedExamplesSource === "channel_custom"
+      input.stage2ExamplesConfig.sourceMode === "custom"
         ? input.stage2ExamplesConfig.customExamplesText
         : ""
   };
@@ -7329,6 +7402,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   workspaceCorpusCount: number;
   activeCorpusCount: number;
   selectorCandidateCount: number;
+  selectorExamples: Stage2CorpusExample[];
   videoContext: ViralShortsVideoContext;
   imagePaths: string[];
   executor: JsonStageExecutor;
@@ -7436,7 +7510,12 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
         .slice(0, oneShotCommentLimit)
         .map((comment, index) => comment.id ?? `comment_${index + 1}`)
     },
-    examples: null,
+    examples: buildReferenceOneShotExamplesManifest({
+      activeCorpusCount: input.activeCorpusCount,
+      selectorExamples: input.selectorExamples,
+      selectorOutput: input.selectorFallback,
+      examplesAssessment: input.nativeExamplesAssessment
+    }),
     channelLearning: null,
     candidates: null,
     stageFlags: variantConfig.stageFlags
@@ -7991,7 +8070,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       failureModes: input.selectorFallback.failureModes,
       writerBrief: input.selectorFallback.writerBrief,
       rationale: input.selectorFallback.rationale ?? null,
-      selectedExampleIds: []
+      selectedExampleIds: input.selectorFallback.selectedExampleIds ?? []
     },
     analysis: {
       visualAnchors: input.analyzerOutput.visualAnchors,
@@ -8034,8 +8113,24 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       primaryDrivers: input.nativeExamplesAssessment.primaryDrivers,
       channelStylePriority: input.nativeExamplesAssessment.channelStylePriority,
       editorialMemoryPriority: input.nativeExamplesAssessment.editorialMemoryPriority,
-      availableExamples: [],
-      selectedExamples: []
+      availableExamples: input.selectorExamples.slice(0, 8).map((example) =>
+        buildDiagnosticsExample(
+          "available",
+          example,
+          buildCorpusQueryText(input.videoContext, input.analyzerOutput),
+          input.selectorFallback.selectedExampleIds ?? [],
+          null
+        )
+      ),
+      selectedExamples: (input.selectorFallback.selectedExamples ?? []).slice(0, 5).map((example) =>
+        buildDiagnosticsExample(
+          "selected",
+          example,
+          buildCorpusQueryText(input.videoContext, input.analyzerOutput),
+          input.selectorFallback.selectedExampleIds ?? [],
+          null
+        )
+      )
     },
     nativeCaptionV3: {
       contextPacket,
@@ -8078,7 +8173,10 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       execution: input.pipelineExecution,
       selectorOutput: input.selectorFallback,
       availableExamplesCount: input.selectorCandidateCount,
-      selectedExamplesCount: input.selectorCandidateCount,
+      selectedExamplesCount:
+        input.selectorFallback.selectedExampleIds?.length ??
+        input.selectorFallback.selectedExamples?.length ??
+        0,
       retrievalConfidence: input.nativeExamplesAssessment.retrievalConfidence,
       examplesMode: input.nativeExamplesAssessment.examplesMode,
       retrievalExplanation: input.nativeExamplesAssessment.explanation,
@@ -8167,6 +8265,7 @@ export class ViralShortsWorkerService {
     source: Stage2RuntimeChannelConfig["examplesSource"];
     corpus: Stage2CorpusExample[];
     workspaceCorpusCount: number;
+    effectiveConfig: Stage2ExamplesConfig;
   } {
     return resolveStage2ExamplesCorpus(input);
   }
@@ -8182,12 +8281,14 @@ export class ViralShortsWorkerService {
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
+      templateFormatGroup?: Stage2RuntimeChannelConfig["templateFormatGroup"];
+      templateTextSemantics?: Stage2RuntimeChannelConfig["templateTextSemantics"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
     promptConfig?: Stage2PromptConfig | null;
   }): PromptPacket {
-    const { corpus, source } = this.resolveExamplesCorpus({
+    const { corpus, source, effectiveConfig } = this.resolveExamplesCorpus({
       channel: {
         id: input.channel.id,
         name: input.channel.name,
@@ -8197,6 +8298,7 @@ export class ViralShortsWorkerService {
     });
     const channelConfig = normalizeChannelConfig({
       ...input.channel,
+      stage2ExamplesConfig: effectiveConfig,
       resolvedExamplesSource: source
     });
     const heuristicOutput = heuristicAnalyzer({
@@ -8248,6 +8350,8 @@ export class ViralShortsWorkerService {
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
+      templateFormatGroup?: Stage2RuntimeChannelConfig["templateFormatGroup"];
+      templateTextSemantics?: Stage2RuntimeChannelConfig["templateTextSemantics"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -8275,6 +8379,8 @@ export class ViralShortsWorkerService {
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
+      templateFormatGroup?: Stage2RuntimeChannelConfig["templateFormatGroup"];
+      templateTextSemantics?: Stage2RuntimeChannelConfig["templateTextSemantics"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -8303,6 +8409,8 @@ export class ViralShortsWorkerService {
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
+      templateFormatGroup?: Stage2RuntimeChannelConfig["templateFormatGroup"];
+      templateTextSemantics?: Stage2RuntimeChannelConfig["templateTextSemantics"];
     };
     captionOptions: Array<{
       candidateId: string;
@@ -8341,6 +8449,8 @@ export class ViralShortsWorkerService {
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
+      templateFormatGroup?: Stage2RuntimeChannelConfig["templateFormatGroup"];
+      templateTextSemantics?: Stage2RuntimeChannelConfig["templateTextSemantics"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -8355,7 +8465,7 @@ export class ViralShortsWorkerService {
     const warnings: StageWarning[] = [];
     const promptConfig = normalizeStage2PromptConfig(input.promptConfig);
     const debugMode: Stage2DebugMode = input.debugMode === "raw" ? "raw" : "summary";
-    const { corpus, source, workspaceCorpusCount } = this.resolveExamplesCorpus({
+    const { corpus, source, workspaceCorpusCount, effectiveConfig } = this.resolveExamplesCorpus({
       channel: {
         id: input.channel.id,
         name: input.channel.name,
@@ -8365,6 +8475,7 @@ export class ViralShortsWorkerService {
     });
     const channelConfig = normalizeChannelConfig({
       ...input.channel,
+      stage2ExamplesConfig: effectiveConfig,
       resolvedExamplesSource: source
     });
     const workerBuild = getStage2WorkerBuildInfo();
@@ -8440,6 +8551,7 @@ export class ViralShortsWorkerService {
       workspaceCorpusCount,
       activeCorpusCount: corpus.length,
       selectorCandidateCount: selectorPool.selectorExamples.length,
+      selectorExamples: selectorPool.selectorExamples,
       videoContext: input.videoContext,
       imagePaths: input.imagePaths,
       executor: input.executor,
@@ -9915,6 +10027,8 @@ export class ViralShortsWorkerService {
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
+      templateFormatGroup?: Stage2RuntimeChannelConfig["templateFormatGroup"];
+      templateTextSemantics?: Stage2RuntimeChannelConfig["templateTextSemantics"];
     };
     workspaceStage2ExamplesCorpusJson: string | null | undefined;
     videoContext: ViralShortsVideoContext;
@@ -9986,7 +10100,12 @@ export class ViralShortsWorkerService {
       }
     };
 
-    const { corpus: availableExamples, workspaceCorpusCount, source } = this.resolveExamplesCorpus({
+    const {
+      corpus: availableExamples,
+      workspaceCorpusCount,
+      source,
+      effectiveConfig
+    } = this.resolveExamplesCorpus({
       channel: {
         id: input.channel.id,
         name: input.channel.name,
@@ -9996,6 +10115,7 @@ export class ViralShortsWorkerService {
     });
     const channelConfig = normalizeChannelConfig({
       ...input.channel,
+      stage2ExamplesConfig: effectiveConfig,
       resolvedExamplesSource: source
     });
 

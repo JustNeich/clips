@@ -158,6 +158,8 @@ import {
   buildStage3DraftRenderPlanOverride,
   sanitizeStage3DraftRenderPlanOverride
 } from "../lib/stage3-draft-render-plan";
+import { resolveStage2TemplateTextSemantics } from "../lib/stage2-template-contract";
+import type { Stage3TemplateFormatGroup } from "../lib/stage3-template-semantics";
 import {
   buildVideoContext,
   evaluateCandidateHardConstraints,
@@ -346,6 +348,9 @@ function makeNativeCaptionChannel(
   stage2WorkerProfileId: string | null = null,
   options?: {
     templateHighlightProfile?: TemplateHighlightConfig | null;
+    stage2ExamplesConfig?: Stage2ExamplesConfig;
+    templateFormatGroup?: Stage3TemplateFormatGroup | null;
+    templateTextSemantics?: ReturnType<typeof resolveStage2TemplateTextSemantics> | null;
   }
 ) {
   return {
@@ -353,9 +358,11 @@ function makeNativeCaptionChannel(
     name: "Native Channel",
     username: "native_channel",
     stage2WorkerProfileId,
-    stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+    stage2ExamplesConfig: options?.stage2ExamplesConfig ?? DEFAULT_STAGE2_EXAMPLES_CONFIG,
     stage2HardConstraints: hardConstraints,
-    templateHighlightProfile: options?.templateHighlightProfile ?? null
+    templateHighlightProfile: options?.templateHighlightProfile ?? null,
+    templateFormatGroup: options?.templateFormatGroup ?? options?.templateTextSemantics?.formatGroup ?? null,
+    templateTextSemantics: options?.templateTextSemantics ?? null
   };
 }
 
@@ -531,7 +538,10 @@ async function runNativeCaptionPipelineDirectFixture(input: {
   promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
   hardConstraints?: Stage2HardConstraints;
   stage2WorkerProfileId?: string | null;
+  stage2ExamplesConfig?: Stage2ExamplesConfig;
   templateHighlightProfile?: TemplateHighlightConfig | null;
+  templateFormatGroup?: Stage3TemplateFormatGroup | null;
+  templateTextSemantics?: ReturnType<typeof resolveStage2TemplateTextSemantics> | null;
   videoContext?: ReturnType<typeof buildVideoContext>;
   stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
   editorialMemory?: ReturnType<typeof createEmptyStage2EditorialMemorySummary>;
@@ -542,13 +552,19 @@ async function runNativeCaptionPipelineDirectFixture(input: {
   const channel = input.stage2StyleProfile
     ? {
         ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
-          templateHighlightProfile: input.templateHighlightProfile
+          templateHighlightProfile: input.templateHighlightProfile,
+          stage2ExamplesConfig: input.stage2ExamplesConfig,
+          templateFormatGroup: input.templateFormatGroup,
+          templateTextSemantics: input.templateTextSemantics
         }),
         stage2StyleProfile: input.stage2StyleProfile,
         editorialMemory: input.editorialMemory
       }
     : makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
-        templateHighlightProfile: input.templateHighlightProfile
+        templateHighlightProfile: input.templateHighlightProfile,
+        stage2ExamplesConfig: input.stage2ExamplesConfig,
+        templateFormatGroup: input.templateFormatGroup,
+        templateTextSemantics: input.templateTextSemantics
       });
   const result = await service.runNativeCaptionPipeline({
     channel,
@@ -8006,16 +8022,119 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
   assert.match(executor.calls[0]?.prompt ?? "", /"video_truth_json"/);
   assert.match(executor.calls[0]?.prompt ?? "", /"examples_json"/);
   assert.match(executor.calls[0]?.prompt ?? "", /"examples_text"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"template_semantics_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /"formatGroup": "classic_top_bottom"/);
   assert.match(executor.calls[0]?.prompt ?? "", /"comments_hint_json"/);
   assert.match(executor.calls[0]?.prompt ?? "", /"hard_constraints_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /Floofball/);
   assert.match(executor.calls[0]?.prompt ?? "", /even 1 character outside/i);
   assert.match(executor.calls[0]?.prompt ?? "", /that pause said enough/i);
   assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /experimental_contract_json/i);
+  assert.ok((result.diagnostics.examples.availableExamples?.length ?? 0) > 0);
+  assert.ok((result.diagnostics.examples.selectedExamples?.length ?? 0) > 0);
+  const oneShotManifest = result.diagnostics.effectivePrompting.promptStages.find(
+    (stage) => stage.stageId === "oneShotReference"
+  )?.inputManifest?.examples;
+  assert.ok(oneShotManifest);
+  assert.ok(oneShotManifest.passedCount > 0);
   assert.equal(executor.calls[0]?.reasoningEffort, "x-high");
   assert.equal(
     result.output.captionOptions.every((option) => Boolean(option.topRu) && Boolean(option.bottomRu)),
     true
   );
+});
+
+test("reference one-shot prompt carries channel story semantics, custom examples, and regenerate steering together", async () => {
+  const storyHardConstraints: Stage2HardConstraints = {
+    ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+    topLengthMin: 6,
+    topLengthMax: 56,
+    bottomLengthMin: 40,
+    bottomLengthMax: 260
+  };
+  const templateTextSemantics = resolveStage2TemplateTextSemantics({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    hardConstraints: storyHardConstraints
+  });
+  const stage2ExamplesConfig: Stage2ExamplesConfig = {
+    version: 2,
+    useWorkspaceDefault: false,
+    sourceMode: "custom",
+    customInputMode: "json",
+    systemPresetId: "system_examples",
+    customExamplesJson: JSON.stringify([
+      {
+        lead: "GILLIAN ANDERSON STAYS IN CHARACTER DURING ACCIDENT",
+        body: "During a 1996 filming moment, the visible crash stays secondary to the actor holding character through the shock.",
+        note: "one compact lead plus one factual story body"
+      }
+    ]),
+    customExamplesText: "Use one compact Lead and one story Body. Do not generate five separate leads.",
+    customExamples: []
+  };
+  const videoContext = buildVideoContext({
+    sourceUrl: "https://example.com/channel-story-reference",
+    title: "Behind the scenes crash kept rolling",
+    description: "A film set moment where an actor keeps character during an unexpected crash.",
+    transcript: "",
+    comments: [],
+    frameDescriptions: [
+      "An actor walks through glass doors in a tan coat.",
+      "A car collision happens behind her while the camera keeps rolling."
+    ],
+    userInstruction: "Regenerate closer to the custom example: one lead and one factual story body."
+  });
+  const oneShotResponse = {
+    analysis: {
+      visual_anchors: [
+        "the tan coat in the doorway",
+        "the crash behind the actor",
+        "the actor keeps moving through the shot"
+      ],
+      comment_vibe: "Comments unavailable",
+      key_phrase_to_adapt: "keeps character"
+    },
+    candidates: Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `story_${index + 1}`,
+      top: `REAL CRASH KEPT IN THE TAKE ${index + 1}`,
+      bottom:
+        `During filming, the actor walks through the doorway as a real crash happens behind her, and the usable moment is that she keeps the scene alive through the shock ${index + 1}.`,
+      retained_handle: false,
+      rationale: "Follows the channel story lead/body contract."
+    })),
+    winner_candidate_id: "story_1",
+    titles: Array.from({ length: 5 }, (_, index) => ({
+      title: `REAL CRASH KEPT IN THE TAKE ${index + 1}`,
+      title_ru: `РЕАЛЬНАЯ АВАРИЯ ОСТАЛАСЬ В ДУБЛЕ ${index + 1}`
+    }))
+  };
+
+  const { result, executor } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6",
+    hardConstraints: storyHardConstraints,
+    stage2ExamplesConfig,
+    templateFormatGroup: "channel_story",
+    templateTextSemantics,
+    videoContext,
+    responses: [oneShotResponse]
+  });
+
+  const prompt = executor.calls[0]?.prompt ?? "";
+  assert.match(prompt, /"template_semantics_json"/);
+  assert.match(prompt, /"formatGroup": "channel_story"/);
+  assert.match(prompt, /"topLabel": "Lead"/);
+  assert.match(prompt, /"bottomLabel": "Body"/);
+  assert.match(prompt, /GILLIAN ANDERSON STAYS IN CHARACTER DURING ACCIDENT/);
+  assert.match(prompt, /one compact Lead and one story Body/);
+  assert.match(prompt, /Regenerate closer to the custom example/);
+  assert.equal(result.diagnostics.examples.source, "channel_custom");
+  assert.ok(result.diagnostics.examples.selectedExamples.length > 0);
+  const manifest = result.diagnostics.effectivePrompting.promptStages.find(
+    (stage) => stage.stageId === "oneShotReference"
+  )?.inputManifest?.examples;
+  assert.ok(manifest);
+  assert.equal(manifest.activeCorpusCount, 1);
+  assert.equal(manifest.passedCount, 1);
 });
 
 test("stable_reference_v6_experimental uses the isolated one-shot prompt contract and trims comment-wave pressure under weak grounding", async () => {

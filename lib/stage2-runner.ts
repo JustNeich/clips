@@ -17,7 +17,11 @@ import {
   runQuickRegenerateModel
 } from "./stage2-quick-regenerate";
 import { validateStage2Output } from "./stage2-output-validation";
-import { resolveEffectiveStage2HardConstraints } from "./stage2-template-contract";
+import {
+  resolveEffectiveStage2HardConstraints,
+  resolveStage2TemplateTextSemantics,
+  type Stage2TemplateSemanticsSnapshot
+} from "./stage2-template-contract";
 import { createEmptyTemplateCaptionHighlights } from "./template-highlights";
 import {
   getStage2Run,
@@ -151,6 +155,21 @@ function resolveChannelStage2HardConstraints(
     templateId: channel.templateId,
     workspaceId
   });
+}
+
+function resolveRunChannelTemplateSemantics(
+  channel: Stage2RunRecord["request"]["channel"],
+  workspaceId: string,
+  hardConstraints: ReturnType<typeof resolveChannelStage2HardConstraints>
+): Stage2TemplateSemanticsSnapshot {
+  return (
+    channel.templateTextSemantics ??
+    resolveStage2TemplateTextSemantics({
+      templateId: channel.templateId,
+      workspaceId,
+      hardConstraints
+    })
+  );
 }
 
 export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stage2WorkerRolloutAudit {
@@ -662,6 +681,11 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
     const workerService = new ViralShortsWorkerService();
     const channel = run.request.channel;
     const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
+    const templateTextSemantics = resolveRunChannelTemplateSemantics(
+      channel,
+      run.workspaceId,
+      effectiveHardConstraints
+    );
     const effectiveStage2PromptConfig = resolveRunStage2PromptConfig(
       run.workspaceId,
       channel.stage2PromptConfig
@@ -685,7 +709,9 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           stage2HardConstraints: effectiveHardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
           editorialMemory: channel.editorialMemory,
-          templateHighlightProfile: channel.templateHighlightProfile ?? null
+          templateHighlightProfile: channel.templateHighlightProfile ?? null,
+          templateFormatGroup: templateTextSemantics.formatGroup,
+          templateTextSemantics
         },
         workspaceStage2ExamplesCorpusJson,
         videoContext: buildStage2RuntimeVideoContext({
@@ -922,11 +948,16 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
 
     const channel = run.request.channel;
     const effectiveHardConstraints = resolveChannelStage2HardConstraints(channel, run.workspaceId);
+    const templateTextSemantics = resolveRunChannelTemplateSemantics(
+      channel,
+      run.workspaceId,
+      effectiveHardConstraints
+    );
     markStage2RunStageRunning(
       run.runId,
       getStage2ProgressStartStageId(run.mode, channel.stage2WorkerProfileId),
       {
-      detail: "Подготавливаем source media, кадры и комментарии."
+        detail: "Подготавливаем source media, кадры и комментарии."
       }
     );
 
@@ -963,7 +994,9 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         stage2HardConstraints: effectiveHardConstraints,
         stage2StyleProfile: channel.stage2StyleProfile,
         editorialMemory: channel.editorialMemory,
-        templateHighlightProfile: channel.templateHighlightProfile ?? null
+        templateHighlightProfile: channel.templateHighlightProfile ?? null,
+        templateFormatGroup: templateTextSemantics.formatGroup,
+        templateTextSemantics
       },
       workspaceStage2ExamplesCorpusJson,
       videoContext,

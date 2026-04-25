@@ -490,6 +490,7 @@ export function resolveStage2ExamplesCorpus(input: {
   source: Stage2ExamplesCorpusSource;
   corpus: Stage2CorpusExample[];
   workspaceCorpusCount: number;
+  effectiveConfig: Stage2ExamplesConfig;
 } {
   const workspaceCorpus = collectWorkspaceStage2Examples(input.workspaceStage2ExamplesCorpusJson);
   const stage2ExamplesConfig = normalizeStage2ExamplesConfig(
@@ -506,19 +507,43 @@ export function resolveStage2ExamplesCorpus(input: {
         corpus: collectWorkspaceStage2Examples(
           getStage2SystemExamplesPresetJson(stage2ExamplesConfig.systemPresetId)
         ),
-        workspaceCorpusCount: workspaceCorpus.length
+        workspaceCorpusCount: workspaceCorpus.length,
+        effectiveConfig: normalizeStage2ExamplesConfig(
+          {
+            useWorkspaceDefault: false,
+            sourceMode: "system",
+            systemPresetId: stage2ExamplesConfig.systemPresetId
+          },
+          {
+            channelId: input.channel.id,
+            channelName: input.channel.name
+          }
+        )
       };
     }
     return {
       source: "channel_custom",
       corpus: dedupeStage2CorpusExamples(stage2ExamplesConfig.customExamples),
-      workspaceCorpusCount: workspaceCorpus.length
+      workspaceCorpusCount: workspaceCorpus.length,
+      effectiveConfig: stage2ExamplesConfig
     };
   }
 
   return {
     source: "workspace_default",
     corpus: workspaceCorpus,
-    workspaceCorpusCount: workspaceCorpus.length
+    workspaceCorpusCount: workspaceCorpus.length,
+    effectiveConfig: normalizeStage2ExamplesConfig(
+      {
+        useWorkspaceDefault: false,
+        sourceMode: "custom",
+        customInputMode: "json",
+        customExamplesJson:
+          input.workspaceStage2ExamplesCorpusJson?.trim() ||
+          JSON.stringify(workspaceCorpus, null, 2),
+        customExamples: workspaceCorpus
+      },
+      WORKSPACE_STAGE2_CORPUS_OWNER
+    )
   };
 }
