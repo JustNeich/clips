@@ -7,6 +7,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import {
+  resolveChannelManagerCanEditChannelPrompt,
   resolveChannelManagerTemplateFormatGroup
 } from "../app/components/ChannelManager";
 import { ChannelManagerStage2Tab } from "../app/components/ChannelManagerStage2Tab";
@@ -271,6 +272,30 @@ test("ChannelManager resolves active format from managed template layout family"
   assert.equal(
     resolveChannelManagerTemplateFormatGroup(STAGE3_TEMPLATE_ID, []),
     "classic_top_bottom"
+  );
+});
+
+test("ChannelManager lets any channel setup editor change channel Stage 2 prompt", () => {
+  assert.equal(
+    resolveChannelManagerCanEditChannelPrompt({
+      currentUserCanEditSetup: true,
+      isWorkspaceDefaultsSelection: false
+    }),
+    true
+  );
+  assert.equal(
+    resolveChannelManagerCanEditChannelPrompt({
+      currentUserCanEditSetup: false,
+      isWorkspaceDefaultsSelection: false
+    }),
+    false
+  );
+  assert.equal(
+    resolveChannelManagerCanEditChannelPrompt({
+      currentUserCanEditSetup: true,
+      isWorkspaceDefaultsSelection: true
+    }),
+    false
   );
 });
 

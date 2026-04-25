@@ -222,6 +222,8 @@ Channel tab:
 - optional `Channel + Story` examples override for Lead/Body only
 - note о том, что provider/model наследуются из workspace
 
+Channel-level Stage 2 prompt/examples settings are editable by any user who has channel setup access for that channel (`owner`, `manager`, or `redactor` on a visible/owned/granted channel). Workspace defaults remain owner-only.
+
 ## 6. Historical compatibility
 
 Мы сохраняем compatibility на чтение, а не на исполнение.

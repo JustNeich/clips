@@ -160,6 +160,13 @@ export function resolveChannelManagerTemplateFormatGroup(
   return getTemplateVariant(variantId).formatGroup;
 }
 
+export function resolveChannelManagerCanEditChannelPrompt(input: {
+  currentUserCanEditSetup: boolean;
+  isWorkspaceDefaultsSelection: boolean;
+}): boolean {
+  return !input.isWorkspaceDefaultsSelection && input.currentUserCanEditSetup;
+}
+
 export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
   saving: string;
   saved: string;
@@ -941,9 +948,10 @@ export function ChannelManager({
   const canEditSetup = Boolean(activeChannel?.currentUserCanEditSetup);
   const canEditWorkspaceDefaults = isOwner && isWorkspaceDefaultsSelection;
   const canEditHardConstraints = isWorkspaceDefaultsSelection ? canEditWorkspaceDefaults : canEditSetup;
-  const canEditChannelPrompt =
-    Boolean(activeChannel?.currentUserCanEditSetup) &&
-    (currentUserRole === "owner" || currentUserRole === "manager");
+  const canEditChannelPrompt = resolveChannelManagerCanEditChannelPrompt({
+    currentUserCanEditSetup: canEditSetup,
+    isWorkspaceDefaultsSelection
+  });
 
   useEffect(() => {
     if (!activeChannel || !canEditSetup) {

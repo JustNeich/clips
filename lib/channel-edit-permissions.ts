@@ -25,13 +25,6 @@ export function getRestrictedChannelEditError(
 
   if (
     (role === "redactor" || role === "redactor_limited") &&
-    patch.stage2PromptConfig
-  ) {
-    return "Редактор не может менять Stage 2 prompt канала.";
-  }
-
-  if (
-    (role === "redactor" || role === "redactor_limited") &&
     (typeof patch.systemPrompt === "string" || typeof patch.descriptionPrompt === "string")
   ) {
     return "Редактор не может менять системные промпты канала.";

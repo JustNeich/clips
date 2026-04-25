@@ -2485,7 +2485,7 @@ test("limited redactor still cannot edit channel setup", () => {
   assert.equal(permissions.canDelete, false);
 });
 
-test("editor restrictions block only system prompts and thinking changes", () => {
+test("editor restrictions allow channel Stage 2 prompt settings but block legacy system prompts", () => {
   assert.equal(
     getRestrictedChannelEditError("redactor", {
       name: "Updated channel",
@@ -2515,7 +2515,7 @@ test("editor restrictions block only system prompts and thinking changes", () =>
     getRestrictedChannelEditError("redactor", {
       stage2PromptConfig: normalizeStage2PromptConfig({})
     }),
-    "Редактор не может менять Stage 2 prompt канала."
+    null
   );
   assert.equal(
     getRestrictedChannelEditError("manager", {
