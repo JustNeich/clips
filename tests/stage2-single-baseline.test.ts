@@ -18,6 +18,7 @@ import {
 } from "../lib/stage2-channel-config";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
+  STAGE2_PIPELINE_STAGES,
   normalizeStage2PromptConfig
 } from "../lib/stage2-pipeline";
 import {
@@ -66,6 +67,10 @@ test("single-baseline worker registry exposes only the canonical active profile"
 
   assert.deepEqual(profiles.map((profile) => profile.id), [DEFAULT_STAGE2_WORKER_PROFILE_ID]);
   assert.equal(profiles[0]?.executionMode, "one_shot_reference_v2");
+  const oneShotStage = STAGE2_PIPELINE_STAGES.find((stage) => stage.id === "oneShotReference");
+  assert.equal(oneShotStage?.promptConfigurable, true);
+  assert.match(oneShotStage?.description ?? "", /examples/);
+  assert.match(oneShotStage?.description ?? "", /template semantics/);
 
   const historical = resolveStage2WorkerProfile("stable_reference_v6_experimental");
   assert.equal(historical.resolvedId, "stable_reference_v6_experimental");

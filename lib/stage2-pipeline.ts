@@ -48,8 +48,8 @@ const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
     label: "Running one-shot reference baseline",
     shortLabel: "One-shot",
     description:
-      "Product-owned one-shot prompt reads video truth, bounded comments hints, hard constraints, and user instruction in one pass.",
-    promptConfigurable: false,
+      "Configurable one-shot prompt reads video truth, bounded comments hints, examples, template semantics, hard constraints, and user instruction in one pass.",
+    promptConfigurable: true,
     promptStageType: "llm"
   },
   {
