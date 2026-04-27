@@ -8314,6 +8314,7 @@ select.text-input:focus {
 }
 
 .admin-flow-timeline li,
+.admin-flow-stage3-ledger article,
 .admin-flows-audit article {
   border-left: 3px solid rgba(148, 163, 184, 0.5);
   padding: 8px 10px;
@@ -8321,22 +8322,38 @@ select.text-input:focus {
 }
 
 .admin-flow-timeline li.tone-error,
+.admin-flow-stage3-ledger article.tone-error,
 .admin-flows-audit article.tone-error {
   border-left-color: #ef4444;
 }
 
 .admin-flow-timeline li.tone-warn,
+.admin-flow-stage3-ledger article.tone-warn,
 .admin-flows-audit article.tone-warn {
   border-left-color: #f59e0b;
 }
 
 .admin-flow-timeline span,
 .admin-flow-timeline small,
+.admin-flow-stage3-ledger span,
+.admin-flow-stage3-ledger small,
 .admin-flows-audit span,
 .admin-flows-audit small {
   display: block;
   color: var(--text-muted);
   font-size: 0.76rem;
+}
+
+.admin-flow-stage3-ledger {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.admin-flow-stage3-ledger p {
+  margin: 6px 0 0;
+  color: var(--danger-text, #fecaca);
+  font-size: 0.82rem;
 }
 
 .admin-flows-tabs {

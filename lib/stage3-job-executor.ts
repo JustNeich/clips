@@ -158,6 +158,22 @@ export function classifyStage3HeavyJobError(
   kind: Stage3JobKind,
   error: unknown
 ): { code: string; message: string; recoverable: boolean } {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowerMessage = message.toLowerCase();
+  if (
+    lowerMessage.includes("template snapshot drift") ||
+    lowerMessage.includes("template spec revision changed") ||
+    lowerMessage.includes("template fit revision changed") ||
+    lowerMessage.includes("template text fit drift") ||
+    lowerMessage.includes("template text fit changed")
+  ) {
+    return {
+      code: "template_snapshot_drift",
+      message,
+      recoverable: true
+    };
+  }
+
   const ytdlpError = extractYtDlpErrorDescriptorFromUnknown(error);
   if (ytdlpError) {
     return {
@@ -191,13 +207,13 @@ export function classifyStage3HeavyJobError(
   if (kind === "agent-media-step") {
     return {
       code: resolveStage3HeavyJobErrorCode(kind),
-      message: error instanceof Error ? error.message : "Stage 3 agent media step failed.",
+      message: message || "Stage 3 agent media step failed.",
       recoverable: true
     };
   }
   return {
     code: resolveStage3HeavyJobErrorCode(kind),
-    message: error instanceof Error ? error.message : "Stage 3 job failed.",
+    message: message || "Stage 3 job failed.",
     recoverable: true
   };
 }

@@ -67,7 +67,16 @@ function extractStageRun(detail: unknown, stage: string, id?: string | null): un
     return id ? runs.find((run) => (run as JsonRecord).runId === id) ?? null : runs[0] ?? null;
   }
   if (stage === "stage3") {
-    return (root.stage3 as JsonRecord | undefined) ?? null;
+    const detailObject = detail as JsonRecord;
+    const jobs = ((detailObject.stage3Jobs as unknown[]) ?? []).filter(Boolean);
+    if (id) {
+      return jobs.find((job) => (job as JsonRecord).id === id) ?? null;
+    }
+    return {
+      latestJob: jobs[0] ?? null,
+      jobs,
+      trace: (root.stage3 as JsonRecord | undefined) ?? null
+    };
   }
   if (stage === "publishing") {
     const detailObject = detail as JsonRecord;
@@ -97,6 +106,13 @@ server.registerTool(
       channelId: z.string().optional(),
       stage: z.string().optional(),
       status: z.string().optional(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+      dateBasis: z.enum(["created", "lastActivity"]).optional(),
+      from: z.string().optional(),
+      to: z.string().optional(),
+      todayFrom: z.string().optional(),
+      todayTo: z.string().optional(),
       limit: z.number().int().min(1).max(200).optional()
     })
   },
@@ -168,7 +184,10 @@ server.registerTool(
       channelId: z.string().optional(),
       stage: z.string().optional(),
       status: z.string().optional(),
+      severity: z.string().optional(),
       search: z.string().optional(),
+      from: z.string().optional(),
+      to: z.string().optional(),
       limit: z.number().int().min(1).max(500).optional()
     })
   },

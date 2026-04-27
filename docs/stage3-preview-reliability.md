@@ -73,3 +73,10 @@
 - Editing proxy, preview artifact и любые другие mp4/webm маршруты, которыми кормится browser preview, должны отвечать с `Accept-Ranges: bytes`.
 - Если route игнорирует `Range` и всегда стримит только `200 OK`, браузер не может перейти в поздний source offset вроде `40s`, даже если transport выставил `video.currentTime = 40`.
 - В таком состоянии Step 3 визуально ломается циклически: media остаётся в начале файла, а редакторская логика продолжает считать, что playhead должен быть уже в выбранном окне.
+
+## 12. Stage 3 ошибки должны быть flow-observable
+
+- Preview, render и editing-proxy jobs, стартующие из Step 3, должны нести `chatId` и `channelId`, чтобы owner journal и MCP могли собрать всю историю по конкретному ролику.
+- Ошибки до создания job, например отсутствующий source или недоступный локальный executor, фиксируются compact audit event-ом `stage3_request.failed`.
+- Ошибки внутри job фиксируются в `stage3_jobs`, `stage3_job_events` и audit event `stage3_job.failed`.
+- Template drift не должен выглядеть как generic render failure: он классифицируется как `template_snapshot_drift` и остаётся recoverable, потому что операторский recovery — обновить preview и повторить render.

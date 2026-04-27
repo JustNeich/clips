@@ -6,6 +6,7 @@ import { buildStage3RenderRequestDedupeKey } from "../../../../../lib/stage3-ren
 import { Stage3RenderRequestBody } from "../../../../../lib/stage3-render-service";
 import { resolveStage3LocalWorkerReadiness } from "../../../../../lib/stage3-worker-readiness";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
+import { auditStage3RequestFailure } from "../../../../../lib/stage3-observability";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,15 @@ export async function POST(request: Request): Promise<Response> {
     }
     const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
     if (!sourceUrl) {
+      auditStage3RequestFailure({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        kind: "render",
+        body,
+        errorCode: "missing_source_url",
+        errorMessage: "Передайте sourceUrl в теле запроса.",
+        recoverable: false
+      });
       return Response.json(
         buildStage3JobErrorBody({
           message: "Передайте sourceUrl в теле запроса.",
@@ -32,6 +42,15 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
     if (!isSupportedUrl(sourceUrl)) {
+      auditStage3RequestFailure({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        kind: "render",
+        body: { ...(body ?? {}), sourceUrl },
+        errorCode: "unsupported_source_url",
+        errorMessage: "Не удалось подготовить исходное видео для рендера. Проверьте ссылку на ролик из Шага 1.",
+        recoverable: false
+      });
       return Response.json(
         buildStage3JobErrorBody({
           message: "Не удалось подготовить исходное видео для рендера. Проверьте ссылку на ролик из Шага 1.",
@@ -52,6 +71,16 @@ export async function POST(request: Request): Promise<Response> {
           readiness.onlineWorkers > 0 && readiness.expectedRuntimeVersion
             ? `Текущий локальный executor устарел. Требуется runtime ${readiness.expectedRuntimeVersion}.`
             : "Локальный executor Stage 3 недоступен.";
+        auditStage3RequestFailure({
+          workspaceId: auth.workspace.id,
+          userId: auth.user.id,
+          kind: "render",
+          body: { ...(body ?? {}), sourceUrl },
+          errorCode: readiness.onlineWorkers > 0 ? "worker_runtime_outdated" : "worker_unavailable",
+          errorMessage: `${detail} Обновите/перезапустите worker через bootstrap и повторите попытку.`,
+          recoverable: true,
+          executionTarget
+        });
         return Response.json(
           buildStage3JobErrorBody({
             message: `${detail} Обновите/перезапустите worker через bootstrap и повторите попытку.`,

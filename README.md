@@ -136,6 +136,8 @@ npm run dev
     - export truncation is reported explicitly instead of being silently hidden;
   - owner observability is workspace-level:
     - `/admin/flows` shows a read-only operational journal across channels, source jobs, Stage 2 runs, Stage 3 jobs, render exports, publications, and compact deletion events;
+    - flow timestamps distinguish chat creation from last activity, so created-today counters are not inflated by old videos that were rendered, edited, or repolled today;
+    - Stage 3 preview/render/proxy attempts are exposed as a per-chat job ledger with typed errors such as `template_snapshot_drift`, worker target, attempts, payload, result, and job events;
     - `/api/admin/flows`, `/api/admin/audit-events`, and `/api/admin/mcp-tokens` are owner-only for browser sessions;
     - owner-created MCP tokens can read the same redacted flow data through `npm run mcp:flows` with `CLIPS_APP_URL` and `CLIPS_MCP_TOKEN`;
     - redaction keeps prompts/model/provider/input/output diagnostics visible while removing API keys, cookies, OAuth/session/lease tokens, token hashes, encrypted credential blobs, passwords, and client secrets;

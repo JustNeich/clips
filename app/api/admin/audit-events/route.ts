@@ -11,6 +11,17 @@ function parseLimit(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseDateBoundary(value: string | null, edge: "start" | "end"): string | null {
+  const raw = value?.trim();
+  if (!raw) {
+    return null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return edge === "start" ? `${raw}T00:00:00.000Z` : `${raw}T23:59:59.999Z`;
+  }
+  return raw;
+}
+
 export async function GET(request: Request): Promise<Response> {
   try {
     const auth = await requireOwnerOrMcpFlowRead(request);
@@ -24,8 +35,8 @@ export async function GET(request: Request): Promise<Response> {
       status: url.searchParams.get("status")?.trim() || null,
       severity: url.searchParams.get("severity")?.trim() || null,
       search: url.searchParams.get("search")?.trim() || null,
-      from: url.searchParams.get("from")?.trim() || null,
-      to: url.searchParams.get("to")?.trim() || null,
+      from: parseDateBoundary(url.searchParams.get("from"), "start"),
+      to: parseDateBoundary(url.searchParams.get("to"), "end"),
       limit: parseLimit(url.searchParams.get("limit"))
     });
     return Response.json({ events }, { status: 200 });

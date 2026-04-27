@@ -7,7 +7,8 @@ import {
   Stage3PreviewRequestBody
 } from "../../../../../lib/stage3-preview-service";
 import { resolveStage3LocalWorkerReadiness } from "../../../../../lib/stage3-worker-readiness";
-import { normalizeSupportedUrl } from "../../../../../lib/ytdlp";
+import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
+import { auditStage3RequestFailure } from "../../../../../lib/stage3-observability";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,43 @@ export async function POST(request: Request): Promise<Response> {
     if (body?.channelId?.trim()) {
       await requireChannelVisibility(auth, body.channelId.trim());
     }
+    const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
+    if (!sourceUrl) {
+      auditStage3RequestFailure({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        kind: "preview",
+        body,
+        errorCode: "missing_source_url",
+        errorMessage: "Передайте sourceUrl в теле запроса.",
+        recoverable: false
+      });
+      return Response.json(
+        buildStage3JobErrorBody({
+          message: "Передайте sourceUrl в теле запроса.",
+          recoverable: false
+        }),
+        { status: 400 }
+      );
+    }
+    if (!isSupportedUrl(sourceUrl)) {
+      auditStage3RequestFailure({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        kind: "preview",
+        body: { ...(body ?? {}), sourceUrl },
+        errorCode: "unsupported_source_url",
+        errorMessage: "Не удалось подготовить исходное видео для предпросмотра. Проверьте ссылку на ролик из Шага 1.",
+        recoverable: false
+      });
+      return Response.json(
+        buildStage3JobErrorBody({
+          message: "Не удалось подготовить исходное видео для предпросмотра. Проверьте ссылку на ролик из Шага 1.",
+          recoverable: false
+        }),
+        { status: 400 }
+      );
+    }
 
     const executionTarget = resolveStage3Execution(auth.workspace.stage3ExecutionTarget).resolvedTarget;
     if (executionTarget === "local") {
@@ -39,6 +77,16 @@ export async function POST(request: Request): Promise<Response> {
           readiness.onlineWorkers > 0 && readiness.expectedRuntimeVersion
             ? `Текущий локальный executor устарел. Требуется runtime ${readiness.expectedRuntimeVersion}.`
             : "Локальный executor Stage 3 недоступен.";
+        auditStage3RequestFailure({
+          workspaceId: auth.workspace.id,
+          userId: auth.user.id,
+          kind: "preview",
+          body,
+          errorCode: readiness.onlineWorkers > 0 ? "worker_runtime_outdated" : "worker_unavailable",
+          errorMessage: `${detail} Обновите/перезапустите worker через bootstrap и повторите попытку.`,
+          recoverable: true,
+          executionTarget
+        });
         return Response.json(
           buildStage3JobErrorBody({
             message: `${detail} Обновите/перезапустите worker через bootstrap и повторите попытку.`,
@@ -59,7 +107,7 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
 
-    const dedupeKey = await buildStage3PreviewDedupeKey(body ?? {}, {
+    const dedupeKey = await buildStage3PreviewDedupeKey({ ...(body ?? {}), sourceUrl }, {
       workspaceId: auth.workspace.id,
       userId: auth.user.id
     });
@@ -70,7 +118,7 @@ export async function POST(request: Request): Promise<Response> {
       executionTarget,
       payloadJson: JSON.stringify({
         ...(body ?? {}),
-        sourceUrl: normalizeSupportedUrl(body?.sourceUrl?.trim() ?? ""),
+        sourceUrl,
         workspaceId: auth.workspace.id
       }),
       dedupeKey

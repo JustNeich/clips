@@ -5372,7 +5372,9 @@ export default function HomePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sourceUrl: activeChat.url
+            sourceUrl: activeChat.url,
+            chatId: activeChat.id,
+            channelId: activeChannelId ?? undefined
           }),
           signal: controller.signal
         }, 12_000);
@@ -5419,6 +5421,8 @@ export default function HomePage() {
       }
     };
   }, [
+    activeChannelId,
+    activeChat?.id,
     activeChat?.url,
     currentStep,
     getUiErrorMessage,
@@ -5638,6 +5642,7 @@ export default function HomePage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               sourceUrl: activeChat.url,
+              chatId: activeChat.id,
               channelId: activeChannelId ?? undefined,
               clipStartSec: stage3LivePreviewSnapshot.clipStartSec,
               clipDurationSec: stage3LivePreviewSnapshot.renderPlan.targetDurationSec,
@@ -5700,6 +5705,7 @@ export default function HomePage() {
     };
   }, [
     activeChannelId,
+    activeChat?.id,
     activeChat?.url,
     currentStep,
     getUiErrorMessage,

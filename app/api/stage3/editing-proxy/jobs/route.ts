@@ -1,4 +1,4 @@
-import { requireAuth } from "../../../../../lib/auth/guards";
+import { requireAuth, requireChannelVisibility } from "../../../../../lib/auth/guards";
 import { resolveStage3Execution } from "../../../../../lib/stage3-execution";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../lib/stage3-job-http";
 import { enqueueAndScheduleStage3Job } from "../../../../../lib/stage3-job-runtime";
@@ -8,6 +8,7 @@ import {
 } from "../../../../../lib/stage3-editing-proxy-service";
 import { resolveStage3LocalWorkerReadiness } from "../../../../../lib/stage3-worker-readiness";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../../lib/ytdlp";
+import { auditStage3RequestFailure } from "../../../../../lib/stage3-observability";
 
 export const runtime = "nodejs";
 
@@ -20,8 +21,20 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const auth = await requireAuth(request);
+    if (body?.channelId?.trim()) {
+      await requireChannelVisibility(auth, body.channelId.trim());
+    }
     const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
     if (!sourceUrl) {
+      auditStage3RequestFailure({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        kind: "editing-proxy",
+        body,
+        errorCode: "missing_source_url",
+        errorMessage: "Передайте sourceUrl в теле запроса.",
+        recoverable: false
+      });
       return Response.json(
         buildStage3JobErrorBody({
           message: "Передайте sourceUrl в теле запроса.",
@@ -31,6 +44,15 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
     if (!isSupportedUrl(sourceUrl)) {
+      auditStage3RequestFailure({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        kind: "editing-proxy",
+        body: { ...(body ?? {}), sourceUrl },
+        errorCode: "unsupported_source_url",
+        errorMessage: "Не удалось подготовить proxy-видео для редактора. Проверьте ссылку на ролик из Шага 1.",
+        recoverable: false
+      });
       return Response.json(
         buildStage3JobErrorBody({
           message: "Не удалось подготовить proxy-видео для редактора. Проверьте ссылку на ролик из Шага 1.",
@@ -51,6 +73,16 @@ export async function POST(request: Request): Promise<Response> {
           readiness.onlineWorkers > 0 && readiness.expectedRuntimeVersion
             ? `Текущий локальный executor устарел. Требуется runtime ${readiness.expectedRuntimeVersion}.`
             : "Локальный executor Stage 3 недоступен.";
+        auditStage3RequestFailure({
+          workspaceId: auth.workspace.id,
+          userId: auth.user.id,
+          kind: "editing-proxy",
+          body: { ...(body ?? {}), sourceUrl },
+          errorCode: readiness.onlineWorkers > 0 ? "worker_runtime_outdated" : "worker_unavailable",
+          errorMessage: `${detail} Обновите/перезапустите worker через bootstrap и повторите попытку.`,
+          recoverable: true,
+          executionTarget
+        });
         return Response.json(
           buildStage3JobErrorBody({
             message: `${detail} Обновите/перезапустите worker через bootstrap и повторите попытку.`,
@@ -76,7 +108,11 @@ export async function POST(request: Request): Promise<Response> {
       userId: auth.user.id,
       kind: "editing-proxy",
       executionTarget,
-      payloadJson: JSON.stringify({ sourceUrl }),
+      payloadJson: JSON.stringify({
+        sourceUrl,
+        chatId: body?.chatId?.trim() || null,
+        channelId: body?.channelId?.trim() || null
+      }),
       dedupeKey: await buildStage3EditingProxyDedupeKey(
         { sourceUrl },
         {

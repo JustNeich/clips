@@ -1,4 +1,11 @@
-import type { ChannelPublicationStatus, Stage2Response } from "../app/components/types";
+import type {
+  ChannelPublicationStatus,
+  Stage2Response,
+  Stage3ExecutionTarget,
+  Stage3JobArtifact,
+  Stage3JobKind,
+  Stage3JobStatus
+} from "../app/components/types";
 import { listFlowAuditEvents, type FlowAuditEvent } from "./audit-log-store";
 import { buildChatTraceExport } from "./chat-trace-export";
 import { getChatById } from "./chat-history";
@@ -7,6 +14,7 @@ import { redactForFlowExport } from "./flow-redaction";
 import type { WorkspaceRecord } from "./team-store";
 
 export type FlowObservabilityStage = "source" | "stage2" | "stage3" | "publishing" | "new";
+export type FlowObservabilityDateBasis = "created" | "lastActivity";
 export type FlowObservabilityStatus =
   | "new"
   | "queued"
@@ -30,6 +38,7 @@ export type FlowObservabilitySummary = {
   provider: string | null;
   model: string | null;
   updatedAt: string;
+  lastActivityAt: string;
   createdAt: string;
   sourceJobId: string | null;
   stage2RunId: string | null;
@@ -42,6 +51,8 @@ export type FlowObservabilitySummary = {
 export type FlowObservabilityMetrics = {
   total: number;
   today: number;
+  createdToday: number;
+  updatedToday: number;
   running: number;
   failed: number;
   scheduled: number;
@@ -55,9 +66,44 @@ export type FlowObservabilityList = {
   auditEvents: FlowAuditEvent[];
 };
 
+export type FlowStage3JobEvent = {
+  id: string;
+  level: "info" | "warn" | "error";
+  message: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type FlowStage3JobDetail = {
+  id: string;
+  kind: Stage3JobKind;
+  status: Stage3JobStatus;
+  executionTarget: Stage3ExecutionTarget;
+  assignedWorkerId: string | null;
+  workerLabel: string | null;
+  leaseUntil: string | null;
+  lastHeartbeatAt: string | null;
+  dedupeKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  attempts: number;
+  attemptLimit: number;
+  attemptGroup: string | null;
+  recoverable: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  payload: Record<string, unknown> | null;
+  result: Record<string, unknown> | null;
+  artifact: Stage3JobArtifact | null;
+  events: FlowStage3JobEvent[];
+};
+
 export type FlowObservabilityDetail = {
   flow: FlowObservabilitySummary;
   auditEvents: FlowAuditEvent[];
+  stage3Jobs: FlowStage3JobDetail[];
   trace: unknown;
 };
 
@@ -70,6 +116,9 @@ export type FlowObservabilityFilters = {
   search?: string | null;
   from?: string | null;
   to?: string | null;
+  dateBasis?: FlowObservabilityDateBasis | null;
+  todayFrom?: string | null;
+  todayTo?: string | null;
   limit?: number | null;
 };
 
@@ -112,15 +161,34 @@ type Stage2RunLite = {
 
 type Stage3JobLite = {
   id: string;
+  user_id?: string | null;
   status: string;
   payload_json: string;
   result_json?: string | null;
+  error_code?: string | null;
   error_message?: string | null;
   kind: string;
+  execution_target?: string | null;
+  assigned_worker_id?: string | null;
+  assigned_worker_label?: string | null;
+  lease_expires_at?: string | null;
+  heartbeat_at?: string | null;
+  dedupe_key?: string | null;
+  recoverable?: number | null;
+  attempts?: number | null;
+  attempt_limit?: number | null;
+  attempt_group?: string | null;
   created_at: string;
   updated_at: string;
   started_at?: string | null;
   completed_at?: string | null;
+  artifact_id?: string | null;
+  artifact_job_id?: string | null;
+  artifact_kind?: string | null;
+  artifact_file_name?: string | null;
+  artifact_mime_type?: string | null;
+  artifact_size_bytes?: number | null;
+  artifact_created_at?: string | null;
 };
 
 type PublicationLite = {
@@ -209,6 +277,35 @@ function normalizeStatus(status: string | null | undefined): FlowObservabilitySt
     default:
       return "new";
   }
+}
+
+function normalizeStage3JobKind(value: string | null | undefined): Stage3JobKind {
+  if (
+    value === "preview" ||
+    value === "render" ||
+    value === "editing-proxy" ||
+    value === "source-download" ||
+    value === "agent-media-step"
+  ) {
+    return value;
+  }
+  return "preview";
+}
+
+function normalizeStage3JobStatus(value: string | null | undefined): Stage3JobStatus {
+  if (value === "queued" || value === "running" || value === "completed" || value === "failed" || value === "interrupted") {
+    return value;
+  }
+  return "failed";
+}
+
+function normalizeStage3ExecutionTarget(value: string | null | undefined): Stage3ExecutionTarget {
+  return value === "host" ? "host" : "local";
+}
+
+function parseJsonObject(raw: string | null | undefined): Record<string, unknown> | null {
+  const parsed = parseJson<unknown>(raw);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
 }
 
 function extractStage2ProviderModel(run: Stage2RunLite | null): { provider: string | null; model: string | null } {
@@ -321,6 +418,14 @@ function matchesFilters(flow: FlowObservabilitySummary, filters: FlowObservabili
       return false;
     }
   }
+  const dateBasis = filters.dateBasis === "lastActivity" ? "lastActivity" : "created";
+  const dateValue = dateBasis === "lastActivity" ? flow.lastActivityAt : flow.createdAt;
+  if (filters.from && dateValue < filters.from) {
+    return false;
+  }
+  if (filters.to && dateValue > filters.to) {
+    return false;
+  }
   return true;
 }
 
@@ -345,6 +450,7 @@ function buildSummary(
     provider: stage2ProviderModel.provider,
     model: stage2ProviderModel.model,
     updatedAt: latest.updatedAt,
+    lastActivityAt: latest.updatedAt,
     createdAt: chat.chat_created_at,
     sourceJobId: source?.job_id ?? null,
     stage2RunId: stage2?.run_id ?? null,
@@ -355,11 +461,34 @@ function buildSummary(
   };
 }
 
-function computeMetrics(flows: FlowObservabilitySummary[], auditEvents: FlowAuditEvent[]): FlowObservabilityMetrics {
+function isWithinOptionalRange(value: string, from: string | null | undefined, to: string | null | undefined): boolean {
+  if (from && value < from) {
+    return false;
+  }
+  if (to && value > to) {
+    return false;
+  }
+  return true;
+}
+
+function computeMetrics(
+  flows: FlowObservabilitySummary[],
+  auditEvents: FlowAuditEvent[],
+  filters: FlowObservabilityFilters
+): FlowObservabilityMetrics {
   const todayPrefix = new Date().toISOString().slice(0, 10);
+  const hasExplicitTodayWindow = Boolean(filters.todayFrom || filters.todayTo);
+  const isToday = (value: string): boolean =>
+    hasExplicitTodayWindow
+      ? isWithinOptionalRange(value, filters.todayFrom, filters.todayTo)
+      : value.startsWith(todayPrefix);
+  const createdToday = flows.filter((flow) => isToday(flow.createdAt)).length;
+  const updatedToday = flows.filter((flow) => isToday(flow.lastActivityAt)).length;
   return {
     total: flows.length,
-    today: flows.filter((flow) => flow.updatedAt.startsWith(todayPrefix)).length,
+    today: createdToday,
+    createdToday,
+    updatedToday,
     running: flows.filter((flow) => flow.latestStatus === "queued" || flow.latestStatus === "running").length,
     failed: flows.filter((flow) => flow.latestStatus === "failed").length,
     scheduled: flows.filter((flow) => flow.latestStatus === "scheduled").length,
@@ -384,19 +513,79 @@ export function listFlowObservability(input: {
     where.push("c.channel_id = ?");
     params.push(filters.channelId);
   }
-  if (filters.from) {
-    where.push("c.updated_at >= ?");
+  const dateBasis = filters.dateBasis === "lastActivity" ? "lastActivity" : "created";
+  if (dateBasis === "created" && filters.from) {
+    where.push("c.created_at >= ?");
     params.push(filters.from);
   }
-  if (filters.to) {
-    where.push("c.updated_at <= ?");
+  if (dateBasis === "created" && filters.to) {
+    where.push("c.created_at <= ?");
     params.push(filters.to);
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    const like = `%${search}%`;
+    where.push(
+      `(c.id LIKE ?
+        OR c.url LIKE ?
+        OR c.title LIKE ?
+        OR ch.name LIKE ?
+        OR ch.username LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM source_jobs sj
+           WHERE sj.workspace_id = c.workspace_id
+             AND sj.chat_id = c.id
+             AND (sj.job_id LIKE ? OR sj.source_url LIKE ? OR sj.error_message LIKE ? OR sj.result_json LIKE ?)
+        )
+        OR EXISTS (
+          SELECT 1 FROM stage2_runs s2
+           WHERE s2.workspace_id = c.workspace_id
+             AND s2.chat_id = c.id
+             AND (s2.run_id LIKE ? OR s2.error_message LIKE ? OR s2.result_json LIKE ?)
+        )
+        OR EXISTS (
+          SELECT 1 FROM stage3_jobs s3
+           WHERE s3.workspace_id = c.workspace_id
+             AND s3.payload_json LIKE '%' || c.id || '%'
+             AND (s3.id LIKE ? OR s3.error_code LIKE ? OR s3.error_message LIKE ? OR s3.payload_json LIKE ? OR s3.result_json LIKE ?)
+        )
+        OR EXISTS (
+          SELECT 1 FROM channel_publications cp
+           WHERE cp.workspace_id = c.workspace_id
+             AND cp.chat_id = c.id
+             AND (cp.id LIKE ? OR cp.title LIKE ? OR cp.youtube_video_url LIKE ? OR cp.last_error LIKE ?)
+        ))`
+    );
+    params.push(
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like,
+      like
+    );
   }
   const limit =
     typeof filters.limit === "number" && Number.isFinite(filters.limit)
       ? Math.max(1, Math.min(200, Math.floor(filters.limit)))
       : 80;
-  params.push(Math.max(limit * 3, limit));
+  const scanLimit = search || filters.from || filters.to ? 2000 : Math.max(limit * 10, 500);
+  params.push(scanLimit);
 
   const db = getDb();
   const chats = db
@@ -411,10 +600,10 @@ export function listFlowObservability(input: {
           c.updated_at as chat_updated_at,
           ch.name as channel_name,
           ch.username as channel_username
-        FROM chat_threads c
+       FROM chat_threads c
         JOIN channels ch ON ch.id = c.channel_id
        WHERE ${where.join(" AND ")}
-       ORDER BY c.updated_at DESC
+       ORDER BY c.updated_at DESC, c.created_at DESC
        LIMIT ?`
     )
     .all(...(params as string[])) as ChatFlowRow[];
@@ -466,7 +655,7 @@ export function listFlowObservability(input: {
         `SELECT * FROM stage3_jobs
           WHERE workspace_id = ?
           ORDER BY updated_at DESC
-          LIMIT 500`
+          LIMIT 2000`
       )
       .all(input.workspaceId) as Stage3JobLite[]
   );
@@ -489,13 +678,140 @@ export function listFlowObservability(input: {
       )
     )
     .filter((flow) => matchesFilters(flow, filters))
+    .sort((left, right) => right.lastActivityAt.localeCompare(left.lastActivityAt) || right.createdAt.localeCompare(left.createdAt))
     .slice(0, limit);
 
   return {
     flows: redactForFlowExport(flows),
-    metrics: computeMetrics(flows, auditEvents),
+    metrics: computeMetrics(flows, auditEvents, filters),
     auditEvents: redactForFlowExport(auditEvents)
   };
+}
+
+type Stage3JobEventRow = {
+  id: string;
+  job_id: string;
+  level: string;
+  message: string;
+  payload_json?: string | null;
+  created_at: string;
+};
+
+function mapStage3JobEvent(row: Stage3JobEventRow): FlowStage3JobEvent {
+  return {
+    id: String(row.id),
+    level: row.level === "warn" || row.level === "error" ? row.level : "info",
+    message: String(row.message),
+    payload: parseJsonObject(row.payload_json),
+    createdAt: String(row.created_at)
+  };
+}
+
+function mapStage3JobDetail(row: Stage3JobLite, events: FlowStage3JobEvent[]): FlowStage3JobDetail {
+  const artifact =
+    row.artifact_id && row.artifact_file_name && row.artifact_mime_type
+      ? {
+          id: String(row.artifact_id),
+          jobId: String(row.artifact_job_id ?? row.id),
+          kind: "video" as const,
+          fileName: String(row.artifact_file_name),
+          mimeType: String(row.artifact_mime_type),
+          sizeBytes: Number(row.artifact_size_bytes) || 0,
+          createdAt: String(row.artifact_created_at ?? row.completed_at ?? row.updated_at),
+          downloadUrl: null
+        }
+      : null;
+
+  return {
+    id: String(row.id),
+    kind: normalizeStage3JobKind(row.kind),
+    status: normalizeStage3JobStatus(row.status),
+    executionTarget: normalizeStage3ExecutionTarget(row.execution_target),
+    assignedWorkerId: row.assigned_worker_id ? String(row.assigned_worker_id) : null,
+    workerLabel: row.assigned_worker_label ? String(row.assigned_worker_label) : null,
+    leaseUntil: row.lease_expires_at ? String(row.lease_expires_at) : null,
+    lastHeartbeatAt: row.heartbeat_at ? String(row.heartbeat_at) : null,
+    dedupeKey: row.dedupe_key ? String(row.dedupe_key) : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    startedAt: row.started_at ? String(row.started_at) : null,
+    completedAt: row.completed_at ? String(row.completed_at) : null,
+    attempts: Number(row.attempts) || 0,
+    attemptLimit: Number(row.attempt_limit) || 3,
+    attemptGroup: row.attempt_group ? String(row.attempt_group) : null,
+    recoverable: row.recoverable === undefined || row.recoverable === null ? true : Boolean(row.recoverable),
+    errorCode: row.error_code ? String(row.error_code) : null,
+    errorMessage: row.error_message ? String(row.error_message) : null,
+    payload: parseJsonObject(row.payload_json),
+    result: parseJsonObject(row.result_json),
+    artifact,
+    events
+  };
+}
+
+function listStage3JobDetailsForChat(input: {
+  workspaceId: string;
+  chatId: string;
+  limit?: number;
+}): FlowStage3JobDetail[] {
+  const limit = Math.max(1, Math.min(100, Math.floor(input.limit ?? 50)));
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `WITH latest_artifacts AS (
+          SELECT
+            a.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY a.job_id
+              ORDER BY a.created_at DESC, a.id DESC
+            ) AS row_num
+          FROM stage3_job_artifacts a
+        )
+        SELECT
+          j.*,
+          w.label AS assigned_worker_label,
+          a.id AS artifact_id,
+          a.job_id AS artifact_job_id,
+          a.kind AS artifact_kind,
+          a.file_name AS artifact_file_name,
+          a.mime_type AS artifact_mime_type,
+          a.size_bytes AS artifact_size_bytes,
+          a.created_at AS artifact_created_at
+        FROM stage3_jobs j
+        LEFT JOIN stage3_workers w
+          ON w.id = j.assigned_worker_id
+        LEFT JOIN latest_artifacts a
+          ON a.job_id = j.id
+         AND a.row_num = 1
+       WHERE j.workspace_id = ?
+         AND j.payload_json LIKE ?
+       ORDER BY j.updated_at DESC, j.created_at DESC
+       LIMIT ?`
+    )
+    .all(input.workspaceId, `%${input.chatId}%`, limit * 2) as Stage3JobLite[];
+
+  const matchingRows = rows.filter((row) => parseStage3ChatId(row.payload_json) === input.chatId).slice(0, limit);
+  if (!matchingRows.length) {
+    return [];
+  }
+  const jobIds = matchingRows.map((row) => row.id);
+  const placeholders = jobIds.map(() => "?").join(", ");
+  const eventRows = db
+    .prepare(
+      `SELECT *
+         FROM stage3_job_events
+        WHERE job_id IN (${placeholders})
+        ORDER BY created_at ASC, id ASC`
+    )
+    .all(...jobIds) as Stage3JobEventRow[];
+  const eventsByJob = new Map<string, FlowStage3JobEvent[]>();
+  for (const row of eventRows) {
+    const jobId = String(row.job_id);
+    const existing = eventsByJob.get(jobId) ?? [];
+    existing.push(mapStage3JobEvent(row));
+    eventsByJob.set(jobId, existing);
+  }
+  return matchingRows.map((row) => mapStage3JobDetail(row, eventsByJob.get(row.id) ?? []));
 }
 
 export async function getFlowObservabilityDetail(input: {
@@ -532,6 +848,13 @@ export async function getFlowObservabilityDetail(input: {
       chatId: input.chatId,
       limit: 200
     }),
+    stage3Jobs: redactForFlowExport(
+      listStage3JobDetailsForChat({
+        workspaceId: input.workspace.id,
+        chatId: input.chatId,
+        limit: 50
+      })
+    ) as FlowStage3JobDetail[],
     trace: redactForFlowExport(trace)
   };
 }

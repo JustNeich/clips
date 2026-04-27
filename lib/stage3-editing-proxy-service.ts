@@ -20,6 +20,8 @@ const editingProxyInflight = new Map<string, Promise<void>>();
 
 export type Stage3EditingProxyRequestBody = {
   sourceUrl?: string;
+  chatId?: string;
+  channelId?: string;
 };
 
 export type Stage3PreparedEditingProxy = {

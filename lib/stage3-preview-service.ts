@@ -52,6 +52,7 @@ export const PREVIEW_WAIT_TIMEOUT_MS = 20_000;
 
 export type Stage3PreviewRequestBody = {
   sourceUrl?: string;
+  chatId?: string;
   channelId?: string;
   workspaceId?: string;
   clipStartSec?: number;

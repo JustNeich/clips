@@ -581,10 +581,23 @@
 
 1. `owner` открывает `/admin/flows` из overflow menu `Еще`.
 2. UI загружает redacted workspace flow summaries через `GET /api/admin/flows`.
-3. Владелец фильтрует по каналу, stage, статусу или URL/run/publication id.
-4. При выборе строки открывается detail panel с timeline, prompts, outputs, publication state и raw JSON.
+3. Владелец фильтрует по каналу, date basis (`Создан` или `Последнее событие`), stage, статусу, provider/model или URL/run/publication/job id.
+4. При выборе строки открывается detail panel с timeline, prompts, outputs, Stage 3 job ledger, publication state и raw JSON.
 5. `Trace JSON` выгружает redacted single-flow trace.
 6. При необходимости owner создаёт MCP token и подключает `npm run mcp:flows` через `CLIPS_APP_URL` / `CLIPS_MCP_TOKEN`.
+
+### Timestamp semantics
+
+1. `Создано сегодня` считается по `chat.created_at`, то есть по созданию flow/чата.
+2. `Обновлено сегодня` считается по последнему source / Stage 2 / Stage 3 / publication событию.
+3. Таблица показывает обе даты отдельно: `Создан` и `Последнее событие`.
+4. Browser UI передает границы календарного дня как локальный день владельца; API/MCP без явного окна используют UTC fallback.
+
+### Stage 3 observability
+
+1. Render, accurate preview и editing proxy jobs должны иметь `chatId`/`channelId`, если они стартуют из операторского flow.
+2. Detail panel и MCP `clips_get_stage_run(stage: "stage3")` возвращают не только draft trace, но и Stage 3 job ledger: kind, status, executor, attempts, payload, result, artifact metadata, events и typed error.
+3. Template snapshot drift фиксируется как recoverable `template_snapshot_drift`, чтобы такие ошибки можно было фильтровать и отличать от ffmpeg/source/worker failures.
 
 ### Blocked path
 

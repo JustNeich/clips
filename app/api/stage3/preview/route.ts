@@ -8,6 +8,7 @@ import {
 } from "../../../../lib/stage3-preview-service";
 import { resolveStage3LocalWorkerReadiness } from "../../../../lib/stage3-worker-readiness";
 import { isSupportedUrl, normalizeSupportedUrl } from "../../../../lib/ytdlp";
+import { auditStage3RequestFailure } from "../../../../lib/stage3-observability";
 
 export const runtime = "nodejs";
 
@@ -31,9 +32,27 @@ export async function POST(request: Request): Promise<Response> {
     }
     const sourceUrl = normalizeSupportedUrl(body?.sourceUrl?.trim() ?? "");
     if (!sourceUrl) {
+      auditStage3RequestFailure({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        kind: "preview",
+        body,
+        errorCode: "missing_source_url",
+        errorMessage: "Передайте sourceUrl в теле запроса.",
+        recoverable: false
+      });
       return Response.json({ error: "Передайте sourceUrl в теле запроса." }, { status: 400 });
     }
     if (!isSupportedUrl(sourceUrl)) {
+      auditStage3RequestFailure({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        kind: "preview",
+        body: { ...(body ?? {}), sourceUrl },
+        errorCode: "unsupported_source_url",
+        errorMessage: "Не удалось подготовить исходное видео для предпросмотра. Проверьте ссылку на ролик из Шага 1.",
+        recoverable: false
+      });
       return Response.json(
         {
           error: "Не удалось подготовить исходное видео для предпросмотра. Проверьте ссылку на ролик из Шага 1."
@@ -54,6 +73,16 @@ export async function POST(request: Request): Promise<Response> {
         userId: auth.user.id
       });
       if (!readiness.ready) {
+        auditStage3RequestFailure({
+          workspaceId: auth.workspace.id,
+          userId: auth.user.id,
+          kind: "preview",
+          body: { ...(body ?? {}), sourceUrl },
+          errorCode: readiness.onlineWorkers > 0 ? "worker_runtime_outdated" : "worker_unavailable",
+          errorMessage: "Локальный executor устарел или недоступен. Обновите worker через bootstrap и повторите попытку.",
+          recoverable: true,
+          executionTarget
+        });
         return Response.json(
           {
             error:

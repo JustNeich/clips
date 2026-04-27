@@ -25,6 +25,7 @@ type FlowSummary = {
   provider: string | null;
   model: string | null;
   updatedAt: string;
+  lastActivityAt: string;
   createdAt: string;
   sourceJobId: string | null;
   stage2RunId: string | null;
@@ -37,6 +38,8 @@ type FlowSummary = {
 type FlowMetrics = {
   total: number;
   today: number;
+  createdToday: number;
+  updatedToday: number;
   running: number;
   failed: number;
   scheduled: number;
@@ -68,6 +71,7 @@ type FlowListResponse = {
 type FlowDetailResponse = {
   flow: FlowSummary;
   auditEvents: AuditEvent[];
+  stage3Jobs: unknown[];
   trace: unknown;
   error?: string;
 };
@@ -82,11 +86,13 @@ type McpToken = {
   createdAt: string;
 };
 
-type TabId = "summary" | "inputs" | "prompts" | "outputs" | "publication" | "raw";
+type TabId = "summary" | "inputs" | "prompts" | "outputs" | "stage3" | "publication" | "raw";
 
 const EMPTY_METRICS: FlowMetrics = {
   total: 0,
   today: 0,
+  createdToday: 0,
+  updatedToday: 0,
   running: 0,
   failed: 0,
   scheduled: 0,
@@ -126,6 +132,18 @@ function formatDate(value: string | null | undefined): string {
   });
 }
 
+function toLocalDateBoundary(value: string, edge: "start" | "end"): string {
+  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10));
+  if (!year || !month || !day) {
+    return value;
+  }
+  const date =
+    edge === "start"
+      ? new Date(year, month - 1, day, 0, 0, 0, 0)
+      : new Date(year, month - 1, day, 23, 59, 59, 999);
+  return date.toISOString();
+}
+
 function stringifyPreview(value: unknown): string {
   if (value === null || value === undefined) {
     return "—";
@@ -145,6 +163,10 @@ function getTraceSection(trace: unknown, path: string[]): unknown {
     current = (current as Record<string, unknown>)[key];
   }
   return current;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function parseDownloadFileName(response: Response): string | null {
@@ -176,6 +198,11 @@ export default function AdminFlowsPage() {
   const [stage, setStage] = useState("");
   const [status, setStatus] = useState("");
   const [channelId, setChannelId] = useState("");
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
+  const [dateBasis, setDateBasis] = useState<"created" | "lastActivity">("created");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [tokens, setTokens] = useState<McpToken[]>([]);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [statusText, setStatusText] = useState("");
@@ -192,6 +219,14 @@ export default function AdminFlowsPage() {
     return [...unique.values()].sort((left, right) => left.label.localeCompare(right.label));
   }, [flows]);
 
+  const providerOptions = useMemo(() => {
+    return [...new Set(flows.map((flow) => flow.provider).filter((value): value is string => Boolean(value)))].sort();
+  }, [flows]);
+
+  const modelOptions = useMemo(() => {
+    return [...new Set(flows.map((flow) => flow.model).filter((value): value is string => Boolean(value)))].sort();
+  }, [flows]);
+
   const loadAuth = useCallback(async () => {
     const response = await fetch("/api/auth/me");
     const body = (await response.json()) as AuthMeResponse;
@@ -205,6 +240,14 @@ export default function AdminFlowsPage() {
     if (stage) params.set("stage", stage);
     if (status) params.set("status", status);
     if (channelId) params.set("channelId", channelId);
+    if (provider) params.set("provider", provider);
+    if (model) params.set("model", model);
+    if (dateBasis) params.set("dateBasis", dateBasis);
+    if (fromDate) params.set("from", toLocalDateBoundary(fromDate, "start"));
+    if (toDate) params.set("to", toLocalDateBoundary(toDate, "end"));
+    const today = new Date();
+    params.set("todayFrom", new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString());
+    params.set("todayTo", new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString());
     params.set("limit", "120");
     const response = await fetch(`/api/admin/flows?${params.toString()}`);
     const body = (await response.json().catch(() => null)) as FlowListResponse | null;
@@ -214,7 +257,7 @@ export default function AdminFlowsPage() {
     setFlows(body?.flows ?? []);
     setMetrics(body?.metrics ?? EMPTY_METRICS);
     setAuditEvents(body?.auditEvents ?? []);
-  }, [channelId, search, stage, status]);
+  }, [channelId, dateBasis, fromDate, model, provider, search, stage, status, toDate]);
 
   const loadTokens = useCallback(async () => {
     const response = await fetch("/api/admin/mcp-tokens");
@@ -261,7 +304,7 @@ export default function AdminFlowsPage() {
       if (!response.ok) {
         throw new Error(body?.error ?? "Не удалось загрузить детали процесса.");
       }
-      setDetail(body);
+      setDetail(body ? { ...body, stage3Jobs: body.stage3Jobs ?? [] } : null);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Не удалось загрузить детали процесса.");
     } finally {
@@ -344,7 +387,15 @@ export default function AdminFlowsPage() {
       case "outputs":
         return stringifyPreview({
           stage2: getTraceSection(trace, ["stage2", "currentResult"]),
-          stage3: getTraceSection(trace, ["stage3"])
+          stage3: getTraceSection(trace, ["stage3"]),
+          stage3Jobs: detail?.stage3Jobs ?? []
+        });
+      case "stage3":
+        return stringifyPreview({
+          flow: detail?.flow ?? null,
+          jobs: detail?.stage3Jobs ?? [],
+          auditEvents: detail?.auditEvents.filter((event) => event.stage === "stage3") ?? [],
+          trace: getTraceSection(trace, ["stage3"])
         });
       case "publication":
         return stringifyPreview({
@@ -352,7 +403,7 @@ export default function AdminFlowsPage() {
           auditEvents: detail?.auditEvents.filter((event) => event.stage === "publishing" || event.stage === "youtube") ?? []
         });
       case "raw":
-        return stringifyPreview(trace);
+        return stringifyPreview(detail ?? null);
       default:
         return stringifyPreview(detail?.flow ?? null);
     }
@@ -392,7 +443,8 @@ export default function AdminFlowsPage() {
       <section className="admin-flows-metrics">
         {[
           ["Всего", metrics.total],
-          ["Сегодня", metrics.today],
+          ["Создано сегодня", metrics.createdToday ?? metrics.today],
+          ["Обновлено сегодня", metrics.updatedToday],
           ["В работе", metrics.running],
           ["Ошибки", metrics.failed],
           ["Запланировано", metrics.scheduled],
@@ -416,6 +468,21 @@ export default function AdminFlowsPage() {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="URL, title, run id"
             />
+          </label>
+          <label>
+            Дата
+            <select className="text-input" value={dateBasis} onChange={(event) => setDateBasis(event.target.value as "created" | "lastActivity")}>
+              <option value="created">Создан</option>
+              <option value="lastActivity">Последнее событие</option>
+            </select>
+          </label>
+          <label>
+            От
+            <input className="text-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+          </label>
+          <label>
+            До
+            <input className="text-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           </label>
           <label>
             Канал
@@ -451,6 +518,28 @@ export default function AdminFlowsPage() {
               <option value="canceled">Удалено</option>
             </select>
           </label>
+          <label>
+            Provider
+            <select className="text-input" value={provider} onChange={(event) => setProvider(event.target.value)}>
+              <option value="">Все</option>
+              {providerOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Model
+            <select className="text-input" value={model} onChange={(event) => setModel(event.target.value)}>
+              <option value="">Все</option>
+              {modelOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
           <section className="admin-flows-mcp">
             <div className="control-actions">
               <h2>MCP</h2>
@@ -482,7 +571,8 @@ export default function AdminFlowsPage() {
                 <th>Канал / ролик</th>
                 <th>Stage</th>
                 <th>Provider</th>
-                <th>Обновлён</th>
+                <th>Создан</th>
+                <th>Последнее событие</th>
                 <th />
               </tr>
             </thead>
@@ -504,7 +594,8 @@ export default function AdminFlowsPage() {
                     <span>{flow.provider ?? "—"}</span>
                     <small>{flow.model ?? ""}</small>
                   </td>
-                  <td>{formatDate(flow.updatedAt)}</td>
+                  <td>{formatDate(flow.createdAt)}</td>
+                  <td>{formatDate(flow.lastActivityAt ?? flow.updatedAt)}</td>
                   <td>
                     <div className="admin-flows-row-actions">
                       <button className="btn btn-ghost" type="button" onClick={() => void openFlow(flow.chatId)}>
@@ -519,7 +610,7 @@ export default function AdminFlowsPage() {
               ))}
               {flows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="admin-flows-empty">
+                  <td colSpan={6} className="admin-flows-empty">
                     Процессы не найдены.
                   </td>
                 </tr>
@@ -549,12 +640,33 @@ export default function AdminFlowsPage() {
                   </li>
                 ))}
               </ol>
+              {detail.stage3Jobs.length > 0 ? (
+                <div className="admin-flow-stage3-ledger">
+                  {detail.stage3Jobs.slice(0, 6).map((rawJob) => {
+                    const job = asRecord(rawJob);
+                    const id = String(job.id ?? "");
+                    const status = String(job.status ?? "new");
+                    const kind = String(job.kind ?? "stage3");
+                    const errorMessage = typeof job.errorMessage === "string" ? job.errorMessage : "";
+                    const errorCode = typeof job.errorCode === "string" ? job.errorCode : "";
+                    return (
+                      <article key={id || `${kind}-${String(job.createdAt ?? "")}`} className={`tone-${status === "failed" || status === "interrupted" ? "error" : "info"}`}>
+                        <span>{formatDate(String(job.updatedAt ?? job.createdAt ?? ""))}</span>
+                        <strong>{kind} · {status}</strong>
+                        <small>{errorCode || String(job.executionTarget ?? "")}</small>
+                        {errorMessage ? <p>{errorMessage}</p> : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : null}
               <div className="admin-flows-tabs">
                 {[
                   ["summary", "Summary"],
                   ["inputs", "Inputs"],
                   ["prompts", "Prompts"],
                   ["outputs", "Outputs"],
+                  ["stage3", "Stage 3"],
                   ["publication", "Publication"],
                   ["raw", "Raw JSON"]
                 ].map(([id, label]) => (

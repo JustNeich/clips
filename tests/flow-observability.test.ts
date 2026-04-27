@@ -17,10 +17,12 @@ import { appendFlowAuditEvent, listFlowAuditEvents } from "../lib/audit-log-stor
 import { createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import { buildPublicationSlotCandidateFromDateAndIndex, DEFAULT_CHANNEL_PUBLISH_SETTINGS } from "../lib/channel-publishing";
 import { redactForFlowExport } from "../lib/flow-redaction";
-import { listFlowObservability } from "../lib/flow-observability";
+import { getFlowObservabilityDetail, listFlowObservability } from "../lib/flow-observability";
 import { createRenderExport, createChannelPublication, cancelChannelPublication } from "../lib/publication-store";
 import { createSourceJob, finalizeSourceJobSuccess, claimNextQueuedSourceJob } from "../lib/source-job-store";
-import { completeStage3Job, enqueueStage3Job } from "../lib/stage3-job-store";
+import { completeStage3Job, enqueueStage3Job, finishStage3Job } from "../lib/stage3-job-store";
+import { classifyStage3HeavyJobError } from "../lib/stage3-job-executor";
+import { getDb } from "../lib/db/client";
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS
@@ -289,6 +291,110 @@ test("flow list aggregates jobs, runs, publication state, and model metadata", a
     assert.equal(flow?.model, "gpt-test");
     assert.equal(result.metrics.deleted >= 1, true);
   });
+});
+
+test("flow metrics separate chat creation date from last activity date", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, chat } = await seedFlow(appDataDir);
+    getDb()
+      .prepare("UPDATE chat_threads SET created_at = ?, updated_at = ? WHERE id = ?")
+      .run("2001-01-02T03:04:05.000Z", "2001-01-02T03:04:05.000Z", chat.id);
+
+    const result = listFlowObservability({ workspaceId: owner.workspace.id });
+    const flow = result.flows.find((item) => item.chatId === chat.id);
+
+    assert.ok(flow);
+    assert.equal(flow?.createdAt, "2001-01-02T03:04:05.000Z");
+    assert.equal(result.metrics.createdToday, 0);
+    assert.equal(result.metrics.today, 0);
+    assert.equal(result.metrics.updatedToday, 1);
+
+    const oldCreatedRange = listFlowObservability({
+      workspaceId: owner.workspace.id,
+      filters: {
+        dateBasis: "created",
+        from: "2001-01-02T00:00:00.000Z",
+        to: "2001-01-02T23:59:59.999Z"
+      }
+    });
+    assert.equal(oldCreatedRange.flows.some((item) => item.chatId === chat.id), true);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const createdTodayRange = listFlowObservability({
+      workspaceId: owner.workspace.id,
+      filters: {
+        dateBasis: "created",
+        from: `${today}T00:00:00.000Z`,
+        to: `${today}T23:59:59.999Z`
+      }
+    });
+    assert.equal(createdTodayRange.flows.some((item) => item.chatId === chat.id), false);
+
+    const activityTodayRange = listFlowObservability({
+      workspaceId: owner.workspace.id,
+      filters: {
+        dateBasis: "lastActivity",
+        from: `${today}T00:00:00.000Z`,
+        to: `${today}T23:59:59.999Z`
+      }
+    });
+    assert.equal(activityTodayRange.flows.some((item) => item.chatId === chat.id), true);
+  });
+});
+
+test("Stage 3 drift failures are typed and exposed in flow detail job ledger", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedFlow(appDataDir);
+    const failed = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({
+        requestId: "drift-request-1",
+        chatId: chat.id,
+        channelId: channel.id,
+        sourceUrl: chat.url,
+        templateId: "science-card-v1"
+      })
+    });
+    finishStage3Job(failed.id, {
+      status: "failed",
+      errorCode: "template_snapshot_drift",
+      errorMessage: "Template snapshot drift detected. Обновите preview и повторите render.",
+      recoverable: true
+    });
+
+    const result = listFlowObservability({
+      workspaceId: owner.workspace.id,
+      filters: { search: failed.id, limit: 20 }
+    });
+    assert.equal(result.flows.some((flow) => flow.chatId === chat.id), true);
+
+    const detail = await getFlowObservabilityDetail({
+      workspace: owner.workspace,
+      userId: owner.user.id,
+      chatId: chat.id
+    });
+    assert.ok(detail);
+    assert.equal(detail?.flow.latestStage, "stage3");
+    assert.equal(detail?.flow.latestStatus, "failed");
+    assert.match(detail?.flow.lastError ?? "", /Template snapshot drift/);
+    assert.equal(detail?.stage3Jobs[0]?.id, failed.id);
+    assert.equal(detail?.stage3Jobs[0]?.errorCode, "template_snapshot_drift");
+    assert.equal(detail?.stage3Jobs[0]?.payload?.requestId, "drift-request-1");
+    assert.ok(detail?.stage3Jobs[0]?.events.some((event) => event.level === "error"));
+  });
+});
+
+test("Stage 3 classifier maps template drift to a stable typed error", () => {
+  const classified = classifyStage3HeavyJobError(
+    "render",
+    new Error("Template snapshot drift detected. Обновите preview и повторите render.")
+  );
+
+  assert.equal(classified.code, "template_snapshot_drift");
+  assert.equal(classified.recoverable, true);
+  assert.match(classified.message, /Template snapshot drift/);
 });
 
 test("admin flow APIs and MCP token routes are owner-only for session auth", async () => {
