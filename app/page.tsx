@@ -2633,8 +2633,7 @@ export default function HomePage() {
             mediaAsset: null,
             backgroundAsset: null,
             avatarAsset: null
-          },
-          fitOverride: effectiveTextFitOverride ?? undefined
+          }
         });
       return {
         topText: templateSnapshot.content.topText,

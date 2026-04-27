@@ -10,7 +10,8 @@ import {
 } from "./stage3-template";
 import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
 import { buildTemplateRenderSnapshot } from "./stage3-template-core";
-import { buildStage3TextFitHash, clampStage3TextScaleUi } from "./stage3-text-fit";
+import { clampStage3TextScaleUi } from "./stage3-text-fit";
+import { assertStage3RenderTemplateSnapshotFresh } from "./stage3-render-template-snapshot";
 import {
   normalizeStage3VideoBrightness,
   normalizeStage3VideoContrast,
@@ -877,54 +878,22 @@ export async function renderStage3Video(
       templateConfigOverride: managedTemplateRuntime.templateConfig,
       content: templateSnapshotContent
     });
-
-    if (
-      snapshot?.templateSnapshot?.snapshotHash &&
-      snapshot.templateSnapshot.snapshotHash !== baseTemplateSnapshot.snapshotHash
-    ) {
-      throw new Error("Template snapshot drift detected. Обновите preview и повторите render.");
-    }
-    if (
-      snapshot?.templateSnapshot?.specRevision &&
-      snapshot.templateSnapshot.specRevision !== baseTemplateSnapshot.specRevision
-    ) {
-      throw new Error("Template spec revision changed. Обновите preview и повторите render.");
-    }
-    if (
-      snapshot?.templateSnapshot?.fitRevision &&
-      snapshot.templateSnapshot.fitRevision !== baseTemplateSnapshot.fitRevision
-    ) {
-      throw new Error("Template fit revision changed. Обновите preview и повторите render.");
-    }
-    if (
-      snapshot?.textFit?.snapshotHash &&
-      snapshot.textFit.snapshotHash !== baseTemplateSnapshot.snapshotHash
-    ) {
-      throw new Error("Template text fit drift detected. Обновите preview и повторите render.");
-    }
-    if (snapshot?.textFit?.fitHash) {
-      const expectedFitHash = buildStage3TextFitHash({
-        templateId: baseTemplateSnapshot.templateId,
-        snapshotHash: baseTemplateSnapshot.snapshotHash,
-        topText: baseTemplateSnapshot.content.topText,
-        bottomText: baseTemplateSnapshot.content.bottomText,
-        topFontScale: renderPlan.topFontScale,
-        bottomFontScale: renderPlan.bottomFontScale
-      });
-      if (snapshot.textFit.fitHash !== expectedFitHash) {
-        throw new Error("Template text fit changed. Обновите preview и повторите render.");
-      }
-    }
     // The client sends templateSnapshot from the base preview model and textFit separately.
     // Drift checks must stay anchored to the base snapshot hash, then measured text fit can be applied for render.
-    const templateSnapshot = requestedTextFitOverride
+    const textFitTemplateSnapshot = requestedTextFitOverride
       ? buildTemplateRenderSnapshot({
           templateId: managedTemplateRuntime.baseTemplateId,
           templateConfigOverride: managedTemplateRuntime.templateConfig,
           content: templateSnapshotContent,
           fitOverride: requestedTextFitOverride
         })
-      : baseTemplateSnapshot;
+      : null;
+    assertStage3RenderTemplateSnapshotFresh({
+      snapshot,
+      baseTemplateSnapshot,
+      textFitTemplateSnapshot
+    });
+    const templateSnapshot = textFitTemplateSnapshot ?? baseTemplateSnapshot;
 
     let musicFilePath: string | null = null;
     if (body.channelId && renderPlan.musicAssetId) {
