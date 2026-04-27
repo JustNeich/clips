@@ -367,10 +367,32 @@ CREATE TABLE IF NOT EXISTS audit_log (
   action TEXT NOT NULL,
   entity_type TEXT NOT NULL,
   entity_id TEXT NOT NULL,
+  channel_id TEXT,
+  chat_id TEXT,
+  correlation_id TEXT,
+  stage TEXT,
+  status TEXT,
+  severity TEXT NOT NULL DEFAULT 'info',
   payload_json TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS mcp_access_tokens (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  token_hint TEXT NOT NULL,
+  scopes_json TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT,
+  last_used_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS stage3_jobs (
@@ -554,6 +576,9 @@ CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_channel
 
 CREATE INDEX IF NOT EXISTS idx_channel_editorial_feedback_workspace
   ON channel_editorial_feedback_events(workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_workspace_created
+  ON audit_log(workspace_id, created_at DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_drafts_thread_user
   ON chat_drafts(thread_id, user_id);

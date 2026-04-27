@@ -43,6 +43,7 @@ import {
   uploadYouTubeVideo,
   YouTubePublishError
 } from "./youtube-publishing";
+import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { runInTransaction } from "./db/client";
 import {
   PublicationMutationError,
@@ -936,7 +937,39 @@ export async function processQueuedChannelPublication(
   }
 }
 
-export async function deleteChannelPublicationWithRemoteSync(publicationId: string): Promise<ChannelPublication> {
+function auditYoutubeDelete(
+  action: string,
+  publication: ChannelPublication,
+  status: "attempted" | "succeeded" | "failed",
+  options?: { userId?: string | null; errorMessage?: string | null }
+): void {
+  tryAppendFlowAuditEvent({
+    workspaceId: publication.workspaceId,
+    userId: options?.userId ?? null,
+    action,
+    entityType: "publication",
+    entityId: publication.id,
+    channelId: publication.channelId,
+    chatId: publication.chatId,
+    correlationId: publication.id,
+    stage: "youtube",
+    status,
+    severity: status === "failed" ? "error" : "info",
+    payload: {
+      title: publication.title,
+      youtubeVideoId: publication.youtubeVideoId,
+      youtubeVideoUrl: publication.youtubeVideoUrl,
+      remoteDeleteAttempted: true,
+      remoteDeleteSucceeded: status === "succeeded",
+      errorMessage: options?.errorMessage ?? null
+    }
+  });
+}
+
+export async function deleteChannelPublicationWithRemoteSync(
+  publicationId: string,
+  options?: { userId?: string | null }
+): Promise<ChannelPublication> {
   const publication = getChannelPublicationById(publicationId);
   if (!publication) {
     throw new PublicationMutationError("Публикация не найдена.", {
@@ -945,11 +978,25 @@ export async function deleteChannelPublicationWithRemoteSync(publicationId: stri
     });
   }
   if (publication.status === "scheduled" && publication.youtubeVideoId) {
-    const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
-    await deleteYouTubeVideo({
-      accessToken: credential.accessToken!,
-      videoId: publication.youtubeVideoId
+    auditYoutubeDelete("publication.delete.attempted", publication, "attempted", {
+      userId: options?.userId ?? null
     });
+    try {
+      const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
+      await deleteYouTubeVideo({
+        accessToken: credential.accessToken!,
+        videoId: publication.youtubeVideoId
+      });
+      auditYoutubeDelete("publication.delete.succeeded", publication, "succeeded", {
+        userId: options?.userId ?? null
+      });
+    } catch (error) {
+      auditYoutubeDelete("publication.delete.failed", publication, "failed", {
+        userId: options?.userId ?? null,
+        errorMessage: error instanceof Error ? error.message : "Remote YouTube delete failed."
+      });
+      throw error;
+    }
   }
   return cancelChannelPublication(publicationId);
 }

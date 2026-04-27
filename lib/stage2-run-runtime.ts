@@ -15,6 +15,7 @@ import {
 } from "./stage2-progress-store";
 import { processStage2Run } from "./stage2-runner";
 import { clampHostedConcurrencyLimit, isHostedRenderRuntime } from "./hosted-resource-budget";
+import { tryAppendFlowAuditEvent } from "./audit-log-store";
 
 type Stage2RuntimeState = {
   initialized: boolean;
@@ -80,6 +81,48 @@ function formatSourceProviderLabel(provider: Stage2Response["source"]["downloadP
     return "Ручную загрузку mp4";
   }
   return null;
+}
+
+function appendStage2CompletionAudit(run: Stage2RunRecord, result: Stage2Response): void {
+  const promptStages = result.diagnostics?.effectivePrompting?.promptStages ?? [];
+  const primaryPromptStage = promptStages.find((stage) => stage.model?.trim()) ?? promptStages[0] ?? null;
+  const model = result.model ?? primaryPromptStage?.model ?? null;
+  const provider =
+    (result.output as { pipeline?: { provider?: string | null } } | undefined)?.pipeline?.provider ??
+    (model ? "caption-provider" : null);
+  tryAppendFlowAuditEvent({
+    workspaceId: run.workspaceId,
+    userId: run.creatorUserId,
+    action: "stage2_run.completed",
+    entityType: "stage2_run",
+    entityId: run.runId,
+    channelId: run.channelId,
+    chatId: run.chatId,
+    correlationId: run.runId,
+    stage: "stage2",
+    status: "completed",
+    payload: {
+      sourceUrl: run.sourceUrl,
+      mode: run.mode,
+      formatPipeline: result.output.formatPipeline ?? run.request.channel.formatPipeline,
+      provider,
+      model,
+      reasoningEffort: result.reasoningEffort ?? primaryPromptStage?.reasoningEffort ?? null,
+      promptStages: promptStages.map((stage) => ({
+        stageId: stage.stageId,
+        model: stage.model ?? null,
+        promptChars: stage.promptChars ?? null,
+        promptSource: stage.promptSource ?? null,
+        promptTextPresent: Boolean(stage.promptText)
+      })),
+      captionOptionCount:
+        result.output.storyOptions?.length ??
+        result.output.classicOptions?.length ??
+        result.output.captionOptions.length,
+      warningCount: result.warnings.length
+    },
+    createdAt: result.stage2Run?.finishedAt ?? new Date().toISOString()
+  });
 }
 
 function ensureStage2Runtime(): void {
@@ -178,6 +221,7 @@ async function executeRun(run: Stage2RunRecord): Promise<void> {
     }
 
     setStage2RunResultData(run.runId, finalResult);
+    appendStage2CompletionAudit(run, finalResult);
     logStage2Runtime("run_complete", {
       runId: run.runId,
       execMs: Date.now() - startedAt

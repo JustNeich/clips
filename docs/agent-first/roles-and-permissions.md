@@ -48,6 +48,7 @@
 | `/setup/bootstrap-owner` | public | public | public | public | Практически только до инициализации |
 | `/` | allow | allow | allow | allow | Главный shell |
 | `/team` | allow | allow | forbidden | forbidden | Browser-verified |
+| `/admin/flows` | allow | forbidden | forbidden | forbidden | Owner observability |
 | `/design/template-lab` | allow | allow | allow | allow / unguarded | Internal tooling |
 | `/design/template-road` | allow | allow | allow | allow / unguarded | Internal tooling |
 | `/design/science-card` | allow | allow | allow | allow / unguarded | Preview route |
@@ -61,6 +62,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `Каналы` | visible | visible | visible | hidden | browser-verified |
 | `Команда` | visible | visible | hidden | hidden | browser-verified |
+| `Журнал процессов` | visible | hidden | hidden | hidden | code-verified |
 | `Скачать историю` | visible | visible | visible | visible | browser-verified |
 
 ## User block
@@ -155,6 +157,7 @@
 - видит `Общие настройки` в Channel Manager;
 - редактирует workspace-wide Stage 2 defaults;
 - управляет workspace AI integrations на уровне workspace;
+- видит owner-only `/admin/flows` и создаёт read-only MCP tokens для production flow observability;
 - может выдавать роль `manager`;
 - может управлять всеми каналами и всем team composition без ограничений.
 

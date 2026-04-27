@@ -1,5 +1,6 @@
 import { deleteChatById, getChatById, getChatDraft } from "../../../../lib/chat-history";
 import { requireAuth, requireChannelOperate, requireChannelVisibility } from "../../../../lib/auth/guards";
+import { tryAppendFlowAuditEvent } from "../../../../lib/audit-log-store";
 
 export const runtime = "nodejs";
 
@@ -44,6 +45,21 @@ export async function DELETE(
     if (!deleted) {
       return Response.json({ error: "Chat not found." }, { status: 404 });
     }
+    tryAppendFlowAuditEvent({
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id,
+      action: "chat.deleted",
+      entityType: "chat",
+      entityId: chat.id,
+      channelId: chat.channelId,
+      chatId: chat.id,
+      stage: "chat",
+      status: "deleted",
+      payload: {
+        title: chat.title,
+        sourceUrl: chat.url
+      }
+    });
     return Response.json({ deletedId: id }, { status: 200 });
   } catch (error) {
     return error instanceof Response

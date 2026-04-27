@@ -54,6 +54,8 @@ export type AppShellProps = {
   canManageChannels: boolean;
   canManageTeam: boolean;
   onOpenTeam: () => void;
+  canOpenFlowJournal?: boolean;
+  onOpenFlowJournal?: () => void;
   codexConnected: boolean;
   codexBusyConnect: boolean;
   codexBusyRefresh: boolean;
@@ -383,6 +385,8 @@ export function AppShell({
   canManageChannels,
   canManageTeam,
   onOpenTeam,
+  canOpenFlowJournal = false,
+  onOpenFlowJournal,
   codexConnected,
   codexBusyConnect,
   codexBusyRefresh,
@@ -427,7 +431,7 @@ export function AppShell({
     () => channels.find((channel) => channel.id === activeChannelId) ?? channels[0] ?? null,
     [activeChannelId, channels]
   );
-  const showHeaderOverflow = Boolean(canManageChannels || canManageTeam || headerActions);
+  const showHeaderOverflow = Boolean(canManageChannels || canManageTeam || canOpenFlowJournal || headerActions);
   const showWorkspaceOverflow = Boolean(canManageCodex || currentUserName || currentUserRole || onLogout);
 
   const visibleHistoryItems = useMemo(() => {
@@ -915,6 +919,18 @@ export function AppShell({
                           }}
                         >
                           Команда
+                        </button>
+                      ) : null}
+                      {canOpenFlowJournal && onOpenFlowJournal ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => {
+                            closeOverflowMenus();
+                            onOpenFlowJournal();
+                          }}
+                        >
+                          Журнал процессов
                         </button>
                       ) : null}
                       {headerActions ? (

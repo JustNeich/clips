@@ -575,7 +575,30 @@
 
 1. Если "редактор шаблонов поменял прод", это high-priority internal tooling issue, потому что template changes влияют на Step 3 preview/render downstream.
 
-## 18. Global failure taxonomy
+## 18. Owner flow observability
+
+### Happy path
+
+1. `owner` открывает `/admin/flows` из overflow menu `Еще`.
+2. UI загружает redacted workspace flow summaries через `GET /api/admin/flows`.
+3. Владелец фильтрует по каналу, stage, статусу или URL/run/publication id.
+4. При выборе строки открывается detail panel с timeline, prompts, outputs, publication state и raw JSON.
+5. `Trace JSON` выгружает redacted single-flow trace.
+6. При необходимости owner создаёт MCP token и подключает `npm run mcp:flows` через `CLIPS_APP_URL` / `CLIPS_MCP_TOKEN`.
+
+### Blocked path
+
+1. Любая non-owner роль получает forbidden UI/API.
+2. Revoked/expired MCP token не может читать flow APIs.
+3. Секреты не отображаются даже owner/MCP reader-у; prompt/model/provider diagnostics остаются видимыми.
+
+### Deleted video log
+
+1. Удаление публикации фиксируется compact audit event-ом.
+2. Для scheduled YouTube video дополнительно фиксируется remote delete attempted/succeeded/failed.
+3. Deleted video event не обязан хранить полный Stage 2 / Stage 3 trace.
+
+## 19. Global failure taxonomy
 
 Для intake-агента это базовая развилка:
 

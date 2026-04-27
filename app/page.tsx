@@ -6959,6 +6959,10 @@ export default function HomePage() {
       onOpenTeam={() => {
         window.location.href = "/team";
       }}
+      canOpenFlowJournal={currentRole === "owner"}
+      onOpenFlowJournal={() => {
+        window.location.href = "/admin/flows";
+      }}
       codexConnected={codexBadgeConnected}
       codexBusyConnect={busyAction === "connect-codex"}
       codexBusyRefresh={busyAction === "refresh-codex" || isCodexAuthLoading}

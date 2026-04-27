@@ -7,6 +7,7 @@ import type {
   SourceProviderErrorSummary
 } from "../app/components/types";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
+import { tryAppendFlowAuditEvent } from "./audit-log-store";
 
 export type SourceJobTrigger = "fetch" | "comments";
 
@@ -275,7 +276,7 @@ export function createSourceJob(input: {
 }): SourceJobRecord {
   const stamp = nowIso();
   const jobId = newId();
-  return saveSourceJob({
+  const record = saveSourceJob({
     jobId,
     workspaceId: input.workspaceId,
     creatorUserId: input.creatorUserId,
@@ -292,6 +293,25 @@ export function createSourceJob(input: {
     updatedAt: stamp,
     finishedAt: null
   });
+  tryAppendFlowAuditEvent({
+    workspaceId: record.workspaceId,
+    userId: record.creatorUserId,
+    action: "source_job.queued",
+    entityType: "source_job",
+    entityId: record.jobId,
+    channelId: record.channelId,
+    chatId: record.chatId,
+    correlationId: record.jobId,
+    stage: "source",
+    status: "queued",
+    payload: {
+      sourceUrl: record.sourceUrl,
+      trigger: record.request.trigger,
+      autoRunStage2: record.request.autoRunStage2
+    },
+    createdAt: record.createdAt
+  });
+  return record;
 }
 
 export function getSourceJob(jobId: string): SourceJobRecord | null {
@@ -375,7 +395,7 @@ export function hasQueuedSourceJobs(): boolean {
 }
 
 export function claimNextQueuedSourceJob(): SourceJobRecord | null {
-  return runInTransaction((db) => {
+  const claimed = runInTransaction((db) => {
     const row =
       (db
         .prepare("SELECT * FROM source_jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1")
@@ -410,6 +430,26 @@ export function claimNextQueuedSourceJob(): SourceJobRecord | null {
 
     return mapSourceJob(readSourceJobRow(current.jobId) as SourceJobRow);
   });
+  if (claimed) {
+    tryAppendFlowAuditEvent({
+      workspaceId: claimed.workspaceId,
+      userId: claimed.creatorUserId,
+      action: "source_job.running",
+      entityType: "source_job",
+      entityId: claimed.jobId,
+      channelId: claimed.channelId,
+      chatId: claimed.chatId,
+      correlationId: claimed.jobId,
+      stage: "source",
+      status: "running",
+      payload: {
+        activeStageId: claimed.progress.activeStageId,
+        detail: claimed.progress.detail
+      },
+      createdAt: claimed.startedAt ?? claimed.updatedAt
+    });
+  }
+  return claimed;
 }
 
 export function recoverInterruptedSourceJobs(detail = "Recovered after process restart. Re-running source fetch."): number {
@@ -561,7 +601,7 @@ export function finalizeSourceJobSuccess(
   jobId: string,
   resultData: SourceJobResult
 ): SourceJobRecord | null {
-  return mutateSourceJob(jobId, (record) => {
+  const completed = mutateSourceJob(jobId, (record) => {
     const finishedAt = nowIso();
     const progress = {
       ...record.progress,
@@ -589,6 +629,31 @@ export function finalizeSourceJobSuccess(
       finishedAt
     };
   });
+  if (completed) {
+    tryAppendFlowAuditEvent({
+      workspaceId: completed.workspaceId,
+      userId: completed.creatorUserId,
+      action: "source_job.completed",
+      entityType: "source_job",
+      entityId: completed.jobId,
+      channelId: completed.channelId,
+      chatId: completed.chatId,
+      correlationId: completed.jobId,
+      stage: "source",
+      status: "completed",
+      payload: {
+        sourceUrl: completed.sourceUrl,
+        title: resultData.title,
+        commentsAvailable: resultData.commentsAvailable,
+        totalComments: resultData.commentsPayload?.totalComments ?? null,
+        commentsAcquisitionStatus: resultData.commentsAcquisitionStatus,
+        commentsAcquisitionProvider: resultData.commentsAcquisitionProvider,
+        autoStage2RunId: resultData.autoStage2RunId
+      },
+      createdAt: completed.finishedAt ?? completed.updatedAt
+    });
+  }
+  return completed;
 }
 
 export function finalizeSourceJobFailure(
@@ -601,7 +666,7 @@ export function finalizeSourceJobFailure(
     providerErrorSummary?: SourceProviderErrorSummary | null;
   }
 ): SourceJobRecord | null {
-  return mutateSourceJob(jobId, (record) => {
+  const failed = mutateSourceJob(jobId, (record) => {
     const finishedAt = nowIso();
     const progress = {
       ...record.progress,
@@ -625,4 +690,28 @@ export function finalizeSourceJobFailure(
       finishedAt
     };
   });
+  if (failed) {
+    tryAppendFlowAuditEvent({
+      workspaceId: failed.workspaceId,
+      userId: failed.creatorUserId,
+      action: "source_job.failed",
+      entityType: "source_job",
+      entityId: failed.jobId,
+      channelId: failed.channelId,
+      chatId: failed.chatId,
+      correlationId: failed.jobId,
+      stage: "source",
+      status: "failed",
+      severity: "error",
+      payload: {
+        sourceUrl: failed.sourceUrl,
+        errorMessage,
+        attempt: failed.progress.attempt,
+        maxAttempts: failed.progress.maxAttempts,
+        providerErrorSummary: failed.progress.providerErrorSummary
+      },
+      createdAt: failed.finishedAt ?? failed.updatedAt
+    });
+  }
+  return failed;
 }

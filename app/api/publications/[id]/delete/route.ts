@@ -26,7 +26,7 @@ export async function POST(request: Request, context: Context): Promise<Response
       return Response.json(payload.body, { status: payload.status });
     }
     await requireChannelOperate(auth, publication.channelId);
-    const next = await deleteChannelPublicationWithRemoteSync(id);
+    const next = await deleteChannelPublicationWithRemoteSync(id, { userId: auth.user.id });
     return Response.json({ publication: next }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {

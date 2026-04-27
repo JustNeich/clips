@@ -125,7 +125,8 @@
 3. Назначить доступы к каналу.
 4. Настроить YouTube publishing.
 5. Управлять участниками команды и invite-ами.
-6. Калибровать и редактировать design templates.
+6. Открыть owner-only `Журнал процессов` для production observability и MCP trace access.
+7. Калибровать и редактировать design templates.
 
 ## Быстрый role summary
 

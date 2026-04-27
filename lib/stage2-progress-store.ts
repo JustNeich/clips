@@ -38,6 +38,7 @@ import {
   normalizeStage2EditorialMemorySource,
   type Stage2EditorialMemorySource
 } from "./stage2-editorial-memory-resolution";
+import { tryAppendFlowAuditEvent } from "./audit-log-store";
 import { normalizeStage2ResultTitleOptions } from "./stage2-title-options";
 import type { Stage2TemplateSemanticsSnapshot } from "./stage2-template-contract";
 import type { Stage3TemplateFormatGroup } from "./stage3-template-semantics";
@@ -341,7 +342,7 @@ export function createStage2Run(input: {
 }): Stage2RunRecord {
   const stamp = nowIso();
   const runId = newId();
-  return saveRecord({
+  const record = saveRecord({
     runId,
     workspaceId: input.workspaceId,
     creatorUserId: input.creatorUserId,
@@ -364,6 +365,28 @@ export function createStage2Run(input: {
     updatedAt: stamp,
     finishedAt: null
   });
+  tryAppendFlowAuditEvent({
+    workspaceId: record.workspaceId,
+    userId: record.creatorUserId,
+    action: "stage2_run.queued",
+    entityType: "stage2_run",
+    entityId: record.runId,
+    channelId: record.channelId,
+    chatId: record.chatId,
+    correlationId: record.runId,
+    stage: "stage2",
+    status: "queued",
+    payload: {
+      sourceUrl: record.sourceUrl,
+      mode: record.mode,
+      baseRunId: record.baseRunId,
+      userInstruction: record.userInstruction,
+      formatPipeline: record.request.channel.formatPipeline,
+      stage2WorkerProfileId: record.request.channel.stage2WorkerProfileId
+    },
+    createdAt: record.createdAt
+  });
+  return record;
 }
 
 export function getStage2Run(runId: string): Stage2RunRecord | null {
@@ -447,7 +470,7 @@ export function hasQueuedStage2Runs(): boolean {
 }
 
 export function claimNextQueuedStage2Run(): Stage2RunRecord | null {
-  return runInTransaction((db) => {
+  const claimed = runInTransaction((db) => {
     const row =
       (db
         .prepare("SELECT * FROM stage2_runs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1")
@@ -477,6 +500,27 @@ export function claimNextQueuedStage2Run(): Stage2RunRecord | null {
 
     return mapStage2Run(readRunRow(current.runId) as Stage2RunRow);
   });
+  if (claimed) {
+    tryAppendFlowAuditEvent({
+      workspaceId: claimed.workspaceId,
+      userId: claimed.creatorUserId,
+      action: "stage2_run.running",
+      entityType: "stage2_run",
+      entityId: claimed.runId,
+      channelId: claimed.channelId,
+      chatId: claimed.chatId,
+      correlationId: claimed.runId,
+      stage: "stage2",
+      status: "running",
+      payload: {
+        activeStageId: claimed.snapshot.activeStageId,
+        mode: claimed.mode,
+        formatPipeline: claimed.request.channel.formatPipeline
+      },
+      createdAt: claimed.startedAt ?? claimed.updatedAt
+    });
+  }
+  return claimed;
 }
 
 export function interruptRunningStage2Runs(message = "Stage 2 run interrupted by process restart."): number {
@@ -664,7 +708,7 @@ export function finalizeStage2RunFailure(
   runId: string,
   errorMessage: string
 ): Stage2RunRecord | null {
-  return mutateStage2Run(runId, (record) => {
+  const failed = mutateStage2Run(runId, (record) => {
     const alreadyFailed = record.snapshot.status === "failed";
     const snapshot = alreadyFailed
       ? {
@@ -688,6 +732,29 @@ export function finalizeStage2RunFailure(
       finishedAt: snapshot.finishedAt
     };
   });
+  if (failed) {
+    tryAppendFlowAuditEvent({
+      workspaceId: failed.workspaceId,
+      userId: failed.creatorUserId,
+      action: "stage2_run.failed",
+      entityType: "stage2_run",
+      entityId: failed.runId,
+      channelId: failed.channelId,
+      chatId: failed.chatId,
+      correlationId: failed.runId,
+      stage: "stage2",
+      status: "failed",
+      severity: "error",
+      payload: {
+        sourceUrl: failed.sourceUrl,
+        mode: failed.mode,
+        activeStageId: failed.snapshot.activeStageId,
+        errorMessage
+      },
+      createdAt: failed.finishedAt ?? failed.updatedAt
+    });
+  }
+  return failed;
 }
 
 export function setStage2RunResultData(

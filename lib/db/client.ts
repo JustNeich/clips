@@ -197,6 +197,12 @@ function applyDbMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "channel_style_discovery_runs", "result_json", "TEXT");
   addColumnIfMissing(db, "channel_style_discovery_runs", "error_message", "TEXT");
   addColumnIfMissing(db, "channel_style_discovery_runs", "started_at", "TEXT");
+  addColumnIfMissing(db, "audit_log", "channel_id", "TEXT");
+  addColumnIfMissing(db, "audit_log", "chat_id", "TEXT");
+  addColumnIfMissing(db, "audit_log", "correlation_id", "TEXT");
+  addColumnIfMissing(db, "audit_log", "stage", "TEXT");
+  addColumnIfMissing(db, "audit_log", "status", "TEXT");
+  addColumnIfMissing(db, "audit_log", "severity", "TEXT NOT NULL DEFAULT 'info'");
   addColumnIfMissing(db, "stage3_jobs", "execution_target", "TEXT NOT NULL DEFAULT 'local'");
   addColumnIfMissing(db, "stage3_jobs", "assigned_worker_id", "TEXT");
   addColumnIfMissing(db, "stage3_jobs", "lease_expires_at", "TEXT");
@@ -328,6 +334,24 @@ function applyDbMigrations(db: DatabaseSync): void {
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_channel_style_discovery_runs_creator_fingerprint ON channel_style_discovery_runs(workspace_id, creator_user_id, request_fingerprint, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_workspace_created ON audit_log(workspace_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_chat_created ON audit_log(chat_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_channel_created ON audit_log(channel_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_stage_status ON audit_log(workspace_id, stage, status, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_mcp_access_tokens_workspace ON mcp_access_tokens(workspace_id, created_at DESC)"
+  );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_mcp_access_tokens_owner ON mcp_access_tokens(owner_user_id, created_at DESC)"
   );
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_workspace_templates_workspace_updated ON workspace_templates(workspace_id, archived_at, updated_at DESC)"

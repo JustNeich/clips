@@ -226,15 +226,19 @@
 - `entrypoint`: кнопка `Еще` рядом с selector.
 - `purpose`: вторичное меню для channel/team/history actions.
 - `browser-verified role states`:
-  - `owner`: `Каналы`, `Команда`, `Скачать историю`
+  - `owner`: `Каналы`, `Команда`, `Журнал процессов`, `Скачать историю`
   - `manager`: `Каналы`, `Команда`, `Скачать историю`
   - `redactor`: `Каналы`, `Скачать историю`
   - `redactor_limited`: только `Скачать историю`
 - `controls`:
   - `Каналы`: открывает Channel Manager
   - `Команда`: ведёт на `/team`
+  - `Журнал процессов`: ведёт на `/admin/flows`
   - `Скачать историю`: экспорт trace/history, может быть disabled
 - `related APIs`:
+  - `GET /api/admin/flows`
+  - `GET /api/admin/audit-events`
+  - `POST /api/admin/mcp-tokens`
   - `GET /api/chat-trace/[id]`
   - team / channel APIs по открываемым поверхностям
 - `common user phrasings`:
@@ -728,6 +732,34 @@
   - "не могу сделать менеджера"
   - "инвайт создался, но токен не видно"
   - "редактору пишет доступ запрещён"
+
+## `/admin/flows`
+
+- `purpose`: owner-only production observability journal for every channel flow.
+- `roles`:
+  - `owner`: доступ
+  - `manager`, `redactor`, `redactor_limited`: forbidden screen / forbidden API
+- `controls`:
+  - compact metrics strip
+  - filters by channel, stage, status, search
+  - dense flow table
+  - detail panel with timeline, inputs, prompts, outputs, publication, raw JSON
+  - `Trace JSON`
+  - owner-issued MCP token create/revoke controls
+- `resulting actions`:
+  - `GET /api/admin/flows`
+  - `GET /api/admin/flows/[chatId]`
+  - `GET /api/admin/flows/[chatId]/trace`
+  - `GET /api/admin/audit-events`
+  - `GET /api/admin/mcp-tokens`
+  - `POST /api/admin/mcp-tokens`
+  - `DELETE /api/admin/mcp-tokens/[tokenId]`
+- `entities`: `audit_log`, `mcp_access_tokens`, `source_jobs`, `stage2_runs`, `stage3_jobs`, `render_exports`, `channel_publications`
+- `security`: trace payloads are redacted; prompts/model/provider data remain visible, secrets do not.
+- `common user phrasings`:
+  - "хочу достать весь flow"
+  - "какой prompt/model был в проде"
+  - "какие ролики удаляли"
 
 ## Internal design route: `/design/template-lab`
 

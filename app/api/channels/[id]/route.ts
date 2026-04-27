@@ -4,6 +4,7 @@ import {
   updateChannelById
 } from "../../../../lib/chat-history";
 import { deleteChannelAssetDir } from "../../../../lib/channel-assets";
+import { tryAppendFlowAuditEvent } from "../../../../lib/audit-log-store";
 import { getChannelPublishIntegration, getChannelPublishSettings } from "../../../../lib/publication-store";
 import {
   requireAuth,
@@ -136,7 +137,7 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
   const { id } = await context.params;
   try {
     const auth = await requireAuth(_request);
-    const { permissions } = await requireChannelVisibility(auth, id);
+    const { channel, permissions } = await requireChannelVisibility(auth, id);
     if (!permissions.canDelete) {
       return Response.json({ error: "Forbidden." }, { status: 403 });
     }
@@ -144,6 +145,22 @@ export async function DELETE(_request: Request, context: Context): Promise<Respo
     if (!result.deleted) {
       return Response.json({ error: "Channel not found." }, { status: 404 });
     }
+    tryAppendFlowAuditEvent({
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id,
+      action: "channel.deleted",
+      entityType: "channel",
+      entityId: id,
+      channelId: id,
+      stage: "channel",
+      status: "deleted",
+      payload: {
+        name: channel.name,
+        username: channel.username,
+        removedAssetCount: result.removedAssets.length,
+        removedChatCount: result.removedChats.length
+      }
+    });
     await deleteChannelAssetDir(id);
     return Response.json({ deletedId: id }, { status: 200 });
   } catch (error) {

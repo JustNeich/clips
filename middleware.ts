@@ -19,6 +19,15 @@ function isApiPublic(pathname: string): boolean {
   );
 }
 
+function canUseBearerForApi(pathname: string, request: NextRequest): boolean {
+  const authorization = request.headers.get("authorization") ?? "";
+  const hasBearer = /^Bearer\s+.+$/i.test(authorization);
+  return (
+    hasBearer &&
+    (pathname.startsWith("/api/admin/flows") || pathname === "/api/admin/audit-events")
+  );
+}
+
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const isDevDesignRoute = pathname.startsWith("/design/") && process.env.NODE_ENV !== "production";
@@ -28,7 +37,12 @@ export function middleware(request: NextRequest): NextResponse {
     pathname.startsWith("/stage3-worker/") ||
     pathname.startsWith("/api/")
   ) {
-    if (pathname.startsWith("/api/") && !isApiPublic(pathname) && !request.cookies.get("clips_session")) {
+    if (
+      pathname.startsWith("/api/") &&
+      !isApiPublic(pathname) &&
+      !request.cookies.get("clips_session") &&
+      !canUseBearerForApi(pathname, request)
+    ) {
       return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     }
     return NextResponse.next();

@@ -7,6 +7,7 @@ import {
   Stage3JobSummary
 } from "../app/components/types";
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
+import { tryAppendFlowAuditEvent } from "./audit-log-store";
 
 type JobRow = {
   id: string;
@@ -248,6 +249,65 @@ function readJobRow(jobId: string): JobRow | null {
   );
 }
 
+function parseStage3JobPayload(payloadJson: string): { chatId: string | null; channelId: string | null } {
+  try {
+    const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
+    return {
+      chatId: typeof parsed.chatId === "string" && parsed.chatId.trim() ? parsed.chatId.trim() : null,
+      channelId: typeof parsed.channelId === "string" && parsed.channelId.trim() ? parsed.channelId.trim() : null
+    };
+  } catch {
+    return { chatId: null, channelId: null };
+  }
+}
+
+function auditStage3Job(
+  action: string,
+  job: Pick<
+    Stage3JobRecord,
+    | "id"
+    | "workspaceId"
+    | "userId"
+    | "kind"
+    | "status"
+    | "executionTarget"
+    | "payloadJson"
+    | "errorCode"
+    | "errorMessage"
+    | "attempts"
+    | "createdAt"
+    | "updatedAt"
+    | "startedAt"
+    | "completedAt"
+  >,
+  status: "queued" | "running" | "completed" | "failed",
+  extra?: Record<string, unknown>
+): void {
+  const payload = parseStage3JobPayload(job.payloadJson);
+  tryAppendFlowAuditEvent({
+    workspaceId: job.workspaceId,
+    userId: job.userId,
+    action,
+    entityType: "stage3_job",
+    entityId: job.id,
+    channelId: payload.channelId,
+    chatId: payload.chatId,
+    correlationId: job.id,
+    stage: "stage3",
+    status,
+    severity: status === "failed" ? "error" : "info",
+    payload: {
+      kind: job.kind,
+      executionTarget: job.executionTarget,
+      attempts: job.attempts,
+      errorCode: job.errorCode,
+      errorMessage: job.errorMessage,
+      ...extra
+    },
+    createdAt: job.completedAt ?? job.startedAt ?? job.updatedAt
+  });
+}
+
 export function appendStage3JobEvent(
   jobId: string,
   level: "info" | "warn" | "error",
@@ -304,7 +364,7 @@ export function interruptPendingStage3Jobs(): number {
 }
 
 export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord {
-  return runInTransaction((db) => {
+  const job = runInTransaction((db) => {
     const stamp = nowIso();
     const dedupeKey = input.dedupeKey?.trim() || null;
     const executionTarget = input.executionTarget ?? "local";
@@ -404,6 +464,10 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
     });
     return mapJobRow(readJobRow(jobId)) as Stage3JobRecord;
   });
+  auditStage3Job("stage3_job.queued", job, "queued", {
+    dedupeKey: job.dedupeKey
+  });
+  return job;
 }
 
 function requeueExpiredLocalJobsInternal(db: ReturnType<typeof getDb>): void {
@@ -477,7 +541,7 @@ export function sweepExpiredLocalStage3Jobs(): number {
 }
 
 export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
-  return runInTransaction((db) => {
+  const job = runInTransaction((db) => {
     const row =
       (db
         .prepare(
@@ -512,6 +576,12 @@ export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
     });
     return mapJobRow(readJobRow(String(row.id)));
   });
+  if (job) {
+    auditStage3Job("stage3_job.running", job, "running", {
+      worker: "host"
+    });
+  }
+  return job;
 }
 
 export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInput): Stage3JobRecord | null {
@@ -520,7 +590,7 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
       ? input.leaseDurationMs
       : 30_000;
 
-  return runInTransaction((db) => {
+  const job = runInTransaction((db) => {
     requeueExpiredLocalJobsInternal(db);
 
     const kinds = (input.supportedKinds?.length ? input.supportedKinds : null) as Stage3JobKind[] | null;
@@ -568,6 +638,13 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
     });
     return mapJobRow(readJobRow(String(row.id)));
   });
+  if (job) {
+    auditStage3Job("stage3_job.running", job, "running", {
+      workerId: input.workerId,
+      worker: "local"
+    });
+  }
+  return job;
 }
 
 export function heartbeatStage3Job(jobId: string, workerId: string, leaseDurationMs = 30_000): Stage3JobRecord {
@@ -621,7 +698,7 @@ function buildStage3JobCompletionError(
 }
 
 export function completeStage3Job(jobId: string, input: CompleteStage3JobInput): Stage3JobRecord {
-  return runInTransaction((db) => {
+  const job = runInTransaction((db) => {
     const stamp = nowIso();
     if (input.artifact) {
       try {
@@ -675,10 +752,15 @@ export function completeStage3Job(jobId: string, input: CompleteStage3JobInput):
     }
     return mapJobRow(readJobRow(jobId)) as Stage3JobRecord;
   });
+  auditStage3Job("stage3_job.completed", job, "completed", {
+    artifact: Boolean(input.artifact),
+    artifactFileName: input.artifact?.fileName ?? null
+  });
+  return job;
 }
 
 export function finishStage3Job(jobId: string, input: FinishStage3JobInput): Stage3JobRecord {
-  return runInTransaction((db) => {
+  const job = runInTransaction((db) => {
     const stamp = nowIso();
     db.prepare(
       `UPDATE stage3_jobs
@@ -699,4 +781,9 @@ export function finishStage3Job(jobId: string, input: FinishStage3JobInput): Sta
     });
     return mapJobRow(readJobRow(jobId)) as Stage3JobRecord;
   });
+  auditStage3Job("stage3_job.failed", job, "failed", {
+    errorCode: input.errorCode ?? null,
+    recoverable: input.recoverable
+  });
+  return job;
 }

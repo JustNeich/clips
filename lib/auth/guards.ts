@@ -2,6 +2,7 @@ import { getAuthContextFromRequest, getCurrentAuthContext } from "./session";
 import { AppRole, getWorkspaceCodexIntegration } from "../team-store";
 import { getChannelAccessForUser, getChannelById } from "../chat-history";
 import { resolveChannelPermissions } from "../acl";
+import { authenticateMcpFlowReadToken } from "../mcp-token-store";
 
 export async function requireAuth(request?: Request) {
   const auth = request ? await getAuthContextFromRequest(request) : await getCurrentAuthContext();
@@ -21,6 +22,36 @@ export function requireRole(role: AppRole, currentRole: AppRole): void {
       headers: { "Content-Type": "application/json" }
     });
   }
+}
+
+export async function requireOwner(request?: Request) {
+  const auth = await requireAuth(request);
+  requireRole("owner", auth.membership.role);
+  return auth;
+}
+
+export async function requireOwnerOrMcpFlowRead(request: Request) {
+  const authorization = request.headers.get("authorization") ?? "";
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
+  if (bearer) {
+    const tokenAuth = authenticateMcpFlowReadToken(bearer);
+    if (tokenAuth) {
+      return {
+        actor: "mcp_token" as const,
+        workspace: tokenAuth.workspace,
+        user: tokenAuth.user,
+        token: tokenAuth.token
+      };
+    }
+  }
+
+  const auth = await requireOwner(request);
+  return {
+    actor: "owner_session" as const,
+    workspace: auth.workspace,
+    user: auth.user,
+    membership: auth.membership
+  };
 }
 
 export function requireOneOfRoles(roles: AppRole[], currentRole: AppRole): void {

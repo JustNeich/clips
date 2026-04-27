@@ -7,6 +7,19 @@ import {
 
 type Stage2CaptionOption = Stage2Response["output"]["captionOptions"][number];
 
+function getStage2Output(
+  stage2: Stage2Response | null | undefined
+): Partial<Stage2Response["output"]> | null {
+  const output = (stage2 as { output?: Partial<Stage2Response["output"]> } | null | undefined)
+    ?.output;
+  return output && typeof output === "object" ? output : null;
+}
+
+function getCaptionOptionNumber(caption: Stage2CaptionOption | null | undefined): number | null {
+  const option = (caption as { option?: unknown } | null | undefined)?.option;
+  return typeof option === "number" && Number.isFinite(option) ? option : null;
+}
+
 function isRecoverableStage3LengthConstraintIssue(issue: string): boolean {
   const normalized = issue.trim();
   return (
@@ -84,9 +97,12 @@ export function getStage2SelectionDefaults(
       titleOption: null
     };
   }
+  const output = getStage2Output(stage2);
+  const captionOptions = Array.isArray(output?.captionOptions) ? output.captionOptions : [];
+  const titleOptions = Array.isArray(output?.titleOptions) ? output.titleOptions : [];
   return {
-    captionOption: stage2.output.finalPick.option,
-    titleOption: stage2.output.titleOptions[0]?.option ?? 1
+    captionOption: output?.finalPick?.option ?? getCaptionOptionNumber(captionOptions[0]) ?? null,
+    titleOption: titleOptions[0]?.option ?? 1
   };
 }
 
@@ -97,11 +113,15 @@ export function getSelectedStage2Caption(
   if (!stage2) {
     return null;
   }
+  const output = getStage2Output(stage2);
+  const captionOptions = Array.isArray(output?.captionOptions) ? output.captionOptions : [];
   const defaults = getStage2SelectionDefaults(stage2);
   const resolvedOption = preferredOption ?? defaults.captionOption;
   const selected =
-    stage2.output.captionOptions.find((item) => item.option === resolvedOption) ??
-    stage2.output.captionOptions[0] ??
+    (resolvedOption !== null
+      ? captionOptions.find((item) => item.option === resolvedOption)
+      : null) ??
+    captionOptions[0] ??
     null;
   if (!selected) {
     return null;
@@ -119,11 +139,13 @@ export function getSelectedStage2Title(
   if (!stage2) {
     return null;
   }
+  const output = getStage2Output(stage2);
+  const titleOptions = Array.isArray(output?.titleOptions) ? output.titleOptions : [];
   const defaults = getStage2SelectionDefaults(stage2);
   const resolvedOption = preferredOption ?? defaults.titleOption ?? 1;
   return (
-    stage2.output.titleOptions.find((item) => item.option === resolvedOption) ??
-    stage2.output.titleOptions[0] ??
+    titleOptions.find((item) => item.option === resolvedOption) ??
+    titleOptions[0] ??
     null
   );
 }
@@ -249,16 +271,21 @@ export function buildStage2ToStage3HandoffSummary(input: {
   const defaults = getStage2SelectionDefaults(input.stage2);
   const requestedCaptionOption =
     input.draft?.stage2.selectedCaptionOption ?? input.selectedCaptionOption ?? defaults.captionOption;
+  const stage2Output = getStage2Output(input.stage2);
+  const captionOptions = Array.isArray(stage2Output?.captionOptions) ? stage2Output.captionOptions : [];
+  const storyOptions = Array.isArray(stage2Output?.storyOptions) ? stage2Output.storyOptions : [];
   const requestedCaption =
-    input.stage2?.output.captionOptions.find((item) => item.option === requestedCaptionOption) ?? null;
+    (requestedCaptionOption !== null
+      ? captionOptions.find((item) => item.option === requestedCaptionOption)
+      : null) ?? null;
   const caption =
     getSelectedStage2Caption(
       input.stage2,
       requestedCaptionOption
     ) ?? null;
   const storyCaption =
-    input.stage2?.output.formatPipeline === "story_lead_main_caption"
-      ? input.stage2.output.storyOptions?.find((item) => item.option === caption?.option) ?? null
+    stage2Output?.formatPipeline === "story_lead_main_caption"
+      ? storyOptions.find((item) => item.option === caption?.option) ?? null
       : null;
   const selectedTopText = storyCaption?.lead ?? caption?.top ?? null;
   const selectedBottomText = storyCaption?.mainCaption ?? caption?.bottom ?? null;

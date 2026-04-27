@@ -23,6 +23,7 @@ import {
   persistRenderExportArtifact
 } from "./render-export-artifacts";
 import { getStage3Job } from "./stage3-job-store";
+import { tryAppendFlowAuditEvent } from "./audit-log-store";
 
 export type StoredYoutubeCredential = {
   refreshToken: string;
@@ -867,6 +868,44 @@ export function appendChannelPublicationEvent(
   ).run(newId(), publicationId, level, message, nowIso());
 }
 
+function auditChannelPublication(
+  action: string,
+  publication: ChannelPublication,
+  status: "queued" | "running" | "scheduled" | "published" | "failed" | "paused" | "resumed" | "edited" | "canceled",
+  options?: {
+    userId?: string | null;
+    severity?: "info" | "warn" | "error";
+    payload?: Record<string, unknown>;
+  }
+): void {
+  tryAppendFlowAuditEvent({
+    workspaceId: publication.workspaceId,
+    userId: options?.userId ?? null,
+    action,
+    entityType: "publication",
+    entityId: publication.id,
+    channelId: publication.channelId,
+    chatId: publication.chatId,
+    correlationId: publication.id,
+    stage: "publishing",
+    status,
+    severity: options?.severity ?? (status === "failed" ? "error" : "info"),
+    payload: {
+      title: publication.title,
+      status: publication.status,
+      scheduleMode: publication.scheduleMode,
+      scheduledAt: publication.scheduledAt,
+      youtubeVideoId: publication.youtubeVideoId,
+      youtubeVideoUrl: publication.youtubeVideoUrl,
+      renderExportId: publication.renderExportId,
+      sourceUrl: publication.sourceUrl,
+      lastError: publication.lastError,
+      ...options?.payload
+    },
+    createdAt: publication.updatedAt
+  });
+}
+
 function readPublicationRow(publicationId: string): ChannelPublicationRow | null {
   const db = getDb();
   return (
@@ -1120,7 +1159,11 @@ export function createChannelPublication(input: {
     createdAt
   );
   appendChannelPublicationEvent(publicationId, "info", "Публикация поставлена в очередь.");
-  return getChannelPublicationById(publicationId)!;
+  const publication = getChannelPublicationById(publicationId)!;
+  auditChannelPublication("publication.queued", publication, "queued", {
+    userId: input.createdByUserId
+  });
+  return publication;
 }
 
 function getPublicationForMutation(publicationId: string): ChannelPublication {
@@ -1218,7 +1261,9 @@ export function updateChannelPublicationDraft(input: {
     nowIso(),
     input.publicationId
   );
-  return getChannelPublicationById(input.publicationId)!;
+  const publication = getChannelPublicationById(input.publicationId)!;
+  auditChannelPublication("publication.edited", publication, "edited");
+  return publication;
 }
 
 export function pauseChannelPublication(publicationId: string): ChannelPublication {
@@ -1242,7 +1287,9 @@ export function pauseChannelPublication(publicationId: string): ChannelPublicati
       WHERE id = ?`
   ).run(nowIso(), publicationId);
   appendChannelPublicationEvent(publicationId, "info", "Публикация поставлена на паузу.");
-  return getChannelPublicationById(publicationId)!;
+  const publication = getChannelPublicationById(publicationId)!;
+  auditChannelPublication("publication.paused", publication, "paused");
+  return publication;
 }
 
 export function resumeChannelPublication(publicationId: string): ChannelPublication {
@@ -1267,7 +1314,9 @@ export function resumeChannelPublication(publicationId: string): ChannelPublicat
       WHERE id = ?`
   ).run(nowIso(), publicationId);
   appendChannelPublicationEvent(publicationId, "info", "Публикация возобновлена.");
-  return getChannelPublicationById(publicationId)!;
+  const publication = getChannelPublicationById(publicationId)!;
+  auditChannelPublication("publication.resumed", publication, "resumed");
+  return publication;
 }
 
 export function retryChannelPublication(publicationId: string): ChannelPublication {
@@ -1294,7 +1343,11 @@ export function retryChannelPublication(publicationId: string): ChannelPublicati
       WHERE id = ?`
   ).run(nowIso(), publicationId);
   appendChannelPublicationEvent(publicationId, "info", "Публикация поставлена на повтор.");
-  return getChannelPublicationById(publicationId)!;
+  const publication = getChannelPublicationById(publicationId)!;
+  auditChannelPublication("publication.queued", publication, "queued", {
+    payload: { reason: "retry" }
+  });
+  return publication;
 }
 
 export function cancelChannelPublication(publicationId: string): ChannelPublication {
@@ -1321,7 +1374,9 @@ export function cancelChannelPublication(publicationId: string): ChannelPublicat
       WHERE id = ?`
   ).run(canceledAt, canceledAt, publicationId);
   appendChannelPublicationEvent(publicationId, "info", "Публикация удалена из очереди.");
-  return getChannelPublicationById(publicationId)!;
+  const publication = getChannelPublicationById(publicationId)!;
+  auditChannelPublication("publication.canceled", publication, "canceled");
+  return publication;
 }
 
 export function publishNowChannelPublication(publicationId: string): ChannelPublication {
@@ -1361,12 +1416,24 @@ export function publishNowChannelPublication(publicationId: string): ChannelPubl
     publicationId
   );
   appendChannelPublicationEvent(publicationId, "info", "Публикация переведена в publish now.");
-  return getChannelPublicationById(publicationId)!;
+  const publication = getChannelPublicationById(publicationId)!;
+  auditChannelPublication("publication.queued", publication, "queued", {
+    payload: { reason: "publish_now" }
+  });
+  return publication;
 }
 
 export function sweepPublishedChannelPublications(now = nowIso()): number {
   const db = getDb();
-  return Number(
+  const rows = db
+    .prepare(
+      `SELECT id
+         FROM channel_publications
+        WHERE status = 'scheduled'
+          AND scheduled_at <= ?`
+    )
+    .all(now) as Array<{ id: string }>;
+  const changed = Number(
     db.prepare(
     `UPDATE channel_publications
         SET status = 'published',
@@ -1376,6 +1443,13 @@ export function sweepPublishedChannelPublications(now = nowIso()): number {
         AND scheduled_at <= ?`
     ).run(now, now).changes ?? 0
   );
+  for (const row of rows) {
+    const publication = getChannelPublicationById(String(row.id));
+    if (publication?.status === "published") {
+      auditChannelPublication("publication.published", publication, "published");
+    }
+  }
+  return changed;
 }
 
 export function recoverInterruptedChannelPublications(): number {
@@ -1421,7 +1495,7 @@ export function claimNextReadyChannelPublication(input: {
   const leaseToken = randomUUID();
   const leaseExpiresAt = new Date(now.getTime() + leaseMs).toISOString();
 
-  return runInTransaction((db) => {
+  const claimed = runInTransaction((db) => {
     sweepPublishedChannelPublications(nowString);
     const row = db
       .prepare(
@@ -1458,6 +1532,14 @@ export function claimNextReadyChannelPublication(input: {
       leaseExpiresAt
     };
   });
+  if (claimed) {
+    auditChannelPublication("publication.uploading", claimed.publication, "running", {
+      payload: {
+        leaseExpiresAt: claimed.leaseExpiresAt
+      }
+    });
+  }
+  return claimed;
 }
 
 export function extendChannelPublicationLease(input: {
@@ -1561,7 +1643,14 @@ export function markChannelPublicationScheduled(input: {
     });
   }
   appendChannelPublicationEvent(input.publicationId, "info", "Видео загружено в YouTube и запланировано.");
-  return getChannelPublicationById(input.publicationId)!;
+  const publication = getChannelPublicationById(input.publicationId)!;
+  auditChannelPublication("publication.scheduled", publication, "scheduled", {
+    payload: {
+      youtubeVideoId: input.youtubeVideoId,
+      youtubeVideoUrl: input.youtubeVideoUrl
+    }
+  });
+  return publication;
 }
 
 export function markChannelPublicationFailed(
@@ -1606,7 +1695,14 @@ export function markChannelPublicationFailed(
     });
   }
   appendChannelPublicationEvent(publicationId, "error", errorMessage);
-  return getChannelPublicationById(publicationId)!;
+  const publication = getChannelPublicationById(publicationId)!;
+  auditChannelPublication("publication.failed", publication, "failed", {
+    severity: "error",
+    payload: {
+      errorMessage
+    }
+  });
+  return publication;
 }
 
 export function listPublicationsReadyForRemoteDeletion(channelId: string): ChannelPublication[] {

@@ -2,6 +2,7 @@ import { getChatById } from "../../../../lib/chat-history";
 import { requireAuth, requireChannelVisibility } from "../../../../lib/auth/guards";
 import { buildChatTraceExport } from "../../../../lib/chat-trace-export";
 import { buildChatTraceExportFileName } from "../../../../lib/chat-trace-export-shared";
+import { redactForFlowExport } from "../../../../lib/flow-redaction";
 
 export const runtime = "nodejs";
 
@@ -39,7 +40,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
       exportedAt: payload.exportedAt
     });
 
-    return new Response(JSON.stringify(payload, null, 2), {
+    return new Response(JSON.stringify(redactForFlowExport(payload), null, 2), {
       status: 200,
       headers: {
         "Content-Type": "application/json; charset=utf-8",
