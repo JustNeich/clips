@@ -182,6 +182,13 @@ test("step 3 local mode keeps the executor call-to-action visible", () => {
   assert.match(html, /Подключить executor/);
 });
 
+test("step 3 framing controls expose both horizontal and vertical positioning", () => {
+  const html = renderToStaticMarkup(React.createElement(Step3RenderTemplate, makeStep3RenderTemplateProps()));
+
+  assert.match(html, /Position X/);
+  assert.match(html, /Position Y/);
+});
+
 test("workspace render tab warns when configured host mode is currently forced back to local", () => {
   const html = renderToStaticMarkup(
     React.createElement(ChannelManagerWorkspaceRenderTab, {

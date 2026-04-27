@@ -118,6 +118,7 @@ Runtime invariant:
 - в `Template Road` операторский порядок должен идти сверху вниз: сначала формат/основа, затем `Канал и lead-политика`, потом demo/body и только после этого chrome/spacing/details;
 - при изменении `card.width`, `card.borderWidth` и других shell-параметров внутренний контент обязан считаться от inner safe area карточки, а не от полного outer rect;
 - border/radius нельзя silently брать только из locked spec: live editor overrides должны доходить до snapshot, preview и финального render.
+- `bodyToMediaGap` управляет только вертикальным зазором `Body -> video`; боковая/нижняя чёрная рамка задаётся отдельными `mediaInsetX`, `footerHeight`, `mediaBorderWidth` и `card.fill`.
 
 ## 4. Background contract
 

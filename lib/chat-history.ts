@@ -437,7 +437,9 @@ export async function createChannel(input: {
           ...DEFAULT_STAGE2_PROMPT_CONFIG,
           useWorkspaceDefault: true
         },
-    stage2StyleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
+    stage2StyleProfile: input.stage2StyleProfile
+      ? parseStage2StyleProfileJson(stringifyStage2StyleProfile(input.stage2StyleProfile))
+      : DEFAULT_STAGE2_STYLE_PROFILE,
     templateId,
     avatarAssetId: null,
     defaultBackgroundAssetId: null,

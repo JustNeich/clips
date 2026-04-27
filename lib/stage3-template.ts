@@ -848,6 +848,11 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+export function resolveTemplateDescenderSafetyPx(fontPx: number, lineHeight: number): number {
+  const ratio = lineHeight < 1 ? 0.15 + Math.max(0, 1 - lineHeight) * 0.6 : 0.1;
+  return clampNumber(Math.ceil(fontPx * ratio), 3, 8);
+}
+
 function normalizeFontScale(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 1;
@@ -934,7 +939,8 @@ function findBestFontForSlot(
     font = snapStage3TextFontPx(font - STAGE3_TEXT_FONT_STEP_PX)
   ) {
     const lines = estimateLineCount(text, font, slot.width, config);
-    const contentHeight = lines * font * config.lineHeight;
+    const contentHeight =
+      lines * font * config.lineHeight + resolveTemplateDescenderSafetyPx(font, config.lineHeight);
     if (lines <= config.maxLines && contentHeight <= slot.height * VERTICAL_SAFETY) {
       return { font, lines, fits: true };
     }
@@ -976,7 +982,8 @@ function applyFontScaleWithSafety(params: {
   let font = scaledBaseFont;
   let effectiveLineHeight = params.config.lineHeight;
   let lines = estimateLineCount(params.text, font, params.slot.width, params.config);
-  let contentHeight = lines * font * effectiveLineHeight;
+  let contentHeight =
+    lines * font * effectiveLineHeight + resolveTemplateDescenderSafetyPx(font, effectiveLineHeight);
 
   while (
     font > minFont &&
@@ -987,7 +994,8 @@ function applyFontScaleWithSafety(params: {
         minLineHeight,
         Number((effectiveLineHeight - 0.02).toFixed(3))
       );
-      contentHeight = lines * font * effectiveLineHeight;
+      contentHeight =
+        lines * font * effectiveLineHeight + resolveTemplateDescenderSafetyPx(font, effectiveLineHeight);
       continue;
     }
 
@@ -998,7 +1006,8 @@ function applyFontScaleWithSafety(params: {
     font = nextFont;
     effectiveLineHeight = params.config.lineHeight;
     lines = estimateLineCount(params.text, font, params.slot.width, params.config);
-    contentHeight = lines * font * effectiveLineHeight;
+    contentHeight =
+      lines * font * effectiveLineHeight + resolveTemplateDescenderSafetyPx(font, effectiveLineHeight);
   }
 
   const fillTargetMin =
@@ -1017,7 +1026,9 @@ function applyFontScaleWithSafety(params: {
       if (font < maxFont) {
         const candidateFont = Math.min(maxFont, snapStage3TextFontPx(font + STAGE3_TEXT_FONT_STEP_PX));
         const candidateLines = estimateLineCount(params.text, candidateFont, params.slot.width, params.config);
-        const candidateHeight = candidateLines * candidateFont * effectiveLineHeight;
+        const candidateHeight =
+          candidateLines * candidateFont * effectiveLineHeight +
+          resolveTemplateDescenderSafetyPx(candidateFont, effectiveLineHeight);
         if (
           candidateFont > font &&
           candidateLines <= params.config.maxLines &&
@@ -1032,7 +1043,8 @@ function applyFontScaleWithSafety(params: {
 
       if (!expanded && effectiveLineHeight < maxLineHeight) {
         const candidateLineHeight = Number(Math.min(maxLineHeight, effectiveLineHeight + 0.01).toFixed(3));
-        const candidateHeight = lines * font * candidateLineHeight;
+        const candidateHeight =
+          lines * font * candidateLineHeight + resolveTemplateDescenderSafetyPx(font, candidateLineHeight);
         if (candidateHeight <= maxHeight) {
           effectiveLineHeight = candidateLineHeight;
           contentHeight = candidateHeight;

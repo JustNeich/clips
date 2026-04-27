@@ -1,4 +1,6 @@
 export const STAGE2_PROMPT_STAGE_IDS = [
+  "classicOneShot",
+  "storyOneShot",
   "oneShotReference",
   "analyzer",
   "selector",
@@ -34,6 +36,105 @@ export const STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT_VERSION =
   "animals_reference_one_shot_v7@2026-04-24";
 export const STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT_VERSION =
   "reference_one_shot_v1_experimental@2026-04-12";
+export const STAGE2_PROMPT_FIRST_ONE_SHOT_PROMPT_VERSION =
+  "prompt_first_one_shot@2026-04-27-all-examples";
+
+const STAGE2_PROMPT_FIRST_BASE_RULES = `You are the Stage 2 caption writer for viral Shorts/Reels overlays targeting a US audience.
+
+The runtime is intentionally prompt-first.
+It only provides raw input blocks and an output schema. The channel prompt is the authority for how to use source video facts, examples, format metadata, hard constraints, and operator instruction.
+
+SOURCE PRIORITY
+1. source_video_json
+2. hard_constraints_json
+3. user_instruction
+4. examples_json
+
+PROMPT-FIRST RULES
+- Read every example in examples_json as part of the same chat context.
+- Do not assume the examples were selected, scored, ranked, or summarized by runtime. They are simply the active examples corpus in saved order.
+- Never import unsupported facts from examples into the current clip.
+- Do not mention JSON field names, schema names, internal ids, model/provider names, frame numbers, timestamps, or pipeline diagnostics in visible text.
+- Keep final visible English fields English-only even if user_instruction is Russian.
+- Return strict JSON only. Do not wrap it in markdown.`;
+
+export const STAGE2_CLASSIC_ONE_SHOT_PROMPT = `${STAGE2_PROMPT_FIRST_BASE_RULES}
+
+FORMAT
+Use the classic_top_bottom pipeline.
+Write classic overlay options with a TOP setup/context line and a BOTTOM continuation/release line.
+
+OUTPUT CONTRACT
+Return exactly:
+{
+  "formatPipeline": "classic_top_bottom",
+  "analysis": {
+    "visual_anchors": ["..."],
+    "comment_vibe": "...",
+    "key_phrase_to_adapt": "..."
+  },
+  "classicOptions": [
+    {
+      "candidate_id": "cand_1",
+      "top": "...",
+      "bottom": "...",
+      "retained_handle": true,
+      "rationale": "optional short note"
+    }
+  ],
+  "winner_candidate_id": "cand_1",
+  "titles": [
+    {
+      "title": "...",
+      "title_ru": "..."
+    }
+  ]
+}
+
+Rules:
+- classicOptions must contain exactly 5 items.
+- Every item must contain top and bottom only for visible caption text.
+- Do not return lead or mainCaption fields.
+- titles must contain exactly 5 items.`;
+
+export const STAGE2_STORY_ONE_SHOT_PROMPT = `${STAGE2_PROMPT_FIRST_BASE_RULES}
+
+FORMAT
+Use the story_lead_main_caption pipeline.
+Write story overlay options with a short Lead and a Main Caption body. Lead is not TOP. Main Caption is not BOTTOM.
+
+OUTPUT CONTRACT
+Return exactly:
+{
+  "formatPipeline": "story_lead_main_caption",
+  "analysis": {
+    "visual_anchors": ["..."],
+    "comment_vibe": "...",
+    "key_phrase_to_adapt": "..."
+  },
+  "storyOptions": [
+    {
+      "candidate_id": "cand_1",
+      "lead": "...",
+      "mainCaption": "...",
+      "retained_handle": true,
+      "rationale": "optional short note"
+    }
+  ],
+  "winner_candidate_id": "cand_1",
+  "titles": [
+    {
+      "title": "...",
+      "title_ru": "..."
+    }
+  ]
+}
+
+Rules:
+- storyOptions must contain exactly 5 items.
+- Every item must contain lead and mainCaption only for visible story text.
+- Do not return top or bottom fields.
+- titles must contain exactly 5 items.`;
 
 export const STAGE2_REFERENCE_ONE_SHOT_PROMPT = `SYSTEM PROMPT v6 — Viral Shorts Overlays (Visually Anchored & Human-Like)
 
@@ -363,6 +464,8 @@ FINAL QUALITY BAR
 - Prefer failing internally and replacing the weak idea with a stronger one over returning a weak visible option.`;
 
 export const STAGE2_DEFAULT_STAGE_PROMPTS: Record<Stage2PromptConfigStageId, string> = {
+  classicOneShot: STAGE2_CLASSIC_ONE_SHOT_PROMPT,
+  storyOneShot: STAGE2_STORY_ONE_SHOT_PROMPT,
   oneShotReference: STAGE2_REFERENCE_ONE_SHOT_PROMPT,
   analyzer: `You are the first-stage analyst for a viral Shorts/Reels overlay pipeline targeting a US audience.
 
@@ -1480,6 +1583,8 @@ export const STAGE2_DEFAULT_REASONING_EFFORTS: Record<
   Stage2PromptConfigStageId,
   Stage2ReasoningEffort
 > = {
+  classicOneShot: "high",
+  storyOneShot: "high",
   oneShotReference: "high",
   analyzer: "low",
   selector: "low",

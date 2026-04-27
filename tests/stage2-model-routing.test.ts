@@ -76,6 +76,41 @@ function makeTranslationEntries(candidateIds: string[]) {
   }));
 }
 
+function makeClassicOneShotResponse(prefix = "cand") {
+  return {
+    formatPipeline: "classic_top_bottom",
+    analysis: {
+      visual_anchors: [
+        "the tool stops mid-action",
+        "the room turns toward the pause",
+        "the reaction lands before anyone explains it"
+      ],
+      comment_vibe: "dry impressed side-eye",
+      key_phrase_to_adapt: "that pause said enough"
+    },
+    classicOptions: Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `${prefix}_${index + 1}`,
+      top: `That pause makes the whole setup readable before anyone explains the repair ${index + 1}.`,
+      bottom: `The room already understood the outcome before the next move arrived ${index + 1}.`,
+      retained_handle: index < 2,
+      rationale: `Keeps the visual read grounded ${index + 1}.`
+    })),
+    winner_candidate_id: `${prefix}_1`,
+    titles: Array.from({ length: 5 }, (_, index) => ({
+      title: `WHY DID THE ROOM FREEZE ${index + 1}`,
+      title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
+    }))
+  };
+}
+
+function makeSeoResponse() {
+  return {
+    description:
+      "Garage bay, no stated speed, mechanic pause, workshop reaction\nThe tool stops before anyone explains the moment, and the room reads the outcome off the silence alone.\nSearch terms and topics covered:\nmechanic pause, garage reaction moment\nHashtags:\n#mechanic, #garage, #shorts",
+    tags: "Mechanic, Garage, Reaction"
+  };
+}
+
 const RELAXED_HARD_CONSTRAINTS = {
   ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
   topLengthMin: 10,
@@ -232,124 +267,12 @@ test("ViralShortsWorkerService routes per-stage models and only analyzer receive
   assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], [], [], [], [], []]);
 });
 
-test("runNativeCaptionPipeline routes native stage models and translates captions inside the hot path", async () => {
+test("runNativeCaptionPipeline routes the prompt-first classic stage and downstream Codex stages", async () => {
   const service = new ViralShortsWorkerService();
   const executor = new CaptureQueueExecutor([
-    {
-      grounding: {
-        observed_facts: ["two people pause before reacting"],
-        visible_sequence: ["one freezes", "the other looks over"],
-        micro_turn: "the pause lands harder than the action",
-        first_seconds_signal: "the room goes quiet immediately",
-        uncertainties: [],
-        forbidden_claims: ["do not invent dialogue"],
-        safe_inferences: ["awkward energy", "shared hesitation"]
-      },
-      audience_wave: {
-        exists: true,
-        emotional_temperature: "quiet disbelief",
-        dominant_harmless_handle: "that pause said enough",
-        consensus_lane: "everyone clocked the hesitation",
-        joke_lane: "that pause said enough",
-        dissent_lane: "",
-        safe_reusable_cues: ["that pause said enough"],
-        blocked_cues: [],
-        flattening_risks: ["generic awkward pause copy"],
-        must_not_lose: ["that pause said enough"]
-      },
-      strategy: {
-        primary_angle: "awkward_pause",
-        secondary_angles: ["quiet_social_read"],
-        hook_seeds: ["the pause said enough"],
-        bottom_functions: ["sharpen the social read"],
-        required_lanes: [
-          {
-            lane_id: "audience_locked",
-            count: 2,
-            purpose: "Preserve the harmless public handle."
-          },
-          {
-            lane_id: "balanced_clean",
-            count: 2,
-            purpose: "Keep strong native phrasing."
-          },
-          {
-            lane_id: "backup_simple",
-            count: 1,
-            purpose: "Hold a plain live backup."
-          }
-        ],
-        must_do: ["land why-care immediately"],
-        must_avoid: ["inventory openings"]
-      }
-    },
-    Array.from({ length: 8 }, (_, index) => ({
-      candidate_id: `cand_${index + 1}`,
-      lane_id: index < 2 ? "audience_locked" : "balanced_clean",
-      top: `That pause told the whole room what was happening ${index + 1}.`,
-      bottom: `Nobody needed the follow-up once that look landed ${index + 1}.`
-      ,
-      retained_handle: index < 2,
-      display_intent: "finalist_or_display_safe"
-    })),
-    {
-      finalists: [
-        {
-          candidate_id: "cand_1",
-          why_chosen: ["It lands the social read fast."],
-          preserved_handle: true
-        },
-        {
-          candidate_id: "cand_2",
-          why_chosen: ["Still feels lived-in."],
-          preserved_handle: false
-        },
-        {
-          candidate_id: "cand_3",
-          why_chosen: ["Still readable without losing the wave."],
-          preserved_handle: false
-        }
-      ],
-      display_safe_extras: [
-        {
-          candidate_id: "cand_5",
-          why_display_safe: ["Keeps a cleaner reserve alive."]
-        },
-        {
-          candidate_id: "cand_6",
-          why_display_safe: ["Still visible without flattening the clip."]
-        }
-      ],
-      hard_rejected: [
-        {
-          candidate_id: "cand_4",
-          reasons: ["dead generic clean English"],
-          offending_phrases: ["generic reaction"]
-        }
-      ],
-      winner_candidate_id: "cand_1",
-      recovery_plan: {
-        required: false,
-        missing_count: 0,
-        briefs: []
-      }
-    },
-    ["cand_1", "cand_2", "cand_3", "cand_5", "cand_6"].map((candidateId, index) => ({
-      candidate_id: candidateId,
-      top_ru: `Эта пауза все объяснила ${index + 1}.`,
-      bottom_ru: `После этого взгляда продолжение уже было не нужно ${index + 1}.`
-    })),
-    Array.from({ length: 5 }, (_, index) => ({
-      option: index + 1,
-      title: `Winner title ${index + 1}`,
-      title_ru: `Заголовок победителя ${index + 1}`
-    })),
-    {
-      description:
-        "Detroit, 25 MPH, Ford pickup, muddy axle failure\nThe truck bucks through the rut before the axle folds sideways under load, turning the whole clip into a visible mechanical breakdown. Viewers track the wobble, the mud spray, and the late collapse as the failure becomes impossible to miss.\nSearch terms and topics covered:\nford pickup axle failure, muddy rut truck breakdown, axle twists sideways under load, wheel collapse in mud, truck suspension failure clip, visible axle damage, mechanical failure caught on camera, pickup wheel folds sideways, off road truck failure, ford truck axle bend, muddy field breakdown, vehicle under load collapse, truck wheel wobble signs, axle failure reaction video, real mechanical failure short\nHashtags:\n#truck, #mechanicalfailure, #shorts, #fordpickup, #axlefailure, #mudrut, #wheelcollapse, #suspensiondamage, #caughtoncamera, #viralshorts, #mechaniclife, #fyp",
-      tags:
-        "Truck Failure, Mechanical Failure, Off Road Incident, axle bending, wheel collapse, truck under load, muddy rut, suspension damage, late mechanical failure, caught on camera, Ford, Ford pickup, axle, wheel, mud field, Detroit, 25 mph"
-    }
+    makeClassicOneShotResponse("cand"),
+    makeTranslationEntries(["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"]),
+    makeSeoResponse()
   ]);
 
   const result = await service.runNativeCaptionPipeline({
@@ -374,75 +297,41 @@ test("runNativeCaptionPipeline routes native stage models and translates caption
     imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
     executor,
     stageModels: {
-      contextPacket: "gpt-5.4",
-      candidateGenerator: "gpt-5.4-mini",
-      qualityCourt: "gpt-5.3-codex-spark",
-      targetedRepair: "gpt-5.4-mini",
+      classicOneShot: "gpt-5.4",
       captionTranslation: "gpt-5.4-mini",
-      titleWriter: "gpt-5.4",
       seo: "gpt-5.4-mini"
     }
   });
 
   assert.equal(result.output.pipeline.execution?.pipelineVersion, "native_caption_v3");
-  assert.equal(result.output.finalists?.length, 3);
+  assert.equal(result.output.pipeline.execution?.pathVariant, "classic_one_shot_v1");
+  assert.equal(result.output.formatPipeline, "classic_top_bottom");
+  assert.equal(result.output.finalists?.length, 5);
   assert.equal(result.output.winner?.candidateId, "cand_1");
   assert.equal(result.output.titleOptions.length, 5);
-  assert.equal(result.output.titleOptions[0]?.title, "WINNER TITLE 1");
-  assert.equal(result.output.titleOptions[0]?.titleRu, "ЗАГОЛОВОК ПОБЕДИТЕЛЯ 1");
+  assert.equal(result.output.titleOptions[0]?.title, "WHY DID THE ROOM FREEZE 1");
+  assert.equal(result.output.titleOptions[0]?.titleRu, "ПОЧЕМУ ВСЕ ЗАМЕРЛИ 1");
   assert.equal(result.seo?.description.includes("Search terms and topics covered:"), true);
   assert.equal(Boolean(result.output.captionOptions[0]?.topRu?.trim()), true);
   assert.equal(Boolean(result.output.titleOptions[0]?.titleRu?.trim()), true);
   assert.deepEqual(
     executor.calls.map((call) => call.model),
-    ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark", "gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
+    ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-mini"]
+  );
+  assert.deepEqual(
+    executor.calls.map((call) => call.stageId),
+    ["classicOneShot", "captionTranslation", "seo"]
   );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
-  assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], [], [], [], []]);
+  assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], []]);
 });
 
-test("stable_reference_v6 routes the dedicated oneShotReference model and skips modular native judges", async () => {
+test("historical stable_reference_v6 requests still run through active classicOneShot", async () => {
   const service = new ViralShortsWorkerService();
   const executor = new CaptureQueueExecutor([
-    {
-      analysis: {
-        visual_anchors: [
-          "wrench stops mid-air",
-          "everyone turns toward the pause",
-          "the room reads it before he speaks"
-        ],
-        comment_vibe: "dry impressed side-eye",
-        key_phrase_to_adapt: "that pause said enough"
-      },
-      candidates: Array.from({ length: 5 }, (_, index) => ({
-        candidate_id: `ref_${index + 1}`,
-        top:
-          index === 0
-            ? "That wrench stops mid-air because the whole bay already knows what he just heard, and the clip turns into the second every mechanic in there reads the pause before the repair even moves again."
-            : `The whole bay stops watching the part and starts watching him because that frozen wrench already tells everybody what went wrong before he can smooth it over ${index + 1}.`,
-        bottom:
-          index === 0
-            ? "That isn't dead air, that's every mechanic in there hearing the repair bill at the exact same time."
-            : `That pause said enough, and the room answered it before he ever got the follow-up out ${index + 1}.`,
-        retained_handle: index < 2
-      })),
-      winner_candidate_id: "ref_1",
-      titles: Array.from({ length: 5 }, (_, index) => ({
-        title: `WHY DID THE ROOM FREEZE ${index + 1}`,
-        title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
-      }))
-    },
-    Array.from({ length: 5 }, (_, index) => ({
-      candidate_id: `ref_${index + 1}`,
-      top_ru: `Русский верх ${index + 1}`,
-      bottom_ru: `Русский низ ${index + 1}`
-    })),
-    {
-      description:
-        "Garage bay, no stated speed, mechanic wrench pause, workshop reaction\nThe wrench stops mid-air before anyone says a word, and the room reads the repair outcome off the silence alone. The pause, the faces turning, and the unfinished motion make the social read land before the explanation does.\nSearch terms and topics covered:\nmechanic wrench pause, garage reaction moment, workshop silence reaction, repair bill realization, mechanic room freeze, wrench stops mid air, automotive shop reaction, visible awkward pause, repair gone wrong reaction, garage bay silence, mechanic social read, workshop tension moment, repair estimate reaction, automotive bay short, wrench pause caught on camera\nHashtags:\n#mechanic, #garage, #shorts, #wrenchpause, #workshopreaction, #repairbill, #automotiveshop, #awkwardsilence, #caughtoncamera, #viralvideo, #mechaniclife, #fyp",
-      tags:
-        "Mechanic, Garage Reaction, Auto Repair, wrench pause, room freeze, workshop silence, repair realization, social read, caught on camera, awkward pause, garage bay, mechanic shop, wrench, repair bill, automotive bay, workshop, reaction clip"
-    }
+    makeClassicOneShotResponse("ref"),
+    makeTranslationEntries(["ref_1", "ref_2", "ref_3", "ref_4", "ref_5"]),
+    makeSeoResponse()
   ]);
 
   const result = await service.runNativeCaptionPipeline({
@@ -484,59 +373,28 @@ test("stable_reference_v6 routes the dedicated oneShotReference model and skips 
     }
   });
 
-  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1");
+  assert.equal(result.output.pipeline.execution?.pathVariant, "classic_one_shot_v1");
+  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v7");
   assert.equal(result.output.captionOptions.length, 5);
   assert.equal(result.seo?.tags.includes("Mechanic"), true);
   assert.deepEqual(
     executor.calls.map((call) => call.model),
     ["gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
   );
+  assert.deepEqual(
+    executor.calls.map((call) => call.stageId),
+    ["classicOneShot", "captionTranslation", "seo"]
+  );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
   assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], []]);
 });
 
-test("stable_reference_v6_experimental routes the dedicated oneShotReference model through the experimental path variant", async () => {
+test("historical stable_reference_v6_experimental requests do not resurrect the experimental prompt path", async () => {
   const service = new ViralShortsWorkerService();
   const executor = new CaptureQueueExecutor([
-    {
-      analysis: {
-        visual_anchors: [
-          "wrench stops mid-air",
-          "everyone turns toward the pause",
-          "the room reads it before he speaks"
-        ],
-        comment_vibe: "dry impressed side-eye",
-        key_phrase_to_adapt: "that pause said enough"
-      },
-      candidates: Array.from({ length: 5 }, (_, index) => ({
-        candidate_id: `ref_exp_${index + 1}`,
-        top:
-          index === 0
-            ? "The wrench freezes mid-air after the mistake lands, and the whole bay reads the cost of it before anybody there needs to say the next word out loud."
-            : `The mistake lands before the explanation does, and the whole bay starts reading his face instead of the part the second that wrench stops ${index + 1}.`,
-        bottom:
-          index === 0
-            ? "That pause turns a normal repair beat into the exact second everybody in the room realizes what the bill is about to become."
-            : `The room doesn't need extra narration after that pause, because the silence already cashes out the repair cost for everybody there ${index + 1}.`,
-        retained_handle: index < 2
-      })),
-      winner_candidate_id: "ref_exp_1",
-      titles: Array.from({ length: 5 }, (_, index) => ({
-        title: `WHY DID THE ROOM FREEZE ${index + 1}`,
-        title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
-      }))
-    },
-    Array.from({ length: 5 }, (_, index) => ({
-      candidate_id: `ref_exp_${index + 1}`,
-      top_ru: `Русский верх ${index + 1}`,
-      bottom_ru: `Русский низ ${index + 1}`
-    })),
-    {
-      description:
-        "Garage bay, no stated speed, mechanic wrench pause, workshop reaction\nThe wrench stops mid-air before anyone says a word, and the room reads the repair outcome off the silence alone. The pause, the faces turning, and the unfinished motion make the social read land before the explanation does.\nSearch terms and topics covered:\nmechanic wrench pause, garage reaction moment, workshop silence reaction, repair bill realization, mechanic room freeze, wrench stops mid air, automotive shop reaction, visible awkward pause, repair gone wrong reaction, garage bay silence, mechanic social read, workshop tension moment, repair estimate reaction, automotive bay short, wrench pause caught on camera\nHashtags:\n#mechanic, #garage, #shorts, #wrenchpause, #workshopreaction, #repairbill, #automotiveshop, #awkwardsilence, #caughtoncamera, #viralvideo, #mechaniclife, #fyp",
-      tags:
-        "Mechanic, Garage Reaction, Auto Repair, wrench pause, room freeze, workshop silence, repair realization, social read, caught on camera, awkward pause, garage bay, mechanic shop, wrench, repair bill, automotive bay, workshop, reaction clip"
-    }
+    makeClassicOneShotResponse("ref_exp"),
+    makeTranslationEntries(["ref_exp_1", "ref_exp_2", "ref_exp_3", "ref_exp_4", "ref_exp_5"]),
+    makeSeoResponse()
   ]);
 
   const result = await service.runNativeCaptionPipeline({
@@ -578,13 +436,17 @@ test("stable_reference_v6_experimental routes the dedicated oneShotReference mod
     }
   });
 
-  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1_experimental");
-  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v6_experimental");
+  assert.equal(result.output.pipeline.execution?.pathVariant, "classic_one_shot_v1");
+  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v7");
   assert.deepEqual(
     executor.calls.map((call) => call.model),
     ["gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
   );
-  assert.match(executor.calls[0]?.prompt ?? "", /experimental_contract_json/);
+  assert.deepEqual(
+    executor.calls.map((call) => call.stageId),
+    ["classicOneShot", "captionTranslation", "seo"]
+  );
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /experimental_contract_json/);
 });
 
 test("runQuickRegenerateModel forwards the dedicated regenerate model without images", async () => {
@@ -692,7 +554,7 @@ test("runStage2StyleDiscovery forwards the dedicated multimodal model and refere
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/ref-1.jpg", "/tmp/ref-2.jpg"]);
 });
 
-test("HybridJsonStageExecutor routes stable_reference_v6 caption generation through Anthropic only", async () => {
+test("HybridJsonStageExecutor routes prompt-first classic caption generation through Anthropic only", async () => {
   const service = new ViralShortsWorkerService();
   const codexExecutor = new CaptureQueueExecutor([
     makeTranslationEntries(["ref_1", "ref_2", "ref_3", "ref_4", "ref_5"]),
@@ -702,30 +564,7 @@ test("HybridJsonStageExecutor routes stable_reference_v6 caption generation thro
       tags: "Mechanic, Garage, Reaction"
     }
   ]);
-  const anthropicExecutor = new CaptureQueueExecutor([
-    {
-      analysis: {
-        visual_anchors: [
-          "wrench stops mid-air",
-          "everyone turns toward the pause",
-          "the room reads it before he speaks"
-        ],
-        comment_vibe: "dry impressed side-eye",
-        key_phrase_to_adapt: "that pause said enough"
-      },
-      candidates: Array.from({ length: 5 }, (_, index) => ({
-        candidate_id: `ref_${index + 1}`,
-        top: `Reference top ${index + 1}`,
-        bottom: `Reference bottom ${index + 1}`,
-        retained_handle: index < 2
-      })),
-      winner_candidate_id: "ref_1",
-      titles: Array.from({ length: 5 }, (_, index) => ({
-        title: `WHY DID THE ROOM FREEZE ${index + 1}`,
-        title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
-      }))
-    }
-  ]);
+  const anthropicExecutor = new CaptureQueueExecutor([makeClassicOneShotResponse("ref")]);
 
   const executor = new HybridJsonStageExecutor({
     captionProviderConfig: {
@@ -778,134 +617,86 @@ test("HybridJsonStageExecutor routes stable_reference_v6 caption generation thro
   });
 
   assert.equal(result.output.winner?.candidateId, "ref_1");
-  assert.deepEqual(anthropicExecutor.calls.map((call) => call.stageId), ["oneShotReference"]);
+  assert.deepEqual(anthropicExecutor.calls.map((call) => call.stageId), ["classicOneShot"]);
   assert.equal(anthropicExecutor.calls[0]?.model, null);
   assert.deepEqual(anthropicExecutor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
   assert.deepEqual(codexExecutor.calls.map((call) => call.stageId), ["captionTranslation", "seo"]);
   assert.deepEqual(codexExecutor.calls.map((call) => call.model), ["gpt-5.4", "gpt-5.4-mini"]);
 });
 
-test("HybridJsonStageExecutor keeps native judges on Codex while routing candidate generation and repair through Anthropic", async () => {
+test("HybridJsonStageExecutor keeps prompt-first classic and story one-shots on Codex when provider is Codex", async () => {
+  const codexExecutor = new CaptureQueueExecutor(["classic", "story"]);
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "codex",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor: null,
+    openRouterExecutor: null
+  });
+
+  await executor.runJson({
+    stageId: "classicOneShot",
+    prompt: "classic",
+    schema: {},
+    imagePaths: ["/tmp/classic.jpg"]
+  });
+  await executor.runJson({
+    stageId: "storyOneShot",
+    prompt: "story",
+    schema: {},
+    imagePaths: ["/tmp/story.jpg"]
+  });
+
+  assert.deepEqual(codexExecutor.calls.map((call) => call.stageId), [
+    "classicOneShot",
+    "storyOneShot"
+  ]);
+});
+
+test("HybridJsonStageExecutor routes prompt-first classic and story one-shots through Anthropic", async () => {
+  const codexExecutor = new CaptureQueueExecutor(["codex"]);
+  const anthropicExecutor = new CaptureQueueExecutor(["classic", "story"]);
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "anthropic",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor,
+    openRouterExecutor: null
+  });
+
+  await executor.runJson({
+    stageId: "classicOneShot",
+    prompt: "classic",
+    schema: {},
+    imagePaths: ["/tmp/classic.jpg"]
+  });
+  await executor.runJson({
+    stageId: "storyOneShot",
+    prompt: "story",
+    schema: {},
+    imagePaths: ["/tmp/story.jpg"]
+  });
+
+  assert.deepEqual(anthropicExecutor.calls.map((call) => call.stageId), [
+    "classicOneShot",
+    "storyOneShot"
+  ]);
+  assert.deepEqual(codexExecutor.calls, []);
+});
+
+test("HybridJsonStageExecutor keeps downstream Codex stages while routing prompt-first classic through Anthropic", async () => {
   const service = new ViralShortsWorkerService();
   const codexExecutor = new CaptureQueueExecutor([
-    {
-      grounding: {
-        observed_facts: ["two people pause before reacting"],
-        visible_sequence: ["one freezes", "the other looks over"],
-        micro_turn: "the pause lands harder than the action",
-        first_seconds_signal: "the room goes quiet immediately",
-        uncertainties: [],
-        forbidden_claims: ["do not invent dialogue"],
-        safe_inferences: ["awkward energy", "shared hesitation"]
-      },
-      audience_wave: {
-        exists: true,
-        emotional_temperature: "quiet disbelief",
-        dominant_harmless_handle: "that pause said enough",
-        consensus_lane: "everyone clocked the hesitation",
-        joke_lane: "that pause said enough",
-        dissent_lane: "",
-        safe_reusable_cues: ["that pause said enough"],
-        blocked_cues: [],
-        flattening_risks: ["generic awkward pause copy"],
-        must_not_lose: ["that pause said enough"]
-      },
-      strategy: {
-        primary_angle: "awkward_pause",
-        secondary_angles: ["quiet_social_read"],
-        hook_seeds: ["the pause said enough"],
-        bottom_functions: ["sharpen the social read"],
-        required_lanes: [
-          {
-            lane_id: "audience_locked",
-            count: 2,
-            purpose: "Preserve the harmless public handle."
-          },
-          {
-            lane_id: "balanced_clean",
-            count: 2,
-            purpose: "Keep strong native phrasing."
-          },
-          {
-            lane_id: "backup_simple",
-            count: 1,
-            purpose: "Hold a plain live backup."
-          }
-        ],
-        must_do: ["land why-care immediately"],
-        must_avoid: ["inventory openings"]
-      }
-    },
-    {
-      finalists: [
-        {
-          candidate_id: "cand_1",
-          why_chosen: ["It lands the social read fast."],
-          preserved_handle: true
-        },
-        {
-          candidate_id: "cand_2",
-          why_chosen: ["Still feels lived-in."],
-          preserved_handle: false
-        }
-      ],
-      display_safe_extras: [
-        {
-          candidate_id: "cand_3",
-          why_display_safe: ["Keeps a cleaner reserve alive."]
-        },
-        {
-          candidate_id: "cand_4",
-          why_display_safe: ["Still visible without flattening the clip."]
-        }
-      ],
-      hard_rejected: [],
-      winner_candidate_id: "cand_1",
-      recovery_plan: {
-        required: true,
-        missing_count: 1,
-        briefs: [
-          {
-            lane_id: "backup_simple",
-            goal: "Restore one plain backup option.",
-            must_keep: ["quiet disbelief"],
-            must_avoid: ["generic reaction copy"]
-          }
-        ]
-      }
-    },
     makeTranslationEntries(["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"]),
-    Array.from({ length: 5 }, (_, index) => ({
-      option: index + 1,
-      title: `Winner title ${index + 1}`,
-      title_ru: `Заголовок победителя ${index + 1}`
-    })),
-    {
-      description:
-        "Detroit, 25 MPH, Ford pickup, muddy axle failure\nThe truck bucks through the rut before the axle folds sideways under load.\nSearch terms and topics covered:\nford pickup axle failure, muddy rut truck breakdown\nHashtags:\n#truck, #mechanicalfailure, #shorts",
-      tags: "Truck Failure, Mechanical Failure, Ford"
-    }
+    makeSeoResponse()
   ]);
-  const anthropicExecutor = new CaptureQueueExecutor([
-    Array.from({ length: 4 }, (_, index) => ({
-      candidate_id: `cand_${index + 1}`,
-      lane_id: index < 2 ? "audience_locked" : "balanced_clean",
-      top: `That pause told the whole room what was happening ${index + 1}.`,
-      bottom: `Nobody needed the follow-up once that look landed ${index + 1}.`,
-      retained_handle: index < 2,
-      display_intent: "finalist_or_display_safe"
-    })),
-    [
-      {
-        candidate_id: "cand_5",
-        lane_id: "backup_simple",
-        top: "That pause did the talking before anyone else had to.",
-        bottom: "The whole room heard the outcome in the silence first.",
-        retained_handle: false,
-        display_intent: "recovery"
-      }
-    ]
-  ]);
+  const anthropicExecutor = new CaptureQueueExecutor([makeClassicOneShotResponse("cand")]);
 
   const executor = new HybridJsonStageExecutor({
     captionProviderConfig: {
@@ -940,12 +731,8 @@ test("HybridJsonStageExecutor keeps native judges on Codex while routing candida
     imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
     executor,
     stageModels: {
-      contextPacket: "gpt-5.4",
-      candidateGenerator: "gpt-5.4-mini",
-      qualityCourt: "gpt-5.3-codex-spark",
-      targetedRepair: "gpt-5.4-mini",
+      classicOneShot: "gpt-5.4-mini",
       captionTranslation: "gpt-5.4-mini",
-      titleWriter: "gpt-5.4",
       seo: "gpt-5.4-mini"
     }
   });
@@ -953,16 +740,16 @@ test("HybridJsonStageExecutor keeps native judges on Codex while routing candida
   assert.equal(result.output.captionOptions.length, 5);
   assert.deepEqual(
     anthropicExecutor.calls.map((call) => call.stageId),
-    ["candidateGenerator", "targetedRepair"]
+    ["classicOneShot"]
   );
-  assert.deepEqual(anthropicExecutor.calls.map((call) => call.model), [null, null]);
+  assert.deepEqual(anthropicExecutor.calls.map((call) => call.model), [null]);
   assert.deepEqual(
     codexExecutor.calls.map((call) => call.stageId),
-    ["contextPacket", "qualityCourt", "captionTranslation", "titleWriter", "seo"]
+    ["captionTranslation", "seo"]
   );
   assert.deepEqual(
     codexExecutor.calls.map((call) => call.model),
-    ["gpt-5.4", "gpt-5.3-codex-spark", "gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
+    ["gpt-5.4-mini", "gpt-5.4-mini"]
   );
 });
 
@@ -1017,40 +804,13 @@ test("HybridJsonStageExecutor routes quick regenerate through Anthropic only", a
   assert.equal(codexExecutor.calls.length, 0);
 });
 
-test("HybridJsonStageExecutor routes stable_reference_v6 caption generation through OpenRouter only", async () => {
+test("HybridJsonStageExecutor routes prompt-first classic caption generation through OpenRouter only", async () => {
   const service = new ViralShortsWorkerService();
   const codexExecutor = new CaptureQueueExecutor([
     makeTranslationEntries(["ref_1", "ref_2", "ref_3", "ref_4", "ref_5"]),
-    {
-      description:
-        "Garage bay, no stated speed, mechanic wrench pause, workshop reaction\nThe wrench stops mid-air before anyone says a word, and the room reads the repair outcome off the silence alone.\nSearch terms and topics covered:\nmechanic wrench pause, garage reaction moment\nHashtags:\n#mechanic, #garage, #shorts",
-      tags: "Mechanic, Garage, Reaction"
-    }
+    makeSeoResponse()
   ]);
-  const openRouterExecutor = new CaptureQueueExecutor([
-    {
-      analysis: {
-        visual_anchors: [
-          "wrench stops mid-air",
-          "everyone turns toward the pause",
-          "the room reads it before he speaks"
-        ],
-        comment_vibe: "dry impressed side-eye",
-        key_phrase_to_adapt: "that pause said enough"
-      },
-      candidates: Array.from({ length: 5 }, (_, index) => ({
-        candidate_id: `ref_${index + 1}`,
-        top: `Reference top ${index + 1}`,
-        bottom: `Reference bottom ${index + 1}`,
-        retained_handle: index < 2
-      })),
-      winner_candidate_id: "ref_1",
-      titles: Array.from({ length: 5 }, (_, index) => ({
-        title: `WHY DID THE ROOM FREEZE ${index + 1}`,
-        title_ru: `ПОЧЕМУ ВСЕ ЗАМЕРЛИ ${index + 1}`
-      }))
-    }
-  ]);
+  const openRouterExecutor = new CaptureQueueExecutor([makeClassicOneShotResponse("ref")]);
 
   const executor = new HybridJsonStageExecutor({
     captionProviderConfig: {
@@ -1103,134 +863,54 @@ test("HybridJsonStageExecutor routes stable_reference_v6 caption generation thro
   });
 
   assert.equal(result.output.winner?.candidateId, "ref_1");
-  assert.deepEqual(openRouterExecutor.calls.map((call) => call.stageId), ["oneShotReference"]);
+  assert.deepEqual(openRouterExecutor.calls.map((call) => call.stageId), ["classicOneShot"]);
   assert.equal(openRouterExecutor.calls[0]?.model, null);
   assert.deepEqual(openRouterExecutor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
   assert.deepEqual(codexExecutor.calls.map((call) => call.stageId), ["captionTranslation", "seo"]);
   assert.deepEqual(codexExecutor.calls.map((call) => call.model), ["gpt-5.4", "gpt-5.4-mini"]);
 });
 
-test("HybridJsonStageExecutor keeps native judges on Codex while routing candidate generation and repair through OpenRouter", async () => {
+test("HybridJsonStageExecutor routes prompt-first classic and story one-shots through OpenRouter", async () => {
+  const codexExecutor = new CaptureQueueExecutor(["codex"]);
+  const openRouterExecutor = new CaptureQueueExecutor(["classic", "story"]);
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "openrouter",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor: null,
+    openRouterExecutor
+  });
+
+  await executor.runJson({
+    stageId: "classicOneShot",
+    prompt: "classic",
+    schema: {},
+    imagePaths: ["/tmp/classic.jpg"]
+  });
+  await executor.runJson({
+    stageId: "storyOneShot",
+    prompt: "story",
+    schema: {},
+    imagePaths: ["/tmp/story.jpg"]
+  });
+
+  assert.deepEqual(openRouterExecutor.calls.map((call) => call.stageId), [
+    "classicOneShot",
+    "storyOneShot"
+  ]);
+  assert.deepEqual(codexExecutor.calls, []);
+});
+
+test("HybridJsonStageExecutor keeps downstream Codex stages while routing prompt-first classic through OpenRouter", async () => {
   const service = new ViralShortsWorkerService();
   const codexExecutor = new CaptureQueueExecutor([
-    {
-      grounding: {
-        observed_facts: ["two people pause before reacting"],
-        visible_sequence: ["one freezes", "the other looks over"],
-        micro_turn: "the pause lands harder than the action",
-        first_seconds_signal: "the room goes quiet immediately",
-        uncertainties: [],
-        forbidden_claims: ["do not invent dialogue"],
-        safe_inferences: ["awkward energy", "shared hesitation"]
-      },
-      audience_wave: {
-        exists: true,
-        emotional_temperature: "quiet disbelief",
-        dominant_harmless_handle: "that pause said enough",
-        consensus_lane: "everyone clocked the hesitation",
-        joke_lane: "that pause said enough",
-        dissent_lane: "",
-        safe_reusable_cues: ["that pause said enough"],
-        blocked_cues: [],
-        flattening_risks: ["generic awkward pause copy"],
-        must_not_lose: ["that pause said enough"]
-      },
-      strategy: {
-        primary_angle: "awkward_pause",
-        secondary_angles: ["quiet_social_read"],
-        hook_seeds: ["the pause said enough"],
-        bottom_functions: ["sharpen the social read"],
-        required_lanes: [
-          {
-            lane_id: "audience_locked",
-            count: 2,
-            purpose: "Preserve the harmless public handle."
-          },
-          {
-            lane_id: "balanced_clean",
-            count: 2,
-            purpose: "Keep strong native phrasing."
-          },
-          {
-            lane_id: "backup_simple",
-            count: 1,
-            purpose: "Hold a plain live backup."
-          }
-        ],
-        must_do: ["land why-care immediately"],
-        must_avoid: ["inventory openings"]
-      }
-    },
-    {
-      finalists: [
-        {
-          candidate_id: "cand_1",
-          why_chosen: ["It lands the social read fast."],
-          preserved_handle: true
-        },
-        {
-          candidate_id: "cand_2",
-          why_chosen: ["Still feels lived-in."],
-          preserved_handle: false
-        }
-      ],
-      display_safe_extras: [
-        {
-          candidate_id: "cand_3",
-          why_display_safe: ["Keeps a cleaner reserve alive."]
-        },
-        {
-          candidate_id: "cand_4",
-          why_display_safe: ["Still visible without flattening the clip."]
-        }
-      ],
-      hard_rejected: [],
-      winner_candidate_id: "cand_1",
-      recovery_plan: {
-        required: true,
-        missing_count: 1,
-        briefs: [
-          {
-            lane_id: "backup_simple",
-            goal: "Restore one plain backup option.",
-            must_keep: ["quiet disbelief"],
-            must_avoid: ["generic reaction copy"]
-          }
-        ]
-      }
-    },
     makeTranslationEntries(["cand_1", "cand_2", "cand_3", "cand_4", "cand_5"]),
-    Array.from({ length: 5 }, (_, index) => ({
-      option: index + 1,
-      title: `Winner title ${index + 1}`,
-      title_ru: `Заголовок победителя ${index + 1}`
-    })),
-    {
-      description:
-        "Detroit, 25 MPH, Ford pickup, muddy axle failure\nThe truck bucks through the rut before the axle folds sideways under load.\nSearch terms and topics covered:\nford pickup axle failure, muddy rut truck breakdown\nHashtags:\n#truck, #mechanicalfailure, #shorts",
-      tags: "Truck Failure, Mechanical Failure, Ford"
-    }
+    makeSeoResponse()
   ]);
-  const openRouterExecutor = new CaptureQueueExecutor([
-    Array.from({ length: 4 }, (_, index) => ({
-      candidate_id: `cand_${index + 1}`,
-      lane_id: index < 2 ? "audience_locked" : "balanced_clean",
-      top: `That pause told the whole room what was happening ${index + 1}.`,
-      bottom: `Nobody needed the follow-up once that look landed ${index + 1}.`,
-      retained_handle: index < 2,
-      display_intent: "finalist_or_display_safe"
-    })),
-    [
-      {
-        candidate_id: "cand_5",
-        lane_id: "backup_simple",
-        top: "That pause did the talking before anyone else had to.",
-        bottom: "The whole room heard the outcome in the silence first.",
-        retained_handle: false,
-        display_intent: "recovery"
-      }
-    ]
-  ]);
+  const openRouterExecutor = new CaptureQueueExecutor([makeClassicOneShotResponse("cand")]);
 
   const executor = new HybridJsonStageExecutor({
     captionProviderConfig: {
@@ -1265,12 +945,8 @@ test("HybridJsonStageExecutor keeps native judges on Codex while routing candida
     imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
     executor,
     stageModels: {
-      contextPacket: "gpt-5.4",
-      candidateGenerator: "gpt-5.4-mini",
-      qualityCourt: "gpt-5.3-codex-spark",
-      targetedRepair: "gpt-5.4-mini",
+      classicOneShot: "gpt-5.4-mini",
       captionTranslation: "gpt-5.4-mini",
-      titleWriter: "gpt-5.4",
       seo: "gpt-5.4-mini"
     }
   });
@@ -1278,16 +954,16 @@ test("HybridJsonStageExecutor keeps native judges on Codex while routing candida
   assert.equal(result.output.captionOptions.length, 5);
   assert.deepEqual(
     openRouterExecutor.calls.map((call) => call.stageId),
-    ["candidateGenerator", "targetedRepair"]
+    ["classicOneShot"]
   );
-  assert.deepEqual(openRouterExecutor.calls.map((call) => call.model), [null, null]);
+  assert.deepEqual(openRouterExecutor.calls.map((call) => call.model), [null]);
   assert.deepEqual(
     codexExecutor.calls.map((call) => call.stageId),
-    ["contextPacket", "qualityCourt", "captionTranslation", "titleWriter", "seo"]
+    ["captionTranslation", "seo"]
   );
   assert.deepEqual(
     codexExecutor.calls.map((call) => call.model),
-    ["gpt-5.4", "gpt-5.3-codex-spark", "gpt-5.4-mini", "gpt-5.4", "gpt-5.4-mini"]
+    ["gpt-5.4-mini", "gpt-5.4-mini"]
   );
 });
 

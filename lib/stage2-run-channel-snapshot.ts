@@ -29,20 +29,26 @@ export function buildStage2RunChannelSnapshot(
     stage2StyleProfile: channel.stage2StyleProfile,
     stage2WorkerProfileId: channel.stage2WorkerProfileId
   });
-  const templateHighlightProfile = resolveManagedTemplateRuntimeSync(channel.templateId, null, {
+  const templateRuntime = resolveManagedTemplateRuntimeSync(channel.templateId, null, {
     workspaceId: options?.workspaceId ?? channel.workspaceId
-  }).templateConfig.highlights;
+  });
   const templateTextSemantics = resolveStage2TemplateTextSemantics({
     templateId: channel.templateId,
     workspaceId: options?.workspaceId ?? channel.workspaceId,
     hardConstraints: channel.stage2HardConstraints
   });
+  const formatPipeline =
+    templateTextSemantics.formatGroup === "channel_story"
+      ? "story_lead_main_caption"
+      : "classic_top_bottom";
+  const templateHighlightProfile = templateRuntime.templateConfig.highlights;
 
   return {
     id: channel.id,
     name: channel.name,
     username: channel.username,
     templateId: channel.templateId,
+    formatPipeline,
     stage2WorkerProfileId: channel.stage2WorkerProfileId,
     stage2ExamplesConfig: channel.stage2ExamplesConfig,
     stage2HardConstraints: channel.stage2HardConstraints,

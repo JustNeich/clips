@@ -11,6 +11,8 @@ export type WorkspaceCodexModel = (typeof WORKSPACE_CODEX_MODEL_OPTIONS)[number]
 export type WorkspaceCodexModelSetting = WorkspaceCodexModel | "deploy_default";
 
 export const STAGE2_MULTIMODAL_MODEL_STAGE_IDS = [
+  "classicOneShot",
+  "storyOneShot",
   "oneShotReference",
   "analyzer",
   "contextPacket",
@@ -33,6 +35,8 @@ export const STAGE2_TEXT_ONLY_MODEL_STAGE_IDS = [
   "regenerate"
 ] as const;
 export const STAGE2_NATIVE_PIPELINE_EXECUTION_MODEL_STAGE_IDS = [
+  "classicOneShot",
+  "storyOneShot",
   "oneShotReference",
   "contextPacket",
   "candidateGenerator",
@@ -74,7 +78,11 @@ export type Stage2PipelineExecutionModelStageId =
   (typeof STAGE2_PIPELINE_EXECUTION_MODEL_STAGE_IDS)[number];
 export type WorkspaceCodexModelStageId = (typeof WORKSPACE_CODEX_MODEL_STAGE_IDS)[number];
 
-export type WorkspaceCodexModelConfig = Record<
+export type WorkspaceCodexModelConfig = Partial<Record<
+  WorkspaceCodexModelStageId,
+  WorkspaceCodexModelSetting
+>>;
+type NormalizedWorkspaceCodexModelConfig = Record<
   WorkspaceCodexModelStageId,
   WorkspaceCodexModelSetting
 >;
@@ -91,6 +99,20 @@ export type WorkspaceCodexModelStageField = {
 };
 
 export const STAGE2_PROMPT_MODEL_STAGE_FIELDS: readonly WorkspaceCodexModelStageField[] = [
+  {
+    id: "classicOneShot",
+    label: "Classic one-shot",
+    description:
+      "Prompt-first caption generation for classic Top/Bottom templates. Receives all active examples.",
+    allowsImages: true
+  },
+  {
+    id: "storyOneShot",
+    label: "Story one-shot",
+    description:
+      "Prompt-first caption generation for Lead/Main Caption templates. Receives all active examples.",
+    allowsImages: true
+  },
   {
     id: "oneShotReference",
     label: "Reference one-shot",
@@ -214,7 +236,9 @@ export const STAGE3_MODEL_STAGE_FIELDS: readonly WorkspaceCodexModelStageField[]
   }
 ] as const;
 
-export const DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG: WorkspaceCodexModelConfig = {
+export const DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG: NormalizedWorkspaceCodexModelConfig = {
+  classicOneShot: "deploy_default",
+  storyOneShot: "deploy_default",
   oneShotReference: "deploy_default",
   analyzer: "deploy_default",
   contextPacket: "deploy_default",
@@ -311,6 +335,20 @@ function readStageSettingCandidate(
       return candidate.contextPacket;
     }
   }
+  if (stageId === "classicOneShot" || stageId === "storyOneShot") {
+    if (hasOwnKey(candidate, stageId)) {
+      return candidate[stageId];
+    }
+    if (hasOwnKey(candidate, "oneShotReference")) {
+      return candidate.oneShotReference;
+    }
+    if (hasOwnKey(candidate, "candidateGenerator")) {
+      return candidate.candidateGenerator;
+    }
+    if (hasOwnKey(candidate, "contextPacket")) {
+      return candidate.contextPacket;
+    }
+  }
   if (stageId === "candidateGenerator" && hasOwnKey(candidate, "writer")) {
     return candidate.writer;
   }
@@ -376,7 +414,7 @@ export function getWorkspaceCodexModelOptionsForStage(
 
 export function normalizeWorkspaceCodexModelConfig(
   value: unknown
-): WorkspaceCodexModelConfig {
+): NormalizedWorkspaceCodexModelConfig {
   const candidate = value && typeof value === "object"
     ? (value as Partial<Record<WorkspaceCodexModelStageId, unknown>> & LegacyWorkspaceCodexModelConfig)
     : {};
@@ -388,7 +426,7 @@ export function normalizeWorkspaceCodexModelConfig(
         normalizeModelSetting(readStageSettingCandidate(candidate, stageId))
       )
     ])
-  ) as WorkspaceCodexModelConfig;
+  ) as NormalizedWorkspaceCodexModelConfig;
 }
 
 export function parseWorkspaceCodexModelConfigJson(
@@ -439,7 +477,19 @@ export function resolveWorkspaceCodexModelConfig(input: {
       const deployFallback =
         stageId === "seo" ? deployStage2SeoModel ?? deployStage2Model : deployStage2Model;
       const selectedModel =
-        stageId === "oneShotReference"
+        stageId === "classicOneShot"
+          ? normalized.classicOneShot === "deploy_default"
+            ? normalized.oneShotReference === "deploy_default"
+              ? deployFallback
+              : normalized.oneShotReference
+            : normalized.classicOneShot
+          : stageId === "storyOneShot"
+            ? normalized.storyOneShot === "deploy_default"
+              ? normalized.oneShotReference === "deploy_default"
+                ? deployFallback
+                : normalized.oneShotReference
+              : normalized.storyOneShot
+        : stageId === "oneShotReference"
           ? normalized.oneShotReference === "deploy_default"
             ? deployFallback
             : normalized.oneShotReference

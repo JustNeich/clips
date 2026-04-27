@@ -2,9 +2,7 @@
 
 import React from "react";
 import {
-  DEFAULT_STAGE2_PROMPT_CONFIG,
   STAGE2_REASONING_EFFORT_OPTIONS,
-  type Stage2PromptSourceMode,
   type Stage2PromptConfig
 } from "../../lib/stage2-pipeline";
 import {
@@ -27,20 +25,17 @@ import {
   type WorkspaceCodexModelSetting,
   type WorkspaceCodexModelStageId
 } from "../../lib/workspace-codex-models";
+import type { Stage2HardConstraints } from "../../lib/stage2-channel-config";
 import type {
   Stage2ExamplesConfig,
   Stage2ExamplesInputMode,
-  Stage2ExamplesSourceMode,
-  Stage2HardConstraints
+  Stage2ExamplesSourceMode
 } from "../../lib/stage2-channel-config";
 import {
   findStage2SystemExamplesPresetByJson,
   getStage2SystemExamplesPresetJson,
-  getStage2SystemPromptPreset,
   STAGE2_SYSTEM_EXAMPLES_PRESETS,
-  STAGE2_SYSTEM_PROMPT_PRESETS,
-  type Stage2SystemExamplesPresetId,
-  type Stage2SystemPromptPresetId
+  type Stage2SystemExamplesPresetId
 } from "../../lib/stage2-system-presets";
 import { AutosaveState } from "./channel-manager-support";
 
@@ -52,10 +47,11 @@ type ChannelManagerStage2TabProps = {
   stage2HardConstraints: Stage2HardConstraints;
   bannedWordsInput: string;
   bannedOpenersInput: string;
-  stage2PromptConfig?: Stage2PromptConfig;
   workspaceStage2ExamplesCorpusJson?: string;
   workspaceStage2ExamplesSourceMode?: Stage2ExamplesSourceMode;
   workspaceStage2PromptConfig: Stage2PromptConfig;
+  channelStage2PromptConfig?: Stage2PromptConfig;
+  channelStage2PromptOverridesActive?: boolean;
   workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
   workspaceAnthropicIntegration?: WorkspaceAnthropicIntegrationRecord | null;
   workspaceOpenRouterIntegration?: WorkspaceOpenRouterIntegrationRecord | null;
@@ -81,8 +77,8 @@ type ChannelManagerStage2TabProps = {
   autosaveState: AutosaveState;
   canEditWorkspaceDefaults: boolean;
   canEditHardConstraints: boolean;
-  canEditChannelExamples?: boolean;
   canEditChannelPrompt?: boolean;
+  canEditChannelExamples?: boolean;
   stage2ExamplesConfig?: Stage2ExamplesConfig;
   customExamplesCount?: number;
   stage2WorkerProfileId?: string | null;
@@ -116,27 +112,9 @@ type ChannelManagerStage2TabProps = {
   customExamplesJson?: string;
   customExamplesText?: string;
   customExamplesError?: string | null;
-  updateChannelExamplesMode?: (useWorkspaceDefault: boolean) => void;
-  updateChannelExamplesSourceMode?: (sourceMode: Stage2ExamplesSourceMode) => void;
-  updateChannelExamplesSystemPreset?: (presetId: Stage2SystemExamplesPresetId) => void;
-  updateChannelExamplesInputMode?: (inputMode: Stage2ExamplesInputMode) => void;
-  updateChannelPromptMode?: (useWorkspaceDefault: boolean) => void;
-  updateChannelPromptSourceMode?: (sourceMode: Stage2PromptSourceMode) => void;
-  updateChannelPromptPreset?: (presetId: Stage2SystemPromptPresetId) => void;
-  updateChannelPromptTemplate?: (
-    stageId: keyof Stage2PromptConfig["stages"],
-    prompt: string
-  ) => void;
-  updateChannelPromptReasoning?: (
-    stageId: keyof Stage2PromptConfig["stages"],
-    reasoningEffort: Stage2PromptConfig["stages"][keyof Stage2PromptConfig["stages"]]["reasoningEffort"]
-  ) => void;
-  resetChannelPromptStage?: (stageId: keyof Stage2PromptConfig["stages"]) => void;
-  updateWorkspaceExamplesJson?: (value: string) => void;
   updateWorkspaceExamplesSourceMode?: (sourceMode: Stage2ExamplesSourceMode) => void;
   updateWorkspaceExamplesPreset?: (presetId: Stage2SystemExamplesPresetId) => void;
-  updateWorkspacePromptSourceMode?: (sourceMode: Stage2PromptSourceMode) => void;
-  updateWorkspacePromptPreset?: (presetId: Stage2SystemPromptPresetId) => void;
+  updateWorkspaceExamplesJson?: (value: string) => void;
   updateWorkspaceCaptionProvider?: (value: Stage2CaptionProvider) => void;
   updateWorkspaceAnthropicModel?: (value: string) => void;
   updateWorkspaceOpenRouterModel?: (value: string) => void;
@@ -146,6 +124,10 @@ type ChannelManagerStage2TabProps = {
   updateOpenRouterApiKeyInput?: (value: string) => void;
   saveWorkspaceOpenRouterIntegration?: () => Promise<void>;
   disconnectWorkspaceOpenRouterIntegration?: () => Promise<void>;
+  updateChannelExamplesMode?: (useWorkspaceDefault: boolean) => void;
+  updateChannelExamplesSourceMode?: (sourceMode: Stage2ExamplesSourceMode) => void;
+  updateChannelExamplesSystemPreset?: (presetId: Stage2SystemExamplesPresetId) => void;
+  updateChannelExamplesInputMode?: (inputMode: Stage2ExamplesInputMode) => void;
   updateCustomExamplesJson?: (value: string) => void;
   updateCustomExamplesText?: (value: string) => void;
   updateStage2HardConstraint: (
@@ -163,6 +145,15 @@ type ChannelManagerStage2TabProps = {
     reasoningEffort: Stage2PromptConfig["stages"][keyof Stage2PromptConfig["stages"]]["reasoningEffort"]
   ) => void;
   resetStage2PromptStage: (stageId: keyof Stage2PromptConfig["stages"]) => void;
+  updateChannelStage2PromptTemplate?: (
+    stageId: keyof Stage2PromptConfig["stages"],
+    prompt: string
+  ) => void;
+  updateChannelStage2PromptReasoning?: (
+    stageId: keyof Stage2PromptConfig["stages"],
+    reasoningEffort: Stage2PromptConfig["stages"][keyof Stage2PromptConfig["stages"]]["reasoningEffort"]
+  ) => void;
+  resetChannelStage2PromptConfig?: () => void;
   updateWorkspaceCodexModelSetting?: (
     stageId: WorkspaceCodexModelStageId,
     value: WorkspaceCodexModelSetting
@@ -512,40 +503,19 @@ function ChoiceButton(input: {
   active: boolean;
   disabled?: boolean;
   label: string;
-  description?: string;
+  description: string;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      className={`settings-choice ${input.active ? "active" : ""}`}
+      className={`choice-card ${input.active ? "active" : ""}`}
       disabled={input.disabled}
       onClick={input.onClick}
     >
       <strong>{input.label}</strong>
-      {input.description ? <span>{input.description}</span> : null}
+      <span>{input.description}</span>
     </button>
-  );
-}
-
-function renderPromptPresetChoices(input: {
-  selectedId: Stage2SystemPromptPresetId;
-  disabled?: boolean;
-  onSelect: (presetId: Stage2SystemPromptPresetId) => void;
-}) {
-  return (
-    <div className="settings-choice-grid">
-      {STAGE2_SYSTEM_PROMPT_PRESETS.map((preset) => (
-        <ChoiceButton
-          key={preset.id}
-          active={input.selectedId === preset.id}
-          disabled={input.disabled}
-          label={preset.label}
-          description={preset.description}
-          onClick={() => input.onSelect(preset.id)}
-        />
-      ))}
-    </div>
   );
 }
 
@@ -575,13 +545,11 @@ export function ChannelManagerStage2Tab({
   stage2HardConstraints,
   bannedWordsInput,
   bannedOpenersInput,
-  stage2PromptConfig = {
-    ...DEFAULT_STAGE2_PROMPT_CONFIG,
-    useWorkspaceDefault: true
-  },
   workspaceStage2ExamplesCorpusJson = getStage2SystemExamplesPresetJson("system_examples"),
   workspaceStage2ExamplesSourceMode,
   workspaceStage2PromptConfig,
+  channelStage2PromptConfig,
+  channelStage2PromptOverridesActive = false,
   workspaceStage2CaptionProviderConfig = DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
   workspaceAnthropicIntegration = null,
   workspaceOpenRouterIntegration = null,
@@ -591,6 +559,8 @@ export function ChannelManagerStage2Tab({
   openRouterIntegrationActionState = { status: "idle", message: null },
   workspaceCodexModelConfig = DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
   resolvedWorkspaceCodexModelConfig = {
+    classicOneShot: null,
+    storyOneShot: null,
     oneShotReference: null,
     contextPacket: null,
     candidateGenerator: null,
@@ -614,29 +584,15 @@ export function ChannelManagerStage2Tab({
   autosaveState,
   canEditWorkspaceDefaults,
   canEditHardConstraints,
+  canEditChannelPrompt,
   canEditChannelExamples = false,
-  canEditChannelPrompt = false,
   stage2ExamplesConfig,
   customExamplesJson = "",
   customExamplesText = "",
   customExamplesCount = 0,
-  updateChannelExamplesMode = () => undefined,
-  updateChannelExamplesSourceMode = () => undefined,
-  updateChannelExamplesSystemPreset = () => undefined,
-  updateChannelExamplesInputMode = () => undefined,
-  updateChannelPromptMode = () => undefined,
-  updateChannelPromptSourceMode = () => undefined,
-  updateChannelPromptPreset = () => undefined,
-  updateChannelPromptTemplate = () => undefined,
-  updateChannelPromptReasoning = () => undefined,
-  resetChannelPromptStage = () => undefined,
-  updateCustomExamplesJson = () => undefined,
-  updateCustomExamplesText = () => undefined,
-  updateWorkspaceExamplesJson = () => undefined,
   updateWorkspaceExamplesSourceMode = () => undefined,
   updateWorkspaceExamplesPreset = () => undefined,
-  updateWorkspacePromptSourceMode = () => undefined,
-  updateWorkspacePromptPreset = () => undefined,
+  updateWorkspaceExamplesJson = () => undefined,
   updateWorkspaceCaptionProvider = () => undefined,
   updateWorkspaceAnthropicModel = () => undefined,
   updateWorkspaceOpenRouterModel = () => undefined,
@@ -646,22 +602,39 @@ export function ChannelManagerStage2Tab({
   updateOpenRouterApiKeyInput = () => undefined,
   saveWorkspaceOpenRouterIntegration = async () => undefined,
   disconnectWorkspaceOpenRouterIntegration = async () => undefined,
+  updateChannelExamplesMode = () => undefined,
+  updateChannelExamplesSourceMode = () => undefined,
+  updateChannelExamplesSystemPreset = () => undefined,
+  updateChannelExamplesInputMode = () => undefined,
+  updateCustomExamplesJson = () => undefined,
+  updateCustomExamplesText = () => undefined,
   updateStage2HardConstraint,
   updateBannedWordsInput,
   updateBannedOpenersInput,
   updateStage2PromptTemplate,
   updateStage2PromptReasoning,
   resetStage2PromptStage,
+  updateChannelStage2PromptTemplate = () => undefined,
+  updateChannelStage2PromptReasoning = () => undefined,
+  resetChannelStage2PromptConfig = () => undefined,
   updateWorkspaceCodexModelSetting = () => undefined
 }: ChannelManagerStage2TabProps) {
-  const referenceOneShotStageConfig = workspaceStage2PromptConfig.stages.oneShotReference;
-  const channelOneShotStageConfig = stage2PromptConfig.stages.oneShotReference;
-  const workspacePromptSourceMode = workspaceStage2PromptConfig.sourceMode ?? "system";
-  const channelPromptMode = stage2PromptConfig.useWorkspaceDefault === false ? "channel" : "workspace";
-  const channelPromptSourceMode = stage2PromptConfig.sourceMode ?? "system";
-  const workspacePromptPresetId =
-    workspaceStage2PromptConfig.systemPresetId ?? "system_prompt";
-  const channelPromptPresetId = stage2PromptConfig.systemPresetId ?? "system_prompt";
+  const classicOneShotStageConfig = workspaceStage2PromptConfig.stages.classicOneShot;
+  const storyOneShotStageConfig = workspaceStage2PromptConfig.stages.storyOneShot;
+  const effectiveChannelPromptConfig = channelStage2PromptOverridesActive
+    ? channelStage2PromptConfig ?? workspaceStage2PromptConfig
+    : workspaceStage2PromptConfig;
+  const channelClassicOneShotStageConfig =
+    effectiveChannelPromptConfig.stages.classicOneShot;
+  const channelStoryOneShotStageConfig =
+    effectiveChannelPromptConfig.stages.storyOneShot;
+  const canEditEffectiveChannelPrompt = canEditChannelPrompt ?? canEditHardConstraints;
+  const anthropicModelValue =
+    workspaceStage2CaptionProviderConfig.anthropicModel ?? DEFAULT_ANTHROPIC_CAPTION_MODEL;
+  const openRouterModelValue =
+    workspaceStage2CaptionProviderConfig.openrouterModel ?? DEFAULT_OPENROUTER_CAPTION_MODEL;
+  const anthropicIntegrationConnected = workspaceAnthropicIntegration?.status === "connected";
+  const openRouterIntegrationConnected = workspaceOpenRouterIntegration?.status === "connected";
   const workspaceExamplesPresetId =
     findStage2SystemExamplesPresetByJson(workspaceStage2ExamplesCorpusJson) ?? "system_examples";
   const resolvedWorkspaceExamplesSourceMode =
@@ -669,27 +642,10 @@ export function ChannelManagerStage2Tab({
     (findStage2SystemExamplesPresetByJson(workspaceStage2ExamplesCorpusJson)
       ? "system"
       : "custom");
-  const anthropicModelValue =
-    workspaceStage2CaptionProviderConfig.anthropicModel ?? DEFAULT_ANTHROPIC_CAPTION_MODEL;
-  const openRouterModelValue =
-    workspaceStage2CaptionProviderConfig.openrouterModel ?? DEFAULT_OPENROUTER_CAPTION_MODEL;
-  const anthropicIntegrationConnected = workspaceAnthropicIntegration?.status === "connected";
-  const openRouterIntegrationConnected = workspaceOpenRouterIntegration?.status === "connected";
   const channelExamplesMode = stage2ExamplesConfig?.useWorkspaceDefault === false ? "channel" : "workspace";
   const channelExamplesSourceMode = stage2ExamplesConfig?.sourceMode ?? "system";
   const channelExamplesInputMode = stage2ExamplesConfig?.customInputMode ?? "json";
   const channelExamplesSystemPresetId = stage2ExamplesConfig?.systemPresetId ?? "system_examples";
-  const customExamplesJsonError = (() => {
-    if (!customExamplesJson.trim()) {
-      return null;
-    }
-    try {
-      JSON.parse(customExamplesJson);
-      return null;
-    } catch {
-      return "JSON не парсится. Можно сохранить текстовые examples отдельно, но JSON-массив не попадёт в подборку.";
-    }
-  })();
   const workspaceExamplesJsonError = (() => {
     if (!workspaceStage2ExamplesCorpusJson.trim()) {
       return null;
@@ -699,6 +655,17 @@ export function ChannelManagerStage2Tab({
       return null;
     } catch {
       return "JSON общего корпуса не парсится. Переключитесь на system preset или исправьте JSON.";
+    }
+  })();
+  const customExamplesJsonError = (() => {
+    if (!customExamplesJson.trim()) {
+      return null;
+    }
+    try {
+      JSON.parse(customExamplesJson);
+      return null;
+    } catch {
+      return "JSON не парсится. Можно сохранить text examples отдельно, но этот JSON не попадёт в corpus.";
     }
   })();
   const readExamplesFile = async (
@@ -715,23 +682,19 @@ export function ChannelManagerStage2Tab({
     return (
       <div className="field-stack">
         <section className="control-card control-card-priority">
-          <p className="field-label">Workspace defaults</p>
-          <h3 className="settings-section-title">Stage 2 caption engine</h3>
+          <p className="field-label">Single baseline Stage 2</p>
           <p className="subtle-text">
-            Эти настройки наследуются всеми каналами, пока у конкретного канала не включён override для prompt или examples.
+            Рабочее пространство задаёт fallback для новых каналов: hard constraints, caption provider,
+            one-shot model и два prompt-first contracts.
           </p>
         </section>
 
-        <section className="control-card control-card-subtle settings-section">
-          <div>
-            <p className="field-label">01 · Обзор</p>
-            <h3 className="settings-section-title">Что сейчас активно</h3>
-          </div>
+        <section className="control-card control-card-subtle">
           <div className="stage2-insight-grid">
             <article className="stage2-insight-card">
               <span className="field-label">Pipeline</span>
               <strong>native_caption_v3</strong>
-              <p className="subtle-text">oneShotReference → highlighting? → translation → SEO → assemble</p>
+              <p className="subtle-text">classicOneShot / storyOneShot → highlighting? → translation → SEO → assemble</p>
             </article>
             <article className="stage2-insight-card">
               <span className="field-label">TOP</span>
@@ -750,30 +713,10 @@ export function ChannelManagerStage2Tab({
             <article className="stage2-insight-card">
               <span className="field-label">Caption provider</span>
               <strong>{workspaceStage2CaptionProviderConfig.provider === "codex" ? "Shared Codex" : workspaceStage2CaptionProviderConfig.provider === "anthropic" ? "Anthropic" : "OpenRouter"}</strong>
-              <p className="subtle-text">маршрутизирует только `oneShotReference` и `regenerate`</p>
-            </article>
-            <article className="stage2-insight-card">
-              <span className="field-label">Prompt</span>
-              <strong>
-                {workspacePromptSourceMode === "system"
-                  ? getStage2SystemPromptPreset(workspacePromptPresetId).label
-                  : "Custom prompt"}
-              </strong>
-              <p className="subtle-text">
-                {workspacePromptSourceMode === "system" ? "system preset" : "ручной workspace prompt"}
-              </p>
+              <p className="subtle-text">маршрутизирует `classicOneShot`, `storyOneShot` и `regenerate`</p>
             </article>
           </div>
-        </section>
 
-        <section className="control-card control-card-subtle settings-section">
-          <div>
-            <p className="field-label">02 · Hard rules</p>
-            <h3 className="settings-section-title">Длина и запреты</h3>
-            <p className="subtle-text">
-              Это объективные ограничения, которые применяются до финального выбора caption options.
-            </p>
-          </div>
           {renderConstraintEditor({
             stage2HardConstraints,
             bannedWordsInput,
@@ -783,17 +726,11 @@ export function ChannelManagerStage2Tab({
             updateBannedWordsInput,
             updateBannedOpenersInput
           })}
-        </section>
 
-        <section className="control-card control-card-subtle settings-section">
-          <div>
-            <p className="field-label">03 · Provider</p>
-            <h3 className="settings-section-title">Где выполняется caption writing</h3>
-          </div>
           <div className="compact-field">
             <p className="field-label">Caption provider</p>
             <p className="subtle-text">
-              Внешний provider влияет только на `oneShotReference` и `regenerate`. Translation, SEO и остальные downstream product stages остаются на Shared Codex.
+              Внешний provider влияет только на prompt-first caption stages и `regenerate`. Translation, SEO и остальные downstream product stages остаются на Shared Codex.
             </p>
             <label className="field-label">Провайдер captions</label>
             <select
@@ -860,13 +797,7 @@ export function ChannelManagerStage2Tab({
               { href: "https://openrouter.ai/pricing", label: "Pricing" }
             ]
           })}
-        </section>
 
-        <section className="control-card control-card-subtle settings-section">
-          <div>
-            <p className="field-label">04 · Model</p>
-            <h3 className="settings-section-title">Модель и reasoning</h3>
-          </div>
           <div className="compact-grid">
             {renderOneShotModelField({
               workspaceCodexModelConfig,
@@ -879,12 +810,12 @@ export function ChannelManagerStage2Tab({
               <label className="field-label">One-shot reasoning</label>
               <select
                 className="text-input"
-                value={referenceOneShotStageConfig.reasoningEffort}
+                value={classicOneShotStageConfig.reasoningEffort}
                 disabled={!canEditWorkspaceDefaults}
                 onChange={(event) =>
                   updateStage2PromptReasoning(
-                    "oneShotReference",
-                    event.target.value as typeof referenceOneShotStageConfig.reasoningEffort
+                    "classicOneShot",
+                    event.target.value as typeof classicOneShotStageConfig.reasoningEffort
                   )
                 }
               >
@@ -895,82 +826,88 @@ export function ChannelManagerStage2Tab({
                 ))}
               </select>
               <p className="subtle-text">
-                Базовый уровень рассуждений для единственного active one-shot caption baseline.
+                Базовый уровень рассуждений для classic Top/Bottom prompt-first линии.
+              </p>
+            </div>
+            <div className="compact-field">
+              <label className="field-label">Story reasoning</label>
+              <select
+                className="text-input"
+                value={storyOneShotStageConfig.reasoningEffort}
+                disabled={!canEditWorkspaceDefaults}
+                onChange={(event) =>
+                  updateStage2PromptReasoning(
+                    "storyOneShot",
+                    event.target.value as typeof storyOneShotStageConfig.reasoningEffort
+                  )
+                }
+              >
+                {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="subtle-text">
+                Базовый уровень рассуждений для Lead/Main Caption prompt-first линии.
               </p>
             </div>
           </div>
-        </section>
 
-        <section className="control-card control-card-subtle settings-section">
-          <div>
-            <p className="field-label">05 · Prompt</p>
-            <h3 className="settings-section-title">Системный prompt по умолчанию</h3>
-            <p className="subtle-text">
-              System preset удобно переключать между общим V6 и animals V7. Custom открывает ручное поле только когда оно действительно используется.
-            </p>
-          </div>
           <div className="compact-field">
-            <div className="settings-choice-row">
-              <ChoiceButton
-                active={workspacePromptSourceMode === "system"}
+            <label className="field-label">Classic prompt</label>
+            <textarea
+              className="text-area mono"
+              rows={18}
+              value={classicOneShotStageConfig.prompt}
+              disabled={!canEditWorkspaceDefaults}
+              onChange={(event) =>
+                updateStage2PromptTemplate("classicOneShot", event.target.value)
+              }
+            />
+            <p className="subtle-text">
+              Активный prompt contract: `source_video_json`, `examples_json`, `format_contract_json`, `hard_constraints_json`, `user_instruction`.
+            </p>
+            <div className="stage2-config-stage-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
                 disabled={!canEditWorkspaceDefaults}
-                label="System"
-                description="выбрать готовый prompt"
-                onClick={() => updateWorkspacePromptSourceMode("system")}
-              />
-              <ChoiceButton
-                active={workspacePromptSourceMode === "custom"}
-                disabled={!canEditWorkspaceDefaults}
-                label="Custom"
-                description="ручной prompt workspace"
-                onClick={() => updateWorkspacePromptSourceMode("custom")}
-              />
+                onClick={() => resetStage2PromptStage("classicOneShot")}
+              >
+                Сбросить к продуктовым настройкам
+              </button>
             </div>
-            {workspacePromptSourceMode === "system" ? (
-              renderPromptPresetChoices({
-                selectedId: workspacePromptPresetId,
-                disabled: !canEditWorkspaceDefaults,
-                onSelect: updateWorkspacePromptPreset
-              })
-            ) : (
-              <>
-                <label className="field-label">Custom one-shot prompt</label>
-                <textarea
-                  className="text-area mono settings-textarea-large"
-                  rows={16}
-                  value={referenceOneShotStageConfig.prompt}
-                  disabled={!canEditWorkspaceDefaults}
-                  onChange={(event) =>
-                    updateStage2PromptTemplate("oneShotReference", event.target.value)
-                  }
-                />
-                <p className="subtle-text">
-                  Contract: `video_truth_json`, `comments_hint_json`, `examples_json`, `examples_text`, `hard_constraints_json`, `user_instruction`.
-                </p>
-                <div className="stage2-config-stage-actions">
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={!canEditWorkspaceDefaults}
-                    onClick={() => resetStage2PromptStage("oneShotReference")}
-                  >
-                    Сбросить к system prompt
-                  </button>
-                </div>
-              </>
-            )}
           </div>
-        </section>
 
-        <section className="control-card control-card-subtle settings-section">
-          <div>
-            <p className="field-label">06 · Examples</p>
-            <h3 className="settings-section-title">Examples corpus по умолчанию</h3>
-            <p className="subtle-text">
-              System preset не занимает место редактора. Custom JSON показывается только если реально выбран ручной корпус.
-            </p>
-          </div>
           <div className="compact-field">
+            <label className="field-label">Story prompt</label>
+            <textarea
+              className="text-area mono"
+              rows={18}
+              value={storyOneShotStageConfig.prompt}
+              disabled={!canEditWorkspaceDefaults}
+              onChange={(event) =>
+                updateStage2PromptTemplate("storyOneShot", event.target.value)
+              }
+            />
+            <p className="subtle-text">
+              Отдельная Lead/Main Caption линия с собственным output schema.
+            </p>
+            <div className="stage2-config-stage-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={!canEditWorkspaceDefaults}
+                onClick={() => resetStage2PromptStage("storyOneShot")}
+              >
+                Сбросить к продуктовым настройкам
+              </button>
+            </div>
+          </div>
+
+          <div className="compact-field">
+            <p className="field-label">Examples corpus</p>
             <div className="settings-choice-row">
               <ChoiceButton
                 active={resolvedWorkspaceExamplesSourceMode === "system"}
@@ -997,7 +934,7 @@ export function ChannelManagerStage2Tab({
               <>
                 <label className="field-label">Custom examples JSON</label>
                 <textarea
-                  className="text-area mono settings-textarea-large"
+                  className="text-area mono"
                   rows={12}
                   value={workspaceStage2ExamplesCorpusJson}
                   disabled={!canEditWorkspaceDefaults}
@@ -1030,7 +967,7 @@ export function ChannelManagerStage2Tab({
                 </div>
                 <p className={`subtle-text ${workspaceExamplesJsonError ? "danger-text" : ""}`}>
                   {workspaceExamplesJsonError ??
-                    "Можно загрузить массив JSON с произвольными полями; Stage 2 извлечёт style notes без требования строгой схемы."}
+                    "Все examples из active workspace corpus попадут в prompt-first `examples_json` без скрытой выборки."}
                 </p>
               </>
             )}
@@ -1049,23 +986,19 @@ export function ChannelManagerStage2Tab({
   return (
     <div className="field-stack">
       <section className="control-card control-card-priority">
-        <p className="field-label">Channel Stage 2</p>
-        <h3 className="settings-section-title">Настройки конкретного канала</h3>
+        <p className="field-label">Настройки Stage 2 канала</p>
         <p className="subtle-text">
-          Канал может наследовать workspace defaults или точечно переопределить prompt/examples. Неактивные поля скрыты, чтобы не путать источник истины.
+          Канал может переопределять hard constraints и prompt-first contracts. Provider и model
+          остаются общими настройками workspace.
         </p>
       </section>
 
-      <section className="control-card control-card-subtle settings-section">
-        <div>
-          <p className="field-label">01 · Обзор</p>
-          <h3 className="settings-section-title">Что наследуется и что переопределено</h3>
-        </div>
+      <section className="control-card control-card-subtle">
         <div className="stage2-insight-grid">
           <article className="stage2-insight-card">
             <span className="field-label">Pipeline</span>
-            <strong>Workspace baseline</strong>
-            <p className="subtle-text">канал всегда использует единый stable one-shot baseline рабочего пространства</p>
+            <strong>classicOneShot / storyOneShot</strong>
+            <p className="subtle-text">формат выбирается шаблоном без top/bottom remap для story</p>
           </article>
           <article className="stage2-insight-card">
             <span className="field-label">Provider</span>
@@ -1074,13 +1007,13 @@ export function ChannelManagerStage2Tab({
           </article>
           <article className="stage2-insight-card">
             <span className="field-label">Prompt</span>
-            <strong>{channelPromptMode === "workspace" ? "Workspace default" : "Channel override"}</strong>
+            <strong>
+              {channelStage2PromptOverridesActive ? "Channel prompt override" : "Workspace prompt fallback"}
+            </strong>
             <p className="subtle-text">
-              {channelPromptMode === "workspace"
-                ? getStage2SystemPromptPreset(workspacePromptPresetId).label
-                : channelPromptSourceMode === "system"
-                  ? getStage2SystemPromptPreset(channelPromptPresetId).label
-                  : "Custom prompt"}
+              {channelStage2PromptOverridesActive
+                ? "канал использует собственные Classic и Story contracts"
+                : "пока наследует workspace defaults; редактирование создаст override"}
             </p>
           </article>
           <article className="stage2-insight-card">
@@ -1099,13 +1032,7 @@ export function ChannelManagerStage2Tab({
             </p>
           </article>
         </div>
-      </section>
 
-      <section className="control-card control-card-subtle settings-section">
-        <div>
-          <p className="field-label">02 · Hard rules</p>
-          <h3 className="settings-section-title">Длина и запреты</h3>
-        </div>
         {renderConstraintEditor({
           stage2HardConstraints,
           bannedWordsInput,
@@ -1115,121 +1042,98 @@ export function ChannelManagerStage2Tab({
           updateBannedWordsInput,
           updateBannedOpenersInput
         })}
-      </section>
 
-      <section className="control-card control-card-subtle settings-section">
         <div className="compact-field">
-          <p className="field-label">03 · Prompt</p>
-          <h3 className="settings-section-title">Prompt для этого канала</h3>
-          <p className="subtle-text">
-            Workspace default скрывает ручные поля. Channel override включает отдельный prompt только для выбранного канала.
-          </p>
-          <div className="settings-choice-row">
-            <ChoiceButton
-              active={channelPromptMode === "workspace"}
-              disabled={!canEditChannelPrompt}
-              label="Workspace default"
-              description="наследовать общий prompt"
-              onClick={() => updateChannelPromptMode(true)}
-            />
-            <ChoiceButton
-              active={channelPromptMode === "channel"}
-              disabled={!canEditChannelPrompt}
-              label="Channel override"
-              description="отдельный prompt канала"
-              onClick={() => updateChannelPromptMode(false)}
-            />
-          </div>
-          {channelPromptMode === "workspace" ? (
-            <div className="settings-summary-card">
-              <strong>Используется workspace prompt</strong>
-              <p className="subtle-text">
-                Сейчас это {getStage2SystemPromptPreset(workspacePromptPresetId).label}. Чтобы редактировать prompt канала, включите Channel override.
-              </p>
+          <p className="field-label">Channel prompt contracts</p>
+          <div className="compact-grid">
+            <div className="compact-field">
+              <label className="field-label">Classic reasoning</label>
+              <select
+                className="text-input"
+                value={channelClassicOneShotStageConfig.reasoningEffort}
+                disabled={!canEditEffectiveChannelPrompt}
+                onChange={(event) =>
+                  updateChannelStage2PromptReasoning(
+                    "classicOneShot",
+                    event.target.value as typeof channelClassicOneShotStageConfig.reasoningEffort
+                  )
+                }
+              >
+                {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <>
-              <div className="settings-choice-row">
-                <ChoiceButton
-                  active={channelPromptSourceMode === "system"}
-                  disabled={!canEditChannelPrompt}
-                  label="System"
-                  description="готовый preset"
-                  onClick={() => updateChannelPromptSourceMode("system")}
-                />
-                <ChoiceButton
-                  active={channelPromptSourceMode === "custom"}
-                  disabled={!canEditChannelPrompt}
-                  label="Custom"
-                  description="ручной prompt"
-                  onClick={() => updateChannelPromptSourceMode("custom")}
-                />
-              </div>
-              {channelPromptSourceMode === "system" ? (
-                renderPromptPresetChoices({
-                  selectedId: channelPromptPresetId,
-                  disabled: !canEditChannelPrompt,
-                  onSelect: updateChannelPromptPreset
-                })
-              ) : (
-                <>
-                  <label className="field-label">Custom channel prompt</label>
-                  <textarea
-                    className="text-area mono settings-textarea-large"
-                    rows={14}
-                    value={channelOneShotStageConfig.prompt}
-                    disabled={!canEditChannelPrompt}
-                    onChange={(event) =>
-                      updateChannelPromptTemplate("oneShotReference", event.target.value)
-                    }
-                  />
-                  <div className="compact-grid">
-                    <div className="compact-field">
-                      <label className="field-label">Reasoning</label>
-                      <select
-                        className="text-input"
-                        value={channelOneShotStageConfig.reasoningEffort}
-                        disabled={!canEditChannelPrompt}
-                        onChange={(event) =>
-                          updateChannelPromptReasoning(
-                            "oneShotReference",
-                            event.target.value as typeof channelOneShotStageConfig.reasoningEffort
-                          )
-                        }
-                      >
-                        {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="compact-field">
-                      <label className="field-label">Reset</label>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={!canEditChannelPrompt}
-                        onClick={() => resetChannelPromptStage("oneShotReference")}
-                      >
-                        Сбросить к system prompt
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </div>
-      </section>
+            <div className="compact-field">
+              <label className="field-label">Story reasoning</label>
+              <select
+                className="text-input"
+                value={channelStoryOneShotStageConfig.reasoningEffort}
+                disabled={!canEditEffectiveChannelPrompt}
+                onChange={(event) =>
+                  updateChannelStage2PromptReasoning(
+                    "storyOneShot",
+                    event.target.value as typeof channelStoryOneShotStageConfig.reasoningEffort
+                  )
+                }
+              >
+                {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-      <section className="control-card control-card-subtle settings-section">
-        <div className="compact-field">
-          <p className="field-label">04 · Examples</p>
-          <h3 className="settings-section-title">Examples для этого канала</h3>
+          <label className="field-label">Classic channel prompt</label>
+          <textarea
+            className="text-area mono"
+            rows={12}
+            value={channelClassicOneShotStageConfig.prompt}
+            disabled={!canEditEffectiveChannelPrompt}
+            onChange={(event) =>
+              updateChannelStage2PromptTemplate("classicOneShot", event.target.value)
+            }
+          />
+
+          <label className="field-label">Story channel prompt</label>
+          <textarea
+            className="text-area mono"
+            rows={12}
+            value={channelStoryOneShotStageConfig.prompt}
+            disabled={!canEditEffectiveChannelPrompt}
+            onChange={(event) =>
+              updateChannelStage2PromptTemplate("storyOneShot", event.target.value)
+            }
+          />
           <p className="subtle-text">
-            Выберите один источник: workspace default, system preset или custom. Для custom показывается только JSON или только text, а не оба поля сразу.
+            Runtime передаёт provider-у raw-блоки: `source_video_json`, `examples_json`,
+            `format_contract_json`, `hard_constraints_json`, `user_instruction`.
           </p>
+          <div className="stage2-config-stage-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={!canEditEffectiveChannelPrompt || !channelStage2PromptOverridesActive}
+              onClick={resetChannelStage2PromptConfig}
+            >
+              Наследовать workspace prompt
+            </button>
+          </div>
+        </div>
+
+        <div className="channel-onboarding-note-card">
+          <strong>Legacy context</strong>
+          <p className="subtle-text">
+            Старые worker profile, style discovery и editorial memory больше не редактируются из active Stage 2 surface. Examples берутся целиком из active corpus: channel custom или workspace default.
+          </p>
+        </div>
+
+        <div className="compact-field">
+          <p className="field-label">Channel examples</p>
           <div className="settings-choice-row">
             <ChoiceButton
               active={channelExamplesMode === "workspace"}
@@ -1247,12 +1151,9 @@ export function ChannelManagerStage2Tab({
             />
           </div>
           {channelExamplesMode === "workspace" ? (
-            <div className="settings-summary-card">
-              <strong>Используется workspace examples</strong>
-              <p className="subtle-text">
-                Сейчас это {resolvedWorkspaceExamplesSourceMode === "system" ? "system preset" : "custom workspace JSON"}. Поля канала скрыты, потому что они не участвуют в запуске.
-              </p>
-            </div>
+            <p className="subtle-text">
+              Сейчас provider получает все examples из workspace default source.
+            </p>
           ) : (
             <>
               <div className="settings-choice-row">
@@ -1260,14 +1161,14 @@ export function ChannelManagerStage2Tab({
                   active={channelExamplesSourceMode === "system"}
                   disabled={!canEditChannelExamples}
                   label="System"
-                  description="готовый examples corpus"
+                  description="готовый corpus"
                   onClick={() => updateChannelExamplesSourceMode("system")}
                 />
                 <ChoiceButton
                   active={channelExamplesSourceMode === "custom"}
                   disabled={!canEditChannelExamples}
                   label="Custom"
-                  description="JSON или plain text"
+                  description="JSON или text"
                   onClick={() => updateChannelExamplesSourceMode("custom")}
                 />
               </div>
@@ -1284,7 +1185,7 @@ export function ChannelManagerStage2Tab({
                       active={channelExamplesInputMode === "json"}
                       disabled={!canEditChannelExamples}
                       label="JSON"
-                      description="массив с произвольными полями"
+                      description="массив примеров"
                       onClick={() => updateChannelExamplesInputMode("json")}
                     />
                     <ChoiceButton
@@ -1299,7 +1200,7 @@ export function ChannelManagerStage2Tab({
                     <>
                       <label className="field-label">JSON examples</label>
                       <textarea
-                        className="text-area mono settings-textarea-large"
+                        className="text-area mono"
                         rows={10}
                         value={customExamplesJson}
                         disabled={!canEditChannelExamples}
@@ -1332,14 +1233,14 @@ export function ChannelManagerStage2Tab({
                       </div>
                       <p className={`subtle-text ${customExamplesJsonError ? "danger-text" : ""}`}>
                         {customExamplesJsonError ??
-                          "Можно загружать массив с произвольными полями. `top`/`bottom` используются напрямую, остальные поля идут как style notes."}
+                          "Все parsed JSON examples попадут в `examples_json`; runtime не выбирает active corpus внутри себя."}
                       </p>
                     </>
                   ) : (
                     <>
                       <label className="field-label">Plain text examples</label>
                       <textarea
-                        className="text-area settings-textarea-large"
+                        className="text-area"
                         rows={10}
                         value={customExamplesText}
                         disabled={!canEditChannelExamples}
@@ -1377,9 +1278,7 @@ export function ChannelManagerStage2Tab({
             </>
           )}
         </div>
-      </section>
 
-      <section className="control-card control-card-subtle">
         <p className={`subtle-text ${autosaveState.stage2.status === "error" ? "danger-text" : ""}`}>
           {autosaveState.stage2.message ?? "Настройки Stage 2 канала сохраняются автоматически."}
         </p>

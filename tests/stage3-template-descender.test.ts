@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
+import {
+  CHANNEL_STORY,
+  CHANNEL_STORY_TEMPLATE_ID,
+  cloneStage3TemplateConfig,
+  resolveTemplateDescenderSafetyPx
+} from "../lib/stage3-template";
+
+test("resolveTemplateDescenderSafetyPx grows for tighter line heights and stays bounded", () => {
+  const compact = resolveTemplateDescenderSafetyPx(56, 0.938);
+  const relaxed = resolveTemplateDescenderSafetyPx(34, 1.08);
+
+  assert.ok(compact >= relaxed);
+  assert.ok(compact >= 3);
+  assert.ok(compact <= 8);
+  assert.ok(relaxed >= 3);
+  assert.ok(relaxed <= 8);
+});
+
+test("channel story body sizing reserves descender safety inside the body slot", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.typography.bottom.lineHeight = 0.88;
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: "Did you know?",
+      bottomText:
+        "Gary kept dragging the heavy rig through foggy ground, then the lower edge of every y, g, p, and q still has to survive the tight body box.",
+      channelName: "History Explained",
+      channelHandle: "@HistoryExplained13",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+  const descenderSafety = resolveTemplateDescenderSafetyPx(
+    snapshot.computed.bottomFont,
+    snapshot.computed.bottomLineHeight
+  );
+  const reservedContentHeight =
+    snapshot.computed.bottomFont * snapshot.computed.bottomLineHeight * snapshot.computed.bottomLines +
+    descenderSafety;
+
+  assert.ok(
+    reservedContentHeight <= snapshot.layout.bottomText.height,
+    `expected body text plus descender safety to fit ${snapshot.layout.bottomText.height}px, got ${reservedContentHeight.toFixed(
+      2
+    )}px`
+  );
+});

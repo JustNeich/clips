@@ -30,7 +30,7 @@ export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY = "stage2_legacy";
 export const STAGE2_PROMPT_COMPATIBILITY_FAMILY_NATIVE = "native_caption_v3";
 export const STAGE2_LEGACY_PROMPT_BUNDLE_VERSION = "stage2_legacy@2026-04-01";
 export const STAGE2_NATIVE_PROMPT_BUNDLE_VERSION =
-  "native_caption_v3@2026-04-07-caption-highlighting";
+  "native_caption_v3@2026-04-27-prompt-first";
 
 export type Stage2PromptCompatibilityFamily =
   | typeof STAGE2_PROMPT_COMPATIBILITY_FAMILY_LEGACY
@@ -43,6 +43,24 @@ export type Stage2PromptCompatibility = {
 };
 
 const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
+  {
+    id: "classicOneShot",
+    label: "Running classic prompt-first one-shot",
+    shortLabel: "Classic",
+    description:
+      "Prompt-first one-shot for classic Top/Bottom output. The provider receives source video JSON, all active examples, format contract, hard constraints, and the operator instruction.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  },
+  {
+    id: "storyOneShot",
+    label: "Running story prompt-first one-shot",
+    shortLabel: "Story",
+    description:
+      "Prompt-first one-shot for Lead/Main Caption output. The provider receives source video JSON, all active examples, format contract, hard constraints, and the operator instruction.",
+    promptConfigurable: true,
+    promptStageType: "llm"
+  },
   {
     id: "oneShotReference",
     label: "Running one-shot reference baseline",
@@ -135,13 +153,69 @@ const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
   }
 ] as const;
 
+const STAGE2_NATIVE_CLASSIC_PROMPT_FIRST_PROGRESS_STAGES = [
+  {
+    id: "classicOneShot",
+    label: "Running classic prompt-first one-shot",
+    shortLabel: "Classic",
+    description:
+      "Classic Top/Bottom provider call with all active examples and no hidden examples selection."
+  },
+  {
+    id: "captionHighlighting",
+    label: "Tagging caption highlights",
+    shortLabel: "Подсветка",
+    description: "Размечаем точные spans для финального shortlist без изменения текста."
+  },
+  {
+    id: "captionTranslation",
+    label: "Translating display captions",
+    shortLabel: "Перевод",
+    description: "Переводим display shortlist на русский с fallback для missing items."
+  },
+  {
+    id: "assemble",
+    label: "Assembling result",
+    shortLabel: "Сборка",
+    description: "Собираем итоговый совместимый Stage 2 output и diagnostics."
+  }
+] as const;
+
+const STAGE2_NATIVE_STORY_PROMPT_FIRST_PROGRESS_STAGES = [
+  {
+    id: "storyOneShot",
+    label: "Running story prompt-first one-shot",
+    shortLabel: "Story",
+    description:
+      "Story Lead/Main Caption provider call with all active examples and no top/bottom remapping inside the provider contract."
+  },
+  {
+    id: "captionHighlighting",
+    label: "Tagging caption highlights",
+    shortLabel: "Подсветка",
+    description: "Размечаем точные spans для финального story shortlist без изменения текста."
+  },
+  {
+    id: "captionTranslation",
+    label: "Translating display captions",
+    shortLabel: "Перевод",
+    description: "Переводим story shortlist на русский с fallback для missing items."
+  },
+  {
+    id: "assemble",
+    label: "Assembling result",
+    shortLabel: "Сборка",
+    description: "Собираем итоговый format-specific Stage 2 output и diagnostics."
+  }
+] as const;
+
 const STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES = [
   {
     id: "oneShotReference",
     label: "Running one-shot reference baseline",
     shortLabel: "One-shot",
     description:
-      "Product-owned one-shot baseline extracts analysis, options, and winner ranking in one pass."
+      "One-shot baseline extracts analysis, options, and winner ranking from video truth, template semantics, bounded examples guidance, and hard constraints."
   },
   {
     id: "captionHighlighting",
@@ -261,6 +335,7 @@ export const STAGE2_REGENERATE_PROGRESS_STAGES = STAGE2_REGENERATE_STAGE_DEFINIT
 export type Stage2PipelineStageId = (typeof STAGE2_PIPELINE_STAGES)[number]["id"];
 export type Stage2RegenerateStageId = (typeof STAGE2_REGENERATE_PROGRESS_STAGES)[number]["id"];
 export type Stage2ProgressStageId = Stage2PipelineStageId | Stage2RegenerateStageId;
+export type Stage2FormatPipeline = "classic_top_bottom" | "story_lead_main_caption";
 
 export type Stage2PromptStageConfig = {
   prompt: string;
@@ -348,12 +423,16 @@ export function listStage2PromptConfigStages(): Array<{
   description: string;
   promptStageType: "llm" | "deterministic";
 }> {
-  return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS.filter((stage) => stage.id === "oneShotReference").map((stage) => ({
+  return STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS.filter(
+    (stage) => stage.id === "classicOneShot" || stage.id === "storyOneShot"
+  ).map((stage) => ({
     id: stage.id as Stage2PromptConfigStageId,
     label: stage.label,
     shortLabel: stage.shortLabel,
     description:
-      "Единственный редактируемый Stage 2 prompt: video-first stable one-shot baseline.",
+      stage.id === "storyOneShot"
+        ? "Prompt-first Stage 2 prompt для Lead/Main Caption линии."
+        : "Prompt-first Stage 2 prompt для classic Top/Bottom линии.",
     promptStageType: stage.promptStageType
   }));
 }
@@ -365,7 +444,8 @@ function isRegenerateMode(value: string | null | undefined): boolean {
 function resolveStage2ProgressDefinitions(
   mode?: string | null,
   stepCandidates?: Record<string, unknown>[],
-  workerProfileId?: string | null
+  workerProfileId?: string | null,
+  formatPipeline?: Stage2FormatPipeline | null
 ): readonly Stage2ProgressStageDefinition[] {
   if (isRegenerateMode(mode)) {
     return STAGE2_REGENERATE_PROGRESS_STAGES;
@@ -393,6 +473,12 @@ function resolveStage2ProgressDefinitions(
         .map((step) => (typeof step.id === "string" ? step.id.trim() : ""))
         .filter(Boolean)
     );
+    if (candidateIds.has("storyOneShot")) {
+      return STAGE2_NATIVE_STORY_PROMPT_FIRST_PROGRESS_STAGES;
+    }
+    if (candidateIds.has("classicOneShot")) {
+      return STAGE2_NATIVE_CLASSIC_PROMPT_FIRST_PROGRESS_STAGES;
+    }
     if (
       Array.from(candidateIds).some((id) =>
         STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES.some((stage) => stage.id === id)
@@ -419,17 +505,30 @@ function resolveStage2ProgressDefinitions(
     workerProfileId !== undefined &&
     isReferenceOneShotExecutionMode(resolveStage2WorkerProfile(workerProfileId).executionMode)
   ) {
+    if (formatPipeline === "story_lead_main_caption") {
+      return STAGE2_NATIVE_STORY_PROMPT_FIRST_PROGRESS_STAGES;
+    }
+    if (formatPipeline === "classic_top_bottom") {
+      return STAGE2_NATIVE_CLASSIC_PROMPT_FIRST_PROGRESS_STAGES;
+    }
     return STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES;
   }
 
+  if (formatPipeline === "story_lead_main_caption") {
+    return STAGE2_NATIVE_STORY_PROMPT_FIRST_PROGRESS_STAGES;
+  }
+  if (formatPipeline === "classic_top_bottom") {
+    return STAGE2_NATIVE_CLASSIC_PROMPT_FIRST_PROGRESS_STAGES;
+  }
   return STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES;
 }
 
 export function getStage2ProgressStartStageId(
   mode?: string | null,
-  workerProfileId?: string | null
+  workerProfileId?: string | null,
+  formatPipeline?: Stage2FormatPipeline | null
 ): Stage2ProgressStageId {
-  return resolveStage2ProgressDefinitions(mode, undefined, workerProfileId)[0]?.id ?? "oneShotReference";
+  return resolveStage2ProgressDefinitions(mode, undefined, workerProfileId, formatPipeline)[0]?.id ?? "oneShotReference";
 }
 
 function sanitizePrompt(value: unknown, fallback: string): string {
@@ -856,10 +955,15 @@ export function resolveEffectiveStage2PromptConfig(input: {
 export function createStage2ProgressSnapshot(
   runId: string,
   mode: string | null | undefined = "manual",
-  options?: { workerProfileId?: string | null }
+  options?: { workerProfileId?: string | null; formatPipeline?: Stage2FormatPipeline | null }
 ): Stage2ProgressSnapshot {
   const timestamp = nowIso();
-  const stageDefinitions = resolveStage2ProgressDefinitions(mode, undefined, options?.workerProfileId);
+  const stageDefinitions = resolveStage2ProgressDefinitions(
+    mode,
+    undefined,
+    options?.workerProfileId,
+    options?.formatPipeline
+  );
   return {
     runId,
     status: "queued",
@@ -1057,10 +1161,12 @@ export function resetStage2ProgressForRetry(
   snapshot: Stage2ProgressSnapshot,
   detail?: string | null,
   mode: string | null | undefined = "manual",
-  workerProfileId?: string | null
+  workerProfileId?: string | null,
+  formatPipeline?: Stage2FormatPipeline | null
 ): Stage2ProgressSnapshot {
   const restarted = createStage2ProgressSnapshot(snapshot.runId, mode, {
-    workerProfileId
+    workerProfileId,
+    formatPipeline
   });
   if (!detail) {
     return restarted;
@@ -1069,7 +1175,7 @@ export function resetStage2ProgressForRetry(
   return {
     ...restarted,
     steps: restarted.steps.map((step) =>
-      step.id === getStage2ProgressStartStageId(mode, workerProfileId)
+      step.id === getStage2ProgressStartStageId(mode, workerProfileId, formatPipeline)
         ? {
             ...step,
             summary: summarizeProgressDetail(detail),

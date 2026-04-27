@@ -147,6 +147,7 @@ export async function POST(request: Request): Promise<Response> {
       stage2ExamplesConfig: body?.stage2ExamplesConfig,
       stage2HardConstraints: body?.stage2HardConstraints,
       stage2PromptConfig: body?.stage2PromptConfig,
+      stage2StyleProfile: body?.stage2StyleProfile,
       templateId: body?.templateId
     });
     return Response.json({ channel }, { status: 200 });

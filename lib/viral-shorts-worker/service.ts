@@ -105,6 +105,7 @@ import {
   STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT_VERSION,
   STAGE2_REFERENCE_ONE_SHOT_PROMPT,
   STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION,
+  STAGE2_PROMPT_FIRST_ONE_SHOT_PROMPT_VERSION,
   Stage2PromptConfigStageId
 } from "../stage2-prompt-specs";
 import { CommentItem } from "../comments";
@@ -138,6 +139,7 @@ import {
   type TemplateCaptionHighlightPhraseMap,
   type TemplateCaptionHighlights
 } from "../template-highlights";
+import type { Stage3TemplateTextFieldSemantics } from "../stage3-template-semantics";
 
 const ANALYZER_SCHEMA = {
   type: "object",
@@ -762,6 +764,67 @@ const NATIVE_REFERENCE_ONE_SHOT_SCHEMA = {
   }
 } as const;
 
+const NATIVE_CLASSIC_ONE_SHOT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["formatPipeline", "analysis", "classicOptions", "winner_candidate_id", "titles"],
+  properties: {
+    formatPipeline: { type: "string", enum: ["classic_top_bottom"] },
+    analysis: NATIVE_REFERENCE_ONE_SHOT_SCHEMA.properties.analysis,
+    classicOptions: {
+      type: "array",
+      minItems: 5,
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["candidate_id", "top", "bottom", "retained_handle"],
+        properties: {
+          candidate_id: { type: "string", minLength: 1 },
+          top: { type: "string", minLength: 0 },
+          bottom: { type: "string", minLength: 1 },
+          retained_handle: { type: "boolean" },
+          rationale: { type: "string", minLength: 1 }
+        }
+      }
+    },
+    winner_candidate_id: { type: "string", minLength: 1 },
+    titles: NATIVE_REFERENCE_ONE_SHOT_SCHEMA.properties.titles
+  }
+} as const;
+
+const NATIVE_STORY_ONE_SHOT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["formatPipeline", "analysis", "storyOptions", "winner_candidate_id", "titles"],
+  properties: {
+    formatPipeline: { type: "string", enum: ["story_lead_main_caption"] },
+    analysis: NATIVE_REFERENCE_ONE_SHOT_SCHEMA.properties.analysis,
+    storyOptions: {
+      type: "array",
+      minItems: 5,
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["candidate_id", "lead", "mainCaption", "retained_handle"],
+        properties: {
+          candidate_id: { type: "string", minLength: 1 },
+          lead: { type: "string", minLength: 0 },
+          mainCaption: { type: "string", minLength: 1 },
+          retained_handle: { type: "boolean" },
+          rationale: { type: "string", minLength: 1 }
+        }
+      }
+    },
+    winner_candidate_id: { type: "string", minLength: 1 },
+    titles: NATIVE_REFERENCE_ONE_SHOT_SCHEMA.properties.titles
+  }
+} as const;
+
+type Stage2FormatPipeline = "classic_top_bottom" | "story_lead_main_caption";
+type PromptFirstOneShotStageId = "classicOneShot" | "storyOneShot";
+
 type NativeReferenceOneShotResult = {
   analysis: {
     visualAnchors: string[];
@@ -775,6 +838,11 @@ type NativeReferenceOneShotResult = {
   >;
   winnerCandidateId: string | null;
   titles: NativeCaptionTitleOption[];
+};
+
+type NativePromptFirstOneShotResult = NativeReferenceOneShotResult & {
+  formatPipeline: Stage2FormatPipeline;
+  providerOptionsKey: "classicOptions" | "storyOptions";
 };
 
 type StageWarning = {
@@ -1802,6 +1870,23 @@ function buildStage2PipelineExecutionSnapshot(input: {
 
 const NATIVE_CAPTION_MINIMUM_VALID_FINALISTS = 2;
 const STAGE2_PROMPT_POLICY_VERSION = "native_defaults_authoritative_v2_platform_lines";
+const DEFAULT_TEMPLATE_TEXT_SEMANTICS: Stage3TemplateTextFieldSemantics = {
+  formatGroup: "classic_top_bottom",
+  formatLabel: "Top & Bottom",
+  topLabel: "TOP",
+  bottomLabel: "BOTTOM",
+  topVisible: true,
+  bottomVisible: true,
+  topOptional: false,
+  topNote: null,
+  bottomNote: null
+};
+
+const REFERENCE_ONE_SHOT_RUNTIME_CONTEXT_BRIDGE = `Runtime context bridge:
+- The USER CONTEXT JSON may include template_semantics_json and examples_guidance_json in addition to the core video-first inputs.
+- template_semantics_json names what the output top/bottom fields mean for the active Stage 3 format. For Channel + Story, top is a short Lead and bottom is the main Body; do not write five title-like leads or repeat the same lead shape.
+- examples_guidance_json is bounded guidance from the approved examples corpus. Use domain_guided examples for framing only when they match the clip, form_guided examples for structure and pacing, and style_guided examples only as weak style support.
+- Examples never override video_truth_json, hard_constraints_json, or user_instruction. Never import unsupported nouns, causes, or facts from examples.`;
 
 function buildNativeCaptionExamplesAssessment(
   channelConfig: Stage2RuntimeChannelConfig
@@ -1835,6 +1920,103 @@ function buildNativeCaptionExamplesAssessment(
       : ["clip_context", "hard_constraints"],
     channelStylePriority: "primary",
     editorialMemoryPriority: "supporting"
+  };
+}
+
+function buildPromptFirstExamplesAssessment(
+  channelConfig: Stage2RuntimeChannelConfig,
+  activeExamplesCount: number
+): Stage2ExamplesAssessment {
+  return {
+    retrievalConfidence: "low",
+    examplesMode: "style_guided",
+    explanation:
+      `Prompt-first run passes all ${activeExamplesCount} active example(s) as raw examples_json; runtime performs no semantic selection, scoring, ranking, or role summarization.`,
+    evidence: [],
+    retrievalWarning: null,
+    examplesRoleSummary: "All active examples are raw prompt input.",
+    primaryDriverSummary: "The channel Stage 2 prompt decides how examples influence generation.",
+    primaryDrivers: ["channel_prompt", "raw_examples"],
+    channelStylePriority: "supporting",
+    editorialMemoryPriority: "supporting"
+  };
+}
+
+function buildReferenceOneShotExamplesGuidancePayload(input: {
+  channelConfig: Stage2RuntimeChannelConfig;
+  workspaceCorpusCount: number;
+  activeExamplesCount: number;
+  selectorExamples: Stage2CorpusExample[];
+  selectorOutput: SelectorOutput;
+  examplesAssessment: Stage2ExamplesAssessment;
+  exampleInsights: Array<{
+    exampleId: string;
+    guidanceRole: Stage2ExampleGuidanceRole;
+    retrievalScore: number;
+    retrievalReasons: string[];
+  }>;
+}) {
+  const selectedExamples = input.selectorOutput.selectedExamples ?? [];
+  const selectedIds = new Set(input.selectorOutput.selectedExampleIds ?? []);
+  const insightById = new Map(input.exampleInsights.map((entry) => [entry.exampleId, entry]));
+  const compactExample = (example: Stage2CorpusExample) => {
+    const insight = insightById.get(example.id) ?? null;
+    return {
+      id: example.id,
+      title: example.title,
+      source_channel: example.sourceChannelName,
+      clip_type: example.clipType,
+      overlay_top: example.overlayTop,
+      overlay_bottom: example.overlayBottom,
+      why_it_works: example.whyItWorks.slice(0, 3),
+      guidance_role: insight?.guidanceRole ?? "weak_support",
+      retrieval_score: insight?.retrievalScore ?? null,
+      retrieval_reasons: insight?.retrievalReasons.slice(0, 4) ?? []
+    };
+  };
+
+  return {
+    source: input.channelConfig.examplesSource,
+    workspace_corpus_count: input.workspaceCorpusCount,
+    active_corpus_count: input.activeExamplesCount,
+    prompt_pool_count: input.selectorExamples.length,
+    selected_example_ids: Array.from(selectedIds),
+    retrieval_confidence: input.examplesAssessment.retrievalConfidence,
+    examples_mode: input.examplesAssessment.examplesMode,
+    explanation: input.examplesAssessment.explanation,
+    evidence: input.examplesAssessment.evidence.slice(0, 6),
+    examples_role_summary: input.examplesAssessment.examplesRoleSummary,
+    primary_driver_summary: input.examplesAssessment.primaryDriverSummary,
+    primary_drivers: input.examplesAssessment.primaryDrivers,
+    usage_rule:
+      "Use examples only at the allowed guidance level. Video truth, hard constraints, template semantics, and explicit user instruction always win.",
+    selected_examples: selectedExamples.slice(0, 5).map(compactExample),
+    prompt_pool_examples: input.selectorExamples.slice(0, 8).map(compactExample)
+  };
+}
+
+function buildReferenceOneShotTemplateSemanticsPayload(
+  channelConfig: Stage2RuntimeChannelConfig
+) {
+  const semantics = channelConfig.templateTextSemantics ?? DEFAULT_TEMPLATE_TEXT_SEMANTICS;
+  return {
+    format_group: semantics.formatGroup,
+    format_label: semantics.formatLabel,
+    top_field: {
+      label: semantics.topLabel,
+      visible: semantics.topVisible,
+      optional: semantics.topOptional,
+      note: semantics.topNote
+    },
+    bottom_field: {
+      label: semantics.bottomLabel,
+      visible: semantics.bottomVisible,
+      note: semantics.bottomNote
+    },
+    writing_contract:
+      semantics.formatGroup === "channel_story"
+        ? "For Channel + Story, write top as the Lead when visible and bottom as the Body. Lead is a compact setup, not a title list; Body carries the main human read."
+        : "Write top and bottom as the classic two-line overlay pair."
   };
 }
 
@@ -1899,13 +2081,13 @@ function resolveReferenceOneShotVariantConfig(
     promptVersion: STAGE2_REFERENCE_ONE_SHOT_PROMPT_VERSION,
     pathVariant: "reference_one_shot_v2",
     stageSummary:
-      "Product-owned stable one-shot baseline: returns the final 5 publishable options directly from video truth, weak comments hints, hard constraints, and user instruction.",
+      "Stable one-shot baseline: returns the final 5 publishable options directly from video truth, template semantics, bounded examples guidance, weak comments hints, hard constraints, and user instruction.",
     stageFlags: [
       "one-shot baseline",
-      "product-owned prompt",
       "video-first minimal inputs",
+      "template semantics",
+      "bounded examples guidance",
       "weak comments hints only",
-      "no style-learning steering",
       "quality-first fail hard",
       "no deterministic backfill"
     ],
@@ -2047,136 +2229,169 @@ function buildReferenceOneShotPrompt(input: {
   analyzerOutput: AnalyzerOutput;
   variant: ReferenceOneShotVariantConfig;
   promptConfig: Stage2PromptConfig;
-}): string {
-  const resolvedPrompt = resolveStage2PromptTemplate(
-    "oneShotReference",
-    input.promptConfig,
-    {
-      overrideSource:
-        input.promptConfig.useWorkspaceDefault === false ? "channel_override" : "workspace_override"
-    }
-  );
-  return renderJsonPrompt(resolvedPrompt.configuredPrompt, {
-    video_truth_json: buildReferenceOneShotVideoTruthPayload(input),
-    comments_hint_json: buildReferenceOneShotCommentWavePayload(input),
-    examples_json: buildReferenceOneShotExamplesJsonPayload(input.channelConfig),
-    examples_text: buildReferenceOneShotExamplesTextPayload(input.channelConfig),
-    hard_constraints_json: input.channelConfig.hardConstraints,
-    template_semantics_json: buildReferenceOneShotTemplateSemanticsPayload(input.channelConfig),
-    user_instruction: input.videoContext.userInstruction?.trim() || null
-  });
-}
-
-function buildReferenceOneShotTemplateSemanticsPayload(
-  channelConfig: Stage2RuntimeChannelConfig
-): unknown {
-  const semantics = channelConfig.templateTextSemantics;
-  if (!semantics) {
-    return {
-      formatGroup: channelConfig.templateFormatGroup ?? "classic_top_bottom",
-      topLabel: "TOP",
-      bottomLabel: "BOTTOM",
-      leadMode: "clip_custom",
-      topVisible: true,
-      bottomVisible: true,
-      topOptional: false,
-      topNote: null,
-      bottomNote: null,
-      lengthHints: {
-        topLengthMin: channelConfig.hardConstraints.topLengthMin,
-        topLengthMax: channelConfig.hardConstraints.topLengthMax,
-        bottomLengthMin: channelConfig.hardConstraints.bottomLengthMin,
-        bottomLengthMax: channelConfig.hardConstraints.bottomLengthMax
-      }
-    };
-  }
-
-  return {
-    formatGroup: semantics.formatGroup,
-    formatLabel: semantics.formatLabel,
-    topLabel: semantics.topLabel,
-    bottomLabel: semantics.bottomLabel,
-    leadMode: semantics.leadMode,
-    topVisible: semantics.topVisible,
-    bottomVisible: semantics.bottomVisible,
-    topOptional: semantics.topOptional,
-    topNote: semantics.topNote,
-    bottomNote: semantics.bottomNote,
-    lengthHints: semantics.lengthHints
-  };
-}
-
-function truncateReferenceText(value: string, limit: number): string {
-  const normalized = value.replace(/\r\n/g, "\n").trim();
-  return normalized.length > limit ? `${normalized.slice(0, limit)}\n[truncated]` : normalized;
-}
-
-function buildReferenceOneShotExamplesJsonPayload(channelConfig: Stage2RuntimeChannelConfig): unknown {
-  const raw = channelConfig.customExamplesJson?.trim();
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed.slice(0, 24);
-    }
-    if (parsed && typeof parsed === "object") {
-      const record = parsed as Record<string, unknown>;
-      if (Array.isArray(record.examples)) {
-        return {
-          ...record,
-          examples: record.examples.slice(0, 24)
-        };
-      }
-      if (Array.isArray(record.items)) {
-        return {
-          ...record,
-          items: record.items.slice(0, 24)
-        };
-      }
-    }
-    return parsed;
-  } catch {
-    return {
-      parse_error: "customExamplesJson is not valid JSON; ignore this field and use examples_text if present"
-    };
-  }
-}
-
-function buildReferenceOneShotExamplesTextPayload(channelConfig: Stage2RuntimeChannelConfig): string | null {
-  const raw = channelConfig.customExamplesText?.trim();
-  if (!raw) {
-    return null;
-  }
-  return truncateReferenceText(raw, 20_000);
-}
-
-function buildReferenceOneShotExamplesManifest(input: {
-  activeCorpusCount: number;
+  workspaceCorpusCount: number;
+  activeExamplesCount: number;
   selectorExamples: Stage2CorpusExample[];
   selectorOutput: SelectorOutput;
   examplesAssessment: Stage2ExamplesAssessment;
-}): NonNullable<Stage2DiagnosticsPromptStage["inputManifest"]>["examples"] {
-  const selectedExamples = input.selectorOutput.selectedExamples ?? [];
-  const selectedExampleIds = input.selectorOutput.selectedExampleIds ?? selectedExamples.map((example) => example.id);
-  const passedExamples = input.selectorExamples.length > 0 ? input.selectorExamples : selectedExamples;
-  const rejectedExampleIds = input.selectorOutput.rejectedExampleIds ?? [];
+  exampleInsights: Array<{
+    exampleId: string;
+    guidanceRole: Stage2ExampleGuidanceRole;
+    retrievalScore: number;
+    retrievalReasons: string[];
+  }>;
+}): { promptText: string; reasoningEffort: string | null } {
+  const resolvedPrompt = resolveStage2PromptTemplate("oneShotReference", input.promptConfig);
+  const systemPrompt = [
+    resolvedPrompt.configuredPrompt,
+    REFERENCE_ONE_SHOT_RUNTIME_CONTEXT_BRIDGE
+  ].join("\n\n");
   return {
-    availableCount: input.selectorExamples.length,
-    passedCount: passedExamples.length,
-    omittedCount: Math.max(0, input.activeCorpusCount - passedExamples.length),
-    truncated: input.activeCorpusCount > passedExamples.length,
-    limit: null,
-    activeCorpusCount: input.activeCorpusCount,
-    promptPoolCount: input.selectorExamples.length,
-    passedExampleIds: passedExamples.map((example) => example.id),
-    selectedExampleIds,
-    rejectedExampleIds,
-    retrievalConfidence: input.examplesAssessment.retrievalConfidence,
-    examplesMode: input.examplesAssessment.examplesMode,
-    examplesRoleSummary: input.examplesAssessment.examplesRoleSummary,
-    primaryDriverSummary: input.examplesAssessment.primaryDriverSummary
+    promptText: renderJsonPrompt(systemPrompt, {
+      video_truth_json: buildReferenceOneShotVideoTruthPayload(input),
+      comments_hint_json: buildReferenceOneShotCommentWavePayload(input),
+      template_semantics_json: buildReferenceOneShotTemplateSemanticsPayload(input.channelConfig),
+      examples_guidance_json: buildReferenceOneShotExamplesGuidancePayload({
+        channelConfig: input.channelConfig,
+        workspaceCorpusCount: input.workspaceCorpusCount,
+        activeExamplesCount: input.activeExamplesCount,
+        selectorExamples: input.selectorExamples,
+        selectorOutput: input.selectorOutput,
+        examplesAssessment: input.examplesAssessment,
+        exampleInsights: input.exampleInsights
+      }),
+      hard_constraints_json: input.channelConfig.hardConstraints,
+      user_instruction: input.videoContext.userInstruction?.trim() || null
+    }),
+    reasoningEffort: resolvedPrompt.reasoningEffort
+  };
+}
+
+function resolveStage2FormatPipeline(
+  channelConfig: Stage2RuntimeChannelConfig
+): Stage2FormatPipeline {
+  return channelConfig.templateTextSemantics?.formatGroup === "channel_story"
+    ? "story_lead_main_caption"
+    : "classic_top_bottom";
+}
+
+function resolvePromptFirstStageId(formatPipeline: Stage2FormatPipeline): PromptFirstOneShotStageId {
+  return formatPipeline === "story_lead_main_caption" ? "storyOneShot" : "classicOneShot";
+}
+
+function buildPromptFirstSourceVideoPayload(input: {
+  videoContext: ViralShortsVideoContext;
+  analyzerOutput: AnalyzerOutput;
+}) {
+  return {
+    title: input.videoContext.title,
+    description: input.videoContext.description,
+    transcript: input.videoContext.transcript,
+    extracted_frame_descriptions: input.videoContext.frameDescriptions,
+    acquired_comments: input.videoContext.comments.map((comment, index) => ({
+      id: comment.id ?? `comment_${index + 1}`,
+      author: comment.author,
+      likes: comment.likes,
+      text: comment.text
+    })),
+    basic_video_facts_seed: {
+      visual_anchors: input.analyzerOutput.visualAnchors,
+      specific_nouns: input.analyzerOutput.specificNouns,
+      visible_actions: input.analyzerOutput.visibleActions,
+      scene_beats: input.analyzerOutput.sceneBeats,
+      uncertainty_notes: input.analyzerOutput.uncertaintyNotes,
+      raw_summary: input.analyzerOutput.rawSummary
+    }
+  };
+}
+
+function buildPromptFirstExamplesPayload(examples: Stage2CorpusExample[]) {
+  return examples.map((example) => ({
+    id: example.id,
+    owner_channel_id: example.ownerChannelId,
+    owner_channel_name: example.ownerChannelName,
+    source_channel_id: example.sourceChannelId,
+    source_channel_name: example.sourceChannelName,
+    title: example.title,
+    overlay_top: example.overlayTop,
+    overlay_bottom: example.overlayBottom,
+    transcript: example.transcript,
+    clip_type: example.clipType,
+    why_it_works: example.whyItWorks,
+    quality_score: example.qualityScore
+  }));
+}
+
+function buildPromptFirstFormatContractPayload(input: {
+  channelConfig: Stage2RuntimeChannelConfig;
+  formatPipeline: Stage2FormatPipeline;
+}) {
+  const semantics = input.channelConfig.templateTextSemantics ?? DEFAULT_TEMPLATE_TEXT_SEMANTICS;
+  const isStory = input.formatPipeline === "story_lead_main_caption";
+  return {
+    format_pipeline: input.formatPipeline,
+    provider_stage_id: resolvePromptFirstStageId(input.formatPipeline),
+    expected_output_shape: isStory
+      ? {
+          formatPipeline: "story_lead_main_caption",
+          storyOptions: [{ candidate_id: "cand_1", lead: "...", mainCaption: "..." }]
+        }
+      : {
+          formatPipeline: "classic_top_bottom",
+          classicOptions: [{ candidate_id: "cand_1", top: "...", bottom: "..." }]
+        },
+    visible_field_names: isStory
+      ? { lead: "Lead", mainCaption: "Main Caption" }
+      : { top: semantics.topLabel, bottom: semantics.bottomLabel },
+    stage3_handoff: isStory
+      ? { leadText: "storyOptions[].lead", mainCaptionText: "storyOptions[].mainCaption" }
+      : { topText: "classicOptions[].top", bottomText: "classicOptions[].bottom" },
+    template_render_metadata: {
+      format_group: semantics.formatGroup,
+      format_label: semantics.formatLabel,
+      top_field: {
+        label: semantics.topLabel,
+        visible: semantics.topVisible,
+        optional: semantics.topOptional,
+        note: semantics.topNote
+      },
+      bottom_field: {
+        label: semantics.bottomLabel,
+        visible: semantics.bottomVisible,
+        note: semantics.bottomNote
+      }
+    }
+  };
+}
+
+function resolvePromptFirstPreflightLimit(): number | null {
+  const raw = process.env.STAGE2_PROMPT_FIRST_MAX_CHARS ?? process.env.STAGE2_PROVIDER_MAX_PROMPT_CHARS;
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 180_000;
+}
+
+function buildPromptFirstOneShotPrompt(input: {
+  stageId: PromptFirstOneShotStageId;
+  formatPipeline: Stage2FormatPipeline;
+  videoContext: ViralShortsVideoContext;
+  channelConfig: Stage2RuntimeChannelConfig;
+  analyzerOutput: AnalyzerOutput;
+  promptConfig: Stage2PromptConfig;
+  activeExamples: Stage2CorpusExample[];
+}): { promptText: string; reasoningEffort: string | null } {
+  const resolvedPrompt = resolveStage2PromptTemplate(input.stageId, input.promptConfig);
+  return {
+    promptText: renderJsonPrompt(resolvedPrompt.configuredPrompt, {
+      source_video_json: buildPromptFirstSourceVideoPayload(input),
+      examples_json: buildPromptFirstExamplesPayload(input.activeExamples),
+      format_contract_json: buildPromptFirstFormatContractPayload({
+        channelConfig: input.channelConfig,
+        formatPipeline: input.formatPipeline
+      }),
+      hard_constraints_json: input.channelConfig.hardConstraints,
+      user_instruction: input.videoContext.userInstruction?.trim() || null
+    }),
+    reasoningEffort: resolvedPrompt.reasoningEffort
   };
 }
 
@@ -2269,6 +2484,44 @@ function normalizeReferenceOneShotResult(
     candidates: normalizedCandidates,
     winnerCandidateId: winnerCandidateIdRaw || null,
     titles: normalizedTitles
+  };
+}
+
+function normalizePromptFirstOneShotResult(input: {
+  raw: unknown;
+  formatPipeline: Stage2FormatPipeline;
+}): NativePromptFirstOneShotResult {
+  const root = input.raw && typeof input.raw === "object" ? (input.raw as Record<string, unknown>) : {};
+  const isStory = input.formatPipeline === "story_lead_main_caption";
+  const optionsKey = isStory ? "storyOptions" : "classicOptions";
+  const rawOptions = Array.isArray(root[optionsKey]) ? root[optionsKey] : [];
+  const normalizedRaw = {
+    analysis: root.analysis,
+    candidates: rawOptions.map((entry) => {
+      const item = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+      return isStory
+        ? {
+            candidate_id: item.candidate_id ?? item.candidateId,
+            top: item.lead,
+            bottom: item.mainCaption ?? item.main_caption,
+            retained_handle: item.retained_handle ?? item.retainedHandle,
+            rationale: item.rationale
+          }
+        : {
+            candidate_id: item.candidate_id ?? item.candidateId,
+            top: item.top,
+            bottom: item.bottom,
+            retained_handle: item.retained_handle ?? item.retainedHandle,
+            rationale: item.rationale
+          };
+    }),
+    winner_candidate_id: root.winner_candidate_id ?? root.winnerCandidateId,
+    titles: root.titles
+  };
+  return {
+    ...normalizeReferenceOneShotResult(normalizedRaw),
+    formatPipeline: input.formatPipeline,
+    providerOptionsKey: optionsKey
   };
 }
 
@@ -7400,7 +7653,6 @@ function normalizeChannelConfig(input: {
 async function runReferenceOneShotNativeCaptionPipeline(input: {
   channelConfig: Stage2RuntimeChannelConfig;
   workspaceCorpusCount: number;
-  activeCorpusCount: number;
   selectorCandidateCount: number;
   selectorExamples: Stage2CorpusExample[];
   videoContext: ViralShortsVideoContext;
@@ -7413,8 +7665,15 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   reusedContextPacket: NativeCaptionContextPacket | null;
   pipelineExecution: Stage2PipelineExecution;
   analyzerOutput: AnalyzerOutput;
-  selectorFallback: SelectorOutput;
-  nativeExamplesAssessment: Stage2ExamplesAssessment;
+  selectorOutput: SelectorOutput;
+  examplesAssessment: Stage2ExamplesAssessment;
+  activeExamplesCount: number;
+  exampleInsights: Array<{
+    exampleId: string;
+    guidanceRole: Stage2ExampleGuidanceRole;
+    retrievalScore: number;
+    retrievalReasons: string[];
+  }>;
 }): Promise<RunPipelineResult> {
   const warnings: StageWarning[] = [];
   const executedPromptStages: ExecutedPromptStageRecord[] = [];
@@ -7448,36 +7707,80 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     });
   };
 
-  const oneShotCommentLimit =
-    variantConfig.weakGroundingCommentsLimit < variantConfig.commentsLimit &&
-    isWeakReferenceOneShotSourceGrounding(input.videoContext)
+  const formatPipeline = input.reusedContextPacket
+    ? null
+    : resolveStage2FormatPipeline(input.channelConfig);
+  const oneShotStageId: Stage2PipelineStageId =
+    formatPipeline ? resolvePromptFirstStageId(formatPipeline) : "oneShotReference";
+  const isPromptFirstOneShot = formatPipeline !== null;
+  const oneShotCommentLimit = isPromptFirstOneShot
+    ? input.videoContext.comments.length
+    : variantConfig.weakGroundingCommentsLimit < variantConfig.commentsLimit &&
+        isWeakReferenceOneShotSourceGrounding(input.videoContext)
       ? variantConfig.weakGroundingCommentsLimit
       : variantConfig.commentsLimit;
   const contextPacket =
     input.reusedContextPacket ??
     buildNativeCaptionFallbackContextPacket({
       analyzerOutput: input.analyzerOutput,
-      selectorOutput: input.selectorFallback,
+      selectorOutput: input.selectorOutput,
       videoContext: input.videoContext,
       channelConfig: input.channelConfig
     });
-  const oneShotPrompt = buildReferenceOneShotPrompt({
-    videoContext: input.videoContext,
-    channelConfig: input.channelConfig,
-    analyzerOutput: input.analyzerOutput,
-    variant: variantConfig,
-    promptConfig: input.promptConfig
-  });
-  const oneShotReasoningEffort = resolveStageReasoningEffort(
-    "oneShotReference",
-    input.promptConfig
-  );
+  const oneShotPrompt = formatPipeline
+    ? buildPromptFirstOneShotPrompt({
+        stageId: resolvePromptFirstStageId(formatPipeline),
+        formatPipeline,
+        videoContext: input.videoContext,
+        channelConfig: input.channelConfig,
+        analyzerOutput: input.analyzerOutput,
+        promptConfig: input.promptConfig,
+        activeExamples: input.selectorExamples
+      })
+    : buildReferenceOneShotPrompt({
+        videoContext: input.videoContext,
+        channelConfig: input.channelConfig,
+        analyzerOutput: input.analyzerOutput,
+        variant: variantConfig,
+        promptConfig: input.promptConfig,
+        workspaceCorpusCount: input.workspaceCorpusCount,
+        activeExamplesCount: input.activeExamplesCount,
+        selectorExamples: input.selectorExamples,
+        selectorOutput: input.selectorOutput,
+        examplesAssessment: input.examplesAssessment,
+        exampleInsights: input.exampleInsights
+      });
+  const oneShotReasoningEffort = oneShotPrompt.reasoningEffort;
   const oneShotModel =
-    input.stageModels?.oneShotReference ??
-    input.stageModels?.candidateGenerator ??
-    input.stageModels?.contextPacket ??
-    null;
-  promptInputManifests.oneShotReference = {
+    oneShotStageId === "classicOneShot"
+      ? input.stageModels?.classicOneShot ?? input.stageModels?.oneShotReference ?? null
+      : oneShotStageId === "storyOneShot"
+        ? input.stageModels?.storyOneShot ?? input.stageModels?.oneShotReference ?? null
+        : input.stageModels?.oneShotReference ??
+          input.stageModels?.candidateGenerator ??
+          input.stageModels?.contextPacket ??
+          null;
+  const preflightLimit = isPromptFirstOneShot ? resolvePromptFirstPreflightLimit() : null;
+  if (preflightLimit !== null && oneShotPrompt.promptText.length > preflightLimit) {
+    const preflightMessage =
+      [
+        "Stage 2 prompt-first input exceeds the configured provider preflight limit.",
+        `examples=${input.selectorExamples.length}`,
+        `promptChars=${oneShotPrompt.promptText.length}`,
+        `limit=${preflightLimit}`,
+        `stage=${oneShotStageId}`,
+        `providerModel=${oneShotModel ?? "default"}`
+      ].join(" ");
+    await reportProgress({
+      stageId: oneShotStageId,
+      state: "failed",
+      promptChars: oneShotPrompt.promptText.length,
+      reasoningEffort: oneShotReasoningEffort,
+      detail: preflightMessage
+    });
+    throw new Error(preflightMessage);
+  }
+  promptInputManifests[oneShotStageId] = {
     learningDetail: "none",
     description: {
       availableChars: input.videoContext.description.trim().length,
@@ -7505,27 +7808,55 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       passedCount: Math.min(oneShotCommentLimit, input.videoContext.comments.length),
       omittedCount: Math.max(0, input.videoContext.comments.length - oneShotCommentLimit),
       truncated: input.videoContext.comments.length > oneShotCommentLimit,
-      limit: oneShotCommentLimit,
+      limit: isPromptFirstOneShot ? null : oneShotCommentLimit,
       passedCommentIds: input.videoContext.comments
         .slice(0, oneShotCommentLimit)
         .map((comment, index) => comment.id ?? `comment_${index + 1}`)
     },
-    examples: buildReferenceOneShotExamplesManifest({
-      activeCorpusCount: input.activeCorpusCount,
-      selectorExamples: input.selectorExamples,
-      selectorOutput: input.selectorFallback,
-      examplesAssessment: input.nativeExamplesAssessment
-    }),
+    examples: {
+      availableCount: input.workspaceCorpusCount,
+      passedCount: input.selectorExamples.length,
+      omittedCount: isPromptFirstOneShot
+        ? 0
+        : Math.max(0, input.activeExamplesCount - input.selectorExamples.length),
+      truncated: isPromptFirstOneShot ? false : input.selectorExamples.length < input.activeExamplesCount,
+      limit: isPromptFirstOneShot ? null : input.selectorExamples.length,
+      activeCorpusCount: input.activeExamplesCount,
+      promptPoolCount: input.selectorExamples.length,
+      passedExampleIds: input.selectorExamples.map((example) => example.id),
+      selectedExampleIds: isPromptFirstOneShot ? [] : input.selectorOutput.selectedExampleIds ?? [],
+      rejectedExampleIds: isPromptFirstOneShot ? [] : input.selectorOutput.rejectedExampleIds ?? [],
+      retrievalConfidence: isPromptFirstOneShot ? null : input.examplesAssessment.retrievalConfidence,
+      examplesMode: isPromptFirstOneShot ? null : input.examplesAssessment.examplesMode,
+      examplesRoleSummary: isPromptFirstOneShot
+        ? "All active examples were passed as raw examples_json."
+        : input.examplesAssessment.examplesRoleSummary,
+      primaryDriverSummary: isPromptFirstOneShot
+        ? "Runtime did not rank, score, summarize, or select examples."
+        : input.examplesAssessment.primaryDriverSummary
+    },
     channelLearning: null,
     candidates: null,
-    stageFlags: variantConfig.stageFlags
+    stageFlags: isPromptFirstOneShot
+      ? [
+          "prompt-first",
+          "all active examples",
+          "raw examples_json",
+          "format-specific output schema",
+          "no runtime examples selection",
+          "no deterministic polish",
+          "no winner promotion"
+        ]
+      : variantConfig.stageFlags
   };
   await reportProgress({
-    stageId: "oneShotReference",
+    stageId: oneShotStageId,
     state: "running",
-    promptChars: oneShotPrompt.length,
+    promptChars: oneShotPrompt.promptText.length,
     reasoningEffort: oneShotReasoningEffort,
-    detail: `Running the ${variantConfig.label.toLowerCase()} baseline.`
+    detail: isPromptFirstOneShot
+      ? `Running ${oneShotStageId} with ${input.selectorExamples.length} active example(s).`
+      : `Running the ${variantConfig.label.toLowerCase()} baseline.`
   });
   const oneShotStartedAt = Date.now();
   let oneShotResult: NativeReferenceOneShotResult;
@@ -7533,19 +7864,32 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   let oneShotLengthWindowWarnings: string[] = [];
   try {
     const rawOneShot = await input.executor.runJson<unknown>({
-      stageId: "oneShotReference",
-      prompt: oneShotPrompt,
-      schema: NATIVE_REFERENCE_ONE_SHOT_SCHEMA,
+      stageId: oneShotStageId,
+      prompt: oneShotPrompt.promptText,
+      schema:
+        formatPipeline === "story_lead_main_caption"
+          ? NATIVE_STORY_ONE_SHOT_SCHEMA
+          : formatPipeline === "classic_top_bottom"
+            ? NATIVE_CLASSIC_ONE_SHOT_SCHEMA
+            : NATIVE_REFERENCE_ONE_SHOT_SCHEMA,
       imagePaths: input.imagePaths,
       model: oneShotModel,
       reasoningEffort: oneShotReasoningEffort
     });
-    const polished = applyReferenceOneShotLengthPolish({
-      result: normalizeReferenceOneShotResult(rawOneShot),
-      hardConstraints: input.channelConfig.hardConstraints
-    });
-    oneShotResult = polished.result;
-    polishedCandidateIds = polished.polishedCandidateIds;
+    if (formatPipeline) {
+      oneShotResult = normalizePromptFirstOneShotResult({
+        raw: rawOneShot,
+        formatPipeline
+      });
+      polishedCandidateIds = [];
+    } else {
+      const polished = applyReferenceOneShotLengthPolish({
+        result: normalizeReferenceOneShotResult(rawOneShot),
+        hardConstraints: input.channelConfig.hardConstraints
+      });
+      oneShotResult = polished.result;
+      polishedCandidateIds = polished.polishedCandidateIds;
+    }
     const contractDiagnostics = collectReferenceOneShotContractDiagnostics({
       result: oneShotResult,
       hardConstraints: input.channelConfig.hardConstraints,
@@ -7556,34 +7900,41 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       throw new Error(contractDiagnostics.fatalIssues.join("; "));
     }
   } catch (error) {
-    const failureMessage = formatStageFailure(variantConfig.failLabel, error);
+    const failureMessage = formatStageFailure(
+      isPromptFirstOneShot ? oneShotStageId : variantConfig.failLabel,
+      error
+    );
     await reportProgress({
-      stageId: "oneShotReference",
+      stageId: oneShotStageId,
       state: "failed",
       durationMs: Date.now() - oneShotStartedAt,
-      promptChars: oneShotPrompt.length,
+      promptChars: oneShotPrompt.promptText.length,
       reasoningEffort: oneShotReasoningEffort,
       detail: failureMessage
     });
     throw new Error(failureMessage);
   }
   await reportProgress({
-    stageId: "oneShotReference",
+    stageId: oneShotStageId,
     state: "completed",
     durationMs: Date.now() - oneShotStartedAt,
-    promptChars: oneShotPrompt.length,
+    promptChars: oneShotPrompt.promptText.length,
     reasoningEffort: oneShotReasoningEffort,
     detail:
       oneShotLengthWindowWarnings.length > 0
-        ? `${variantConfig.label} produced 5 finalist options; ${oneShotLengthWindowWarnings.length} option(s) stayed outside the configured length window and were kept with warnings.`
+        ? `${isPromptFirstOneShot ? oneShotStageId : variantConfig.label} produced 5 finalist options; ${oneShotLengthWindowWarnings.length} option(s) stayed outside the configured length window and were kept with warnings.`
         : polishedCandidateIds.length > 0
           ? `${variantConfig.label} produced 5 publishable finalists; exact-length polish tightened ${polishedCandidateIds.length} candidate(s) without repair or backfill.`
-          : `${variantConfig.label} produced 5 publishable finalists without repair or backfill.`
+          : isPromptFirstOneShot
+            ? `${oneShotStageId} produced 5 format-specific finalists without runtime polish, repair, backfill, or winner promotion.`
+            : `${variantConfig.label} produced 5 publishable finalists without repair or backfill.`
   });
   recordExecutedStage(
-    "oneShotReference",
-    oneShotPrompt,
-    polishedCandidateIds.length > 0
+    oneShotStageId,
+    oneShotPrompt.promptText,
+    isPromptFirstOneShot
+      ? `${oneShotStageId}: prompt-first provider call with source_video_json, examples_json, format_contract_json, hard_constraints_json, and user_instruction.`
+      : polishedCandidateIds.length > 0
       ? `${variantConfig.stageSummary} Exact-length polish tightened the final wording for near-miss overflows without repair or backfill.`
       : variantConfig.stageSummary,
     oneShotResult,
@@ -7614,10 +7965,12 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       top: candidate.top,
       bottom: candidate.bottom,
       displayTier: "finalist" as const,
-      sourceStage: "oneShotReference" as const,
+      sourceStage: oneShotStageId as "classicOneShot" | "storyOneShot" | "oneShotReference",
       displayReason:
         candidate.rationale?.trim() ||
-        (isPolished
+        (isPromptFirstOneShot
+          ? "Prompt-first provider returned this format-specific finalist without runtime repair or backfill."
+          : isPolished
           ? "Reference one-shot baseline kept this option publishable after exact-length polish."
           : "Reference one-shot baseline kept this option publishable without repair or backfill."),
       retainedHandle: candidate.retainedHandle,
@@ -7634,7 +7987,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     top: option.top,
     bottom: option.bottom,
     displayTier: "finalist" as const,
-    sourceStage: "oneShotReference" as const,
+    sourceStage: oneShotStageId as "classicOneShot" | "storyOneShot" | "oneShotReference",
     displayReason: option.displayReason,
     retainedHandle: Boolean(option.retainedHandle),
     preservedHandle: Boolean(option.retainedHandle),
@@ -7650,7 +8003,9 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       ? captionOptions.find((option) => option.candidateId === requestedWinnerCandidate.candidateId) ?? null
       : null;
   const resolvedWinnerOption =
-    requestedWinnerOption?.constraintCheck.passed === false && validCaptionOptions.length > 0
+    !isPromptFirstOneShot &&
+    requestedWinnerOption?.constraintCheck.passed === false &&
+    validCaptionOptions.length > 0
       ? validCaptionOptions[0] ?? requestedWinnerOption
       : requestedWinnerOption;
   const winnerFallbackWarning =
@@ -7661,7 +8016,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       : null;
   if (oneShotLengthWindowWarnings.length > 0) {
     warnings.push({
-      field: "oneShotReference",
+      field: oneShotStageId,
       message:
         `${oneShotLengthWindowWarnings.length} one-shot finalist(s) stayed outside the configured length window and were kept for review instead of failing the run. ` +
         oneShotLengthWindowWarnings.join(" ")
@@ -7669,7 +8024,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   }
   if (winnerFallbackWarning) {
     warnings.push({
-      field: "oneShotReference",
+      field: oneShotStageId,
       message: winnerFallbackWarning
     });
   }
@@ -7684,7 +8039,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
           option: resolvedWinnerOption.option,
           reason: resolvedWinnerOption.displayReason,
           displayTier: "finalist" as const,
-          sourceStage: "oneShotReference" as const,
+          sourceStage: oneShotStageId as "classicOneShot" | "storyOneShot" | "oneShotReference",
           constraintCheck: resolvedWinnerOption.constraintCheck
         }
       : undefined;
@@ -7693,7 +8048,9 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     reason:
       winnerFallbackWarning ??
       winner?.reason ??
-      "Reference one-shot baseline selected the strongest publishable option."
+      (isPromptFirstOneShot
+        ? "Prompt-first provider selected the strongest format-specific option."
+        : "Reference one-shot baseline selected the strongest publishable option.")
   };
   const guardSummary: NativeCaptionGuardSummary = {
     totalCandidateCount: candidates.length,
@@ -7936,7 +8293,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   };
   if (titleTranslationCoverage.fallbackCount > 0) {
     warnings.push({
-      field: "oneShotReference",
+      field: oneShotStageId,
       message: `Russian title fallback used for ${titleTranslationCoverage.fallbackCount} title option${titleTranslationCoverage.fallbackCount === 1 ? "" : "s"}.`
     });
   }
@@ -8035,6 +8392,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     )
   };
   const resolvedWorkerProfile = getResolvedStage2WorkerProfile(input.channelConfig);
+  const selectedExampleIds = isPromptFirstOneShot ? [] : input.selectorOutput.selectedExampleIds ?? [];
+  const insightById = new Map(input.exampleInsights.map((entry) => [entry.exampleId, entry]));
   const diagnostics: Stage2Diagnostics = {
     channel: {
       channelId: input.channelConfig.channelId,
@@ -8053,24 +8412,24 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       styleProfile: input.channelConfig.styleProfile,
       editorialMemory: input.channelConfig.editorialMemory,
       workspaceCorpusCount: input.workspaceCorpusCount,
-      activeCorpusCount: input.activeCorpusCount
+      activeCorpusCount: input.activeExamplesCount
     },
     selection: {
-      clipType: input.selectorFallback.clipType,
-      primaryAngle: input.selectorFallback.primaryAngle,
-      secondaryAngles: input.selectorFallback.secondaryAngles,
-      rankedAngles: input.selectorFallback.rankedAngles,
-      coreTrigger: input.selectorFallback.coreTrigger,
-      humanStake: input.selectorFallback.humanStake,
-      narrativeFrame: input.selectorFallback.narrativeFrame,
-      whyViewerCares: input.selectorFallback.whyViewerCares,
-      topStrategy: input.selectorFallback.topStrategy,
-      bottomEnergy: input.selectorFallback.bottomEnergy,
-      whyOldV6WouldWorkHere: input.selectorFallback.whyOldV6WouldWorkHere,
-      failureModes: input.selectorFallback.failureModes,
-      writerBrief: input.selectorFallback.writerBrief,
-      rationale: input.selectorFallback.rationale ?? null,
-      selectedExampleIds: input.selectorFallback.selectedExampleIds ?? []
+      clipType: input.selectorOutput.clipType,
+      primaryAngle: input.selectorOutput.primaryAngle,
+      secondaryAngles: input.selectorOutput.secondaryAngles,
+      rankedAngles: input.selectorOutput.rankedAngles,
+      coreTrigger: input.selectorOutput.coreTrigger,
+      humanStake: input.selectorOutput.humanStake,
+      narrativeFrame: input.selectorOutput.narrativeFrame,
+      whyViewerCares: input.selectorOutput.whyViewerCares,
+      topStrategy: input.selectorOutput.topStrategy,
+      bottomEnergy: input.selectorOutput.bottomEnergy,
+      whyOldV6WouldWorkHere: input.selectorOutput.whyOldV6WouldWorkHere,
+      failureModes: input.selectorOutput.failureModes,
+      writerBrief: input.selectorOutput.writerBrief,
+      rationale: input.selectorOutput.rationale ?? null,
+      selectedExampleIds
     },
     analysis: {
       visualAnchors: input.analyzerOutput.visualAnchors,
@@ -8101,34 +8460,40 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     examples: {
       source: input.channelConfig.examplesSource,
       workspaceCorpusCount: input.workspaceCorpusCount,
-      activeCorpusCount: input.activeCorpusCount,
-      selectorCandidateCount: input.selectorCandidateCount,
-      retrievalConfidence: input.nativeExamplesAssessment.retrievalConfidence,
-      examplesMode: input.nativeExamplesAssessment.examplesMode,
-      explanation: input.nativeExamplesAssessment.explanation,
-      evidence: input.nativeExamplesAssessment.evidence,
-      retrievalWarning: input.nativeExamplesAssessment.retrievalWarning,
-      examplesRoleSummary: input.nativeExamplesAssessment.examplesRoleSummary,
-      primaryDriverSummary: input.nativeExamplesAssessment.primaryDriverSummary,
-      primaryDrivers: input.nativeExamplesAssessment.primaryDrivers,
-      channelStylePriority: input.nativeExamplesAssessment.channelStylePriority,
-      editorialMemoryPriority: input.nativeExamplesAssessment.editorialMemoryPriority,
-      availableExamples: input.selectorExamples.slice(0, 8).map((example) =>
+      activeCorpusCount: input.activeExamplesCount,
+      selectorCandidateCount: isPromptFirstOneShot ? 0 : input.selectorExamples.length,
+      retrievalConfidence: input.examplesAssessment.retrievalConfidence,
+      examplesMode: input.examplesAssessment.examplesMode,
+      explanation: isPromptFirstOneShot
+        ? "Prompt-first run passed every active example as raw examples_json; runtime did not select, rank, or score examples."
+        : input.examplesAssessment.explanation,
+      evidence: isPromptFirstOneShot ? [] : input.examplesAssessment.evidence,
+      retrievalWarning: isPromptFirstOneShot ? null : input.examplesAssessment.retrievalWarning,
+      examplesRoleSummary: isPromptFirstOneShot
+        ? "All active examples were included as raw context."
+        : input.examplesAssessment.examplesRoleSummary,
+      primaryDriverSummary: isPromptFirstOneShot
+        ? "Channel prompt controls how examples influence generation."
+        : input.examplesAssessment.primaryDriverSummary,
+      primaryDrivers: isPromptFirstOneShot ? ["channel_prompt", "raw_examples"] : input.examplesAssessment.primaryDrivers,
+      channelStylePriority: input.examplesAssessment.channelStylePriority,
+      editorialMemoryPriority: input.examplesAssessment.editorialMemoryPriority,
+      availableExamples: (isPromptFirstOneShot ? input.selectorExamples : input.selectorExamples.slice(0, 8)).map((example) =>
         buildDiagnosticsExample(
           "available",
           example,
           buildCorpusQueryText(input.videoContext, input.analyzerOutput),
-          input.selectorFallback.selectedExampleIds ?? [],
-          null
+          selectedExampleIds,
+          insightById.get(example.id) ?? null
         )
       ),
-      selectedExamples: (input.selectorFallback.selectedExamples ?? []).slice(0, 5).map((example) =>
+      selectedExamples: (isPromptFirstOneShot ? [] : input.selectorOutput.selectedExamples ?? []).slice(0, 5).map((example) =>
         buildDiagnosticsExample(
           "selected",
           example,
           buildCorpusQueryText(input.videoContext, input.analyzerOutput),
-          input.selectorFallback.selectedExampleIds ?? [],
-          null
+          selectedExampleIds,
+          insightById.get(example.id) ?? null
         )
       )
     },
@@ -8148,12 +8513,41 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       translation: captionTranslationArtifact
     }
   };
+  const classicOptions =
+    formatPipeline === "classic_top_bottom"
+      ? localizedCaptionOptions.map((option) => ({
+          option: option.option,
+          candidateId: option.candidateId,
+          top: option.top,
+          bottom: option.bottom,
+          topRu: option.topRu,
+          bottomRu: option.bottomRu,
+          highlights: option.highlights,
+          constraintCheck: option.constraintCheck
+        }))
+      : undefined;
+  const storyOptions =
+    formatPipeline === "story_lead_main_caption"
+      ? localizedCaptionOptions.map((option) => ({
+          option: option.option,
+          candidateId: option.candidateId,
+          lead: option.top,
+          mainCaption: option.bottom,
+          leadRu: option.topRu,
+          mainCaptionRu: option.bottomRu,
+          highlights: option.highlights,
+          constraintCheck: option.constraintCheck
+        }))
+      : undefined;
   const output: ViralShortsStage2Result = {
+    ...(formatPipeline ? { formatPipeline } : {}),
     inputAnalysis: {
       visualAnchors: oneShotResult.analysis.visualAnchors,
       commentVibe: oneShotResult.analysis.commentVibe,
       keyPhraseToAdapt: oneShotResult.analysis.keyPhraseToAdapt
     },
+    ...(classicOptions ? { classicOptions } : {}),
+    ...(storyOptions ? { storyOptions } : {}),
     captionOptions: localizedCaptionOptions,
     finalists: localizedFinalists,
     titleOptions,
@@ -8171,15 +8565,12 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       },
       mode: input.reusedContextPacket ? "regenerate" : "codex_pipeline",
       execution: input.pipelineExecution,
-      selectorOutput: input.selectorFallback,
-      availableExamplesCount: input.selectorCandidateCount,
-      selectedExamplesCount:
-        input.selectorFallback.selectedExampleIds?.length ??
-        input.selectorFallback.selectedExamples?.length ??
-        0,
-      retrievalConfidence: input.nativeExamplesAssessment.retrievalConfidence,
-      examplesMode: input.nativeExamplesAssessment.examplesMode,
-      retrievalExplanation: input.nativeExamplesAssessment.explanation,
+      selectorOutput: input.selectorOutput,
+      availableExamplesCount: input.activeExamplesCount,
+      selectedExamplesCount: isPromptFirstOneShot ? input.selectorExamples.length : selectedExampleIds.length,
+      retrievalConfidence: input.examplesAssessment.retrievalConfidence,
+      examplesMode: input.examplesAssessment.examplesMode,
+      retrievalExplanation: input.examplesAssessment.explanation,
       contextPacket,
       nativeCaptionV3: {
         contextPacket,
@@ -8479,7 +8870,12 @@ export class ViralShortsWorkerService {
       resolvedExamplesSource: source
     });
     const workerBuild = getStage2WorkerBuildInfo();
-    const pathVariant = resolveReferenceOneShotVariantConfig(channelConfig).pathVariant;
+    const formatPipeline = input.reusedContextPacket ? null : resolveStage2FormatPipeline(channelConfig);
+    const pathVariant = input.reusedContextPacket
+      ? resolveReferenceOneShotVariantConfig(channelConfig).pathVariant
+      : formatPipeline === "story_lead_main_caption"
+        ? "story_one_shot_v1"
+        : "classic_one_shot_v1";
     const pipelineExecution = buildStage2PipelineExecutionSnapshot({
       featureFlags: resolveStage2VNextFlagSnapshot(false),
       pipelineVersion: "native_caption_v3",
@@ -8530,28 +8926,37 @@ export class ViralShortsWorkerService {
         ? applyCommentIntelligenceBoost(analyzerFallback, input.videoContext.comments)
         : applyNoCommentsTruthfulnessGuard(analyzerFallback, false);
     const queryText = buildCorpusQueryText(input.videoContext, analyzerOutput);
-    const selectorPool = buildSelectorExamplePool({
-      examples: corpus,
-      queryText
-    });
-    const nativeExamplesAssessment =
-      selectorPool.selectorExamples.length > 0
-        ? selectorPool.assessment
-        : buildNativeCaptionExamplesAssessment(channelConfig);
+    const selectorPool = input.reusedContextPacket
+      ? buildSelectorExamplePool({
+          examples: corpus,
+          queryText
+        })
+      : null;
+    const examplesAssessment =
+      selectorPool?.assessment ??
+      buildPromptFirstExamplesAssessment(channelConfig, corpus.length);
+    const promptExamples = selectorPool?.selectorExamples ?? corpus;
+    const exampleInsights = selectorPool?.exampleInsights ?? [];
     const selectorFallback = fallbackSelectorOutput(
       channelConfig,
       analyzerOutput,
-      selectorPool.selectorExamples,
+      selectorPool?.selectorExamples ?? [],
       input.videoContext,
-      nativeExamplesAssessment,
-      selectorPool.exampleInsights
+      examplesAssessment,
+      exampleInsights
     );
+    const selectorOutput = input.reusedContextPacket
+      ? applyExamplesAssessmentToSelectorOutput(selectorFallback, examplesAssessment)
+      : {
+          ...selectorFallback,
+          selectedExampleIds: [],
+          rejectedExampleIds: [],
+          selectedExamples: []
+        };
     return runReferenceOneShotNativeCaptionPipeline({
       channelConfig,
       workspaceCorpusCount,
-      activeCorpusCount: corpus.length,
-      selectorCandidateCount: selectorPool.selectorExamples.length,
-      selectorExamples: selectorPool.selectorExamples,
+      selectorCandidateCount: selectorPool?.selectorExamples.length ?? 0,
       videoContext: input.videoContext,
       imagePaths: input.imagePaths,
       executor: input.executor,
@@ -8562,8 +8967,11 @@ export class ViralShortsWorkerService {
       reusedContextPacket: input.reusedContextPacket,
       pipelineExecution,
       analyzerOutput,
-      selectorFallback,
-      nativeExamplesAssessment
+      selectorOutput,
+      examplesAssessment,
+      activeExamplesCount: corpus.length,
+      selectorExamples: promptExamples,
+      exampleInsights
     });
 
     /*

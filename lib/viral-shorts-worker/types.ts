@@ -377,6 +377,8 @@ export type Stage2TokenUsage = {
 export type Stage2ExecutionPathVariant =
   | "legacy_multistage_v1"
   | "modular_native_v1"
+  | "classic_one_shot_v1"
+  | "story_one_shot_v1"
   | "reference_one_shot_v2"
   | "reference_one_shot_v1"
   | "reference_one_shot_v1_experimental"
@@ -929,7 +931,7 @@ export type NativeCaptionFinalist = {
   top: string;
   bottom: string;
   displayTier: "finalist";
-  sourceStage: "oneShotReference" | "qualityCourt";
+  sourceStage: "classicOneShot" | "storyOneShot" | "oneShotReference" | "qualityCourt";
   displayReason: string;
   retainedHandle: boolean;
   preservedHandle: boolean;
@@ -953,7 +955,13 @@ export type NativeCaptionWinner = {
   option: number;
   reason: string;
   displayTier: "finalist" | "recovery" | "template_backfill";
-  sourceStage: "oneShotReference" | "qualityCourt" | "targetedRepair" | "templateBackfill";
+  sourceStage:
+    | "classicOneShot"
+    | "storyOneShot"
+    | "oneShotReference"
+    | "qualityCourt"
+    | "targetedRepair"
+    | "templateBackfill";
   constraintCheck?: NativeCaptionFinalist["constraintCheck"];
 };
 
@@ -970,6 +978,7 @@ export type Stage2PipelineExecution = {
 };
 
 export type ViralShortsStage2Result = {
+  formatPipeline?: "classic_top_bottom" | "story_lead_main_caption";
   inputAnalysis: {
     visualAnchors: string[];
     commentVibe: string;
@@ -983,7 +992,13 @@ export type ViralShortsStage2Result = {
     top: string;
     bottom: string;
     displayTier: "finalist" | "display_safe_extra" | "recovery" | "template_backfill";
-    sourceStage: "oneShotReference" | "qualityCourt" | "targetedRepair" | "templateBackfill";
+    sourceStage:
+      | "classicOneShot"
+      | "storyOneShot"
+      | "oneShotReference"
+      | "qualityCourt"
+      | "targetedRepair"
+      | "templateBackfill";
     displayReason: string;
     retainedHandle?: boolean;
     topRu?: string;
@@ -996,6 +1011,26 @@ export type ViralShortsStage2Result = {
       bottomLength: number;
       issues: string[];
     };
+  }>;
+  classicOptions?: Array<{
+    option: number;
+    candidateId: string;
+    top: string;
+    bottom: string;
+    topRu?: string;
+    bottomRu?: string;
+    highlights?: TemplateCaptionHighlights;
+    constraintCheck?: ViralShortsStage2Result["captionOptions"][number]["constraintCheck"];
+  }>;
+  storyOptions?: Array<{
+    option: number;
+    candidateId: string;
+    lead: string;
+    mainCaption: string;
+    leadRu?: string;
+    mainCaptionRu?: string;
+    highlights?: TemplateCaptionHighlights;
+    constraintCheck?: ViralShortsStage2Result["captionOptions"][number]["constraintCheck"];
   }>;
   finalists?: NativeCaptionFinalist[];
   titleOptions: Array<{

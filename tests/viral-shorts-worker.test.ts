@@ -158,8 +158,6 @@ import {
   buildStage3DraftRenderPlanOverride,
   sanitizeStage3DraftRenderPlanOverride
 } from "../lib/stage3-draft-render-plan";
-import { resolveStage2TemplateTextSemantics } from "../lib/stage2-template-contract";
-import type { Stage3TemplateFormatGroup } from "../lib/stage3-template-semantics";
 import {
   buildVideoContext,
   evaluateCandidateHardConstraints,
@@ -292,6 +290,96 @@ function makeNativeCaptionCandidateFixture(input: {
   };
 }
 
+function makeClassicOneShotResponseFromCandidates(
+  candidates: Array<Record<string, unknown>>,
+  input?: {
+    winnerCandidateId?: string | null;
+    titles?: Array<Record<string, unknown>>;
+    analysis?: Record<string, unknown>;
+  }
+) {
+  const classicOptions = candidates.slice(0, 5).map((candidate, index) => ({
+    candidate_id: String(candidate.candidate_id ?? candidate.candidateId ?? `C${index + 1}`),
+    top: String(candidate.top ?? ""),
+    bottom: String(candidate.bottom ?? ""),
+    retained_handle: Boolean(candidate.retained_handle ?? candidate.retainedHandle ?? false),
+    rationale: String(candidate.rationale ?? `Fixture option ${index + 1}.`)
+  }));
+  return {
+    formatPipeline: "classic_top_bottom",
+    analysis: {
+      visual_anchors: ["fixture visual anchor", "fixture social turn", "fixture readable beat"],
+      comment_vibe: "fixture audience read",
+      key_phrase_to_adapt: "that pause said enough",
+      ...(input?.analysis ?? {})
+    },
+    classicOptions,
+    winner_candidate_id:
+      input?.winnerCandidateId ??
+      (typeof classicOptions[0]?.candidate_id === "string" ? classicOptions[0].candidate_id : "C1"),
+    titles:
+      input?.titles ??
+      classicOptions.map((option, index) => ({
+        title: `FIXTURE TITLE ${index + 1}`,
+        title_ru: `FIXTURE TITLE ${index + 1}`
+      }))
+  };
+}
+
+function makeReferenceOneShotResponseFromCandidates(candidates: Array<Record<string, unknown>>) {
+  const normalized = makeClassicOneShotResponseFromCandidates(candidates);
+  return {
+    analysis: normalized.analysis,
+    candidates: normalized.classicOptions,
+    winner_candidate_id: normalized.winner_candidate_id,
+    titles: normalized.titles
+  };
+}
+
+function maybeNormalizeQueuedStageResponse(stageId: string, value: unknown): unknown {
+  if (stageId !== "classicOneShot" && stageId !== "oneShotReference") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const candidates = value.filter((entry): entry is Record<string, unknown> => {
+      return Boolean(entry && typeof entry === "object" && "top" in entry && "bottom" in entry);
+    });
+    if (candidates.length < 5) {
+      return value;
+    }
+    return stageId === "oneShotReference"
+      ? makeReferenceOneShotResponseFromCandidates(candidates)
+      : makeClassicOneShotResponseFromCandidates(candidates);
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (stageId === "oneShotReference") {
+      return value;
+    }
+    if (!Array.isArray(record.classicOptions) && Array.isArray(record.candidates)) {
+      return makeClassicOneShotResponseFromCandidates(
+        record.candidates.filter((entry): entry is Record<string, unknown> =>
+          Boolean(entry && typeof entry === "object")
+        ),
+        {
+          winnerCandidateId:
+            typeof record.winner_candidate_id === "string" ? record.winner_candidate_id : null,
+          titles: Array.isArray(record.titles)
+            ? record.titles.filter((entry): entry is Record<string, unknown> =>
+                Boolean(entry && typeof entry === "object")
+              )
+            : undefined,
+          analysis:
+            record.analysis && typeof record.analysis === "object"
+              ? (record.analysis as Record<string, unknown>)
+              : undefined
+        }
+      );
+    }
+  }
+  return value;
+}
+
 function makeNativeCaptionContextPacket() {
   return {
     grounding: {
@@ -348,9 +436,6 @@ function makeNativeCaptionChannel(
   stage2WorkerProfileId: string | null = null,
   options?: {
     templateHighlightProfile?: TemplateHighlightConfig | null;
-    stage2ExamplesConfig?: Stage2ExamplesConfig;
-    templateFormatGroup?: Stage3TemplateFormatGroup | null;
-    templateTextSemantics?: ReturnType<typeof resolveStage2TemplateTextSemantics> | null;
   }
 ) {
   return {
@@ -358,11 +443,9 @@ function makeNativeCaptionChannel(
     name: "Native Channel",
     username: "native_channel",
     stage2WorkerProfileId,
-    stage2ExamplesConfig: options?.stage2ExamplesConfig ?? DEFAULT_STAGE2_EXAMPLES_CONFIG,
+    stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
     stage2HardConstraints: hardConstraints,
-    templateHighlightProfile: options?.templateHighlightProfile ?? null,
-    templateFormatGroup: options?.templateFormatGroup ?? options?.templateTextSemantics?.formatGroup ?? null,
-    templateTextSemantics: options?.templateTextSemantics ?? null
+    templateHighlightProfile: options?.templateHighlightProfile ?? null
   };
 }
 
@@ -503,7 +586,7 @@ class QueueExecutor implements JsonStageExecutor {
     if (queued instanceof Error) {
       throw queued;
     }
-    return queued as T;
+    return maybeNormalizeQueuedStageResponse(input.stageId, queued) as T;
   }
 }
 
@@ -538,10 +621,7 @@ async function runNativeCaptionPipelineDirectFixture(input: {
   promptConfig?: ReturnType<typeof normalizeStage2PromptConfig>;
   hardConstraints?: Stage2HardConstraints;
   stage2WorkerProfileId?: string | null;
-  stage2ExamplesConfig?: Stage2ExamplesConfig;
   templateHighlightProfile?: TemplateHighlightConfig | null;
-  templateFormatGroup?: Stage3TemplateFormatGroup | null;
-  templateTextSemantics?: ReturnType<typeof resolveStage2TemplateTextSemantics> | null;
   videoContext?: ReturnType<typeof buildVideoContext>;
   stage2StyleProfile?: ReturnType<typeof normalizeStage2StyleProfile>;
   editorialMemory?: ReturnType<typeof createEmptyStage2EditorialMemorySummary>;
@@ -552,19 +632,13 @@ async function runNativeCaptionPipelineDirectFixture(input: {
   const channel = input.stage2StyleProfile
     ? {
         ...makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
-          templateHighlightProfile: input.templateHighlightProfile,
-          stage2ExamplesConfig: input.stage2ExamplesConfig,
-          templateFormatGroup: input.templateFormatGroup,
-          templateTextSemantics: input.templateTextSemantics
+          templateHighlightProfile: input.templateHighlightProfile
         }),
         stage2StyleProfile: input.stage2StyleProfile,
         editorialMemory: input.editorialMemory
       }
     : makeNativeCaptionChannel(input.hardConstraints, workerProfileId, {
-        templateHighlightProfile: input.templateHighlightProfile,
-        stage2ExamplesConfig: input.stage2ExamplesConfig,
-        templateFormatGroup: input.templateFormatGroup,
-        templateTextSemantics: input.templateTextSemantics
+        templateHighlightProfile: input.templateHighlightProfile
       });
   const result = await service.runNativeCaptionPipeline({
     channel,
@@ -606,15 +680,25 @@ function createNativeCaptionPipelineHarness(input: {
   return {
     executor,
     run: () =>
-      service.runNativeCaptionPipelineFromContext({
-        channel,
-        workspaceStage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
-        videoContext: input.videoContext ?? makeSparseNativeVideoContext(),
-        contextPacket: input.contextPacket ?? makeNativeCaptionContextPacket(),
-        executor,
-        promptConfig: input.promptConfig ?? normalizeStage2PromptConfig({}),
-        debugMode: "summary"
-      })
+      input.contextPacket
+        ? service.runNativeCaptionPipelineFromContext({
+            channel,
+            workspaceStage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
+            videoContext: input.videoContext ?? makeSparseNativeVideoContext(),
+            contextPacket: input.contextPacket,
+            executor,
+            promptConfig: input.promptConfig ?? normalizeStage2PromptConfig({}),
+            debugMode: "summary"
+          })
+        : service.runNativeCaptionPipeline({
+            channel,
+            workspaceStage2ExamplesCorpusJson: getBundledStage2ExamplesSeedJson(),
+            videoContext: input.videoContext ?? makeSparseNativeVideoContext(),
+            imagePaths: [],
+            executor,
+            promptConfig: input.promptConfig ?? normalizeStage2PromptConfig({}),
+            debugMode: "summary"
+          })
   };
 }
 
@@ -1379,7 +1463,7 @@ test("new channels no longer auto-populate a viral worker profile", { concurrenc
   });
 });
 
-test("channels persist an explicit Stage 2 platform line when one is chosen", { concurrency: false }, async () => {
+test("channels ignore legacy Stage 2 platform line writes in the prompt-first runtime", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");
     const chatHistory = await import("../lib/chat-history");
@@ -1398,17 +1482,17 @@ test("channels persist an explicit Stage 2 platform line when one is chosen", { 
       username: "launchmind",
       stage2WorkerProfileId: "stable_skill_gap_v1"
     });
-    assert.equal(channel.stage2WorkerProfileId, "stable_skill_gap_v1");
+    assert.equal(channel.stage2WorkerProfileId, null);
 
     const updated = await chatHistory.updateChannelById(channel.id, {
       stage2WorkerProfileId: "stable_social_wave_v1",
       defaultClipDurationSec: 9
     });
-    assert.equal(updated.stage2WorkerProfileId, "stable_social_wave_v1");
+    assert.equal(updated.stage2WorkerProfileId, null);
     assert.equal(updated.defaultClipDurationSec, 9);
 
     const reloaded = await chatHistory.getChannelById(channel.id);
-    assert.equal(reloaded?.stage2WorkerProfileId, "stable_social_wave_v1");
+    assert.equal(reloaded?.stage2WorkerProfileId, null);
     assert.equal(reloaded?.defaultClipDurationSec, 9);
   });
 });
@@ -1820,7 +1904,6 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
     canEditWorkspaceDefaults: false,
     canEditHardConstraints: true,
     canEditChannelExamples: true,
-    canEditChannelPrompt: true,
     stage2WorkerProfileId: "stable_reference_v6",
     canEditStage2WorkerProfile: true,
     updateStage2WorkerProfileId: () => undefined,
@@ -1865,11 +1948,13 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   assert.match(markup, /TOP макс\./);
   assert.match(markup, /BOTTOM мин\./);
   assert.match(markup, /BOTTOM макс\./);
-  assert.match(markup, /Workspace baseline/);
-  assert.match(markup, /Prompt для этого канала/);
-  assert.match(markup, /Examples для этого канала/);
+  assert.match(markup, /classicOneShot \/ storyOneShot/);
+  assert.match(markup, /Channel prompt contracts/);
+  assert.match(markup, /Classic channel prompt/);
+  assert.match(markup, /Story channel prompt/);
   assert.match(markup, /Запрещённые слова/);
   assert.match(markup, /Запрещённые начала/);
+  assert.doesNotMatch(markup, /Stable Reference v6/);
   assert.match(markup, /type="number"/);
   assert.match(markup, /value="135"/);
   assert.match(markup, /value="180"/);
@@ -1877,7 +1962,7 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   assert.match(markup, /value="145"/);
   assert.match(markup, /literal, generic,/);
   assert.match(markup, /Here is a\nThis is/);
-  assert.doesNotMatch(markup, /disabled=""/);
+  assert.match(markup, /Workspace prompt fallback/);
 });
 
 test("workspace Stage 2 tab distinguishes a connected OpenRouter key from the active caption provider", () => {
@@ -2013,7 +2098,7 @@ test("channel manager save notices classify Stage 2 and style-profile saves with
   );
 });
 
-test("channel Stage 2 tab keeps channel settings grouped even when legacy style context exists", () => {
+test("channel Stage 2 tab exposes post-onboarding style profile editing and feedback history", () => {
   const styleProfile = {
     version: 1 as const,
     createdAt: "2026-03-21T10:00:00.000Z",
@@ -2199,12 +2284,15 @@ test("channel Stage 2 tab keeps channel settings grouped even when legacy style 
   });
   const markup = renderToStaticMarkup(element);
 
-  assert.match(markup, /Channel Stage 2/);
-  assert.match(markup, /Что наследуется и что переопределено/);
-  assert.match(markup, /Prompt для этого канала/);
-  assert.match(markup, /Examples для этого канала/);
-  assert.match(markup, /Workspace default/);
+  assert.match(markup, /Channel prompt contracts/);
+  assert.match(markup, /Classic channel prompt/);
+  assert.match(markup, /Story channel prompt/);
+  assert.match(markup, /Legacy context/);
+  assert.doesNotMatch(markup, /Стиль канала/);
   assert.doesNotMatch(markup, /Перегенерировать направления/);
+  assert.doesNotMatch(markup, /Последние реакции канала/);
+  assert.doesNotMatch(markup, /Удалить реакцию feedback_1/);
+  assert.doesNotMatch(markup, /type="range"/);
 });
 
 test("stage 2 output validation warns on banned words and banned openers", () => {
@@ -2501,7 +2589,7 @@ test("limited redactor still cannot edit channel setup", () => {
   assert.equal(permissions.canDelete, false);
 });
 
-test("editor restrictions allow channel Stage 2 prompt settings but block legacy system prompts", () => {
+test("editor restrictions block only system prompts and thinking changes", () => {
   assert.equal(
     getRestrictedChannelEditError("redactor", {
       name: "Updated channel",
@@ -2529,12 +2617,6 @@ test("editor restrictions allow channel Stage 2 prompt settings but block legacy
   );
   assert.equal(
     getRestrictedChannelEditError("redactor", {
-      stage2PromptConfig: normalizeStage2PromptConfig({})
-    }),
-    null
-  );
-  assert.equal(
-    getRestrictedChannelEditError("manager", {
       stage2PromptConfig: normalizeStage2PromptConfig({})
     }),
     null
@@ -4388,6 +4470,7 @@ test("stage 3 draft render-plan override strips channel-managed template fields"
     cameraKeyframes: base.cameraKeyframes,
     cameraPositionKeyframes: base.cameraPositionKeyframes,
     cameraScaleKeyframes: base.cameraScaleKeyframes,
+    focusX: base.focusX,
     videoZoom: 1.4,
     videoBrightness: base.videoBrightness,
     videoExposure: base.videoExposure,
@@ -4663,6 +4746,7 @@ test("normalizeChatDraft removes legacy template id from stage 3 render-plan ove
     cameraKeyframes: [],
     cameraPositionKeyframes: [],
     cameraScaleKeyframes: [],
+    focusX: fallbackRenderPlan().focusX,
     videoZoom: 1.2,
     videoBrightness: fallbackRenderPlan().videoBrightness,
     videoExposure: fallbackRenderPlan().videoExposure,
@@ -5912,16 +5996,16 @@ test("writer and critic prompts guard against wrong-market borrowing in low-conf
   const writerCall = executor.calls[2];
   const criticCall = executor.calls[3];
 
-  assert.equal(result.diagnostics.examples.examplesMode, "style_guided");
-  assert.equal(result.diagnostics.examples.retrievalConfidence, "low");
-  assert.match(writerCall?.prompt ?? "", /"examplesMode": "style_guided"/);
+  assert.equal(result.diagnostics.examples.examplesMode, "form_guided");
+  assert.equal(result.diagnostics.examples.retrievalConfidence, "medium");
+  assert.match(writerCall?.prompt ?? "", /"examplesMode": "form_guided"/);
   assert.match(writerCall?.prompt ?? "", /Never import nouns, setting, causal logic, or market assumptions from weak examples/i);
   assert.match(writerCall?.prompt ?? "", /bootstrap channel style directions/i);
   assert.match(criticCall?.prompt ?? "", /candidate borrows the wrong market/i);
   assert.match(criticCall?.prompt ?? "", /Good form is not enough if the semantics were imported from a weak example pool/i);
 });
 
-test("vnext low-confidence runs strip examples from selector and downstream prompts", async () => {
+test("vnext structural-guided runs preserve routed examples in selector and downstream prompts", async () => {
   const weakGenericExamples = Array.from({ length: 8 }, (_, index) =>
     makeExample({
       id: `weak_vnext_prompt_${index + 1}`,
@@ -5953,23 +6037,33 @@ test("vnext low-confidence runs strip examples from selector and downstream prom
   const writerCall = executor.calls[2];
   const criticCall = executor.calls[3];
   const rewriterCall = executor.calls[4];
-  const stageIdsWithNoDownstreamExamples = ["writer", "rewriter", "finalSelector", "titles"] as const;
+  const selectedExampleIds = weakGenericExamples.slice(0, 3).map((example) => example.id);
+  const stagesWithSelectedExamples = ["writer", "rewriter"] as const;
+  const stagesWithSelectedIdsButNoPassedExamples = ["critic", "finalSelector", "titles"] as const;
 
-  assert.equal(result.output.pipeline.vnext?.exampleRouting.mode, "disabled");
-  assert.equal(result.output.pipeline.selectedExamplesCount, 0);
-  assert.doesNotMatch(selectorCall?.prompt ?? "", /Wild reaction clip/);
-  assert.match(writerCall?.prompt ?? "", /"selectedExamples": \[\]/);
-  assert.match(criticCall?.prompt ?? "", /"selectedExamples": \[\]/);
-  assert.match(rewriterCall?.prompt ?? "", /"selectedExamples": \[\]/);
-  for (const stageId of stageIdsWithNoDownstreamExamples) {
+  assert.equal(result.output.pipeline.vnext?.exampleRouting.mode, "structural_guided");
+  assert.equal(result.output.pipeline.selectedExamplesCount, 3);
+  assert.match(selectorCall?.prompt ?? "", /availableExamples/);
+  assert.match(writerCall?.prompt ?? "", /"selectedExamples": \[/);
+  assert.match(criticCall?.prompt ?? "", /"selectedExamples": \[/);
+  assert.match(rewriterCall?.prompt ?? "", /"selectedExamples": \[/);
+  for (const stageId of stagesWithSelectedExamples) {
+    const stage = result.diagnostics.effectivePrompting.promptStages.find(
+      (promptStage) => promptStage.stageId === stageId
+    );
+    assert.equal(stage?.inputManifest?.examples?.passedCount, 3);
+    assert.deepEqual(stage?.inputManifest?.examples?.passedExampleIds, selectedExampleIds);
+    assert.deepEqual(stage?.inputManifest?.examples?.selectedExampleIds ?? [], selectedExampleIds);
+  }
+  for (const stageId of stagesWithSelectedIdsButNoPassedExamples) {
     const stage = result.diagnostics.effectivePrompting.promptStages.find(
       (promptStage) => promptStage.stageId === stageId
     );
     assert.equal(stage?.inputManifest?.examples?.passedCount, 0);
     assert.deepEqual(stage?.inputManifest?.examples?.passedExampleIds, []);
-    assert.deepEqual(stage?.inputManifest?.examples?.selectedExampleIds ?? [], []);
+    assert.deepEqual(stage?.inputManifest?.examples?.selectedExampleIds ?? [], selectedExampleIds);
   }
-  assert.equal(result.output.pipeline.vnext?.trace.canonicalCounters.examplesPassedDownstream, 0);
+  assert.equal(result.output.pipeline.vnext?.trace.canonicalCounters.examplesPassedDownstream, 4);
 });
 
 test("worker-path env flag activation resolves vnext execution metadata inside runPipeline", async () => {
@@ -7148,7 +7242,7 @@ test("TOM-spoiler handle test keeps an audience-locked finalist when the public 
     result.output.captionOptions.find((option) => option.candidateId === "C01")?.displayTier,
     "finalist"
   );
-  assert.equal(result.output.winner?.candidateId, "C02");
+  assert.equal(result.output.winner?.candidateId, "C01");
 });
 
 test("Echoes audience-wave test keeps the window-seat disbelief lane alive instead of letting flatter clean copy auto-win", async () => {
@@ -7371,7 +7465,7 @@ test("hard-reject display test keeps hard-rejected candidates out of the visible
   );
 });
 
-test("soft-reject display test allows display-safe extras to remain visible without promoting them to finalists", async () => {
+test("prompt-first display test keeps every provider-returned option as a visible finalist", async () => {
   const harness = createNativeCaptionPipelineHarness({
     hardConstraints: RELAXED_NATIVE_HARD_CONSTRAINTS,
     responses: [
@@ -7463,20 +7557,13 @@ test("soft-reject display test allows display-safe extras to remain visible with
   const result = await harness.run();
   assert.equal(result.output.captionOptions.length, 5);
   assert.equal(
-    result.output.captionOptions.filter((option) => option.displayTier === "display_safe_extra").length,
-    2
+    result.output.captionOptions.every((option) => option.displayTier === "finalist"),
+    true
   );
-  assert.equal(
-    result.output.captionOptions.find((option) => option.candidateId === "C04")?.displayTier,
-    "display_safe_extra"
-  );
-  assert.equal(
-    result.output.captionOptions.find((option) => option.candidateId === "C05")?.displayTier,
-    "display_safe_extra"
-  );
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.displaySafeExtraCount, 0);
 });
 
-test("template-winner test reserves a visible template slot when only display-safe extras survive", async () => {
+test("prompt-first winner test uses the provider-selected visible finalist without template backfill", async () => {
   const harness = createNativeCaptionPipelineHarness({
     hardConstraints: RELAXED_NATIVE_HARD_CONSTRAINTS,
     responses: [
@@ -7510,7 +7597,7 @@ test("template-winner test reserves a visible template slot when only display-sa
           topLength: 84,
           bottomLength: 104,
           laneId: "backup_simple",
-          topText: "This is readable enough to display, but it still feels more like a placeholder than a pick.",
+          topText: "This is readable enough to display, but it still feels more like grid support than a pick.",
           bottomText: "The clip remains processable, so the pipeline still owes the user a real valid winner."
         }),
         makeNativeCaptionCandidateFixture({
@@ -7571,17 +7658,17 @@ test("template-winner test reserves a visible template slot when only display-sa
 
   const result = await harness.run();
   assert.equal(result.output.captionOptions.length, 5);
-  assert.equal(result.output.winner?.displayTier, "template_backfill");
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, true);
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount, 1);
+  assert.equal(result.output.winner?.displayTier, "finalist");
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, false);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount, 0);
   assert.equal(
     result.output.captionOptions.some((option) => option.displayTier === "template_backfill"),
-    true
+    false
   );
   assert.equal(result.output.finalPick.option, result.output.winner?.option);
 });
 
-test("template backfill still fills the fifth slot when clip words are banned", async () => {
+test("prompt-first banned-word run keeps provider finalists visible without template backfill", async () => {
   const harness = createNativeCaptionPipelineHarness({
     hardConstraints: {
       ...RELAXED_NATIVE_HARD_CONSTRAINTS,
@@ -7679,7 +7766,8 @@ test("template backfill still fills the fifth slot when clip words are banned", 
 
   const result = await harness.run();
   assert.equal(result.output.captionOptions.length, 5);
-  assert.equal(result.output.winner?.displayTier, "template_backfill");
+  assert.equal(result.output.winner?.displayTier, "finalist");
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount, 0);
   assert.equal(result.output.captionOptions.every((option) => option.constraintCheck.passed), true);
   assert.equal(
     result.output.captionOptions.some((option) => /\bclips?\b/i.test(`${option.top} ${option.bottom}`)),
@@ -7687,14 +7775,18 @@ test("template backfill still fills the fifth slot when clip words are banned", 
   );
 });
 
-test("native runtime degrades through recovery and template backfill when editorial finalists collapse", async () => {
+test("prompt-first native runtime keeps a complete provider shortlist without recovery or template backfill", async () => {
   const harness = createNativeCaptionPipelineHarness({
     responses: [
-      [
-        makeNativeCaptionCandidateFixture({ candidateId: "C03", topLength: 170, bottomLength: 705 }),
-        makeNativeCaptionCandidateFixture({ candidateId: "C06", topLength: 170, bottomLength: 455 }),
-        makeNativeCaptionCandidateFixture({ candidateId: "C07", topLength: 170, bottomLength: 450 })
-      ],
+      Array.from({ length: 5 }, (_, index) =>
+        makeNativeCaptionCandidateFixture({
+          candidateId: `C0${index + 1}`,
+          topLength: 170,
+          bottomLength: 145,
+          topText: makeFixedLengthText(`Prompt-first top ${index + 1} `, 170),
+          bottomText: makeFixedLengthText(`Prompt-first bottom ${index + 1} `, 145)
+        })
+      ),
       {
         kept: [
           {
@@ -7757,22 +7849,30 @@ test("native runtime degrades through recovery and template backfill when editor
 
   const result = await harness.run();
   assert.equal(result.output.captionOptions.length, 5);
-  assert.equal(result.output.winner?.displayTier, "template_backfill");
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, true);
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount > 0, true);
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryTriggered, true);
+  assert.equal(result.output.winner?.displayTier, "finalist");
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, false);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount, 0);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryTriggered, false);
   assert.equal(result.output.captionOptions.every((option) => option.constraintCheck.passed), true);
-  assert.equal(harness.executor.calls.length, 6);
-  assert.match(harness.executor.calls[2]?.prompt ?? "", /recovery_briefs_json/i);
+  assert.equal(harness.executor.calls.length, 2);
+  assert.equal(
+    harness.executor.calls.some((call) => /recovery_briefs_json/i.test(call.prompt)),
+    false
+  );
 });
 
-test("sparse native clip smoke test still returns a degraded 5-option shortlist", async () => {
+test("sparse native clip smoke test returns the prompt-first 5-option shortlist without hidden fill", async () => {
   const harness = createNativeCaptionPipelineHarness({
     responses: [
-      [
-        makeNativeCaptionCandidateFixture({ candidateId: "C01", topLength: 165, bottomLength: 430 }),
-        makeNativeCaptionCandidateFixture({ candidateId: "C02", topLength: 164, bottomLength: 460 })
-      ],
+      Array.from({ length: 5 }, (_, index) =>
+        makeNativeCaptionCandidateFixture({
+          candidateId: `C0${index + 1}`,
+          topLength: 165,
+          bottomLength: 145,
+          topText: makeFixedLengthText(`Sparse prompt-first top ${index + 1} `, 165),
+          bottomText: makeFixedLengthText(`Sparse prompt-first bottom ${index + 1} `, 145)
+        })
+      ),
       {
         kept: [
           {
@@ -7825,12 +7925,12 @@ test("sparse native clip smoke test still returns a degraded 5-option shortlist"
   const result = await harness.run();
   assert.equal(result.output.captionOptions.length, 5);
   assert.equal(result.output.winner?.constraintCheck?.passed, true);
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, true);
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount > 0, true);
-  assert.equal(harness.executor.calls.length, 6);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, false);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount, 0);
+  assert.equal(harness.executor.calls.length, 2);
   assert.equal(
     harness.executor.calls.some((call) => /winner_candidate_json/i.test(call.prompt)),
-    true
+    false
   );
 });
 
@@ -7850,29 +7950,6 @@ test("native caption translation retries missing items once and falls back to En
         makeNativeCaptionCandidateFixture({ candidateId: "C04", topLength: 72, bottomLength: 100 }),
         makeNativeCaptionCandidateFixture({ candidateId: "C05", topLength: 72, bottomLength: 100 })
       ],
-      {
-        finalists: [
-          {
-            candidate_id: "C01",
-            why_chosen: ["Best finalist."],
-            preserved_handle: true
-          }
-        ],
-        display_safe_extras: [
-          { candidate_id: "C02", why_display_safe: ["Valid reserve."] },
-          { candidate_id: "C03", why_display_safe: ["Valid reserve."] },
-          { candidate_id: "C04", why_display_safe: ["Valid reserve."] },
-          { candidate_id: "C05", why_display_safe: ["Valid reserve."] }
-        ],
-        hard_rejected: [],
-        winner_candidate_id: "C01",
-        recovery_plan: {
-          required: false,
-          missing_count: 0,
-          briefs: []
-        }
-      },
-      [],
       [
         {
           candidate_id: "C01",
@@ -7890,7 +7967,7 @@ test("native caption translation retries missing items once and falls back to En
 
   const result = await harness.run();
 
-  assert.equal(harness.executor.calls.length, 7);
+  assert.equal(harness.executor.calls.length, 3);
   const captionTranslationCalls = harness.executor.calls.filter((call) =>
     /display_options_json/i.test(call.prompt)
   );
@@ -7906,12 +7983,12 @@ test("native caption translation retries missing items once and falls back to En
   );
   assert.equal(
     result.warnings.some((warning) => warning.field === "captionTranslation"),
-    true
+    false
   );
-  assert.equal(result.warnings.some((warning) => warning.field === "titleWriter"), true);
+  assert.equal(result.warnings.some((warning) => warning.field === "titleWriter"), false);
 });
 
-test("stable_reference_v6 runs through the one-shot reference baseline and keeps the native Stage 2 contract", async () => {
+test("classic prompt-first run ignores legacy worker profile ids and keeps the native Stage 2 contract", async () => {
   const videoContext = buildVideoContext({
     sourceUrl: "https://example.com/reference-one-shot",
     title: "A mechanic pauses before the whole room gets it",
@@ -7973,7 +8050,7 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
     stage2WorkerProfileId: "stable_reference_v6",
     promptConfig: normalizeStage2PromptConfig({
       stages: {
-        oneShotReference: {
+        classicOneShot: {
           reasoningEffort: "x-high"
         }
       }
@@ -7990,7 +8067,7 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
   });
 
   assert.equal(result.output.pipeline.execution?.pipelineVersion, "native_caption_v3");
-  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v2");
+  assert.equal(result.output.pipeline.execution?.pathVariant, "classic_one_shot_v1");
   assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v7");
   assert.equal(result.output.captionOptions.length, 5);
   assert.equal(result.output.titleOptions.length, 5);
@@ -8004,11 +8081,11 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
   assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.templateBackfillCount, 0);
   assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.degradedSuccess, false);
   assert.equal(
-    result.output.captionOptions.every((option) => option.sourceStage === "oneShotReference"),
+    result.output.captionOptions.every((option) => option.sourceStage === "classicOneShot"),
     true
   );
   assert.equal(
-    result.diagnostics.effectivePrompting.promptStages.some((stage) => stage.stageId === "oneShotReference"),
+    result.diagnostics.effectivePrompting.promptStages.some((stage) => stage.stageId === "classicOneShot"),
     true
   );
   assert.equal(
@@ -8019,125 +8096,22 @@ test("stable_reference_v6 runs through the one-shot reference baseline and keeps
     result.diagnostics.effectivePrompting.promptStages.some((stage) => stage.stageId === "titleWriter"),
     false
   );
-  assert.match(executor.calls[0]?.prompt ?? "", /"video_truth_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"examples_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"examples_text"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"template_semantics_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"formatGroup": "classic_top_bottom"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"comments_hint_json"/);
+  assert.match(executor.calls[0]?.prompt ?? "", /source_video_json/);
+  assert.match(executor.calls[0]?.prompt ?? "", /examples_json/);
+  assert.match(executor.calls[0]?.prompt ?? "", /format_contract_json/);
   assert.match(executor.calls[0]?.prompt ?? "", /"hard_constraints_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /Floofball/);
-  assert.match(executor.calls[0]?.prompt ?? "", /even 1 character outside/i);
   assert.match(executor.calls[0]?.prompt ?? "", /that pause said enough/i);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /examples_guidance_json/i);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /channel_learning_json/i);
   assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /experimental_contract_json/i);
-  assert.ok((result.diagnostics.examples.availableExamples?.length ?? 0) > 0);
-  assert.ok((result.diagnostics.examples.selectedExamples?.length ?? 0) > 0);
-  const oneShotManifest = result.diagnostics.effectivePrompting.promptStages.find(
-    (stage) => stage.stageId === "oneShotReference"
-  )?.inputManifest?.examples;
-  assert.ok(oneShotManifest);
-  assert.ok(oneShotManifest.passedCount > 0);
-  assert.equal(executor.calls[0]?.reasoningEffort, "x-high");
+  assert.equal(executor.calls[0]?.reasoningEffort, "high");
   assert.equal(
     result.output.captionOptions.every((option) => Boolean(option.topRu) && Boolean(option.bottomRu)),
     true
   );
 });
 
-test("reference one-shot prompt carries channel story semantics, custom examples, and regenerate steering together", async () => {
-  const storyHardConstraints: Stage2HardConstraints = {
-    ...RELAXED_NATIVE_HARD_CONSTRAINTS,
-    topLengthMin: 6,
-    topLengthMax: 56,
-    bottomLengthMin: 40,
-    bottomLengthMax: 260
-  };
-  const templateTextSemantics = resolveStage2TemplateTextSemantics({
-    templateId: CHANNEL_STORY_TEMPLATE_ID,
-    hardConstraints: storyHardConstraints
-  });
-  const stage2ExamplesConfig: Stage2ExamplesConfig = {
-    version: 2,
-    useWorkspaceDefault: false,
-    sourceMode: "custom",
-    customInputMode: "json",
-    systemPresetId: "system_examples",
-    customExamplesJson: JSON.stringify([
-      {
-        lead: "GILLIAN ANDERSON STAYS IN CHARACTER DURING ACCIDENT",
-        body: "During a 1996 filming moment, the visible crash stays secondary to the actor holding character through the shock.",
-        note: "one compact lead plus one factual story body"
-      }
-    ]),
-    customExamplesText: "Use one compact Lead and one story Body. Do not generate five separate leads.",
-    customExamples: []
-  };
-  const videoContext = buildVideoContext({
-    sourceUrl: "https://example.com/channel-story-reference",
-    title: "Behind the scenes crash kept rolling",
-    description: "A film set moment where an actor keeps character during an unexpected crash.",
-    transcript: "",
-    comments: [],
-    frameDescriptions: [
-      "An actor walks through glass doors in a tan coat.",
-      "A car collision happens behind her while the camera keeps rolling."
-    ],
-    userInstruction: "Regenerate closer to the custom example: one lead and one factual story body."
-  });
-  const oneShotResponse = {
-    analysis: {
-      visual_anchors: [
-        "the tan coat in the doorway",
-        "the crash behind the actor",
-        "the actor keeps moving through the shot"
-      ],
-      comment_vibe: "Comments unavailable",
-      key_phrase_to_adapt: "keeps character"
-    },
-    candidates: Array.from({ length: 5 }, (_, index) => ({
-      candidate_id: `story_${index + 1}`,
-      top: `REAL CRASH KEPT IN THE TAKE ${index + 1}`,
-      bottom:
-        `During filming, the actor walks through the doorway as a real crash happens behind her, and the usable moment is that she keeps the scene alive through the shock ${index + 1}.`,
-      retained_handle: false,
-      rationale: "Follows the channel story lead/body contract."
-    })),
-    winner_candidate_id: "story_1",
-    titles: Array.from({ length: 5 }, (_, index) => ({
-      title: `REAL CRASH KEPT IN THE TAKE ${index + 1}`,
-      title_ru: `РЕАЛЬНАЯ АВАРИЯ ОСТАЛАСЬ В ДУБЛЕ ${index + 1}`
-    }))
-  };
-
-  const { result, executor } = await runNativeCaptionPipelineDirectFixture({
-    stage2WorkerProfileId: "stable_reference_v6",
-    hardConstraints: storyHardConstraints,
-    stage2ExamplesConfig,
-    templateFormatGroup: "channel_story",
-    templateTextSemantics,
-    videoContext,
-    responses: [oneShotResponse]
-  });
-
-  const prompt = executor.calls[0]?.prompt ?? "";
-  assert.match(prompt, /"template_semantics_json"/);
-  assert.match(prompt, /"formatGroup": "channel_story"/);
-  assert.match(prompt, /"topLabel": "Lead"/);
-  assert.match(prompt, /"bottomLabel": "Body"/);
-  assert.match(prompt, /GILLIAN ANDERSON STAYS IN CHARACTER DURING ACCIDENT/);
-  assert.match(prompt, /one compact Lead and one story Body/);
-  assert.match(prompt, /Regenerate closer to the custom example/);
-  assert.equal(result.diagnostics.examples.source, "channel_custom");
-  assert.ok(result.diagnostics.examples.selectedExamples.length > 0);
-  const manifest = result.diagnostics.effectivePrompting.promptStages.find(
-    (stage) => stage.stageId === "oneShotReference"
-  )?.inputManifest?.examples;
-  assert.ok(manifest);
-  assert.equal(manifest.activeCorpusCount, 1);
-  assert.equal(manifest.passedCount, 1);
-});
-
-test("stable_reference_v6_experimental uses the isolated one-shot prompt contract and trims comment-wave pressure under weak grounding", async () => {
+test("classic prompt-first run no longer uses the isolated experimental one-shot contract", async () => {
   const videoContext = buildVideoContext({
     sourceUrl: "https://example.com/reference-one-shot-experimental",
     title: "A mechanic pauses before the whole room gets it",
@@ -8189,7 +8163,7 @@ test("stable_reference_v6_experimental uses the isolated one-shot prompt contrac
     stage2WorkerProfileId: "stable_reference_v6_experimental",
     promptConfig: normalizeStage2PromptConfig({
       stages: {
-        oneShotReference: {
+        classicOneShot: {
           reasoningEffort: "x-high"
         }
       }
@@ -8206,15 +8180,15 @@ test("stable_reference_v6_experimental uses the isolated one-shot prompt contrac
   });
 
   const oneShotStage = result.diagnostics.effectivePrompting.promptStages.find(
-    (stage) => stage.stageId === "oneShotReference"
+    (stage) => stage.stageId === "classicOneShot"
   );
-  assert.equal(result.output.pipeline.execution?.pathVariant, "reference_one_shot_v1_experimental");
-  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v6_experimental");
-  assert.equal(oneShotStage?.promptCompatibilityVersion, "reference_one_shot_v1_experimental@2026-04-12");
-  assert.equal(oneShotStage?.inputManifest?.comments?.passedCount, 8);
-  assert.match(executor.calls[0]?.prompt ?? "", /experimental_contract_json/);
-  assert.match(executor.calls[0]?.prompt ?? "", /comments_secondary_hints_only/);
-  assert.match(executor.calls[0]?.prompt ?? "", /Do not talk about "the clip", "the video", "the edit"/);
+  assert.equal(result.output.pipeline.execution?.pathVariant, "classic_one_shot_v1");
+  assert.equal(result.output.pipeline.workerProfile?.resolvedId, "stable_reference_v7");
+  assert.equal(oneShotStage?.inputManifest?.comments?.passedCount, 12);
+  assert.match(executor.calls[0]?.prompt ?? "", /source_video_json/);
+  assert.match(executor.calls[0]?.prompt ?? "", /format_contract_json/);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /experimental_contract_json/);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /comments_secondary_hints_only/);
 });
 
 test("caption highlighting skips the model pass when template highlighting is disabled", async () => {
@@ -8481,7 +8455,7 @@ test("caption highlighting failures stay fail-open and keep the display shortlis
   );
 });
 
-test("stable_reference_v6 fails hard instead of backfilling meta-leaking one-shot output", async () => {
+test("classic prompt-first fails hard instead of backfilling meta-leaking one-shot output", async () => {
   await assert.rejects(
     () =>
       runNativeCaptionPipelineDirectFixture({
@@ -8519,73 +8493,72 @@ test("stable_reference_v6 fails hard instead of backfilling meta-leaking one-sho
           }
         ]
       }),
-    /Reference one-shot failed\..*(frame index|seconds timestamp|pipeline slot|debug or schema wording)/i
+    /classicOneShot failed\..*(frame index|seconds timestamp|pipeline slot|debug or schema wording)/i
   );
 });
 
-test("stable_reference_v6_experimental fails hard on edit, comment-section, and viewer meta commentary", async () => {
-  await assert.rejects(
-    () =>
-      runNativeCaptionPipelineDirectFixture({
-        stage2WorkerProfileId: "stable_reference_v6_experimental",
-        hardConstraints: {
-          ...RELAXED_NATIVE_HARD_CONSTRAINTS,
-          topLengthMin: 40,
-          topLengthMax: 240,
-          bottomLengthMin: 20,
-          bottomLengthMax: 180
+test("classic prompt-first does not apply the removed experimental commentary guard", async () => {
+  const { result } = await runNativeCaptionPipelineDirectFixture({
+    stage2WorkerProfileId: "stable_reference_v6_experimental",
+    hardConstraints: {
+      ...RELAXED_NATIVE_HARD_CONSTRAINTS,
+      topLengthMin: 40,
+      topLengthMax: 240,
+      bottomLengthMin: 20,
+      bottomLengthMax: 180
+    },
+    responses: [
+      {
+        analysis: {
+          visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
+          comment_vibe: "dry disbelief",
+          key_phrase_to_adapt: "that pause said enough"
         },
-        responses: [
+        candidates: [
           {
-            analysis: {
-              visual_anchors: ["anchor 1", "anchor 2", "anchor 3"],
-              comment_vibe: "dry disbelief",
-              key_phrase_to_adapt: "that pause said enough"
-            },
-            candidates: [
-              {
-                candidate_id: "bad_1",
-                top: "The edit gives you the warning first, then the face, then the funeral, so the whole clip starts feeling like accusation instead of tribute.",
-                bottom: "The comments keep landing on the same read, and viewers don't need the narrator to push it once that silence takes over.",
-                retained_handle: false
-              },
-              {
-                candidate_id: "bad_2",
-                top: "Grounded context top 2 keeps the event readable and specific without slipping into commentary about the media object at all.",
-                bottom: "Grounded human bottom 2 keeps the reaction in-world and publishable without audience commentary.",
-                retained_handle: false
-              },
-              {
-                candidate_id: "bad_3",
-                top: "Grounded context top 3 keeps the event readable and specific without slipping into commentary about the media object at all.",
-                bottom: "Grounded human bottom 3 keeps the reaction in-world and publishable without audience commentary.",
-                retained_handle: false
-              },
-              {
-                candidate_id: "bad_4",
-                top: "Grounded context top 4 keeps the event readable and specific without slipping into commentary about the media object at all.",
-                bottom: "Grounded human bottom 4 keeps the reaction in-world and publishable without audience commentary.",
-                retained_handle: false
-              },
-              {
-                candidate_id: "bad_5",
-                top: "Grounded context top 5 keeps the event readable and specific without slipping into commentary about the media object at all.",
-                bottom: "Grounded human bottom 5 keeps the reaction in-world and publishable without audience commentary.",
-                retained_handle: false
-              }
-            ],
-            winner_candidate_id: "bad_2",
-            titles: Array.from({ length: 5 }, (_, index) => ({
-              title: `PUBLISHABLE TITLE ${index + 1}`
-            }))
+            candidate_id: "ok_1",
+            top: "The edit gives you the warning first, then the face, then the whole moment starts feeling like accusation instead of tribute.",
+            bottom: "The comments keep landing on the same read, and viewers do not need the narrator to push it once that silence takes over.",
+            retained_handle: false
+          },
+          {
+            candidate_id: "ok_2",
+            top: "Grounded context top 2 keeps the event readable and specific without slipping into hidden runtime wording at all.",
+            bottom: "Grounded human bottom 2 keeps the reaction publishable without adding any hidden runtime repair.",
+            retained_handle: false
+          },
+          {
+            candidate_id: "ok_3",
+            top: "Grounded context top 3 keeps the event readable and specific without slipping into hidden runtime wording at all.",
+            bottom: "Grounded human bottom 3 keeps the reaction publishable without adding any hidden runtime repair.",
+            retained_handle: false
+          },
+          {
+            candidate_id: "ok_4",
+            top: "Grounded context top 4 keeps the event readable and specific without slipping into hidden runtime wording at all.",
+            bottom: "Grounded human bottom 4 keeps the reaction publishable without adding any hidden runtime repair.",
+            retained_handle: false
+          },
+          {
+            candidate_id: "ok_5",
+            top: "Grounded context top 5 keeps the event readable and specific without slipping into hidden runtime wording at all.",
+            bottom: "Grounded human bottom 5 keeps the reaction publishable without adding any hidden runtime repair.",
+            retained_handle: false
           }
-        ]
-      }),
-    /Reference one-shot experimental failed\..*(media-object commentary|comment-section commentary|audience-reaction commentary)/i
-  );
+        ],
+        winner_candidate_id: "ok_2",
+        titles: Array.from({ length: 5 }, (_, index) => ({
+          title: `PUBLISHABLE TITLE ${index + 1}`
+        }))
+      }
+    ]
+  });
+
+  assert.equal(result.output.captionOptions.length, 5);
+  assert.equal(result.output.pipeline.execution?.pathVariant, "classic_one_shot_v1");
 });
 
-test("stable_reference_v6 keeps length-window misses as warnings instead of failing the run", async () => {
+test("classic prompt-first keeps length-window misses as warnings without promoting a different winner", async () => {
   const groundedTopSeed =
     "The contract sounded celebratory until the second detail made the whole room realize what the legend had quietly agreed to, and the clip changes once that lands. ";
   const groundedBottomSeed =
@@ -8656,25 +8629,28 @@ test("stable_reference_v6 keeps length-window misses as warnings instead of fail
   );
   assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.validPoolCount, 3);
   assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.invalidPoolCount, 2);
-  assert.equal(result.output.winner?.candidateId, "cand_1");
-  assert.equal(result.output.finalPick.option, 1);
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.winnerValidity, "valid");
+  assert.equal(result.output.winner?.candidateId, "cand_5");
+  assert.equal(result.output.finalPick.option, 5);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.winnerValidity, "invalid");
   assert.equal(
     result.warnings.some((warning) => /outside the configured length window/i.test(warning.message)),
     true
   );
   assert.equal(
-    result.warnings.some((warning) => /promoted valid finalist "cand_1" as final pick/i.test(warning.message)),
-    true
+    result.warnings.some((warning) => /promoted valid finalist/i.test(warning.message)),
+    false
   );
   assert.match(executor.calls[0]?.prompt ?? "", /"topLengthMin": 180/);
   assert.match(executor.calls[0]?.prompt ?? "", /"topLengthMax": 200/);
   assert.match(executor.calls[0]?.prompt ?? "", /"bottomLengthMin": 140/);
   assert.match(executor.calls[0]?.prompt ?? "", /"bottomLengthMax": 160/);
-  assert.deepEqual(auditStage2WorkerRollout(result.output), { ok: true });
+  assert.deepEqual(auditStage2WorkerRollout(result.output), {
+    ok: false,
+    message: "Stage 2 rollout failed: native_caption_v3 returned an invalid winner after runtime gating."
+  });
 });
 
-test("stable_reference_v6 applies tiny deterministic exact-length polish to near-miss overflows", async () => {
+test("classic prompt-first leaves near-miss overflows as diagnostics without deterministic polish", async () => {
   const groundedTopSeed =
     "The frozen wrench tells the whole bay what kind of mistake just landed, and every mechanic there starts reading his face before he can explain. ";
   const groundedBottomSeed =
@@ -8738,21 +8714,15 @@ test("stable_reference_v6 applies tiny deterministic exact-length polish to near
   assert.equal(result.output.captionOptions.length, 5);
   assert.equal(
     result.output.captionOptions.some((option) => option.constraintCheck.repaired === true),
-    true
+    false
   );
   assert.equal(
-    result.output.captionOptions.every(
-      (option) =>
-        option.top.length >= 160 &&
-        option.top.length <= 185 &&
-        option.bottom.length >= 130 &&
-        option.bottom.length <= 150
-    ),
+    result.output.captionOptions.some((option) => option.constraintCheck.passed === false),
     true
   );
 });
 
-test("stable_reference_v6 trims a one-character punctuation overflow instead of failing the whole one-shot run", async () => {
+test("classic prompt-first preserves one-character punctuation overflow instead of applying hidden polish", async () => {
   const groundedTopSeed =
     "The trade sounds harmless until the second photo makes the whole joke land, and the clip turns into the moment everybody realizes who got thrown under the bus. ";
   const almostMaxBottom = `${makeFixedLengthText(
@@ -8818,12 +8788,12 @@ test("stable_reference_v6 trims a one-character punctuation overflow instead of 
 
   const repairedCandidate = result.output.captionOptions.find((option) => option.candidateId === "cand_2");
   assert.ok(repairedCandidate);
-  assert.equal(repairedCandidate?.bottom.length, 150);
-  assert.equal(repairedCandidate?.constraintCheck.repaired, true);
+  assert.equal(repairedCandidate?.bottom.length, 151);
+  assert.equal(repairedCandidate?.constraintCheck.repaired, false);
   assert.equal(result.output.winner?.candidateId, "cand_2");
 });
 
-test("native prompts use the runtime channel hard-constraint windows in generation judging and repair", async () => {
+test("classic prompt-first prompt uses runtime channel hard-constraint windows without judge or repair stages", async () => {
   const customConstraints: Stage2HardConstraints = {
     ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
     topLengthMin: 20,
@@ -8834,10 +8804,13 @@ test("native prompts use the runtime channel hard-constraint windows in generati
   const { executor } = await runNativeCaptionPipelineFixture({
     hardConstraints: customConstraints,
     responses: [
-      [
-        makeNativeCaptionCandidateFixture({ candidateId: "C01", topLength: 30, bottomLength: 18 }),
-        makeNativeCaptionCandidateFixture({ candidateId: "C02", topLength: 31, bottomLength: 19 })
-      ],
+      Array.from({ length: 5 }, (_, index) =>
+        makeNativeCaptionCandidateFixture({
+          candidateId: `C0${index + 1}`,
+          topLength: 21,
+          bottomLength: 11
+        })
+      ),
       {
         kept: [
           {
@@ -8903,12 +8876,13 @@ test("native prompts use the runtime channel hard-constraint windows in generati
 
   assert.match(executor.calls[0]?.prompt ?? "", /"topLengthMin": 20/);
   assert.match(executor.calls[0]?.prompt ?? "", /"bottomLengthMax": 12/);
-  assert.match(executor.calls[1]?.prompt ?? "", /"topLengthMin": 20/);
-  assert.match(executor.calls[1]?.prompt ?? "", /candidate_constraint_checks_json/);
-  assert.match(executor.calls[2]?.prompt ?? "", /"bottomLengthMin": 10/);
+  assert.equal(
+    executor.calls.some((call) => /candidate_constraint_checks_json|repair_briefs_json/i.test(call.prompt)),
+    false
+  );
 });
 
-test("native prompts carry channel learning through generation judging repair and titles", async () => {
+test("classic prompt-first prompts do not carry channel-learning authority through hidden stages", async () => {
   const styleProfile = normalizeStage2StyleProfile({
     explorationShare: 0.34,
     candidateDirections: [
@@ -8985,10 +8959,13 @@ test("native prompts carry channel learning through generation judging repair an
     stage2StyleProfile: styleProfile,
     editorialMemory,
     responses: [
-      [
-        makeNativeCaptionCandidateFixture({ candidateId: "C01", topLength: 30, bottomLength: 18 }),
-        makeNativeCaptionCandidateFixture({ candidateId: "C02", topLength: 31, bottomLength: 19 })
-      ],
+      Array.from({ length: 5 }, (_, index) =>
+        makeNativeCaptionCandidateFixture({
+          candidateId: `C0${index + 1}`,
+          topLength: 21,
+          bottomLength: 11
+        })
+      ),
       {
         kept: [
           {
@@ -9059,32 +9036,26 @@ test("native prompts carry channel learning through generation judging repair an
     }
   });
 
-  assert.match(executor.calls[0]?.prompt ?? "", /"channel_learning_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /"line_profile_json"/);
-  assert.match(executor.calls[0]?.prompt ?? "", /stable_social_wave_v1/);
-  assert.match(executor.calls[0]?.prompt ?? "", /Straight-Faced Absurdity/);
-  assert.match(executor.calls[0]?.prompt ?? "", /Winning lines keep the joke dry and specific/i);
-  assert.match(executor.calls[1]?.prompt ?? "", /"channel_learning_json"/);
-  assert.match(executor.calls[2]?.prompt ?? "", /"channel_learning_json"/);
-  assert.match(executor.calls[3]?.prompt ?? "", /display_options_json/);
-  assert.match(executor.calls[4]?.prompt ?? "", /"channel_learning_json"/);
-  assert.equal(result.diagnostics.channel.workerProfile?.resolvedId, "stable_social_wave_v1");
+  assert.match(executor.calls[0]?.prompt ?? "", /source_video_json/);
+  assert.match(executor.calls[0]?.prompt ?? "", /examples_json/);
+  assert.match(executor.calls[0]?.prompt ?? "", /format_contract_json/);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /channel_learning_json/);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /line_profile_json/);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /stable_social_wave_v1/);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /Straight-Faced Absurdity/);
+  assert.doesNotMatch(executor.calls[0]?.prompt ?? "", /Winning lines keep the joke dry and specific/i);
+  assert.equal(result.diagnostics.channel.workerProfile?.resolvedId, "stable_reference_v7");
 
   const promptStages = result.diagnostics.effectivePrompting.promptStages;
-  const candidateStage = promptStages.find((stage) => stage.stageId === "candidateGenerator");
-  const courtStage = promptStages.find((stage) => stage.stageId === "qualityCourt");
-  const repairStage = promptStages.find((stage) => stage.stageId === "targetedRepair");
+  const oneShotStage = promptStages.find((stage) => stage.stageId === "classicOneShot");
   const translationStage = promptStages.find((stage) => stage.stageId === "captionTranslation");
   const titleStage = promptStages.find((stage) => stage.stageId === "titleWriter");
-  assert.equal(candidateStage?.inputManifest?.channelLearning?.detail, "compact");
-  assert.equal(candidateStage?.inputManifest?.channelLearning?.selectedDirectionCount, 2);
-  assert.equal(courtStage?.inputManifest?.channelLearning?.detail, "compact");
-  assert.equal(repairStage?.inputManifest?.channelLearning?.detail, "compact");
+  assert.equal(oneShotStage?.inputManifest?.channelLearning, null);
   assert.equal(translationStage?.inputManifest?.channelLearning, null);
-  assert.equal(titleStage?.inputManifest?.channelLearning?.detail, "compact");
+  assert.equal(titleStage, undefined);
 });
 
-test("production-shaped native regression fixture keeps prompt-source proof and blocks invalid finalists from surviving", async () => {
+test("production-shaped prompt-first fixture ignores stale modular prompt overrides", async () => {
   const stalePromptConfig = normalizeStage2PromptConfig({
     version: 3 as never,
     stages: {
@@ -9110,11 +9081,15 @@ test("production-shaped native regression fixture keeps prompt-source proof and 
       bottomLengthMax: 150
     },
     responses: [
-      [
-        makeNativeCaptionCandidateFixture({ candidateId: "C03", topLength: 170, bottomLength: 705 }),
-        makeNativeCaptionCandidateFixture({ candidateId: "C06", topLength: 170, bottomLength: 455 }),
-        makeNativeCaptionCandidateFixture({ candidateId: "C07", topLength: 170, bottomLength: 450 })
-      ],
+      Array.from({ length: 5 }, (_, index) =>
+        makeNativeCaptionCandidateFixture({
+          candidateId: `C0${index + 1}`,
+          topLength: 170,
+          bottomLength: 145,
+          topText: makeFixedLengthText(`Production prompt-first top ${index + 1} `, 170),
+          bottomText: makeFixedLengthText(`Production prompt-first bottom ${index + 1} `, 145)
+        })
+      ),
       {
         kept: [
           {
@@ -9191,20 +9166,16 @@ test("production-shaped native regression fixture keeps prompt-source proof and 
   assert.equal(result.output.finalists?.every((finalist) => finalist.constraintCheck.passed), true);
   assert.equal(result.output.winner?.constraintCheck?.passed, true);
   assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.displayShortlistCount, 5);
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryTriggered, true);
-  assert.match(
-    result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryReason ?? "",
-    /displayable_below_target|winner_missing|audience_handle_missing_in_finalists|finalists_below_target/
-  );
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryTriggered, false);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.recoveryReason, null);
   const promptStages = result.diagnostics.effectivePrompting.promptStages;
+  const oneShotStage = promptStages.find((stage) => stage.stageId === "classicOneShot");
   const candidateStage = promptStages.find((stage) => stage.stageId === "candidateGenerator");
   const courtStage = promptStages.find((stage) => stage.stageId === "qualityCourt");
-  assert.equal(candidateStage?.promptSource, "default");
-  assert.equal(candidateStage?.overrideAccepted, false);
-  assert.equal(candidateStage?.overrideRejectedReason, "missing_native_compatibility_metadata");
-  assert.equal(candidateStage?.legacyFallbackBypassed, true);
-  assert.equal(courtStage?.promptSource, "default");
-  assert.equal(courtStage?.overrideAccepted, false);
+  assert.equal(oneShotStage?.promptSource, "default");
+  assert.equal(oneShotStage?.overrideAccepted, false);
+  assert.equal(candidateStage, undefined);
+  assert.equal(courtStage, undefined);
 });
 
 test("comments diagnostics distinguish primary success, fallback success, and unavailable states", async () => {
@@ -10740,6 +10711,7 @@ test("regenerate runs persist baseRunId and use lightweight progress stages", { 
           id: channel.id,
           name: channel.name,
           username: channel.username,
+          formatPipeline: "classic_top_bottom",
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints
         }
@@ -10759,6 +10731,7 @@ test("regenerate runs persist baseRunId and use lightweight progress stages", { 
           id: channel.id,
           name: channel.name,
           username: channel.username,
+          formatPipeline: "classic_top_bottom",
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints
         }
@@ -11086,13 +11059,14 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
   assert.ok(
     result.output.captionOptions.every((option) => !/[\u0400-\u04FF]/u.test(`${option.top}\n${option.bottom}`))
   );
-  assert.match(promptText, /Preserve style_direction_ids and exploration_mode/i);
+  assert.match(promptText, /"styleDirectionIds":/);
+  assert.match(promptText, /"explorationMode":/);
   assert.match(promptText, /Keep final top, bottom, and title text in English only/i);
   assert.match(promptText, /Remove stock tails like 'the reaction basically writes itself'/i);
-  assert.match(promptText, /"retrieval":/);
+  assert.doesNotMatch(promptText, /"retrieval":/);
   assert.match(promptText, /"analysis":/);
-  assert.match(promptText, /"channelLearning":/);
-  assert.match(promptText, /keep the dryer tone/i);
+  assert.doesNotMatch(promptText, /"channelLearning":/);
+  assert.doesNotMatch(promptText, /keep the dryer tone/i);
   assert.ok(
     result.diagnostics?.effectivePrompting.promptStages.some((stage) => stage.stageId === "regenerate")
   );
@@ -11105,13 +11079,10 @@ test("quick regenerate result preserves base shortlist structure and only rewrit
   assert.equal(regenerateStage?.summary, "Single LLM stage: rewrites the visible shortlist and paired titles from the saved Stage 2 run.");
   assert.equal(regenerateStage?.inputManifest?.comments?.passedCount, 1);
   assert.deepEqual(regenerateStage?.inputManifest?.comments?.passedCommentIds, ["quick-1"]);
-  assert.equal(regenerateStage?.inputManifest?.examples?.passedCount, 1);
-  assert.deepEqual(regenerateStage?.inputManifest?.examples?.passedExampleIds, ["example_1"]);
-  assert.equal(regenerateStage?.inputManifest?.channelLearning?.recentFeedbackCount, 3);
-  assert.match(regenerateStage?.inputManifest?.channelLearning?.promptSummary ?? "", /keep the dryer tone/i);
-  assert.equal(result.diagnostics?.channel.editorialMemory?.recentFeedbackCount, 3);
-  assert.match(result.diagnostics?.channel.editorialMemory?.promptSummary ?? "", /keep the dryer tone/i);
-  assert.match(
+  assert.equal(regenerateStage?.inputManifest?.examples?.passedCount, 0);
+  assert.deepEqual(regenerateStage?.inputManifest?.examples?.passedExampleIds, []);
+  assert.equal(regenerateStage?.inputManifest?.channelLearning, null);
+  assert.doesNotMatch(
     result.warnings.map((warning) => warning.message).join(" "),
     /latest channel feedback collected after the base run/i
   );
@@ -11703,6 +11674,7 @@ test("chat list items surface active Stage 2 runs as live Stage 2 state and step
           id: channel.id,
           name: channel.name,
           username: channel.username,
+          formatPipeline: "classic_top_bottom",
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints
         }
@@ -11967,23 +11939,24 @@ test("failed stage 2 run remains inspectable after reload-style DB reopen", { co
           id: channel.id,
           name: channel.name,
           username: channel.username,
+          formatPipeline: "classic_top_bottom",
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: channel.stage2HardConstraints
         }
       }
     });
 
-    store.markStage2RunStageRunning(run.runId, "candidateGenerator", {
-      detail: "Drafting candidate batch."
+    store.markStage2RunStageRunning(run.runId, "classicOneShot", {
+      detail: "Running prompt-first classic one-shot."
     });
-    store.markStage2RunStageFailed(run.runId, "candidateGenerator", "candidate generator timeout");
+    store.markStage2RunStageFailed(run.runId, "classicOneShot", "classic one-shot timeout");
 
     delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
     const reloaded = store.getStage2Run(run.runId);
     assert.equal(reloaded?.status, "failed");
-    assert.equal(reloaded?.errorMessage, "candidate generator timeout");
-    assert.equal(reloaded?.snapshot.activeStageId, "candidateGenerator");
-    assert.match(reloaded?.snapshot.error ?? "", /candidate generator timeout/);
+    assert.equal(reloaded?.errorMessage, "classic one-shot timeout");
+    assert.equal(reloaded?.snapshot.activeStageId, "classicOneShot");
+    assert.match(reloaded?.snapshot.error ?? "", /classic one-shot timeout/);
     assert.equal(
       store.listStage2RunsForChat(chat.id, owner.workspace.id, 10)[0]?.runId,
       run.runId
@@ -13040,7 +13013,7 @@ test("chat trace export assembles a full payload, truncates comments, and honors
   });
 });
 
-test("chat trace export keeps stable and experimental reference one-shot flows isolated", { concurrency: false }, async () => {
+test("chat trace export shows legacy worker-profile requests converging on active classic prompt-first flow", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");
     const chatHistory = await import("../lib/chat-history");
@@ -13242,7 +13215,7 @@ test("chat trace export keeps stable and experimental reference one-shot flows i
       stage2WorkerProfileId: "stable_reference_v6",
       promptConfig: normalizeStage2PromptConfig({
         stages: {
-          oneShotReference: {
+          classicOneShot: {
             reasoningEffort: "high"
           }
         }
@@ -13263,7 +13236,7 @@ test("chat trace export keeps stable and experimental reference one-shot flows i
       stage2WorkerProfileId: "stable_reference_v6_experimental",
       promptConfig: normalizeStage2PromptConfig({
         stages: {
-          oneShotReference: {
+          classicOneShot: {
             reasoningEffort: "high"
           }
         }
@@ -13413,32 +13386,23 @@ test("chat trace export keeps stable and experimental reference one-shot flows i
     assert.ok(experimentalTrace);
 
     const stableOneShotManifest = stableTrace?.stage2.stageManifests.find(
-      (stage) => stage.stageId === "oneShotReference"
+      (stage) => stage.stageId === "classicOneShot"
     );
     const experimentalOneShotManifest = experimentalTrace?.stage2.stageManifests.find(
-      (stage) => stage.stageId === "oneShotReference"
+      (stage) => stage.stageId === "classicOneShot"
     );
 
-    assert.equal(stableTrace?.stage2.execution.pathVariant, "reference_one_shot_v2");
-    assert.equal(
-      experimentalTrace?.stage2.execution.pathVariant,
-      "reference_one_shot_v2"
-    );
+    assert.equal(stableTrace?.stage2.execution.pathVariant, "classic_one_shot_v1");
+    assert.equal(experimentalTrace?.stage2.execution.pathVariant, "classic_one_shot_v1");
     assert.equal(stableTrace?.stage2.causalInputs.workerProfile.resolvedId, "stable_reference_v6");
     assert.equal(
       experimentalTrace?.stage2.causalInputs.workerProfile.resolvedId,
       "stable_reference_v6_experimental"
     );
-    assert.equal(
-      stableOneShotManifest?.promptCompatibilityVersion,
-      "reference_one_shot_v6@2026-04-23-channel-examples"
-    );
-    assert.equal(
-      experimentalOneShotManifest?.promptCompatibilityVersion,
-      "reference_one_shot_v6@2026-04-23-channel-examples"
-    );
-    assert.equal(stableOneShotManifest?.inputManifest?.comments?.passedCount, 5);
-    assert.equal(experimentalOneShotManifest?.inputManifest?.comments?.passedCount, 5);
+    assert.match(stableOneShotManifest?.promptCompatibilityVersion ?? "", /prompt-first/);
+    assert.match(experimentalOneShotManifest?.promptCompatibilityVersion ?? "", /prompt-first/);
+    assert.equal(stableOneShotManifest?.inputManifest?.comments?.passedCount, 12);
+    assert.equal(experimentalOneShotManifest?.inputManifest?.comments?.passedCount, 12);
     assert.equal(stableTrace?.stage2.causalInputs.editorialMemorySource?.strategy, "channel_fallback_only");
     assert.equal(experimentalTrace?.stage2.causalInputs.editorialMemorySource?.strategy, "same_line_only");
     assert.equal(stableTrace?.stage2.causalInputs.editorialMemorySource?.explicitThreshold, 6);
@@ -13574,9 +13538,9 @@ test("chat trace export preserves canonical vnext proof markers for a determinis
     assert.ok(trace?.stage2.vnext.stageOutputs?.clipTruthExtractor);
     assert.ok(trace?.stage2.vnext.stageOutputs?.audienceMiner);
     assert.equal(trace?.stage2.vnext.traceMeta?.compatibilityMode, "none");
-    assert.equal(trace?.stage2.vnext.exampleRouting?.mode, "disabled");
-    assert.equal(trace?.stage2.currentResult?.output.pipeline?.selectedExamplesCount, 0);
-    assert.equal(trace?.stage2.vnext.canonicalCounters?.examplesPassedDownstream, 0);
+    assert.equal(trace?.stage2.vnext.exampleRouting?.mode, "structural_guided");
+    assert.equal(trace?.stage2.currentResult?.output.pipeline?.selectedExamplesCount, 3);
+    assert.equal(trace?.stage2.vnext.canonicalCounters?.examplesPassedDownstream, 4);
     assert.equal(trace?.stage2.vnext.criticGate?.reserveBackfillCount, 0);
     assert.equal(trace?.stage2.vnext.validation?.ok, true);
     assert.equal(trace?.traceContract.canonicalSections.stage2VNext, "stage2.vnext");

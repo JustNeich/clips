@@ -69,7 +69,7 @@ test("manual fragments are sorted, clamped, and de-overlapped before output plan
   const normalized = normalizeStage3EditorFragments({
     segments: [
       { startSec: 12.4, endSec: 14.4, speed: 1, label: "B" },
-      { startSec: 10, endSec: 13, speed: 1, label: "A" },
+      { startSec: 10, endSec: 13, speed: 1, label: "A", focusX: 0.62, focusY: 0.28 },
       { startSec: 13.8, endSec: 16, speed: 1, label: "C" }
     ],
     sourceDurationSec: 20
@@ -78,6 +78,8 @@ test("manual fragments are sorted, clamped, and de-overlapped before output plan
   assert.equal(normalized.length, 3);
   assert.equal(normalized[0]?.startSec, 10);
   assert.equal(normalized[0]?.endSec, 13);
+  assert.equal(normalized[0]?.focusXOverride, 0.62);
+  assert.equal(normalized[0]?.focusYOverride, 0.28);
   assert.equal(normalized[1]?.startSec, 13);
   assert.equal(normalized[1]?.endSec, 14.4);
   assert.equal(normalized[2]?.startSec, 14.4);

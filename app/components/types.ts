@@ -64,6 +64,7 @@ export type SourceProviderErrorSummary = {
 };
 
 export type Stage2Output = {
+  formatPipeline?: "classic_top_bottom" | "story_lead_main_caption";
   inputAnalysis: {
     visualAnchors: string[];
     commentVibe: string;
@@ -77,7 +78,13 @@ export type Stage2Output = {
     top: string;
     bottom: string;
     displayTier?: "finalist" | "display_safe_extra" | "recovery" | "template_backfill";
-    sourceStage?: "oneShotReference" | "qualityCourt" | "targetedRepair" | "templateBackfill";
+    sourceStage?:
+      | "classicOneShot"
+      | "storyOneShot"
+      | "oneShotReference"
+      | "qualityCourt"
+      | "targetedRepair"
+      | "templateBackfill";
     displayReason?: string;
     retainedHandle?: boolean;
     topRu?: string;
@@ -93,6 +100,26 @@ export type Stage2Output = {
       issues: string[];
     };
   }>;
+  classicOptions?: Array<{
+    option: number;
+    candidateId: string;
+    top: string;
+    bottom: string;
+    topRu?: string;
+    bottomRu?: string;
+    highlights?: TemplateCaptionHighlights;
+    constraintCheck?: Stage2Output["captionOptions"][number]["constraintCheck"];
+  }>;
+  storyOptions?: Array<{
+    option: number;
+    candidateId: string;
+    lead: string;
+    mainCaption: string;
+    leadRu?: string;
+    mainCaptionRu?: string;
+    highlights?: TemplateCaptionHighlights;
+    constraintCheck?: Stage2Output["captionOptions"][number]["constraintCheck"];
+  }>;
   finalists?: Array<{
     option: number;
     candidateId: string;
@@ -101,7 +128,7 @@ export type Stage2Output = {
     top: string;
     bottom: string;
     displayTier: "finalist";
-    sourceStage: "oneShotReference" | "qualityCourt";
+    sourceStage: "classicOneShot" | "storyOneShot" | "oneShotReference" | "qualityCourt";
     displayReason: string;
     retainedHandle: boolean;
     preservedHandle: boolean;
@@ -133,7 +160,13 @@ export type Stage2Output = {
     option: number;
     reason: string;
     displayTier: "finalist" | "recovery" | "template_backfill";
-    sourceStage: "oneShotReference" | "qualityCourt" | "targetedRepair" | "templateBackfill";
+    sourceStage:
+      | "classicOneShot"
+      | "storyOneShot"
+      | "oneShotReference"
+      | "qualityCourt"
+      | "targetedRepair"
+      | "templateBackfill";
     constraintCheck?: {
       passed: boolean;
       repaired: boolean;

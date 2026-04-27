@@ -5,7 +5,9 @@ import {
   runInTransaction
 } from "./db/client";
 import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
   normalizeStage2PromptConfig,
+  type Stage2FormatPipeline,
   type Stage2PromptConfig,
   createStage2ProgressSnapshot,
   finalizeStage2ProgressSuccess,
@@ -55,6 +57,7 @@ export type Stage2RunRequest = {
     name: string;
     username: string;
     templateId?: string | null;
+    formatPipeline?: Stage2FormatPipeline | null;
     stage2WorkerProfileId?: string | null;
     stage2ExamplesConfig: Stage2ExamplesConfig;
     stage2HardConstraints: Stage2HardConstraints;
@@ -161,6 +164,12 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
         typeof channelCandidate?.templateId === "string" && channelCandidate.templateId.trim()
           ? channelCandidate.templateId.trim()
           : null,
+      formatPipeline:
+        channelCandidate?.formatPipeline === "story_lead_main_caption"
+          ? "story_lead_main_caption"
+          : channelCandidate?.formatPipeline === "classic_top_bottom"
+            ? "classic_top_bottom"
+            : null,
       stage2WorkerProfileId:
         typeof channelCandidate?.stage2WorkerProfileId === "string" &&
         channelCandidate.stage2WorkerProfileId.trim()
@@ -344,7 +353,8 @@ export function createStage2Run(input: {
     baseRunId: input.request.baseRunId ?? null,
     request: input.request,
     snapshot: createStage2ProgressSnapshot(runId, input.request.mode, {
-      workerProfileId: input.request.channel.stage2WorkerProfileId
+      workerProfileId: input.request.channel.stage2WorkerProfileId,
+      formatPipeline: input.request.channel.formatPipeline
     }),
     status: "queued",
     resultData: null,

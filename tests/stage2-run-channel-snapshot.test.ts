@@ -6,7 +6,13 @@ import test from "node:test";
 
 import { createChannel, getChannelById, updateChannelById } from "../lib/chat-history";
 import { createManagedTemplate } from "../lib/managed-template-store";
+import {
+  DEFAULT_STAGE2_EXAMPLES_CONFIG,
+  DEFAULT_STAGE2_HARD_CONSTRAINTS
+} from "../lib/stage2-channel-config";
+import { DEFAULT_STAGE2_PROMPT_CONFIG } from "../lib/stage2-pipeline";
 import { buildStage2RunChannelSnapshot } from "../lib/stage2-run-channel-snapshot";
+import { buildStage2RunRequestSnapshot } from "../lib/stage2-run-request";
 import { bootstrapOwner } from "../lib/team-store";
 import { createDefaultTemplateHighlightConfig } from "../lib/template-highlights";
 
@@ -86,4 +92,56 @@ test("stage 2 channel snapshots keep the assigned managed-template highlight pro
 
     assert.deepEqual(snapshot.templateHighlightProfile, highlightProfile);
   });
+});
+
+test("stage 2 run request snapshots keep template identity and explicit examples", () => {
+  const snapshot = buildStage2RunRequestSnapshot({
+    sourceUrl: "https://example.com/source",
+    userInstruction: "Use the approved style.",
+    mode: "manual",
+    channel: {
+      id: "channel_request_snapshot",
+      name: "Request Snapshot",
+      username: "request_snapshot",
+      templateId: "channel-story-v1",
+      formatPipeline: "story_lead_main_caption",
+      stage2WorkerProfileId: null,
+      stage2ExamplesConfig: {
+        ...DEFAULT_STAGE2_EXAMPLES_CONFIG,
+        useWorkspaceDefault: false,
+        sourceMode: "custom",
+        customExamples: [
+          {
+            id: "example_1",
+            ownerChannelId: "channel_request_snapshot",
+            ownerChannelName: "Request Snapshot",
+            sourceChannelId: "channel_request_snapshot",
+            sourceChannelName: "Request Snapshot",
+            title: "Sealed chamber reveal",
+            overlayTop: "The wall clue changes the whole chamber story",
+            overlayBottom: "Then the sealed room stops looking like trivia and starts looking planned.",
+            transcript: "",
+            clipType: "history_mystery",
+            whyItWorks: ["Lead names the concrete clue before the body releases the turn."],
+            qualityScore: 0.91
+          }
+        ]
+      },
+      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG
+    }
+  });
+
+  assert.equal(snapshot.channel.templateId, "channel-story-v1");
+  assert.equal(snapshot.channel.formatPipeline, "story_lead_main_caption");
+  assert.equal(snapshot.channel.stage2ExamplesConfig.useWorkspaceDefault, false);
+  assert.equal(snapshot.channel.stage2ExamplesConfig.customExamples.length, 1);
+  assert.equal(
+    snapshot.channel.stage2PromptConfig?.stages.classicOneShot.prompt,
+    DEFAULT_STAGE2_PROMPT_CONFIG.stages.classicOneShot.prompt
+  );
+  assert.equal(
+    snapshot.channel.stage2ExamplesConfig.customExamples[0]?.overlayTop,
+    "The wall clue changes the whole chamber story"
+  );
 });

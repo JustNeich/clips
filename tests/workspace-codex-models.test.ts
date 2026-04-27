@@ -112,6 +112,8 @@ test("team-store persists workspace codex model config overrides in per-substage
     );
 
     const updated = updateWorkspaceCodexModelConfig(auth.workspace.id, {
+      classicOneShot: "gpt-5.4-mini",
+      storyOneShot: "gpt-5.4-mini",
       oneShotReference: "gpt-5.4-mini",
       contextPacket: "gpt-5.4",
       candidateGenerator: "gpt-5.4-mini",
@@ -134,6 +136,8 @@ test("team-store persists workspace codex model config overrides in per-substage
     });
 
     assert.deepEqual(updated.codexModelConfig, {
+      classicOneShot: "gpt-5.4-mini",
+      storyOneShot: "gpt-5.4-mini",
       oneShotReference: "gpt-5.4-mini",
       contextPacket: "gpt-5.4",
       candidateGenerator: "gpt-5.4-mini",

@@ -321,6 +321,11 @@ type FragmentDraftInputs = {
   focusY: string;
   videoZoom: string;
 };
+type PendingFragmentDraftInputs = {
+  startSec: string;
+  endSec: string;
+  speed: string;
+};
 type FragmentFocusTarget = {
   rowKey: string;
   field: FragmentDraftField;
@@ -610,6 +615,14 @@ function buildFragmentDraftInputs(params: {
     focusX: formatFragmentFocusXPercent(resolvedTransform.focusX),
     focusY: formatFragmentFocusPercent(resolvedTransform.focusY),
     videoZoom: formatFragmentVideoZoom(resolvedTransform.videoZoom)
+  };
+}
+
+function buildPendingFragmentDraftInputs(): PendingFragmentDraftInputs {
+  return {
+    startSec: "",
+    endSec: "",
+    speed: ""
   };
 }
 
@@ -2387,6 +2400,9 @@ export function Step3RenderTemplate({
   const [workerCopyState, setWorkerCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [workerInstallCopyState, setWorkerInstallCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [segmentDraftInputs, setSegmentDraftInputs] = useState<Record<string, FragmentDraftInputs>>({});
+  const [pendingFragmentDraftInputs, setPendingFragmentDraftInputs] = useState<PendingFragmentDraftInputs>(
+    () => buildPendingFragmentDraftInputs()
+  );
   const didSimplifyDynamicCameraRef = useRef(false);
   const fragmentFieldRefs = useRef<Record<string, HTMLInputElement | HTMLSelectElement | null>>({});
   const fragmentSourceRailRef = useRef<HTMLDivElement | null>(null);
@@ -2969,11 +2985,6 @@ export function Step3RenderTemplate({
             fallbackFocusY: localFocusY,
             fallbackVideoZoom: localVideoZoom
           });
-        const endValue = segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5;
-        const rawDuration = Math.max(0, endValue - segment.startSec);
-        const playbackSegment = fragmentPlaybackPlan.segments[index] ?? null;
-        const outputDuration = playbackSegment?.outputDurationSec ?? rawDuration / segment.speed;
-        const outputStartSec = playbackSegment?.outputStartSec ?? 0;
         const draftFocusXPercent = clamp(
           Number.isFinite(Number.parseFloat(draft.focusX))
             ? Number.parseFloat(draft.focusX)
@@ -2981,6 +2992,11 @@ export function Step3RenderTemplate({
           12,
           88
         );
+        const endValue = segment.endSec ?? fragmentSourceDurationSec ?? segment.startSec + 0.5;
+        const rawDuration = Math.max(0, endValue - segment.startSec);
+        const playbackSegment = fragmentPlaybackPlan.segments[index] ?? null;
+        const outputDuration = playbackSegment?.outputDurationSec ?? rawDuration / segment.speed;
+        const outputStartSec = playbackSegment?.outputStartSec ?? 0;
         const draftFocusPercent = clamp(
           Number.isFinite(Number.parseFloat(draft.focusY))
             ? Number.parseFloat(draft.focusY)
@@ -3265,6 +3281,15 @@ export function Step3RenderTemplate({
       return next;
     });
   }, [fragmentSourceDurationSec, localFocusX, localFocusY, localVideoZoom, normalizedSegments]);
+
+  useEffect(() => {
+    setPendingFragmentDraftInputs(buildPendingFragmentDraftInputs());
+  }, [
+    nextFragmentSuggestion?.startSec,
+    nextFragmentSuggestion?.endSec,
+    nextFragmentSuggestion?.speed,
+    normalizedSegments.length
+  ]);
 
   useEffect(() => {
     if (activeFragmentIndex === null) {
@@ -4440,24 +4465,27 @@ export function Step3RenderTemplate({
     wholeClipWindowSegment
   ]);
 
-  const appendFragmentFromDraft = useCallback(
-    (field: FragmentDraftField, value: string) => {
+  const setPendingFragmentDraftField = useCallback(
+    (field: "startSec" | "endSec" | "speed", value: string) => {
+      setPendingFragmentDraftInputs((prev) => ({
+        ...prev,
+        [field]: value
+      }));
+    },
+    []
+  );
+
+  const commitPendingFragmentDraft = useCallback(
+    (focusField: FragmentDraftField = "startSec") => {
       if (!nextFragmentSuggestion) {
         return;
       }
-      if (field !== "speed" && !Number.isFinite(Number.parseFloat(value))) {
-        return;
-      }
 
-      const nextSpeed =
-        field === "speed"
-          ? normalizeSegmentSpeed(Number.parseFloat(value))
-          : nextFragmentSuggestion.speed;
-      const nextStartInput =
-        field === "startSec" ? value : nextFragmentSuggestion.startSec.toFixed(1);
-      const nextEndInput = field === "endSec" ? value : nextFragmentSuggestion.endSec.toFixed(1);
-      const parsedStart = Number.parseFloat(nextStartInput);
-      const parsedEnd = Number.parseFloat(nextEndInput);
+      const nextSpeed = pendingFragmentDraftInputs.speed.trim()
+        ? normalizeSegmentSpeed(Number.parseFloat(pendingFragmentDraftInputs.speed))
+        : nextFragmentSuggestion.speed;
+      const parsedStart = Number.parseFloat(pendingFragmentDraftInputs.startSec);
+      const parsedEnd = Number.parseFloat(pendingFragmentDraftInputs.endSec);
       const nextStart = roundToTenth(
         clamp(
           Number.isFinite(parsedStart) ? parsedStart : nextFragmentSuggestion.startSec,
@@ -4474,6 +4502,7 @@ export function Step3RenderTemplate({
           sourceMaxEnd
         )
       );
+
       const nextSegments = normalizeEditorSegments(
         [
           ...normalizedSegments,
@@ -4505,28 +4534,19 @@ export function Step3RenderTemplate({
 
       setSegmentDraftInputs((prev) => ({
         ...prev,
-        [rowKey]: {
-          startSec:
-            field === "startSec" && value.trim() ? value : focusedSegment.startSec.toFixed(1),
-          endSec:
-            field === "endSec" && value.trim()
-              ? value
-              : (focusedSegment.endSec ?? fragmentSourceDurationSec ?? focusedSegment.startSec + 0.5).toFixed(1),
-          focusY: formatFragmentFocusPercent(
-            normalizeStage3SegmentFocusOverride(focusedSegment.focusY) ?? localFocusY
-          ),
-          focusX: formatFragmentFocusXPercent(
-            normalizeStage3SegmentFocusXOverride(focusedSegment.focusX) ?? localFocusX
-          ),
-          videoZoom: formatFragmentVideoZoom(
-            normalizeStage3SegmentZoomOverride(focusedSegment.videoZoom) ?? localVideoZoom
-          )
-        }
+        [rowKey]: buildFragmentDraftInputs({
+          segment: focusedSegment,
+          sourceDurationSec: fragmentSourceDurationSec,
+          fallbackFocusX: localFocusX,
+          fallbackFocusY: localFocusY,
+          fallbackVideoZoom: localVideoZoom
+        })
       }));
+      setPendingFragmentDraftInputs(buildPendingFragmentDraftInputs());
       setActiveFragmentIndex(focusedIndex);
       setPendingFragmentFocus({
         rowKey,
-        field
+        field: focusField
       });
       commitFragments(nextSegments, "fragments");
     },
@@ -4535,6 +4555,9 @@ export function Step3RenderTemplate({
       minimumSelectionDurationSec,
       nextFragmentSuggestion,
       normalizedSegments,
+      pendingFragmentDraftInputs.endSec,
+      pendingFragmentDraftInputs.speed,
+      pendingFragmentDraftInputs.startSec,
       fragmentSourceDurationSec,
       localFocusX,
       localFocusY,
@@ -5916,7 +5939,7 @@ export function Step3RenderTemplate({
                           </div>
                           <span className="subtle-text">
                             {canAppendFragment
-                              ? "Начните вводить время, и строка сразу станет активной."
+                              ? "Задайте время и подтвердите добавление отдельной кнопкой."
                               : "Удалите один фрагмент или включите подгонку к 6с, чтобы добавить новый."}
                           </span>
                         </div>
@@ -5958,10 +5981,16 @@ export function Step3RenderTemplate({
                               max={fragmentSourceDurationSec ?? undefined}
                               step={0.1}
                               className="text-input segment-input"
-                              value=""
+                              value={pendingFragmentDraftInputs.startSec}
                               disabled={!canAppendFragment}
                               placeholder={nextFragmentSuggestion ? nextFragmentSuggestion.startSec.toFixed(1) : ""}
-                              onChange={(event) => appendFragmentFromDraft("startSec", event.target.value)}
+                              onChange={(event) => setPendingFragmentDraftField("startSec", event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  commitPendingFragmentDraft("startSec");
+                                }
+                              }}
                             />
                           </label>
                           <label className="field-stack">
@@ -5972,19 +6001,25 @@ export function Step3RenderTemplate({
                               max={fragmentSourceDurationSec ?? undefined}
                               step={0.1}
                               className="text-input segment-input"
-                              value=""
+                              value={pendingFragmentDraftInputs.endSec}
                               disabled={!canAppendFragment}
                               placeholder={nextFragmentSuggestion ? nextFragmentSuggestion.endSec.toFixed(1) : ""}
-                              onChange={(event) => appendFragmentFromDraft("endSec", event.target.value)}
+                              onChange={(event) => setPendingFragmentDraftField("endSec", event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  commitPendingFragmentDraft("endSec");
+                                }
+                              }}
                             />
                           </label>
                           <label className="field-stack">
                             <span className="field-label">Сжатие</span>
                             <select
                               className="text-input segment-input"
-                              value=""
+                              value={pendingFragmentDraftInputs.speed}
                               disabled={!canAppendFragment}
-                              onChange={(event) => appendFragmentFromDraft("speed", event.target.value)}
+                              onChange={(event) => setPendingFragmentDraftField("speed", event.target.value)}
                             >
                               <option value="">По умолчанию</option>
                               {STAGE3_SEGMENT_SPEED_OPTIONS.map((speed) => (
@@ -5994,6 +6029,16 @@ export function Step3RenderTemplate({
                               ))}
                             </select>
                           </label>
+                        </div>
+                        <div className="preset-row">
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={!canAppendFragment}
+                            onClick={() => commitPendingFragmentDraft("startSec")}
+                          >
+                            Добавить фрагмент
+                          </button>
                         </div>
                       </article>
                     </div>

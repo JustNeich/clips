@@ -60,6 +60,8 @@ import type {
 
 function isReferenceOneShotPathVariant(pathVariant: string | null | undefined): boolean {
   return (
+    pathVariant === "classic_one_shot_v1" ||
+    pathVariant === "story_one_shot_v1" ||
     pathVariant === "reference_one_shot_v2" ||
     pathVariant === "reference_one_shot_v1" ||
     pathVariant === "reference_one_shot_v1_experimental"
@@ -112,7 +114,11 @@ function resolveNativeStage2ResponseExecutionSettings(input: {
   const isReferenceOneShot =
     isReferenceOneShotPathVariant(input.output.pipeline?.execution?.pathVariant);
   const referenceOneShotModel =
-    input.executorContext.resolvedStageModelConfig.oneShotReference;
+    input.output.pipeline?.execution?.pathVariant === "story_one_shot_v1"
+      ? input.executorContext.resolvedStageModelConfig.storyOneShot
+      : input.output.pipeline?.execution?.pathVariant === "classic_one_shot_v1"
+        ? input.executorContext.resolvedStageModelConfig.classicOneShot
+        : input.executorContext.resolvedStageModelConfig.oneShotReference;
   const referenceOneShotModelSummary =
     referenceOneShotModel === input.executorContext.resolvedStageModelConfig.captionTranslation &&
     referenceOneShotModel === input.executorContext.resolvedStageModelConfig.seo
@@ -124,7 +130,11 @@ function resolveNativeStage2ResponseExecutionSettings(input: {
         ? referenceOneShotModelSummary
         : input.executorContext.pipelineModelSummary) ?? "default",
     reasoningEffort: isReferenceOneShot
-      ? input.promptConfig.stages.oneShotReference.reasoningEffort
+      ? input.output.pipeline?.execution?.pathVariant === "story_one_shot_v1"
+        ? input.promptConfig.stages.storyOneShot.reasoningEffort
+        : input.output.pipeline?.execution?.pathVariant === "classic_one_shot_v1"
+          ? input.promptConfig.stages.classicOneShot.reasoningEffort
+          : input.promptConfig.stages.oneShotReference.reasoningEffort
       : input.executorContext.reasoningEffort,
     stage2Spec: buildStage2Spec({
       name: "Native Caption Pipeline v3",
@@ -171,7 +181,6 @@ function resolveRunChannelTemplateSemantics(
     })
   );
 }
-
 export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stage2WorkerRolloutAudit {
   const pipeline = output.pipeline;
   if (!pipeline) {
@@ -726,6 +735,8 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
         contextPacket: contextPacket as NativeCaptionContextPacket,
         executor: executorContext.executor,
         stageModels: {
+          classicOneShot: executorContext.resolvedStageModelConfig.classicOneShot,
+          storyOneShot: executorContext.resolvedStageModelConfig.storyOneShot,
           oneShotReference: executorContext.resolvedStageModelConfig.oneShotReference,
           captionHighlighting: executorContext.resolvedStageModelConfig.captionHighlighting,
           captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation,
@@ -955,7 +966,11 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     );
     markStage2RunStageRunning(
       run.runId,
-      getStage2ProgressStartStageId(run.mode, channel.stage2WorkerProfileId),
+      getStage2ProgressStartStageId(
+        run.mode,
+        channel.stage2WorkerProfileId,
+        channel.formatPipeline
+      ),
       {
         detail: "Подготавливаем source media, кадры и комментарии."
       }
@@ -1003,6 +1018,8 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
       imagePaths: frames.framePaths,
       executor: executorContext.executor,
       stageModels: {
+        classicOneShot: executorContext.resolvedStageModelConfig.classicOneShot,
+        storyOneShot: executorContext.resolvedStageModelConfig.storyOneShot,
         oneShotReference: executorContext.resolvedStageModelConfig.oneShotReference,
         captionHighlighting: executorContext.resolvedStageModelConfig.captionHighlighting,
         captionTranslation: executorContext.resolvedStageModelConfig.captionTranslation,
@@ -1130,7 +1147,11 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
     const errorMessage = ytdlpMessage ?? getPipelineErrorMessage(error);
     const activeStageId =
       getStage2Run(run.runId)?.snapshot.activeStageId ??
-      getStage2ProgressStartStageId(run.mode, run.request.channel.stage2WorkerProfileId);
+      getStage2ProgressStartStageId(
+        run.mode,
+        run.request.channel.stage2WorkerProfileId,
+        run.request.channel.formatPipeline
+      );
     markStage2RunStageFailed(run.runId, activeStageId, errorMessage);
     throw new Error(errorMessage);
   } finally {

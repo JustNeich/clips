@@ -52,6 +52,8 @@ export type Stage2ToStage3HandoffSummary = {
         option: number;
         top: string;
         bottom: string;
+        lead?: string;
+        mainCaption?: string;
         highlights: TemplateCaptionHighlights;
       }
     | null;
@@ -63,6 +65,8 @@ export type Stage2ToStage3HandoffSummary = {
     | null;
   topText: string | null;
   bottomText: string | null;
+  leadText?: string | null;
+  mainCaptionText?: string | null;
   topTextSource: Stage2ToStage3TextSource;
   bottomTextSource: Stage2ToStage3TextSource;
   hasManualTextOverride: boolean;
@@ -252,6 +256,12 @@ export function buildStage2ToStage3HandoffSummary(input: {
       input.stage2,
       requestedCaptionOption
     ) ?? null;
+  const storyCaption =
+    input.stage2?.output.formatPipeline === "story_lead_main_caption"
+      ? input.stage2.output.storyOptions?.find((item) => item.option === caption?.option) ?? null
+      : null;
+  const selectedTopText = storyCaption?.lead ?? caption?.top ?? null;
+  const selectedBottomText = storyCaption?.mainCaption ?? caption?.bottom ?? null;
   const title =
     getSelectedStage2Title(
       input.stage2,
@@ -261,22 +271,22 @@ export function buildStage2ToStage3HandoffSummary(input: {
     input.currentTopText ??
     input.draft?.stage3.topText ??
     input.latestVersion?.final.topText ??
-    caption?.top ??
+    selectedTopText ??
     null;
   const resolvedBottomText =
     input.currentBottomText ??
     input.draft?.stage3.bottomText ??
     input.latestVersion?.final.bottomText ??
-    caption?.bottom ??
+    selectedBottomText ??
     null;
   const topTextSource = resolveStage3TextSource({
     currentText: resolvedTopText,
-    selectedText: caption?.top ?? null,
+    selectedText: selectedTopText,
     latestVersionText: input.latestVersion?.final.topText ?? null
   });
   const bottomTextSource = resolveStage3TextSource({
     currentText: resolvedBottomText,
-    selectedText: caption?.bottom ?? null,
+    selectedText: selectedBottomText,
     latestVersionText: input.latestVersion?.final.bottomText ?? null
   });
   const hasStage3Overrides = Boolean(
@@ -305,8 +315,14 @@ export function buildStage2ToStage3HandoffSummary(input: {
       caption
         ? {
             option: caption.option,
-            top: caption.top,
-            bottom: caption.bottom,
+            top: selectedTopText ?? caption.top,
+            bottom: selectedBottomText ?? caption.bottom,
+            ...(storyCaption
+              ? {
+                  lead: storyCaption.lead,
+                  mainCaption: storyCaption.mainCaption
+                }
+              : {}),
             highlights: cloneTemplateCaptionHighlights(caption.highlights)
           }
         : null,
@@ -319,13 +335,15 @@ export function buildStage2ToStage3HandoffSummary(input: {
         : null,
     topText: resolvedTopText,
     bottomText: resolvedBottomText,
+    leadText: storyCaption ? resolvedTopText : null,
+    mainCaptionText: storyCaption ? resolvedBottomText : null,
     topTextSource,
     bottomTextSource,
     hasManualTextOverride:
       topTextSource === "draft_override" || bottomTextSource === "draft_override",
     canResetToSelectedCaption: Boolean(
       caption &&
-        (resolvedTopText !== caption.top || resolvedBottomText !== caption.bottom)
+        (resolvedTopText !== selectedTopText || resolvedBottomText !== selectedBottomText)
     ),
     latestVersionId: input.latestVersion?.runId ?? null,
     hasStage3Overrides

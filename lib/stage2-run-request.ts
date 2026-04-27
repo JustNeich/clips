@@ -1,5 +1,4 @@
 import {
-  DEFAULT_STAGE2_EXAMPLES_CONFIG,
   parseStage2ExamplesConfigJson,
   parseStage2HardConstraintsJson,
   stringifyStage2ExamplesConfig,
@@ -9,6 +8,7 @@ import {
 } from "./stage2-channel-config";
 import {
   normalizeStage2PromptConfig,
+  type Stage2FormatPipeline,
   type Stage2PromptConfig
 } from "./stage2-pipeline";
 import {
@@ -29,6 +29,7 @@ type Stage2RunChannelSnapshotInput = {
   name: string;
   username: string;
   templateId?: string | null;
+  formatPipeline?: Stage2FormatPipeline | null;
   stage2WorkerProfileId?: string | null;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2HardConstraints: Stage2HardConstraints;
@@ -66,9 +67,10 @@ export function buildStage2RunRequestSnapshot(input: {
       name: channelName,
       username: input.channel.username.trim(),
       templateId: input.channel.templateId ?? null,
+      formatPipeline: input.channel.formatPipeline ?? null,
       stage2WorkerProfileId: null,
       stage2ExamplesConfig: parseStage2ExamplesConfigJson(
-        stringifyStage2ExamplesConfig(input.channel.stage2ExamplesConfig ?? DEFAULT_STAGE2_EXAMPLES_CONFIG, fallbackOwner),
+        stringifyStage2ExamplesConfig(input.channel.stage2ExamplesConfig, fallbackOwner),
         fallbackOwner
       ),
       stage2HardConstraints: parseStage2HardConstraintsJson(

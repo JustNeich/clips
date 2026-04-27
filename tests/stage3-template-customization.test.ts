@@ -291,6 +291,35 @@ test("channel story snapshot measures inner content from the bordered card safe 
   assert.equal(snapshot.layout.media.width, 788);
 });
 
+test("channel story body-to-video gap reaches zero without changing separate media frame controls", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.channelStory!.bodyToMediaGap = 0;
+  templateConfig.channelStory!.mediaInsetX = 10;
+  templateConfig.channelStory!.footerHeight = 86;
+
+  const snapshot = buildTemplateRenderSnapshot({
+    templateId: CHANNEL_STORY_TEMPLATE_ID,
+    content: {
+      topText: "Did you know?",
+      bottomText: "This body block should touch the source video when the vertical gap is zero.",
+      channelName: "History Explained",
+      channelHandle: "@HistoryExplained13",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 1,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    },
+    templateConfigOverride: templateConfig
+  });
+
+  assert.equal(snapshot.layout.media.y, snapshot.layout.bottomText.y + snapshot.layout.bottomText.height);
+  assert.equal(snapshot.layout.media.x, snapshot.layout.card.x + templateConfig.card.borderWidth + 10);
+  assert.equal(snapshot.computed.bottomBlockHeight, templateConfig.card.borderWidth + 86 + 40);
+});
+
 test("channel story scene markup keeps localized content inside the centered card shell", () => {
   const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
   templateConfig.card.x = 110;

@@ -46,6 +46,7 @@ import {
 import { resolveChannelEditorialMemory } from "../lib/stage2-editorial-memory-resolution";
 import {
   type ChannelEditorialFeedbackEvent,
+  buildStage2LearningPromptContext,
   buildStage2EditorialMemorySummary,
   normalizeStage2StyleProfile,
   STAGE2_EDITORIAL_EXPLORATION_SHARE,
@@ -1261,7 +1262,7 @@ test("hard-rule feedback stays active beyond the rolling last-30 explicit reacti
   });
 });
 
-test("same-line-first editorial memory prefers matching worker-profile runs and only blends fallback when the signal is sparse", async () => {
+test("prompt-first run snapshots leave editorial memory in channel fallback compatibility mode", async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");
     const chatHistory = await import("../lib/chat-history");
@@ -1412,19 +1413,21 @@ test("same-line-first editorial memory prefers matching worker-profile runs and 
       stage2WorkerProfileId: "stable_social_wave_v1",
       sameLineExplicitMinimum: 1
     });
-    assert.equal(sameLineOnly.source.strategy, "same_line_only");
-    assert.equal(sameLineOnly.source.sameLineExplicitCount, 1);
+    assert.equal(sameLineOnly.source.strategy, "channel_fallback_only");
+    assert.equal(sameLineOnly.source.sameLineExplicitCount, 0);
+    assert.equal(sameLineOnly.source.fallbackExplicitCount, 3);
+    assert.equal(sameLineOnly.source.supplementedWithFallback, true);
     assert.equal(
       sameLineOnly.historyEvents.some((event) => event.id === socialEvent.id),
       true
     );
     assert.equal(
       sameLineOnly.historyEvents.some((event) => event.id === skillEvent.id),
-      false
+      true
     );
     assert.equal(
       sameLineOnly.historyEvents.some((event) => event.id === runlessEvent.id),
-      false
+      true
     );
 
     const blended = resolveChannelEditorialMemory({
@@ -1433,8 +1436,9 @@ test("same-line-first editorial memory prefers matching worker-profile runs and 
       stage2WorkerProfileId: "stable_social_wave_v1",
       sameLineExplicitMinimum: 2
     });
-    assert.equal(blended.source.strategy, "same_line_plus_channel_fallback");
-    assert.equal(blended.source.sameLineExplicitCount, 1);
+    assert.equal(blended.source.strategy, "channel_fallback_only");
+    assert.equal(blended.source.sameLineExplicitCount, 0);
+    assert.equal(blended.source.fallbackExplicitCount, 3);
     assert.equal(blended.source.supplementedWithFallback, true);
     assert.equal(
       blended.historyEvents.some((event) => event.id === socialEvent.id),
@@ -1451,7 +1455,7 @@ test("same-line-first editorial memory prefers matching worker-profile runs and 
   });
 });
 
-test("experimental reference editorial memory treats same-line hard rules plus passive selections as sufficient signal", async () => {
+test("experimental reference editorial memory stays channel fallback when prompt-first runs omit worker profile ids", async () => {
   await withIsolatedAppData(async () => {
     const teamStore = await import("../lib/team-store");
     const chatHistory = await import("../lib/chat-history");
@@ -1585,10 +1589,12 @@ test("experimental reference editorial memory treats same-line hard rules plus p
       stage2WorkerProfileId: "stable_reference_v6_experimental"
     });
 
-    assert.equal(resolved.source.strategy, "same_line_only");
+    assert.equal(resolved.source.strategy, "channel_fallback_only");
     assert.equal(resolved.source.sameLineExplicitCount, 0);
-    assert.equal(resolved.source.sameLineSelectionCount, 2);
-    assert.equal(resolved.source.supplementedWithFallback, false);
+    assert.equal(resolved.source.fallbackExplicitCount, 1);
+    assert.equal(resolved.source.sameLineSelectionCount, 0);
+    assert.equal(resolved.source.fallbackSelectionCount, 2);
+    assert.equal(resolved.source.supplementedWithFallback, true);
     assert.equal(resolved.source.explicitThreshold, 3);
     assert.equal(resolved.editorialMemory.recentSelectionCount, 2);
     assert.match(
@@ -1802,7 +1808,7 @@ test("editorial memory counts only explicit ratings in recentFeedbackCount and k
   assert.match(memory.promptSummary, /Passive option selections lately/i);
 });
 
-test("Stage 2 run snapshots and prompt packets include bootstrap style profile plus editorial memory", () => {
+test("Stage 2 run snapshots preserve bootstrap style profile plus editorial memory as compatibility data", () => {
   const styleProfile = createStyleProfile(["direction_1", "direction_2"]);
   const editorialMemory = buildStage2EditorialMemorySummary({
     profile: styleProfile,
@@ -1840,44 +1846,9 @@ test("Stage 2 run snapshots and prompt packets include bootstrap style profile p
     }
   });
 
-  assert.deepEqual(request.channel.stage2StyleProfile?.selectedDirectionIds, [
-    "direction_1",
-    "direction_2"
-  ]);
-  assert.match(request.channel.editorialMemory?.promptSummary ?? "", /Bootstrap directions/);
-  assert.equal(request.channel.editorialMemorySource?.strategy, "same_line_only");
-  assert.equal(request.channel.editorialMemorySource?.resolvedWorkerProfileId, "stable_reference_v6");
-
-  const workerService = new ViralShortsWorkerService();
-  const promptPacket = workerService.buildPromptPacket({
-    channel: {
-      id: "channel_1",
-      name: "Channel 1",
-      username: "channel_1",
-      stage2ExamplesConfig: {
-        version: 1,
-        useWorkspaceDefault: true,
-        customExamples: []
-      },
-      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
-      stage2StyleProfile: styleProfile,
-      editorialMemory
-    },
-    workspaceStage2ExamplesCorpusJson: "[]",
-    videoContext: {
-      sourceUrl: "https://www.youtube.com/shorts/with-memory",
-      title: "A process-heavy clip",
-      description: "Description",
-      transcript: "Transcript",
-      frameDescriptions: ["Frame one", "Frame two"],
-      comments: [],
-      userInstruction: "keep it dry"
-    }
-  });
-
-  assert.match(promptPacket.prompts.writer, /channelLearning/);
-  assert.match(promptPacket.prompts.writer, /Bootstrap directions/);
-  assert.match(promptPacket.prompts.writer, /TOP tends to work when it/i);
+  assert.equal(request.channel.stage2StyleProfile, undefined);
+  assert.equal(request.channel.editorialMemory, undefined);
+  assert.equal(request.channel.editorialMemorySource, null);
 });
 
 test("prompt packets keep literal historical text cues out of channel-learning runtime context", () => {
@@ -1943,7 +1914,7 @@ test("editorial memory wording keeps bootstrap prior distinct from recent feedba
   assert.doesNotMatch(memory.promptSummary, /Recent positive pull/i);
 });
 
-test("prompt packets compact large selected-direction sets into weighted highlights without removing channel learning", () => {
+test("channel-learning compatibility context compacts large selected-direction sets into weighted highlights", () => {
   const selectedDirectionIds = Array.from({ length: 20 }, (_, index) => `direction_${index + 1}`);
   const verboseBaseProfile = createStyleProfile(selectedDirectionIds);
   const verboseProfile = normalizeStage2StyleProfile({
@@ -1967,40 +1938,19 @@ test("prompt packets compact large selected-direction sets into weighted highlig
     feedbackEvents: []
   });
 
-  const workerService = new ViralShortsWorkerService();
-  const promptPacket = workerService.buildPromptPacket({
-    channel: {
-      id: "channel_1",
-      name: "Channel 1",
-      username: "channel_1",
-      stage2ExamplesConfig: {
-        version: 1,
-        useWorkspaceDefault: true,
-        customExamples: []
-      },
-      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
-      stage2StyleProfile: verboseProfile,
-      editorialMemory
-    },
-    workspaceStage2ExamplesCorpusJson: "[]",
-    videoContext: {
-      sourceUrl: "https://www.youtube.com/shorts/with-many-directions",
-      title: "A dense pop-culture reaction clip",
-      description: "Description",
-      transcript: "Transcript",
-      frameDescriptions: ["Frame one", "Frame two"],
-      comments: [],
-      userInstruction: "keep it dry"
-    }
+  const compatibilityContext = buildStage2LearningPromptContext({
+    profile: verboseProfile,
+    editorialMemory,
+    detail: "compact"
   });
+  const serialized = JSON.stringify(compatibilityContext);
 
-  assert.match(promptPacket.prompts.writer, /"selectedDirectionCount": 20/);
-  assert.match(promptPacket.prompts.writer, /"directionHighlights": \[/);
-  assert.match(promptPacket.prompts.writer, /weighted highlights/i);
-  assert.doesNotMatch(promptPacket.prompts.writer, /"selectedDirections": \[/);
-  assert.doesNotMatch(promptPacket.prompts.writer, /"internalPromptNotes":/);
-  assert.ok(promptPacket.prompts.writer.length < 25000);
-  assert.ok(promptPacket.prompts.analyzer.length < 18000);
+  assert.equal(compatibilityContext.bootstrap.selectedDirectionCount, 20);
+  assert.equal(compatibilityContext.bootstrap.directionHighlights.length, 5);
+  assert.match(compatibilityContext.bootstrap.selectionSummary, /weighted highlights/i);
+  assert.equal("selectedDirections" in compatibilityContext.bootstrap, false);
+  assert.doesNotMatch(serialized, /internalPromptNotes/);
+  assert.ok(serialized.length < 25000);
 });
 
 test("Step2PickCaption renders Russian feedback controls for lighter editorial learning", () => {

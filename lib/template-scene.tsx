@@ -13,7 +13,8 @@ import {
   Stage3TemplateConfig,
   getTemplateById,
   getTemplateComputed,
-  resolveScaledMaxLines
+  resolveScaledMaxLines,
+  resolveTemplateDescenderSafetyPx
 } from "./stage3-template";
 import {
   TemplateLayoutModel,
@@ -635,6 +636,11 @@ export function TemplateScene({
     effectiveContent.bottomFontScale ?? 1,
     "bottom"
   );
+  const topDescenderSafetyPx = resolveTemplateDescenderSafetyPx(computed.topFont, computed.topLineHeight);
+  const bottomDescenderSafetyPx = resolveTemplateDescenderSafetyPx(
+    computed.bottomFont,
+    computed.bottomLineHeight
+  );
 
   const topPaddingTop = usesClassicScienceCardChrome ? chromeMetrics.topPaddingTop : getTopPaddingTop(templateConfig);
   const topPaddingBottom = usesClassicScienceCardChrome ? chromeMetrics.topPaddingBottom : getTopPaddingBottom(templateConfig);
@@ -809,7 +815,9 @@ export function TemplateScene({
                   display: "-webkit-box",
                   WebkitBoxOrient: "vertical",
                   WebkitLineClamp: topMaxLines,
-                  overflow: "hidden"
+                  overflow: "hidden",
+                  paddingBottom: topDescenderSafetyPx,
+                  boxSizing: "border-box"
                 }}
               >
                 {topHighlights.length > 0
@@ -848,7 +856,9 @@ export function TemplateScene({
                 display: "-webkit-box",
                 WebkitBoxOrient: "vertical",
                 WebkitLineClamp: bottomMaxLines,
-                overflow: "hidden"
+                overflow: "hidden",
+                paddingBottom: bottomDescenderSafetyPx,
+                boxSizing: "border-box"
               }}
             >
               {bottomHighlights.length > 0
@@ -989,7 +999,9 @@ export function TemplateScene({
                   display: "-webkit-box",
                   WebkitBoxOrient: "vertical",
                   WebkitLineClamp: topMaxLines,
-                  overflow: "hidden"
+                  overflow: "hidden",
+                  paddingBottom: topDescenderSafetyPx,
+                  boxSizing: "border-box"
                 }}
               >
                 {topHighlights.length > 0 ? renderHighlightedText(topText, topHighlights, highlightColors) : topText}
@@ -1090,14 +1102,16 @@ export function TemplateScene({
                     fontWeight: bottomTextWeight,
                     fontStyle: bottomTextFontStyle,
                     letterSpacing: bottomTextLetterSpacing,
-                    fontSize: computed.bottomFont,
-                    lineHeight: computed.bottomLineHeight,
-                    display: "-webkit-box",
-                    WebkitBoxOrient: "vertical",
-                    WebkitLineClamp: bottomMaxLines,
-                    overflow: "hidden"
-                  }}
-                >
+                fontSize: computed.bottomFont,
+                lineHeight: computed.bottomLineHeight,
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp: bottomMaxLines,
+                overflow: "hidden",
+                paddingBottom: bottomDescenderSafetyPx,
+                boxSizing: "border-box"
+              }}
+            >
                   {bottomHighlights.length > 0
                     ? renderHighlightedText(bottomText, bottomHighlights, highlightColors)
                     : bottomText}
@@ -1182,7 +1196,9 @@ export function TemplateScene({
                 display: "-webkit-box",
                 WebkitBoxOrient: "vertical",
                 WebkitLineClamp: topMaxLines,
-                overflow: "hidden"
+                overflow: "hidden",
+                paddingBottom: topDescenderSafetyPx,
+                boxSizing: "border-box"
               }}
             >
               {topHighlights.length > 0 ? renderHighlightedText(topText, topHighlights, highlightColors) : topText}
@@ -1295,6 +1311,8 @@ export function TemplateScene({
                   WebkitBoxOrient: "vertical",
                   WebkitLineClamp: bottomMaxLines,
                   overflow: "hidden",
+                  paddingBottom: bottomDescenderSafetyPx,
+                  boxSizing: "border-box",
                   position: "relative",
                   ...scienceShellVisuals.bottomTextStyle
                 }}

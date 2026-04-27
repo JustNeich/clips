@@ -26,10 +26,7 @@ import type { ManagedTemplateSummary } from "../../lib/managed-template-types";
 import { getTemplateVariant } from "../../lib/stage3-template-registry";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
-  STAGE2_DEFAULT_REASONING_EFFORTS,
-  STAGE2_DEFAULT_STAGE_PROMPTS,
-  STAGE2_REASONING_EFFORT_OPTIONS,
-  type Stage2PromptSourceMode,
+  hasStage2PromptOverrides,
   type Stage2PromptConfig,
   normalizeStage2PromptConfig
 } from "../../lib/stage2-pipeline";
@@ -48,9 +45,7 @@ import {
 import {
   findStage2SystemExamplesPresetByJson,
   getStage2SystemExamplesPresetJson,
-  getStage2SystemPromptPreset,
-  type Stage2SystemExamplesPresetId,
-  type Stage2SystemPromptPresetId
+  type Stage2SystemExamplesPresetId
 } from "../../lib/stage2-system-presets";
 import {
   DEFAULT_ANTHROPIC_CAPTION_MODEL,
@@ -379,10 +374,9 @@ export function ChannelManager({
   const [stage2ExamplesConfig, setStage2ExamplesConfig] = useState<Stage2ExamplesConfig>(
     DEFAULT_STAGE2_EXAMPLES_CONFIG
   );
-  const [stage2PromptConfig, setStage2PromptConfig] = useState<Stage2PromptConfig>({
-    ...DEFAULT_STAGE2_PROMPT_CONFIG,
-    useWorkspaceDefault: true
-  });
+  const [channelStage2PromptConfig, setChannelStage2PromptConfig] = useState<Stage2PromptConfig>(
+    DEFAULT_STAGE2_PROMPT_CONFIG
+  );
   const [bannedWordsInput, setBannedWordsInput] = useState("");
   const [bannedOpenersInput, setBannedOpenersInput] = useState("");
   const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState(
@@ -746,7 +740,7 @@ export function ChannelManager({
     JSON.stringify({
       stage2HardConstraints: nextHardConstraints,
       stage2ExamplesConfig: nextExamplesConfig,
-      stage2PromptConfig: nextPromptConfig
+      stage2PromptConfig: normalizeStage2PromptConfig(nextPromptConfig)
     });
 
   const buildStage2DefaultsSnapshot = (
@@ -782,10 +776,6 @@ export function ChannelManager({
     const normalizedWorkspaceExamplesJson = workspaceStage2ExamplesCorpusJsonProp;
     setStage2HardConstraints(normalizedHardConstraints);
     setStage2ExamplesConfig(DEFAULT_STAGE2_EXAMPLES_CONFIG);
-    setStage2PromptConfig({
-      ...DEFAULT_STAGE2_PROMPT_CONFIG,
-      useWorkspaceDefault: true
-    });
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedWords));
     setBannedOpenersInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedOpeners));
     setWorkspaceStage2ExamplesCorpusJson(normalizedWorkspaceExamplesJson);
@@ -817,6 +807,7 @@ export function ChannelManager({
     skipAutosaveRef.current.stage2Defaults = true;
 
     if (isWorkspaceDefaultsSelection || !activeChannel) {
+      setChannelStage2PromptConfig(DEFAULT_STAGE2_PROMPT_CONFIG);
       setAutosaveState((current) => ({
         ...current,
         stage2Defaults: { status: "idle", message: null }
@@ -836,11 +827,11 @@ export function ChannelManager({
     const normalizedChannelPromptConfig = normalizeStage2PromptConfig(activeChannel.stage2PromptConfig);
     setStage2HardConstraints(normalizedChannelHardConstraints);
     setStage2ExamplesConfig(normalizedChannelExamplesConfig);
-    setStage2PromptConfig(normalizedChannelPromptConfig);
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedWords));
     setBannedOpenersInput(
       formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedOpeners)
     );
+    setChannelStage2PromptConfig(normalizedChannelPromptConfig);
     setTemplateId(activeChannel.templateId);
     setDefaultClipDurationSec(normalizeStage3ClipDurationSec(activeChannel.defaultClipDurationSec));
     persistedSnapshotRef.current = {
@@ -979,7 +970,7 @@ export function ChannelManager({
     const nextSnapshot = buildStage2Snapshot(
       stage2HardConstraints,
       stage2ExamplesConfig,
-      stage2PromptConfig
+      channelStage2PromptConfig
     );
     if (nextSnapshot === persistedSnapshotRef.current.stage2) {
       resetAutosaveFeedbackIfNeeded("stage2");
@@ -993,7 +984,7 @@ export function ChannelManager({
       void saveChannelRef.current(activeChannel.id, {
         stage2HardConstraints,
         stage2ExamplesConfig,
-        ...(canEditChannelPrompt ? { stage2PromptConfig } : {})
+        stage2PromptConfig: channelStage2PromptConfig
       })
         .then(() => {
           if (autosaveRevisionRef.current.stage2 !== revision) {
@@ -1022,9 +1013,9 @@ export function ChannelManager({
     resetAutosaveFeedbackIfNeeded,
     scheduleAutosaveReset,
     setAutosaveFeedback,
+    channelStage2PromptConfig,
     stage2ExamplesConfig,
-    stage2HardConstraints,
-    stage2PromptConfig
+    stage2HardConstraints
   ]);
 
   useEffect(() => {
@@ -1411,143 +1402,50 @@ export function ChannelManager({
     setWorkspaceStage2ExamplesCorpusJson(value);
   };
 
-  const updateWorkspacePromptSourceMode = (sourceMode: Stage2PromptSourceMode) => {
-    setWorkspaceStage2PromptConfig((current) =>
-      normalizeStage2PromptConfig({
-        ...current,
-        sourceMode,
-        stages: {
-          ...current.stages,
-          oneShotReference: {
-            ...current.stages.oneShotReference,
-            prompt:
-              sourceMode === "system"
-                ? getStage2SystemPromptPreset(current.systemPresetId).prompt
-                : current.stages.oneShotReference.prompt
-          }
-        }
-      })
-    );
-  };
-
-  const updateWorkspacePromptPreset = (presetId: Stage2SystemPromptPresetId) => {
-    const preset = getStage2SystemPromptPreset(presetId);
-    setWorkspaceStage2PromptConfig((current) =>
-      normalizeStage2PromptConfig({
-        ...current,
-        sourceMode: "system",
-        systemPresetId: preset.id,
-        stages: {
-          ...current.stages,
-          oneShotReference: {
-            ...current.stages.oneShotReference,
-            prompt: preset.prompt
-          }
-        }
-      })
-    );
-  };
-
-  const updateChannelPromptMode = (useWorkspaceDefault: boolean) => {
-    setStage2PromptConfig((current) =>
-      normalizeStage2PromptConfig({
-        ...current,
-        useWorkspaceDefault
-      })
-    );
-  };
-
-  const updateChannelPromptSourceMode = (sourceMode: Stage2PromptSourceMode) => {
-    setStage2PromptConfig((current) =>
-      normalizeStage2PromptConfig({
-        ...current,
-        useWorkspaceDefault: false,
-        sourceMode,
-        stages: {
-          ...current.stages,
-          oneShotReference: {
-            ...current.stages.oneShotReference,
-            prompt:
-              sourceMode === "system"
-                ? getStage2SystemPromptPreset(current.systemPresetId).prompt
-                : current.stages.oneShotReference.prompt
-          }
-        }
-      })
-    );
-  };
-
-  const updateChannelPromptPreset = (presetId: Stage2SystemPromptPresetId) => {
-    const preset = getStage2SystemPromptPreset(presetId);
-    setStage2PromptConfig((current) =>
-      normalizeStage2PromptConfig({
-        ...current,
-        useWorkspaceDefault: false,
-        sourceMode: "system",
-        systemPresetId: preset.id,
-        stages: {
-          ...current.stages,
-          oneShotReference: {
-            ...current.stages.oneShotReference,
-            prompt: preset.prompt
-          }
-        }
-      })
-    );
-  };
-
-  const updateChannelPromptTemplate = (
+  const updateChannelStage2PromptTemplate = (
     stageId: keyof Stage2PromptConfig["stages"],
     prompt: string
   ) => {
-    setStage2PromptConfig((current) =>
-      normalizeStage2PromptConfig({
-        ...current,
-        useWorkspaceDefault: false,
-        ...(stageId === "oneShotReference" ? { sourceMode: "custom" as const } : {}),
+    setChannelStage2PromptConfig((current) => {
+      const baseConfig = hasStage2PromptOverrides(current)
+        ? current
+        : workspaceStage2PromptConfig;
+      return normalizeStage2PromptConfig({
+        ...baseConfig,
         stages: {
-          ...current.stages,
+          ...baseConfig.stages,
           [stageId]: {
-            ...current.stages[stageId],
+            ...baseConfig.stages[stageId],
             prompt
           }
         }
-      })
-    );
+      });
+    });
   };
 
-  const updateChannelPromptReasoning = (
+  const updateChannelStage2PromptReasoning = (
     stageId: keyof Stage2PromptConfig["stages"],
     reasoningEffort: Stage2PromptConfig["stages"][keyof Stage2PromptConfig["stages"]]["reasoningEffort"]
   ) => {
-    setStage2PromptConfig((current) =>
-      normalizeStage2PromptConfig({
-        ...current,
-        useWorkspaceDefault: false,
+    setChannelStage2PromptConfig((current) => {
+      const baseConfig = hasStage2PromptOverrides(current)
+        ? current
+        : workspaceStage2PromptConfig;
+      return normalizeStage2PromptConfig({
+        ...baseConfig,
         stages: {
-          ...current.stages,
+          ...baseConfig.stages,
           [stageId]: {
-            ...current.stages[stageId],
+            ...baseConfig.stages[stageId],
             reasoningEffort
           }
         }
-      })
-    );
+      });
+    });
   };
 
-  const resetChannelPromptStage = (stageId: keyof Stage2PromptConfig["stages"]) => {
-    setStage2PromptConfig((current) =>
-      normalizeStage2PromptConfig({
-        ...current,
-        useWorkspaceDefault: false,
-        sourceMode: "system",
-        systemPresetId: "system_prompt",
-        stages: {
-          ...current.stages,
-          [stageId]: { ...DEFAULT_STAGE2_PROMPT_CONFIG.stages[stageId] }
-        }
-      })
-    );
+  const resetChannelStage2PromptConfig = () => {
+    setChannelStage2PromptConfig(DEFAULT_STAGE2_PROMPT_CONFIG);
   };
 
   const persistWorkspaceCaptionProviderConfig = async (
@@ -2178,10 +2076,13 @@ export function ChannelManager({
                 stage2HardConstraints={stage2HardConstraints}
                 bannedWordsInput={bannedWordsInput}
                 bannedOpenersInput={bannedOpenersInput}
-                stage2PromptConfig={stage2PromptConfig}
                 workspaceStage2ExamplesCorpusJson={workspaceStage2ExamplesCorpusJson}
                 workspaceStage2ExamplesSourceMode={workspaceStage2ExamplesSourceMode}
                 workspaceStage2PromptConfig={workspaceStage2PromptConfig}
+                channelStage2PromptConfig={channelStage2PromptConfig}
+                channelStage2PromptOverridesActive={hasStage2PromptOverrides(
+                  channelStage2PromptConfig
+                )}
                 workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}
                 workspaceAnthropicIntegration={workspaceAnthropicIntegration}
                 workspaceOpenRouterIntegration={workspaceOpenRouterIntegration}
@@ -2204,14 +2105,6 @@ export function ChannelManager({
                 updateChannelExamplesSourceMode={updateChannelExamplesSourceMode}
                 updateChannelExamplesSystemPreset={updateChannelExamplesSystemPreset}
                 updateChannelExamplesInputMode={updateChannelExamplesInputMode}
-                updateChannelPromptMode={updateChannelPromptMode}
-                updateChannelPromptSourceMode={updateChannelPromptSourceMode}
-                updateChannelPromptPreset={updateChannelPromptPreset}
-                updateChannelPromptTemplate={updateChannelPromptTemplate}
-                updateChannelPromptReasoning={updateChannelPromptReasoning}
-                resetChannelPromptStage={resetChannelPromptStage}
-                updateWorkspacePromptSourceMode={updateWorkspacePromptSourceMode}
-                updateWorkspacePromptPreset={updateWorkspacePromptPreset}
                 updateWorkspaceExamplesSourceMode={updateWorkspaceExamplesSourceMode}
                 updateWorkspaceExamplesJson={updateWorkspaceExamplesJson}
                 updateWorkspaceExamplesPreset={updateWorkspaceExamplesPreset}
@@ -2232,6 +2125,9 @@ export function ChannelManager({
                 updateStage2PromptTemplate={updateStage2PromptTemplate}
                 updateStage2PromptReasoning={updateStage2PromptReasoning}
                 resetStage2PromptStage={resetStage2PromptStage}
+                updateChannelStage2PromptTemplate={updateChannelStage2PromptTemplate}
+                updateChannelStage2PromptReasoning={updateChannelStage2PromptReasoning}
+                resetChannelStage2PromptConfig={resetChannelStage2PromptConfig}
                 updateWorkspaceCodexModelSetting={(stageId, value) =>
                   setWorkspaceCodexModelConfig((current) => ({
                     ...current,

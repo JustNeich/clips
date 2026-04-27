@@ -86,10 +86,14 @@ export function stringifyStage2CaptionProviderConfig(
 }
 
 export type Stage2HybridCaptionStageId =
+  | "classicOneShot"
+  | "storyOneShot"
   | "oneShotReference"
   | "regenerate";
 
 const ANTHROPIC_CAPTION_STAGE_IDS = new Set<Stage2HybridCaptionStageId>([
+  "classicOneShot",
+  "storyOneShot",
   "oneShotReference",
   "regenerate"
 ]);

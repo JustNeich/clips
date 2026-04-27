@@ -9,10 +9,11 @@
 - экспорт всех комментариев в `json`;
 - Stage 2 пайплайн генерации контента через owner-managed workspace AI integrations:
   - скачивание видео + комментариев;
-  - единый single-baseline `native_caption_v3` path:
-    - `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`;
+  - prompt-first `native_caption_v3` path:
+    - `classicOneShot -> captionHighlighting? -> captionTranslation -> seo -> assemble` для Top/Bottom;
+    - `storyOneShot -> captionHighlighting? -> captionTranslation -> seo -> assemble` для Lead/Main Caption;
   - быстрый `regenerate` использует тот же video-first baseline и переписывает только visible shortlist;
-  - Shared Codex остаётся baseline runtime, а owner может отдельно перевести только `oneShotReference` и `regenerate` на Anthropic API или OpenRouter API без смены внешнего wire contract.
+  - Shared Codex остаётся baseline runtime, а owner может отдельно перевести `classicOneShot`, `storyOneShot` и `regenerate` на Anthropic API или OpenRouter API.
 - Channel onboarding теперь проходит через простой identity flow:
   - name;
   - username;
@@ -22,6 +23,7 @@
   - workspace defaults редактируют hard constraints, caption provider, one-shot model, prompt source и examples source;
   - prompt/examples имеют режимы system presets (`system_*`, `animals_*`) или custom;
   - на уровне канала можно оставить workspace default или включить отдельный prompt/examples override.
+  - `classicOneShot` и `storyOneShot` имеют отдельные prompt-first contracts.
 - В Stage 3 publication planner удаление ролика из очереди не сбрасывает пользователя со страницы рендера:
   - карточка исчезает после локальной синхронизации очереди;
   - UI показывает success toast об удалении.
@@ -112,16 +114,17 @@ npm run dev
   - если комментарии недоступны, продолжает пайплайн с доступными видео-метаданными;
   - извлекает адаптивно сэмплированный набор кадров из видео, а не фиксированные 3 stills;
   - ставит durable background run в очередь и продолжает его независимо от открытой вкладки;
-  - использует единственный active pipeline `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`;
-  - использует video-first minimal prompt contract:
-    - `video_truth_json`;
-    - bounded `comments_hint_json`;
-    - optional `examples_json`;
-    - optional `examples_text`;
+  - использует format-specific prompt-first pipeline:
+    - `classicOneShot` возвращает `formatPipeline: "classic_top_bottom"` и `classicOptions[]` с `top` / `bottom`;
+    - `storyOneShot` возвращает `formatPipeline: "story_lead_main_caption"` и `storyOptions[]` с `lead` / `mainCaption`;
+  - использует raw-block prompt contract:
+    - `source_video_json`;
+    - `examples_json` со всеми active examples из channel custom или workspace default source;
+    - `format_contract_json`;
     - `hard_constraints_json`;
-    - `template_semantics_json`;
     - `user_instruction`;
-  - трактует comments как weak hints, а не как narrator-steering или line-selection engine;
+  - не строит hidden prompt pool, не ранжирует, не скорит, не ограничивает per-source и не передаёт selected example ids для новых full runs;
+  - если полный input превышает preflight/context limit, run fail-visible с examples count, prompt chars, stage и model вместо silent truncation;
   - quick regenerate переписывает только видимый shortlist без writer/critic/review loops;
   - clip trace export is forensic-oriented:
     - canonical causal inputs live in `stage2.causalInputs`;
@@ -137,13 +140,13 @@ npm run dev
   - использует workspace-level AI integrations:
     - Shared Codex остаётся baseline executor и проходит owner-managed device auth через текущий UI control `Connect Codex`;
     - при `provider = codex` все Stage 2 stages идут через Shared Codex;
-    - при `provider = anthropic` только `oneShotReference` и `regenerate` идут через Anthropic API, а остальная orchestration остаётся на Shared Codex;
-    - при `provider = openrouter` только `oneShotReference` и `regenerate` идут через OpenRouter API, а остальная orchestration остаётся на Shared Codex;
+    - при `provider = anthropic` только `classicOneShot`, `storyOneShot` и `regenerate` идут через Anthropic API, а остальная orchestration остаётся на Shared Codex;
+    - при `provider = openrouter` только `classicOneShot`, `storyOneShot` и `regenerate` идут через OpenRouter API, а остальная orchestration остаётся на Shared Codex;
   - workspace owner может переключить eligible caption-only stages на Anthropic API или OpenRouter API:
-    - `oneShotReference`, `regenerate`;
+    - `classicOneShot`, `storyOneShot`, `regenerate`;
     - `captionTranslation`, `seo` и Stage 3 planner остаются на Shared Codex;
     - ни Anthropic, ни OpenRouter не заменяют baseline Shared Codex integration целиком;
-    - wire contract не меняется: Stage 2 хранит только `top` / `bottom`, а Stage 3 продолжает жить на `topText` / `bottomText`, включая `channel_story` family;
+    - legacy `captionOptions.top/bottom` остаются compatibility adapter-ом для старых consumers, но новые story runs также сохраняют истинные `storyOptions.lead/mainCaption`;
     - length-only hard-constraint misses больше не обнуляют Stage 3 handoff: оператор всё равно получает выбранный caption в Step 3 и может дочистить длину уже там;
   - отдает live progress snapshot по шагам pipeline (`GET /api/pipeline/stage2?runId=...`);
   - возвращает структурированный JSON:
@@ -287,27 +290,28 @@ npm run stage3-worker -- start
 
 Production line families:
 
-- `stable_reference_v6` -> `reference_one_shot_v1`
-  - `oneShotReference -> captionHighlighting? -> captionTranslation -> seo -> assemble`
-- `stable_reference_v6_experimental` -> `reference_one_shot_v1_experimental`
-  - тот же shape, но отдельный prompt bundle и более жёсткое context-first / anti-meta поведение
-- `stable_social_wave_v1` / `stable_skill_gap_v1` / `experimental` -> `modular_native_v1`
-  - `contextPacket -> candidateGenerator -> hardValidator -> qualityCourt -> targetedRepair? -> templateBackfill? -> captionHighlighting? -> captionTranslation -> titleWriter -> seo`
+- `classic_top_bottom` -> `classic_one_shot_v1`
+  - `classicOneShot -> captionHighlighting? -> captionTranslation -> seo -> assemble`
+- `story_lead_main_caption` -> `story_one_shot_v1`
+  - `storyOneShot -> captionHighlighting? -> captionTranslation -> seo -> assemble`
+- `oneShotReference` остаётся legacy/read/regenerate compatibility route, не active full-run route.
 
 Provider-aware routing overlay:
 
 - workspace хранит `stage2_caption_provider_json` с `provider: codex | anthropic | openrouter`, `anthropicModel` и `openrouterModel`;
 - Anthropic или OpenRouter могут принимать только eligible caption-writing stages:
-  - `oneShotReference`
-  - `candidateGenerator`
-  - `targetedRepair`
+  - `classicOneShot`
+  - `storyOneShot`
   - `regenerate`
 - остальные stages продолжают идти через Shared Codex;
 - если Anthropic/OpenRouter provider выбран, но integration/model/output невалидны, runtime падает fail-closed и не уходит в silent Codex fallback.
 
-Финальный API-ответ по-прежнему содержит:
+Финальный API-ответ содержит:
 - `inputAnalysis`: grounding / audience summary / key cues;
-- `captionOptions`: ровно 5 опций, каждая с `TOP` и `BOTTOM`;
+- `formatPipeline`: `classic_top_bottom` или `story_lead_main_caption`;
+- `classicOptions`: ровно 5 опций с `top` / `bottom` для classic;
+- `storyOptions`: ровно 5 опций с `lead` / `mainCaption` для story;
+- `captionOptions`: compatibility mirror для legacy consumers;
 - `titleOptions`: ровно 5 заголовков;
 - `finalPick`: выбор лучшей опции + причина;
 - `seo`: description + tags block внутри того же Stage 2 run;

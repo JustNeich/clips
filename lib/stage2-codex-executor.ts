@@ -71,6 +71,8 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
     if (!anthropicModel) {
       throw new Error("Anthropic model для captions не задана.");
     }
+    resolvedStageModelConfig.classicOneShot = anthropicModel;
+    resolvedStageModelConfig.storyOneShot = anthropicModel;
     resolvedStageModelConfig.oneShotReference = anthropicModel;
     resolvedStageModelConfig.regenerate = anthropicModel;
     anthropicExecutor = new AnthropicJsonStageExecutor({
@@ -89,6 +91,8 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
     if (!openRouterModel) {
       throw new Error("OpenRouter model для captions не задана.");
     }
+    resolvedStageModelConfig.classicOneShot = openRouterModel;
+    resolvedStageModelConfig.storyOneShot = openRouterModel;
     resolvedStageModelConfig.oneShotReference = openRouterModel;
     resolvedStageModelConfig.regenerate = openRouterModel;
     openRouterExecutor = new OpenRouterJsonStageExecutor({
@@ -98,6 +102,8 @@ export async function createStage2CodexExecutorContext(workspaceId: string): Pro
     });
   }
   const model =
+    resolvedCodexModelConfig.classicOneShot ??
+    resolvedCodexModelConfig.storyOneShot ??
     resolvedCodexModelConfig.oneShotReference ??
     resolvedCodexModelConfig.regenerate;
   const pipelineModelSummary = summarizeResolvedStage2ModelUsage({
