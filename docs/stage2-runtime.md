@@ -205,6 +205,7 @@ Workspace defaults tab:
 - caption provider
 - one-shot model fallback
 - default prompts for `classicOneShot` and `storyOneShot`
+- `classicOneShot` product default uses the V6 visually anchored narrator prompt adapted to the `classic_top_bottom` prompt-first output contract
 - examples source: system preset or custom workspace JSON corpus
 
 Channel tab:

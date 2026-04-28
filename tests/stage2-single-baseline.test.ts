@@ -74,6 +74,18 @@ test("single-baseline worker registry exposes only the canonical active profile"
   assert.equal(historical.origin, "channel_setting");
 });
 
+test("default classic Stage 2 prompt uses the V6 voice with the classic prompt-first contract", () => {
+  const classicPrompt = DEFAULT_STAGE2_PROMPT_CONFIG.stages.classicOneShot.prompt;
+  const storyPrompt = DEFAULT_STAGE2_PROMPT_CONFIG.stages.storyOneShot.prompt;
+
+  assert.match(classicPrompt, /^SYSTEM PROMPT v6/);
+  assert.match(classicPrompt, /classic_top_bottom/);
+  assert.match(classicPrompt, /classicOptions/);
+  assert.match(classicPrompt, /Paused Frame Rule/);
+  assert.doesNotMatch(classicPrompt, /storyOptions/);
+  assert.match(storyPrompt, /story_lead_main_caption/);
+});
+
 test("quick regenerate prompt uses the minimal video-first contract", () => {
   const prompt = buildQuickRegeneratePrompt({
     stage2: {

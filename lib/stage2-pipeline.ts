@@ -912,6 +912,11 @@ export function resetIncompatibleNativeStage2PromptOverrides(config: Stage2Promp
   return {
     config: {
       version: STAGE2_PROMPT_CONFIG_VERSION,
+      ...(normalized.useWorkspaceDefault === undefined
+        ? {}
+        : { useWorkspaceDefault: normalized.useWorkspaceDefault }),
+      sourceMode: normalized.sourceMode,
+      systemPresetId: normalized.systemPresetId,
       stages
     },
     removedStageIds

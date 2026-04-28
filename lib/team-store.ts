@@ -289,7 +289,7 @@ function normalizeWorkspaceStage2HardConstraints(
 }
 
 function normalizeWorkspaceStage2PromptConfig(value: string | null | undefined): Stage2PromptConfig {
-  return parseStage2PromptConfigJson(value);
+  return resetIncompatibleNativeStage2PromptOverrides(parseStage2PromptConfigJson(value)).config;
 }
 
 function normalizeWorkspaceCodexModelConfig(value: string | null | undefined): WorkspaceCodexModelConfig {

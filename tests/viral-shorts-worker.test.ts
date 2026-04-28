@@ -1649,6 +1649,63 @@ test("workspace reset helper clears incompatible native prompt overrides without
   });
 });
 
+test("workspace prompt read replaces stale native classic defaults with the V6 product prompt", { concurrency: false }, async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const { getDb } = await import("../lib/db/client");
+    const classicCompatibility = getStage2DefaultPromptCompatibility("classicOneShot");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Workspace Classic V6 Default",
+      email: "owner-classic-v6@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const staleStoredConfig = JSON.stringify(
+      {
+        version: 5,
+        sourceMode: "system",
+        systemPresetId: "system_prompt",
+        stages: {
+          classicOneShot: {
+            prompt:
+              "You are the Stage 2 caption writer for viral Shorts/Reels overlays targeting a US audience.",
+            reasoningEffort: "high",
+            compatibility: {
+              ...classicCompatibility,
+              defaultPromptHash: "stale-classic-default"
+            }
+          },
+          writer: {
+            prompt: "Legacy writer prompt survives for the legacy chain.",
+            reasoningEffort: "medium"
+          }
+        }
+      },
+      null,
+      2
+    );
+    getDb()
+      .prepare("UPDATE workspaces SET stage2_prompt_config_json = ? WHERE id = ?")
+      .run(staleStoredConfig, owner.workspace.id);
+
+    const workspaceConfig = teamStore.getWorkspaceStage2PromptConfig(owner.workspace.id);
+    const classicResolved = resolveStage2PromptTemplate("classicOneShot", workspaceConfig);
+    const legacyResolved = resolveStage2PromptTemplate("writer", workspaceConfig);
+
+    assert.match(workspaceConfig.stages.classicOneShot.prompt, /^SYSTEM PROMPT v6/);
+    assert.doesNotMatch(
+      workspaceConfig.stages.classicOneShot.prompt,
+      /^You are the Stage 2 caption writer/
+    );
+    assert.equal(classicResolved.overrideCandidatePresent, false);
+    assert.equal(classicResolved.promptSource, "default");
+    assert.match(classicResolved.configuredPrompt, /classicOptions/);
+    assert.equal(legacyResolved.promptSource, "workspace_override");
+  });
+});
+
 test("codex runner normalizes stage reasoning effort aliases to CLI-supported values", () => {
   assert.equal(normalizeCodexReasoningEffort("x-high"), "xhigh");
   assert.equal(normalizeCodexReasoningEffort("extra-high"), "xhigh");

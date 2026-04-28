@@ -12,6 +12,7 @@
   - prompt-first `native_caption_v3` path:
     - `classicOneShot -> captionHighlighting? -> captionTranslation -> seo -> assemble` для Top/Bottom;
     - `storyOneShot -> captionHighlighting? -> captionTranslation -> seo -> assemble` для Lead/Main Caption;
+  - product default для `classicOneShot` использует V6 visually anchored prompt, адаптированный под `classicOptions`;
   - быстрый `regenerate` использует тот же video-first baseline и переписывает только visible shortlist;
   - Shared Codex остаётся baseline runtime, а owner может отдельно перевести `classicOneShot`, `storyOneShot` и `regenerate` на Anthropic API или OpenRouter API.
 - Channel onboarding теперь проходит через простой identity flow:
