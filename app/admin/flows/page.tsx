@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AuthMeResponse } from "../../components/types";
+import {
+  buildAdminFlowMcpHint,
+  getAdminFlowDisplayTitle,
+  getAdminFlowUrlDisplay
+} from "./view-model";
 
 type FlowSummary = {
   chatId: string;
@@ -208,6 +213,10 @@ export default function AdminFlowsPage() {
   const [statusText, setStatusText] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const hasActiveFilters = Boolean(
+    search.trim() || stage || status || channelId || provider || model || fromDate || toDate || dateBasis !== "created"
+  );
+
   const channelOptions = useMemo(() => {
     const unique = new Map<string, { id: string; label: string }>();
     flows.forEach((flow) => {
@@ -268,6 +277,18 @@ export default function AdminFlowsPage() {
     setTokens(body.tokens ?? []);
   }, []);
 
+  const resetFilters = (): void => {
+    setSearch("");
+    setStage("");
+    setStatus("");
+    setChannelId("");
+    setProvider("");
+    setModel("");
+    setDateBasis("created");
+    setFromDate("");
+    setToDate("");
+  };
+
   useEffect(() => {
     void loadAuth()
       .then((body) => {
@@ -293,7 +314,7 @@ export default function AdminFlowsPage() {
     return () => window.clearTimeout(handle);
   }, [auth?.membership.role, loadFlows]);
 
-  const openFlow = async (chatId: string): Promise<void> => {
+  const openFlow = useCallback(async (chatId: string): Promise<void> => {
     setSelectedChatId(chatId);
     setActiveTab("summary");
     setBusy(true);
@@ -310,7 +331,22 @@ export default function AdminFlowsPage() {
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (auth?.membership.role !== "owner") {
+      return;
+    }
+    if (flows.length === 0) {
+      setSelectedChatId(null);
+      setDetail(null);
+      return;
+    }
+    if (selectedChatId && flows.some((flow) => flow.chatId === selectedChatId)) {
+      return;
+    }
+    void openFlow(flows[0].chatId);
+  }, [auth?.membership.role, flows, openFlow, selectedChatId]);
 
   const createToken = async (): Promise<void> => {
     setBusy(true);
@@ -367,9 +403,7 @@ export default function AdminFlowsPage() {
   };
 
   const copyMcpHint = async (flow: FlowSummary): Promise<void> => {
-    await navigator.clipboard.writeText(
-      `clips_get_flow({ "chatId": "${flow.chatId}" })`
-    );
+    await navigator.clipboard.writeText(buildAdminFlowMcpHint(flow.chatId));
     setStatusText("MCP подсказка скопирована.");
   };
 
@@ -408,6 +442,9 @@ export default function AdminFlowsPage() {
         return stringifyPreview(detail?.flow ?? null);
     }
   };
+
+  const detailDisplayTitle = detail ? getAdminFlowDisplayTitle(detail.flow) : null;
+  const detailSourceDisplay = detail ? getAdminFlowUrlDisplay(detail.flow.sourceUrl) : null;
 
   if (auth && auth.membership.role !== "owner") {
     return (
@@ -459,94 +496,106 @@ export default function AdminFlowsPage() {
       </section>
 
       <section className="admin-flows-shell">
-        <aside className="admin-flows-filters">
-          <label>
-            Поиск
-            <input
-              className="text-input"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="URL, title, run id"
-            />
-          </label>
-          <label>
-            Дата
-            <select className="text-input" value={dateBasis} onChange={(event) => setDateBasis(event.target.value as "created" | "lastActivity")}>
-              <option value="created">Создан</option>
-              <option value="lastActivity">Последнее событие</option>
-            </select>
-          </label>
-          <label>
-            От
-            <input className="text-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-          </label>
-          <label>
-            До
-            <input className="text-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-          </label>
-          <label>
-            Канал
-            <select className="text-input" value={channelId} onChange={(event) => setChannelId(event.target.value)}>
-              <option value="">Все каналы</option>
-              {channelOptions.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Stage
-            <select className="text-input" value={stage} onChange={(event) => setStage(event.target.value)}>
-              <option value="">Все</option>
-              <option value="source">Source</option>
-              <option value="stage2">Stage 2</option>
-              <option value="stage3">Stage 3</option>
-              <option value="publishing">Publishing</option>
-            </select>
-          </label>
-          <label>
-            Статус
-            <select className="text-input" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">Все</option>
-              <option value="queued">Ожидает</option>
-              <option value="running">В работе</option>
-              <option value="completed">Готово</option>
-              <option value="failed">Ошибка</option>
-              <option value="scheduled">Запланировано</option>
-              <option value="published">Опубликовано</option>
-              <option value="canceled">Удалено</option>
-            </select>
-          </label>
-          <label>
-            Provider
-            <select className="text-input" value={provider} onChange={(event) => setProvider(event.target.value)}>
-              <option value="">Все</option>
-              {providerOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Model
-            <select className="text-input" value={model} onChange={(event) => setModel(event.target.value)}>
-              <option value="">Все</option>
-              {modelOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <section className="admin-flows-mcp">
-            <div className="control-actions">
-              <h2>MCP</h2>
-              <button className="btn btn-primary" type="button" onClick={() => void createToken()} disabled={busy}>
-                Новый token
-              </button>
+        <section className="admin-flows-controls" aria-label="Фильтры журнала процессов">
+          <div className="admin-flows-controls-head">
+            <div>
+              <h2>Фильтры</h2>
+              <p>{flows.length} процессов в текущей выборке</p>
             </div>
+            <button className="btn btn-ghost" type="button" onClick={resetFilters} disabled={!hasActiveFilters}>
+              Сбросить
+            </button>
+          </div>
+          <div className="admin-flows-filters">
+            <label>
+              Поиск
+              <input
+                className="text-input"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="URL, title, run id"
+              />
+            </label>
+            <label>
+              Дата
+              <select className="text-input" value={dateBasis} onChange={(event) => setDateBasis(event.target.value as "created" | "lastActivity")}>
+                <option value="created">Создан</option>
+                <option value="lastActivity">Последнее событие</option>
+              </select>
+            </label>
+            <label>
+              От
+              <input className="text-input" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            </label>
+            <label>
+              До
+              <input className="text-input" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            </label>
+            <label>
+              Канал
+              <select className="text-input" value={channelId} onChange={(event) => setChannelId(event.target.value)}>
+                <option value="">Все каналы</option>
+                {channelOptions.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Stage
+              <select className="text-input" value={stage} onChange={(event) => setStage(event.target.value)}>
+                <option value="">Все</option>
+                <option value="source">Source</option>
+                <option value="stage2">Stage 2</option>
+                <option value="stage3">Stage 3</option>
+                <option value="publishing">Publishing</option>
+              </select>
+            </label>
+            <label>
+              Статус
+              <select className="text-input" value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="">Все</option>
+                <option value="queued">Ожидает</option>
+                <option value="running">В работе</option>
+                <option value="completed">Готово</option>
+                <option value="failed">Ошибка</option>
+                <option value="scheduled">Запланировано</option>
+                <option value="published">Опубликовано</option>
+                <option value="canceled">Удалено</option>
+              </select>
+            </label>
+            <label>
+              Provider
+              <select className="text-input" value={provider} onChange={(event) => setProvider(event.target.value)}>
+                <option value="">Все</option>
+                {providerOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Model
+              <select className="text-input" value={model} onChange={(event) => setModel(event.target.value)}>
+                <option value="">Все</option>
+                {modelOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <section className="admin-flows-mcp">
+            <div>
+              <h2>MCP-доступ</h2>
+              <p>Доступ только на чтение к trace для внешних аудитов.</p>
+            </div>
+            <button className="btn btn-primary" type="button" onClick={() => void createToken()} disabled={busy}>
+              Новый token
+            </button>
             {createdToken ? <pre>{createdToken}</pre> : null}
             <ul>
               {tokens.slice(0, 4).map((token) => (
@@ -562,75 +611,137 @@ export default function AdminFlowsPage() {
               ))}
             </ul>
           </section>
-        </aside>
-
-        <section className="admin-flows-table-wrap">
-          <table className="admin-flows-table">
-            <thead>
-              <tr>
-                <th>Канал / ролик</th>
-                <th>Stage</th>
-                <th>Provider</th>
-                <th>Создан</th>
-                <th>Последнее событие</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {flows.map((flow) => (
-                <tr key={flow.chatId} className={selectedChatId === flow.chatId ? "active" : ""}>
-                  <td>
-                    <strong>{flow.title}</strong>
-                    <span>@{flow.channelUsername}</span>
-                    <small>{flow.sourceUrl}</small>
-                  </td>
-                  <td>
-                    <span className={`admin-status-pill tone-${flow.latestStatus}`}>
-                      {STAGE_LABELS[flow.latestStage]} · {STATUS_LABELS[flow.latestStatus]}
-                    </span>
-                    {flow.lastError ? <small className="admin-flow-error">{flow.lastError}</small> : null}
-                  </td>
-                  <td>
-                    <span>{flow.provider ?? "—"}</span>
-                    <small>{flow.model ?? ""}</small>
-                  </td>
-                  <td>{formatDate(flow.createdAt)}</td>
-                  <td>{formatDate(flow.lastActivityAt ?? flow.updatedAt)}</td>
-                  <td>
-                    <div className="admin-flows-row-actions">
-                      <button className="btn btn-ghost" type="button" onClick={() => void openFlow(flow.chatId)}>
-                        Детали
-                      </button>
-                      <button className="btn btn-ghost" type="button" onClick={() => void copyMcpHint(flow)}>
-                        MCP
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {flows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="admin-flows-empty">
-                    Процессы не найдены.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
         </section>
+
+        <section className="admin-flows-content">
+          <section className="admin-flows-list" aria-label="Процессы">
+            <div className="admin-flows-list-head">
+              <div>
+                <h2>Процессы</h2>
+                <p>Клик по названию открывает trace, источник и публикацию справа.</p>
+              </div>
+              <span>{metrics.total} всего</span>
+            </div>
+            <div className="admin-flow-card-list">
+              {flows.map((flow) => {
+                const displayTitle = getAdminFlowDisplayTitle(flow);
+                const sourceDisplay = getAdminFlowUrlDisplay(flow.sourceUrl);
+                return (
+                  <article key={flow.chatId} className={`admin-flow-card ${selectedChatId === flow.chatId ? "active" : ""}`}>
+                    <div className="admin-flow-card-head">
+                      <div className="admin-flow-main">
+                        <span className="admin-flow-channel" title={flow.channelName}>
+                          {flow.channelName} · @{flow.channelUsername}
+                        </span>
+                        <button
+                          className="admin-flow-title-button"
+                          type="button"
+                          title={flow.title}
+                          onClick={() => void openFlow(flow.chatId)}
+                        >
+                          {displayTitle}
+                        </button>
+                        <div className="admin-flow-source">
+                          <span>Источник</span>
+                          {sourceDisplay.href ? (
+                            <a href={sourceDisplay.href} target="_blank" rel="noreferrer" title={sourceDisplay.original}>
+                              <strong>{sourceDisplay.host}</strong>
+                              {sourceDisplay.path ? <small>{sourceDisplay.path}</small> : null}
+                            </a>
+                          ) : (
+                            <strong title={sourceDisplay.original}>{sourceDisplay.label}</strong>
+                          )}
+                        </div>
+                      </div>
+                      <div className="admin-flow-card-actions">
+                        <button className="btn btn-secondary" type="button" onClick={() => void openFlow(flow.chatId)} disabled={busy}>
+                          Детали
+                        </button>
+                        <button className="btn btn-ghost" type="button" onClick={() => void downloadTrace(flow.chatId)} disabled={busy}>
+                          Trace
+                        </button>
+                        <button className="btn btn-ghost" type="button" onClick={() => void copyMcpHint(flow)}>
+                          MCP
+                        </button>
+                      </div>
+                    </div>
+                    <dl className="admin-flow-meta-grid">
+                      <div>
+                        <dt>Stage</dt>
+                        <dd>
+                          <span className={`admin-status-pill tone-${flow.latestStatus}`}>
+                            {STAGE_LABELS[flow.latestStage]} · {STATUS_LABELS[flow.latestStatus]}
+                          </span>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Provider</dt>
+                        <dd title={[flow.provider, flow.model].filter(Boolean).join(" · ")}>
+                          <strong>{flow.provider ?? "—"}</strong>
+                          {flow.model ? <small>{flow.model}</small> : null}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Создан</dt>
+                        <dd>{formatDate(flow.createdAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Последнее событие</dt>
+                        <dd>{formatDate(flow.lastActivityAt ?? flow.updatedAt)}</dd>
+                      </div>
+                    </dl>
+                    {flow.lastError ? (
+                      <p className="admin-flow-card-error" title={flow.lastError}>
+                        {flow.lastError}
+                      </p>
+                    ) : null}
+                  </article>
+                );
+              })}
+              {flows.length === 0 ? (
+                <div className="admin-flows-empty">
+                  <h3>Процессы не найдены</h3>
+                  <p>Измените поиск или сбросьте фильтры.</p>
+                </div>
+              ) : null}
+            </div>
+          </section>
 
         <aside className="admin-flows-detail">
           {detail ? (
             <>
               <div className="admin-flows-detail-head">
                 <div>
-                  <h2>{detail.flow.title}</h2>
-                  <p>@{detail.flow.channelUsername}</p>
+                  <h2 title={detail.flow.title}>{detailDisplayTitle}</h2>
+                  <p>{detail.flow.channelName} · @{detail.flow.channelUsername}</p>
+                  {detailSourceDisplay ? (
+                    <a className="admin-flows-detail-source" href={detailSourceDisplay.href ?? undefined} target="_blank" rel="noreferrer" title={detailSourceDisplay.original}>
+                      {detailSourceDisplay.label}
+                    </a>
+                  ) : null}
                 </div>
                 <button className="btn btn-secondary" type="button" onClick={() => void downloadTrace(detail.flow.chatId)}>
                   Trace JSON
                 </button>
               </div>
+              <dl className="admin-flows-detail-facts">
+                <div>
+                  <dt>Chat</dt>
+                  <dd>{detail.flow.chatId}</dd>
+                </div>
+                <div>
+                  <dt>Stage 2</dt>
+                  <dd>{detail.flow.stage2RunId ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt>Stage 3</dt>
+                  <dd>{detail.flow.stage3JobId ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt>Publication</dt>
+                  <dd>{detail.flow.publicationId ?? "—"}</dd>
+                </div>
+              </dl>
               <ol className="admin-flow-timeline">
                 {detail.auditEvents.slice(0, 18).map((event) => (
                   <li key={event.id} className={`tone-${event.severity}`}>
@@ -689,6 +800,7 @@ export default function AdminFlowsPage() {
             </div>
           )}
         </aside>
+        </section>
       </section>
 
       <section className="admin-flows-audit">

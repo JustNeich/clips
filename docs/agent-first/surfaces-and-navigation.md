@@ -747,9 +747,11 @@
 - `controls`:
   - compact metrics strip
   - filters by channel, stage, status, search
-  - dense flow table
-  - detail panel with timeline, inputs, prompts, outputs, publication, raw JSON
+  - reset filters control
+  - readable flow cards with clamped title, channel, clickable source link, stage/status, provider/model, created and last-activity timestamps
+  - sticky detail panel with flow ids, source link, timeline, inputs, prompts, outputs, publication, raw JSON
   - `Trace JSON`
+  - per-flow `Trace` download and `MCP` copy actions
   - owner-issued MCP token create/revoke controls
 - `resulting actions`:
   - `GET /api/admin/flows`
