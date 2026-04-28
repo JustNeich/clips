@@ -154,6 +154,7 @@ Active workspace Stage 2 settings теперь только такие:
 
 На уровне канала Stage 2 active authority:
 
+- render template format group: `classic_top_bottom` выбирает `classicOneShot`, `channel_story` выбирает `storyOneShot`
 - `stage2HardConstraints`
 - `stage2PromptConfig` для channel-specific prompt overrides
 - `stage2ExamplesConfig`: если `useWorkspaceDefault=false`, все custom examples становятся active source
@@ -208,6 +209,8 @@ Workspace defaults tab:
 
 Channel tab:
 
+- template type selector: `Top / Bottom` или `Lead / Main Caption`
+- active prompt contract only: `classicOneShot` для `Top / Bottom`, `storyOneShot` для `Lead / Main Caption`
 - hard constraints
 - channel prompt overrides
 - channel examples source: workspace default, system preset, custom JSON, or custom plain text

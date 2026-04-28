@@ -1806,6 +1806,22 @@ select.text-input:focus {
   background: color-mix(in srgb, var(--surface) 92%, black);
 }
 
+.stage2-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.stage2-template-format-panel {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  background: color-mix(in srgb, var(--surface) 94%, black);
+}
+
 .stage2-prompt-stage-list {
   display: grid;
   gap: 12px;
@@ -4933,6 +4949,8 @@ select.text-input:focus {
 }
 
 .settings-choice {
+  appearance: none;
+  width: 100%;
   min-height: 74px;
   padding: 12px 14px;
   border-radius: 14px;
@@ -4942,8 +4960,10 @@ select.text-input:focus {
     var(--surface-2);
   color: var(--text-soft);
   display: grid;
+  align-content: start;
   gap: 5px;
   text-align: left;
+  min-width: 0;
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -4972,13 +4992,18 @@ select.text-input:focus {
 }
 
 .settings-choice strong {
+  min-width: 0;
   font-size: 15px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .settings-choice span {
+  min-width: 0;
   font-size: 12px;
   line-height: 1.35;
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .settings-summary-card {

@@ -21,9 +21,10 @@ import {
   WorkspaceMemberRecord,
   UserRecord
 } from "./types";
-import { STAGE3_TEMPLATE_ID } from "../../lib/stage3-template";
+import { CHANNEL_STORY_TEMPLATE_ID, STAGE3_TEMPLATE_ID } from "../../lib/stage3-template";
 import type { ManagedTemplateSummary } from "../../lib/managed-template-types";
 import { getTemplateVariant } from "../../lib/stage3-template-registry";
+import type { Stage3TemplateFormatGroup } from "../../lib/stage3-template-semantics";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
   hasStage2PromptOverrides,
@@ -149,6 +150,42 @@ export function groupManagedTemplatesByFormat(
     groups.set(formatLabel, existing);
   });
   return Array.from(groups.entries()).map(([label, options]) => ({ label, options }));
+}
+
+function getManagedTemplateFormatGroup(
+  managedTemplates: ManagedTemplateSummary[],
+  templateId: string | null | undefined
+): Stage3TemplateFormatGroup {
+  const template = managedTemplates.find((item) => item.id === templateId);
+  return getTemplateVariant(template?.layoutFamily ?? template?.baseTemplateId ?? templateId).formatGroup;
+}
+
+export function resolveChannelTemplateFormatGroup(
+  managedTemplates: ManagedTemplateSummary[],
+  templateId: string | null | undefined
+): Stage3TemplateFormatGroup {
+  return getManagedTemplateFormatGroup(managedTemplates, templateId);
+}
+
+export function resolveChannelTemplateIdForFormatGroup(
+  managedTemplates: ManagedTemplateSummary[],
+  currentTemplateId: string | null | undefined,
+  formatGroup: Stage3TemplateFormatGroup
+): string {
+  const currentTemplate = managedTemplates.find((item) => item.id === currentTemplateId);
+  if (
+    currentTemplate &&
+    getTemplateVariant(currentTemplate.layoutFamily ?? currentTemplate.baseTemplateId).formatGroup === formatGroup
+  ) {
+    return currentTemplate.id;
+  }
+  const matchingTemplate = managedTemplates.find(
+    (item) => getTemplateVariant(item.layoutFamily ?? item.baseTemplateId).formatGroup === formatGroup
+  );
+  if (matchingTemplate) {
+    return matchingTemplate.id;
+  }
+  return formatGroup === "channel_story" ? CHANNEL_STORY_TEMPLATE_ID : STAGE3_TEMPLATE_ID;
 }
 
 export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
@@ -439,6 +476,18 @@ export function ChannelManager({
   });
   const renderTemplateGroups = useMemo(
     () => groupManagedTemplatesByFormat(managedTemplates),
+    [managedTemplates]
+  );
+  const channelTemplateFormatGroup = useMemo(
+    () => resolveChannelTemplateFormatGroup(managedTemplates, templateId),
+    [managedTemplates, templateId]
+  );
+  const updateChannelTemplateFormat = useCallback(
+    (formatGroup: Stage3TemplateFormatGroup) => {
+      setTemplateId((current) =>
+        resolveChannelTemplateIdForFormatGroup(managedTemplates, current, formatGroup)
+      );
+    },
     [managedTemplates]
   );
   const clipDurationOptions = useMemo(() => buildStage3ClipDurationOptions(), []);
@@ -2097,6 +2146,9 @@ export function ChannelManager({
                 canEditHardConstraints={canEditHardConstraints}
                 canEditChannelExamples={canEditSetup}
                 canEditChannelPrompt={canEditChannelPrompt}
+                channelTemplateFormatGroup={channelTemplateFormatGroup}
+                canEditChannelTemplateFormat={canEditSetup}
+                updateChannelTemplateFormat={updateChannelTemplateFormat}
                 stage2ExamplesConfig={stage2ExamplesConfig}
                 customExamplesJson={stage2ExamplesConfig.customExamplesJson}
                 customExamplesText={stage2ExamplesConfig.customExamplesText}

@@ -37,6 +37,7 @@ import {
   STAGE2_SYSTEM_EXAMPLES_PRESETS,
   type Stage2SystemExamplesPresetId
 } from "../../lib/stage2-system-presets";
+import type { Stage3TemplateFormatGroup } from "../../lib/stage3-template-semantics";
 import { AutosaveState } from "./channel-manager-support";
 
 type ChannelManagerStage2TabProps = {
@@ -79,6 +80,9 @@ type ChannelManagerStage2TabProps = {
   canEditHardConstraints: boolean;
   canEditChannelPrompt?: boolean;
   canEditChannelExamples?: boolean;
+  channelTemplateFormatGroup?: Stage3TemplateFormatGroup;
+  canEditChannelTemplateFormat?: boolean;
+  updateChannelTemplateFormat?: (formatGroup: Stage3TemplateFormatGroup) => void;
   stage2ExamplesConfig?: Stage2ExamplesConfig;
   customExamplesCount?: number;
   stage2WorkerProfileId?: string | null;
@@ -159,6 +163,53 @@ type ChannelManagerStage2TabProps = {
     value: WorkspaceCodexModelSetting
   ) => void;
 };
+
+type PromptFirstChannelStageId = "classicOneShot" | "storyOneShot";
+
+const STAGE2_TEMPLATE_FORMAT_CHOICES: Array<{
+  formatGroup: Stage3TemplateFormatGroup;
+  label: string;
+  description: string;
+  pipelineLabel: string;
+  stageId: PromptFirstChannelStageId;
+  reasoningLabel: string;
+  promptLabel: string;
+  topLabel: string;
+  bottomLabel: string;
+  examplesPlaceholder: string;
+}> = [
+  {
+    formatGroup: "classic_top_bottom",
+    label: "Top / Bottom",
+    description: "classicOneShot для двух overlay-строк",
+    pipelineLabel: "classicOneShot -> translation -> SEO",
+    stageId: "classicOneShot",
+    reasoningLabel: "Classic reasoning",
+    promptLabel: "Classic channel prompt",
+    topLabel: "TOP",
+    bottomLabel: "BOTTOM",
+    examplesPlaceholder: '[{"top":"...", "bottom":"...", "note":"любые дополнительные поля"}]'
+  },
+  {
+    formatGroup: "channel_story",
+    label: "Lead / Main Caption",
+    description: "storyOneShot для story-шаблонов",
+    pipelineLabel: "storyOneShot -> translation -> SEO",
+    stageId: "storyOneShot",
+    reasoningLabel: "Story reasoning",
+    promptLabel: "Story channel prompt",
+    topLabel: "Lead",
+    bottomLabel: "Main Caption",
+    examplesPlaceholder: '[{"lead":"...", "mainCaption":"...", "note":"любые дополнительные поля"}]'
+  }
+];
+
+function getStage2TemplateFormatChoice(formatGroup: Stage3TemplateFormatGroup) {
+  return (
+    STAGE2_TEMPLATE_FORMAT_CHOICES.find((choice) => choice.formatGroup === formatGroup) ??
+    STAGE2_TEMPLATE_FORMAT_CHOICES[0]
+  );
+}
 
 function formatEffectiveCodexModel(model: string | null): string {
   if (!model) {
@@ -252,6 +303,8 @@ function renderConstraintEditor(input: {
   bannedWordsInput: string;
   bannedOpenersInput: string;
   canEditHardConstraints: boolean;
+  topLabel?: string;
+  bottomLabel?: string;
   updateStage2HardConstraint: (
     key: keyof Stage2HardConstraints,
     value: string | boolean | string[]
@@ -259,12 +312,15 @@ function renderConstraintEditor(input: {
   updateBannedWordsInput: (value: string) => void;
   updateBannedOpenersInput: (value: string) => void;
 }): React.ReactNode {
+  const topLabel = input.topLabel ?? "TOP";
+  const bottomLabel = input.bottomLabel ?? "BOTTOM";
+
   return (
     <div className="compact-field">
       <p className="field-label">Hard constraints</p>
       <div className="compact-grid">
         <div className="compact-field">
-          <label className="field-label">TOP мин.</label>
+          <label className="field-label">{topLabel} мин.</label>
           <input
             className="text-input"
             type="number"
@@ -276,7 +332,7 @@ function renderConstraintEditor(input: {
           />
         </div>
         <div className="compact-field">
-          <label className="field-label">TOP макс.</label>
+          <label className="field-label">{topLabel} макс.</label>
           <input
             className="text-input"
             type="number"
@@ -288,7 +344,7 @@ function renderConstraintEditor(input: {
           />
         </div>
         <div className="compact-field">
-          <label className="field-label">BOTTOM мин.</label>
+          <label className="field-label">{bottomLabel} мин.</label>
           <input
             className="text-input"
             type="number"
@@ -300,7 +356,7 @@ function renderConstraintEditor(input: {
           />
         </div>
         <div className="compact-field">
-          <label className="field-label">BOTTOM макс.</label>
+          <label className="field-label">{bottomLabel} макс.</label>
           <input
             className="text-input"
             type="number"
@@ -329,7 +385,7 @@ function renderConstraintEditor(input: {
         disabled={!input.canEditHardConstraints}
         onChange={(event) => input.updateBannedOpenersInput(event.target.value)}
       />
-      <p className="subtle-text">Проверяются только в начале верхней строки.</p>
+      <p className="subtle-text">Проверяются только в начале поля {topLabel}.</p>
     </div>
   );
 }
@@ -509,8 +565,10 @@ function ChoiceButton(input: {
   return (
     <button
       type="button"
-      className={`choice-card ${input.active ? "active" : ""}`}
+      className={`settings-choice ${input.active ? "active" : ""}`}
       disabled={input.disabled}
+      aria-pressed={input.active}
+      aria-label={`${input.label}: ${input.description}`}
       onClick={input.onClick}
     >
       <strong>{input.label}</strong>
@@ -586,6 +644,9 @@ export function ChannelManagerStage2Tab({
   canEditHardConstraints,
   canEditChannelPrompt,
   canEditChannelExamples = false,
+  channelTemplateFormatGroup = "classic_top_bottom",
+  canEditChannelTemplateFormat = false,
+  updateChannelTemplateFormat = () => undefined,
   stage2ExamplesConfig,
   customExamplesJson = "",
   customExamplesText = "",
@@ -624,11 +685,10 @@ export function ChannelManagerStage2Tab({
   const effectiveChannelPromptConfig = channelStage2PromptOverridesActive
     ? channelStage2PromptConfig ?? workspaceStage2PromptConfig
     : workspaceStage2PromptConfig;
-  const channelClassicOneShotStageConfig =
-    effectiveChannelPromptConfig.stages.classicOneShot;
-  const channelStoryOneShotStageConfig =
-    effectiveChannelPromptConfig.stages.storyOneShot;
   const canEditEffectiveChannelPrompt = canEditChannelPrompt ?? canEditHardConstraints;
+  const activeTemplateFormatChoice = getStage2TemplateFormatChoice(channelTemplateFormatGroup);
+  const activeChannelPromptStageConfig =
+    effectiveChannelPromptConfig.stages[activeTemplateFormatChoice.stageId];
   const anthropicModelValue =
     workspaceStage2CaptionProviderConfig.anthropicModel ?? DEFAULT_ANTHROPIC_CAPTION_MODEL;
   const openRouterModelValue =
@@ -988,17 +1048,17 @@ export function ChannelManagerStage2Tab({
       <section className="control-card control-card-priority">
         <p className="field-label">Настройки Stage 2 канала</p>
         <p className="subtle-text">
-          Канал может переопределять hard constraints и prompt-first contracts. Provider и model
-          остаются общими настройками workspace.
+          Канал выбирает тип шаблона, а Stage 2 показывает только настройки нужной prompt-first
+          линии. Provider и model остаются общими настройками workspace.
         </p>
       </section>
 
       <section className="control-card control-card-subtle">
         <div className="stage2-insight-grid">
           <article className="stage2-insight-card">
-            <span className="field-label">Pipeline</span>
-            <strong>classicOneShot / storyOneShot</strong>
-            <p className="subtle-text">формат выбирается шаблоном без top/bottom remap для story</p>
+            <span className="field-label">Template type</span>
+            <strong>{activeTemplateFormatChoice.label}</strong>
+            <p className="subtle-text">{activeTemplateFormatChoice.pipelineLabel}</p>
           </article>
           <article className="stage2-insight-card">
             <span className="field-label">Provider</span>
@@ -1012,8 +1072,8 @@ export function ChannelManagerStage2Tab({
             </strong>
             <p className="subtle-text">
               {channelStage2PromptOverridesActive
-                ? "канал использует собственные Classic и Story contracts"
-                : "пока наследует workspace defaults; редактирование создаст override"}
+                ? `канал использует собственный ${activeTemplateFormatChoice.label} contract`
+                : "пока наследует workspace defaults; редактирование активного prompt создаст override"}
             </p>
           </article>
           <article className="stage2-insight-card">
@@ -1033,11 +1093,41 @@ export function ChannelManagerStage2Tab({
           </article>
         </div>
 
+        <div className="compact-field stage2-template-format-panel">
+          <div className="stage2-section-head">
+            <div>
+              <p className="field-label">Template type</p>
+              <p className="subtle-text">
+                Выбор меняет Stage 3 template family канала и Stage 2 prompt contract для новых
+                прогонов.
+              </p>
+            </div>
+            <span className="meta-pill">{activeTemplateFormatChoice.pipelineLabel}</span>
+          </div>
+          <div className="settings-choice-row">
+            {STAGE2_TEMPLATE_FORMAT_CHOICES.map((choice) => (
+              <ChoiceButton
+                key={choice.formatGroup}
+                active={activeTemplateFormatChoice.formatGroup === choice.formatGroup}
+                disabled={!canEditChannelTemplateFormat}
+                label={choice.label}
+                description={choice.description}
+                onClick={() => updateChannelTemplateFormat(choice.formatGroup)}
+              />
+            ))}
+          </div>
+          <p className="subtle-text">
+            Конкретный визуальный шаблон этого типа можно уточнить во вкладке «Рендер».
+          </p>
+        </div>
+
         {renderConstraintEditor({
           stage2HardConstraints,
           bannedWordsInput,
           bannedOpenersInput,
           canEditHardConstraints,
+          topLabel: activeTemplateFormatChoice.topLabel,
+          bottomLabel: activeTemplateFormatChoice.bottomLabel,
           updateStage2HardConstraint,
           updateBannedWordsInput,
           updateBannedOpenersInput
@@ -1047,15 +1137,15 @@ export function ChannelManagerStage2Tab({
           <p className="field-label">Channel prompt contracts</p>
           <div className="compact-grid">
             <div className="compact-field">
-              <label className="field-label">Classic reasoning</label>
+              <label className="field-label">{activeTemplateFormatChoice.reasoningLabel}</label>
               <select
                 className="text-input"
-                value={channelClassicOneShotStageConfig.reasoningEffort}
+                value={activeChannelPromptStageConfig.reasoningEffort}
                 disabled={!canEditEffectiveChannelPrompt}
                 onChange={(event) =>
                   updateChannelStage2PromptReasoning(
-                    "classicOneShot",
-                    event.target.value as typeof channelClassicOneShotStageConfig.reasoningEffort
+                    activeTemplateFormatChoice.stageId,
+                    event.target.value as typeof activeChannelPromptStageConfig.reasoningEffort
                   )
                 }
               >
@@ -1067,46 +1157,25 @@ export function ChannelManagerStage2Tab({
               </select>
             </div>
             <div className="compact-field">
-              <label className="field-label">Story reasoning</label>
-              <select
-                className="text-input"
-                value={channelStoryOneShotStageConfig.reasoningEffort}
-                disabled={!canEditEffectiveChannelPrompt}
-                onChange={(event) =>
-                  updateChannelStage2PromptReasoning(
-                    "storyOneShot",
-                    event.target.value as typeof channelStoryOneShotStageConfig.reasoningEffort
-                  )
-                }
-              >
-                {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <span className="field-label">Active contract</span>
+              <strong>{activeTemplateFormatChoice.label}</strong>
+              <p className="subtle-text">
+                Редактируется только prompt, который реально получит provider для выбранного типа.
+              </p>
             </div>
           </div>
 
-          <label className="field-label">Classic channel prompt</label>
+          <label className="field-label">{activeTemplateFormatChoice.promptLabel}</label>
           <textarea
             className="text-area mono"
             rows={12}
-            value={channelClassicOneShotStageConfig.prompt}
+            value={activeChannelPromptStageConfig.prompt}
             disabled={!canEditEffectiveChannelPrompt}
             onChange={(event) =>
-              updateChannelStage2PromptTemplate("classicOneShot", event.target.value)
-            }
-          />
-
-          <label className="field-label">Story channel prompt</label>
-          <textarea
-            className="text-area mono"
-            rows={12}
-            value={channelStoryOneShotStageConfig.prompt}
-            disabled={!canEditEffectiveChannelPrompt}
-            onChange={(event) =>
-              updateChannelStage2PromptTemplate("storyOneShot", event.target.value)
+              updateChannelStage2PromptTemplate(
+                activeTemplateFormatChoice.stageId,
+                event.target.value
+              )
             }
           />
           <p className="subtle-text">
@@ -1204,7 +1273,7 @@ export function ChannelManagerStage2Tab({
                         rows={10}
                         value={customExamplesJson}
                         disabled={!canEditChannelExamples}
-                        placeholder='[{"top":"...", "bottom":"...", "note":"любые дополнительные поля"}]'
+                        placeholder={activeTemplateFormatChoice.examplesPlaceholder}
                         onChange={(event) => updateCustomExamplesJson(event.target.value)}
                       />
                       <div className="control-actions">

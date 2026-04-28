@@ -23,7 +23,8 @@
   - workspace defaults редактируют hard constraints, caption provider, one-shot model, prompt source и examples source;
   - prompt/examples имеют режимы system presets (`system_*`, `animals_*`) или custom;
   - на уровне канала можно оставить workspace default или включить отдельный prompt/examples override.
-  - `classicOneShot` и `storyOneShot` имеют отдельные prompt-first contracts.
+  - на уровне канала выбирается active template type: `Top / Bottom` или `Lead / Main Caption`;
+  - после выбора Stage 2 показывает только активный prompt-first contract: `classicOneShot` для `Top / Bottom` или `storyOneShot` для `Lead / Main Caption`.
 - В Stage 3 publication planner удаление ролика из очереди не сбрасывает пользователя со страницы рендера:
   - карточка исчезает после локальной синхронизации очереди;
   - UI показывает success toast об удалении.
@@ -378,10 +379,11 @@ Primary Stage 2 control surface:
     - owner-only connect / update / disconnect для Anthropic API key
     - owner-only connect / update / disconnect для OpenRouter API key
 - owner отдельно управляет baseline Shared Codex integration через header block `Shared Codex` / `Connect Codex`;
-- у конкретного канала есть channel-level hard constraints, optional prompt override и optional examples override;
+- у конкретного канала есть template type selector, channel-level hard constraints, optional prompt override и optional examples override;
+- template type выбирается кнопками `Top / Bottom` и `Lead / Main Caption`; активная кнопка определяет, какой prompt contract, labels constraints и JSON examples placeholder показываются в Stage 2;
 - prompt override может выбрать system preset или custom prompt;
 - examples override может выбрать system preset, custom JSON или custom plain text;
-- новых selector/writer/critic loops больше нет: active path идёт через единый video-first `oneShotReference`;
+- новых selector/writer/critic loops больше нет: active path идёт через prompt-first `classicOneShot` или `storyOneShot` по выбранному template type;
 - UI во время генерации показывает активный pipeline step в реальном времени.
 
 Anthropic setup links:

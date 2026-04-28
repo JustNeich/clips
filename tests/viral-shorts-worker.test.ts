@@ -22,7 +22,9 @@ import {
   canDeleteManagedChannel,
   describeChannelManagerSavePatch,
   groupManagedTemplatesByFormat,
-  listChannelManagerTargets
+  listChannelManagerTargets,
+  resolveChannelTemplateFormatGroup,
+  resolveChannelTemplateIdForFormatGroup
 } from "../app/components/ChannelManager";
 import { ChannelManagerStage2Tab } from "../app/components/ChannelManagerStage2Tab";
 import { Step1PasteLink } from "../app/components/Step1PasteLink";
@@ -1948,10 +1950,13 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   assert.match(markup, /TOP макс\./);
   assert.match(markup, /BOTTOM мин\./);
   assert.match(markup, /BOTTOM макс\./);
-  assert.match(markup, /classicOneShot \/ storyOneShot/);
+  assert.match(markup, /Template type/);
+  assert.match(markup, /Top \/ Bottom/);
+  assert.match(markup, /Lead \/ Main Caption/);
   assert.match(markup, /Channel prompt contracts/);
   assert.match(markup, /Classic channel prompt/);
-  assert.match(markup, /Story channel prompt/);
+  assert.doesNotMatch(markup, /Story channel prompt/);
+  assert.match(markup, /aria-pressed="true"/);
   assert.match(markup, /Запрещённые слова/);
   assert.match(markup, /Запрещённые начала/);
   assert.doesNotMatch(markup, /Stable Reference v6/);
@@ -1963,6 +1968,86 @@ test("channel Stage 2 tab exposes editable hard constraints including banned wor
   assert.match(markup, /literal, generic,/);
   assert.match(markup, /Here is a\nThis is/);
   assert.match(markup, /Workspace prompt fallback/);
+});
+
+test("channel Stage 2 tab follows the selected story template format", () => {
+  const element = ChannelManagerStage2Tab({
+    isWorkspaceDefaultsSelection: false,
+    workspaceExamplesCount: 12,
+    workspaceExamplesJson: "[]",
+    workspaceExamplesError: null,
+    stage2HardConstraints: {
+      topLengthMin: 32,
+      topLengthMax: 96,
+      bottomLengthMin: 60,
+      bottomLengthMax: 180,
+      bannedWords: [],
+      bannedOpeners: []
+    },
+    bannedWordsInput: "",
+    bannedOpenersInput: "",
+    workspaceStage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+    channelTemplateFormatGroup: "channel_story",
+    canEditChannelTemplateFormat: true,
+    stage2PromptStages: [],
+    autosaveState: {
+      brand: { status: "idle", message: null },
+      stage2: { status: "idle", message: null },
+      stage2Defaults: { status: "idle", message: null },
+      render: { status: "idle", message: null }
+    },
+    canEditWorkspaceDefaults: false,
+    canEditHardConstraints: true,
+    canEditChannelExamples: true,
+    stage2WorkerProfileId: "stable_reference_v6",
+    canEditStage2WorkerProfile: true,
+    updateStage2WorkerProfileId: () => undefined,
+    activeExamplesPreview: {
+      source: "channel_custom",
+      corpus: [],
+      workspaceCorpusCount: 12
+    },
+    channelStyleProfile: null,
+    channelStyleProfileDraft: null,
+    channelStyleProfileStatus: "missing",
+    channelStyleProfileDirty: false,
+    channelStyleProfileFeedbackHistory: [],
+    channelStyleProfileFeedbackHistoryLoading: false,
+    channelEditorialMemory: null,
+    canEditChannelStyleProfile: false,
+    channelStyleProfileDiscovering: false,
+    channelStyleProfileDiscoveryError: null,
+    channelStyleProfileSaveState: { status: "idle", message: null },
+    updateChannelStyleProfileReferenceLinks: () => undefined,
+    updateChannelStyleProfileExplorationShare: () => undefined,
+    toggleChannelStyleProfileDirectionSelection: () => undefined,
+    selectAllChannelStyleProfileDirections: () => undefined,
+    clearChannelStyleProfileDirectionSelection: () => undefined,
+    startChannelStyleProfileDiscovery: async () => undefined,
+    saveChannelStyleProfileDraft: async () => undefined,
+    discardChannelStyleProfileDraft: () => undefined,
+    customExamplesJson: "",
+    customExamplesError: null,
+    updateWorkspaceExamplesJson: () => undefined,
+    updateCustomExamplesJson: () => undefined,
+    updateStage2HardConstraint: () => undefined,
+    updateBannedWordsInput: () => undefined,
+    updateBannedOpenersInput: () => undefined,
+    updateStage2PromptTemplate: () => undefined,
+    updateStage2PromptReasoning: () => undefined,
+    resetStage2PromptStage: () => undefined
+  });
+  const markup = renderToStaticMarkup(element);
+
+  assert.match(markup, /Lead мин\./);
+  assert.match(markup, /Lead макс\./);
+  assert.match(markup, /Main Caption мин\./);
+  assert.match(markup, /Main Caption макс\./);
+  assert.match(markup, /Lead \/ Main Caption/);
+  assert.match(markup, /storyOneShot -&gt; translation -&gt; SEO/);
+  assert.match(markup, /Story channel prompt/);
+  assert.doesNotMatch(markup, /Classic channel prompt/);
+  assert.match(markup, /mainCaption/);
 });
 
 test("workspace Stage 2 tab distinguishes a connected OpenRouter key from the active caption provider", () => {
@@ -2286,7 +2371,7 @@ test("channel Stage 2 tab exposes post-onboarding style profile editing and feed
 
   assert.match(markup, /Channel prompt contracts/);
   assert.match(markup, /Classic channel prompt/);
-  assert.match(markup, /Story channel prompt/);
+  assert.doesNotMatch(markup, /Story channel prompt/);
   assert.match(markup, /Legacy context/);
   assert.doesNotMatch(markup, /Стиль канала/);
   assert.doesNotMatch(markup, /Перегенерировать направления/);
@@ -14264,7 +14349,7 @@ test("app shell labels the account exit action explicitly", () => {
 });
 
 test("channel manager groups render templates by format label", () => {
-  const groups = groupManagedTemplatesByFormat([
+  const managedTemplates = [
     {
       id: "classic-template",
       name: "Classic Template",
@@ -14291,7 +14376,8 @@ test("channel manager groups render templates by format label", () => {
       updatedAt: nowIso(),
       versionsCount: 0
     }
-  ]);
+  ];
+  const groups = groupManagedTemplatesByFormat(managedTemplates);
 
   assert.deepEqual(groups, [
     {
@@ -14303,6 +14389,16 @@ test("channel manager groups render templates by format label", () => {
       options: [{ value: "channel-story-template", label: "Channel Story Template" }]
     }
   ]);
+  assert.equal(resolveChannelTemplateFormatGroup(managedTemplates, "classic-template"), "classic_top_bottom");
+  assert.equal(resolveChannelTemplateFormatGroup(managedTemplates, "channel-story-template"), "channel_story");
+  assert.equal(
+    resolveChannelTemplateIdForFormatGroup(managedTemplates, "classic-template", "channel_story"),
+    "channel-story-template"
+  );
+  assert.equal(
+    resolveChannelTemplateIdForFormatGroup(managedTemplates, "missing-template", "classic_top_bottom"),
+    "classic-template"
+  );
 });
 
 test("step 2 uses lead/body wording for channel story templates", () => {

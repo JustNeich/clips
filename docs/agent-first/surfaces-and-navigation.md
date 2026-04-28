@@ -594,14 +594,19 @@
   - workspace examples toggle `System` / `Custom`
   - workspace examples presets `System examples`, `Animals examples`
   - channel block `Channel Stage 2`
-  - channel logical sections `01 · Обзор`, `02 · Hard rules`, `03 · Prompt`, `04 · Examples`
+  - channel logical sections `Template type`, `Hard constraints`, `Channel prompt contracts`, `Channel examples`
+  - channel template type buttons `Top / Bottom` / `Lead / Main Caption`; one button is active
+  - active channel prompt field only:
+    - `Classic channel prompt` when `Top / Bottom` is active
+    - `Story channel prompt` when `Lead / Main Caption` is active
   - channel prompt toggle `Workspace default` / `Channel override`
   - channel prompt override toggle `System` / `Custom`
   - channel examples toggle `Workspace default` / `Channel override`
   - channel examples override toggle `System` / `Custom`
   - custom examples input toggle `JSON` / `Text`
   - hard constraints:
-    - `TOP мин.`, `TOP макс.`, `BOTTOM мин.`, `BOTTOM макс.`
+    - `TOP мин.`, `TOP макс.`, `BOTTOM мин.`, `BOTTOM макс.` for `Top / Bottom`
+    - `Lead мин.`, `Lead макс.`, `Main Caption мин.`, `Main Caption макс.` for `Lead / Main Caption`
     - `Запрещённые слова`
     - `Запрещённые начала`
   - owner-only block `Caption provider`
