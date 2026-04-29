@@ -610,3 +610,63 @@ test("ChannelManagerStage2Tab renders the minimal single-baseline Stage 2 surfac
   assert.doesNotMatch(html, /JSON общего корпуса/);
   assert.doesNotMatch(html, /Стиль канала/);
 });
+
+test("ChannelManagerStage2Tab presents channel examples as presets or custom corpus", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChannelManagerStage2Tab, {
+      isWorkspaceDefaultsSelection: false,
+      stage2HardConstraints: DEFAULT_STAGE2_HARD_CONSTRAINTS,
+      bannedWordsInput: "",
+      bannedOpenersInput: "",
+      workspaceStage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+      workspaceStage2CaptionProviderConfig: DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG,
+      workspaceCodexModelConfig: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG,
+      resolvedWorkspaceCodexModelConfig: resolveWorkspaceCodexModelConfig({
+        config: DEFAULT_WORKSPACE_CODEX_MODEL_CONFIG
+      }),
+      autosaveState: {
+        brand: { status: "idle", message: null },
+        stage2: { status: "idle", message: null },
+        stage2Defaults: { status: "idle", message: null },
+        render: { status: "idle", message: null }
+      },
+      canEditWorkspaceDefaults: false,
+      canEditHardConstraints: true,
+      canEditChannelPrompt: true,
+      canEditChannelExamples: true,
+      stage2ExamplesConfig: {
+        ...DEFAULT_STAGE2_EXAMPLES_CONFIG,
+        useWorkspaceDefault: false,
+        sourceMode: "system",
+        systemPresetId: "animals_examples"
+      },
+      updateStage2HardConstraint: () => undefined,
+      updateBannedWordsInput: () => undefined,
+      updateBannedOpenersInput: () => undefined,
+      updateStage2PromptTemplate: () => undefined,
+      updateStage2PromptReasoning: () => undefined,
+      resetStage2PromptStage: () => undefined,
+      updateChannelExamplesMode: () => undefined,
+      updateChannelExamplesSourceMode: () => undefined,
+      updateChannelExamplesSystemPreset: () => undefined,
+      updateChannelExamplesInputMode: () => undefined,
+      updateCustomExamplesJson: () => undefined,
+      updateCustomExamplesText: () => undefined,
+      updateChannelStage2PromptTemplate: () => undefined,
+      updateChannelStage2PromptReasoning: () => undefined,
+      resetChannelStage2PromptConfig: () => undefined,
+      updateWorkspaceCodexModelSetting: () => undefined
+    })
+  );
+
+  assert.match(html, /Channel examples/);
+  assert.match(html, /Channel-specific/);
+  assert.match(html, /Channel-specific examples/);
+  assert.match(html, /Default presets/);
+  assert.match(html, /Base/);
+  assert.match(html, /Animals/);
+  assert.match(html, /Active preset/);
+  assert.match(html, /Use workspace default/);
+  assert.doesNotMatch(html, /Channel override/);
+  assert.doesNotMatch(html, /System examples/);
+});

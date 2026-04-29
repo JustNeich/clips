@@ -22,8 +22,9 @@
   - Stage 2 дальше автоматически наследует workspace baseline.
 - В Channel Manager -> Stage 2:
   - workspace defaults редактируют hard constraints, caption provider, one-shot model, prompt source и examples source;
-  - prompt/examples имеют режимы system presets (`system_*`, `animals_*`) или custom;
-  - на уровне канала можно оставить workspace default или включить отдельный prompt/examples override.
+  - prompt/examples имеют понятные режимы default presets (`Base`, `Animals`) или custom;
+  - на уровне канала можно оставить workspace default или включить отдельный prompt/examples override;
+  - channel examples override показывает `Default presets` отдельно от `Custom`, чтобы preset-кнопки не выглядели как ещё один слой одинаковых mode buttons;
   - на уровне канала выбирается active template type: `Top / Bottom` или `Lead / Main Caption`;
   - после выбора Stage 2 показывает только активный prompt-first contract: `classicOneShot` для `Top / Bottom` или `storyOneShot` для `Lead / Main Caption`.
 - В Stage 3 publication planner удаление ролика из очереди не сбрасывает пользователя со страницы рендера:
@@ -372,7 +373,7 @@ Primary Stage 2 control surface:
 - там же задаются:
   - `hard constraints`
   - prompt source: `system_prompt`, `animals_system_prompt` или custom workspace prompt
-  - examples source: `system_examples`, `animals_examples` или custom workspace JSON
+  - examples source: default presets `Base` / `Animals` или custom workspace JSON
   - one-shot model + reasoning
   - `Caption provider` для caption-only stages:
     - `Shared Codex`, `Anthropic API` или `OpenRouter API`
@@ -384,7 +385,7 @@ Primary Stage 2 control surface:
 - у конкретного канала есть template type selector, channel-level hard constraints, optional prompt override и optional examples override;
 - template type выбирается кнопками `Top / Bottom` и `Lead / Main Caption`; активная кнопка определяет, какой prompt contract, labels constraints и JSON examples placeholder показываются в Stage 2;
 - prompt override может выбрать system preset или custom prompt;
-- examples override может выбрать system preset, custom JSON или custom plain text;
+- examples override сначала выбирает между `Default presets` и `Custom`; внутри default доступны `Base` и `Animals`, внутри custom доступны JSON или plain text;
 - новых selector/writer/critic loops больше нет: active path идёт через prompt-first `classicOneShot` или `storyOneShot` по выбранному template type;
 - UI во время генерации показывает активный pipeline step в реальном времени.
 

@@ -165,6 +165,7 @@ type ChannelManagerStage2TabProps = {
 };
 
 type PromptFirstChannelStageId = "classicOneShot" | "storyOneShot";
+type Stage2ExamplesPreset = (typeof STAGE2_SYSTEM_EXAMPLES_PRESETS)[number];
 
 const STAGE2_TEMPLATE_FORMAT_CHOICES: Array<{
   formatGroup: Stage3TemplateFormatGroup;
@@ -577,23 +578,130 @@ function ChoiceButton(input: {
   );
 }
 
-function renderExamplesPresetChoices(input: {
+function getExamplesPresetDisplay(preset: Stage2ExamplesPreset): {
+  title: string;
+  description: string;
+  countLabel: string;
+} {
+  const count = Array.isArray(preset.examples) ? preset.examples.length : 0;
+  const countLabel = `${count} examples`;
+  switch (preset.id) {
+    case "animals_examples":
+      return {
+        title: "Animals",
+        description: "Animal and nature corpus for channels built around creatures, behavior, and survival stakes.",
+        countLabel
+      };
+    case "system_examples":
+    default:
+      return {
+        title: "Base",
+        description: "General Shorts/Reels corpus for broad viral clips, people, objects, and everyday spectacle.",
+        countLabel
+      };
+  }
+}
+
+function getExamplesPresetDisplayById(presetId: Stage2SystemExamplesPresetId) {
+  const preset =
+    STAGE2_SYSTEM_EXAMPLES_PRESETS.find((item) => item.id === presetId) ??
+    STAGE2_SYSTEM_EXAMPLES_PRESETS[0];
+  return getExamplesPresetDisplay(preset);
+}
+
+function ExamplesSourceTabs(input: {
+  value: Stage2ExamplesSourceMode;
+  disabled?: boolean;
+  onChange: (sourceMode: Stage2ExamplesSourceMode) => void;
+}) {
+  return (
+    <div className="examples-source-tabs" role="tablist" aria-label="Examples source">
+      <button
+        type="button"
+        className={`examples-source-tab ${input.value === "system" ? "is-active" : ""}`}
+        role="tab"
+        aria-selected={input.value === "system"}
+        disabled={input.disabled}
+        onClick={() => input.onChange("system")}
+      >
+        <strong>Default presets</strong>
+        <span>Base / Animals</span>
+      </button>
+      <button
+        type="button"
+        className={`examples-source-tab ${input.value === "custom" ? "is-active" : ""}`}
+        role="tab"
+        aria-selected={input.value === "custom"}
+        disabled={input.disabled}
+        onClick={() => input.onChange("custom")}
+      >
+        <strong>Custom</strong>
+        <span>JSON or plain text</span>
+      </button>
+    </div>
+  );
+}
+
+function ExamplesCustomInputTabs(input: {
+  value: Stage2ExamplesInputMode;
+  disabled?: boolean;
+  onChange: (inputMode: Stage2ExamplesInputMode) => void;
+}) {
+  return (
+    <div className="examples-custom-tabs" role="tablist" aria-label="Custom examples format">
+      <button
+        type="button"
+        className={`examples-custom-tab ${input.value === "json" ? "is-active" : ""}`}
+        role="tab"
+        aria-selected={input.value === "json"}
+        disabled={input.disabled}
+        onClick={() => input.onChange("json")}
+      >
+        JSON
+      </button>
+      <button
+        type="button"
+        className={`examples-custom-tab ${input.value === "text" ? "is-active" : ""}`}
+        role="tab"
+        aria-selected={input.value === "text"}
+        disabled={input.disabled}
+        onClick={() => input.onChange("text")}
+      >
+        Text
+      </button>
+    </div>
+  );
+}
+
+function renderExamplesPresetCards(input: {
   selectedId: Stage2SystemExamplesPresetId;
   disabled?: boolean;
   onSelect: (presetId: Stage2SystemExamplesPresetId) => void;
 }) {
   return (
-    <div className="settings-choice-grid">
-      {STAGE2_SYSTEM_EXAMPLES_PRESETS.map((preset) => (
-        <ChoiceButton
-          key={preset.id}
-          active={input.selectedId === preset.id}
-          disabled={input.disabled}
-          label={preset.label}
-          description={preset.description}
-          onClick={() => input.onSelect(preset.id)}
-        />
-      ))}
+    <div className="examples-preset-list">
+      {STAGE2_SYSTEM_EXAMPLES_PRESETS.map((preset) => {
+        const display = getExamplesPresetDisplay(preset);
+        const active = input.selectedId === preset.id;
+        return (
+          <button
+            key={preset.id}
+            type="button"
+            className={`examples-preset-card ${active ? "is-active" : ""}`}
+            disabled={input.disabled}
+            aria-pressed={active}
+            onClick={() => input.onSelect(preset.id)}
+          >
+            <span className="examples-preset-kicker">Default preset</span>
+            <strong>{display.title}</strong>
+            <p>{display.description}</p>
+            <span className="examples-preset-meta">{display.countLabel}</span>
+            <span className="examples-preset-action">
+              {active ? "Active preset" : `Use ${display.title}`}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -706,6 +814,8 @@ export function ChannelManagerStage2Tab({
   const channelExamplesSourceMode = stage2ExamplesConfig?.sourceMode ?? "system";
   const channelExamplesInputMode = stage2ExamplesConfig?.customInputMode ?? "json";
   const channelExamplesSystemPresetId = stage2ExamplesConfig?.systemPresetId ?? "system_examples";
+  const workspaceExamplesPresetTitle = getExamplesPresetDisplayById(workspaceExamplesPresetId).title;
+  const channelExamplesPresetTitle = getExamplesPresetDisplayById(channelExamplesSystemPresetId).title;
   const workspaceExamplesJsonError = (() => {
     if (!workspaceStage2ExamplesCorpusJson.trim()) {
       return null;
@@ -968,24 +1078,13 @@ export function ChannelManagerStage2Tab({
 
           <div className="compact-field">
             <p className="field-label">Examples corpus</p>
-            <div className="settings-choice-row">
-              <ChoiceButton
-                active={resolvedWorkspaceExamplesSourceMode === "system"}
-                disabled={!canEditWorkspaceDefaults}
-                label="System"
-                description="готовый examples corpus"
-                onClick={() => updateWorkspaceExamplesSourceMode("system")}
-              />
-              <ChoiceButton
-                active={resolvedWorkspaceExamplesSourceMode === "custom"}
-                disabled={!canEditWorkspaceDefaults}
-                label="Custom"
-                description="ручной JSON corpus"
-                onClick={() => updateWorkspaceExamplesSourceMode("custom")}
-              />
-            </div>
+            <ExamplesSourceTabs
+              value={resolvedWorkspaceExamplesSourceMode}
+              disabled={!canEditWorkspaceDefaults}
+              onChange={updateWorkspaceExamplesSourceMode}
+            />
             {resolvedWorkspaceExamplesSourceMode === "system" ? (
-              renderExamplesPresetChoices({
+              renderExamplesPresetCards({
                 selectedId: workspaceExamplesPresetId,
                 disabled: !canEditWorkspaceDefaults,
                 onSelect: updateWorkspaceExamplesPreset
@@ -1078,14 +1177,14 @@ export function ChannelManagerStage2Tab({
           </article>
           <article className="stage2-insight-card">
             <span className="field-label">Examples</span>
-            <strong>{channelExamplesMode === "workspace" ? "Workspace default" : "Channel override"}</strong>
+            <strong>{channelExamplesMode === "workspace" ? "Using workspace" : "Channel-specific"}</strong>
             <p className="subtle-text">
               {channelExamplesMode === "workspace"
                 ? resolvedWorkspaceExamplesSourceMode === "system"
-                  ? "system examples"
+                  ? `workspace ${workspaceExamplesPresetTitle} preset`
                   : "workspace custom JSON"
                 : channelExamplesSourceMode === "system"
-                  ? "system preset"
+                  ? `${channelExamplesPresetTitle} preset`
                   : channelExamplesInputMode === "json"
                     ? `${customExamplesCount} JSON examples`
                     : "plain text examples"}
@@ -1202,69 +1301,67 @@ export function ChannelManagerStage2Tab({
         </div>
 
         <div className="compact-field">
-          <p className="field-label">Channel examples</p>
-          <div className="settings-choice-row">
-            <ChoiceButton
-              active={channelExamplesMode === "workspace"}
-              disabled={!canEditChannelExamples}
-              label="Workspace default"
-              description="наследовать общий corpus"
-              onClick={() => updateChannelExamplesMode(true)}
-            />
-            <ChoiceButton
-              active={channelExamplesMode === "channel"}
-              disabled={!canEditChannelExamples}
-              label="Channel override"
-              description="отдельные examples"
-              onClick={() => updateChannelExamplesMode(false)}
-            />
+          <div className="stage2-section-head">
+            <div>
+              <p className="field-label">Channel examples</p>
+              <p className="subtle-text">
+                Choose whether this channel inherits the workspace corpus or uses its own examples.
+              </p>
+            </div>
           </div>
           {channelExamplesMode === "workspace" ? (
-            <p className="subtle-text">
-              Сейчас provider получает все examples из workspace default source.
-            </p>
+            <div className="examples-inheritance-card">
+              <div>
+                <strong>Using workspace default</strong>
+                <p className="subtle-text">
+                  Stage 2 receives the shared workspace examples corpus for this channel.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={!canEditChannelExamples}
+                onClick={() => updateChannelExamplesMode(false)}
+              >
+                Customize this channel
+              </button>
+            </div>
           ) : (
             <>
-              <div className="settings-choice-row">
-                <ChoiceButton
-                  active={channelExamplesSourceMode === "system"}
+              <div className="examples-inheritance-card is-custom">
+                <div>
+                  <strong>Channel-specific examples</strong>
+                  <p className="subtle-text">
+                    This channel uses its own corpus instead of the workspace default.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
                   disabled={!canEditChannelExamples}
-                  label="System"
-                  description="готовый corpus"
-                  onClick={() => updateChannelExamplesSourceMode("system")}
-                />
-                <ChoiceButton
-                  active={channelExamplesSourceMode === "custom"}
-                  disabled={!canEditChannelExamples}
-                  label="Custom"
-                  description="JSON или text"
-                  onClick={() => updateChannelExamplesSourceMode("custom")}
-                />
+                  onClick={() => updateChannelExamplesMode(true)}
+                >
+                  Use workspace default
+                </button>
               </div>
+              <ExamplesSourceTabs
+                value={channelExamplesSourceMode}
+                disabled={!canEditChannelExamples}
+                onChange={updateChannelExamplesSourceMode}
+              />
               {channelExamplesSourceMode === "system" ? (
-                renderExamplesPresetChoices({
+                renderExamplesPresetCards({
                   selectedId: channelExamplesSystemPresetId,
                   disabled: !canEditChannelExamples,
                   onSelect: updateChannelExamplesSystemPreset
                 })
               ) : (
                 <>
-                  <div className="settings-choice-row">
-                    <ChoiceButton
-                      active={channelExamplesInputMode === "json"}
-                      disabled={!canEditChannelExamples}
-                      label="JSON"
-                      description="массив примеров"
-                      onClick={() => updateChannelExamplesInputMode("json")}
-                    />
-                    <ChoiceButton
-                      active={channelExamplesInputMode === "text"}
-                      disabled={!canEditChannelExamples}
-                      label="Text"
-                      description="свободный corpus"
-                      onClick={() => updateChannelExamplesInputMode("text")}
-                    />
-                  </div>
+                  <ExamplesCustomInputTabs
+                    value={channelExamplesInputMode}
+                    disabled={!canEditChannelExamples}
+                    onChange={updateChannelExamplesInputMode}
+                  />
                   {channelExamplesInputMode === "json" ? (
                     <>
                       <label className="field-label">JSON examples</label>
