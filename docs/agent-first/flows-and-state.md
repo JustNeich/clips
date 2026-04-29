@@ -458,6 +458,12 @@
 4. Пользователь при необходимости редактирует метаданные публикации.
 5. Publication доходит до queued/scheduled/published.
 
+### Duplicate guard
+
+1. Перед созданием queued-публикации система проверяет channel-level дубли по normalized source URL и normalized title.
+2. Ручное изменение title, retry/resume/publish-now и pre-upload processing повторяют тот же guard.
+3. При дубле новая запись fail-closed уходит в `failed` или mutation возвращает typed error; upload в YouTube не начинается.
+
 ### Alternate path
 
 1. Публикацию можно перевести в `Точное время`.

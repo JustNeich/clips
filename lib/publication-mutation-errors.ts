@@ -7,6 +7,8 @@ export type PublicationMutationErrorCode =
   | "SLOT_SELECTION_REQUIRED"
   | "SLOT_OCCUPIED"
   | "TIME_OCCUPIED"
+  | "DUPLICATE_PUBLICATION_TITLE"
+  | "DUPLICATE_PUBLICATION_SOURCE"
   | "SLOT_IN_PAST"
   | "INVALID_SLOT"
   | "INVALID_SLOT_DATE"
@@ -115,6 +117,12 @@ function inferPublicationMutationFromMessage(message: string): {
   }
   if (/это время уже занято/i.test(message)) {
     return { code: "TIME_OCCUPIED", field: "slot" };
+  }
+  if (/таким же названием|duplicate title/i.test(message)) {
+    return { code: "DUPLICATE_PUBLICATION_TITLE", field: "title" };
+  }
+  if (/того же исходника|same source|duplicate source/i.test(message)) {
+    return { code: "DUPLICATE_PUBLICATION_SOURCE" };
   }
   if (/уже прошедший слот/i.test(message)) {
     return { code: "SLOT_IN_PAST", field: "slot" };

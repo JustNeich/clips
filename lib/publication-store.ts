@@ -24,6 +24,7 @@ import {
 } from "./render-export-artifacts";
 import { getStage3Job } from "./stage3-job-store";
 import { tryAppendFlowAuditEvent } from "./audit-log-store";
+import { normalizeSupportedUrl } from "./supported-url";
 
 export type StoredYoutubeCredential = {
   refreshToken: string;
@@ -175,6 +176,35 @@ export type ChannelPublicationProcessingState = {
   youtubeVideoId: string | null;
   youtubeVideoUrl: string | null;
 };
+
+export type BlockingPublicationDuplicate = {
+  reason: "source" | "title";
+  publication: ChannelPublication;
+};
+
+const DUPLICATE_BLOCKING_STATUS_PRIORITY: Record<ChannelPublication["status"], number> = {
+  uploading: 0,
+  scheduled: 1,
+  published: 2,
+  queued: 3,
+  paused: 4,
+  failed: 5,
+  canceled: 99
+};
+
+export function normalizePublicationTitleKey(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+export function normalizePublicationSourceKey(value: string | null | undefined): string {
+  const normalized = normalizeSupportedUrl(value ?? "");
+  return normalized.trim().toLowerCase();
+}
 
 function hashStateToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -1106,6 +1136,90 @@ export function findLatestPublicationForChat(chatId: string): ChannelPublication
   return row ? mapChannelPublicationRow(row, readPublicationEvents(row.id)) : null;
 }
 
+export function findBlockingPublicationDuplicate(input: {
+  channelId: string;
+  title?: string | null;
+  sourceUrl?: string | null;
+  excludePublicationId?: string | null;
+}): BlockingPublicationDuplicate | null {
+  const titleKey = normalizePublicationTitleKey(input.title);
+  const sourceKey = normalizePublicationSourceKey(input.sourceUrl);
+  if (!titleKey && !sourceKey) {
+    return null;
+  }
+
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT p.*, r.artifact_file_name as render_file_name, r.source_url as source_url, t.title as chat_title
+         FROM channel_publications p
+         JOIN render_exports r ON r.id = p.render_export_id
+         JOIN chat_threads t ON t.id = p.chat_id
+        WHERE p.channel_id = ?
+          AND p.status != 'canceled'
+          AND (? IS NULL OR p.id != ?)`
+    )
+    .all(input.channelId, input.excludePublicationId ?? null, input.excludePublicationId ?? null) as ChannelPublicationRow[];
+
+  const candidates = rows
+    .map((row) => mapChannelPublicationRow(row))
+    .sort((left, right) => {
+      const priorityDelta =
+        DUPLICATE_BLOCKING_STATUS_PRIORITY[left.status] -
+        DUPLICATE_BLOCKING_STATUS_PRIORITY[right.status];
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+    });
+
+  if (sourceKey) {
+    const sourceMatch = candidates.find((publication) => normalizePublicationSourceKey(publication.sourceUrl) === sourceKey);
+    if (sourceMatch) {
+      return {
+        reason: "source",
+        publication: sourceMatch
+      };
+    }
+  }
+
+  if (titleKey) {
+    const titleMatch = candidates.find((publication) => normalizePublicationTitleKey(publication.title) === titleKey);
+    if (titleMatch) {
+      return {
+        reason: "title",
+        publication: titleMatch
+      };
+    }
+  }
+
+  return null;
+}
+
+export function buildBlockingPublicationDuplicateMessage(duplicate: BlockingPublicationDuplicate): string {
+  const existing = duplicate.publication;
+  if (duplicate.reason === "source") {
+    return `Дубль остановлен: в этом канале уже есть публикация того же исходника "${existing.title}" (${existing.status}). Существующая publicationId: ${existing.id}.`;
+  }
+  return `Дубль остановлен: в этом канале уже есть публикация с таким же названием "${existing.title}" (${existing.status}). Существующая publicationId: ${existing.id}.`;
+}
+
+export function assertNoBlockingPublicationDuplicate(input: {
+  channelId: string;
+  title?: string | null;
+  sourceUrl?: string | null;
+  excludePublicationId?: string | null;
+}): void {
+  const duplicate = findBlockingPublicationDuplicate(input);
+  if (!duplicate) {
+    return;
+  }
+  throw new PublicationMutationError(buildBlockingPublicationDuplicateMessage(duplicate), {
+    code: duplicate.reason === "source" ? "DUPLICATE_PUBLICATION_SOURCE" : "DUPLICATE_PUBLICATION_TITLE",
+    field: duplicate.reason === "title" ? "title" : undefined
+  });
+}
+
 export function createChannelPublication(input: {
   workspaceId: string;
   channelId: string;
@@ -1303,6 +1417,12 @@ export function resumeChannelPublication(publicationId: string): ChannelPublicat
       code: "PUBLICATION_ACTION_FORBIDDEN"
     });
   }
+  assertNoBlockingPublicationDuplicate({
+    channelId: current.channelId,
+    title: current.title,
+    sourceUrl: current.sourceUrl,
+    excludePublicationId: current.id
+  });
   const db = getDb();
   db.prepare(
     `UPDATE channel_publications
@@ -1330,6 +1450,12 @@ export function retryChannelPublication(publicationId: string): ChannelPublicati
       code: "PUBLICATION_ACTION_FORBIDDEN"
     });
   }
+  assertNoBlockingPublicationDuplicate({
+    channelId: current.channelId,
+    title: current.title,
+    sourceUrl: current.sourceUrl,
+    excludePublicationId: current.id
+  });
   const db = getDb();
   db.prepare(
     `UPDATE channel_publications
@@ -1385,6 +1511,12 @@ export function publishNowChannelPublication(publicationId: string): ChannelPubl
   if (current.status === "published" || current.status === "canceled") {
     return current;
   }
+  assertNoBlockingPublicationDuplicate({
+    channelId: current.channelId,
+    title: current.title,
+    sourceUrl: current.sourceUrl,
+    excludePublicationId: current.id
+  });
   const now = nowIso();
   const settings = getChannelPublishSettings(current.channelId) ?? DEFAULT_CHANNEL_PUBLISH_SETTINGS;
   const schedule = buildCustomPublicationCandidateFromUtcIso({

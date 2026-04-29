@@ -187,6 +187,32 @@ test("publication PATCH route returns typed field error when custom time is alre
   });
 });
 
+test("publication PATCH route rejects a title already used by the channel", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedPublicationRouteScenario();
+
+    const response = await patchPublicationRoute(
+      new Request(`http://localhost/api/publications/${scenario.secondPublication.id}`, {
+        method: "PATCH",
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${scenario.owner.sessionToken}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          title: scenario.firstPublication.title.toUpperCase()
+        })
+      }),
+      { params: Promise.resolve({ id: scenario.secondPublication.id }) }
+    );
+
+    const body = (await response.json()) as { error?: string; code?: string; field?: string };
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "DUPLICATE_PUBLICATION_TITLE", JSON.stringify(body));
+    assert.equal(body.field, "title");
+    assert.match(body.error ?? "", /таким же названием/i);
+  });
+});
+
 test("publication shift route returns typed field error when moving a custom-time publication by slot", async () => {
   await withIsolatedAppData(async () => {
     const scenario = await seedPublicationRouteScenario();

@@ -8,12 +8,15 @@ import {
 import { isChannelPublishIntegrationReady } from "./channel-publish-state";
 import {
   appendChannelPublicationEvent,
+  assertNoBlockingPublicationDuplicate,
+  buildBlockingPublicationDuplicateMessage,
   cancelChannelPublication,
   createChannelPublication,
   createRenderExport,
   ensureRenderExportArtifactAvailable,
   extendChannelPublicationLease,
   findLatestPublicationForChat,
+  findBlockingPublicationDuplicate,
   findLatestPublicationForRenderExport,
   getChannelPublicationById,
   getChannelPublicationProcessingState,
@@ -432,6 +435,82 @@ function buildPublishAfterRenderUnavailableMessage(
   );
 }
 
+function createFailedDuplicatePublication(input: {
+  workspaceId: string;
+  channelId: string;
+  chatId: string;
+  renderExportId: string;
+  settings: ReturnType<typeof getChannelPublishSettings>;
+  defaults: ReturnType<typeof buildChannelPublicationMetadata>;
+  duplicate: NonNullable<ReturnType<typeof findBlockingPublicationDuplicate>>;
+  createdByUserId: string;
+}): ChannelPublication {
+  const slot = pickNextPublicationSlot({
+    settings: input.settings,
+    existingPublications: listFutureActivePublicationsForChannel(input.channelId)
+  });
+  const publication = createChannelPublication({
+    workspaceId: input.workspaceId,
+    channelId: input.channelId,
+    chatId: input.chatId,
+    renderExportId: input.renderExportId,
+    scheduleMode: slot.scheduleMode,
+    scheduledAt: slot.scheduledAt,
+    uploadReadyAt: slot.uploadReadyAt,
+    slotDate: slot.slotDate,
+    slotIndex: slot.slotIndex,
+    title: input.defaults.title,
+    description: input.defaults.description,
+    tags: input.defaults.tags,
+    notifySubscribers: input.settings.notifySubscribersByDefault,
+    needsReview: true,
+    createdByUserId: input.createdByUserId
+  });
+  return markPublicationFailedForDuplicate(publication.id, input.duplicate);
+}
+
+function markPublicationFailedForDuplicate(
+  publicationId: string,
+  duplicate: NonNullable<ReturnType<typeof findBlockingPublicationDuplicate>>
+): ChannelPublication {
+  return markChannelPublicationFailed(
+    publicationId,
+    `${buildBlockingPublicationDuplicateMessage(duplicate)} Измените title или отмените старую публикацию, если это действительно новый ролик.`
+  );
+}
+
+function failPublicationIfDuplicate(publication: ChannelPublication): ChannelPublication | null {
+  const duplicate = findBlockingPublicationDuplicate({
+    channelId: publication.channelId,
+    title: publication.title,
+    sourceUrl: publication.sourceUrl,
+    excludePublicationId: publication.id
+  });
+  if (!duplicate) {
+    return null;
+  }
+  return markPublicationFailedForDuplicate(publication.id, duplicate);
+}
+
+function shouldBlockPublicationUploadForDuplicate(
+  current: ChannelPublication,
+  duplicate: ChannelPublication
+): boolean {
+  if (
+    duplicate.status === "uploading" ||
+    duplicate.status === "scheduled" ||
+    duplicate.status === "published"
+  ) {
+    return true;
+  }
+  const duplicateCreated = new Date(duplicate.createdAt).getTime();
+  const currentCreated = new Date(current.createdAt).getTime();
+  if (Number.isFinite(duplicateCreated) && Number.isFinite(currentCreated) && duplicateCreated !== currentCreated) {
+    return duplicateCreated < currentCreated;
+  }
+  return duplicate.id < current.id;
+}
+
 export function createOrUpdateQueuedPublicationFromRenderExport(input: {
   workspaceId: string;
   channelId: string;
@@ -471,6 +550,10 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
           renderExport: input.renderExport,
           defaults
         });
+        const failedDuplicate = failPublicationIfDuplicate(updated);
+        if (failedDuplicate) {
+          return failedDuplicate;
+        }
         if (!isIntegrationReady && unavailableMessage) {
           return markChannelPublicationFailed(updated.id, unavailableMessage);
         }
@@ -492,6 +575,10 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
           renderExport: input.renderExport,
           defaults
         });
+        const failedDuplicate = failPublicationIfDuplicate(updated);
+        if (failedDuplicate) {
+          return failedDuplicate;
+        }
         if (!isIntegrationReady && unavailableMessage) {
           return markChannelPublicationFailed(updated.id, unavailableMessage);
         }
@@ -505,6 +592,24 @@ export function createOrUpdateQueuedPublicationFromRenderExport(input: {
         "Новый рендер не поставлен отдельной публикацией: этот ролик уже публикуется или опубликован."
       );
       return existingForChat;
+    }
+
+    const duplicate = findBlockingPublicationDuplicate({
+      channelId: input.channelId,
+      title: defaults.title,
+      sourceUrl: input.renderExport.sourceUrl
+    });
+    if (duplicate) {
+      return createFailedDuplicatePublication({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        chatId: input.chatId,
+        renderExportId: input.renderExport.id,
+        settings,
+        defaults,
+        duplicate,
+        createdByUserId: input.createdByUserId
+      });
     }
 
     const slot = pickNextPublicationSlot({
@@ -726,21 +831,30 @@ export async function updateChannelPublicationFromEditor(input: {
     }
   }
 
-  const updated = updateChannelPublicationDraft({
-    publicationId: input.publicationId,
-    title: normalizeEditorText(input.patch.title),
-    description: normalizeEditorText(input.patch.description),
-    tags: input.patch.tags,
-    titleManual: typeof input.patch.title === "string",
-    descriptionManual: typeof input.patch.description === "string",
-    tagsManual: Array.isArray(input.patch.tags),
-    notifySubscribers: input.patch.notifySubscribers,
-    scheduleMode: scheduledPatch?.scheduleMode,
-    scheduledAt: scheduledPatch?.scheduledAt,
-    uploadReadyAt: scheduledPatch?.uploadReadyAt,
-    slotDate: scheduledPatch?.slotDate,
-    slotIndex: scheduledPatch?.slotIndex,
-    scheduleManual: Boolean(scheduledPatch)
+  const nextTitle = normalizeEditorText(input.patch.title) ?? current.title;
+  const updated = runInTransaction(() => {
+    assertNoBlockingPublicationDuplicate({
+      channelId: current.channelId,
+      title: nextTitle,
+      sourceUrl: current.sourceUrl,
+      excludePublicationId: current.id
+    });
+    return updateChannelPublicationDraft({
+      publicationId: input.publicationId,
+      title: normalizeEditorText(input.patch.title),
+      description: normalizeEditorText(input.patch.description),
+      tags: input.patch.tags,
+      titleManual: typeof input.patch.title === "string",
+      descriptionManual: typeof input.patch.description === "string",
+      tagsManual: Array.isArray(input.patch.tags),
+      notifySubscribers: input.patch.notifySubscribers,
+      scheduleMode: scheduledPatch?.scheduleMode,
+      scheduledAt: scheduledPatch?.scheduledAt,
+      uploadReadyAt: scheduledPatch?.uploadReadyAt,
+      slotDate: scheduledPatch?.slotDate,
+      slotIndex: scheduledPatch?.slotIndex,
+      scheduleManual: Boolean(scheduledPatch)
+    });
   });
 
   appendChannelPublicationEvent(
@@ -820,7 +934,6 @@ export async function processQueuedChannelPublication(
   const expectedLeaseToken = options?.leaseToken?.trim() || null;
 
   try {
-    const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
     const latest = getChannelPublicationById(publication.id);
     if (!latest) {
       throw new Error("Публикация исчезла из очереди.");
@@ -828,11 +941,27 @@ export async function processQueuedChannelPublication(
     if (latest.status !== "uploading" && latest.status !== "queued") {
       return latest;
     }
+    const duplicate = findBlockingPublicationDuplicate({
+      channelId: latest.channelId,
+      title: latest.title,
+      sourceUrl: latest.sourceUrl,
+      excludePublicationId: latest.id
+    });
+    if (duplicate && shouldBlockPublicationUploadForDuplicate(latest, duplicate.publication)) {
+      return markChannelPublicationFailed(
+        latest.id,
+        `${buildBlockingPublicationDuplicateMessage(duplicate)} Upload остановлен до обращения к YouTube.`,
+        {
+          expectedLeaseToken
+        }
+      );
+    }
     if (!expectedLeaseToken) {
       throw new YouTubePublishError("Публикация не имеет активного lease. Upload остановлен, чтобы не создать дубль.", {
         recoverable: true
       });
     }
+    const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
     if (latest.youtubeVideoId) {
       await updateYouTubeScheduledVideo({
         accessToken: credential.accessToken!,

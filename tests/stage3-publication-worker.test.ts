@@ -7,7 +7,18 @@ import test from "node:test";
 import { POST as completeWorkerStage3Job } from "../app/api/stage3/worker/jobs/[id]/complete/route";
 import { createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import { getDb, newId, nowIso } from "../lib/db/client";
-import { getRenderExportByStage3JobId, listChannelPublications, saveChannelPublishIntegration, upsertChannelPublishSettings } from "../lib/publication-store";
+import {
+  createChannelPublication,
+  createRenderExport,
+  getRenderExportByStage3JobId,
+  listChannelPublications,
+  saveChannelPublishIntegration,
+  upsertChannelPublishSettings
+} from "../lib/publication-store";
+import {
+  createOrUpdateQueuedPublicationFromRenderExport,
+  processQueuedChannelPublication
+} from "../lib/channel-publication-service";
 import { claimNextQueuedStage3JobForWorker, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
 import {
   exchangeStage3WorkerPairingToken,
@@ -64,6 +75,40 @@ function connectChannelPublishing(
     scopes: ["youtube.upload"],
     lastError: options?.lastError ?? null
   });
+}
+
+function insertCompletedRenderJob(input: {
+  workspaceId: string;
+  userId: string;
+  chatId: string;
+  channelId: string;
+  sourceUrl: string;
+  renderTitle: string;
+}): string {
+  const stage3JobId = newId();
+  const stamp = nowIso();
+  getDb()
+    .prepare(
+      `INSERT INTO stage3_jobs
+        (id, workspace_id, user_id, kind, status, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, created_at, updated_at, started_at, completed_at)
+        VALUES (?, ?, ?, 'render', 'completed', NULL, ?, NULL, NULL, NULL, 1, 0, ?, ?, ?, ?)`
+    )
+    .run(
+      stage3JobId,
+      input.workspaceId,
+      input.userId,
+      JSON.stringify({
+        chatId: input.chatId,
+        channelId: input.channelId,
+        sourceUrl: input.sourceUrl,
+        renderTitle: input.renderTitle
+      }),
+      stamp,
+      stamp,
+      stamp,
+      stamp
+    );
+  return stage3JobId;
 }
 
 test("local worker render completion creates a render export and queued publication", async () => {
@@ -161,6 +206,283 @@ test("local worker render completion creates a render export and queued publicat
     assert.equal(publications[0]?.title, "Rendered title");
     assert.equal(publications[0]?.chatId, chat.id);
     assert.equal(publications[0]?.notifySubscribers, false);
+  });
+});
+
+test("render completion fails closed when another channel publication has the same title", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const channel = await createChannel({
+      workspaceId,
+      creatorUserId: userId,
+      name: "Daily Dopamine",
+      username: "dailydopamine"
+    });
+    connectChannelPublishing(channel.id);
+
+    const firstChat = await createOrGetChatByUrl("https://youtube.com/watch?v=duplicate-title-1", channel.id);
+    const firstJobId = insertCompletedRenderJob({
+      workspaceId,
+      userId,
+      chatId: firstChat.id,
+      channelId: channel.id,
+      sourceUrl: firstChat.url,
+      renderTitle: "Calf Learns The Hard Way"
+    });
+    const firstRenderExport = createRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: firstChat.id,
+      stage3JobId: firstJobId,
+      artifactFileName: "first.mp4",
+      artifactFilePath: "/tmp/first.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Calf Learns The Hard Way",
+      sourceUrl: firstChat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId
+    });
+
+    const firstPublication = createOrUpdateQueuedPublicationFromRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: firstChat.id,
+      chatTitle: firstChat.title,
+      renderExport: firstRenderExport,
+      stage2Result: null,
+      createdByUserId: userId,
+      publishAfterRender: true
+    });
+    assert.equal(firstPublication?.status, "queued");
+
+    const secondChat = await createOrGetChatByUrl("https://youtube.com/watch?v=duplicate-title-2", channel.id);
+    const secondJobId = insertCompletedRenderJob({
+      workspaceId,
+      userId,
+      chatId: secondChat.id,
+      channelId: channel.id,
+      sourceUrl: secondChat.url,
+      renderTitle: "  calf   learns the hard way  "
+    });
+    const secondRenderExport = createRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: secondChat.id,
+      stage3JobId: secondJobId,
+      artifactFileName: "second.mp4",
+      artifactFilePath: "/tmp/second.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "  calf   learns the hard way  ",
+      sourceUrl: secondChat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId
+    });
+
+    const duplicatePublication = createOrUpdateQueuedPublicationFromRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: secondChat.id,
+      chatTitle: secondChat.title,
+      renderExport: secondRenderExport,
+      stage2Result: null,
+      createdByUserId: userId,
+      publishAfterRender: true
+    });
+
+    assert.equal(duplicatePublication?.status, "failed");
+    assert.match(duplicatePublication?.lastError ?? "", /таким же названием/i);
+    assert.match(duplicatePublication?.lastError ?? "", new RegExp(firstPublication!.id));
+
+    const duplicateAfterRerender = createOrUpdateQueuedPublicationFromRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: secondChat.id,
+      chatTitle: secondChat.title,
+      renderExport: secondRenderExport,
+      stage2Result: null,
+      createdByUserId: userId,
+      publishAfterRender: true
+    });
+    assert.equal(duplicateAfterRerender?.id, duplicatePublication?.id);
+    assert.equal(duplicateAfterRerender?.status, "failed");
+    assert.match(duplicateAfterRerender?.lastError ?? "", /таким же названием/i);
+
+    const thirdChat = await createOrGetChatByUrl("https://youtube.com/watch?v=duplicate-source-shell", channel.id);
+    const thirdJobId = insertCompletedRenderJob({
+      workspaceId,
+      userId,
+      chatId: thirdChat.id,
+      channelId: channel.id,
+      sourceUrl: firstChat.url,
+      renderTitle: "Fresh title but old source"
+    });
+    const thirdRenderExport = createRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: thirdChat.id,
+      stage3JobId: thirdJobId,
+      artifactFileName: "third.mp4",
+      artifactFilePath: "/tmp/third.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Fresh title but old source",
+      sourceUrl: firstChat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId
+    });
+    const sourceDuplicatePublication = createOrUpdateQueuedPublicationFromRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: thirdChat.id,
+      chatTitle: thirdChat.title,
+      renderExport: thirdRenderExport,
+      stage2Result: null,
+      createdByUserId: userId,
+      publishAfterRender: true
+    });
+
+    assert.equal(sourceDuplicatePublication?.status, "failed");
+    assert.match(sourceDuplicatePublication?.lastError ?? "", /того же исходника/i);
+    assert.match(sourceDuplicatePublication?.lastError ?? "", new RegExp(firstPublication!.id));
+    assert.equal(listChannelPublications(channel.id).length, 3);
+  });
+});
+
+test("publication processing fails an already queued duplicate before opening YouTube upload", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const channel = await createChannel({
+      workspaceId,
+      creatorUserId: userId,
+      name: "Daily Dopamine",
+      username: "dailydopamine"
+    });
+
+    const firstChat = await createOrGetChatByUrl("https://youtube.com/watch?v=preupload-1", channel.id);
+    const firstJobId = insertCompletedRenderJob({
+      workspaceId,
+      userId,
+      chatId: firstChat.id,
+      channelId: channel.id,
+      sourceUrl: firstChat.url,
+      renderTitle: "Duplicate Before Upload"
+    });
+    const firstRenderExport = createRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: firstChat.id,
+      stage3JobId: firstJobId,
+      artifactFileName: "first.mp4",
+      artifactFilePath: "/tmp/first.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Duplicate Before Upload",
+      sourceUrl: firstChat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId
+    });
+    const firstPublication = createChannelPublication({
+      workspaceId,
+      channelId: channel.id,
+      chatId: firstChat.id,
+      renderExportId: firstRenderExport.id,
+      scheduleMode: "slot",
+      scheduledAt: "2040-05-05T18:00:00.000Z",
+      uploadReadyAt: "2000-01-01T00:00:00.000Z",
+      slotDate: "2040-05-05",
+      slotIndex: 0,
+      title: "Duplicate Before Upload",
+      description: "",
+      tags: [],
+      notifySubscribers: false,
+      needsReview: false,
+      createdByUserId: userId
+    });
+
+    const secondChat = await createOrGetChatByUrl("https://youtube.com/watch?v=preupload-2", channel.id);
+    const secondJobId = insertCompletedRenderJob({
+      workspaceId,
+      userId,
+      chatId: secondChat.id,
+      channelId: channel.id,
+      sourceUrl: secondChat.url,
+      renderTitle: "Duplicate Before Upload"
+    });
+    const secondRenderExport = createRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: secondChat.id,
+      stage3JobId: secondJobId,
+      artifactFileName: "second.mp4",
+      artifactFilePath: "/tmp/second.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: "Duplicate Before Upload",
+      sourceUrl: secondChat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId
+    });
+    const secondPublication = createChannelPublication({
+      workspaceId,
+      channelId: channel.id,
+      chatId: secondChat.id,
+      renderExportId: secondRenderExport.id,
+      scheduleMode: "slot",
+      scheduledAt: "2040-05-05T18:15:00.000Z",
+      uploadReadyAt: "2000-01-01T00:00:00.000Z",
+      slotDate: "2040-05-05",
+      slotIndex: 1,
+      title: "Duplicate Before Upload",
+      description: "",
+      tags: [],
+      notifySubscribers: false,
+      needsReview: false,
+      createdByUserId: userId
+    });
+
+    const processed = await processQueuedChannelPublication(secondPublication);
+
+    assert.equal(processed.status, "failed");
+    assert.match(processed.lastError ?? "", /таким же названием/i);
+    assert.match(processed.lastError ?? "", new RegExp(firstPublication.id));
   });
 });
 
