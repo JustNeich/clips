@@ -1051,10 +1051,19 @@ export function buildStage3ExtractSegmentFfmpegArgs(params: {
   } else if (renderScaleFilter) {
     videoFilters.push(renderScaleFilter);
   }
+  if (params.profile === "render") {
+    videoFilters.push("fps=30");
+  }
   if (Math.abs(speed - 1) > 0.001) {
     videoFilters.push(`setpts=PTS/${speed.toFixed(6)}`);
   }
+  if (params.profile === "render") {
+    videoFilters.push("setpts=PTS-STARTPTS");
+  }
   videoFilters.push(STAGE3_EVEN_DIMENSIONS_FILTER);
+  if (params.profile === "render") {
+    videoFilters.push("format=yuv420p");
+  }
 
   const args = ["-y"];
   if (extractionMode === "fast") {

@@ -15,7 +15,8 @@ import {
 } from "../lib/stage2-channel-config";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
-  prepareStage2PromptConfigForExplicitSave
+  prepareStage2PromptConfigForExplicitSave,
+  resolveEffectiveStage2PromptConfig
 } from "../lib/stage2-pipeline";
 import {
   DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG
@@ -544,7 +545,19 @@ test("channel persistence keeps active examples and channel-level Stage 2 prompt
     assert.equal(reloaded?.stage2ExamplesConfig.useWorkspaceDefault, false);
     assert.equal(reloaded?.stage2ExamplesConfig.customExamples[0]?.overlayTop, "UPDATED TOP");
     assert.equal(reloaded?.stage2PromptConfig.stages.classicOneShot.prompt, "CHANNEL CLASSIC PROMPT");
+    assert.equal(reloaded?.stage2PromptConfig.useWorkspaceDefault, false);
     assert.equal(reloaded?.stage2HardConstraints.topLengthMin, 18);
+
+    const effectivePromptConfig = resolveEffectiveStage2PromptConfig({
+      workspacePromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG,
+      channelPromptConfig: reloaded?.stage2PromptConfig
+    });
+    assert.equal(effectivePromptConfig.stages.classicOneShot.prompt, "CHANNEL CLASSIC PROMPT");
+
+    const reset = await updateChannelById(channel.id, {
+      stage2PromptConfig: DEFAULT_STAGE2_PROMPT_CONFIG
+    });
+    assert.equal(reset.stage2PromptConfig.useWorkspaceDefault, true);
   });
 });
 

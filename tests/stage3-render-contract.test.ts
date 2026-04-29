@@ -167,7 +167,11 @@ test("render segment extraction uses decode-accurate timestamps to reduce bounda
   assert.ok(args.includes("+genpts"));
   assert.ok(args.includes("-avoid_negative_ts"));
   assert.ok(args.includes("make_zero"));
-  assert.ok(args.some((value) => value.includes(STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER)));
+  const filters = args[args.indexOf("-vf") + 1] ?? "";
+  assert.ok(filters.includes(STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER));
+  assert.match(filters, /fps=30/);
+  assert.match(filters, /setpts=PTS-STARTPTS/);
+  assert.match(filters, /format=yuv420p/);
   assert.ok(args.includes("-c:a"));
 });
 

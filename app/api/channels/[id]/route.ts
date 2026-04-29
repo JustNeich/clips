@@ -51,6 +51,12 @@ async function ensureChannelTemplateSelectable(
   return template ? template.id : null;
 }
 
+function copyPatchField<K extends keyof PatchBody>(source: PatchBody, target: PatchBody, key: K): void {
+  if (Object.prototype.hasOwnProperty.call(source, key)) {
+    target[key] = source[key];
+  }
+}
+
 export async function GET(_request: Request, context: Context): Promise<Response> {
   const { id } = await context.params;
   try {
@@ -105,22 +111,24 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
     if (typeof body.templateId === "string" && !(await ensureChannelTemplateSelectable(auth, body.templateId))) {
       return Response.json({ error: "Template not found." }, { status: 404 });
     }
-    const channel = await updateChannelById(id, {
-      name: body.name,
-      username: body.username,
-      systemPrompt: body.systemPrompt,
-      descriptionPrompt: body.descriptionPrompt,
-      examplesJson: body.examplesJson,
-      stage2ExamplesConfig: body.stage2ExamplesConfig,
-      stage2HardConstraints: body.stage2HardConstraints,
-      stage2PromptConfig: body.stage2PromptConfig,
-      stage2StyleProfile: body.stage2StyleProfile,
-      templateId: body.templateId,
-      avatarAssetId: body.avatarAssetId,
-      defaultBackgroundAssetId: body.defaultBackgroundAssetId,
-      defaultMusicAssetId: body.defaultMusicAssetId,
-      defaultClipDurationSec: body.defaultClipDurationSec
-    });
+    const patch: PatchBody = {};
+    copyPatchField(body, patch, "name");
+    copyPatchField(body, patch, "username");
+    copyPatchField(body, patch, "systemPrompt");
+    copyPatchField(body, patch, "descriptionPrompt");
+    copyPatchField(body, patch, "examplesJson");
+    copyPatchField(body, patch, "stage2WorkerProfileId");
+    copyPatchField(body, patch, "stage2ExamplesConfig");
+    copyPatchField(body, patch, "stage2HardConstraints");
+    copyPatchField(body, patch, "stage2PromptConfig");
+    copyPatchField(body, patch, "stage2StyleProfile");
+    copyPatchField(body, patch, "templateId");
+    copyPatchField(body, patch, "avatarAssetId");
+    copyPatchField(body, patch, "defaultBackgroundAssetId");
+    copyPatchField(body, patch, "defaultMusicAssetId");
+    copyPatchField(body, patch, "defaultClipDurationSec");
+
+    const channel = await updateChannelById(id, patch);
     return Response.json({ channel }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {

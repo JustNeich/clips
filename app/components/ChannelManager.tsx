@@ -22,7 +22,7 @@ import {
   UserRecord
 } from "./types";
 import { CHANNEL_STORY_TEMPLATE_ID, STAGE3_TEMPLATE_ID } from "../../lib/stage3-template";
-import type { ManagedTemplateSummary } from "../../lib/managed-template-types";
+import type { ManagedTemplate, ManagedTemplateSummary } from "../../lib/managed-template-types";
 import { getTemplateVariant } from "../../lib/stage3-template-registry";
 import type { Stage3TemplateFormatGroup } from "../../lib/stage3-template-semantics";
 import {
@@ -97,6 +97,7 @@ import {
   buildStage3ClipDurationOptions,
   normalizeStage3ClipDurationSec
 } from "../../lib/stage3-duration";
+import { toJsonDownload } from "../home-page-support";
 
 export { CHANNEL_MANAGER_DEFAULT_SETTINGS_ID, canDeleteManagedChannel, listChannelManagerTargets };
 
@@ -135,6 +136,22 @@ type ChannelSavePatch = Partial<{
 type ManagedTemplateListResponse = {
   templates?: ManagedTemplateSummary[];
 };
+
+type ManagedTemplateDetailResponse = {
+  template?: ManagedTemplate;
+  error?: string;
+};
+
+export function buildManagedTemplateBackupFileName(template: Pick<ManagedTemplate, "id" | "name">): string {
+  const slug =
+    template.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || template.id;
+  return `template-backup-${slug}.json`;
+}
 
 export function groupManagedTemplatesByFormat(
   managedTemplates: ManagedTemplateSummary[]
@@ -468,6 +485,7 @@ export function ChannelManager({
   const [templateId, setTemplateId] = useState(STAGE3_TEMPLATE_ID);
   const [defaultClipDurationSec, setDefaultClipDurationSec] = useState(6);
   const [managedTemplates, setManagedTemplates] = useState<ManagedTemplateSummary[]>([]);
+  const [templateExportBusy, setTemplateExportBusy] = useState(false);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>({
     brand: { status: "idle", message: null },
     stage2: { status: "idle", message: null },
@@ -480,6 +498,10 @@ export function ChannelManager({
   );
   const channelTemplateFormatGroup = useMemo(
     () => resolveChannelTemplateFormatGroup(managedTemplates, templateId),
+    [managedTemplates, templateId]
+  );
+  const activeTemplateSummary = useMemo(
+    () => managedTemplates.find((template) => template.id === templateId) ?? null,
     [managedTemplates, templateId]
   );
   const updateChannelTemplateFormat = useCallback(
@@ -529,6 +551,40 @@ export function ChannelManager({
     },
     [onDismissGlobalToast, onShowGlobalToast]
   );
+
+  const exportManagedTemplateBackup = useCallback(async (): Promise<void> => {
+    const targetTemplateId = activeTemplateSummary?.id ?? templateId;
+    if (!targetTemplateId) {
+      return;
+    }
+    setTemplateExportBusy(true);
+    showManagerSaveNotice("neutral", "Готовим backup шаблона…");
+    try {
+      const response = await fetch(`/api/design/templates/${encodeURIComponent(targetTemplateId)}`, {
+        cache: "no-store"
+      });
+      const payload = (await response.json().catch(() => null)) as ManagedTemplateDetailResponse | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Не удалось загрузить шаблон для backup.");
+      }
+      if (!payload?.template) {
+        throw new Error("Template API вернул пустой backup.");
+      }
+      toJsonDownload(buildManagedTemplateBackupFileName(payload.template), {
+        exportVersion: "managed-template-backup-v1",
+        exportedAt: new Date().toISOString(),
+        template: payload.template
+      });
+      showManagerSaveNotice("success", "Backup шаблона скачан.", true);
+    } catch (error) {
+      showManagerSaveNotice(
+        "error",
+        error instanceof Error && error.message ? error.message : "Не удалось скачать backup шаблона."
+      );
+    } finally {
+      setTemplateExportBusy(false);
+    }
+  }, [activeTemplateSummary?.id, showManagerSaveNotice, templateId]);
 
   const saveManagedChannel = useCallback(
     async (channelId: string, patch: ChannelSavePatch): Promise<void> => {
@@ -1461,6 +1517,7 @@ export function ChannelManager({
         : workspaceStage2PromptConfig;
       return normalizeStage2PromptConfig({
         ...baseConfig,
+        useWorkspaceDefault: false,
         stages: {
           ...baseConfig.stages,
           [stageId]: {
@@ -1482,6 +1539,7 @@ export function ChannelManager({
         : workspaceStage2PromptConfig;
       return normalizeStage2PromptConfig({
         ...baseConfig,
+        useWorkspaceDefault: false,
         stages: {
           ...baseConfig.stages,
           [stageId]: {
@@ -1494,7 +1552,10 @@ export function ChannelManager({
   };
 
   const resetChannelStage2PromptConfig = () => {
-    setChannelStage2PromptConfig(DEFAULT_STAGE2_PROMPT_CONFIG);
+    setChannelStage2PromptConfig({
+      ...DEFAULT_STAGE2_PROMPT_CONFIG,
+      useWorkspaceDefault: true
+    });
   };
 
   const persistWorkspaceCaptionProviderConfig = async (
@@ -2229,6 +2290,16 @@ export function ChannelManager({
                       открыть Template Road
                     </a>
                   </p>
+                  <div className="control-actions">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => void exportManagedTemplateBackup()}
+                      disabled={!activeTemplateSummary || templateExportBusy}
+                    >
+                      {templateExportBusy ? "Готовим backup…" : "Скачать backup шаблона"}
+                    </button>
+                  </div>
                   <div className="compact-grid">
                     <div className="compact-field">
                       <label className="field-label">Хронометраж по умолчанию</label>

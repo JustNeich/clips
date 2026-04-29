@@ -3,7 +3,10 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { normalizeChannelManagerTabForSelection } from "../app/components/ChannelManager";
+import {
+  buildManagedTemplateBackupFileName,
+  normalizeChannelManagerTabForSelection
+} from "../app/components/ChannelManager";
 import { Step3RenderTemplate } from "../app/components/Step3RenderTemplate";
 import { ChannelManagerWorkspaceRenderTab } from "../app/components/ChannelManagerWorkspaceRenderTab";
 
@@ -219,4 +222,15 @@ test("workspace defaults keep the render tab selected once the user switches to 
   assert.equal(normalizeChannelManagerTabForSelection("stage2", true), "stage2");
   assert.equal(normalizeChannelManagerTabForSelection("brand", true), "stage2");
   assert.equal(normalizeChannelManagerTabForSelection("render", false), "render");
+});
+
+test("managed template backup filenames are stable and filesystem-safe", () => {
+  assert.equal(
+    buildManagedTemplateBackupFileName({ id: "template_123", name: "Stone Face / Turbo 99%" }),
+    "template-backup-stone-face-turbo-99.json"
+  );
+  assert.equal(
+    buildManagedTemplateBackupFileName({ id: "template_123", name: "   " }),
+    "template-backup-template_123.json"
+  );
 });

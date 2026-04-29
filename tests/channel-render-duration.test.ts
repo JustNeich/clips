@@ -12,10 +12,12 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const previousAppDataDir = process.env.APP_DATA_DIR;
 
   process.env.APP_DATA_DIR = appDataDir;
+  delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
 
   try {
     return await run();
   } finally {
+    delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
     if (previousAppDataDir === undefined) {
       delete process.env.APP_DATA_DIR;
     } else {
@@ -54,6 +56,62 @@ test("channel render duration defaults to 6 seconds and persists an explicit 9 s
 
     const reloaded = await chatHistory.getChannelById(channel.id);
     assert.equal(reloaded?.defaultClipDurationSec, 9);
+  });
+});
+
+test("channel updates preserve existing assets when omitted fields arrive as undefined", async () => {
+  await withIsolatedAppData(async () => {
+    const teamStore = await import("../lib/team-store");
+    const chatHistory = await import("../lib/chat-history");
+
+    const owner = await teamStore.bootstrapOwner({
+      workspaceName: "Channel Asset Patch",
+      email: "owner-assets@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+
+    const channel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Asset Patch",
+      username: "asset_patch"
+    });
+    const avatar = await chatHistory.createChannelAsset({
+      channelId: channel.id,
+      kind: "avatar",
+      fileName: "avatar.png",
+      originalName: "avatar.png",
+      mimeType: "image/png",
+      sizeBytes: 1
+    });
+    const background = await chatHistory.createChannelAsset({
+      channelId: channel.id,
+      kind: "background",
+      fileName: "background.png",
+      originalName: "background.png",
+      mimeType: "image/png",
+      sizeBytes: 1
+    });
+    const music = await chatHistory.createChannelAsset({
+      channelId: channel.id,
+      kind: "music",
+      fileName: "music.mp3",
+      originalName: "music.mp3",
+      mimeType: "audio/mpeg",
+      sizeBytes: 1
+    });
+
+    const updated = await chatHistory.updateChannelById(channel.id, {
+      name: "Renamed Asset Patch",
+      avatarAssetId: undefined,
+      defaultBackgroundAssetId: undefined,
+      defaultMusicAssetId: undefined
+    });
+
+    assert.equal(updated.avatarAssetId, avatar.id);
+    assert.equal(updated.defaultBackgroundAssetId, background.id);
+    assert.equal(updated.defaultMusicAssetId, music.id);
   });
 });
 

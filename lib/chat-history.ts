@@ -4,6 +4,7 @@ import { buildChatListItem, normalizeChatDraft } from "./chat-workflow";
 import { getDb, newId, nowIso } from "./db/client";
 import {
   DEFAULT_STAGE2_PROMPT_CONFIG,
+  hasStage2PromptOverrides,
   parseStage2PromptConfigJson,
   prepareStage2PromptConfigForExplicitSave,
   Stage2PromptConfig,
@@ -553,26 +554,31 @@ export async function updateChannelById(
     stage2PromptConfig:
       "stage2PromptConfig" in patch && patch.stage2PromptConfig
         ? prepareStage2PromptConfigForExplicitSave({
-            nextConfig: patch.stage2PromptConfig,
+            nextConfig: {
+              ...patch.stage2PromptConfig,
+              useWorkspaceDefault:
+                patch.stage2PromptConfig.useWorkspaceDefault ??
+                !hasStage2PromptOverrides(patch.stage2PromptConfig)
+            },
             previousConfig: channel.stage2PromptConfig
           })
         : channel.stage2PromptConfig,
     stage2StyleProfile: channel.stage2StyleProfile,
     templateId: nextTemplateId,
     avatarAssetId:
-      "avatarAssetId" in patch
+      "avatarAssetId" in patch && patch.avatarAssetId !== undefined
         ? patch.avatarAssetId && assetIds.has(patch.avatarAssetId)
           ? patch.avatarAssetId
           : null
         : channel.avatarAssetId,
     defaultBackgroundAssetId:
-      "defaultBackgroundAssetId" in patch
+      "defaultBackgroundAssetId" in patch && patch.defaultBackgroundAssetId !== undefined
         ? patch.defaultBackgroundAssetId && assetIds.has(patch.defaultBackgroundAssetId)
           ? patch.defaultBackgroundAssetId
           : null
         : channel.defaultBackgroundAssetId,
     defaultMusicAssetId:
-      "defaultMusicAssetId" in patch
+      "defaultMusicAssetId" in patch && patch.defaultMusicAssetId !== undefined
         ? patch.defaultMusicAssetId && assetIds.has(patch.defaultMusicAssetId)
           ? patch.defaultMusicAssetId
           : null

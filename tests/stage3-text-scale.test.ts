@@ -182,6 +182,55 @@ test("neighboring top text scale values move smoothly for science-card-v1", () =
   );
 });
 
+test("neighboring bottom text scale values move smoothly around 100% for science-card-v1", () => {
+  const topText =
+    "You don't need to know who he is to get the appeal: sweaty chest, sauna hat, snow piled outside, hot tub in the yard, then a packed table indoors.";
+  const bottomText =
+    "Bro made a regular night look under-equipped. It's the kind of sequence that makes your own plans feel like microwaved leftovers and weak excuses.";
+
+  const at99 = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content: {
+      topText,
+      bottomText,
+      channelName: "Echoes Of Honor",
+      channelHandle: "@EchoesOfHonor50",
+      highlights: { top: [], bottom: [] },
+      topFontScale: 1,
+      bottomFontScale: 0.99,
+      previewScale: 1,
+      mediaAsset: null,
+      backgroundAsset: null,
+      avatarAsset: null
+    }
+  });
+  const at100 = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content: {
+      ...at99.content,
+      bottomFontScale: 1
+    }
+  });
+  const at101 = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content: {
+      ...at99.content,
+      bottomFontScale: 1.01
+    }
+  });
+
+  assert.ok(at100.computed.bottomFont >= at99.computed.bottomFont);
+  assert.ok(at101.computed.bottomFont >= at100.computed.bottomFont);
+  assert.ok(
+    at100.computed.bottomFont - at99.computed.bottomFont <= 0.5,
+    `expected 99% -> 100% to avoid a 1px cliff, got ${at99.computed.bottomFont} -> ${at100.computed.bottomFont}`
+  );
+  assert.ok(
+    at101.computed.bottomFont - at100.computed.bottomFont <= 0.5,
+    `expected 100% -> 101% to avoid a 1px cliff, got ${at100.computed.bottomFont} -> ${at101.computed.bottomFont}`
+  );
+});
+
 test("channel-story body text keeps descender-safe line height and responds to scale", () => {
   const bottomText =
     "A gray fox keeps dropping low by the icy river, then pops up again with a quiet little jog that makes every lowercase g, q, p, and y visible.";
