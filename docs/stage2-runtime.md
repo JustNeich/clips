@@ -100,6 +100,7 @@ Runtime guardrails after the provider call:
 
 - configured banned words/openers are cleaned from one-shot finalists before contract validation so one blocked phrase does not fail the whole Stage 2 run;
 - title options are kept compact in the 3-7 word window, including prompt-first, titleWriter, and quick-regenerate paths.
+- if a prompt-first provider-selected winner misses only the configured length window but another visible finalist is valid, runtime promotes that valid finalist as `finalPick` instead of failing the whole Stage 2 run.
 - the default `storyOneShot` prompt now states an explicit examples style contract: `examples_json` remains raw/unranked runtime input, but the provider is told to inherit the channel examples' opening shape, density, chronology cues, phrase rhythm, and punchline placement when source truth supports it.
 
 Запрещено в новом prompt-first full-run path:
