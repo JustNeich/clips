@@ -1,5 +1,11 @@
 # Agent-First Documentation
 
+## Imperium Bridge
+
+For Imperium-wide orientation, start with `/Users/neich/Documents/Macedonian Imperium/.imperium-system/docs/imperium-atlas.md` and `/Users/neich/Documents/Macedonian Imperium/.imperium-system/docs/intent-map.md`.
+
+Those files explain how `Clips` fits into the broader portfolio and how to disambiguate cross-system words like `каналы`. This `docs/agent-first` set remains the source for product-local Clips Automations concepts such as `Channel`, Stage 2, Stage 3, publishing, roles, permissions and UI surfaces.
+
 ## Назначение
 
 Этот набор документов нужен не для обучения пользователя, а для работы AI-агента, который:
