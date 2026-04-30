@@ -9,6 +9,7 @@ This note captures the reliability rules for the manual fragment editor in Stage
   - meta/action header,
   - control area with separate `Тайминг` and `Кадрирование` cards.
 - `Position X`, `Position Y`, and `Zoom` use sliders instead of numeric-only inputs because these values are tuned iteratively while watching preview.
+- Changing `Position X` or `Position Y` must not silently raise `Zoom`; only the explicit zoom control changes scale.
 - The destructive action stays in the header, isolated from the timing fields, so accidental deletes are less likely during rapid editing.
 - The editor now has a single canonical output model: every Stage 3 edit produces exactly `6.0s` of output.
 - The red playhead always represents output time `0..6s`; it is never allowed to drift onto source time.

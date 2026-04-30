@@ -485,12 +485,67 @@ test("prompt-first title guard compacts overlong story titles", async () => {
 
   assert.equal(result.output.formatPipeline, "story_lead_main_caption");
   assert.equal(
-    result.output.titleOptions.every((option) => option.title.split(/\s+/).filter(Boolean).length <= 8),
+    result.output.titleOptions.every((option) => option.title.split(/\s+/).filter(Boolean).length <= 7),
     true
   );
-  assert.equal(result.output.titleOptions[0]?.title, "THIS BODY EXPLAINS WHY THE");
+  assert.equal(result.output.titleOptions[0]?.title, "THIS BODY EXPLAINS WHY THE HOLLYWOOD SETUP");
   assert.equal(
-    result.warnings.some((warning) => /title guard replaced 5 overlong title/i.test(warning.message)),
+    result.warnings.some((warning) => /title guard compacted 5 overlong title/i.test(warning.message)),
+    true
+  );
+});
+
+test("prompt-first one-shot cleans configured banned words instead of failing Stage 2", async () => {
+  const service = new ViralShortsWorkerService();
+  const oneShot = makeClassicOneShotResponse("blocked");
+  oneShot.classicOptions[2] = {
+    ...oneShot.classicOptions[2],
+    top: "Forbidden opener keeps the whole setup readable before anyone explains the repair."
+  };
+  const executor = new CaptureQueueExecutor([
+    oneShot,
+    makeTranslationEntries(["blocked_1", "blocked_2", "blocked_3", "blocked_4", "blocked_5"]),
+    makeSeoResponse()
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "blocked_channel",
+      name: "Blocked Channel",
+      username: "blocked_channel",
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: {
+        ...RELAXED_HARD_CONSTRAINTS,
+        bannedWords: ["forbidden"]
+      }
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/blocked",
+      title: "A blocked word appears",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "avoid configured blockspeak"
+    }),
+    imagePaths: [],
+    executor,
+    stageModels: {
+      classicOneShot: "gpt-5.4",
+      captionTranslation: "gpt-5.4-mini",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  const cleanedOption = result.output.captionOptions.find((option) => option.candidateId === "blocked_3");
+  assert.ok(cleanedOption);
+  assert.doesNotMatch(cleanedOption.top, /forbidden/i);
+  assert.equal(cleanedOption.constraintCheck?.passed, true);
+  assert.equal(cleanedOption.constraintCheck?.repaired, true);
+  assert.equal(
+    result.warnings.some((warning) => /cleaned banned words\/openers/i.test(warning.message)),
     true
   );
 });

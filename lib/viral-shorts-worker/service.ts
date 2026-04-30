@@ -2824,6 +2824,39 @@ function applyReferenceOneShotLengthPolish(input: {
   };
 }
 
+function applyReferenceOneShotHardConstraintCleanup(input: {
+  result: NativeReferenceOneShotResult;
+  hardConstraints: Stage2HardConstraints;
+}): {
+  result: NativeReferenceOneShotResult;
+  cleanedCandidateIds: string[];
+} {
+  const cleanedCandidateIds: string[] = [];
+  const candidates = input.result.candidates.map((candidate) => {
+    const top = stripConfiguredBannedOpener(
+      sanitizeNativeCaptionTemplateLine(candidate.top, input.hardConstraints),
+      input.hardConstraints
+    );
+    const bottom = sanitizeNativeCaptionTemplateLine(candidate.bottom, input.hardConstraints);
+    if (top === candidate.top && bottom === candidate.bottom) {
+      return candidate;
+    }
+    cleanedCandidateIds.push(candidate.candidateId);
+    return {
+      ...candidate,
+      top,
+      bottom
+    };
+  });
+  return {
+    result: {
+      ...input.result,
+      candidates
+    },
+    cleanedCandidateIds
+  };
+}
+
 function renderJsonPrompt(system: string, payload: unknown): string {
   return ["SYSTEM", system.trim(), "", "USER CONTEXT JSON", JSON.stringify(payload, null, 2)].join(
     "\n"
@@ -3765,6 +3798,25 @@ function sanitizeNativeCaptionTemplateLine(line: string, constraints: Stage2Hard
     .trim();
 }
 
+function stripConfiguredBannedOpener(line: string, constraints: Stage2HardConstraints): string {
+  let sanitized = line.trim();
+  for (const opener of constraints.bannedOpeners) {
+    const normalizedOpener = normalizeNativeCaptionPhrase(opener, "");
+    if (!normalizedOpener) {
+      continue;
+    }
+    const openerPattern = new RegExp(
+      `^\\s*${escapeRegExp(normalizedOpener)}\\b[\\s,.:;!?\\-–—]*`,
+      "i"
+    );
+    if (openerPattern.test(sanitized)) {
+      sanitized = sanitized.replace(openerPattern, "").trim();
+      break;
+    }
+  }
+  return sanitized;
+}
+
 function padNativeCaptionLineToMinLength(input: {
   line: string;
   minLength: number;
@@ -4159,6 +4211,7 @@ function buildNativeCaptionTitleWriterPrompt(input: {
   contextPacket: NativeCaptionContextPacket;
   channelConfig: Stage2RuntimeChannelConfig;
   winner: NativeCaptionCandidate | null;
+  userInstruction?: string | null;
   promptConfig: Stage2PromptConfig;
 }): string {
   const channelLearning = buildNativeCaptionChannelLearningPayload(input.channelConfig, "compact");
@@ -4170,7 +4223,8 @@ function buildNativeCaptionTitleWriterPrompt(input: {
         getResolvedStage2WorkerProfile(input.channelConfig)
       ),
       channel_learning_json: channelLearning.payload,
-      winner_candidate_json: input.winner
+      winner_candidate_json: input.winner,
+      user_instruction: input.userInstruction?.trim() || null
     }
   );
 }
@@ -7240,8 +7294,8 @@ function buildFallbackTitleOptionFromText(
   };
 }
 
-const PROMPT_FIRST_TITLE_MAX_WORDS = 8;
-const PROMPT_FIRST_TITLE_MAX_CHARS = 72;
+const STAGE2_TITLE_MAX_WORDS = 7;
+const STAGE2_TITLE_MAX_CHARS = 64;
 
 function countTitleWords(value: string): number {
   return value
@@ -7253,9 +7307,22 @@ function countTitleWords(value: string): number {
 function isPromptFirstTitleTooLong(value: string): boolean {
   const sanitized = sanitizeTitleText(value);
   return (
-    sanitized.length > PROMPT_FIRST_TITLE_MAX_CHARS ||
-    countTitleWords(sanitized) > PROMPT_FIRST_TITLE_MAX_WORDS
+    sanitized.length > STAGE2_TITLE_MAX_CHARS ||
+    countTitleWords(sanitized) > STAGE2_TITLE_MAX_WORDS
   );
+}
+
+function compactStage2TitleText(value: string, fallback: string): string {
+  const source = sanitizeTitleText(value) || sanitizeTitleText(fallback);
+  let words = source.split(/\s+/).filter(Boolean).slice(0, STAGE2_TITLE_MAX_WORDS);
+  while (words.length > 3 && words.join(" ").length > STAGE2_TITLE_MAX_CHARS) {
+    words = words.slice(0, -1);
+  }
+  const compact = words.join(" ").trim();
+  if (compact) {
+    return compact;
+  }
+  return sanitizeTitleText(fallback).slice(0, STAGE2_TITLE_MAX_CHARS).trim() || "Option";
 }
 
 function normalizeAllCapsTitleText(value: string): string {
@@ -7288,12 +7355,20 @@ function normalizeTitleOptions(
     const fallback = shortlist[index]
       ? buildFallbackTitleOption(shortlist[index]!, index + 1)
       : buildFallbackTitleOption(shortlist[0]!, index + 1);
-    const validation = validateTitle(sanitizeTitleText(item.title), policy);
+    const sanitizedTitle = sanitizeTitleText(item.title);
+    const guardedTitle = isPromptFirstTitleTooLong(sanitizedTitle)
+      ? compactStage2TitleText(sanitizedTitle, fallback.title)
+      : sanitizedTitle;
+    const sanitizedTitleRu = sanitizeTitleText(item.titleRu || guardedTitle);
+    const guardedTitleRu = isPromptFirstTitleTooLong(sanitizedTitleRu)
+      ? compactStage2TitleText(sanitizedTitleRu, guardedTitle)
+      : sanitizedTitleRu;
+    const validation = validateTitle(guardedTitle, policy);
     const fallbackValidation = validateTitle(sanitizeTitleText(fallback.title), policy);
     return {
       option: index + 1,
       title: validation.passed ? validation.normalizedTitle : fallbackValidation.normalizedTitle,
-      titleRu: normalizeAllCapsTitleText(item.titleRu || fallback.titleRu)
+      titleRu: normalizeAllCapsTitleText(guardedTitleRu || fallback.titleRu)
     };
   });
 }
@@ -7870,7 +7945,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
           "raw examples_json",
           "format-specific output schema",
           "no runtime examples selection",
-          "no deterministic polish",
+          "hard-constraint cleanup only",
           "no winner promotion"
         ]
       : variantConfig.stageFlags
@@ -7887,6 +7962,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   const oneShotStartedAt = Date.now();
   let oneShotResult: NativeReferenceOneShotResult;
   let polishedCandidateIds: string[] = [];
+  let cleanedCandidateIds: string[] = [];
   let oneShotLengthWindowWarnings: string[] = [];
   try {
     const rawOneShot = await input.executor.runJson<unknown>({
@@ -7902,15 +7978,23 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       model: oneShotModel,
       reasoningEffort: oneShotReasoningEffort
     });
+    const normalizedOneShot = formatPipeline
+      ? normalizePromptFirstOneShotResult({
+          raw: rawOneShot,
+          formatPipeline
+        })
+      : normalizeReferenceOneShotResult(rawOneShot);
+    const cleanup = applyReferenceOneShotHardConstraintCleanup({
+      result: normalizedOneShot,
+      hardConstraints: input.channelConfig.hardConstraints
+    });
+    cleanedCandidateIds = cleanup.cleanedCandidateIds;
     if (formatPipeline) {
-      oneShotResult = normalizePromptFirstOneShotResult({
-        raw: rawOneShot,
-        formatPipeline
-      });
+      oneShotResult = cleanup.result;
       polishedCandidateIds = [];
     } else {
       const polished = applyReferenceOneShotLengthPolish({
-        result: normalizeReferenceOneShotResult(rawOneShot),
+        result: cleanup.result,
         hardConstraints: input.channelConfig.hardConstraints
       });
       oneShotResult = polished.result;
@@ -7940,6 +8024,13 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     });
     throw new Error(failureMessage);
   }
+  if (cleanedCandidateIds.length > 0) {
+    warnings.push({
+      field: oneShotStageId,
+      message:
+        `${isPromptFirstOneShot ? oneShotStageId : variantConfig.label} cleaned banned words/openers in ${cleanedCandidateIds.length} candidate option${cleanedCandidateIds.length === 1 ? "" : "s"} instead of failing the run.`
+    });
+  }
   await reportProgress({
     stageId: oneShotStageId,
     state: "completed",
@@ -7951,7 +8042,9 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
         ? `${isPromptFirstOneShot ? oneShotStageId : variantConfig.label} produced 5 finalist options; ${oneShotLengthWindowWarnings.length} option(s) stayed outside the configured length window and were kept with warnings.`
         : polishedCandidateIds.length > 0
           ? `${variantConfig.label} produced 5 publishable finalists; exact-length polish tightened ${polishedCandidateIds.length} candidate(s) without repair or backfill.`
-          : isPromptFirstOneShot
+          : cleanedCandidateIds.length > 0
+            ? `${isPromptFirstOneShot ? oneShotStageId : variantConfig.label} produced 5 finalists after banned-word/openers cleanup.`
+            : isPromptFirstOneShot
             ? `${oneShotStageId} produced 5 format-specific finalists without runtime polish, repair, backfill, or winner promotion.`
             : `${variantConfig.label} produced 5 publishable finalists without repair or backfill.`
   });
@@ -7961,8 +8054,10 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     isPromptFirstOneShot
       ? `${oneShotStageId}: prompt-first provider call with source_video_json, examples_json, format_contract_json, hard_constraints_json, and user_instruction.`
       : polishedCandidateIds.length > 0
-      ? `${variantConfig.stageSummary} Exact-length polish tightened the final wording for near-miss overflows without repair or backfill.`
-      : variantConfig.stageSummary,
+        ? `${variantConfig.stageSummary} Exact-length polish tightened the final wording for near-miss overflows without repair or backfill.`
+        : cleanedCandidateIds.length > 0
+          ? `${variantConfig.stageSummary} Banned-word/openers cleanup removed configured blocked wording before validation.`
+        : variantConfig.stageSummary,
     oneShotResult,
     { usesImages: input.imagePaths.length > 0, model: oneShotModel }
   );
@@ -7974,10 +8069,11 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   );
   const captionOptions = candidates.map((candidate, index) => {
     const isPolished = polishedCandidateIds.includes(candidate.candidateId);
+    const isCleaned = cleanedCandidateIds.includes(candidate.candidateId);
     const baseConstraintCheck =
       candidateConstraintChecks.get(candidate.candidateId) ??
       evaluateNativeCaptionConstraintCheck(candidate, input.channelConfig.hardConstraints);
-    const constraintCheck = isPolished
+    const constraintCheck = isPolished || isCleaned
       ? {
           ...baseConstraintCheck,
           repaired: true
@@ -7995,9 +8091,13 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       displayReason:
         candidate.rationale?.trim() ||
         (isPromptFirstOneShot
-          ? "Prompt-first provider returned this format-specific finalist without runtime repair or backfill."
+          ? isCleaned
+            ? "Prompt-first provider returned this format-specific finalist; runtime removed configured banned wording."
+            : "Prompt-first provider returned this format-specific finalist without runtime repair or backfill."
           : isPolished
           ? "Reference one-shot baseline kept this option publishable after exact-length polish."
+          : isCleaned
+          ? "Reference one-shot baseline kept this option publishable after banned-word/openers cleanup."
           : "Reference one-shot baseline kept this option publishable without repair or backfill."),
       retainedHandle: candidate.retainedHandle,
       constraintCheck
@@ -8307,9 +8407,16 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       titleLengthGuardOptions.push(option);
     }
     const title = normalizeAllCapsTitleText(
-      useFallbackTitle ? fallbackTitle : existingTitle
+      useFallbackTitle
+        ? compactStage2TitleText(existingTitle || fallbackTitle, fallbackTitle)
+        : existingTitle
     );
-    const titleRu = normalizeAllCapsTitleText(useFallbackTitle ? title : existing?.titleRu?.trim() || title);
+    const existingTitleRu = existing?.titleRu?.trim() || title;
+    const titleRu = normalizeAllCapsTitleText(
+      useFallbackTitle || isPromptFirstTitleTooLong(existingTitleRu)
+        ? compactStage2TitleText(existingTitleRu, title)
+        : existingTitleRu
+    );
     const titleRuSource =
       !useFallbackTitle && existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";
     if (titleRuSource === "fallback") {
@@ -8326,7 +8433,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     warnings.push({
       field: oneShotStageId,
       message:
-        `Prompt-first title guard replaced ${titleLengthGuardOptions.length} overlong title option${titleLengthGuardOptions.length === 1 ? "" : "s"} with compact fallback wording.`
+        `Prompt-first title guard compacted ${titleLengthGuardOptions.length} overlong title option${titleLengthGuardOptions.length === 1 ? "" : "s"} to the 3-7 word window.`
     });
   }
   const titleTranslationCoverage = {
@@ -10066,6 +10173,7 @@ export class ViralShortsWorkerService {
       contextPacket,
       channelConfig,
       winner: winnerCandidateForTitles,
+      userInstruction: input.videoContext.userInstruction,
       promptConfig
     });
     const titleReasoningEffort = resolveStageReasoningEffort("titleWriter", promptConfig);
@@ -10157,12 +10265,27 @@ export class ViralShortsWorkerService {
     const seedTitle = input.videoContext.title.trim() || winnerCandidateForTitles?.top || "What changed here";
     const titleByOption = new Map(titleOptions.map((entry) => [entry.option, entry] as const));
     const titleFallbackOptions: number[] = [];
+    const titleLengthGuardOptions: number[] = [];
     titleOptions = Array.from({ length: 5 }, (_, index) => {
       const option = index + 1;
       const existing = titleByOption.get(option) ?? null;
       const fallbackTitle = `${seedTitle.replace(/\s+/g, " ").trim().slice(0, 70)}${index === 0 ? "" : ` ${option}`}`.trim();
-      const title = normalizeAllCapsTitleText(existing?.title?.trim() || fallbackTitle || `Option ${option}`);
-      const titleRu = normalizeAllCapsTitleText(existing?.titleRu?.trim() || title);
+      const existingTitle = existing?.title?.trim() ?? "";
+      const useGuardedTitle = Boolean(existingTitle && isPromptFirstTitleTooLong(existingTitle));
+      if (useGuardedTitle) {
+        titleLengthGuardOptions.push(option);
+      }
+      const title = normalizeAllCapsTitleText(
+        useGuardedTitle
+          ? compactStage2TitleText(existingTitle, fallbackTitle)
+          : existingTitle || compactStage2TitleText(fallbackTitle, `Option ${option}`)
+      );
+      const existingTitleRu = existing?.titleRu?.trim() || title;
+      const titleRu = normalizeAllCapsTitleText(
+        isPromptFirstTitleTooLong(existingTitleRu)
+          ? compactStage2TitleText(existingTitleRu, title)
+          : existingTitleRu
+      );
       const titleRuSource = existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";
       if (titleRuSource === "fallback") {
         titleFallbackOptions.push(option);
@@ -10174,6 +10297,13 @@ export class ViralShortsWorkerService {
         titleRuSource
       };
     });
+    if (titleLengthGuardOptions.length > 0) {
+      warnings.push({
+        field: "titleWriter",
+        message:
+          `Title guard compacted ${titleLengthGuardOptions.length} overlong title option${titleLengthGuardOptions.length === 1 ? "" : "s"} to the 3-7 word window.`
+      });
+    }
     const titleTranslationCoverage = {
       requestedCount: 5,
       translatedCount: 5 - titleFallbackOptions.length,

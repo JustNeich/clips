@@ -11,6 +11,7 @@ import {
   GET as listManagedTemplatesRoute,
   POST as createManagedTemplateRoute
 } from "../app/api/design/templates/route";
+import { POST as importManagedTemplateRoute } from "../app/api/design/templates/import/route";
 import { GET as getManagedTemplate } from "../app/api/design/templates/[templateId]/route";
 import {
   DELETE as deleteManagedTemplateRoute,
@@ -100,6 +101,20 @@ test("private API routes reject fake app-session cookies instead of trusting coo
             body: JSON.stringify({
               name: "Should Fail",
               baseTemplateId: "science-card-v1"
+            })
+          })
+        ),
+      () =>
+        importManagedTemplateRoute(
+          new Request("http://localhost/api/design/templates/import", {
+            method: "POST",
+            headers: {
+              cookie: fakeCookie,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              exportVersion: "managed-template-backup-v1",
+              template: { name: "Should Fail" }
             })
           })
         ),
@@ -391,6 +406,60 @@ test("managed template list returns the whole workspace library to redactors", a
     } finally {
       await deleteManagedTemplate(sharedTemplate.id);
       await deleteManagedTemplate(privateTemplate.id);
+    }
+  });
+});
+
+test("managed template backup import route creates a new workspace template", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Template Import Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const sourceTemplate = await createManagedTemplate(
+      {
+        name: "Route Backup Source",
+        baseTemplateId: "science-card-v1",
+        content: {
+          topText: "Route backup top",
+          bottomText: "Route backup bottom"
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    try {
+      const response = await importManagedTemplateRoute(
+        new Request("http://localhost/api/design/templates/import", {
+          method: "POST",
+          headers: {
+            cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            exportVersion: "managed-template-backup-v1",
+            exportedAt: "2026-04-30T00:00:00.000Z",
+            template: sourceTemplate
+          })
+        })
+      );
+      const body = (await response.json()) as {
+        error?: string;
+        template?: { id?: string; name?: string; content?: { topText?: string } };
+      };
+
+      assert.equal(response.status, 201);
+      assert.notEqual(body.template?.id, sourceTemplate.id);
+      assert.equal(body.template?.name, "Route Backup Source");
+      assert.equal(body.template?.content?.topText, "Route backup top");
+    } finally {
+      await deleteManagedTemplate(sourceTemplate.id);
     }
   });
 });

@@ -57,6 +57,12 @@ type ManagedTemplateCreateMeta = {
   creatorDisplayName?: string | null;
 };
 
+type ManagedTemplateBackupInput = {
+  exportVersion?: unknown;
+  exportedAt?: unknown;
+  template?: unknown;
+};
+
 export type ManagedTemplateDeleteResult = {
   deleted: boolean;
   fallbackTemplateId: string | null;
@@ -1352,6 +1358,31 @@ export async function createManagedTemplate(
   const workspaceId = resolveWorkspaceId(meta.workspaceId);
   ensureWorkspaceTemplateLibrarySync(workspaceId);
   const snapshot = normalizeSnapshot(input);
+  const now = nowIso();
+  const template = buildManagedTemplateFromSnapshot({
+    id: `${slugify(snapshot.name)}-${newId().slice(0, 8)}`,
+    workspaceId,
+    createdAt: now,
+    updatedAt: now,
+    snapshot
+  });
+  insertOrUpdateTemplateRow(template);
+  ensureWorkspaceDefaultTemplate(workspaceId);
+  return template;
+}
+
+export async function importManagedTemplateBackup(
+  input: ManagedTemplateBackupInput,
+  meta: ManagedTemplateCreateMeta
+): Promise<ManagedTemplate> {
+  const workspaceId = resolveWorkspaceId(meta.workspaceId);
+  ensureWorkspaceTemplateLibrarySync(workspaceId);
+  const backup = isRecord(input) ? input : {};
+  const rawTemplate = isRecord(backup.template) ? backup.template : null;
+  if (!rawTemplate) {
+    throw new Error("Template backup is invalid.");
+  }
+  const snapshot = normalizeSnapshot(rawTemplate);
   const now = nowIso();
   const template = buildManagedTemplateFromSnapshot({
     id: `${slugify(snapshot.name)}-${newId().slice(0, 8)}`,

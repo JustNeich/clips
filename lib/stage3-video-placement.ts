@@ -8,15 +8,6 @@ export type Stage3VideoPlacementStyle = {
 };
 
 const POSITION_CENTER = 0.5;
-const POSITION_PAN_EPSILON = 0.002;
-const POSITION_PAN_MIN_SCALE = 1.14;
-
-function hasManualPositionOffset(focusX: number, focusY: number): boolean {
-  return (
-    Math.abs(focusX - POSITION_CENTER) > POSITION_PAN_EPSILON ||
-    Math.abs(focusY - POSITION_CENTER) > POSITION_PAN_EPSILON
-  );
-}
 
 function buildTranslatePercent(focus: number, scale: number): number {
   const maxTranslatePercent = Math.max(0, (scale - 1) * 50);
@@ -44,10 +35,7 @@ export function buildStage3VideoPlacementStyle(input: {
     typeof input.extraScale === "number" && Number.isFinite(input.extraScale) && input.extraScale > 0
       ? input.extraScale
       : 1;
-  const rawScale = zoom * extraScale;
-  // Position X/Y cannot visibly pan a perfectly fitted 1x video without either exposing blank edges
-  // or adding a small crop reserve. The reserve keeps manual positioning visible and edge-safe.
-  const scale = hasManualPositionOffset(focusX, focusY) ? Math.max(rawScale, POSITION_PAN_MIN_SCALE) : rawScale;
+  const scale = zoom * extraScale;
   const scaleX = input.mirrorEnabled ? -scale : scale;
   const xPercent = (focusX * 100).toFixed(3);
   const yPercent = (focusY * 100).toFixed(3);

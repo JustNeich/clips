@@ -96,6 +96,11 @@ Active prompt contract:
 - `user_instruction`
   ручная правка оператора
 
+Runtime guardrails after the provider call:
+
+- configured banned words/openers are cleaned from one-shot finalists before contract validation so one blocked phrase does not fail the whole Stage 2 run;
+- title options are kept compact in the 3-7 word window, including prompt-first, titleWriter, and quick-regenerate paths.
+
 Запрещено в новом prompt-first full-run path:
 
 - `examples_guidance_json`
