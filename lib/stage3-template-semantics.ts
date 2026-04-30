@@ -64,13 +64,13 @@ function resolveChannelStoryClipCustomLengthTargets(
     120,
     Math.min(
       templateConfig.typography.bottom.maxChars ?? 240,
-      Math.round(Math.max(180, channelStory.bodyHeight) * 0.62)
+      Math.round(Math.max(180, channelStory.bodyHeight) * 0.5)
     )
   );
 
   const topLengthMax = clampNumber(leadMaxChars, 24, 56);
   const topLengthMin = clampNumber(Math.round(topLengthMax * 0.22), 6, 18);
-  const bottomLengthMax = clampNumber(bodyMaxChars, 120, 260);
+  const bottomLengthMax = clampNumber(bodyMaxChars, 120, 190);
   const bottomLengthMin = clampNumber(Math.round(bottomLengthMax * 0.38), 40, 120);
 
   return {

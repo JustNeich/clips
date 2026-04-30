@@ -84,6 +84,7 @@ test("effective stage 2 hard constraints resolve channel story built-ins through
   assert.equal(resolved.topLengthMax >= 24 && resolved.topLengthMax <= 56, true);
   assert.equal(resolved.bottomLengthMin >= 40, true);
   assert.equal(resolved.bottomLengthMax >= 120, true);
+  assert.equal(resolved.bottomLengthMax <= 190, true);
 });
 
 test("stage 2 validation accepts empty top when channel story lead is template-managed", () => {
@@ -129,7 +130,7 @@ test("channel story clip custom mode narrows lead and widens body into family-sp
   assert.equal(constraints.topLengthMin >= 6 && constraints.topLengthMin <= 18, true);
   assert.equal(constraints.topLengthMax >= 24 && constraints.topLengthMax <= 56, true);
   assert.equal(constraints.bottomLengthMin >= 40 && constraints.bottomLengthMin <= 120, true);
-  assert.equal(constraints.bottomLengthMax >= 120 && constraints.bottomLengthMax <= 260, true);
+  assert.equal(constraints.bottomLengthMax >= 120 && constraints.bottomLengthMax <= 190, true);
   assert.equal(constraints.topLengthMax < 110, true);
   assert.equal(constraints.bottomLengthMax > 110, true);
 });
