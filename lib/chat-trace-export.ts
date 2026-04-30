@@ -846,18 +846,23 @@ function buildStage2ConsistencyChecks(
       `selectorPassed=${selectorComments?.passedCount ?? 0}.`
   });
 
-  const selectedExampleIds =
+  const selectorSelectedExampleIds =
     rawStage2.output.pipeline?.selectorOutput &&
     typeof rawStage2.output.pipeline.selectorOutput === "object" &&
     Array.isArray((rawStage2.output.pipeline.selectorOutput as { selectedExampleIds?: unknown }).selectedExampleIds)
       ? ((rawStage2.output.pipeline.selectorOutput as { selectedExampleIds?: string[] }).selectedExampleIds ?? [])
       : [];
+  const diagnosticsSelectedExampleIds =
+    rawStage2.diagnostics?.examples?.selectedExamples?.map((example) => example.id) ?? [];
+  const selectedExampleIds =
+    diagnosticsSelectedExampleIds.length > 0 ? diagnosticsSelectedExampleIds : selectorSelectedExampleIds;
   checks.push({
     id: "selected_examples_count_alignment",
     ok: (rawStage2.output.pipeline?.selectedExamplesCount ?? 0) === selectedExampleIds.length,
     details:
       `selectedExamplesCount=${rawStage2.output.pipeline?.selectedExamplesCount ?? 0}; ` +
-      `selectorSelectedIds=${selectedExampleIds.length}.`
+      `selectorSelectedIds=${selectorSelectedExampleIds.length}; ` +
+      `diagnosticsSelectedIds=${diagnosticsSelectedExampleIds.length}.`
   });
 
   const vnext = rawStage2.output.pipeline?.vnext;
@@ -974,11 +979,15 @@ function buildExamplesRuntimeUsage(rawStage2: Stage2Response | null) {
           rejectedExampleIds?: string[];
         }
       | undefined) ?? undefined;
+  const diagnosticsSelectedExampleIds =
+    diagnosticsExamples?.selectedExamples.map((example) => example.id) ?? [];
+  const selectorSelectedExampleIds = selectorPipelineOutput?.selectedExampleIds ?? [];
   const selectedExampleIds = new Set(
-    selectorPipelineOutput?.selectedExampleIds ??
-      diagnosticsExamples?.selectedExamples.map((example) => example.id) ??
-      rawStage2?.diagnostics?.selection?.selectedExampleIds ??
-      []
+    diagnosticsSelectedExampleIds.length > 0
+      ? diagnosticsSelectedExampleIds
+      : selectorSelectedExampleIds.length > 0
+        ? selectorSelectedExampleIds
+        : rawStage2?.diagnostics?.selection?.selectedExampleIds ?? []
   );
   const rejectedExampleIds = new Set(
     selectorPipelineOutput?.rejectedExampleIds ??

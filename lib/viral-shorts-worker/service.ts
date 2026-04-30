@@ -8545,6 +8545,9 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
   };
   const resolvedWorkerProfile = getResolvedStage2WorkerProfile(input.channelConfig);
   const selectedExampleIds = isPromptFirstOneShot ? [] : input.selectorOutput.selectedExampleIds ?? [];
+  const diagnosticsSelectedExampleIds = isPromptFirstOneShot
+    ? input.selectorExamples.map((example) => example.id)
+    : selectedExampleIds;
   const insightById = new Map(input.exampleInsights.map((entry) => [entry.exampleId, entry]));
   const diagnostics: Stage2Diagnostics = {
     channel: {
@@ -8635,16 +8638,16 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
           "available",
           example,
           buildCorpusQueryText(input.videoContext, input.analyzerOutput),
-          selectedExampleIds,
+          diagnosticsSelectedExampleIds,
           insightById.get(example.id) ?? null
         )
       ),
-      selectedExamples: (isPromptFirstOneShot ? [] : input.selectorOutput.selectedExamples ?? []).slice(0, 5).map((example) =>
+      selectedExamples: (isPromptFirstOneShot ? input.selectorExamples : input.selectorOutput.selectedExamples ?? []).slice(0, 12).map((example) =>
         buildDiagnosticsExample(
           "selected",
           example,
           buildCorpusQueryText(input.videoContext, input.analyzerOutput),
-          selectedExampleIds,
+          diagnosticsSelectedExampleIds,
           insightById.get(example.id) ?? null
         )
       )
