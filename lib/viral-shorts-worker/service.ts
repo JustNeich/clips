@@ -7217,7 +7217,15 @@ function validateVisibleShortlistQuality(stats: ShortlistStats): string[] {
 }
 
 function buildFallbackTitleOption(candidate: CandidateCaption, option: number): { option: number; title: string; titleRu: string } {
-  const source = candidate.top || candidate.bottom || `Option ${option}`;
+  return buildFallbackTitleOptionFromText(candidate.top, candidate.bottom, option);
+}
+
+function buildFallbackTitleOptionFromText(
+  top: string | null | undefined,
+  bottom: string | null | undefined,
+  option: number
+): { option: number; title: string; titleRu: string } {
+  const source = top || bottom || `Option ${option}`;
   const title = source
     .replace(/[".,!?]/g, " ")
     .split(/\s+/)
@@ -7230,6 +7238,24 @@ function buildFallbackTitleOption(candidate: CandidateCaption, option: number): 
     title: title || `Option ${option}`,
     titleRu: title || `Option ${option}`
   };
+}
+
+const PROMPT_FIRST_TITLE_MAX_WORDS = 8;
+const PROMPT_FIRST_TITLE_MAX_CHARS = 72;
+
+function countTitleWords(value: string): number {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function isPromptFirstTitleTooLong(value: string): boolean {
+  const sanitized = sanitizeTitleText(value);
+  return (
+    sanitized.length > PROMPT_FIRST_TITLE_MAX_CHARS ||
+    countTitleWords(sanitized) > PROMPT_FIRST_TITLE_MAX_WORDS
+  );
 }
 
 function normalizeAllCapsTitleText(value: string): string {
@@ -8262,18 +8288,30 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     oneShotResult.titles.map((entry, index) => [entry.option ?? index + 1, entry] as const)
   );
   const titleFallbackOptions: number[] = [];
+  const titleLengthGuardOptions: number[] = [];
   const titleOptions = Array.from({ length: 5 }, (_, index) => {
     const option = index + 1;
     const existing = titleByOption.get(option) ?? null;
+    const matchingCaptionOption = captionOptions[index] ?? captionOptions[0] ?? null;
     const seedTitle =
       input.videoContext.title.trim() ||
       oneShotResult.analysis.keyPhraseToAdapt ||
       "Reference title";
+    const fallbackTitle = matchingCaptionOption
+      ? buildFallbackTitleOptionFromText(matchingCaptionOption.top, matchingCaptionOption.bottom, option).title
+      : `${seedTitle.slice(0, 70)}${option === 1 ? "" : ` ${option}`}`.trim();
+    const existingTitle = existing?.title?.trim() ?? "";
+    const useFallbackTitle =
+      !existingTitle || isPromptFirstTitleTooLong(existingTitle);
+    if (existingTitle && useFallbackTitle) {
+      titleLengthGuardOptions.push(option);
+    }
     const title = normalizeAllCapsTitleText(
-      existing?.title?.trim() || `${seedTitle.slice(0, 70)}${option === 1 ? "" : ` ${option}`}`.trim()
+      useFallbackTitle ? fallbackTitle : existingTitle
     );
-    const titleRu = normalizeAllCapsTitleText(existing?.titleRu?.trim() || title);
-    const titleRuSource = existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";
+    const titleRu = normalizeAllCapsTitleText(useFallbackTitle ? title : existing?.titleRu?.trim() || title);
+    const titleRuSource =
+      !useFallbackTitle && existing?.titleRu?.trim() ? existing.titleRuSource ?? "llm" : "fallback";
     if (titleRuSource === "fallback") {
       titleFallbackOptions.push(option);
     }
@@ -8284,6 +8322,13 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       titleRuSource
     };
   });
+  if (titleLengthGuardOptions.length > 0) {
+    warnings.push({
+      field: oneShotStageId,
+      message:
+        `Prompt-first title guard replaced ${titleLengthGuardOptions.length} overlong title option${titleLengthGuardOptions.length === 1 ? "" : "s"} with compact fallback wording.`
+    });
+  }
   const titleTranslationCoverage = {
     requestedCount: 5,
     translatedCount: 5 - titleFallbackOptions.length,

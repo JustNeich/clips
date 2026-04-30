@@ -18,6 +18,7 @@ import {
   HybridJsonStageExecutor,
   type JsonStageExecutor
 } from "../lib/viral-shorts-worker/executor";
+import { auditStage2WorkerRollout } from "../lib/stage2-runner";
 
 type ExecutorCall = {
   stageId: string;
@@ -103,6 +104,41 @@ function makeClassicOneShotResponse(prefix = "cand") {
   };
 }
 
+function makeStoryOneShotResponse(input?: {
+  prefix?: string;
+  longTitles?: boolean;
+}) {
+  const prefix = input?.prefix ?? "story";
+  return {
+    formatPipeline: "story_lead_main_caption",
+    analysis: {
+      visual_anchors: [
+        "the actor freezes in the doorway",
+        "the room reacts before the reveal",
+        "the cut lands on the practical effect"
+      ],
+      comment_vibe: "curious movie-detail energy",
+      key_phrase_to_adapt: "that practical effect did the work"
+    },
+    storyOptions: Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `${prefix}_${index + 1}`,
+      lead: "",
+      mainCaption: `This body explains why the Hollywood setup still reads clearly without a separate lead ${index + 1}.`,
+      retained_handle: index === 0,
+      rationale: `Keeps the story body grounded ${index + 1}.`
+    })),
+    winner_candidate_id: `${prefix}_1`,
+    titles: Array.from({ length: 5 }, (_, index) => ({
+      title: input?.longTitles
+        ? `This body explains why the Hollywood setup still reads clearly without a separate lead ${index + 1}`
+        : `HOLLYWOOD SETUP WORKED ${index + 1}`,
+      title_ru: input?.longTitles
+        ? `This body explains why the Hollywood setup still reads clearly without a separate lead ${index + 1}`
+        : `HOLLYWOOD SETUP WORKED ${index + 1}`
+    }))
+  };
+}
+
 function makeSeoResponse() {
   return {
     description:
@@ -117,6 +153,33 @@ const RELAXED_HARD_CONSTRAINTS = {
   topLengthMax: 200,
   bottomLengthMin: 10,
   bottomLengthMax: 200
+};
+
+const LEADLESS_STORY_HARD_CONSTRAINTS = {
+  ...RELAXED_HARD_CONSTRAINTS,
+  topLengthMin: 0,
+  topLengthMax: 0,
+  bottomLengthMin: 10,
+  bottomLengthMax: 220
+};
+
+const LEADLESS_STORY_TEMPLATE_SEMANTICS = {
+  formatGroup: "channel_story" as const,
+  formatLabel: "Channel + Story",
+  topLabel: "Lead",
+  bottomLabel: "Body",
+  topVisible: false,
+  bottomVisible: true,
+  topOptional: true,
+  topNote: "This template does not use a separate lead.",
+  bottomNote: null,
+  leadMode: "off" as const,
+  lengthHints: {
+    topLengthMin: 0,
+    topLengthMax: 0,
+    bottomLengthMin: 10,
+    bottomLengthMax: 220
+  }
 };
 
 function buildBaseStage2Response(): Stage2Response {
@@ -324,6 +387,112 @@ test("runNativeCaptionPipeline routes the prompt-first classic stage and downstr
   );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
   assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], []]);
+});
+
+test("leadless story prompt-first output passes rollout audit without topRu", async () => {
+  const service = new ViralShortsWorkerService();
+  const executor = new CaptureQueueExecutor([
+    makeStoryOneShotResponse({ prefix: "leadless" }),
+    Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `leadless_${index + 1}`,
+      top_ru: "",
+      bottom_ru: `Перевод body ${index + 1}`
+    })),
+    makeSeoResponse()
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "hollywood_channel",
+      name: "Hollywood Explained",
+      username: "HollywoodExplained",
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: LEADLESS_STORY_HARD_CONSTRAINTS,
+      templateFormatGroup: "channel_story",
+      templateTextSemantics: LEADLESS_STORY_TEMPLATE_SEMANTICS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/hollywood",
+      title: "Video by bloopersbits",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "Hollywood channel story format"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg"],
+    executor,
+    stageModels: {
+      storyOneShot: "gpt-5.4",
+      captionTranslation: "gpt-5.4-mini",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.formatPipeline, "story_lead_main_caption");
+  assert.equal(result.output.captionOptions[0]?.top, "");
+  assert.equal(result.output.captionOptions[0]?.topRu, "");
+  assert.equal(result.output.storyOptions?.[0]?.lead, "");
+  assert.equal(result.output.storyOptions?.[0]?.leadRu, "");
+  assert.equal(result.output.storyOptions?.[0]?.mainCaptionRu, "Перевод body 1");
+  assert.deepEqual(executor.calls.map((call) => call.stageId), ["storyOneShot", "captionTranslation", "seo"]);
+  assert.equal(auditStage2WorkerRollout(result.output).ok, true);
+});
+
+test("prompt-first title guard compacts overlong story titles", async () => {
+  const service = new ViralShortsWorkerService();
+  const executor = new CaptureQueueExecutor([
+    makeStoryOneShotResponse({ prefix: "title_guard", longTitles: true }),
+    Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `title_guard_${index + 1}`,
+      top_ru: "",
+      bottom_ru: `Перевод body ${index + 1}`
+    })),
+    makeSeoResponse()
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "hollywood_channel",
+      name: "Hollywood Explained",
+      username: "HollywoodExplained",
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: LEADLESS_STORY_HARD_CONSTRAINTS,
+      templateFormatGroup: "channel_story",
+      templateTextSemantics: LEADLESS_STORY_TEMPLATE_SEMANTICS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/hollywood",
+      title: "Video by bloopersbits",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "Hollywood channel story format"
+    }),
+    imagePaths: [],
+    executor,
+    stageModels: {
+      storyOneShot: "gpt-5.4",
+      captionTranslation: "gpt-5.4-mini",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.formatPipeline, "story_lead_main_caption");
+  assert.equal(
+    result.output.titleOptions.every((option) => option.title.split(/\s+/).filter(Boolean).length <= 8),
+    true
+  );
+  assert.equal(result.output.titleOptions[0]?.title, "THIS BODY EXPLAINS WHY THE");
+  assert.equal(
+    result.warnings.some((warning) => /title guard replaced 5 overlong title/i.test(warning.message)),
+    true
+  );
 });
 
 test("historical stable_reference_v6 requests still run through active classicOneShot", async () => {
