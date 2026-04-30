@@ -70,6 +70,27 @@ function isReferenceOneShotPathVariant(pathVariant: string | null | undefined): 
 
 const execFileAsync = promisify(execFile);
 
+function getMissingBilingualDisplayFields(output: Stage2Response["output"]): string[] {
+  return output.captionOptions.flatMap((option) => {
+    const missing: string[] = [];
+    const top = option.top?.trim() ?? "";
+    const bottom = option.bottom?.trim() ?? "";
+    const label = `option ${option.option ?? "?"}`;
+
+    if (top && !option.topRu?.trim()) {
+      missing.push(`${label}.topRu`);
+    }
+    if (bottom && !option.bottomRu?.trim()) {
+      missing.push(`${label}.bottomRu`);
+    }
+    if (!top && !bottom) {
+      missing.push(`${label}.top/bottom`);
+    }
+
+    return missing;
+  });
+}
+
 type VideoInfoJson = {
   title?: string;
   description?: string;
@@ -228,15 +249,12 @@ export function auditStage2WorkerRollout(output: Stage2Response["output"]): Stag
           `Stage 2 rollout failed: native_caption_v3 expected 5 display options, received ${output.captionOptions?.length ?? 0}.`
       };
     }
-    if (
-      output.captionOptions.some(
-        (option) => !option.topRu?.trim() || !option.bottomRu?.trim()
-      )
-    ) {
+    const missingBilingualDisplayFields = getMissingBilingualDisplayFields(output);
+    if (missingBilingualDisplayFields.length > 0) {
       return {
         ok: false,
         message:
-          "Stage 2 rollout failed: native_caption_v3 expected bilingual display options with topRu/bottomRu."
+          `Stage 2 rollout failed: native_caption_v3 expected bilingual text for visible display fields; missing ${missingBilingualDisplayFields.join(", ")}.`
       };
     }
     const hasInvalidDisplayOption = output.captionOptions.some(
