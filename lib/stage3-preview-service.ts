@@ -43,7 +43,7 @@ import { queueThrottledBackgroundTask } from "./throttled-background-task";
 
 const PREVIEW_CACHE_ROOT = path.join(getAppDataDir(), "stage3-cache");
 const PREVIEW_CACHE_DIR = path.join(PREVIEW_CACHE_ROOT, "previews");
-const STAGE3_PREVIEW_CACHE_VERSION = "v3";
+const STAGE3_PREVIEW_CACHE_VERSION = "v4";
 const DEFAULT_TEXT_SCALE = 1.25;
 const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 const previewInflight = new Map<string, Promise<void>>();

@@ -80,3 +80,10 @@
 - Ошибки до создания job, например отсутствующий source или недоступный локальный executor, фиксируются compact audit event-ом `stage3_request.failed`.
 - Ошибки внутри job фиксируются в `stage3_jobs`, `stage3_job_events` и audit event `stage3_job.failed`.
 - Template drift не должен выглядеть как generic render failure: он классифицируется как `template_snapshot_drift` и остаётся recoverable, потому что операторский recovery — обновить preview и повторить render.
+
+## 13. Пустые flash-кадры не должны попадать в preview/render artifact
+
+- Подготовленный Stage 3 source clip и сырой Remotion render проходят flash guard перед сохранением артефакта.
+- Guard ищет нейтральные пустые белые/чёрные кадры по full-frame сигналу, а final render дополнительно проверяет media slot из template snapshot.
+- Найденный пустой кадр заменяется ближайшим валидным соседним кадром, чтобы одиночная ошибка декодера, offthread-video frame extraction или source-prep не превращалась в видимую вспышку.
+- Это именно fail-closed safety net: цветокоррекция остаётся пользовательской настройкой, а guard исправляет только кадры с uniform blank signature.

@@ -58,6 +58,7 @@ import {
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
 import { ensureStage3RenderBrowser } from "./stage3-browser-runtime";
+import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 import type { Stage3PreparedBrowser } from "./stage3-browser-runtime";
 import type { TemplateCaptionHighlights } from "./template-highlights";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
@@ -1036,8 +1037,14 @@ export async function renderStage3Video(
           outputName: `${outputStem}.mp4`
         });
 
-        await finalizeRenderedOutput({
+        const flashGuarded = await repairStage3BlankFlashFrames({
           inputPath: remotionOutputPath,
+          outputPath: path.join(tmpDir, "render.flash-guard.mp4"),
+          mediaRect: templateSnapshot.layout.media
+        });
+
+        await finalizeRenderedOutput({
+          inputPath: flashGuarded.outputPath,
           outputPath,
           metadataTitle,
           variationProfile: appliedVariationProfile,

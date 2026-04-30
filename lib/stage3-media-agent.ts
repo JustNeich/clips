@@ -12,6 +12,7 @@ import { maybeDownloadStage3WorkerSource } from "./stage3-worker-source-client";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
 import { sanitizeFileName } from "./ytdlp";
 import { buildStage3EditorSession } from "./stage3-editor-core";
+import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 
 const execFileAsync = promisify(execFile);
 
@@ -1530,10 +1531,14 @@ export async function prepareStage3SourceClip(params: {
           return outputPath;
         })()
       : durationGuarded;
+  const flashGuarded = await repairStage3BlankFlashFrames({
+    inputPath: stabilized,
+    outputPath: path.join(params.tmpDir, "source.flash-guard.mp4")
+  });
 
   const finalPath = path.join(params.tmpDir, "source.mp4");
-  if (stabilized !== finalPath) {
-    await fs.copyFile(stabilized, finalPath);
+  if (flashGuarded.outputPath !== finalPath) {
+    await fs.copyFile(flashGuarded.outputPath, finalPath);
   }
 
   return {
