@@ -8,6 +8,7 @@ import {
   createManagedTemplate,
   deleteManagedTemplateDetailed,
   getWorkspaceDefaultTemplateId,
+  importManagedTemplateBackup,
   listManagedTemplates,
   readManagedTemplateSync,
   resolveManagedTemplate,
@@ -200,6 +201,56 @@ test("managed templates preserve custom card geometry and author font stacks", a
       reloaded?.templateConfig.typography.authorHandle.fontFamily,
       '"American Typewriter","Courier New","Georgia",serif'
     );
+  });
+});
+
+test("managed template backup import restores a downloaded template into the workspace library", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const original = await createManagedTemplate(
+      {
+        name: "Imported Backup Source",
+        baseTemplateId: "science-card-v1",
+        content: {
+          topText: "Backup top",
+          bottomText: "Backup bottom",
+          channelName: "Backup Channel",
+          channelHandle: "@backup"
+        },
+        templateConfig: {
+          card: {
+            x: 111,
+            y: 222,
+            width: 777,
+            height: 999
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+
+    const imported = await importManagedTemplateBackup(
+      {
+        exportVersion: "managed-template-backup-v1",
+        exportedAt: "2026-04-30T00:00:00.000Z",
+        template: original
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id,
+        creatorDisplayName: owner.user.displayName
+      }
+    );
+    const templates = await listManagedTemplates(owner.workspace.id);
+
+    assert.notEqual(imported.id, original.id);
+    assert.equal(imported.name, "Imported Backup Source");
+    assert.equal(imported.content.topText, "Backup top");
+    assert.equal(imported.templateConfig.card.x, 111);
+    assert.ok(templates.some((template) => template.id === imported.id));
   });
 });
 

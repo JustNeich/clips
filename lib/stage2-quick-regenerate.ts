@@ -47,6 +47,7 @@ const QUICK_REGENERATE_PROMPT = [
   "- Use Russian only in top_ru, bottom_ru, and title_ru.",
   "- Do not mention hidden candidates or rerunning the pipeline.",
   "- Titles should feel like export-safe file titles, not subtitles.",
+  "- Keep titles compact: 3-7 words, not the opening fragment of top/bottom.",
   "",
   "Tone rules:",
   "- Improve sharpness, specificity, pacing, and variety across the visible options.",
@@ -138,6 +139,9 @@ type QuickRegenerateChannelContext = {
   editorialMemory?: Stage2EditorialMemorySummary;
 };
 
+const QUICK_REGENERATE_TITLE_MAX_WORDS = 7;
+const QUICK_REGENERATE_TITLE_MAX_CHARS = 64;
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
@@ -148,6 +152,19 @@ function asString(value: unknown, fallback = ""): string {
 
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function sanitizeQuickRegenerateTitle(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function compactQuickRegenerateTitle(value: string, fallback: string): string {
+  const source = sanitizeQuickRegenerateTitle(value) || sanitizeQuickRegenerateTitle(fallback) || "Option";
+  let words = source.split(/\s+/).filter(Boolean).slice(0, QUICK_REGENERATE_TITLE_MAX_WORDS);
+  while (words.length > 3 && words.join(" ").length > QUICK_REGENERATE_TITLE_MAX_CHARS) {
+    words = words.slice(0, -1);
+  }
+  return words.join(" ").trim() || "Option";
 }
 
 function buildFallbackSelectorOutput(
@@ -704,8 +721,8 @@ export function buildQuickRegenerateResult(input: {
         option: baseOption.option,
         candidate: repaired.candidate,
         constraintCheck,
-        title: asString(rawEntry?.title, baseOption.title) || baseOption.title,
-        titleRu: asString(rawEntry?.title_ru, baseOption.titleRu) || baseOption.titleRu
+        title: compactQuickRegenerateTitle(asString(rawEntry?.title, baseOption.title), baseOption.title),
+        titleRu: compactQuickRegenerateTitle(asString(rawEntry?.title_ru, baseOption.titleRu), baseOption.titleRu)
       };
     }
 
@@ -723,8 +740,8 @@ export function buildQuickRegenerateResult(input: {
         input.channel.stage2HardConstraints,
         baseRepaired.repaired
       ),
-      title: baseOption.title,
-      titleRu: baseOption.titleRu
+      title: compactQuickRegenerateTitle(baseOption.title, `Option ${baseOption.option}`),
+      titleRu: compactQuickRegenerateTitle(baseOption.titleRu, baseOption.title)
     };
   });
   if (fallbackCount > 0) {

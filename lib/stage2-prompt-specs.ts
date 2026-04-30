@@ -37,7 +37,7 @@ export const STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT_VERSION =
 export const STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT_VERSION =
   "reference_one_shot_v1_experimental@2026-04-12";
 export const STAGE2_PROMPT_FIRST_ONE_SHOT_PROMPT_VERSION =
-  "prompt_first_one_shot@2026-04-30-leadless-title-guard";
+  "prompt_first_one_shot@2026-04-30-title-7-word-guard";
 
 const STAGE2_PROMPT_FIRST_BASE_RULES = `You are the Stage 2 caption writer for viral Shorts/Reels overlays targeting a US audience.
 
@@ -147,7 +147,7 @@ OUTPUT RULES
 - Do not return lead or mainCaption fields.
 - winner_candidate_id must point to one classicOptions item.
 - titles must contain exactly 5 short, click-worthy titles, ALL CAPS.
-- Each title must be 3-8 words and must not be the opening fragment of a top/bottom caption.
+- Each title must be 3-7 words and must not be the opening fragment of a top/bottom caption.
 - title_ru should be ALL CAPS when provided.
 - retained_handle should be true only when the candidate intentionally preserves a strong audience/comment phrasing handle.
 
@@ -204,7 +204,7 @@ Rules:
 - If format_contract_json.template_render_metadata.top_field.visible is false, lead must be an empty string and the full visible story text belongs in mainCaption.
 - Do not return top or bottom fields.
 - titles must contain exactly 5 short, click-worthy items.
-- Each title must be 3-8 words, ALL CAPS, and must not be the opening fragment of lead or mainCaption.`;
+- Each title must be 3-7 words, ALL CAPS, and must not be the opening fragment of lead or mainCaption.`;
 
 export const STAGE2_REFERENCE_ONE_SHOT_PROMPT = `SYSTEM PROMPT v6 — Viral Shorts Overlays (Visually Anchored & Human-Like)
 
@@ -1380,6 +1380,9 @@ Rules:
 - Prefer concrete technical nouns where relevant
 - Make it feel like a story, mystery, reveal, or test
 - Keep structure clean
+- Keep every title 3-7 words
+- Do not copy the opening fragment of a caption option
+- Respect userInstruction when it narrows the angle or channel prompt
 - ALL CAPS
 - No emojis
 - No generic YouTube filler
@@ -1641,6 +1644,8 @@ Rules:
 - Stay human, clickable, and honest.
 - Keep the title voice aligned with line_profile_json.
 - Respect channel_learning_json as a tone boundary.
+- Respect user_instruction when it changes the channel prompt or requested angle.
+- Each title must be 3-7 words and must not copy the opening fragment of the winner caption.
 - Both 'title' and 'title_ru' must be ALL CAPS.
 - Return bilingual output:
   - 'title' = English title

@@ -354,8 +354,9 @@
 3. Пользователь правит TOP/BOTTOM, typography, background, audio, fragments.
 4. Если нужны цветные слова, Step 3 показывает текущий highlight-status шаблона, напоминает что demo phrases из template-road не красят Step 3 напрямую, и ведёт в template customization; сами spans по-прежнему приходят из Stage 2.
 5. При ручной правке TOP/BOTTOM соответствующий блок highlight-spans очищается, чтобы preview/render не использовали stale offsets.
-6. Preview обновляется.
-7. Пользователь экспортирует или запускает render.
+6. Render settings allow downloading a managed-template backup and importing the same backup JSON back into the workspace template library.
+7. Preview обновляется.
+8. Пользователь экспортирует или запускает render.
 
 ### Alternate path
 

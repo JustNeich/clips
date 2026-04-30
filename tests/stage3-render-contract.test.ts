@@ -121,7 +121,7 @@ test("stage3 video placement anchors zoom transform to Position X and Y", () => 
   assert.equal(style.transformOrigin, "center center");
 });
 
-test("stage3 video placement creates a safe crop reserve so Position X is visible at 1x zoom", () => {
+test("stage3 video placement keeps 1x zoom when only Position X/Y changes", () => {
   const style = buildStage3VideoPlacementStyle({
     focusX: 0.82,
     focusY: 0.18,
@@ -130,7 +130,7 @@ test("stage3 video placement creates a safe crop reserve so Position X is visibl
   });
 
   assert.equal(style.objectPosition, "82.000% 18.000%");
-  assert.equal(style.transform, "translate(-4.480%, 4.480%) scale(1.140, 1.140)");
+  assert.equal(style.transform, "translate(0.000%, 0.000%) scale(1.000, 1.000)");
   assert.equal(style.transformOrigin, "center center");
 });
 

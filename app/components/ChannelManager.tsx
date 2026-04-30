@@ -142,6 +142,8 @@ type ManagedTemplateDetailResponse = {
   error?: string;
 };
 
+type ManagedTemplateImportResponse = ManagedTemplateDetailResponse;
+
 export function buildManagedTemplateBackupFileName(template: Pick<ManagedTemplate, "id" | "name">): string {
   const slug =
     template.name
@@ -486,6 +488,8 @@ export function ChannelManager({
   const [defaultClipDurationSec, setDefaultClipDurationSec] = useState(6);
   const [managedTemplates, setManagedTemplates] = useState<ManagedTemplateSummary[]>([]);
   const [templateExportBusy, setTemplateExportBusy] = useState(false);
+  const [templateImportBusy, setTemplateImportBusy] = useState(false);
+  const templateImportInputRef = useRef<HTMLInputElement | null>(null);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>({
     brand: { status: "idle", message: null },
     stage2: { status: "idle", message: null },
@@ -552,6 +556,17 @@ export function ChannelManager({
     [onDismissGlobalToast, onShowGlobalToast]
   );
 
+  const refreshManagedTemplates = useCallback(async (): Promise<ManagedTemplateSummary[]> => {
+    const response = await fetch("/api/design/templates", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Templates failed: ${response.status}`);
+    }
+    const payload = (await response.json()) as ManagedTemplateListResponse;
+    const nextTemplates = Array.isArray(payload.templates) ? payload.templates : [];
+    setManagedTemplates(nextTemplates);
+    return nextTemplates;
+  }, []);
+
   const exportManagedTemplateBackup = useCallback(async (): Promise<void> => {
     const targetTemplateId = activeTemplateSummary?.id ?? templateId;
     if (!targetTemplateId) {
@@ -585,6 +600,45 @@ export function ChannelManager({
       setTemplateExportBusy(false);
     }
   }, [activeTemplateSummary?.id, showManagerSaveNotice, templateId]);
+
+  const importManagedTemplateBackupFile = useCallback(
+    async (file: File | null): Promise<void> => {
+      if (!file) {
+        return;
+      }
+      setTemplateImportBusy(true);
+      showManagerSaveNotice("neutral", "Импортируем backup шаблона…");
+      try {
+        const parsed = JSON.parse(await file.text()) as unknown;
+        const response = await fetch("/api/design/templates/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(parsed)
+        });
+        const payload = (await response.json().catch(() => null)) as ManagedTemplateImportResponse | null;
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Не удалось импортировать backup шаблона.");
+        }
+        if (!payload?.template) {
+          throw new Error("Template API вернул пустой импорт.");
+        }
+        await refreshManagedTemplates();
+        setTemplateId(payload.template.id);
+        showManagerSaveNotice("success", "Backup шаблона импортирован.", true);
+      } catch (error) {
+        showManagerSaveNotice(
+          "error",
+          error instanceof Error && error.message ? error.message : "Не удалось импортировать backup шаблона."
+        );
+      } finally {
+        setTemplateImportBusy(false);
+        if (templateImportInputRef.current) {
+          templateImportInputRef.current.value = "";
+        }
+      }
+    },
+    [refreshManagedTemplates, showManagerSaveNotice]
+  );
 
   const saveManagedChannel = useCallback(
     async (channelId: string, patch: ChannelSavePatch): Promise<void> => {
@@ -2291,13 +2345,30 @@ export function ChannelManager({
                     </a>
                   </p>
                   <div className="control-actions">
+                    <input
+                      ref={templateImportInputRef}
+                      type="file"
+                      accept="application/json,.json"
+                      className="sr-only"
+                      onChange={(event) =>
+                        void importManagedTemplateBackupFile(event.currentTarget.files?.[0] ?? null)
+                      }
+                    />
                     <button
                       type="button"
                       className="btn btn-ghost"
                       onClick={() => void exportManagedTemplateBackup()}
-                      disabled={!activeTemplateSummary || templateExportBusy}
+                      disabled={!activeTemplateSummary || templateExportBusy || templateImportBusy}
                     >
                       {templateExportBusy ? "Готовим backup…" : "Скачать backup шаблона"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => templateImportInputRef.current?.click()}
+                      disabled={!canEditSetup || templateImportBusy || templateExportBusy}
+                    >
+                      {templateImportBusy ? "Импортируем…" : "Импортировать backup"}
                     </button>
                   </div>
                   <div className="compact-grid">
