@@ -495,6 +495,117 @@ test("prompt-first title guard compacts overlong story titles", async () => {
   );
 });
 
+test("prompt-first story titles allow compact duration shorthand without treating it as an internal timestamp", async () => {
+  const service = new ViralShortsWorkerService();
+  const oneShot = makeStoryOneShotResponse({ prefix: "duration_title" });
+  oneShot.titles[3] = {
+    title: "6S CHRISTMAS SETUP",
+    title_ru: "6S CHRISTMAS SETUP"
+  };
+  const executor = new CaptureQueueExecutor([
+    oneShot,
+    makeTranslationEntries(oneShot.storyOptions.map((option) => option.candidate_id)),
+    makeSeoResponse()
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "hollywood_channel",
+      name: "Hollywood Explained",
+      username: "HollywoodExplained",
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: LEADLESS_STORY_HARD_CONSTRAINTS,
+      templateFormatGroup: "channel_story",
+      templateTextSemantics: LEADLESS_STORY_TEMPLATE_SEMANTICS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/hollywood",
+      title: "Video by bloopersbits",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "Hollywood channel story format"
+    }),
+    imagePaths: [],
+    executor,
+    stageModels: {
+      storyOneShot: "gpt-5.4",
+      captionTranslation: "gpt-5.4-mini",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.titleOptions[3]?.title, "6S CHRISTMAS SETUP");
+  assert.equal(auditStage2WorkerRollout(result.output).ok, true);
+});
+
+test("prompt-first story promotes a valid final pick when provider winner is too long", async () => {
+  const service = new ViralShortsWorkerService();
+  const oneShot = makeStoryOneShotResponse({ prefix: "story_winner" });
+  oneShot.storyOptions[0] = {
+    ...oneShot.storyOptions[0],
+    mainCaption:
+      "This Hollywood body keeps going past the configured story slot until it becomes too long for the current render body and should not stay selected as the final pick when a shorter option is already available."
+  };
+  oneShot.winner_candidate_id = "story_winner_1";
+  const executor = new CaptureQueueExecutor([
+    oneShot,
+    makeTranslationEntries(oneShot.storyOptions.map((option) => option.candidate_id)),
+    makeSeoResponse()
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "hollywood_channel",
+      name: "Hollywood Explained",
+      username: "HollywoodExplained",
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: {
+        ...LEADLESS_STORY_HARD_CONSTRAINTS,
+        bottomLengthMax: 120
+      },
+      templateFormatGroup: "channel_story",
+      templateTextSemantics: {
+        ...LEADLESS_STORY_TEMPLATE_SEMANTICS,
+        lengthHints: {
+          ...LEADLESS_STORY_TEMPLATE_SEMANTICS.lengthHints,
+          bottomLengthMax: 120
+        }
+      }
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/hollywood",
+      title: "Video by bloopersbits",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "Hollywood channel story format"
+    }),
+    imagePaths: [],
+    executor,
+    stageModels: {
+      storyOneShot: "gpt-5.4",
+      captionTranslation: "gpt-5.4-mini",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.equal(result.output.winner?.candidateId, "story_winner_2");
+  assert.equal(result.output.finalPick.option, 2);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.winnerValidity, "valid");
+  assert.equal(
+    result.warnings.some((warning) => /promoted valid finalist \"story_winner_2\"/i.test(warning.message)),
+    true
+  );
+  assert.equal(auditStage2WorkerRollout(result.output).ok, true);
+});
+
 test("prompt-first one-shot cleans configured banned words instead of failing Stage 2", async () => {
   const service = new ViralShortsWorkerService();
   const oneShot = makeClassicOneShotResponse("blocked");

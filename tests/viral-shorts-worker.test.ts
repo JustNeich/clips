@@ -8700,7 +8700,7 @@ test("classic prompt-first does not apply the removed experimental commentary gu
   assert.equal(result.output.pipeline.execution?.pathVariant, "classic_one_shot_v1");
 });
 
-test("classic prompt-first keeps length-window misses as warnings without promoting a different winner", async () => {
+test("classic prompt-first promotes a valid final pick when the provider winner misses the length window", async () => {
   const groundedTopSeed =
     "The contract sounded celebratory until the second detail made the whole room realize what the legend had quietly agreed to, and the clip changes once that lands. ";
   const groundedBottomSeed =
@@ -8771,25 +8771,22 @@ test("classic prompt-first keeps length-window misses as warnings without promot
   );
   assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.validPoolCount, 3);
   assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.invalidPoolCount, 2);
-  assert.equal(result.output.winner?.candidateId, "cand_5");
-  assert.equal(result.output.finalPick.option, 5);
-  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.winnerValidity, "invalid");
+  assert.equal(result.output.winner?.candidateId, "cand_1");
+  assert.equal(result.output.finalPick.option, 1);
+  assert.equal(result.output.pipeline.nativeCaptionV3?.guardSummary.winnerValidity, "valid");
   assert.equal(
     result.warnings.some((warning) => /outside the configured length window/i.test(warning.message)),
     true
   );
   assert.equal(
-    result.warnings.some((warning) => /promoted valid finalist/i.test(warning.message)),
-    false
+    result.warnings.some((warning) => /promoted valid finalist "cand_1"/i.test(warning.message)),
+    true
   );
   assert.match(executor.calls[0]?.prompt ?? "", /"topLengthMin": 180/);
   assert.match(executor.calls[0]?.prompt ?? "", /"topLengthMax": 200/);
   assert.match(executor.calls[0]?.prompt ?? "", /"bottomLengthMin": 140/);
   assert.match(executor.calls[0]?.prompt ?? "", /"bottomLengthMax": 160/);
-  assert.deepEqual(auditStage2WorkerRollout(result.output), {
-    ok: false,
-    message: "Stage 2 rollout failed: native_caption_v3 returned an invalid winner after runtime gating."
-  });
+  assert.deepEqual(auditStage2WorkerRollout(result.output), { ok: true });
 });
 
 test("classic prompt-first leaves near-miss overflows as diagnostics without deterministic polish", async () => {
@@ -8864,7 +8861,7 @@ test("classic prompt-first leaves near-miss overflows as diagnostics without det
   );
 });
 
-test("classic prompt-first preserves one-character punctuation overflow instead of applying hidden polish", async () => {
+test("classic prompt-first preserves one-character punctuation overflow while selecting a valid final pick", async () => {
   const groundedTopSeed =
     "The trade sounds harmless until the second photo makes the whole joke land, and the clip turns into the moment everybody realizes who got thrown under the bus. ";
   const almostMaxBottom = `${makeFixedLengthText(
@@ -8932,7 +8929,8 @@ test("classic prompt-first preserves one-character punctuation overflow instead 
   assert.ok(repairedCandidate);
   assert.equal(repairedCandidate?.bottom.length, 151);
   assert.equal(repairedCandidate?.constraintCheck.repaired, false);
-  assert.equal(result.output.winner?.candidateId, "cand_2");
+  assert.equal(result.output.winner?.candidateId, "cand_1");
+  assert.equal(result.output.finalPick.option, 1);
 });
 
 test("classic prompt-first prompt uses runtime channel hard-constraint windows without judge or repair stages", async () => {

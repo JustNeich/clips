@@ -2539,7 +2539,7 @@ const REFERENCE_ONE_SHOT_META_LEAKAGE_RULES = [
     reason: "mentions a pipeline slot or manifest index"
   },
   {
-    regex: /\b\d{1,2}(?:\.\d{1,2})?s\b/i,
+    regex: /\b(?:at|around|near|after|before)\s+\d{1,2}(?:\.\d{1,2})?s\b|\b\d{1,2}\.\d{1,2}s\b/i,
     reason: "mentions a seconds timestamp"
   },
   {
@@ -7946,7 +7946,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
           "format-specific output schema",
           "no runtime examples selection",
           "hard-constraint cleanup only",
-          "no winner promotion"
+          "valid-winner promotion only"
         ]
       : variantConfig.stageFlags
   };
@@ -8045,7 +8045,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
           : cleanedCandidateIds.length > 0
             ? `${isPromptFirstOneShot ? oneShotStageId : variantConfig.label} produced 5 finalists after banned-word/openers cleanup.`
             : isPromptFirstOneShot
-            ? `${oneShotStageId} produced 5 format-specific finalists without runtime polish, repair, backfill, or winner promotion.`
+            ? `${oneShotStageId} produced 5 format-specific finalists without runtime polish, repair, or backfill.`
             : `${variantConfig.label} produced 5 publishable finalists without repair or backfill.`
   });
   recordExecutedStage(
@@ -8129,7 +8129,6 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
       ? captionOptions.find((option) => option.candidateId === requestedWinnerCandidate.candidateId) ?? null
       : null;
   const resolvedWinnerOption =
-    !isPromptFirstOneShot &&
     requestedWinnerOption?.constraintCheck.passed === false &&
     validCaptionOptions.length > 0
       ? validCaptionOptions[0] ?? requestedWinnerOption
@@ -8138,7 +8137,7 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     requestedWinnerOption &&
     resolvedWinnerOption &&
     requestedWinnerOption.candidateId !== resolvedWinnerOption.candidateId
-      ? `One-shot baseline winner "${requestedWinnerOption.candidateId}" missed the configured length window, so runtime promoted valid finalist "${resolvedWinnerOption.candidateId}" as final pick.`
+      ? `${isPromptFirstOneShot ? "Prompt-first provider" : "One-shot baseline"} winner "${requestedWinnerOption.candidateId}" missed the configured length window, so runtime promoted valid finalist "${resolvedWinnerOption.candidateId}" as final pick.`
       : null;
   if (oneShotLengthWindowWarnings.length > 0) {
     warnings.push({
