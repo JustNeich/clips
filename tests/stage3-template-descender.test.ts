@@ -56,3 +56,43 @@ test("channel story body sizing reserves descender safety inside the body slot",
     )}px`
   );
 });
+
+test("channel story body scale does not rewrap abruptly between 99 and 100 percent", () => {
+  const bodyText =
+    "In 2019 Tom Holland wears his Spider Man suit while Samuel Jackson speaks off camera abandons the script to tell him pick up food before returning set stares ahead losing composure laughing real hunger took over Far From Home production.";
+  const makeSnapshot = (bottomFontScale: number) =>
+    buildTemplateRenderSnapshot({
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      templateConfigOverride: CHANNEL_STORY,
+      content: {
+        topText: "",
+        bottomText: bodyText,
+        channelName: "Channel",
+        channelHandle: "+ Story",
+        highlights: { top: [], bottom: [] },
+        topFontScale: 1,
+        bottomFontScale,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      }
+    });
+
+  const at99 = makeSnapshot(0.99);
+  const at100 = makeSnapshot(1);
+
+  assert.equal(at100.fit.bottomLines, at99.fit.bottomLines);
+  assert.ok(
+    at100.fit.bottomFontPx >= at99.fit.bottomFontPx,
+    `expected 100% font to stay at or above 99%, got ${at99.fit.bottomFontPx}px -> ${at100.fit.bottomFontPx}px`
+  );
+  assert.ok(
+    at100.fit.bottomFontPx - at99.fit.bottomFontPx <= 0.5,
+    `expected a small 99% -> 100% font delta, got ${at99.fit.bottomFontPx}px -> ${at100.fit.bottomFontPx}px`
+  );
+  assert.ok(
+    Math.abs(at100.fit.bottomLineHeight - at99.fit.bottomLineHeight) <= 0.01,
+    `expected line-height to stay visually stable, got ${at99.fit.bottomLineHeight} -> ${at100.fit.bottomLineHeight}`
+  );
+});

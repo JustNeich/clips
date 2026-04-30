@@ -18,6 +18,7 @@ import {
   prepareStage2PromptConfigForExplicitSave,
   resolveEffectiveStage2PromptConfig
 } from "../lib/stage2-pipeline";
+import { STAGE2_STORY_ONE_SHOT_PROMPT } from "../lib/stage2-prompt-specs";
 import {
   DEFAULT_STAGE2_CAPTION_PROVIDER_CONFIG
 } from "../lib/stage2-caption-provider";
@@ -37,6 +38,13 @@ import {
 } from "../lib/workspace-codex-models";
 import { createChannel, getChannelById, updateChannelById } from "../lib/chat-history";
 import { bootstrapOwner } from "../lib/team-store";
+
+test("default story prompt treats examples_json as a visible style source", () => {
+  assert.match(STAGE2_STORY_ONE_SHOT_PROMPT, /EXAMPLES STYLE CONTRACT/);
+  assert.match(STAGE2_STORY_ONE_SHOT_PROMPT, /opening pattern/);
+  assert.match(STAGE2_STORY_ONE_SHOT_PROMPT, /year, named person, production context/i);
+  assert.match(STAGE2_STORY_ONE_SHOT_PROMPT, /Never copy their unrelated facts/i);
+});
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-stage2-single-baseline-test-"));
@@ -299,6 +307,11 @@ test("prompt-first story run sends all active examples as raw examples_json", as
   assert.equal(result.output.pipeline?.selectedExamplesCount, 4);
   assert.equal(result.diagnostics.examples.activeCorpusCount, 4);
   assert.equal(result.diagnostics.examples.selectorCandidateCount, 0);
+  assert.equal(result.diagnostics.examples.selectedExamples.length, 4);
+  assert.deepEqual(
+    result.diagnostics.examples.selectedExamples.map((example) => example.id),
+    workspaceExamples.map((example) => example.id)
+  );
   assert.equal(
     result.diagnostics.effectivePrompting.promptStages.find(
       (stage) => stage.stageId === "storyOneShot"

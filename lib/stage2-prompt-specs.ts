@@ -37,7 +37,7 @@ export const STAGE2_ANIMALS_REFERENCE_ONE_SHOT_PROMPT_VERSION =
 export const STAGE2_REFERENCE_ONE_SHOT_EXPERIMENTAL_PROMPT_VERSION =
   "reference_one_shot_v1_experimental@2026-04-12";
 export const STAGE2_PROMPT_FIRST_ONE_SHOT_PROMPT_VERSION =
-  "prompt_first_one_shot@2026-04-30-title-7-word-guard";
+  "prompt_first_one_shot@2026-04-30-story-examples-style";
 
 const STAGE2_PROMPT_FIRST_BASE_RULES = `You are the Stage 2 caption writer for viral Shorts/Reels overlays targeting a US audience.
 
@@ -53,6 +53,7 @@ SOURCE PRIORITY
 PROMPT-FIRST RULES
 - Read every example in examples_json as part of the same chat context.
 - Do not assume the examples were selected, scored, ranked, or summarized by runtime. They are simply the active examples corpus in saved order.
+- If examples_json is non-empty, treat it as the channel style reference: inherit opening shape, density, chronology cues, phrase rhythm, and punchline placement when they fit the current clip.
 - Never import unsupported facts from examples into the current clip.
 - Do not mention JSON field names, schema names, internal ids, model/provider names, frame numbers, timestamps, or pipeline diagnostics in visible text.
 - Keep final visible English fields English-only even if user_instruction is Russian.
@@ -170,6 +171,12 @@ export const STAGE2_STORY_ONE_SHOT_PROMPT = `${STAGE2_PROMPT_FIRST_BASE_RULES}
 FORMAT
 Use the story_lead_main_caption pipeline.
 Write story overlay options with a short Lead and a Main Caption body. Lead is not TOP. Main Caption is not BOTTOM.
+
+EXAMPLES STYLE CONTRACT
+- examples_json is the main style source after source truth and hard constraints.
+- If most examples open with a year, named person, production context, or compact factual setup, preserve that opening pattern for this clip when source_video_json supports it.
+- Match the examples' level of specificity and sentence density; avoid generic paraphrases when the examples use concrete names, dates, objects, or consequences.
+- Use examples for form, cadence, and story pressure only. Never copy their unrelated facts into this clip.
 
 OUTPUT CONTRACT
 Return exactly:

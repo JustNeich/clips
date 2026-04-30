@@ -100,6 +100,7 @@ Runtime guardrails after the provider call:
 
 - configured banned words/openers are cleaned from one-shot finalists before contract validation so one blocked phrase does not fail the whole Stage 2 run;
 - title options are kept compact in the 3-7 word window, including prompt-first, titleWriter, and quick-regenerate paths.
+- the default `storyOneShot` prompt now states an explicit examples style contract: `examples_json` remains raw/unranked runtime input, but the provider is told to inherit the channel examples' opening shape, density, chronology cues, phrase rhythm, and punchline placement when source truth supports it.
 
 Запрещено в новом prompt-first full-run path:
 
@@ -109,6 +110,9 @@ Runtime guardrails after the provider call:
 - semantic/form/weak guidance labels
 - role summaries
 - runtime bridge, объясняющий модели, как именно examples должны влиять
+
+Trace note:
+- prompt-first trace/diagnostics may display all active examples as `selectedExamples` for operator visibility, meaning "passed to the provider as active raw examples", not "ranked by a runtime selector".
 
 ### Comments policy
 

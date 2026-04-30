@@ -1058,7 +1058,89 @@ function applyFontScaleWithSafety(params: {
     }
   }
 
-  return { font, lines, lineHeight: Number(effectiveLineHeight.toFixed(3)) };
+  const stabilized = stabilizeNearNeutralLineWrap({
+    text: params.text,
+    slot: params.slot,
+    config: params.config,
+    scale: normalizedScale,
+    font,
+    lines,
+    lineHeight: effectiveLineHeight
+  });
+
+  return {
+    font: stabilized.font,
+    lines: stabilized.lines,
+    lineHeight: Number(stabilized.lineHeight.toFixed(3))
+  };
+}
+
+function stabilizeNearNeutralLineWrap(params: {
+  text: string;
+  slot: SlotSize;
+  config: TypographyConfig;
+  scale: number;
+  font: number;
+  lines: number;
+  lineHeight: number;
+}): { font: number; lines: number; lineHeight: number } {
+  if (params.scale < 0.98 || params.scale > 1.02 || params.lines <= 1) {
+    return {
+      font: params.font,
+      lines: params.lines,
+      lineHeight: params.lineHeight
+    };
+  }
+
+  const minFont = ceilStage3TextFontPx(getSafeMinimumFont(params.config));
+  const maxDrop = Math.max(STAGE3_TEXT_FONT_STEP_PX, Math.min(1, params.font * 0.015));
+  const lowerBound = Math.max(minFont, snapStage3TextFontPx(params.font - maxDrop));
+  const maxHeight = params.slot.height * VERTICAL_SAFETY;
+
+  for (
+    let candidateFont = snapStage3TextFontPx(params.font - STAGE3_TEXT_FONT_STEP_PX);
+    candidateFont >= lowerBound - 0.0001;
+    candidateFont = snapStage3TextFontPx(candidateFont - STAGE3_TEXT_FONT_STEP_PX)
+  ) {
+    const candidateLines = estimateLineCount(params.text, candidateFont, params.slot.width, params.config);
+    if (candidateLines >= params.lines || candidateLines > params.config.maxLines) {
+      continue;
+    }
+
+    let candidateLineHeight = params.config.lineHeight;
+    let candidateHeight =
+      candidateLines * candidateFont * candidateLineHeight +
+      resolveTemplateDescenderSafetyPx(candidateFont, candidateLineHeight);
+    const fillTargetMin = clampNumber(params.config.fillTargetMin ?? 0, 0, VERTICAL_SAFETY);
+    if (fillTargetMin > 0) {
+      const targetContentHeight = params.slot.height * fillTargetMin;
+      const maxLineHeight = Math.min(1.35, Math.max(params.config.lineHeight, params.config.lineHeight + 0.18));
+      while (candidateHeight < targetContentHeight && candidateLineHeight < maxLineHeight) {
+        const nextLineHeight = Number(Math.min(maxLineHeight, candidateLineHeight + 0.01).toFixed(3));
+        const nextHeight =
+          candidateLines * candidateFont * nextLineHeight +
+          resolveTemplateDescenderSafetyPx(candidateFont, nextLineHeight);
+        if (nextHeight > maxHeight) {
+          break;
+        }
+        candidateLineHeight = nextLineHeight;
+        candidateHeight = nextHeight;
+      }
+    }
+    if (candidateHeight <= maxHeight) {
+      return {
+        font: candidateFont,
+        lines: candidateLines,
+        lineHeight: candidateLineHeight
+      };
+    }
+  }
+
+  return {
+    font: params.font,
+    lines: params.lines,
+    lineHeight: params.lineHeight
+  };
 }
 
 function compactText(value: string, targetChars: number): string {
