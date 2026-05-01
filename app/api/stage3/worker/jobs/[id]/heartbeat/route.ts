@@ -1,6 +1,9 @@
 import { requireStage3WorkerAuth } from "../../../../../../../lib/auth/stage3-worker";
 import { buildStage3JobEnvelope } from "../../../../../../../lib/stage3-job-http";
-import { heartbeatStage3Job } from "../../../../../../../lib/stage3-job-store";
+import {
+  DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS,
+  heartbeatStage3Job
+} from "../../../../../../../lib/stage3-job-store";
 import { touchStage3WorkerHeartbeat } from "../../../../../../../lib/stage3-worker-store";
 
 export const runtime = "nodejs";
@@ -25,7 +28,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       appVersion: body?.appVersion ?? null,
       capabilitiesJson: body?.capabilities ? JSON.stringify(body.capabilities) : null
     });
-    const job = heartbeatStage3Job(id, auth.worker.id, 30_000);
+    const job = heartbeatStage3Job(id, auth.worker.id, DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS);
     return Response.json(buildStage3JobEnvelope(job, null), { status: 200 });
   } catch (error) {
     if (error instanceof Response) {

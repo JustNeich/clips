@@ -91,6 +91,8 @@ type ClaimStage3WorkerJobInput = {
   leaseDurationMs?: number;
 };
 
+export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 5 * 60_000;
+
 function normalizeJobKind(value: string): Stage3JobKind {
   if (
     value === "preview" ||
@@ -723,7 +725,7 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
   const leaseDurationMs =
     typeof input.leaseDurationMs === "number" && Number.isFinite(input.leaseDurationMs) && input.leaseDurationMs > 0
       ? input.leaseDurationMs
-      : 30_000;
+      : DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS;
 
   const job = runInTransaction((db) => {
     requeueExpiredLocalJobsInternal(db);
@@ -789,7 +791,11 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
   return job;
 }
 
-export function heartbeatStage3Job(jobId: string, workerId: string, leaseDurationMs = 30_000): Stage3JobRecord {
+export function heartbeatStage3Job(
+  jobId: string,
+  workerId: string,
+  leaseDurationMs = DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS
+): Stage3JobRecord {
   const stamp = nowIso();
   const leaseUntil = new Date(Date.now() + leaseDurationMs).toISOString();
   const db = getDb();

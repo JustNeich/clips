@@ -1,6 +1,9 @@
 import { requireStage3WorkerAuth } from "../../../../../../lib/auth/stage3-worker";
 import { buildStage3JobEnvelope } from "../../../../../../lib/stage3-job-http";
-import { claimNextQueuedStage3JobForWorker } from "../../../../../../lib/stage3-job-store";
+import {
+  DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS,
+  claimNextQueuedStage3JobForWorker
+} from "../../../../../../lib/stage3-job-store";
 import {
   getExpectedStage3WorkerRuntimeVersion,
   isStage3WorkerRuntimeVersionCompatible
@@ -58,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
       workspaceId: auth.workspaceId,
       userId: auth.userId,
       supportedKinds: body?.supportedKinds,
-      leaseDurationMs: 30_000
+      leaseDurationMs: DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS
     });
     if (!job) {
       return new Response(null, { status: 204 });

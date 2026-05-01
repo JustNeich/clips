@@ -6,11 +6,13 @@ import test from "node:test";
 
 import { getDb, newId, nowIso } from "../lib/db/client";
 import {
+  DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS,
   claimNextQueuedStage3Job,
   claimNextQueuedStage3JobForWorker,
   completeStage3Job,
   enqueueStage3Job,
-  getStage3Job
+  getStage3Job,
+  heartbeatStage3Job
 } from "../lib/stage3-job-store";
 import {
   scheduleStage3JobProcessing,
@@ -203,6 +205,63 @@ test("local worker skips superseded queued previews for the same chat", async ()
     assert.equal(claimed?.id, newer.id);
     assert.equal(getStage3Job(older.id)?.status, "interrupted");
     assert.equal(getStage3Job(older.id)?.errorCode, "superseded_preview_request");
+  });
+});
+
+test("local worker leases survive long Stage 3 operations", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-lease",
+        sourceUrl: "https://youtube.com/watch?v=lease"
+      })
+    });
+
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy"]
+    });
+
+    assert.equal(claimed?.id, job.id);
+    assert.ok(claimed?.leaseUntil);
+    assert.equal(DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS, 300_000);
+    assert.ok(new Date(claimed.leaseUntil).getTime() - Date.now() > 240_000);
+
+    db.prepare("UPDATE stage3_jobs SET lease_expires_at = ? WHERE id = ?").run("2001-01-02T03:04:05.000Z", job.id);
+    const renewed = heartbeatStage3Job(job.id, exchanged.worker.id);
+    assert.ok(renewed.leaseUntil);
+    assert.ok(new Date(renewed.leaseUntil).getTime() - Date.now() > 240_000);
   });
 });
 

@@ -1,6 +1,11 @@
 import { requireStage3WorkerAuth } from "../../../../../../../lib/auth/stage3-worker";
 import { buildStage3JobEnvelope } from "../../../../../../../lib/stage3-job-http";
-import { finishStage3Job, getStage3Job } from "../../../../../../../lib/stage3-job-store";
+import {
+  DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS,
+  finishStage3Job,
+  getStage3Job,
+  heartbeatStage3Job
+} from "../../../../../../../lib/stage3-job-store";
 import { touchStage3WorkerHeartbeat } from "../../../../../../../lib/stage3-worker-store";
 
 export const runtime = "nodejs";
@@ -28,6 +33,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     if (current.assignedWorkerId !== auth.worker.id) {
       return Response.json({ error: "Stage 3 job is not leased by this worker." }, { status: 409 });
     }
+    heartbeatStage3Job(id, auth.worker.id, DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS);
 
     touchStage3WorkerHeartbeat({
       workerId: auth.worker.id
