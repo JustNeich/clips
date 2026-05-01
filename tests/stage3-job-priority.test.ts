@@ -255,13 +255,13 @@ test("local worker leases survive long Stage 3 operations", async () => {
 
     assert.equal(claimed?.id, job.id);
     assert.ok(claimed?.leaseUntil);
-    assert.equal(DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS, 300_000);
-    assert.ok(new Date(claimed.leaseUntil).getTime() - Date.now() > 240_000);
+    assert.equal(DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS, 2_700_000);
+    assert.ok(new Date(claimed.leaseUntil).getTime() - Date.now() > 2_400_000);
 
     db.prepare("UPDATE stage3_jobs SET lease_expires_at = ? WHERE id = ?").run("2001-01-02T03:04:05.000Z", job.id);
     const renewed = heartbeatStage3Job(job.id, exchanged.worker.id);
     assert.ok(renewed.leaseUntil);
-    assert.ok(new Date(renewed.leaseUntil).getTime() - Date.now() > 240_000);
+    assert.ok(new Date(renewed.leaseUntil).getTime() - Date.now() > 2_400_000);
   });
 });
 

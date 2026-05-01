@@ -91,7 +91,7 @@ type ClaimStage3WorkerJobInput = {
   leaseDurationMs?: number;
 };
 
-export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 5 * 60_000;
+export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
 
 function normalizeJobKind(value: string): Stage3JobKind {
   if (
