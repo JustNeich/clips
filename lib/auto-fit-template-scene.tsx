@@ -152,6 +152,31 @@ function getScaleCeiling(scale: number, maxScaleBoost: number): number {
   return scale > 1 ? Math.min(scale, maxScaleBoost) : 1;
 }
 
+export function resolveMeasuredScaledFontCeiling(params: {
+  baseFont: number;
+  configuredMaxFont: number;
+  minFont: number;
+  scale: number;
+  maxScaleBoost: number;
+}): number {
+  const scale = normalizeScale(params.scale);
+  const baseFont = Number.isFinite(params.baseFont) && params.baseFont > 0
+    ? params.baseFont
+    : params.configuredMaxFont;
+  const configuredMaxFont = Number.isFinite(params.configuredMaxFont) && params.configuredMaxFont > 0
+    ? params.configuredMaxFont
+    : baseFont;
+  const absoluteMaxFont = snapStage3TextFontPx(
+    configuredMaxFont * getScaleCeiling(scale, params.maxScaleBoost)
+  );
+  const scaledFont = snapStage3TextFontPx(baseFont * scale);
+  return clamp(
+    scaledFont,
+    params.minFont,
+    Math.max(params.minFont, absoluteMaxFont)
+  );
+}
+
 function buildCacheKey(
   templateId: string,
   content: TemplateContentFixture,
@@ -444,6 +469,10 @@ function buildMeasuredComputed(
   const usesWideHeadlineScaling =
     templateId === SCIENCE_CARD_V7_TEMPLATE_ID || templateId === HEDGES_OF_HONOR_TEMPLATE_ID;
   const usesChannelStoryLayout = templateConfig.layoutKind === "channel_story";
+  const topMinFont = ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.top.min * 0.58)));
+  const bottomMinFont = ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.bottom.min * 0.58)));
+  const topConfiguredMaxFont = Math.max(topFigmaFont, templateConfig.typography.top.max);
+  const bottomConfiguredMaxFont = Math.max(bottomFigmaFont, templateConfig.typography.bottom.max);
 
   const topSpec: MeasuredSlotSpec = {
     text: baseComputed.top,
@@ -453,16 +482,14 @@ function buildMeasuredComputed(
     height: usesChannelStoryLayout
       ? layout.top.height
       : layout.top.height - sectionBorderLosses.topHeight - topPaddingTop - topPaddingBottom,
-    minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.top.min * 0.58))),
-    maxFont: Math.max(
-      topFigmaFont,
-      templateConfig.typography.top.max,
-      snapStage3TextFontPx(
-        templateConfig.typography.top.max *
-          getTopFontHeadroom(templateId) *
-          getScaleCeiling(topScale, usesWideHeadlineScaling ? 1.24 : 1.18)
-      )
-    ),
+    minFont: topMinFont,
+    maxFont: resolveMeasuredScaledFontCeiling({
+      baseFont: baseComputed.topFont,
+      configuredMaxFont: topConfiguredMaxFont,
+      minFont: topMinFont,
+      scale: topScale,
+      maxScaleBoost: getTopFontHeadroom(templateId) * (usesWideHeadlineScaling ? 1.24 : 1.18)
+    }),
     preferredFont: baseComputed.topFont,
     maxLines: resolveScaledMaxLines(templateConfig.typography.top.maxLines, topScale, "top"),
     baseLineHeight: usesClassicScienceCardChrome ? scienceCardPreferredTopLineHeight : baseComputed.topLineHeight,
@@ -487,9 +514,6 @@ function buildMeasuredComputed(
         : Math.min(1.22, Number((baseComputed.topLineHeight + 0.08).toFixed(3)))
     )
   };
-  if (topScale < 1) {
-    topSpec.maxFont = Math.min(topSpec.maxFont, Math.max(topSpec.minFont, baseComputed.topFont));
-  }
 
   const bottomBodyHeight = Math.max(
     80,
@@ -499,16 +523,14 @@ function buildMeasuredComputed(
     text: baseComputed.bottom,
     width: layout.bottomText.width,
     height: layout.bottomText.height,
-    minFont: ceilStage3TextFontPx(Math.max(14, Math.floor(templateConfig.typography.bottom.min * 0.58))),
-    maxFont: Math.max(
-      bottomFigmaFont,
-      templateConfig.typography.bottom.max,
-      snapStage3TextFontPx(
-        templateConfig.typography.bottom.max *
-          getBottomFontHeadroom(templateId) *
-          getScaleCeiling(bottomScale, usesWideHeadlineScaling ? 1.4 : 1.3)
-      )
-    ),
+    minFont: bottomMinFont,
+    maxFont: resolveMeasuredScaledFontCeiling({
+      baseFont: baseComputed.bottomFont,
+      configuredMaxFont: bottomConfiguredMaxFont,
+      minFont: bottomMinFont,
+      scale: bottomScale,
+      maxScaleBoost: getBottomFontHeadroom(templateId) * (usesWideHeadlineScaling ? 1.4 : 1.3)
+    }),
     preferredFont: baseComputed.bottomFont,
     maxLines: resolveScaledMaxLines(templateConfig.typography.bottom.maxLines, bottomScale, "bottom"),
     baseLineHeight: usesClassicScienceCardChrome ? baseComputed.bottomLineHeight : baseComputed.bottomLineHeight,
@@ -533,12 +555,6 @@ function buildMeasuredComputed(
         : Math.min(1.32, Number((baseComputed.bottomLineHeight + 0.08).toFixed(3)))
     )
   };
-  if (bottomScale < 1) {
-    bottomSpec.maxFont = Math.min(
-      bottomSpec.maxFont,
-      Math.max(bottomSpec.minFont, baseComputed.bottomFont)
-    );
-  }
 
   const topResult =
     topSpec.height <= 1 || !topSpec.text.trim()
