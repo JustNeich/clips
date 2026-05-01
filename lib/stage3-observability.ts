@@ -51,6 +51,12 @@ export function auditStage3RequestFailure(input: {
   errorMessage: string;
   recoverable: boolean;
   executionTarget?: string | null;
+  readiness?: {
+    ready: boolean;
+    expectedRuntimeVersion: string | null;
+    onlineWorkers: number;
+    compatibleOnlineWorkers: number;
+  } | null;
 }): void {
   const facts = extractStage3RequestAuditFacts(input.body);
   tryAppendFlowAuditEvent({
@@ -71,6 +77,14 @@ export function auditStage3RequestFailure(input: {
       errorCode: input.errorCode,
       errorMessage: input.errorMessage,
       recoverable: input.recoverable,
+      workerReadiness: input.readiness
+        ? {
+            ready: input.readiness.ready,
+            onlineWorkers: input.readiness.onlineWorkers,
+            compatibleOnlineWorkers: input.readiness.compatibleOnlineWorkers,
+            expectedRuntimeVersion: input.readiness.expectedRuntimeVersion
+          }
+        : null,
       sourceUrl: facts.sourceUrl,
       templateId: facts.templateId
     }

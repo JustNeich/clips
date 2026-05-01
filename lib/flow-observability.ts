@@ -60,9 +60,30 @@ export type FlowObservabilityMetrics = {
   deleted: number;
 };
 
+export type FlowStage3RuntimeMetrics = {
+  queued: number;
+  running: number;
+  failed: number;
+  localQueued: number;
+  localRunning: number;
+  hostQueued: number;
+  hostRunning: number;
+  oldestQueuedAgeSec: number | null;
+  oldestRunningAgeSec: number | null;
+  expiredLocalLeases: number;
+  recentWorkerUnavailable: number;
+  byKind: Array<{
+    kind: Stage3JobKind;
+    queued: number;
+    running: number;
+    failed: number;
+  }>;
+};
+
 export type FlowObservabilityList = {
   flows: FlowObservabilitySummary[];
   metrics: FlowObservabilityMetrics;
+  stage3Runtime: FlowStage3RuntimeMetrics;
   auditEvents: FlowAuditEvent[];
 };
 
@@ -502,6 +523,85 @@ function computeMetrics(
   };
 }
 
+function secondsSince(value: string | null | undefined, nowMs: number): number | null {
+  if (!value) {
+    return null;
+  }
+  const timeMs = new Date(value).getTime();
+  if (!Number.isFinite(timeMs)) {
+    return null;
+  }
+  return Math.max(0, Math.floor((nowMs - timeMs) / 1000));
+}
+
+function computeStage3RuntimeMetrics(
+  jobs: Stage3JobLite[],
+  auditEvents: FlowAuditEvent[]
+): FlowStage3RuntimeMetrics {
+  const nowMs = Date.now();
+  const byKind = new Map<Stage3JobKind, { kind: Stage3JobKind; queued: number; running: number; failed: number }>();
+  const metrics: FlowStage3RuntimeMetrics = {
+    queued: 0,
+    running: 0,
+    failed: 0,
+    localQueued: 0,
+    localRunning: 0,
+    hostQueued: 0,
+    hostRunning: 0,
+    oldestQueuedAgeSec: null,
+    oldestRunningAgeSec: null,
+    expiredLocalLeases: 0,
+    recentWorkerUnavailable: auditEvents.filter(
+      (event) =>
+        event.action === "stage3_request.failed" &&
+        event.payload?.errorCode === "worker_unavailable"
+    ).length,
+    byKind: []
+  };
+
+  for (const job of jobs) {
+    const status = normalizeStage3JobStatus(job.status);
+    const kind = normalizeStage3JobKind(job.kind);
+    const target = normalizeStage3ExecutionTarget(job.execution_target);
+    const kindMetrics = byKind.get(kind) ?? { kind, queued: 0, running: 0, failed: 0 };
+    byKind.set(kind, kindMetrics);
+
+    if (status === "queued") {
+      metrics.queued += 1;
+      kindMetrics.queued += 1;
+      if (target === "host") {
+        metrics.hostQueued += 1;
+      } else {
+        metrics.localQueued += 1;
+      }
+      const ageSec = secondsSince(job.created_at, nowMs);
+      metrics.oldestQueuedAgeSec =
+        ageSec === null ? metrics.oldestQueuedAgeSec : Math.max(metrics.oldestQueuedAgeSec ?? 0, ageSec);
+    } else if (status === "running") {
+      metrics.running += 1;
+      kindMetrics.running += 1;
+      if (target === "host") {
+        metrics.hostRunning += 1;
+      } else {
+        metrics.localRunning += 1;
+      }
+      const ageSec = secondsSince(job.started_at ?? job.updated_at ?? job.created_at, nowMs);
+      metrics.oldestRunningAgeSec =
+        ageSec === null ? metrics.oldestRunningAgeSec : Math.max(metrics.oldestRunningAgeSec ?? 0, ageSec);
+      const leaseMs = job.lease_expires_at ? new Date(job.lease_expires_at).getTime() : null;
+      if (target === "local" && leaseMs !== null && Number.isFinite(leaseMs) && leaseMs <= nowMs) {
+        metrics.expiredLocalLeases += 1;
+      }
+    } else if (status === "failed") {
+      metrics.failed += 1;
+      kindMetrics.failed += 1;
+    }
+  }
+
+  metrics.byKind = [...byKind.values()].sort((left, right) => left.kind.localeCompare(right.kind));
+  return metrics;
+}
+
 export function listFlowObservability(input: {
   workspaceId: string;
   filters?: FlowObservabilityFilters;
@@ -649,16 +749,15 @@ export function listFlowObservability(input: {
             .all(input.workspaceId, ...chatIds) as PublicationLite[]
         )
       : new Map<string, PublicationLite>();
-  const stage3ByChat = latestStage3ByChat(
-    db
-      .prepare(
-        `SELECT * FROM stage3_jobs
-          WHERE workspace_id = ?
-          ORDER BY updated_at DESC
-          LIMIT 2000`
-      )
-      .all(input.workspaceId) as Stage3JobLite[]
-  );
+  const stage3Rows = db
+    .prepare(
+      `SELECT * FROM stage3_jobs
+        WHERE workspace_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 2000`
+    )
+    .all(input.workspaceId) as Stage3JobLite[];
+  const stage3ByChat = latestStage3ByChat(stage3Rows);
 
   const auditEvents = listFlowAuditEvents({
     workspaceId: input.workspaceId,
@@ -684,6 +783,7 @@ export function listFlowObservability(input: {
   return {
     flows: redactForFlowExport(flows),
     metrics: computeMetrics(flows, auditEvents, filters),
+    stage3Runtime: computeStage3RuntimeMetrics(stage3Rows, auditEvents),
     auditEvents: redactForFlowExport(auditEvents)
   };
 }

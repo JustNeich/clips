@@ -78,7 +78,9 @@
 
 - Preview, render и editing-proxy jobs, стартующие из Step 3, должны нести `chatId` и `channelId`, чтобы owner journal и MCP могли собрать всю историю по конкретному ролику.
 - Ошибки до создания job, например отсутствующий source или недоступный локальный executor, фиксируются compact audit event-ом `stage3_request.failed`.
+- `worker_unavailable` / `worker_runtime_outdated` audit events сохраняют snapshot готовности локального executor: `onlineWorkers`, `compatibleOnlineWorkers`, `expectedRuntimeVersion`.
 - Ошибки внутри job фиксируются в `stage3_jobs`, `stage3_job_events` и audit event `stage3_job.failed`.
+- Flow list / MCP summary отдаёт `stage3Runtime` backlog-снимок: queued/running local/host jobs, oldest queued/running age, expired local leases и свежие `worker_unavailable` события.
 - Template drift не должен выглядеть как generic render failure: он классифицируется как `template_snapshot_drift` и остаётся recoverable, потому что операторский recovery — обновить preview и повторить render.
 
 ## 13. Пустые flash-кадры не должны попадать в preview/render artifact

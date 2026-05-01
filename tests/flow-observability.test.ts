@@ -22,6 +22,7 @@ import { createRenderExport, createChannelPublication, cancelChannelPublication 
 import { createSourceJob, finalizeSourceJobSuccess, claimNextQueuedSourceJob } from "../lib/source-job-store";
 import { completeStage3Job, enqueueStage3Job, finishStage3Job } from "../lib/stage3-job-store";
 import { classifyStage3HeavyJobError } from "../lib/stage3-job-executor";
+import { auditStage3RequestFailure } from "../lib/stage3-observability";
 import { getDb } from "../lib/db/client";
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
@@ -290,6 +291,86 @@ test("flow list aggregates jobs, runs, publication state, and model metadata", a
     assert.equal(flow?.provider, "codex");
     assert.equal(flow?.model, "gpt-test");
     assert.equal(result.metrics.deleted >= 1, true);
+  });
+});
+
+test("flow list exposes Stage 3 backlog and worker-unavailable diagnostics", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const { owner, channel, chat } = await seedFlow(appDataDir);
+    enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: chat.id,
+        channelId: channel.id,
+        sourceUrl: chat.url
+      })
+    });
+    const running = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "preview",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: chat.id,
+        channelId: channel.id,
+        sourceUrl: chat.url
+      })
+    });
+    getDb()
+      .prepare(
+        `UPDATE stage3_jobs
+            SET status = 'running',
+                lease_expires_at = ?,
+                started_at = ?,
+                updated_at = ?
+          WHERE id = ?`
+      )
+      .run("2001-01-02T03:04:05.000Z", "2001-01-02T03:04:05.000Z", "2001-01-02T03:04:05.000Z", running.id);
+
+    auditStage3RequestFailure({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "editing-proxy",
+      body: {
+        requestId: "req-worker-unavailable",
+        chatId: chat.id,
+        channelId: channel.id,
+        sourceUrl: chat.url
+      },
+      errorCode: "worker_unavailable",
+      errorMessage: "Локальный executor Stage 3 недоступен.",
+      recoverable: true,
+      executionTarget: "local",
+      readiness: {
+        ready: false,
+        expectedRuntimeVersion: "2026.05.01+build",
+        onlineWorkers: 0,
+        compatibleOnlineWorkers: 0
+      }
+    });
+
+    const result = listFlowObservability({ workspaceId: owner.workspace.id });
+    assert.equal(result.stage3Runtime.localQueued >= 1, true);
+    assert.equal(result.stage3Runtime.localRunning >= 1, true);
+    assert.equal(result.stage3Runtime.expiredLocalLeases >= 1, true);
+    assert.equal(result.stage3Runtime.recentWorkerUnavailable >= 1, true);
+    assert.equal(result.stage3Runtime.byKind.some((item) => item.kind === "render" && item.queued >= 1), true);
+    assert.equal(result.stage3Runtime.byKind.some((item) => item.kind === "preview" && item.running >= 1), true);
+
+    const event = listFlowAuditEvents({
+      workspaceId: owner.workspace.id,
+      entityId: "req-worker-unavailable",
+      limit: 1
+    })[0];
+    assert.equal(event?.payload?.workerReadiness && typeof event.payload.workerReadiness === "object", true);
+    assert.equal((event?.payload?.workerReadiness as { onlineWorkers?: unknown } | undefined)?.onlineWorkers, 0);
+    assert.equal(
+      (event?.payload?.workerReadiness as { expectedRuntimeVersion?: unknown } | undefined)?.expectedRuntimeVersion,
+      "2026.05.01+build"
+    );
   });
 });
 

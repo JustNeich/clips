@@ -79,7 +79,8 @@ export async function POST(request: Request): Promise<Response> {
           errorCode: readiness.onlineWorkers > 0 ? "worker_runtime_outdated" : "worker_unavailable",
           errorMessage: `${detail} Обновите/перезапустите worker через bootstrap и повторите попытку.`,
           recoverable: true,
-          executionTarget
+          executionTarget,
+          readiness
         });
         return Response.json(
           buildStage3JobErrorBody({

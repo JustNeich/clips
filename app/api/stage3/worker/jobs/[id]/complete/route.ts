@@ -234,17 +234,22 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       workerId: auth.worker.id
     });
 
+    const completed = completeStage3Job(id, {
+      resultJson,
+      artifact: artifactInput
+    });
+
     if (current.kind === "render" && artifactInput) {
-      await persistRenderExportCompletion(current, {
-        jobId: current.id,
+      await persistRenderExportCompletion(completed, {
+        jobId: completed.id,
         artifactFileName: artifactInput.fileName,
         artifactFilePath: artifactInput.filePath,
         artifactMimeType: artifactInput.mimeType,
         artifactSizeBytes: artifactInput.sizeBytes,
-        completedAt: new Date().toISOString()
+        completedAt: completed.completedAt ?? new Date().toISOString()
       }).catch((error) => {
         appendStage3JobEvent(
-          current.id,
+          completed.id,
           "warn",
           error instanceof Error
             ? error.message
@@ -253,10 +258,6 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       });
     }
 
-    const completed = completeStage3Job(id, {
-      resultJson,
-      artifact: artifactInput
-    });
     return Response.json(
       buildStage3JobEnvelope(
         completed,
