@@ -30,6 +30,7 @@ import {
   type TemplateHighlightSpan
 } from "./template-highlights";
 import { Stage3VerifiedBadge } from "./stage3-verified-badge";
+import { buildStage3TemplateFontFaceCss } from "./stage3-template-fonts";
 
 export type TemplateSceneRect = {
   x: number;
@@ -641,6 +642,13 @@ export function TemplateScene({
     computed.bottomFont,
     computed.bottomLineHeight
   );
+  const fontFaceCss = buildStage3TemplateFontFaceCss(templateConfig);
+  const fontFaceStyleNode = fontFaceCss ? (
+    <style
+      data-stage3-template-fonts=""
+      dangerouslySetInnerHTML={{ __html: fontFaceCss }}
+    />
+  ) : null;
 
   const topPaddingTop = usesClassicScienceCardChrome ? chromeMetrics.topPaddingTop : getTopPaddingTop(templateConfig);
   const topPaddingBottom = usesClassicScienceCardChrome ? chromeMetrics.topPaddingBottom : getTopPaddingBottom(templateConfig);
@@ -680,6 +688,7 @@ export function TemplateScene({
           ...style
         }}
       >
+        {fontFaceStyleNode}
         {backgroundNode}
         {overlayNode}
 
@@ -905,6 +914,7 @@ export function TemplateScene({
         ...style
       }}
     >
+      {fontFaceStyleNode}
       {backgroundNode}
       {overlayNode}
 

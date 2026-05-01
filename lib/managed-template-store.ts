@@ -11,6 +11,10 @@ import {
   type Stage3TemplateConfig,
   getTemplateById
 } from "./stage3-template";
+import {
+  buildStage3TemplateUploadedFontStack,
+  normalizeStage3TemplateFontAsset
+} from "./stage3-template-fonts";
 import { normalizeStage3VideoAdjustments } from "./stage3-video-adjustments";
 import { listTemplateVariants } from "./stage3-template-registry";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
@@ -358,6 +362,13 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       if (typeof top.fontFamily === "string") {
         base.typography.top.fontFamily = top.fontFamily;
       }
+      const fontAsset = normalizeStage3TemplateFontAsset(top.fontAsset);
+      if (fontAsset) {
+        base.typography.top.fontAsset = fontAsset;
+        if (!base.typography.top.fontFamily?.trim()) {
+          base.typography.top.fontFamily = buildStage3TemplateUploadedFontStack(fontAsset);
+        }
+      }
     }
 
     const bottom = isRecord(typography.bottom) ? typography.bottom : null;
@@ -376,6 +387,13 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       }
       if (typeof bottom.fontFamily === "string") {
         base.typography.bottom.fontFamily = bottom.fontFamily;
+      }
+      const fontAsset = normalizeStage3TemplateFontAsset(bottom.fontAsset);
+      if (fontAsset) {
+        base.typography.bottom.fontAsset = fontAsset;
+        if (!base.typography.bottom.fontFamily?.trim()) {
+          base.typography.bottom.fontFamily = buildStage3TemplateUploadedFontStack(fontAsset);
+        }
       }
     }
 

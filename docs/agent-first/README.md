@@ -91,7 +91,7 @@
 | Route | Назначение | Класс поверхности |
 | --- | --- | --- |
 | `/design/template-lab` | Pixel-perfect calibration workbench | Internal tooling |
-| `/design/template-road` | Живой редактор шаблона | Internal tooling |
+| `/design/template-road` | Живой редактор шаблона, включая geometry, typography, custom font assets и template defaults | Internal tooling |
 | `/design/science-card` | Dev/design preview для renderer-based template | Internal tooling |
 | `/design/badger-card` | Dev/design preview для отдельной card-сцены | Internal tooling |
 
@@ -126,7 +126,7 @@
 4. Настроить YouTube publishing.
 5. Управлять участниками команды и invite-ами.
 6. Открыть owner-only `Журнал процессов` для production observability и MCP trace access.
-7. Калибровать и редактировать design templates.
+7. Калибровать и редактировать design templates, включая пользовательские шрифты для `TOP/Lead` и `BOTTOM/Main`.
 
 ## Быстрый role summary
 

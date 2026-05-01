@@ -9,9 +9,15 @@ import {
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
   type Stage3TemplateConfig,
+  type Stage3TemplateFontAsset,
   getTemplateById,
   getTemplateComputed
 } from "../../lib/stage3-template";
+import {
+  buildStage3TemplateUploadedFontFamily,
+  buildStage3TemplateUploadedFontStack,
+  type Stage3TemplateFontSlot
+} from "../../lib/stage3-template-fonts";
 import {
   listTemplateVariants,
   type TemplateVariant
@@ -85,6 +91,8 @@ type ManagedTemplateDetailResponse = {
 type ComputedSnapshot = ReturnType<typeof getTemplateComputed>;
 type SaveState = "idle" | "saving" | "saved" | "error";
 type UploadState = "idle" | "uploading" | "error";
+type FontUploadStateMap = Record<Stage3TemplateFontSlot, UploadState>;
+type FontUploadMessageMap = Record<Stage3TemplateFontSlot, string>;
 
 type FontOption = {
   label: string;
@@ -127,7 +135,9 @@ type BadgeOption = {
 type ManagedTemplateAssetUploadResponse = {
   asset?: {
     id: string;
+    kind?: "background" | "font";
     url: string;
+    fontFamily?: string;
     mimeType: string;
     originalName: string;
     sizeBytes: number;
@@ -500,6 +510,36 @@ function buildFontSelectOptions(value: string, options: FontOption[]): FontOptio
   return options.some((option) => option.value === value)
     ? options
     : [{ label: "Свой набор", value }, ...options];
+}
+
+function createEmptyFontUploadState(): FontUploadStateMap {
+  return { top: "idle", bottom: "idle" };
+}
+
+function createEmptyFontUploadMessage(): FontUploadMessageMap {
+  return { top: "", bottom: "" };
+}
+
+function formatFontFamilyShortLabel(value: string): string {
+  return value.split(",")[0]?.trim().replace(/^"|"$/g, "") || "custom";
+}
+
+function getFontUploadAcceptValue(): string {
+  return [
+    ".ttf",
+    ".otf",
+    ".woff",
+    ".woff2",
+    "font/ttf",
+    "font/otf",
+    "font/woff",
+    "font/woff2",
+    "application/font-woff",
+    "application/font-woff2",
+    "application/x-font-ttf",
+    "application/x-font-otf",
+    "application/octet-stream"
+  ].join(",");
 }
 
 function formatShadow(value: string | undefined): string {
@@ -946,6 +986,79 @@ function SelectControl({ label, hint, value, options, onChange }: SelectControlP
   );
 }
 
+function FontUploadCard({
+  label,
+  description,
+  asset,
+  uploadState,
+  message,
+  inputRef,
+  onFileChange,
+  onPick,
+  onClear
+}: {
+  label: string;
+  description: string;
+  asset?: Stage3TemplateFontAsset;
+  uploadState: UploadState;
+  message: string;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onPick: () => void;
+  onClear: () => void;
+}) {
+  const previewStyle = asset
+    ? {
+        fontFamily: buildStage3TemplateUploadedFontStack(asset)
+      }
+    : undefined;
+
+  return (
+    <div className="template-road-editor-upload-card is-font">
+      <div
+        className={`template-road-editor-upload-preview is-font ${asset ? "has-font" : "is-empty"}`}
+        style={previewStyle}
+      >
+        <span className="template-road-editor-font-preview-mark">Aa</span>
+        <span className="template-road-editor-font-preview-label">
+          {asset?.originalName || "TTF / OTF / WOFF"}
+        </span>
+      </div>
+      <div className="template-road-editor-upload-body">
+        <div className="template-road-editor-upload-copy">
+          <strong>{asset ? `${label}: ${asset.originalName}` : label}</strong>
+          <p className="subtle-text">{description}</p>
+        </div>
+        <div className="template-road-editor-upload-actions">
+          <input
+            ref={inputRef}
+            type="file"
+            accept={getFontUploadAcceptValue()}
+            hidden
+            onChange={onFileChange}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onPick}
+            disabled={uploadState === "uploading"}
+          >
+            {uploadState === "uploading" ? "Загружаем..." : asset ? "Заменить шрифт" : "Загрузить шрифт"}
+          </button>
+          {asset ? (
+            <button type="button" className="btn btn-ghost" onClick={onClear}>
+              Убрать шрифт
+            </button>
+          ) : null}
+        </div>
+        <span className={`template-road-editor-upload-note ${uploadState === "error" ? "is-error" : ""}`}>
+          {message || "Поддерживаются TTF, OTF, WOFF и WOFF2 до 12 MB."}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function BadgeOptionPicker({
   label,
   hint,
@@ -1183,6 +1296,12 @@ export function TemplateStyleEditor({
   const [saveMessage, setSaveMessage] = useState<string>("");
   const [backgroundUploadState, setBackgroundUploadState] = useState<UploadState>("idle");
   const [backgroundUploadMessage, setBackgroundUploadMessage] = useState<string>("");
+  const [fontUploadState, setFontUploadState] = useState<FontUploadStateMap>(() =>
+    createEmptyFontUploadState()
+  );
+  const [fontUploadMessage, setFontUploadMessage] = useState<FontUploadMessageMap>(() =>
+    createEmptyFontUploadMessage()
+  );
   const [lastSavedSignature, setLastSavedSignature] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [canvasStageSize, setCanvasStageSize] = useState<{ width: number; height: number }>({
@@ -1195,6 +1314,8 @@ export function TemplateStyleEditor({
   const isMountedRef = useRef(true);
   const canvasStageRef = useRef<HTMLDivElement | null>(null);
   const backgroundFileInputRef = useRef<HTMLInputElement | null>(null);
+  const topFontFileInputRef = useRef<HTMLInputElement | null>(null);
+  const bottomFontFileInputRef = useRef<HTMLInputElement | null>(null);
   const loadTemplateRequestIdRef = useRef(0);
   const persistRequestIdRef = useRef(0);
   const persistQueueRef = useRef<Promise<ManagedTemplate | null>>(Promise.resolve(null));
@@ -1293,6 +1414,8 @@ export function TemplateStyleEditor({
     templateConfig.typography.top.fontFamily ?? resolveDefaultTopFontValue(baseTemplateId);
   const currentBottomFontFamily =
     templateConfig.typography.bottom.fontFamily ?? resolveDefaultBodyFontValue(baseTemplateId);
+  const currentTopFontAsset = templateConfig.typography.top.fontAsset;
+  const currentBottomFontAsset = templateConfig.typography.bottom.fontAsset;
   const currentAuthorNameFontFamily =
     templateConfig.typography.authorName.fontFamily ?? currentBottomFontFamily;
   const currentAuthorHandleFontFamily =
@@ -1363,6 +1486,8 @@ export function TemplateStyleEditor({
     setComputed(null);
     setBackgroundUploadState("idle");
     setBackgroundUploadMessage("");
+    setFontUploadState(createEmptyFontUploadState());
+    setFontUploadMessage(createEmptyFontUploadMessage());
     setUnavailableTemplate(null);
     setSaveState("idle");
     setSaveMessage("Изменения синхронизируются автоматически.");
@@ -1397,6 +1522,10 @@ export function TemplateStyleEditor({
       setUpdatedAt(null);
       setLastSavedSignature(null);
       setComputed(null);
+      setBackgroundUploadState("idle");
+      setBackgroundUploadMessage("");
+      setFontUploadState(createEmptyFontUploadState());
+      setFontUploadMessage(createEmptyFontUploadMessage());
       setSaveState("idle");
       setSaveMessage(message);
       window.setTimeout(() => {
@@ -1933,6 +2062,8 @@ export function TemplateStyleEditor({
     );
     setTemplateConfig(baseConfig);
     setShadowLayers(parseShadowLayersFromValue(baseConfig.card.shadow));
+    setFontUploadState(createEmptyFontUploadState());
+    setFontUploadMessage(createEmptyFontUploadMessage());
   }
 
   function resetContent() {
@@ -2128,6 +2259,60 @@ export function TemplateStyleEditor({
     }));
   }
 
+  function updateFontUploadState(slot: Stage3TemplateFontSlot, state: UploadState) {
+    setFontUploadState((current) => ({
+      ...current,
+      [slot]: state
+    }));
+  }
+
+  function updateFontUploadMessage(slot: Stage3TemplateFontSlot, message: string) {
+    setFontUploadMessage((current) => ({
+      ...current,
+      [slot]: message
+    }));
+  }
+
+  function getDefaultFontFamilyForSlot(slot: Stage3TemplateFontSlot): string {
+    return slot === "top"
+      ? resolveDefaultTopFontValue(baseTemplateId)
+      : resolveDefaultBodyFontValue(baseTemplateId);
+  }
+
+  function updateTemplateFontFamily(slot: Stage3TemplateFontSlot, value: string) {
+    setTemplateConfig((current) => ({
+      ...current,
+      typography: {
+        ...current.typography,
+        [slot]: {
+          ...current.typography[slot],
+          fontFamily: value,
+          fontAsset: undefined
+        }
+      }
+    }));
+    updateFontUploadState(slot, "idle");
+    updateFontUploadMessage(slot, "");
+  }
+
+  function clearTemplateFontAsset(slot: Stage3TemplateFontSlot) {
+    const slotLabel =
+      slot === "top" ? activeTemplateSemantics.topLabel : activeTemplateSemantics.bottomLabel;
+    setTemplateConfig((current) => ({
+      ...current,
+      typography: {
+        ...current.typography,
+        [slot]: {
+          ...current.typography[slot],
+          fontFamily: getDefaultFontFamilyForSlot(slot),
+          fontAsset: undefined
+        }
+      }
+    }));
+    updateFontUploadState(slot, "idle");
+    updateFontUploadMessage(slot, `${slotLabel}: пользовательский шрифт убран.`);
+  }
+
   function updateAuthorNameTypography<K extends keyof Stage3TemplateConfig["typography"]["authorName"]>(
     key: K,
     value: Stage3TemplateConfig["typography"]["authorName"][K]
@@ -2247,6 +2432,78 @@ export function TemplateStyleEditor({
         error instanceof Error && error.message
           ? error.message
           : "Не удалось загрузить фон."
+      );
+    }
+  }
+
+  async function handleFontFileChange(
+    slot: Stage3TemplateFontSlot,
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    const slotLabel =
+      slot === "top" ? activeTemplateSemantics.topLabel : activeTemplateSemantics.bottomLabel;
+    updateFontUploadState(slot, "uploading");
+    updateFontUploadMessage(slot, `${slotLabel}: загружаю «${file.name}»...`);
+
+    const formData = new FormData();
+    formData.append("kind", "font");
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("/api/design/template-assets", {
+        method: "POST",
+        body: formData
+      });
+      const payload = (await response
+        .json()
+        .catch(() => null)) as ManagedTemplateAssetUploadResponse | null;
+      if (!response.ok || !payload?.asset?.url || payload.asset.kind !== "font") {
+        throw new Error(payload?.error || `Upload failed: ${response.status}`);
+      }
+
+      const family =
+        payload.asset.fontFamily?.trim() ||
+        buildStage3TemplateUploadedFontFamily(payload.asset.id);
+      const fontAsset: Stage3TemplateFontAsset = {
+        id: payload.asset.id,
+        family,
+        url: payload.asset.url,
+        originalName: payload.asset.originalName,
+        mimeType: payload.asset.mimeType,
+        sizeBytes: payload.asset.sizeBytes,
+        createdAt: payload.asset.createdAt
+      };
+      const fontFamily = buildStage3TemplateUploadedFontStack(
+        fontAsset,
+        getDefaultFontFamilyForSlot(slot)
+      );
+
+      setTemplateConfig((current) => ({
+        ...current,
+        typography: {
+          ...current.typography,
+          [slot]: {
+            ...current.typography[slot],
+            fontFamily,
+            fontAsset
+          }
+        }
+      }));
+      updateFontUploadState(slot, "idle");
+      updateFontUploadMessage(slot, `${slotLabel}: «${payload.asset.originalName}» подключён.`);
+    } catch (error) {
+      updateFontUploadState(slot, "error");
+      updateFontUploadMessage(
+        slot,
+        error instanceof Error && error.message
+          ? error.message
+          : "Не удалось загрузить шрифт."
       );
     }
   }
@@ -3821,8 +4078,14 @@ export function TemplateStyleEditor({
             onToggle={() => toggleSection("template-road-style-type")}
             meta={
               <>
-                <span className="meta-pill">{activeTemplateSemantics.topLabel}: {currentTopFontFamily.split(",")[0]}</span>
-                <span className="meta-pill">{activeTemplateSemantics.bottomLabel}: {currentBottomFontFamily.split(",")[0]}</span>
+                <span className="meta-pill">
+                  {activeTemplateSemantics.topLabel}:{" "}
+                  {currentTopFontAsset?.originalName || formatFontFamilyShortLabel(currentTopFontFamily)}
+                </span>
+                <span className="meta-pill">
+                  {activeTemplateSemantics.bottomLabel}:{" "}
+                  {currentBottomFontAsset?.originalName || formatFontFamilyShortLabel(currentBottomFontFamily)}
+                </span>
               </>
             }
           >
@@ -3832,14 +4095,14 @@ export function TemplateStyleEditor({
                 hint="Главный голос карточки. Часто именно он задаёт стиль шаблона."
                 value={currentTopFontFamily}
                 options={topFontSelectOptions}
-                onChange={(value) => updateTopTypography("fontFamily", value)}
+                onChange={(value) => updateTemplateFontFamily("top", value)}
               />
               <SelectControl
                 label={`Шрифт ${activeTemplateSemantics.bottomLabel.toLowerCase()}`}
                 hint="Можно поддержать главный текст или, наоборот, дать ему более спокойный контраст."
                 value={currentBottomFontFamily}
                 options={bottomFontSelectOptions}
-                onChange={(value) => updateBottomTypography("fontFamily", value)}
+                onChange={(value) => updateTemplateFontFamily("bottom", value)}
               />
             </div>
             <div className="template-road-editor-grid two-up">
@@ -3851,7 +4114,7 @@ export function TemplateStyleEditor({
                   className="text-input mono"
                   type="text"
                   value={currentTopFontFamily}
-                  onChange={(event) => updateTopTypography("fontFamily", event.target.value)}
+                  onChange={(event) => updateTemplateFontFamily("top", event.target.value)}
                 />
                 <span className="template-road-editor-field-hint">
                   Можно вставить любой CSS `font-family` стек, если пресетов мало.
@@ -3865,12 +4128,44 @@ export function TemplateStyleEditor({
                   className="text-input mono"
                   type="text"
                   value={currentBottomFontFamily}
-                  onChange={(event) => updateBottomTypography("fontFamily", event.target.value)}
+                  onChange={(event) => updateTemplateFontFamily("bottom", event.target.value)}
                 />
                 <span className="template-road-editor-field-hint">
                   Полезно, если хочешь быстро проверить редкий стек без отдельного импорта.
                 </span>
               </label>
+            </div>
+            <div className="template-road-editor-grid two-up">
+              <FontUploadCard
+                label={`Файл шрифта для ${activeTemplateSemantics.topLabel.toLowerCase()}`}
+                description={
+                  isChannelStoryTemplate
+                    ? "Этот файл применяется к lead. В классическом шаблоне тот же слот отвечает за TOP."
+                    : "Этот файл применяется к TOP. В Channel + Story тот же слот станет lead."
+                }
+                asset={currentTopFontAsset}
+                uploadState={fontUploadState.top}
+                message={fontUploadMessage.top}
+                inputRef={topFontFileInputRef}
+                onPick={() => topFontFileInputRef.current?.click()}
+                onFileChange={(event) => handleFontFileChange("top", event)}
+                onClear={() => clearTemplateFontAsset("top")}
+              />
+              <FontUploadCard
+                label={`Файл шрифта для ${activeTemplateSemantics.bottomLabel.toLowerCase()} / main`}
+                description={
+                  isChannelStoryTemplate
+                    ? "Этот файл применяется к body/main-тексту. В классическом шаблоне тот же слот отвечает за BOTTOM."
+                    : "Этот файл применяется к BOTTOM. В Channel + Story тот же слот станет body/main-текстом."
+                }
+                asset={currentBottomFontAsset}
+                uploadState={fontUploadState.bottom}
+                message={fontUploadMessage.bottom}
+                inputRef={bottomFontFileInputRef}
+                onPick={() => bottomFontFileInputRef.current?.click()}
+                onFileChange={(event) => handleFontFileChange("bottom", event)}
+                onClear={() => clearTemplateFontAsset("bottom")}
+              />
             </div>
             <div className="template-road-editor-grid two-up">
               <SelectControl

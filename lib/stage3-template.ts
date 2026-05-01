@@ -29,6 +29,16 @@ export const HEDGES_OF_HONOR_TEMPLATE_ID = "hedges-of-honor-v1";
 export const CHANNEL_STORY_TEMPLATE_ID = "channel-story-v1";
 export const STAGE3_TEMPLATE_ID = SCIENCE_CARD_TEMPLATE_ID;
 
+export type Stage3TemplateFontAsset = {
+  id: string;
+  family: string;
+  url: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt?: string;
+};
+
 const SHARED_STAGE3_CARD_METRICS = {
   x: 90,
   y: 160,
@@ -630,6 +640,7 @@ export type Stage3TemplateConfig = {
       letterSpacing?: string;
       fontStyle?: "normal" | "italic";
       fontFamily?: string;
+      fontAsset?: Stage3TemplateFontAsset;
     };
     bottom: {
       min: number;
@@ -647,6 +658,7 @@ export type Stage3TemplateConfig = {
       letterSpacing?: string;
       fontStyle?: "normal" | "italic";
       fontFamily?: string;
+      fontAsset?: Stage3TemplateFontAsset;
     };
     authorName: {
       font: number;
@@ -701,8 +713,18 @@ export function cloneStage3TemplateConfig(config: Stage3TemplateConfig): Stage3T
     slot: { ...config.slot },
     author: { ...config.author },
     typography: {
-      top: { ...config.typography.top },
-      bottom: { ...config.typography.bottom },
+      top: {
+        ...config.typography.top,
+        fontAsset: config.typography.top.fontAsset
+          ? { ...config.typography.top.fontAsset }
+          : undefined
+      },
+      bottom: {
+        ...config.typography.bottom,
+        fontAsset: config.typography.bottom.fontAsset
+          ? { ...config.typography.bottom.fontAsset }
+          : undefined
+      },
       authorName: { ...config.typography.authorName },
       authorHandle: { ...config.typography.authorHandle }
     },

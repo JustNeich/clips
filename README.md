@@ -200,6 +200,7 @@ npm run stage2-worker
 - `template-road` теперь считает card geometry и межстрочный интервал частью настоящего render contract:
   - правки `width / height / x / y` карточки влияют и на preview, и на render;
   - `line-height` верхнего и нижнего текста сохраняется без отката после autosave/reload;
+  - custom font upload для `TOP/Lead` и `BOTTOM/Main` сохраняет файл как workspace asset и применяет его в editor preview, snapshot и final render;
   - режим цветного бейджа использует twitter-style векторную галочку, а не круглый fallback.
   - template defaults теперь могут задавать video adjustments (`brightness / exposure / contrast / saturation`), а Step 3 позволяет переопределить их отдельно для конкретного ролика без изменения самого шаблона.
 - Добавлен агент монтажер:
@@ -211,6 +212,7 @@ npm run stage2-worker
 - Высоты секций карточки фиксированы и одинаково интерпретируются в editor preview, template-lab и final render.
 - Текст в `top` и `bottom` секциях обязан автоматически подстраиваться под доступный слот, чтобы визуально заполнять секцию и не оставлять крупных пустых зон.
 - Любые изменения typography/padding допустимы только если не нарушают предыдущее правило на коротком, среднем и длинном тексте.
+- Пользовательские шрифты считаются частью typography contract: файл должен применяться одинаково в editor preview, snapshot-backed preview и final render, а при недоступности asset-а текст обязан fallback-иться на обычный font stack без блокировки рендера.
 - Запрещено менять поведение так, чтобы текст “выпадал” за границы секции или появлялись несоразмерные вертикальные gaps.
 
 Подробный guide по интеграции и калибровке новых Stage 3 шаблонов:

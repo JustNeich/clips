@@ -204,6 +204,64 @@ test("managed templates preserve custom card geometry and author font stacks", a
   });
 });
 
+test("managed templates preserve uploaded top and bottom font assets", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const topFontAsset = {
+      id: "fonttop123456",
+      family: "Stage3TemplateFont_fonttop123456",
+      url: "/api/design/template-assets/fonttop123456",
+      originalName: "LeadDisplay.woff2",
+      mimeType: "font/woff2",
+      sizeBytes: 32100,
+      createdAt: "2026-05-01T09:00:00.000Z"
+    };
+    const bottomFontAsset = {
+      id: "fontbody123456",
+      family: "Stage3TemplateFont_fontbody123456",
+      url: "/api/design/template-assets/fontbody123456",
+      originalName: "MainText.otf",
+      mimeType: "font/otf",
+      sizeBytes: 45600,
+      createdAt: "2026-05-01T09:05:00.000Z"
+    };
+    const template = await createManagedTemplate(
+      {
+        name: "Uploaded Font Control",
+        baseTemplateId: "science-card-v1",
+        templateConfig: {
+          typography: {
+            top: {
+              fontFamily: '"Stage3TemplateFont_fonttop123456",sans-serif',
+              fontAsset: topFontAsset
+            },
+            bottom: {
+              fontFamily: '"Stage3TemplateFont_fontbody123456",sans-serif',
+              fontAsset: bottomFontAsset
+            }
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.deepEqual(reloaded?.templateConfig.typography.top.fontAsset, topFontAsset);
+    assert.equal(
+      reloaded?.templateConfig.typography.top.fontFamily,
+      '"Stage3TemplateFont_fonttop123456",sans-serif'
+    );
+    assert.deepEqual(reloaded?.templateConfig.typography.bottom.fontAsset, bottomFontAsset);
+    assert.equal(
+      reloaded?.templateConfig.typography.bottom.fontFamily,
+      '"Stage3TemplateFont_fontbody123456",sans-serif'
+    );
+  });
+});
+
 test("managed template backup import restores a downloaded template into the workspace library", async () => {
   await withIsolatedTemplateWorkspace(async ({ owner }) => {
     const original = await createManagedTemplate(

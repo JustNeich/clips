@@ -106,6 +106,43 @@ test("classic science-card markup renders highlight spans for live preview text"
   assert.match(markup, /<span[^>]*>Luffy<\/span>/);
 });
 
+test("template scene markup wires uploaded top and bottom fonts into the rendered text", () => {
+  const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  templateConfig.typography.top.fontAsset = {
+    id: "fonttop123456",
+    family: "Stage3TemplateFont_fonttop123456",
+    url: "/api/design/template-assets/fonttop123456",
+    originalName: "LeadDisplay.woff2",
+    mimeType: "font/woff2",
+    sizeBytes: 32100
+  };
+  templateConfig.typography.top.fontFamily = '"Stage3TemplateFont_fonttop123456",sans-serif';
+  templateConfig.typography.bottom.fontAsset = {
+    id: "fontbody123456",
+    family: "Stage3TemplateFont_fontbody123456",
+    url: "/api/design/template-assets/fontbody123456",
+    originalName: "MainText.otf",
+    mimeType: "font/otf",
+    sizeBytes: 45600
+  };
+  templateConfig.typography.bottom.fontFamily = '"Stage3TemplateFont_fontbody123456",sans-serif';
+
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: "science-card-v1",
+      content: buildDemoContent(),
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.match(markup, /data-stage3-template-fonts/);
+  assert.match(markup, /@font-face\{font-family:"Stage3TemplateFont_fonttop123456"/);
+  assert.match(markup, /\/api\/design\/template-assets\/fonttop123456/);
+  assert.match(markup, /@font-face\{font-family:"Stage3TemplateFont_fontbody123456"/);
+  assert.match(markup, /font-family:&quot;Stage3TemplateFont_fonttop123456&quot;,sans-serif/);
+  assert.match(markup, /font-family:&quot;Stage3TemplateFont_fontbody123456&quot;,sans-serif/);
+});
+
 test("remotion science-card render snapshot preserves caption highlight spans", () => {
   const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
   const snapshot = buildScienceCardRenderSnapshot({

@@ -5,9 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  cloneStage3TemplateConfig,
   STAGE3_TEMPLATE_ID,
   type Stage3TemplateConfig
 } from "./stage3-template";
+import { resolveManagedTemplateAssetFile } from "./managed-template-assets";
+import { normalizeStage3TemplateFontAsset } from "./stage3-template-fonts";
 import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
 import { buildTemplateRenderSnapshot } from "./stage3-template-core";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
@@ -73,6 +76,46 @@ const SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 let remotionServeUrlPromise: Promise<string> | null = null;
 let remotionRuntimePromise: Promise<RemotionModule> | null = null;
 let remotionBrowserPromise: Promise<Stage3PreparedBrowser> | null = null;
+
+export async function prepareStage3TemplateFontAssetsForRender(params: {
+  templateConfig: Stage3TemplateConfig;
+  workspaceId: string | null;
+  remotionAssetDir: string;
+  remotionAssetBase: string;
+}): Promise<Stage3TemplateConfig> {
+  if (!params.workspaceId) {
+    return params.templateConfig;
+  }
+
+  let nextConfig: Stage3TemplateConfig | null = null;
+  for (const slot of ["top", "bottom"] as const) {
+    const asset = normalizeStage3TemplateFontAsset(params.templateConfig.typography[slot].fontAsset);
+    if (!asset) {
+      continue;
+    }
+
+    const resolved = await resolveManagedTemplateAssetFile(asset.id);
+    if (!resolved || resolved.record.kind !== "font" || resolved.record.workspaceId !== params.workspaceId) {
+      continue;
+    }
+
+    const ext = path.extname(resolved.record.fileName).toLowerCase() || ".woff2";
+    const localFileName = `font-${slot}${ext}`;
+    try {
+      await fs.copyFile(resolved.filePath, path.join(params.remotionAssetDir, localFileName));
+    } catch {
+      continue;
+    }
+
+    nextConfig ??= cloneStage3TemplateConfig(params.templateConfig);
+    nextConfig.typography[slot].fontAsset = {
+      ...asset,
+      url: `/${path.posix.join(params.remotionAssetBase, localFileName)}`
+    };
+  }
+
+  return nextConfig ?? params.templateConfig;
+}
 
 function shouldReuseRemotionBundle(): boolean {
   const override = process.env.STAGE3_REUSE_REMOTION_BUNDLE?.trim();
@@ -981,10 +1024,17 @@ export async function renderStage3Video(
           }
         }
 
+        const renderTemplateConfig = await prepareStage3TemplateFontAssetsForRender({
+          templateConfig: managedTemplateRuntime.templateConfig,
+          workspaceId,
+          remotionAssetDir,
+          remotionAssetBase
+        });
+
         const appliedVariationProfile = await runRemotionRender({
           serveUrl,
           templateId: managedTemplateRuntime.baseTemplateId,
-          templateConfigOverride: managedTemplateRuntime.templateConfig,
+          templateConfigOverride: renderTemplateConfig,
           outputPath: remotionOutputPath,
           sourceVideoFileName,
           topText: templateSnapshot.content.topText,

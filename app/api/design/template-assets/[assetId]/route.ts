@@ -30,7 +30,7 @@ export async function GET(request: Request, context: Context): Promise<Response>
       return error;
     }
     return Response.json(
-      { error: error instanceof Error ? error.message : "Не удалось прочитать фон." },
+      { error: error instanceof Error ? error.message : "Не удалось прочитать ассет." },
       { status: 500 }
     );
   }
