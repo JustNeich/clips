@@ -62,6 +62,7 @@ import {
 } from "./stage3-render-plan";
 import { ensureStage3RenderBrowser } from "./stage3-browser-runtime";
 import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
+import { resolveStage3BackgroundMode } from "./stage3-background-mode";
 import type { Stage3PreparedBrowser } from "./stage3-browser-runtime";
 import type { TemplateCaptionHighlights } from "./template-highlights";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
@@ -469,6 +470,46 @@ export function buildFinalizeRenderedOutputArgs(params: {
   return args;
 }
 
+export function buildStage3SourceBackgroundStillFfmpegArgs(params: {
+  inputPath: string;
+  outputPath: string;
+  width?: number;
+  height?: number;
+}): string[] {
+  const width =
+    typeof params.width === "number" && Number.isFinite(params.width)
+      ? Math.max(2, Math.round(params.width))
+      : 1080;
+  const height =
+    typeof params.height === "number" && Number.isFinite(params.height)
+      ? Math.max(2, Math.round(params.height))
+      : 1920;
+  return [
+    "-y",
+    "-ss",
+    "0",
+    "-i",
+    params.inputPath,
+    "-frames:v",
+    "1",
+    "-vf",
+    `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},gblur=sigma=18,eq=brightness=-0.08:saturation=1.05,format=yuv420p`,
+    "-q:v",
+    "3",
+    params.outputPath
+  ];
+}
+
+async function prepareStage3SourceBackgroundStill(params: {
+  inputPath: string;
+  outputPath: string;
+}): Promise<void> {
+  await execFileAsync("ffmpeg", buildStage3SourceBackgroundStillFfmpegArgs(params), {
+    timeout: 60_000,
+    maxBuffer: 1024 * 1024 * 8
+  });
+}
+
 async function runRemotionRender(params: {
   serveUrl: string;
   templateId: string;
@@ -502,6 +543,7 @@ async function runRemotionRender(params: {
   avatarAssetMimeType: string | null;
   backgroundAssetFileName: string | null;
   backgroundAssetMimeType: string | null;
+  sourceBlurBackgroundDisabled: boolean;
   textFit: {
     topFontPx: number;
     bottomFontPx: number;
@@ -552,6 +594,7 @@ async function runRemotionRender(params: {
     avatarAssetMimeType: params.avatarAssetMimeType,
     backgroundAssetFileName: params.backgroundAssetFileName,
     backgroundAssetMimeType: params.backgroundAssetMimeType,
+    sourceBlurBackgroundDisabled: params.sourceBlurBackgroundDisabled,
     textFit: params.textFit,
     variationProfile
   });
@@ -991,9 +1034,30 @@ export async function renderStage3Video(
 
       let backgroundAssetFileName: string | null = null;
       let backgroundAssetMimeType: string | null = null;
+      let sourceBlurBackgroundDisabled = false;
       let avatarAssetFileName: string | null = null;
       let avatarAssetMimeType: string | null = null;
       try {
+        if (
+          !renderPlan.backgroundAssetId &&
+          resolveStage3BackgroundMode(managedTemplateRuntime.baseTemplateId, {
+            hasCustomBackground: false,
+            hasSourceVideo: true
+          }) === "source-blur"
+        ) {
+          const localFileName = "background.jpg";
+          try {
+            await prepareStage3SourceBackgroundStill({
+              inputPath: prepared.preparedPath,
+              outputPath: path.join(remotionAssetDir, localFileName)
+            });
+            backgroundAssetFileName = path.posix.join(remotionAssetBase, localFileName);
+            backgroundAssetMimeType = "image/jpeg";
+          } catch {
+            sourceBlurBackgroundDisabled = true;
+          }
+        }
+
         if (body.channelId && renderPlan.backgroundAssetId) {
           const asset = await resolveStage3AssetFile({
             channelId: body.channelId,
@@ -1064,6 +1128,7 @@ export async function renderStage3Video(
           avatarAssetMimeType,
           backgroundAssetFileName,
           backgroundAssetMimeType,
+          sourceBlurBackgroundDisabled,
           textFit: {
             topFontPx: templateSnapshot.fit.topFontPx,
             bottomFontPx: templateSnapshot.fit.bottomFontPx,

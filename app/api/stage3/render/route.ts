@@ -109,7 +109,8 @@ export async function POST(request: Request): Promise<Response> {
         workspaceId: auth.workspace.id,
         userId: auth.user.id
       }),
-      payloadJson: JSON.stringify(normalizedBody)
+      payloadJson: JSON.stringify(normalizedBody),
+      reuseCompleted: false
     });
     return Response.json(buildStage3JobEnvelope(job, null), {
       status: job.status === "completed" ? 200 : 202

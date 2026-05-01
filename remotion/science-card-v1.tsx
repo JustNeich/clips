@@ -80,6 +80,7 @@ type ScienceCardV1Props = {
   avatarAssetMimeType?: string | null;
   backgroundAssetFileName?: string | null;
   backgroundAssetMimeType?: string | null;
+  sourceBlurBackgroundDisabled?: boolean | null;
   textFit?: {
     topFontPx: number;
     bottomFontPx: number;
@@ -290,6 +291,7 @@ export function ScienceCardV1({
   avatarAssetMimeType,
   backgroundAssetFileName,
   backgroundAssetMimeType,
+  sourceBlurBackgroundDisabled,
   textFit,
   variationProfile
 }: ScienceCardV1Props): React.JSX.Element {
@@ -390,7 +392,7 @@ export function ScienceCardV1({
   });
   const backgroundMode = resolveStage3BackgroundMode(resolvedTemplateId, {
     hasCustomBackground: hasCustomBackground,
-    hasSourceVideo: Boolean(sourceUrl)
+    hasSourceVideo: sourceBlurBackgroundDisabled ? false : Boolean(sourceUrl)
   });
 
   const backgroundNode = (

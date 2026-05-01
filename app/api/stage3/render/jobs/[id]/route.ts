@@ -5,7 +5,7 @@ import {
   findLatestPublicationForRenderExport,
   getRenderExportByStage3JobId
 } from "../../../../../../lib/publication-store";
-import { appendStage3JobEvent } from "../../../../../../lib/stage3-job-store";
+import { appendStage3JobEvent, sweepExpiredLocalStage3Jobs } from "../../../../../../lib/stage3-job-store";
 import { getStage3JobOrThrow, recoverRenderExportCompletion } from "../../../../../../lib/stage3-job-runtime";
 
 export const runtime = "nodejs";
@@ -22,6 +22,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   try {
     const auth = await requireAuth();
     const { id } = await context.params;
+    sweepExpiredLocalStage3Jobs();
     const job = getStage3JobOrThrow(id);
     if (job.workspaceId !== auth.workspace.id || job.userId !== auth.user.id) {
       return Response.json(

@@ -62,6 +62,7 @@ type EnqueueStage3JobInput = {
   dedupeKey?: string | null;
   attemptLimit?: number | null;
   attemptGroup?: string | null;
+  reuseCompleted?: boolean | null;
 };
 
 type CompleteStage3JobInput = {
@@ -249,16 +250,30 @@ function readJobRow(jobId: string): JobRow | null {
   );
 }
 
-function parseStage3JobPayload(payloadJson: string): { chatId: string | null; channelId: string | null } {
+function parseStage3JobPayload(payloadJson: string): {
+  chatId: string | null;
+  channelId: string | null;
+  sourceUrl: string | null;
+} {
   try {
     const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
     return {
       chatId: typeof parsed.chatId === "string" && parsed.chatId.trim() ? parsed.chatId.trim() : null,
-      channelId: typeof parsed.channelId === "string" && parsed.channelId.trim() ? parsed.channelId.trim() : null
+      channelId: typeof parsed.channelId === "string" && parsed.channelId.trim() ? parsed.channelId.trim() : null,
+      sourceUrl: typeof parsed.sourceUrl === "string" && parsed.sourceUrl.trim() ? parsed.sourceUrl.trim() : null
     };
   } catch {
-    return { chatId: null, channelId: null };
+    return { chatId: null, channelId: null, sourceUrl: null };
   }
+}
+
+function buildQueuedRenderSupersessionKey(row: Pick<JobRow, "workspace_id" | "user_id" | "payload_json">): string | null {
+  const payload = parseStage3JobPayload(row.payload_json);
+  const renderSource = payload.chatId ? `chat:${payload.chatId}` : payload.sourceUrl ? `source:${payload.sourceUrl}` : null;
+  if (!renderSource) {
+    return null;
+  }
+  return `${row.workspace_id}:${row.user_id}:${renderSource}`;
 }
 
 function auditStage3Job(
@@ -391,7 +406,7 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
           });
           return existing;
         }
-        if (existing.status === "completed" && existing.artifactFilePath) {
+        if (input.reuseCompleted !== false && existing.status === "completed" && existing.artifactFilePath) {
           appendStage3JobEvent(existing.id, "info", "Reused completed job.", {
             kind: existing.kind,
             dedupeKey
@@ -414,6 +429,7 @@ export function enqueueStage3Job(input: EnqueueStage3JobInput): Stage3JobRecord 
                   error_code = NULL,
                   error_message = NULL,
                   recoverable = 1,
+                  attempts = 0,
                   started_at = NULL,
                   completed_at = NULL,
                   attempt_limit = ?,
@@ -524,6 +540,64 @@ function requeueExpiredLocalJobsInternal(db: ReturnType<typeof getDb>): void {
   }
 }
 
+function interruptSupersededQueuedLocalRenderJobsInternal(db: ReturnType<typeof getDb>): number {
+  const rows = db
+    .prepare(
+      `SELECT *
+         FROM stage3_jobs
+        WHERE execution_target = 'local'
+          AND kind = 'render'
+          AND status = 'queued'
+        ORDER BY created_at DESC, id DESC`
+    )
+    .all() as JobRow[];
+  const seen = new Set<string>();
+  const superseded: JobRow[] = [];
+
+  for (const row of rows) {
+    const key = buildQueuedRenderSupersessionKey(row);
+    if (!key) {
+      continue;
+    }
+    if (seen.has(key)) {
+      superseded.push(row);
+      continue;
+    }
+    seen.add(key);
+  }
+
+  if (!superseded.length) {
+    return 0;
+  }
+
+  const stamp = nowIso();
+  const statement = db.prepare(
+    `UPDATE stage3_jobs
+        SET status = 'interrupted',
+            error_code = 'superseded_render_request',
+            error_message = ?,
+            recoverable = 1,
+            completed_at = ?,
+            updated_at = ?,
+            assigned_worker_id = NULL,
+            lease_expires_at = NULL,
+            heartbeat_at = NULL
+      WHERE id = ?
+        AND execution_target = 'local'
+        AND kind = 'render'
+        AND status = 'queued'`
+  );
+
+  for (const row of superseded) {
+    statement.run("Более новый render для этого материала заменил ожидающее Stage 3 задание.", stamp, stamp, row.id);
+    appendStage3JobEvent(String(row.id), "warn", "Queued render job superseded by a newer render request.", {
+      reason: "superseded_render_request"
+    });
+  }
+
+  return superseded.length;
+}
+
 export function sweepExpiredLocalStage3Jobs(): number {
   return runInTransaction((db) => {
     const stamp = nowIso();
@@ -536,7 +610,8 @@ export function sweepExpiredLocalStage3Jobs(): number {
           AND lease_expires_at <= ?`
     ).get(stamp) as { count?: number } | undefined;
     requeueExpiredLocalJobsInternal(db);
-    return Number(before?.count) || 0;
+    const superseded = interruptSupersededQueuedLocalRenderJobsInternal(db);
+    return (Number(before?.count) || 0) + superseded;
   });
 }
 
@@ -592,6 +667,7 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
 
   const job = runInTransaction((db) => {
     requeueExpiredLocalJobsInternal(db);
+    interruptSupersededQueuedLocalRenderJobsInternal(db);
 
     const kinds = (input.supportedKinds?.length ? input.supportedKinds : null) as Stage3JobKind[] | null;
     const query = kinds
@@ -629,8 +705,13 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
               assigned_worker_id = ?,
               lease_expires_at = ?,
               heartbeat_at = ?
-        WHERE id = ?`
+        WHERE id = ?
+          AND status = 'queued'`
     ).run(stamp, stamp, input.workerId, leaseUntil, stamp, row.id);
+    const updated = readJobRow(String(row.id));
+    if (!updated || updated.status !== "running" || updated.assigned_worker_id !== input.workerId) {
+      return null;
+    }
     appendStage3JobEvent(String(row.id), "info", "Local worker claimed job.", {
       workerId: input.workerId,
       attempts: (Number(row.attempts) || 0) + 1,

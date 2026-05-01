@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import { getDb, newId, nowIso } from "../lib/db/client";
-import { claimNextQueuedStage3JobForWorker, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
+import {
+  claimNextQueuedStage3JobForWorker,
+  completeStage3Job,
+  enqueueStage3Job,
+  finishStage3Job,
+  getStage3Job,
+  sweepExpiredLocalStage3Jobs
+} from "../lib/stage3-job-store";
 import {
   exchangeStage3WorkerPairingToken,
   issueStage3WorkerPairingToken,
   listStage3Workers
 } from "../lib/stage3-worker-store";
 
-async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
+async function withIsolatedAppData<T>(run: (appDataDir: string) => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-stage3-worker-status-"));
   const previousAppDataDir = process.env.APP_DATA_DIR;
   process.env.APP_DATA_DIR = appDataDir;
@@ -21,7 +28,7 @@ async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   delete (globalThis as { __clipsChannelPublicationRuntimeState__?: unknown }).__clipsChannelPublicationRuntimeState__;
 
   try {
-    return await run();
+    return await run(appDataDir);
   } finally {
     delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
     delete (globalThis as { __clipsStage3JobRuntimeState__?: unknown }).__clipsStage3JobRuntimeState__;
@@ -138,5 +145,142 @@ test("listStage3Workers sweeps expired local leases before deriving busy state",
     const refreshedJob = getStage3Job(job.id);
     assert.equal(refreshedJob?.status, "queued");
     assert.equal(refreshedJob?.assignedWorkerId, null);
+  });
+});
+
+test("render dedupe can requeue completed or failed jobs without keeping stale attempts", async () => {
+  await withIsolatedAppData(async (appDataDir) => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const first = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      dedupeKey: "render-content:w1:u1:stable",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+    const artifactPath = path.join(appDataDir, "render.mp4");
+    await writeFile(artifactPath, new Uint8Array([1, 2, 3]));
+
+    completeStage3Job(first.id, {
+      resultJson: null,
+      artifact: {
+        kind: "video",
+        fileName: "render.mp4",
+        mimeType: "video/mp4",
+        filePath: artifactPath,
+        sizeBytes: 123
+      }
+    });
+
+    const reusedCompleted = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      dedupeKey: "render-content:w1:u1:stable",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" })
+    });
+    assert.equal(reusedCompleted.id, first.id);
+    assert.equal(reusedCompleted.status, "completed");
+
+    const requeuedCompleted = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      dedupeKey: "render-content:w1:u1:stable",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" }),
+      reuseCompleted: false
+    });
+    assert.equal(requeuedCompleted.id, first.id);
+    assert.equal(requeuedCompleted.status, "queued");
+    assert.equal(requeuedCompleted.attempts, 0);
+
+    const db = getDb();
+    db.prepare("UPDATE stage3_jobs SET attempts = 3 WHERE id = ?").run(first.id);
+    finishStage3Job(first.id, {
+      status: "failed",
+      errorCode: "render_failed",
+      errorMessage: "failed",
+      recoverable: true
+    });
+
+    const requeuedFailed = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      dedupeKey: "render-content:w1:u1:stable",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=abc123" }),
+      reuseCompleted: false
+    });
+    assert.equal(requeuedFailed.status, "queued");
+    assert.equal(requeuedFailed.attempts, 0);
+  });
+});
+
+test("local render sweep interrupts older queued renders for the same chat", async () => {
+  await withIsolatedAppData(async () => {
+    const workspaceId = "w1";
+    const userId = "u1";
+    seedWorkspace(workspaceId, userId);
+
+    const older = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      dedupeKey: "render-request:w1:u1:older",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://example.com/older",
+        renderTitle: "Older"
+      })
+    });
+    const newer = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      dedupeKey: "render-request:w1:u1:newer",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://example.com/newer",
+        renderTitle: "Newer"
+      })
+    });
+
+    const db = getDb();
+    db.prepare("UPDATE stage3_jobs SET created_at = ?, updated_at = ? WHERE id = ?").run(
+      "2026-05-01T07:00:00.000Z",
+      "2026-05-01T07:00:00.000Z",
+      older.id
+    );
+    db.prepare("UPDATE stage3_jobs SET created_at = ?, updated_at = ? WHERE id = ?").run(
+      "2026-05-01T08:00:00.000Z",
+      "2026-05-01T08:00:00.000Z",
+      newer.id
+    );
+
+    const changed = sweepExpiredLocalStage3Jobs();
+    assert.equal(changed, 1);
+
+    const refreshedOlder = getStage3Job(older.id);
+    const refreshedNewer = getStage3Job(newer.id);
+    assert.equal(refreshedOlder?.status, "interrupted");
+    assert.equal(refreshedOlder?.errorCode, "superseded_render_request");
+    assert.equal(refreshedNewer?.status, "queued");
+
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: "worker-1",
+      workspaceId,
+      userId,
+      supportedKinds: ["render"]
+    });
+    assert.equal(claimed?.id, newer.id);
   });
 });

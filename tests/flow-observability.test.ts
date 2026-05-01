@@ -354,11 +354,12 @@ test("flow list exposes Stage 3 backlog and worker-unavailable diagnostics", asy
 
     const result = listFlowObservability({ workspaceId: owner.workspace.id });
     assert.equal(result.stage3Runtime.localQueued >= 1, true);
-    assert.equal(result.stage3Runtime.localRunning >= 1, true);
-    assert.equal(result.stage3Runtime.expiredLocalLeases >= 1, true);
+    assert.equal(result.stage3Runtime.localRunning, 0);
+    assert.equal(result.stage3Runtime.expiredLocalLeases, 0);
+    assert.equal(result.stage3Runtime.sweptLocalJobs >= 1, true);
     assert.equal(result.stage3Runtime.recentWorkerUnavailable >= 1, true);
     assert.equal(result.stage3Runtime.byKind.some((item) => item.kind === "render" && item.queued >= 1), true);
-    assert.equal(result.stage3Runtime.byKind.some((item) => item.kind === "preview" && item.running >= 1), true);
+    assert.equal(result.stage3Runtime.byKind.some((item) => item.kind === "preview" && item.queued >= 1), true);
 
     const event = listFlowAuditEvents({
       workspaceId: owner.workspace.id,

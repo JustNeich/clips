@@ -63,6 +63,7 @@ export type ScienceCardV1Props = {
   avatarAssetMimeType?: string | null;
   backgroundAssetFileName?: string | null;
   backgroundAssetMimeType?: string | null;
+  sourceBlurBackgroundDisabled?: boolean | null;
   textFit?: {
     topFontPx: number;
     bottomFontPx: number;
@@ -118,6 +119,7 @@ function buildDefaultProps(templateId: string, authorName: string, authorHandle:
     avatarAssetMimeType: null,
     backgroundAssetFileName: null,
     backgroundAssetMimeType: null,
+    sourceBlurBackgroundDisabled: false,
     textFit: null,
     variationProfile: null
   };

@@ -115,7 +115,8 @@ export async function POST(request: Request): Promise<Response> {
         ...(body ?? {}),
         sourceUrl,
         workspaceId: auth.workspace.id
-      })
+      }),
+      reuseCompleted: false
     });
 
     return Response.json(buildStage3JobEnvelope(job, null), {

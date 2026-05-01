@@ -2,6 +2,7 @@ import { requireAuth } from "../../../../../../lib/auth/guards";
 import { buildStage3JobEnvelope, buildStage3JobErrorBody } from "../../../../../../lib/stage3-job-http";
 import { getStage3JobOrThrow } from "../../../../../../lib/stage3-job-runtime";
 import { createNodeFileResponse } from "../../../../../../lib/node-file-response";
+import { sweepExpiredLocalStage3Jobs } from "../../../../../../lib/stage3-job-store";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   try {
     const auth = await requireAuth();
     const { id } = await context.params;
+    sweepExpiredLocalStage3Jobs();
     const job = getStage3JobOrThrow(id);
     if (job.workspaceId !== auth.workspace.id || job.userId !== auth.user.id) {
       return Response.json(

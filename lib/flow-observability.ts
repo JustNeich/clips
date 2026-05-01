@@ -11,6 +11,7 @@ import { buildChatTraceExport } from "./chat-trace-export";
 import { getChatById } from "./chat-history";
 import { getDb } from "./db/client";
 import { redactForFlowExport } from "./flow-redaction";
+import { sweepExpiredLocalStage3Jobs } from "./stage3-job-store";
 import type { WorkspaceRecord } from "./team-store";
 
 export type FlowObservabilityStage = "source" | "stage2" | "stage3" | "publishing" | "new";
@@ -71,6 +72,7 @@ export type FlowStage3RuntimeMetrics = {
   oldestQueuedAgeSec: number | null;
   oldestRunningAgeSec: number | null;
   expiredLocalLeases: number;
+  sweptLocalJobs: number;
   recentWorkerUnavailable: number;
   byKind: Array<{
     kind: Stage3JobKind;
@@ -536,7 +538,8 @@ function secondsSince(value: string | null | undefined, nowMs: number): number |
 
 function computeStage3RuntimeMetrics(
   jobs: Stage3JobLite[],
-  auditEvents: FlowAuditEvent[]
+  auditEvents: FlowAuditEvent[],
+  sweptLocalJobs = 0
 ): FlowStage3RuntimeMetrics {
   const nowMs = Date.now();
   const byKind = new Map<Stage3JobKind, { kind: Stage3JobKind; queued: number; running: number; failed: number }>();
@@ -551,6 +554,7 @@ function computeStage3RuntimeMetrics(
     oldestQueuedAgeSec: null,
     oldestRunningAgeSec: null,
     expiredLocalLeases: 0,
+    sweptLocalJobs,
     recentWorkerUnavailable: auditEvents.filter(
       (event) =>
         event.action === "stage3_request.failed" &&
@@ -606,6 +610,7 @@ export function listFlowObservability(input: {
   workspaceId: string;
   filters?: FlowObservabilityFilters;
 }): FlowObservabilityList {
+  const sweptLocalJobs = sweepExpiredLocalStage3Jobs();
   const filters = input.filters ?? {};
   const params: unknown[] = [input.workspaceId];
   const where = ["c.workspace_id = ?"];
@@ -783,7 +788,7 @@ export function listFlowObservability(input: {
   return {
     flows: redactForFlowExport(flows),
     metrics: computeMetrics(flows, auditEvents, filters),
-    stage3Runtime: computeStage3RuntimeMetrics(stage3Rows, auditEvents),
+    stage3Runtime: computeStage3RuntimeMetrics(stage3Rows, auditEvents, sweptLocalJobs),
     auditEvents: redactForFlowExport(auditEvents)
   };
 }

@@ -58,6 +58,7 @@ type EnqueueJobInput = {
   dedupeKey?: string | null;
   attemptLimit?: number | null;
   attemptGroup?: string | null;
+  reuseCompleted?: boolean | null;
 };
 
 function getStage3RuntimeState(): Stage3RuntimeState {
@@ -193,8 +194,21 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
         executed.artifact && (job.kind === "preview" || job.kind === "render" || job.kind === "editing-proxy")
           ? await publishStage3VideoArtifact(job.kind, job.id, executed.artifact.filePath)
           : null;
+      const completed = completeStage3Job(job.id, {
+        resultJson: executed.resultJson,
+        artifact:
+          executed.artifact && published
+            ? {
+                kind: "video",
+                fileName: executed.artifact.fileName,
+                mimeType: executed.artifact.mimeType,
+                filePath: published.filePath,
+                sizeBytes: published.sizeBytes
+              }
+            : null
+      });
       if (job.kind === "render" && executed.artifact && published) {
-        await persistRenderExportCompletion(job, {
+        await persistRenderExportCompletion(completed, {
           jobId: job.id,
           artifactFileName: executed.artifact.fileName,
           artifactFilePath: published.filePath,
@@ -213,19 +227,6 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
           });
         });
       }
-      completeStage3Job(job.id, {
-        resultJson: executed.resultJson,
-        artifact:
-          executed.artifact && published
-            ? {
-                kind: "video",
-                fileName: executed.artifact.fileName,
-                mimeType: executed.artifact.mimeType,
-                filePath: published.filePath,
-                sizeBytes: published.sizeBytes
-              }
-            : null
-      });
       if (published && executed.artifact) {
         appendStage3JobEvent(job.id, "info", "Published artifact.", {
           kind: job.kind,

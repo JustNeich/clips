@@ -10,7 +10,10 @@ import {
   STAGE3_RENDER_SAFE_SOURCE_SCALE_FILTER,
   STAGE3_NORMALIZED_SOURCE_VIDEO_FILTER
 } from "../lib/stage3-media-agent";
-import { buildFinalizeRenderedOutputArgs } from "../lib/stage3-render-service";
+import {
+  buildFinalizeRenderedOutputArgs,
+  buildStage3SourceBackgroundStillFfmpegArgs
+} from "../lib/stage3-render-service";
 import { buildStage3VideoPlacementStyle } from "../lib/stage3-video-placement";
 import {
   createStage3VariationProfile,
@@ -88,6 +91,21 @@ test("render source preparation caps oversized clips before remotion decodes the
 
   assert.match(filters, /^scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,/);
   assert.match(filters, /scale=trunc\(iw\/2\)\*2:trunc\(ih\/2\)\*2:flags=lanczos,setsar=1$/);
+});
+
+test("render background still args avoid a second remotion source-video decode", () => {
+  const args = buildStage3SourceBackgroundStillFfmpegArgs({
+    inputPath: "/tmp/source.mp4",
+    outputPath: "/tmp/background.jpg"
+  });
+
+  assert.deepEqual(args.slice(0, 5), ["-y", "-ss", "0", "-i", "/tmp/source.mp4"]);
+  assert.ok(args.includes("-frames:v"));
+  const filter = args[args.indexOf("-vf") + 1] ?? "";
+  assert.match(filter, /scale=1080:1920:force_original_aspect_ratio=increase/);
+  assert.match(filter, /crop=1080:1920/);
+  assert.match(filter, /gblur=sigma=18/);
+  assert.equal(args.at(-1), "/tmp/background.jpg");
 });
 
 test("render source duration guard pads short prepared clips with the final frame", () => {
