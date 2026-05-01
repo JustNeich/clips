@@ -175,6 +175,9 @@ type Stage2RunLite = {
   chat_id?: string | null;
   status: string;
   result_json?: string | null;
+  result_provider?: string | null;
+  result_model?: string | null;
+  result_pipeline_version?: string | null;
   error_message?: string | null;
   created_at: string;
   started_at?: string | null;
@@ -186,7 +189,8 @@ type Stage3JobLite = {
   id: string;
   user_id?: string | null;
   status: string;
-  payload_json: string;
+  payload_json?: string | null;
+  payload_chat_id?: string | null;
   result_json?: string | null;
   error_code?: string | null;
   error_message?: string | null;
@@ -256,16 +260,21 @@ function latestByChat<T extends { chat_id?: string | null; updated_at: string; c
   return map;
 }
 
-function parseStage3ChatId(payloadJson: string): string | null {
+function parseStage3ChatId(payloadJson: string | null | undefined): string | null {
   const payload = parseJson<Record<string, unknown>>(payloadJson);
   const chatId = typeof payload?.chatId === "string" ? payload.chatId.trim() : "";
   return chatId || null;
 }
 
+function resolveStage3ChatId(row: Pick<Stage3JobLite, "payload_chat_id" | "payload_json">): string | null {
+  const extracted = typeof row.payload_chat_id === "string" ? row.payload_chat_id.trim() : "";
+  return extracted || parseStage3ChatId(row.payload_json);
+}
+
 function latestStage3ByChat(rows: Stage3JobLite[]): Map<string, Stage3JobLite> {
   const map = new Map<string, Stage3JobLite>();
   for (const row of rows) {
-    const chatId = parseStage3ChatId(row.payload_json);
+    const chatId = resolveStage3ChatId(row);
     if (!chatId) {
       continue;
     }
@@ -332,6 +341,14 @@ function parseJsonObject(raw: string | null | undefined): Record<string, unknown
 }
 
 function extractStage2ProviderModel(run: Stage2RunLite | null): { provider: string | null; model: string | null } {
+  const extractedModel = run?.result_model?.trim() || null;
+  if (run && (run.result_provider || extractedModel || run.result_pipeline_version)) {
+    const provider =
+      run.result_provider?.trim() ||
+      (run.result_pipeline_version === "vnext" ? "stage2-vnext" : extractedModel ? "caption-provider" : null);
+    return { provider, model: extractedModel };
+  }
+
   const result = parseJson<Stage2Response>(run?.result_json) ?? null;
   const promptStages = result?.diagnostics?.effectivePrompting?.promptStages ?? [];
   const model =
@@ -720,7 +737,17 @@ export function listFlowObservability(input: {
       ? latestByChat(
           db
             .prepare(
-              `SELECT * FROM source_jobs
+              `SELECT
+                  job_id,
+                  chat_id,
+                  status,
+                  source_url,
+                  error_message,
+                  created_at,
+                  started_at,
+                  updated_at,
+                  finished_at
+                FROM source_jobs
                 WHERE workspace_id = ?
                   AND chat_id IN (${placeholders})
                 ORDER BY updated_at DESC`
@@ -733,7 +760,34 @@ export function listFlowObservability(input: {
       ? latestByChat(
           db
             .prepare(
-              `SELECT * FROM stage2_runs
+              `SELECT
+                  run_id,
+                  chat_id,
+                  status,
+                  error_message,
+                  created_at,
+                  started_at,
+                  updated_at,
+                  finished_at,
+                  CASE
+                    WHEN result_json IS NOT NULL AND json_valid(result_json)
+                      THEN json_extract(result_json, '$.output.pipeline.provider')
+                    ELSE NULL
+                  END AS result_provider,
+                  CASE
+                    WHEN result_json IS NOT NULL AND json_valid(result_json)
+                      THEN COALESCE(
+                        json_extract(result_json, '$.model'),
+                        json_extract(result_json, '$.diagnostics.effectivePrompting.promptStages[0].model')
+                      )
+                    ELSE NULL
+                  END AS result_model,
+                  CASE
+                    WHEN result_json IS NOT NULL AND json_valid(result_json)
+                      THEN json_extract(result_json, '$.stage2Worker.pipelineVersion')
+                    ELSE NULL
+                  END AS result_pipeline_version
+                FROM stage2_runs
                 WHERE workspace_id = ?
                   AND chat_id IN (${placeholders})
                 ORDER BY updated_at DESC`
@@ -756,7 +810,32 @@ export function listFlowObservability(input: {
       : new Map<string, PublicationLite>();
   const stage3Rows = db
     .prepare(
-      `SELECT * FROM stage3_jobs
+      `SELECT
+          id,
+          user_id,
+          status,
+          error_code,
+          error_message,
+          kind,
+          execution_target,
+          assigned_worker_id,
+          lease_expires_at,
+          heartbeat_at,
+          dedupe_key,
+          recoverable,
+          attempts,
+          attempt_limit,
+          attempt_group,
+          created_at,
+          updated_at,
+          started_at,
+          completed_at,
+          CASE
+            WHEN payload_json IS NOT NULL AND json_valid(payload_json)
+              THEN json_extract(payload_json, '$.chatId')
+            ELSE NULL
+          END AS payload_chat_id
+        FROM stage3_jobs
         WHERE workspace_id = ?
         ORDER BY updated_at DESC
         LIMIT 2000`
@@ -895,7 +974,7 @@ function listStage3JobDetailsForChat(input: {
     )
     .all(input.workspaceId, `%${input.chatId}%`, limit * 2) as Stage3JobLite[];
 
-  const matchingRows = rows.filter((row) => parseStage3ChatId(row.payload_json) === input.chatId).slice(0, limit);
+  const matchingRows = rows.filter((row) => resolveStage3ChatId(row) === input.chatId).slice(0, limit);
   if (!matchingRows.length) {
     return [];
   }

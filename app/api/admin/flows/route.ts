@@ -3,6 +3,16 @@ import { listFlowObservability } from "../../../../lib/flow-observability";
 
 export const runtime = "nodejs";
 
+function memorySnapshotMb(): Record<string, number> {
+  const usage = process.memoryUsage();
+  return {
+    rssMb: Math.round((usage.rss / (1024 * 1024)) * 10) / 10,
+    heapUsedMb: Math.round((usage.heapUsed / (1024 * 1024)) * 10) / 10,
+    heapTotalMb: Math.round((usage.heapTotal / (1024 * 1024)) * 10) / 10,
+    externalMb: Math.round((usage.external / (1024 * 1024)) * 10) / 10
+  };
+}
+
 function parseLimit(value: string | null): number | null {
   if (!value) {
     return null;
@@ -23,6 +33,7 @@ function parseDateBoundary(value: string | null, edge: "start" | "end"): string 
 }
 
 export async function GET(request: Request): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const auth = await requireOwnerOrMcpFlowRead(request);
     const url = new URL(request.url);
@@ -43,6 +54,25 @@ export async function GET(request: Request): Promise<Response> {
         limit: parseLimit(url.searchParams.get("limit"))
       }
     });
+    console.info(
+      JSON.stringify({
+        scope: "admin-flows",
+        event: "list",
+        at: new Date().toISOString(),
+        durationMs: Date.now() - startedAt,
+        flows: payload.flows.length,
+        auditEvents: payload.auditEvents.length,
+        stage3Runtime: {
+          queued: payload.stage3Runtime.queued,
+          running: payload.stage3Runtime.running,
+          localQueued: payload.stage3Runtime.localQueued,
+          localRunning: payload.stage3Runtime.localRunning,
+          recentWorkerUnavailable: payload.stage3Runtime.recentWorkerUnavailable,
+          sweptLocalJobs: payload.stage3Runtime.sweptLocalJobs
+        },
+        memoryMb: memorySnapshotMb()
+      })
+    );
     return Response.json(payload, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
