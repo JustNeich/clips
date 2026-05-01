@@ -512,6 +512,7 @@ export function enqueueAndScheduleStage3Job(input: EnqueueJobInput): Stage3JobRe
     status: job.status,
     executionTarget: job.executionTarget,
     dedupeKey: job.dedupeKey,
+    payloadBytes: Buffer.byteLength(job.payloadJson, "utf8"),
     memoryMb: memorySnapshotMb()
   });
   if (job.executionTarget === "host") {

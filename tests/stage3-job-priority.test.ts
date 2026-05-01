@@ -142,6 +142,70 @@ test("host queue prefers render over newer preview jobs", async () => {
   });
 });
 
+test("local worker skips superseded queued previews for the same chat", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+    const older = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "preview",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=same-chat",
+        renderPlan: { videoZoom: 1 }
+      })
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const newer = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "preview",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-1",
+        sourceUrl: "https://youtube.com/watch?v=same-chat",
+        renderPlan: { videoZoom: 1.2 }
+      })
+    });
+
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["preview"]
+    });
+
+    assert.equal(claimed?.id, newer.id);
+    assert.equal(getStage3Job(older.id)?.status, "interrupted");
+    assert.equal(getStage3Job(older.id)?.errorCode, "superseded_preview_request");
+  });
+});
+
 test("host runtime processes multiple jobs up to configured concurrency", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const previousLimit = process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;

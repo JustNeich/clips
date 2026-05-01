@@ -25,6 +25,27 @@ const Busboy = require("next/dist/compiled/busboy") as (options: {
   emit(event: string, ...args: any[]): boolean;
     };
 
+function memorySnapshotMb(): Record<string, number> {
+  const usage = process.memoryUsage();
+  return {
+    rssMb: Math.round((usage.rss / (1024 * 1024)) * 10) / 10,
+    heapUsedMb: Math.round((usage.heapUsed / (1024 * 1024)) * 10) / 10,
+    heapTotalMb: Math.round((usage.heapTotal / (1024 * 1024)) * 10) / 10,
+    externalMb: Math.round((usage.external / (1024 * 1024)) * 10) / 10
+  };
+}
+
+function logStage3WorkerCompletion(event: string, payload: Record<string, unknown>): void {
+  console.info(
+    JSON.stringify({
+      scope: "stage3",
+      event,
+      at: new Date().toISOString(),
+      ...payload
+    })
+  );
+}
+
 async function createWorkerArtifactTempFile(source: NodeJS.ReadableStream): Promise<{ filePath: string; cleanupDir: string }> {
   const cleanupDir = await fs.mkdtemp(path.join(os.tmpdir(), "clips-stage3-worker-artifact-"));
   const filePath = path.join(cleanupDir, "artifact.mp4");
@@ -143,6 +164,7 @@ function decodeResultJsonHeader(value: string | null): string | null {
 }
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
+  const startedAt = Date.now();
   try {
     const auth = requireStage3WorkerAuth(request);
     const { id } = await context.params;
@@ -229,6 +251,15 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         await fs.rm(artifactFile.cleanupDir, { recursive: true, force: true }).catch(() => undefined);
       }
     }
+
+    logStage3WorkerCompletion("worker_complete_upload", {
+      jobId: current.id,
+      jobType: current.kind,
+      artifactBytes: artifactInput?.sizeBytes ?? 0,
+      hasResultJson: Boolean(resultJson),
+      durationMs: Date.now() - startedAt,
+      memoryMb: memorySnapshotMb()
+    });
 
     touchStage3WorkerHeartbeat({
       workerId: auth.worker.id

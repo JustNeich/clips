@@ -267,7 +267,7 @@ function parseStage3JobPayload(payloadJson: string): {
   }
 }
 
-function buildQueuedRenderSupersessionKey(row: Pick<JobRow, "workspace_id" | "user_id" | "payload_json">): string | null {
+function buildQueuedMediaSupersessionKey(row: Pick<JobRow, "workspace_id" | "user_id" | "payload_json">): string | null {
   const payload = parseStage3JobPayload(row.payload_json);
   const renderSource = payload.chatId ? `chat:${payload.chatId}` : payload.sourceUrl ? `source:${payload.sourceUrl}` : null;
   if (!renderSource) {
@@ -548,14 +548,14 @@ function interruptSupersededQueuedLocalRenderJobsInternal(db: ReturnType<typeof 
         WHERE execution_target = 'local'
           AND kind = 'render'
           AND status = 'queued'
-        ORDER BY created_at DESC, id DESC`
+        ORDER BY created_at DESC, rowid DESC`
     )
     .all() as JobRow[];
   const seen = new Set<string>();
   const superseded: JobRow[] = [];
 
   for (const row of rows) {
-    const key = buildQueuedRenderSupersessionKey(row);
+    const key = buildQueuedMediaSupersessionKey(row);
     if (!key) {
       continue;
     }
@@ -598,6 +598,64 @@ function interruptSupersededQueuedLocalRenderJobsInternal(db: ReturnType<typeof 
   return superseded.length;
 }
 
+function interruptSupersededQueuedLocalPreviewJobsInternal(db: ReturnType<typeof getDb>): number {
+  const rows = db
+    .prepare(
+      `SELECT *
+         FROM stage3_jobs
+        WHERE execution_target = 'local'
+          AND kind = 'preview'
+          AND status = 'queued'
+        ORDER BY created_at DESC, rowid DESC`
+    )
+    .all() as JobRow[];
+  const seen = new Set<string>();
+  const superseded: JobRow[] = [];
+
+  for (const row of rows) {
+    const key = buildQueuedMediaSupersessionKey(row);
+    if (!key) {
+      continue;
+    }
+    if (seen.has(key)) {
+      superseded.push(row);
+      continue;
+    }
+    seen.add(key);
+  }
+
+  if (!superseded.length) {
+    return 0;
+  }
+
+  const stamp = nowIso();
+  const statement = db.prepare(
+    `UPDATE stage3_jobs
+        SET status = 'interrupted',
+            error_code = 'superseded_preview_request',
+            error_message = ?,
+            recoverable = 1,
+            completed_at = ?,
+            updated_at = ?,
+            assigned_worker_id = NULL,
+            lease_expires_at = NULL,
+            heartbeat_at = NULL
+      WHERE id = ?
+        AND execution_target = 'local'
+        AND kind = 'preview'
+        AND status = 'queued'`
+  );
+
+  for (const row of superseded) {
+    statement.run("Более новый preview для этого материала заменил ожидающее Stage 3 задание.", stamp, stamp, row.id);
+    appendStage3JobEvent(String(row.id), "warn", "Queued preview job superseded by a newer preview request.", {
+      reason: "superseded_preview_request"
+    });
+  }
+
+  return superseded.length;
+}
+
 export function sweepExpiredLocalStage3Jobs(): number {
   return runInTransaction((db) => {
     const stamp = nowIso();
@@ -610,7 +668,9 @@ export function sweepExpiredLocalStage3Jobs(): number {
           AND lease_expires_at <= ?`
     ).get(stamp) as { count?: number } | undefined;
     requeueExpiredLocalJobsInternal(db);
-    const superseded = interruptSupersededQueuedLocalRenderJobsInternal(db);
+    const superseded =
+      interruptSupersededQueuedLocalRenderJobsInternal(db) +
+      interruptSupersededQueuedLocalPreviewJobsInternal(db);
     return (Number(before?.count) || 0) + superseded;
   });
 }
@@ -668,6 +728,7 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
   const job = runInTransaction((db) => {
     requeueExpiredLocalJobsInternal(db);
     interruptSupersededQueuedLocalRenderJobsInternal(db);
+    interruptSupersededQueuedLocalPreviewJobsInternal(db);
 
     const kinds = (input.supportedKinds?.length ? input.supportedKinds : null) as Stage3JobKind[] | null;
     const query = kinds
