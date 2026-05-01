@@ -42,3 +42,23 @@ test("stage3 worker runtime compatibility rejects a different release even with 
     false
   );
 });
+
+test("stage3 worker runtime compatibility accepts legacy timestamp builds for deterministic runtime manifests", () => {
+  assert.equal(
+    isStage3WorkerRuntimeVersionCompatible({
+      workerAppVersion: "1.0.0+20260411193140",
+      expectedRuntimeVersion: "1.0.0+runtime.70a588d3c8aa"
+    }),
+    true
+  );
+});
+
+test("stage3 worker runtime compatibility rejects a different deterministic build from the same release", () => {
+  assert.equal(
+    isStage3WorkerRuntimeVersionCompatible({
+      workerAppVersion: "1.0.0+runtime.111111111111",
+      expectedRuntimeVersion: "1.0.0+runtime.70a588d3c8aa"
+    }),
+    false
+  );
+});

@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -111,9 +112,33 @@ async function copyWorkerPublicAssets() {
   return copiedFiles.sort();
 }
 
-function buildRuntimeVersion(baseVersion) {
-  const stamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
-  return `${baseVersion}+${stamp}`;
+async function hashFile(hash, label, filePath) {
+  hash.update(`file:${label}\0`);
+  hash.update(await fs.readFile(filePath));
+  hash.update("\0");
+}
+
+async function buildRuntimeVersion(baseVersion, input) {
+  const hash = createHash("sha256");
+  hash.update(`version:${baseVersion}\0`);
+  hash.update(`worker-package:${JSON.stringify(input.workerPackageJson)}\0`);
+  await hashFile(hash, "scripts/build-stage3-worker.mjs", __filename);
+  await hashFile(hash, "apps/stage3-worker/index.ts", workerEntry);
+
+  for (const fileName of [...input.remotionFiles].sort()) {
+    await hashFile(hash, `remotion/${fileName}`, path.join(remotionSourceDir, fileName));
+  }
+  for (const fileName of [...WORKER_LIB_RUNTIME_FILES].sort()) {
+    await hashFile(hash, `lib/${fileName}`, path.join(libSourceDir, fileName));
+  }
+  for (const fileName of [...input.designFiles].sort()) {
+    await hashFile(hash, `design/${fileName}`, path.join(designSourceDir, fileName));
+  }
+  for (const fileName of [...input.publicFiles].sort()) {
+    await hashFile(hash, `public/${fileName}`, path.join(publicSourceDir, fileName));
+  }
+
+  return `${baseVersion}+runtime.${hash.digest("hex").slice(0, 12)}`;
 }
 
 async function readPackageJson() {
@@ -218,7 +243,6 @@ async function main() {
     typeof rootPackageJson.version === "string" && rootPackageJson.version.trim()
       ? rootPackageJson.version.trim()
       : "0.0.0";
-  const runtimeVersion = buildRuntimeVersion(version);
   const remotionFiles = await listWorkerRemotionRuntimeFiles();
   await fs.mkdir(publicDir, { recursive: true });
   const runtimeSources = await syncWorkerRuntimeSources();
@@ -232,6 +256,12 @@ async function main() {
     },
     dependencies: pickWorkerDependencies(rootPackageJson)
   };
+  const runtimeVersion = await buildRuntimeVersion(version, {
+    remotionFiles,
+    designFiles: runtimeSources.designFiles,
+    publicFiles: runtimeSources.publicFiles,
+    workerPackageJson
+  });
 
   await build({
     entryPoints: [workerEntry],

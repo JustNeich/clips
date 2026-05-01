@@ -66,6 +66,10 @@ function compareRuntimeBuildStamp(left: string | null, right: string | null): nu
   return paddedLeft > paddedRight ? 1 : -1;
 }
 
+function isNumericRuntimeBuild(value: string | null): boolean {
+  return Boolean(value && /^\d+$/.test(value));
+}
+
 async function readManifestFromDisk(): Promise<Stage3WorkerPublicManifest | null> {
   const filePath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
   try {
@@ -117,6 +121,9 @@ export function isStage3WorkerRuntimeVersionCompatible(input: {
   }
   if (!expected.build) {
     return true;
+  }
+  if (!isNumericRuntimeBuild(expected.build)) {
+    return worker.build === expected.build || isNumericRuntimeBuild(worker.build);
   }
   const buildComparison = compareRuntimeBuildStamp(worker.build, expected.build);
   if (buildComparison === null) {
