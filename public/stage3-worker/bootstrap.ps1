@@ -108,6 +108,7 @@ function Install-ClipsStage3Worker {
       $libFiles = @(
         "stage3-template.ts",
         "stage3-template-semantics.ts",
+        "stage3-template-fonts.ts",
         "stage3-constants.ts",
         "template-scene.tsx",
         "stage3-verified-badge.tsx",
@@ -123,29 +124,30 @@ function Install-ClipsStage3Worker {
         "stage3-template-runtime.tsx",
         "stage3-template-registry.ts",
         "stage3-background-mode.ts",
-        "stage3-video-adjustments.ts"
+        "stage3-video-adjustments.ts",
+        "stage3-video-placement.ts",
+        "stage3-worker-job-timeout.ts"
       )
     }
     $designFiles = @($manifest.designFiles)
     if ($designFiles.Count -eq 0) {
       $designFiles = @(
-        "templates/american-news-v1/figma-spec.json",
-        "templates/channel-story-v1/figma-spec.json",
-        "templates/science-card-blue-v1/figma-spec.json",
-        "templates/science-card-green-v1/figma-spec.json",
-        "templates/science-card-red-v1/figma-spec.json",
+        "templates/hedges-of-honor-v1/figma-spec.json",
         "templates/science-card-v1/figma-spec.json",
-        "templates/science-card-v7/figma-spec.json",
-        "templates/hedges-of-honor-v1/figma-spec.json"
+        "templates/science-card-v7/figma-spec.json"
       )
     }
     $publicFiles = @($manifest.publicFiles)
     if ($publicFiles.Count -eq 0) {
       $publicFiles = @(
-        "stage3-template-badges/science-card-v1-check.png",
-        "stage3-template-badges/honor-verified-badge.svg",
+        "stage3-template-backdrops/hedges-of-honor-v1-shell.svg",
         "stage3-template-backdrops/science-card-v7-shell.svg",
-        "stage3-template-backdrops/hedges-of-honor-v1-shell.svg"
+        "stage3-template-badges/american-news-badge.svg",
+        "stage3-template-badges/gold-glow-badge.png",
+        "stage3-template-badges/honor-verified-badge.svg",
+        "stage3-template-badges/pink-glow-badge.png",
+        "stage3-template-badges/science-card-v1-check.png",
+        "stage3-template-badges/twitter-verified-badge.png"
       )
     }
     $runtimeArchiveRelativePath =

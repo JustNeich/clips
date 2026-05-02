@@ -11,6 +11,10 @@ function decodePowershellEncodedCommand(command: string): string {
   return Buffer.from(match[1], "base64").toString("utf16le");
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 test("powershell bootstrap command enables visible diagnostics and fail-fast settings", () => {
   const commands = buildStage3WorkerCommands({
     origin: "https://clips-vy11.onrender.com",
@@ -88,4 +92,42 @@ test("worker manifest ships only runtime-required template specs", () => {
     "stage3-template-badges/science-card-v1-check.png",
     "stage3-template-badges/twitter-verified-badge.png"
   ]);
+});
+
+test("bootstrap fallback file lists stay aligned with worker runtime manifest", () => {
+  const shellScriptPath = path.join(process.cwd(), "public", "stage3-worker", "bootstrap.sh");
+  const powershellScriptPath = path.join(process.cwd(), "public", "stage3-worker", "bootstrap.ps1");
+  const manifestPath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
+  const shellScript = readFileSync(shellScriptPath, "utf8");
+  const powershellScript = readFileSync(powershellScriptPath, "utf8");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+    designFiles?: string[];
+    libFiles?: string[];
+    publicFiles?: string[];
+  };
+  const scripts = [shellScript, powershellScript];
+
+  for (const file of [
+    ...(manifest.libFiles ?? []),
+    ...(manifest.designFiles ?? []),
+    ...(manifest.publicFiles ?? [])
+  ]) {
+    for (const script of scripts) {
+      assert.match(script, new RegExp(escapeRegExp(file)));
+    }
+  }
+
+  const generatedTemplateSpecs = [
+    "templates/american-news-v1/figma-spec.json",
+    "templates/channel-story-v1/figma-spec.json",
+    "templates/science-card-blue-v1/figma-spec.json",
+    "templates/science-card-green-v1/figma-spec.json",
+    "templates/science-card-red-v1/figma-spec.json"
+  ];
+
+  for (const file of generatedTemplateSpecs) {
+    for (const script of scripts) {
+      assert.doesNotMatch(script, new RegExp(escapeRegExp(file)));
+    }
+  }
 });
