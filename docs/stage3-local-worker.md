@@ -171,6 +171,15 @@ UI worker list теперь при каждом poll автоматически 
 
 Если executor перезапущен, пока за ним ещё числится активная Stage 3 job, следующий worker claim после короткого heartbeat grace возвращает эту job в очередь и забирает её заново тем же worker-ом вместо ожидания полного lease window.
 
+Если тяжелая local job зависла внутри executor и продолжает держать `Busy`, worker теперь имеет hard watchdog:
+
+- `editing-proxy`: 90 секунд;
+- `preview`: 150 секунд;
+- `source-download`: 5 минут;
+- `render` и `agent-media-step`: 10 минут.
+
+После watchdog timeout job помечается как recoverable failure на хосте, а локальный worker завершает процесс, чтобы не продолжать держать скрытый зависший render/proxy. Оператор должен перезапустить свежую команду из Step 3 и повторить действие. Таймауты можно временно переопределить через `STAGE3_WORKER_JOB_TIMEOUT_MS` или kind-specific env вроде `STAGE3_WORKER_RENDER_TIMEOUT_MS`.
+
 Preview/render больше не должны тихо падать обратно на host. Если worker offline, job останется в очереди и UI покажет честное состояние ожидания.
 
 Local executor больше не привязан к конкретному редактору после pairing. Если Даша запустила executor в том же workspace, Катя должна видеть workspace как готовый к локальному Stage 3, а её preview/render job может быть выполнен этим executor. Это убирает class сбоев, где один и тот же компьютер был подключен под другим аккаунтом и backend видел `onlineWorkers: 0` для редактора, хотя worker реально работал.

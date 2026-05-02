@@ -54,7 +54,8 @@ const WORKER_LIB_RUNTIME_FILES = [
   "stage3-template-registry.ts",
   "stage3-background-mode.ts",
   "stage3-video-adjustments.ts",
-  "stage3-video-placement.ts"
+  "stage3-video-placement.ts",
+  "stage3-worker-job-timeout.ts"
 ];
 
 async function listWorkerRemotionRuntimeFiles() {
@@ -122,6 +123,11 @@ async function buildRuntimeVersion(baseVersion, input) {
   const hash = createHash("sha256");
   hash.update(`version:${baseVersion}\0`);
   hash.update(`worker-package:${JSON.stringify(input.workerPackageJson)}\0`);
+  if (input.workerBundlePreviewBytes) {
+    hash.update("worker-bundle-preview\0");
+    hash.update(input.workerBundlePreviewBytes);
+    hash.update("\0");
+  }
   await hashFile(hash, "scripts/build-stage3-worker.mjs", __filename);
   await hashFile(hash, "apps/stage3-worker/index.ts", workerEntry);
 
@@ -139,6 +145,37 @@ async function buildRuntimeVersion(baseVersion, input) {
   }
 
   return `${baseVersion}+runtime.${hash.digest("hex").slice(0, 12)}`;
+}
+
+async function buildWorkerBundle(runtimeVersion, options = {}) {
+  return build({
+    entryPoints: [workerEntry],
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    target: ["node22"],
+    outfile: bundlePath,
+    write: options.write !== false,
+    sourcemap: false,
+    legalComments: "none",
+    banner: {
+      js: "#!/usr/bin/env node"
+    },
+    external: [
+      "@remotion/bundler",
+      "@remotion/renderer",
+      "remotion",
+      "react",
+      "react-dom",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+      "./chat-history",
+      "./channel-assets"
+    ],
+    define: {
+      __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: JSON.stringify(runtimeVersion)
+    }
+  });
 }
 
 async function readPackageJson() {
@@ -256,40 +293,17 @@ async function main() {
     },
     dependencies: pickWorkerDependencies(rootPackageJson)
   };
+  const previewBundle = await buildWorkerBundle("pending-runtime-version", { write: false });
+  const workerBundlePreviewBytes = previewBundle.outputFiles?.[0]?.contents;
   const runtimeVersion = await buildRuntimeVersion(version, {
     remotionFiles,
     designFiles: runtimeSources.designFiles,
     publicFiles: runtimeSources.publicFiles,
-    workerPackageJson
+    workerPackageJson,
+    workerBundlePreviewBytes
   });
 
-  await build({
-    entryPoints: [workerEntry],
-    bundle: true,
-    format: "cjs",
-    platform: "node",
-    target: ["node22"],
-    outfile: bundlePath,
-    sourcemap: false,
-    legalComments: "none",
-    banner: {
-      js: "#!/usr/bin/env node"
-    },
-    external: [
-      "@remotion/bundler",
-      "@remotion/renderer",
-      "remotion",
-      "react",
-      "react-dom",
-      "react/jsx-runtime",
-      "react/jsx-dev-runtime",
-      "./chat-history",
-      "./channel-assets"
-    ],
-    define: {
-      __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: JSON.stringify(runtimeVersion)
-    }
-  });
+  await buildWorkerBundle(runtimeVersion);
 
   await fs.chmod(bundlePath, 0o755).catch(() => undefined);
   await fs.writeFile(

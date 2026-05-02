@@ -15,6 +15,11 @@ import {
 import { resolveStage3WorkerRestartLaunch } from "../../lib/stage3-worker-restart";
 import { ensureRspackRuntimeAvailable } from "../../lib/stage3-rspack-runtime";
 import { completeRemoteStage3Artifact } from "../../lib/stage3-worker-completion";
+import {
+  Stage3WorkerJobTimeoutError,
+  isStage3WorkerJobTimeoutError,
+  resolveStage3WorkerJobTimeoutMs
+} from "../../lib/stage3-worker-job-timeout";
 
 declare const __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: string | undefined;
 
@@ -647,6 +652,36 @@ async function failRemoteJob(
   }).catch(() => undefined);
 }
 
+async function runClaimedJobWithTimeout<T>(
+  job: Stage3JobEnvelope["job"],
+  task: Promise<T>
+): Promise<T> {
+  const timeoutMs = resolveStage3WorkerJobTimeoutMs(job.kind);
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      task,
+      new Promise<T>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Stage3WorkerJobTimeoutError(job.kind, timeoutMs));
+        }, timeoutMs);
+        timeout.unref?.();
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+function exitAfterTimedOutJob(): void {
+  const timer = setTimeout(() => {
+    process.exit(1);
+  }, 500);
+  timer.unref?.();
+}
+
 async function startCommand(): Promise<void> {
   const config = await readConfig();
   if (!config) {
@@ -776,7 +811,10 @@ async function startCommand(): Promise<void> {
       }, 10_000);
 
       try {
-        const executed = await executeStage3HeavyJobPayload(job.kind, claimBody.payloadJson);
+        const executed = await runClaimedJobWithTimeout(
+          job,
+          executeStage3HeavyJobPayload(job.kind, claimBody.payloadJson)
+        );
         try {
           await completeRemoteJob(config, job, {
             resultJson: executed.resultJson,
@@ -792,6 +830,11 @@ async function startCommand(): Promise<void> {
         const classified = classifyStage3HeavyJobError(job.kind, error);
         await failRemoteJob(config, job, classified);
         console.error(`Job ${job.id} failed: ${classified.message}`);
+        if (isStage3WorkerJobTimeoutError(error)) {
+          console.error("Stage 3 worker is exiting after a timed-out job. Restart the executor from Step 3 before continuing.");
+          stop = true;
+          exitAfterTimedOutJob();
+        }
       } finally {
         clearInterval(leaseTimer);
       }

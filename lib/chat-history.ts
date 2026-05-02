@@ -32,7 +32,7 @@ import { listLatestActiveStage2RunsForChats } from "./stage2-progress-store";
 import { listLatestActiveSourceJobsForChats } from "./source-job-store";
 import { getWorkspaceDefaultTemplateId, readManagedTemplate } from "./managed-template-store";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
-import { getWorkspace, getWorkspaceStage2HardConstraints } from "./team-store";
+import { getWorkspace, getWorkspaceStage2HardConstraints, type AppRole } from "./team-store";
 import { normalizeSupportedUrl } from "./ytdlp";
 
 export type ChatEventRole = "user" | "assistant" | "system";
@@ -320,6 +320,49 @@ function getThreadEvents(threadId: string): ChatEvent[] {
   return rows.map(mapEvent);
 }
 
+function getThreadRows(channelId?: string, workspaceId?: string): Record<string, unknown>[] {
+  const db = getDb();
+  return (
+    channelId
+      ? db
+          .prepare("SELECT * FROM chat_threads WHERE channel_id = ? ORDER BY updated_at DESC")
+          .all(channelId)
+      : db
+          .prepare("SELECT * FROM chat_threads WHERE workspace_id = ? ORDER BY updated_at DESC")
+          .all(workspaceId ?? getAnyWorkspaceId())
+  ) as Record<string, unknown>[];
+}
+
+function getThreadEventsByThreadIds(threadIds: string[]): Map<string, ChatEvent[]> {
+  const eventsByThreadId = new Map<string, ChatEvent[]>();
+  const ids = threadIds.filter(Boolean);
+  if (ids.length === 0) {
+    return eventsByThreadId;
+  }
+  ids.forEach((id) => eventsByThreadId.set(id, []));
+  const db = getDb();
+  const chunkSize = 500;
+  for (let offset = 0; offset < ids.length; offset += chunkSize) {
+    const chunk = ids.slice(offset, offset + chunkSize);
+    const rows = db
+      .prepare(
+        `SELECT *
+           FROM chat_events
+          WHERE thread_id IN (${chunk.map(() => "?").join(", ")})
+          ORDER BY thread_id ASC, created_at ASC`
+      )
+      .all(...chunk) as Record<string, unknown>[];
+    for (const row of rows) {
+      const threadId = String(row.thread_id);
+      const bucket = eventsByThreadId.get(threadId);
+      if (bucket) {
+        bucket.push(mapEvent(row));
+      }
+    }
+  }
+  return eventsByThreadId;
+}
+
 function getDraftRow(threadId: string, userId: string): Record<string, unknown> | undefined {
   const db = getDb();
   return db
@@ -337,6 +380,110 @@ export async function listChannels(workspaceId?: string): Promise<Channel[]> {
   return Promise.all(rows.map((row) => repairChannelTemplateReference(mapChannel(row))));
 }
 
+function buildVisibleChannelRowsQuery(role: AppRole): { query: string; paramsFor: (input: {
+  workspaceId: string;
+  userId: string;
+}) => string[] } {
+  if (role === "owner" || role === "manager") {
+    return {
+      query: "SELECT * FROM channels WHERE workspace_id = ? AND archived_at IS NULL ORDER BY updated_at DESC",
+      paramsFor: (input) => [input.workspaceId]
+    };
+  }
+
+  if (role === "redactor") {
+    return {
+      query: `SELECT c.*
+                FROM channels c
+                LEFT JOIN channel_access ca
+                  ON ca.channel_id = c.id
+                 AND ca.user_id = ?
+                 AND ca.revoked_at IS NULL
+               WHERE c.workspace_id = ?
+                 AND c.archived_at IS NULL
+                 AND (c.creator_user_id = ? OR ca.id IS NOT NULL)
+               ORDER BY c.updated_at DESC`,
+      paramsFor: (input) => [input.userId, input.workspaceId, input.userId]
+    };
+  }
+
+  return {
+    query: `SELECT c.*
+              FROM channels c
+              JOIN channel_access ca
+                ON ca.channel_id = c.id
+               AND ca.user_id = ?
+               AND ca.revoked_at IS NULL
+             WHERE c.workspace_id = ?
+               AND c.archived_at IS NULL
+             ORDER BY c.updated_at DESC`,
+    paramsFor: (input) => [input.userId, input.workspaceId]
+  };
+}
+
+async function listVisibleChannels(input: {
+  workspaceId: string;
+  userId: string;
+  role: AppRole;
+}): Promise<Channel[]> {
+  const db = getDb();
+  const { query, paramsFor } = buildVisibleChannelRowsQuery(input.role);
+  const rows = db.prepare(query).all(...paramsFor(input)) as Record<string, unknown>[];
+  return Promise.all(rows.map((row) => repairChannelTemplateReference(mapChannel(row))));
+}
+
+function listChannelAssetCounts(channelIds: string[]): Map<string, Map<string, number>> {
+  const countsByChannelId = new Map<string, Map<string, number>>();
+  const ids = channelIds.filter(Boolean);
+  if (ids.length === 0) {
+    return countsByChannelId;
+  }
+  const db = getDb();
+  const chunkSize = 500;
+  for (let offset = 0; offset < ids.length; offset += chunkSize) {
+    const chunk = ids.slice(offset, offset + chunkSize);
+    const rows = db
+      .prepare(
+        `SELECT channel_id, kind, COUNT(*) as count
+           FROM channel_assets
+          WHERE channel_id IN (${chunk.map(() => "?").join(", ")})
+          GROUP BY channel_id, kind`
+      )
+      .all(...chunk) as Record<string, unknown>[];
+    for (const row of rows) {
+      const channelId = String(row.channel_id);
+      let counts = countsByChannelId.get(channelId);
+      if (!counts) {
+        counts = new Map<string, number>();
+        countsByChannelId.set(channelId, counts);
+      }
+      counts.set(String(row.kind), Number(row.count) || 0);
+    }
+  }
+  return countsByChannelId;
+}
+
+function attachChannelStats(
+  channels: Channel[]
+): Array<
+  Channel & {
+    backgroundCount: number;
+    musicCount: number;
+    hasAvatar: boolean;
+  }
+> {
+  const countsByChannelId = listChannelAssetCounts(channels.map((channel) => channel.id));
+  return channels.map((channel) => {
+    const counts = countsByChannelId.get(channel.id) ?? new Map<string, number>();
+    return {
+      ...channel,
+      backgroundCount: counts.get("background") ?? 0,
+      musicCount: counts.get("music") ?? 0,
+      hasAvatar: Boolean(channel.avatarAssetId)
+    };
+  });
+}
+
 export async function listChannelsWithStats(
   workspaceId?: string
 ): Promise<
@@ -349,19 +496,24 @@ export async function listChannelsWithStats(
   >
 > {
   const channels = await listChannels(workspaceId);
-  const db = getDb();
-  return channels.map((channel) => {
-    const rows = db
-      .prepare("SELECT kind, COUNT(*) as count FROM channel_assets WHERE channel_id = ? GROUP BY kind")
-      .all(channel.id) as Record<string, unknown>[];
-    const counts = new Map(rows.map((row) => [String(row.kind), Number(row.count)]));
-    return {
-      ...channel,
-      backgroundCount: counts.get("background") ?? 0,
-      musicCount: counts.get("music") ?? 0,
-      hasAvatar: Boolean(channel.avatarAssetId)
-    };
-  });
+  return attachChannelStats(channels);
+}
+
+export async function listVisibleChannelsWithStats(input: {
+  workspaceId: string;
+  userId: string;
+  role: AppRole;
+}): Promise<
+  Array<
+    Channel & {
+      backgroundCount: number;
+      musicCount: number;
+      hasAvatar: boolean;
+    }
+  >
+> {
+  const channels = await listVisibleChannels(input);
+  return attachChannelStats(channels);
 }
 
 export async function getChannelById(channelId: string): Promise<Channel | null> {
@@ -788,17 +940,9 @@ export async function deleteChannelAssetById(
 }
 
 export async function listChats(channelId?: string, workspaceId?: string): Promise<ChatThread[]> {
-  const db = getDb();
-  const rows = (
-    channelId
-      ? db
-          .prepare("SELECT * FROM chat_threads WHERE channel_id = ? ORDER BY updated_at DESC")
-          .all(channelId)
-      : db
-          .prepare("SELECT * FROM chat_threads WHERE workspace_id = ? ORDER BY updated_at DESC")
-          .all(workspaceId ?? getAnyWorkspaceId())
-  ) as Record<string, unknown>[];
-  return rows.map((row) => mapThread(row, getThreadEvents(String(row.id))));
+  const rows = getThreadRows(channelId, workspaceId);
+  const eventsByThreadId = getThreadEventsByThreadIds(rows.map((row) => String(row.id)));
+  return rows.map((row) => mapThread(row, eventsByThreadId.get(String(row.id)) ?? []));
 }
 
 export async function listChatListItems(
@@ -1057,6 +1201,44 @@ export async function getChannelAccessForUser(
     createdAt: String(row.created_at),
     revokedAt: row.revoked_at ? String(row.revoked_at) : null
   };
+}
+
+export async function listChannelAccessForUserByChannelIds(
+  channelIds: string[],
+  userId: string
+): Promise<Map<string, ChannelAccessRecord>> {
+  const accessByChannelId = new Map<string, ChannelAccessRecord>();
+  const ids = channelIds.filter(Boolean);
+  if (ids.length === 0 || !userId.trim()) {
+    return accessByChannelId;
+  }
+  const db = getDb();
+  const chunkSize = 500;
+  for (let offset = 0; offset < ids.length; offset += chunkSize) {
+    const chunk = ids.slice(offset, offset + chunkSize);
+    const rows = db
+      .prepare(
+        `SELECT *
+           FROM channel_access
+          WHERE user_id = ?
+            AND revoked_at IS NULL
+            AND channel_id IN (${chunk.map(() => "?").join(", ")})`
+      )
+      .all(userId, ...chunk) as Record<string, unknown>[];
+    for (const row of rows) {
+      const record = {
+        id: String(row.id),
+        channelId: String(row.channel_id),
+        userId: String(row.user_id),
+        accessRole: "operate" as const,
+        grantedByUserId: String(row.granted_by_user_id),
+        createdAt: String(row.created_at),
+        revokedAt: row.revoked_at ? String(row.revoked_at) : null
+      };
+      accessByChannelId.set(record.channelId, record);
+    }
+  }
+  return accessByChannelId;
 }
 
 export async function listLegacyStage3VersionsByMedia(mediaId: string): Promise<Stage3Version[]> {

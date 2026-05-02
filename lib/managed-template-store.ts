@@ -831,22 +831,6 @@ function mapTemplateRow(row: Record<string, unknown>): ManagedTemplate {
   });
 }
 
-function toManagedTemplateSummary(template: ManagedTemplate): ManagedTemplateSummary {
-  return {
-    id: template.id,
-    name: template.name,
-    description: template.description,
-    layoutFamily: template.layoutFamily,
-    baseTemplateId: template.layoutFamily,
-    workspaceId: template.workspaceId,
-    creatorUserId: null,
-    creatorDisplayName: null,
-    createdAt: template.createdAt,
-    updatedAt: template.updatedAt,
-    versionsCount: 0
-  };
-}
-
 function insertOrUpdateTemplateRow(template: ManagedTemplate): void {
   const db = getDb();
   const existingWorkspaceId = getTemplateRowWorkspaceId(template.id);
@@ -1284,7 +1268,30 @@ export async function listManagedTemplates(workspaceId?: string | null): Promise
 }
 
 export function listManagedTemplateSummariesSync(workspaceId?: string | null): ManagedTemplateSummary[] {
-  return listManagedTemplatesSync(workspaceId).map(toManagedTemplateSummary);
+  const resolvedWorkspaceId = resolveWorkspaceId(workspaceId);
+  ensureWorkspaceTemplateLibrarySync(resolvedWorkspaceId);
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, workspace_id, name, description, layout_family, created_at, updated_at
+       FROM workspace_templates
+       WHERE workspace_id = ? AND archived_at IS NULL
+       ORDER BY updated_at DESC, created_at DESC`
+    )
+    .all(resolvedWorkspaceId) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    description: String(row.description),
+    layoutFamily: String(row.layout_family),
+    baseTemplateId: String(row.layout_family),
+    workspaceId: String(row.workspace_id),
+    creatorUserId: null,
+    creatorDisplayName: null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    versionsCount: 0
+  }));
 }
 
 export async function listManagedTemplateSummaries(

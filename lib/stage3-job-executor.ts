@@ -23,6 +23,7 @@ import {
 } from "./stage3-render-service";
 import { executeStage3AgentMediaStep, type Stage3AgentMediaStepPayload } from "./stage3-agent-media-step";
 import { ensureStage3SourceCached } from "./stage3-server-control";
+import { isStage3WorkerJobTimeoutError } from "./stage3-worker-job-timeout";
 
 export type Stage3ExecutedJobResult = {
   resultJson: string | null;
@@ -160,6 +161,13 @@ export function classifyStage3HeavyJobError(
 ): { code: string; message: string; recoverable: boolean } {
   const message = error instanceof Error ? error.message : String(error);
   const lowerMessage = message.toLowerCase();
+  if (isStage3WorkerJobTimeoutError(error)) {
+    return {
+      code: `${kind.replaceAll("-", "_")}_timeout`,
+      message,
+      recoverable: true
+    };
+  }
   if (
     lowerMessage.includes("template snapshot drift") ||
     lowerMessage.includes("template spec revision changed") ||

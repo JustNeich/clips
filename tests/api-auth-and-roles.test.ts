@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { POST as fetchComments } from "../app/api/comments/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
+import { GET as listChannelsRoute } from "../app/api/channels/route";
 import { PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
 import {
   GET as listManagedTemplatesRoute,
@@ -208,6 +209,66 @@ test("team policy keeps full redactor as the standard editor role", async () => 
     });
 
     assert.equal(invitedEditor.membership.role, "redactor");
+  });
+});
+
+test("channels API only returns channels visible to the current redactor", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Visible Channels Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "limited@example.com",
+      role: "redactor_limited",
+      createdByUserId: owner.user.id
+    });
+    const limitedEditor = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Limited Editor"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const visibleChannel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Visible Channel",
+      username: "visible_channel"
+    });
+    await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Hidden Channel",
+      username: "hidden_channel"
+    });
+    setChannelAccess({
+      channelId: visibleChannel.id,
+      userId: limitedEditor.user.id,
+      grantedByUserId: owner.user.id
+    });
+
+    const response = await listChannelsRoute(
+      new Request("http://localhost/api/channels", {
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${limitedEditor.sessionToken}`
+        }
+      })
+    );
+    const body = (await response.json()) as {
+      channels?: Array<{
+        id: string;
+        currentUserCanOperate?: boolean;
+        currentUserCanEditSetup?: boolean;
+      }>;
+    };
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.channels?.map((channel) => channel.id), [visibleChannel.id]);
+    assert.equal(body.channels?.[0]?.currentUserCanOperate, true);
+    assert.equal(body.channels?.[0]?.currentUserCanEditSetup, false);
   });
 });
 
