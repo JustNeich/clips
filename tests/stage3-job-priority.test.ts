@@ -265,6 +265,97 @@ test("local worker leases survive long Stage 3 operations", async () => {
   });
 });
 
+test("local worker restart reclaims its own stale active job before lease expiry", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "win32-x64"
+    });
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: "chat-restart",
+        sourceUrl: "https://youtube.com/watch?v=restart"
+      })
+    });
+
+    const firstClaim = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy"]
+    });
+    assert.equal(firstClaim?.id, job.id);
+    assert.equal(firstClaim?.status, "running");
+    assert.equal(firstClaim?.attempts, 1);
+
+    const otherWorkerClaim = claimNextQueuedStage3JobForWorker({
+      workerId: "other-worker",
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy"]
+    });
+    assert.equal(otherWorkerClaim, null);
+    assert.equal(getStage3Job(job.id)?.assignedWorkerId, exchanged.worker.id);
+
+    const duplicateWorkerClaim = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy"]
+    });
+    assert.equal(duplicateWorkerClaim, null);
+    assert.equal(getStage3Job(job.id)?.attempts, 1);
+
+    const staleHeartbeat = new Date(Date.now() - 30_000).toISOString();
+    db.prepare("UPDATE stage3_jobs SET heartbeat_at = ?, updated_at = ? WHERE id = ?").run(
+      staleHeartbeat,
+      staleHeartbeat,
+      job.id
+    );
+
+    const recoveredClaim = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["editing-proxy"]
+    });
+    assert.equal(recoveredClaim?.id, job.id);
+    assert.equal(recoveredClaim?.status, "running");
+    assert.equal(recoveredClaim?.assignedWorkerId, exchanged.worker.id);
+    assert.equal(recoveredClaim?.attempts, 2);
+
+    const events = db
+      .prepare("SELECT message FROM stage3_job_events WHERE job_id = ? ORDER BY created_at ASC")
+      .all(job.id) as Array<{ message: string }>;
+    assert.ok(events.some((event) => event.message === "Local worker restarted; job returned to queue."));
+  });
+});
+
 test("host runtime processes multiple jobs up to configured concurrency", { concurrency: false }, async () => {
   await withIsolatedAppData(async () => {
     const previousLimit = process.env.STAGE3_HOST_MAX_CONCURRENT_JOBS;

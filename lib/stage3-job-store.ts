@@ -92,6 +92,7 @@ type ClaimStage3WorkerJobInput = {
 };
 
 export const DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS = 45 * 60_000;
+const LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS = 20_000;
 
 function normalizeJobKind(value: string): Stage3JobKind {
   if (
@@ -542,6 +543,108 @@ function requeueExpiredLocalJobsInternal(db: ReturnType<typeof getDb>): void {
   }
 }
 
+function requeueRunningJobsForWorkerInternal(
+  db: ReturnType<typeof getDb>,
+  input: Pick<ClaimStage3WorkerJobInput, "workerId" | "workspaceId" | "userId" | "supportedKinds">
+): number {
+  const staleHeartbeatCutoff = new Date(Date.now() - LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS).toISOString();
+  const kinds = (input.supportedKinds?.length ? input.supportedKinds : null) as Stage3JobKind[] | null;
+  const query = kinds
+    ? `SELECT *
+         FROM stage3_jobs
+        WHERE execution_target = 'local'
+          AND status = 'running'
+          AND assigned_worker_id = ?
+          AND workspace_id = ?
+          AND user_id = ?
+          AND (heartbeat_at IS NULL OR heartbeat_at <= ?)
+          AND kind IN (${kinds.map(() => "?").join(", ")})
+        ORDER BY updated_at ASC, created_at ASC`
+    : `SELECT *
+         FROM stage3_jobs
+        WHERE execution_target = 'local'
+          AND status = 'running'
+          AND assigned_worker_id = ?
+          AND workspace_id = ?
+          AND user_id = ?
+          AND (heartbeat_at IS NULL OR heartbeat_at <= ?)
+        ORDER BY updated_at ASC, created_at ASC`;
+  const params = kinds
+    ? [input.workerId, input.workspaceId, input.userId, staleHeartbeatCutoff, ...kinds]
+    : [input.workerId, input.workspaceId, input.userId, staleHeartbeatCutoff];
+  const rows = db.prepare(query).all(...params) as JobRow[];
+  if (!rows.length) {
+    return 0;
+  }
+
+  const stamp = nowIso();
+  let recovered = 0;
+  for (const row of rows) {
+    const attempts = Number(row.attempts) || 0;
+    const attemptLimit = Number(row.attempt_limit) || 3;
+    if (attempts >= attemptLimit) {
+      const result = db.prepare(
+        `UPDATE stage3_jobs
+            SET status = 'failed',
+                error_code = 'worker_restart_attempt_limit',
+                error_message = ?,
+                recoverable = 1,
+                completed_at = ?,
+                updated_at = ?,
+                assigned_worker_id = NULL,
+                lease_expires_at = NULL,
+                heartbeat_at = NULL
+          WHERE id = ?
+            AND status = 'running'
+            AND assigned_worker_id = ?
+            AND (heartbeat_at IS NULL OR heartbeat_at <= ?)`
+      ).run(
+        "Локальный executor был перезапущен до завершения Stage 3 job, и лимит повторных попыток исчерпан.",
+        stamp,
+        stamp,
+        row.id,
+        input.workerId,
+        staleHeartbeatCutoff
+      );
+      if ((result.changes ?? 0) > 0) {
+        appendStage3JobEvent(String(row.id), "warn", "Local worker restart recovery failed after max attempts.", {
+          workerId: input.workerId,
+          attempts,
+          attemptLimit
+        });
+        recovered += 1;
+      }
+      continue;
+    }
+
+    const result = db.prepare(
+      `UPDATE stage3_jobs
+          SET status = 'queued',
+              error_code = NULL,
+              error_message = NULL,
+              completed_at = NULL,
+              updated_at = ?,
+              assigned_worker_id = NULL,
+              lease_expires_at = NULL,
+              heartbeat_at = NULL
+        WHERE id = ?
+          AND status = 'running'
+          AND assigned_worker_id = ?
+          AND (heartbeat_at IS NULL OR heartbeat_at <= ?)`
+    ).run(stamp, row.id, input.workerId, staleHeartbeatCutoff);
+    if ((result.changes ?? 0) > 0) {
+      appendStage3JobEvent(String(row.id), "warn", "Local worker restarted; job returned to queue.", {
+        workerId: input.workerId,
+        attempts,
+        attemptLimit
+      });
+      recovered += 1;
+    }
+  }
+
+  return recovered;
+}
+
 function interruptSupersededQueuedLocalRenderJobsInternal(db: ReturnType<typeof getDb>): number {
   const rows = db
     .prepare(
@@ -729,6 +832,7 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
 
   const job = runInTransaction((db) => {
     requeueExpiredLocalJobsInternal(db);
+    requeueRunningJobsForWorkerInternal(db, input);
     interruptSupersededQueuedLocalRenderJobsInternal(db);
     interruptSupersededQueuedLocalPreviewJobsInternal(db);
 
