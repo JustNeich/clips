@@ -27,7 +27,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     const auth = requireStage3WorkerAuth(request);
     const { id } = await context.params;
     const current = getStage3Job(id);
-    if (!current || current.workspaceId !== auth.workspaceId || current.userId !== auth.userId) {
+    if (!current || current.workspaceId !== auth.workspaceId) {
       return Response.json({ error: "Stage 3 job not found." }, { status: 404 });
     }
     if (current.assignedWorkerId !== auth.worker.id) {

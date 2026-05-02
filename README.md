@@ -187,7 +187,7 @@ npm run stage2-worker
 ## Stage 3 рендер
 
 - Финальный рендер и live preview для Stage 3 больше не должны нагружать production web service напрямую.
-- В production тяжелые задачи Stage 3 выполняет локальный worker пользователя:
+- В production тяжелые задачи Stage 3 выполняет локальный worker workspace:
   - `preview`
   - `render`
   - `source-download`
@@ -226,6 +226,7 @@ npm run stage2-worker
   - `macOS arm64/x64`
   - `Windows x64`
 - Worker pairing доступен прямо из Stage 3 UI через блок `Local Executor`.
+- Worker после pairing считается executor-ом workspace: онлайн-worker одного редактора может выполнять Stage 3 jobs другого редактора в том же workspace, но не видит jobs других workspace.
 - Для localhost используется repo-local CLI:
 
 ```bash
@@ -441,7 +442,7 @@ Publishing / YouTube queue:
 - `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — обязательны для подключения YouTube канала и публикации через OAuth.
 - `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для `yt-dlp` comments/metadata paths и локального worker media path. Для hosted YouTube source download production path теперь использует `Visolix` и не пытается идти в `yt-dlp`.
 
-Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Поэтому ситуация, когда Step 1/2 у всех проходит, а Stage 3 ломается только у одного пользователя, действительно может быть связана именно с его локальным runtime/IP.
+Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Если Step 1/2 у всех проходит, а Stage 3 ломается только у одного редактора, сначала проверьте workspace-level worker status и runtime compatibility, затем локальный runtime/IP конкретной машины.
 
 Hosted Step 1 YouTube media path:
 - primary path: `Visolix`

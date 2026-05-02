@@ -10,12 +10,11 @@ export type Stage3LocalWorkerReadiness = {
 
 export async function resolveStage3LocalWorkerReadiness(input: {
   workspaceId: string;
-  userId: string;
+  userId?: string | null;
 }): Promise<Stage3LocalWorkerReadiness> {
   const expectedRuntimeVersion = await getExpectedStage3WorkerRuntimeVersion();
   const workers = listStage3Workers({
-    workspaceId: input.workspaceId,
-    userId: input.userId
+    workspaceId: input.workspaceId
   });
   const onlineWorkers = workers.filter((worker) => worker.status !== "offline").length;
   const compatibleOnlineWorkers = workers.filter((worker) => {
@@ -35,4 +34,3 @@ export async function resolveStage3LocalWorkerReadiness(input: {
     compatibleOnlineWorkers
   };
 }
-

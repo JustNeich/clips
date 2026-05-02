@@ -25,6 +25,7 @@
   - `macOS arm64/x64`
   - `Windows x64`
 - Pairing и worker status доступны прямо из Stage 3 UI.
+- Local executor is workspace-scoped: any online compatible worker paired inside the workspace can process Stage 3 jobs from any editor in that workspace. Jobs never cross the workspace boundary.
 
 ## Что должен сделать владелец проекта
 
@@ -162,7 +163,7 @@ hosted preview/render и вспомогательные subprocess-задачи 
 - `Offline`:
   worker был подключен, но не шлет heartbeat
 - `Online`:
-  worker готов забирать jobs
+  worker готов забирать jobs текущего workspace
 - `Busy`:
   worker сейчас выполняет активный Stage 3 job; в описании статуса дополнительно показывается тип задачи (`preview`, `render`, `editing-proxy` и т.д.)
 
@@ -171,6 +172,8 @@ UI worker list теперь при каждом poll автоматически 
 Если executor перезапущен, пока за ним ещё числится активная Stage 3 job, следующий worker claim после короткого heartbeat grace возвращает эту job в очередь и забирает её заново тем же worker-ом вместо ожидания полного lease window.
 
 Preview/render больше не должны тихо падать обратно на host. Если worker offline, job останется в очереди и UI покажет честное состояние ожидания.
+
+Local executor больше не привязан к конкретному редактору после pairing. Если Даша запустила executor в том же workspace, Катя должна видеть workspace как готовый к локальному Stage 3, а её preview/render job может быть выполнен этим executor. Это убирает class сбоев, где один и тот же компьютер был подключен под другим аккаунтом и backend видел `onlineWorkers: 0` для редактора, хотя worker реально работал.
 
 Совместимость runtime теперь асимметрична: если у worker тот же базовый release, но build новее серверного, он считается допустимым. Блокировать нужно именно более старые runtime-сборки, которые еще не знают про текущий хост.
 

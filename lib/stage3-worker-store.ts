@@ -476,7 +476,7 @@ export function touchStage3WorkerHeartbeat(input: {
   return worker;
 }
 
-export function listStage3Workers(input: { workspaceId: string; userId: string }): Stage3WorkerSummary[] {
+export function listStage3Workers(input: { workspaceId: string; userId?: string | null }): Stage3WorkerSummary[] {
   const appDataDir = getAppDataDir();
   const now = Date.now();
   const lastWorkerSweepAtMs = workerSweepAtByAppDataDir.get(appDataDir) ?? 0;
@@ -485,6 +485,8 @@ export function listStage3Workers(input: { workspaceId: string; userId: string }
     sweepExpiredLocalStage3Jobs();
   }
   const db = getDb();
+  const userFilter = input.userId?.trim() ? "AND w.user_id = ?" : "";
+  const params = input.userId?.trim() ? [input.workspaceId, input.userId.trim()] : [input.workspaceId];
   const rows = db
     .prepare(
       `WITH ranked_jobs AS (
@@ -513,11 +515,11 @@ export function listStage3Workers(input: { workspaceId: string; userId: string }
            ON r.assigned_worker_id = w.id
           AND r.row_num = 1
         WHERE w.workspace_id = ?
-          AND w.user_id = ?
+          ${userFilter}
           AND w.revoked_at IS NULL
         ORDER BY w.updated_at DESC`
     )
-    .all(input.workspaceId, input.userId) as WorkerRow[];
+    .all(...params) as WorkerRow[];
   return rows
     .map((row) => mapWorkerRow(row))
     .filter((row): row is Stage3WorkerRecord => Boolean(row));

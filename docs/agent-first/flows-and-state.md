@@ -428,7 +428,7 @@
 4. Копирует команду.
 5. Запускает её на своей машине.
 6. Worker проходит auth/pairing/heartbeat.
-7. UI показывает `Online`.
+7. UI показывает workspace-level `Online`; worker может забирать Stage 3 jobs любого редактора в этом workspace.
 
 ### Alternate path
 
@@ -440,6 +440,7 @@
 1. Pairing command не создаётся.
 2. Worker не heartbeat-ит.
 3. Platform mismatch или dependency missing.
+4. Worker online под другим редактором в том же workspace больше не должен считаться blocked path: readiness, claim, complete/fail работают по workspace boundary.
 
 ### Failure / recovery
 

@@ -208,6 +208,83 @@ test("local worker skips superseded queued previews for the same chat", async ()
   });
 });
 
+test("workspace local worker can claim another member's queued job without crossing workspaces", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const ownerUserId = "u1";
+    const editorUserId = "u2";
+    const otherWorkspaceId = "w2";
+    const otherUserId = "u3";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      otherWorkspaceId,
+      "Other workspace",
+      "other-workspace",
+      stamp,
+      stamp
+    );
+    for (const [userId, email, displayName] of [
+      [ownerUserId, "owner@example.com", "Owner"],
+      [editorUserId, "editor@example.com", "Editor"],
+      [otherUserId, "other@example.com", "Other"]
+    ]) {
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(userId, email, "hash", displayName, "active", stamp, stamp);
+    }
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, ownerUserId, "owner", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, editorUserId, "redactor", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), otherWorkspaceId, otherUserId, "owner", stamp, stamp);
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId: ownerUserId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "shared worker",
+      platform: "darwin-arm64"
+    });
+
+    const otherWorkspaceJob = enqueueStage3Job({
+      workspaceId: otherWorkspaceId,
+      userId: otherUserId,
+      kind: "editing-proxy",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=other-workspace" })
+    });
+    const editorJob = enqueueStage3Job({
+      workspaceId,
+      userId: editorUserId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=editor-job" })
+    });
+
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      supportedKinds: ["editing-proxy", "render"]
+    });
+
+    assert.equal(claimed?.id, editorJob.id);
+    assert.equal(claimed?.userId, editorUserId);
+    assert.equal(getStage3Job(otherWorkspaceJob.id)?.status, "queued");
+  });
+});
+
 test("local worker leases survive long Stage 3 operations", async () => {
   await withIsolatedAppData(async () => {
     const db = getDb();

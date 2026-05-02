@@ -1,11 +1,8 @@
 import { createReadStream } from "node:fs";
-import { getMembership } from "../../../../../../lib/team-store";
 import {
-  getChannelAccessForUser,
   getChannelAssetById,
   getChannelById
 } from "../../../../../../lib/chat-history";
-import { resolveChannelPermissions } from "../../../../../../lib/acl";
 import { resolveChannelAssetFile } from "../../../../../../lib/channel-assets";
 import { requireStage3WorkerAuth } from "../../../../../../lib/auth/stage3-worker";
 import { createNodeStreamResponse } from "../../../../../../lib/node-stream-response";
@@ -23,28 +20,13 @@ export async function GET(request: Request, context: Context): Promise<Response>
     }
 
     const auth = requireStage3WorkerAuth(request);
-    const membership = getMembership(auth.userId, auth.workspaceId);
-    if (!membership) {
-      return Response.json({ error: "Worker membership not found." }, { status: 403 });
-    }
-
     const channel = await getChannelById(channelId);
     if (!channel || channel.workspaceId !== auth.workspaceId) {
       return Response.json({ error: "Channel not found." }, { status: 404 });
     }
 
-    const explicitAccess = await getChannelAccessForUser(channelId, auth.userId);
-    const permissions = resolveChannelPermissions({
-      membership,
-      channel: { id: channel.id, creatorUserId: channel.creatorUserId },
-      explicitAccess
-    });
-    if (!permissions.isVisible) {
-      return Response.json({ error: "Доступ запрещен." }, { status: 403 });
-    }
-
     const asset = await getChannelAssetById(channelId, assetId);
-    if (!asset) {
+    if (!asset || asset.workspaceId !== auth.workspaceId) {
       return Response.json({ error: "Asset not found." }, { status: 404 });
     }
 

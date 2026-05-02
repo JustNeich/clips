@@ -273,8 +273,7 @@ async function executeAgentMediaStep(
   }
 
   const workers = listStage3Workers({
-    workspaceId: input.workspaceId,
-    userId: input.userId
+    workspaceId: input.workspaceId
   });
   if (!workers.some((worker) => worker.status !== "offline")) {
     throw new Error("Локальный executor Stage 3 не подключен. Подключите worker и повторите попытку.");

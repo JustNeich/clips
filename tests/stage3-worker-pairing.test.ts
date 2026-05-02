@@ -88,6 +88,49 @@ test("pairing token can be retried on the same machine without creating duplicat
   });
 });
 
+test("workspace worker list includes executors paired by another workspace member", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const ownerUserId = "u1";
+    const editorUserId = "u2";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    for (const [userId, email, displayName] of [
+      [ownerUserId, "owner@example.com", "Owner"],
+      [editorUserId, "editor@example.com", "Editor"]
+    ]) {
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(userId, email, "hash", displayName, "active", stamp, stamp);
+      db.prepare(
+        "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(newId(), workspaceId, userId, userId === ownerUserId ? "owner" : "redactor", stamp, stamp);
+    }
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId: ownerUserId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "owner worker",
+      platform: "darwin-arm64"
+    });
+
+    const workspaceWorkers = listStage3Workers({ workspaceId });
+    const editorScopedWorkers = listStage3Workers({ workspaceId, userId: editorUserId });
+
+    assert.equal(workspaceWorkers.length, 1);
+    assert.equal(workspaceWorkers[0]?.id, exchanged.worker.id);
+    assert.equal(editorScopedWorkers.length, 0);
+  });
+});
+
 test("pairing token retry is rejected when the same command is reused on another machine", async () => {
   await withIsolatedAppData(async () => {
     const workspaceId = "w1";
