@@ -57,3 +57,35 @@ test("windows bootstrap script uses basic parsing and writes bootstrap logs", ()
   assert.match(script, /Bundled runtime dependencies unpacked locally\. npm registry access is not required\./);
   assert.match(script, /Installing worker runtime dependencies with npm/);
 });
+
+test("worker manifest ships only runtime-required template specs", () => {
+  const manifestPath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+    designFiles?: string[];
+    publicFiles?: string[];
+  };
+
+  assert.deepEqual([...(manifest.designFiles ?? [])].sort(), [
+    "templates/hedges-of-honor-v1/figma-spec.json",
+    "templates/science-card-v1/figma-spec.json",
+    "templates/science-card-v7/figma-spec.json"
+  ]);
+  assert.ok(
+    !(manifest.designFiles ?? []).includes("templates/channel-story-v1/figma-spec.json"),
+    "generated specs must not be copied into the executor runtime"
+  );
+  assert.ok(
+    !(manifest.designFiles ?? []).includes("templates/american-news-v1/figma-spec.json"),
+    "template workspace growth must not expand executor bootstrap inputs"
+  );
+  assert.deepEqual([...(manifest.publicFiles ?? [])].sort(), [
+    "stage3-template-backdrops/hedges-of-honor-v1-shell.svg",
+    "stage3-template-backdrops/science-card-v7-shell.svg",
+    "stage3-template-badges/american-news-badge.svg",
+    "stage3-template-badges/gold-glow-badge.png",
+    "stage3-template-badges/honor-verified-badge.svg",
+    "stage3-template-badges/pink-glow-badge.png",
+    "stage3-template-badges/science-card-v1-check.png",
+    "stage3-template-badges/twitter-verified-badge.png"
+  ]);
+});

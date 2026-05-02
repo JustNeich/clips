@@ -137,10 +137,24 @@ async function resolvePersistedChannelTemplateId(
   value: string | null | undefined,
   fallback?: string
 ): Promise<string> {
-  const fallbackTemplateId = fallback?.trim() || (await getWorkspaceDefaultTemplateId(workspaceId));
-  const candidate = sanitizeName(value, fallbackTemplateId);
-  const resolved = await readManagedTemplate(candidate, { workspaceId });
-  return resolved?.id ?? fallbackTemplateId;
+  const candidate = typeof value === "string" && value.trim() ? value.trim() : "";
+  if (candidate) {
+    const resolved = await readManagedTemplate(candidate, { workspaceId });
+    if (resolved) {
+      return resolved.id;
+    }
+  }
+
+  const fallbackCandidate = fallback?.trim();
+  if (fallbackCandidate) {
+    const resolvedFallback = await readManagedTemplate(fallbackCandidate, { workspaceId });
+    if (resolvedFallback) {
+      return resolvedFallback.id;
+    }
+    return fallbackCandidate;
+  }
+
+  return getWorkspaceDefaultTemplateId(workspaceId);
 }
 
 async function repairChannelTemplateReference(channel: Channel): Promise<Channel> {

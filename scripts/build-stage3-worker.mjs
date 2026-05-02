@@ -58,6 +58,26 @@ const WORKER_LIB_RUNTIME_FILES = [
   "stage3-worker-job-timeout.ts"
 ];
 
+const WORKER_TEMPLATE_SPEC_FILES = [
+  // Only repo-backed specs that stage3-template-spec.ts imports at runtime.
+  // Other registered templates are generated from code and must not make
+  // local executor bootstrap scale with the template workspace/library size.
+  "templates/science-card-v1/figma-spec.json",
+  "templates/science-card-v7/figma-spec.json",
+  "templates/hedges-of-honor-v1/figma-spec.json"
+];
+
+const WORKER_PUBLIC_RUNTIME_FILES = [
+  "stage3-template-backdrops/hedges-of-honor-v1-shell.svg",
+  "stage3-template-backdrops/science-card-v7-shell.svg",
+  "stage3-template-badges/american-news-badge.svg",
+  "stage3-template-badges/gold-glow-badge.png",
+  "stage3-template-badges/honor-verified-badge.svg",
+  "stage3-template-badges/pink-glow-badge.png",
+  "stage3-template-badges/science-card-v1-check.png",
+  "stage3-template-badges/twitter-verified-badge.png"
+];
+
 async function listWorkerRemotionRuntimeFiles() {
   const entries = await fs.readdir(remotionSourceDir, { withFileTypes: true });
   return entries
@@ -67,25 +87,13 @@ async function listWorkerRemotionRuntimeFiles() {
 }
 
 async function copyWorkerTemplateSpecs() {
-  const templatesSourceDir = path.join(designSourceDir, "templates");
-  const templatesPublicDir = path.join(designPublicDir, "templates");
-  await fs.mkdir(templatesPublicDir, { recursive: true });
-  const entries = await fs.readdir(templatesSourceDir, { withFileTypes: true }).catch(() => []);
   const copiedFiles = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const sourcePath = path.join(templatesSourceDir, entry.name, "figma-spec.json");
-    try {
-      await fs.access(sourcePath);
-    } catch {
-      continue;
-    }
-    const targetDir = path.join(templatesPublicDir, entry.name);
-    await fs.mkdir(targetDir, { recursive: true });
-    const relativeFilePath = path.join("templates", entry.name, "figma-spec.json");
-    await fs.copyFile(sourcePath, path.join(targetDir, "figma-spec.json"));
+  for (const relativeFilePath of WORKER_TEMPLATE_SPEC_FILES) {
+    const sourcePath = path.join(designSourceDir, relativeFilePath);
+    const targetPath = path.join(designPublicDir, relativeFilePath);
+    await fs.access(sourcePath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.copyFile(sourcePath, targetPath);
     copiedFiles.push(relativeFilePath);
   }
   return copiedFiles.sort();
@@ -93,22 +101,13 @@ async function copyWorkerTemplateSpecs() {
 
 async function copyWorkerPublicAssets() {
   const copiedFiles = [];
-  const relativeDirs = ["stage3-template-badges", "stage3-template-backdrops"];
-  for (const relativeDir of relativeDirs) {
-    const sourceDir = path.join(publicSourceDir, relativeDir);
-    const targetDir = path.join(workerPublicAssetsDir, relativeDir);
-    const entries = await fs.readdir(sourceDir, { withFileTypes: true }).catch(() => []);
-    if (entries.length === 0) {
-      continue;
-    }
-    await fs.mkdir(targetDir, { recursive: true });
-    for (const entry of entries) {
-      if (!entry.isFile()) {
-        continue;
-      }
-      await fs.copyFile(path.join(sourceDir, entry.name), path.join(targetDir, entry.name));
-      copiedFiles.push(path.join(relativeDir, entry.name));
-    }
+  for (const relativeFilePath of WORKER_PUBLIC_RUNTIME_FILES) {
+    const sourcePath = path.join(publicSourceDir, relativeFilePath);
+    const targetPath = path.join(workerPublicAssetsDir, relativeFilePath);
+    await fs.access(sourcePath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.copyFile(sourcePath, targetPath);
+    copiedFiles.push(relativeFilePath);
   }
   return copiedFiles.sort();
 }

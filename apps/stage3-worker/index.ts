@@ -93,10 +93,14 @@ const DEFAULT_DESIGN_FILES = [
   "templates/hedges-of-honor-v1/figma-spec.json"
 ];
 const DEFAULT_PUBLIC_FILES = [
-  "stage3-template-badges/science-card-v1-check.png",
-  "stage3-template-badges/honor-verified-badge.svg",
+  "stage3-template-backdrops/hedges-of-honor-v1-shell.svg",
   "stage3-template-backdrops/science-card-v7-shell.svg",
-  "stage3-template-backdrops/hedges-of-honor-v1-shell.svg"
+  "stage3-template-badges/american-news-badge.svg",
+  "stage3-template-badges/gold-glow-badge.png",
+  "stage3-template-badges/honor-verified-badge.svg",
+  "stage3-template-badges/pink-glow-badge.png",
+  "stage3-template-badges/science-card-v1-check.png",
+  "stage3-template-badges/twitter-verified-badge.png"
 ];
 
 function workerHomeDir(): string {

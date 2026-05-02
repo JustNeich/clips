@@ -949,6 +949,23 @@ function getTemplateRowWorkspaceId(templateId: string): string | null {
   return typeof row?.workspace_id === "string" ? row.workspace_id : null;
 }
 
+function readActiveTemplateRow(
+  templateId: string,
+  workspaceId?: string | null
+): Record<string, unknown> | null {
+  const db = getDb();
+  const row = workspaceId?.trim()
+    ? db
+        .prepare(
+          "SELECT * FROM workspace_templates WHERE id = ? AND workspace_id = ? AND archived_at IS NULL LIMIT 1"
+        )
+        .get(templateId, workspaceId.trim())
+    : db
+        .prepare("SELECT * FROM workspace_templates WHERE id = ? AND archived_at IS NULL LIMIT 1")
+        .get(templateId);
+  return (row as Record<string, unknown> | undefined) ?? null;
+}
+
 function resolveWorkspaceScopedTemplateId(preferredId: string, workspaceId: string): string {
   const baseId = sanitizeTemplateId(preferredId) || `template-${sanitizeTemplateId(workspaceId).slice(0, 8)}`;
   const ownerWorkspaceId = getTemplateRowWorkspaceId(baseId);
@@ -1208,6 +1225,26 @@ function migrateWorkspaceTemplateHighlightDefaults(workspaceId: string): number 
   return migrated;
 }
 
+function mapTemplateRowWithTargetedHighlightMigration(row: Record<string, unknown>): ManagedTemplate {
+  const template = mapTemplateRow(row);
+  if (!template.archivedAt && templateHighlightConfigMatchesSeedExceptEnabled(template)) {
+    const updated = {
+      ...template,
+      updatedAt: nowIso(),
+      templateConfig: {
+        ...template.templateConfig,
+        highlights: {
+          ...template.templateConfig.highlights,
+          enabled: true
+        }
+      }
+    };
+    insertOrUpdateTemplateRow(updated);
+    return updated;
+  }
+  return template;
+}
+
 function ensureWorkspaceTemplateLibrarySync(workspaceId: string): string {
   resetManagedTemplateStoreCachesIfScopeChanged();
   const legacyTemplates = readLegacyTemplateSources();
@@ -1308,20 +1345,15 @@ export function readManagedTemplateSync(
   if (!safeId) {
     return null;
   }
+  const directRow = readActiveTemplateRow(safeId, options?.workspaceId);
+  if (directRow) {
+    return mapTemplateRowWithTargetedHighlightMigration(directRow);
+  }
   if (!options?.skipEnsure) {
     ensureWorkspaceTemplateLibrariesInitializedSync(options?.workspaceId);
   }
-  const db = getDb();
-  const row = options?.workspaceId
-    ? db
-        .prepare(
-          "SELECT * FROM workspace_templates WHERE id = ? AND workspace_id = ? AND archived_at IS NULL LIMIT 1"
-        )
-        .get(safeId, options.workspaceId)
-    : db
-        .prepare("SELECT * FROM workspace_templates WHERE id = ? AND archived_at IS NULL LIMIT 1")
-        .get(safeId);
-  return row ? mapTemplateRow(row as Record<string, unknown>) : null;
+  const repairedRow = readActiveTemplateRow(safeId, options?.workspaceId);
+  return repairedRow ? mapTemplateRowWithTargetedHighlightMigration(repairedRow) : null;
 }
 
 export async function readManagedTemplate(
