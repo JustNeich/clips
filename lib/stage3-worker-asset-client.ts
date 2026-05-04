@@ -10,6 +10,11 @@ export type Stage3WorkerDownloadedAsset = {
   mimeType: string | null;
 };
 
+type WorkerAssetEnv = {
+  serverOrigin: string;
+  sessionToken: string;
+};
+
 type CachedWorkerAssetMetadata = {
   version: "worker-asset-cache-v1";
   assetId: string;
@@ -27,7 +32,7 @@ const WORKER_ASSET_CACHE_LIMITS = {
 } as const;
 const WORKER_ASSET_CACHE_PRUNE_INTERVAL_MS = 2 * 60_000;
 
-function readWorkerAssetEnv(): { serverOrigin: string; sessionToken: string } | null {
+function readWorkerAssetEnv(): WorkerAssetEnv | null {
   const serverOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN?.trim();
   const sessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN?.trim();
   if (!serverOrigin || !sessionToken) {
@@ -216,21 +221,55 @@ export async function maybeDownloadStage3WorkerAsset(params: {
   tmpDir: string;
   suggestedFileName?: string | null;
 }): Promise<Stage3WorkerDownloadedAsset | null> {
+  return maybeDownloadStage3WorkerCachedAsset({
+    assetId: params.assetId,
+    tmpDir: params.tmpDir,
+    suggestedFileName: params.suggestedFileName,
+    buildUrl: (workerEnv) => {
+      const url = new URL(`${workerEnv.serverOrigin}/api/stage3/worker/assets/${encodeURIComponent(params.assetId)}`);
+      url.searchParams.set("channelId", params.channelId);
+      return url;
+    }
+  });
+}
+
+export async function maybeDownloadStage3WorkerTemplateAsset(params: {
+  assetId: string;
+  tmpDir: string;
+  suggestedFileName?: string | null;
+}): Promise<Stage3WorkerDownloadedAsset | null> {
+  return maybeDownloadStage3WorkerCachedAsset({
+    assetId: params.assetId,
+    cacheKey: `template-${params.assetId}`,
+    tmpDir: params.tmpDir,
+    suggestedFileName: params.suggestedFileName,
+    buildUrl: (workerEnv) =>
+      new URL(`${workerEnv.serverOrigin}/api/stage3/worker/template-assets/${encodeURIComponent(params.assetId)}`)
+  });
+}
+
+async function maybeDownloadStage3WorkerCachedAsset(params: {
+  assetId: string;
+  cacheKey?: string;
+  tmpDir: string;
+  suggestedFileName?: string | null;
+  buildUrl: (workerEnv: WorkerAssetEnv) => URL;
+}): Promise<Stage3WorkerDownloadedAsset | null> {
   const workerEnv = readWorkerAssetEnv();
   if (!workerEnv) {
     return null;
   }
+  const cacheAssetId = params.cacheKey ?? params.assetId;
   const cacheRoot = resolveWorkerAssetCacheRoot(params.tmpDir);
   await fs.mkdir(cacheRoot, { recursive: true });
-  const cached = await readCachedWorkerAsset(cacheRoot, params.assetId);
+  const cached = await readCachedWorkerAsset(cacheRoot, cacheAssetId);
   if (cached) {
     return cached;
   }
 
-  const previousMeta = await readCachedWorkerAssetMetadata(cacheRoot, params.assetId);
+  const previousMeta = await readCachedWorkerAssetMetadata(cacheRoot, cacheAssetId);
 
-  const url = new URL(`${workerEnv.serverOrigin}/api/stage3/worker/assets/${encodeURIComponent(params.assetId)}`);
-  url.searchParams.set("channelId", params.channelId);
+  const url = params.buildUrl(workerEnv);
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${workerEnv.sessionToken}`
@@ -238,7 +277,7 @@ export async function maybeDownloadStage3WorkerAsset(params: {
   });
 
   if (response.status === 404) {
-    await fs.rm(buildWorkerAssetMetaPath(cacheRoot, params.assetId), { force: true }).catch(() => undefined);
+    await fs.rm(buildWorkerAssetMetaPath(cacheRoot, cacheAssetId), { force: true }).catch(() => undefined);
     return null;
   }
   if (!response.ok) {
@@ -248,16 +287,16 @@ export async function maybeDownloadStage3WorkerAsset(params: {
 
   const fileName = sanitizeFileName(
     response.headers.get("x-stage3-asset-file-name") || params.suggestedFileName,
-    params.assetId
+    cacheAssetId
   );
-  const outputPath = path.join(cacheRoot, buildWorkerAssetDataFileName(params.assetId, fileName));
+  const outputPath = path.join(cacheRoot, buildWorkerAssetDataFileName(cacheAssetId, fileName));
   await writeWorkerAssetResponse(response, outputPath);
   await fs.writeFile(
-    buildWorkerAssetMetaPath(cacheRoot, params.assetId),
+    buildWorkerAssetMetaPath(cacheRoot, cacheAssetId),
     JSON.stringify(
       {
         version: WORKER_ASSET_CACHE_VERSION,
-        assetId: params.assetId,
+        assetId: cacheAssetId,
         createdAt: response.headers.get("x-stage3-asset-created-at"),
         fileName,
         mimeType: response.headers.get("content-type"),

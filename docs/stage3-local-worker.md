@@ -295,3 +295,4 @@ npm run desktop-worker:dev
 - Browser runtime для Remotion теперь проверяется до входа worker в job loop: если локальный Chrome/Edge найден, он используется напрямую; если нет, worker пытается подготовить Remotion-managed browser заранее, а не во время render job.
 - Linux и Windows ARM не входят в v1 scope.
 - Runtime native packages, которые зависят от платформы, проверяются до claim jobs. Если `runtime-deps.tar.gz` был собран на Linux, а worker запускается на Windows/macOS, worker self-heal переустанавливает локальные `esbuild` и `@rspack/*` bindings под текущую платформу вместо того, чтобы падать внутри preview/render.
+- Managed template assets, например загруженные шрифты, worker скачивает через authenticated worker endpoint и кладет в локальный Remotion `public`, чтобы render не обращался к `/api/design/template-assets/*` на локальном `localhost`.
