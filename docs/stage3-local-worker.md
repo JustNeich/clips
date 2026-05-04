@@ -24,7 +24,7 @@
 - Основной пользовательский runtime теперь отдельное desktop-приложение `Clips Worker`:
   - tray app
   - status window
-  - autostart worker loop after pairing
+  - autostart worker loop after pairing through the same Node 22 CLI runtime used by the terminal fallback
   - reconnect/retry
   - logs in worker home
   - pairing через `clips-stage3-worker://pair?...`
@@ -171,9 +171,11 @@ Managed tools:
 - Если manifest пустой или platform не настроена, worker использует уже установленные системные tools.
 - Если download/doctor падает, worker не claim-ит jobs и показывает конкретную причину в UI/logs.
 - Browser остаётся через существующий Remotion-managed fallback: локальный Chrome/Edge желателен, но при отсутствии worker готовит Remotion Headless Shell.
+- Desktop shell сам не выполняет heavy render внутри Electron. После pairing он находит локальный Node.js 22+, синхронизирует общий Stage 3 runtime в worker home и запускает его отдельным child process. Если Node.js 22+ не найден, app показывает конкретную ошибку и не claim-ит jobs.
 
 Legacy install hints, если manifest пока не заполнен:
 
+- Node.js: установить текущий LTS с `nodejs.org`, затем полностью перезапустить `Clips Worker`
 - macOS: `brew install ffmpeg yt-dlp`
 - Windows: `winget install Gyan.FFmpeg yt-dlp.yt-dlp`
 
@@ -182,16 +184,17 @@ Legacy install hints, если manifest пока не заполнен:
 ### Основной путь: Clips Worker
 
 1. Установить `Clips Worker` для своей платформы.
-2. Открыть Stage 3.
-3. Нажать `Подключить executor`.
-4. Нажать `Открыть Clips Worker`.
-5. Подтвердить открытие приложения по deep link.
-6. Дождаться:
+2. Убедиться, что установлен Node.js 22+.
+3. Открыть Stage 3.
+4. Нажать `Подключить executor`.
+5. Нажать `Открыть Clips Worker`.
+6. Подтвердить открытие приложения по deep link.
+7. Дождаться:
    - pairing
    - managed tool setup / doctor
    - worker loop
    - статуса `Online` в браузере.
-7. Оставить Clips Worker запущенным, пока используются preview/render/source-download/agent-media-step.
+8. Оставить Clips Worker запущенным, пока используются preview/render/source-download/agent-media-step.
 
 Если Clips Worker запущен без pairing, он показывает: `Open Stage 3 and click Open Clips Worker`.
 

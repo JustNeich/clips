@@ -53,6 +53,26 @@ test("desktop worker pairing deep link carries server, token and label", () => {
   assert.equal(parsed.searchParams.get("label"), "Katya Worker");
 });
 
+test("desktop worker build embeds the Stage 3 runtime version from the public manifest", () => {
+  const scriptPath = path.join(process.cwd(), "scripts", "build-desktop-worker.mjs");
+  const script = readFileSync(scriptPath, "utf8");
+
+  assert.match(script, /public.*stage3-worker.*manifest\.json/s);
+  assert.match(script, /runtimeVersion/);
+  assert.match(script, /__CLIPS_STAGE3_WORKER_RUNTIME_VERSION__:\s*JSON\.stringify\(runtimeVersion\)/);
+  assert.doesNotMatch(script, /__CLIPS_STAGE3_WORKER_RUNTIME_VERSION__:\s*JSON\.stringify\(null\)/);
+});
+
+test("desktop worker runtime sync can hydrate local runtime dependencies without npm", () => {
+  const runtimePath = path.join(process.cwd(), "lib", "stage3-worker-runtime.ts");
+  const runtime = readFileSync(runtimePath, "utf8");
+
+  assert.match(runtime, /runtimeDependenciesArchiveFile/);
+  assert.match(runtime, /replaceExtractedWorkerRuntimeDependencies/);
+  assert.match(runtime, /workerRuntimeDependenciesMissing/);
+  assert.match(runtime, /node_modules/);
+});
+
 test("windows bootstrap script uses basic parsing and writes bootstrap logs", () => {
   const scriptPath = path.join(process.cwd(), "public", "stage3-worker", "bootstrap.ps1");
   const script = readFileSync(scriptPath, "utf8");

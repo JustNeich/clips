@@ -65,6 +65,7 @@ type WorkerRuntimeManifest = {
   runtimeVersion?: string;
   builtAt?: string;
   bundleFile?: string;
+  runtimeDependenciesArchiveFile?: string;
   runtimeSourcesArchiveFile?: string;
   remotionFiles?: string[];
   libFiles?: string[];
@@ -282,7 +283,37 @@ async function replaceExtractedWorkerRuntimeSources(input: {
   await execFileAsync(resolveTarCommand(), ["-xzf", input.archivePath, "-C", input.workerRoot]);
 }
 
-async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boolean; runtimeVersion: string | null }> {
+async function replaceExtractedWorkerRuntimeDependencies(input: {
+  archivePath: string;
+  workerRoot: string;
+}): Promise<void> {
+  await fs.rm(path.join(input.workerRoot, "node_modules"), {
+    recursive: true,
+    force: true
+  }).catch(() => undefined);
+  await fs.mkdir(input.workerRoot, { recursive: true });
+  await execFileAsync(resolveTarCommand(), ["-xzf", input.archivePath, "-C", input.workerRoot]);
+  if (!(await fileExists(path.join(input.workerRoot, "node_modules")))) {
+    throw new Error("Worker runtime dependency archive did not create node_modules.");
+  }
+}
+
+async function workerRuntimeDependenciesMissing(workerRoot: string): Promise<boolean> {
+  const markers = [
+    path.join(workerRoot, "node_modules", "@remotion", "renderer", "package.json"),
+    path.join(workerRoot, "node_modules", "@remotion", "bundler", "package.json"),
+    path.join(workerRoot, "node_modules", "remotion", "package.json"),
+    path.join(workerRoot, "node_modules", "react", "package.json"),
+    path.join(workerRoot, "node_modules", "react-dom", "package.json")
+  ];
+  const missing = await Promise.all(markers.map(async (marker) => !(await fileExists(marker))));
+  return missing.some(Boolean);
+}
+
+export async function syncStage3WorkerRuntime(
+  serverOrigin: string,
+  options: { env?: NodeJS.ProcessEnv; npmCommand?: string } = {}
+): Promise<{ updated: boolean; runtimeVersion: string | null }> {
   const origin = serverOrigin.replace(/\/+$/, "");
   const remoteManifestResponse = await fetch(`${origin}/stage3-worker/manifest.json`, { cache: "no-store" });
   if (!remoteManifestResponse.ok) {
@@ -309,8 +340,17 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   const designDir = path.join(workerPaths.root, "design");
   const publicDir = path.join(workerPaths.root, "public");
   const binDir = path.join(workerPaths.root, "bin");
+  const bundlePath = path.join(binDir, DEFAULT_BUNDLE_FILE);
+  const packagePath = path.join(workerPaths.root, "package.json");
+  const manifestPath = path.join(workerPaths.root, "manifest.json");
+  const runtimeDependenciesArchivePath = path.join(workerPaths.root, "runtime-deps.tar.gz");
   const runtimeSourcesArchivePath = path.join(workerPaths.root, "runtime-sources.tar.gz");
   const bundleFile = remoteManifest.bundleFile?.trim() || DEFAULT_BUNDLE_FILE;
+  const runtimeDependenciesArchiveFile =
+    typeof remoteManifest.runtimeDependenciesArchiveFile === "string" &&
+    remoteManifest.runtimeDependenciesArchiveFile.trim()
+      ? remoteManifest.runtimeDependenciesArchiveFile.trim()
+      : "";
   const runtimeSourcesArchiveFile =
     typeof remoteManifest.runtimeSourcesArchiveFile === "string" &&
     remoteManifest.runtimeSourcesArchiveFile.trim()
@@ -328,8 +368,21 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
       ...publicFiles.map(async (fileName) => !(await fileExists(path.join(publicDir, fileName))))
     ])
   ).some(Boolean);
+  const runtimeInstallMissing = (
+    await Promise.all([
+      fileExists(bundlePath),
+      fileExists(packagePath),
+      fileExists(manifestPath)
+    ])
+  ).some((exists) => !exists);
+  const runtimeDependenciesMissing = await workerRuntimeDependenciesMissing(workerPaths.root);
 
-  if (localRuntimeVersion === remoteRuntimeVersion && !runtimeFilesMissing) {
+  if (
+    localRuntimeVersion === remoteRuntimeVersion &&
+    !runtimeFilesMissing &&
+    !runtimeInstallMissing &&
+    !runtimeDependenciesMissing
+  ) {
     return { updated: false, runtimeVersion: remoteRuntimeVersion };
   }
 
@@ -339,9 +392,9 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(binDir, { recursive: true });
 
-  await downloadBinaryFile(`${origin}/stage3-worker/${bundleFile}`, path.join(binDir, DEFAULT_BUNDLE_FILE));
-  await downloadBinaryFile(`${origin}/stage3-worker/package.json`, path.join(workerPaths.root, "package.json"));
-  await downloadBinaryFile(`${origin}/stage3-worker/manifest.json`, path.join(workerPaths.root, "manifest.json"));
+  await downloadBinaryFile(`${origin}/stage3-worker/${bundleFile}`, bundlePath);
+  await downloadBinaryFile(`${origin}/stage3-worker/package.json`, packagePath);
+  await downloadBinaryFile(`${origin}/stage3-worker/manifest.json`, manifestPath);
 
   let runtimeSourcesHydrated = false;
   if (runtimeSourcesArchiveFile) {
@@ -389,15 +442,37 @@ async function syncWorkerRuntime(serverOrigin: string): Promise<{ updated: boole
     }
   }
 
-  await fs.chmod(path.join(binDir, DEFAULT_BUNDLE_FILE), 0o755).catch(() => undefined);
-  await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", [
-    "install",
-    "--omit=dev",
-    "--no-fund",
-    "--no-audit"
-  ], {
-    cwd: workerPaths.root
-  });
+  let runtimeDependenciesHydrated = false;
+  if (runtimeDependenciesArchiveFile) {
+    try {
+      await downloadBinaryFile(
+        `${origin}/stage3-worker/${runtimeDependenciesArchiveFile}`,
+        runtimeDependenciesArchivePath
+      );
+      await replaceExtractedWorkerRuntimeDependencies({
+        archivePath: runtimeDependenciesArchivePath,
+        workerRoot: workerPaths.root
+      });
+      runtimeDependenciesHydrated = true;
+    } catch {
+      runtimeDependenciesHydrated = false;
+    } finally {
+      await fs.rm(runtimeDependenciesArchivePath, { force: true }).catch(() => undefined);
+    }
+  }
+
+  await fs.chmod(bundlePath, 0o755).catch(() => undefined);
+  if (!runtimeDependenciesHydrated) {
+    await execFileAsync(options.npmCommand ?? (process.platform === "win32" ? "npm.cmd" : "npm"), [
+      "install",
+      "--omit=dev",
+      "--no-fund",
+      "--no-audit"
+    ], {
+      cwd: workerPaths.root,
+      env: options.env ?? process.env
+    });
+  }
   return {
     updated: true,
     runtimeVersion: remoteRuntimeVersion
@@ -748,7 +823,7 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
   await ensureWorkerDirs();
   let syncResult: { updated: boolean; runtimeVersion: string | null } | null = null;
   try {
-    syncResult = await syncWorkerRuntime(config.serverOrigin);
+    syncResult = await syncStage3WorkerRuntime(config.serverOrigin);
     if (syncResult.updated) {
       console.log(
         `Updated local Stage 3 worker runtime to ${syncResult.runtimeVersion ?? "latest"}.`

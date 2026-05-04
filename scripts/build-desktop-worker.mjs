@@ -7,9 +7,37 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const outputDir = path.join(repoRoot, "output", "desktop-worker");
+const workerManifestPath = path.join(repoRoot, "public", "stage3-worker", "manifest.json");
+
+async function readWorkerRuntimeVersion() {
+  let manifest;
+  try {
+    manifest = JSON.parse(await fs.readFile(workerManifestPath, "utf-8"));
+  } catch (error) {
+    throw new Error(
+      "Desktop worker build requires public/stage3-worker/manifest.json. " +
+        `Run npm run build:stage3-worker first. ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  const runtimeVersion =
+    typeof manifest.runtimeVersion === "string" && manifest.runtimeVersion.trim()
+      ? manifest.runtimeVersion.trim()
+      : typeof manifest.version === "string" && manifest.version.trim()
+        ? manifest.version.trim()
+        : "";
+  if (!runtimeVersion) {
+    throw new Error(
+      "Desktop worker build requires a non-empty runtimeVersion in public/stage3-worker/manifest.json. " +
+        "Run npm run build:stage3-worker first."
+    );
+  }
+  return runtimeVersion;
+}
 
 async function main() {
   await fs.mkdir(outputDir, { recursive: true });
+  const runtimeVersion = await readWorkerRuntimeVersion();
   await Promise.all([
     build({
       entryPoints: [path.join(repoRoot, "apps", "desktop-worker", "main.ts")],
@@ -33,7 +61,7 @@ async function main() {
         "./channel-assets"
       ],
       define: {
-        __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: JSON.stringify(null)
+        __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: JSON.stringify(runtimeVersion)
       }
     }),
     build({

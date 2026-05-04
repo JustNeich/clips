@@ -1,12 +1,17 @@
 import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell } from "electron";
+import { spawn, type ChildProcess } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import {
+  buildStage3DesktopWorkerChildLaunch,
+  resolveStage3DesktopWorkerNode
+} from "../../lib/stage3-worker-desktop-launch";
 import {
   getStage3WorkerPaths,
   logoutStage3Worker,
   pairStage3Worker,
   readStage3WorkerConfig,
-  startStage3WorkerLoop,
+  syncStage3WorkerRuntime,
   type WorkerConfig
 } from "../../lib/stage3-worker-runtime";
 
@@ -24,6 +29,7 @@ const MAX_LOG_LINES = 200;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let workerPromise: Promise<void> | null = null;
+let workerProcess: ChildProcess | null = null;
 let workerRunId = 0;
 
 const state: DesktopWorkerState = {
@@ -143,14 +149,69 @@ function createTray(): void {
   updateTray();
 }
 
+function pipeWorkerOutput(
+  stream: NodeJS.ReadableStream,
+  level: "info" | "error"
+): void {
+  let buffer = "";
+  stream.setEncoding("utf-8");
+  stream.on("data", (chunk: string) => {
+    buffer += chunk;
+    let newlineIndex = buffer.indexOf("\n");
+    while (newlineIndex >= 0) {
+      const line = buffer.slice(0, newlineIndex).replace(/\r$/, "").trimEnd();
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line.trim()) {
+        void appendLog(level, line);
+      }
+      newlineIndex = buffer.indexOf("\n");
+    }
+  });
+  stream.on("end", () => {
+    const line = buffer.replace(/\r$/, "").trimEnd();
+    if (line.trim()) {
+      void appendLog(level, line);
+    }
+    buffer = "";
+  });
+}
+
+async function stopWorkerProcess(): Promise<void> {
+  const child = workerProcess;
+  if (!child) {
+    return;
+  }
+  workerProcess = null;
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+    child.once("exit", finish);
+    child.once("error", finish);
+    child.kill();
+    setTimeout(() => {
+      if (!settled) {
+        child.kill("SIGKILL");
+        finish();
+      }
+    }, 3000).unref?.();
+  });
+}
+
 async function startWorkerIfConfigured(force = false): Promise<void> {
-  if (workerPromise) {
+  if (workerPromise || workerProcess) {
     if (!force) {
       return;
     }
     workerRunId += 1;
+    const previousWorkerPromise = workerPromise;
     await appendLog("info", "Restarting Clips Worker loop.");
-    await workerPromise.catch(() => undefined);
+    await stopWorkerProcess();
+    await previousWorkerPromise?.catch(() => undefined);
   }
 
   const config = await refreshConfigState();
@@ -160,17 +221,72 @@ async function startWorkerIfConfigured(force = false): Promise<void> {
   }
   setState({ workerStatus: "starting", error: null });
   const runId = workerRunId;
-  const promise = startStage3WorkerLoop({
-    restartAfterRuntimeSync: false,
-    installSignalHandlers: false,
-    shouldStop: () => runId !== workerRunId
-  })
+  const promise = (async () => {
+    const node = await resolveStage3DesktopWorkerNode();
+    if (!node.ok) {
+      throw new Error(`${node.error} Checked: ${node.checked.join("; ") || "none"}`);
+    }
+    await appendLog("info", `Using Node.js ${node.version} for Stage 3 worker: ${node.command}`);
+
+    const launch = buildStage3DesktopWorkerChildLaunch({
+      nodeCommand: node.command,
+      installRoot: getStage3WorkerPaths().root
+    });
+    const syncResult = await syncStage3WorkerRuntime(config.serverOrigin, {
+      env: launch.env
+    });
+    if (syncResult.updated) {
+      await appendLog("info", `Prepared local Stage 3 runtime ${syncResult.runtimeVersion ?? "latest"}.`);
+    }
+    if (runId !== workerRunId) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(launch.command, launch.args, {
+        cwd: launch.cwd,
+        env: launch.env,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true
+      });
+      workerProcess = child;
+      pipeWorkerOutput(child.stdout, "info");
+      pipeWorkerOutput(child.stderr, "error");
+      child.once("spawn", () => {
+        setState({ workerStatus: "running", error: null });
+      });
+      child.once("error", (error) => {
+        if (workerProcess === child) {
+          workerProcess = null;
+        }
+        reject(error);
+      });
+      child.once("exit", (code, signal) => {
+        if (workerProcess === child) {
+          workerProcess = null;
+        }
+        if (runId !== workerRunId) {
+          resolve();
+          return;
+        }
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(new Error(`Stage 3 worker process exited (${signal ?? `code ${code ?? "unknown"}`}).`));
+      });
+    });
+  })()
     .then(() => {
-      setState({ workerStatus: "idle" });
+      if (runId === workerRunId) {
+        setState({ workerStatus: "idle" });
+      }
     })
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      setState({ workerStatus: "error", error: message });
+      if (runId === workerRunId) {
+        setState({ workerStatus: "error", error: message });
+      }
       void appendLog("error", message);
     })
     .finally(() => {
@@ -179,7 +295,6 @@ async function startWorkerIfConfigured(force = false): Promise<void> {
       }
     });
   workerPromise = promise;
-  setState({ workerStatus: "running" });
 }
 
 async function handlePairDeepLink(rawUrl: string): Promise<void> {
@@ -245,9 +360,11 @@ if (!singleInstance) {
   ipcMain.handle("retry-worker", () => startWorkerIfConfigured(true));
   ipcMain.handle("logout-worker", async () => {
     workerRunId += 1;
-    if (workerPromise) {
+    if (workerPromise || workerProcess) {
+      const previousWorkerPromise = workerPromise;
       await appendLog("info", "Stopping Clips Worker loop before removing pairing.");
-      await workerPromise.catch(() => undefined);
+      await stopWorkerProcess();
+      await previousWorkerPromise?.catch(() => undefined);
     }
     await logoutStage3Worker();
     await appendLog("info", "Worker config removed.");
