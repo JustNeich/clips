@@ -294,3 +294,4 @@ npm run desktop-worker:dev
 - Managed tool downloads работают только для платформ, добавленных в pinned manifest с `sha256`; пустой manifest означает fallback к системным tools.
 - Browser runtime для Remotion теперь проверяется до входа worker в job loop: если локальный Chrome/Edge найден, он используется напрямую; если нет, worker пытается подготовить Remotion-managed browser заранее, а не во время render job.
 - Linux и Windows ARM не входят в v1 scope.
+- Runtime native packages, которые зависят от платформы, проверяются до claim jobs. Если `runtime-deps.tar.gz` был собран на Linux, а worker запускается на Windows/macOS, worker self-heal переустанавливает локальные `esbuild` и `@rspack/*` bindings под текущую платформу вместо того, чтобы падать внутри preview/render.

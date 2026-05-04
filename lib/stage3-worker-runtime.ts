@@ -13,6 +13,7 @@ import {
   shouldRestartStage3WorkerAfterSync
 } from "./stage3-worker-runtime-sync";
 import { resolveStage3WorkerRestartLaunch } from "./stage3-worker-restart";
+import { ensureEsbuildRuntimeAvailable } from "./stage3-esbuild-runtime";
 import { ensureRspackRuntimeAvailable } from "./stage3-rspack-runtime";
 import { completeRemoteStage3Artifact } from "./stage3-worker-completion";
 import {
@@ -302,6 +303,7 @@ async function workerRuntimeDependenciesMissing(workerRoot: string): Promise<boo
   const markers = [
     path.join(workerRoot, "node_modules", "@remotion", "renderer", "package.json"),
     path.join(workerRoot, "node_modules", "@remotion", "bundler", "package.json"),
+    path.join(workerRoot, "node_modules", "esbuild", "package.json"),
     path.join(workerRoot, "node_modules", "remotion", "package.json"),
     path.join(workerRoot, "node_modules", "react", "package.json"),
     path.join(workerRoot, "node_modules", "react-dom", "package.json")
@@ -644,6 +646,20 @@ export async function runStage3WorkerDoctor(): Promise<WorkerCapabilities> {
       log: (message) => console.log(message)
     });
   }
+  const esbuildRuntime = await ensureEsbuildRuntimeAvailable({
+    installRoot: paths().root,
+    log: (message) => console.log(message)
+  });
+  if (!esbuildRuntime.ready) {
+    throw new Error(
+      `Stage 3 worker esbuild runtime is broken: ${esbuildRuntime.error ?? "missing esbuild native binary"}`
+    );
+  }
+  if (esbuildRuntime.repaired) {
+    console.log("esbuild runtime: REPAIRED");
+  } else {
+    console.log("esbuild runtime: OK");
+  }
   const rspackRuntime = await ensureRspackRuntimeAvailable({
     installRoot: paths().root,
     log: (message) => console.log(message)
@@ -864,6 +880,19 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
     toolsRoot: paths().toolsRoot,
     log: (message) => console.log(message)
   });
+
+  const esbuildRuntime = await ensureEsbuildRuntimeAvailable({
+    installRoot: paths().root,
+    log: (message) => console.log(message)
+  });
+  if (!esbuildRuntime.ready) {
+    throw new Error(
+      `Stage 3 worker esbuild runtime is broken: ${esbuildRuntime.error ?? "missing esbuild native binary"}. Rerun bootstrap if this keeps happening.`
+    );
+  }
+  if (esbuildRuntime.repaired) {
+    console.log("Repaired local esbuild runtime before claiming Stage 3 jobs.");
+  }
 
   const rspackRuntime = await ensureRspackRuntimeAvailable({
     installRoot: paths().root,
