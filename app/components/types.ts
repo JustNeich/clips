@@ -766,6 +766,7 @@ export type Stage3WorkerPairingResponse = {
   expiresAt: string;
   serverOrigin: string;
   suggestedLabel: string;
+  desktopDeepLink: string;
   commands: {
     shell: string;
     powershell: string;

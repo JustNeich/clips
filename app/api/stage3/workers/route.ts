@@ -9,7 +9,8 @@ export async function GET(): Promise<Response> {
     return Response.json(
       {
         workers: listStage3Workers({
-          workspaceId: auth.workspace.id
+          workspaceId: auth.workspace.id,
+          userId: auth.user.id
         })
       },
       {

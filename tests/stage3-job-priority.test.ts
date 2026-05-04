@@ -208,7 +208,7 @@ test("local worker skips superseded queued previews for the same chat", async ()
   });
 });
 
-test("workspace local worker can claim another member's queued job without crossing workspaces", async () => {
+test("local worker cannot claim another workspace member's queued job", async () => {
   await withIsolatedAppData(async () => {
     const db = getDb();
     const stamp = nowIso();
@@ -251,10 +251,16 @@ test("workspace local worker can claim another member's queued job without cross
       "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
     ).run(newId(), otherWorkspaceId, otherUserId, "owner", stamp, stamp);
 
-    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId: ownerUserId });
-    const exchanged = exchangeStage3WorkerPairingToken({
-      pairingToken: pairing.token,
-      label: "shared worker",
+    const ownerPairing = issueStage3WorkerPairingToken({ workspaceId, userId: ownerUserId });
+    const ownerWorker = exchangeStage3WorkerPairingToken({
+      pairingToken: ownerPairing.token,
+      label: "owner worker",
+      platform: "darwin-arm64"
+    });
+    const editorPairing = issueStage3WorkerPairingToken({ workspaceId, userId: editorUserId });
+    const editorWorker = exchangeStage3WorkerPairingToken({
+      pairingToken: editorPairing.token,
+      label: "editor worker",
       platform: "darwin-arm64"
     });
 
@@ -273,14 +279,24 @@ test("workspace local worker can claim another member's queued job without cross
       payloadJson: JSON.stringify({ sourceUrl: "https://youtube.com/watch?v=editor-job" })
     });
 
-    const claimed = claimNextQueuedStage3JobForWorker({
-      workerId: exchanged.worker.id,
+    const ownerClaim = claimNextQueuedStage3JobForWorker({
+      workerId: ownerWorker.worker.id,
       workspaceId,
+      userId: ownerUserId,
+      supportedKinds: ["editing-proxy", "render"]
+    });
+    assert.equal(ownerClaim, null);
+    assert.equal(getStage3Job(editorJob.id)?.status, "queued");
+
+    const editorClaim = claimNextQueuedStage3JobForWorker({
+      workerId: editorWorker.worker.id,
+      workspaceId,
+      userId: editorUserId,
       supportedKinds: ["editing-proxy", "render"]
     });
 
-    assert.equal(claimed?.id, editorJob.id);
-    assert.equal(claimed?.userId, editorUserId);
+    assert.equal(editorClaim?.id, editorJob.id);
+    assert.equal(editorClaim?.userId, editorUserId);
     assert.equal(getStage3Job(otherWorkspaceJob.id)?.status, "queued");
   });
 });

@@ -78,6 +78,8 @@
 
 - Preview, render и editing-proxy jobs, стартующие из Step 3, должны нести `chatId` и `channelId`, чтобы owner journal и MCP могли собрать всю историю по конкретному ролику.
 - Ошибки до создания job, например отсутствующий source или недоступный локальный executor, фиксируются compact audit event-ом `stage3_request.failed`.
+- Local worker readiness personal-by-default: snapshot готовности считается по worker-ам текущего пользователя, а не по общему workspace pool. Worker другого редактора не должен превращать Step 3 текущего пользователя в `Online`.
+- Local worker claim personal-by-default: `preview`, `render`, `source-download` и `agent-media-step` jobs текущего пользователя не могут быть claim-нуты worker-ом другого пользователя. Shared render machine может появиться только как отдельный явный режим.
 - `worker_unavailable` / `worker_runtime_outdated` audit events сохраняют snapshot готовности локального executor: `onlineWorkers`, `compatibleOnlineWorkers`, `expectedRuntimeVersion`.
 - Ошибки внутри job фиксируются в `stage3_jobs`, `stage3_job_events` и audit event `stage3_job.failed`.
 - Flow list / MCP summary отдаёт `stage3Runtime` backlog-снимок: queued/running local/host jobs, oldest queued/running age, expired local leases и свежие `worker_unavailable` события.

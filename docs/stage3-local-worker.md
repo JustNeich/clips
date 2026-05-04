@@ -11,7 +11,7 @@
 
 ## Что уже реализовано
 
-- Хост работает как control plane:
+- Хост работает только как control plane для Stage 3 heavy work:
   - auth
   - queue/jobs
   - artifacts
@@ -21,11 +21,19 @@
   - `render`
   - `source-download`
   - `agent-media-step`
+- Основной пользовательский runtime теперь отдельное desktop-приложение `Clips Worker`:
+  - tray app
+  - status window
+  - autostart worker loop after pairing
+  - reconnect/retry
+  - logs in worker home
+  - pairing через `clips-stage3-worker://pair?...`
 - Worker поддерживает:
   - `macOS arm64/x64`
   - `Windows x64`
 - Pairing и worker status доступны прямо из Stage 3 UI.
-- Local executor is workspace-scoped: any online compatible worker paired inside the workspace can process Stage 3 jobs from any editor in that workspace. Jobs never cross the workspace boundary.
+- Local executor is personal-by-default: compatible worker может claim-ить только jobs своего `userId` внутри workspace. Worker другого редактора не считается готовностью текущего пользователя и не забирает его jobs.
+- CLI worker остался совместимым advanced fallback для localhost, диагностики и ручной поддержки.
 
 ## Что должен сделать владелец проекта
 
@@ -65,27 +73,78 @@ hosted preview/render и вспомогательные subprocess-задачи 
 
 Нужен новый deploy, потому что production должен начать:
 
+- возвращать `desktopDeepLink` из `/api/stage3/workers/pairing`
 - отдавать bootstrap scripts:
   - `/stage3-worker/bootstrap.sh`
   - `/stage3-worker/bootstrap.ps1`
 - отдавать bundled worker:
   - `/stage3-worker/clips-stage3-worker.cjs`
   - `/stage3-worker/package.json`
+- отдавать managed tool manifest:
+  - `/stage3-worker/tool-manifest.json`
 - разрешать публичный доступ к bootstrap assets
 - принимать worker auth / heartbeat / claim / complete / fail
+- фильтровать `/api/stage3/workers` по текущему пользователю, а не показывать общий workspace pool
 
-### 3. Проверить production после деплоя
+### 3. Собрать и раздать Clips Worker
 
-Минимальный smoke checklist:
+V1 распространяется вручную внутри команды. Signing/notarization secrets в этой версии не нужны.
+
+1. Собрать worker bundle:
+
+```bash
+npm run build:stage3-worker
+```
+
+2. Собрать desktop shell:
+
+```bash
+npm run build:desktop-worker
+```
+
+3. Собрать unsigned artifacts:
+
+```bash
+npm run dist:desktop-worker
+```
+
+4. Забрать `.dmg` / `.exe` из `output/desktop-worker`.
+5. Раздать нужный artifact пользователям вручную.
+
+Installer-файлы и содержимое `output/desktop-worker` не коммитятся.
+
+### 4. Проверить production после деплоя
+
+Минимальный smoke checklist для local mode:
 
 1. Войти в приложение.
 2. Открыть Step 3.
 3. Нажать `Подключить executor`.
-4. Убедиться, что pairing command появился.
+4. Убедиться, что появилась кнопка `Открыть Clips Worker`.
+5. Нажать `Открыть Clips Worker`.
+6. Разрешить браузеру открыть desktop app.
+7. Убедиться, что Clips Worker сохранил pairing и запустил loop.
+8. Дождаться статуса `Online` в Step 3.
+9. Изменить `clip start` или `music gain` и убедиться, что preview уходит в queue/running и возвращается.
+10. Нажать `Render` и убедиться, что job проходит через `queued -> running -> completed`.
+11. Проверить, что assigned worker принадлежит текущему пользователю, а не другому редактору workspace.
+
+Smoke checklist для personal routing:
+
+1. Открыть Step 3 под пользователем A и подключить Clips Worker A.
+2. Открыть Step 3 под пользователем B без worker.
+3. Убедиться, что B не видит workspace как `Online` из-за worker A.
+4. Создать preview/render job под B и убедиться, что worker A не claim-ит её.
+5. Подключить Clips Worker B и убедиться, что job B выполняется именно worker B.
+
+Если smoke делается через CLI fallback:
+
+1. Открыть Stage 3.
+2. Нажать `Подключить executor`.
+3. Открыть advanced Terminal/PowerShell fallback.
+4. Скопировать команду.
 5. Запустить worker на локальной машине.
 6. Дождаться статуса `Online`.
-7. Изменить `clip start` или `music gain` и убедиться, что preview уходит в queue/running и возвращается.
-8. Нажать `Render` и убедиться, что job проходит через `queued -> running -> completed`.
 
 Если smoke делается для hosted режима:
 
@@ -94,57 +153,69 @@ hosted preview/render и вспомогательные subprocess-задачи 
 3. Убедиться, что pairing/executor CTA исчезли и UI явно пишет, что heavy Stage 3 задачи идут на хостинге.
 4. Проверить `preview` и `render` в hosted path.
 
-### 4. Подготовить поддержку пользователей
+### 5. Подготовить поддержку пользователей
 
-Пользователю нужны локально:
+Основной пользовательский текст:
 
-- `Node.js 22+`
-- `npm`
-- `ffmpeg`
-- `ffprobe`
-- `yt-dlp`
-- `Google Chrome` или `Microsoft Edge` желателен для Stage 3 render. Worker теперь сначала пытается использовать локальный Chromium-based browser и только потом уходит в Remotion-managed headless-shell download.
+- Установите `Clips Worker`.
+- Откройте Stage 3.
+- Нажмите `Подключить executor`.
+- Нажмите `Открыть Clips Worker`.
+- Если браузер спросит подтверждение, разрешите открыть приложение.
+- Дальше держите приложение запущенным в tray/menu bar.
 
-Рекомендуемый текст для поддержки:
+Managed tools:
+
+- `Clips Worker` проверяет `ffmpeg`, `ffprobe`, `yt-dlp` до claim jobs.
+- Если `/stage3-worker/tool-manifest.json` содержит pinned downloads для платформы, worker скачивает tools в worker app-data/cache и проверяет `sha256`.
+- Если manifest пустой или platform не настроена, worker использует уже установленные системные tools.
+- Если download/doctor падает, worker не claim-ит jobs и показывает конкретную причину в UI/logs.
+- Browser остаётся через существующий Remotion-managed fallback: локальный Chrome/Edge желателен, но при отсутствии worker готовит Remotion Headless Shell.
+
+Legacy install hints, если manifest пока не заполнен:
 
 - macOS: `brew install ffmpeg yt-dlp`
 - Windows: `winget install Gyan.FFmpeg yt-dlp.yt-dlp`
 
 ## Что должен сделать пользователь
 
-### Вариант A: macOS
+### Основной путь: Clips Worker
 
-1. Открыть Stage 3.
-2. Нажать `Подключить executor`.
-3. Скопировать команду из блока `Local Executor`.
-4. Вставить ее в Terminal.
-5. Дождаться:
+1. Установить `Clips Worker` для своей платформы.
+2. Открыть Stage 3.
+3. Нажать `Подключить executor`.
+4. Нажать `Открыть Clips Worker`.
+5. Подтвердить открытие приложения по deep link.
+6. Дождаться:
    - pairing
-   - doctor
-   - запуска worker
-6. Оставить Terminal открытым, пока используются preview/render в Stage 3.
+   - managed tool setup / doctor
+   - worker loop
+   - статуса `Online` в браузере.
+7. Оставить Clips Worker запущенным, пока используются preview/render/source-download/agent-media-step.
 
-Команда сама:
+Если Clips Worker запущен без pairing, он показывает: `Open Stage 3 and click Open Clips Worker`.
 
-- скачает worker bundle с хоста
-- скачает worker runtime package descriptor с хоста
-- распакует уже собранные runtime зависимости прямо с хоста, без обращения к внешнему `npm registry`
-- использует `npm install --omit=dev` только как запасной fallback, если архив runtime недоступен
-- создаст локальный wrapper
-- выполнит pairing
-- проверит зависимости
-- запустит worker loop
-
-### Вариант B: Windows
+### Advanced fallback: macOS / Terminal
 
 1. Открыть Stage 3.
 2. Нажать `Подключить executor`.
-3. Скопировать PowerShell команду из блока `Local Executor`.
-4. Вставить ее в PowerShell.
-5. Дождаться pairing и запуска worker.
-6. Оставить окно PowerShell открытым во время работы со Stage 3.
+3. Открыть advanced Terminal/PowerShell fallback.
+4. Скопировать macOS command.
+5. Вставить её в Terminal.
+6. Дождаться pairing, doctor и запуска worker loop.
+7. Оставить Terminal открытым.
 
-Если после запуска команды в PowerShell долго не появляется ни одной строки:
+### Advanced fallback: Windows / PowerShell
+
+1. Открыть Stage 3.
+2. Нажать `Подключить executor`.
+3. Открыть advanced Terminal/PowerShell fallback.
+4. Скопировать Windows PowerShell command.
+5. Вставить её в PowerShell.
+6. Дождаться pairing, doctor и запуска worker loop.
+7. Оставить PowerShell открытым.
+
+Если после запуска fallback-команды в PowerShell долго не появляется ни одной строки:
 
 1. Подождать 10-15 секунд: новая команда теперь должна сразу печатать `Downloading Stage 3 bootstrap...` и `Running Stage 3 bootstrap...`.
 2. Если тишина сохраняется, попросить редактора запустить ту же команду в обычном `Windows PowerShell`, а не в терминале IDE.
@@ -163,7 +234,7 @@ hosted preview/render и вспомогательные subprocess-задачи 
 - `Offline`:
   worker был подключен, но не шлет heartbeat
 - `Online`:
-  worker готов забирать jobs текущего workspace
+  worker готов забирать jobs текущего пользователя в текущем workspace
 - `Busy`:
   worker сейчас выполняет активный Stage 3 job; в описании статуса дополнительно показывается тип задачи (`preview`, `render`, `editing-proxy` и т.д.)
 
@@ -182,7 +253,7 @@ UI worker list теперь при каждом poll автоматически 
 
 Preview/render больше не должны тихо падать обратно на host. Если worker offline, job останется в очереди и UI покажет честное состояние ожидания.
 
-Local executor больше не привязан к конкретному редактору после pairing. Если Даша запустила executor в том же workspace, Катя должна видеть workspace как готовый к локальному Stage 3, а её preview/render job может быть выполнен этим executor. Это убирает class сбоев, где один и тот же компьютер был подключен под другим аккаунтом и backend видел `onlineWorkers: 0` для редактора, хотя worker реально работал.
+Local executor теперь намеренно привязан к конкретному пользователю после pairing. Если Даша запустила executor в том же workspace, Катя не должна видеть workspace как готовый к локальному Stage 3, пока не подключит свой Clips Worker. Preview/render job Кати не может быть выполнен executor-ом Даши. Это закрывает class сбоев, где рендер уходил на чужой компьютер.
 
 Совместимость runtime теперь асимметрична: если у worker тот же базовый release, но build новее серверного, он считается допустимым. Блокировать нужно именно более старые runtime-сборки, которые еще не знают про текущий хост.
 
@@ -198,18 +269,25 @@ Local executor больше не привязан к конкретному ре
 npm run dev
 ```
 
-2. В отдельном терминале создать/запустить worker:
+2. В отдельном терминале создать/запустить CLI worker:
 
 ```bash
 npm run stage3-worker -- pair --server http://localhost:3000 --token <PAIRING_TOKEN>
 npm run stage3-worker -- start
 ```
 
+Для проверки desktop shell:
+
+```bash
+npm run desktop-worker:dev
+```
+
 ## Ограничения v1
 
-- Worker пока CLI-first, не background service.
-- Пользователь должен держать Terminal/PowerShell открытым.
-- Автоматической managed-install логики для `ffmpeg/ffprobe/yt-dlp` пока нет; есть doctor и install hints.
-- Bootstrap сам ставит только Node runtime dependencies worker’а; системные media tools пользователь по-прежнему ставит отдельно.
+- Worker v1 — unsigned internal desktop app, а не замена web-приложения.
+- Web остаётся основным интерфейсом; desktop app только выполняет Stage 3 heavy jobs.
+- Shared render machine не реализован. Если он появится позже, это будет отдельный явный режим, а не скрытый workspace pool.
+- Installer artifacts раздаются вручную и не хостятся Render-ом.
+- Managed tool downloads работают только для платформ, добавленных в pinned manifest с `sha256`; пустой manifest означает fallback к системным tools.
 - Browser runtime для Remotion теперь проверяется до входа worker в job loop: если локальный Chrome/Edge найден, он используется напрямую; если нет, worker пытается подготовить Remotion-managed browser заранее, а не во время render job.
 - Linux и Windows ARM не входят в v1 scope.

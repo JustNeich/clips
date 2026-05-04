@@ -14,7 +14,8 @@ export async function resolveStage3LocalWorkerReadiness(input: {
 }): Promise<Stage3LocalWorkerReadiness> {
   const expectedRuntimeVersion = await getExpectedStage3WorkerRuntimeVersion();
   const workers = listStage3Workers({
-    workspaceId: input.workspaceId
+    workspaceId: input.workspaceId,
+    userId: input.userId
   });
   const onlineWorkers = workers.filter((worker) => worker.status !== "offline").length;
   const compatibleOnlineWorkers = workers.filter((worker) => {

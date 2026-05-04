@@ -58,6 +58,11 @@ const WORKER_LIB_RUNTIME_FILES = [
   "stage3-worker-job-timeout.ts"
 ];
 
+const WORKER_BUNDLE_SOURCE_FILES = [
+  "stage3-worker-runtime.ts",
+  "stage3-worker-managed-tools.ts"
+];
+
 const WORKER_TEMPLATE_SPEC_FILES = [
   // Only repo-backed specs that stage3-template-spec.ts imports at runtime.
   // Other registered templates are generated from code and must not make
@@ -129,6 +134,9 @@ async function buildRuntimeVersion(baseVersion, input) {
   }
   await hashFile(hash, "scripts/build-stage3-worker.mjs", __filename);
   await hashFile(hash, "apps/stage3-worker/index.ts", workerEntry);
+  for (const fileName of WORKER_BUNDLE_SOURCE_FILES) {
+    await hashFile(hash, `lib/${fileName}`, path.join(libSourceDir, fileName));
+  }
 
   for (const fileName of [...input.remotionFiles].sort()) {
     await hashFile(hash, `remotion/${fileName}`, path.join(remotionSourceDir, fileName));

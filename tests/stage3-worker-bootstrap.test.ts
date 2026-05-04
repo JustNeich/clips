@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-import { buildStage3WorkerCommands } from "../lib/stage3-worker-commands";
+import {
+  buildStage3WorkerCommands,
+  buildStage3WorkerDesktopDeepLink
+} from "../lib/stage3-worker-commands";
 
 function decodePowershellEncodedCommand(command: string): string {
   const match = command.match(/-EncodedCommand\s+([A-Za-z0-9+/=]+)/);
@@ -33,6 +36,21 @@ test("powershell bootstrap command enables visible diagnostics and fail-fast set
   assert.match(decodedScript, /Invoke-WebRequest 'https:\/\/clips-vy11\.onrender\.com\/stage3-worker\/bootstrap\.ps1' -UseBasicParsing -ErrorAction Stop -OutFile \$bootstrapPath/);
   assert.match(decodedScript, /try \{ \. \$bootstrapPath \} finally \{ Remove-Item \$bootstrapPath -Force -ErrorAction SilentlyContinue \}/);
   assert.match(decodedScript, /Install-ClipsStage3Worker -Server 'https:\/\/clips-vy11\.onrender\.com' -Token 'token-123'/);
+});
+
+test("desktop worker pairing deep link carries server, token and label", () => {
+  const deepLink = buildStage3WorkerDesktopDeepLink({
+    origin: "https://clips-vy11.onrender.com/",
+    pairingToken: "token-123",
+    label: "Katya Worker"
+  });
+  const parsed = new URL(deepLink);
+
+  assert.equal(parsed.protocol, "clips-stage3-worker:");
+  assert.equal(parsed.hostname, "pair");
+  assert.equal(parsed.searchParams.get("server"), "https://clips-vy11.onrender.com");
+  assert.equal(parsed.searchParams.get("token"), "token-123");
+  assert.equal(parsed.searchParams.get("label"), "Katya Worker");
 });
 
 test("windows bootstrap script uses basic parsing and writes bootstrap logs", () => {

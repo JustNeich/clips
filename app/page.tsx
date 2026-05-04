@@ -133,7 +133,10 @@ import {
   findLatestStage3AgentSessionRef,
   normalizeStage3SessionStatus
 } from "../lib/stage3-legacy-bridge";
-import { buildStage3WorkerCommands } from "../lib/stage3-worker-commands";
+import {
+  buildStage3WorkerCommands,
+  buildStage3WorkerDesktopDeepLink
+} from "../lib/stage3-worker-commands";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
 import {
   buildChatListItem,
@@ -1092,13 +1095,18 @@ export default function HomePage() {
       setStage3WorkerPairing({
         ...body,
         serverOrigin: browserOrigin,
+        desktopDeepLink: buildStage3WorkerDesktopDeepLink({
+          origin: browserOrigin,
+          pairingToken: body.pairingToken,
+          label: body.suggestedLabel
+        }),
         commands: buildStage3WorkerCommands({
           origin: browserOrigin,
           pairingToken: body.pairingToken
         })
       });
       setStatusType("ok");
-      setStatus("Pairing token создан. Запустите локальный Stage 3 worker на своей машине.");
+      setStatus("Подключение создано. Нажмите «Открыть Clips Worker» на своей машине.");
       void refreshStage3Workers().catch(() => undefined);
     } catch (error) {
       setStatusType("error");

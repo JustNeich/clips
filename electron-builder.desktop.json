@@ -1,0 +1,31 @@
+{
+  "appId": "com.macedonianimperium.clipsworker",
+  "productName": "Clips Worker",
+  "directories": {
+    "output": "output/desktop-worker/dist"
+  },
+  "files": [
+    "output/desktop-worker/main.cjs",
+    "output/desktop-worker/preload.cjs",
+    "output/desktop-worker/renderer.html",
+    "public/stage3-worker/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "output/desktop-worker/main.cjs"
+  },
+  "protocols": [
+    {
+      "name": "Clips Worker Pairing",
+      "schemes": ["clips-stage3-worker"]
+    }
+  ],
+  "mac": {
+    "target": ["dmg"],
+    "identity": null
+  },
+  "win": {
+    "target": ["nsis"],
+    "signAndEditExecutable": false
+  }
+}
