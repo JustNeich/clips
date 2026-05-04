@@ -43,7 +43,7 @@
 | Route | owner | manager | redactor | redactor_limited | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `/login` | public | public | public | public | До входа |
-| `/register` | public | public | public | public | Создаёт `redactor` |
+| `/register` | public | public | public | public | Self-serve регистрация закрыта, аккаунт не создаётся |
 | `/accept-invite` | public | public | public | public | Роль берётся из invite |
 | `/setup/bootstrap-owner` | public | public | public | public | Практически только до инициализации |
 | `/` | allow | allow | allow | allow | Главный shell |
@@ -99,6 +99,8 @@
 | Change owner role | no | no | n/a | n/a |
 | Change manager role | yes | no | n/a | n/a |
 | Toggle redactor ↔ redactor_limited | yes | yes | n/a | n/a |
+| Remove manager | yes | no | n/a | n/a |
+| Remove redactor / redactor_limited | yes | yes | n/a | n/a |
 | Create manager invite | yes | no | n/a | n/a |
 | Create redactor invite | yes | yes | n/a | n/a |
 | Create redactor_limited invite | yes | yes | n/a | n/a |

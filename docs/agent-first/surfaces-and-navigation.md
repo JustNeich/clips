@@ -56,7 +56,6 @@
   - поле `Почта`
   - поле `Пароль`
   - кнопка `Войти`
-  - link `Создать аккаунт редактора`
   - link `Принять приглашение`
   - link `Создать владельца`
 - `resulting actions`:
@@ -75,23 +74,20 @@
 
 ## `/register`
 
-- `purpose`: self-serve регистрация полного редактора.
-- `roles`: публичная поверхность, итоговая роль всегда `redactor`.
-- `preconditions`: email ещё не занят.
+- `purpose`: закрытая legacy-поверхность, объясняющая что self-serve регистрация отключена.
+- `roles`: публичная информационная поверхность, не создаёт пользователя.
+- `preconditions`: нужен invite от владельца или администратора команды.
 - `controls`:
-  - поле `Имя`
-  - поле `Почта`
-  - поле `Пароль`
-  - кнопка `Создать аккаунт`
+  - текст `Регистрация закрыта`
+  - link `Принять приглашение`
   - link `Назад ко входу`
 - `resulting actions`:
-  - `POST /api/auth/register`
-  - при успехе redirect на `/`
+  - `POST /api/auth/register` всегда возвращает `403`
 - `related APIs`: `app/api/auth/register/route.ts`
-- `related entities`: `user`, `workspace membership`
+- `related entities`: нет новых записей
 - `common user phrasings`:
-  - "зарегистрировался как редактор"
-  - "не создаётся аккаунт"
+  - "хочу создать аккаунт"
+  - "регистрация закрыта"
 
 ## `/accept-invite`
 
@@ -726,6 +722,7 @@
   - `Назад`
   - list `Участники`
   - role combobox per member
+  - button `Удалить` для удаляемых не-owner участников
   - block `Создать приглашение`
   - email field
   - invite role select
@@ -734,10 +731,13 @@
 - `resulting actions`:
   - `GET /api/workspace/members`
   - `PATCH /api/workspace/members/[memberId]`
+  - `DELETE /api/workspace/members/[memberId]`
   - `POST /api/workspace/invites`
 - `role nuances`:
   - owner может выдавать `manager`, `redactor`, `redactor_limited`
   - manager может переключать только между `redactor` и `redactor_limited`
+  - owner может удалять `manager`, `redactor`, `redactor_limited`
+  - manager может удалять только `redactor` и `redactor_limited`
   - owner/member combobox может быть disabled
 - `common user phrasings`:
   - "не могу сделать менеджера"

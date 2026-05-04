@@ -1,7 +1,9 @@
 import { requireAuth } from "../../../../../lib/auth/guards";
 import {
+  canManageMemberRemoval,
   canManageMemberRoleTransition,
   getWorkspaceMember,
+  removeWorkspaceMember,
   updateWorkspaceMemberRole,
   validateInviteRole
 } from "../../../../../lib/team-store";
@@ -24,7 +26,7 @@ export async function PATCH(
   }
 
   try {
-    const auth = await requireAuth();
+    const auth = await requireAuth(request);
     const { memberId } = await context.params;
     const currentMember = getWorkspaceMember(auth.workspace.id, memberId);
     if (!currentMember) {
@@ -41,5 +43,28 @@ export async function PATCH(
     return Response.json({ member }, { status: 200 });
   } catch (error) {
     return asErrorResponse(error, "Не удалось обновить роль участника.", 400);
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ memberId: string }> }
+): Promise<Response> {
+  try {
+    const auth = await requireAuth(request);
+    const { memberId } = await context.params;
+    const currentMember = getWorkspaceMember(auth.workspace.id, memberId);
+    if (!currentMember) {
+      return Response.json({ error: "Member not found." }, { status: 404 });
+    }
+
+    if (!canManageMemberRemoval(auth.membership.role, currentMember.role)) {
+      return Response.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    const member = removeWorkspaceMember(auth.workspace.id, memberId);
+    return Response.json({ member }, { status: 200 });
+  } catch (error) {
+    return asErrorResponse(error, "Не удалось удалить участника.", 400);
   }
 }

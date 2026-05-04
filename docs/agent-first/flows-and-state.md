@@ -59,25 +59,23 @@
 ### Happy path
 
 1. Пользователь открывает `/register`.
-2. Заполняет имя, email, password.
-3. Нажимает `Создать аккаунт`.
-4. Получает активный `redactor`.
-5. Попадает в `/`.
+2. Видит, что публичная регистрация закрыта.
+3. Переходит к `/accept-invite` или возвращается на `/login`.
 
 ### Alternate path
 
-1. Имя может быть пустым.
-2. Workspace membership создаётся по default flow.
+1. Прямой `POST /api/auth/register` возвращает `403`.
+2. Пользователь не получает session cookie и workspace membership.
 
 ### Blocked path
 
-1. Email уже занят.
-2. Сервер не смог создать membership.
+1. Любая self-serve попытка регистрации заблокирована.
+2. Для создания аккаунта нужен invite на конкретную почту.
 
 ### Failure / recovery
 
-1. Агент проверяет: это self-register или invite flow.
-2. Если нужен `manager` или `redactor_limited`, self-register не подходит; нужен invite.
+1. Агент проверяет, есть ли invite token.
+2. Если invite отсутствует, владелец или manager должен создать приглашение на `/team`.
 
 ## 3. Auth: accept invite
 
@@ -139,7 +137,8 @@
 1. `owner` или `manager` открывает `/team`.
 2. Список участников грузится из `/api/workspace/members`.
 3. Администратор меняет роль через combobox или создаёт invite.
-4. UI показывает `Роль обновлена.` или `Приглашение создано.`
+4. Администратор может удалить не-owner участника, после подтверждения его сессии закрываются и channel grants отзываются.
+5. UI показывает `Роль обновлена.`, `Приглашение создано.` или `Участник удалён.`
 
 ### Alternate path
 
@@ -161,6 +160,7 @@
 - can_manage_members
 - forbidden
 - busy_updating_role
+- busy_removing_member
 - busy_creating_invite
 - invite_token_ready
 

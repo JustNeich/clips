@@ -42,6 +42,7 @@ import {
 } from "./stage3-execution";
 import { ensureWorkspaceTemplateLibrary } from "./managed-template-store";
 import { decryptJsonPayload, encryptJsonPayload } from "./app-crypto";
+import { PUBLIC_REGISTRATION_DISABLED_MESSAGE } from "./auth/registration-policy";
 import type { Stage3ExecutionTarget } from "../app/components/types";
 
 export type AppRole = "owner" | "manager" | "redactor" | "redactor_limited";
@@ -971,73 +972,9 @@ export async function registerPublicRedactor(input: {
   displayName: string;
   userAgent?: string | null;
   ipAddress?: string | null;
-}): Promise<AuthContext & { sessionToken: string }> {
-  const workspace = getWorkspace();
-  if (!workspace) {
-    throw new Error("Workspace is not initialized.");
-  }
-  if (getUserWithPasswordByEmail(input.email)) {
-    throw new Error("Пользователь с таким email уже существует.");
-  }
-
-  const now = nowIso();
-  const userId = newId();
-  const passwordHash = await hashPassword(input.password);
-  const user: UserRecord = {
-    id: userId,
-    email: normalizeEmail(input.email),
-    displayName: input.displayName.trim() || "Redactor",
-    status: "active",
-    createdAt: now,
-    updatedAt: now
-  };
-  const membership: WorkspaceMemberRecord = {
-    id: newId(),
-    workspaceId: workspace.id,
-    userId,
-    role: "redactor",
-    createdAt: now,
-    updatedAt: now
-  };
-
-  runInTransaction((db) => {
-    db.prepare(
-      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).run(
-      user.id,
-      user.email,
-      passwordHash,
-      user.displayName,
-      user.status,
-      user.createdAt,
-      user.updatedAt
-    );
-    db.prepare(
-      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run(
-      membership.id,
-      membership.workspaceId,
-      membership.userId,
-      membership.role,
-      membership.createdAt,
-      membership.updatedAt
-    );
-  });
-
-  const session = createAuthSession({
-    workspaceId: workspace.id,
-    userId: user.id,
-    userAgent: input.userAgent ?? null,
-    ipAddress: input.ipAddress ?? null
-  });
-
-  return {
-    workspace,
-    user,
-    membership,
-    session: session.record,
-    sessionToken: session.token
-  };
+}): Promise<never> {
+  void input;
+  throw new Error(PUBLIC_REGISTRATION_DISABLED_MESSAGE);
 }
 
 export async function createUserByInvite(input: {
@@ -1661,6 +1598,37 @@ export function updateWorkspaceMemberRole(
   };
 }
 
+export function removeWorkspaceMember(
+  workspaceId: string,
+  memberOrUserId: string
+): WorkspaceMemberRecord {
+  const current = getWorkspaceMember(workspaceId, memberOrUserId);
+  if (!current) {
+    throw new Error("Member not found.");
+  }
+  if (current.role === "owner") {
+    throw new Error("Owner member cannot be removed.");
+  }
+
+  const revokedAt = nowIso();
+  runInTransaction((db) => {
+    db.prepare("DELETE FROM auth_sessions WHERE workspace_id = ? AND user_id = ?").run(
+      workspaceId,
+      current.userId
+    );
+    db.prepare(
+      `UPDATE channel_access
+       SET revoked_at = ?
+       WHERE user_id = ?
+         AND revoked_at IS NULL
+         AND channel_id IN (SELECT id FROM channels WHERE workspace_id = ?)`
+    ).run(revokedAt, current.userId, workspaceId);
+    db.prepare("DELETE FROM workspace_members WHERE id = ?").run(current.id);
+  });
+
+  return current;
+}
+
 export async function createInvite(input: {
   workspaceId: string;
   email: string;
@@ -1670,7 +1638,8 @@ export async function createInvite(input: {
   if (input.role === "owner") {
     throw new Error("Owner invite is not supported.");
   }
-  if (getUserWithPasswordByEmail(input.email)) {
+  const existingUser = getUserWithPasswordByEmail(input.email);
+  if (existingUser && getMembership(existingUser.id, input.workspaceId)) {
     throw new Error("Пользователь с таким email уже существует.");
   }
   if (getPendingInviteByEmail(input.workspaceId, input.email)) {
@@ -1763,6 +1732,19 @@ export function canManageMemberRoleTransition(
   return false;
 }
 
+export function canManageMemberRemoval(actorRole: AppRole, targetRole: AppRole): boolean {
+  if (targetRole === "owner") {
+    return false;
+  }
+  if (actorRole === "owner") {
+    return true;
+  }
+  if (actorRole === "manager") {
+    return targetRole === "redactor" || targetRole === "redactor_limited";
+  }
+  return false;
+}
+
 export async function acceptInviteRegistration(input: {
   token: string;
   password: string;
@@ -1787,13 +1769,14 @@ export async function acceptInviteRegistration(input: {
   }
 
   const inviteEmail = String(preview.email);
-  if (getUserWithPasswordByEmail(inviteEmail)) {
+  const existingInviteUser = getUserWithPasswordByEmail(inviteEmail);
+  if (existingInviteUser && getMembership(existingInviteUser.id, String(preview.workspace_id))) {
     throw new Error("Пользователь с таким email уже существует.");
   }
 
   const passwordHash = await hashPassword(input.password);
   const now = nowIso();
-  const userId = newId();
+  const userId = existingInviteUser?.id ?? newId();
   const role = String(preview.role) as AppRole;
   if (role === "owner") {
     throw new Error("Owner invite is not supported.");
@@ -1804,7 +1787,7 @@ export async function acceptInviteRegistration(input: {
     email: inviteEmail,
     displayName: input.displayName.trim() || role,
     status: "active",
-    createdAt: now,
+    createdAt: existingInviteUser?.createdAt ?? now,
     updatedAt: now
   };
   const membership: WorkspaceMemberRecord = {
@@ -1838,23 +1821,34 @@ export async function acceptInviteRegistration(input: {
       throw new Error("Invite not found or expired.");
     }
     const existingUser = db
-      .prepare("SELECT id FROM users WHERE email = ? LIMIT 1")
+      .prepare("SELECT * FROM users WHERE email = ? LIMIT 1")
       .get(inviteEmail) as Record<string, unknown> | undefined;
-    if (existingUser) {
+    if (
+      existingUser &&
+      db
+        .prepare("SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ? LIMIT 1")
+        .get(membership.workspaceId, String(existingUser.id))
+    ) {
       throw new Error("Пользователь с таким email уже существует.");
     }
 
-    db.prepare(
-      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).run(
-      user.id,
-      user.email,
-      passwordHash,
-      user.displayName,
-      user.status,
-      user.createdAt,
-      user.updatedAt
-    );
+    if (existingUser) {
+      db.prepare(
+        "UPDATE users SET password_hash = ?, display_name = ?, status = ?, updated_at = ? WHERE id = ?"
+      ).run(passwordHash, user.displayName, user.status, user.updatedAt, user.id);
+    } else {
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(
+        user.id,
+        user.email,
+        passwordHash,
+        user.displayName,
+        user.status,
+        user.createdAt,
+        user.updatedAt
+      );
+    }
     db.prepare(
       "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
     ).run(
