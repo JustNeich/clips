@@ -15,6 +15,7 @@ import {
 import { resolveStage3WorkerRestartLaunch } from "./stage3-worker-restart";
 import { ensureEsbuildRuntimeAvailable } from "./stage3-esbuild-runtime";
 import { ensureRspackRuntimeAvailable } from "./stage3-rspack-runtime";
+import { runStage3WorkerNpm } from "./stage3-worker-npm";
 import { completeRemoteStage3Artifact } from "./stage3-worker-completion";
 import {
   Stage3WorkerJobTimeoutError,
@@ -67,6 +68,7 @@ type WorkerRuntimeManifest = {
   builtAt?: string;
   bundleFile?: string;
   runtimeDependenciesArchiveFile?: string;
+  runtimeDependenciesPlatform?: string;
   runtimeSourcesArchiveFile?: string;
   remotionFiles?: string[];
   libFiles?: string[];
@@ -234,6 +236,32 @@ function normalizeRuntimeVersion(value: string | null | undefined): string | nul
   return trimmed ? trimmed : null;
 }
 
+export function resolveStage3WorkerRuntimeDependenciesPlatform(input?: {
+  platform?: NodeJS.Platform;
+  arch?: string;
+}): string {
+  return `${input?.platform ?? process.platform}-${input?.arch ?? process.arch}`;
+}
+
+function normalizeRuntimeDependenciesPlatform(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim().toLowerCase();
+  return trimmed ? trimmed : null;
+}
+
+export function isStage3WorkerRuntimeDependenciesArchiveCompatible(input: {
+  manifestPlatform?: unknown;
+  workerPlatform?: string;
+}): boolean {
+  const manifestPlatform = normalizeRuntimeDependenciesPlatform(input.manifestPlatform);
+  if (!manifestPlatform) {
+    return false;
+  }
+  return manifestPlatform === (input.workerPlatform ?? resolveStage3WorkerRuntimeDependenciesPlatform()).toLowerCase();
+}
+
 function sanitizeRelativeFileList(value: unknown, fallback: string[]): string[] {
   if (!Array.isArray(value)) {
     return fallback;
@@ -353,6 +381,9 @@ export async function syncStage3WorkerRuntime(
     remoteManifest.runtimeDependenciesArchiveFile.trim()
       ? remoteManifest.runtimeDependenciesArchiveFile.trim()
       : "";
+  const runtimeDependenciesArchiveCompatible = isStage3WorkerRuntimeDependenciesArchiveCompatible({
+    manifestPlatform: remoteManifest.runtimeDependenciesPlatform
+  });
   const runtimeSourcesArchiveFile =
     typeof remoteManifest.runtimeSourcesArchiveFile === "string" &&
     remoteManifest.runtimeSourcesArchiveFile.trim()
@@ -445,7 +476,7 @@ export async function syncStage3WorkerRuntime(
   }
 
   let runtimeDependenciesHydrated = false;
-  if (runtimeDependenciesArchiveFile) {
+  if (runtimeDependenciesArchiveFile && runtimeDependenciesArchiveCompatible) {
     try {
       await downloadBinaryFile(
         `${origin}/stage3-worker/${runtimeDependenciesArchiveFile}`,
@@ -465,14 +496,19 @@ export async function syncStage3WorkerRuntime(
 
   await fs.chmod(bundlePath, 0o755).catch(() => undefined);
   if (!runtimeDependenciesHydrated) {
-    await execFileAsync(options.npmCommand ?? (process.platform === "win32" ? "npm.cmd" : "npm"), [
-      "install",
-      "--omit=dev",
-      "--no-fund",
-      "--no-audit"
-    ], {
-      cwd: workerPaths.root,
-      env: options.env ?? process.env
+    if (runtimeDependenciesArchiveFile && !runtimeDependenciesArchiveCompatible) {
+      await fs.rm(path.join(workerPaths.root, "node_modules"), { recursive: true, force: true }).catch(() => undefined);
+    }
+    await runStage3WorkerNpm({
+      installRoot: workerPaths.root,
+      npmCommand: options.npmCommand,
+      env: options.env,
+      npmArgs: [
+        "install",
+        "--omit=dev",
+        "--no-fund",
+        "--no-audit"
+      ]
     });
   }
   return {
@@ -846,8 +882,8 @@ export async function startStage3WorkerLoop(options: Stage3WorkerLoopOptions = {
       );
     }
   } catch (error) {
-    console.warn(
-      `Worker runtime sync skipped: ${error instanceof Error ? error.message : String(error)}`
+    throw new Error(
+      `Worker runtime sync failed before job loop: ${error instanceof Error ? error.message : String(error)}`
     );
   }
   if (

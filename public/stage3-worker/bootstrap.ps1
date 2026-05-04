@@ -71,6 +71,8 @@ function Install-ClipsStage3Worker {
       throw "Node.js 22+ is required to run the Clips Stage 3 worker. Install Node first, then rerun this command."
     }
     Write-ClipsStage3BootstrapLog "Detected node: $($node.Source)"
+    $localRuntimeDependenciesPlatform = (& $node.Source -p "process.platform + '-' + process.arch").Trim().ToLowerInvariant()
+    Write-ClipsStage3BootstrapLog "Detected runtime dependency platform: $localRuntimeDependenciesPlatform"
 
     $binDir = Join-Path $installRoot "bin"
     $remotionDir = Join-Path $installRoot "remotion"
@@ -156,6 +158,12 @@ function Install-ClipsStage3Worker {
       } else {
         ""
       }
+    $runtimeArchivePlatform =
+      if ($manifest.runtimeDependenciesPlatform -is [string]) {
+        $manifest.runtimeDependenciesPlatform.Trim().ToLowerInvariant()
+      } else {
+        ""
+      }
     $runtimeSourcesArchiveRelativePath =
       if ($manifest.runtimeSourcesArchiveFile -is [string]) {
         $manifest.runtimeSourcesArchiveFile.Trim()
@@ -234,7 +242,13 @@ node "%~dp0clips-stage3-worker.cjs" %*
 "@ | Set-Content -Path $wrapperPath -Encoding Ascii
 
     $runtimeReady = $false
-    if ($runtimeArchiveRelativePath) {
+    $runtimeArchiveCompatible = $runtimeArchiveRelativePath -and $runtimeArchivePlatform -and ($runtimeArchivePlatform -eq $localRuntimeDependenciesPlatform)
+    if ($runtimeArchiveRelativePath -and -not $runtimeArchiveCompatible) {
+      $label = if ($runtimeArchivePlatform) { $runtimeArchivePlatform } else { "unknown platform" }
+      Write-ClipsStage3BootstrapLog "Bundled runtime dependencies are for $label, this machine is $localRuntimeDependenciesPlatform. Installing with npm instead."
+      Remove-Item (Join-Path $installRoot "node_modules") -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ($runtimeArchiveCompatible) {
       try {
         Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/$runtimeArchiveRelativePath" -OutFile $runtimeArchivePath -Label "bundled runtime dependencies"
         Write-ClipsStage3BootstrapLog "Unpacking bundled runtime dependencies"

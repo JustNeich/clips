@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
+import { runStage3WorkerNpm } from "./stage3-worker-npm";
 
 const execFileAsync = promisify(execFile);
 
@@ -174,17 +175,14 @@ export async function ensureEsbuildRuntimeAvailable(input: {
     };
   }
 
-  const npmCommand = input.npmCommand ?? (process.platform === "win32" ? "npm.cmd" : "npm");
   input.log?.(
     `Repairing esbuild native runtime by reinstalling ${repairPlan.platformPackageName}.`
   );
-  await execFileAsync(
-    npmCommand,
-    ["install", "--omit=dev", "--no-fund", "--no-audit", "--no-save", ...repairPlan.installPackages],
-    {
-      cwd: input.installRoot
-    }
-  );
+  await runStage3WorkerNpm({
+    installRoot: input.installRoot,
+    npmCommand: input.npmCommand,
+    npmArgs: ["install", "--omit=dev", "--no-fund", "--no-audit", "--no-save", ...repairPlan.installPackages]
+  });
 
   const repairedError = await verifyEsbuildRuntime(input.installRoot);
   return {

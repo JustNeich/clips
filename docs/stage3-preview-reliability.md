@@ -83,6 +83,7 @@
 - Ошибки до создания job, например отсутствующий source или недоступный локальный executor, фиксируются compact audit event-ом `stage3_request.failed`.
 - Local worker readiness personal-by-default: snapshot готовности считается по worker-ам текущего пользователя, а не по общему workspace pool. Worker другого редактора не должен превращать Step 3 текущего пользователя в `Online`.
 - Local worker claim personal-by-default: `preview`, `render`, `source-download` и `agent-media-step` jobs текущего пользователя не могут быть claim-нуты worker-ом другого пользователя. Shared render machine может появиться только как отдельный явный режим.
+- Local worker runtime не должен claim-ить jobs, если runtime dependency install не соответствует платформе пользователя. Серверный `runtime-deps.tar.gz` используется только при совпадении `runtimeDependenciesPlatform`; иначе worker делает локальный `npm install` и чинит native bindings до входа в job loop.
 - `worker_unavailable` / `worker_runtime_outdated` audit events сохраняют snapshot готовности локального executor: `onlineWorkers`, `compatibleOnlineWorkers`, `expectedRuntimeVersion`.
 - Ошибки внутри job фиксируются в `stage3_jobs`, `stage3_job_events` и audit event `stage3_job.failed`.
 - Flow list / MCP summary отдаёт `stage3Runtime` backlog-снимок: queued/running local/host jobs, oldest queued/running age, expired local leases и свежие `worker_unavailable` события.

@@ -229,6 +229,7 @@ npm run stage2-worker
 - Тяжёлые Stage 3 jobs (`preview`, `render`, `source-download`, `agent-media-step`) выполняет отдельное desktop-приложение `Clips Worker` на ПК текущего пользователя.
 - Worker pairing доступен прямо из Stage 3 UI через deep link `clips-stage3-worker://pair?...` в блоке `Local Executor`.
 - Worker после pairing считается персональным executor-ом: он claim-ит только jobs своего `userId` внутри workspace. Онлайн-worker другого редактора больше не делает текущего пользователя `Online` и не забирает его render/preview jobs.
+- Worker runtime не распаковывает серверный `node_modules` на чужой платформе: если manifest говорит, что `runtime-deps.tar.gz` собран не под текущий OS/CPU, Clips Worker делает локальный `npm install` и чинит native `esbuild`/`@rspack` bindings до claim jobs.
 - CLI остаётся совместимым advanced fallback для разработки и поддержки:
 
 ```bash

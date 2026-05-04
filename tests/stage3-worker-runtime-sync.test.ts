@@ -5,6 +5,10 @@ import {
   resolveStage3WorkerAdvertisedVersion,
   shouldRestartStage3WorkerAfterSync
 } from "../lib/stage3-worker-runtime-sync";
+import {
+  isStage3WorkerRuntimeDependenciesArchiveCompatible,
+  resolveStage3WorkerRuntimeDependenciesPlatform
+} from "../lib/stage3-worker-runtime";
 
 test("worker advertises the bundled runtime version instead of the downloaded manifest version", () => {
   assert.equal(
@@ -52,3 +56,30 @@ test("worker does not restart when sync confirms the currently running runtime",
   );
 });
 
+test("runtime dependency archive is used only for the matching OS and CPU", () => {
+  assert.equal(
+    resolveStage3WorkerRuntimeDependenciesPlatform({ platform: "win32", arch: "x64" }),
+    "win32-x64"
+  );
+  assert.equal(
+    isStage3WorkerRuntimeDependenciesArchiveCompatible({
+      manifestPlatform: "linux-x64",
+      workerPlatform: "win32-x64"
+    }),
+    false
+  );
+  assert.equal(
+    isStage3WorkerRuntimeDependenciesArchiveCompatible({
+      manifestPlatform: "WIN32-X64",
+      workerPlatform: "win32-x64"
+    }),
+    true
+  );
+  assert.equal(
+    isStage3WorkerRuntimeDependenciesArchiveCompatible({
+      manifestPlatform: "",
+      workerPlatform: "darwin-arm64"
+    }),
+    false
+  );
+});

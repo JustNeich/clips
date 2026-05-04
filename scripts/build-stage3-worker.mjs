@@ -219,6 +219,10 @@ function resolveNpmCommand() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
+function resolveRuntimeDependenciesPlatform() {
+  return `${process.platform}-${process.arch}`;
+}
+
 async function buildWorkerRuntimeArchive(workerPackageJson) {
   const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), "clips-stage3-worker-runtime-"));
   try {
@@ -322,6 +326,7 @@ async function main() {
         builtAt: new Date().toISOString(),
         bundleFile: path.basename(bundlePath),
         runtimeDependenciesArchiveFile: path.basename(runtimeDependenciesArchivePath),
+        runtimeDependenciesPlatform: resolveRuntimeDependenciesPlatform(),
         runtimeSourcesArchiveFile: path.basename(runtimeSourcesArchivePath),
         remotionFiles,
         libFiles: WORKER_LIB_RUNTIME_FILES,

@@ -40,6 +40,8 @@ if ! command -v node >/dev/null 2>&1; then
   echo "Install Node first, then rerun this command." >&2
   exit 1
 fi
+LOCAL_RUNTIME_DEPENDENCIES_PLATFORM="$(node -p "process.platform + '-' + process.arch" | tr '[:upper:]' '[:lower:]')"
+log "Detected runtime dependency platform: ${LOCAL_RUNTIME_DEPENDENCIES_PLATFORM}"
 
 INSTALL_ROOT="${HOME}/Library/Application Support/Clips Stage3 Worker"
 BIN_DIR="${INSTALL_ROOT}/bin"
@@ -207,9 +209,29 @@ const archiveFile =
 process.stdout.write(archiveFile);
 ' "$MANIFEST_PATH"
 )"
+RUNTIME_ARCHIVE_PLATFORM="$(
+  node -e '
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const archivePlatform =
+  typeof manifest.runtimeDependenciesPlatform === "string" && manifest.runtimeDependenciesPlatform.trim()
+    ? manifest.runtimeDependenciesPlatform.trim().toLowerCase()
+    : "";
+process.stdout.write(archivePlatform);
+' "$MANIFEST_PATH"
+)"
 
 runtime_ready="false"
-if [[ -n "$RUNTIME_ARCHIVE_FILE" ]]; then
+runtime_archive_compatible="false"
+if [[ -n "$RUNTIME_ARCHIVE_FILE" && -n "$RUNTIME_ARCHIVE_PLATFORM" && "$RUNTIME_ARCHIVE_PLATFORM" == "$LOCAL_RUNTIME_DEPENDENCIES_PLATFORM" ]]; then
+  runtime_archive_compatible="true"
+fi
+if [[ -n "$RUNTIME_ARCHIVE_FILE" && "$runtime_archive_compatible" != "true" ]]; then
+  runtime_archive_label="${RUNTIME_ARCHIVE_PLATFORM:-unknown platform}"
+  log "Bundled runtime dependencies are for ${runtime_archive_label}, this machine is ${LOCAL_RUNTIME_DEPENDENCIES_PLATFORM}. Installing with npm instead."
+  rm -rf "${INSTALL_ROOT}/node_modules"
+fi
+if [[ "$runtime_archive_compatible" == "true" ]]; then
   if command -v tar >/dev/null 2>&1; then
     log "Downloading bundled runtime dependencies"
     if curl -fsSL "${SERVER%/}/stage3-worker/${RUNTIME_ARCHIVE_FILE}" -o "$RUNTIME_ARCHIVE_PATH"; then

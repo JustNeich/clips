@@ -79,6 +79,7 @@ test("windows bootstrap script uses basic parsing and writes bootstrap logs", ()
   const manifestPath = path.join(process.cwd(), "public", "stage3-worker", "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
     runtimeDependenciesArchiveFile?: string;
+    runtimeDependenciesPlatform?: string;
     runtimeSourcesArchiveFile?: string;
     libFiles?: string[];
   };
@@ -90,9 +91,13 @@ test("windows bootstrap script uses basic parsing and writes bootstrap logs", ()
   assert.match(script, /Invoke-WebRequest \$Uri -UseBasicParsing -ErrorAction Stop -OutFile \$OutFile/);
   assert.match(script, /Invoke-ClipsStage3Download -Uri "\$serverOrigin\/stage3-worker\/clips-stage3-worker\.cjs" -OutFile \$bundlePath -Label "worker bundle"/);
   assert.equal(manifest.runtimeDependenciesArchiveFile, "runtime-deps.tar.gz");
+  assert.equal(manifest.runtimeDependenciesPlatform, `${process.platform}-${process.arch}`);
   assert.equal(manifest.runtimeSourcesArchiveFile, "runtime-sources.tar.gz");
   assert.ok(manifest.libFiles?.includes("stage3-verified-badge.tsx"));
   assert.match(script, /runtimeDependenciesArchiveFile/);
+  assert.match(script, /runtimeDependenciesPlatform/);
+  assert.match(script, /Detected runtime dependency platform/);
+  assert.match(script, /Installing with npm instead/);
   assert.match(script, /runtimeSourcesArchiveFile/);
   assert.match(script, /Bundled runtime sources unpacked locally\./);
   assert.match(script, /stage3-verified-badge\.tsx/);
@@ -144,6 +149,10 @@ test("bootstrap fallback file lists stay aligned with worker runtime manifest", 
     publicFiles?: string[];
   };
   const scripts = [shellScript, powershellScript];
+
+  assert.match(shellScript, /runtimeDependenciesPlatform/);
+  assert.match(shellScript, /LOCAL_RUNTIME_DEPENDENCIES_PLATFORM/);
+  assert.match(shellScript, /Installing with npm instead/);
 
   for (const file of [
     ...(manifest.libFiles ?? []),
