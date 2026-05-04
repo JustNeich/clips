@@ -162,6 +162,7 @@ import {
 import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 import {
   buildChannelAssetUrl,
+  buildCachedSourcePreviewUrl,
   buildScopedStorageKey,
   buildSharedCodexStatus,
   buildStage3AgentConversation,
@@ -5208,6 +5209,7 @@ export default function HomePage() {
 
     const controller = new AbortController();
     let retryTimer: number | null = null;
+    const cachedSourcePreviewUrl = buildCachedSourcePreviewUrl(activeChat.url);
 
     const isStale = (): boolean =>
       controller.signal.aborted ||
@@ -5263,6 +5265,26 @@ export default function HomePage() {
         }
         void startPreviewRequest();
       }, delayMs);
+    };
+
+    const showCachedSourcePreviewIfAvailable = async () => {
+      try {
+        const response = await fetchWithTimeout(
+          cachedSourcePreviewUrl,
+          {
+            method: "HEAD",
+            signal: controller.signal,
+            cache: "no-store"
+          },
+          5000
+        );
+        if (!response.ok || isStale()) {
+          return;
+        }
+        setStage3PreviewVideoUrl((current) => current ?? cachedSourcePreviewUrl);
+      } catch {
+        // If the server source cache is not warm yet, the editing proxy path below remains authoritative.
+      }
     };
 
     const pollPreviewJob = async (
@@ -5421,6 +5443,7 @@ export default function HomePage() {
     };
 
     void startPreviewRequest();
+    void showCachedSourcePreviewIfAvailable();
 
     return () => {
       controller.abort();

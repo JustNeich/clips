@@ -361,6 +361,22 @@ export async function downloadSourceVideo(
   }
 
   try {
+    const hostedCached = await maybeDownloadStage3WorkerSource({
+      sourceUrl: rawUrl,
+      tmpDir,
+      cacheOnly: true
+    });
+    if (hostedCached) {
+      return {
+        filePath: hostedCached.filePath,
+        fileName: sanitizeFileName(hostedCached.fileName)
+      };
+    }
+  } catch {
+    // Cache-only host lookup is an optimization; local acquisition remains the primary fallback.
+  }
+
+  try {
     const downloaded = await downloadSourceMedia(rawUrl, tmpDir);
     return {
       filePath: downloaded.filePath,

@@ -39,6 +39,7 @@ function decodeStage3SourceFileNameHeader(value: string | null): string | null {
 export async function maybeDownloadStage3WorkerSource(params: {
   sourceUrl: string;
   tmpDir: string;
+  cacheOnly?: boolean;
 }): Promise<Stage3WorkerDownloadedSource | null> {
   const workerEnv = readWorkerSourceEnv();
   if (!workerEnv) {
@@ -52,7 +53,8 @@ export async function maybeDownloadStage3WorkerSource(params: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      url: params.sourceUrl
+      url: params.sourceUrl,
+      ...(params.cacheOnly ? { cacheOnly: true } : {})
     })
   });
 

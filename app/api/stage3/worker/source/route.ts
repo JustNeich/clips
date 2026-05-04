@@ -23,8 +23,9 @@ function scheduleDirectoryCleanup(dirPath: string): void {
 export async function POST(request: Request): Promise<Response> {
   try {
     requireStage3WorkerAuth(request);
-    const body = (await request.json().catch(() => null)) as { url?: string } | null;
+    const body = (await request.json().catch(() => null)) as { url?: string; cacheOnly?: boolean } | null;
     const rawUrl = body?.url?.trim();
+    const cacheOnly = body?.cacheOnly === true;
 
     if (!rawUrl) {
       return Response.json({ error: "Передайте URL в теле запроса." }, { status: 400 });
@@ -44,11 +45,18 @@ export async function POST(request: Request): Promise<Response> {
     let cleanupScheduled = false;
 
     try {
-      const cached = isUploadedSourceUrl(sourceUrl)
+      const cached = cacheOnly || isUploadedSourceUrl(sourceUrl)
         ? await getCachedSourceMedia(sourceUrl)
         : await ensureSourceMediaCached(sourceUrl);
       if (!cached) {
-        throw new Error("Загруженный mp4 не найден в локальном хранилище. Загрузите файл заново.");
+        return Response.json(
+          {
+            error: cacheOnly
+              ? "Source media ещё не готов в cache."
+              : "Загруженный mp4 не найден в локальном хранилище. Загрузите файл заново."
+          },
+          { status: 404 }
+        );
       }
       const fileStat = await fs.stat(cached.sourcePath);
       const stream = createReadStream(cached.sourcePath);

@@ -84,6 +84,10 @@ export function buildScopedStorageKey(
   return `${prefix}:${workspaceId}:${userId}`;
 }
 
+export function buildCachedSourcePreviewUrl(sourceUrl: string): string {
+  return `/api/source-media?sourceUrl=${encodeURIComponent(sourceUrl)}&cacheOnly=1`;
+}
+
 export function clampWorkflowStep(value: unknown): 1 | 2 | 3 {
   return value === 2 || value === 3 ? value : 1;
 }
