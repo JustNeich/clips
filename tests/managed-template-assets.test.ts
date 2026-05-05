@@ -16,6 +16,14 @@ test("managed template asset validation accepts font files without widening back
     originalName: "MainText.otf"
   }), true);
   assert.equal(validateManagedTemplateFontUpload({
+    mimeType: "application/x-font-woff",
+    originalName: "BrowserReported.woff"
+  }), true);
+  assert.equal(validateManagedTemplateFontUpload({
+    mimeType: "font/sfnt",
+    originalName: "VariableFont.ttf"
+  }), true);
+  assert.equal(validateManagedTemplateFontUpload({
     mimeType: "image/svg+xml",
     originalName: "not-a-font.svg"
   }), false);

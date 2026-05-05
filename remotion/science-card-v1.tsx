@@ -1,5 +1,14 @@
 import React from "react";
-import { AbsoluteFill, Img, OffthreadVideo, staticFile, useCurrentFrame } from "remotion";
+import {
+  AbsoluteFill,
+  Img,
+  OffthreadVideo,
+  continueRender,
+  delayRender,
+  getRemotionEnvironment,
+  staticFile,
+  useCurrentFrame
+} from "remotion";
 import { Stage3TemplateRenderer } from "../lib/stage3-template-renderer";
 import { buildTemplateRenderSnapshot } from "../lib/stage3-template-core";
 import type { Stage3VariationProfile } from "../lib/stage3-render-variation";
@@ -29,6 +38,10 @@ import type {
   Stage3PositionKeyframe,
   Stage3ScaleKeyframe
 } from "../lib/stage3-camera";
+import {
+  collectStage3TemplateFontAssets,
+  waitForStage3TemplateFonts
+} from "../lib/stage3-template-fonts";
 
 type RemotionStage3TimingMode = "auto" | "compress" | "stretch";
 type RemotionStage3Segment = {
@@ -93,6 +106,38 @@ type ScienceCardV1Props = {
   } | null;
   variationProfile?: Stage3VariationProfile | null;
 };
+
+function RemotionTemplateFontGate({
+  templateConfig
+}: {
+  templateConfig: Stage3TemplateConfig;
+}): null {
+  React.useEffect(() => {
+    if (
+      collectStage3TemplateFontAssets(templateConfig).length === 0 ||
+      !getRemotionEnvironment().isRendering
+    ) {
+      return;
+    }
+
+    const handle = delayRender("Stage 3 uploaded template fonts", {
+      timeoutInMilliseconds: 15000
+    });
+    let released = false;
+    const release = () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      continueRender(handle);
+    };
+
+    void waitForStage3TemplateFonts(templateConfig, { timeoutMs: 12000 }).finally(release);
+    return release;
+  }, [templateConfig]);
+
+  return null;
+}
 
 export function buildScienceCardRenderSnapshot(input: {
   templateId?: string;
@@ -503,6 +548,7 @@ export function ScienceCardV1({
         height: frame.height
       }}
     >
+      <RemotionTemplateFontGate templateConfig={templateConfig} />
       <Stage3TemplateRenderer
         templateId={resolvedTemplateId}
         content={renderSnapshot.content}

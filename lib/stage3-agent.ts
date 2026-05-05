@@ -43,6 +43,7 @@ import {
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
 import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
+import { resolveStage3TemplateDefaultTextScales } from "./stage3-template-fonts";
 
 export type {
   Stage3RenderPlan,
@@ -682,6 +683,7 @@ function createDefaultRenderPlan(
   const resolvedTemplateId = templateId?.trim() || SCIENCE_CARD_TEMPLATE_ID;
   const templateConfig = resolveManagedTemplateRuntimeSync(resolvedTemplateId).templateConfig;
   const videoAdjustments = templateConfig.videoAdjustments;
+  const textScaleDefaults = resolveStage3TemplateDefaultTextScales(templateConfig, DEFAULT_TEXT_SCALE);
   return {
     targetDurationSec,
     timingMode: sourceDurationSec !== null && sourceDurationSec < targetDurationSec ? "stretch" : "auto",
@@ -700,8 +702,8 @@ function createDefaultRenderPlan(
     videoExposure: videoAdjustments.exposure,
     videoContrast: videoAdjustments.contrast,
     videoSaturation: videoAdjustments.saturation,
-    topFontScale: DEFAULT_TEXT_SCALE,
-    bottomFontScale: DEFAULT_TEXT_SCALE,
+    topFontScale: textScaleDefaults.topFontScale,
+    bottomFontScale: textScaleDefaults.bottomFontScale,
     musicGain: 0.65,
     textPolicy: "strict_fit",
     segments: [],

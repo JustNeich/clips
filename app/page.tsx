@@ -115,6 +115,7 @@ import {
   clampStage3TextScaleUi,
   createStage3TextFitSnapshot
 } from "../lib/stage3-text-fit";
+import { resolveStage3TemplateDefaultTextScales } from "../lib/stage3-template-fonts";
 import {
   applyStage3VideoAdjustmentsToRenderPlan,
   areStage3VideoAdjustmentsEqual,
@@ -2491,6 +2492,45 @@ export default function HomePage() {
   }, [
     stage3ManagedTemplateState?.managedId,
     stage3ManagedTemplateState?.templateConfig.videoAdjustments,
+    stage3ManagedTemplateState?.updatedAt
+  ]);
+
+  useEffect(() => {
+    const templateConfig = stage3ManagedTemplateState?.templateConfig;
+    if (!templateConfig) {
+      return;
+    }
+
+    const textScaleDefaults = resolveStage3TemplateDefaultTextScales(templateConfig, DEFAULT_TEXT_SCALE);
+    if (
+      textScaleDefaults.topFontScale === DEFAULT_TEXT_SCALE &&
+      textScaleDefaults.bottomFontScale === DEFAULT_TEXT_SCALE
+    ) {
+      return;
+    }
+
+    setStage3RenderPlan((current) => {
+      const next = { ...current };
+      let changed = false;
+      if (
+        textScaleDefaults.topFontScale !== DEFAULT_TEXT_SCALE &&
+        Math.abs(current.topFontScale - DEFAULT_TEXT_SCALE) <= 0.001
+      ) {
+        next.topFontScale = textScaleDefaults.topFontScale;
+        changed = true;
+      }
+      if (
+        textScaleDefaults.bottomFontScale !== DEFAULT_TEXT_SCALE &&
+        Math.abs(current.bottomFontScale - DEFAULT_TEXT_SCALE) <= 0.001
+      ) {
+        next.bottomFontScale = textScaleDefaults.bottomFontScale;
+        changed = true;
+      }
+      return changed ? normalizeRenderPlan(next, fallbackRenderPlan()) : current;
+    });
+  }, [
+    stage3ManagedTemplateState?.managedId,
+    stage3ManagedTemplateState?.templateConfig,
     stage3ManagedTemplateState?.updatedAt
   ]);
 

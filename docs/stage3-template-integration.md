@@ -273,6 +273,7 @@ Template Road может подключать пользовательские f
 - `fontFamily` обязан включать generated family из asset-а плюс обычный fallback stack;
 - preview, autofit measurement, snapshot-backed render и Remotion final render должны видеть один и тот же `@font-face`;
 - Remotion render не должен зависеть от auth-only API URL: перед render font asset копируется в локальный `stage3-assets/<token>/...` и templateConfig получает временный local URL;
+- uploaded-font слоты стартуют с нейтральной крупности `100%`, а не с legacy draft scale `125%`, чтобы новый файл не выглядел искусственно растянутым сразу после подключения;
 - если font asset отсутствует или не принадлежит workspace, render не блокируется и использует fallback stack.
 
 ## 10. Какие файлы за что отвечают
