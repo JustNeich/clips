@@ -11,6 +11,8 @@ const SAFE_FONT_URL_PREFIXES = [
   "/stage3-assets/",
   "stage3-assets/"
 ] as const;
+const STAGE3_UPLOADED_FONT_DEFAULT_TEXT_SCALE = 1;
+const STAGE3_TEMPLATE_FONT_LOAD_TIMEOUT_MS = 6000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,6 +54,21 @@ function resolveFontFormat(asset: Pick<Stage3TemplateFontAsset, "mimeType" | "or
     return "truetype";
   }
   return null;
+}
+
+function resolveFontCssUrl(asset: Pick<Stage3TemplateFontAsset, "url">): string {
+  const url = asset.url.trim();
+  const remotionStaticBase =
+    typeof window === "undefined"
+      ? ""
+      : ((window as typeof window & { remotion_staticBase?: string }).remotion_staticBase ?? "").trim();
+  if (
+    remotionStaticBase &&
+    (url.startsWith("/stage3-assets/") || url.startsWith("stage3-assets/"))
+  ) {
+    return `${remotionStaticBase.replace(/\/+$/, "")}/${url.replace(/^\/+/, "")}`;
+  }
+  return url;
 }
 
 export function buildStage3TemplateUploadedFontFamily(assetIdRaw: string): string {
@@ -120,13 +137,78 @@ export function collectStage3TemplateFontAssets(
   return [...assets.values()];
 }
 
+export function hasStage3TemplateFontAsset(
+  templateConfig: Pick<Stage3TemplateConfig, "typography">,
+  slot: Stage3TemplateFontSlot
+): boolean {
+  return Boolean(normalizeStage3TemplateFontAsset(templateConfig.typography[slot].fontAsset));
+}
+
+export function resolveStage3TemplateSlotDefaultTextScale(
+  templateConfig: Pick<Stage3TemplateConfig, "typography">,
+  slot: Stage3TemplateFontSlot,
+  fallbackScale: number
+): number {
+  return hasStage3TemplateFontAsset(templateConfig, slot)
+    ? STAGE3_UPLOADED_FONT_DEFAULT_TEXT_SCALE
+    : fallbackScale;
+}
+
+export function resolveStage3TemplateDefaultTextScales(
+  templateConfig: Pick<Stage3TemplateConfig, "typography">,
+  fallbackScale: number
+): { topFontScale: number; bottomFontScale: number } {
+  return {
+    topFontScale: resolveStage3TemplateSlotDefaultTextScale(templateConfig, "top", fallbackScale),
+    bottomFontScale: resolveStage3TemplateSlotDefaultTextScale(templateConfig, "bottom", fallbackScale)
+  };
+}
+
+export function buildStage3TemplateFontLoadDescriptors(
+  templateConfig: Pick<Stage3TemplateConfig, "typography">
+): string[] {
+  return collectStage3TemplateFontAssets(templateConfig).map((asset) => {
+    return `16px ${quoteStage3TemplateFontFamily(asset.family)}`;
+  });
+}
+
+function timeout(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, ms));
+  });
+}
+
+export async function waitForStage3TemplateFonts(
+  templateConfig: Pick<Stage3TemplateConfig, "typography">,
+  options?: { timeoutMs?: number }
+): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts?.load) {
+    return;
+  }
+
+  const descriptors = buildStage3TemplateFontLoadDescriptors(templateConfig);
+  if (descriptors.length === 0) {
+    return;
+  }
+
+  const timeoutMs = options?.timeoutMs ?? STAGE3_TEMPLATE_FONT_LOAD_TIMEOUT_MS;
+  const loadFonts = Promise.all(
+    descriptors.map((descriptor) => document.fonts.load(descriptor).catch(() => []))
+  )
+    .then(() => document.fonts.ready)
+    .then(() => undefined)
+    .catch(() => undefined);
+
+  await Promise.race([loadFonts, timeout(timeoutMs)]);
+}
+
 export function buildStage3TemplateFontFaceCss(
   templateConfig: Pick<Stage3TemplateConfig, "typography">
 ): string {
   return collectStage3TemplateFontAssets(templateConfig)
     .map((asset) => {
       const family = quoteStage3TemplateFontFamily(asset.family);
-      const url = escapeCssString(asset.url);
+      const url = escapeCssString(resolveFontCssUrl(asset));
       const format = resolveFontFormat(asset);
       const formatSuffix = format ? ` format("${format}")` : "";
       return `@font-face{font-family:${family};src:url("${url}")${formatSuffix};font-display:swap;}`;

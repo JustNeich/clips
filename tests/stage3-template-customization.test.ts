@@ -11,6 +11,12 @@ import {
   SCIENCE_CARD,
   cloneStage3TemplateConfig
 } from "../lib/stage3-template";
+import {
+  buildStage3TemplateFontFaceCss,
+  buildStage3TemplateFontLoadDescriptors,
+  resolveStage3TemplateDefaultTextScales,
+  waitForStage3TemplateFonts
+} from "../lib/stage3-template-fonts";
 import { buildScienceCardRenderSnapshot } from "../remotion/science-card-v1";
 import type { TemplateContentFixture } from "../lib/template-calibration-types";
 
@@ -141,6 +147,60 @@ test("template scene markup wires uploaded top and bottom fonts into the rendere
   assert.match(markup, /@font-face\{font-family:"Stage3TemplateFont_fontbody123456"/);
   assert.match(markup, /font-family:&quot;Stage3TemplateFont_fonttop123456&quot;,sans-serif/);
   assert.match(markup, /font-family:&quot;Stage3TemplateFont_fontbody123456&quot;,sans-serif/);
+});
+
+test("uploaded font slots use neutral default text scale and expose browser load descriptors", async () => {
+  const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  templateConfig.typography.top.fontAsset = {
+    id: "fonttop123456",
+    family: "Stage3TemplateFont_fonttop123456",
+    url: "/api/design/template-assets/fonttop123456",
+    originalName: "LeadDisplay.woff2",
+    mimeType: "font/woff2",
+    sizeBytes: 32100
+  };
+  templateConfig.typography.top.fontFamily = '"Stage3TemplateFont_fonttop123456",sans-serif';
+
+  assert.deepEqual(resolveStage3TemplateDefaultTextScales(templateConfig, 1.25), {
+    topFontScale: 1,
+    bottomFontScale: 1.25
+  });
+  assert.deepEqual(buildStage3TemplateFontLoadDescriptors(templateConfig), [
+    '16px "Stage3TemplateFont_fonttop123456"'
+  ]);
+
+  templateConfig.typography.top.fontAsset.url = "/stage3-assets/render-check/font.ttf";
+  const windowHolder = globalThis as unknown as { window?: unknown };
+  const previousWindow = windowHolder.window;
+  windowHolder.window = { remotion_staticBase: "/public" };
+  try {
+    assert.match(
+      buildStage3TemplateFontFaceCss(templateConfig),
+      /url\("\/public\/stage3-assets\/render-check\/font\.ttf"\)/
+    );
+  } finally {
+    windowHolder.window = previousWindow;
+  }
+
+  const documentHolder = globalThis as unknown as { document?: unknown };
+  const previousDocument = documentHolder.document;
+  const loadedDescriptors: string[] = [];
+  documentHolder.document = {
+    fonts: {
+      load: async (descriptor: string) => {
+        loadedDescriptors.push(descriptor);
+        return [];
+      },
+      ready: Promise.resolve({} as FontFaceSet)
+    }
+  };
+  try {
+    await waitForStage3TemplateFonts(templateConfig, { timeoutMs: 1000 });
+  } finally {
+    documentHolder.document = previousDocument;
+  }
+
+  assert.deepEqual(loadedDescriptors, ['16px "Stage3TemplateFont_fonttop123456"']);
 });
 
 test("remotion science-card render snapshot preserves caption highlight spans", () => {

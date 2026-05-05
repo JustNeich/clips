@@ -98,8 +98,12 @@ export function validateManagedTemplateFontUpload(params: {
     "font/otf",
     "font/woff",
     "font/woff2",
+    "font/sfnt",
     "application/font-woff",
     "application/font-woff2",
+    "application/x-font-woff",
+    "application/x-font-woff2",
+    "application/x-font-sfnt",
     "application/x-font-ttf",
     "application/x-font-otf",
     "application/x-font-truetype",
@@ -111,7 +115,11 @@ export function validateManagedTemplateFontUpload(params: {
     return true;
   }
 
-  return hasFontExt && (mimeType === "application/octet-stream" || mimeType === "binary/octet-stream");
+  return hasFontExt && (
+    mimeType === "" ||
+    mimeType === "application/octet-stream" ||
+    mimeType === "binary/octet-stream"
+  );
 }
 
 export function buildManagedTemplateAssetUrl(assetIdRaw: string): string {

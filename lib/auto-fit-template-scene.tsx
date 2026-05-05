@@ -27,6 +27,10 @@ import {
   snapStage3TextFontPx
 } from "./stage3-text-fit";
 import { TemplateScene, type TemplateSceneProps } from "./template-scene";
+import {
+  collectStage3TemplateFontAssets,
+  waitForStage3TemplateFonts
+} from "./stage3-template-fonts";
 
 type TemplateSceneComputed = ReturnType<typeof getTemplateComputed>;
 
@@ -619,6 +623,10 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
   const publishedComputedKeyRef = useRef<string>("");
   const [computed, setComputed] = useState<TemplateSceneComputed>(() => FIT_CACHE.get(cacheKey) ?? baseComputed);
   const [ready, setReady] = useState<boolean>(() => FIT_CACHE.has(cacheKey));
+  const hasUploadedTemplateFonts = useMemo(
+    () => collectStage3TemplateFontAssets(templateConfig).length > 0,
+    [templateConfig]
+  );
 
   useLayoutEffect(() => {
     const cached = readFitCache(cacheKey);
@@ -658,6 +666,15 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
 
     setComputed(baseComputed);
     setReady(false);
+    if (hasUploadedTemplateFonts) {
+      void waitForStage3TemplateFonts(templateConfig).then(() => {
+        runMeasurement();
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     runMeasurement();
     void document.fonts?.ready?.then(() => {
       runMeasurement();
@@ -670,6 +687,7 @@ export function AutoFitTemplateScene(props: TemplateSceneProps): React.JSX.Eleme
     baseComputed,
     cacheKey,
     effectiveContent,
+    hasUploadedTemplateFonts,
     props.templateId,
     renderSnapshot,
     templateConfig

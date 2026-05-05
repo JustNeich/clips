@@ -10,7 +10,10 @@ import {
   type Stage3TemplateConfig
 } from "./stage3-template";
 import { resolveManagedTemplateAssetFile } from "./managed-template-assets";
-import { normalizeStage3TemplateFontAsset } from "./stage3-template-fonts";
+import {
+  normalizeStage3TemplateFontAsset,
+  resolveStage3TemplateDefaultTextScales
+} from "./stage3-template-fonts";
 import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
 import { buildTemplateRenderSnapshot } from "./stage3-template-core";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
@@ -719,6 +722,7 @@ function normalizeRenderPlan(
     workspaceId
   }).templateConfig;
   const templateVideoAdjustments = template.videoAdjustments;
+  const textScaleDefaults = resolveStage3TemplateDefaultTextScales(template, DEFAULT_TEXT_SCALE);
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
   const targetDurationSec = normalizeStage3ClipDurationSec(
@@ -779,11 +783,11 @@ function normalizeRenderPlan(
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
         ? clampStage3TextScaleUi(rawPlan.topFontScale)
-        : DEFAULT_TEXT_SCALE,
+        : textScaleDefaults.topFontScale,
     bottomFontScale:
       typeof rawPlan?.bottomFontScale === "number" && Number.isFinite(rawPlan.bottomFontScale)
         ? clampStage3TextScaleUi(rawPlan.bottomFontScale)
-        : DEFAULT_TEXT_SCALE,
+        : textScaleDefaults.bottomFontScale,
     musicGain:
       typeof rawPlan?.musicGain === "number" && Number.isFinite(rawPlan.musicGain)
         ? Math.min(1, Math.max(0, rawPlan.musicGain))
