@@ -506,6 +506,10 @@ function resolveDefaultBodyFontValue(templateId: string): string {
   return BODY_FONT_OPTIONS[0].value;
 }
 
+function resolveDefaultAuthorFontValue(templateId: string): string {
+  return resolveDefaultBodyFontValue(templateId);
+}
+
 function buildFontSelectOptions(value: string, options: FontOption[]): FontOption[] {
   return options.some((option) => option.value === value)
     ? options
@@ -1417,9 +1421,9 @@ export function TemplateStyleEditor({
   const currentTopFontAsset = templateConfig.typography.top.fontAsset;
   const currentBottomFontAsset = templateConfig.typography.bottom.fontAsset;
   const currentAuthorNameFontFamily =
-    templateConfig.typography.authorName.fontFamily ?? currentBottomFontFamily;
+    templateConfig.typography.authorName.fontFamily ?? resolveDefaultAuthorFontValue(baseTemplateId);
   const currentAuthorHandleFontFamily =
-    templateConfig.typography.authorHandle.fontFamily ?? currentBottomFontFamily;
+    templateConfig.typography.authorHandle.fontFamily ?? resolveDefaultAuthorFontValue(baseTemplateId);
   const currentBadgeAssetPath = templateConfig.author.checkAssetPath ?? "";
   const currentBadgeOption = BADGE_OPTIONS.find((option) => option.value === currentBadgeAssetPath);
   const sectionLinks = useMemo(

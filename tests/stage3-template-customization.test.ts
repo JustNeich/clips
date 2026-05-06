@@ -143,6 +143,8 @@ test("template scene markup wires uploaded top and bottom fonts into the rendere
 
   assert.match(markup, /data-stage3-template-fonts/);
   assert.match(markup, /@font-face\{font-family:"Stage3TemplateFont_fonttop123456"/);
+  assert.match(markup, /font-weight:100 900;font-style:normal;font-display:swap/);
+  assert.match(markup, /font-weight:100 900;font-style:italic;font-display:swap/);
   assert.match(markup, /\/api\/design\/template-assets\/fonttop123456/);
   assert.match(markup, /@font-face\{font-family:"Stage3TemplateFont_fontbody123456"/);
   assert.match(markup, /font-family:&quot;Stage3TemplateFont_fonttop123456&quot;,sans-serif/);
@@ -166,7 +168,7 @@ test("uploaded font slots use neutral default text scale and expose browser load
     bottomFontScale: 1.25
   });
   assert.deepEqual(buildStage3TemplateFontLoadDescriptors(templateConfig), [
-    '16px "Stage3TemplateFont_fonttop123456"'
+    'normal 900 16px "Stage3TemplateFont_fonttop123456"'
   ]);
 
   templateConfig.typography.top.fontAsset.url = "/stage3-assets/render-check/font.ttf";
@@ -200,7 +202,48 @@ test("uploaded font slots use neutral default text scale and expose browser load
     documentHolder.document = previousDocument;
   }
 
-  assert.deepEqual(loadedDescriptors, ['16px "Stage3TemplateFont_fonttop123456"']);
+  assert.deepEqual(loadedDescriptors, ['normal 900 16px "Stage3TemplateFont_fonttop123456"']);
+});
+
+test("channel story author row does not inherit uploaded body font assets", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.typography.bottom.fontAsset = {
+    id: "fontbody123456",
+    family: "Stage3TemplateFont_fontbody123456",
+    url: "/api/design/template-assets/fontbody123456",
+    originalName: "MainText.woff2",
+    mimeType: "font/woff2",
+    sizeBytes: 45600
+  };
+  templateConfig.typography.bottom.fontFamily = '"Stage3TemplateFont_fontbody123456",sans-serif';
+
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      content: {
+        topText: "Did you know this?",
+        bottomText: "Erica Marshall and the chamber accident still define this case.",
+        channelName: "Human History",
+        channelHandle: "@HISTORY.",
+        highlights: { top: [], bottom: [] },
+        topFontScale: 1,
+        bottomFontScale: 1,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      },
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  const authorIndex = markup.indexOf("Human History");
+  const authorSnippet = markup.slice(Math.max(0, authorIndex - 260), authorIndex + 80);
+  const bottomIndex = markup.indexOf('data-template-slot="bottom-text"');
+  const bottomSnippet = markup.slice(bottomIndex, bottomIndex + 360);
+
+  assert.doesNotMatch(authorSnippet, /Stage3TemplateFont_fontbody123456/);
+  assert.match(bottomSnippet, /font-family:&quot;Stage3TemplateFont_fontbody123456&quot;,sans-serif/);
 });
 
 test("remotion science-card render snapshot preserves caption highlight spans", () => {

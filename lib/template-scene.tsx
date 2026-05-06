@@ -144,6 +144,10 @@ function resolveDefaultBodyFontFamily(templateId: string): string {
   return '"Inter","Helvetica Neue",Helvetica,sans-serif';
 }
 
+function resolveDefaultAuthorFontFamily(templateId: string): string {
+  return resolveDefaultBodyFontFamily(templateId);
+}
+
 const DEFAULT_TEMPLATE_PALETTE = {
   cardFill: "#ffffff",
   topSectionFill: "#ffffff",
@@ -389,8 +393,7 @@ function renderDefaultAvatar(
   const palette = resolvePalette(templateConfig);
   const avatarFontFamily =
     templateConfig.typography.authorName.fontFamily ??
-    templateConfig.typography.bottom.fontFamily ??
-    resolveDefaultBodyFontFamily(templateId || STAGE3_TEMPLATE_ID);
+    resolveDefaultAuthorFontFamily(templateId || STAGE3_TEMPLATE_ID);
   let borderColor = "rgba(7, 13, 23, 0.25)";
   if (isScienceCardV7 || isHedgesOfHonor) {
     borderColor = "rgba(255,255,255,0)";
@@ -617,8 +620,10 @@ export function TemplateScene({
     templateConfig.typography.top.fontFamily ?? resolveDefaultTopFontFamily(resolvedTemplateId);
   const bottomTextFontFamily =
     templateConfig.typography.bottom.fontFamily ?? resolveDefaultBodyFontFamily(resolvedTemplateId);
-  const authorNameFontFamily = templateConfig.typography.authorName.fontFamily ?? bottomTextFontFamily;
-  const authorHandleFontFamily = templateConfig.typography.authorHandle.fontFamily ?? bottomTextFontFamily;
+  const authorNameFontFamily =
+    templateConfig.typography.authorName.fontFamily ?? resolveDefaultAuthorFontFamily(resolvedTemplateId);
+  const authorHandleFontFamily =
+    templateConfig.typography.authorHandle.fontFamily ?? resolveDefaultAuthorFontFamily(resolvedTemplateId);
   const bottomTextWeight = templateConfig.typography.bottom.weight ?? 500;
   const bottomTextLetterSpacing = templateConfig.typography.bottom.letterSpacing ?? "-0.005em";
   const bottomTextFontStyle = templateConfig.typography.bottom.fontStyle ?? "normal";

@@ -13,6 +13,7 @@ const SAFE_FONT_URL_PREFIXES = [
 ] as const;
 const STAGE3_UPLOADED_FONT_DEFAULT_TEXT_SCALE = 1;
 const STAGE3_TEMPLATE_FONT_LOAD_TIMEOUT_MS = 6000;
+const STAGE3_TEMPLATE_FONT_FACE_WEIGHT_RANGE = "100 900";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -167,9 +168,21 @@ export function resolveStage3TemplateDefaultTextScales(
 export function buildStage3TemplateFontLoadDescriptors(
   templateConfig: Pick<Stage3TemplateConfig, "typography">
 ): string[] {
-  return collectStage3TemplateFontAssets(templateConfig).map((asset) => {
-    return `16px ${quoteStage3TemplateFontFamily(asset.family)}`;
-  });
+  const descriptors = new Set<string>();
+  for (const slot of ["top", "bottom"] as const) {
+    const asset = normalizeStage3TemplateFontAsset(templateConfig.typography[slot].fontAsset);
+    if (!asset) {
+      continue;
+    }
+    const style = templateConfig.typography[slot].fontStyle ?? "normal";
+    const weight =
+      typeof templateConfig.typography[slot].weight === "number" &&
+      Number.isFinite(templateConfig.typography[slot].weight)
+        ? Math.max(100, Math.min(900, Math.round(templateConfig.typography[slot].weight)))
+        : 400;
+    descriptors.add(`${style} ${weight} 16px ${quoteStage3TemplateFontFamily(asset.family)}`);
+  }
+  return [...descriptors];
 }
 
 function timeout(ms: number): Promise<void> {
@@ -211,7 +224,10 @@ export function buildStage3TemplateFontFaceCss(
       const url = escapeCssString(resolveFontCssUrl(asset));
       const format = resolveFontFormat(asset);
       const formatSuffix = format ? ` format("${format}")` : "";
-      return `@font-face{font-family:${family};src:url("${url}")${formatSuffix};font-display:swap;}`;
+      return [
+        `@font-face{font-family:${family};src:url("${url}")${formatSuffix};font-weight:${STAGE3_TEMPLATE_FONT_FACE_WEIGHT_RANGE};font-style:normal;font-display:swap;}`,
+        `@font-face{font-family:${family};src:url("${url}")${formatSuffix};font-weight:${STAGE3_TEMPLATE_FONT_FACE_WEIGHT_RANGE};font-style:italic;font-display:swap;}`
+      ].join("\n");
     })
     .join("\n");
 }
