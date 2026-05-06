@@ -1,7 +1,7 @@
 import {
   createChannel,
-  getChannelAccessForUser,
-  listChannelsWithStats
+  listChannelAccessForUserByChannelIds,
+  listVisibleChannelsWithStats
 } from "../../../lib/chat-history";
 import { requireAuth } from "../../../lib/auth/guards";
 import { resolveChannelPermissions } from "../../../lib/acl";
@@ -54,7 +54,15 @@ async function ensureChannelTemplateSelectable(
 export async function GET(request: Request): Promise<Response> {
   try {
     const auth = await requireAuth(request);
-    const channels = await listChannelsWithStats(auth.workspace.id);
+    const channels = await listVisibleChannelsWithStats({
+      workspaceId: auth.workspace.id,
+      userId: auth.user.id,
+      role: auth.membership.role
+    });
+    const accessByChannelId = await listChannelAccessForUserByChannelIds(
+      channels.map((channel) => channel.id),
+      auth.user.id
+    );
     const workspaceAnthropicIntegration =
       auth.membership.role === "owner"
         ? await getWorkspaceAnthropicStatus(auth)
@@ -67,7 +75,7 @@ export async function GET(request: Request): Promise<Response> {
     const stage3Execution = resolveStage3Execution(stage3ExecutionTarget);
     const visibleChannels = await Promise.all(
       channels.map(async (channel) => {
-        const explicitAccess = await getChannelAccessForUser(channel.id, auth.user.id);
+        const explicitAccess = accessByChannelId.get(channel.id) ?? null;
         const permissions = resolveChannelPermissions({
           membership: auth.membership,
           channel,

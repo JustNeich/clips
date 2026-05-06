@@ -59,6 +59,7 @@ export async function POST(request: Request): Promise<Response> {
     const job = claimNextQueuedStage3JobForWorker({
       workerId: auth.worker.id,
       workspaceId: auth.workspaceId,
+      userId: auth.userId,
       supportedKinds: body?.supportedKinds,
       leaseDurationMs: DEFAULT_LOCAL_STAGE3_WORKER_LEASE_MS
     });

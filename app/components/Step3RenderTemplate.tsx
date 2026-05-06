@@ -3660,6 +3660,7 @@ export function Step3RenderTemplate({
         ? workerPairing.commands.powershell
         : workerPairing.commands.shell
       : null;
+  const desktopDeepLink = workerPairing?.desktopDeepLink ?? null;
   const workerInstallLinks = getWorkerInstallLinks(workerGuidePlatform);
   const workerInstallCommand =
     workerGuidePlatform === "windows"
@@ -4200,8 +4201,8 @@ export function Step3RenderTemplate({
         <section className="control-card executor-guide-card">
           <div className="control-section-head">
             <div>
-              <h3>Шаг 2. Подготовьте команду</h3>
-              <p className="subtle-text">Нажмите кнопку ниже. Мы подготовим для вас готовую команду запуска.</p>
+              <h3>Шаг 2. Откройте Clips Worker</h3>
+              <p className="subtle-text">Нажмите кнопку ниже. Мы подготовим персональное подключение для этого компьютера.</p>
             </div>
             <button
               type="button"
@@ -4212,41 +4213,51 @@ export function Step3RenderTemplate({
               disabled={isWorkerPairing}
               aria-busy={isWorkerPairing}
             >
-              {isWorkerPairing ? "Готовлю команду..." : pairCommand ? "Обновить команду" : "Подготовить команду"}
+              {isWorkerPairing ? "Готовлю подключение..." : desktopDeepLink ? "Обновить подключение" : "Подготовить подключение"}
             </button>
           </div>
-          {pairCommand ? (
+          {desktopDeepLink ? (
             <>
-              <ol className="executor-guide-list">
-                {workerGuideSteps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
               <div className="executor-guide-actions">
-                <button type="button" className="btn btn-primary" onClick={() => void handleCopyWorkerCommand()}>
-                  Скопировать команду
-                </button>
+                <a className="btn btn-primary" href={desktopDeepLink}>
+                  Открыть Clips Worker
+                </a>
                 <span className="subtle-text">
-                  {workerCopyState === "copied"
-                    ? "Команда скопирована."
-                    : workerCopyState === "error"
-                      ? "Не удалось скопировать. Скопируйте текст вручную."
-                      : workerGuidePlatform === "windows"
-                        ? "После копирования откройте PowerShell."
-                        : "После копирования откройте Terminal."}
+                  Приложение привяжется к вашему аккаунту и запустит локальный worker без Terminal/PowerShell.
                 </span>
               </div>
-              <code className="executor-guide-command">{pairCommand}</code>
               <div className="executor-guide-note">
                 <strong>Ожидаемый результат:</strong> через несколько секунд статус в браузере должен стать <strong>Online</strong>.
               </div>
-              <div className="executor-guide-note">
-                Команда скачивает bootstrap и уже собранный runtime прямо с этого приложения, поэтому отдельный доступ к `npm registry` для обычного запуска больше не нужен.
-              </div>
+              {pairCommand ? (
+                <details className="advanced-block">
+                  <summary>Ручной запуск через {workerGuidePlatform === "windows" ? "PowerShell" : "Terminal"}</summary>
+                  <div className="advanced-content">
+                    <ol className="executor-guide-list">
+                      {workerGuideSteps.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ol>
+                    <div className="executor-guide-actions">
+                      <button type="button" className="btn btn-secondary" onClick={() => void handleCopyWorkerCommand()}>
+                        Скопировать команду
+                      </button>
+                      <span className="subtle-text">
+                        {workerCopyState === "copied"
+                          ? "Команда скопирована."
+                          : workerCopyState === "error"
+                            ? "Не удалось скопировать. Скопируйте текст вручную."
+                            : "Используйте это только если desktop-приложение еще не установлено."}
+                      </span>
+                    </div>
+                    <code className="executor-guide-command">{pairCommand}</code>
+                  </div>
+                </details>
+              ) : null}
             </>
           ) : (
             <div className="executor-guide-note">
-              Нажмите <strong>Подготовить команду</strong>, затем скопируйте и запустите ее на своем компьютере.
+              Нажмите <strong>Подготовить подключение</strong>, затем откройте установленное приложение Clips Worker.
             </div>
           )}
         </section>
@@ -5266,7 +5277,7 @@ export function Step3RenderTemplate({
                     {executionTarget === "host"
                       ? executionModeDescription
                       : showWorkerControls && workerState === "not_paired"
-                        ? "Executor подключается один раз, затем работает в фоне через отдельное окно Terminal или PowerShell."
+                        ? "Executor подключается один раз через Clips Worker и дальше работает в фоне на компьютере пользователя."
                         : executionModeDescription}
                   </p>
                 </div>

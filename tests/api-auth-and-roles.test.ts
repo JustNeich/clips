@@ -5,7 +5,9 @@ import path from "node:path";
 import test from "node:test";
 
 import { POST as fetchComments } from "../app/api/comments/route";
+import { POST as registerRoute } from "../app/api/auth/register/route";
 import { GET as getChatTrace } from "../app/api/chat-trace/[id]/route";
+import { GET as listChannelsRoute } from "../app/api/channels/route";
 import { PATCH as patchChannelRoute } from "../app/api/channels/[id]/route";
 import {
   GET as listManagedTemplatesRoute,
@@ -22,6 +24,7 @@ import { GET as getRuntimeCapabilities } from "../app/api/runtime/capabilities/r
 import { GET as readStage3Background } from "../app/api/stage3/background/[id]/route";
 import { POST as uploadStage3Background } from "../app/api/stage3/background/route";
 import { POST as fetchVideoMeta } from "../app/api/video/meta/route";
+import { DELETE as deleteWorkspaceMemberRoute } from "../app/api/workspace/members/[memberId]/route";
 import { APP_SESSION_COOKIE } from "../lib/auth/cookies";
 import {
   createManagedTemplate,
@@ -35,6 +38,8 @@ import {
   bootstrapOwner,
   canManageInviteRole,
   createInvite,
+  listWorkspaceMembers,
+  loginWithPassword,
   registerPublicRedactor
 } from "../lib/team-store";
 
@@ -172,7 +177,7 @@ test("chat trace export route returns an attachment for authenticated workspace 
   });
 });
 
-test("team policy keeps full redactor as the standard editor role", async () => {
+test("team policy requires invite-issued editor accounts", async () => {
   assert.equal(canManageInviteRole("owner", "manager"), true);
   assert.equal(canManageInviteRole("owner", "redactor"), true);
   assert.equal(canManageInviteRole("owner", "redactor_limited"), true);
@@ -188,12 +193,21 @@ test("team policy keeps full redactor as the standard editor role", async () => 
       displayName: "Owner"
     });
 
-    const publicEditor = await registerPublicRedactor({
-      email: "public-redactor@example.com",
-      password: "Password123!",
-      displayName: "Public Editor"
-    });
-    assert.equal(publicEditor.membership.role, "redactor");
+    await assert.rejects(
+      () =>
+        registerPublicRedactor({
+          email: "public-redactor@example.com",
+          password: "Password123!",
+          displayName: "Public Editor"
+        }),
+      /Регистрация закрыта/
+    );
+
+    const registerResponse = await registerRoute();
+    const registerBody = (await registerResponse.json()) as { error?: string };
+
+    assert.equal(registerResponse.status, 403);
+    assert.match(registerBody.error ?? "", /Регистрация закрыта/);
 
     const invite = await createInvite({
       workspaceId: owner.workspace.id,
@@ -208,6 +222,129 @@ test("team policy keeps full redactor as the standard editor role", async () => 
     });
 
     assert.equal(invitedEditor.membership.role, "redactor");
+  });
+});
+
+test("team member removal closes access while allowing a later invite for the same email", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Remove Member Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "remove-me@example.com",
+      role: "redactor",
+      createdByUserId: owner.user.id
+    });
+    const editor = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Editor"
+    });
+
+    const deleteResponse = await deleteWorkspaceMemberRoute(
+      new Request(`http://localhost/api/workspace/members/${editor.membership.id}`, {
+        method: "DELETE",
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${owner.sessionToken}`
+        }
+      }),
+      { params: Promise.resolve({ memberId: editor.membership.id }) }
+    );
+    const deleteBody = (await deleteResponse.json()) as { member?: { userId?: string }; error?: string };
+
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(deleteBody.member?.userId, editor.user.id);
+    assert.deepEqual(
+      listWorkspaceMembers(owner.workspace.id).map((member) => member.user.email),
+      ["owner@example.com"]
+    );
+    await assert.rejects(
+      () =>
+        loginWithPassword({
+          email: "remove-me@example.com",
+          password: "Password123!"
+        }),
+      /Workspace membership not found/
+    );
+
+    const reinvite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "remove-me@example.com",
+      role: "redactor_limited",
+      createdByUserId: owner.user.id
+    });
+    const rejoined = await acceptInviteRegistration({
+      token: reinvite.token,
+      password: "NewPassword123!",
+      displayName: "Editor Rejoined"
+    });
+
+    assert.equal(rejoined.user.id, editor.user.id);
+    assert.equal(rejoined.membership.role, "redactor_limited");
+  });
+});
+
+test("channels API only returns channels visible to the current redactor", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Visible Channels Workspace",
+      email: "owner@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const invite = await createInvite({
+      workspaceId: owner.workspace.id,
+      email: "limited@example.com",
+      role: "redactor_limited",
+      createdByUserId: owner.user.id
+    });
+    const limitedEditor = await acceptInviteRegistration({
+      token: invite.token,
+      password: "Password123!",
+      displayName: "Limited Editor"
+    });
+    const chatHistory = await import("../lib/chat-history");
+    const visibleChannel = await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Visible Channel",
+      username: "visible_channel"
+    });
+    await chatHistory.createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Hidden Channel",
+      username: "hidden_channel"
+    });
+    setChannelAccess({
+      channelId: visibleChannel.id,
+      userId: limitedEditor.user.id,
+      grantedByUserId: owner.user.id
+    });
+
+    const response = await listChannelsRoute(
+      new Request("http://localhost/api/channels", {
+        headers: {
+          cookie: `${APP_SESSION_COOKIE}=${limitedEditor.sessionToken}`
+        }
+      })
+    );
+    const body = (await response.json()) as {
+      channels?: Array<{
+        id: string;
+        currentUserCanOperate?: boolean;
+        currentUserCanEditSetup?: boolean;
+      }>;
+    };
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.channels?.map((channel) => channel.id), [visibleChannel.id]);
+    assert.equal(body.channels?.[0]?.currentUserCanOperate, true);
+    assert.equal(body.channels?.[0]?.currentUserCanEditSetup, false);
   });
 });
 

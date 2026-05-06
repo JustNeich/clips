@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clips Worker</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #101418;
+        color: #eef3f8;
+      }
+      main {
+        padding: 24px;
+        display: grid;
+        gap: 18px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+      .panel {
+        border: 1px solid #2d3742;
+        border-radius: 8px;
+        padding: 16px;
+        background: #171d24;
+      }
+      .status {
+        display: inline-flex;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #313b47;
+        font-weight: 700;
+      }
+      .status.running {
+        background: #0f5132;
+      }
+      .status.error {
+        background: #842029;
+      }
+      button {
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 12px;
+        color: #101418;
+        background: #98d8ff;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #d8dee6;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      pre {
+        margin: 0;
+        max-height: 260px;
+        overflow: auto;
+        white-space: pre-wrap;
+        color: #cbd5df;
+      }
+      .muted {
+        color: #a6b1bc;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Clips Worker</h1>
+        <p class="muted">Stage 3 preview and render worker for this computer.</p>
+      </header>
+      <section class="panel">
+        <p><span id="status" class="status">Loading</span></p>
+        <p id="details" class="muted"></p>
+        <p id="error"></p>
+        <div class="actions">
+          <button id="retry">Retry worker</button>
+          <button id="logs" class="secondary">Open logs</button>
+          <button id="logout" class="secondary">Remove pairing</button>
+        </div>
+      </section>
+      <section class="panel">
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script>
+      const statusEl = document.getElementById("status");
+      const detailsEl = document.getElementById("details");
+      const errorEl = document.getElementById("error");
+      const logEl = document.getElementById("log");
+
+      function render(state) {
+        statusEl.textContent = state.workerStatus || "idle";
+        statusEl.className = `status ${state.workerStatus || ""}`;
+        detailsEl.textContent = state.config
+          ? `${state.config.label} · ${state.config.platform} · ${state.config.serverOrigin}`
+          : "Open Stage 3 in the web app and click Open Clips Worker.";
+        errorEl.textContent = state.error || "";
+        logEl.textContent = (state.logs || []).join("\n");
+      }
+
+      document.getElementById("retry").addEventListener("click", () => window.clipsWorker.retry());
+      document.getElementById("logs").addEventListener("click", () => window.clipsWorker.openLogs());
+      document.getElementById("logout").addEventListener("click", () => window.clipsWorker.logout());
+      window.clipsWorker.onState(render);
+      window.clipsWorker.getState().then(render);
+    </script>
+  </body>
+</html>

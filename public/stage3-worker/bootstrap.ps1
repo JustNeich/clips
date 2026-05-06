@@ -71,6 +71,8 @@ function Install-ClipsStage3Worker {
       throw "Node.js 22+ is required to run the Clips Stage 3 worker. Install Node first, then rerun this command."
     }
     Write-ClipsStage3BootstrapLog "Detected node: $($node.Source)"
+    $localRuntimeDependenciesPlatform = (& $node.Source -p "process.platform + '-' + process.arch").Trim().ToLowerInvariant()
+    Write-ClipsStage3BootstrapLog "Detected runtime dependency platform: $localRuntimeDependenciesPlatform"
 
     $binDir = Join-Path $installRoot "bin"
     $remotionDir = Join-Path $installRoot "remotion"
@@ -108,6 +110,7 @@ function Install-ClipsStage3Worker {
       $libFiles = @(
         "stage3-template.ts",
         "stage3-template-semantics.ts",
+        "stage3-template-fonts.ts",
         "stage3-constants.ts",
         "template-scene.tsx",
         "stage3-verified-badge.tsx",
@@ -123,34 +126,41 @@ function Install-ClipsStage3Worker {
         "stage3-template-runtime.tsx",
         "stage3-template-registry.ts",
         "stage3-background-mode.ts",
-        "stage3-video-adjustments.ts"
+        "stage3-video-adjustments.ts",
+        "stage3-video-placement.ts",
+        "stage3-worker-job-timeout.ts"
       )
     }
     $designFiles = @($manifest.designFiles)
     if ($designFiles.Count -eq 0) {
       $designFiles = @(
-        "templates/american-news-v1/figma-spec.json",
-        "templates/channel-story-v1/figma-spec.json",
-        "templates/science-card-blue-v1/figma-spec.json",
-        "templates/science-card-green-v1/figma-spec.json",
-        "templates/science-card-red-v1/figma-spec.json",
+        "templates/hedges-of-honor-v1/figma-spec.json",
         "templates/science-card-v1/figma-spec.json",
-        "templates/science-card-v7/figma-spec.json",
-        "templates/hedges-of-honor-v1/figma-spec.json"
+        "templates/science-card-v7/figma-spec.json"
       )
     }
     $publicFiles = @($manifest.publicFiles)
     if ($publicFiles.Count -eq 0) {
       $publicFiles = @(
-        "stage3-template-badges/science-card-v1-check.png",
-        "stage3-template-badges/honor-verified-badge.svg",
+        "stage3-template-backdrops/hedges-of-honor-v1-shell.svg",
         "stage3-template-backdrops/science-card-v7-shell.svg",
-        "stage3-template-backdrops/hedges-of-honor-v1-shell.svg"
+        "stage3-template-badges/american-news-badge.svg",
+        "stage3-template-badges/gold-glow-badge.png",
+        "stage3-template-badges/honor-verified-badge.svg",
+        "stage3-template-badges/pink-glow-badge.png",
+        "stage3-template-badges/science-card-v1-check.png",
+        "stage3-template-badges/twitter-verified-badge.png"
       )
     }
     $runtimeArchiveRelativePath =
       if ($manifest.runtimeDependenciesArchiveFile -is [string]) {
         $manifest.runtimeDependenciesArchiveFile.Trim()
+      } else {
+        ""
+      }
+    $runtimeArchivePlatform =
+      if ($manifest.runtimeDependenciesPlatform -is [string]) {
+        $manifest.runtimeDependenciesPlatform.Trim().ToLowerInvariant()
       } else {
         ""
       }
@@ -232,7 +242,13 @@ node "%~dp0clips-stage3-worker.cjs" %*
 "@ | Set-Content -Path $wrapperPath -Encoding Ascii
 
     $runtimeReady = $false
-    if ($runtimeArchiveRelativePath) {
+    $runtimeArchiveCompatible = $runtimeArchiveRelativePath -and $runtimeArchivePlatform -and ($runtimeArchivePlatform -eq $localRuntimeDependenciesPlatform)
+    if ($runtimeArchiveRelativePath -and -not $runtimeArchiveCompatible) {
+      $label = if ($runtimeArchivePlatform) { $runtimeArchivePlatform } else { "unknown platform" }
+      Write-ClipsStage3BootstrapLog "Bundled runtime dependencies are for $label, this machine is $localRuntimeDependenciesPlatform. Installing with npm instead."
+      Remove-Item (Join-Path $installRoot "node_modules") -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ($runtimeArchiveCompatible) {
       try {
         Invoke-ClipsStage3Download -Uri "$serverOrigin/stage3-worker/$runtimeArchiveRelativePath" -OutFile $runtimeArchivePath -Label "bundled runtime dependencies"
         Write-ClipsStage3BootstrapLog "Unpacking bundled runtime dependencies"

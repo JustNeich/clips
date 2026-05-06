@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AppRole, AuthMeResponse, UserRecord, WorkspaceMemberRecord } from "../components/types";
+import { AppRole, AuthMeResponse, UserRecord } from "../components/types";
 
 type MemberRow = {
   id: string;
@@ -70,6 +70,33 @@ export default function TeamPage() {
     }
   };
 
+  const removeMember = async (member: MemberRow): Promise<void> => {
+    const confirmed = window.confirm(
+      `Удалить ${member.user.email} из команды? Его активные сессии будут закрыты, а доступы к каналам отозваны.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setBusy(true);
+    setStatus("");
+    try {
+      const response = await fetch(`/api/workspace/members/${member.id}`, {
+        method: "DELETE"
+      });
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Не удалось удалить участника.");
+      }
+      await load();
+      setStatus("Участник удалён.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Не удалось удалить участника.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const createInvite = async (): Promise<void> => {
     setBusy(true);
     setStatus("");
@@ -117,6 +144,19 @@ export default function TeamPage() {
         : [memberRole];
     }
     return [memberRole];
+  };
+
+  const canRemoveMember = (memberRole: AppRole): boolean => {
+    if (!auth || memberRole === "owner") {
+      return false;
+    }
+    if (auth.membership.role === "owner") {
+      return true;
+    }
+    return (
+      auth.membership.role === "manager" &&
+      (memberRole === "redactor" || memberRole === "redactor_limited")
+    );
   };
 
   if (auth && !auth.effectivePermissions.canManageMembers) {
@@ -173,6 +213,16 @@ export default function TeamPage() {
                       </option>
                     ))}
                   </select>
+                  {canRemoveMember(member.role) ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={busy}
+                      onClick={() => void removeMember(member)}
+                    >
+                      Удалить
+                    </button>
+                  ) : null}
                 </div>
               </li>
             ))}

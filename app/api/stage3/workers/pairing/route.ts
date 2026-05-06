@@ -1,5 +1,6 @@
 import { requireAuth } from "../../../../../lib/auth/guards";
 import {
+  buildStage3WorkerDesktopDeepLink,
   buildStage3WorkerCommands,
   resolveStage3WorkerPublicOrigin
 } from "../../../../../lib/stage3-worker-commands";
@@ -15,12 +16,18 @@ export async function POST(request: Request): Promise<Response> {
       userId: auth.user.id
     });
     const origin = resolveStage3WorkerPublicOrigin(request);
+    const suggestedLabel = `${auth.user.displayName} ${auth.workspace.name}`.trim();
     return Response.json(
       {
         pairingToken: issued.token,
         expiresAt: issued.expiresAt,
         serverOrigin: origin,
-        suggestedLabel: `${auth.user.displayName} ${auth.workspace.name}`.trim(),
+        suggestedLabel,
+        desktopDeepLink: buildStage3WorkerDesktopDeepLink({
+          origin,
+          pairingToken: issued.token,
+          label: suggestedLabel
+        }),
         commands: buildStage3WorkerCommands({
           origin,
           pairingToken: issued.token

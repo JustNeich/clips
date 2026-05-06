@@ -84,8 +84,9 @@ npm run dev
 
 ## Команда и роли
 
-- Публичная регистрация создаёт активный аккаунт редактора с ролью `redactor`.
-- В интерфейсе команды приглашение по умолчанию тоже создаётся для полного редактора (`redactor`).
+- Публичная регистрация закрыта: аккаунт редактора больше нельзя создать без owner/manager-issued invite.
+- В интерфейсе команды приглашение создаётся на конкретную почту; по умолчанию оно выдаёт полного редактора (`redactor`).
+- Участника можно удалить из команды: активные сессии закрываются, channel grants отзываются, а исторические артефакты не каскадно удаляются.
 - `redactor_limited` остаётся отдельной явной ролью для случаев, когда нужно оставить доступ к работе с каналом без права менять setup.
 - `owner` управляет workspace-wide AI integrations: Shared Codex как baseline executor и Anthropic/OpenRouter caption provider overlays.
 
@@ -225,25 +226,24 @@ npm run stage2-worker
 - Поддерживаемые платформы v1:
   - `macOS arm64/x64`
   - `Windows x64`
-- Worker pairing доступен прямо из Stage 3 UI через блок `Local Executor`.
-- Worker после pairing считается executor-ом workspace: онлайн-worker одного редактора может выполнять Stage 3 jobs другого редактора в том же workspace, но не видит jobs других workspace.
-- Для localhost используется repo-local CLI:
+- Web остаётся основным интерфейсом, а сервер остаётся control plane для auth, queue/jobs и artifacts.
+- Тяжёлые Stage 3 jobs (`preview`, `render`, `source-download`, `agent-media-step`) выполняет отдельное desktop-приложение `Clips Worker` на ПК текущего пользователя.
+- Worker pairing доступен прямо из Stage 3 UI через deep link `clips-stage3-worker://pair?...` в блоке `Local Executor`.
+- Worker после pairing считается персональным executor-ом: он claim-ит только jobs своего `userId` внутри workspace. Онлайн-worker другого редактора больше не делает текущего пользователя `Online` и не забирает его render/preview jobs.
+- Worker runtime не распаковывает серверный `node_modules` на чужой платформе: если manifest говорит, что `runtime-deps.tar.gz` собран не под текущий OS/CPU, Clips Worker делает локальный `npm install` и чинит native `esbuild`/`@rspack` bindings до claim jobs.
+- CLI остаётся совместимым advanced fallback для разработки и поддержки:
 
 ```bash
 npm run stage3-worker -- pair --server http://localhost:3000 --token <PAIRING_TOKEN>
 npm run stage3-worker -- start
 ```
 
-- Для production UI выдает bootstrap one-liner:
-  - macOS shell command
-  - Windows PowerShell command
+- Для production основной путь: установить unsigned internal artifact `Clips Worker` (`.dmg` / `.exe`), открыть Step 3 и нажать `Открыть Clips Worker`.
+- Installer-файлы собираются в `output/desktop-worker` и не коммитятся.
 
 Требования на машине пользователя:
-- `Node.js 22+`
-- `npm`
-- `ffmpeg`
-- `ffprobe`
-- `yt-dlp`
+- `Clips Worker` сам хранит config/logs/cache в совместимой worker home директории.
+- `ffmpeg`, `ffprobe`, `yt-dlp` проверяются через managed tool setup и могут докачиваться по pinned manifest с `sha256`; если manifest не настроен, остаётся проверка уже установленных системных tools.
 - локальный `Google Chrome` или `Microsoft Edge` желателен для Stage 3 render; если браузера нет, worker попробует подготовить Remotion Headless Shell сам.
 
 ## Stage 1 sources
@@ -442,7 +442,7 @@ Publishing / YouTube queue:
 - `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — обязательны для подключения YouTube канала и публикации через OAuth.
 - `YTDLP_COOKIES` / `YTDLP_COOKIES_PATH` — optional fallback для `yt-dlp` comments/metadata paths и локального worker media path. Для hosted YouTube source download production path теперь использует `Visolix` и не пытается идти в `yt-dlp`.
 
-Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Если Step 1/2 у всех проходит, а Stage 3 ломается только у одного редактора, сначала проверьте workspace-level worker status и runtime compatibility, затем локальный runtime/IP конкретной машины.
+Для Stage 3 local worker YouTube source сначала пробуется локально, но при user-specific anti-bot/IP отказе worker может сделать защищенный fallback через хост. Если Step 1/2 у всех проходит, а Stage 3 ломается только у одного редактора, сначала проверьте personal worker status текущего пользователя и runtime compatibility, затем локальный runtime/IP конкретной машины.
 
 Hosted Step 1 YouTube media path:
 - primary path: `Visolix`
@@ -534,7 +534,7 @@ cp .env.example .env.local
 ## Ограничения
 
 - Работают только публичные ссылки.
-- Если у пользователя нет `yt-dlp`/`ffmpeg`/`ffprobe`, Stage 3 local worker не сможет выполнять preview/render/source-download.
+- Если у пользователя нет `yt-dlp`/`ffmpeg`/`ffprobe` и managed tool manifest не настроен для его платформы, Stage 3 local worker не сможет выполнять preview/render/source-download.
 - Для полноценного Stage 2 нужен готовый workspace AI runtime:
   - Shared Codex должен быть подключён владельцем как baseline executor;
   - если `Caption provider = Anthropic API`, дополнительно нужен проверенный Anthropic API key и model;

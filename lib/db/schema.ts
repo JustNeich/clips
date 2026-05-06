@@ -562,6 +562,9 @@ CREATE INDEX IF NOT EXISTS idx_channel_access_channel
 CREATE INDEX IF NOT EXISTS idx_channel_access_user
   ON channel_access(user_id);
 
+CREATE INDEX IF NOT EXISTS idx_channel_access_user_active
+  ON channel_access(user_id, revoked_at, channel_id);
+
 CREATE INDEX IF NOT EXISTS idx_channel_publish_integrations_channel
   ON channel_publish_integrations(channel_id);
 
@@ -589,8 +592,17 @@ CREATE INDEX IF NOT EXISTS idx_chat_drafts_user
 CREATE INDEX IF NOT EXISTS idx_channels_workspace
   ON channels(workspace_id, updated_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_channel_assets_channel_kind
+  ON channel_assets(channel_id, kind);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_templates_workspace_active_updated
+  ON workspace_templates(workspace_id, archived_at, updated_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_chat_threads_channel
   ON chat_threads(channel_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_chat_threads_workspace
+  ON chat_threads(workspace_id, updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_chat_events_thread
   ON chat_events(thread_id, created_at ASC);

@@ -5,6 +5,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  createChannel,
+  listChannels
+} from "../lib/chat-history";
+import {
   createManagedTemplate,
   deleteManagedTemplateDetailed,
   getWorkspaceDefaultTemplateId,
@@ -112,6 +116,52 @@ test("workspace template library re-enables dormant seed highlight profiles for 
   });
 });
 
+test("exact template reads re-enable dormant seed highlights without a full library scan", async () => {
+  await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const db = getDb();
+    const row = db
+      .prepare("SELECT template_config_json FROM workspace_templates WHERE id = ? AND workspace_id = ? LIMIT 1")
+      .get(defaultTemplateId, owner.workspace.id) as { template_config_json?: string } | undefined;
+    assert.ok(row?.template_config_json);
+
+    const templateConfig = JSON.parse(String(row?.template_config_json)) as {
+      highlights?: { enabled?: boolean };
+    };
+    templateConfig.highlights = {
+      ...(templateConfig.highlights ?? {}),
+      enabled: false
+    };
+    db.prepare("UPDATE workspace_templates SET template_config_json = ? WHERE id = ? AND workspace_id = ?").run(
+      JSON.stringify(templateConfig),
+      defaultTemplateId,
+      owner.workspace.id
+    );
+
+    const legacyTemplateId = "late-highlight-scan-template";
+    await writeFile(
+      path.join(legacyRoot, `${legacyTemplateId}.json`),
+      JSON.stringify({
+        id: legacyTemplateId,
+        workspaceId: owner.workspace.id,
+        name: "Late Highlight Scan Template",
+        baseTemplateId: "science-card-v1",
+        templateConfig: {},
+        shadowLayers: []
+      }),
+      "utf-8"
+    );
+
+    const reloaded = readManagedTemplateSync(defaultTemplateId, { workspaceId: owner.workspace.id });
+    const imported = db
+      .prepare("SELECT id FROM workspace_templates WHERE id = ? AND workspace_id = ? LIMIT 1")
+      .get(legacyTemplateId, owner.workspace.id) as { id?: string } | undefined;
+
+    assert.equal(reloaded?.templateConfig.highlights.enabled, true);
+    assert.equal(imported?.id, undefined);
+  });
+});
+
 test("legacy repo-backed custom templates import into workspace_templates", async () => {
   await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
     const legacyTemplateId = "legacy-custom-template";
@@ -155,6 +205,103 @@ test("legacy repo-backed custom templates import into workspace_templates", asyn
     const templates = await listManagedTemplates(owner.workspace.id);
 
     assert.ok(templates.some((template) => template.id === legacyTemplateId));
+  });
+});
+
+test("exact template reads do not scan unrelated legacy template files", async () => {
+  await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const legacyTemplateId = "late-legacy-template";
+    await writeFile(
+      path.join(legacyRoot, `${legacyTemplateId}.json`),
+      JSON.stringify(
+        {
+          id: legacyTemplateId,
+          workspaceId: owner.workspace.id,
+          name: "Late Legacy Template",
+          baseTemplateId: "science-card-v1",
+          content: {
+            topText: "Late top",
+            bottomText: "Late bottom",
+            channelName: "Late",
+            channelHandle: "@late",
+            highlights: { top: [], bottom: [] },
+            topHighlightPhrases: [],
+            topFontScale: 1,
+            bottomFontScale: 1,
+            previewScale: 0.34,
+            mediaAsset: null,
+            backgroundAsset: null,
+            avatarAsset: null
+          },
+          templateConfig: {},
+          shadowLayers: []
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+
+    const resolved = readManagedTemplateSync(defaultTemplateId, { workspaceId: owner.workspace.id });
+    const imported = getDb()
+      .prepare("SELECT id FROM workspace_templates WHERE id = ? AND workspace_id = ? LIMIT 1")
+      .get(legacyTemplateId, owner.workspace.id) as { id?: string } | undefined;
+
+    assert.equal(resolved?.id, defaultTemplateId);
+    assert.equal(imported?.id, undefined);
+  });
+});
+
+test("channel listing keeps valid assigned templates on the exact-read path", async () => {
+  await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
+    const defaultTemplateId = await getWorkspaceDefaultTemplateId(owner.workspace.id);
+    const channel = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Exact Template Channel",
+      username: "exact-template",
+      templateId: defaultTemplateId
+    });
+    const legacyTemplateId = "late-channel-list-template";
+    await writeFile(
+      path.join(legacyRoot, `${legacyTemplateId}.json`),
+      JSON.stringify(
+        {
+          id: legacyTemplateId,
+          workspaceId: owner.workspace.id,
+          name: "Late Channel List Template",
+          baseTemplateId: "science-card-v1",
+          content: {
+            topText: "Late top",
+            bottomText: "Late bottom",
+            channelName: "Late",
+            channelHandle: "@late",
+            highlights: { top: [], bottom: [] },
+            topHighlightPhrases: [],
+            topFontScale: 1,
+            bottomFontScale: 1,
+            previewScale: 0.34,
+            mediaAsset: null,
+            backgroundAsset: null,
+            avatarAsset: null
+          },
+          templateConfig: {},
+          shadowLayers: []
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+
+    const channels = await listChannels(owner.workspace.id);
+    const imported = getDb()
+      .prepare("SELECT id FROM workspace_templates WHERE id = ? AND workspace_id = ? LIMIT 1")
+      .get(legacyTemplateId, owner.workspace.id) as { id?: string } | undefined;
+
+    assert.equal(channels.find((item) => item.id === channel.id)?.templateId, defaultTemplateId);
+    assert.equal(imported?.id, undefined);
   });
 });
 

@@ -129,3 +129,18 @@ export function buildStage3WorkerCommands(params: {
     localDev: localDevCommand
   };
 }
+
+export function buildStage3WorkerDesktopDeepLink(params: {
+  origin: string;
+  pairingToken: string;
+  label?: string | null;
+}): string {
+  const origin = normalizeWorkerFacingOrigin(params.origin);
+  const url = new URL("clips-stage3-worker://pair");
+  url.searchParams.set("server", origin);
+  url.searchParams.set("token", params.pairingToken);
+  if (params.label?.trim()) {
+    url.searchParams.set("label", params.label.trim());
+  }
+  return url.toString();
+}

@@ -134,7 +134,10 @@ import {
   findLatestStage3AgentSessionRef,
   normalizeStage3SessionStatus
 } from "../lib/stage3-legacy-bridge";
-import { buildStage3WorkerCommands } from "../lib/stage3-worker-commands";
+import {
+  buildStage3WorkerCommands,
+  buildStage3WorkerDesktopDeepLink
+} from "../lib/stage3-worker-commands";
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "../lib/stage3-constants";
 import {
   buildChatListItem,
@@ -160,6 +163,7 @@ import {
 import { sanitizeDisplayText, summarizeUserFacingError } from "../lib/ui-error";
 import {
   buildChannelAssetUrl,
+  buildCachedSourcePreviewUrl,
   buildScopedStorageKey,
   buildSharedCodexStatus,
   buildStage3AgentConversation,
@@ -1093,13 +1097,18 @@ export default function HomePage() {
       setStage3WorkerPairing({
         ...body,
         serverOrigin: browserOrigin,
+        desktopDeepLink: buildStage3WorkerDesktopDeepLink({
+          origin: browserOrigin,
+          pairingToken: body.pairingToken,
+          label: body.suggestedLabel
+        }),
         commands: buildStage3WorkerCommands({
           origin: browserOrigin,
           pairingToken: body.pairingToken
         })
       });
       setStatusType("ok");
-      setStatus("Pairing token создан. Запустите локальный Stage 3 worker на своей машине.");
+      setStatus("Подключение создано. Нажмите «Открыть Clips Worker» на своей машине.");
       void refreshStage3Workers().catch(() => undefined);
     } catch (error) {
       setStatusType("error");
@@ -5240,6 +5249,7 @@ export default function HomePage() {
 
     const controller = new AbortController();
     let retryTimer: number | null = null;
+    const cachedSourcePreviewUrl = buildCachedSourcePreviewUrl(activeChat.url);
 
     const isStale = (): boolean =>
       controller.signal.aborted ||
@@ -5295,6 +5305,26 @@ export default function HomePage() {
         }
         void startPreviewRequest();
       }, delayMs);
+    };
+
+    const showCachedSourcePreviewIfAvailable = async () => {
+      try {
+        const response = await fetchWithTimeout(
+          cachedSourcePreviewUrl,
+          {
+            method: "HEAD",
+            signal: controller.signal,
+            cache: "no-store"
+          },
+          5000
+        );
+        if (!response.ok || isStale()) {
+          return;
+        }
+        setStage3PreviewVideoUrl((current) => current ?? cachedSourcePreviewUrl);
+      } catch {
+        // If the server source cache is not warm yet, the editing proxy path below remains authoritative.
+      }
     };
 
     const pollPreviewJob = async (
@@ -5453,6 +5483,7 @@ export default function HomePage() {
     };
 
     void startPreviewRequest();
+    void showCachedSourcePreviewIfAvailable();
 
     return () => {
       controller.abort();

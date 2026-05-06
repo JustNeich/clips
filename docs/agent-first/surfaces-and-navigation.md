@@ -56,7 +56,6 @@
   - поле `Почта`
   - поле `Пароль`
   - кнопка `Войти`
-  - link `Создать аккаунт редактора`
   - link `Принять приглашение`
   - link `Создать владельца`
 - `resulting actions`:
@@ -75,23 +74,20 @@
 
 ## `/register`
 
-- `purpose`: self-serve регистрация полного редактора.
-- `roles`: публичная поверхность, итоговая роль всегда `redactor`.
-- `preconditions`: email ещё не занят.
+- `purpose`: закрытая legacy-поверхность, объясняющая что self-serve регистрация отключена.
+- `roles`: публичная информационная поверхность, не создаёт пользователя.
+- `preconditions`: нужен invite от владельца или администратора команды.
 - `controls`:
-  - поле `Имя`
-  - поле `Почта`
-  - поле `Пароль`
-  - кнопка `Создать аккаунт`
+  - текст `Регистрация закрыта`
+  - link `Принять приглашение`
   - link `Назад ко входу`
 - `resulting actions`:
-  - `POST /api/auth/register`
-  - при успехе redirect на `/`
+  - `POST /api/auth/register` всегда возвращает `403`
 - `related APIs`: `app/api/auth/register/route.ts`
-- `related entities`: `user`, `workspace membership`
+- `related entities`: нет новых записей
 - `common user phrasings`:
-  - "зарегистрировался как редактор"
-  - "не создаётся аккаунт"
+  - "хочу создать аккаунт"
+  - "регистрация закрыта"
 
 ## `/accept-invite`
 
@@ -466,20 +462,25 @@
 - `controls`:
   - `Закрыть`
   - status card
-  - OS tabs `Mac` / `Windows`
-  - button `Подготовить команду` / `Обновить команду`
-  - button `Скопировать команду`
-  - official links cards for install dependencies
-  - button `Скопировать команду установки`
+  - primary button `Открыть Clips Worker`
+  - secondary copy deep link action
+  - advanced Terminal/PowerShell fallback
+  - OS tabs `Mac` / `Windows` inside fallback
+  - button `Подготовить команду` / `Обновить команду` inside fallback
+  - button `Скопировать команду` inside fallback
+  - official links cards for install dependencies as fallback help
+  - button `Скопировать команду установки` as fallback help
 - `related APIs`:
   - `POST /api/stage3/workers/pairing`
   - `GET /api/stage3/workers`
   - worker auth / heartbeat / claim endpoints
-- `entities`: `stage3 worker`, `pairing command`, `heartbeat`
+- `entities`: `stage3 worker`, `desktop deep link`, `pairing command`, `heartbeat`
 - `common user phrasings`:
   - "executor offline"
+  - "Clips Worker не открывается"
+  - "deep link не сработал"
+  - "после запуска приложения браузер не видит компьютер"
   - "команда не копируется"
-  - "после запуска в терминале браузер не видит компьютер"
 
 ## Publishing planner
 
@@ -721,6 +722,7 @@
   - `Назад`
   - list `Участники`
   - role combobox per member
+  - button `Удалить` для удаляемых не-owner участников
   - block `Создать приглашение`
   - email field
   - invite role select
@@ -729,10 +731,13 @@
 - `resulting actions`:
   - `GET /api/workspace/members`
   - `PATCH /api/workspace/members/[memberId]`
+  - `DELETE /api/workspace/members/[memberId]`
   - `POST /api/workspace/invites`
 - `role nuances`:
   - owner может выдавать `manager`, `redactor`, `redactor_limited`
   - manager может переключать только между `redactor` и `redactor_limited`
+  - owner может удалять `manager`, `redactor`, `redactor_limited`
+  - manager может удалять только `redactor` и `redactor_limited`
   - owner/member combobox может быть disabled
 - `common user phrasings`:
   - "не могу сделать менеджера"

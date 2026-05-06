@@ -86,7 +86,7 @@ type FinishStage3JobInput = {
 type ClaimStage3WorkerJobInput = {
   workerId: string;
   workspaceId: string;
-  userId?: string | null;
+  userId: string;
   supportedKinds?: Stage3JobKind[];
   leaseDurationMs?: number;
 };
@@ -549,7 +549,7 @@ function requeueRunningJobsForWorkerInternal(
 ): number {
   const staleHeartbeatCutoff = new Date(Date.now() - LOCAL_STAGE3_WORKER_RESTART_RECOVERY_GRACE_MS).toISOString();
   const kinds = (input.supportedKinds?.length ? input.supportedKinds : null) as Stage3JobKind[] | null;
-  const userFilter = input.userId?.trim() ? "AND user_id = ?" : "";
+  const userId = input.userId.trim();
   const query = kinds
     ? `SELECT *
          FROM stage3_jobs
@@ -557,7 +557,7 @@ function requeueRunningJobsForWorkerInternal(
           AND status = 'running'
           AND assigned_worker_id = ?
           AND workspace_id = ?
-          ${userFilter}
+          AND user_id = ?
           AND (heartbeat_at IS NULL OR heartbeat_at <= ?)
           AND kind IN (${kinds.map(() => "?").join(", ")})
         ORDER BY updated_at ASC, created_at ASC`
@@ -567,12 +567,10 @@ function requeueRunningJobsForWorkerInternal(
           AND status = 'running'
           AND assigned_worker_id = ?
           AND workspace_id = ?
-          ${userFilter}
+          AND user_id = ?
           AND (heartbeat_at IS NULL OR heartbeat_at <= ?)
         ORDER BY updated_at ASC, created_at ASC`;
-  const baseParams = input.userId?.trim()
-    ? [input.workerId, input.workspaceId, input.userId.trim(), staleHeartbeatCutoff]
-    : [input.workerId, input.workspaceId, staleHeartbeatCutoff];
+  const baseParams = [input.workerId, input.workspaceId, userId, staleHeartbeatCutoff];
   const params = kinds
     ? [...baseParams, ...kinds]
     : baseParams;
@@ -829,6 +827,9 @@ export function claimNextQueuedStage3Job(): Stage3JobRecord | null {
 }
 
 export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInput): Stage3JobRecord | null {
+  if (!input.userId.trim()) {
+    throw new Error("Stage 3 local worker claim requires a user scope.");
+  }
   const leaseDurationMs =
     typeof input.leaseDurationMs === "number" && Number.isFinite(input.leaseDurationMs) && input.leaseDurationMs > 0
       ? input.leaseDurationMs
@@ -841,12 +842,12 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
     interruptSupersededQueuedLocalPreviewJobsInternal(db);
 
     const kinds = (input.supportedKinds?.length ? input.supportedKinds : null) as Stage3JobKind[] | null;
-    const userFilter = input.userId?.trim() ? "AND user_id = ?" : "";
+    const userId = input.userId.trim();
     const query = kinds
       ? `SELECT * FROM stage3_jobs
           WHERE execution_target = 'local'
             AND workspace_id = ?
-            ${userFilter}
+            AND user_id = ?
             AND status = 'queued'
             AND kind IN (${kinds.map(() => "?").join(", ")})
           ORDER BY ${buildLocalStage3JobPrioritySql("kind")} ASC, created_at ASC
@@ -854,13 +855,11 @@ export function claimNextQueuedStage3JobForWorker(input: ClaimStage3WorkerJobInp
       : `SELECT * FROM stage3_jobs
           WHERE execution_target = 'local'
             AND workspace_id = ?
-            ${userFilter}
+            AND user_id = ?
             AND status = 'queued'
           ORDER BY ${buildLocalStage3JobPrioritySql("kind")} ASC, created_at ASC
           LIMIT 1`;
-    const baseParams = input.userId?.trim()
-      ? [input.workspaceId, input.userId.trim()]
-      : [input.workspaceId];
+    const baseParams = [input.workspaceId, userId];
     const params = kinds
       ? [...baseParams, ...kinds]
       : baseParams;

@@ -64,7 +64,6 @@ export default function LoginPage() {
         </form>
         {status ? <p className="status-line error">{status}</p> : null}
         <div className="auth-links">
-          <Link href="/register">Создать аккаунт редактора</Link>
           <Link href="/accept-invite">Принять приглашение</Link>
           <Link href="/setup/bootstrap-owner">Создать владельца</Link>
         </div>

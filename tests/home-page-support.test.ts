@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCachedSourcePreviewUrl,
   resolveHydratedWorkflowStep,
   resolveLiveHydratedWorkflowStep,
   shouldResetHydratedStage3TransientState
 } from "../app/home-page-support";
+
+test("buildCachedSourcePreviewUrl points Stage 3 at cache-only source media", () => {
+  assert.equal(
+    buildCachedSourcePreviewUrl("https://www.youtube.com/watch?v=a b&x=1"),
+    "/api/source-media?sourceUrl=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Da%20b%26x%3D1&cacheOnly=1"
+  );
+});
 
 test("resolveHydratedWorkflowStep preserves the current step while rehydrating the same chat", () => {
   assert.equal(

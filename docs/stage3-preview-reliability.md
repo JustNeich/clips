@@ -14,6 +14,8 @@
 
 - При рефреше proxy или accurate preview UI больше не обнуляет последнее удачное видео заранее.
 - Пока новый артефакт готовится, пользователь продолжает видеть последнюю рабочую версию вместо placeholder'а.
+- При первом открытии Step 3 UI может показать `cacheOnly` source media из server source cache ещё до готовности `editing-proxy`; это только ранний first paint, а не замена плотного proxy для seek/scrub.
+- `cacheOnly` routes не имеют права скачивать source заново: если cache холодный, UI остаётся на обычном пути `editing-proxy`.
 - Это снижает визуальный flicker и убирает ложное ощущение, что фон или исходник “слетели”.
 
 ## 3. Главный preview всегда остаётся live draft
@@ -34,6 +36,7 @@
 - Editing proxy уже знает `sourceDurationSec`.
 - UI читает это значение из job result и использует как ранний источник правды.
 - Медленный `/api/video/meta` остаётся fallback-путём, а не единственным способом узнать длительность ролика.
+- Локальный desktop/CLI worker перед прямым скачиванием source сначала пробует забрать уже готовый source из host cache в `cacheOnly` режиме. Если host cache холодный, worker продолжает прежний локальный путь и не блокируется этой оптимизацией.
 
 ## 6. Assigned workspace template не должен тихо падать в built-in fallback
 
@@ -78,6 +81,9 @@
 
 - Preview, render и editing-proxy jobs, стартующие из Step 3, должны нести `chatId` и `channelId`, чтобы owner journal и MCP могли собрать всю историю по конкретному ролику.
 - Ошибки до создания job, например отсутствующий source или недоступный локальный executor, фиксируются compact audit event-ом `stage3_request.failed`.
+- Local worker readiness personal-by-default: snapshot готовности считается по worker-ам текущего пользователя, а не по общему workspace pool. Worker другого редактора не должен превращать Step 3 текущего пользователя в `Online`.
+- Local worker claim personal-by-default: `preview`, `render`, `source-download` и `agent-media-step` jobs текущего пользователя не могут быть claim-нуты worker-ом другого пользователя. Shared render machine может появиться только как отдельный явный режим.
+- Local worker runtime не должен claim-ить jobs, если runtime dependency install не соответствует платформе пользователя. Серверный `runtime-deps.tar.gz` используется только при совпадении `runtimeDependenciesPlatform`; иначе worker делает локальный `npm install` и чинит native bindings до входа в job loop.
 - `worker_unavailable` / `worker_runtime_outdated` audit events сохраняют snapshot готовности локального executor: `onlineWorkers`, `compatibleOnlineWorkers`, `expectedRuntimeVersion`.
 - Ошибки внутри job фиксируются в `stage3_jobs`, `stage3_job_events` и audit event `stage3_job.failed`.
 - Flow list / MCP summary отдаёт `stage3Runtime` backlog-снимок: queued/running local/host jobs, oldest queued/running age, expired local leases и свежие `worker_unavailable` события.

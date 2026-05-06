@@ -831,22 +831,6 @@ function mapTemplateRow(row: Record<string, unknown>): ManagedTemplate {
   });
 }
 
-function toManagedTemplateSummary(template: ManagedTemplate): ManagedTemplateSummary {
-  return {
-    id: template.id,
-    name: template.name,
-    description: template.description,
-    layoutFamily: template.layoutFamily,
-    baseTemplateId: template.layoutFamily,
-    workspaceId: template.workspaceId,
-    creatorUserId: null,
-    creatorDisplayName: null,
-    createdAt: template.createdAt,
-    updatedAt: template.updatedAt,
-    versionsCount: 0
-  };
-}
-
 function insertOrUpdateTemplateRow(template: ManagedTemplate): void {
   const db = getDb();
   const existingWorkspaceId = getTemplateRowWorkspaceId(template.id);
@@ -963,6 +947,23 @@ function getTemplateRowWorkspaceId(templateId: string): string | null {
     .prepare("SELECT workspace_id FROM workspace_templates WHERE id = ? LIMIT 1")
     .get(templateId) as Record<string, unknown> | undefined;
   return typeof row?.workspace_id === "string" ? row.workspace_id : null;
+}
+
+function readActiveTemplateRow(
+  templateId: string,
+  workspaceId?: string | null
+): Record<string, unknown> | null {
+  const db = getDb();
+  const row = workspaceId?.trim()
+    ? db
+        .prepare(
+          "SELECT * FROM workspace_templates WHERE id = ? AND workspace_id = ? AND archived_at IS NULL LIMIT 1"
+        )
+        .get(templateId, workspaceId.trim())
+    : db
+        .prepare("SELECT * FROM workspace_templates WHERE id = ? AND archived_at IS NULL LIMIT 1")
+        .get(templateId);
+  return (row as Record<string, unknown> | undefined) ?? null;
 }
 
 function resolveWorkspaceScopedTemplateId(preferredId: string, workspaceId: string): string {
@@ -1224,6 +1225,26 @@ function migrateWorkspaceTemplateHighlightDefaults(workspaceId: string): number 
   return migrated;
 }
 
+function mapTemplateRowWithTargetedHighlightMigration(row: Record<string, unknown>): ManagedTemplate {
+  const template = mapTemplateRow(row);
+  if (!template.archivedAt && templateHighlightConfigMatchesSeedExceptEnabled(template)) {
+    const updated = {
+      ...template,
+      updatedAt: nowIso(),
+      templateConfig: {
+        ...template.templateConfig,
+        highlights: {
+          ...template.templateConfig.highlights,
+          enabled: true
+        }
+      }
+    };
+    insertOrUpdateTemplateRow(updated);
+    return updated;
+  }
+  return template;
+}
+
 function ensureWorkspaceTemplateLibrarySync(workspaceId: string): string {
   resetManagedTemplateStoreCachesIfScopeChanged();
   const legacyTemplates = readLegacyTemplateSources();
@@ -1284,7 +1305,30 @@ export async function listManagedTemplates(workspaceId?: string | null): Promise
 }
 
 export function listManagedTemplateSummariesSync(workspaceId?: string | null): ManagedTemplateSummary[] {
-  return listManagedTemplatesSync(workspaceId).map(toManagedTemplateSummary);
+  const resolvedWorkspaceId = resolveWorkspaceId(workspaceId);
+  ensureWorkspaceTemplateLibrarySync(resolvedWorkspaceId);
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, workspace_id, name, description, layout_family, created_at, updated_at
+       FROM workspace_templates
+       WHERE workspace_id = ? AND archived_at IS NULL
+       ORDER BY updated_at DESC, created_at DESC`
+    )
+    .all(resolvedWorkspaceId) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    description: String(row.description),
+    layoutFamily: String(row.layout_family),
+    baseTemplateId: String(row.layout_family),
+    workspaceId: String(row.workspace_id),
+    creatorUserId: null,
+    creatorDisplayName: null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    versionsCount: 0
+  }));
 }
 
 export async function listManagedTemplateSummaries(
@@ -1301,20 +1345,15 @@ export function readManagedTemplateSync(
   if (!safeId) {
     return null;
   }
+  const directRow = readActiveTemplateRow(safeId, options?.workspaceId);
+  if (directRow) {
+    return mapTemplateRowWithTargetedHighlightMigration(directRow);
+  }
   if (!options?.skipEnsure) {
     ensureWorkspaceTemplateLibrariesInitializedSync(options?.workspaceId);
   }
-  const db = getDb();
-  const row = options?.workspaceId
-    ? db
-        .prepare(
-          "SELECT * FROM workspace_templates WHERE id = ? AND workspace_id = ? AND archived_at IS NULL LIMIT 1"
-        )
-        .get(safeId, options.workspaceId)
-    : db
-        .prepare("SELECT * FROM workspace_templates WHERE id = ? AND archived_at IS NULL LIMIT 1")
-        .get(safeId);
-  return row ? mapTemplateRow(row as Record<string, unknown>) : null;
+  const repairedRow = readActiveTemplateRow(safeId, options?.workspaceId);
+  return repairedRow ? mapTemplateRowWithTargetedHighlightMigration(repairedRow) : null;
 }
 
 export async function readManagedTemplate(

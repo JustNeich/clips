@@ -5,9 +5,14 @@ import path from "node:path";
 import test from "node:test";
 
 import { GET as getStage3WorkerAsset } from "../app/api/stage3/worker/assets/[assetId]/route";
+import { GET as getStage3WorkerTemplateAsset } from "../app/api/stage3/worker/template-assets/[assetId]/route";
 import { saveChannelAssetFile } from "../lib/channel-assets";
 import { createChannelAsset } from "../lib/chat-history";
-import { maybeDownloadStage3WorkerAsset } from "../lib/stage3-worker-asset-client";
+import { saveManagedTemplateFontAsset } from "../lib/managed-template-assets";
+import {
+  maybeDownloadStage3WorkerAsset,
+  maybeDownloadStage3WorkerTemplateAsset
+} from "../lib/stage3-worker-asset-client";
 import { bootstrapOwner } from "../lib/team-store";
 import { exchangeStage3WorkerPairingToken, issueStage3WorkerPairingToken } from "../lib/stage3-worker-store";
 
@@ -106,6 +111,111 @@ test("worker asset downloads stream into a persistent cache and reuse the cached
         .then(() => true)
         .catch(() => false)
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
+    }
+    if (previousServerOrigin === undefined) {
+      delete process.env.STAGE3_WORKER_SERVER_ORIGIN;
+    } else {
+      process.env.STAGE3_WORKER_SERVER_ORIGIN = previousServerOrigin;
+    }
+    if (previousSessionToken === undefined) {
+      delete process.env.STAGE3_WORKER_SESSION_TOKEN;
+    } else {
+      process.env.STAGE3_WORKER_SESSION_TOKEN = previousSessionToken;
+    }
+    if (previousInstallRoot === undefined) {
+      delete process.env.STAGE3_WORKER_INSTALL_ROOT;
+    } else {
+      process.env.STAGE3_WORKER_INSTALL_ROOT = previousInstallRoot;
+    }
+    await fs.rm(workerRoot, { recursive: true, force: true });
+    await fs.rm(appDataDir, { recursive: true, force: true });
+  }
+});
+
+test("worker template assets download with worker auth for local Remotion renders", { concurrency: false }, async () => {
+  const appDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-template-asset-app-"));
+  const workerRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stage3-worker-template-asset-worker-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  const previousServerOrigin = process.env.STAGE3_WORKER_SERVER_ORIGIN;
+  const previousSessionToken = process.env.STAGE3_WORKER_SESSION_TOKEN;
+  const previousInstallRoot = process.env.STAGE3_WORKER_INSTALL_ROOT;
+  const originalFetch = globalThis.fetch;
+
+  process.env.APP_DATA_DIR = appDataDir;
+  delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+
+  try {
+    const owner = await bootstrapOwner({
+      workspaceName: "Stage 3 Worker Template Assets",
+      email: "worker-template-assets@example.com",
+      password: "Password123!",
+      displayName: "Worker Template Assets"
+    });
+    const assetId = "fonttop123456";
+    await saveManagedTemplateFontAsset({
+      assetId,
+      mimeType: "font/woff2",
+      buffer: Buffer.from("stage3-worker-template-font"),
+      originalName: "LeadDisplay.woff2",
+      sizeBytes: Buffer.byteLength("stage3-worker-template-font"),
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      creatorDisplayName: owner.user.displayName
+    });
+
+    const { token: pairingToken } = issueStage3WorkerPairingToken({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id
+    });
+    const { sessionToken } = exchangeStage3WorkerPairingToken({
+      pairingToken,
+      label: "Worker Template Asset Cache",
+      platform: "win32-x64"
+    });
+
+    process.env.STAGE3_WORKER_SERVER_ORIGIN = "https://clips.example.com";
+    process.env.STAGE3_WORKER_SESSION_TOKEN = sessionToken;
+    process.env.STAGE3_WORKER_INSTALL_ROOT = workerRoot;
+
+    let fetchCalls = 0;
+    globalThis.fetch = (async (input, init) => {
+      fetchCalls += 1;
+      assert.equal(String(input), `https://clips.example.com/api/stage3/worker/template-assets/${assetId}`);
+      assert.equal((init?.headers as Record<string, string>).Authorization, `Bearer ${sessionToken}`);
+      return getStage3WorkerTemplateAsset(
+        new Request(String(input), {
+          headers: init?.headers,
+          signal: init?.signal
+        }),
+        { params: Promise.resolve({ assetId }) }
+      );
+    }) as typeof fetch;
+
+    const first = await maybeDownloadStage3WorkerTemplateAsset({
+      assetId,
+      tmpDir: workerRoot,
+      suggestedFileName: "LeadDisplay.woff2"
+    });
+    const second = await maybeDownloadStage3WorkerTemplateAsset({
+      assetId,
+      tmpDir: workerRoot,
+      suggestedFileName: "LeadDisplay.woff2"
+    });
+
+    assert.ok(first);
+    assert.ok(second);
+    assert.equal(fetchCalls, 1);
+    assert.equal(first?.filePath, second?.filePath);
+    assert.equal(first?.mimeType, "font/woff2");
+    assert.equal(await fs.readFile(first?.filePath ?? "", "utf-8"), "stage3-worker-template-font");
+    assert.ok(path.basename(first?.filePath ?? "").startsWith(`asset-template-${assetId}-`));
   } finally {
     globalThis.fetch = originalFetch;
     delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;

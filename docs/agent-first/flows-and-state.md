@@ -59,25 +59,23 @@
 ### Happy path
 
 1. Пользователь открывает `/register`.
-2. Заполняет имя, email, password.
-3. Нажимает `Создать аккаунт`.
-4. Получает активный `redactor`.
-5. Попадает в `/`.
+2. Видит, что публичная регистрация закрыта.
+3. Переходит к `/accept-invite` или возвращается на `/login`.
 
 ### Alternate path
 
-1. Имя может быть пустым.
-2. Workspace membership создаётся по default flow.
+1. Прямой `POST /api/auth/register` возвращает `403`.
+2. Пользователь не получает session cookie и workspace membership.
 
 ### Blocked path
 
-1. Email уже занят.
-2. Сервер не смог создать membership.
+1. Любая self-serve попытка регистрации заблокирована.
+2. Для создания аккаунта нужен invite на конкретную почту.
 
 ### Failure / recovery
 
-1. Агент проверяет: это self-register или invite flow.
-2. Если нужен `manager` или `redactor_limited`, self-register не подходит; нужен invite.
+1. Агент проверяет, есть ли invite token.
+2. Если invite отсутствует, владелец или manager должен создать приглашение на `/team`.
 
 ## 3. Auth: accept invite
 
@@ -139,7 +137,8 @@
 1. `owner` или `manager` открывает `/team`.
 2. Список участников грузится из `/api/workspace/members`.
 3. Администратор меняет роль через combobox или создаёт invite.
-4. UI показывает `Роль обновлена.` или `Приглашение создано.`
+4. Администратор может удалить не-owner участника, после подтверждения его сессии закрываются и channel grants отзываются.
+5. UI показывает `Роль обновлена.`, `Приглашение создано.` или `Участник удалён.`
 
 ### Alternate path
 
@@ -161,6 +160,7 @@
 - can_manage_members
 - forbidden
 - busy_updating_role
+- busy_removing_member
 - busy_creating_invite
 - invite_token_ready
 
@@ -423,31 +423,32 @@
 ### Happy path
 
 1. Пользователь нажимает `Подключить executor`.
-2. Выбирает `Mac` или `Windows`.
-3. Нажимает `Подготовить команду`.
-4. Копирует команду.
-5. Запускает её на своей машине.
-6. Worker проходит auth/pairing/heartbeat.
-7. UI показывает workspace-level `Online`; worker может забирать Stage 3 jobs любого редактора в этом workspace.
+2. UI создаёт pairing и показывает основной CTA `Открыть Clips Worker`.
+3. Пользователь открывает desktop app через `clips-stage3-worker://pair?...`.
+4. Clips Worker сохраняет session token, проходит doctor/managed tool setup и запускает loop.
+5. Worker проходит auth/pairing/heartbeat.
+6. UI показывает personal `Online` только для текущего пользователя; worker может забирать Stage 3 jobs только этого пользователя в текущем workspace.
 
 ### Alternate path
 
-1. Если зависимости отсутствуют, пользователь копирует install command.
-2. Можно обновить pair command повторно.
+1. Если desktop app не установлен или deep link не открылся, пользователь раскрывает advanced Terminal/PowerShell fallback.
+2. Если зависимости отсутствуют, worker показывает doctor reason в UI/logs.
+3. Можно обновить pairing повторно.
 
 ### Blocked path
 
 1. Pairing command не создаётся.
 2. Worker не heartbeat-ит.
 3. Platform mismatch или dependency missing.
-4. Worker online под другим редактором в том же workspace больше не должен считаться blocked path: readiness, claim, complete/fail работают по workspace boundary.
+4. Worker online под другим редактором в том же workspace больше не считается готовностью текущего пользователя: readiness и claim работают по `userId`.
 
 ### Failure / recovery
 
 1. Для жалоб про executor нужны:
   - OS;
-  - был ли pair command;
-  - что пишет terminal/PowerShell;
+  - установлен ли Clips Worker;
+  - открылся ли deep link;
+  - что пишет Clips Worker status/logs или Terminal/PowerShell fallback;
   - обновился ли статус в браузере.
 
 ## 14. Publishing queue

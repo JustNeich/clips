@@ -31,7 +31,10 @@ import {
   sanitizeClipDuration,
   sanitizeFocusY
 } from "./stage3-media-agent";
-import { maybeDownloadStage3WorkerAsset } from "./stage3-worker-asset-client";
+import {
+  maybeDownloadStage3WorkerAsset,
+  maybeDownloadStage3WorkerTemplateAsset
+} from "./stage3-worker-asset-client";
 import { extractYtDlpErrorFromUnknown, isSupportedUrl, normalizeSupportedUrl } from "./ytdlp";
 import { Stage3RenderPlan } from "./stage3-agent";
 import { Stage3StateSnapshot } from "../app/components/types";
@@ -99,14 +102,26 @@ export async function prepareStage3TemplateFontAssetsForRender(params: {
     }
 
     const resolved = await resolveManagedTemplateAssetFile(asset.id);
-    if (!resolved || resolved.record.kind !== "font" || resolved.record.workspaceId !== params.workspaceId) {
+    const localFont =
+      resolved && resolved.record.kind === "font" && resolved.record.workspaceId === params.workspaceId
+        ? {
+            filePath: resolved.filePath,
+            fileName: resolved.record.fileName,
+            mimeType: resolved.record.mimeType
+          }
+        : await maybeDownloadStage3WorkerTemplateAsset({
+            assetId: asset.id,
+            tmpDir: params.remotionAssetDir,
+            suggestedFileName: asset.originalName
+          });
+    if (!localFont) {
       continue;
     }
 
-    const ext = path.extname(resolved.record.fileName).toLowerCase() || ".woff2";
+    const ext = path.extname(localFont.fileName ?? asset.originalName).toLowerCase() || ".woff2";
     const localFileName = `font-${slot}${ext}`;
     try {
-      await fs.copyFile(resolved.filePath, path.join(params.remotionAssetDir, localFileName));
+      await fs.copyFile(localFont.filePath, path.join(params.remotionAssetDir, localFileName));
     } catch {
       continue;
     }

@@ -12,6 +12,8 @@ import {
   listStage3Workers,
   resolveStage3WorkerPairingTtlMs
 } from "../lib/stage3-worker-store";
+import { resolveStage3LocalWorkerReadiness } from "../lib/stage3-worker-readiness";
+import { getExpectedStage3WorkerRuntimeVersion } from "../lib/stage3-worker-runtime-manifest";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-stage3-worker-pairing-"));
@@ -128,6 +130,52 @@ test("workspace worker list includes executors paired by another workspace membe
     assert.equal(workspaceWorkers.length, 1);
     assert.equal(workspaceWorkers[0]?.id, exchanged.worker.id);
     assert.equal(editorScopedWorkers.length, 0);
+  });
+});
+
+test("local worker readiness is scoped to the current user", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const ownerUserId = "u1";
+    const editorUserId = "u2";
+    const expectedRuntimeVersion = await getExpectedStage3WorkerRuntimeVersion();
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    for (const [userId, email, displayName] of [
+      [ownerUserId, "owner-readiness@example.com", "Owner"],
+      [editorUserId, "editor-readiness@example.com", "Editor"]
+    ]) {
+      db.prepare(
+        "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(userId, email, "hash", displayName, "active", stamp, stamp);
+      db.prepare(
+        "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(newId(), workspaceId, userId, userId === ownerUserId ? "owner" : "redactor", stamp, stamp);
+    }
+
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId: ownerUserId });
+    exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "owner worker",
+      platform: "darwin-arm64",
+      appVersion: expectedRuntimeVersion ?? "1.0.0"
+    });
+
+    const ownerReadiness = await resolveStage3LocalWorkerReadiness({ workspaceId, userId: ownerUserId });
+    const editorReadiness = await resolveStage3LocalWorkerReadiness({ workspaceId, userId: editorUserId });
+
+    assert.equal(ownerReadiness.ready, true);
+    assert.equal(ownerReadiness.compatibleOnlineWorkers, 1);
+    assert.equal(editorReadiness.ready, false);
+    assert.equal(editorReadiness.onlineWorkers, 0);
   });
 });
 

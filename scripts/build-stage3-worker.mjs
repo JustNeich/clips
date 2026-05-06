@@ -54,7 +54,33 @@ const WORKER_LIB_RUNTIME_FILES = [
   "stage3-template-registry.ts",
   "stage3-background-mode.ts",
   "stage3-video-adjustments.ts",
-  "stage3-video-placement.ts"
+  "stage3-video-placement.ts",
+  "stage3-worker-job-timeout.ts"
+];
+
+const WORKER_BUNDLE_SOURCE_FILES = [
+  "stage3-worker-runtime.ts",
+  "stage3-worker-managed-tools.ts"
+];
+
+const WORKER_TEMPLATE_SPEC_FILES = [
+  // Only repo-backed specs that stage3-template-spec.ts imports at runtime.
+  // Other registered templates are generated from code and must not make
+  // local executor bootstrap scale with the template workspace/library size.
+  "templates/science-card-v1/figma-spec.json",
+  "templates/science-card-v7/figma-spec.json",
+  "templates/hedges-of-honor-v1/figma-spec.json"
+];
+
+const WORKER_PUBLIC_RUNTIME_FILES = [
+  "stage3-template-backdrops/hedges-of-honor-v1-shell.svg",
+  "stage3-template-backdrops/science-card-v7-shell.svg",
+  "stage3-template-badges/american-news-badge.svg",
+  "stage3-template-badges/gold-glow-badge.png",
+  "stage3-template-badges/honor-verified-badge.svg",
+  "stage3-template-badges/pink-glow-badge.png",
+  "stage3-template-badges/science-card-v1-check.png",
+  "stage3-template-badges/twitter-verified-badge.png"
 ];
 
 async function listWorkerRemotionRuntimeFiles() {
@@ -66,25 +92,13 @@ async function listWorkerRemotionRuntimeFiles() {
 }
 
 async function copyWorkerTemplateSpecs() {
-  const templatesSourceDir = path.join(designSourceDir, "templates");
-  const templatesPublicDir = path.join(designPublicDir, "templates");
-  await fs.mkdir(templatesPublicDir, { recursive: true });
-  const entries = await fs.readdir(templatesSourceDir, { withFileTypes: true }).catch(() => []);
   const copiedFiles = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const sourcePath = path.join(templatesSourceDir, entry.name, "figma-spec.json");
-    try {
-      await fs.access(sourcePath);
-    } catch {
-      continue;
-    }
-    const targetDir = path.join(templatesPublicDir, entry.name);
-    await fs.mkdir(targetDir, { recursive: true });
-    const relativeFilePath = path.join("templates", entry.name, "figma-spec.json");
-    await fs.copyFile(sourcePath, path.join(targetDir, "figma-spec.json"));
+  for (const relativeFilePath of WORKER_TEMPLATE_SPEC_FILES) {
+    const sourcePath = path.join(designSourceDir, relativeFilePath);
+    const targetPath = path.join(designPublicDir, relativeFilePath);
+    await fs.access(sourcePath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.copyFile(sourcePath, targetPath);
     copiedFiles.push(relativeFilePath);
   }
   return copiedFiles.sort();
@@ -92,22 +106,13 @@ async function copyWorkerTemplateSpecs() {
 
 async function copyWorkerPublicAssets() {
   const copiedFiles = [];
-  const relativeDirs = ["stage3-template-badges", "stage3-template-backdrops"];
-  for (const relativeDir of relativeDirs) {
-    const sourceDir = path.join(publicSourceDir, relativeDir);
-    const targetDir = path.join(workerPublicAssetsDir, relativeDir);
-    const entries = await fs.readdir(sourceDir, { withFileTypes: true }).catch(() => []);
-    if (entries.length === 0) {
-      continue;
-    }
-    await fs.mkdir(targetDir, { recursive: true });
-    for (const entry of entries) {
-      if (!entry.isFile()) {
-        continue;
-      }
-      await fs.copyFile(path.join(sourceDir, entry.name), path.join(targetDir, entry.name));
-      copiedFiles.push(path.join(relativeDir, entry.name));
-    }
+  for (const relativeFilePath of WORKER_PUBLIC_RUNTIME_FILES) {
+    const sourcePath = path.join(publicSourceDir, relativeFilePath);
+    const targetPath = path.join(workerPublicAssetsDir, relativeFilePath);
+    await fs.access(sourcePath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.copyFile(sourcePath, targetPath);
+    copiedFiles.push(relativeFilePath);
   }
   return copiedFiles.sort();
 }
@@ -122,8 +127,16 @@ async function buildRuntimeVersion(baseVersion, input) {
   const hash = createHash("sha256");
   hash.update(`version:${baseVersion}\0`);
   hash.update(`worker-package:${JSON.stringify(input.workerPackageJson)}\0`);
+  if (input.workerBundlePreviewBytes) {
+    hash.update("worker-bundle-preview\0");
+    hash.update(input.workerBundlePreviewBytes);
+    hash.update("\0");
+  }
   await hashFile(hash, "scripts/build-stage3-worker.mjs", __filename);
   await hashFile(hash, "apps/stage3-worker/index.ts", workerEntry);
+  for (const fileName of WORKER_BUNDLE_SOURCE_FILES) {
+    await hashFile(hash, `lib/${fileName}`, path.join(libSourceDir, fileName));
+  }
 
   for (const fileName of [...input.remotionFiles].sort()) {
     await hashFile(hash, `remotion/${fileName}`, path.join(remotionSourceDir, fileName));
@@ -139,6 +152,37 @@ async function buildRuntimeVersion(baseVersion, input) {
   }
 
   return `${baseVersion}+runtime.${hash.digest("hex").slice(0, 12)}`;
+}
+
+async function buildWorkerBundle(runtimeVersion, options = {}) {
+  return build({
+    entryPoints: [workerEntry],
+    bundle: true,
+    format: "cjs",
+    platform: "node",
+    target: ["node22"],
+    outfile: bundlePath,
+    write: options.write !== false,
+    sourcemap: false,
+    legalComments: "none",
+    banner: {
+      js: "#!/usr/bin/env node"
+    },
+    external: [
+      "@remotion/bundler",
+      "@remotion/renderer",
+      "remotion",
+      "react",
+      "react-dom",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+      "./chat-history",
+      "./channel-assets"
+    ],
+    define: {
+      __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: JSON.stringify(runtimeVersion)
+    }
+  });
 }
 
 async function readPackageJson() {
@@ -173,6 +217,10 @@ function runCommand(command, args, options = {}) {
 
 function resolveNpmCommand() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function resolveRuntimeDependenciesPlatform() {
+  return `${process.platform}-${process.arch}`;
 }
 
 async function buildWorkerRuntimeArchive(workerPackageJson) {
@@ -256,40 +304,17 @@ async function main() {
     },
     dependencies: pickWorkerDependencies(rootPackageJson)
   };
+  const previewBundle = await buildWorkerBundle("pending-runtime-version", { write: false });
+  const workerBundlePreviewBytes = previewBundle.outputFiles?.[0]?.contents;
   const runtimeVersion = await buildRuntimeVersion(version, {
     remotionFiles,
     designFiles: runtimeSources.designFiles,
     publicFiles: runtimeSources.publicFiles,
-    workerPackageJson
+    workerPackageJson,
+    workerBundlePreviewBytes
   });
 
-  await build({
-    entryPoints: [workerEntry],
-    bundle: true,
-    format: "cjs",
-    platform: "node",
-    target: ["node22"],
-    outfile: bundlePath,
-    sourcemap: false,
-    legalComments: "none",
-    banner: {
-      js: "#!/usr/bin/env node"
-    },
-    external: [
-      "@remotion/bundler",
-      "@remotion/renderer",
-      "remotion",
-      "react",
-      "react-dom",
-      "react/jsx-runtime",
-      "react/jsx-dev-runtime",
-      "./chat-history",
-      "./channel-assets"
-    ],
-    define: {
-      __CLIPS_STAGE3_WORKER_RUNTIME_VERSION__: JSON.stringify(runtimeVersion)
-    }
-  });
+  await buildWorkerBundle(runtimeVersion);
 
   await fs.chmod(bundlePath, 0o755).catch(() => undefined);
   await fs.writeFile(
@@ -301,6 +326,7 @@ async function main() {
         builtAt: new Date().toISOString(),
         bundleFile: path.basename(bundlePath),
         runtimeDependenciesArchiveFile: path.basename(runtimeDependenciesArchivePath),
+        runtimeDependenciesPlatform: resolveRuntimeDependenciesPlatform(),
         runtimeSourcesArchiveFile: path.basename(runtimeSourcesArchivePath),
         remotionFiles,
         libFiles: WORKER_LIB_RUNTIME_FILES,
