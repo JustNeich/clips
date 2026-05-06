@@ -22,8 +22,9 @@
   - Stage 2 дальше автоматически наследует workspace baseline.
 - В Channel Manager -> Stage 2:
   - workspace defaults редактируют hard constraints, caption provider, one-shot model, prompt source и examples source;
+  - workspace defaults редактируют default SEO prompt, который используется для description, hashtags и tags;
   - prompt/examples имеют понятные режимы default presets (`Base`, `Animals`) или custom;
-  - на уровне канала можно оставить workspace default или включить отдельный prompt/examples override;
+  - на уровне канала можно оставить workspace default или включить отдельный prompt/examples override, включая SEO prompt для description/hashtags/tags;
   - channel examples override показывает `Default presets` отдельно от `Custom`, чтобы preset-кнопки не выглядели как ещё один слой одинаковых mode buttons;
   - на уровне канала выбирается active template type: `Top / Bottom` или `Lead / Main Caption`;
   - после выбора Stage 2 показывает только активный prompt-first contract: `classicOneShot` для `Top / Bottom` или `storyOneShot` для `Lead / Main Caption`.
@@ -158,6 +159,7 @@ npm run dev
   - workspace owner может переключить eligible caption-only stages на Anthropic API или OpenRouter API:
     - `classicOneShot`, `storyOneShot`, `regenerate`;
     - `captionTranslation`, `seo` и Stage 3 planner остаются на Shared Codex;
+    - `seo` читает effective Stage 2 prompt config, поэтому канал может переопределить только свои правила description/hashtags/tags без смены caption provider;
     - ни Anthropic, ни OpenRouter не заменяют baseline Shared Codex integration целиком;
     - legacy `captionOptions.top/bottom` остаются compatibility adapter-ом для старых consumers, но новые story runs также сохраняют истинные `storyOptions.lead/mainCaption`;
     - length-only hard-constraint misses больше не обнуляют Stage 3 handoff: оператор всё равно получает выбранный caption в Step 3 и может дочистить длину уже там;

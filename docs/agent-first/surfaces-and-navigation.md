@@ -600,6 +600,9 @@
   - active channel prompt field only:
     - `Classic channel prompt` when `Top / Bottom` is active
     - `Story channel prompt` when `Lead / Main Caption` is active
+  - channel SEO prompt field:
+    - `SEO channel prompt`
+    - `SEO reasoning`
   - channel prompt toggle `Workspace default` / `Channel override`
   - channel prompt override toggle `System` / `Custom`
   - channel examples inheritance card `Using workspace default` / `Channel-specific examples`
@@ -629,6 +632,8 @@
   - owner-only model controls:
     - `One-shot model`
     - `One-shot reasoning`
+    - `SEO reasoning`
+    - `SEO prompt`
 - `related APIs`:
   - `PATCH /api/channels/[id]`
   - `GET /api/workspace`

@@ -617,6 +617,8 @@ test("ChannelManagerStage2Tab renders the minimal single-baseline Stage 2 surfac
   assert.match(html, /Single baseline Stage 2/);
   assert.match(html, /Classic prompt/);
   assert.match(html, /Story prompt/);
+  assert.match(html, /SEO prompt/);
+  assert.match(html, /SEO reasoning/);
   assert.match(html, /One-shot model/);
   assert.match(html, /Caption provider/);
   assert.doesNotMatch(html, /Формат pipeline/);
@@ -673,6 +675,8 @@ test("ChannelManagerStage2Tab presents channel examples as presets or custom cor
   );
 
   assert.match(html, /Channel examples/);
+  assert.match(html, /SEO prompt contract/);
+  assert.match(html, /SEO channel prompt/);
   assert.match(html, /Channel-specific/);
   assert.match(html, /Channel-specific examples/);
   assert.match(html, /Default presets/);

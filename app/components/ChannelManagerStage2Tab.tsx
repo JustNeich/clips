@@ -790,6 +790,7 @@ export function ChannelManagerStage2Tab({
 }: ChannelManagerStage2TabProps) {
   const classicOneShotStageConfig = workspaceStage2PromptConfig.stages.classicOneShot;
   const storyOneShotStageConfig = workspaceStage2PromptConfig.stages.storyOneShot;
+  const seoStageConfig = workspaceStage2PromptConfig.stages.seo;
   const effectiveChannelPromptConfig = channelStage2PromptOverridesActive
     ? channelStage2PromptConfig ?? workspaceStage2PromptConfig
     : workspaceStage2PromptConfig;
@@ -797,6 +798,7 @@ export function ChannelManagerStage2Tab({
   const activeTemplateFormatChoice = getStage2TemplateFormatChoice(channelTemplateFormatGroup);
   const activeChannelPromptStageConfig =
     effectiveChannelPromptConfig.stages[activeTemplateFormatChoice.stageId];
+  const activeChannelSeoStageConfig = effectiveChannelPromptConfig.stages.seo;
   const anthropicModelValue =
     workspaceStage2CaptionProviderConfig.anthropicModel ?? DEFAULT_ANTHROPIC_CAPTION_MODEL;
   const openRouterModelValue =
@@ -1022,6 +1024,29 @@ export function ChannelManagerStage2Tab({
                 Базовый уровень рассуждений для Lead/Main Caption prompt-first линии.
               </p>
             </div>
+            <div className="compact-field">
+              <label className="field-label">SEO reasoning</label>
+              <select
+                className="text-input"
+                value={seoStageConfig.reasoningEffort}
+                disabled={!canEditWorkspaceDefaults}
+                onChange={(event) =>
+                  updateStage2PromptReasoning(
+                    "seo",
+                    event.target.value as typeof seoStageConfig.reasoningEffort
+                  )
+                }
+              >
+                {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="subtle-text">
+                Базовый уровень рассуждений для описания, hashtags и tags.
+              </p>
+            </div>
           </div>
 
           <div className="compact-field">
@@ -1070,6 +1095,32 @@ export function ChannelManagerStage2Tab({
                 className="btn btn-ghost"
                 disabled={!canEditWorkspaceDefaults}
                 onClick={() => resetStage2PromptStage("storyOneShot")}
+              >
+                Сбросить к продуктовым настройкам
+              </button>
+            </div>
+          </div>
+
+          <div className="compact-field">
+            <label className="field-label">SEO prompt</label>
+            <textarea
+              className="text-area mono"
+              rows={14}
+              value={seoStageConfig.prompt}
+              disabled={!canEditWorkspaceDefaults}
+              onChange={(event) =>
+                updateStage2PromptTemplate("seo", event.target.value)
+              }
+            />
+            <p className="subtle-text">
+              Default prompt для Stage 2 SEO: description, hashtags и comma-separated tags.
+            </p>
+            <div className="stage2-config-stage-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={!canEditWorkspaceDefaults}
+                onClick={() => resetStage2PromptStage("seo")}
               >
                 Сбросить к продуктовым настройкам
               </button>
@@ -1171,7 +1222,7 @@ export function ChannelManagerStage2Tab({
             </strong>
             <p className="subtle-text">
               {channelStage2PromptOverridesActive
-                ? `канал использует собственный ${activeTemplateFormatChoice.label} contract`
+                ? `канал использует собственные caption и SEO prompts`
                 : "пока наследует workspace defaults; редактирование активного prompt создаст override"}
             </p>
           </article>
@@ -1281,16 +1332,64 @@ export function ChannelManagerStage2Tab({
             Runtime передаёт provider-у raw-блоки: `source_video_json`, `examples_json`,
             `format_contract_json`, `hard_constraints_json`, `user_instruction`.
           </p>
-          <div className="stage2-config-stage-actions">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={!canEditEffectiveChannelPrompt || !channelStage2PromptOverridesActive}
-              onClick={resetChannelStage2PromptConfig}
-            >
-              Наследовать workspace prompt
-            </button>
+        </div>
+
+        <div className="compact-field">
+          <p className="field-label">SEO prompt contract</p>
+          <div className="compact-grid">
+            <div className="compact-field">
+              <label className="field-label">SEO reasoning</label>
+              <select
+                className="text-input"
+                value={activeChannelSeoStageConfig.reasoningEffort}
+                disabled={!canEditEffectiveChannelPrompt}
+                onChange={(event) =>
+                  updateChannelStage2PromptReasoning(
+                    "seo",
+                    event.target.value as typeof activeChannelSeoStageConfig.reasoningEffort
+                  )
+                }
+              >
+                {STAGE2_REASONING_EFFORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="compact-field">
+              <span className="field-label">SEO output</span>
+              <strong>Description + tags</strong>
+              <p className="subtle-text">
+                Применяется после caption translation для новых полных Stage 2 прогонов.
+              </p>
+            </div>
           </div>
+
+          <label className="field-label">SEO channel prompt</label>
+          <textarea
+            className="text-area mono"
+            rows={10}
+            value={activeChannelSeoStageConfig.prompt}
+            disabled={!canEditEffectiveChannelPrompt}
+            onChange={(event) =>
+              updateChannelStage2PromptTemplate("seo", event.target.value)
+            }
+          />
+          <p className="subtle-text">
+            Stage получает source URL, title, выбранный caption, Stage 2 analysis, comments и user instruction.
+          </p>
+        </div>
+
+        <div className="stage2-config-stage-actions">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={!canEditEffectiveChannelPrompt || !channelStage2PromptOverridesActive}
+            onClick={resetChannelStage2PromptConfig}
+          >
+            Наследовать workspace prompts
+          </button>
         </div>
 
         <div className="channel-onboarding-note-card">

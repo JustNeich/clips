@@ -157,7 +157,7 @@ Active workspace Stage 2 settings теперь только такие:
 - `stage2_caption_provider_json`
 - `workspace_codex_model_config_json` для `classicOneShot` / `storyOneShot` / `regenerate`
 - `stage2_examples_corpus_json` как default examples source для каналов без custom corpus
-- default editable prompts для `classicOneShot` и `storyOneShot`
+- default editable prompts для `classicOneShot`, `storyOneShot` и `seo`
 - default hard constraints
 
 ### Channel-level active authority
@@ -166,7 +166,7 @@ Active workspace Stage 2 settings теперь только такие:
 
 - render template format group: `classic_top_bottom` выбирает `classicOneShot`, `channel_story` выбирает `storyOneShot`
 - `stage2HardConstraints`
-- `stage2PromptConfig` для channel-specific prompt overrides
+- `stage2PromptConfig` для channel-specific caption и SEO prompt overrides
 - `stage2ExamplesConfig`: если `useWorkspaceDefault=false`, все custom examples становятся active source
 - render template отдельно в Channel Manager / Stage 3 surfaces
 
@@ -214,7 +214,7 @@ Workspace defaults tab:
 - hard constraints
 - caption provider
 - one-shot model fallback
-- default prompts for `classicOneShot` and `storyOneShot`
+- default prompts for `classicOneShot`, `storyOneShot` and `seo`
 - `classicOneShot` product default uses the V6 visually anchored narrator prompt adapted to the `classic_top_bottom` prompt-first output contract
 - examples source: system preset or custom workspace JSON corpus
 
@@ -222,6 +222,7 @@ Channel tab:
 
 - template type selector: `Top / Bottom` или `Lead / Main Caption`
 - active prompt contract only: `classicOneShot` для `Top / Bottom`, `storyOneShot` для `Lead / Main Caption`
+- SEO prompt contract for the downstream `description` / `hashtags` / `tags` stage
 - hard constraints
 - channel prompt overrides
 - channel examples source: workspace default, system preset, custom JSON, or custom plain text

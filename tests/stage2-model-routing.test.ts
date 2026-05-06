@@ -15,6 +15,10 @@ import {
   ViralShortsWorkerService
 } from "../lib/viral-shorts-worker/service";
 import {
+  DEFAULT_STAGE2_PROMPT_CONFIG,
+  prepareStage2PromptConfigForExplicitSave
+} from "../lib/stage2-pipeline";
+import {
   HybridJsonStageExecutor,
   type JsonStageExecutor
 } from "../lib/viral-shorts-worker/executor";
@@ -387,6 +391,67 @@ test("runNativeCaptionPipeline routes the prompt-first classic stage and downstr
   );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
   assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], []]);
+});
+
+test("runNativeCaptionPipeline applies channel SEO prompt override to the downstream SEO stage", async () => {
+  const service = new ViralShortsWorkerService();
+  const executor = new CaptureQueueExecutor([
+    makeClassicOneShotResponse("seo_override"),
+    makeTranslationEntries([
+      "seo_override_1",
+      "seo_override_2",
+      "seo_override_3",
+      "seo_override_4",
+      "seo_override_5"
+    ]),
+    makeSeoResponse()
+  ]);
+  const promptConfig = prepareStage2PromptConfigForExplicitSave({
+    nextConfig: {
+      ...DEFAULT_STAGE2_PROMPT_CONFIG,
+      useWorkspaceDefault: false,
+      stages: {
+        ...DEFAULT_STAGE2_PROMPT_CONFIG.stages,
+        seo: {
+          ...DEFAULT_STAGE2_PROMPT_CONFIG.stages.seo,
+          prompt:
+            "CUSTOM CHANNEL SEO PROMPT: never mention movie titles unless the title is visibly required.",
+          reasoningEffort: "high"
+        }
+      }
+    },
+    previousConfig: DEFAULT_STAGE2_PROMPT_CONFIG
+  });
+
+  await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_1",
+      name: "Channel 1",
+      username: "channel_1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/movie-like-short",
+      title: "A viral clip with a movie-like setup",
+      frameDescriptions: ["a frame that looks like a serial episode"],
+      userInstruction: "avoid film-name SEO drift"
+    }),
+    imagePaths: [],
+    executor,
+    stageModels: {
+      classicOneShot: "gpt-5.4",
+      captionTranslation: "gpt-5.4-mini",
+      seo: "gpt-5.4-mini"
+    },
+    promptConfig
+  });
+
+  const seoCall = executor.calls.find((call) => call.stageId === "seo");
+  assert.ok(seoCall);
+  assert.match(seoCall.prompt, /CUSTOM CHANNEL SEO PROMPT/);
+  assert.equal(seoCall.model, "gpt-5.4-mini");
 });
 
 test("leadless story prompt-first output passes rollout audit without topRu", async () => {
