@@ -360,6 +360,8 @@ test("managed templates preserve uploaded top and bottom font assets", async () 
       originalName: "LeadDisplay.woff2",
       mimeType: "font/woff2",
       sizeBytes: 32100,
+      weight: 400,
+      style: "normal" as const,
       createdAt: "2026-05-01T09:00:00.000Z"
     };
     const bottomFontAsset = {
@@ -369,6 +371,8 @@ test("managed templates preserve uploaded top and bottom font assets", async () 
       originalName: "MainText.otf",
       mimeType: "font/otf",
       sizeBytes: 45600,
+      weight: 400,
+      style: "normal" as const,
       createdAt: "2026-05-01T09:05:00.000Z"
     };
     const template = await createManagedTemplate(

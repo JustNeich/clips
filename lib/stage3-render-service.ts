@@ -725,7 +725,7 @@ function resolveSourceUrl(rawSource: string | undefined): string {
   return sourceUrl;
 }
 
-function normalizeRenderPlan(
+export function normalizeRenderPlan(
   rawPlan: Partial<Stage3RenderPlan> | undefined,
   sourceDurationSec: number | null,
   fallbackTemplateId: string,
@@ -771,6 +771,10 @@ function normalizeRenderPlan(
         ? rawPlan.timingMode
         : "auto",
     normalizeToTargetEnabled,
+    editorSelectionMode:
+      rawPlan?.editorSelectionMode === "window" || rawPlan?.editorSelectionMode === "fragments"
+        ? rawPlan.editorSelectionMode
+        : undefined,
     audioMode:
       rawPlan?.audioMode === "source_only" || rawPlan?.audioMode === "source_plus_music"
         ? rawPlan.audioMode

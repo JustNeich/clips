@@ -4,6 +4,10 @@ import type {
 } from "./stage3-template";
 
 export type Stage3TemplateFontSlot = "top" | "bottom";
+export type Stage3TemplateFontFaceMetadata = {
+  weight: number;
+  style: "normal" | "italic";
+};
 
 const SAFE_ASSET_ID_PATTERN = /^[a-zA-Z0-9_-]{8,100}$/;
 const SAFE_FONT_URL_PREFIXES = [
@@ -13,7 +17,22 @@ const SAFE_FONT_URL_PREFIXES = [
 ] as const;
 const STAGE3_UPLOADED_FONT_DEFAULT_TEXT_SCALE = 1;
 const STAGE3_TEMPLATE_FONT_LOAD_TIMEOUT_MS = 6000;
-const STAGE3_TEMPLATE_FONT_FACE_WEIGHT_RANGE = "100 900";
+const STAGE3_TEMPLATE_DEFAULT_FONT_FACE_METADATA: Stage3TemplateFontFaceMetadata = {
+  weight: 400,
+  style: "normal"
+};
+
+const FONT_WEIGHT_NAME_TOKENS: Array<{ pattern: RegExp; weight: number }> = [
+  { pattern: /(?:^|[^a-z0-9])(?:hairline|thin)(?:[^a-z0-9]|$)/, weight: 100 },
+  { pattern: /(?:^|[^a-z0-9])(?:extra|ultra)[^a-z0-9]*light(?:[^a-z0-9]|$)/, weight: 200 },
+  { pattern: /(?:^|[^a-z0-9])light(?:[^a-z0-9]|$)/, weight: 300 },
+  { pattern: /(?:^|[^a-z0-9])(?:regular|normal|book|roman)(?:[^a-z0-9]|$)/, weight: 400 },
+  { pattern: /(?:^|[^a-z0-9])medium(?:[^a-z0-9]|$)/, weight: 500 },
+  { pattern: /(?:^|[^a-z0-9])(?:semi|demi)[^a-z0-9]*bold(?:[^a-z0-9]|$)/, weight: 600 },
+  { pattern: /(?:^|[^a-z0-9])(?:extra|ultra)[^a-z0-9]*bold(?:[^a-z0-9]|$)/, weight: 800 },
+  { pattern: /(?:^|[^a-z0-9])bold(?:[^a-z0-9]|$)/, weight: 700 },
+  { pattern: /(?:^|[^a-z0-9])(?:black|heavy)(?:[^a-z0-9]|$)/, weight: 900 }
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,6 +51,59 @@ function readCleanString(value: unknown, maxLength: number): string | null {
 
 function isSafeTemplateFontUrl(value: string): boolean {
   return SAFE_FONT_URL_PREFIXES.some((prefix) => value.startsWith(prefix));
+}
+
+function normalizeStage3TemplateFontWeight(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(100, Math.min(900, Math.round(value / 50) * 50));
+}
+
+function normalizeStage3TemplateFontStyle(value: unknown): Stage3TemplateFontFaceMetadata["style"] | null {
+  return value === "italic" || value === "normal" ? value : null;
+}
+
+function normalizeFontNameForInference(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\.[a-z0-9]+$/i, "")
+    .toLowerCase()
+    .replace(/_/g, "-");
+}
+
+function inferWeightFromFontName(value: string): number | null {
+  const normalized = normalizeFontNameForInference(value);
+  for (const item of FONT_WEIGHT_NAME_TOKENS) {
+    if (item.pattern.test(normalized)) {
+      return item.weight;
+    }
+  }
+  return null;
+}
+
+function inferStyleFromFontName(value: string): Stage3TemplateFontFaceMetadata["style"] | null {
+  return /(?:^|[^a-z0-9])(?:italic|oblique)(?:[^a-z0-9]|$)/.test(normalizeFontNameForInference(value))
+    ? "italic"
+    : null;
+}
+
+export function inferStage3TemplateFontFaceMetadata(input: {
+  originalName?: string | null;
+  weight?: unknown;
+  style?: unknown;
+}): Stage3TemplateFontFaceMetadata {
+  const originalName = typeof input.originalName === "string" ? input.originalName : "";
+  return {
+    weight:
+      normalizeStage3TemplateFontWeight(input.weight) ??
+      inferWeightFromFontName(originalName) ??
+      STAGE3_TEMPLATE_DEFAULT_FONT_FACE_METADATA.weight,
+    style:
+      normalizeStage3TemplateFontStyle(input.style) ??
+      inferStyleFromFontName(originalName) ??
+      STAGE3_TEMPLATE_DEFAULT_FONT_FACE_METADATA.style
+  };
 }
 
 function escapeCssString(value: string): string {
@@ -112,6 +184,11 @@ export function normalizeStage3TemplateFontAsset(raw: unknown): Stage3TemplateFo
       ? Math.max(0, Math.round(raw.sizeBytes))
       : 0;
   const createdAt = readCleanString(raw.createdAt, 80) ?? undefined;
+  const faceMetadata = inferStage3TemplateFontFaceMetadata({
+    originalName,
+    weight: raw.weight,
+    style: raw.style
+  });
 
   return {
     id,
@@ -120,6 +197,8 @@ export function normalizeStage3TemplateFontAsset(raw: unknown): Stage3TemplateFo
     originalName,
     mimeType,
     sizeBytes,
+    weight: faceMetadata.weight,
+    style: faceMetadata.style,
     createdAt
   };
 }
@@ -168,21 +247,10 @@ export function resolveStage3TemplateDefaultTextScales(
 export function buildStage3TemplateFontLoadDescriptors(
   templateConfig: Pick<Stage3TemplateConfig, "typography">
 ): string[] {
-  const descriptors = new Set<string>();
-  for (const slot of ["top", "bottom"] as const) {
-    const asset = normalizeStage3TemplateFontAsset(templateConfig.typography[slot].fontAsset);
-    if (!asset) {
-      continue;
-    }
-    const style = templateConfig.typography[slot].fontStyle ?? "normal";
-    const weight =
-      typeof templateConfig.typography[slot].weight === "number" &&
-      Number.isFinite(templateConfig.typography[slot].weight)
-        ? Math.max(100, Math.min(900, Math.round(templateConfig.typography[slot].weight)))
-        : 400;
-    descriptors.add(`${style} ${weight} 16px ${quoteStage3TemplateFontFamily(asset.family)}`);
-  }
-  return [...descriptors];
+  return collectStage3TemplateFontAssets(templateConfig).map((asset) => {
+    const face = inferStage3TemplateFontFaceMetadata(asset);
+    return `${face.style} ${face.weight} 16px ${quoteStage3TemplateFontFamily(asset.family)}`;
+  });
 }
 
 function timeout(ms: number): Promise<void> {
@@ -224,10 +292,8 @@ export function buildStage3TemplateFontFaceCss(
       const url = escapeCssString(resolveFontCssUrl(asset));
       const format = resolveFontFormat(asset);
       const formatSuffix = format ? ` format("${format}")` : "";
-      return [
-        `@font-face{font-family:${family};src:url("${url}")${formatSuffix};font-weight:${STAGE3_TEMPLATE_FONT_FACE_WEIGHT_RANGE};font-style:normal;font-display:swap;}`,
-        `@font-face{font-family:${family};src:url("${url}")${formatSuffix};font-weight:${STAGE3_TEMPLATE_FONT_FACE_WEIGHT_RANGE};font-style:italic;font-display:swap;}`
-      ].join("\n");
+      const face = inferStage3TemplateFontFaceMetadata(asset);
+      return `@font-face{font-family:${family};src:url("${url}")${formatSuffix};font-weight:${face.weight};font-style:${face.style};font-display:swap;}`;
     })
     .join("\n");
 }

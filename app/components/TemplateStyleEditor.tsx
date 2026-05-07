@@ -16,6 +16,7 @@ import {
 import {
   buildStage3TemplateUploadedFontFamily,
   buildStage3TemplateUploadedFontStack,
+  inferStage3TemplateFontFaceMetadata,
   type Stage3TemplateFontSlot
 } from "../../lib/stage3-template-fonts";
 import {
@@ -2474,6 +2475,9 @@ export function TemplateStyleEditor({
       const family =
         payload.asset.fontFamily?.trim() ||
         buildStage3TemplateUploadedFontFamily(payload.asset.id);
+      const faceMetadata = inferStage3TemplateFontFaceMetadata({
+        originalName: payload.asset.originalName
+      });
       const fontAsset: Stage3TemplateFontAsset = {
         id: payload.asset.id,
         family,
@@ -2481,6 +2485,8 @@ export function TemplateStyleEditor({
         originalName: payload.asset.originalName,
         mimeType: payload.asset.mimeType,
         sizeBytes: payload.asset.sizeBytes,
+        weight: faceMetadata.weight,
+        style: faceMetadata.style,
         createdAt: payload.asset.createdAt
       };
       const fontFamily = buildStage3TemplateUploadedFontStack(

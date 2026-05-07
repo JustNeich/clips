@@ -12,8 +12,11 @@ import {
 } from "../lib/stage3-media-agent";
 import {
   buildFinalizeRenderedOutputArgs,
+  normalizeRenderPlan as normalizeServerRenderPlan,
   buildStage3SourceBackgroundStillFfmpegArgs
 } from "../lib/stage3-render-service";
+import { buildStage3EditorSession } from "../lib/stage3-editor-core";
+import { STAGE3_TEMPLATE_ID } from "../lib/stage3-template";
 import { buildStage3VideoPlacementStyle } from "../lib/stage3-video-placement";
 import {
   createStage3VariationProfile,
@@ -191,6 +194,59 @@ test("render segment extraction uses decode-accurate timestamps to reduce bounda
   assert.match(filters, /setpts=PTS-STARTPTS/);
   assert.match(filters, /format=yuv420p/);
   assert.ok(args.includes("-c:a"));
+});
+
+test("server render plan preserves whole-window selection for local worker renders", () => {
+  const renderPlan = normalizeServerRenderPlan(
+    {
+      targetDurationSec: 6,
+      editorSelectionMode: "window",
+      normalizeToTargetEnabled: true,
+      policy: "fixed_segments",
+      segments: [
+        {
+          startSec: 2,
+          endSec: 10,
+          speed: 1,
+          label: "Window"
+        }
+      ]
+    },
+    18,
+    STAGE3_TEMPLATE_ID,
+    undefined
+  );
+
+  assert.equal(renderPlan.editorSelectionMode, "window");
+  assert.equal(renderPlan.policy, "fixed_segments");
+  assert.deepEqual(renderPlan.segments, [
+    {
+      startSec: 2,
+      endSec: 10,
+      speed: 1,
+      label: "Window",
+      focusX: null,
+      focusY: null,
+      videoZoom: null,
+      mirrorEnabled: null
+    }
+  ]);
+
+  const session = buildStage3EditorSession({
+    rawSegments: renderPlan.segments,
+    selectionMode: renderPlan.editorSelectionMode,
+    legacyRenderPolicy: renderPlan.policy,
+    legacyNormalizeToTargetEnabled: renderPlan.normalizeToTargetEnabled,
+    clipStartSec: 2,
+    clipDurationSec: renderPlan.targetDurationSec,
+    targetDurationSec: renderPlan.targetDurationSec,
+    sourceDurationSec: 18
+  });
+
+  assert.equal(session.source.selectionMode, "window");
+  assert.equal(session.output.timingMode, "compress");
+  assert.equal(session.source.totalSelectedSourceDurationSec, 8);
+  assert.equal(session.output.totalOutputDurationSec, 6);
 });
 
 test("preview segment extraction keeps the fast seek path for editor responsiveness", () => {

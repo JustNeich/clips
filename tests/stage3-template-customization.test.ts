@@ -118,7 +118,7 @@ test("template scene markup wires uploaded top and bottom fonts into the rendere
     id: "fonttop123456",
     family: "Stage3TemplateFont_fonttop123456",
     url: "/api/design/template-assets/fonttop123456",
-    originalName: "LeadDisplay.woff2",
+    originalName: "LeadDisplay-BlackItalic.woff2",
     mimeType: "font/woff2",
     sizeBytes: 32100
   };
@@ -143,10 +143,11 @@ test("template scene markup wires uploaded top and bottom fonts into the rendere
 
   assert.match(markup, /data-stage3-template-fonts/);
   assert.match(markup, /@font-face\{font-family:"Stage3TemplateFont_fonttop123456"/);
-  assert.match(markup, /font-weight:100 900;font-style:normal;font-display:swap/);
-  assert.match(markup, /font-weight:100 900;font-style:italic;font-display:swap/);
+  assert.match(markup, /font-weight:900;font-style:italic;font-display:swap/);
   assert.match(markup, /\/api\/design\/template-assets\/fonttop123456/);
   assert.match(markup, /@font-face\{font-family:"Stage3TemplateFont_fontbody123456"/);
+  assert.match(markup, /font-weight:400;font-style:normal;font-display:swap/);
+  assert.doesNotMatch(markup, /font-weight:100 900/);
   assert.match(markup, /font-family:&quot;Stage3TemplateFont_fonttop123456&quot;,sans-serif/);
   assert.match(markup, /font-family:&quot;Stage3TemplateFont_fontbody123456&quot;,sans-serif/);
 });
@@ -168,7 +169,7 @@ test("uploaded font slots use neutral default text scale and expose browser load
     bottomFontScale: 1.25
   });
   assert.deepEqual(buildStage3TemplateFontLoadDescriptors(templateConfig), [
-    'normal 900 16px "Stage3TemplateFont_fonttop123456"'
+    'normal 400 16px "Stage3TemplateFont_fonttop123456"'
   ]);
 
   templateConfig.typography.top.fontAsset.url = "/stage3-assets/render-check/font.ttf";
@@ -202,7 +203,39 @@ test("uploaded font slots use neutral default text scale and expose browser load
     documentHolder.document = previousDocument;
   }
 
-  assert.deepEqual(loadedDescriptors, ['normal 900 16px "Stage3TemplateFont_fonttop123456"']);
+  assert.deepEqual(loadedDescriptors, ['normal 400 16px "Stage3TemplateFont_fonttop123456"']);
+});
+
+test("uploaded font face metadata is inferred from static font file names without declaring a full weight range", () => {
+  const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  templateConfig.typography.top.fontAsset = {
+    id: "fonttop123456",
+    family: "Stage3TemplateFont_fonttop123456",
+    url: "/api/design/template-assets/fonttop123456",
+    originalName: "LeadDisplay-ExtraBoldItalic.woff2",
+    mimeType: "font/woff2",
+    sizeBytes: 32100
+  };
+  templateConfig.typography.bottom.fontAsset = {
+    id: "fontbody123456",
+    family: "Stage3TemplateFont_fontbody123456",
+    url: "/api/design/template-assets/fontbody123456",
+    originalName: "MainText-Light.otf",
+    mimeType: "font/otf",
+    sizeBytes: 45600
+  };
+
+  const css = buildStage3TemplateFontFaceCss(templateConfig);
+
+  assert.match(css, /font-family:"Stage3TemplateFont_fonttop123456"/);
+  assert.match(css, /font-weight:800;font-style:italic;font-display:swap/);
+  assert.match(css, /font-family:"Stage3TemplateFont_fontbody123456"/);
+  assert.match(css, /font-weight:300;font-style:normal;font-display:swap/);
+  assert.doesNotMatch(css, /font-weight:100 900/);
+  assert.deepEqual(buildStage3TemplateFontLoadDescriptors(templateConfig), [
+    'italic 800 16px "Stage3TemplateFont_fonttop123456"',
+    'normal 300 16px "Stage3TemplateFont_fontbody123456"'
+  ]);
 });
 
 test("channel story author row does not inherit uploaded body font assets", () => {

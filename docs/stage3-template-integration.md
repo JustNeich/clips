@@ -272,7 +272,7 @@ Template Road может подключать пользовательские f
 - font asset хранится в workspace asset store, а `templateConfig.typography.<slot>.fontAsset` хранит стабильный `id`, `url`, `family`, имя файла и mime;
 - `fontFamily` обязан включать generated family из asset-а плюс обычный fallback stack;
 - preview, autofit measurement, snapshot-backed render и Remotion final render должны видеть один и тот же `@font-face`;
-- `@font-face` для uploaded font должен объявлять общий `font-weight` range, иначе variable/static font files могут вести себя по-разному на машинах с установленным локальным семейством и без него;
+- `@font-face` для uploaded font описывает один конкретный face: `font-weight` и `font-style` берутся из сохранённых metadata или имени файла, а unknown static file остаётся `400 normal`; один файл нельзя объявлять как весь `100 900` range;
 - Remotion render не должен зависеть от auth-only API URL: перед render font asset копируется в локальный `stage3-assets/<token>/...` и templateConfig получает временный local URL;
 - uploaded-font слоты стартуют с нейтральной крупности `100%`, а не с legacy draft scale `125%`, чтобы новый файл не выглядел искусственно растянутым сразу после подключения;
 - author row не должен неявно наследовать uploaded `bottom/body` font stack: имя и ник автора используют только свои author typography settings или обычный author fallback;

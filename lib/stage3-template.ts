@@ -36,6 +36,8 @@ export type Stage3TemplateFontAsset = {
   originalName: string;
   mimeType: string;
   sizeBytes: number;
+  weight?: number;
+  style?: "normal" | "italic";
   createdAt?: string;
 };
 
