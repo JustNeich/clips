@@ -735,6 +735,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
           stage2ExamplesConfig: channel.stage2ExamplesConfig,
           stage2HardConstraints: effectiveHardConstraints,
           stage2StyleProfile: channel.stage2StyleProfile,
+          stage2SourceOverlayConfig: channel.stage2SourceOverlayConfig,
           editorialMemory: channel.editorialMemory,
           templateHighlightProfile: channel.templateHighlightProfile ?? null,
           templateFormatGroup: templateTextSemantics.formatGroup,
@@ -918,6 +919,7 @@ async function processRegenerateStage2Run(run: Stage2RunRecord): Promise<Stage2R
       stage2ExamplesConfig: channel.stage2ExamplesConfig,
       stage2HardConstraints: effectiveHardConstraints,
       stage2StyleProfile: channel.stage2StyleProfile,
+      stage2SourceOverlayConfig: channel.stage2SourceOverlayConfig,
       editorialMemory: channel.editorialMemory,
       templateHighlightProfile: channel.templateHighlightProfile ?? null
     },
@@ -1026,6 +1028,7 @@ export async function processStage2Run(run: Stage2RunRecord): Promise<Stage2Resp
         stage2ExamplesConfig: channel.stage2ExamplesConfig,
         stage2HardConstraints: effectiveHardConstraints,
         stage2StyleProfile: channel.stage2StyleProfile,
+        stage2SourceOverlayConfig: channel.stage2SourceOverlayConfig,
         editorialMemory: channel.editorialMemory,
         templateHighlightProfile: channel.templateHighlightProfile ?? null,
         templateFormatGroup: templateTextSemantics.formatGroup,

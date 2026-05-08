@@ -156,6 +156,7 @@ import {
   applyStage2CaptionToStage3Text,
   buildStage2ToStage3HandoffSummary,
   getSelectedStage2Caption,
+  getSelectedStage2SourceOverlay,
   getSelectedStage2Title,
   getStage2SelectionDefaults,
   recoverMissingStage3CaptionBlocks
@@ -494,8 +495,10 @@ export default function HomePage() {
   const [stage2Instruction, setStage2Instruction] = useState("");
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [selectedTitleOption, setSelectedTitleOption] = useState<number | null>(null);
+  const [selectedSourceOverlayOption, setSelectedSourceOverlayOption] = useState<number | null>(null);
   const [stage3TopText, setStage3TopText] = useState("");
   const [stage3BottomText, setStage3BottomText] = useState("");
+  const [stage3SourceOverlayText, setStage3SourceOverlayText] = useState("");
   const [stage3CaptionHighlights, setStage3CaptionHighlights] = useState(() =>
     createEmptyTemplateCaptionHighlights()
   );
@@ -1173,8 +1176,10 @@ export default function HomePage() {
         setStage2Instruction("");
         setSelectedOption(null);
         setSelectedTitleOption(null);
+        setSelectedSourceOverlayOption(null);
         setStage3TopText("");
         setStage3BottomText("");
+        setStage3SourceOverlayText("");
         setStage3CaptionHighlights(createEmptyTemplateCaptionHighlights());
         setStage3ClipStartSec(0);
         setStage3FocusY(0.5);
@@ -1206,6 +1211,8 @@ export default function HomePage() {
         draft?.stage2.selectedCaptionOption ?? selectionDefaults.captionOption;
       const preferredTitleOption =
         draft?.stage2.selectedTitleOption ?? selectionDefaults.titleOption;
+      const preferredSourceOverlayOption =
+        draft?.stage2.selectedSourceOverlayOption ?? selectionDefaults.sourceOverlayOption;
       const selectedCaptionForHydration = getSelectedStage2Caption(stage2Event, preferredCaptionOption);
       const legacyVersions = buildLegacyTimelineEntries(
         chat.events
@@ -1229,7 +1236,8 @@ export default function HomePage() {
         draft,
         latestVersion,
         selectedCaptionOption: preferredCaptionOption,
-        selectedTitleOption: preferredTitleOption
+        selectedTitleOption: preferredTitleOption,
+        selectedSourceOverlayOption: preferredSourceOverlayOption
       });
       const nextCaptionHighlights =
         draft?.stage3.captionHighlights ??
@@ -1238,6 +1246,7 @@ export default function HomePage() {
         createEmptyTemplateCaptionHighlights();
       const nextTopText = handoffSummary.topText ?? "";
       const nextBottomText = handoffSummary.bottomText ?? "";
+      const nextSourceOverlayText = handoffSummary.sourceOverlayText ?? "";
       const hydratedFromSelectedCaption =
         Boolean(selectedCaptionForHydration) &&
         nextTopText === (selectedCaptionForHydration?.top ?? "") &&
@@ -1261,8 +1270,10 @@ export default function HomePage() {
       setStage2Instruction(draft?.stage2.instruction ?? "");
       setSelectedOption(handoffSummary.selectedCaptionOption);
       setSelectedTitleOption(handoffSummary.selectedTitleOption);
+      setSelectedSourceOverlayOption(handoffSummary.selectedSourceOverlayOption ?? null);
       setStage3TopText(nextTopText);
       setStage3BottomText(nextBottomText);
+      setStage3SourceOverlayText(nextSourceOverlayText);
       setStage3CaptionHighlights(cloneTemplateCaptionHighlights(nextCaptionHighlights));
       setStage3ClipStartSec(draft?.stage3.clipStartSec ?? latestVersion?.final.clipStartSec ?? 0);
       setStage3FocusY(draft?.stage3.focusY ?? latestVersion?.final.focusY ?? 0.5);
@@ -2457,6 +2468,7 @@ export default function HomePage() {
   const applyStage3Snapshot = useCallback((snapshot: Stage3StateSnapshot): void => {
     setStage3TopText(snapshot.topText);
     setStage3BottomText(snapshot.bottomText);
+    setStage3SourceOverlayText(snapshot.sourceOverlayText ?? "");
     setStage3CaptionHighlights(cloneTemplateCaptionHighlights(snapshot.captionHighlights));
     setStage3ClipStartSec(snapshot.clipStartSec);
     setStage3FocusY(snapshot.focusY);
@@ -2673,6 +2685,7 @@ export default function HomePage() {
           content: {
             topText: stage3TopText,
             bottomText: stage3BottomText,
+            sourceOverlayText: stage3SourceOverlayText,
             channelName: effectiveRenderPlan.authorName,
             channelHandle: effectiveRenderPlan.authorHandle,
             highlights: stage3CaptionHighlights,
@@ -2687,6 +2700,7 @@ export default function HomePage() {
       return {
         topText: templateSnapshot.content.topText,
         bottomText: templateSnapshot.content.bottomText,
+        sourceOverlayText: templateSnapshot.content.sourceOverlayText ?? stage3SourceOverlayText,
         captionHighlights: cloneTemplateCaptionHighlights(templateSnapshot.content.highlights),
         clipStartSec: snapshotClipStart,
         clipDurationSec: normalizedRenderPlan.targetDurationSec,
@@ -2732,6 +2746,7 @@ export default function HomePage() {
       stage3FocusY,
       stage3ManagedTemplateState,
       stage3RenderPlan,
+      stage3SourceOverlayText,
       stage3TopText
     ]
   );
@@ -2753,6 +2768,7 @@ export default function HomePage() {
       channelId: activeChannelId ?? null,
       topText: stage3LivePreviewSnapshot.topText,
       bottomText: stage3LivePreviewSnapshot.bottomText,
+      sourceOverlayText: stage3LivePreviewSnapshot.sourceOverlayText,
       clipStartSec: stage3LivePreviewSnapshot.clipStartSec,
       focusY: stage3LivePreviewSnapshot.focusY,
       renderPlan: stage3LivePreviewSnapshot.renderPlan,
@@ -3597,6 +3613,7 @@ export default function HomePage() {
             templateId: renderSnapshot.renderPlan.templateId || STAGE3_TEMPLATE_ID,
             topText: renderSnapshot.topText,
             bottomText: renderSnapshot.bottomText,
+            sourceOverlayText: renderSnapshot.sourceOverlayText,
             clipStartSec: renderSnapshot.clipStartSec,
             clipDurationSec: renderSnapshot.renderPlan.targetDurationSec,
             focusY: renderSnapshot.focusY,
@@ -4554,6 +4571,7 @@ export default function HomePage() {
       stage2SelectionSourceRef.current = null;
       setSelectedOption(null);
       setSelectedTitleOption(null);
+      setSelectedSourceOverlayOption(null);
       return;
     }
 
@@ -4589,11 +4607,28 @@ export default function HomePage() {
         ? visibleStage2SelectionDefaults.titleOption
         : activeDraft?.stage2.selectedTitleOption ?? visibleStage2SelectionDefaults.titleOption;
     });
+
+    setSelectedSourceOverlayOption((prev) => {
+      const overlayOptions = visibleStage2Result.output.sourceOverlayOptions ?? [];
+      if (
+        !sourceChanged &&
+        prev &&
+        overlayOptions.some((option) => option.option === prev)
+      ) {
+        return prev;
+      }
+      return sourceChanged
+        ? visibleStage2SelectionDefaults.sourceOverlayOption
+        : activeDraft?.stage2.selectedSourceOverlayOption ??
+            visibleStage2SelectionDefaults.sourceOverlayOption;
+    });
   }, [
     activeDraft?.stage2.selectedCaptionOption,
+    activeDraft?.stage2.selectedSourceOverlayOption,
     activeDraft?.stage2.selectedTitleOption,
     visibleStage2Result,
     visibleStage2SelectionDefaults.captionOption,
+    visibleStage2SelectionDefaults.sourceOverlayOption,
     visibleStage2SelectionDefaults.titleOption,
     visibleStage2SourceKey
   ]);
@@ -4605,6 +4640,19 @@ export default function HomePage() {
   const selectedTitle = useMemo(() => {
     return getSelectedStage2Title(visibleStage2Result, selectedTitleOption);
   }, [selectedTitleOption, visibleStage2Result]);
+
+  const selectedSourceOverlay = useMemo(() => {
+    return getSelectedStage2SourceOverlay(visibleStage2Result, selectedSourceOverlayOption);
+  }, [selectedSourceOverlayOption, visibleStage2Result]);
+
+  const handleSelectSourceOverlayOption = useCallback(
+    (option: number): void => {
+      setSelectedSourceOverlayOption(option);
+      const overlay = getSelectedStage2SourceOverlay(visibleStage2Result, option);
+      setStage3SourceOverlayText(overlay?.text ?? "");
+    },
+    [visibleStage2Result]
+  );
 
   const latestStage3Version = useMemo(
     () => stage3Versions[stage3Versions.length - 1] ?? null,
@@ -4619,15 +4667,19 @@ export default function HomePage() {
         latestVersion: latestStage3Version,
         selectedCaptionOption: selectedOption,
         selectedTitleOption,
+        selectedSourceOverlayOption,
         currentTopText: stage3TopText,
-        currentBottomText: stage3BottomText
+        currentBottomText: stage3BottomText,
+        currentSourceOverlayText: stage3SourceOverlayText
       }),
     [
       activeDraft,
       latestStage3Version,
       selectedOption,
+      selectedSourceOverlayOption,
       selectedTitleOption,
       stage3BottomText,
+      stage3SourceOverlayText,
       stage3TopText,
       visibleStage2Result
     ]
@@ -4773,6 +4825,7 @@ export default function HomePage() {
     return (
       activeDraft.stage3.topText !== null ||
       activeDraft.stage3.bottomText !== null ||
+      activeDraft.stage3.sourceOverlayText !== null ||
       activeDraft.stage3.captionHighlights !== null ||
       activeDraft.stage3.clipStartSec !== null ||
       activeDraft.stage3.focusY !== null ||
@@ -4800,6 +4853,8 @@ export default function HomePage() {
     );
     const baseTopText = latestVersion?.final.topText ?? selectedCaption?.top ?? "";
     const baseBottomText = latestVersion?.final.bottomText ?? selectedCaption?.bottom ?? "";
+    const baseSourceOverlayText =
+      latestVersion?.final.sourceOverlayText ?? selectedSourceOverlay?.text ?? "";
     const baseCaptionHighlights =
       latestVersion?.final.captionHighlights ??
       selectedCaption?.highlights ??
@@ -4809,6 +4864,7 @@ export default function HomePage() {
     const baseAgentPrompt = latestVersion?.prompt ?? defaults.agentPrompt ?? "";
     const titleDefault = visibleStage2SelectionDefaults.titleOption;
     const captionDefault = visibleStage2SelectionDefaults.captionOption;
+    const sourceOverlayDefault = visibleStage2SelectionDefaults.sourceOverlayOption;
     const passSelectionChanged =
       stage3PassSelectionJson !== JSON.stringify(defaults.passSelectionByVersion);
 
@@ -4819,11 +4875,17 @@ export default function HomePage() {
         selectedCaptionOption:
           selectedOption !== null && selectedOption !== captionDefault ? selectedOption : null,
         selectedTitleOption:
-          selectedTitleOption !== null && selectedTitleOption !== titleDefault ? selectedTitleOption : null
+          selectedTitleOption !== null && selectedTitleOption !== titleDefault ? selectedTitleOption : null,
+        selectedSourceOverlayOption:
+          selectedSourceOverlayOption !== null && selectedSourceOverlayOption !== sourceOverlayDefault
+            ? selectedSourceOverlayOption
+            : null
       },
       stage3: {
         topText: stage3TopText !== baseTopText ? stage3TopText : null,
         bottomText: stage3BottomText !== baseBottomText ? stage3BottomText : null,
+        sourceOverlayText:
+          stage3SourceOverlayText !== baseSourceOverlayText ? stage3SourceOverlayText : null,
         captionHighlights:
           getCaptionHighlightsSignature(stage3CaptionHighlights) !==
           getCaptionHighlightsSignature(baseCaptionHighlights)
@@ -4848,7 +4910,9 @@ export default function HomePage() {
     channelAssets,
     currentStep,
     selectedCaption,
+    selectedSourceOverlay,
     selectedOption,
+    selectedSourceOverlayOption,
     selectedTitleOption,
     stage2Instruction,
     stage3AgentPrompt,
@@ -4860,10 +4924,12 @@ export default function HomePage() {
     stage3SelectedVersionId,
     stage3TopText,
     stage3BottomText,
+    stage3SourceOverlayText,
     stage3CaptionHighlights,
     stage3Versions,
     getCaptionHighlightsSignature,
     visibleStage2SelectionDefaults.captionOption,
+    visibleStage2SelectionDefaults.sourceOverlayOption,
     visibleStage2SelectionDefaults.titleOption
   ]);
 
@@ -5912,8 +5978,10 @@ export default function HomePage() {
     setStage2Instruction("");
     setSelectedOption(null);
     setSelectedTitleOption(null);
+    setSelectedSourceOverlayOption(null);
     setStage3TopText("");
     setStage3BottomText("");
+    setStage3SourceOverlayText("");
     setStage3CaptionHighlights(createEmptyTemplateCaptionHighlights());
     setStage3ClipStartSec(0);
     setStage3FocusY(0.5);
@@ -5993,8 +6061,10 @@ export default function HomePage() {
       setStage2Instruction("");
       setSelectedOption(null);
       setSelectedTitleOption(null);
+      setSelectedSourceOverlayOption(null);
       setStage3TopText("");
       setStage3BottomText("");
+      setStage3SourceOverlayText("");
       setStage3CaptionHighlights(createEmptyTemplateCaptionHighlights());
       setStage3ClipStartSec(0);
       setStage3FocusY(0.5);
@@ -7204,6 +7274,7 @@ export default function HomePage() {
           elapsedMs={stage2ElapsedMs}
           selectedOption={selectedOption}
           selectedTitleOption={selectedTitleOption}
+          selectedSourceOverlayOption={selectedSourceOverlayOption}
           onInstructionChange={setStage2Instruction}
           onQuickRegenerate={() => {
             void handleQuickRegenerateStage2();
@@ -7214,6 +7285,7 @@ export default function HomePage() {
           onSelectRun={handleSelectStage2Run}
           onSelectOption={setSelectedOption}
           onSelectTitleOption={setSelectedTitleOption}
+          onSelectSourceOverlayOption={handleSelectSourceOverlayOption}
           feedbackHistory={channelFeedbackHistory}
           feedbackHistoryLoading={isChannelFeedbackLoading}
           onSubmitOptionFeedback={handleSubmitStage2OptionFeedback}
@@ -7260,6 +7332,7 @@ export default function HomePage() {
           canRollbackSelectedVersion={canRollbackStage3Version}
           topText={stage3TopText}
           bottomText={stage3BottomText}
+          sourceOverlayText={stage3SourceOverlayText}
           captionHighlights={stage3CaptionHighlights}
           captionSources={visibleStage2Result?.output.captionOptions ?? []}
           selectedCaptionOption={selectedOption ?? visibleStage2SelectionDefaults.captionOption}
@@ -7321,6 +7394,7 @@ export default function HomePage() {
           onReset={handleResetFlow}
           onTopTextChange={handleStage3TopTextChange}
           onBottomTextChange={handleStage3BottomTextChange}
+          onSourceOverlayTextChange={setStage3SourceOverlayText}
           onApplyCaptionSource={handleApplyStage2CaptionToStage3}
           onResetCaptionText={handleResetStage3CaptionText}
           onUploadBackground={handleUploadBackground}

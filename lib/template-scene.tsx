@@ -202,6 +202,88 @@ function renderHighlightedText(
   return parts;
 }
 
+function renderMediaTextLayer(input: {
+  text: string;
+  config: Stage3TemplateConfig["sourceOverlay"];
+  keyName: string;
+}): React.ReactNode {
+  const text = input.text.trim();
+  const config = input.config;
+  if (!config.enabled || !text) {
+    return null;
+  }
+  const centered = config.textAlign === "center";
+  const right = config.textAlign === "right";
+  return (
+    <div
+      key={input.keyName}
+      style={{
+        position: "absolute",
+        left: `${config.xPct}%`,
+        top: `${config.yPct}%`,
+        transform: centered ? "translate(-50%, -50%)" : right ? "translateX(-100%)" : undefined,
+        maxWidth: `${config.maxWidthPct}%`,
+        color: config.color,
+        opacity: config.opacity,
+        fontFamily: '"Inter","Helvetica Neue",Arial,sans-serif',
+        fontSize: config.fontSize,
+        fontWeight: config.fontWeight,
+        lineHeight: config.lineHeight,
+        textAlign: config.textAlign,
+        letterSpacing: 0,
+        WebkitTextStroke:
+          config.strokeWidth > 0 ? `${config.strokeWidth}px ${config.strokeColor}` : undefined,
+        textShadow: config.shadowEnabled
+          ? `${config.shadowOffsetX}px ${config.shadowOffsetY}px ${config.shadowBlur}px ${config.shadowColor}`
+          : "none",
+        display: "-webkit-box",
+        WebkitBoxOrient: "vertical",
+        WebkitLineClamp: config.maxLines,
+        overflow: "hidden",
+        overflowWrap: "break-word",
+        pointerEvents: "none",
+        zIndex: 5
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function resolveWatermarkText(
+  content: TemplateContentFixture,
+  templateConfig: Stage3TemplateConfig
+): string {
+  const config = templateConfig.sourceWatermark;
+  if (config.textMode === "custom") {
+    return config.customText.trim();
+  }
+  if (config.textMode === "channel_name") {
+    return (content.channelName || templateConfig.author.name).trim();
+  }
+  return (content.channelHandle || templateConfig.author.handle).trim();
+}
+
+function renderMediaTextLayers(
+  content: TemplateContentFixture,
+  templateConfig: Stage3TemplateConfig
+): React.ReactNode {
+  return (
+    <>
+      {renderMediaTextLayer({
+        keyName: "generated-source-overlay",
+        text: content.sourceOverlayText ?? "",
+        config: templateConfig.sourceOverlay
+      })}
+      {renderMediaTextLayer({
+        keyName: "static-source-watermark",
+        text: resolveWatermarkText(content, templateConfig),
+        config: templateConfig.sourceWatermark
+      })}
+    </>
+  );
+}
+
 function resolveBlockHighlights(
   block: keyof TemplateContentFixture["highlights"],
   templateConfig: Stage3TemplateConfig,
@@ -897,6 +979,7 @@ export function TemplateScene({
             }}
           >
             {mediaNode}
+            {renderMediaTextLayers(effectiveContent, templateConfig)}
           </section>
         </div>
 
@@ -1035,6 +1118,7 @@ export function TemplateScene({
               }}
             >
               {mediaNode}
+              {renderMediaTextLayers(effectiveContent, templateConfig)}
             </section>
 
             <section
@@ -1233,6 +1317,7 @@ export function TemplateScene({
           >
             {mediaNode}
             {scienceShellVisuals.mediaNode}
+            {renderMediaTextLayers(effectiveContent, templateConfig)}
           </section>
 
           <section

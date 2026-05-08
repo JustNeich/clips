@@ -38,6 +38,7 @@ export type ScienceCardV1Props = {
   sourceVideoFileName?: string | null;
   topText: string;
   bottomText: string;
+  sourceOverlayText: string;
   captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
@@ -94,6 +95,7 @@ function buildDefaultProps(templateId: string, authorName: string, authorHandle:
     sourceVideoFileName: "source.mp4",
     topText: "",
     bottomText: "",
+    sourceOverlayText: "",
     captionHighlights: { top: [], bottom: [] },
     clipStartSec: 0,
     clipDurationSec: 6,

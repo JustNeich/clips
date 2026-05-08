@@ -8,6 +8,8 @@ import type { TemplateContentFixture } from "./template-calibration-types";
 import {
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
+  normalizeStage3SourceVideoTextLayerConfig,
+  normalizeStage3SourceVideoWatermarkConfig,
   type Stage3TemplateConfig,
   getTemplateById
 } from "./stage3-template";
@@ -143,6 +145,7 @@ function buildDefaultContent(layoutFamily: string): TemplateContentFixture {
   return {
     topText: preset.topText,
     bottomText: preset.bottomText,
+    sourceOverlayText: "",
     channelName: preset.channelName,
     channelHandle: preset.channelHandle,
     highlights: createEmptyTemplateCaptionHighlights(),
@@ -209,6 +212,8 @@ function normalizeContent(raw: unknown, layoutFamily: string): TemplateContentFi
   return {
     topText,
     bottomText,
+    sourceOverlayText:
+      typeof raw.sourceOverlayText === "string" ? raw.sourceOverlayText : defaults.sourceOverlayText,
     channelName: typeof raw.channelName === "string" ? raw.channelName : defaults.channelName,
     channelHandle: typeof raw.channelHandle === "string" ? raw.channelHandle : defaults.channelHandle,
     highlights,
@@ -286,6 +291,8 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
   if (isRecord(raw.videoAdjustments)) {
     base.videoAdjustments = normalizeStage3VideoAdjustments(raw.videoAdjustments, base.videoAdjustments);
   }
+  base.sourceOverlay = normalizeStage3SourceVideoTextLayerConfig(raw.sourceOverlay, base.sourceOverlay);
+  base.sourceWatermark = normalizeStage3SourceVideoWatermarkConfig(raw.sourceWatermark, base.sourceWatermark);
 
   const slot = isRecord(raw.slot) ? raw.slot : null;
   if (slot) {

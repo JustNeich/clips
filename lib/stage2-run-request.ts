@@ -1,10 +1,13 @@
 import {
   parseStage2ExamplesConfigJson,
   parseStage2HardConstraintsJson,
+  parseStage2SourceOverlayConfigJson,
   stringifyStage2ExamplesConfig,
   stringifyStage2HardConstraints,
+  stringifyStage2SourceOverlayConfig,
   type Stage2ExamplesConfig,
-  type Stage2HardConstraints
+  type Stage2HardConstraints,
+  type Stage2SourceOverlayConfig
 } from "./stage2-channel-config";
 import {
   normalizeStage2PromptConfig,
@@ -35,6 +38,7 @@ type Stage2RunChannelSnapshotInput = {
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig?: Stage2PromptConfig | null;
   stage2StyleProfile?: Stage2StyleProfile;
+  stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
   editorialMemory?: Stage2EditorialMemorySummary;
   editorialMemorySource?: Stage2EditorialMemorySource | null;
   templateHighlightProfile?: TemplateHighlightConfig | null;
@@ -78,6 +82,11 @@ export function buildStage2RunRequestSnapshot(input: {
       ),
       stage2PromptConfig: input.channel.stage2PromptConfig
         ? normalizeStage2PromptConfig(input.channel.stage2PromptConfig)
+        : undefined,
+      stage2SourceOverlayConfig: input.channel.stage2SourceOverlayConfig
+        ? parseStage2SourceOverlayConfigJson(
+            stringifyStage2SourceOverlayConfig(input.channel.stage2SourceOverlayConfig)
+          )
         : undefined,
       stage2StyleProfile: undefined,
       editorialMemory: undefined,

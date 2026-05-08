@@ -46,6 +46,14 @@ export type Stage2ExamplesConfig = {
   customExamples: Stage2CorpusExample[];
 };
 
+export type Stage2SourceOverlayConfig = {
+  enabled: boolean;
+  prompt: string;
+};
+
+export const DEFAULT_STAGE2_SOURCE_OVERLAY_PROMPT =
+  "Write exactly 5 short English source-video overlay variants. Each variant must be 5-9 words, meme-aware, kind, visually grounded, and suitable for small top-left text inside the original video.";
+
 export const DEFAULT_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
   topLengthMin: 18,
   topLengthMax: 80,
@@ -64,6 +72,11 @@ export const DEFAULT_STAGE2_EXAMPLES_CONFIG: Stage2ExamplesConfig = {
   customExamplesJson: "",
   customExamplesText: "",
   customExamples: []
+};
+
+export const DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG: Stage2SourceOverlayConfig = {
+  enabled: false,
+  prompt: DEFAULT_STAGE2_SOURCE_OVERLAY_PROMPT
 };
 const WORKSPACE_STAGE2_CORPUS_OWNER = {
   channelId: "workspace-default",
@@ -317,6 +330,34 @@ export function parseStage2HardConstraintsJson(
 
 export function stringifyStage2HardConstraints(constraints: Stage2HardConstraints): string {
   return JSON.stringify(normalizeStage2HardConstraints(constraints));
+}
+
+export function normalizeStage2SourceOverlayConfig(input: unknown): Stage2SourceOverlayConfig {
+  const candidate =
+    input && typeof input === "object" ? (input as Partial<Stage2SourceOverlayConfig>) : undefined;
+  const prompt = sanitizeString(candidate?.prompt);
+  return {
+    enabled: candidate?.enabled === true,
+    prompt: prompt || DEFAULT_STAGE2_SOURCE_OVERLAY_PROMPT
+  };
+}
+
+export function parseStage2SourceOverlayConfigJson(
+  raw: string | null | undefined
+): Stage2SourceOverlayConfig {
+  const trimmed = sanitizeString(raw);
+  if (!trimmed) {
+    return DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG;
+  }
+  try {
+    return normalizeStage2SourceOverlayConfig(JSON.parse(trimmed));
+  } catch {
+    return DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG;
+  }
+}
+
+export function stringifyStage2SourceOverlayConfig(config: Stage2SourceOverlayConfig): string {
+  return JSON.stringify(normalizeStage2SourceOverlayConfig(config));
 }
 
 export function normalizeStage2ExamplesConfig(

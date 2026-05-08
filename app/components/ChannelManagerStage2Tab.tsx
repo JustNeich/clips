@@ -25,11 +25,15 @@ import {
   type WorkspaceCodexModelSetting,
   type WorkspaceCodexModelStageId
 } from "../../lib/workspace-codex-models";
-import type { Stage2HardConstraints } from "../../lib/stage2-channel-config";
+import {
+  DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
+  type Stage2HardConstraints
+} from "../../lib/stage2-channel-config";
 import type {
   Stage2ExamplesConfig,
   Stage2ExamplesInputMode,
-  Stage2ExamplesSourceMode
+  Stage2ExamplesSourceMode,
+  Stage2SourceOverlayConfig
 } from "../../lib/stage2-channel-config";
 import {
   findStage2SystemExamplesPresetByJson,
@@ -53,6 +57,7 @@ type ChannelManagerStage2TabProps = {
   workspaceStage2PromptConfig: Stage2PromptConfig;
   channelStage2PromptConfig?: Stage2PromptConfig;
   channelStage2PromptOverridesActive?: boolean;
+  stage2SourceOverlayConfig?: Stage2SourceOverlayConfig;
   workspaceStage2CaptionProviderConfig?: Stage2CaptionProviderConfig;
   workspaceAnthropicIntegration?: WorkspaceAnthropicIntegrationRecord | null;
   workspaceOpenRouterIntegration?: WorkspaceOpenRouterIntegrationRecord | null;
@@ -132,6 +137,7 @@ type ChannelManagerStage2TabProps = {
   updateChannelExamplesSourceMode?: (sourceMode: Stage2ExamplesSourceMode) => void;
   updateChannelExamplesSystemPreset?: (presetId: Stage2SystemExamplesPresetId) => void;
   updateChannelExamplesInputMode?: (inputMode: Stage2ExamplesInputMode) => void;
+  updateStage2SourceOverlayConfig?: (config: Stage2SourceOverlayConfig) => void;
   updateCustomExamplesJson?: (value: string) => void;
   updateCustomExamplesText?: (value: string) => void;
   updateStage2HardConstraint: (
@@ -775,6 +781,8 @@ export function ChannelManagerStage2Tab({
   updateChannelExamplesSourceMode = () => undefined,
   updateChannelExamplesSystemPreset = () => undefined,
   updateChannelExamplesInputMode = () => undefined,
+  stage2SourceOverlayConfig = DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
+  updateStage2SourceOverlayConfig = () => undefined,
   updateCustomExamplesJson = () => undefined,
   updateCustomExamplesText = () => undefined,
   updateStage2HardConstraint,
@@ -795,6 +803,13 @@ export function ChannelManagerStage2Tab({
     ? channelStage2PromptConfig ?? workspaceStage2PromptConfig
     : workspaceStage2PromptConfig;
   const canEditEffectiveChannelPrompt = canEditChannelPrompt ?? canEditHardConstraints;
+  const sourceOverlayConfig = {
+    ...DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
+    ...stage2SourceOverlayConfig,
+    prompt:
+      stage2SourceOverlayConfig.prompt?.trim() ||
+      DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG.prompt
+  };
   const activeTemplateFormatChoice = getStage2TemplateFormatChoice(channelTemplateFormatGroup);
   const activeChannelPromptStageConfig =
     effectiveChannelPromptConfig.stages[activeTemplateFormatChoice.stageId];
@@ -1379,6 +1394,44 @@ export function ChannelManagerStage2Tab({
           <p className="subtle-text">
             Stage получает source URL, title, выбранный caption, Stage 2 analysis, comments и user instruction.
           </p>
+        </div>
+
+        <div className="compact-field">
+          <div className="stage2-section-head">
+            <div>
+              <p className="field-label">Текст внутри исходника</p>
+              <p className="subtle-text">
+                Отдельный Shared Codex stage после translation. Он генерирует 5 коротких English-вариантов и не меняет основной caption/title.
+              </p>
+            </div>
+            <label className="channel-onboarding-toggle-row">
+              <input
+                type="checkbox"
+                checked={sourceOverlayConfig.enabled}
+                disabled={!canEditEffectiveChannelPrompt}
+                onChange={(event) =>
+                  updateStage2SourceOverlayConfig({
+                    ...sourceOverlayConfig,
+                    enabled: event.currentTarget.checked
+                  })
+                }
+              />
+              <span>{sourceOverlayConfig.enabled ? "Включено" : "Выключено"}</span>
+            </label>
+          </div>
+          <label className="field-label">Prompt для 5 вариантов</label>
+          <textarea
+            className="text-area mono"
+            rows={5}
+            value={sourceOverlayConfig.prompt}
+            disabled={!canEditEffectiveChannelPrompt}
+            onChange={(event) =>
+              updateStage2SourceOverlayConfig({
+                ...sourceOverlayConfig,
+                prompt: event.target.value
+              })
+            }
+          />
         </div>
 
         <div className="stage2-config-stage-actions">

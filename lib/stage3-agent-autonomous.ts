@@ -1778,6 +1778,10 @@ function resolveDefaultSnapshot(
   return createSnapshot({
     topText: typeof input.currentSnapshot?.topText === "string" ? input.currentSnapshot.topText : "",
     bottomText: typeof input.currentSnapshot?.bottomText === "string" ? input.currentSnapshot.bottomText : "",
+    sourceOverlayText:
+      typeof input.currentSnapshot?.sourceOverlayText === "string"
+        ? input.currentSnapshot.sourceOverlayText
+        : "",
     clipStartSec: clampClipStart(
       parseFiniteNumber(input.currentSnapshot?.clipStartSec) ?? input.autoClipStartSec,
       input.sourceDurationSec,

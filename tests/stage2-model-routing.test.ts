@@ -151,6 +151,24 @@ function makeSeoResponse() {
   };
 }
 
+function makeSourceOverlayResponse() {
+  return {
+    options: Array.from({ length: 5 }, (_, index) => ({
+      candidate_id: `source_overlay_${index + 1}`,
+      text: [
+        "Let people love out loud.",
+        "No shame in caring this hard.",
+        "That heart showed up fully.",
+        "Soft people still change rooms.",
+        "Love loudly, explain absolutely nothing."
+      ][index],
+      rationale: `Short source-video overlay ${index + 1}.`
+    })),
+    recommended_candidate_id: "source_overlay_2",
+    recommendation_reason: "Best fits the visible emotional beat."
+  };
+}
+
 const RELAXED_HARD_CONSTRAINTS = {
   ...DEFAULT_STAGE2_HARD_CONSTRAINTS,
   topLengthMin: 10,
@@ -391,6 +409,59 @@ test("runNativeCaptionPipeline routes the prompt-first classic stage and downstr
   );
   assert.deepEqual(executor.calls[0]?.imagePaths, ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"]);
   assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], []]);
+});
+
+test("runNativeCaptionPipeline runs sourceOverlayCaption only when channel config enables it", async () => {
+  const service = new ViralShortsWorkerService();
+  const executor = new CaptureQueueExecutor([
+    makeClassicOneShotResponse("overlay"),
+    makeTranslationEntries(["overlay_1", "overlay_2", "overlay_3", "overlay_4", "overlay_5"]),
+    makeSourceOverlayResponse(),
+    makeSeoResponse()
+  ]);
+
+  const result = await service.runNativeCaptionPipeline({
+    channel: {
+      id: "channel_source_overlay",
+      name: "Source Overlay",
+      username: "source_overlay",
+      stage2WorkerProfileId: "stable_social_wave_v1",
+      stage2ExamplesConfig: DEFAULT_STAGE2_EXAMPLES_CONFIG,
+      stage2HardConstraints: RELAXED_HARD_CONSTRAINTS,
+      stage2SourceOverlayConfig: {
+        enabled: true,
+        prompt: "Write five tiny English captions about loving openly."
+      }
+    },
+    workspaceStage2ExamplesCorpusJson: "[]",
+    videoContext: buildVideoContext({
+      sourceUrl: "https://example.com/short",
+      title: "A grounded clip",
+      description: "Description",
+      transcript: "Transcript",
+      comments: [],
+      frameDescriptions: ["frame one", "frame two"],
+      userInstruction: "keep it dry"
+    }),
+    imagePaths: ["/tmp/frame-1.jpg", "/tmp/frame-2.jpg"],
+    executor,
+    stageModels: {
+      classicOneShot: "gpt-5.4",
+      captionTranslation: "gpt-5.4-mini",
+      seo: "gpt-5.4-mini"
+    }
+  });
+
+  assert.deepEqual(
+    executor.calls.map((call) => call.stageId),
+    ["classicOneShot", "captionTranslation", "sourceOverlayCaption", "seo"]
+  );
+  assert.equal(executor.calls[2]?.model, "gpt-5.4-mini");
+  assert.deepEqual(executor.calls.slice(1).map((call) => call.imagePaths), [[], [], []]);
+  assert.equal(result.output.sourceOverlayOptions?.length, 5);
+  assert.equal(result.output.sourceOverlayFinalPick?.option, 2);
+  assert.equal(result.output.sourceOverlayFinalPick?.text, "No shame in caring this hard.");
+  assert.equal(result.diagnostics.nativeCaptionV3?.sourceOverlayCaption?.options.length, 5);
 });
 
 test("runNativeCaptionPipeline applies channel SEO prompt override to the downstream SEO stage", async () => {
@@ -1088,6 +1159,31 @@ test("HybridJsonStageExecutor routes prompt-first classic and story one-shots th
     "storyOneShot"
   ]);
   assert.deepEqual(codexExecutor.calls, []);
+});
+
+test("HybridJsonStageExecutor keeps sourceOverlayCaption on Codex with external caption provider", async () => {
+  const codexExecutor = new CaptureQueueExecutor(["source-overlay"]);
+  const anthropicExecutor = new CaptureQueueExecutor([]);
+  const executor = new HybridJsonStageExecutor({
+    captionProviderConfig: {
+      provider: "anthropic",
+      anthropicModel: "claude-opus-4-6",
+      openrouterModel: "anthropic/claude-opus-4.7"
+    },
+    codexExecutor,
+    anthropicExecutor,
+    openRouterExecutor: null
+  });
+
+  await executor.runJson({
+    stageId: "sourceOverlayCaption",
+    prompt: "overlay",
+    schema: {},
+    imagePaths: []
+  });
+
+  assert.deepEqual(codexExecutor.calls.map((call) => call.stageId), ["sourceOverlayCaption"]);
+  assert.deepEqual(anthropicExecutor.calls.map((call) => call.stageId), []);
 });
 
 test("HybridJsonStageExecutor keeps downstream Codex stages while routing prompt-first classic through Anthropic", async () => {

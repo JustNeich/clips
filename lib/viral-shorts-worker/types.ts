@@ -2,7 +2,8 @@ import type {
   Stage2CorpusExample,
   Stage2ExamplesCorpusSource,
   Stage2ExamplesConfig,
-  Stage2HardConstraints
+  Stage2HardConstraints,
+  Stage2SourceOverlayConfig
 } from "../stage2-channel-config";
 import type { Stage2TemplateSemanticsSnapshot } from "../stage2-template-contract";
 import type { Stage3TemplateFormatGroup } from "../stage3-template-semantics";
@@ -326,6 +327,7 @@ export type Stage2RuntimeChannelConfig = {
   stage2WorkerProfileId?: string | null;
   workerProfile?: ResolvedStage2WorkerProfile;
   hardConstraints: Stage2HardConstraints;
+  sourceOverlayConfig?: Stage2SourceOverlayConfig;
   examplesSource: Stage2ExamplesCorpusSource;
   examplesConfig?: Stage2ExamplesConfig;
   customExamplesJson?: string;
@@ -620,6 +622,10 @@ export type Stage2Diagnostics = {
       };
     };
     translation: NativeCaptionTranslationArtifact | null;
+    sourceOverlayCaption?: {
+      options: NonNullable<ViralShortsStage2Result["sourceOverlayOptions"]>;
+      finalPick: ViralShortsStage2Result["sourceOverlayFinalPick"] | null;
+    } | null;
   };
 };
 
@@ -1042,6 +1048,18 @@ export type ViralShortsStage2Result = {
     option: number;
     reason: string;
   };
+  sourceOverlayOptions?: Array<{
+    option: number;
+    candidateId: string;
+    text: string;
+    rationale?: string;
+  }>;
+  sourceOverlayFinalPick?: {
+    option: number;
+    candidateId: string;
+    text: string;
+    reason?: string;
+  };
   winner?: NativeCaptionWinner;
   pipeline: {
     channelId: string;
@@ -1084,6 +1102,10 @@ export type ViralShortsStage2Result = {
         };
       };
       translation: NativeCaptionTranslationArtifact | null;
+      sourceOverlayCaption?: {
+        options: NonNullable<ViralShortsStage2Result["sourceOverlayOptions"]>;
+        finalPick: ViralShortsStage2Result["sourceOverlayFinalPick"] | null;
+      } | null;
     };
     finalSelector?: {
       candidateOptionMap: Array<{

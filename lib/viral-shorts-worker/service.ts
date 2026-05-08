@@ -62,7 +62,10 @@ import {
   resolveStage2ExamplesCorpus,
   Stage2CorpusExample,
   Stage2ExamplesConfig,
-  Stage2HardConstraints
+  Stage2HardConstraints,
+  normalizeStage2SourceOverlayConfig,
+  DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
+  type Stage2SourceOverlayConfig
 } from "../stage2-channel-config";
 import { getStage2SystemExamplesPresetJson } from "../stage2-system-presets";
 import {
@@ -670,6 +673,31 @@ const NATIVE_TRANSLATION_SCHEMA = {
       top_ru: { type: "string", minLength: 0 },
       bottom_ru: { type: "string", minLength: 1 }
     }
+  }
+} as const;
+
+const NATIVE_SOURCE_OVERLAY_CAPTION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["options", "recommended_candidate_id"],
+  properties: {
+    options: {
+      type: "array",
+      minItems: 5,
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["candidate_id", "text"],
+        properties: {
+          candidate_id: { type: "string", minLength: 1 },
+          text: { type: "string", minLength: 1 },
+          rationale: { type: "string" }
+        }
+      }
+    },
+    recommended_candidate_id: { type: "string", minLength: 1 },
+    recommendation_reason: { type: "string" }
   }
 } as const;
 
@@ -4432,6 +4460,13 @@ type NativeCaptionHighlightingArtifact = {
   };
 };
 
+type NativeSourceOverlayOption = NonNullable<ViralShortsStage2Result["sourceOverlayOptions"]>[number];
+
+type NativeSourceOverlayCaptionArtifact = {
+  options: NativeSourceOverlayOption[];
+  finalPick: ViralShortsStage2Result["sourceOverlayFinalPick"] | null;
+};
+
 function buildNativeCaptionHighlightingPrompt(input: {
   displayOptions: Array<{
     candidateId: string;
@@ -4572,6 +4607,233 @@ function normalizeNativeCaptionTranslationArtifact(
         }
       }
     : null;
+}
+
+function normalizeSourceOverlayText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim()
+    .slice(0, 120);
+}
+
+function buildNativeSourceOverlayPrompt(input: {
+  config: Stage2SourceOverlayConfig;
+  channelConfig: Stage2RuntimeChannelConfig;
+  videoContext: ViralShortsVideoContext;
+  visualAnchors: string[];
+  commentVibe: string;
+  captionOptions: Array<{
+    option: number;
+    candidateId: string;
+    top: string;
+    bottom: string;
+  }>;
+  finalPick: { option: number; reason: string };
+}): string {
+  return renderJsonPrompt(
+    `You are writing a small generated text overlay that appears inside the original source-video window, not the main caption.
+
+Channel prompt:
+{{channel_prompt}}
+
+Rules:
+- Return exactly 5 options.
+- Each visible text must be English, 5-9 words, one line if possible, max 80 characters.
+- The text should feel meme-aware and human, but not mean or shamey.
+- Ground it in the visible source video or the chosen caption angle.
+- Do not mention JSON, candidates, stages, watermarks, prompts, or internal ids.
+- No hashtags. Emojis are allowed only if the channel prompt asks for them.
+- This is independent from the main top/bottom caption.
+
+Return strict JSON only.`,
+    {
+      channel_prompt: input.config.prompt,
+      source_video_json: {
+        title: input.videoContext.title,
+        description: truncateToWordBoundary(input.videoContext.description, 900),
+        transcript_excerpt: truncateToWordBoundary(input.videoContext.transcript, 900),
+        frame_descriptions: input.videoContext.frameDescriptions.slice(0, 24),
+        top_comments: input.videoContext.comments.slice(0, 12).map((comment) => ({
+          author: comment.author,
+          likes: comment.likes,
+          text: truncateToWordBoundary(comment.text, 180)
+        })),
+        user_instruction: input.videoContext.userInstruction ?? null
+      },
+      stage2_context_json: {
+        channel: {
+          name: input.channelConfig.name,
+          username: input.channelConfig.username
+        },
+        visual_anchors: input.visualAnchors.slice(0, 12),
+        comment_vibe: input.commentVibe,
+        final_pick: input.finalPick,
+        caption_options: input.captionOptions.map((option) => ({
+          option: option.option,
+          candidate_id: option.candidateId,
+          top: option.top,
+          bottom: option.bottom
+        }))
+      },
+      output_schema_json: {
+        options: [
+          {
+            candidate_id: "source_overlay_1",
+            text: "Let's not shame people for loving openly.",
+            rationale: "Short note that matches the visible emotional beat."
+          }
+        ],
+        recommended_candidate_id: "source_overlay_1",
+        recommendation_reason: "Best fit for the clip."
+      }
+    }
+  );
+}
+
+function normalizeNativeSourceOverlayCaptionArtifact(raw: unknown): NativeSourceOverlayCaptionArtifact | null {
+  const candidate = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const entries = Array.isArray(candidate.options) ? candidate.options : [];
+  const seenTexts = new Set<string>();
+  const options: NativeSourceOverlayOption[] = [];
+  entries.forEach((entry, index) => {
+    if (options.length >= 5) {
+      return;
+    }
+    const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+    const text = normalizeSourceOverlayText(item.text);
+    if (!text) {
+      return;
+    }
+    const dedupeKey = text.toLowerCase();
+    if (seenTexts.has(dedupeKey)) {
+      return;
+    }
+    seenTexts.add(dedupeKey);
+    const candidateId =
+      String(item.candidate_id ?? item.candidateId ?? "").trim() ||
+      `source_overlay_${index + 1}`;
+    options.push({
+      option: options.length + 1,
+      candidateId,
+      text,
+      rationale: normalizeSourceOverlayText(item.rationale)
+    });
+  });
+  if (options.length !== 5) {
+    return null;
+  }
+  const requestedRecommendedId = String(
+    candidate.recommended_candidate_id ?? candidate.recommendedCandidateId ?? ""
+  ).trim();
+  const recommended =
+    options.find((option) => option.candidateId === requestedRecommendedId) ??
+    options[0] ??
+    null;
+  return {
+    options,
+    finalPick: recommended
+      ? {
+          option: recommended.option,
+          candidateId: recommended.candidateId,
+          text: recommended.text,
+          reason: normalizeSourceOverlayText(candidate.recommendation_reason)
+        }
+      : null
+  };
+}
+
+async function runNativeSourceOverlayCaptionStage(input: {
+  channelConfig: Stage2RuntimeChannelConfig;
+  videoContext: ViralShortsVideoContext;
+  visualAnchors: string[];
+  commentVibe: string;
+  captionOptions: Array<{
+    option: number;
+    candidateId: string;
+    top: string;
+    bottom: string;
+  }>;
+  finalPick: { option: number; reason: string };
+  executor: JsonStageExecutor;
+  stageModels?: Partial<Stage2PipelineModelMap>;
+  promptConfig: Stage2PromptConfig;
+  warnings: StageWarning[];
+  reportProgress: (event: PipelineProgressEvent) => Promise<void>;
+}): Promise<NativeSourceOverlayCaptionArtifact | null> {
+  const config = normalizeStage2SourceOverlayConfig(
+    input.channelConfig.sourceOverlayConfig ?? DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG
+  );
+  const reasoningEffort = resolveStageReasoningEffort("captionTranslation", input.promptConfig);
+  if (!config.enabled) {
+    await input.reportProgress({
+      stageId: "sourceOverlayCaption",
+      state: "completed",
+      promptChars: 0,
+      reasoningEffort,
+      detail: "Source-video overlay text is disabled for this channel."
+    });
+    return null;
+  }
+
+  const prompt = buildNativeSourceOverlayPrompt({
+    config,
+    channelConfig: input.channelConfig,
+    videoContext: input.videoContext,
+    visualAnchors: input.visualAnchors,
+    commentVibe: input.commentVibe,
+    captionOptions: input.captionOptions,
+    finalPick: input.finalPick
+  });
+  await input.reportProgress({
+    stageId: "sourceOverlayCaption",
+    state: "running",
+    promptChars: prompt.length,
+    reasoningEffort,
+    detail: "Generating 5 short source-video text options."
+  });
+  const startedAt = Date.now();
+  try {
+    const raw = await input.executor.runJson<unknown>({
+      stageId: "sourceOverlayCaption",
+      prompt,
+      schema: NATIVE_SOURCE_OVERLAY_CAPTION_SCHEMA,
+      model: input.stageModels?.captionTranslation ?? null,
+      reasoningEffort
+    });
+    const artifact = normalizeNativeSourceOverlayCaptionArtifact(raw);
+    if (!artifact) {
+      throw new Error("Source overlay stage returned fewer than 5 valid options.");
+    }
+    await input.reportProgress({
+      stageId: "sourceOverlayCaption",
+      state: "completed",
+      durationMs: Date.now() - startedAt,
+      promptChars: prompt.length,
+      reasoningEffort,
+      detail: "Generated 5 source-video text options."
+    });
+    return artifact;
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? `Source overlay generation skipped: ${error.message}`
+        : "Source overlay generation skipped.";
+    input.warnings.push({
+      field: "sourceOverlayCaption",
+      message
+    });
+    await input.reportProgress({
+      stageId: "sourceOverlayCaption",
+      state: "completed",
+      durationMs: Date.now() - startedAt,
+      promptChars: prompt.length,
+      reasoningEffort,
+      detail: message
+    });
+    return null;
+  }
 }
 
 function applyExampleRoutingToSelectorOutput(input: {
@@ -7716,6 +7978,7 @@ function normalizeChannelConfig(input: {
   username: string;
   stage2WorkerProfileId?: string | null;
   stage2HardConstraints: Stage2HardConstraints;
+  stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
   stage2ExamplesConfig: Stage2ExamplesConfig;
   stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
   editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
@@ -7731,6 +7994,7 @@ function normalizeChannelConfig(input: {
     stage2WorkerProfileId: null,
     workerProfile: resolveStage2WorkerProfile(DEFAULT_STAGE2_WORKER_PROFILE_ID),
     hardConstraints: input.stage2HardConstraints,
+    sourceOverlayConfig: normalizeStage2SourceOverlayConfig(input.stage2SourceOverlayConfig),
     styleProfile: DEFAULT_STAGE2_STYLE_PROFILE,
     editorialMemory: createEmptyStage2EditorialMemorySummary(DEFAULT_STAGE2_STYLE_PROFILE),
     templateHighlightProfile: input.templateHighlightProfile ?? null,
@@ -8383,6 +8647,25 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     };
   });
 
+  const sourceOverlayCaption = await runNativeSourceOverlayCaptionStage({
+    channelConfig: input.channelConfig,
+    videoContext: input.videoContext,
+    visualAnchors: oneShotResult.analysis.visualAnchors,
+    commentVibe: oneShotResult.analysis.commentVibe,
+    captionOptions: captionOptions.map((option) => ({
+      option: option.option,
+      candidateId: option.candidateId,
+      top: option.top,
+      bottom: option.bottom
+    })),
+    finalPick,
+    executor: input.executor,
+    stageModels: input.stageModels,
+    promptConfig: input.promptConfig,
+    warnings,
+    reportProgress
+  });
+
   const titleByOption = new Map(
     oneShotResult.titles.map((entry, index) => [entry.option ?? index + 1, entry] as const)
   );
@@ -8664,7 +8947,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
         titleOptions,
         translationCoverage: titleTranslationCoverage
       },
-      translation: captionTranslationArtifact
+      translation: captionTranslationArtifact,
+      sourceOverlayCaption
     }
   };
   const classicOptions =
@@ -8705,6 +8989,10 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
     captionOptions: localizedCaptionOptions,
     finalists: localizedFinalists,
     titleOptions,
+    ...(sourceOverlayCaption ? { sourceOverlayOptions: sourceOverlayCaption.options } : {}),
+    ...(sourceOverlayCaption?.finalPick
+      ? { sourceOverlayFinalPick: sourceOverlayCaption.finalPick }
+      : {}),
     finalPick,
     winner,
     pipeline: {
@@ -8739,7 +9027,8 @@ async function runReferenceOneShotNativeCaptionPipeline(input: {
           titleOptions,
           translationCoverage: titleTranslationCoverage
         },
-        translation: captionTranslationArtifact
+        translation: captionTranslationArtifact,
+        sourceOverlayCaption
       }
     },
     diagnostics
@@ -8823,6 +9112,7 @@ export class ViralShortsWorkerService {
       stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
+      stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
@@ -8892,6 +9182,7 @@ export class ViralShortsWorkerService {
       stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
+      stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
@@ -8921,6 +9212,7 @@ export class ViralShortsWorkerService {
       stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
+      stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
@@ -8951,6 +9243,7 @@ export class ViralShortsWorkerService {
       stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
+      stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
@@ -8991,6 +9284,7 @@ export class ViralShortsWorkerService {
       stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
+      stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];
@@ -10609,6 +10903,7 @@ export class ViralShortsWorkerService {
       stage2WorkerProfileId?: string | null;
       stage2ExamplesConfig: Stage2ExamplesConfig;
       stage2HardConstraints: Stage2HardConstraints;
+      stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
       stage2StyleProfile?: Stage2RuntimeChannelConfig["styleProfile"];
       editorialMemory?: Stage2RuntimeChannelConfig["editorialMemory"];
       templateHighlightProfile?: Stage2RuntimeChannelConfig["templateHighlightProfile"];

@@ -68,6 +68,7 @@ type ScienceCardV1Props = {
   sourceVideoFileName?: string | null;
   topText: string;
   bottomText: string;
+  sourceOverlayText: string;
   captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
@@ -144,6 +145,7 @@ export function buildScienceCardRenderSnapshot(input: {
   templateConfigOverride?: Stage3TemplateConfig | null;
   topText: string;
   bottomText: string;
+  sourceOverlayText?: string;
   captionHighlights?: TemplateCaptionHighlights | null;
   topFontScale: number;
   bottomFontScale: number;
@@ -162,6 +164,7 @@ export function buildScienceCardRenderSnapshot(input: {
     content: {
       topText: input.topText,
       bottomText: input.bottomText,
+      sourceOverlayText: input.sourceOverlayText ?? "",
       channelName: input.authorName,
       channelHandle: input.authorHandle,
       highlights: cloneTemplateCaptionHighlights(input.captionHighlights) ?? createEmptyTemplateCaptionHighlights(),
@@ -310,6 +313,7 @@ export function ScienceCardV1({
   templateConfigOverride,
   topText,
   bottomText,
+  sourceOverlayText,
   captionHighlights,
   clipStartSec,
   clipDurationSec,
@@ -425,6 +429,7 @@ export function ScienceCardV1({
     templateConfigOverride: templateConfig,
     topText,
     bottomText,
+    sourceOverlayText,
     captionHighlights,
     topFontScale,
     bottomFontScale,

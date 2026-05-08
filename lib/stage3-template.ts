@@ -41,6 +41,138 @@ export type Stage3TemplateFontAsset = {
   createdAt?: string;
 };
 
+export type Stage3SourceVideoTextAlign = "left" | "center" | "right";
+
+export type Stage3SourceVideoTextLayerConfig = {
+  enabled: boolean;
+  xPct: number;
+  yPct: number;
+  maxWidthPct: number;
+  fontSize: number;
+  color: string;
+  opacity: number;
+  strokeColor: string;
+  strokeWidth: number;
+  shadowEnabled: boolean;
+  shadowColor: string;
+  shadowBlur: number;
+  shadowOffsetX: number;
+  shadowOffsetY: number;
+  fontWeight: number;
+  lineHeight: number;
+  maxLines: number;
+  textAlign: Stage3SourceVideoTextAlign;
+};
+
+export type Stage3SourceVideoWatermarkTextMode = "channel_handle" | "channel_name" | "custom";
+
+export type Stage3SourceVideoWatermarkConfig = Stage3SourceVideoTextLayerConfig & {
+  textMode: Stage3SourceVideoWatermarkTextMode;
+  customText: string;
+};
+
+export const DEFAULT_STAGE3_SOURCE_OVERLAY_CONFIG: Stage3SourceVideoTextLayerConfig = {
+  enabled: true,
+  xPct: 5,
+  yPct: 5,
+  maxWidthPct: 72,
+  fontSize: 26,
+  color: "#ffffff",
+  opacity: 1,
+  strokeColor: "#000000",
+  strokeWidth: 2,
+  shadowEnabled: true,
+  shadowColor: "rgba(0,0,0,0.8)",
+  shadowBlur: 3,
+  shadowOffsetX: 1,
+  shadowOffsetY: 1,
+  fontWeight: 800,
+  lineHeight: 1.08,
+  maxLines: 2,
+  textAlign: "left"
+};
+
+export const DEFAULT_STAGE3_SOURCE_WATERMARK_CONFIG: Stage3SourceVideoWatermarkConfig = {
+  ...DEFAULT_STAGE3_SOURCE_OVERLAY_CONFIG,
+  enabled: false,
+  xPct: 50,
+  yPct: 50,
+  maxWidthPct: 70,
+  fontSize: 30,
+  opacity: 0.35,
+  strokeWidth: 0,
+  shadowBlur: 2,
+  shadowOffsetX: 0,
+  shadowOffsetY: 1,
+  fontWeight: 600,
+  textAlign: "center",
+  textMode: "channel_handle",
+  customText: ""
+};
+
+function clampStage3SourceNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, numeric));
+}
+
+function normalizeTextAlign(value: unknown, fallback: Stage3SourceVideoTextAlign): Stage3SourceVideoTextAlign {
+  return value === "center" || value === "right" || value === "left" ? value : fallback;
+}
+
+export function normalizeStage3SourceVideoTextLayerConfig(
+  input: unknown,
+  fallback: Stage3SourceVideoTextLayerConfig = DEFAULT_STAGE3_SOURCE_OVERLAY_CONFIG
+): Stage3SourceVideoTextLayerConfig {
+  const raw = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : fallback.enabled,
+    xPct: clampStage3SourceNumber(raw.xPct, fallback.xPct, 0, 100),
+    yPct: clampStage3SourceNumber(raw.yPct, fallback.yPct, 0, 100),
+    maxWidthPct: clampStage3SourceNumber(raw.maxWidthPct, fallback.maxWidthPct, 10, 100),
+    fontSize: clampStage3SourceNumber(raw.fontSize, fallback.fontSize, 8, 96),
+    color: typeof raw.color === "string" && raw.color.trim() ? raw.color : fallback.color,
+    opacity: clampStage3SourceNumber(raw.opacity, fallback.opacity, 0, 1),
+    strokeColor:
+      typeof raw.strokeColor === "string" && raw.strokeColor.trim()
+        ? raw.strokeColor
+        : fallback.strokeColor,
+    strokeWidth: clampStage3SourceNumber(raw.strokeWidth, fallback.strokeWidth, 0, 8),
+    shadowEnabled:
+      typeof raw.shadowEnabled === "boolean" ? raw.shadowEnabled : fallback.shadowEnabled,
+    shadowColor:
+      typeof raw.shadowColor === "string" && raw.shadowColor.trim()
+        ? raw.shadowColor
+        : fallback.shadowColor,
+    shadowBlur: clampStage3SourceNumber(raw.shadowBlur, fallback.shadowBlur, 0, 24),
+    shadowOffsetX: clampStage3SourceNumber(raw.shadowOffsetX, fallback.shadowOffsetX, -24, 24),
+    shadowOffsetY: clampStage3SourceNumber(raw.shadowOffsetY, fallback.shadowOffsetY, -24, 24),
+    fontWeight: clampStage3SourceNumber(raw.fontWeight, fallback.fontWeight, 100, 1000),
+    lineHeight: clampStage3SourceNumber(raw.lineHeight, fallback.lineHeight, 0.8, 1.8),
+    maxLines: Math.round(clampStage3SourceNumber(raw.maxLines, fallback.maxLines, 1, 6)),
+    textAlign: normalizeTextAlign(raw.textAlign, fallback.textAlign)
+  };
+}
+
+export function normalizeStage3SourceVideoWatermarkConfig(
+  input: unknown,
+  fallback: Stage3SourceVideoWatermarkConfig = DEFAULT_STAGE3_SOURCE_WATERMARK_CONFIG
+): Stage3SourceVideoWatermarkConfig {
+  const raw = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const base = normalizeStage3SourceVideoTextLayerConfig(raw, fallback);
+  const textMode =
+    raw.textMode === "channel_name" || raw.textMode === "custom" || raw.textMode === "channel_handle"
+      ? raw.textMode
+      : fallback.textMode;
+  return {
+    ...base,
+    textMode,
+    customText: typeof raw.customText === "string" ? raw.customText : fallback.customText
+  };
+}
+
 const SHARED_STAGE3_CARD_METRICS = {
   x: 90,
   y: 160,
@@ -111,6 +243,8 @@ export const SCIENCE_CARD = {
     borderColor: "#000000"
   },
   videoAdjustments: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
+  sourceOverlay: DEFAULT_STAGE3_SOURCE_OVERLAY_CONFIG,
+  sourceWatermark: DEFAULT_STAGE3_SOURCE_WATERMARK_CONFIG,
   highlights: createDefaultTemplateHighlightConfig(),
   author: {
     name: "Science Snack",
@@ -506,6 +640,8 @@ export const CHANNEL_STORY = {
     accentColor: "#20df49"
   },
   videoAdjustments: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS,
+  sourceOverlay: DEFAULT_STAGE3_SOURCE_OVERLAY_CONFIG,
+  sourceWatermark: DEFAULT_STAGE3_SOURCE_WATERMARK_CONFIG,
   highlights: createDefaultTemplateHighlightConfig({
     accentColor: "#f4df36"
   }),
@@ -690,6 +826,8 @@ export type Stage3TemplateConfig = {
     accentColor?: string;
   };
   videoAdjustments: Stage3VideoAdjustments;
+  sourceOverlay: Stage3SourceVideoTextLayerConfig;
+  sourceWatermark: Stage3SourceVideoWatermarkConfig;
   highlights: TemplateHighlightConfig;
   channelStory?: Stage3TemplateChannelStoryConfig;
 };
@@ -732,6 +870,8 @@ export function cloneStage3TemplateConfig(config: Stage3TemplateConfig): Stage3T
     },
     palette: { ...config.palette },
     videoAdjustments: cloneStage3VideoAdjustments(config.videoAdjustments),
+    sourceOverlay: normalizeStage3SourceVideoTextLayerConfig(config.sourceOverlay),
+    sourceWatermark: normalizeStage3SourceVideoWatermarkConfig(config.sourceWatermark),
     highlights: cloneTemplateHighlightConfig(config.highlights),
     channelStory: config.channelStory ? { ...config.channelStory } : undefined
   };

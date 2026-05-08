@@ -384,6 +384,7 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
     ...input.content,
     topText: computed.top,
     bottomText: computed.bottom,
+    sourceOverlayText: input.content.sourceOverlayText ?? "",
     highlights: normalizeTemplateCaptionHighlights(resolvedText.highlights, {
       top: computed.top,
       bottom: computed.bottom
@@ -423,12 +424,15 @@ export function buildTemplateRenderSnapshot(input: TemplateLayoutInput): Templat
       content: {
         topText: content.topText,
         bottomText: content.bottomText,
+        sourceOverlayText: content.sourceOverlayText ?? "",
         channelName: content.channelName,
         channelHandle: content.channelHandle,
         highlights: content.highlights,
         topFontScale: content.topFontScale,
         bottomFontScale: content.bottomFontScale
       },
+      sourceOverlay: effectiveTemplateConfig.sourceOverlay ?? null,
+      sourceWatermark: effectiveTemplateConfig.sourceWatermark ?? null,
       fit,
       layout
     })

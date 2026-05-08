@@ -288,6 +288,18 @@ const BADGE_OPTIONS: BadgeOption[] = [
   }
 ];
 
+const SOURCE_TEXT_ALIGN_OPTIONS = [
+  { label: "Слева", value: "left" },
+  { label: "По центру", value: "center" },
+  { label: "Справа", value: "right" }
+];
+
+const WATERMARK_TEXT_MODE_OPTIONS = [
+  { label: "Handle канала", value: "channel_handle" },
+  { label: "Название канала", value: "channel_name" },
+  { label: "Свой текст", value: "custom" }
+];
+
 const DEFAULT_OPEN_SECTION_IDS = new Set<string>([
   "template-road-style-library",
   "template-road-style-base",
@@ -478,6 +490,7 @@ function createDefaultContent(templateId: string): TemplateContentFixture {
     bottomText: preset.bottomText,
     channelName: preset.channelName,
     channelHandle: preset.channelHandle,
+    sourceOverlayText: "Let's not shame people for loving openly.",
     highlights: createEmptyTemplateCaptionHighlights(),
     topHighlightPhrases: [],
     topFontScale: 1,
@@ -563,6 +576,10 @@ function formatShadow(value: string | undefined): string {
 
 function formatPxValue(value: number): string {
   return `${Math.round(value)} px`;
+}
+
+function formatPctValue(value: number): string {
+  return `${Math.round(value)}%`;
 }
 
 function formatScaleValue(value: number): string {
@@ -2227,6 +2244,32 @@ export function TemplateStyleEditor({
       ...current,
       videoAdjustments: {
         ...current.videoAdjustments,
+        [key]: value
+      }
+    }));
+  }
+
+  function updateSourceOverlay<K extends keyof Stage3TemplateConfig["sourceOverlay"]>(
+    key: K,
+    value: Stage3TemplateConfig["sourceOverlay"][K]
+  ) {
+    setTemplateConfig((current) => ({
+      ...current,
+      sourceOverlay: {
+        ...current.sourceOverlay,
+        [key]: value
+      }
+    }));
+  }
+
+  function updateSourceWatermark<K extends keyof Stage3TemplateConfig["sourceWatermark"]>(
+    key: K,
+    value: Stage3TemplateConfig["sourceWatermark"][K]
+  ) {
+    setTemplateConfig((current) => ({
+      ...current,
+      sourceWatermark: {
+        ...current.sourceWatermark,
         [key]: value
       }
     }));
@@ -4035,6 +4078,321 @@ export function TemplateStyleEditor({
               Здесь задаётся стартовый look для шаблона. В Stage 3 редактор увидит эти значения как initial
               state и сможет докрутить их только для конкретного ролика, не меняя сам шаблон.
             </p>
+            <div className="template-road-editor-highlight-panel">
+              <div className="template-road-editor-highlight-panel-head">
+                <div className="template-road-editor-highlight-panel-copy">
+                  <span className="field-label">Текст внутри исходника</span>
+                  <span className="template-road-editor-field-hint">
+                    Позиция и стиль сгенерированной Stage 2 фразы внутри media slot. Сам текст выбирается отдельно в Step 2.
+                  </span>
+                </div>
+                <label className="template-road-editor-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={templateConfig.sourceOverlay.enabled}
+                    onChange={(event) => updateSourceOverlay("enabled", event.target.checked)}
+                  />
+                  <span>{templateConfig.sourceOverlay.enabled ? "Слой включён" : "Слой выключен"}</span>
+                </label>
+              </div>
+              <label className="template-road-editor-field">
+                <span className="field-label">Demo text для preview</span>
+                <textarea
+                  className="text-input"
+                  rows={2}
+                  value={content.sourceOverlayText ?? ""}
+                  onChange={(event) => updateContent("sourceOverlayText", event.target.value)}
+                />
+              </label>
+              <div className="template-road-editor-grid three-up">
+                <SliderControl
+                  label="X"
+                  hint="Горизонтальная позиция относительно окна исходного видео."
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={templateConfig.sourceOverlay.xPct}
+                  formatValue={formatPctValue}
+                  onChange={(value) => updateSourceOverlay("xPct", value)}
+                />
+                <SliderControl
+                  label="Y"
+                  hint="Вертикальная позиция относительно окна исходного видео."
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={templateConfig.sourceOverlay.yPct}
+                  formatValue={formatPctValue}
+                  onChange={(value) => updateSourceOverlay("yPct", value)}
+                />
+                <SliderControl
+                  label="Max width"
+                  hint="Ширина текстового блока внутри видео."
+                  min={10}
+                  max={100}
+                  step={1}
+                  value={templateConfig.sourceOverlay.maxWidthPct}
+                  formatValue={formatPctValue}
+                  onChange={(value) => updateSourceOverlay("maxWidthPct", value)}
+                />
+              </div>
+              <div className="template-road-editor-grid three-up">
+                <SliderControl
+                  label="Font size"
+                  min={8}
+                  max={96}
+                  step={1}
+                  value={templateConfig.sourceOverlay.fontSize}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateSourceOverlay("fontSize", value)}
+                />
+                <SliderControl
+                  label="Opacity"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={templateConfig.sourceOverlay.opacity}
+                  formatValue={formatOpacityValue}
+                  onChange={(value) => updateSourceOverlay("opacity", value)}
+                />
+                <SelectControl
+                  label="Выравнивание"
+                  value={templateConfig.sourceOverlay.textAlign}
+                  options={SOURCE_TEXT_ALIGN_OPTIONS}
+                  onChange={(value) =>
+                    updateSourceOverlay(
+                      "textAlign",
+                      value as Stage3TemplateConfig["sourceOverlay"]["textAlign"]
+                    )
+                  }
+                />
+              </div>
+              <div className="template-road-editor-grid three-up">
+                <ColorControl
+                  label="Цвет текста"
+                  value={templateConfig.sourceOverlay.color}
+                  onChange={(value) => updateSourceOverlay("color", value)}
+                />
+                <ColorControl
+                  label="Цвет обводки"
+                  value={templateConfig.sourceOverlay.strokeColor}
+                  onChange={(value) => updateSourceOverlay("strokeColor", value)}
+                />
+                <SliderControl
+                  label="Обводка"
+                  min={0}
+                  max={8}
+                  step={0.5}
+                  value={templateConfig.sourceOverlay.strokeWidth}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateSourceOverlay("strokeWidth", value)}
+                />
+              </div>
+              <div className="template-road-editor-grid three-up">
+                <div className="template-road-editor-field template-road-editor-checkbox-field">
+                  <span className="field-label">Тень</span>
+                  <label className="template-road-editor-checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={templateConfig.sourceOverlay.shadowEnabled}
+                      onChange={(event) => updateSourceOverlay("shadowEnabled", event.target.checked)}
+                    />
+                    <span>{templateConfig.sourceOverlay.shadowEnabled ? "Тень включена" : "Тень выключена"}</span>
+                  </label>
+                </div>
+                <ColorControl
+                  label="Цвет тени"
+                  value={templateConfig.sourceOverlay.shadowColor}
+                  onChange={(value) => updateSourceOverlay("shadowColor", value)}
+                />
+                <SliderControl
+                  label="Blur тени"
+                  min={0}
+                  max={24}
+                  step={1}
+                  value={templateConfig.sourceOverlay.shadowBlur}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateSourceOverlay("shadowBlur", value)}
+                />
+              </div>
+              <div className="template-road-editor-grid three-up">
+                <SliderControl
+                  label="Shadow X"
+                  min={-24}
+                  max={24}
+                  step={1}
+                  value={templateConfig.sourceOverlay.shadowOffsetX}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateSourceOverlay("shadowOffsetX", value)}
+                />
+                <SliderControl
+                  label="Shadow Y"
+                  min={-24}
+                  max={24}
+                  step={1}
+                  value={templateConfig.sourceOverlay.shadowOffsetY}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateSourceOverlay("shadowOffsetY", value)}
+                />
+                <SliderControl
+                  label="Max lines"
+                  min={1}
+                  max={6}
+                  step={1}
+                  value={templateConfig.sourceOverlay.maxLines}
+                  onChange={(value) => updateSourceOverlay("maxLines", Math.round(value))}
+                />
+              </div>
+            </div>
+            <div className="template-road-editor-highlight-panel">
+              <div className="template-road-editor-highlight-panel-head">
+                <div className="template-road-editor-highlight-panel-copy">
+                  <span className="field-label">Template watermark</span>
+                  <span className="template-road-editor-field-hint">
+                    Статичная полупрозрачная строка внутри того же окна исходного видео. Она не генерируется Stage 2.
+                  </span>
+                </div>
+                <label className="template-road-editor-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={templateConfig.sourceWatermark.enabled}
+                    onChange={(event) => updateSourceWatermark("enabled", event.target.checked)}
+                  />
+                  <span>{templateConfig.sourceWatermark.enabled ? "Watermark включён" : "Watermark выключен"}</span>
+                </label>
+              </div>
+              <div className="template-road-editor-grid two-up">
+                <SelectControl
+                  label="Источник текста"
+                  value={templateConfig.sourceWatermark.textMode}
+                  options={WATERMARK_TEXT_MODE_OPTIONS}
+                  onChange={(value) =>
+                    updateSourceWatermark(
+                      "textMode",
+                      value as Stage3TemplateConfig["sourceWatermark"]["textMode"]
+                    )
+                  }
+                />
+                <label className="template-road-editor-field">
+                  <span className="field-label">Custom text</span>
+                  <input
+                    className="text-input"
+                    type="text"
+                    value={templateConfig.sourceWatermark.customText}
+                    disabled={templateConfig.sourceWatermark.textMode !== "custom"}
+                    onChange={(event) => updateSourceWatermark("customText", event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="template-road-editor-grid three-up">
+                <SliderControl
+                  label="X"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={templateConfig.sourceWatermark.xPct}
+                  formatValue={formatPctValue}
+                  onChange={(value) => updateSourceWatermark("xPct", value)}
+                />
+                <SliderControl
+                  label="Y"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={templateConfig.sourceWatermark.yPct}
+                  formatValue={formatPctValue}
+                  onChange={(value) => updateSourceWatermark("yPct", value)}
+                />
+                <SliderControl
+                  label="Max width"
+                  min={10}
+                  max={100}
+                  step={1}
+                  value={templateConfig.sourceWatermark.maxWidthPct}
+                  formatValue={formatPctValue}
+                  onChange={(value) => updateSourceWatermark("maxWidthPct", value)}
+                />
+              </div>
+              <div className="template-road-editor-grid three-up">
+                <SliderControl
+                  label="Font size"
+                  min={8}
+                  max={96}
+                  step={1}
+                  value={templateConfig.sourceWatermark.fontSize}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateSourceWatermark("fontSize", value)}
+                />
+                <SliderControl
+                  label="Opacity"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={templateConfig.sourceWatermark.opacity}
+                  formatValue={formatOpacityValue}
+                  onChange={(value) => updateSourceWatermark("opacity", value)}
+                />
+                <SelectControl
+                  label="Выравнивание"
+                  value={templateConfig.sourceWatermark.textAlign}
+                  options={SOURCE_TEXT_ALIGN_OPTIONS}
+                  onChange={(value) =>
+                    updateSourceWatermark(
+                      "textAlign",
+                      value as Stage3TemplateConfig["sourceWatermark"]["textAlign"]
+                    )
+                  }
+                />
+              </div>
+              <div className="template-road-editor-grid three-up">
+                <ColorControl
+                  label="Цвет текста"
+                  value={templateConfig.sourceWatermark.color}
+                  onChange={(value) => updateSourceWatermark("color", value)}
+                />
+                <ColorControl
+                  label="Цвет обводки"
+                  value={templateConfig.sourceWatermark.strokeColor}
+                  onChange={(value) => updateSourceWatermark("strokeColor", value)}
+                />
+                <SliderControl
+                  label="Обводка"
+                  min={0}
+                  max={8}
+                  step={0.5}
+                  value={templateConfig.sourceWatermark.strokeWidth}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateSourceWatermark("strokeWidth", value)}
+                />
+              </div>
+              <div className="template-road-editor-grid three-up">
+                <div className="template-road-editor-field template-road-editor-checkbox-field">
+                  <span className="field-label">Тень</span>
+                  <label className="template-road-editor-checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={templateConfig.sourceWatermark.shadowEnabled}
+                      onChange={(event) => updateSourceWatermark("shadowEnabled", event.target.checked)}
+                    />
+                    <span>{templateConfig.sourceWatermark.shadowEnabled ? "Тень включена" : "Тень выключена"}</span>
+                  </label>
+                </div>
+                <ColorControl
+                  label="Цвет тени"
+                  value={templateConfig.sourceWatermark.shadowColor}
+                  onChange={(value) => updateSourceWatermark("shadowColor", value)}
+                />
+                <SliderControl
+                  label="Blur тени"
+                  min={0}
+                  max={24}
+                  step={1}
+                  value={templateConfig.sourceWatermark.shadowBlur}
+                  formatValue={formatPxValue}
+                  onChange={(value) => updateSourceWatermark("shadowBlur", value)}
+                />
+              </div>
+            </div>
             {isChannelStoryTemplate && templateConfig.channelStory ? (
               <>
                 <div className="template-road-editor-grid three-up">

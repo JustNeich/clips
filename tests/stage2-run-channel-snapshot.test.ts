@@ -8,7 +8,8 @@ import { createChannel, getChannelById, updateChannelById } from "../lib/chat-hi
 import { createManagedTemplate } from "../lib/managed-template-store";
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
-  DEFAULT_STAGE2_HARD_CONSTRAINTS
+  DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG
 } from "../lib/stage2-channel-config";
 import { DEFAULT_STAGE2_PROMPT_CONFIG } from "../lib/stage2-pipeline";
 import { buildStage2RunChannelSnapshot } from "../lib/stage2-run-channel-snapshot";
@@ -144,4 +145,50 @@ test("stage 2 run request snapshots keep template identity and explicit examples
     snapshot.channel.stage2ExamplesConfig.customExamples[0]?.overlayTop,
     "The wall clue changes the whole chamber story"
   );
+});
+
+test("stage 2 channel snapshots preserve source-video overlay config and default old channels to disabled", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Stage 2 Source Overlay Snapshot",
+      email: "owner-stage2-source-overlay@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "Source Overlay Channel",
+      username: "source_overlay_channel"
+    });
+
+    const oldShapeChannel = await getChannelById(channel.id);
+    assert.ok(oldShapeChannel);
+    assert.deepEqual(oldShapeChannel.stage2SourceOverlayConfig, DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG);
+
+    await updateChannelById(channel.id, {
+      stage2SourceOverlayConfig: {
+        enabled: true,
+        prompt: "Write 5 short loving English notes, 5-9 words each."
+      }
+    });
+    const reloaded = await getChannelById(channel.id);
+    assert.ok(reloaded);
+
+    const snapshot = buildStage2RunChannelSnapshot(reloaded, {
+      workspaceId: owner.workspace.id
+    });
+    const requestSnapshot = buildStage2RunRequestSnapshot({
+      sourceUrl: "https://example.com/source",
+      userInstruction: "Keep it gentle.",
+      mode: "manual",
+      channel: snapshot
+    });
+
+    assert.deepEqual(snapshot.stage2SourceOverlayConfig, {
+      enabled: true,
+      prompt: "Write 5 short loving English notes, 5-9 words each."
+    });
+    assert.deepEqual(requestSnapshot.channel.stage2SourceOverlayConfig, snapshot.stage2SourceOverlayConfig);
+  });
 });

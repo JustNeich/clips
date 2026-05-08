@@ -21,6 +21,7 @@ type OptimizeBody = {
   versionNo?: number;
   topText?: string;
   bottomText?: string;
+  sourceOverlayText?: string;
   clipStartSec?: number;
   agentPrompt?: string;
   currentSnapshot?: Partial<Stage3StateSnapshot>;
@@ -42,6 +43,9 @@ function buildCurrentSnapshotFromLegacyInput(body: OptimizeBody): Partial<Stage3
   }
   if (typeof body.bottomText === "string") {
     snapshot.bottomText = body.bottomText;
+  }
+  if (typeof body.sourceOverlayText === "string") {
+    snapshot.sourceOverlayText = body.sourceOverlayText;
   }
 
   const clipStartSec = parseFiniteNumber(body.clipStartSec);

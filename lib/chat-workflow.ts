@@ -280,8 +280,10 @@ export function getDefaultDraftState(chat: Pick<ChatLike, "events"> | null): {
   maxStep: 1 | 2 | 3;
   selectedCaptionOption: number | null;
   selectedTitleOption: number | null;
+  selectedSourceOverlayOption: number | null;
   topText: string | null;
   bottomText: string | null;
+  sourceOverlayText: string | null;
   captionHighlights: ChatDraft["stage3"]["captionHighlights"];
   clipStartSec: number | null;
   focusY: number | null;
@@ -294,6 +296,10 @@ export function getDefaultDraftState(chat: Pick<ChatLike, "events"> | null): {
   const latestVersion = getLatestStage3Version(chat);
   const selectedCaptionOption = latestStage2?.payload.output.finalPick.option ?? null;
   const selectedTitleOption = latestStage2?.payload.output.titleOptions[0]?.option ?? null;
+  const selectedSourceOverlayOption =
+    latestStage2?.payload.output.sourceOverlayFinalPick?.option ??
+    latestStage2?.payload.output.sourceOverlayOptions?.[0]?.option ??
+    null;
   const recommendedIndex = latestVersion
     ? Math.max(0, Math.min(latestVersion.internalPasses.length - 1, latestVersion.recommendedPass - 1))
     : 0;
@@ -302,8 +308,10 @@ export function getDefaultDraftState(chat: Pick<ChatLike, "events"> | null): {
     maxStep,
     selectedCaptionOption,
     selectedTitleOption,
+    selectedSourceOverlayOption,
     topText: latestVersion?.final.topText ?? null,
     bottomText: latestVersion?.final.bottomText ?? null,
+    sourceOverlayText: latestVersion?.final.sourceOverlayText ?? null,
     captionHighlights: latestVersion?.final.captionHighlights
       ? cloneTemplateCaptionHighlights(latestVersion.final.captionHighlights)
       : null,
@@ -341,6 +349,10 @@ export function normalizeChatDraft(value: unknown): ChatDraft | null {
     typeof stage3Candidate.bottomText === "string" && stage3Candidate.bottomText.trim()
       ? stage3Candidate.bottomText
       : null;
+  const sourceOverlayText =
+    typeof stage3Candidate.sourceOverlayText === "string" && stage3Candidate.sourceOverlayText.trim()
+      ? stage3Candidate.sourceOverlayText
+      : null;
 
   if (!threadId || !userId || !updatedAt) {
     return null;
@@ -365,11 +377,17 @@ export function normalizeChatDraft(value: unknown): ChatDraft | null {
         typeof stage2Candidate.selectedTitleOption === "number" &&
         Number.isFinite(stage2Candidate.selectedTitleOption)
           ? Math.max(1, Math.floor(stage2Candidate.selectedTitleOption))
+          : null,
+      selectedSourceOverlayOption:
+        typeof stage2Candidate.selectedSourceOverlayOption === "number" &&
+        Number.isFinite(stage2Candidate.selectedSourceOverlayOption)
+          ? Math.max(1, Math.floor(stage2Candidate.selectedSourceOverlayOption))
           : null
     },
     stage3: {
       topText,
       bottomText,
+      sourceOverlayText,
       captionHighlights:
         stage3Candidate.captionHighlights && typeof stage3Candidate.captionHighlights === "object"
           ? normalizeTemplateCaptionHighlights(stage3Candidate.captionHighlights, {
@@ -435,6 +453,12 @@ function draftHasMeaningfulStage2Delta(
   if (draft.stage2.selectedTitleOption !== null && draft.stage2.selectedTitleOption !== defaults.selectedTitleOption) {
     return true;
   }
+  if (
+    draft.stage2.selectedSourceOverlayOption !== null &&
+    draft.stage2.selectedSourceOverlayOption !== defaults.selectedSourceOverlayOption
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -446,6 +470,12 @@ function draftHasMeaningfulStage3Delta(
     return true;
   }
   if (draft.stage3.bottomText !== null && draft.stage3.bottomText !== defaults.bottomText) {
+    return true;
+  }
+  if (
+    draft.stage3.sourceOverlayText !== null &&
+    draft.stage3.sourceOverlayText !== defaults.sourceOverlayText
+  ) {
     return true;
   }
   if (draft.stage3.captionHighlights !== null) {

@@ -1,5 +1,9 @@
 import type { Stage2ProgressSnapshot, Stage2PromptConfig } from "../../lib/stage2-pipeline";
-import type { Stage2ExamplesConfig, Stage2HardConstraints } from "../../lib/stage2-channel-config";
+import type {
+  Stage2ExamplesConfig,
+  Stage2HardConstraints,
+  Stage2SourceOverlayConfig
+} from "../../lib/stage2-channel-config";
 import type {
   ResolvedWorkspaceCodexModelConfig,
   WorkspaceCodexModelConfig
@@ -154,6 +158,18 @@ export type Stage2Output = {
   finalPick: {
     option: number;
     reason: string;
+  };
+  sourceOverlayOptions?: Array<{
+    option: number;
+    candidateId: string;
+    text: string;
+    rationale?: string;
+  }>;
+  sourceOverlayFinalPick?: {
+    option: number;
+    candidateId: string;
+    text: string;
+    reason?: string;
   };
   winner?: {
     candidateId: string;
@@ -359,6 +375,10 @@ export type Stage2Output = {
           fallbackCandidateIds: string[];
           retriedCandidateIds: string[];
         };
+      } | null;
+      sourceOverlayCaption?: {
+        options: NonNullable<Stage2Output["sourceOverlayOptions"]>;
+        finalPick: Stage2Output["sourceOverlayFinalPick"] | null;
       } | null;
     };
     finalSelector?: {
@@ -863,6 +883,7 @@ export type Stage3SnapshotManagedTemplateState = {
 export type Stage3StateSnapshot = {
   topText: string;
   bottomText: string;
+  sourceOverlayText?: string;
   captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
@@ -1119,10 +1140,12 @@ export type ChatDraft = {
     instruction: string;
     selectedCaptionOption: number | null;
     selectedTitleOption: number | null;
+    selectedSourceOverlayOption?: number | null;
   };
   stage3: {
     topText: string | null;
     bottomText: string | null;
+    sourceOverlayText?: string | null;
     captionHighlights: TemplateCaptionHighlights | null;
     clipStartSec: number | null;
     focusY: number | null;
@@ -1297,6 +1320,7 @@ export type Channel = {
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
   stage2StyleProfile?: Stage2StyleProfile;
+  stage2SourceOverlayConfig?: Stage2SourceOverlayConfig;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;

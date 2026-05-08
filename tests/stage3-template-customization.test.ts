@@ -24,6 +24,7 @@ function buildDemoContent(): TemplateContentFixture {
   return {
     topText: "Scientists found a way to splice two living plant stems into one system.",
     bottomText: "The joined tissue starts rerouting fluids almost immediately after the cut heals.",
+    sourceOverlayText: "Let people love out loud.",
     channelName: "Science Snack",
     channelHandle: "@Science_Snack_1",
     highlights: { top: [], bottom: [] },
@@ -110,6 +111,62 @@ test("classic science-card markup renders highlight spans for live preview text"
   assert.match(markup, /<span[^>]*>Marine officers<\/span>/);
   assert.match(markup, /<span[^>]*>Ace<\/span>/);
   assert.match(markup, /<span[^>]*>Luffy<\/span>/);
+});
+
+test("template scene renders source-video overlay text and template watermark inside media", () => {
+  const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  templateConfig.sourceOverlay.enabled = true;
+  templateConfig.sourceOverlay.xPct = 6;
+  templateConfig.sourceOverlay.yPct = 7;
+  templateConfig.sourceWatermark.enabled = true;
+  templateConfig.sourceWatermark.textMode = "custom";
+  templateConfig.sourceWatermark.customText = "@clipsmind";
+  templateConfig.sourceWatermark.opacity = 0.35;
+
+  const content = buildDemoContent();
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: "science-card-v1",
+      content,
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.match(markup, /Let people love out loud\./);
+  assert.match(markup, /@clipsmind/);
+  assert.match(markup, /left:6%;top:7%;/);
+  assert.match(markup, /opacity:0\.35/);
+});
+
+test("template snapshot hash includes source overlay text and watermark config", () => {
+  const content = buildDemoContent();
+  const baseConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  const baseSnapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content,
+    templateConfigOverride: baseConfig
+  });
+
+  const changedTextSnapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content: {
+      ...content,
+      sourceOverlayText: "No shame in caring this hard."
+    },
+    templateConfigOverride: baseConfig
+  });
+  const watermarkConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
+  watermarkConfig.sourceWatermark.enabled = true;
+  watermarkConfig.sourceWatermark.textMode = "custom";
+  watermarkConfig.sourceWatermark.customText = "@clipsmind";
+  const watermarkSnapshot = buildTemplateRenderSnapshot({
+    templateId: "science-card-v1",
+    content,
+    templateConfigOverride: watermarkConfig
+  });
+
+  assert.notEqual(baseSnapshot.snapshotHash, changedTextSnapshot.snapshotHash);
+  assert.notEqual(baseSnapshot.snapshotHash, watermarkSnapshot.snapshotHash);
 });
 
 test("template scene markup wires uploaded top and bottom fonts into the rendered text", () => {

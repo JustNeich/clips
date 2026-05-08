@@ -892,6 +892,7 @@ function computeTextFit(
 export function createSnapshot(input: {
   topText: string;
   bottomText: string;
+  sourceOverlayText?: string;
   clipStartSec: number;
   clipDurationSec: number;
   focusX?: number;
@@ -918,6 +919,7 @@ export function createSnapshot(input: {
   return {
     topText: fit.topText,
     bottomText: fit.bottomText,
+    sourceOverlayText: input.sourceOverlayText ?? "",
     captionHighlights: { top: [], bottom: [] },
     clipStartSec: Math.max(0, input.clipStartSec),
     clipDurationSec: targetDurationSec,
@@ -1416,6 +1418,7 @@ export function applyOperations(
   const next = createSnapshot({
     topText: nextTop,
     bottomText: nextBottom,
+    sourceOverlayText: snapshot.sourceOverlayText ?? "",
     clipStartSec: nextClipStart,
     clipDurationSec: snapshot.clipDurationSec,
     focusY: nextFocus,
@@ -1650,6 +1653,7 @@ export async function optimizeStage3Version(
   const baseline = createSnapshot({
     topText: normalizeText(input.currentSnapshot?.topText ?? input.topText),
     bottomText: normalizeText(input.currentSnapshot?.bottomText ?? input.bottomText),
+    sourceOverlayText: input.currentSnapshot?.sourceOverlayText ?? "",
     clipStartSec: Number.isFinite(input.currentSnapshot?.clipStartSec ?? NaN)
       ? Number(input.currentSnapshot?.clipStartSec)
       : input.manualClipStartSec,
@@ -1842,6 +1846,7 @@ export async function buildStage3Version(input: BuildStage3VersionInput): Promis
   const fallback = createSnapshot({
     topText: normalizeText(input.currentSnapshot?.topText ?? input.topText),
     bottomText: normalizeText(input.currentSnapshot?.bottomText ?? input.bottomText),
+    sourceOverlayText: input.currentSnapshot?.sourceOverlayText ?? "",
     clipStartSec: Number.isFinite(input.currentSnapshot?.clipStartSec ?? NaN)
       ? Number(input.currentSnapshot?.clipStartSec)
       : input.manualClipStartSec,

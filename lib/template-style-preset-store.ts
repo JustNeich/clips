@@ -8,6 +8,8 @@ import { type TemplateContentFixture } from "./template-calibration-types";
 import {
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
+  normalizeStage3SourceVideoTextLayerConfig,
+  normalizeStage3SourceVideoWatermarkConfig,
   type Stage3TemplateConfig,
   getTemplateById
 } from "./stage3-template";
@@ -70,6 +72,7 @@ function buildDefaultContent(templateId: string): TemplateContentFixture {
   return {
     topText: preset.topText,
     bottomText: preset.bottomText,
+    sourceOverlayText: "",
     channelName: preset.channelName,
     channelHandle: preset.channelHandle,
     highlights: createEmptyTemplateCaptionHighlights(),
@@ -119,6 +122,8 @@ function normalizeContent(raw: unknown, templateId: string): TemplateContentFixt
   return {
     topText,
     bottomText,
+    sourceOverlayText:
+      typeof raw.sourceOverlayText === "string" ? raw.sourceOverlayText : defaults.sourceOverlayText,
     channelName: typeof raw.channelName === "string" ? raw.channelName : defaults.channelName,
     channelHandle: typeof raw.channelHandle === "string" ? raw.channelHandle : defaults.channelHandle,
     highlights,
@@ -333,6 +338,9 @@ function normalizeTemplateConfig(raw: unknown, templateId: string): Stage3Templa
       }
     }
   }
+
+  base.sourceOverlay = normalizeStage3SourceVideoTextLayerConfig(raw.sourceOverlay, base.sourceOverlay);
+  base.sourceWatermark = normalizeStage3SourceVideoWatermarkConfig(raw.sourceWatermark, base.sourceWatermark);
 
   base.highlights = normalizeTemplateHighlightConfig(raw.highlights, {
     accentColor: base.palette.accentColor ?? base.palette.topTextColor

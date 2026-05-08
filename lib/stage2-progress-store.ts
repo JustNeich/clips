@@ -23,8 +23,11 @@ import {
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
+  normalizeStage2SourceOverlayConfig,
   Stage2ExamplesConfig,
-  Stage2HardConstraints
+  Stage2HardConstraints,
+  Stage2SourceOverlayConfig
 } from "./stage2-channel-config";
 import {
   createEmptyStage2EditorialMemorySummary,
@@ -64,6 +67,7 @@ export type Stage2RunRequest = {
     stage2HardConstraints: Stage2HardConstraints;
     stage2PromptConfig?: Stage2PromptConfig | null;
     stage2StyleProfile?: Stage2StyleProfile;
+    stage2SourceOverlayConfig?: Stage2SourceOverlayConfig | null;
     editorialMemory?: Stage2EditorialMemorySummary;
     editorialMemorySource?: Stage2EditorialMemorySource | null;
     templateHighlightProfile?: TemplateHighlightConfig | null;
@@ -191,6 +195,11 @@ function normalizeRequest(record: Stage2RunRow): Stage2RunRequest {
         typeof channelCandidate.stage2PromptConfig === "object"
           ? normalizeStage2PromptConfig(channelCandidate.stage2PromptConfig)
           : undefined,
+      stage2SourceOverlayConfig:
+        channelCandidate?.stage2SourceOverlayConfig &&
+        typeof channelCandidate.stage2SourceOverlayConfig === "object"
+          ? normalizeStage2SourceOverlayConfig(channelCandidate.stage2SourceOverlayConfig)
+          : DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
       stage2StyleProfile:
         channelCandidate?.stage2StyleProfile &&
         typeof channelCandidate.stage2StyleProfile === "object"

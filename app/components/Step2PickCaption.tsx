@@ -46,12 +46,14 @@ type Step2PickCaptionProps = {
   elapsedMs: number;
   selectedOption: number | null;
   selectedTitleOption: number | null;
+  selectedSourceOverlayOption?: number | null;
   onInstructionChange: (value: string) => void;
   onQuickRegenerate: () => void;
   onRunStage2: () => void;
   onSelectRun: (runId: string) => void;
   onSelectOption: (option: number) => void;
   onSelectTitleOption: (option: number) => void;
+  onSelectSourceOverlayOption?: (option: number) => void;
   onSubmitOptionFeedback?: (input: {
     option: number;
     kind: "more_like_this" | "less_like_this" | "selected_option";
@@ -1246,12 +1248,14 @@ export function Step2PickCaption({
   elapsedMs,
   selectedOption,
   selectedTitleOption,
+  selectedSourceOverlayOption,
   onInstructionChange,
   onQuickRegenerate,
   onRunStage2,
   onSelectRun,
   onSelectOption,
   onSelectTitleOption,
+  onSelectSourceOverlayOption,
   onSubmitOptionFeedback,
   onDeleteFeedbackEvent,
   deletingFeedbackEventId = null,
@@ -1290,6 +1294,19 @@ export function Step2PickCaption({
     }
   }, [onSelectOption, selectedOption, stage2]);
 
+  useEffect(() => {
+    if (!stage2 || selectedSourceOverlayOption || !onSelectSourceOverlayOption) {
+      return;
+    }
+    const preferred =
+      stage2.output.sourceOverlayFinalPick?.option ??
+      stage2.output.sourceOverlayOptions?.[0]?.option ??
+      null;
+    if (preferred) {
+      onSelectSourceOverlayOption(preferred);
+    }
+  }, [onSelectSourceOverlayOption, selectedSourceOverlayOption, stage2]);
+
   const activeOption = useMemo(() => {
     if (!stage2) {
       return null;
@@ -1312,6 +1329,22 @@ export function Step2PickCaption({
       null
     );
   }, [selectedTitleOption, stage2]);
+  const activeSourceOverlayOption = useMemo(() => {
+    if (!stage2) {
+      return null;
+    }
+    const options = stage2.output.sourceOverlayOptions ?? [];
+    const preferred =
+      selectedSourceOverlayOption ??
+      stage2.output.sourceOverlayFinalPick?.option ??
+      options[0]?.option ??
+      null;
+    return (
+      (preferred !== null ? options.find((item) => item.option === preferred) : null) ??
+      options[0] ??
+      null
+    );
+  }, [selectedSourceOverlayOption, stage2]);
   const topFieldLabel = templateTextSemantics.topLabel;
   const bottomFieldLabel = templateTextSemantics.bottomLabel;
   const formatScopeLabel = useCallback(
@@ -1583,6 +1616,66 @@ export function Step2PickCaption({
       </div>
     </div>
   );
+
+  const renderSourceOverlayPicker = (): React.ReactNode => {
+    const options = stage2?.output.sourceOverlayOptions ?? [];
+    if (!options.length || !onSelectSourceOverlayOption) {
+      return null;
+    }
+    return (
+      <section className="control-card">
+        <div className="option-card-head">
+          <div>
+            <h3>Текст внутри исходника</h3>
+            <p className="subtle-text">
+              Отдельные варианты для маленькой надписи внутри окна исходного видео. Выбор не меняет основной caption/title.
+            </p>
+          </div>
+        </div>
+        <div className="options-grid options-grid-stage2">
+          {options.map((option) => {
+            const selected = activeSourceOverlayOption?.option === option.option;
+            const recommended = stage2?.output.sourceOverlayFinalPick?.option === option.option;
+            return (
+              <article
+                key={option.candidateId || option.option}
+                className={`option-card ${selected ? "selected" : ""}`}
+                aria-label={`Source overlay option ${option.option}`}
+              >
+                <div className="option-card-head">
+                  <div className="option-title-row">
+                    <h3>Надпись {option.option}</h3>
+                    {recommended ? <span className="badge">Recommended</span> : null}
+                    {selected ? <span className="badge muted">Выбрана</span> : null}
+                  </div>
+                  <div className="option-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => onSelectSourceOverlayOption(option.option)}
+                    >
+                      Выбрать
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() =>
+                        onCopy(option.text, `Надпись ${option.option} скопирована.`)
+                      }
+                    >
+                      Копировать
+                    </button>
+                  </div>
+                </div>
+                <p className="text-block">{option.text}</p>
+                {option.rationale ? <p className="subtle-text">{option.rationale}</p> : null}
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
 
   return (
     <StepWorkspace
@@ -2107,6 +2200,8 @@ export function Step2PickCaption({
                     })}
                   </section>
 
+                  {renderSourceOverlayPicker()}
+
                   <section className="control-card">
                     <div className="option-card-head">
                       <div>
@@ -2359,6 +2454,8 @@ export function Step2PickCaption({
                       );
                     })}
                   </section>
+
+                  {renderSourceOverlayPicker()}
 
                   <section className="control-card">
                     <div className="option-card-head">

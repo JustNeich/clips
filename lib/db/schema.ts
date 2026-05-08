@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS channels (
   stage2_hard_constraints_json TEXT,
   stage2_prompt_config_json TEXT,
   stage2_style_profile_json TEXT,
+  stage2_source_overlay_config_json TEXT,
   template_id TEXT NOT NULL,
   avatar_asset_id TEXT,
   default_background_asset_id TEXT,

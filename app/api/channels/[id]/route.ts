@@ -14,7 +14,11 @@ import {
 import { getRestrictedChannelEditError } from "../../../../lib/channel-edit-permissions";
 import { readManagedTemplate } from "../../../../lib/managed-template-store";
 import { Stage2PromptConfig } from "../../../../lib/stage2-pipeline";
-import { Stage2ExamplesConfig, Stage2HardConstraints } from "../../../../lib/stage2-channel-config";
+import {
+  Stage2ExamplesConfig,
+  Stage2HardConstraints,
+  Stage2SourceOverlayConfig
+} from "../../../../lib/stage2-channel-config";
 import { Stage2StyleProfile } from "../../../../lib/stage2-channel-learning";
 
 export const runtime = "nodejs";
@@ -32,6 +36,7 @@ type PatchBody = Partial<{
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
   stage2StyleProfile: Stage2StyleProfile;
+  stage2SourceOverlayConfig: Stage2SourceOverlayConfig;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
@@ -122,6 +127,7 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
     copyPatchField(body, patch, "stage2HardConstraints");
     copyPatchField(body, patch, "stage2PromptConfig");
     copyPatchField(body, patch, "stage2StyleProfile");
+    copyPatchField(body, patch, "stage2SourceOverlayConfig");
     copyPatchField(body, patch, "templateId");
     copyPatchField(body, patch, "avatarAssetId");
     copyPatchField(body, patch, "defaultBackgroundAssetId");

@@ -201,6 +201,7 @@ type Step3RenderTemplateProps = {
   canRollbackSelectedVersion: boolean;
   topText: string;
   bottomText: string;
+  sourceOverlayText?: string;
   captionHighlights?: TemplateCaptionHighlights;
   captionSources: Stage2Response["output"]["captionOptions"];
   selectedCaptionOption: number | null;
@@ -263,6 +264,7 @@ type Step3RenderTemplateProps = {
   onReset: () => void;
   onTopTextChange: (value: string) => void;
   onBottomTextChange: (value: string) => void;
+  onSourceOverlayTextChange?: (value: string) => void;
   onApplyCaptionSource: (option: number, mode: Stage3CaptionApplyMode) => void;
   onResetCaptionText: (mode: Stage3CaptionApplyMode) => void;
   onUploadBackground: (file: File) => Promise<void>;
@@ -2279,6 +2281,7 @@ export function Step3RenderTemplate({
   canRollbackSelectedVersion,
   topText,
   bottomText,
+  sourceOverlayText = "",
   captionHighlights = createEmptyTemplateCaptionHighlights(),
   captionSources,
   selectedCaptionOption,
@@ -2333,6 +2336,7 @@ export function Step3RenderTemplate({
   onReset,
   onTopTextChange,
   onBottomTextChange,
+  onSourceOverlayTextChange = () => undefined,
   onApplyCaptionSource,
   onResetCaptionText,
   onUploadBackground,
@@ -2581,6 +2585,7 @@ export function Step3RenderTemplate({
         content: {
           topText,
           bottomText,
+          sourceOverlayText,
           channelName,
           channelHandle: `@${channelUsername}`,
           highlights: captionHighlights,
@@ -2604,6 +2609,7 @@ export function Step3RenderTemplate({
       previewVideoUrl,
       runtimeTemplateId,
       templateConfig,
+      sourceOverlayText,
       topText
     ]
   );
@@ -4998,6 +5004,16 @@ export function Step3RenderTemplate({
             value={bottomText}
             onChange={(event) => onBottomTextChange(event.target.value)}
             placeholder={`Финальный ${bottomFieldLabel} для рендера`}
+          />
+        </label>
+        <label className="field-stack">
+          <span className="field-label">Текст внутри исходника</span>
+          <textarea
+            className="text-area stage3-caption-textarea"
+            rows={3}
+            value={sourceOverlayText}
+            onChange={(event) => onSourceOverlayTextChange(event.target.value)}
+            placeholder="Маленькая надпись внутри исходного видео"
           />
         </label>
       </div>

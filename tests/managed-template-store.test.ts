@@ -562,6 +562,78 @@ test("managed templates persist template-level video adjustment defaults", async
   });
 });
 
+test("managed templates persist source overlay and watermark defaults", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Source Overlay Watermark",
+        baseTemplateId: "science-card-v1",
+        content: {
+          sourceOverlayText: "Let people love out loud."
+        },
+        templateConfig: {
+          sourceOverlay: {
+            enabled: true,
+            xPct: 7,
+            yPct: 9,
+            maxWidthPct: 64,
+            fontSize: 24,
+            color: "#ffffff",
+            opacity: 0.92,
+            strokeColor: "#000000",
+            strokeWidth: 2,
+            shadowEnabled: true,
+            shadowColor: "rgba(0,0,0,0.8)",
+            shadowBlur: 4,
+            shadowOffsetX: 1,
+            shadowOffsetY: 2,
+            fontWeight: 800,
+            lineHeight: 1.08,
+            maxLines: 2,
+            textAlign: "left"
+          },
+          sourceWatermark: {
+            enabled: true,
+            xPct: 50,
+            yPct: 52,
+            maxWidthPct: 70,
+            fontSize: 30,
+            color: "#ffffff",
+            opacity: 0.35,
+            strokeColor: "#000000",
+            strokeWidth: 0,
+            shadowEnabled: true,
+            shadowColor: "rgba(0,0,0,0.5)",
+            shadowBlur: 2,
+            shadowOffsetX: 0,
+            shadowOffsetY: 1,
+            fontWeight: 600,
+            lineHeight: 1.08,
+            maxLines: 1,
+            textAlign: "center",
+            textMode: "custom",
+            customText: "@clipsmind"
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.equal(reloaded?.content.sourceOverlayText, "Let people love out loud.");
+    assert.equal(reloaded?.templateConfig.sourceOverlay.xPct, 7);
+    assert.equal(reloaded?.templateConfig.sourceOverlay.opacity, 0.92);
+    assert.equal(reloaded?.templateConfig.sourceWatermark.enabled, true);
+    assert.equal(reloaded?.templateConfig.sourceWatermark.textMode, "custom");
+    assert.equal(reloaded?.templateConfig.sourceWatermark.customText, "@clipsmind");
+    assert.equal(reloaded?.templateConfig.sourceWatermark.opacity, 0.35);
+  });
+});
+
 test("soft-deleted legacy templates are not resurrected by later imports", async () => {
   await withIsolatedTemplateWorkspace(async ({ legacyRoot, owner }) => {
     const legacyTemplateId = "legacy-delete-check";

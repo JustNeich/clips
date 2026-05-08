@@ -22,6 +22,7 @@ export type TemplateOverlayBlendMode = "normal" | "difference";
 export type TemplateContentFixture = {
   topText: string;
   bottomText: string;
+  sourceOverlayText?: string;
   channelName: string;
   channelHandle: string;
   highlights: TemplateCaptionHighlights;

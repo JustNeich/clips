@@ -6,6 +6,7 @@ import {
 } from "./template-highlights";
 
 type Stage2CaptionOption = Stage2Response["output"]["captionOptions"][number];
+type Stage2SourceOverlayOption = NonNullable<Stage2Response["output"]["sourceOverlayOptions"]>[number];
 
 function getStage2Output(
   stage2: Stage2Response | null | undefined
@@ -45,6 +46,7 @@ function canSelectedCaptionHydrateStage3(
 export type Stage2SelectionDefaults = {
   captionOption: number | null;
   titleOption: number | null;
+  sourceOverlayOption: number | null;
 };
 
 export type Stage2ToStage3TextSource =
@@ -60,6 +62,8 @@ export type Stage2ToStage3HandoffSummary = {
   captionBlockedReason?: string | null;
   defaultTitleOption: number | null;
   selectedTitleOption: number | null;
+  defaultSourceOverlayOption?: number | null;
+  selectedSourceOverlayOption?: number | null;
   caption:
     | {
         option: number;
@@ -78,6 +82,15 @@ export type Stage2ToStage3HandoffSummary = {
     | null;
   topText: string | null;
   bottomText: string | null;
+  sourceOverlay?:
+    | {
+        option: number;
+        candidateId: string;
+        text: string;
+        rationale?: string;
+      }
+    | null;
+  sourceOverlayText?: string | null;
   leadText?: string | null;
   mainCaptionText?: string | null;
   topTextSource: Stage2ToStage3TextSource;
@@ -94,15 +107,20 @@ export function getStage2SelectionDefaults(
   if (!stage2) {
     return {
       captionOption: null,
-      titleOption: null
+      titleOption: null,
+      sourceOverlayOption: null
     };
   }
   const output = getStage2Output(stage2);
   const captionOptions = Array.isArray(output?.captionOptions) ? output.captionOptions : [];
   const titleOptions = Array.isArray(output?.titleOptions) ? output.titleOptions : [];
+  const sourceOverlayOptions = Array.isArray(output?.sourceOverlayOptions)
+    ? output.sourceOverlayOptions
+    : [];
   return {
     captionOption: output?.finalPick?.option ?? getCaptionOptionNumber(captionOptions[0]) ?? null,
-    titleOption: titleOptions[0]?.option ?? 1
+    titleOption: titleOptions[0]?.option ?? 1,
+    sourceOverlayOption: output?.sourceOverlayFinalPick?.option ?? sourceOverlayOptions[0]?.option ?? null
   };
 }
 
@@ -146,6 +164,24 @@ export function getSelectedStage2Title(
   return (
     titleOptions.find((item) => item.option === resolvedOption) ??
     titleOptions[0] ??
+    null
+  );
+}
+
+export function getSelectedStage2SourceOverlay(
+  stage2: Stage2Response | null | undefined,
+  preferredOption?: number | null
+): Stage2SourceOverlayOption | null {
+  if (!stage2) {
+    return null;
+  }
+  const output = getStage2Output(stage2);
+  const options = Array.isArray(output?.sourceOverlayOptions) ? output.sourceOverlayOptions : [];
+  const defaults = getStage2SelectionDefaults(stage2);
+  const resolvedOption = preferredOption ?? defaults.sourceOverlayOption;
+  return (
+    (resolvedOption !== null ? options.find((item) => item.option === resolvedOption) : null) ??
+    options[0] ??
     null
   );
 }
@@ -265,8 +301,10 @@ export function buildStage2ToStage3HandoffSummary(input: {
   latestVersion: Stage3Version | null | undefined;
   selectedCaptionOption?: number | null;
   selectedTitleOption?: number | null;
+  selectedSourceOverlayOption?: number | null;
   currentTopText?: string | null;
   currentBottomText?: string | null;
+  currentSourceOverlayText?: string | null;
 }): Stage2ToStage3HandoffSummary {
   const defaults = getStage2SelectionDefaults(input.stage2);
   const requestedCaptionOption =
@@ -294,6 +332,13 @@ export function buildStage2ToStage3HandoffSummary(input: {
       input.stage2,
       input.draft?.stage2.selectedTitleOption ?? input.selectedTitleOption ?? defaults.titleOption
     ) ?? null;
+  const sourceOverlay =
+    getSelectedStage2SourceOverlay(
+      input.stage2,
+      input.draft?.stage2.selectedSourceOverlayOption ??
+        input.selectedSourceOverlayOption ??
+        defaults.sourceOverlayOption
+    ) ?? null;
   const resolvedTopText =
     input.currentTopText ??
     input.draft?.stage3.topText ??
@@ -305,6 +350,12 @@ export function buildStage2ToStage3HandoffSummary(input: {
     input.draft?.stage3.bottomText ??
     input.latestVersion?.final.bottomText ??
     selectedBottomText ??
+    null;
+  const resolvedSourceOverlayText =
+    input.currentSourceOverlayText ??
+    input.draft?.stage3.sourceOverlayText ??
+    input.latestVersion?.final.sourceOverlayText ??
+    sourceOverlay?.text ??
     null;
   const topTextSource = resolveStage3TextSource({
     currentText: resolvedTopText,
@@ -320,6 +371,7 @@ export function buildStage2ToStage3HandoffSummary(input: {
     input.draft &&
       (input.draft.stage3.topText !== null ||
         input.draft.stage3.bottomText !== null ||
+        input.draft.stage3.sourceOverlayText !== null ||
         input.draft.stage3.clipStartSec !== null ||
         input.draft.stage3.focusY !== null ||
         input.draft.stage3.renderPlan !== null ||
@@ -338,6 +390,8 @@ export function buildStage2ToStage3HandoffSummary(input: {
         : null,
     defaultTitleOption: defaults.titleOption,
     selectedTitleOption: title?.option ?? null,
+    defaultSourceOverlayOption: defaults.sourceOverlayOption,
+    selectedSourceOverlayOption: sourceOverlay?.option ?? null,
     caption:
       caption
         ? {
@@ -362,6 +416,15 @@ export function buildStage2ToStage3HandoffSummary(input: {
         : null,
     topText: resolvedTopText,
     bottomText: resolvedBottomText,
+    sourceOverlay: sourceOverlay
+      ? {
+          option: sourceOverlay.option,
+          candidateId: sourceOverlay.candidateId,
+          text: sourceOverlay.text,
+          rationale: sourceOverlay.rationale
+        }
+      : null,
+    sourceOverlayText: resolvedSourceOverlayText,
     leadText: storyCaption ? resolvedTopText : null,
     mainCaptionText: storyCaption ? resolvedBottomText : null,
     topTextSource,

@@ -135,6 +135,14 @@ const STAGE2_NATIVE_PIPELINE_STAGE_DEFINITIONS = [
     promptStageType: "llm"
   },
   {
+    id: "sourceOverlayCaption",
+    label: "Writing source-video overlay text",
+    shortLabel: "Текст",
+    description: "Генерируем 5 коротких вариантов мелкой надписи внутри окна исходного видео.",
+    promptConfigurable: false,
+    promptStageType: "llm"
+  },
+  {
     id: "titleWriter",
     label: "Writing winner titles",
     shortLabel: "Тайтлы",
@@ -174,6 +182,12 @@ const STAGE2_NATIVE_CLASSIC_PROMPT_FIRST_PROGRESS_STAGES = [
     description: "Переводим display shortlist на русский с fallback для missing items."
   },
   {
+    id: "sourceOverlayCaption",
+    label: "Writing source-video overlay text",
+    shortLabel: "Текст",
+    description: "Генерируем отдельный текст внутри исходного видео."
+  },
+  {
     id: "assemble",
     label: "Assembling result",
     shortLabel: "Сборка",
@@ -202,6 +216,12 @@ const STAGE2_NATIVE_STORY_PROMPT_FIRST_PROGRESS_STAGES = [
     description: "Переводим story shortlist на русский с fallback для missing items."
   },
   {
+    id: "sourceOverlayCaption",
+    label: "Writing source-video overlay text",
+    shortLabel: "Текст",
+    description: "Генерируем отдельный текст внутри исходного видео."
+  },
+  {
     id: "assemble",
     label: "Assembling result",
     shortLabel: "Сборка",
@@ -228,6 +248,12 @@ const STAGE2_NATIVE_REFERENCE_ONE_SHOT_PROGRESS_STAGES = [
     label: "Translating display captions",
     shortLabel: "Перевод",
     description: "Переводим display shortlist на русский с fallback для missing items."
+  },
+  {
+    id: "sourceOverlayCaption",
+    label: "Writing source-video overlay text",
+    shortLabel: "Текст",
+    description: "Генерируем отдельный текст внутри исходного видео."
   },
   {
     id: "assemble",

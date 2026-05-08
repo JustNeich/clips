@@ -34,14 +34,17 @@ import {
 import {
   DEFAULT_STAGE2_EXAMPLES_CONFIG,
   DEFAULT_STAGE2_HARD_CONSTRAINTS,
+  DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG,
   formatStage2DelimitedStringList,
   normalizeStage2ExamplesConfig,
   normalizeStage2HardConstraints,
+  normalizeStage2SourceOverlayConfig,
   parseStage2DelimitedStringList,
   type Stage2ExamplesInputMode,
   type Stage2ExamplesSourceMode,
   Stage2ExamplesConfig,
-  Stage2HardConstraints
+  Stage2HardConstraints,
+  Stage2SourceOverlayConfig
 } from "../../lib/stage2-channel-config";
 import {
   findStage2SystemExamplesPresetByJson,
@@ -126,6 +129,7 @@ type ChannelSavePatch = Partial<{
   stage2HardConstraints: Stage2HardConstraints;
   stage2PromptConfig: Stage2PromptConfig;
   stage2StyleProfile: Stage2StyleProfile;
+  stage2SourceOverlayConfig: Stage2SourceOverlayConfig;
   templateId: string;
   avatarAssetId: string | null;
   defaultBackgroundAssetId: string | null;
@@ -219,7 +223,12 @@ export function describeChannelManagerSavePatch(patch: ChannelSavePatch): {
       error: "Не удалось сохранить стиль канала."
     };
   }
-  if ("stage2ExamplesConfig" in patch || "stage2HardConstraints" in patch || "stage2PromptConfig" in patch) {
+  if (
+    "stage2ExamplesConfig" in patch ||
+    "stage2HardConstraints" in patch ||
+    "stage2PromptConfig" in patch ||
+    "stage2SourceOverlayConfig" in patch
+  ) {
     return {
       saving: "Сохраняем настройки Stage 2…",
       saved: "Настройки Stage 2 сохранены.",
@@ -433,6 +442,8 @@ export function ChannelManager({
   const [channelStage2PromptConfig, setChannelStage2PromptConfig] = useState<Stage2PromptConfig>(
     DEFAULT_STAGE2_PROMPT_CONFIG
   );
+  const [stage2SourceOverlayConfig, setStage2SourceOverlayConfig] =
+    useState<Stage2SourceOverlayConfig>(DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG);
   const [bannedWordsInput, setBannedWordsInput] = useState("");
   const [bannedOpenersInput, setBannedOpenersInput] = useState("");
   const [workspaceStage2ExamplesCorpusJson, setWorkspaceStage2ExamplesCorpusJson] = useState(
@@ -894,12 +905,14 @@ export function ChannelManager({
   const buildStage2Snapshot = (
     nextHardConstraints: Stage2HardConstraints,
     nextExamplesConfig: Stage2ExamplesConfig,
-    nextPromptConfig: Stage2PromptConfig
+    nextPromptConfig: Stage2PromptConfig,
+    nextSourceOverlayConfig: Stage2SourceOverlayConfig
   ): string =>
     JSON.stringify({
       stage2HardConstraints: nextHardConstraints,
       stage2ExamplesConfig: nextExamplesConfig,
-      stage2PromptConfig: normalizeStage2PromptConfig(nextPromptConfig)
+      stage2PromptConfig: normalizeStage2PromptConfig(nextPromptConfig),
+      stage2SourceOverlayConfig: normalizeStage2SourceOverlayConfig(nextSourceOverlayConfig)
     });
 
   const buildStage2DefaultsSnapshot = (
@@ -935,6 +948,7 @@ export function ChannelManager({
     const normalizedWorkspaceExamplesJson = workspaceStage2ExamplesCorpusJsonProp;
     setStage2HardConstraints(normalizedHardConstraints);
     setStage2ExamplesConfig(DEFAULT_STAGE2_EXAMPLES_CONFIG);
+    setStage2SourceOverlayConfig(DEFAULT_STAGE2_SOURCE_OVERLAY_CONFIG);
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedWords));
     setBannedOpenersInput(formatStage2DelimitedStringList(normalizedHardConstraints.bannedOpeners));
     setWorkspaceStage2ExamplesCorpusJson(normalizedWorkspaceExamplesJson);
@@ -984,6 +998,9 @@ export function ChannelManager({
       { channelId: activeChannel.id, channelName: activeChannel.name }
     );
     const normalizedChannelPromptConfig = normalizeStage2PromptConfig(activeChannel.stage2PromptConfig);
+    const normalizedSourceOverlayConfig = normalizeStage2SourceOverlayConfig(
+      activeChannel.stage2SourceOverlayConfig
+    );
     setStage2HardConstraints(normalizedChannelHardConstraints);
     setStage2ExamplesConfig(normalizedChannelExamplesConfig);
     setBannedWordsInput(formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedWords));
@@ -991,6 +1008,7 @@ export function ChannelManager({
       formatStage2DelimitedStringList(normalizedChannelHardConstraints.bannedOpeners)
     );
     setChannelStage2PromptConfig(normalizedChannelPromptConfig);
+    setStage2SourceOverlayConfig(normalizedSourceOverlayConfig);
     setTemplateId(activeChannel.templateId);
     setDefaultClipDurationSec(normalizeStage3ClipDurationSec(activeChannel.defaultClipDurationSec));
     persistedSnapshotRef.current = {
@@ -998,7 +1016,8 @@ export function ChannelManager({
       stage2: buildStage2Snapshot(
         normalizedChannelHardConstraints,
         normalizedChannelExamplesConfig,
-        normalizedChannelPromptConfig
+        normalizedChannelPromptConfig,
+        normalizedSourceOverlayConfig
       ),
       stage2Defaults: buildStage2DefaultsSnapshot(
         normalizedWorkspaceExamplesJson,
@@ -1129,7 +1148,8 @@ export function ChannelManager({
     const nextSnapshot = buildStage2Snapshot(
       stage2HardConstraints,
       stage2ExamplesConfig,
-      channelStage2PromptConfig
+      channelStage2PromptConfig,
+      stage2SourceOverlayConfig
     );
     if (nextSnapshot === persistedSnapshotRef.current.stage2) {
       resetAutosaveFeedbackIfNeeded("stage2");
@@ -1143,7 +1163,8 @@ export function ChannelManager({
       void saveChannelRef.current(activeChannel.id, {
         stage2HardConstraints,
         stage2ExamplesConfig,
-        stage2PromptConfig: channelStage2PromptConfig
+        stage2PromptConfig: channelStage2PromptConfig,
+        stage2SourceOverlayConfig
       })
         .then(() => {
           if (autosaveRevisionRef.current.stage2 !== revision) {
@@ -1174,7 +1195,8 @@ export function ChannelManager({
     setAutosaveFeedback,
     channelStage2PromptConfig,
     stage2ExamplesConfig,
-    stage2HardConstraints
+    stage2HardConstraints,
+    stage2SourceOverlayConfig
   ]);
 
   useEffect(() => {
@@ -1610,6 +1632,10 @@ export function ChannelManager({
       ...DEFAULT_STAGE2_PROMPT_CONFIG,
       useWorkspaceDefault: true
     });
+  };
+
+  const updateStage2SourceOverlayConfig = (config: Stage2SourceOverlayConfig) => {
+    setStage2SourceOverlayConfig(normalizeStage2SourceOverlayConfig(config));
   };
 
   const persistWorkspaceCaptionProviderConfig = async (
@@ -2247,6 +2273,7 @@ export function ChannelManager({
                 channelStage2PromptOverridesActive={hasStage2PromptOverrides(
                   channelStage2PromptConfig
                 )}
+                stage2SourceOverlayConfig={stage2SourceOverlayConfig}
                 workspaceStage2CaptionProviderConfig={workspaceStage2CaptionProviderConfig}
                 workspaceAnthropicIntegration={workspaceAnthropicIntegration}
                 workspaceOpenRouterIntegration={workspaceOpenRouterIntegration}
@@ -2295,6 +2322,7 @@ export function ChannelManager({
                 updateChannelStage2PromptTemplate={updateChannelStage2PromptTemplate}
                 updateChannelStage2PromptReasoning={updateChannelStage2PromptReasoning}
                 resetChannelStage2PromptConfig={resetChannelStage2PromptConfig}
+                updateStage2SourceOverlayConfig={updateStage2SourceOverlayConfig}
                 updateWorkspaceCodexModelSetting={(stageId, value) =>
                   setWorkspaceCodexModelConfig((current) => ({
                     ...current,

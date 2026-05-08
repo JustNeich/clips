@@ -33,6 +33,7 @@ test("buildStage3RenderRequestDedupeKey is stable for identical render content",
       templateId: "animals1",
       topText: "top",
       bottomText: "bottom",
+      sourceOverlayText: "inside source",
       renderPlan: { focusY: 0.3, segments: [{ startSec: 0, endSec: 2, speed: 1 }] },
       snapshot: { clipStartSec: 0, focusY: 0.3 }
     },
@@ -49,6 +50,7 @@ test("buildStage3RenderRequestDedupeKey is stable for identical render content",
       templateId: "animals1",
       topText: "top",
       bottomText: "bottom",
+      sourceOverlayText: "inside source",
       renderPlan: { segments: [{ speed: 1, endSec: 2, startSec: 0 }], focusY: 0.3 },
       snapshot: { focusY: 0.3, clipStartSec: 0 }
     },
@@ -64,6 +66,7 @@ test("buildStage3RenderRequestDedupeKey is stable for identical render content",
       templateId: "animals1",
       topText: "changed",
       bottomText: "bottom",
+      sourceOverlayText: "inside source",
       renderPlan: { focusY: 0.3, segments: [{ startSec: 0, endSec: 2, speed: 1 }] },
       snapshot: { clipStartSec: 0, focusY: 0.3 }
     },
@@ -72,6 +75,31 @@ test("buildStage3RenderRequestDedupeKey is stable for identical render content",
 
   assert.equal(keyA, keyB);
   assert.notEqual(keyA, changedContent);
+});
+
+test("buildStage3RenderRequestDedupeKey changes when source overlay text changes", () => {
+  const base = buildStage3RenderRequestDedupeKey(
+    {
+      sourceUrl: "https://www.instagram.com/reel/abc/",
+      chatId: "chat-1",
+      topText: "top",
+      bottomText: "bottom",
+      sourceOverlayText: "Let people love out loud."
+    },
+    { workspaceId: "w1", userId: "u1" }
+  );
+  const changed = buildStage3RenderRequestDedupeKey(
+    {
+      sourceUrl: "https://www.instagram.com/reel/abc/",
+      chatId: "chat-1",
+      topText: "top",
+      bottomText: "bottom",
+      sourceOverlayText: "No shame in caring this hard."
+    },
+    { workspaceId: "w1", userId: "u1" }
+  );
+
+  assert.notEqual(base, changed);
 });
 
 test("buildStage3RenderRequestDedupeKey returns null without requestId or render content", () => {

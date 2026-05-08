@@ -10,6 +10,7 @@ export type Stage3RenderRequestDedupeInput = {
   templateId?: string;
   topText?: string;
   bottomText?: string;
+  sourceOverlayText?: string;
   clipStartSec?: number;
   clipDurationSec?: number;
   focusY?: number;
@@ -52,6 +53,7 @@ function buildContentFingerprint(body: Stage3RenderRequestDedupeInput): string |
       chatId ||
       cleanString(body.topText) ||
       cleanString(body.bottomText) ||
+      cleanString(body.sourceOverlayText) ||
       body.renderPlan ||
       body.snapshot
   );
@@ -67,6 +69,7 @@ function buildContentFingerprint(body: Stage3RenderRequestDedupeInput): string |
     templateId: cleanString(body.templateId),
     topText: cleanString(body.topText),
     bottomText: cleanString(body.bottomText),
+    sourceOverlayText: cleanString(body.sourceOverlayText),
     clipStartSec: cleanNumber(body.clipStartSec),
     clipDurationSec: cleanNumber(body.clipDurationSec),
     focusY: cleanNumber(body.focusY),

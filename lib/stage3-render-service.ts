@@ -165,6 +165,7 @@ export type Stage3RenderRequestBody = {
   renderTitle?: string;
   topText?: string;
   bottomText?: string;
+  sourceOverlayText?: string;
   templateId?: string;
   clipStartSec?: number;
   clipDurationSec?: number;
@@ -536,6 +537,7 @@ async function runRemotionRender(params: {
   sourceVideoFileName: string;
   topText: string;
   bottomText: string;
+  sourceOverlayText: string;
   captionHighlights: TemplateCaptionHighlights;
   clipStartSec: number;
   clipDurationSec: number;
@@ -587,6 +589,7 @@ async function runRemotionRender(params: {
     sourceVideoFileName: params.sourceVideoFileName,
     topText: params.topText,
     bottomText: params.bottomText,
+    sourceOverlayText: params.sourceOverlayText,
     captionHighlights: params.captionHighlights,
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
@@ -961,6 +964,7 @@ export async function renderStage3Video(
     const templateSnapshotContent = {
       topText: snapshot?.topText ?? body.topText ?? "",
       bottomText: snapshot?.bottomText ?? body.bottomText ?? "",
+      sourceOverlayText: snapshot?.sourceOverlayText ?? body.sourceOverlayText ?? "",
       channelName: renderPlan.authorName,
       channelHandle: renderPlan.authorHandle,
       highlights: snapshot?.captionHighlights ?? { top: [], bottom: [] },
@@ -1126,6 +1130,7 @@ export async function renderStage3Video(
           sourceVideoFileName,
           topText: templateSnapshot.content.topText,
           bottomText: templateSnapshot.content.bottomText,
+          sourceOverlayText: templateSnapshot.content.sourceOverlayText ?? "",
           captionHighlights: templateSnapshot.content.highlights,
           clipStartSec: prepared.clipStartSec,
           clipDurationSec: prepared.clipDurationSec,
