@@ -11,8 +11,8 @@ This note captures the reliability rules for the manual fragment editor in Stage
 - `Position X`, `Position Y`, and `Zoom` use sliders instead of numeric-only inputs because these values are tuned iteratively while watching preview.
 - Changing `Position X` or `Position Y` must not silently raise `Zoom`; only the explicit zoom control changes scale.
 - The destructive action stays in the header, isolated from the timing fields, so accidental deletes are less likely during rapid editing.
-- The editor now has a single canonical output model: every Stage 3 edit produces exactly `6.0s` of output.
-- The red playhead always represents output time `0..6s`; it is never allowed to drift onto source time.
+- The editor now has a single canonical output model: every Stage 3 edit produces exactly the channel render target duration.
+- The red playhead always represents output time `0..targetDurationSec`; it is never allowed to drift onto source time.
 - Any timing edit resets preview playback back to `0s`.
 - The source overview rail is the primary direct-manipulation surface:
   - when there are no explicit fragments, the blue window itself is the clip-range control, so there is no separate `Начало клипа` slider;
@@ -20,8 +20,8 @@ This note captures the reliability rules for the manual fragment editor in Stage
   - drag the fragment body to move a manual fragment;
   - drag the left handle to trim `От`;
   - drag the right handle to trim `До`.
-- The old `Подогнать к 6с` toggle is removed. The editor always normalizes the selected material to the exact 6-second output timeline.
-- Whole-window mode is no longer fixed to a 6-second source slice. The selected source range may be shorter or longer than `6.0s`, and Stage 3 stretches or compresses it into the canonical output timeline.
+- The old `Подогнать к 6с` toggle is removed. The editor always normalizes the selected material to the exact channel render target timeline.
+- Whole-window mode is no longer fixed to a 6-second source slice. The selected source range may be shorter or longer than the target duration, and Stage 3 stretches or compresses it into the canonical output timeline.
 
 ## Per-fragment transforms
 
@@ -35,8 +35,8 @@ This note captures the reliability rules for the manual fragment editor in Stage
 - Whole-window timing follows the same clamp rules as fragment timing, including the `1.0s` minimum width whenever the source is at least one second long.
 - Minimum fragment duration is now `1.0s` for normal sources; if the source itself is shorter than one second, Stage 3 uses the full available source span instead.
 - Manual fragments are sorted, clamped to source duration, and de-overlapped before preview/render.
-- Overfilled selections are compressed into `6.0s`.
-- Underfilled selections are stretched into `6.0s` with smooth slowmo.
+- Overfilled selections are compressed into `targetDurationSec`.
+- Underfilled selections are stretched into `targetDurationSec` with smooth slowmo.
 - The same normalization runs for:
   - manual input,
   - source-rail drag/resize,

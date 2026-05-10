@@ -1,5 +1,5 @@
 import React from "react";
-import { Composition, registerRoot } from "remotion";
+import { Composition, registerRoot, type CalculateMetadataFunction } from "remotion";
 import { ScienceCardV1 } from "./science-card-v1";
 import type { Stage3VariationProfile } from "../lib/stage3-render-variation";
 import {
@@ -19,6 +19,11 @@ import type {
   Stage3PositionKeyframe,
   Stage3ScaleKeyframe
 } from "../lib/stage3-camera";
+import { DEFAULT_STAGE3_CLIP_DURATION_SEC } from "../lib/stage3-duration";
+import {
+  STAGE3_REMOTION_FPS,
+  buildStage3CompositionMetadata
+} from "./stage3-composition-metadata";
 
 type RemotionStage3TimingMode = "auto" | "compress" | "stretch";
 type RemotionStage3Segment = {
@@ -87,6 +92,9 @@ export const SCIENCE_CARD_V7_SCENE_ID = SCIENCE_CARD_V7_TEMPLATE_ID;
 export const CHANNEL_STORY_SCENE_ID = CHANNEL_STORY_TEMPLATE_ID;
 export const HEDGES_OF_HONOR_SCENE_ID = HEDGES_OF_HONOR_TEMPLATE_ID;
 const DEFAULT_TEXT_SCALE = 1.25;
+const DEFAULT_DURATION_IN_FRAMES = DEFAULT_STAGE3_CLIP_DURATION_SEC * STAGE3_REMOTION_FPS;
+const calculateScienceCardMetadata: CalculateMetadataFunction<ScienceCardV1Props> = ({ props }) =>
+  buildStage3CompositionMetadata(props);
 
 function buildDefaultProps(templateId: string, authorName: string, authorHandle: string): ScienceCardV1Props {
   return {
@@ -135,8 +143,9 @@ export const RemotionRoot = () => {
         component={ScienceCardV1}
         width={1080}
         height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(SCIENCE_CARD_TEMPLATE_ID, "Science Snack", "@Science_Snack_1")}
       />
       <Composition
@@ -144,8 +153,9 @@ export const RemotionRoot = () => {
         component={ScienceCardV1}
         width={1080}
         height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(AMERICAN_NEWS_TEMPLATE_ID, "American News", "@amnnews9")}
       />
       <Composition
@@ -153,8 +163,9 @@ export const RemotionRoot = () => {
         component={ScienceCardV1}
         width={1080}
         height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(SCIENCE_CARD_BLUE_TEMPLATE_ID, "Science Snack", "@Science_Snack_1")}
       />
       <Composition
@@ -162,8 +173,9 @@ export const RemotionRoot = () => {
         component={ScienceCardV1}
         width={1080}
         height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(SCIENCE_CARD_RED_TEMPLATE_ID, "Science Snack", "@Science_Snack_1")}
       />
       <Composition
@@ -171,8 +183,9 @@ export const RemotionRoot = () => {
         component={ScienceCardV1}
         width={1080}
         height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(SCIENCE_CARD_GREEN_TEMPLATE_ID, "Science Snack", "@Science_Snack_1")}
       />
       <Composition
@@ -180,8 +193,9 @@ export const RemotionRoot = () => {
         component={ScienceCardV1}
         width={1080}
         height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(SCIENCE_CARD_V7_TEMPLATE_ID, "Echoes Of Honor", "@EchoesOfHonor50")}
       />
       <Composition
@@ -189,8 +203,9 @@ export const RemotionRoot = () => {
         component={ScienceCardV1}
         width={1080}
         height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(CHANNEL_STORY_TEMPLATE_ID, "History Club TV", "@historyclubtv")}
       />
       <Composition
@@ -198,8 +213,9 @@ export const RemotionRoot = () => {
         component={ScienceCardV1}
         width={1080}
         height={1920}
-        fps={30}
-        durationInFrames={6 * 30}
+        fps={STAGE3_REMOTION_FPS}
+        durationInFrames={DEFAULT_DURATION_IN_FRAMES}
+        calculateMetadata={calculateScienceCardMetadata}
         defaultProps={buildDefaultProps(HEDGES_OF_HONOR_TEMPLATE_ID, "Echoes Of Honor", "@EchoesOfHonor50")}
       />
     </>

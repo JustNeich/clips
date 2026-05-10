@@ -177,7 +177,7 @@ test("per-fragment speed and global normalization stay deterministic", () => {
   assert.equal(Number(session.output.segments[1]!.resolvedPlaybackRate.toFixed(3)), Number((4 / 3).toFixed(3)));
 });
 
-test("no canonical output plan can exceed 6 seconds", () => {
+test("canonical output plan cannot exceed the selected target duration", () => {
   const session = buildStage3EditorSession({
     rawSegments: [
       { startSec: 0, endSec: 10, speed: 1, label: "A" },
@@ -185,11 +185,11 @@ test("no canonical output plan can exceed 6 seconds", () => {
     ],
     selectionMode: "fragments",
     clipStartSec: 0,
-    clipDurationSec: 6,
-    targetDurationSec: 6,
+    clipDurationSec: 9,
+    targetDurationSec: 9,
     sourceDurationSec: 40
   });
 
-  assert.equal(session.output.totalOutputDurationSec, 6);
-  assert.ok(session.output.segments.every((segment) => segment.outputEndSec <= 6));
+  assert.equal(session.output.totalOutputDurationSec, 9);
+  assert.ok(session.output.segments.every((segment) => segment.outputEndSec <= 9));
 });

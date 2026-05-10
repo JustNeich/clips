@@ -21,7 +21,8 @@
 ## 3. Главный preview всегда остаётся live draft
 
 - В Step 3 больше нет split surface `Редактор / Финал`.
-- Основной preview всегда работает от live draft и канонического `0..6s` playback plan.
+- Основной preview всегда работает от live draft и канонического `0..targetDurationSec` playback plan.
+- `targetDurationSec` приходит из настройки длительности рендера канала, по умолчанию `6s`, но поддерживаемый диапазон — `3..15s`.
 - Accurate/final artifact может собираться в фоне, но он не имеет права подменять главный preview transport и его red playhead.
 - История версий и точный артефакт открываются из drawer, а не через переключение режима поверхности.
 

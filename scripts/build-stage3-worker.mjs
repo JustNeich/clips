@@ -35,6 +35,7 @@ const WORKER_RUNTIME_DEPENDENCIES = [
 ];
 
 const WORKER_LIB_RUNTIME_FILES = [
+  "stage3-duration.ts",
   "stage3-template.ts",
   "stage3-template-semantics.ts",
   "stage3-template-fonts.ts",
