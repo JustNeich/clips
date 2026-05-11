@@ -12,16 +12,7 @@ type ChannelRow = {
   template_id: string;
 };
 
-function isAuthorized(request: Request): boolean {
-  const secret = process.env.APP_BOOTSTRAP_SECRET?.trim();
-  return Boolean(secret && request.headers.get("x-app-bootstrap-secret") === secret);
-}
-
-export async function POST(request: Request): Promise<Response> {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
-
+export async function POST(): Promise<Response> {
   const channel = getDb()
     .prepare(
       `SELECT id, workspace_id, name, username, template_id
