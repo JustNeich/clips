@@ -4645,6 +4645,77 @@ export function TemplateStyleEditor({
                 </span>
               </label>
             </div>
+            {isChannelStoryTemplate && templateConfig.channelStory ? (
+              <div className="template-road-editor-highlight-panel">
+                <div className="template-road-editor-highlight-panel-head">
+                  <div className="template-road-editor-highlight-panel-copy">
+                    <span className="field-label">Lead beam</span>
+                    <span className="template-road-editor-field-hint">
+                      Широкая подсветка за lead, как в DarkWall-референсе: текст остаётся белым, а синий halo держит драму.
+                    </span>
+                  </div>
+                  <label className="template-road-editor-checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(templateConfig.channelStory.leadGlowEnabled)}
+                      onChange={(event) => updateChannelStory("leadGlowEnabled", event.target.checked)}
+                    />
+                    <span>{templateConfig.channelStory.leadGlowEnabled ? "Beam включён" : "Beam выключен"}</span>
+                  </label>
+                </div>
+                <div className="template-road-editor-grid two-up">
+                  <ColorControl
+                    label="Цвет beam"
+                    hint="Для референса хорошо работает холодный синий с rgba/hex."
+                    value={templateConfig.channelStory.leadGlowColor ?? "rgba(42,132,255,0.86)"}
+                    onChange={(value) => updateChannelStory("leadGlowColor", value)}
+                  />
+                  <SliderControl
+                    label="Сила beam"
+                    hint="Общая прозрачность подсветки за lead."
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    nudgeStep={0.05}
+                    value={templateConfig.channelStory.leadGlowOpacity ?? 0.76}
+                    formatValue={(value) => `${Math.round(value * 100)}%`}
+                    onChange={(value) => updateChannelStory("leadGlowOpacity", value)}
+                  />
+                </div>
+                <div className="template-road-editor-grid three-up">
+                  <SliderControl
+                    label="Высота beam"
+                    hint="Насколько толстая световая полоса стоит за lead."
+                    min={12}
+                    max={180}
+                    step={1}
+                    value={templateConfig.channelStory.leadGlowHeight ?? 60}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("leadGlowHeight", value)}
+                  />
+                  <SliderControl
+                    label="Blur beam"
+                    hint="Мягкость синего свечения по краям."
+                    min={0}
+                    max={64}
+                    step={1}
+                    value={templateConfig.channelStory.leadGlowBlur ?? 22}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("leadGlowBlur", value)}
+                  />
+                  <SliderControl
+                    label="Ширина beam"
+                    hint="Насколько далеко свет выходит за пределы lead-блока."
+                    min={0}
+                    max={420}
+                    step={1}
+                    value={templateConfig.channelStory.leadGlowSpreadX ?? 180}
+                    formatValue={formatPxValue}
+                    onChange={(value) => updateChannelStory("leadGlowSpreadX", value)}
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="template-road-editor-grid three-up">
               <SliderControl
                 label={`Насыщенность ${activeTemplateSemantics.topLabel.toLowerCase()}`}

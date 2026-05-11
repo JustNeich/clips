@@ -762,6 +762,15 @@ export function TemplateScene({
       cardInnerRect.inset
     );
     const localizedMediaRect = localizeRectToCardPaddingBox(regions.media, cardRect, cardInnerRect.inset);
+    const leadGlowEnabled = Boolean(channelStory.leadGlowEnabled);
+    const leadGlowColor = channelStory.leadGlowColor?.trim() || "rgba(42,132,255,0.86)";
+    const leadGlowHeight = Math.max(
+      1,
+      Math.round(channelStory.leadGlowHeight ?? localizedTopRect.height * 0.62)
+    );
+    const leadGlowBlur = Math.max(0, Math.round(channelStory.leadGlowBlur ?? 22));
+    const leadGlowOpacity = Math.max(0, Math.min(1, channelStory.leadGlowOpacity ?? 0.76));
+    const leadGlowSpreadX = Math.max(0, Math.round(channelStory.leadGlowSpreadX ?? 180));
 
     return (
       <div
@@ -899,9 +908,29 @@ export function TemplateScene({
                 overflow: "hidden"
               }}
             >
+              {leadGlowEnabled ? (
+                <div
+                  aria-hidden="true"
+                  data-template-slot="lead-glow"
+                  style={{
+                    position: "absolute",
+                    left: -leadGlowSpreadX,
+                    right: -leadGlowSpreadX,
+                    top: "50%",
+                    height: leadGlowHeight,
+                    transform: "translateY(-50%)",
+                    opacity: leadGlowOpacity,
+                    background: `linear-gradient(90deg, rgba(0,0,0,0) 0%, ${leadGlowColor} 17%, rgba(255,255,255,0.5) 50%, ${leadGlowColor} 83%, rgba(0,0,0,0) 100%)`,
+                    filter: `blur(${leadGlowBlur}px)`,
+                    pointerEvents: "none"
+                  }}
+                />
+              ) : null}
               <p
                 data-template-slot="top-text"
                 style={{
+                  position: "relative",
+                  zIndex: 1,
                   margin: 0,
                   width: "100%",
                   color: palette.topTextColor,

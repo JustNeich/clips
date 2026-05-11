@@ -348,6 +348,89 @@ function normalizeTemplateConfig(raw: unknown, templateId: string): Stage3Templa
   base.sourceOverlay = normalizeStage3SourceVideoTextLayerConfig(raw.sourceOverlay, base.sourceOverlay);
   base.sourceWatermark = normalizeStage3SourceVideoWatermarkConfig(raw.sourceWatermark, base.sourceWatermark);
 
+  if (base.layoutKind === "channel_story" && base.channelStory && isRecord(raw.channelStory)) {
+    const channelStory = raw.channelStory;
+    const numericChannelStoryKeys: Array<
+      | "contentPaddingX"
+      | "contentPaddingTop"
+      | "contentPaddingBottom"
+      | "headerHeight"
+      | "leadHeight"
+      | "bodyHeight"
+      | "headerToLeadGap"
+      | "leadToBodyGap"
+      | "bodyToMediaGap"
+      | "footerHeight"
+      | "mediaInsetX"
+      | "mediaRadius"
+      | "mediaBorderWidth"
+      | "accentTopLineWidth"
+      | "accentBottomLineWidth"
+      | "leadGlowHeight"
+      | "leadGlowBlur"
+      | "leadGlowSpreadX"
+    > = [
+      "contentPaddingX",
+      "contentPaddingTop",
+      "contentPaddingBottom",
+      "headerHeight",
+      "leadHeight",
+      "bodyHeight",
+      "headerToLeadGap",
+      "leadToBodyGap",
+      "bodyToMediaGap",
+      "footerHeight",
+      "mediaInsetX",
+      "mediaRadius",
+      "mediaBorderWidth",
+      "accentTopLineWidth",
+      "accentBottomLineWidth",
+      "leadGlowHeight",
+      "leadGlowBlur",
+      "leadGlowSpreadX"
+    ];
+    for (const key of numericChannelStoryKeys) {
+      const value = channelStory[key];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        base.channelStory[key] = Math.max(0, Math.round(value));
+      }
+    }
+    if (
+      channelStory.leadMode === "off" ||
+      channelStory.leadMode === "template_default" ||
+      channelStory.leadMode === "clip_custom"
+    ) {
+      base.channelStory.leadMode = channelStory.leadMode;
+    }
+    if (typeof channelStory.defaultLeadText === "string") {
+      base.channelStory.defaultLeadText = channelStory.defaultLeadText;
+    }
+    if (typeof channelStory.mediaBorderColor === "string") {
+      base.channelStory.mediaBorderColor = channelStory.mediaBorderColor;
+    }
+    if (typeof channelStory.accentTopLineColor === "string") {
+      base.channelStory.accentTopLineColor = channelStory.accentTopLineColor;
+    }
+    if (typeof channelStory.accentBottomLineColor === "string") {
+      base.channelStory.accentBottomLineColor = channelStory.accentBottomLineColor;
+    }
+    if (typeof channelStory.leadGlowEnabled === "boolean") {
+      base.channelStory.leadGlowEnabled = channelStory.leadGlowEnabled;
+    }
+    if (typeof channelStory.leadGlowColor === "string") {
+      base.channelStory.leadGlowColor = channelStory.leadGlowColor;
+    }
+    if (typeof channelStory.leadGlowOpacity === "number" && Number.isFinite(channelStory.leadGlowOpacity)) {
+      base.channelStory.leadGlowOpacity = clamp(channelStory.leadGlowOpacity, 0, 1);
+    }
+    if (channelStory.headerAlign === "left" || channelStory.headerAlign === "center") {
+      base.channelStory.headerAlign = channelStory.headerAlign;
+    }
+    if (channelStory.bodyTextAlign === "left" || channelStory.bodyTextAlign === "center") {
+      base.channelStory.bodyTextAlign = channelStory.bodyTextAlign;
+    }
+  }
+
   base.highlights = normalizeTemplateHighlightConfig(raw.highlights, {
     accentColor: base.palette.accentColor ?? base.palette.topTextColor
   });

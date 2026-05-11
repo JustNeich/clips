@@ -817,7 +817,13 @@ test("channel story templates persist lead mode and sync default lead text from 
             leadMode: "template_default",
             defaultLeadText: "stale lead",
             mediaRadius: 28,
-            accentTopLineWidth: 4
+            accentTopLineWidth: 4,
+            leadGlowEnabled: true,
+            leadGlowColor: "rgba(42,132,255,0.9)",
+            leadGlowHeight: 72,
+            leadGlowBlur: 26,
+            leadGlowOpacity: 1.4,
+            leadGlowSpreadX: 230
           }
         }
       },
@@ -835,5 +841,11 @@ test("channel story templates persist lead mode and sync default lead text from 
     assert.equal(reloaded?.templateConfig.channelStory?.defaultLeadText, "Did you know?");
     assert.equal(reloaded?.templateConfig.channelStory?.mediaRadius, 28);
     assert.equal(reloaded?.templateConfig.channelStory?.accentTopLineWidth, 4);
+    assert.equal(reloaded?.templateConfig.channelStory?.leadGlowEnabled, true);
+    assert.equal(reloaded?.templateConfig.channelStory?.leadGlowColor, "rgba(42,132,255,0.9)");
+    assert.equal(reloaded?.templateConfig.channelStory?.leadGlowHeight, 72);
+    assert.equal(reloaded?.templateConfig.channelStory?.leadGlowBlur, 26);
+    assert.equal(reloaded?.templateConfig.channelStory?.leadGlowOpacity, 1);
+    assert.equal(reloaded?.templateConfig.channelStory?.leadGlowSpreadX, 230);
   });
 });

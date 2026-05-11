@@ -667,7 +667,13 @@ export const CHANNEL_STORY = {
     accentTopLineWidth: 0,
     accentTopLineColor: "#20df49",
     accentBottomLineWidth: 0,
-    accentBottomLineColor: "#20df49"
+    accentBottomLineColor: "#20df49",
+    leadGlowEnabled: false,
+    leadGlowColor: "rgba(42,132,255,0.86)",
+    leadGlowHeight: 60,
+    leadGlowBlur: 22,
+    leadGlowOpacity: 0.76,
+    leadGlowSpreadX: 180
   }
 } as const;
 
@@ -709,6 +715,12 @@ export type Stage3TemplateChannelStoryConfig = {
   accentTopLineColor?: string;
   accentBottomLineWidth?: number;
   accentBottomLineColor?: string;
+  leadGlowEnabled?: boolean;
+  leadGlowColor?: string;
+  leadGlowHeight?: number;
+  leadGlowBlur?: number;
+  leadGlowOpacity?: number;
+  leadGlowSpreadX?: number;
 };
 
 export type Stage3CardInnerRect = {

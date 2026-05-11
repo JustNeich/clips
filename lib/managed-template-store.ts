@@ -489,6 +489,9 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       | "mediaBorderWidth"
       | "accentTopLineWidth"
       | "accentBottomLineWidth"
+      | "leadGlowHeight"
+      | "leadGlowBlur"
+      | "leadGlowSpreadX"
     > = [
       "contentPaddingX",
       "contentPaddingTop",
@@ -504,7 +507,10 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       "mediaRadius",
       "mediaBorderWidth",
       "accentTopLineWidth",
-      "accentBottomLineWidth"
+      "accentBottomLineWidth",
+      "leadGlowHeight",
+      "leadGlowBlur",
+      "leadGlowSpreadX"
     ];
     for (const key of numericChannelStoryKeys) {
       const value = channelStory[key];
@@ -530,6 +536,15 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
     }
     if (typeof channelStory.accentBottomLineColor === "string") {
       base.channelStory.accentBottomLineColor = channelStory.accentBottomLineColor;
+    }
+    if (typeof channelStory.leadGlowEnabled === "boolean") {
+      base.channelStory.leadGlowEnabled = channelStory.leadGlowEnabled;
+    }
+    if (typeof channelStory.leadGlowColor === "string") {
+      base.channelStory.leadGlowColor = channelStory.leadGlowColor;
+    }
+    if (typeof channelStory.leadGlowOpacity === "number" && Number.isFinite(channelStory.leadGlowOpacity)) {
+      base.channelStory.leadGlowOpacity = clamp(channelStory.leadGlowOpacity, 0, 1);
     }
     if (channelStory.headerAlign === "left" || channelStory.headerAlign === "center") {
       base.channelStory.headerAlign = channelStory.headerAlign;

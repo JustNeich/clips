@@ -487,6 +487,12 @@ test("channel story markup renders highlight spans and media chrome", () => {
   templateConfig.channelStory!.mediaBorderColor = "#ff0033";
   templateConfig.channelStory!.accentTopLineWidth = 5;
   templateConfig.channelStory!.accentTopLineColor = "#20df49";
+  templateConfig.channelStory!.leadGlowEnabled = true;
+  templateConfig.channelStory!.leadGlowColor = "rgba(42,132,255,0.9)";
+  templateConfig.channelStory!.leadGlowHeight = 72;
+  templateConfig.channelStory!.leadGlowBlur = 26;
+  templateConfig.channelStory!.leadGlowOpacity = 0.82;
+  templateConfig.channelStory!.leadGlowSpreadX = 230;
 
   const markup = renderToStaticMarkup(
     Stage3TemplateRenderer({
@@ -518,6 +524,10 @@ test("channel story markup renders highlight spans and media chrome", () => {
   assert.match(markup, /border-radius:28px/);
   assert.match(markup, /border:3px solid #ff0033/);
   assert.match(markup, /height:5px;background:#20df49/);
+  assert.match(markup, /data-template-slot="lead-glow"/);
+  assert.match(markup, /linear-gradient\(90deg,\s*rgba\(0,0,0,0\)\s*0%,\s*rgba\(42,132,255,0\.9\)/);
+  assert.match(markup, /filter:blur\(26px\)/);
+  assert.match(markup, /left:-230px;right:-230px/);
 });
 
 test("channel story snapshot measures inner content from the bordered card safe area", () => {
