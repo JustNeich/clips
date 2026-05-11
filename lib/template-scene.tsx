@@ -771,6 +771,12 @@ export function TemplateScene({
     const leadGlowBlur = Math.max(0, Math.round(channelStory.leadGlowBlur ?? 22));
     const leadGlowOpacity = Math.max(0, Math.min(1, channelStory.leadGlowOpacity ?? 0.76));
     const leadGlowSpreadX = Math.max(0, Math.round(channelStory.leadGlowSpreadX ?? 180));
+    const leadGlowCoreHeight = Math.max(4, Math.round(leadGlowHeight * 0.16));
+    const leadGlowCoreBlur = Math.max(3, Math.round(leadGlowBlur * 0.38));
+    const leadGlowMask =
+      "radial-gradient(ellipse at center, rgba(0,0,0,1) 0%, rgba(0,0,0,0.86) 34%, rgba(0,0,0,0.34) 58%, rgba(0,0,0,0) 78%)";
+    const leadGlowCoreMask =
+      "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 18%, rgba(0,0,0,1) 50%, rgba(0,0,0,0.8) 82%, rgba(0,0,0,0) 100%)";
 
     return (
       <div
@@ -905,26 +911,52 @@ export function TemplateScene({
                 alignItems: "center",
                 justifyContent: "center",
                 textAlign: "center",
-                overflow: "hidden"
+                overflow: leadGlowEnabled ? "visible" : "hidden"
               }}
             >
               {leadGlowEnabled ? (
-                <div
-                  aria-hidden="true"
-                  data-template-slot="lead-glow"
-                  style={{
-                    position: "absolute",
-                    left: -leadGlowSpreadX,
-                    right: -leadGlowSpreadX,
-                    top: "50%",
-                    height: leadGlowHeight,
-                    transform: "translateY(-50%)",
-                    opacity: leadGlowOpacity,
-                    background: `linear-gradient(90deg, rgba(0,0,0,0) 0%, ${leadGlowColor} 17%, rgba(255,255,255,0.5) 50%, ${leadGlowColor} 83%, rgba(0,0,0,0) 100%)`,
-                    filter: `blur(${leadGlowBlur}px)`,
-                    pointerEvents: "none"
-                  }}
-                />
+                <>
+                  <div
+                    aria-hidden="true"
+                    data-template-slot="lead-glow"
+                    style={{
+                      position: "absolute",
+                      left: -leadGlowSpreadX,
+                      right: -leadGlowSpreadX,
+                      top: "50%",
+                      height: leadGlowHeight,
+                      transform: "translateY(-50%)",
+                      opacity: leadGlowOpacity,
+                      borderRadius: 999,
+                      background: `radial-gradient(ellipse at center, rgba(255,255,255,0.54) 0%, ${leadGlowColor} 26%, rgba(0,0,0,0) 72%)`,
+                      filter: `blur(${leadGlowBlur}px)`,
+                      WebkitMaskImage: leadGlowMask,
+                      maskImage: leadGlowMask,
+                      mixBlendMode: "screen",
+                      pointerEvents: "none"
+                    }}
+                  />
+                  <div
+                    aria-hidden="true"
+                    data-template-slot="lead-glow-core"
+                    style={{
+                      position: "absolute",
+                      left: -Math.round(leadGlowSpreadX * 0.56),
+                      right: -Math.round(leadGlowSpreadX * 0.56),
+                      top: "50%",
+                      height: leadGlowCoreHeight,
+                      transform: "translateY(-50%)",
+                      opacity: Math.min(0.78, leadGlowOpacity),
+                      borderRadius: 999,
+                      background: `linear-gradient(90deg, rgba(0,0,0,0) 0%, ${leadGlowColor} 24%, rgba(255,255,255,0.42) 50%, ${leadGlowColor} 76%, rgba(0,0,0,0) 100%)`,
+                      filter: `blur(${leadGlowCoreBlur}px)`,
+                      WebkitMaskImage: leadGlowCoreMask,
+                      maskImage: leadGlowCoreMask,
+                      mixBlendMode: "screen",
+                      pointerEvents: "none"
+                    }}
+                  />
+                </>
               ) : null}
               <p
                 data-template-slot="top-text"

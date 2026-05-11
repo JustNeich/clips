@@ -525,7 +525,10 @@ test("channel story markup renders highlight spans and media chrome", () => {
   assert.match(markup, /border:3px solid #ff0033/);
   assert.match(markup, /height:5px;background:#20df49/);
   assert.match(markup, /data-template-slot="lead-glow"/);
-  assert.match(markup, /linear-gradient\(90deg,\s*rgba\(0,0,0,0\)\s*0%,\s*rgba\(42,132,255,0\.9\)/);
+  assert.match(markup, /data-template-slot="lead-glow-core"/);
+  assert.match(markup, /radial-gradient\(ellipse at center,\s*rgba\(255,255,255,0\.54\)\s*0%,\s*rgba\(42,132,255,0\.9\)/);
+  assert.match(markup, /linear-gradient\(90deg,\s*rgba\(0,0,0,0\)\s*0%,\s*rgba\(42,132,255,0\.9\)\s*24%/);
+  assert.match(markup, /mask-image:radial-gradient\(ellipse at center/);
   assert.match(markup, /filter:blur\(26px\)/);
   assert.match(markup, /left:-230px;right:-230px/);
 });
