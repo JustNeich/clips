@@ -204,6 +204,7 @@ npm run stage2-worker
   - правки `width / height / x / y` карточки влияют и на preview, и на render;
   - `line-height` верхнего и нижнего текста сохраняется без отката после autosave/reload;
   - custom font upload для `TOP/Lead` и `BOTTOM/Main` сохраняет файл как workspace asset и применяет его в editor preview, snapshot и final render;
+  - `TOP/Lead` и `BOTTOM/Main` поддерживают template-level `text-shadow`, поэтому glow-заголовки из story-шаблонов собираются в Template Road и доходят до final render;
   - режим цветного бейджа использует twitter-style векторную галочку, а не круглый fallback.
   - template defaults теперь могут задавать video adjustments (`brightness / exposure / contrast / saturation`), а Step 3 позволяет переопределить их отдельно для конкретного ролика без изменения самого шаблона.
 - Добавлен агент монтажер:

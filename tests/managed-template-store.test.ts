@@ -530,6 +530,43 @@ test("managed templates persist custom top and bottom line heights", async () =>
   });
 });
 
+test("managed templates persist custom top and bottom text glow", async () => {
+  await withIsolatedTemplateWorkspace(async ({ owner }) => {
+    const template = await createManagedTemplate(
+      {
+        name: "Text Glow Control",
+        baseTemplateId: "channel-story-v1",
+        templateConfig: {
+          typography: {
+            top: {
+              textShadow:
+                "0 0 6px rgba(255,255,255,0.94), 0 0 18px rgba(58,149,255,0.96)"
+            },
+            bottom: {
+              textShadow: "0 0 10px rgba(255,255,255,0.44)"
+            }
+          }
+        }
+      },
+      {
+        workspaceId: owner.workspace.id,
+        creatorUserId: owner.user.id
+      }
+    );
+
+    const reloaded = readManagedTemplateSync(template.id, { workspaceId: owner.workspace.id });
+
+    assert.equal(
+      reloaded?.templateConfig.typography.top.textShadow,
+      "0 0 6px rgba(255,255,255,0.94), 0 0 18px rgba(58,149,255,0.96)"
+    );
+    assert.equal(
+      reloaded?.templateConfig.typography.bottom.textShadow,
+      "0 0 10px rgba(255,255,255,0.44)"
+    );
+  });
+});
+
 test("managed templates persist template-level video adjustment defaults", async () => {
   await withIsolatedTemplateWorkspace(async ({ owner }) => {
     const template = await createManagedTemplate(

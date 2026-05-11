@@ -778,6 +778,7 @@ export type Stage3TemplateConfig = {
       letterSpacing?: string;
       fontStyle?: "normal" | "italic";
       fontFamily?: string;
+      textShadow?: string;
       fontAsset?: Stage3TemplateFontAsset;
     };
     bottom: {
@@ -796,6 +797,7 @@ export type Stage3TemplateConfig = {
       letterSpacing?: string;
       fontStyle?: "normal" | "italic";
       fontFamily?: string;
+      textShadow?: string;
       fontAsset?: Stage3TemplateFontAsset;
     };
     authorName: {

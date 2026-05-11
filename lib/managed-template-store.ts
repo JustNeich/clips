@@ -369,6 +369,9 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       if (typeof top.fontFamily === "string") {
         base.typography.top.fontFamily = top.fontFamily;
       }
+      if (typeof top.textShadow === "string") {
+        base.typography.top.textShadow = top.textShadow;
+      }
       const fontAsset = normalizeStage3TemplateFontAsset(top.fontAsset);
       if (fontAsset) {
         base.typography.top.fontAsset = fontAsset;
@@ -394,6 +397,9 @@ function normalizeTemplateConfig(raw: unknown, layoutFamily: string): Stage3Temp
       }
       if (typeof bottom.fontFamily === "string") {
         base.typography.bottom.fontFamily = bottom.fontFamily;
+      }
+      if (typeof bottom.textShadow === "string") {
+        base.typography.bottom.textShadow = bottom.textShadow;
       }
       const fontAsset = normalizeStage3TemplateFontAsset(bottom.fontAsset);
       if (fontAsset) {

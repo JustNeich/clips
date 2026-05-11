@@ -698,6 +698,7 @@ export function TemplateScene({
   const authorHandleFontSize = templateConfig.typography.authorHandle.font;
   const topTextWeight = templateConfig.typography.top.weight ?? 800;
   const topTextLetterSpacing = templateConfig.typography.top.letterSpacing ?? "-0.015em";
+  const topTextShadow = templateConfig.typography.top.textShadow?.trim() || undefined;
   const topTextFontFamily =
     templateConfig.typography.top.fontFamily ?? resolveDefaultTopFontFamily(resolvedTemplateId);
   const bottomTextFontFamily =
@@ -709,6 +710,7 @@ export function TemplateScene({
   const bottomTextWeight = templateConfig.typography.bottom.weight ?? 500;
   const bottomTextLetterSpacing = templateConfig.typography.bottom.letterSpacing ?? "-0.005em";
   const bottomTextFontStyle = templateConfig.typography.bottom.fontStyle ?? "normal";
+  const bottomTextShadow = templateConfig.typography.bottom.textShadow?.trim() || undefined;
   const authorNameWeight = templateConfig.typography.authorName.weight ?? (usesClassicScienceCardChrome ? 800 : 700);
   const authorNameLetterSpacing =
     templateConfig.typography.authorName.letterSpacing ?? (usesClassicScienceCardChrome ? "-0.03em" : "-0.01em");
@@ -906,6 +908,7 @@ export function TemplateScene({
                   fontFamily: topTextFontFamily,
                   fontWeight: topTextWeight,
                   letterSpacing: topTextLetterSpacing,
+                  textShadow: topTextShadow,
                   fontSize: computed.topFont,
                   lineHeight: computed.topLineHeight,
                   display: "-webkit-box",
@@ -947,6 +950,7 @@ export function TemplateScene({
                 fontWeight: bottomTextWeight,
                 fontStyle: bottomTextFontStyle,
                 letterSpacing: bottomTextLetterSpacing,
+                textShadow: bottomTextShadow,
                 fontSize: computed.bottomFont,
                 lineHeight: computed.bottomLineHeight,
                 display: "-webkit-box",
@@ -1092,6 +1096,7 @@ export function TemplateScene({
                   fontFamily: topTextFontFamily,
                   fontWeight: topTextWeight,
                   letterSpacing: topTextLetterSpacing,
+                  textShadow: topTextShadow,
                   fontSize: computed.topFont,
                   lineHeight: computed.topLineHeight,
                   display: "-webkit-box",
@@ -1405,6 +1410,7 @@ export function TemplateScene({
                   fontWeight: bottomTextWeight,
                   fontStyle: bottomTextFontStyle,
                   letterSpacing: bottomTextLetterSpacing,
+                  textShadow: bottomTextShadow,
                   fontSize: computed.bottomFont,
                   lineHeight: computed.bottomLineHeight,
                   display: "-webkit-box",

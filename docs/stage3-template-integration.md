@@ -289,6 +289,7 @@ Template Road может подключать пользовательские f
 - author metrics;
 - typography defaults;
 - uploaded font asset refs для `top` и `bottom`;
+- text glow / `text-shadow` для `top` / `lead` и `bottom` / `body`, если шаблон требует светящийся заголовок;
 - template identity.
 
 ### Канонический renderer

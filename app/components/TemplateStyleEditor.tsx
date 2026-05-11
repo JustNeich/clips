@@ -300,6 +300,25 @@ const WATERMARK_TEXT_MODE_OPTIONS = [
   { label: "Свой текст", value: "custom" }
 ];
 
+const TEXT_GLOW_OPTIONS: FontOption[] = [
+  { label: "Без свечения", value: "" },
+  {
+    label: "Синий halo",
+    value:
+      "0 0 6px rgba(255,255,255,0.94), 0 0 18px rgba(58,149,255,0.96), 0 0 40px rgba(32,104,255,0.78)"
+  },
+  {
+    label: "Белый soft glow",
+    value:
+      "0 0 5px rgba(255,255,255,0.92), 0 0 16px rgba(255,255,255,0.72), 0 0 30px rgba(120,170,255,0.44)"
+  },
+  {
+    label: "Жёлтый highlight glow",
+    value:
+      "0 0 4px rgba(255,255,255,0.78), 0 0 15px rgba(245,224,83,0.82), 0 0 32px rgba(245,188,39,0.56)"
+  }
+];
+
 const DEFAULT_OPEN_SECTION_IDS = new Set<string>([
   "template-road-style-library",
   "template-road-style-base",
@@ -4454,6 +4473,9 @@ export function TemplateStyleEditor({
                   {activeTemplateSemantics.bottomLabel}:{" "}
                   {currentBottomFontAsset?.originalName || formatFontFamilyShortLabel(currentBottomFontFamily)}
                 </span>
+                <span className="meta-pill">
+                  Glow: {templateConfig.typography.top.textShadow?.trim() ? "on" : "off"}
+                </span>
               </>
             }
           >
@@ -4574,6 +4596,52 @@ export function TemplateStyleEditor({
                 />
                 <span className="template-road-editor-field-hint">
                   Удобно, если ник хочется сделать более техническим, а имя оставить мягким.
+                </span>
+              </label>
+            </div>
+            <div className="template-road-editor-grid two-up">
+              <SelectControl
+                label={`Свечение ${activeTemplateSemantics.topLabel.toLowerCase()}`}
+                hint="Preset для halo вокруг верхнего текста; синий вариант подходит под реф DarkWall."
+                value={templateConfig.typography.top.textShadow ?? ""}
+                options={TEXT_GLOW_OPTIONS}
+                onChange={(value) => updateTopTypography("textShadow", value)}
+              />
+              <SelectControl
+                label={`Свечение ${activeTemplateSemantics.bottomLabel.toLowerCase()}`}
+                hint="Можно подсветить main/body отдельно или оставить чистый текст."
+                value={templateConfig.typography.bottom.textShadow ?? ""}
+                options={TEXT_GLOW_OPTIONS}
+                onChange={(value) => updateBottomTypography("textShadow", value)}
+              />
+            </div>
+            <div className="template-road-editor-grid two-up">
+              <label className="template-road-editor-field">
+                <span className="field-label">
+                  CSS text-shadow {activeTemplateSemantics.topLabel.toLowerCase()}
+                </span>
+                <input
+                  className="text-input mono"
+                  type="text"
+                  value={templateConfig.typography.top.textShadow ?? ""}
+                  onChange={(event) => updateTopTypography("textShadow", event.target.value)}
+                />
+                <span className="template-road-editor-field-hint">
+                  Пустое поле выключает glow; можно вставить точный multi-layer `text-shadow`.
+                </span>
+              </label>
+              <label className="template-road-editor-field">
+                <span className="field-label">
+                  CSS text-shadow {activeTemplateSemantics.bottomLabel.toLowerCase()}
+                </span>
+                <input
+                  className="text-input mono"
+                  type="text"
+                  value={templateConfig.typography.bottom.textShadow ?? ""}
+                  onChange={(event) => updateBottomTypography("textShadow", event.target.value)}
+                />
+                <span className="template-road-editor-field-hint">
+                  Значение сохраняется в template config и попадает в preview/render.
                 </span>
               </label>
             </div>

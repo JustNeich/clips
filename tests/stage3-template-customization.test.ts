@@ -209,6 +209,37 @@ test("template scene markup wires uploaded top and bottom fonts into the rendere
   assert.match(markup, /font-family:&quot;Stage3TemplateFont_fontbody123456&quot;,sans-serif/);
 });
 
+test("template scene markup applies configured text glow to lead and body slots", () => {
+  const templateConfig = cloneStage3TemplateConfig(CHANNEL_STORY);
+  templateConfig.typography.top.textShadow =
+    "0 0 6px rgba(255,255,255,0.94), 0 0 18px rgba(58,149,255,0.96)";
+  templateConfig.typography.bottom.textShadow = "0 0 10px rgba(255,255,255,0.44)";
+
+  const markup = renderToStaticMarkup(
+    Stage3TemplateRenderer({
+      templateId: CHANNEL_STORY_TEMPLATE_ID,
+      content: {
+        topText: "Did they tell you...",
+        bottomText: "The mother watched it happen from the couch.",
+        channelName: "COP SCOPES",
+        channelHandle: "@copscopes",
+        highlights: { top: [], bottom: [] },
+        topFontScale: 1,
+        bottomFontScale: 1,
+        previewScale: 1,
+        mediaAsset: null,
+        backgroundAsset: null,
+        avatarAsset: null
+      },
+      templateConfigOverride: templateConfig
+    })
+  );
+
+  assert.match(markup, /data-template-slot="top-text"/);
+  assert.match(markup, /text-shadow:0 0 6px rgba\(255,255,255,0\.94\),\s*0 0 18px rgba\(58,149,255,0\.96\)/);
+  assert.match(markup, /text-shadow:0 0 10px rgba\(255,255,255,0\.44\)/);
+});
+
 test("uploaded font slots use neutral default text scale and expose browser load descriptors", async () => {
   const templateConfig = cloneStage3TemplateConfig(SCIENCE_CARD);
   templateConfig.typography.top.fontAsset = {

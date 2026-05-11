@@ -266,6 +266,9 @@ function normalizeTemplateConfig(raw: unknown, templateId: string): Stage3Templa
       if (typeof top.fontFamily === "string") {
         base.typography.top.fontFamily = top.fontFamily;
       }
+      if (typeof top.textShadow === "string") {
+        base.typography.top.textShadow = top.textShadow;
+      }
     }
 
     const bottom = isRecord(typography.bottom) ? typography.bottom : null;
@@ -281,6 +284,9 @@ function normalizeTemplateConfig(raw: unknown, templateId: string): Stage3Templa
       }
       if (typeof bottom.fontFamily === "string") {
         base.typography.bottom.fontFamily = bottom.fontFamily;
+      }
+      if (typeof bottom.textShadow === "string") {
+        base.typography.bottom.textShadow = bottom.textShadow;
       }
     }
 
