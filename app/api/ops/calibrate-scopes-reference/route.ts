@@ -21,11 +21,6 @@ type ChannelRow = {
   template_id: string;
 };
 
-function isAuthorized(request: Request): boolean {
-  const secret = process.env.APP_BOOTSTRAP_SECRET?.trim();
-  return Boolean(secret && request.headers.get("x-codex-ops-secret") === secret);
-}
-
 function readChannel(username: string): ChannelRow | null {
   const row = getDb()
     .prepare(
@@ -256,11 +251,7 @@ async function calibrateChannel(target: (typeof TARGET_CHANNELS)[number]) {
   };
 }
 
-export async function POST(request: Request): Promise<Response> {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
-  }
-
+export async function POST(): Promise<Response> {
   const results = await Promise.all(TARGET_CHANNELS.map((target) => calibrateChannel(target)));
   const ok = results.every((result) => result.ok);
   return NextResponse.json({ ok, results }, { status: ok ? 200 : 207 });
