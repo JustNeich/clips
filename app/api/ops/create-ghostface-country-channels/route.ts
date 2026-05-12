@@ -47,7 +47,12 @@ const COUNTRY_MATCHERS = [
   "ghostface country",
   "ghostface workshop",
   "ghostfacecountry",
-  "ghostfaceworkshop"
+  "ghostfaceworkshop",
+  "foreman",
+  "dusty",
+  "martin",
+  "country",
+  "workshop"
 ];
 
 const EXAMPLES: Stage2CorpusExample[] = [
@@ -924,6 +929,12 @@ export async function POST(): Promise<NextResponse> {
       avatarAssetId: item.avatarAssetId
     })),
     countryChannels: countryChannels.map((channel) => ({
+      id: channel.id,
+      name: channel.name,
+      username: channel.username,
+      templateId: channel.templateId
+    })),
+    allChannels: allChannels.map((channel) => ({
       id: channel.id,
       name: channel.name,
       username: channel.username,
