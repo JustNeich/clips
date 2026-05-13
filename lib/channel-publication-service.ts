@@ -1097,7 +1097,7 @@ function auditYoutubeDelete(
 
 export async function deleteChannelPublicationWithRemoteSync(
   publicationId: string,
-  options?: { userId?: string | null }
+  options?: { userId?: string | null; allowPublished?: boolean | null }
 ): Promise<ChannelPublication> {
   const publication = getChannelPublicationById(publicationId);
   if (!publication) {
@@ -1106,7 +1106,11 @@ export async function deleteChannelPublicationWithRemoteSync(
       status: 404
     });
   }
-  if (publication.status === "scheduled" && publication.youtubeVideoId) {
+  const youtubeVideoId = publication.youtubeVideoId;
+  const shouldDeleteRemote =
+    youtubeVideoId &&
+    (publication.status === "scheduled" || (publication.status === "published" && options?.allowPublished));
+  if (shouldDeleteRemote) {
     auditYoutubeDelete("publication.delete.attempted", publication, "attempted", {
       userId: options?.userId ?? null
     });
@@ -1114,7 +1118,7 @@ export async function deleteChannelPublicationWithRemoteSync(
       const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
       await deleteYouTubeVideo({
         accessToken: credential.accessToken!,
-        videoId: publication.youtubeVideoId
+        videoId: youtubeVideoId
       });
       auditYoutubeDelete("publication.delete.succeeded", publication, "succeeded", {
         userId: options?.userId ?? null
@@ -1127,7 +1131,9 @@ export async function deleteChannelPublicationWithRemoteSync(
       throw error;
     }
   }
-  return cancelChannelPublication(publicationId);
+  return cancelChannelPublication(publicationId, {
+    allowPublished: Boolean(options?.allowPublished)
+  });
 }
 
 export async function retryFailedChannelPublication(publicationId: string): Promise<ChannelPublication> {

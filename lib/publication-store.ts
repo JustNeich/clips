@@ -1476,13 +1476,16 @@ export function retryChannelPublication(publicationId: string): ChannelPublicati
   return publication;
 }
 
-export function cancelChannelPublication(publicationId: string): ChannelPublication {
+export function cancelChannelPublication(
+  publicationId: string,
+  options?: { allowPublished?: boolean }
+): ChannelPublication {
   const current = getPublicationForMutation(publicationId);
   assertPublicationNotUploading(current, "Удаление публикации");
   if (current.status === "canceled") {
     return current;
   }
-  if (current.status === "published") {
+  if (current.status === "published" && !options?.allowPublished) {
     throw new PublicationMutationError("Опубликованную публикацию нельзя удалить из очереди.", {
       code: "PUBLICATION_ACTION_FORBIDDEN"
     });

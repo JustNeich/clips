@@ -21,6 +21,7 @@ import {
   setActiveCopscopesCategory
 } from "../lib/copscopes-source-pool";
 import { COPSCOPES_TIGHT_SOURCE_CROP_SOURCE } from "../lib/copscopes-quality-gate";
+import { getDb } from "../lib/db/client";
 import {
   createChannelPublication,
   createRenderExport,
@@ -141,7 +142,7 @@ test("CopScopes control API rejects flow:read tokens and accepts control:write t
   });
 });
 
-test("CopScopes control API can cancel a queued publication with control:write", async () => {
+test("CopScopes control API can cancel an owner-approved published publication with control:write", async () => {
   await withIsolatedAppData(async () => {
     const { owner, channel } = await seedCopscopes();
     const chat = await createOrGetChatByUrl("https://www.instagram.com/reel/CANCEL1/", channel.id);
@@ -184,6 +185,7 @@ test("CopScopes control API can cancel a queued publication with control:write",
       needsReview: false,
       createdByUserId: owner.user.id
     });
+    getDb().prepare("UPDATE channel_publications SET status = 'published' WHERE id = ?").run(publication.id);
     const controlToken = createMcpAccessToken({
       workspaceId: owner.workspace.id,
       ownerUserId: owner.user.id,
@@ -202,7 +204,8 @@ test("CopScopes control API can cancel a queued publication with control:write",
           tool: "clips_control_cancel_publication",
           input: {
             channelUsername: "copscopes",
-            publicationId: publication.id
+            publicationId: publication.id,
+            allowPublished: true
           }
         })
       })

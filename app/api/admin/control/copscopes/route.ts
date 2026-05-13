@@ -313,6 +313,7 @@ export async function POST(request: Request): Promise<Response> {
       if (!publication || publication.workspaceId !== auth.workspace.id || publication.channelId !== channel.id) {
         return Response.json({ error: "Publication was not found for this CopScopes channel." }, { status: 404 });
       }
+      const allowPublished = resolveBoolean(input.allowPublished);
       auditControl({
         workspaceId: auth.workspace.id,
         userId: auth.user.id,
@@ -323,10 +324,14 @@ export async function POST(request: Request): Promise<Response> {
         payload: {
           title: publication.title,
           status: publication.status,
-          youtubeVideoUrl: publication.youtubeVideoUrl
+          youtubeVideoUrl: publication.youtubeVideoUrl,
+          allowPublished
         }
       });
-      const canceled = await deleteChannelPublicationWithRemoteSync(publication.id, { userId: auth.user.id });
+      const canceled = await deleteChannelPublicationWithRemoteSync(publication.id, {
+        userId: auth.user.id,
+        allowPublished
+      });
       auditControl({
         workspaceId: auth.workspace.id,
         userId: auth.user.id,
@@ -336,7 +341,8 @@ export async function POST(request: Request): Promise<Response> {
         status: "succeeded",
         payload: {
           status: canceled.status,
-          youtubeVideoUrl: canceled.youtubeVideoUrl
+          youtubeVideoUrl: canceled.youtubeVideoUrl,
+          allowPublished
         }
       });
       return Response.json({ channel: summarizeChannel(channel), publication: canceled }, { status: 200 });
