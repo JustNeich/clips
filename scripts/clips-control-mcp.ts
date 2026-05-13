@@ -9,6 +9,7 @@ import {
   exportCopscopesSourcePoolMarkdown,
   importCopscopesSourcePool,
   listCopscopesSourcePool,
+  resetCopscopesSourceReelForRetry,
   setActiveCopscopesCategory,
   type CopscopesSourceStatus
 } from "../lib/copscopes-source-pool";
@@ -369,6 +370,50 @@ server.registerTool(
       payload: { categorySlug: category.slug }
     });
     return jsonContent({ category });
+  }
+);
+
+server.registerTool(
+  "clips_control_reset_source_pool_item",
+  {
+    title: "Reset CopScopes source pool item",
+    description: "Reset a failed or reviewable CopScopes source Reel back to available for a controlled retry.",
+    inputSchema: z.object({
+      channelUsername: z.string().optional(),
+      reelId: z.string().optional(),
+      shortcode: z.string().optional(),
+      url: z.string().optional()
+    })
+  },
+  async ({ channelUsername, reelId, shortcode, url }) => {
+    if (remoteMode) {
+      return remoteControl("clips_control_reset_source_pool_item", {
+        channelUsername,
+        reelId,
+        shortcode,
+        url
+      });
+    }
+    const localAuth = getLocalAuth();
+    const channel = resolveChannel(channelUsername);
+    const reel = resetCopscopesSourceReelForRetry({
+      workspaceId: localAuth.workspace.id,
+      channelId: channel.id,
+      reelId,
+      shortcode,
+      url
+    });
+    auditControl({
+      action: "copscopes_control.reset_source_pool_item.succeeded",
+      channelId: channel.id,
+      entityId: reel.id,
+      status: "succeeded",
+      payload: {
+        shortcode: reel.shortcode,
+        status: reel.status
+      }
+    });
+    return jsonContent({ reel });
   }
 );
 

@@ -279,31 +279,58 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
     undefined,
     input.workspaceId
   );
-  const stage3 = await runAutonomousOptimization({
-    projectId: chat.id,
-    mediaId: input.reel.shortcode,
-    workspaceId: input.workspaceId,
-    userId: input.userId,
-    sourceUrl: input.reel.canonicalUrl,
-    goalText,
-    options: {
-      maxIterations: 5,
-      targetScore: 0.9,
-      minGain: 0.015,
-      operationBudget: 5
-    },
-    currentSnapshot: {
-      topText: copy.topText,
-      bottomText: copy.bottomText,
-      sourceOverlayText: "",
-      clipStartSec: 0,
-      clipDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
-      focusY: 0.5,
-      sourceDurationSec: null,
-      renderPlan
-    },
-    idempotencyKey: `copscopes-daily:${input.runId}:${input.reel.id}`
-  });
+  let stage3: Awaited<ReturnType<typeof runAutonomousOptimization>>;
+  try {
+    stage3 = await runAutonomousOptimization({
+      projectId: chat.id,
+      mediaId: input.reel.shortcode,
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      executionTarget: resolveStage3Execution("host").resolvedTarget,
+      sourceUrl: input.reel.canonicalUrl,
+      goalText,
+      options: {
+        maxIterations: 5,
+        targetScore: 0.9,
+        minGain: 0.015,
+        operationBudget: 5
+      },
+      currentSnapshot: {
+        topText: copy.topText,
+        bottomText: copy.bottomText,
+        sourceOverlayText: "",
+        clipStartSec: 0,
+        clipDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
+        focusY: 0.5,
+        sourceDurationSec: null,
+        renderPlan
+      },
+      idempotencyKey: `copscopes-daily:${input.runId}:${input.reel.id}`
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      status: "needs_review",
+      qualityGatePassed: false,
+      chatId: chat.id,
+      stage2RunId: stage2Run.runId,
+      error: message,
+      review: {
+        qualityGatePassed: false,
+        cropPassed: false,
+        sourceMetaLeakDetected: true,
+        finalDurationSec: null,
+        notes: [
+          "Stage 3 editor loop did not complete, so publication was not queued.",
+          message
+        ]
+      },
+      report: {
+        sourceJobId: sourceJob.jobId,
+        stage3Error: message
+      }
+    };
+  }
   const bestVersion = await getVersion(stage3.bestVersionId);
   const snapshot = bestVersion?.transformConfig;
   if (!snapshot) {
@@ -362,7 +389,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
     renderPlan: snapshot.renderPlan,
     snapshot
   } satisfies Stage3RenderRequestBody;
-  const executionTarget = resolveStage3Execution(null).resolvedTarget;
+  const executionTarget = resolveStage3Execution("host").resolvedTarget;
   const renderJob = enqueueAndScheduleStage3Job({
     workspaceId: input.workspaceId,
     userId: input.userId,

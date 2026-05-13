@@ -14,6 +14,8 @@ import {
 import {
   importCopscopesSourcePool,
   listCopscopesSourcePool,
+  markCopscopesSourceReel,
+  resetCopscopesSourceReelForRetry,
   selectCopscopesDailyCandidates,
   setActiveCopscopesCategory
 } from "../lib/copscopes-source-pool";
@@ -167,6 +169,47 @@ test("CopScopes source pool import dedupes by canonical Instagram URL", async ()
       listed.reels.map((reel) => reel.canonicalUrl).sort(),
       ["https://www.instagram.com/reel/ABC123/", "https://www.instagram.com/reel/DEF456/"]
     );
+  });
+});
+
+test("CopScopes source pool reset makes a failed Reel available for retry", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    importCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      items: [
+        {
+          url: "https://www.instagram.com/copscopes/reel/RESET1/",
+          categorySlug: "vehicle-pursuit",
+          viewCount: 1000
+        }
+      ]
+    });
+    const reel = listCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id
+    }).reels[0];
+    markCopscopesSourceReel({
+      reelId: reel.id,
+      status: "failed",
+      chatId: "chat-reset",
+      stage2RunId: "stage2-reset",
+      stage3JobId: "stage3-reset",
+      error: "worker timeout"
+    });
+
+    const reset = resetCopscopesSourceReelForRetry({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      shortcode: "RESET1"
+    });
+
+    assert.equal(reset.status, "available");
+    assert.equal(reset.consumedChatId, null);
+    assert.equal(reset.consumedStage2RunId, null);
+    assert.equal(reset.consumedStage3JobId, null);
+    assert.equal(reset.lastError, null);
   });
 });
 

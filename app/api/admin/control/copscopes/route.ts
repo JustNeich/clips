@@ -6,6 +6,7 @@ import {
   exportCopscopesSourcePoolMarkdown,
   importCopscopesSourcePool,
   listCopscopesSourcePool,
+  resetCopscopesSourceReelForRetry,
   setActiveCopscopesCategory,
   type CopscopesSourceStatus
 } from "../../../../../lib/copscopes-source-pool";
@@ -263,6 +264,29 @@ export async function POST(request: Request): Promise<Response> {
         payload: { categorySlug: category.slug }
       });
       return Response.json({ category }, { status: 200 });
+    }
+
+    if (tool === "clips_control_reset_source_pool_item") {
+      const reel = resetCopscopesSourceReelForRetry({
+        workspaceId: auth.workspace.id,
+        channelId: channel.id,
+        reelId: resolveString(input.reelId),
+        shortcode: resolveString(input.shortcode),
+        url: resolveString(input.url)
+      });
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "copscopes_control.reset_source_pool_item.succeeded",
+        channelId: channel.id,
+        entityId: reel.id,
+        status: "succeeded",
+        payload: {
+          shortcode: reel.shortcode,
+          status: reel.status
+        }
+      });
+      return Response.json({ reel }, { status: 200 });
     }
 
     if (tool === "clips_control_run_daily_pool") {

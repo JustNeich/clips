@@ -1026,6 +1026,60 @@ export function markCopscopesSourceReel(input: {
   return row ? mapReel(row) : null;
 }
 
+export function resetCopscopesSourceReelForRetry(input: {
+  workspaceId: string;
+  channelId: string;
+  reelId?: string | null;
+  shortcode?: string | null;
+  url?: string | null;
+}): CopscopesSourceReel {
+  const shortcode = sanitizeString(input.shortcode, 80);
+  const canonicalUrl = input.url ? canonicalizeInstagramReelUrl(input.url)?.canonicalUrl ?? "" : "";
+  const filters = ["workspace_id = ?", "channel_id = ?"];
+  const params: string[] = [input.workspaceId, input.channelId];
+  if (input.reelId) {
+    filters.push("id = ?");
+    params.push(input.reelId);
+  } else if (shortcode) {
+    filters.push("shortcode = ?");
+    params.push(shortcode);
+  } else if (canonicalUrl) {
+    filters.push("canonical_url = ?");
+    params.push(canonicalUrl);
+  } else {
+    throw new Error("reelId, shortcode, or url is required.");
+  }
+
+  const row = getDb()
+    .prepare(`SELECT * FROM copscopes_source_reels WHERE ${filters.join(" AND ")} LIMIT 1`)
+    .get(...params) as ReelRow | undefined;
+  if (!row) {
+    throw new Error("CopScopes source reel was not found.");
+  }
+
+  const stamp = nowIso();
+  getDb()
+    .prepare(
+      `UPDATE copscopes_source_reels
+          SET status = 'available',
+              consumed_chat_id = NULL,
+              consumed_stage2_run_id = NULL,
+              consumed_stage3_job_id = NULL,
+              last_error = NULL,
+              consumed_at = NULL,
+              updated_at = ?
+        WHERE id = ?`
+    )
+    .run(stamp, row.id);
+  const updated = getDb().prepare("SELECT * FROM copscopes_source_reels WHERE id = ? LIMIT 1").get(row.id) as
+    | ReelRow
+    | undefined;
+  if (!updated) {
+    throw new Error("CopScopes source reel disappeared during reset.");
+  }
+  return mapReel(updated);
+}
+
 export function exportCopscopesSourcePoolMarkdown(input: {
   categories: CopscopesSourceCategory[];
   reels: CopscopesSourceReel[];

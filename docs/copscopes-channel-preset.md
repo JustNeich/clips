@@ -72,6 +72,7 @@ Available control tools:
 - `clips_control_import_source_pool`
 - `clips_control_list_source_pool`
 - `clips_control_set_active_category`
+- `clips_control_reset_source_pool_item` (operator retry path for failed or reviewed source Reels)
 - `clips_control_run_daily_pool`
 
 Source pool records are stored in `copscopes_source_categories`, `copscopes_source_reels`,
