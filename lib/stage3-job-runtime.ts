@@ -505,6 +505,9 @@ export function scheduleStage3JobProcessing(): void {
 }
 
 export function enqueueAndScheduleStage3Job(input: EnqueueJobInput): Stage3JobRecord {
+  if (input.executionTarget === "host") {
+    ensureStage3JobRuntime();
+  }
   const job = enqueueStage3Job(input);
   logStage3Runtime("job_enqueue", {
     jobId: job.id,
