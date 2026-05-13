@@ -1,5 +1,6 @@
 import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { normalizeSupportedUrl } from "./ytdlp";
+import { resolveCopscopesProductionSourceCrop } from "./copscopes-quality-gate";
 import {
   normalizeStage3SourceCrop
 } from "./stage3-source-crop";
@@ -383,24 +384,10 @@ export function detectCopscopesSourceCrop(input?: {
   crop?: Stage3SourceCrop | null;
   cropConfidence?: number | null;
 }): Stage3SourceCrop {
-  const normalized = normalizeStage3SourceCrop(input?.crop, null);
-  if (normalized?.enabled) {
-    return {
-      ...normalized,
-      confidence: normalizeScore(input?.cropConfidence) ?? normalized.confidence ?? 0.7
-    };
-  }
-  return {
-    enabled: true,
-    x: 0.08,
-    y: 0.16,
-    width: 0.84,
-    height: 0.66,
-    confidence: normalizeScore(input?.cropConfidence) ?? 0.62,
-    source: "copscopes-default-inner-frame",
-    notes:
-      "Default crop removes CopScopes black frame, top/bottom text, captions, and profile meta before fitting the source into our template."
-  };
+  return resolveCopscopesProductionSourceCrop(
+    normalizeStage3SourceCrop(input?.crop, null),
+    normalizeScore(input?.cropConfidence)
+  );
 }
 
 function estimateQualityScore(item: CopscopesSourcePoolImportItem, categorySlug: string): number {

@@ -19,6 +19,10 @@ import {
   createOrUpdateQueuedPublicationFromRenderExport,
   processQueuedChannelPublication
 } from "../lib/channel-publication-service";
+import {
+  importCopscopesSourcePool,
+  listCopscopesSourcePool
+} from "../lib/copscopes-source-pool";
 import { claimNextQueuedStage3JobForWorker, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
 import {
   exchangeStage3WorkerPairingToken,
@@ -563,6 +567,116 @@ test("local worker render completion skips queued publication when publishAfterR
     assert.equal(response.status, 200);
     assert.ok(getRenderExportByStage3JobId(job.id));
     assert.equal(listChannelPublications(channel.id).length, 0);
+  });
+});
+
+test("CopScopes render completion blocks publication and review-flags the source when quality gate fails", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const channel = await createChannel({
+      workspaceId,
+      creatorUserId: userId,
+      name: "COP SCOPES",
+      username: "copscopes"
+    });
+    connectChannelPublishing(channel.id);
+    importCopscopesSourcePool({
+      workspaceId,
+      channelId: channel.id,
+      items: [
+        {
+          url: "https://www.instagram.com/copscopes/reel/BLOCK1/",
+          categorySlug: "vehicle-pursuit"
+        }
+      ]
+    });
+    const reel = listCopscopesSourcePool({ workspaceId, channelId: channel.id }).reels[0];
+    const chat = await createOrGetChatByUrl(reel.canonicalUrl, channel.id);
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: chat.id,
+        channelId: channel.id,
+        sourceUrl: chat.url,
+        renderTitle: "Blocked CopScopes",
+        publishAfterRender: true,
+        bottomText: "Too short to publish.",
+        renderPlan: {
+          avatarAssetId: null,
+          sourceCrop: {
+            enabled: true,
+            x: 0.08,
+            y: 0.16,
+            width: 0.84,
+            height: 0.66,
+            confidence: 0.62,
+            source: "copscopes-default-inner-frame"
+          }
+        },
+        copscopes: {
+          sourceReelId: reel.id,
+          shortcode: reel.shortcode
+        },
+        snapshot: {}
+      })
+    });
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["render"]
+    });
+    assert.equal(claimed?.id, job.id);
+
+    const response = await completeWorkerStage3Job(
+      new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/complete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${exchanged.sessionToken}`,
+          "Content-Type": "video/mp4",
+          "x-stage3-artifact-name": encodeURIComponent("out.mp4"),
+          "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
+          "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
+        },
+        body: new Uint8Array([1, 2, 3, 4])
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+
+    assert.equal(response.status, 200);
+    assert.ok(getRenderExportByStage3JobId(job.id));
+    assert.equal(listChannelPublications(channel.id).length, 0);
+    const updatedReel = listCopscopesSourcePool({ workspaceId, channelId: channel.id }).reels[0];
+    assert.equal(updatedReel.status, "needs_review");
+    assert.match(updatedReel.lastError ?? "", /quality gate blocked/i);
   });
 });
 

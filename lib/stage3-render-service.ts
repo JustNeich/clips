@@ -162,6 +162,12 @@ export type Stage3RenderRequestBody = {
   channelId?: string;
   workspaceId?: string;
   chatId?: string;
+  copscopes?: {
+    runId?: string;
+    sourceReelId?: string;
+    shortcode?: string;
+    categorySlug?: string;
+  };
   publishAfterRender?: boolean;
   renderTitle?: string;
   topText?: string;
@@ -1115,6 +1121,9 @@ export async function renderStage3Video(
             await fs.copyFile(asset.filePath, path.join(remotionAssetDir, localFileName));
             avatarAssetMimeType = asset.mimeType;
           }
+        }
+        if (body.copscopes && (!renderPlan.avatarAssetId || !avatarAssetFileName)) {
+          throw new Error("CopScopes render blocked: channel avatar asset is required and must resolve before publication.");
         }
 
         const renderTemplateConfig = await prepareStage3TemplateFontAssetsForRender({

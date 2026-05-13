@@ -22,6 +22,7 @@ type ChannelRow = {
   workspace_id: string;
   name: string;
   username: string;
+  avatar_asset_id: string | null;
 };
 
 type ControlBody = {
@@ -61,7 +62,7 @@ function findChannelByUsername(workspaceId: string, username?: string | null): C
   const normalized = (username?.trim() || COPSCOPES_CHANNEL_USERNAME).replace(/^@+/, "").toLowerCase();
   const row = getDb()
     .prepare(
-      `SELECT id, workspace_id, name, username
+      `SELECT id, workspace_id, name, username, avatar_asset_id
          FROM channels
         WHERE workspace_id = ?
           AND archived_at IS NULL
@@ -74,6 +75,16 @@ function findChannelByUsername(workspaceId: string, username?: string | null): C
     throw new Error(`Channel @${normalized} was not found.`);
   }
   return row;
+}
+
+function summarizeChannel(channel: ChannelRow): Record<string, unknown> {
+  return {
+    id: channel.id,
+    name: channel.name,
+    username: channel.username,
+    hasAvatar: Boolean(channel.avatar_asset_id),
+    avatarAssetId: channel.avatar_asset_id ?? null
+  };
 }
 
 function auditControl(input: {
@@ -219,6 +230,7 @@ export async function POST(request: Request): Promise<Response> {
       });
       return Response.json(
         {
+          channel: summarizeChannel(channel),
           ...result,
           markdown: resolveBoolean(input.exportMarkdown) ? exportCopscopesSourcePoolMarkdown(listed) : undefined,
           csv: resolveBoolean(input.exportCsv) ? exportCopscopesSourcePoolCsv(listed.reels) : undefined
@@ -237,6 +249,7 @@ export async function POST(request: Request): Promise<Response> {
       });
       return Response.json(
         {
+          channel: summarizeChannel(channel),
           ...result,
           markdown: resolveBoolean(input.exportMarkdown) ? exportCopscopesSourcePoolMarkdown(result) : undefined,
           csv: resolveBoolean(input.exportCsv) ? exportCopscopesSourcePoolCsv(result.reels) : undefined
@@ -263,7 +276,7 @@ export async function POST(request: Request): Promise<Response> {
         status: "succeeded",
         payload: { categorySlug: category.slug }
       });
-      return Response.json({ category }, { status: 200 });
+      return Response.json({ channel: summarizeChannel(channel), category }, { status: 200 });
     }
 
     if (tool === "clips_control_reset_source_pool_item") {
@@ -286,7 +299,7 @@ export async function POST(request: Request): Promise<Response> {
           status: reel.status
         }
       });
-      return Response.json({ reel }, { status: 200 });
+      return Response.json({ channel: summarizeChannel(channel), reel }, { status: 200 });
     }
 
     if (tool === "clips_control_run_daily_pool") {
@@ -315,7 +328,7 @@ export async function POST(request: Request): Promise<Response> {
           exhausted: result.exhausted
         }
       });
-      return Response.json(result, { status: 200 });
+      return Response.json({ channel: summarizeChannel(channel), ...result }, { status: 200 });
     }
 
     return Response.json({ error: `Unknown control tool: ${tool}` }, { status: 400 });

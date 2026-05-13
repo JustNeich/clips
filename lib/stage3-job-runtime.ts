@@ -9,7 +9,10 @@ import {
 } from "../app/components/types";
 import { completeRenderExportAndMaybeQueue } from "./channel-publication-service";
 import { scheduleChannelPublicationProcessing } from "./channel-publication-runtime";
-import { appendChatEvent, getChatById } from "./chat-history";
+import { appendChatEvent, getChannelById, getChatById } from "./chat-history";
+import { COPSCOPES_CHANNEL_USERNAME } from "./copscopes-channel-preset";
+import { markCopscopesSourceReel } from "./copscopes-source-pool";
+import { validateCopscopesRenderBodyForPublication } from "./copscopes-quality-gate";
 import { findLatestStage2Event } from "./chat-workflow";
 import { persistRenderExportArtifact } from "./render-export-artifacts";
 import {
@@ -48,6 +51,40 @@ type RenderExportCompletionState = {
   renderExport: ReturnType<typeof completeRenderExportAndMaybeQueue>["renderExport"];
   publication: ReturnType<typeof completeRenderExportAndMaybeQueue>["publication"];
 };
+
+function getCopscopesSourceReelId(payload: Stage3RenderRequestBody | null | undefined): string | null {
+  const sourceReelId = payload?.copscopes?.sourceReelId?.trim();
+  return sourceReelId || null;
+}
+
+async function isCopscopesChannel(channelId: string): Promise<boolean> {
+  const channel = await getChannelById(channelId);
+  return channel?.username?.toLowerCase() === COPSCOPES_CHANNEL_USERNAME;
+}
+
+async function markCopscopesRenderFailure(job: Stage3JobRecord, message: string): Promise<void> {
+  if (job.kind !== "render") {
+    return;
+  }
+  let payload: Stage3RenderRequestBody | null = null;
+  try {
+    payload = JSON.parse(job.payloadJson) as Stage3RenderRequestBody;
+  } catch {
+    return;
+  }
+  const sourceReelId = getCopscopesSourceReelId(payload);
+  const channelId = payload.channelId?.trim();
+  if (!sourceReelId || !channelId || !(await isCopscopesChannel(channelId))) {
+    return;
+  }
+  markCopscopesSourceReel({
+    reelId: sourceReelId,
+    status: "failed",
+    chatId: payload.chatId ?? null,
+    stage3JobId: job.id,
+    error: message || "copscopes_render_failed"
+  });
+}
 
 type EnqueueJobInput = {
   workspaceId: string;
@@ -260,6 +297,10 @@ async function executeStage3Job(job: Stage3JobRecord): Promise<void> {
       errorMessage: failure.message,
       recoverable: failure.recoverable
     });
+    await markCopscopesRenderFailure(job, failure.message).catch((markError) => {
+      const message = markError instanceof Error ? markError.message : String(markError);
+      appendStage3JobEvent(job.id, "warn", `Could not update CopScopes source pool after render failure: ${message}`);
+    });
     logStage3Runtime("job_fail", {
       jobId: job.id,
       jobType: job.kind,
@@ -347,6 +388,24 @@ async function ensureRenderExportCompletionState(
   });
 
   const stage2Result = findLatestStage2Event(chat)?.payload ?? null;
+  let publishAfterRender =
+    typeof payload.publishAfterRender === "boolean" ? payload.publishAfterRender : undefined;
+  const copscopesSourceReelId = getCopscopesSourceReelId(payload);
+  if (copscopesSourceReelId && (await isCopscopesChannel(chat.channelId))) {
+    const gate = validateCopscopesRenderBodyForPublication(payload);
+    if (!gate.passed) {
+      publishAfterRender = false;
+      const message = `CopScopes post-render quality gate blocked publication: ${gate.reasons.join(", ")}`;
+      appendStage3JobEvent(completedArtifact.jobId, "warn", message);
+      markCopscopesSourceReel({
+        reelId: copscopesSourceReelId,
+        status: "needs_review",
+        chatId: chat.id,
+        stage3JobId: completedArtifact.jobId,
+        error: message
+      });
+    }
+  }
   const completion = completeRenderExportAndMaybeQueue({
     workspaceId: initialJob.workspaceId,
     channelId: chat.channelId,
@@ -362,9 +421,33 @@ async function ensureRenderExportCompletionState(
     snapshotJson: JSON.stringify(payload.snapshot ?? null),
     createdByUserId: initialJob.userId,
     stage2Result: (stage2Result ?? null) as Stage2Response | null,
-    publishAfterRender:
-      typeof payload.publishAfterRender === "boolean" ? payload.publishAfterRender : undefined
+    publishAfterRender
   });
+  if (copscopesSourceReelId && (await isCopscopesChannel(chat.channelId))) {
+    const publication = completion.publication;
+    const publicationQueued = Boolean(
+      publication &&
+        publication.status !== "failed" &&
+        publication.status !== "canceled"
+    );
+    if (publicationQueued) {
+      markCopscopesSourceReel({
+        reelId: copscopesSourceReelId,
+        status: "consumed",
+        chatId: chat.id,
+        stage3JobId: completedArtifact.jobId,
+        error: null
+      });
+    } else if (publishAfterRender !== false) {
+      markCopscopesSourceReel({
+        reelId: copscopesSourceReelId,
+        status: "needs_review",
+        chatId: chat.id,
+        stage3JobId: completedArtifact.jobId,
+        error: "copscopes_publication_not_queued_after_render"
+      });
+    }
+  }
 
   return {
     chatId: chat.id,

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { appendFlowAuditEvent } from "./audit-log-store";
-import { createOrGetChatByUrl, getChannelById } from "./chat-history";
+import { createOrGetChatByUrl, getChannelAssetById, getChannelById, listChannelAssets } from "./chat-history";
 import {
   createCopscopesDailyRun,
   markCopscopesSourceReel,
@@ -10,6 +10,12 @@ import {
   type CopscopesSourceReel,
   type CopscopesRunStatus
 } from "./copscopes-source-pool";
+import {
+  COPSCOPES_MIN_MAIN_CAPTION_CHARS,
+  ensureCopscopesCaptionHighlights,
+  resolveCopscopesProductionSourceCrop,
+  validateCopscopesRenderBodyForPublication
+} from "./copscopes-quality-gate";
 import { buildStage2RunChannelSnapshot } from "./stage2-run-channel-snapshot";
 import { buildStage2RunRequestSnapshot } from "./stage2-run-request";
 import { enqueueAndScheduleStage2Run, getStage2RunOrThrow } from "./stage2-run-runtime";
@@ -23,6 +29,7 @@ import { buildStage3RenderRequestDedupeKey } from "./stage3-render-request";
 import { normalizeRenderPlan, type Stage3RenderRequestBody } from "./stage3-render-service";
 import type { Stage3SourceCrop } from "../app/components/types";
 import type { Stage2Response } from "../app/components/types";
+import type { TemplateCaptionHighlights } from "./template-highlights";
 
 export type CopscopesStage3Review = {
   qualityGatePassed: boolean;
@@ -172,27 +179,64 @@ function extractCopscopesWinningCopy(stage2: Stage2Response): {
   bottomText: string;
   title: string;
   winningCaption: string;
+  captionHighlights: TemplateCaptionHighlights;
 } {
   const output = stage2.output;
-  const option = output.winner?.option ?? output.finalPick.option;
-  const story = output.storyOptions?.find((candidate) => candidate.option === option) ?? output.storyOptions?.[0] ?? null;
-  const classic =
-    output.classicOptions?.find((candidate) => candidate.option === option) ??
-    output.captionOptions.find((candidate) => candidate.option === option) ??
-    output.classicOptions?.[0] ??
-    output.captionOptions[0] ??
-    null;
-  const topText = story?.lead ?? classic?.top ?? "THE MOMENT TURNED FAST";
+  const selectedOption = output.winner?.option ?? output.finalPick.option;
+  const candidates = [
+    ...(output.storyOptions ?? []).map((candidate) => ({
+      option: candidate.option,
+      topText: candidate.lead,
+      bottomText: candidate.mainCaption,
+      highlights: candidate.highlights,
+      passed: candidate.constraintCheck?.passed !== false
+    })),
+    ...(output.classicOptions ?? []).map((candidate) => ({
+      option: candidate.option,
+      topText: candidate.top,
+      bottomText: candidate.bottom,
+      highlights: candidate.highlights,
+      passed: candidate.constraintCheck?.passed !== false
+    })),
+    ...output.captionOptions.map((candidate) => ({
+      option: candidate.option,
+      topText: candidate.top,
+      bottomText: candidate.bottom,
+      highlights: candidate.highlights,
+      passed: candidate.constraintCheck?.passed !== false
+    }))
+  ];
+  const selected = candidates.find((candidate) => candidate.option === selectedOption) ?? candidates[0] ?? null;
+  const denseSelected =
+    selected && selected.bottomText.replace(/\s+/g, " ").trim().length >= COPSCOPES_MIN_MAIN_CAPTION_CHARS
+      ? selected
+      : null;
+  const denseFallback =
+    candidates.find(
+      (candidate) =>
+        candidate.passed &&
+        candidate.bottomText.replace(/\s+/g, " ").trim().length >= COPSCOPES_MIN_MAIN_CAPTION_CHARS
+    ) ?? null;
+  const winner = denseSelected ?? denseFallback ?? selected;
+  const topText = winner?.topText ?? "THE MOMENT TURNED FAST";
   const bottomText =
-    story?.mainCaption ??
-    classic?.bottom ??
+    winner?.bottomText ??
     "The bodycam clip shows the decision point, the sudden move, and the consequence in one tight sequence.";
-  const title = output.titleOptions[0]?.title ?? `${topText}: CopScopes bodycam`;
+  const title =
+    output.titleOptions.find((candidate) => candidate.option === winner?.option)?.title ??
+    output.titleOptions[0]?.title ??
+    `${topText}: CopScopes bodycam`;
+  const captionHighlights = ensureCopscopesCaptionHighlights({
+    topText,
+    bottomText,
+    highlights: winner?.highlights ?? null
+  });
   return {
     topText,
     bottomText,
     title,
-    winningCaption: `${topText}. ${bottomText}`
+    winningCaption: `${topText}. ${bottomText}`,
+    captionHighlights
   };
 }
 
@@ -205,6 +249,13 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       error: "copscopes_channel_not_found"
     };
   }
+  const sourceCrop = resolveCopscopesProductionSourceCrop(
+    input.sourceCrop ?? input.reel.crop,
+    input.reel.cropConfidence
+  );
+  const avatarAsset = channel.avatarAssetId
+    ? await getChannelAssetById(channel.id, channel.avatarAssetId)
+    : (await listChannelAssets(channel.id, "avatar"))[0] ?? null;
   const chat = await createOrGetChatByUrl(input.reel.canonicalUrl, input.channelId);
   const sourceJob = enqueueAndScheduleSourceJob({
     workspaceId: input.workspaceId,
@@ -262,14 +313,22 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
   const stage2 = completedStage2.resultData as Stage2Response;
   const copy = extractCopscopesWinningCopy(stage2);
   const goalText = buildCopscopesStage3EditorGoal({
-    reel: input.reel,
+    reel: {
+      ...input.reel,
+      crop: sourceCrop,
+      cropConfidence: sourceCrop.confidence
+    },
     winningCaption: copy.winningCaption
   });
   const renderPlan = normalizeRenderPlan(
     {
       targetDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
       templateId: channel.templateId,
-      sourceCrop: input.sourceCrop,
+      sourceCrop,
+      avatarAssetId: avatarAsset?.id ?? null,
+      avatarAssetMimeType: avatarAsset?.mimeType ?? null,
+      authorName: channel.name,
+      authorHandle: `@${channel.username}`,
       editorSelectionMode: "fragments",
       segments: []
     },
@@ -299,6 +358,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
         topText: copy.topText,
         bottomText: copy.bottomText,
         sourceOverlayText: "",
+        captionHighlights: copy.captionHighlights,
         clipStartSec: 0,
         clipDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
         focusY: 0.5,
@@ -342,10 +402,28 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       error: "stage3_best_version_missing"
     };
   }
+  const renderSnapshot = {
+    ...snapshot,
+    captionHighlights: copy.captionHighlights,
+    renderPlan: {
+      ...snapshot.renderPlan,
+      sourceCrop,
+      avatarAssetId: avatarAsset?.id ?? null,
+      avatarAssetMimeType: avatarAsset?.mimeType ?? null,
+      authorName: channel.name,
+      authorHandle: `@${channel.username}`
+    }
+  };
 
-  const cropConfidence = input.sourceCrop?.confidence ?? input.reel.cropConfidence ?? 0;
-  const cropPassed = Boolean(input.sourceCrop?.enabled) && cropConfidence >= 0.55;
-  const qualityGatePassed = stage3.status === "applied" && stage3.finalScore >= 0.9 && cropPassed;
+  const gatePreview = validateCopscopesRenderBodyForPublication({
+    topText: renderSnapshot.topText,
+    bottomText: renderSnapshot.bottomText,
+    clipDurationSec: renderSnapshot.clipDurationSec,
+    renderPlan: renderSnapshot.renderPlan,
+    snapshot: renderSnapshot
+  });
+  const cropPassed = gatePreview.passed || !gatePreview.reasons.includes("source_crop_not_tight_enough");
+  const qualityGatePassed = stage3.status === "applied" && stage3.finalScore >= 0.9 && gatePreview.passed;
   if (!qualityGatePassed) {
     return {
       status: "needs_review",
@@ -359,7 +437,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
         finalDurationSec: snapshot.clipDurationSec,
         notes: [
           `Stage 3 score ${stage3.finalScore.toFixed(3)} did not clear the CopScopes queue gate.`,
-          cropPassed ? "Source crop confidence cleared the minimum gate." : "Source crop confidence is too low for blind queueing."
+          ...gatePreview.reasons
         ]
       },
       report: {
@@ -378,16 +456,22 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
     chatId: chat.id,
     publishAfterRender: true,
     renderTitle: copy.title,
-    topText: snapshot.topText,
-    bottomText: snapshot.bottomText,
-    sourceOverlayText: snapshot.sourceOverlayText,
-    templateId: snapshot.renderPlan.templateId,
-    clipStartSec: snapshot.clipStartSec,
-    clipDurationSec: snapshot.clipDurationSec,
-    focusY: snapshot.focusY,
+    topText: renderSnapshot.topText,
+    bottomText: renderSnapshot.bottomText,
+    sourceOverlayText: renderSnapshot.sourceOverlayText,
+    templateId: renderSnapshot.renderPlan.templateId,
+    clipStartSec: renderSnapshot.clipStartSec,
+    clipDurationSec: renderSnapshot.clipDurationSec,
+    focusY: renderSnapshot.focusY,
     agentPrompt: goalText,
-    renderPlan: snapshot.renderPlan,
-    snapshot
+    renderPlan: renderSnapshot.renderPlan,
+    snapshot: renderSnapshot,
+    copscopes: {
+      runId: input.runId,
+      sourceReelId: input.reel.id,
+      shortcode: input.reel.shortcode,
+      categorySlug: input.reel.categorySlug
+    }
   } satisfies Stage3RenderRequestBody;
   const executionTarget = resolveStage3Execution("host").resolvedTarget;
   const renderJob = enqueueAndScheduleStage3Job({
@@ -416,7 +500,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       finalDurationSec: snapshot.clipDurationSec,
       notes: [
         `Stage 3 cleared queue gate with score ${stage3.finalScore.toFixed(3)}.`,
-        "Render job was queued with publishAfterRender; publication is created only after render completion."
+        "Render job was queued; CopScopes source pool is marked consumed only after post-render quality gate and publication queueing pass."
       ]
     },
     report: {
@@ -580,14 +664,14 @@ export async function runCopscopesDailyPool(input: {
         sourceCrop: reel.crop
       });
       const queueAllowed = shouldQueueCopscopesStage3Render(result);
-      const finalStatus = queueAllowed ? "consumed" : result.status === "failed" ? "failed" : "needs_review";
+      const finalStatus = queueAllowed ? "in_progress" : result.status === "failed" ? "failed" : "needs_review";
       markCopscopesSourceReel({
         reelId: reel.id,
         status: finalStatus,
         chatId: result.chatId,
         stage2RunId: result.stage2RunId,
         stage3JobId: result.stage3JobId,
-        error: finalStatus === "consumed" ? null : result.error ?? "copscopes_quality_gate_failed"
+        error: finalStatus === "in_progress" ? null : result.error ?? "copscopes_quality_gate_failed"
       });
       recordCopscopesDailyRunItem({
         runId,
@@ -597,7 +681,7 @@ export async function runCopscopesDailyPool(input: {
         stage2RunId: result.stage2RunId,
         stage3JobId: result.stage3JobId,
         publicationId: result.publicationId,
-        errorMessage: finalStatus === "consumed" ? null : result.error ?? "copscopes_quality_gate_failed",
+        errorMessage: finalStatus === "in_progress" ? null : result.error ?? "copscopes_quality_gate_failed",
         result: {
           ...result.report,
           review: result.review ?? null,

@@ -1197,8 +1197,9 @@ Lead:
 
 Main Caption:
 - English only.
-- 2-5 compact sentences, usually 70-190 characters unless hard_constraints_json says otherwise.
-- Build a clean sequence: setup -> visible action -> consequence or unanswered tension.
+- 3-6 compact sentences, usually 190-260 characters unless hard_constraints_json says otherwise.
+- Build a clean sequence: setup -> visible action -> second pressure beat -> consequence or unanswered tension.
+- Do not collapse the story into one short summary sentence. The body should feel dense like Pale Witness, but still readable on screen.
 - Use specific objects when visible: cruiser, bridge, passenger door, flames, handcuffs, radio, bodycam, patrol car.
 - Keep it readable as an on-screen overlay. No long legal explanations.
 
@@ -1266,8 +1267,8 @@ Return strict JSON only in the expected captionHighlighting shape.`;
 export const COPSCOPES_STAGE2_HARD_CONSTRAINTS: Stage2HardConstraints = {
   topLengthMin: 6,
   topLengthMax: 56,
-  bottomLengthMin: 70,
-  bottomLengthMax: 220,
+  bottomLengthMin: 190,
+  bottomLengthMax: 340,
   bannedWords: [
     "shocking",
     "insane",

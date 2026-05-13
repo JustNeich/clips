@@ -12,6 +12,7 @@ import {
   createMcpAccessToken
 } from "../lib/mcp-token-store";
 import {
+  detectCopscopesSourceCrop,
   importCopscopesSourcePool,
   listCopscopesSourcePool,
   markCopscopesSourceReel,
@@ -19,6 +20,7 @@ import {
   selectCopscopesDailyCandidates,
   setActiveCopscopesCategory
 } from "../lib/copscopes-source-pool";
+import { COPSCOPES_TIGHT_SOURCE_CROP_SOURCE } from "../lib/copscopes-quality-gate";
 import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -169,6 +171,49 @@ test("CopScopes source pool import dedupes by canonical Instagram URL", async ()
       listed.reels.map((reel) => reel.canonicalUrl).sort(),
       ["https://www.instagram.com/reel/ABC123/", "https://www.instagram.com/reel/DEF456/"]
     );
+  });
+});
+
+test("CopScopes source pool upgrades weak default crops to the tight source-window crop", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    const crop = detectCopscopesSourceCrop({
+      crop: {
+        enabled: true,
+        x: 0.08,
+        y: 0.16,
+        width: 0.84,
+        height: 0.66,
+        confidence: 0.62,
+        source: "copscopes-default-inner-frame"
+      },
+      cropConfidence: 0.62
+    });
+
+    assert.equal(crop.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
+    assert.equal(crop.y >= 0.38, true);
+    assert.equal(crop.height <= 0.62, true);
+    assert.equal((crop.confidence ?? 0) >= 0.78, true);
+
+    importCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      items: [
+        {
+          url: "https://www.instagram.com/copscopes/reel/CROP1/",
+          categorySlug: "vehicle-pursuit"
+        }
+      ]
+    });
+    const reel = listCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id
+    }).reels[0];
+
+    assert.equal(reel.crop?.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
+    assert.equal(reel.crop?.y, 0.43);
+    assert.equal(reel.crop?.height, 0.57);
+    assert.equal((reel.cropConfidence ?? 0) >= 0.78, true);
   });
 });
 
