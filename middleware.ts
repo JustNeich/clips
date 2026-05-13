@@ -15,6 +15,7 @@ function isApiPublic(pathname: string): boolean {
     pathname.startsWith("/api/auth/register") ||
     pathname.startsWith("/api/auth/bootstrap-owner") ||
     pathname.startsWith("/api/auth/accept-invite") ||
+    pathname.startsWith("/api/ops/update-ghostface-channel-guidance") ||
     pathname.startsWith("/api/stage3/worker/")
   );
 }
