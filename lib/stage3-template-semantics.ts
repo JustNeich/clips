@@ -236,8 +236,8 @@ export function resolveTemplateStage2HardConstraints<
       ...constraints,
       topLengthMin: targetWindow.topLengthMin,
       topLengthMax: targetWindow.topLengthMax,
-      bottomLengthMin: targetWindow.bottomLengthMin,
-      bottomLengthMax: targetWindow.bottomLengthMax
+      bottomLengthMin: Math.max(targetWindow.bottomLengthMin, constraints.bottomLengthMin),
+      bottomLengthMax: Math.max(targetWindow.bottomLengthMax, constraints.bottomLengthMax)
     };
   }
   return {

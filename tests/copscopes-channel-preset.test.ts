@@ -150,6 +150,9 @@ test("Copscopes apply script updates an existing channel without mutating on dry
     assert.ok(snapshot.templateHighlightProfile);
     assert.equal(snapshot.templateHighlightProfile.bottomEnabled, true);
     assert.equal(snapshot.templateHighlightProfile.slots[0].color, "#f4df36");
+    assert.ok(snapshot.templateTextSemantics);
+    assert.equal(snapshot.templateTextSemantics.lengthHints.bottomLengthMin, 190);
+    assert.equal(snapshot.templateTextSemantics.lengthHints.bottomLengthMax, 340);
   });
 });
 
