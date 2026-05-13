@@ -86,9 +86,9 @@ small attempt budget. The runner only marks a Reel `consumed` after the Stage 3 
 the crop, exact 6-second duration, no CopScopes meta-layer leakage, and a publication-queue-safe
 render outcome.
 
-CopScopes source crops use `copscopes-tight-source-window-v3`: a strict upper source-footage band
-with safe zoom/focus and mirror disabled. Older `v2` crops are intentionally upgraded because they
-could still expose a lower `@copscopes` handle or bottom post chrome in some source Reels.
+CopScopes source crops use `copscopes-tight-source-window-v4`: a strict upper source-footage band
+with safe zoom/focus and mirror disabled. Older `v2`/`v3` crops are intentionally upgraded because
+they could still expose a lower `@copscopes` handle, watermark, or bottom post chrome in some source Reels.
 
 ## Source Reels Found
 

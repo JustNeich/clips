@@ -275,7 +275,7 @@ test("CopScopes source pool upgrades weak default crops to the tight source-wind
 
     assert.equal(crop.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
     assert.equal(crop.y >= 0.38, true);
-    assert.equal(crop.height <= 0.42, true);
+    assert.equal(crop.height <= 0.3, true);
     assert.equal((crop.confidence ?? 0) >= 0.78, true);
 
     importCopscopesSourcePool({
@@ -295,28 +295,33 @@ test("CopScopes source pool upgrades weak default crops to the tight source-wind
 
     assert.equal(reel.crop?.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
     assert.equal(reel.crop?.y, 0.43);
-    assert.equal(reel.crop?.height, 0.37);
+    assert.equal(reel.crop?.height, 0.24);
     assert.equal((reel.cropConfidence ?? 0) >= 0.78, true);
   });
 });
 
-test("CopScopes source crop upgrades prior v2 crops that still included the lower watermark band", async () => {
+test("CopScopes source crop upgrades prior v2/v3 crops that still included the lower watermark band", async () => {
   await withIsolatedAppData(async () => {
-    const crop = detectCopscopesSourceCrop({
-      crop: {
-        enabled: true,
-        x: 0.02,
-        y: 0.43,
-        width: 0.96,
-        height: 0.57,
-        confidence: 0.88,
-        source: "copscopes-tight-source-window-v2"
-      },
-      cropConfidence: 0.88
-    });
+    for (const previous of [
+      { source: "copscopes-tight-source-window-v2", height: 0.57 },
+      { source: "copscopes-tight-source-window-v3", height: 0.37 }
+    ]) {
+      const crop = detectCopscopesSourceCrop({
+        crop: {
+          enabled: true,
+          x: 0.02,
+          y: 0.43,
+          width: 0.96,
+          height: previous.height,
+          confidence: 0.88,
+          source: previous.source
+        },
+        cropConfidence: 0.88
+      });
 
-    assert.equal(crop.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
-    assert.equal(crop.height, 0.37);
+      assert.equal(crop.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
+      assert.equal(crop.height, 0.24);
+    }
   });
 });
 

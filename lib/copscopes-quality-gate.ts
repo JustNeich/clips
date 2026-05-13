@@ -8,13 +8,13 @@ import {
   type TemplateCaptionHighlights
 } from "./template-highlights";
 
-export const COPSCOPES_TIGHT_SOURCE_CROP_SOURCE = "copscopes-tight-source-window-v3";
+export const COPSCOPES_TIGHT_SOURCE_CROP_SOURCE = "copscopes-tight-source-window-v4";
 export const COPSCOPES_MIN_MAIN_CAPTION_CHARS = 190;
 export const COPSCOPES_MAX_MAIN_CAPTION_CHARS = 340;
 export const COPSCOPES_MIN_CROP_CONFIDENCE = 0.78;
 export const COPSCOPES_MIN_CROP_Y = 0.38;
-export const COPSCOPES_MAX_CROP_HEIGHT = 0.42;
-export const COPSCOPES_MIN_CROP_BOTTOM = 0.78;
+export const COPSCOPES_MAX_CROP_HEIGHT = 0.3;
+export const COPSCOPES_MIN_CROP_BOTTOM = 0.64;
 export const COPSCOPES_MIN_VIDEO_ZOOM = 1.08;
 export const COPSCOPES_MAX_FOCUS_Y = 0.47;
 
@@ -40,11 +40,11 @@ export function createCopscopesTightSourceCrop(confidence?: number | null): Stag
     x: 0.02,
     y: 0.43,
     width: 0.96,
-    height: 0.37,
+    height: 0.24,
     confidence: Math.max(COPSCOPES_MIN_CROP_CONFIDENCE, normalizeConfidence(confidence, 0.88)),
     source: COPSCOPES_TIGHT_SOURCE_CROP_SOURCE,
     notes:
-      "Tight crop keeps the clean upper source-footage band from CopScopes Reels and removes channel text, frame, and lower handle/watermark layers before fitting."
+      "Tight crop keeps only the clean upper source-footage band from CopScopes Reels and removes channel text, frame, lower handle/watermark, and bottom post-chrome layers before fitting."
   };
 }
 
