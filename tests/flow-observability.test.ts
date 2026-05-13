@@ -521,6 +521,15 @@ test("admin flow APIs and MCP token routes are owner-only for session auth", asy
     assert.equal(ownerTokenResponse.status, 201);
     assert.match(created.token, /^clips_mcp_/);
 
+    const ownerControlTokenResponse = await createMcpTokenRoute(new Request("http://localhost/api/admin/mcp-tokens", {
+      method: "POST",
+      headers: { cookie: ownerCookie, "content-type": "application/json" },
+      body: JSON.stringify({ expiresInDays: 1, scopes: ["flow:read", "control:write"] })
+    }));
+    const createdControl = (await ownerControlTokenResponse.json()) as { token: string; record: McpToken };
+    assert.equal(ownerControlTokenResponse.status, 201);
+    assert.deepEqual(createdControl.record.scopes, ["flow:read", "control:write"]);
+
     const bearerResponse = await getAdminAuditEvents(new Request("http://localhost/api/admin/audit-events", {
       headers: { authorization: `Bearer ${created.token}` }
     }));

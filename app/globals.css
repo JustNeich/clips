@@ -8450,7 +8450,7 @@ select.text-input:focus {
 
 .admin-flows-mcp {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto minmax(220px, 1.2fr);
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 0.7fr) auto minmax(220px, 1.2fr);
   gap: 12px;
   align-items: start;
   padding-top: 12px;
@@ -8460,6 +8460,14 @@ select.text-input:focus {
 .admin-flows-mcp h2 {
   margin: 0;
   font-size: 1rem;
+}
+
+.admin-flows-mcp-mode {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .admin-flows-mcp pre,

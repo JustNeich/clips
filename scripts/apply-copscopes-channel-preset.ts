@@ -17,6 +17,7 @@ type ApplyArgs = {
   username: string;
   dryRun: boolean;
   templateMode?: "managed" | "preserve";
+  workspaceId?: string;
 };
 
 type ChannelRow = {
@@ -87,19 +88,31 @@ function parseArgs(argv: string[]): ApplyArgs {
   return args;
 }
 
-function findChannelByUsername(username: string): ChannelRow | null {
+function findChannelByUsername(username: string, workspaceId?: string): ChannelRow | null {
   const db = getDb();
   const normalized = username.trim().replace(/^@+/, "").toLowerCase();
-  const row = db
-    .prepare(
-      `SELECT id, workspace_id, name, username
-       FROM channels
-       WHERE archived_at IS NULL
-         AND lower(username) = ?
-       ORDER BY updated_at DESC
-       LIMIT 1`
-    )
-    .get(normalized) as ChannelRow | undefined;
+  const row = workspaceId
+    ? (db
+        .prepare(
+          `SELECT id, workspace_id, name, username
+             FROM channels
+            WHERE workspace_id = ?
+              AND archived_at IS NULL
+              AND lower(username) = ?
+            ORDER BY updated_at DESC
+            LIMIT 1`
+        )
+        .get(workspaceId, normalized) as ChannelRow | undefined)
+    : (db
+        .prepare(
+          `SELECT id, workspace_id, name, username
+             FROM channels
+            WHERE archived_at IS NULL
+              AND lower(username) = ?
+            ORDER BY updated_at DESC
+            LIMIT 1`
+        )
+        .get(normalized) as ChannelRow | undefined);
   return row ?? null;
 }
 
@@ -159,7 +172,7 @@ export async function applyCopscopesChannelPreset(args: ApplyArgs): Promise<{
   examplesCount: number;
   defaultClipDurationSec: number;
 }> {
-  const row = findChannelByUsername(args.username);
+  const row = findChannelByUsername(args.username, args.workspaceId);
   if (!row) {
     throw new Error(
       `Channel @${args.username} was not found in the active APP_DATA_DIR database. ` +

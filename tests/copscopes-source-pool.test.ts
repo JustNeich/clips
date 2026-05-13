@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { POST as copscopesControlRoute } from "../app/api/admin/control/copscopes/route";
 import { createChannel } from "../lib/chat-history";
 import {
   authenticateMcpControlWriteToken,
@@ -79,6 +80,54 @@ test("MCP flow:read token cannot authenticate control tools while control:write 
     });
     assert.ok(authenticateMcpFlowReadToken(controlToken.token));
     assert.ok(authenticateMcpControlWriteToken(controlToken.token));
+  });
+});
+
+test("CopScopes control API rejects flow:read tokens and accepts control:write tokens", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner } = await seedCopscopes();
+    const readToken = createMcpAccessToken({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      expiresInDays: 1
+    });
+    const readResponse = await copscopesControlRoute(
+      new Request("http://localhost/api/admin/control/copscopes", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${readToken.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          tool: "clips_control_list_source_pool",
+          input: { channelUsername: "copscopes" }
+        })
+      })
+    );
+    assert.equal(readResponse.status, 401);
+
+    const controlToken = createMcpAccessToken({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      expiresInDays: 1,
+      scopes: ["flow:read", "control:write"]
+    });
+    const controlResponse = await copscopesControlRoute(
+      new Request("http://localhost/api/admin/control/copscopes", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${controlToken.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          tool: "clips_control_list_source_pool",
+          input: { channelUsername: "copscopes" }
+        })
+      })
+    );
+    const body = (await controlResponse.json()) as { categories?: unknown[] };
+    assert.equal(controlResponse.status, 200);
+    assert.ok(Array.isArray(body.categories));
   });
 });
 
@@ -172,4 +221,3 @@ test("CopScopes daily selector skips unavailable items and exhausts empty active
     assert.equal(category?.status, "exhausted");
   });
 });
-

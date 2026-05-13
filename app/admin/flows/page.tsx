@@ -92,6 +92,7 @@ type McpToken = {
 };
 
 type TabId = "summary" | "inputs" | "prompts" | "outputs" | "stage3" | "publication" | "raw";
+type McpTokenMode = "read" | "control";
 
 const EMPTY_METRICS: FlowMetrics = {
   total: 0,
@@ -210,6 +211,7 @@ export default function AdminFlowsPage() {
   const [toDate, setToDate] = useState("");
   const [tokens, setTokens] = useState<McpToken[]>([]);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
+  const [newTokenMode, setNewTokenMode] = useState<McpTokenMode>("read");
   const [statusText, setStatusText] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -356,7 +358,10 @@ export default function AdminFlowsPage() {
       const response = await fetch("/api/admin/mcp-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expiresInDays: 30 })
+        body: JSON.stringify({
+          expiresInDays: 30,
+          scopes: newTokenMode === "control" ? ["flow:read", "control:write"] : ["flow:read"]
+        })
       });
       const body = (await response.json().catch(() => null)) as
         | { token?: string; record?: McpToken; error?: string }
@@ -366,7 +371,11 @@ export default function AdminFlowsPage() {
       }
       setCreatedToken(body?.token ?? null);
       await loadTokens();
-      setStatusText("MCP token создан. Он показан только один раз.");
+      setStatusText(
+        newTokenMode === "control"
+          ? "Control MCP token создан. Он показан только один раз."
+          : "Read-only MCP token создан. Он показан только один раз."
+      );
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Не удалось создать MCP token.");
     } finally {
@@ -591,8 +600,20 @@ export default function AdminFlowsPage() {
           <section className="admin-flows-mcp">
             <div>
               <h2>MCP-доступ</h2>
-              <p>Доступ только на чтение к trace для внешних аудитов.</p>
+              <p>Read-only token читает trace. Control-write token может запускать разрешённые control tools.</p>
             </div>
+            <label className="admin-flows-mcp-mode">
+              Scope
+              <select
+                className="text-input"
+                value={newTokenMode}
+                onChange={(event) => setNewTokenMode(event.target.value === "control" ? "control" : "read")}
+                disabled={busy}
+              >
+                <option value="read">Read-only trace</option>
+                <option value="control">Control write</option>
+              </select>
+            </label>
             <button className="btn btn-primary" type="button" onClick={() => void createToken()} disabled={busy}>
               Новый token
             </button>
@@ -601,6 +622,7 @@ export default function AdminFlowsPage() {
               {tokens.slice(0, 4).map((token) => (
                 <li key={token.id}>
                   <span>...{token.tokenHint}</span>
+                  <small>{token.scopes.join(", ") || "flow:read"}</small>
                   <small>{token.revokedAt ? "отозван" : `до ${formatDate(token.expiresAt)}`}</small>
                   {!token.revokedAt ? (
                     <button type="button" onClick={() => void revokeToken(token.id)} disabled={busy}>

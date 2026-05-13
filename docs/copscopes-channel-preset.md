@@ -59,6 +59,12 @@ CLIPS_MCP_TOKEN=<control-write-token> npm run mcp:control
 ```
 
 The token must include `control:write`; old `flow:read` tokens cannot call control tools.
+In production, create this from Owner Observability -> MCP access by choosing `Control write`.
+For a local MCP client pointed at production, pass the app URL as well:
+
+```bash
+CLIPS_APP_URL=https://clips-vy11.onrender.com CLIPS_MCP_TOKEN=<control-write-token> npm run mcp:control
+```
 
 Available control tools:
 

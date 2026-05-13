@@ -14,7 +14,7 @@ import {
 } from "../lib/copscopes-source-pool";
 import { runCopscopesDailyPool } from "../lib/copscopes-daily-runner";
 import { getDb } from "../lib/db/client";
-import { authenticateMcpControlWriteToken } from "../lib/mcp-token-store";
+import { authenticateMcpControlWriteToken, type McpTokenAuthContext } from "../lib/mcp-token-store";
 import { applyCopscopesChannelPreset } from "./apply-copscopes-channel-preset";
 import type { Stage3SourceCrop } from "../app/components/types";
 
@@ -25,14 +25,16 @@ type ChannelRow = {
   username: string;
 };
 
+const appUrl = process.env.CLIPS_APP_URL?.trim().replace(/\/+$/, "") ?? "";
+const remoteMode = Boolean(appUrl);
 const token = process.env.CLIPS_MCP_TOKEN?.trim() ?? "";
 if (!token) {
   console.error("CLIPS_MCP_TOKEN is required.");
   process.exit(1);
 }
 
-const authenticated = authenticateMcpControlWriteToken(token);
-if (!authenticated) {
+const authenticated = remoteMode ? null : authenticateMcpControlWriteToken(token);
+if (!remoteMode && !authenticated) {
   console.error("CLIPS_MCP_TOKEN must be a non-revoked token with control:write scope.");
   process.exit(1);
 }
@@ -49,7 +51,37 @@ function jsonContent(value: unknown) {
   };
 }
 
+function getLocalAuth(): McpTokenAuthContext {
+  if (!auth) {
+    throw new Error("Local control mode requires a valid control:write token.");
+  }
+  return auth;
+}
+
+async function remoteControl(tool: string, input: Record<string, unknown>): Promise<ReturnType<typeof jsonContent>> {
+  const response = await fetch(`${appUrl}/api/admin/control/copscopes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ tool, input })
+  });
+  const text = await response.text();
+  const payload = text ? (JSON.parse(text) as unknown) : null;
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && "error" in payload
+        ? String((payload as Record<string, unknown>).error)
+        : `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return jsonContent(payload);
+}
+
 function findChannelByUsername(username: string): ChannelRow {
+  const localAuth = getLocalAuth();
   const normalized = username.trim().replace(/^@+/, "").toLowerCase();
   const row = getDb()
     .prepare(
@@ -61,7 +93,7 @@ function findChannelByUsername(username: string): ChannelRow {
         ORDER BY updated_at DESC
         LIMIT 1`
     )
-    .get(auth.workspace.id, normalized) as ChannelRow | undefined;
+    .get(localAuth.workspace.id, normalized) as ChannelRow | undefined;
   if (!row) {
     throw new Error(`Channel @${normalized} was not found in the active APP_DATA_DIR database.`);
   }
@@ -79,17 +111,18 @@ function auditControl(input: {
   status: string;
   payload?: Record<string, unknown> | null;
 }): void {
+  const localAuth = getLocalAuth();
   appendFlowAuditEvent({
-    workspaceId: auth.workspace.id,
-    userId: auth.user.id,
+    workspaceId: localAuth.workspace.id,
+    userId: localAuth.user.id,
     action: input.action,
     entityType: "mcp_control",
-    entityId: input.entityId ?? input.channelId ?? auth.token.id,
+    entityId: input.entityId ?? input.channelId ?? localAuth.token.id,
     channelId: input.channelId ?? null,
     stage: "mcp",
     status: input.status,
     payload: {
-      tokenHint: auth.token.tokenHint,
+      tokenHint: localAuth.token.tokenHint,
       ...input.payload
     }
   });
@@ -157,6 +190,13 @@ server.registerTool(
     })
   },
   async ({ username, dryRun, preserveTemplate }) => {
+    if (remoteMode) {
+      return remoteControl("clips_control_apply_channel_preset", {
+        username,
+        dryRun: Boolean(dryRun),
+        preserveTemplate: Boolean(preserveTemplate)
+      });
+    }
     const channel = resolveChannel(username);
     auditControl({
       action: "copscopes_control.apply_preset.attempted",
@@ -171,7 +211,8 @@ server.registerTool(
     const result = await applyCopscopesChannelPreset({
       username: channel.username,
       dryRun: Boolean(dryRun),
-      templateMode: preserveTemplate ? "preserve" : "managed"
+      templateMode: preserveTemplate ? "preserve" : "managed",
+      workspaceId: getLocalAuth().workspace.id
     });
     auditControl({
       action: "copscopes_control.apply_preset.succeeded",
@@ -202,6 +243,16 @@ server.registerTool(
     })
   },
   async ({ channelUsername, items, dryRun, exportMarkdown, exportCsv }) => {
+    if (remoteMode) {
+      return remoteControl("clips_control_import_source_pool", {
+        channelUsername,
+        items,
+        dryRun: Boolean(dryRun),
+        exportMarkdown: Boolean(exportMarkdown),
+        exportCsv: Boolean(exportCsv)
+      });
+    }
+    const localAuth = getLocalAuth();
     const channel = resolveChannel(channelUsername);
     auditControl({
       action: "copscopes_control.import_source_pool.attempted",
@@ -210,7 +261,7 @@ server.registerTool(
       payload: { count: items.length, dryRun: Boolean(dryRun) }
     });
     const result = importCopscopesSourcePool({
-      workspaceId: auth.workspace.id,
+      workspaceId: localAuth.workspace.id,
       channelId: channel.id,
       items: items.map((item) => ({
         ...item,
@@ -219,7 +270,7 @@ server.registerTool(
       dryRun: Boolean(dryRun)
     });
     const listed = listCopscopesSourcePool({
-      workspaceId: auth.workspace.id,
+      workspaceId: localAuth.workspace.id,
       channelId: channel.id
     });
     const response = {
@@ -260,9 +311,20 @@ server.registerTool(
     })
   },
   async ({ channelUsername, categorySlug, status, limit, exportMarkdown, exportCsv }) => {
+    if (remoteMode) {
+      return remoteControl("clips_control_list_source_pool", {
+        channelUsername,
+        categorySlug,
+        status,
+        limit,
+        exportMarkdown: Boolean(exportMarkdown),
+        exportCsv: Boolean(exportCsv)
+      });
+    }
+    const localAuth = getLocalAuth();
     const channel = resolveChannel(channelUsername);
     const result = listCopscopesSourcePool({
-      workspaceId: auth.workspace.id,
+      workspaceId: localAuth.workspace.id,
       channelId: channel.id,
       categorySlug,
       status: status as CopscopesSourceStatus | undefined,
@@ -287,9 +349,16 @@ server.registerTool(
     })
   },
   async ({ channelUsername, categorySlug }) => {
+    if (remoteMode) {
+      return remoteControl("clips_control_set_active_category", {
+        channelUsername,
+        categorySlug
+      });
+    }
+    const localAuth = getLocalAuth();
     const channel = resolveChannel(channelUsername);
     const category = setActiveCopscopesCategory({
-      workspaceId: auth.workspace.id,
+      workspaceId: localAuth.workspace.id,
       channelId: channel.id,
       categorySlug
     });
@@ -317,11 +386,21 @@ server.registerTool(
     })
   },
   async ({ channelUsername, categorySlug, limit, attemptBudget, dryRun }) => {
+    if (remoteMode) {
+      return remoteControl("clips_control_run_daily_pool", {
+        channelUsername,
+        categorySlug,
+        limit,
+        attemptBudget,
+        dryRun: Boolean(dryRun)
+      });
+    }
+    const localAuth = getLocalAuth();
     const channel = resolveChannel(channelUsername);
     const result = await runCopscopesDailyPool({
-      workspaceId: auth.workspace.id,
+      workspaceId: localAuth.workspace.id,
       channelId: channel.id,
-      userId: auth.user.id,
+      userId: localAuth.user.id,
       categorySlug,
       limit,
       attemptBudget,
