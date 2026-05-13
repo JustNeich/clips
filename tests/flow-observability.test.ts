@@ -556,7 +556,7 @@ test("admin flow APIs and MCP token routes are owner-only for session auth", asy
   });
 });
 
-test("middleware lets read-only MCP bearer tokens reach flow observability APIs only", () => {
+test("middleware lets MCP bearer tokens reach route-level scoped APIs only", () => {
   const flowResponse = middleware(
     new NextRequest("http://localhost/api/admin/flows", {
       headers: { authorization: "Bearer clips_mcp_test" }
@@ -570,6 +570,13 @@ test("middleware lets read-only MCP bearer tokens reach flow observability APIs 
     })
   );
   assert.notEqual(traceResponse.status, 401);
+
+  const controlResponse = middleware(
+    new NextRequest("http://localhost/api/admin/control/copscopes", {
+      headers: { authorization: "Bearer clips_mcp_test" }
+    })
+  );
+  assert.notEqual(controlResponse.status, 401);
 
   const tokenMutationResponse = middleware(
     new NextRequest("http://localhost/api/admin/mcp-tokens", {
