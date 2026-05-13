@@ -73,6 +73,7 @@ Available control tools:
 - `clips_control_list_source_pool`
 - `clips_control_set_active_category`
 - `clips_control_reset_source_pool_item` (operator retry path for failed or reviewed source Reels)
+- `clips_control_cancel_publication` (removes an unsafe queued/scheduled CopScopes publication, including remote YouTube deletion when applicable)
 - `clips_control_run_daily_pool`
 
 Source pool records are stored in `copscopes_source_categories`, `copscopes_source_reels`,
@@ -84,6 +85,10 @@ Daily pool runs select from the active category with a default limit of 3 finish
 small attempt budget. The runner only marks a Reel `consumed` after the Stage 3 review gate confirms
 the crop, exact 6-second duration, no CopScopes meta-layer leakage, and a publication-queue-safe
 render outcome.
+
+CopScopes source crops use `copscopes-tight-source-window-v3`: a strict upper source-footage band
+with safe zoom/focus and mirror disabled. Older `v2` crops are intentionally upgraded because they
+could still expose a lower `@copscopes` handle or bottom post chrome in some source Reels.
 
 ## Source Reels Found
 

@@ -45,11 +45,14 @@ test("CopScopes quality gate accepts dense text with avatar, yellow highlights, 
     clipDurationSec: 6,
     renderPlan: {
       sourceCrop: createCopscopesTightSourceCrop(),
-      avatarAssetId: "avatar_123"
+      avatarAssetId: "avatar_123",
+      videoZoom: 1.08,
+      mirrorEnabled: false
     },
     snapshot: {
       bottomText: denseBody,
       clipDurationSec: 6,
+      focusY: 0.47,
       captionHighlights: highlights
     }
   });
@@ -57,4 +60,31 @@ test("CopScopes quality gate accepts dense text with avatar, yellow highlights, 
   assert.equal(result.passed, true);
   assert.equal(highlights.bottom.length >= 2, true);
   assert.equal(createCopscopesTightSourceCrop().source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
+});
+
+test("CopScopes quality gate rejects source windows that can expose lower meta bands", () => {
+  const result = validateCopscopesRenderBodyForPublication({
+    bottomText: denseBody,
+    clipDurationSec: 6,
+    renderPlan: {
+      sourceCrop: createCopscopesTightSourceCrop(),
+      avatarAssetId: "avatar_123",
+      videoZoom: 1,
+      mirrorEnabled: true
+    },
+    snapshot: {
+      bottomText: denseBody,
+      clipDurationSec: 6,
+      focusY: 0.5,
+      captionHighlights: ensureCopscopesCaptionHighlights({
+        topText: "THE PASSENGER FIRST",
+        bottomText: denseBody
+      })
+    }
+  });
+
+  assert.equal(result.passed, false);
+  assert.ok(result.reasons.includes("source_window_not_safely_zoomed"));
+  assert.ok(result.reasons.includes("source_window_not_lifted_above_lower_meta"));
+  assert.ok(result.reasons.includes("source_window_mirror_must_be_disabled"));
 });

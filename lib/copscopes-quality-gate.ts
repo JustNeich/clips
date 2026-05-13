@@ -8,12 +8,15 @@ import {
   type TemplateCaptionHighlights
 } from "./template-highlights";
 
-export const COPSCOPES_TIGHT_SOURCE_CROP_SOURCE = "copscopes-tight-source-window-v2";
+export const COPSCOPES_TIGHT_SOURCE_CROP_SOURCE = "copscopes-tight-source-window-v3";
 export const COPSCOPES_MIN_MAIN_CAPTION_CHARS = 190;
 export const COPSCOPES_MAX_MAIN_CAPTION_CHARS = 340;
 export const COPSCOPES_MIN_CROP_CONFIDENCE = 0.78;
 export const COPSCOPES_MIN_CROP_Y = 0.38;
-export const COPSCOPES_MAX_CROP_HEIGHT = 0.62;
+export const COPSCOPES_MAX_CROP_HEIGHT = 0.42;
+export const COPSCOPES_MIN_CROP_BOTTOM = 0.78;
+export const COPSCOPES_MIN_VIDEO_ZOOM = 1.08;
+export const COPSCOPES_MAX_FOCUS_Y = 0.47;
 
 const HIGHLIGHT_SLOT_ID = "slot1" as const;
 
@@ -37,11 +40,11 @@ export function createCopscopesTightSourceCrop(confidence?: number | null): Stag
     x: 0.02,
     y: 0.43,
     width: 0.96,
-    height: 0.57,
+    height: 0.37,
     confidence: Math.max(COPSCOPES_MIN_CROP_CONFIDENCE, normalizeConfidence(confidence, 0.88)),
     source: COPSCOPES_TIGHT_SOURCE_CROP_SOURCE,
     notes:
-      "Tight crop keeps only the original source footage area from CopScopes Reels and removes the channel text/frame layer before fitting."
+      "Tight crop keeps the clean upper source-footage band from CopScopes Reels and removes channel text, frame, and lower handle/watermark layers before fitting."
   };
 }
 
@@ -54,7 +57,7 @@ export function isCopscopesTightSourceCrop(crop: Stage3SourceCrop | null | undef
   return (
     normalized.y >= COPSCOPES_MIN_CROP_Y &&
     normalized.height <= COPSCOPES_MAX_CROP_HEIGHT &&
-    normalized.y + normalized.height >= 0.92 &&
+    normalized.y + normalized.height >= COPSCOPES_MIN_CROP_BOTTOM &&
     confidence >= COPSCOPES_MIN_CROP_CONFIDENCE
   );
 }
@@ -184,6 +187,14 @@ export function validateCopscopesRenderBodyForPublication(
         ? body.clipDurationSec
         : null;
   const crop = normalizeStage3SourceCrop(renderPlan?.sourceCrop ?? null, null);
+  const focusY =
+    typeof snapshot?.focusY === "number" && Number.isFinite(snapshot.focusY)
+      ? snapshot.focusY
+      : null;
+  const videoZoom =
+    typeof renderPlan?.videoZoom === "number" && Number.isFinite(renderPlan.videoZoom)
+      ? renderPlan.videoZoom
+      : null;
   const highlights = ensureCopscopesCaptionHighlights({
     topText: snapshot?.topText ?? body.topText ?? "",
     bottomText,
@@ -202,6 +213,15 @@ export function validateCopscopesRenderBodyForPublication(
   }
   if (!isCopscopesTightSourceCrop(crop)) {
     reasons.push("source_crop_not_tight_enough");
+  }
+  if (videoZoom === null || videoZoom < COPSCOPES_MIN_VIDEO_ZOOM) {
+    reasons.push("source_window_not_safely_zoomed");
+  }
+  if (focusY === null || focusY > COPSCOPES_MAX_FOCUS_Y) {
+    reasons.push("source_window_not_lifted_above_lower_meta");
+  }
+  if (renderPlan?.mirrorEnabled !== false) {
+    reasons.push("source_window_mirror_must_be_disabled");
   }
   if (highlights.bottom.length < 2) {
     reasons.push("missing_yellow_caption_highlights");

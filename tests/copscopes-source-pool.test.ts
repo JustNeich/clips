@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import { POST as copscopesControlRoute } from "../app/api/admin/control/copscopes/route";
-import { createChannel } from "../lib/chat-history";
+import { createChannel, createOrGetChatByUrl } from "../lib/chat-history";
 import {
   authenticateMcpControlWriteToken,
   authenticateMcpFlowReadToken,
@@ -21,6 +21,12 @@ import {
   setActiveCopscopesCategory
 } from "../lib/copscopes-source-pool";
 import { COPSCOPES_TIGHT_SOURCE_CROP_SOURCE } from "../lib/copscopes-quality-gate";
+import {
+  createChannelPublication,
+  createRenderExport,
+  getChannelPublicationById
+} from "../lib/publication-store";
+import { enqueueStage3Job } from "../lib/stage3-job-store";
 import { bootstrapOwner } from "../lib/team-store";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
@@ -135,6 +141,80 @@ test("CopScopes control API rejects flow:read tokens and accepts control:write t
   });
 });
 
+test("CopScopes control API can cancel a queued publication with control:write", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    const chat = await createOrGetChatByUrl("https://www.instagram.com/reel/CANCEL1/", channel.id);
+    const stage3Job = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({ chatId: chat.id, channelId: channel.id })
+    });
+    const artifactPath = path.join(process.env.APP_DATA_DIR!, "copscopes-control-cancel.mp4");
+    await writeFile(artifactPath, "video");
+    const renderExport = createRenderExport({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      stage3JobId: stage3Job.id,
+      artifactFileName: "copscopes-control-cancel.mp4",
+      artifactFilePath: artifactPath,
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 5,
+      renderTitle: "Unsafe CopScopes render",
+      sourceUrl: "https://www.instagram.com/reel/CANCEL1/",
+      snapshotJson: "{}",
+      createdByUserId: owner.user.id
+    });
+    const publication = createChannelPublication({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      renderExportId: renderExport.id,
+      scheduleMode: "slot",
+      scheduledAt: "2040-01-01T10:00:00.000Z",
+      uploadReadyAt: "2040-01-01T09:00:00.000Z",
+      slotDate: "2040-01-01",
+      slotIndex: 0,
+      title: "Unsafe CopScopes render",
+      description: "desc",
+      tags: [],
+      notifySubscribers: true,
+      needsReview: false,
+      createdByUserId: owner.user.id
+    });
+    const controlToken = createMcpAccessToken({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      expiresInDays: 1,
+      scopes: ["flow:read", "control:write"]
+    });
+
+    const response = await copscopesControlRoute(
+      new Request("http://localhost/api/admin/control/copscopes", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${controlToken.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          tool: "clips_control_cancel_publication",
+          input: {
+            channelUsername: "copscopes",
+            publicationId: publication.id
+          }
+        })
+      })
+    );
+    const body = (await response.json()) as { publication?: { status?: string } };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.publication?.status, "canceled");
+    assert.equal(getChannelPublicationById(publication.id)?.status, "canceled");
+  });
+});
+
 test("CopScopes source pool import dedupes by canonical Instagram URL", async () => {
   await withIsolatedAppData(async () => {
     const { owner, channel } = await seedCopscopes();
@@ -192,7 +272,7 @@ test("CopScopes source pool upgrades weak default crops to the tight source-wind
 
     assert.equal(crop.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
     assert.equal(crop.y >= 0.38, true);
-    assert.equal(crop.height <= 0.62, true);
+    assert.equal(crop.height <= 0.42, true);
     assert.equal((crop.confidence ?? 0) >= 0.78, true);
 
     importCopscopesSourcePool({
@@ -212,8 +292,28 @@ test("CopScopes source pool upgrades weak default crops to the tight source-wind
 
     assert.equal(reel.crop?.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
     assert.equal(reel.crop?.y, 0.43);
-    assert.equal(reel.crop?.height, 0.57);
+    assert.equal(reel.crop?.height, 0.37);
     assert.equal((reel.cropConfidence ?? 0) >= 0.78, true);
+  });
+});
+
+test("CopScopes source crop upgrades prior v2 crops that still included the lower watermark band", async () => {
+  await withIsolatedAppData(async () => {
+    const crop = detectCopscopesSourceCrop({
+      crop: {
+        enabled: true,
+        x: 0.02,
+        y: 0.43,
+        width: 0.96,
+        height: 0.57,
+        confidence: 0.88,
+        source: "copscopes-tight-source-window-v2"
+      },
+      cropConfidence: 0.88
+    });
+
+    assert.equal(crop.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
+    assert.equal(crop.height, 0.37);
   });
 });
 

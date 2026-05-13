@@ -155,7 +155,7 @@ test("CopScopes daily run processes up to 3 queued items in isolated DB", async 
       channelId: channel.id,
       categorySlug: "vehicle-pursuit"
     });
-    assert.equal(listed.reels.filter((reel) => reel.status === "consumed").length, 3);
+    assert.equal(listed.reels.filter((reel) => reel.status === "in_progress").length, 3);
     assert.equal(listed.reels.filter((reel) => reel.status === "available").length, 2);
   });
 });
@@ -212,8 +212,7 @@ test("CopScopes daily run keeps failed crop reviews out of publication queue and
       channelId: channel.id,
       categorySlug: "vehicle-pursuit"
     });
-    assert.equal(listed.reels.filter((reel) => reel.status === "consumed").length, 3);
+    assert.equal(listed.reels.filter((reel) => reel.status === "in_progress").length, 3);
     assert.equal(listed.reels.filter((reel) => reel.status === "needs_review").length, 1);
   });
 });
-

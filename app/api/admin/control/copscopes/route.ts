@@ -12,6 +12,8 @@ import {
 } from "../../../../../lib/copscopes-source-pool";
 import { runCopscopesDailyPool } from "../../../../../lib/copscopes-daily-runner";
 import { getDb } from "../../../../../lib/db/client";
+import { deleteChannelPublicationWithRemoteSync } from "../../../../../lib/channel-publication-service";
+import { getChannelPublicationById } from "../../../../../lib/publication-store";
 import { applyCopscopesChannelPreset } from "../../../../../scripts/apply-copscopes-channel-preset";
 import type { Stage3SourceCrop } from "../../../../components/types";
 
@@ -300,6 +302,44 @@ export async function POST(request: Request): Promise<Response> {
         }
       });
       return Response.json({ channel: summarizeChannel(channel), reel }, { status: 200 });
+    }
+
+    if (tool === "clips_control_cancel_publication") {
+      const publicationId = resolveString(input.publicationId);
+      if (!publicationId) {
+        return Response.json({ error: "publicationId is required." }, { status: 400 });
+      }
+      const publication = getChannelPublicationById(publicationId);
+      if (!publication || publication.workspaceId !== auth.workspace.id || publication.channelId !== channel.id) {
+        return Response.json({ error: "Publication was not found for this CopScopes channel." }, { status: 404 });
+      }
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "copscopes_control.cancel_publication.attempted",
+        channelId: channel.id,
+        entityId: publication.id,
+        status: "attempted",
+        payload: {
+          title: publication.title,
+          status: publication.status,
+          youtubeVideoUrl: publication.youtubeVideoUrl
+        }
+      });
+      const canceled = await deleteChannelPublicationWithRemoteSync(publication.id, { userId: auth.user.id });
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "copscopes_control.cancel_publication.succeeded",
+        channelId: channel.id,
+        entityId: canceled.id,
+        status: "succeeded",
+        payload: {
+          status: canceled.status,
+          youtubeVideoUrl: canceled.youtubeVideoUrl
+        }
+      });
+      return Response.json({ channel: summarizeChannel(channel), publication: canceled }, { status: 200 });
     }
 
     if (tool === "clips_control_run_daily_pool") {

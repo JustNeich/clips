@@ -669,7 +669,10 @@ function detectArtifactEdges(value: string): Array<"top" | "bottom" | "left" | "
       "bottom edge",
       "at the bottom",
       "bottom strip",
-      "bottom artifact"
+      "bottom artifact",
+      "lower source band",
+      "lower band",
+      "bottom caption strip"
     ])
   ) {
     edges.push("bottom");
@@ -702,6 +705,13 @@ function hasVisualCleanupCue(value: string): boolean {
     "refine",
     "polish",
     "artifact",
+    "watermark",
+    "handle",
+    "meta leak",
+    "leaks into",
+    "source-frame text",
+    "black border",
+    "bottom caption strip",
     "clean up",
     "extra piece",
     "little piece",

@@ -11,7 +11,9 @@ import {
   type CopscopesRunStatus
 } from "./copscopes-source-pool";
 import {
+  COPSCOPES_MAX_FOCUS_Y,
   COPSCOPES_MIN_MAIN_CAPTION_CHARS,
+  COPSCOPES_MIN_VIDEO_ZOOM,
   ensureCopscopesCaptionHighlights,
   resolveCopscopesProductionSourceCrop,
   validateCopscopesRenderBodyForPublication
@@ -96,7 +98,8 @@ export function buildCopscopesStage3EditorGoal(input: {
     "Pick one to three exact source moments that make the caption feel earned.",
     "Allowed speeds: 1, 1.5, 2, 2.5, 3, 4, 5.",
     "Final output must be exactly 6 seconds.",
-    "Reject and revise if CopScopes source-frame text, black border, captions, handles, or other channel meta leaks into our source window.",
+    "Reject and revise if CopScopes source-frame text, black border, captions, handles, watermarks, or other channel meta leaks into our source window.",
+    "Treat the lower source band as unsafe: keep the action framed above any @copscopes handle, bottom caption strip, or black post chrome.",
     input.reel.crop
       ? `Use the stored inner-source crop before fitting: x=${input.reel.crop.x}, y=${input.reel.crop.y}, width=${input.reel.crop.width}, height=${input.reel.crop.height}, confidence=${input.reel.cropConfidence ?? input.reel.crop.confidence ?? "unknown"}.`
       : "Detect and crop the inner original video area before fitting."
@@ -325,6 +328,8 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       targetDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
       templateId: channel.templateId,
       sourceCrop,
+      videoZoom: COPSCOPES_MIN_VIDEO_ZOOM,
+      mirrorEnabled: false,
       avatarAssetId: avatarAsset?.id ?? null,
       avatarAssetMimeType: avatarAsset?.mimeType ?? null,
       authorName: channel.name,
@@ -361,7 +366,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
         captionHighlights: copy.captionHighlights,
         clipStartSec: 0,
         clipDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
-        focusY: 0.5,
+        focusY: COPSCOPES_MAX_FOCUS_Y,
         sourceDurationSec: null,
         renderPlan
       },
