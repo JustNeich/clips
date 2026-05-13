@@ -6,6 +6,7 @@ import {
   normalizeStage3SegmentMirrorOverride,
   normalizeStage3SegmentZoomOverride
 } from "./stage3-segment-transforms";
+export { normalizeStage3SourceCrop } from "./stage3-source-crop";
 
 const STAGE3_SEGMENT_SPEED_SET = new Set<number>([1, 1.5, 2, 2.5, 3, 4, 5]);
 

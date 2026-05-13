@@ -13,6 +13,7 @@ import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from
 import { sanitizeFileName } from "./ytdlp";
 import { buildStage3EditorSession } from "./stage3-editor-core";
 import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
+import { buildStage3SourceCropFfmpegFilter } from "./stage3-source-crop";
 
 const execFileAsync = promisify(execFile);
 
@@ -1016,7 +1017,8 @@ async function extractSegmentsToFiles(
   sourcePath: string,
   tmpDir: string,
   segments: Array<{ startSec: number; endSec: number; speed: number }>,
-  profile: Stage3MediaProfile
+  profile: Stage3MediaProfile,
+  renderPlan: Stage3RenderPlan
 ): Promise<string[]> {
   const encode = getEncodeProfile(profile);
   const previewScaleFilter =
@@ -1033,7 +1035,8 @@ async function extractSegmentsToFiles(
       segment,
       profile,
       sourceHasAudio,
-      encode
+      encode,
+      renderPlan
     });
 
     await execFileAsync("ffmpeg", args, {
@@ -1053,6 +1056,7 @@ export function buildStage3ExtractSegmentFfmpegArgs(params: {
   profile: Stage3MediaProfile;
   sourceHasAudio: boolean;
   encode?: EncodeProfile;
+  renderPlan?: Pick<Stage3RenderPlan, "sourceCrop">;
 }): string[] {
   const encode = params.encode ?? getEncodeProfile(params.profile);
   const extractionMode = resolveStage3SegmentExtractionMode(params.profile);
@@ -1062,7 +1066,11 @@ export function buildStage3ExtractSegmentFfmpegArgs(params: {
   const speed = normalizeSegmentSpeed(params.segment.speed);
   const durationSec = Math.max(0.05, params.segment.endSec - params.segment.startSec);
   const videoFilters: string[] = [];
+  const sourceCropFilter = buildStage3SourceCropFfmpegFilter(params.renderPlan?.sourceCrop ?? null);
 
+  if (sourceCropFilter) {
+    videoFilters.push(sourceCropFilter);
+  }
   if (previewScaleFilter) {
     videoFilters.push(previewScaleFilter);
   } else if (renderScaleFilter) {
@@ -1510,7 +1518,7 @@ export async function prepareStage3SourceClip(params: {
     clipDurationSec: params.clipDurationSec
   });
 
-  const segmentFiles = await extractSegmentsToFiles(params.sourcePath, params.tmpDir, segments, profile);
+  const segmentFiles = await extractSegmentsToFiles(params.sourcePath, params.tmpDir, segments, profile, params.renderPlan);
   const joined =
     segmentFiles.length === 1 ? segmentFiles[0] : await concatSegments(segmentFiles, params.tmpDir, profile);
   const fitted = await fitClipToDuration({

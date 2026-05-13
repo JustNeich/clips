@@ -21,6 +21,7 @@
     "test:stage2": "node --import tsx --test --test-concurrency=1 tests/viral-shorts-worker.test.ts tests/channel-learning-onboarding.test.ts",
     "test:viral-worker": "node --import tsx --test --test-concurrency=1 tests/viral-shorts-worker.test.ts",
     "mcp:flows": "tsx scripts/clips-flow-mcp.ts",
+    "mcp:control": "tsx scripts/clips-control-mcp.ts",
     "stage2-worker": "tsx scripts/viral-shorts-worker.ts",
     "stage3-worker": "tsx apps/stage3-worker/index.ts",
     "design:template:import": "tsx scripts/template-import-figma.ts",

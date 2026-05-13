@@ -836,6 +836,18 @@ export type Stage3Operation =
   | { op: "rewrite_top_text"; topText: string }
   | { op: "rewrite_bottom_text"; bottomText: string };
 
+export type Stage3SourceCrop = {
+  enabled: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  confidence: number | null;
+  source: string | null;
+  reviewedAt?: string | null;
+  notes?: string | null;
+};
+
 export type Stage3RenderPlan = {
   targetDurationSec: number;
   timingMode: Stage3TimingMode;
@@ -855,6 +867,7 @@ export type Stage3RenderPlan = {
   videoExposure: number;
   videoContrast: number;
   videoSaturation: number;
+  sourceCrop: Stage3SourceCrop | null;
   topFontScale: number;
   bottomFontScale: number;
   musicGain: number;

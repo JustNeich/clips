@@ -37,6 +37,7 @@ import {
 import { resolveManagedTemplateRuntimeSync } from "./managed-template-runtime";
 import { resolveStage3TemplateDefaultTextScales } from "./stage3-template-fonts";
 import {
+  normalizeStage3SourceCrop,
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
@@ -290,6 +291,7 @@ function normalizeRenderPlan(
     videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),
     videoContrast: normalizeStage3VideoContrast(rawPlan?.videoContrast, templateVideoAdjustments.contrast),
     videoSaturation: normalizeStage3VideoSaturation(rawPlan?.videoSaturation, templateVideoAdjustments.saturation),
+    sourceCrop: normalizeStage3SourceCrop(rawPlan?.sourceCrop, null),
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
         ? clampStage3TextScaleUi(rawPlan.topFontScale)

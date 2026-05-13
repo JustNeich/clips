@@ -396,6 +396,96 @@ CREATE TABLE IF NOT EXISTS mcp_access_tokens (
   FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS copscopes_source_categories (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  label TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'available',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  exhausted_at TEXT,
+  UNIQUE (workspace_id, channel_id, slug),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS copscopes_source_reels (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  canonical_url TEXT NOT NULL,
+  shortcode TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  caption TEXT NOT NULL DEFAULT '',
+  view_count INTEGER,
+  views_label TEXT,
+  posted_at TEXT,
+  category_id TEXT,
+  category_slug TEXT NOT NULL,
+  secondary_tags_json TEXT NOT NULL DEFAULT '[]',
+  quality_score REAL,
+  crop_confidence REAL,
+  crop_json TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'available',
+  consumed_chat_id TEXT,
+  consumed_stage2_run_id TEXT,
+  consumed_stage3_job_id TEXT,
+  last_error TEXT,
+  imported_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  consumed_at TEXT,
+  UNIQUE (workspace_id, channel_id, canonical_url),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES copscopes_source_categories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS copscopes_daily_runs (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  category_id TEXT,
+  category_slug TEXT NOT NULL,
+  status TEXT NOT NULL,
+  limit_count INTEGER NOT NULL,
+  attempt_budget INTEGER NOT NULL,
+  dry_run INTEGER NOT NULL DEFAULT 0,
+  selected_count INTEGER NOT NULL DEFAULT 0,
+  queued_count INTEGER NOT NULL DEFAULT 0,
+  reviewed_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  report_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES copscopes_source_categories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS copscopes_daily_run_items (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  source_reel_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  chat_id TEXT,
+  stage2_run_id TEXT,
+  stage3_job_id TEXT,
+  publication_id TEXT,
+  error_message TEXT,
+  result_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (run_id) REFERENCES copscopes_daily_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (source_reel_id) REFERENCES copscopes_source_reels(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS stage3_jobs (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -647,4 +737,19 @@ CREATE INDEX IF NOT EXISTS idx_channel_publication_events_publication
 
 CREATE INDEX IF NOT EXISTS idx_stage3_workers_user
   ON stage3_workers(workspace_id, user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_copscopes_categories_channel_status
+  ON copscopes_source_categories(workspace_id, channel_id, status, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_copscopes_reels_channel_category_status
+  ON copscopes_source_reels(workspace_id, channel_id, category_slug, status, imported_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_copscopes_reels_shortcode
+  ON copscopes_source_reels(workspace_id, channel_id, shortcode);
+
+CREATE INDEX IF NOT EXISTS idx_copscopes_daily_runs_channel_created
+  ON copscopes_daily_runs(workspace_id, channel_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_copscopes_daily_run_items_run
+  ON copscopes_daily_run_items(run_id, created_at ASC);
 `;

@@ -56,6 +56,7 @@ import {
   normalizeStage3SegmentZoomOverride
 } from "../lib/stage3-segment-transforms";
 import {
+  normalizeStage3SourceCrop,
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "../lib/stage3-render-plan";
@@ -607,6 +608,7 @@ export function fallbackRenderPlan(): Stage3RenderPlan {
     videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
     videoContrast: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.contrast,
     videoSaturation: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.saturation,
+    sourceCrop: null,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
     musicGain: 0.65,
@@ -720,6 +722,7 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
     videoExposure: plan.videoExposure,
     videoContrast: plan.videoContrast,
     videoSaturation: plan.videoSaturation,
+    sourceCrop: plan.sourceCrop,
     segments: plan.segments,
     policy: plan.policy,
     prompt: "",
@@ -815,6 +818,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
     videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, base.videoExposure),
     videoContrast: normalizeStage3VideoContrast(candidate?.videoContrast, base.videoContrast),
     videoSaturation: normalizeStage3VideoSaturation(candidate?.videoSaturation, base.videoSaturation),
+    sourceCrop: normalizeStage3SourceCrop(candidate?.sourceCrop, base.sourceCrop),
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
         ? clampStage3TextScaleUi(candidate.topFontScale)

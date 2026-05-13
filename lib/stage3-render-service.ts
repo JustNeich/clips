@@ -63,6 +63,7 @@ import {
   normalizeStage3SegmentZoomOverride
 } from "./stage3-segment-transforms";
 import {
+  normalizeStage3SourceCrop,
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
@@ -802,6 +803,7 @@ export function normalizeRenderPlan(
     videoExposure: normalizeStage3VideoExposure(rawPlan?.videoExposure, templateVideoAdjustments.exposure),
     videoContrast: normalizeStage3VideoContrast(rawPlan?.videoContrast, templateVideoAdjustments.contrast),
     videoSaturation: normalizeStage3VideoSaturation(rawPlan?.videoSaturation, templateVideoAdjustments.saturation),
+    sourceCrop: normalizeStage3SourceCrop(rawPlan?.sourceCrop, null),
     topFontScale:
       typeof rawPlan?.topFontScale === "number" && Number.isFinite(rawPlan.topFontScale)
         ? clampStage3TextScaleUi(rawPlan.topFontScale)

@@ -33,6 +33,7 @@ import {
   normalizeStage3SegmentZoomOverride
 } from "./stage3-segment-transforms";
 import {
+  normalizeStage3SourceCrop,
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
@@ -702,6 +703,7 @@ function createDefaultRenderPlan(
     videoExposure: videoAdjustments.exposure,
     videoContrast: videoAdjustments.contrast,
     videoSaturation: videoAdjustments.saturation,
+    sourceCrop: null,
     topFontScale: textScaleDefaults.topFontScale,
     bottomFontScale: textScaleDefaults.bottomFontScale,
     musicGain: 0.65,
@@ -792,6 +794,7 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
     videoExposure: normalizeStage3VideoExposure(input?.videoExposure, defaultPlan.videoExposure),
     videoContrast: normalizeStage3VideoContrast(input?.videoContrast, defaultPlan.videoContrast),
     videoSaturation: normalizeStage3VideoSaturation(input?.videoSaturation, defaultPlan.videoSaturation),
+    sourceCrop: normalizeStage3SourceCrop(input?.sourceCrop, defaultPlan.sourceCrop),
     topFontScale:
       typeof input?.topFontScale === "number" && Number.isFinite(input.topFontScale)
         ? clamp(input.topFontScale, FONT_SCALE_MIN, FONT_SCALE_MAX)

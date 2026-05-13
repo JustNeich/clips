@@ -1,0 +1,175 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+import { createChannel } from "../lib/chat-history";
+import {
+  authenticateMcpControlWriteToken,
+  authenticateMcpFlowReadToken,
+  createMcpAccessToken
+} from "../lib/mcp-token-store";
+import {
+  importCopscopesSourcePool,
+  listCopscopesSourcePool,
+  selectCopscopesDailyCandidates,
+  setActiveCopscopesCategory
+} from "../lib/copscopes-source-pool";
+import { bootstrapOwner } from "../lib/team-store";
+
+async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
+  const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-copscopes-source-pool-test-"));
+  const previousAppDataDir = process.env.APP_DATA_DIR;
+  const previousManagedTemplatesRoot = process.env.MANAGED_TEMPLATES_ROOT;
+  process.env.APP_DATA_DIR = appDataDir;
+  process.env.MANAGED_TEMPLATES_ROOT = path.join(appDataDir, "managed-templates");
+  delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+
+  try {
+    return await run();
+  } finally {
+    delete (globalThis as { __clipsAppDb?: unknown }).__clipsAppDb;
+    if (previousManagedTemplatesRoot === undefined) {
+      delete process.env.MANAGED_TEMPLATES_ROOT;
+    } else {
+      process.env.MANAGED_TEMPLATES_ROOT = previousManagedTemplatesRoot;
+    }
+    if (previousAppDataDir === undefined) {
+      delete process.env.APP_DATA_DIR;
+    } else {
+      process.env.APP_DATA_DIR = previousAppDataDir;
+    }
+    await rm(appDataDir, { recursive: true, force: true });
+  }
+}
+
+async function seedCopscopes() {
+  const owner = await bootstrapOwner({
+    workspaceName: "CopScopes Pool",
+    email: "owner@example.com",
+    password: "Password123!",
+    displayName: "Owner"
+  });
+  const channel = await createChannel({
+    workspaceId: owner.workspace.id,
+    creatorUserId: owner.user.id,
+    name: "CopScopes",
+    username: "copscopes"
+  });
+  return { owner, channel };
+}
+
+test("MCP flow:read token cannot authenticate control tools while control:write can", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner } = await seedCopscopes();
+    const readToken = createMcpAccessToken({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      expiresInDays: 1
+    });
+    assert.ok(authenticateMcpFlowReadToken(readToken.token));
+    assert.equal(authenticateMcpControlWriteToken(readToken.token), null);
+
+    const controlToken = createMcpAccessToken({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      expiresInDays: 1,
+      scopes: ["flow:read", "control:write"]
+    });
+    assert.ok(authenticateMcpFlowReadToken(controlToken.token));
+    assert.ok(authenticateMcpControlWriteToken(controlToken.token));
+  });
+});
+
+test("CopScopes source pool import dedupes by canonical Instagram URL", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    const result = importCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      items: [
+        {
+          url: "https://www.instagram.com/copscopes/reel/ABC123/?igsh=test",
+          title: "Police chase ends in crash",
+          viewCount: 1000
+        },
+        {
+          url: "https://www.instagram.com/reel/ABC123/",
+          title: "Duplicate canonical URL",
+          viewCount: 2000
+        },
+        {
+          url: "https://www.instagram.com/copscopes/reel/DEF456/",
+          caption: "Traffic stop turns into arrest",
+          viewCount: 3000
+        }
+      ]
+    });
+
+    assert.equal(result.created, 2);
+    assert.equal(result.duplicates, 1);
+    const listed = listCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id
+    });
+    assert.equal(listed.reels.length, 2);
+    assert.deepEqual(
+      listed.reels.map((reel) => reel.canonicalUrl).sort(),
+      ["https://www.instagram.com/reel/ABC123/", "https://www.instagram.com/reel/DEF456/"]
+    );
+  });
+});
+
+test("CopScopes daily selector skips unavailable items and exhausts empty active category", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    importCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      items: [
+        { url: "https://www.instagram.com/copscopes/reel/A1/", categorySlug: "vehicle-pursuit", viewCount: 10 },
+        { url: "https://www.instagram.com/copscopes/reel/A2/", categorySlug: "vehicle-pursuit", viewCount: 20 },
+        { url: "https://www.instagram.com/copscopes/reel/A3/", categorySlug: "traffic-stop", viewCount: 30 }
+      ]
+    });
+    setActiveCopscopesCategory({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      categorySlug: "vehicle-pursuit"
+    });
+
+    const first = selectCopscopesDailyCandidates({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      limit: 1,
+      markInProgress: true
+    });
+    assert.equal(first.reels.length, 1);
+    assert.equal(first.reels[0].status, "in_progress");
+
+    const second = selectCopscopesDailyCandidates({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      limit: 5,
+      markInProgress: true
+    });
+    assert.equal(second.reels.length, 1);
+    assert.equal(second.reels[0].shortcode, "A1");
+
+    const exhausted = selectCopscopesDailyCandidates({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      limit: 5,
+      markInProgress: true
+    });
+    assert.equal(exhausted.exhausted, true);
+    assert.equal(exhausted.reels.length, 0);
+    const category = listCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id
+    }).categories.find((candidate) => candidate.slug === "vehicle-pursuit");
+    assert.equal(category?.status, "exhausted");
+  });
+});
+

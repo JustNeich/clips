@@ -1,5 +1,10 @@
 import { requireOwner } from "../../../../lib/auth/guards";
-import { createMcpAccessToken, listMcpAccessTokens } from "../../../../lib/mcp-token-store";
+import {
+  createMcpAccessToken,
+  listMcpAccessTokens,
+  normalizeMcpAccessTokenScopes,
+  type McpAccessTokenScope
+} from "../../../../lib/mcp-token-store";
 
 export const runtime = "nodejs";
 
@@ -21,11 +26,15 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const auth = await requireOwner(request);
-    const body = (await request.json().catch(() => null)) as { expiresInDays?: number } | null;
+    const body = (await request.json().catch(() => null)) as {
+      expiresInDays?: number;
+      scopes?: McpAccessTokenScope[];
+    } | null;
     const created = createMcpAccessToken({
       workspaceId: auth.workspace.id,
       ownerUserId: auth.user.id,
-      expiresInDays: body?.expiresInDays
+      expiresInDays: body?.expiresInDays,
+      scopes: normalizeMcpAccessTokenScopes(body?.scopes)
     });
     return Response.json(created, { status: 201 });
   } catch (error) {

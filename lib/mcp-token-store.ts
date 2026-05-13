@@ -3,7 +3,9 @@ import { getDb, newId, nowIso } from "./db/client";
 import { getWorkspace, type UserRecord, type WorkspaceRecord } from "./team-store";
 import { appendFlowAuditEvent, tryAppendFlowAuditEvent } from "./audit-log-store";
 
-export type McpAccessTokenScope = "flow:read";
+export type McpAccessTokenScope = "flow:read" | "control:write";
+
+const MCP_ACCESS_TOKEN_SCOPES = new Set<McpAccessTokenScope>(["flow:read", "control:write"]);
 
 export type McpAccessTokenRecord = {
   id: string;
@@ -53,13 +55,23 @@ function hashMcpToken(token: string): string {
 function parseScopes(raw: string | null | undefined): McpAccessTokenScope[] {
   try {
     const parsed = JSON.parse(raw ?? "[]") as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter((scope): scope is McpAccessTokenScope => scope === "flow:read");
+    return normalizeMcpAccessTokenScopes(parsed);
   } catch {
     return [];
   }
+}
+
+export function normalizeMcpAccessTokenScopes(value: unknown): McpAccessTokenScope[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [
+    ...new Set(
+      value.filter((scope): scope is McpAccessTokenScope => {
+        return typeof scope === "string" && MCP_ACCESS_TOKEN_SCOPES.has(scope as McpAccessTokenScope);
+      })
+    )
+  ];
 }
 
 function mapMcpToken(row: McpAccessTokenRow): McpAccessTokenRecord {
@@ -81,6 +93,7 @@ export function createMcpAccessToken(input: {
   workspaceId: string;
   ownerUserId: string;
   expiresInDays?: number | null;
+  scopes?: McpAccessTokenScope[] | null;
 }): CreatedMcpAccessToken {
   const expiresInDays =
     typeof input.expiresInDays === "number" && Number.isFinite(input.expiresInDays)
@@ -91,6 +104,8 @@ export function createMcpAccessToken(input: {
   const tokenHint = rawToken.slice(-8);
   const stamp = nowIso();
   const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
+  const requestedScopes = normalizeMcpAccessTokenScopes(input.scopes);
+  const scopes = requestedScopes.length > 0 ? requestedScopes : ["flow:read"];
   const db = getDb();
   const id = newId();
   db.prepare(
@@ -103,7 +118,7 @@ export function createMcpAccessToken(input: {
     input.ownerUserId,
     tokenHash,
     tokenHint,
-    JSON.stringify(["flow:read"]),
+    JSON.stringify(scopes),
     expiresAt,
     stamp,
     stamp
@@ -176,7 +191,10 @@ export function revokeMcpAccessToken(input: {
   return record;
 }
 
-export function authenticateMcpFlowReadToken(rawToken: string): McpTokenAuthContext | null {
+function authenticateMcpTokenForScope(
+  rawToken: string,
+  requiredScope: McpAccessTokenScope
+): McpTokenAuthContext | null {
   const token = rawToken.trim();
   if (!token) {
     return null;
@@ -196,7 +214,7 @@ export function authenticateMcpFlowReadToken(rawToken: string): McpTokenAuthCont
     return null;
   }
   const record = mapMcpToken(row);
-  if (record.revokedAt || !record.scopes.includes("flow:read")) {
+  if (record.revokedAt || !record.scopes.includes(requiredScope)) {
     return null;
   }
   if (new Date(record.expiresAt).getTime() <= Date.now()) {
@@ -222,7 +240,8 @@ export function authenticateMcpFlowReadToken(rawToken: string): McpTokenAuthCont
     stage: "mcp",
     status: "succeeded",
     payload: {
-      tokenHint: record.tokenHint
+      tokenHint: record.tokenHint,
+      requiredScope
     }
   });
   return {
@@ -235,4 +254,12 @@ export function authenticateMcpFlowReadToken(rawToken: string): McpTokenAuthCont
     },
     token: { ...record, lastUsedAt: stamp, updatedAt: stamp }
   };
+}
+
+export function authenticateMcpFlowReadToken(rawToken: string): McpTokenAuthContext | null {
+  return authenticateMcpTokenForScope(rawToken, "flow:read");
+}
+
+export function authenticateMcpControlWriteToken(rawToken: string): McpTokenAuthContext | null {
+  return authenticateMcpTokenForScope(rawToken, "control:write");
 }

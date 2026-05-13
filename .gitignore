@@ -28,6 +28,9 @@ pnpm-debug.log*
 /data/*.db
 /data/*.db-shm
 /data/*.db-wal
+/artifacts/copscopes-source-pool-*.csv
+/artifacts/copscopes-source-pool-*.json
+/artifacts/copscopes-source-pool-*.md
 
 # local build/cache outputs
 /output

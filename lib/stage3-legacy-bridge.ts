@@ -15,6 +15,7 @@ import {
 } from "./stage3-camera";
 import { clampStage3TextScaleUi } from "./stage3-text-fit";
 import {
+  normalizeStage3SourceCrop,
   normalizeStage3RenderPlanSegments,
   resolveCanonicalStage3RenderPolicy
 } from "./stage3-render-plan";
@@ -60,6 +61,7 @@ function fallbackRenderPlan(): Stage3RenderPlan {
     videoExposure: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.exposure,
     videoContrast: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.contrast,
     videoSaturation: DEFAULT_STAGE3_VIDEO_ADJUSTMENTS.saturation,
+    sourceCrop: null,
     topFontScale: DEFAULT_TEXT_SCALE,
     bottomFontScale: DEFAULT_TEXT_SCALE,
     musicGain: 0.65,
@@ -138,6 +140,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
     videoExposure: normalizeStage3VideoExposure(candidate?.videoExposure, fallback.videoExposure),
     videoContrast: normalizeStage3VideoContrast(candidate?.videoContrast, fallback.videoContrast),
     videoSaturation: normalizeStage3VideoSaturation(candidate?.videoSaturation, fallback.videoSaturation),
+    sourceCrop: normalizeStage3SourceCrop(candidate?.sourceCrop, fallback.sourceCrop),
     topFontScale:
       typeof candidate?.topFontScale === "number" && Number.isFinite(candidate.topFontScale)
         ? clampStage3TextScaleUi(candidate.topFontScale)
