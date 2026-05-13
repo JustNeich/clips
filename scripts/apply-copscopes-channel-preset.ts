@@ -16,6 +16,7 @@ import {
 type ApplyArgs = {
   username: string;
   dryRun: boolean;
+  templateMode?: "managed" | "preserve";
 };
 
 type ChannelRow = {
@@ -32,13 +33,39 @@ type TemplateRow = {
 function parseArgs(argv: string[]): ApplyArgs {
   const args: ApplyArgs = {
     username: COPSCOPES_CHANNEL_USERNAME,
-    dryRun: false
+    dryRun: false,
+    templateMode: "managed"
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--dry-run") {
       args.dryRun = true;
+      continue;
+    }
+    if (arg === "--preserve-template") {
+      args.templateMode = "preserve";
+      continue;
+    }
+    if (arg === "--managed-template") {
+      args.templateMode = "managed";
+      continue;
+    }
+    if (arg === "--template-mode") {
+      const value = argv[index + 1]?.trim();
+      if (value !== "managed" && value !== "preserve") {
+        throw new Error("--template-mode requires either managed or preserve.");
+      }
+      args.templateMode = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--template-mode=")) {
+      const value = arg.slice("--template-mode=".length).trim();
+      if (value !== "managed" && value !== "preserve") {
+        throw new Error("--template-mode requires either managed or preserve.");
+      }
+      args.templateMode = value;
       continue;
     }
     if (arg === "--username") {
@@ -128,8 +155,9 @@ export async function applyCopscopesChannelPreset(args: ApplyArgs): Promise<{
   channelName: string;
   username: string;
   templateId: string;
-  templateAction: "create" | "update" | "dry-run";
+  templateAction: "create" | "update" | "dry-run" | "preserve";
   examplesCount: number;
+  defaultClipDurationSec: number;
 }> {
   const row = findChannelByUsername(args.username);
   if (!row) {
@@ -139,10 +167,21 @@ export async function applyCopscopesChannelPreset(args: ApplyArgs): Promise<{
     );
   }
 
-  const template = await upsertCopscopesTemplate({
-    workspaceId: row.workspace_id,
-    dryRun: args.dryRun
-  });
+  const currentChannel = await getChannelById(row.id);
+  if (!currentChannel) {
+    throw new Error(`Channel ${row.id} disappeared during preset application.`);
+  }
+  const templateMode = args.templateMode ?? "managed";
+  const template =
+    templateMode === "preserve"
+      ? {
+          templateId: currentChannel.templateId,
+          action: "preserve" as const
+        }
+      : await upsertCopscopesTemplate({
+          workspaceId: row.workspace_id,
+          dryRun: args.dryRun
+        });
   const patch = createCopscopesChannelPatch({
     ownerChannelId: row.id,
     ownerChannelName: row.name,
@@ -161,7 +200,8 @@ export async function applyCopscopesChannelPreset(args: ApplyArgs): Promise<{
     username: reloaded?.username ?? row.username,
     templateId: template.templateId,
     templateAction: template.action,
-    examplesCount: patch.stage2ExamplesConfig.customExamples.length
+    examplesCount: patch.stage2ExamplesConfig.customExamples.length,
+    defaultClipDurationSec: patch.defaultClipDurationSec
   };
 }
 

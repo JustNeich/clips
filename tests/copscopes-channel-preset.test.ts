@@ -140,6 +140,7 @@ test("Copscopes apply script updates an existing channel without mutating on dry
     assert.equal(reloaded.stage2ExamplesConfig.customExamples.length, 60);
     assert.equal(reloaded.stage2PromptConfig.useWorkspaceDefault, false);
     assert.equal(reloaded.templateId, applied.templateId);
+    assert.equal(reloaded.defaultClipDurationSec, 6);
     assert.equal(template?.templateConfig.highlights.slots[0].color, "#f4df36");
 
     const snapshot = buildStage2RunChannelSnapshot(reloaded, {
@@ -149,5 +150,41 @@ test("Copscopes apply script updates an existing channel without mutating on dry
     assert.ok(snapshot.templateHighlightProfile);
     assert.equal(snapshot.templateHighlightProfile.bottomEnabled, true);
     assert.equal(snapshot.templateHighlightProfile.slots[0].color, "#f4df36");
+  });
+});
+
+test("Copscopes apply script can preserve an existing channel template", async () => {
+  await withIsolatedAppData(async () => {
+    const owner = await bootstrapOwner({
+      workspaceName: "Copscopes Preset Preserve",
+      email: "owner-copscopes-preserve@example.com",
+      password: "Password123!",
+      displayName: "Owner"
+    });
+    const channel = await createChannel({
+      workspaceId: owner.workspace.id,
+      creatorUserId: owner.user.id,
+      name: "COP SCOPES",
+      username: "copscopes",
+      defaultClipDurationSec: 8
+    });
+    const before = await getChannelById(channel.id);
+    assert.ok(before);
+
+    const applied = await applyCopscopesChannelPreset({
+      username: "copscopes",
+      dryRun: false,
+      templateMode: "preserve"
+    });
+    const reloaded = await getChannelById(channel.id);
+
+    assert.ok(reloaded);
+    assert.equal(applied.templateAction, "preserve");
+    assert.equal(applied.templateId, before.templateId);
+    assert.equal(reloaded.templateId, before.templateId);
+    assert.equal(reloaded.stage2ExamplesConfig.useWorkspaceDefault, false);
+    assert.equal(reloaded.stage2ExamplesConfig.customExamples.length, 60);
+    assert.equal(reloaded.stage2PromptConfig.useWorkspaceDefault, false);
+    assert.equal(reloaded.defaultClipDurationSec, 6);
   });
 });

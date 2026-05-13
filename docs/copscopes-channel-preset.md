@@ -22,6 +22,9 @@ It contains:
 - A `Channel + Story` managed template snapshot with white body text and yellow keyword highlights.
 - A patch builder that sets `stage2ExamplesConfig`, `stage2PromptConfig`, `stage2HardConstraints`,
   `stage2SourceOverlayConfig`, `templateId`, and default clip duration.
+- For an already-designed production channel, apply with template preservation so the existing
+  channel template is kept and only the Stage 2 preset, constraints, source overlay policy, and
+  6-second duration are updated.
 
 ## Applying
 
@@ -35,6 +38,12 @@ Apply to the active `APP_DATA_DIR` database:
 
 ```bash
 npm exec tsx scripts/apply-copscopes-channel-preset.ts -- --username copscopes
+```
+
+Apply while preserving the current production template assignment:
+
+```bash
+npm exec tsx scripts/apply-copscopes-channel-preset.ts -- --username copscopes --preserve-template
 ```
 
 The script refuses to create a missing channel. It expects the channel to already exist, because
@@ -53,7 +62,7 @@ The token must include `control:write`; old `flow:read` tokens cannot call contr
 
 Available control tools:
 
-- `clips_control_apply_channel_preset`
+- `clips_control_apply_channel_preset` (`preserveTemplate: true` keeps the channel's current template)
 - `clips_control_import_source_pool`
 - `clips_control_list_source_pool`
 - `clips_control_set_active_category`

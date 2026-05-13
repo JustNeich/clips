@@ -152,20 +152,26 @@ server.registerTool(
     description: "Apply or dry-run the CopScopes preset, examples and managed template for the target channel.",
     inputSchema: z.object({
       username: z.string().optional(),
-      dryRun: z.boolean().optional()
+      dryRun: z.boolean().optional(),
+      preserveTemplate: z.boolean().optional()
     })
   },
-  async ({ username, dryRun }) => {
+  async ({ username, dryRun, preserveTemplate }) => {
     const channel = resolveChannel(username);
     auditControl({
       action: "copscopes_control.apply_preset.attempted",
       channelId: channel.id,
       status: "attempted",
-      payload: { username: channel.username, dryRun: Boolean(dryRun) }
+      payload: {
+        username: channel.username,
+        dryRun: Boolean(dryRun),
+        preserveTemplate: Boolean(preserveTemplate)
+      }
     });
     const result = await applyCopscopesChannelPreset({
       username: channel.username,
-      dryRun: Boolean(dryRun)
+      dryRun: Boolean(dryRun),
+      templateMode: preserveTemplate ? "preserve" : "managed"
     });
     auditControl({
       action: "copscopes_control.apply_preset.succeeded",
@@ -174,7 +180,8 @@ server.registerTool(
       payload: {
         dryRun: result.dryRun,
         templateAction: result.templateAction,
-        examplesCount: result.examplesCount
+        examplesCount: result.examplesCount,
+        preserveTemplate: Boolean(preserveTemplate)
       }
     });
     return jsonContent(result);

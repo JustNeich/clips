@@ -1472,6 +1472,6 @@ export function createCopscopesChannelPatch(input: {
       enabled: false
     },
     templateId: input.templateId,
-    defaultClipDurationSec: 8
+    defaultClipDurationSec: 6
   };
 }
