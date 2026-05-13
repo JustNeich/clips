@@ -11,6 +11,7 @@ function isApiPublic(pathname: string): boolean {
   return (
     (process.env.NODE_ENV !== "production" && pathname.startsWith("/api/design/")) ||
     pathname === "/api/health" ||
+    pathname.startsWith("/api/ops/update-ghostface-avatars") ||
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/register") ||
     pathname.startsWith("/api/auth/bootstrap-owner") ||
