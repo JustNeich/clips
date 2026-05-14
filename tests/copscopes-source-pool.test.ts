@@ -319,6 +319,98 @@ test("CopScopes control API can restore a reviewed canceled publication into a c
   });
 });
 
+test("CopScopes control API re-cancels a reviewed publication when scheduling fails", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    const controlToken = createMcpAccessToken({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      expiresInDays: 1,
+      scopes: ["flow:read", "control:write"]
+    });
+
+    async function createPublicationFixture(shortcode: string, title: string) {
+      const chat = await createOrGetChatByUrl(`https://www.instagram.com/reel/${shortcode}/`, channel.id);
+      const stage3Job = enqueueStage3Job({
+        workspaceId: owner.workspace.id,
+        userId: owner.user.id,
+        kind: "render",
+        payloadJson: JSON.stringify({ chatId: chat.id, channelId: channel.id })
+      });
+      const artifactPath = path.join(process.env.APP_DATA_DIR!, `${shortcode}.mp4`);
+      await writeFile(artifactPath, "video");
+      const renderExport = createRenderExport({
+        workspaceId: owner.workspace.id,
+        channelId: channel.id,
+        chatId: chat.id,
+        stage3JobId: stage3Job.id,
+        artifactFileName: `${shortcode}.mp4`,
+        artifactFilePath: artifactPath,
+        artifactMimeType: "video/mp4",
+        artifactSizeBytes: 5,
+        renderTitle: title,
+        sourceUrl: `https://www.instagram.com/reel/${shortcode}/`,
+        snapshotJson: "{}",
+        createdByUserId: owner.user.id
+      });
+      return createChannelPublication({
+        workspaceId: owner.workspace.id,
+        channelId: channel.id,
+        chatId: chat.id,
+        renderExportId: renderExport.id,
+        scheduleMode: "custom",
+        scheduledAt: "2040-01-02T18:15:00.000Z",
+        uploadReadyAt: "2040-01-02T16:15:00.000Z",
+        slotDate: "2040-01-02",
+        slotIndex: -1,
+        title,
+        description: "desc",
+        tags: [],
+        notifySubscribers: true,
+        needsReview: false,
+        createdByUserId: owner.user.id
+      });
+    }
+
+    const occupied = await createPublicationFixture("OCCUPIED1", "Occupied CopScopes render");
+    const reviewed = await createPublicationFixture("RESTORE2", "Reviewed CopScopes render two");
+    getDb()
+      .prepare(
+        `UPDATE channel_publications
+            SET status = 'canceled',
+                canceled_at = '2039-12-31T10:00:00.000Z'
+          WHERE id = ?`
+      )
+      .run(reviewed.id);
+
+    const response = await copscopesControlRoute(
+      new Request("http://localhost/api/admin/control/copscopes", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${controlToken.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          tool: "clips_control_schedule_publication",
+          input: {
+            channelUsername: "copscopes",
+            publicationId: reviewed.id,
+            scheduledAtLocal: "2040-01-02T21:15"
+          }
+        })
+      })
+    );
+    const storedReviewed = getChannelPublicationById(reviewed.id);
+    const storedOccupied = getChannelPublicationById(occupied.id);
+
+    assert.equal(response.status, 500);
+    assert.match(JSON.stringify(await response.json()), /занято/);
+    assert.equal(storedReviewed?.status, "canceled");
+    assert.ok(storedReviewed?.canceledAt);
+    assert.equal(storedOccupied?.status, "queued");
+  });
+});
+
 test("CopScopes source pool import dedupes by canonical Instagram URL", async () => {
   await withIsolatedAppData(async () => {
     const { owner, channel } = await seedCopscopes();

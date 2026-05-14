@@ -389,19 +389,27 @@ export async function POST(request: Request): Promise<Response> {
       const restored = publication.status === "canceled"
         ? restoreCanceledChannelPublicationToQueue(publication.id)
         : publication;
-      const scheduled = await updateChannelPublicationFromEditor({
-        publicationId: restored.id,
-        patch: scheduledAtLocal
-          ? {
-              scheduleMode: "custom",
-              scheduledAtLocal
-            }
-          : {
-              scheduleMode: "slot",
-              slotDate: slotDate!,
-              slotIndex: slotIndex!
-            }
-      });
+      let scheduled;
+      try {
+        scheduled = await updateChannelPublicationFromEditor({
+          publicationId: restored.id,
+          patch: scheduledAtLocal
+            ? {
+                scheduleMode: "custom",
+                scheduledAtLocal
+              }
+            : {
+                scheduleMode: "slot",
+                slotDate: slotDate!,
+                slotIndex: slotIndex!
+              }
+        });
+      } catch (error) {
+        if (publication.status === "canceled") {
+          await deleteChannelPublicationWithRemoteSync(restored.id, { userId: auth.user.id }).catch(() => null);
+        }
+        throw error;
+      }
       scheduleChannelPublicationProcessing();
       auditControl({
         workspaceId: auth.workspace.id,
