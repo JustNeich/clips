@@ -122,6 +122,35 @@ export function shouldQueueCopscopesStage3Render(result: CopscopesDailyExecution
   );
 }
 
+function formatCopscopesFailurePart(label: string, value: unknown): string | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const text =
+    typeof value === "number" && Number.isFinite(value)
+      ? value.toFixed(3)
+      : String(value)
+          .trim()
+          .replace(/\s+/g, "_")
+          .replace(/[:|]+/g, "-");
+  return text ? `${label}=${text.slice(0, 160)}` : null;
+}
+
+function buildCopscopesDailyFailureError(result: CopscopesDailyExecutionResult): string {
+  if (result.error?.trim()) {
+    return result.error.trim().slice(0, 900);
+  }
+  const report = result.report ?? {};
+  const parts = [
+    "copscopes_quality_gate_failed",
+    formatCopscopesFailurePart("status", result.status),
+    formatCopscopesFailurePart("stage3_status", report.stage3Status),
+    formatCopscopesFailurePart("stage3_score", report.finalScore),
+    ...(result.review?.notes ?? []).map((note, index) => formatCopscopesFailurePart(`reason${index + 1}`, note))
+  ].filter((part): part is string => Boolean(part));
+  return parts.join(":").slice(0, 900);
+}
+
 export const failClosedCopscopesDailyExecutor: CopscopesDailyExecutor = async (input) => {
   const goalHash = createHash("sha256")
     .update(buildCopscopesStage3EditorGoal({ reel: input.reel }))
@@ -499,6 +528,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       report: {
         stage3SessionId: stage3.sessionId,
         bestVersionId: stage3.bestVersionId,
+        stage3Status: stage3.status,
         finalScore: stage3.finalScore
       }
     };
@@ -727,13 +757,14 @@ export async function runCopscopesDailyPool(input: {
           : result.status === "skipped"
             ? "skipped"
             : "needs_review";
+      const failureError = finalStatus === "in_progress" ? null : buildCopscopesDailyFailureError(result);
       markCopscopesSourceReel({
         reelId: reel.id,
         status: finalStatus,
         chatId: result.chatId,
         stage2RunId: result.stage2RunId,
         stage3JobId: result.stage3JobId,
-        error: finalStatus === "in_progress" ? null : result.error ?? "copscopes_quality_gate_failed"
+        error: failureError
       });
       recordCopscopesDailyRunItem({
         runId,
@@ -743,7 +774,7 @@ export async function runCopscopesDailyPool(input: {
         stage2RunId: result.stage2RunId,
         stage3JobId: result.stage3JobId,
         publicationId: result.publicationId,
-        errorMessage: finalStatus === "in_progress" ? null : result.error ?? "copscopes_quality_gate_failed",
+        errorMessage: failureError,
         result: {
           ...result.report,
           review: result.review ?? null,

@@ -270,3 +270,46 @@ test("CopScopes daily run preserves skipped status for duplicate story candidate
     );
   });
 });
+
+test("CopScopes daily run records concrete quality-gate failure reasons", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedDailyScenario();
+    const executor: CopscopesDailyExecutor = async ({ reel }) => ({
+      status: "needs_review",
+      qualityGatePassed: false,
+      chatId: `chat-${reel.shortcode}`,
+      stage2RunId: `stage2-${reel.shortcode}`,
+      review: {
+        qualityGatePassed: false,
+        cropPassed: false,
+        sourceMetaLeakDetected: true,
+        finalDurationSec: 6,
+        notes: ["Stage 3 score 0.840 did not clear the CopScopes queue gate.", "source_crop_too_narrow_for_readability"]
+      },
+      report: {
+        stage3Status: "applied",
+        finalScore: 0.84
+      }
+    });
+
+    const result = await runCopscopesDailyPool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      limit: 1,
+      attemptBudget: 1,
+      executor
+    });
+
+    assert.equal(result.queuedCount, 0);
+    assert.equal(result.reviewedCount, 1);
+    const listed = listCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      categorySlug: "vehicle-pursuit"
+    });
+    const reviewed = listed.reels.find((reel) => reel.status === "needs_review");
+    assert.ok(reviewed?.lastError?.includes("stage3_score=0.840"));
+    assert.ok(reviewed?.lastError?.includes("source_crop_too_narrow_for_readability"));
+  });
+});
