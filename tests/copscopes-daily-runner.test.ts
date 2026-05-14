@@ -11,11 +11,19 @@ import {
   setActiveCopscopesCategory
 } from "../lib/copscopes-source-pool";
 import {
+  hardenCopscopesRenderSnapshotForPublication,
   runCopscopesDailyPool,
   shouldQueueCopscopesStage3Render,
   type CopscopesDailyExecutor
 } from "../lib/copscopes-daily-runner";
+import {
+  COPSCOPES_MAX_FOCUS_Y,
+  COPSCOPES_MAX_VIDEO_ZOOM,
+  COPSCOPES_TIGHT_SOURCE_CROP_SOURCE,
+  createCopscopesTightSourceCrop
+} from "../lib/copscopes-quality-gate";
 import { bootstrapOwner } from "../lib/team-store";
+import type { Stage3StateSnapshot } from "../app/components/types";
 
 async function withIsolatedAppData<T>(run: () => Promise<T>): Promise<T> {
   const appDataDir = await mkdtemp(path.join(os.tmpdir(), "clips-copscopes-daily-runner-test-"));
@@ -312,4 +320,90 @@ test("CopScopes daily run records concrete quality-gate failure reasons", async 
     assert.ok(reviewed?.lastError?.includes("stage3_score=0.840"));
     assert.ok(reviewed?.lastError?.includes("source_crop_too_narrow_for_readability"));
   });
+});
+
+test("CopScopes render snapshot hardening clamps unsafe zoom and focus before queueing", () => {
+  const crop = createCopscopesTightSourceCrop(0.91);
+  const snapshot = {
+    topText: "THE STOP WENT WRONG",
+    bottomText:
+      "Police said the driver kept moving after the cruiser hit the intersection, forcing officers to box in the sedan before the suspect finally opened the door.",
+    captionHighlights: { top: [], bottom: [] },
+    clipStartSec: 0,
+    clipDurationSec: 7.2,
+    focusY: 0.82,
+    sourceDurationSec: 44,
+    textFit: {
+      topFontPx: 40,
+      bottomFontPx: 34,
+      topCompacted: false,
+      bottomCompacted: false
+    },
+    renderPlan: {
+      targetDurationSec: 7.2,
+      timingMode: "auto",
+      normalizeToTargetEnabled: false,
+      editorSelectionMode: "fragments",
+      audioMode: "source_only",
+      sourceAudioEnabled: true,
+      smoothSlowMo: false,
+      mirrorEnabled: true,
+      cameraMotion: "disabled",
+      cameraKeyframes: [],
+      cameraPositionKeyframes: [],
+      cameraScaleKeyframes: [],
+      focusX: 0.5,
+      videoZoom: 1.42,
+      videoBrightness: 1,
+      videoExposure: 0,
+      videoContrast: 1,
+      videoSaturation: 1,
+      sourceCrop: null,
+      topFontScale: 1.25,
+      bottomFontScale: 1.25,
+      musicGain: 0,
+      textPolicy: "strict_fit",
+      segments: [
+        {
+          startSec: 2,
+          endSec: 8,
+          label: "Impact",
+          speed: 1,
+          focusY: 0.9,
+          videoZoom: 1.5,
+          mirrorEnabled: true
+        }
+      ],
+      policy: "fixed_segments",
+      backgroundAssetId: null,
+      backgroundAssetMimeType: null,
+      musicAssetId: null,
+      musicAssetMimeType: null,
+      avatarAssetId: null,
+      avatarAssetMimeType: null,
+      authorName: "",
+      authorHandle: "",
+      templateId: "copscopes",
+      prompt: ""
+    }
+  } as Stage3StateSnapshot;
+
+  const hardened = hardenCopscopesRenderSnapshotForPublication(snapshot, {
+    sourceCrop: crop,
+    avatarAssetId: "avatar-1",
+    avatarAssetMimeType: "image/png",
+    authorName: "COP SCOPES",
+    authorHandle: "@copscopes"
+  });
+
+  assert.equal(hardened.clipDurationSec, 6);
+  assert.equal(hardened.focusY, COPSCOPES_MAX_FOCUS_Y);
+  assert.equal(hardened.renderPlan.targetDurationSec, 6);
+  assert.equal(hardened.renderPlan.videoZoom, COPSCOPES_MAX_VIDEO_ZOOM);
+  assert.equal(hardened.renderPlan.mirrorEnabled, false);
+  assert.equal(hardened.renderPlan.sourceCrop?.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
+  assert.equal(hardened.renderPlan.avatarAssetId, "avatar-1");
+  assert.equal(hardened.renderPlan.segments[0]?.focusY, COPSCOPES_MAX_FOCUS_Y);
+  assert.equal(hardened.renderPlan.segments[0]?.videoZoom, COPSCOPES_MAX_VIDEO_ZOOM);
+  assert.equal(hardened.renderPlan.segments[0]?.mirrorEnabled, false);
 });

@@ -13,7 +13,9 @@ import {
 import {
   COPSCOPES_DEFAULT_VIDEO_ZOOM,
   COPSCOPES_MAX_FOCUS_Y,
+  COPSCOPES_MAX_VIDEO_ZOOM,
   COPSCOPES_MIN_MAIN_CAPTION_CHARS,
+  COPSCOPES_MIN_VIDEO_ZOOM,
   ensureCopscopesCaptionHighlights,
   resolveCopscopesProductionSourceCrop,
   validateCopscopesRenderBodyForPublication
@@ -31,7 +33,7 @@ import { buildStage3RenderRequestDedupeKey } from "./stage3-render-request";
 import { normalizeRenderPlan, type Stage3RenderRequestBody } from "./stage3-render-service";
 import { listFutureActivePublicationsForChannel } from "./publication-store";
 import { findCopscopesDuplicateStory } from "./copscopes-story-dedupe";
-import type { Stage3SourceCrop } from "../app/components/types";
+import type { Stage3Segment, Stage3SourceCrop, Stage3StateSnapshot } from "../app/components/types";
 import type { Stage2Response } from "../app/components/types";
 import type { TemplateCaptionHighlights } from "./template-highlights";
 
@@ -149,6 +151,61 @@ function buildCopscopesDailyFailureError(result: CopscopesDailyExecutionResult):
     ...(result.review?.notes ?? []).map((note, index) => formatCopscopesFailurePart(`reason${index + 1}`, note))
   ].filter((part): part is string => Boolean(part));
   return parts.join(":").slice(0, 900);
+}
+
+function clampCopscopesVideoZoom(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return COPSCOPES_DEFAULT_VIDEO_ZOOM;
+  }
+  return Math.min(COPSCOPES_MAX_VIDEO_ZOOM, Math.max(COPSCOPES_MIN_VIDEO_ZOOM, value));
+}
+
+function clampCopscopesFocusY(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return COPSCOPES_MAX_FOCUS_Y;
+  }
+  return Math.min(COPSCOPES_MAX_FOCUS_Y, Math.max(0, value));
+}
+
+function hardenCopscopesSegmentForPublication(segment: Stage3Segment): Stage3Segment {
+  return {
+    ...segment,
+    focusY: segment.focusY === null || segment.focusY === undefined ? segment.focusY : clampCopscopesFocusY(segment.focusY),
+    videoZoom:
+      segment.videoZoom === null || segment.videoZoom === undefined
+        ? segment.videoZoom
+        : clampCopscopesVideoZoom(segment.videoZoom),
+    mirrorEnabled: false
+  };
+}
+
+export function hardenCopscopesRenderSnapshotForPublication(
+  snapshot: Stage3StateSnapshot,
+  input: {
+    sourceCrop: Stage3SourceCrop;
+    avatarAssetId: string | null;
+    avatarAssetMimeType: string | null;
+    authorName: string;
+    authorHandle: string;
+  }
+): Stage3StateSnapshot {
+  return {
+    ...snapshot,
+    clipDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
+    focusY: clampCopscopesFocusY(snapshot.focusY),
+    renderPlan: {
+      ...snapshot.renderPlan,
+      targetDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
+      sourceCrop: input.sourceCrop,
+      videoZoom: clampCopscopesVideoZoom(snapshot.renderPlan.videoZoom),
+      mirrorEnabled: false,
+      segments: snapshot.renderPlan.segments.map(hardenCopscopesSegmentForPublication),
+      avatarAssetId: input.avatarAssetId,
+      avatarAssetMimeType: input.avatarAssetMimeType,
+      authorName: input.authorName,
+      authorHandle: input.authorHandle
+    }
+  };
 }
 
 export const failClosedCopscopesDailyExecutor: CopscopesDailyExecutor = async (input) => {
@@ -487,18 +544,16 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       error: "stage3_best_version_missing"
     };
   }
-  const renderSnapshot = {
+  const renderSnapshot = hardenCopscopesRenderSnapshotForPublication({
     ...snapshot,
-    captionHighlights: copy.captionHighlights,
-    renderPlan: {
-      ...snapshot.renderPlan,
-      sourceCrop,
-      avatarAssetId: avatarAsset?.id ?? null,
-      avatarAssetMimeType: avatarAsset?.mimeType ?? null,
-      authorName: channel.name,
-      authorHandle: `@${channel.username}`
-    }
-  };
+    captionHighlights: copy.captionHighlights
+  }, {
+    sourceCrop,
+    avatarAssetId: avatarAsset?.id ?? null,
+    avatarAssetMimeType: avatarAsset?.mimeType ?? null,
+    authorName: channel.name,
+    authorHandle: `@${channel.username}`
+  });
 
   const gatePreview = validateCopscopesRenderBodyForPublication({
     topText: renderSnapshot.topText,
@@ -510,6 +565,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
   const cropPassed = gatePreview.passed || !gatePreview.reasons.includes("source_crop_not_tight_enough");
   const qualityGatePassed = stage3.status === "applied" && stage3.finalScore >= 0.9 && gatePreview.passed;
   if (!qualityGatePassed) {
+    const scorePassed = stage3.status === "applied" && stage3.finalScore >= 0.9;
     return {
       status: "needs_review",
       qualityGatePassed: false,
@@ -521,7 +577,9 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
         sourceMetaLeakDetected: !cropPassed,
         finalDurationSec: snapshot.clipDurationSec,
         notes: [
-          `Stage 3 score ${stage3.finalScore.toFixed(3)} did not clear the CopScopes queue gate.`,
+          scorePassed
+            ? `Stage 3 score ${stage3.finalScore.toFixed(3)} passed, but the CopScopes publication gate failed.`
+            : `Stage 3 score ${stage3.finalScore.toFixed(3)} did not clear the CopScopes queue gate.`,
           ...gatePreview.reasons
         ]
       },
