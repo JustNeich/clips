@@ -46,7 +46,7 @@ test("CopScopes quality gate accepts dense text with avatar, yellow highlights, 
     renderPlan: {
       sourceCrop: createCopscopesTightSourceCrop(),
       avatarAssetId: "avatar_123",
-      videoZoom: 1.08,
+      videoZoom: 1.02,
       mirrorEnabled: false
     },
     snapshot: {
@@ -69,7 +69,7 @@ test("CopScopes quality gate rejects source windows that can expose lower meta b
     renderPlan: {
       sourceCrop: createCopscopesTightSourceCrop(),
       avatarAssetId: "avatar_123",
-      videoZoom: 1,
+      videoZoom: 1.2,
       mirrorEnabled: true
     },
     snapshot: {
@@ -84,7 +84,35 @@ test("CopScopes quality gate rejects source windows that can expose lower meta b
   });
 
   assert.equal(result.passed, false);
-  assert.ok(result.reasons.includes("source_window_not_safely_zoomed"));
+  assert.ok(result.reasons.includes("source_window_overzoomed"));
   assert.ok(result.reasons.includes("source_window_not_lifted_above_lower_meta"));
   assert.ok(result.reasons.includes("source_window_mirror_must_be_disabled"));
+});
+
+test("CopScopes quality gate rejects unreadably narrow crops even when they hide source meta", () => {
+  const result = validateCopscopesRenderBodyForPublication({
+    bottomText: denseBody,
+    clipDurationSec: 6,
+    renderPlan: {
+      sourceCrop: {
+        ...createCopscopesTightSourceCrop(),
+        height: 0.24
+      },
+      avatarAssetId: "avatar_123",
+      videoZoom: 1.02,
+      mirrorEnabled: false
+    },
+    snapshot: {
+      bottomText: denseBody,
+      clipDurationSec: 6,
+      focusY: 0.47,
+      captionHighlights: ensureCopscopesCaptionHighlights({
+        topText: "THE PASSENGER FIRST",
+        bottomText: denseBody
+      })
+    }
+  });
+
+  assert.equal(result.passed, false);
+  assert.ok(result.reasons.includes("source_crop_too_narrow_for_readability"));
 });

@@ -23,6 +23,7 @@ import {
   importCopscopesSourcePool,
   listCopscopesSourcePool
 } from "../lib/copscopes-source-pool";
+import { createCopscopesTightSourceCrop } from "../lib/copscopes-quality-gate";
 import { claimNextQueuedStage3JobForWorker, enqueueStage3Job, getStage3Job } from "../lib/stage3-job-store";
 import {
   exchangeStage3WorkerPairingToken,
@@ -677,6 +678,167 @@ test("CopScopes render completion blocks publication and review-flags the source
     const updatedReel = listCopscopesSourcePool({ workspaceId, channelId: channel.id }).reels[0];
     assert.equal(updatedReel.status, "needs_review");
     assert.match(updatedReel.lastError ?? "", /quality gate blocked/i);
+  });
+});
+
+test("CopScopes render completion blocks story-duplicate publications after render", async () => {
+  await withIsolatedAppData(async () => {
+    const db = getDb();
+    const stamp = nowIso();
+    const workspaceId = "w1";
+    const userId = "u1";
+    const denseBody =
+      "The driver climbs out first, but the passenger is still trapped as flames move across the wreck. An officer reaches through the window while another voice calls for distance. The rescue has to happen before the fire reaches the cabin.";
+
+    db.prepare("INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+      workspaceId,
+      "Test workspace",
+      "test-workspace",
+      stamp,
+      stamp
+    );
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, display_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(userId, "u@example.com", "hash", "User", "active", stamp, stamp);
+    db.prepare(
+      "INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(newId(), workspaceId, userId, "owner", stamp, stamp);
+
+    const channel = await createChannel({
+      workspaceId,
+      creatorUserId: userId,
+      name: "COP SCOPES",
+      username: "copscopes"
+    });
+    connectChannelPublishing(channel.id);
+    const firstChat = await createOrGetChatByUrl("https://www.instagram.com/reel/FIRSTDUP/", channel.id);
+    const firstJobId = insertCompletedRenderJob({
+      workspaceId,
+      userId,
+      chatId: firstChat.id,
+      channelId: channel.id,
+      sourceUrl: firstChat.url,
+      renderTitle: "Passenger Fire Rescue"
+    });
+    const firstRenderExport = createRenderExport({
+      workspaceId,
+      channelId: channel.id,
+      chatId: firstChat.id,
+      stage3JobId: firstJobId,
+      artifactFileName: "first.mp4",
+      artifactFilePath: "/tmp/first.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 4,
+      renderTitle: "Passenger Fire Rescue",
+      sourceUrl: firstChat.url,
+      snapshotJson: "{}",
+      createdByUserId: userId
+    });
+    createChannelPublication({
+      workspaceId,
+      channelId: channel.id,
+      chatId: firstChat.id,
+      renderExportId: firstRenderExport.id,
+      scheduleMode: "custom",
+      scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      uploadReadyAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+      slotDate: new Date().toISOString().slice(0, 10),
+      slotIndex: -1,
+      title: "Passenger Fire Rescue",
+      description: denseBody,
+      tags: [],
+      notifySubscribers: false,
+      needsReview: false,
+      createdByUserId: userId
+    });
+    importCopscopesSourcePool({
+      workspaceId,
+      channelId: channel.id,
+      items: [
+        {
+          url: "https://www.instagram.com/copscopes/reel/SECONDDUP/",
+          categorySlug: "vehicle-pursuit",
+          caption: denseBody
+        }
+      ]
+    });
+    const reel = listCopscopesSourcePool({ workspaceId, channelId: channel.id }).reels[0];
+    const secondChat = await createOrGetChatByUrl(reel.canonicalUrl, channel.id);
+    const pairing = issueStage3WorkerPairingToken({ workspaceId, userId });
+    const exchanged = exchangeStage3WorkerPairingToken({
+      pairingToken: pairing.token,
+      label: "worker",
+      platform: "darwin-arm64"
+    });
+
+    const job = enqueueStage3Job({
+      workspaceId,
+      userId,
+      kind: "render",
+      executionTarget: "local",
+      payloadJson: JSON.stringify({
+        chatId: secondChat.id,
+        channelId: channel.id,
+        sourceUrl: secondChat.url,
+        renderTitle: "Second Passenger Rescue",
+        topText: "THE PASSENGER FIRST",
+        bottomText: denseBody,
+        clipDurationSec: 6,
+        focusY: 0.47,
+        publishAfterRender: true,
+        renderPlan: {
+          avatarAssetId: "avatar-asset",
+          sourceCrop: createCopscopesTightSourceCrop(),
+          videoZoom: 1.02,
+          mirrorEnabled: false
+        },
+        snapshot: {
+          bottomText: denseBody,
+          clipDurationSec: 6,
+          focusY: 0.47,
+          renderPlan: {
+            avatarAssetId: "avatar-asset",
+            sourceCrop: createCopscopesTightSourceCrop(),
+            videoZoom: 1.02,
+            mirrorEnabled: false
+          }
+        },
+        copscopes: {
+          sourceReelId: reel.id,
+          shortcode: reel.shortcode
+        }
+      })
+    });
+    const claimed = claimNextQueuedStage3JobForWorker({
+      workerId: exchanged.worker.id,
+      workspaceId,
+      userId,
+      supportedKinds: ["render"]
+    });
+    assert.equal(claimed?.id, job.id);
+
+    const response = await completeWorkerStage3Job(
+      new Request(`http://localhost/api/stage3/worker/jobs/${job.id}/complete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${exchanged.sessionToken}`,
+          "Content-Type": "video/mp4",
+          "x-stage3-artifact-name": encodeURIComponent("out.mp4"),
+          "x-stage3-artifact-mime-type": encodeURIComponent("video/mp4"),
+          "x-stage3-result-json": Buffer.from(JSON.stringify({ ok: true }), "utf-8").toString("base64url")
+        },
+        body: new Uint8Array([1, 2, 3, 4])
+      }),
+      { params: Promise.resolve({ id: job.id }) }
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(listChannelPublications(channel.id).length, 1);
+    const updatedReel = listCopscopesSourcePool({ workspaceId, channelId: channel.id }).reels.find(
+      (candidate) => candidate.id === reel.id
+    );
+    assert.equal(updatedReel?.status, "skipped");
+    assert.match(updatedReel?.lastError ?? "", /story dedupe blocked publication/i);
   });
 });
 

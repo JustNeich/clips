@@ -8,14 +8,18 @@ import {
   type TemplateCaptionHighlights
 } from "./template-highlights";
 
-export const COPSCOPES_TIGHT_SOURCE_CROP_SOURCE = "copscopes-tight-source-window-v4";
+export const COPSCOPES_TIGHT_SOURCE_CROP_SOURCE = "copscopes-readable-source-window-v5";
 export const COPSCOPES_MIN_MAIN_CAPTION_CHARS = 190;
 export const COPSCOPES_MAX_MAIN_CAPTION_CHARS = 340;
 export const COPSCOPES_MIN_CROP_CONFIDENCE = 0.78;
-export const COPSCOPES_MIN_CROP_Y = 0.38;
-export const COPSCOPES_MAX_CROP_HEIGHT = 0.3;
-export const COPSCOPES_MIN_CROP_BOTTOM = 0.64;
-export const COPSCOPES_MIN_VIDEO_ZOOM = 1.08;
+export const COPSCOPES_MIN_CROP_Y = 0.42;
+export const COPSCOPES_MIN_CROP_HEIGHT = 0.32;
+export const COPSCOPES_MAX_CROP_HEIGHT = 0.4;
+export const COPSCOPES_MIN_CROP_BOTTOM = 0.76;
+export const COPSCOPES_MAX_CROP_BOTTOM = 0.86;
+export const COPSCOPES_MIN_VIDEO_ZOOM = 1;
+export const COPSCOPES_DEFAULT_VIDEO_ZOOM = 1.02;
+export const COPSCOPES_MAX_VIDEO_ZOOM = 1.08;
 export const COPSCOPES_MAX_FOCUS_Y = 0.47;
 
 const HIGHLIGHT_SLOT_ID = "slot1" as const;
@@ -38,13 +42,13 @@ export function createCopscopesTightSourceCrop(confidence?: number | null): Stag
   return {
     enabled: true,
     x: 0.02,
-    y: 0.43,
+    y: 0.46,
     width: 0.96,
-    height: 0.24,
+    height: 0.34,
     confidence: Math.max(COPSCOPES_MIN_CROP_CONFIDENCE, normalizeConfidence(confidence, 0.88)),
     source: COPSCOPES_TIGHT_SOURCE_CROP_SOURCE,
     notes:
-      "Tight crop keeps only the clean upper source-footage band from CopScopes Reels and removes channel text, frame, lower handle/watermark, and bottom post-chrome layers before fitting."
+      "Readable crop keeps the original incident footage while removing CopScopes captions, frame, handle/watermark, and post-chrome layers before fitting."
   };
 }
 
@@ -55,9 +59,12 @@ export function isCopscopesTightSourceCrop(crop: Stage3SourceCrop | null | undef
   }
   const confidence = normalized.confidence ?? 0;
   return (
+    normalized.source === COPSCOPES_TIGHT_SOURCE_CROP_SOURCE &&
     normalized.y >= COPSCOPES_MIN_CROP_Y &&
+    normalized.height >= COPSCOPES_MIN_CROP_HEIGHT &&
     normalized.height <= COPSCOPES_MAX_CROP_HEIGHT &&
     normalized.y + normalized.height >= COPSCOPES_MIN_CROP_BOTTOM &&
+    normalized.y + normalized.height <= COPSCOPES_MAX_CROP_BOTTOM &&
     confidence >= COPSCOPES_MIN_CROP_CONFIDENCE
   );
 }
@@ -213,9 +220,18 @@ export function validateCopscopesRenderBodyForPublication(
   }
   if (!isCopscopesTightSourceCrop(crop)) {
     reasons.push("source_crop_not_tight_enough");
+    if (crop?.enabled && crop.height < COPSCOPES_MIN_CROP_HEIGHT) {
+      reasons.push("source_crop_too_narrow_for_readability");
+    }
+    if (crop?.enabled && crop.y + crop.height > COPSCOPES_MAX_CROP_BOTTOM) {
+      reasons.push("source_crop_extends_into_lower_meta");
+    }
   }
   if (videoZoom === null || videoZoom < COPSCOPES_MIN_VIDEO_ZOOM) {
     reasons.push("source_window_not_safely_zoomed");
+  }
+  if (videoZoom !== null && videoZoom > COPSCOPES_MAX_VIDEO_ZOOM) {
+    reasons.push("source_window_overzoomed");
   }
   if (focusY === null || focusY > COPSCOPES_MAX_FOCUS_Y) {
     reasons.push("source_window_not_lifted_above_lower_meta");

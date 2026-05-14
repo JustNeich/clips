@@ -274,8 +274,9 @@ test("CopScopes source pool upgrades weak default crops to the tight source-wind
     });
 
     assert.equal(crop.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
-    assert.equal(crop.y >= 0.38, true);
-    assert.equal(crop.height <= 0.3, true);
+    assert.equal(crop.y >= 0.42, true);
+    assert.equal(crop.height >= 0.32, true);
+    assert.equal(crop.height <= 0.4, true);
     assert.equal((crop.confidence ?? 0) >= 0.78, true);
 
     importCopscopesSourcePool({
@@ -294,17 +295,18 @@ test("CopScopes source pool upgrades weak default crops to the tight source-wind
     }).reels[0];
 
     assert.equal(reel.crop?.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
-    assert.equal(reel.crop?.y, 0.43);
-    assert.equal(reel.crop?.height, 0.24);
+    assert.equal(reel.crop?.y, 0.46);
+    assert.equal(reel.crop?.height, 0.34);
     assert.equal((reel.cropConfidence ?? 0) >= 0.78, true);
   });
 });
 
-test("CopScopes source crop upgrades prior v2/v3 crops that still included the lower watermark band", async () => {
+test("CopScopes source crop upgrades prior v2/v3/v4 crops that either leaked meta or over-tightened the source", async () => {
   await withIsolatedAppData(async () => {
     for (const previous of [
       { source: "copscopes-tight-source-window-v2", height: 0.57 },
-      { source: "copscopes-tight-source-window-v3", height: 0.37 }
+      { source: "copscopes-tight-source-window-v3", height: 0.37 },
+      { source: "copscopes-tight-source-window-v4", height: 0.24 }
     ]) {
       const crop = detectCopscopesSourceCrop({
         crop: {
@@ -320,7 +322,7 @@ test("CopScopes source crop upgrades prior v2/v3 crops that still included the l
       });
 
       assert.equal(crop.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
-      assert.equal(crop.height, 0.24);
+      assert.equal(crop.height, 0.34);
     }
   });
 });
@@ -415,5 +417,63 @@ test("CopScopes daily selector skips unavailable items and exhausts empty active
       channelId: channel.id
     }).categories.find((candidate) => candidate.slug === "vehicle-pursuit");
     assert.equal(category?.status, "exhausted");
+  });
+});
+
+test("CopScopes daily selector skips duplicate incidents even when Instagram shortcodes differ", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    const duplicateCaption =
+      "Police in California released dashcam footage showing a domestic violence suspect jumping onto a moving car before the blue sedan kept rolling through traffic and officers closed in.";
+    importCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      items: [
+        {
+          url: "https://www.instagram.com/copscopes/reel/DUP1/",
+          categorySlug: "vehicle-pursuit",
+          caption: duplicateCaption,
+          viewCount: 5000
+        },
+        {
+          url: "https://www.instagram.com/copscopes/reel/DUP2/",
+          categorySlug: "vehicle-pursuit",
+          caption: duplicateCaption,
+          viewCount: 4900
+        },
+        {
+          url: "https://www.instagram.com/copscopes/reel/UNIQ1/",
+          categorySlug: "vehicle-pursuit",
+          caption:
+            "A stolen truck spins out after a PIT attempt, and the driver runs across the shoulder before deputies catch him near the guardrail.",
+          viewCount: 4800
+        }
+      ]
+    });
+    setActiveCopscopesCategory({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      categorySlug: "vehicle-pursuit"
+    });
+
+    const selected = selectCopscopesDailyCandidates({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      limit: 2,
+      markInProgress: true
+    });
+
+    assert.deepEqual(
+      selected.reels.map((reel) => reel.shortcode),
+      ["DUP1", "UNIQ1"]
+    );
+    const listed = listCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      categorySlug: "vehicle-pursuit"
+    });
+    const duplicate = listed.reels.find((reel) => reel.shortcode === "DUP2");
+    assert.equal(duplicate?.status, "skipped");
+    assert.match(duplicate?.lastError ?? "", /duplicate_copscopes_story/);
   });
 });

@@ -13,7 +13,9 @@ import { appendChatEvent, getChannelById, getChatById } from "./chat-history";
 import { COPSCOPES_CHANNEL_USERNAME } from "./copscopes-channel-preset";
 import { markCopscopesSourceReel } from "./copscopes-source-pool";
 import { validateCopscopesRenderBodyForPublication } from "./copscopes-quality-gate";
+import { findCopscopesDuplicateStory } from "./copscopes-story-dedupe";
 import { findLatestStage2Event } from "./chat-workflow";
+import { listFutureActivePublicationsForChannel } from "./publication-store";
 import { persistRenderExportArtifact } from "./render-export-artifacts";
 import {
   appendStage3JobEvent,
@@ -60,6 +62,25 @@ function getCopscopesSourceReelId(payload: Stage3RenderRequestBody | null | unde
 async function isCopscopesChannel(channelId: string): Promise<boolean> {
   const channel = await getChannelById(channelId);
   return channel?.username?.toLowerCase() === COPSCOPES_CHANNEL_USERNAME;
+}
+
+function findCopscopesActivePublicationDuplicate(payload: Stage3RenderRequestBody) {
+  const channelId = payload.channelId?.trim();
+  if (!channelId) {
+    return null;
+  }
+  return findCopscopesDuplicateStory({
+    candidate: {
+      id: "render",
+      title: payload.renderTitle ?? "",
+      caption: [payload.topText, payload.bottomText, payload.snapshot?.bottomText].filter(Boolean).join(" ")
+    },
+    existing: listFutureActivePublicationsForChannel(channelId).map((publication) => ({
+      id: publication.id,
+      title: publication.title,
+      caption: [publication.description, publication.chatTitle].filter(Boolean).join(" ")
+    }))
+  });
 }
 
 async function markCopscopesRenderFailure(job: Stage3JobRecord, message: string): Promise<void> {
@@ -400,6 +421,24 @@ async function ensureRenderExportCompletionState(
       markCopscopesSourceReel({
         reelId: copscopesSourceReelId,
         status: "needs_review",
+        chatId: chat.id,
+        stage3JobId: completedArtifact.jobId,
+        error: message
+      });
+    }
+    const duplicate = findCopscopesActivePublicationDuplicate(payload);
+    if (duplicate) {
+      publishAfterRender = false;
+      const message = [
+        "CopScopes post-render story dedupe blocked publication",
+        `publication=${duplicate.existing.id}`,
+        `reason=${duplicate.match.reason}`,
+        `overlap=${duplicate.match.overlapCoefficient}`
+      ].join(": ");
+      appendStage3JobEvent(completedArtifact.jobId, "warn", message);
+      markCopscopesSourceReel({
+        reelId: copscopesSourceReelId,
+        status: "skipped",
         chatId: chat.id,
         stage3JobId: completedArtifact.jobId,
         error: message

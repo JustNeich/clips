@@ -216,3 +216,57 @@ test("CopScopes daily run keeps failed crop reviews out of publication queue and
     assert.equal(listed.reels.filter((reel) => reel.status === "needs_review").length, 1);
   });
 });
+
+test("CopScopes daily run preserves skipped status for duplicate story candidates", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedDailyScenario();
+    let calls = 0;
+    const executor: CopscopesDailyExecutor = async ({ reel }) => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          status: "skipped",
+          qualityGatePassed: false,
+          chatId: `chat-${reel.shortcode}`,
+          error: "duplicate_copscopes_story_against_active_publication:publication=pub-1"
+        };
+      }
+      return {
+        status: "queued",
+        qualityGatePassed: true,
+        chatId: `chat-${reel.shortcode}`,
+        stage3JobId: `stage3-${reel.shortcode}`,
+        review: {
+          qualityGatePassed: true,
+          cropPassed: true,
+          sourceMetaLeakDetected: false,
+          finalDurationSec: 6,
+          notes: ["pass"]
+        }
+      };
+    };
+
+    const result = await runCopscopesDailyPool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      limit: 3,
+      attemptBudget: 4,
+      executor
+    });
+
+    assert.equal(result.queuedCount, 3);
+    assert.equal(result.reviewedCount, 1);
+    assert.equal(calls, 4);
+    const listed = listCopscopesSourcePool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      categorySlug: "vehicle-pursuit"
+    });
+    assert.equal(listed.reels.filter((reel) => reel.status === "skipped").length, 1);
+    assert.match(
+      listed.reels.find((reel) => reel.status === "skipped")?.lastError ?? "",
+      /duplicate_copscopes_story/
+    );
+  });
+});

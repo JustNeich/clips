@@ -2,6 +2,11 @@ import { getDb, newId, nowIso, runInTransaction } from "./db/client";
 import { normalizeSupportedUrl } from "./ytdlp";
 import { resolveCopscopesProductionSourceCrop } from "./copscopes-quality-gate";
 import {
+  buildCopscopesStoryText,
+  findCopscopesDuplicateStory,
+  type CopscopesStoryCandidate
+} from "./copscopes-story-dedupe";
+import {
   normalizeStage3SourceCrop
 } from "./stage3-source-crop";
 import type { Stage3SourceCrop } from "../app/components/types";
@@ -299,6 +304,28 @@ function mapReel(row: ReelRow): CopscopesSourceReel {
     updatedAt: String(row.updated_at),
     consumedAt: row.consumed_at ? String(row.consumed_at) : null
   };
+}
+
+function buildReelStoryCandidate(row: ReelRow): CopscopesStoryCandidate {
+  return {
+    id: String(row.id),
+    shortcode: String(row.shortcode),
+    title: String(row.title ?? ""),
+    caption: String(row.caption ?? "")
+  };
+}
+
+function buildDuplicateStoryError(input: {
+  duplicate: NonNullable<ReturnType<typeof findCopscopesDuplicateStory>>;
+}): string {
+  const existingLabel = input.duplicate.existing.shortcode || input.duplicate.existing.id;
+  return [
+    "duplicate_copscopes_story",
+    `existing=${existingLabel}`,
+    `reason=${input.duplicate.match.reason}`,
+    `overlap=${input.duplicate.match.overlapCoefficient}`,
+    `jaccard=${input.duplicate.match.jaccard}`
+  ].join(":");
 }
 
 export function normalizeSourceStatus(status: unknown): CopscopesSourceStatus {
@@ -805,13 +832,14 @@ export function selectCopscopesDailyCandidates(input: {
   reels: CopscopesSourceReel[];
   exhausted: boolean;
 } {
-  const limit = Math.max(1, Math.min(10, Math.floor(input.limit)));
+  const limit = Math.max(1, Math.min(12, Math.floor(input.limit)));
   const selected = runInTransaction(() => {
+    const db = getDb();
     const category = getActiveCategory(input);
     if (!category) {
       return { category: null, reels: [], exhausted: false };
     }
-    const rows = getDb()
+    const rows = db
       .prepare(
         `SELECT *
            FROM copscopes_source_reels
@@ -821,12 +849,12 @@ export function selectCopscopesDailyCandidates(input: {
             AND status = 'available'
           ORDER BY COALESCE(quality_score, -1) DESC,
                    imported_at ASC
-          LIMIT ?`
+          LIMIT 500`
       )
-      .all(input.workspaceId, input.channelId, category.slug, limit) as ReelRow[];
+      .all(input.workspaceId, input.channelId, category.slug) as ReelRow[];
     if (rows.length === 0) {
       const stamp = nowIso();
-      getDb()
+      db
         .prepare(
           `UPDATE copscopes_source_categories
               SET status = 'exhausted',
@@ -837,10 +865,58 @@ export function selectCopscopesDailyCandidates(input: {
         .run(stamp, stamp, category.id);
       return { category, reels: [], exhausted: true };
     }
+    const blockedRows = db
+      .prepare(
+        `SELECT *
+           FROM copscopes_source_reels
+          WHERE workspace_id = ?
+            AND channel_id = ?
+            AND category_slug = ?
+            AND status IN ('in_progress', 'consumed', 'needs_review', 'skipped')
+          ORDER BY updated_at DESC
+          LIMIT 1000`
+      )
+      .all(input.workspaceId, input.channelId, category.slug) as ReelRow[];
+    const storyPool = blockedRows
+      .map(buildReelStoryCandidate)
+      .filter((candidate) => buildCopscopesStoryText(candidate).length >= 80);
+    const selectedRows: ReelRow[] = [];
+    const duplicateRows: Array<{ row: ReelRow; error: string }> = [];
+    for (const row of rows) {
+      const candidate = buildReelStoryCandidate(row);
+      const duplicate = findCopscopesDuplicateStory({
+        candidate,
+        existing: storyPool
+      });
+      if (duplicate) {
+        duplicateRows.push({
+          row,
+          error: buildDuplicateStoryError({ duplicate })
+        });
+        continue;
+      }
+      selectedRows.push(row);
+      storyPool.push(candidate);
+      if (selectedRows.length >= limit) {
+        break;
+      }
+    }
     if (input.markInProgress) {
       const stamp = nowIso();
-      for (const row of rows) {
-        getDb()
+      for (const duplicate of duplicateRows) {
+        db
+          .prepare(
+            `UPDATE copscopes_source_reels
+                SET status = 'skipped',
+                    updated_at = ?,
+                    last_error = ?
+              WHERE id = ?
+                AND status = 'available'`
+          )
+          .run(stamp, duplicate.error, duplicate.row.id);
+      }
+      for (const row of selectedRows) {
+        db
           .prepare(
             `UPDATE copscopes_source_reels
                 SET status = 'in_progress',
@@ -852,7 +928,33 @@ export function selectCopscopesDailyCandidates(input: {
           .run(stamp, row.id);
       }
     }
-    return { category, reels: rows.map(mapReel), exhausted: false };
+    if (selectedRows.length === 0) {
+      const remaining = db
+        .prepare(
+          `SELECT COUNT(*) AS count
+             FROM copscopes_source_reels
+            WHERE workspace_id = ?
+              AND channel_id = ?
+              AND category_slug = ?
+              AND status = 'available'`
+        )
+        .get(input.workspaceId, input.channelId, category.slug) as { count: number } | undefined;
+      const exhausted = Number(remaining?.count ?? 0) === 0 || !input.markInProgress;
+      if (exhausted && input.markInProgress) {
+        const stamp = nowIso();
+        db
+          .prepare(
+            `UPDATE copscopes_source_categories
+                SET status = 'exhausted',
+                    exhausted_at = COALESCE(exhausted_at, ?),
+                    updated_at = ?
+              WHERE id = ?`
+          )
+          .run(stamp, stamp, category.id);
+      }
+      return { category, reels: [], exhausted };
+    }
+    return { category, reels: selectedRows.map(mapReel), exhausted: false };
   });
   const category = selected.category
     ? listCopscopesSourcePool({ workspaceId: input.workspaceId, channelId: input.channelId }).categories.find(

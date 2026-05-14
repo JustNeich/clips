@@ -86,9 +86,15 @@ small attempt budget. The runner only marks a Reel `consumed` after the Stage 3 
 the crop, exact 6-second duration, no CopScopes meta-layer leakage, and a publication-queue-safe
 render outcome.
 
-CopScopes source crops use `copscopes-tight-source-window-v4`: a strict upper source-footage band
-with safe zoom/focus and mirror disabled. Older `v2`/`v3` crops are intentionally upgraded because
-they could still expose a lower `@copscopes` handle, watermark, or bottom post chrome in some source Reels.
+CopScopes source crops use `copscopes-readable-source-window-v5`: a readable inner source-footage
+window with safe focus, mirror disabled, and only light zoom. Older `v2`/`v3`/`v4` crops are
+intentionally upgraded because they either exposed CopScopes meta text or made the source window so
+tight that the incident could become unreadable.
+
+Daily source selection also performs story-level dedupe. A Reel can be skipped even with a unique
+Instagram shortcode when its title/caption describe the same incident as an already selected,
+queued, reviewed, or consumed CopScopes source. This blocks cases where Instagram exposes multiple
+Reels for the same pursuit/rescue/crash with nearly identical metadata.
 
 ## Source Reels Found
 

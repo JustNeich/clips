@@ -11,9 +11,9 @@ import {
   type CopscopesRunStatus
 } from "./copscopes-source-pool";
 import {
+  COPSCOPES_DEFAULT_VIDEO_ZOOM,
   COPSCOPES_MAX_FOCUS_Y,
   COPSCOPES_MIN_MAIN_CAPTION_CHARS,
-  COPSCOPES_MIN_VIDEO_ZOOM,
   ensureCopscopesCaptionHighlights,
   resolveCopscopesProductionSourceCrop,
   validateCopscopesRenderBodyForPublication
@@ -29,6 +29,8 @@ import { resolveStage3Execution } from "./stage3-execution";
 import { enqueueAndScheduleStage3Job } from "./stage3-job-runtime";
 import { buildStage3RenderRequestDedupeKey } from "./stage3-render-request";
 import { normalizeRenderPlan, type Stage3RenderRequestBody } from "./stage3-render-service";
+import { listFutureActivePublicationsForChannel } from "./publication-store";
+import { findCopscopesDuplicateStory } from "./copscopes-story-dedupe";
 import type { Stage3SourceCrop } from "../app/components/types";
 import type { Stage2Response } from "../app/components/types";
 import type { TemplateCaptionHighlights } from "./template-highlights";
@@ -100,6 +102,7 @@ export function buildCopscopesStage3EditorGoal(input: {
     "Final output must be exactly 6 seconds.",
     "Reject and revise if CopScopes source-frame text, black border, captions, handles, watermarks, or other channel meta leaks into our source window.",
     "Treat the lower source band as unsafe: keep the action framed above any @copscopes handle, bottom caption strip, or black post chrome.",
+    "Do not solve source hygiene with a huge zoom: the incident must stay readable, with enough context to name the subject and action in the first second.",
     input.reel.crop
       ? `Use the stored inner-source crop before fitting: x=${input.reel.crop.x}, y=${input.reel.crop.y}, width=${input.reel.crop.width}, height=${input.reel.crop.height}, confidence=${input.reel.cropConfidence ?? input.reel.crop.confidence ?? "unknown"}.`
       : "Detect and crop the inner original video area before fitting."
@@ -243,6 +246,25 @@ function extractCopscopesWinningCopy(stage2: Stage2Response): {
   };
 }
 
+function findActiveCopscopesPublicationStoryDuplicate(input: {
+  channelId: string;
+  title: string;
+  winningCaption: string;
+}): ReturnType<typeof findCopscopesDuplicateStory> {
+  return findCopscopesDuplicateStory({
+    candidate: {
+      id: "candidate",
+      title: input.title,
+      caption: input.winningCaption
+    },
+    existing: listFutureActivePublicationsForChannel(input.channelId).map((publication) => ({
+      id: publication.id,
+      title: publication.title,
+      caption: [publication.description, publication.chatTitle].filter(Boolean).join(" ")
+    }))
+  });
+}
+
 export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (input) => {
   const channel = await getChannelById(input.channelId);
   if (!channel || channel.workspaceId !== input.workspaceId) {
@@ -315,6 +337,35 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
 
   const stage2 = completedStage2.resultData as Stage2Response;
   const copy = extractCopscopesWinningCopy(stage2);
+  const activeDuplicate = findActiveCopscopesPublicationStoryDuplicate({
+    channelId: input.channelId,
+    title: copy.title,
+    winningCaption: copy.winningCaption
+  });
+  if (activeDuplicate) {
+    return {
+      status: "skipped",
+      qualityGatePassed: false,
+      chatId: chat.id,
+      stage2RunId: stage2Run.runId,
+      error: [
+        "duplicate_copscopes_story_against_active_publication",
+        `publication=${activeDuplicate.existing.id}`,
+        `reason=${activeDuplicate.match.reason}`,
+        `overlap=${activeDuplicate.match.overlapCoefficient}`
+      ].join(":"),
+      review: {
+        qualityGatePassed: false,
+        cropPassed: false,
+        sourceMetaLeakDetected: false,
+        finalDurationSec: null,
+        notes: [
+          "Stage 2 produced a story that is too close to an already active CopScopes publication.",
+          "The daily runner skipped this Reel instead of queueing a duplicate incident."
+        ]
+      }
+    };
+  }
   const goalText = buildCopscopesStage3EditorGoal({
     reel: {
       ...input.reel,
@@ -328,7 +379,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       targetDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
       templateId: channel.templateId,
       sourceCrop,
-      videoZoom: COPSCOPES_MIN_VIDEO_ZOOM,
+      videoZoom: COPSCOPES_DEFAULT_VIDEO_ZOOM,
       mirrorEnabled: false,
       avatarAssetId: avatarAsset?.id ?? null,
       avatarAssetMimeType: avatarAsset?.mimeType ?? null,
@@ -669,7 +720,13 @@ export async function runCopscopesDailyPool(input: {
         sourceCrop: reel.crop
       });
       const queueAllowed = shouldQueueCopscopesStage3Render(result);
-      const finalStatus = queueAllowed ? "in_progress" : result.status === "failed" ? "failed" : "needs_review";
+      const finalStatus = queueAllowed
+        ? "in_progress"
+        : result.status === "failed"
+          ? "failed"
+          : result.status === "skipped"
+            ? "skipped"
+            : "needs_review";
       markCopscopesSourceReel({
         reelId: reel.id,
         status: finalStatus,
