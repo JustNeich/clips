@@ -1476,6 +1476,43 @@ export function retryChannelPublication(publicationId: string): ChannelPublicati
   return publication;
 }
 
+export function restoreCanceledChannelPublication(publicationId: string): ChannelPublication {
+  const current = getPublicationForMutation(publicationId);
+  assertPublicationNotUploading(current, "Восстановление публикации");
+  if (current.status !== "canceled") {
+    if (current.status === "published") {
+      throw new PublicationMutationError("Опубликованную публикацию нельзя вернуть в очередь.", {
+        code: "PUBLICATION_ACTION_FORBIDDEN"
+      });
+    }
+    return current;
+  }
+  assertNoBlockingPublicationDuplicate({
+    channelId: current.channelId,
+    title: current.title,
+    sourceUrl: current.sourceUrl,
+    excludePublicationId: current.id
+  });
+  const db = getDb();
+  db.prepare(
+    `UPDATE channel_publications
+        SET status = 'queued',
+            canceled_at = NULL,
+            last_error = NULL,
+            youtube_video_id = NULL,
+            youtube_video_url = NULL,
+            upload_session_url = NULL,
+            updated_at = ?,
+            lease_token = NULL,
+            lease_expires_at = NULL
+      WHERE id = ?`
+  ).run(nowIso(), publicationId);
+  appendChannelPublicationEvent(publicationId, "info", "Публикация восстановлена в очередь после ревью.");
+  const publication = getChannelPublicationById(publicationId)!;
+  auditChannelPublication("publication.restored", publication, "queued");
+  return publication;
+}
+
 export function cancelChannelPublication(
   publicationId: string,
   options?: { allowPublished?: boolean }

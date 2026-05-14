@@ -218,6 +218,107 @@ test("CopScopes control API can cancel an owner-approved published publication w
   });
 });
 
+test("CopScopes control API can restore a reviewed canceled publication into a custom schedule", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    const chat = await createOrGetChatByUrl("https://www.instagram.com/reel/RESTORE1/", channel.id);
+    const stage3Job = enqueueStage3Job({
+      workspaceId: owner.workspace.id,
+      userId: owner.user.id,
+      kind: "render",
+      payloadJson: JSON.stringify({ chatId: chat.id, channelId: channel.id })
+    });
+    const artifactPath = path.join(process.env.APP_DATA_DIR!, "copscopes-control-restore.mp4");
+    await writeFile(artifactPath, "video");
+    const renderExport = createRenderExport({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      stage3JobId: stage3Job.id,
+      artifactFileName: "copscopes-control-restore.mp4",
+      artifactFilePath: artifactPath,
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 5,
+      renderTitle: "Reviewed CopScopes render",
+      sourceUrl: "https://www.instagram.com/reel/RESTORE1/",
+      snapshotJson: "{}",
+      createdByUserId: owner.user.id
+    });
+    const publication = createChannelPublication({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      chatId: chat.id,
+      renderExportId: renderExport.id,
+      scheduleMode: "slot",
+      scheduledAt: "2040-01-01T10:00:00.000Z",
+      uploadReadyAt: "2040-01-01T09:00:00.000Z",
+      slotDate: "2040-01-01",
+      slotIndex: 0,
+      title: "Reviewed CopScopes render",
+      description: "desc",
+      tags: [],
+      notifySubscribers: true,
+      needsReview: false,
+      createdByUserId: owner.user.id
+    });
+    getDb()
+      .prepare(
+        `UPDATE channel_publications
+            SET status = 'canceled',
+                canceled_at = '2039-12-31T10:00:00.000Z',
+                youtube_video_id = 'deleted-remote-video',
+                youtube_video_url = 'https://youtu.be/deleted-remote-video'
+          WHERE id = ?`
+      )
+      .run(publication.id);
+    const controlToken = createMcpAccessToken({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      expiresInDays: 1,
+      scopes: ["flow:read", "control:write"]
+    });
+
+    const response = await copscopesControlRoute(
+      new Request("http://localhost/api/admin/control/copscopes", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${controlToken.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          tool: "clips_control_schedule_publication",
+          input: {
+            channelUsername: "copscopes",
+            publicationId: publication.id,
+            scheduledAtLocal: "2040-01-02T21:15"
+          }
+        })
+      })
+    );
+    const body = (await response.json()) as {
+      restoredFromCanceled?: boolean;
+      publication?: {
+        status?: string;
+        canceledAt?: string | null;
+        scheduleMode?: string;
+        youtubeVideoId?: string | null;
+      };
+    };
+    const stored = getChannelPublicationById(publication.id);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.restoredFromCanceled, true);
+    assert.equal(body.publication?.status, "queued");
+    assert.equal(body.publication?.canceledAt, null);
+    assert.equal(body.publication?.scheduleMode, "custom");
+    assert.equal(body.publication?.youtubeVideoId, null);
+    assert.equal(stored?.status, "queued");
+    assert.equal(stored?.canceledAt, null);
+    assert.equal(stored?.scheduleMode, "custom");
+    assert.equal(stored?.youtubeVideoId, null);
+  });
+});
+
 test("CopScopes source pool import dedupes by canonical Instagram URL", async () => {
   await withIsolatedAppData(async () => {
     const { owner, channel } = await seedCopscopes();

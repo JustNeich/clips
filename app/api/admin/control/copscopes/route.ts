@@ -12,7 +12,12 @@ import {
 } from "../../../../../lib/copscopes-source-pool";
 import { runCopscopesDailyPool } from "../../../../../lib/copscopes-daily-runner";
 import { getDb } from "../../../../../lib/db/client";
-import { deleteChannelPublicationWithRemoteSync } from "../../../../../lib/channel-publication-service";
+import {
+  deleteChannelPublicationWithRemoteSync,
+  restoreCanceledChannelPublicationToQueue,
+  updateChannelPublicationFromEditor
+} from "../../../../../lib/channel-publication-service";
+import { scheduleChannelPublicationProcessing } from "../../../../../lib/channel-publication-runtime";
 import { getChannelPublicationById } from "../../../../../lib/publication-store";
 import { applyCopscopesChannelPreset } from "../../../../../scripts/apply-copscopes-channel-preset";
 import type { Stage3SourceCrop } from "../../../../components/types";
@@ -346,6 +351,82 @@ export async function POST(request: Request): Promise<Response> {
         }
       });
       return Response.json({ channel: summarizeChannel(channel), publication: canceled }, { status: 200 });
+    }
+
+    if (tool === "clips_control_schedule_publication") {
+      const publicationId = resolveString(input.publicationId);
+      if (!publicationId) {
+        return Response.json({ error: "publicationId is required." }, { status: 400 });
+      }
+      const publication = getChannelPublicationById(publicationId);
+      if (!publication || publication.workspaceId !== auth.workspace.id || publication.channelId !== channel.id) {
+        return Response.json({ error: "Publication was not found for this CopScopes channel." }, { status: 404 });
+      }
+      const scheduledAtLocal = resolveString(input.scheduledAtLocal);
+      const slotDate = resolveString(input.slotDate);
+      const slotIndex = resolveNumber(input.slotIndex);
+      if (!scheduledAtLocal && (!slotDate || typeof slotIndex !== "number")) {
+        return Response.json(
+          { error: "scheduledAtLocal or slotDate + slotIndex is required." },
+          { status: 400 }
+        );
+      }
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "copscopes_control.schedule_publication.attempted",
+        channelId: channel.id,
+        entityId: publication.id,
+        status: "attempted",
+        payload: {
+          title: publication.title,
+          status: publication.status,
+          scheduledAtLocal: scheduledAtLocal ?? null,
+          slotDate: slotDate ?? null,
+          slotIndex: typeof slotIndex === "number" ? slotIndex : null
+        }
+      });
+      const restored = publication.status === "canceled"
+        ? restoreCanceledChannelPublicationToQueue(publication.id)
+        : publication;
+      const scheduled = await updateChannelPublicationFromEditor({
+        publicationId: restored.id,
+        patch: scheduledAtLocal
+          ? {
+              scheduleMode: "custom",
+              scheduledAtLocal
+            }
+          : {
+              scheduleMode: "slot",
+              slotDate: slotDate!,
+              slotIndex: slotIndex!
+            }
+      });
+      scheduleChannelPublicationProcessing();
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "copscopes_control.schedule_publication.succeeded",
+        channelId: channel.id,
+        entityId: scheduled.id,
+        status: "succeeded",
+        payload: {
+          restoredFromCanceled: publication.status === "canceled",
+          status: scheduled.status,
+          scheduledAt: scheduled.scheduledAt,
+          scheduleMode: scheduled.scheduleMode,
+          slotDate: scheduled.slotDate,
+          slotIndex: scheduled.slotIndex
+        }
+      });
+      return Response.json(
+        {
+          channel: summarizeChannel(channel),
+          restoredFromCanceled: publication.status === "canceled",
+          publication: scheduled
+        },
+        { status: 200 }
+      );
     }
 
     if (tool === "clips_control_run_daily_pool") {

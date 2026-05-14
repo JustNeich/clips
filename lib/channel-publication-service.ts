@@ -30,6 +30,7 @@ import {
   markChannelPublishIntegrationReauthRequired,
   markChannelPublicationScheduled,
   persistChannelPublicationUploadSession,
+  restoreCanceledChannelPublication,
   retryChannelPublication,
   type RenderExportRecord,
   type StoredYoutubeCredential,
@@ -1134,6 +1135,10 @@ export async function deleteChannelPublicationWithRemoteSync(
   return cancelChannelPublication(publicationId, {
     allowPublished: Boolean(options?.allowPublished)
   });
+}
+
+export function restoreCanceledChannelPublicationToQueue(publicationId: string): ChannelPublication {
+  return restoreCanceledChannelPublication(publicationId);
 }
 
 export async function retryFailedChannelPublication(publicationId: string): Promise<ChannelPublication> {
