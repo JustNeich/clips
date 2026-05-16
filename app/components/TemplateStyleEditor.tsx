@@ -6,6 +6,7 @@ import { getStage3DesignLabPreset } from "../../lib/stage3-design-lab";
 import { Stage3VerifiedBadge } from "../../lib/stage3-verified-badge";
 import { Stage3TemplateRenderer } from "../../lib/stage3-template-renderer";
 import {
+  DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY,
   STAGE3_TEMPLATE_ID,
   cloneStage3TemplateConfig,
   type Stage3TemplateConfig,
@@ -248,6 +249,34 @@ const BODY_FONT_OPTIONS: FontOption[] = [
   {
     label: "Американская машинка",
     value: '"American Typewriter","Courier New","Georgia",serif'
+  }
+];
+
+const SOURCE_TEXT_FONT_OPTIONS: FontOption[] = [
+  {
+    label: "Чистый Inter",
+    value: DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY
+  },
+  {
+    label: "Системный compact",
+    value: '"SF Pro Text","Inter","Aptos",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'
+  },
+  {
+    label: "Мягкий округлый",
+    value:
+      '".SF NS Rounded","SF Pro Rounded","Helvetica Rounded","Arial Rounded MT Bold","Trebuchet MS",sans-serif'
+  },
+  {
+    label: "Плотный caption",
+    value: '"Arial Black","Impact","Arial",sans-serif'
+  },
+  {
+    label: "Технический моно",
+    value: '"SFMono-Regular","Roboto Mono","Menlo","Monaco","Courier New",monospace'
+  },
+  {
+    label: "Редакционная антиква",
+    value: '"Iowan Old Style","Palatino Linotype","Book Antiqua",Georgia,serif'
   }
 ];
 
@@ -541,6 +570,10 @@ function resolveDefaultBodyFontValue(templateId: string): string {
 
 function resolveDefaultAuthorFontValue(templateId: string): string {
   return resolveDefaultBodyFontValue(templateId);
+}
+
+function resolveDefaultSourceTextFontValue(): string {
+  return DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY;
 }
 
 function buildFontSelectOptions(value: string, options: FontOption[]): FontOption[] {
@@ -1461,6 +1494,10 @@ export function TemplateStyleEditor({
     templateConfig.typography.authorName.fontFamily ?? resolveDefaultAuthorFontValue(baseTemplateId);
   const currentAuthorHandleFontFamily =
     templateConfig.typography.authorHandle.fontFamily ?? resolveDefaultAuthorFontValue(baseTemplateId);
+  const currentSourceOverlayFontFamily =
+    templateConfig.sourceOverlay.fontFamily ?? resolveDefaultSourceTextFontValue();
+  const currentSourceWatermarkFontFamily =
+    templateConfig.sourceWatermark.fontFamily ?? resolveDefaultSourceTextFontValue();
   const currentBadgeAssetPath = templateConfig.author.checkAssetPath ?? "";
   const currentBadgeOption = BADGE_OPTIONS.find((option) => option.value === currentBadgeAssetPath);
   const sectionLinks = useMemo(
@@ -1485,6 +1522,14 @@ export function TemplateStyleEditor({
   const authorHandleFontSelectOptions = useMemo(
     () => buildFontSelectOptions(currentAuthorHandleFontFamily, BODY_FONT_OPTIONS),
     [currentAuthorHandleFontFamily]
+  );
+  const sourceOverlayFontSelectOptions = useMemo(
+    () => buildFontSelectOptions(currentSourceOverlayFontFamily, SOURCE_TEXT_FONT_OPTIONS),
+    [currentSourceOverlayFontFamily]
+  );
+  const sourceWatermarkFontSelectOptions = useMemo(
+    () => buildFontSelectOptions(currentSourceWatermarkFontFamily, SOURCE_TEXT_FONT_OPTIONS),
+    [currentSourceWatermarkFontFamily]
   );
 
   const clearPendingAutosaveTimer = useCallback(() => {
@@ -4155,6 +4200,25 @@ export function TemplateStyleEditor({
                   onChange={(value) => updateSourceOverlay("maxWidthPct", value)}
                 />
               </div>
+              <div className="template-road-editor-grid two-up">
+                <SelectControl
+                  label="Шрифт"
+                  value={currentSourceOverlayFontFamily}
+                  options={sourceOverlayFontSelectOptions}
+                  onChange={(value) => updateSourceOverlay("fontFamily", value)}
+                />
+                <SelectControl
+                  label="Выравнивание"
+                  value={templateConfig.sourceOverlay.textAlign}
+                  options={SOURCE_TEXT_ALIGN_OPTIONS}
+                  onChange={(value) =>
+                    updateSourceOverlay(
+                      "textAlign",
+                      value as Stage3TemplateConfig["sourceOverlay"]["textAlign"]
+                    )
+                  }
+                />
+              </div>
               <div className="template-road-editor-grid three-up">
                 <SliderControl
                   label="Font size"
@@ -4174,16 +4238,13 @@ export function TemplateStyleEditor({
                   formatValue={formatOpacityValue}
                   onChange={(value) => updateSourceOverlay("opacity", value)}
                 />
-                <SelectControl
-                  label="Выравнивание"
-                  value={templateConfig.sourceOverlay.textAlign}
-                  options={SOURCE_TEXT_ALIGN_OPTIONS}
-                  onChange={(value) =>
-                    updateSourceOverlay(
-                      "textAlign",
-                      value as Stage3TemplateConfig["sourceOverlay"]["textAlign"]
-                    )
-                  }
+                <SliderControl
+                  label="Max lines"
+                  min={1}
+                  max={6}
+                  step={1}
+                  value={templateConfig.sourceOverlay.maxLines}
+                  onChange={(value) => updateSourceOverlay("maxLines", Math.round(value))}
                 />
               </div>
               <div className="template-road-editor-grid three-up">
@@ -4252,14 +4313,6 @@ export function TemplateStyleEditor({
                   value={templateConfig.sourceOverlay.shadowOffsetY}
                   formatValue={formatPxValue}
                   onChange={(value) => updateSourceOverlay("shadowOffsetY", value)}
-                />
-                <SliderControl
-                  label="Max lines"
-                  min={1}
-                  max={6}
-                  step={1}
-                  value={templateConfig.sourceOverlay.maxLines}
-                  onChange={(value) => updateSourceOverlay("maxLines", Math.round(value))}
                 />
               </div>
             </div>
@@ -4332,7 +4385,26 @@ export function TemplateStyleEditor({
                   onChange={(value) => updateSourceWatermark("maxWidthPct", value)}
                 />
               </div>
-              <div className="template-road-editor-grid three-up">
+              <div className="template-road-editor-grid two-up">
+                <SelectControl
+                  label="Шрифт"
+                  value={currentSourceWatermarkFontFamily}
+                  options={sourceWatermarkFontSelectOptions}
+                  onChange={(value) => updateSourceWatermark("fontFamily", value)}
+                />
+                <SelectControl
+                  label="Выравнивание"
+                  value={templateConfig.sourceWatermark.textAlign}
+                  options={SOURCE_TEXT_ALIGN_OPTIONS}
+                  onChange={(value) =>
+                    updateSourceWatermark(
+                      "textAlign",
+                      value as Stage3TemplateConfig["sourceWatermark"]["textAlign"]
+                    )
+                  }
+                />
+              </div>
+              <div className="template-road-editor-grid two-up">
                 <SliderControl
                   label="Font size"
                   min={8}
@@ -4350,17 +4422,6 @@ export function TemplateStyleEditor({
                   value={templateConfig.sourceWatermark.opacity}
                   formatValue={formatOpacityValue}
                   onChange={(value) => updateSourceWatermark("opacity", value)}
-                />
-                <SelectControl
-                  label="Выравнивание"
-                  value={templateConfig.sourceWatermark.textAlign}
-                  options={SOURCE_TEXT_ALIGN_OPTIONS}
-                  onChange={(value) =>
-                    updateSourceWatermark(
-                      "textAlign",
-                      value as Stage3TemplateConfig["sourceWatermark"]["textAlign"]
-                    )
-                  }
                 />
               </div>
               <div className="template-road-editor-grid three-up">

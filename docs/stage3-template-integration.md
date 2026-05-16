@@ -278,6 +278,16 @@ Template Road может подключать пользовательские f
 - author row не должен неявно наследовать uploaded `bottom/body` font stack: имя и ник автора используют только свои author typography settings или обычный author fallback;
 - если font asset отсутствует или не принадлежит workspace, render не блокируется и использует fallback stack.
 
+## 9b. Source video text contract
+
+Текст внутри окна исходного видео (`sourceOverlay`) и template watermark живут в media slot, но настраиваются как отдельные template-level text layers.
+
+Правила:
+- у source overlay есть свой `fontFamily`, не наследующий `TOP/Lead` или `BOTTOM/Main`;
+- выбранный font stack должен одинаково применяться в Template Road, editor preview, snapshot-backed preview и final render;
+- обводка текста рисуется под заливкой букв, отдельным stroke layer, чтобы даже крупный stroke не перекрывал внутреннюю форму букв;
+- fallback font stack должен оставаться обычным sans-serif stack, если старый template ещё не содержит `fontFamily`.
+
 ## 10. Какие файлы за что отвечают
 
 ### Конфиг шаблона

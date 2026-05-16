@@ -49,6 +49,7 @@ export type Stage3SourceVideoTextLayerConfig = {
   yPct: number;
   maxWidthPct: number;
   fontSize: number;
+  fontFamily: string;
   color: string;
   opacity: number;
   strokeColor: string;
@@ -71,12 +72,16 @@ export type Stage3SourceVideoWatermarkConfig = Stage3SourceVideoTextLayerConfig 
   customText: string;
 };
 
+export const DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY =
+  '"Inter","Helvetica Neue",Arial,sans-serif';
+
 export const DEFAULT_STAGE3_SOURCE_OVERLAY_CONFIG: Stage3SourceVideoTextLayerConfig = {
   enabled: true,
   xPct: 5,
   yPct: 5,
   maxWidthPct: 72,
   fontSize: 26,
+  fontFamily: DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY,
   color: "#ffffff",
   opacity: 1,
   strokeColor: "#000000",
@@ -133,6 +138,10 @@ export function normalizeStage3SourceVideoTextLayerConfig(
     yPct: clampStage3SourceNumber(raw.yPct, fallback.yPct, 0, 100),
     maxWidthPct: clampStage3SourceNumber(raw.maxWidthPct, fallback.maxWidthPct, 10, 100),
     fontSize: clampStage3SourceNumber(raw.fontSize, fallback.fontSize, 8, 96),
+    fontFamily:
+      typeof raw.fontFamily === "string" && raw.fontFamily.trim()
+        ? raw.fontFamily.trim()
+        : fallback.fontFamily,
     color: typeof raw.color === "string" && raw.color.trim() ? raw.color : fallback.color,
     opacity: clampStage3SourceNumber(raw.opacity, fallback.opacity, 0, 1),
     strokeColor:

@@ -6,6 +6,7 @@ import type {
 import {
   SCIENCE_CARD,
   SCIENCE_CARD_V7_TEMPLATE_ID,
+  DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY,
   HEDGES_OF_HONOR_TEMPLATE_ID,
   getStage3CardInnerRect,
   isClassicScienceCardTemplateId,
@@ -214,6 +215,23 @@ function renderMediaTextLayer(input: {
   }
   const centered = config.textAlign === "center";
   const right = config.textAlign === "right";
+  const textBoxStyle: CSSProperties = {
+    fontFamily: config.fontFamily || DEFAULT_STAGE3_SOURCE_VIDEO_TEXT_FONT_FAMILY,
+    fontSize: config.fontSize,
+    fontWeight: config.fontWeight,
+    lineHeight: config.lineHeight,
+    textAlign: config.textAlign,
+    letterSpacing: 0,
+    display: "-webkit-box",
+    WebkitBoxOrient: "vertical",
+    WebkitLineClamp: config.maxLines,
+    overflow: "hidden",
+    overflowWrap: "break-word",
+    pointerEvents: "none"
+  };
+  const fillShadow = config.shadowEnabled
+    ? `${config.shadowOffsetX}px ${config.shadowOffsetY}px ${config.shadowBlur}px ${config.shadowColor}`
+    : "none";
   return (
     <div
       key={input.keyName}
@@ -223,29 +241,41 @@ function renderMediaTextLayer(input: {
         top: `${config.yPct}%`,
         transform: centered ? "translate(-50%, -50%)" : right ? "translateX(-100%)" : undefined,
         maxWidth: `${config.maxWidthPct}%`,
-        color: config.color,
         opacity: config.opacity,
-        fontFamily: '"Inter","Helvetica Neue",Arial,sans-serif',
-        fontSize: config.fontSize,
-        fontWeight: config.fontWeight,
-        lineHeight: config.lineHeight,
-        textAlign: config.textAlign,
-        letterSpacing: 0,
-        WebkitTextStroke:
-          config.strokeWidth > 0 ? `${config.strokeWidth}px ${config.strokeColor}` : undefined,
-        textShadow: config.shadowEnabled
-          ? `${config.shadowOffsetX}px ${config.shadowOffsetY}px ${config.shadowBlur}px ${config.shadowColor}`
-          : "none",
-        display: "-webkit-box",
-        WebkitBoxOrient: "vertical",
-        WebkitLineClamp: config.maxLines,
-        overflow: "hidden",
-        overflowWrap: "break-word",
         pointerEvents: "none",
         zIndex: 5
       }}
     >
-      {text}
+      {config.strokeWidth > 0 ? (
+        <div
+          aria-hidden="true"
+          data-source-video-text-layer={`${input.keyName}-stroke`}
+          style={{
+            ...textBoxStyle,
+            position: "absolute",
+            inset: 0,
+            color: "transparent",
+            WebkitTextFillColor: "transparent",
+            WebkitTextStroke: `${config.strokeWidth}px ${config.strokeColor}`,
+            textShadow: "none",
+            zIndex: 0
+          }}
+        >
+          {text}
+        </div>
+      ) : null}
+      <div
+        data-source-video-text-layer={`${input.keyName}-fill`}
+        style={{
+          ...textBoxStyle,
+          position: "relative",
+          color: config.color,
+          textShadow: fillShadow,
+          zIndex: 1
+        }}
+      >
+        {text}
+      </div>
     </div>
   );
 }

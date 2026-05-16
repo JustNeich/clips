@@ -615,6 +615,7 @@ test("managed templates persist source overlay and watermark defaults", async ()
             yPct: 9,
             maxWidthPct: 64,
             fontSize: 24,
+            fontFamily: '"Arial Rounded MT Bold","Arial",sans-serif',
             color: "#ffffff",
             opacity: 0.92,
             strokeColor: "#000000",
@@ -635,6 +636,7 @@ test("managed templates persist source overlay and watermark defaults", async ()
             yPct: 52,
             maxWidthPct: 70,
             fontSize: 30,
+            fontFamily: '"SFMono-Regular","Courier New",monospace',
             color: "#ffffff",
             opacity: 0.35,
             strokeColor: "#000000",
@@ -663,10 +665,18 @@ test("managed templates persist source overlay and watermark defaults", async ()
 
     assert.equal(reloaded?.content.sourceOverlayText, "Let people love out loud.");
     assert.equal(reloaded?.templateConfig.sourceOverlay.xPct, 7);
+    assert.equal(
+      reloaded?.templateConfig.sourceOverlay.fontFamily,
+      '"Arial Rounded MT Bold","Arial",sans-serif'
+    );
     assert.equal(reloaded?.templateConfig.sourceOverlay.opacity, 0.92);
     assert.equal(reloaded?.templateConfig.sourceWatermark.enabled, true);
     assert.equal(reloaded?.templateConfig.sourceWatermark.textMode, "custom");
     assert.equal(reloaded?.templateConfig.sourceWatermark.customText, "@clipsmind");
+    assert.equal(
+      reloaded?.templateConfig.sourceWatermark.fontFamily,
+      '"SFMono-Regular","Courier New",monospace'
+    );
     assert.equal(reloaded?.templateConfig.sourceWatermark.opacity, 0.35);
   });
 });

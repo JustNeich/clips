@@ -118,10 +118,14 @@ test("template scene renders source-video overlay text and template watermark in
   templateConfig.sourceOverlay.enabled = true;
   templateConfig.sourceOverlay.xPct = 6;
   templateConfig.sourceOverlay.yPct = 7;
+  templateConfig.sourceOverlay.fontFamily =
+    '"Arial Rounded MT Bold","Arial",sans-serif';
   templateConfig.sourceWatermark.enabled = true;
   templateConfig.sourceWatermark.textMode = "custom";
   templateConfig.sourceWatermark.customText = "@clipsmind";
   templateConfig.sourceWatermark.opacity = 0.35;
+  templateConfig.sourceWatermark.fontFamily =
+    '"SFMono-Regular","Courier New",monospace';
 
   const content = buildDemoContent();
   const markup = renderToStaticMarkup(
@@ -136,6 +140,12 @@ test("template scene renders source-video overlay text and template watermark in
   assert.match(markup, /@clipsmind/);
   assert.match(markup, /left:6%;top:7%;/);
   assert.match(markup, /opacity:0\.35/);
+  assert.match(markup, /data-source-video-text-layer="generated-source-overlay-stroke"/);
+  assert.match(markup, /data-source-video-text-layer="generated-source-overlay-fill"/);
+  assert.match(markup, /-webkit-text-fill-color:transparent/);
+  assert.match(markup, /-webkit-text-stroke:2px #000000/);
+  assert.match(markup, /font-family:&quot;Arial Rounded MT Bold&quot;,&quot;Arial&quot;,sans-serif/);
+  assert.match(markup, /font-family:&quot;SFMono-Regular&quot;,&quot;Courier New&quot;,monospace/);
 });
 
 test("template snapshot hash includes source overlay text and watermark config", () => {

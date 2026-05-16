@@ -846,6 +846,10 @@
     - demo TOP/BOTTOM
     - highlight toggles / slots / colors / guidance
     - demo phrases expect exact substrings from the current demo copy, not semantic categories
+  - section `Видео`
+    - video adjustment sliders
+    - source-overlay controls including font stack, alignment, stroke, shadow and max lines
+    - template watermark controls including text source, font stack, alignment, stroke and shadow
   - section `Силуэт и оболочка`
   - section `Генератор тени`
   - section `Шрифты`
