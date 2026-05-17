@@ -16,6 +16,13 @@ import {
 import { runCopscopesDailyPool } from "../lib/copscopes-daily-runner";
 import { getDb } from "../lib/db/client";
 import { authenticateMcpControlWriteToken, type McpTokenAuthContext } from "../lib/mcp-token-store";
+import { isChannelPublishIntegrationReady } from "../lib/channel-publish-state";
+import {
+  getChannelPublishIntegration,
+  getChannelPublishSettings,
+  listChannelPublications,
+  upsertChannelPublishSettings
+} from "../lib/publication-store";
 import { applyCopscopesChannelPreset } from "./apply-copscopes-channel-preset";
 import type { Stage3SourceCrop } from "../app/components/types";
 
@@ -127,6 +134,70 @@ function auditControl(input: {
       ...input.payload
     }
   });
+}
+
+function summarizeCopscopesPublishing(channel: ChannelRow, limit = 12): Record<string, unknown> {
+  const settings = getChannelPublishSettings(channel.id);
+  const integration = getChannelPublishIntegration(channel.id);
+  return {
+    settings,
+    expectedGrid: {
+      timezone: "Europe/Moscow",
+      firstSlotLocalTime: "21:15",
+      dailySlotCount: 3,
+      slotIntervalMinutes: 15,
+      autoQueueEnabled: true
+    },
+    gridMatchesExpected:
+      settings.timezone === "Europe/Moscow" &&
+      settings.firstSlotLocalTime === "21:15" &&
+      settings.dailySlotCount === 3 &&
+      settings.slotIntervalMinutes === 15 &&
+      settings.autoQueueEnabled === true,
+    integration: integration
+      ? {
+          provider: integration.provider,
+          status: integration.status,
+          ready: isChannelPublishIntegrationReady(integration),
+          selectedYoutubeChannelId: integration.selectedYoutubeChannelId,
+          selectedYoutubeChannelTitle: integration.selectedYoutubeChannelTitle,
+          selectedYoutubeChannelCustomUrl: integration.selectedYoutubeChannelCustomUrl,
+          selectedGoogleAccountEmail: integration.selectedGoogleAccountEmail,
+          lastVerifiedAt: integration.lastVerifiedAt,
+          lastError: integration.lastError
+        }
+      : {
+          provider: "youtube",
+          status: "disconnected",
+          ready: false,
+          selectedYoutubeChannelId: null,
+          selectedYoutubeChannelTitle: null,
+          selectedYoutubeChannelCustomUrl: null,
+          selectedGoogleAccountEmail: null,
+          lastVerifiedAt: null,
+          lastError: "YouTube publishing is not connected."
+        },
+    recentPublications: listChannelPublications(channel.id)
+      .slice()
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+      .slice(0, Math.max(1, Math.min(50, Math.floor(limit))))
+      .map((publication) => ({
+        id: publication.id,
+        chatId: publication.chatId,
+        title: publication.title,
+        status: publication.status,
+        scheduleMode: publication.scheduleMode,
+        scheduledAt: publication.scheduledAt,
+        uploadReadyAt: publication.uploadReadyAt,
+        slotDate: publication.slotDate,
+        slotIndex: publication.slotIndex,
+        needsReview: publication.needsReview,
+        youtubeVideoUrl: publication.youtubeVideoUrl,
+        lastError: publication.lastError,
+        createdAt: publication.createdAt,
+        updatedAt: publication.updatedAt
+      }))
+  };
 }
 
 const sourceItemSchema = z.object({
@@ -340,6 +411,52 @@ server.registerTool(
 );
 
 server.registerTool(
+  "clips_control_get_channel_status",
+  {
+    title: "Get CopScopes channel status",
+    description: "Read CopScopes publishing settings, YouTube readiness, recent publications, categories, and source pool sample.",
+    inputSchema: z.object({
+      channelUsername: z.string().optional(),
+      categorySlug: z.string().optional(),
+      poolLimit: z.number().int().min(1).max(500).optional(),
+      publicationsLimit: z.number().int().min(1).max(50).optional()
+    })
+  },
+  async ({ channelUsername, categorySlug, poolLimit, publicationsLimit }) => {
+    if (remoteMode) {
+      return remoteControl("clips_control_get_channel_status", {
+        channelUsername,
+        categorySlug,
+        poolLimit,
+        publicationsLimit
+      });
+    }
+    const localAuth = getLocalAuth();
+    const channel = resolveChannel(channelUsername);
+    const pool = listCopscopesSourcePool({
+      workspaceId: localAuth.workspace.id,
+      channelId: channel.id,
+      categorySlug,
+      limit: poolLimit ?? 20
+    });
+    auditControl({
+      action: "copscopes_control.get_channel_status.succeeded",
+      channelId: channel.id,
+      status: "succeeded",
+      payload: {
+        activeCategory: pool.categories.find((category) => category.status === "active")?.slug ?? null
+      }
+    });
+    return jsonContent({
+      channel,
+      publishing: summarizeCopscopesPublishing(channel, publicationsLimit ?? 12),
+      categories: pool.categories,
+      reels: pool.reels
+    });
+  }
+);
+
+server.registerTool(
   "clips_control_set_active_category",
   {
     title: "Set active CopScopes category",
@@ -370,6 +487,96 @@ server.registerTool(
       payload: { categorySlug: category.slug }
     });
     return jsonContent({ category });
+  }
+);
+
+server.registerTool(
+  "clips_control_set_publish_schedule",
+  {
+    title: "Set CopScopes publish schedule",
+    description: "Set the CopScopes channel publish grid used by automatic publication queueing.",
+    inputSchema: z.object({
+      channelUsername: z.string().optional(),
+      timezone: z.string().optional(),
+      firstSlotLocalTime: z.string().optional(),
+      dailySlotCount: z.number().int().min(1).max(12).optional(),
+      slotIntervalMinutes: z.number().int().min(5).max(240).optional(),
+      autoQueueEnabled: z.boolean().optional(),
+      uploadLeadMinutes: z.number().int().min(5).max(1440).optional(),
+      notifySubscribersByDefault: z.boolean().optional(),
+      dryRun: z.boolean().optional()
+    })
+  },
+  async ({
+    channelUsername,
+    timezone,
+    firstSlotLocalTime,
+    dailySlotCount,
+    slotIntervalMinutes,
+    autoQueueEnabled,
+    uploadLeadMinutes,
+    notifySubscribersByDefault,
+    dryRun
+  }) => {
+    const input = {
+      channelUsername,
+      timezone: timezone ?? "Europe/Moscow",
+      firstSlotLocalTime: firstSlotLocalTime ?? "21:15",
+      dailySlotCount: dailySlotCount ?? 3,
+      slotIntervalMinutes: slotIntervalMinutes ?? 15,
+      autoQueueEnabled: autoQueueEnabled ?? true,
+      uploadLeadMinutes,
+      notifySubscribersByDefault,
+      dryRun: Boolean(dryRun)
+    };
+    if (remoteMode) {
+      return remoteControl("clips_control_set_publish_schedule", input);
+    }
+    const localAuth = getLocalAuth();
+    const channel = resolveChannel(channelUsername);
+    const current = getChannelPublishSettings(channel.id);
+    const patch = {
+      timezone: input.timezone,
+      firstSlotLocalTime: input.firstSlotLocalTime,
+      dailySlotCount: input.dailySlotCount,
+      slotIntervalMinutes: input.slotIntervalMinutes,
+      autoQueueEnabled: input.autoQueueEnabled,
+      ...(uploadLeadMinutes === undefined ? {} : { uploadLeadMinutes }),
+      ...(notifySubscribersByDefault === undefined ? {} : { notifySubscribersByDefault })
+    };
+    auditControl({
+      action: "copscopes_control.set_publish_schedule.attempted",
+      channelId: channel.id,
+      status: "attempted",
+      payload: {
+        dryRun: input.dryRun,
+        current,
+        patch
+      }
+    });
+    if (!input.dryRun) {
+      upsertChannelPublishSettings({
+        workspaceId: localAuth.workspace.id,
+        channelId: channel.id,
+        userId: localAuth.user.id,
+        patch
+      });
+    }
+    auditControl({
+      action: "copscopes_control.set_publish_schedule.succeeded",
+      channelId: channel.id,
+      status: "succeeded",
+      payload: {
+        dryRun: input.dryRun,
+        settings: getChannelPublishSettings(channel.id)
+      }
+    });
+    return jsonContent({
+      channel,
+      dryRun: input.dryRun,
+      previousSettings: current,
+      publishing: summarizeCopscopesPublishing(channel)
+    });
   }
 );
 

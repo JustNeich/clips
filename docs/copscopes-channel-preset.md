@@ -72,9 +72,22 @@ Available control tools:
 - `clips_control_import_source_pool`
 - `clips_control_list_source_pool`
 - `clips_control_set_active_category`
+- `clips_control_get_channel_status` (publishing grid, YouTube readiness, recent publications, categories, and pool sample)
+- `clips_control_set_publish_schedule` (repairs the CopScopes grid to the approved daily publication slots)
 - `clips_control_reset_source_pool_item` (operator retry path for failed or reviewed source Reels)
 - `clips_control_cancel_publication` (removes an unsafe CopScopes publication, including remote YouTube deletion when applicable; pass `allowPublished: true` only for explicit owner cleanup of an already-published bad render)
 - `clips_control_run_daily_pool`
+
+The approved CopScopes publishing grid is `Europe/Moscow`, three daily slots, first slot `21:15`,
+15-minute interval, with auto-queue enabled. The deterministic production wrapper checks and, unless
+`--no-repair-schedule` is passed, repairs that grid before running the live source pool:
+
+```bash
+npm run copscopes:daily-production -- --limit 3 --attempt-budget 8
+```
+
+Use `--dry-run` to run health, channel-status, schedule and source-pool checks without queueing new
+Stage 3 render jobs.
 
 Source pool records are stored in `copscopes_source_categories`, `copscopes_source_reels`,
 `copscopes_daily_runs`, and `copscopes_daily_run_items`. The pool keeps canonical Instagram Reel

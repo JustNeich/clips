@@ -25,7 +25,9 @@ import { getDb } from "../lib/db/client";
 import {
   createChannelPublication,
   createRenderExport,
-  getChannelPublicationById
+  getChannelPublicationById,
+  saveChannelPublishIntegration,
+  upsertChannelPublishSettings
 } from "../lib/publication-store";
 import { enqueueStage3Job } from "../lib/stage3-job-store";
 import { bootstrapOwner } from "../lib/team-store";
@@ -139,6 +141,103 @@ test("CopScopes control API rejects flow:read tokens and accepts control:write t
     const body = (await controlResponse.json()) as { categories?: unknown[] };
     assert.equal(controlResponse.status, 200);
     assert.ok(Array.isArray(body.categories));
+  });
+});
+
+test("CopScopes control API exposes and repairs the production publishing grid", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedCopscopes();
+    upsertChannelPublishSettings({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      patch: {
+        timezone: "Europe/Moscow",
+        firstSlotLocalTime: "21:00",
+        dailySlotCount: 4,
+        slotIntervalMinutes: 15,
+        autoQueueEnabled: false
+      }
+    });
+    saveChannelPublishIntegration({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      status: "connected",
+      credential: null,
+      googleAccountEmail: "owner@example.com",
+      selectedYoutubeChannelId: "youtube-copscopes",
+      selectedYoutubeChannelTitle: "COP SCOPES",
+      selectedYoutubeChannelCustomUrl: "@copscopes",
+      availableChannels: [{ id: "youtube-copscopes", title: "COP SCOPES", customUrl: "@copscopes" }],
+      scopes: ["https://www.googleapis.com/auth/youtube.upload"]
+    });
+    const controlToken = createMcpAccessToken({
+      workspaceId: owner.workspace.id,
+      ownerUserId: owner.user.id,
+      expiresInDays: 1,
+      scopes: ["flow:read", "control:write"]
+    });
+
+    const statusBefore = await copscopesControlRoute(
+      new Request("http://localhost/api/admin/control/copscopes", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${controlToken.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          tool: "clips_control_get_channel_status",
+          input: { channelUsername: "copscopes" }
+        })
+      })
+    );
+    const bodyBefore = (await statusBefore.json()) as {
+      publishing?: {
+        gridMatchesExpected?: boolean;
+        integration?: { ready?: boolean };
+      };
+    };
+    assert.equal(statusBefore.status, 200);
+    assert.equal(bodyBefore.publishing?.gridMatchesExpected, false);
+    assert.equal(bodyBefore.publishing?.integration?.ready, true);
+
+    const repairResponse = await copscopesControlRoute(
+      new Request("http://localhost/api/admin/control/copscopes", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${controlToken.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          tool: "clips_control_set_publish_schedule",
+          input: {
+            channelUsername: "copscopes",
+            timezone: "Europe/Moscow",
+            firstSlotLocalTime: "21:15",
+            dailySlotCount: 3,
+            slotIntervalMinutes: 15,
+            autoQueueEnabled: true
+          }
+        })
+      })
+    );
+    const repaired = (await repairResponse.json()) as {
+      publishing?: {
+        settings?: {
+          firstSlotLocalTime?: string;
+          dailySlotCount?: number;
+          autoQueueEnabled?: boolean;
+        };
+        gridMatchesExpected?: boolean;
+      };
+    };
+
+    assert.equal(repairResponse.status, 200);
+    assert.equal(repaired.publishing?.settings?.firstSlotLocalTime, "21:15");
+    assert.equal(repaired.publishing?.settings?.dailySlotCount, 3);
+    assert.equal(repaired.publishing?.settings?.autoQueueEnabled, true);
+    assert.equal(repaired.publishing?.gridMatchesExpected, true);
   });
 });
 

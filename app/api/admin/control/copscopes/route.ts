@@ -18,7 +18,14 @@ import {
   updateChannelPublicationFromEditor
 } from "../../../../../lib/channel-publication-service";
 import { scheduleChannelPublicationProcessing } from "../../../../../lib/channel-publication-runtime";
-import { getChannelPublicationById } from "../../../../../lib/publication-store";
+import { isChannelPublishIntegrationReady } from "../../../../../lib/channel-publish-state";
+import {
+  getChannelPublicationById,
+  getChannelPublishIntegration,
+  getChannelPublishSettings,
+  listChannelPublications,
+  upsertChannelPublishSettings
+} from "../../../../../lib/publication-store";
 import { applyCopscopesChannelPreset } from "../../../../../scripts/apply-copscopes-channel-preset";
 import type { Stage3SourceCrop } from "../../../../components/types";
 
@@ -91,6 +98,71 @@ function summarizeChannel(channel: ChannelRow): Record<string, unknown> {
     username: channel.username,
     hasAvatar: Boolean(channel.avatar_asset_id),
     avatarAssetId: channel.avatar_asset_id ?? null
+  };
+}
+
+function summarizeCopscopesPublishing(channel: ChannelRow, limit = 12): Record<string, unknown> {
+  const settings = getChannelPublishSettings(channel.id);
+  const integration = getChannelPublishIntegration(channel.id);
+  const publications = listChannelPublications(channel.id)
+    .slice()
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+    .slice(0, Math.max(1, Math.min(50, Math.floor(limit))))
+    .map((publication) => ({
+      id: publication.id,
+      chatId: publication.chatId,
+      title: publication.title,
+      status: publication.status,
+      scheduleMode: publication.scheduleMode,
+      scheduledAt: publication.scheduledAt,
+      uploadReadyAt: publication.uploadReadyAt,
+      slotDate: publication.slotDate,
+      slotIndex: publication.slotIndex,
+      needsReview: publication.needsReview,
+      youtubeVideoUrl: publication.youtubeVideoUrl,
+      lastError: publication.lastError,
+      createdAt: publication.createdAt,
+      updatedAt: publication.updatedAt
+    }));
+  return {
+    settings,
+    expectedGrid: {
+      timezone: "Europe/Moscow",
+      firstSlotLocalTime: "21:15",
+      dailySlotCount: 3,
+      slotIntervalMinutes: 15,
+      autoQueueEnabled: true
+    },
+    gridMatchesExpected:
+      settings.timezone === "Europe/Moscow" &&
+      settings.firstSlotLocalTime === "21:15" &&
+      settings.dailySlotCount === 3 &&
+      settings.slotIntervalMinutes === 15 &&
+      settings.autoQueueEnabled === true,
+    integration: integration
+      ? {
+          provider: integration.provider,
+          status: integration.status,
+          ready: isChannelPublishIntegrationReady(integration),
+          selectedYoutubeChannelId: integration.selectedYoutubeChannelId,
+          selectedYoutubeChannelTitle: integration.selectedYoutubeChannelTitle,
+          selectedYoutubeChannelCustomUrl: integration.selectedYoutubeChannelCustomUrl,
+          selectedGoogleAccountEmail: integration.selectedGoogleAccountEmail,
+          lastVerifiedAt: integration.lastVerifiedAt,
+          lastError: integration.lastError
+        }
+      : {
+          provider: "youtube",
+          status: "disconnected",
+          ready: false,
+          selectedYoutubeChannelId: null,
+          selectedYoutubeChannelTitle: null,
+          selectedYoutubeChannelCustomUrl: null,
+          selectedGoogleAccountEmail: null,
+          lastVerifiedAt: null,
+          lastError: "YouTube publishing is not connected."
+        },
+    recentPublications: publications
   };
 }
 
@@ -265,6 +337,40 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
+    if (tool === "clips_control_get_channel_status") {
+      const pool = listCopscopesSourcePool({
+        workspaceId: auth.workspace.id,
+        channelId: channel.id,
+        categorySlug: resolveString(input.categorySlug),
+        limit: resolveNumber(input.poolLimit) ?? 20
+      });
+      const publishing = summarizeCopscopesPublishing(channel, resolveNumber(input.publicationsLimit) ?? 12);
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "copscopes_control.get_channel_status.succeeded",
+        channelId: channel.id,
+        status: "succeeded",
+        payload: {
+          activeCategory: pool.categories.find((category) => category.status === "active")?.slug ?? null,
+          gridMatchesExpected: publishing.gridMatchesExpected,
+          integrationStatus:
+            typeof publishing.integration === "object" && publishing.integration !== null
+              ? (publishing.integration as Record<string, unknown>).status
+              : null
+        }
+      });
+      return Response.json(
+        {
+          channel: summarizeChannel(channel),
+          publishing,
+          categories: pool.categories,
+          reels: pool.reels
+        },
+        { status: 200 }
+      );
+    }
+
     if (tool === "clips_control_set_active_category") {
       const categorySlug = resolveString(input.categorySlug);
       if (!categorySlug) {
@@ -284,6 +390,71 @@ export async function POST(request: Request): Promise<Response> {
         payload: { categorySlug: category.slug }
       });
       return Response.json({ channel: summarizeChannel(channel), category }, { status: 200 });
+    }
+
+    if (tool === "clips_control_set_publish_schedule") {
+      const timezone = resolveString(input.timezone) ?? "Europe/Moscow";
+      const firstSlotLocalTime = resolveString(input.firstSlotLocalTime) ?? "21:15";
+      const dailySlotCount = resolveNumber(input.dailySlotCount) ?? 3;
+      const slotIntervalMinutes = resolveNumber(input.slotIntervalMinutes) ?? 15;
+      const autoQueueEnabled =
+        typeof input.autoQueueEnabled === "boolean" ? resolveBoolean(input.autoQueueEnabled) : true;
+      const uploadLeadMinutes = resolveNumber(input.uploadLeadMinutes);
+      const notifySubscribersByDefault =
+        typeof input.notifySubscribersByDefault === "boolean"
+          ? resolveBoolean(input.notifySubscribersByDefault)
+          : undefined;
+      const dryRun = resolveBoolean(input.dryRun);
+      const current = getChannelPublishSettings(channel.id);
+      const patch = {
+        timezone,
+        firstSlotLocalTime,
+        dailySlotCount,
+        slotIntervalMinutes,
+        autoQueueEnabled,
+        ...(uploadLeadMinutes === undefined ? {} : { uploadLeadMinutes }),
+        ...(notifySubscribersByDefault === undefined ? {} : { notifySubscribersByDefault })
+      };
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "copscopes_control.set_publish_schedule.attempted",
+        channelId: channel.id,
+        status: "attempted",
+        payload: {
+          dryRun,
+          current,
+          patch
+        }
+      });
+      const settings = dryRun
+        ? current
+        : upsertChannelPublishSettings({
+            workspaceId: auth.workspace.id,
+            channelId: channel.id,
+            userId: auth.user.id,
+            patch
+          });
+      auditControl({
+        workspaceId: auth.workspace.id,
+        userId: auth.user.id,
+        action: "copscopes_control.set_publish_schedule.succeeded",
+        channelId: channel.id,
+        status: "succeeded",
+        payload: {
+          dryRun,
+          settings
+        }
+      });
+      return Response.json(
+        {
+          channel: summarizeChannel(channel),
+          dryRun,
+          previousSettings: current,
+          publishing: summarizeCopscopesPublishing(channel)
+        },
+        { status: 200 }
+      );
     }
 
     if (tool === "clips_control_reset_source_pool_item") {
