@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { requireOwnerOrMcpControlWrite } from "../../../../../lib/auth/guards";
 import { appendFlowAuditEvent } from "../../../../../lib/audit-log-store";
 import { COPSCOPES_CHANNEL_USERNAME } from "../../../../../lib/copscopes-channel-preset";
@@ -5,6 +6,7 @@ import {
   exportCopscopesSourcePoolCsv,
   exportCopscopesSourcePoolMarkdown,
   importCopscopesSourcePool,
+  listCopscopesDailyRuns,
   listCopscopesSourcePool,
   resetCopscopesSourceReelForRetry,
   setActiveCopscopesCategory,
@@ -219,6 +221,10 @@ function normalizeSourceItem(value: unknown): SourcePoolItem {
   };
 }
 
+function newControlRunId(): string {
+  return randomUUID().replace(/-/g, "");
+}
+
 export async function POST(request: Request): Promise<Response> {
   try {
     const auth = await requireOwnerOrMcpControlWrite(request);
@@ -344,6 +350,12 @@ export async function POST(request: Request): Promise<Response> {
         categorySlug: resolveString(input.categorySlug),
         limit: resolveNumber(input.poolLimit) ?? 20
       });
+      const dailyRuns = listCopscopesDailyRuns({
+        workspaceId: auth.workspace.id,
+        channelId: channel.id,
+        limit: resolveNumber(input.dailyRunsLimit) ?? 10,
+        runId: resolveString(input.runId)
+      });
       const publishing = summarizeCopscopesPublishing(channel, resolveNumber(input.publicationsLimit) ?? 12);
       auditControl({
         workspaceId: auth.workspace.id,
@@ -365,7 +377,8 @@ export async function POST(request: Request): Promise<Response> {
           channel: summarizeChannel(channel),
           publishing,
           categories: pool.categories,
-          reels: pool.reels
+          reels: pool.reels,
+          dailyRuns
         },
         { status: 200 }
       );
@@ -609,6 +622,61 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     if (tool === "clips_control_run_daily_pool") {
+      const runAsync = resolveBoolean(input.async) || resolveBoolean(input.background);
+      if (runAsync && !resolveBoolean(input.dryRun)) {
+        const runId = newControlRunId();
+        const categorySlug = resolveString(input.categorySlug);
+        const limit = resolveNumber(input.limit);
+        const attemptBudget = resolveNumber(input.attemptBudget);
+        auditControl({
+          workspaceId: auth.workspace.id,
+          userId: auth.user.id,
+          action: "copscopes_control.run_daily_pool.accepted",
+          channelId: channel.id,
+          entityId: runId,
+          status: "queued",
+          payload: {
+            async: true,
+            categorySlug: categorySlug ?? null,
+            limit: limit ?? null,
+            attemptBudget: attemptBudget ?? null
+          }
+        });
+        void runCopscopesDailyPool({
+          workspaceId: auth.workspace.id,
+          channelId: channel.id,
+          userId: auth.user.id,
+          runId,
+          categorySlug,
+          limit,
+          attemptBudget,
+          dryRun: false
+        }).catch((error) => {
+          appendFlowAuditEvent({
+            workspaceId: auth.workspace.id,
+            userId: auth.user.id,
+            action: "copscopes_daily_pool.failed",
+            entityType: "copscopes_daily_run",
+            entityId: runId,
+            channelId: channel.id,
+            stage: "mcp",
+            status: "failed",
+            severity: "error",
+            payload: {
+              error: error instanceof Error ? error.message : String(error)
+            }
+          });
+        });
+        return Response.json(
+          {
+            channel: summarizeChannel(channel),
+            accepted: true,
+            async: true,
+            runId
+          },
+          { status: 202 }
+        );
+      }
       const result = await runCopscopesDailyPool({
         workspaceId: auth.workspace.id,
         channelId: channel.id,

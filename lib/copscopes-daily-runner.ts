@@ -670,6 +670,7 @@ export async function runCopscopesDailyPool(input: {
   workspaceId: string;
   channelId: string;
   userId: string;
+  runId?: string | null;
   categorySlug?: string | null;
   limit?: number | null;
   attemptBudget?: number | null;
@@ -727,6 +728,7 @@ export async function runCopscopesDailyPool(input: {
   }
 
   const runId = createCopscopesDailyRun({
+    id: input.runId ?? undefined,
     workspaceId: input.workspaceId,
     channelId: input.channelId,
     categoryId: selection.category.id,

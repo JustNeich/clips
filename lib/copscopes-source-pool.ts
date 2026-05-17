@@ -95,6 +95,26 @@ export type CopscopesSourceReel = {
   consumedAt: string | null;
 };
 
+export type CopscopesDailyRunRecord = {
+  id: string;
+  workspaceId: string;
+  channelId: string;
+  categoryId: string | null;
+  categorySlug: string;
+  status: CopscopesRunStatus;
+  limit: number;
+  attemptBudget: number;
+  dryRun: boolean;
+  selectedCount: number;
+  queuedCount: number;
+  reviewedCount: number;
+  failedCount: number;
+  report: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
 export type ImportCopscopesSourcePoolResult = {
   dryRun: boolean;
   created: number;
@@ -199,6 +219,26 @@ type CategoryRow = {
   total_count?: number | null;
 };
 
+type DailyRunRow = {
+  id: string;
+  workspace_id: string;
+  channel_id: string;
+  category_id?: string | null;
+  category_slug: string;
+  status: string;
+  limit_count: number;
+  attempt_budget: number;
+  dry_run: number;
+  selected_count: number;
+  queued_count: number;
+  reviewed_count: number;
+  failed_count: number;
+  report_json: string;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+};
+
 function parseJsonArray(raw: string | null | undefined): string[] {
   try {
     const parsed = JSON.parse(raw ?? "[]") as unknown;
@@ -272,6 +312,30 @@ function mapCategory(row: CategoryRow): CopscopesSourceCategory {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     exhaustedAt: row.exhausted_at ? String(row.exhausted_at) : null
+  };
+}
+
+function mapDailyRun(row: DailyRunRow): CopscopesDailyRunRecord {
+  const parsedReport = parseJsonObject(row.report_json);
+  const status = String(row.status) as CopscopesRunStatus;
+  return {
+    id: String(row.id),
+    workspaceId: String(row.workspace_id),
+    channelId: String(row.channel_id),
+    categoryId: row.category_id ? String(row.category_id) : null,
+    categorySlug: String(row.category_slug),
+    status,
+    limit: Number(row.limit_count ?? 0),
+    attemptBudget: Number(row.attempt_budget ?? 0),
+    dryRun: Number(row.dry_run ?? 0) === 1,
+    selectedCount: Number(row.selected_count ?? 0),
+    queuedCount: Number(row.queued_count ?? 0),
+    reviewedCount: Number(row.reviewed_count ?? 0),
+    failedCount: Number(row.failed_count ?? 0),
+    report: parsedReport,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    completedAt: row.completed_at ? String(row.completed_at) : null
   };
 }
 
@@ -971,6 +1035,7 @@ export function selectCopscopesDailyCandidates(input: {
 }
 
 export function createCopscopesDailyRun(input: {
+  id?: string | null;
   workspaceId: string;
   channelId: string;
   categorySlug: string;
@@ -982,7 +1047,7 @@ export function createCopscopesDailyRun(input: {
   selectedCount?: number | null;
   report?: Record<string, unknown> | null;
 }): string {
-  const id = newId();
+  const id = input.id?.trim() || newId();
   const stamp = nowIso();
   getDb()
     .prepare(
@@ -1007,6 +1072,32 @@ export function createCopscopesDailyRun(input: {
       stamp
     );
   return id;
+}
+
+export function listCopscopesDailyRuns(input: {
+  workspaceId: string;
+  channelId: string;
+  limit?: number | null;
+  runId?: string | null;
+}): CopscopesDailyRunRecord[] {
+  const limit = Math.max(1, Math.min(50, Math.floor(input.limit ?? 10)));
+  const params: Array<string | number> = [input.workspaceId, input.channelId];
+  const filters = ["workspace_id = ?", "channel_id = ?"];
+  if (input.runId?.trim()) {
+    filters.push("id = ?");
+    params.push(input.runId.trim());
+  }
+  params.push(limit);
+  const rows = getDb()
+    .prepare(
+      `SELECT *
+         FROM copscopes_daily_runs
+        WHERE ${filters.join(" AND ")}
+        ORDER BY created_at DESC
+        LIMIT ?`
+    )
+    .all(...params) as DailyRunRow[];
+  return rows.map(mapDailyRun);
 }
 
 export function recordCopscopesDailyRunItem(input: {

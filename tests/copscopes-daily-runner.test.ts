@@ -7,6 +7,7 @@ import test from "node:test";
 import { createChannel } from "../lib/chat-history";
 import {
   importCopscopesSourcePool,
+  listCopscopesDailyRuns,
   listCopscopesSourcePool,
   setActiveCopscopesCategory
 } from "../lib/copscopes-source-pool";
@@ -165,6 +166,46 @@ test("CopScopes daily run processes up to 3 queued items in isolated DB", async 
     });
     assert.equal(listed.reels.filter((reel) => reel.status === "in_progress").length, 3);
     assert.equal(listed.reels.filter((reel) => reel.status === "available").length, 2);
+  });
+});
+
+test("CopScopes daily run preserves caller run id for async control polling", async () => {
+  await withIsolatedAppData(async () => {
+    const { owner, channel } = await seedDailyScenario();
+    const executor: CopscopesDailyExecutor = async ({ reel }) => ({
+      status: "queued",
+      qualityGatePassed: true,
+      chatId: `chat-${reel.shortcode}`,
+      stage2RunId: `stage2-${reel.shortcode}`,
+      stage3JobId: `stage3-${reel.shortcode}`,
+      review: {
+        qualityGatePassed: true,
+        cropPassed: true,
+        sourceMetaLeakDetected: false,
+        finalDurationSec: 6,
+        notes: ["pass"]
+      }
+    });
+
+    const result = await runCopscopesDailyPool({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      userId: owner.user.id,
+      runId: "copscopes-fixed-run",
+      limit: 1,
+      attemptBudget: 1,
+      executor
+    });
+
+    assert.equal(result.runId, "copscopes-fixed-run");
+    const runs = listCopscopesDailyRuns({
+      workspaceId: owner.workspace.id,
+      channelId: channel.id,
+      runId: "copscopes-fixed-run"
+    });
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0].status, "completed");
+    assert.equal(runs[0].queuedCount, 1);
   });
 });
 

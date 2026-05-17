@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -8,6 +9,7 @@ import {
   exportCopscopesSourcePoolCsv,
   exportCopscopesSourcePoolMarkdown,
   importCopscopesSourcePool,
+  listCopscopesDailyRuns,
   listCopscopesSourcePool,
   resetCopscopesSourceReelForRetry,
   setActiveCopscopesCategory,
@@ -134,6 +136,10 @@ function auditControl(input: {
       ...input.payload
     }
   });
+}
+
+function newControlRunId(): string {
+  return randomUUID().replace(/-/g, "");
 }
 
 function summarizeCopscopesPublishing(channel: ChannelRow, limit = 12): Record<string, unknown> {
@@ -419,16 +425,20 @@ server.registerTool(
       channelUsername: z.string().optional(),
       categorySlug: z.string().optional(),
       poolLimit: z.number().int().min(1).max(500).optional(),
-      publicationsLimit: z.number().int().min(1).max(50).optional()
+      publicationsLimit: z.number().int().min(1).max(50).optional(),
+      dailyRunsLimit: z.number().int().min(1).max(50).optional(),
+      runId: z.string().optional()
     })
   },
-  async ({ channelUsername, categorySlug, poolLimit, publicationsLimit }) => {
+  async ({ channelUsername, categorySlug, poolLimit, publicationsLimit, dailyRunsLimit, runId }) => {
     if (remoteMode) {
       return remoteControl("clips_control_get_channel_status", {
         channelUsername,
         categorySlug,
         poolLimit,
-        publicationsLimit
+        publicationsLimit,
+        dailyRunsLimit,
+        runId
       });
     }
     const localAuth = getLocalAuth();
@@ -451,7 +461,13 @@ server.registerTool(
       channel,
       publishing: summarizeCopscopesPublishing(channel, publicationsLimit ?? 12),
       categories: pool.categories,
-      reels: pool.reels
+      reels: pool.reels,
+      dailyRuns: listCopscopesDailyRuns({
+        workspaceId: localAuth.workspace.id,
+        channelId: channel.id,
+        limit: dailyRunsLimit ?? 10,
+        runId
+      })
     });
   }
 );
@@ -634,21 +650,71 @@ server.registerTool(
       categorySlug: z.string().optional(),
       limit: z.number().int().min(1).max(3).optional(),
       attemptBudget: z.number().int().min(1).max(12).optional(),
-      dryRun: z.boolean().optional()
+      dryRun: z.boolean().optional(),
+      async: z.boolean().optional(),
+      background: z.boolean().optional()
     })
   },
-  async ({ channelUsername, categorySlug, limit, attemptBudget, dryRun }) => {
+  async ({ channelUsername, categorySlug, limit, attemptBudget, dryRun, async: runAsync, background }) => {
     if (remoteMode) {
       return remoteControl("clips_control_run_daily_pool", {
         channelUsername,
         categorySlug,
         limit,
         attemptBudget,
-        dryRun: Boolean(dryRun)
+        dryRun: Boolean(dryRun),
+        async: Boolean(runAsync),
+        background: Boolean(background)
       });
     }
     const localAuth = getLocalAuth();
     const channel = resolveChannel(channelUsername);
+    if ((Boolean(runAsync) || Boolean(background)) && !Boolean(dryRun)) {
+      const runId = newControlRunId();
+      auditControl({
+        action: "copscopes_control.run_daily_pool.accepted",
+        channelId: channel.id,
+        entityId: runId,
+        status: "queued",
+        payload: {
+          async: true,
+          categorySlug: categorySlug ?? null,
+          limit: limit ?? null,
+          attemptBudget: attemptBudget ?? null
+        }
+      });
+      void runCopscopesDailyPool({
+        workspaceId: localAuth.workspace.id,
+        channelId: channel.id,
+        userId: localAuth.user.id,
+        runId,
+        categorySlug,
+        limit,
+        attemptBudget,
+        dryRun: false
+      }).catch((error) => {
+        appendFlowAuditEvent({
+          workspaceId: localAuth.workspace.id,
+          userId: localAuth.user.id,
+          action: "copscopes_daily_pool.failed",
+          entityType: "copscopes_daily_run",
+          entityId: runId,
+          channelId: channel.id,
+          stage: "mcp",
+          status: "failed",
+          severity: "error",
+          payload: {
+            error: error instanceof Error ? error.message : String(error)
+          }
+        });
+      });
+      return jsonContent({
+        channel,
+        accepted: true,
+        async: true,
+        runId
+      });
+    }
     const result = await runCopscopesDailyPool({
       workspaceId: localAuth.workspace.id,
       channelId: channel.id,

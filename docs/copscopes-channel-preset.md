@@ -89,6 +89,18 @@ npm run copscopes:daily-production -- --limit 3 --attempt-budget 8
 Use `--dry-run` to run health, channel-status, schedule and source-pool checks without queueing new
 Stage 3 render jobs.
 
+Live production runs use `clips_control_run_daily_pool` in async mode and then poll
+`clips_control_get_channel_status` by `runId`. This keeps the MCP/control request short while the
+slow ingest, Stage 2, Stage 3 editor loop, render queue, and quality gate continue in the app
+process.
+
+If production has not yet deployed the newer status/schedule control tools, the wrapper enters
+`legacy-control` compatibility mode: it still runs health, source-pool dry-run selection, and the
+live `clips_control_run_daily_pool` action, then polls the selected source statuses if the legacy
+long HTTP request disconnects. It reports publishing-grid verification as unavailable. This keeps
+the daily automation from silently stopping just because the stricter preflight endpoint is
+temporarily behind the pushed code.
+
 Source pool records are stored in `copscopes_source_categories`, `copscopes_source_reels`,
 `copscopes_daily_runs`, and `copscopes_daily_run_items`. The pool keeps canonical Instagram Reel
 URLs, shortcodes, category, secondary tags, quality score, source crop metadata, and lifecycle
