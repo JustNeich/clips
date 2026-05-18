@@ -232,7 +232,7 @@ test("template scene markup applies configured text glow to lead and body slots"
         topText: "Did they tell you...",
         bottomText: "The mother watched it happen from the couch.",
         channelName: "COP SCOPES",
-        channelHandle: "@copscopes",
+        channelHandle: "@copscopes-x2e",
         highlights: { top: [], bottom: [] },
         topFontScale: 1,
         bottomFontScale: 1,

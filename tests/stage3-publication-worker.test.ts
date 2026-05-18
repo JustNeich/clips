@@ -596,7 +596,7 @@ test("CopScopes render completion blocks publication and review-flags the source
       workspaceId,
       creatorUserId: userId,
       name: "COP SCOPES",
-      username: "copscopes"
+      username: "copscopes-x2e"
     });
     connectChannelPublishing(channel.id);
     importCopscopesSourcePool({
@@ -708,7 +708,7 @@ test("CopScopes render completion blocks story-duplicate publications after rend
       workspaceId,
       creatorUserId: userId,
       name: "COP SCOPES",
-      username: "copscopes"
+      username: "copscopes-x2e"
     });
     connectChannelPublishing(channel.id);
     const firstChat = await createOrGetChatByUrl("https://www.instagram.com/reel/FIRSTDUP/", channel.id);

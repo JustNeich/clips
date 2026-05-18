@@ -69,7 +69,7 @@ async function seedCopscopes() {
     workspaceId: owner.workspace.id,
     creatorUserId: owner.user.id,
     name: "CopScopes",
-    username: "copscopes"
+    username: "copscopes-x2e"
   });
   return { owner, channel };
 }
@@ -113,7 +113,7 @@ test("CopScopes control API rejects flow:read tokens and accepts control:write t
         },
         body: JSON.stringify({
           tool: "clips_control_list_source_pool",
-          input: { channelUsername: "copscopes" }
+          input: { channelUsername: "copscopes-x2e" }
         })
       })
     );
@@ -134,7 +134,7 @@ test("CopScopes control API rejects flow:read tokens and accepts control:write t
         },
         body: JSON.stringify({
           tool: "clips_control_list_source_pool",
-          input: { channelUsername: "copscopes" }
+          input: { channelUsername: "copscopes-x2e" }
         })
       })
     );
@@ -168,8 +168,8 @@ test("CopScopes control API exposes and repairs the production publishing grid",
       googleAccountEmail: "owner@example.com",
       selectedYoutubeChannelId: "youtube-copscopes",
       selectedYoutubeChannelTitle: "COP SCOPES",
-      selectedYoutubeChannelCustomUrl: "@copscopes",
-      availableChannels: [{ id: "youtube-copscopes", title: "COP SCOPES", customUrl: "@copscopes" }],
+      selectedYoutubeChannelCustomUrl: "@copscopes-x2e",
+      availableChannels: [{ id: "youtube-copscopes", title: "COP SCOPES", customUrl: "@copscopes-x2e" }],
       scopes: ["https://www.googleapis.com/auth/youtube.upload"]
     });
     const controlToken = createMcpAccessToken({
@@ -188,7 +188,7 @@ test("CopScopes control API exposes and repairs the production publishing grid",
         },
         body: JSON.stringify({
           tool: "clips_control_get_channel_status",
-          input: { channelUsername: "copscopes" }
+          input: { channelUsername: "copscopes-x2e" }
         })
       })
     );
@@ -212,7 +212,7 @@ test("CopScopes control API exposes and repairs the production publishing grid",
         body: JSON.stringify({
           tool: "clips_control_set_publish_schedule",
           input: {
-            channelUsername: "copscopes",
+            channelUsername: "copscopes-x2e",
             timezone: "Europe/Moscow",
             firstSlotLocalTime: "21:15",
             dailySlotCount: 3,
@@ -302,7 +302,7 @@ test("CopScopes control API can cancel an owner-approved published publication w
         body: JSON.stringify({
           tool: "clips_control_cancel_publication",
           input: {
-            channelUsername: "copscopes",
+            channelUsername: "copscopes-x2e",
             publicationId: publication.id,
             allowPublished: true
           }
@@ -387,7 +387,7 @@ test("CopScopes control API can restore a reviewed canceled publication into a c
         body: JSON.stringify({
           tool: "clips_control_schedule_publication",
           input: {
-            channelUsername: "copscopes",
+            channelUsername: "copscopes-x2e",
             publicationId: publication.id,
             scheduledAtLocal: "2040-01-02T21:15"
           }
@@ -492,7 +492,7 @@ test("CopScopes control API re-cancels a reviewed publication when scheduling fa
         body: JSON.stringify({
           tool: "clips_control_schedule_publication",
           input: {
-            channelUsername: "copscopes",
+            channelUsername: "copscopes-x2e",
             publicationId: reviewed.id,
             scheduledAtLocal: "2040-01-02T21:15"
           }

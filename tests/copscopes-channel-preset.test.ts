@@ -110,11 +110,11 @@ test("Copscopes apply script updates an existing channel without mutating on dry
       workspaceId: owner.workspace.id,
       creatorUserId: owner.user.id,
       name: "Copscopes",
-      username: "copscopes"
+      username: "copscopes-x2e"
     });
 
     const dryRun = await applyCopscopesChannelPreset({
-      username: "copscopes",
+      username: "copscopes-x2e",
       dryRun: true
     });
     const afterDryRun = await getChannelById(channel.id);
@@ -124,7 +124,7 @@ test("Copscopes apply script updates an existing channel without mutating on dry
     assert.equal(afterDryRun?.stage2ExamplesConfig.useWorkspaceDefault, true);
 
     const applied = await applyCopscopesChannelPreset({
-      username: "copscopes",
+      username: "copscopes-x2e",
       dryRun: false
     });
     const reloaded = await getChannelById(channel.id);
@@ -168,14 +168,14 @@ test("Copscopes apply script can preserve an existing channel template", async (
       workspaceId: owner.workspace.id,
       creatorUserId: owner.user.id,
       name: "COP SCOPES",
-      username: "copscopes",
+      username: "copscopes-x2e",
       defaultClipDurationSec: 8
     });
     const before = await getChannelById(channel.id);
     assert.ok(before);
 
     const applied = await applyCopscopesChannelPreset({
-      username: "copscopes",
+      username: "copscopes-x2e",
       dryRun: false,
       templateMode: "preserve"
     });

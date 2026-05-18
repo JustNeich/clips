@@ -27,7 +27,7 @@ function parseArgs(argv) {
   const result = {
     appUrl: process.env.CLIPS_APP_URL || DEFAULT_APP_URL,
     tokenPath: process.env.CLIPS_TOKEN_PATH || DEFAULT_TOKEN_PATH,
-    channelUsername: "copscopes",
+    channelUsername: "copscopes-x2e",
     limit: 3,
     attemptBudget: 8,
     dryRun: false,

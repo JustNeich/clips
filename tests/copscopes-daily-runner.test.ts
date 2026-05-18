@@ -63,7 +63,7 @@ async function seedDailyScenario() {
     workspaceId: owner.workspace.id,
     creatorUserId: owner.user.id,
     name: "CopScopes",
-    username: "copscopes"
+    username: "copscopes-x2e"
   });
   importCopscopesSourcePool({
     workspaceId: owner.workspace.id,
@@ -434,7 +434,7 @@ test("CopScopes render snapshot hardening clamps unsafe zoom and focus before qu
     avatarAssetId: "avatar-1",
     avatarAssetMimeType: "image/png",
     authorName: "COP SCOPES",
-    authorHandle: "@copscopes"
+    authorHandle: "@copscopes-x2e"
   });
 
   assert.equal(hardened.clipDurationSec, 6);

@@ -12,7 +12,7 @@ import {
 } from "./stage3-template";
 import type { ManagedTemplateVersionSnapshot } from "./managed-template-types";
 
-export const COPSCOPES_CHANNEL_USERNAME = "copscopes";
+export const COPSCOPES_CHANNEL_USERNAME = "copscopes-x2e";
 export const COPSCOPES_TEMPLATE_NAME = "Copscopes Story V1";
 
 export const COPSCOPES_REFERENCE_WINDOW = {
@@ -1405,7 +1405,7 @@ export function createCopscopesManagedTemplateSnapshot(): ManagedTemplateVersion
     ]
   };
   templateConfig.author.name = "COPSCOPES";
-  templateConfig.author.handle = "@copscopes";
+  templateConfig.author.handle = "@copscopes-x2e";
   templateConfig.channelStory = {
     ...templateConfig.channelStory!,
     leadMode: "clip_custom",
@@ -1436,7 +1436,7 @@ export function createCopscopesManagedTemplateSnapshot(): ManagedTemplateVersion
         "Officers followed a street race until one car flipped, caught fire, and left a passenger trapped. The rescue happened before the vehicle was fully engulfed.",
       sourceOverlayText: "",
       channelName: "COPSCOPES",
-      channelHandle: "@copscopes",
+      channelHandle: "@copscopes-x2e",
       highlights: {
         top: [],
         bottom: [
