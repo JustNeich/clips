@@ -583,6 +583,7 @@ CREATE TABLE IF NOT EXISTS channel_publications (
   youtube_video_url TEXT,
   published_at TEXT,
   canceled_at TEXT,
+  remote_deleted_at TEXT,
   last_error TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
   lease_token TEXT,

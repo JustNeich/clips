@@ -1258,6 +1258,7 @@ export type ChannelPublication = {
   youtubeVideoUrl: string | null;
   publishedAt: string | null;
   canceledAt: string | null;
+  remoteDeletedAt: string | null;
   lastError: string | null;
   renderFileName: string;
   sourceUrl: string;

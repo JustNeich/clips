@@ -229,6 +229,7 @@ function applyDbMigrations(db: DatabaseSync): void {
     "TEXT NOT NULL DEFAULT 'slot'"
   );
   addColumnIfMissing(db, "channel_publications", "upload_session_url", "TEXT");
+  addColumnIfMissing(db, "channel_publications", "remote_deleted_at", "TEXT");
   addColumnIfMissing(
     db,
     "channel_editorial_feedback_events",

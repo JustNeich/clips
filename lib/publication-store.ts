@@ -123,6 +123,7 @@ type ChannelPublicationRow = {
   youtube_video_url: string | null;
   published_at: string | null;
   canceled_at: string | null;
+  remote_deleted_at: string | null;
   last_error: string | null;
   attempts: number;
   lease_token: string | null;
@@ -204,6 +205,21 @@ export function normalizePublicationTitleKey(value: string | null | undefined): 
 export function normalizePublicationSourceKey(value: string | null | undefined): string {
   const normalized = normalizeSupportedUrl(value ?? "");
   return normalized.trim().toLowerCase();
+}
+
+function isPublicationDuplicateCandidate(publication: ChannelPublication): boolean {
+  if (publication.status !== "canceled") {
+    return true;
+  }
+  return isRemoteBoundPublication(publication) && !publication.remoteDeletedAt;
+}
+
+function isRemoteBoundPublication(publication: ChannelPublication): boolean {
+  return Boolean(
+    publication.youtubeVideoId ||
+      publication.youtubeVideoUrl ||
+      publication.publishedAt
+  );
 }
 
 function hashStateToken(token: string): string {
@@ -367,6 +383,7 @@ function mapChannelPublicationRow(
     youtubeVideoUrl: row.youtube_video_url ?? null,
     publishedAt: row.published_at ?? null,
     canceledAt: row.canceled_at ?? null,
+    remoteDeletedAt: row.remote_deleted_at ?? null,
     lastError: row.last_error ?? null,
     renderFileName: row.render_file_name ?? "video.mp4",
     sourceUrl: row.source_url ?? "",
@@ -1156,13 +1173,13 @@ export function findBlockingPublicationDuplicate(input: {
          JOIN render_exports r ON r.id = p.render_export_id
          JOIN chat_threads t ON t.id = p.chat_id
         WHERE p.channel_id = ?
-          AND p.status != 'canceled'
           AND (? IS NULL OR p.id != ?)`
     )
     .all(input.channelId, input.excludePublicationId ?? null, input.excludePublicationId ?? null) as ChannelPublicationRow[];
 
   const candidates = rows
     .map((row) => mapChannelPublicationRow(row))
+    .filter(isPublicationDuplicateCandidate)
     .sort((left, right) => {
       const priorityDelta =
         DUPLICATE_BLOCKING_STATUS_PRIORITY[left.status] -
@@ -1198,10 +1215,14 @@ export function findBlockingPublicationDuplicate(input: {
 
 export function buildBlockingPublicationDuplicateMessage(duplicate: BlockingPublicationDuplicate): string {
   const existing = duplicate.publication;
+  const statusLabel =
+    existing.status === "canceled" && (existing.youtubeVideoId || existing.youtubeVideoUrl)
+      ? "canceled, YouTube deletion not confirmed"
+      : existing.status;
   if (duplicate.reason === "source") {
-    return `Дубль остановлен: в этом канале уже есть публикация того же исходника "${existing.title}" (${existing.status}). Существующая publicationId: ${existing.id}.`;
+    return `Дубль остановлен: в этом канале уже есть публикация того же исходника "${existing.title}" (${statusLabel}). Существующая publicationId: ${existing.id}.`;
   }
-  return `Дубль остановлен: в этом канале уже есть публикация с таким же названием "${existing.title}" (${existing.status}). Существующая publicationId: ${existing.id}.`;
+  return `Дубль остановлен: в этом канале уже есть публикация с таким же названием "${existing.title}" (${statusLabel}). Существующая publicationId: ${existing.id}.`;
 }
 
 export function assertNoBlockingPublicationDuplicate(input: {
@@ -1487,6 +1508,14 @@ export function restoreCanceledChannelPublication(publicationId: string): Channe
     }
     return current;
   }
+  if (isRemoteBoundPublication(current) && !current.remoteDeletedAt) {
+    throw new PublicationMutationError(
+      "Нельзя восстановить публикацию, уже привязанную к YouTube, без подтверждённого удаления в YouTube.",
+      {
+        code: "REMOTE_DELETE_REQUIRED"
+      }
+    );
+  }
   assertNoBlockingPublicationDuplicate({
     channelId: current.channelId,
     title: current.title,
@@ -1502,6 +1531,7 @@ export function restoreCanceledChannelPublication(publicationId: string): Channe
             youtube_video_id = NULL,
             youtube_video_url = NULL,
             upload_session_url = NULL,
+            remote_deleted_at = NULL,
             updated_at = ?,
             lease_token = NULL,
             lease_expires_at = NULL
@@ -1515,7 +1545,7 @@ export function restoreCanceledChannelPublication(publicationId: string): Channe
 
 export function cancelChannelPublication(
   publicationId: string,
-  options?: { allowPublished?: boolean }
+  options?: { allowPublished?: boolean; remoteDeleteConfirmed?: boolean }
 ): ChannelPublication {
   const current = getPublicationForMutation(publicationId);
   assertPublicationNotUploading(current, "Удаление публикации");
@@ -1527,18 +1557,27 @@ export function cancelChannelPublication(
       code: "PUBLICATION_ACTION_FORBIDDEN"
     });
   }
+  if (isRemoteBoundPublication(current) && !options?.remoteDeleteConfirmed) {
+    throw new PublicationMutationError(
+      "Нельзя локально отменить публикацию, уже привязанную к YouTube videoId, без подтверждённого удаления в YouTube.",
+      {
+        code: "REMOTE_DELETE_REQUIRED"
+      }
+    );
+  }
   const db = getDb();
   const canceledAt = nowIso();
   db.prepare(
     `UPDATE channel_publications
         SET status = 'canceled',
             canceled_at = ?,
+            remote_deleted_at = ?,
             updated_at = ?,
             lease_token = NULL,
             lease_expires_at = NULL,
             upload_session_url = NULL
       WHERE id = ?`
-  ).run(canceledAt, canceledAt, publicationId);
+  ).run(canceledAt, options?.remoteDeleteConfirmed ? canceledAt : current.remoteDeletedAt, canceledAt, publicationId);
   appendChannelPublicationEvent(publicationId, "info", "Публикация удалена из очереди.");
   const publication = getChannelPublicationById(publicationId)!;
   auditChannelPublication("publication.canceled", publication, "canceled");
@@ -1785,6 +1824,7 @@ export function markChannelPublicationScheduled(input: {
                 lease_token = NULL,
                 lease_expires_at = NULL,
                 upload_session_url = NULL,
+                remote_deleted_at = NULL,
                 updated_at = ?
           WHERE id = ?
             AND status = 'uploading'
@@ -1801,6 +1841,7 @@ export function markChannelPublicationScheduled(input: {
                 lease_token = NULL,
                 lease_expires_at = NULL,
                 upload_session_url = NULL,
+                remote_deleted_at = NULL,
                 updated_at = ?
           WHERE id = ?`
       ).run(input.youtubeVideoId, input.youtubeVideoUrl, stamp, input.publicationId);

@@ -9,6 +9,7 @@ export type PublicationMutationErrorCode =
   | "TIME_OCCUPIED"
   | "DUPLICATE_PUBLICATION_TITLE"
   | "DUPLICATE_PUBLICATION_SOURCE"
+  | "REMOTE_DELETE_REQUIRED"
   | "SLOT_IN_PAST"
   | "INVALID_SLOT"
   | "INVALID_SLOT_DATE"
@@ -123,6 +124,9 @@ function inferPublicationMutationFromMessage(message: string): {
   }
   if (/того же исходника|same source|duplicate source/i.test(message)) {
     return { code: "DUPLICATE_PUBLICATION_SOURCE" };
+  }
+  if (/без подтвержд[её]нного удаления в YouTube/i.test(message)) {
+    return { code: "REMOTE_DELETE_REQUIRED" };
   }
   if (/уже прошедший слот/i.test(message)) {
     return { code: "SLOT_IN_PAST", field: "slot" };

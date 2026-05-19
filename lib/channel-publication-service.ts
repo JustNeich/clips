@@ -239,22 +239,29 @@ async function moveChannelPublicationIntoSlot(input: {
   }
 
   if (!conflicting) {
-    const updated = updateChannelPublicationDraft({
-      publicationId: current.id,
+    const patch = {
       scheduledAt: targetSchedule.scheduledAt,
       uploadReadyAt: targetSchedule.uploadReadyAt,
       slotDate: targetSchedule.slotDate,
       slotIndex: targetSchedule.slotIndex,
       scheduleManual: true,
       clearLastError: true
+    };
+    const remoteSynced = await syncScheduledPublicationPatchToYouTube(current, patch);
+    const updated = updateChannelPublicationDraft({
+      publicationId: current.id,
+      ...patch
     });
     appendChannelPublicationEvent(
       updated.id,
       "info",
       `Слот обновлён: ${current.slotDate} #${current.slotIndex + 1} → ${targetSchedule.slotDate} #${targetSchedule.slotIndex + 1}.`
     );
+    if (remoteSynced) {
+      appendChannelPublicationEvent(updated.id, "info", "Изменения синхронизированы в YouTube.");
+    }
     return {
-      publication: await syncScheduledPublicationIfNeeded(updated.id),
+      publication: updated,
       swappedPublication: null,
       mode: "moved"
     };
@@ -279,24 +286,44 @@ async function moveChannelPublicationIntoSlot(input: {
     slotIndex: current.slotIndex
   });
 
+  const currentPatch = {
+    scheduledAt: targetSchedule.scheduledAt,
+    uploadReadyAt: targetSchedule.uploadReadyAt,
+    slotDate: targetSchedule.slotDate,
+    slotIndex: targetSchedule.slotIndex,
+    scheduleManual: true,
+    clearLastError: true
+  };
+  const conflictingPatch = {
+    scheduledAt: currentSchedule.scheduledAt,
+    uploadReadyAt: currentSchedule.uploadReadyAt,
+    slotDate: currentSchedule.slotDate,
+    slotIndex: currentSchedule.slotIndex,
+    scheduleManual: true,
+    clearLastError: true
+  };
+  let currentRemoteSynced = false;
+  let conflictingRemoteSynced = false;
+  try {
+    currentRemoteSynced = await syncScheduledPublicationPatchToYouTube(current, currentPatch);
+    conflictingRemoteSynced = await syncScheduledPublicationPatchToYouTube(conflicting, conflictingPatch);
+  } catch (error) {
+    if (currentRemoteSynced && !conflictingRemoteSynced) {
+      await syncScheduledPublicationPatchToYouTube(current, {
+        scheduledAt: current.scheduledAt
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
+
   runInTransaction(() => {
     updateChannelPublicationDraft({
       publicationId: current.id,
-      scheduledAt: targetSchedule.scheduledAt,
-      uploadReadyAt: targetSchedule.uploadReadyAt,
-      slotDate: targetSchedule.slotDate,
-      slotIndex: targetSchedule.slotIndex,
-      scheduleManual: true,
-      clearLastError: true
+      ...currentPatch
     });
     updateChannelPublicationDraft({
       publicationId: conflicting.id,
-      scheduledAt: currentSchedule.scheduledAt,
-      uploadReadyAt: currentSchedule.uploadReadyAt,
-      slotDate: currentSchedule.slotDate,
-      slotIndex: currentSchedule.slotIndex,
-      scheduleManual: true,
-      clearLastError: true
+      ...conflictingPatch
     });
   });
 
@@ -319,34 +346,18 @@ async function moveChannelPublicationIntoSlot(input: {
     "info",
     `Слот обменян с публикацией "${current.chatTitle || current.title}".`
   );
-
-  const syncedCurrent = await syncScheduledPublicationIfNeeded(updatedCurrent.id);
-  const syncedConflicting = await syncScheduledPublicationIfNeeded(updatedConflicting.id);
+  if (currentRemoteSynced) {
+    appendChannelPublicationEvent(updatedCurrent.id, "info", "Изменения синхронизированы в YouTube.");
+  }
+  if (conflictingRemoteSynced) {
+    appendChannelPublicationEvent(updatedConflicting.id, "info", "Изменения синхронизированы в YouTube.");
+  }
 
   return {
-    publication: syncedCurrent,
-    swappedPublication: syncedConflicting,
+    publication: updatedCurrent,
+    swappedPublication: updatedConflicting,
     mode: "swapped"
   };
-}
-
-async function syncScheduledPublicationIfNeeded(publicationId: string): Promise<ChannelPublication> {
-  const publication = getChannelPublicationById(publicationId);
-  if (!publication) {
-    throw new PublicationMutationError("Публикация не найдена.", {
-      code: "PUBLICATION_NOT_FOUND",
-      status: 404
-    });
-  }
-  if (publication.status === "uploading") {
-    throw new PublicationMutationError("Публикацию нельзя синхронизировать, пока ролик загружается в YouTube.", {
-      code: "PUBLICATION_UPLOAD_IN_PROGRESS"
-    });
-  }
-  if (publication.status === "scheduled" && publication.youtubeVideoId) {
-    return syncScheduledPublicationToYouTube(publication.id);
-  }
-  return publication;
 }
 
 async function ensureFreshYouTubeCredential(channelId: string): Promise<{
@@ -397,6 +408,27 @@ async function ensureFreshYouTubeCredential(channelId: string): Promise<{
     credential,
     integration: getChannelPublishIntegration(channelId)!
   };
+}
+
+type PublicationDraftPatch = Omit<Parameters<typeof updateChannelPublicationDraft>[0], "publicationId">;
+
+async function syncScheduledPublicationPatchToYouTube(
+  publication: ChannelPublication,
+  patch: PublicationDraftPatch
+): Promise<boolean> {
+  if (publication.status !== "scheduled" || !publication.youtubeVideoId) {
+    return false;
+  }
+  const { credential } = await ensureFreshYouTubeCredential(publication.channelId);
+  await updateYouTubeScheduledVideo({
+    accessToken: credential.accessToken!,
+    videoId: publication.youtubeVideoId,
+    title: patch.title ?? publication.title,
+    description: patch.description ?? publication.description,
+    tags: patch.tags ?? publication.tags,
+    publishAt: patch.scheduledAt ?? publication.scheduledAt
+  });
+  return true;
 }
 
 function mergeQueuedPublicationDefaults(input: {
@@ -833,6 +865,28 @@ export async function updateChannelPublicationFromEditor(input: {
   }
 
   const nextTitle = normalizeEditorText(input.patch.title) ?? current.title;
+  const draftPatch = {
+    title: normalizeEditorText(input.patch.title),
+    description: normalizeEditorText(input.patch.description),
+    tags: input.patch.tags,
+    titleManual: typeof input.patch.title === "string",
+    descriptionManual: typeof input.patch.description === "string",
+    tagsManual: Array.isArray(input.patch.tags),
+    notifySubscribers: input.patch.notifySubscribers,
+    scheduleMode: scheduledPatch?.scheduleMode,
+    scheduledAt: scheduledPatch?.scheduledAt,
+    uploadReadyAt: scheduledPatch?.uploadReadyAt,
+    slotDate: scheduledPatch?.slotDate,
+    slotIndex: scheduledPatch?.slotIndex,
+    scheduleManual: Boolean(scheduledPatch)
+  };
+  assertNoBlockingPublicationDuplicate({
+    channelId: current.channelId,
+    title: nextTitle,
+    sourceUrl: current.sourceUrl,
+    excludePublicationId: current.id
+  });
+  const remoteSynced = await syncScheduledPublicationPatchToYouTube(current, draftPatch);
   const updated = runInTransaction(() => {
     assertNoBlockingPublicationDuplicate({
       channelId: current.channelId,
@@ -842,19 +896,7 @@ export async function updateChannelPublicationFromEditor(input: {
     });
     return updateChannelPublicationDraft({
       publicationId: input.publicationId,
-      title: normalizeEditorText(input.patch.title),
-      description: normalizeEditorText(input.patch.description),
-      tags: input.patch.tags,
-      titleManual: typeof input.patch.title === "string",
-      descriptionManual: typeof input.patch.description === "string",
-      tagsManual: Array.isArray(input.patch.tags),
-      notifySubscribers: input.patch.notifySubscribers,
-      scheduleMode: scheduledPatch?.scheduleMode,
-      scheduledAt: scheduledPatch?.scheduledAt,
-      uploadReadyAt: scheduledPatch?.uploadReadyAt,
-      slotDate: scheduledPatch?.slotDate,
-      slotIndex: scheduledPatch?.slotIndex,
-      scheduleManual: Boolean(scheduledPatch)
+      ...draftPatch
     });
   });
 
@@ -864,6 +906,10 @@ export async function updateChannelPublicationFromEditor(input: {
     updated.status === "scheduled" ? "Публикация обновлена и будет синхронизирована с YouTube." : "Публикация обновлена."
   );
   if (updated.status === "scheduled" && updated.youtubeVideoId) {
+    if (remoteSynced) {
+      appendChannelPublicationEvent(updated.id, "info", "Изменения синхронизированы в YouTube.");
+      return updated;
+    }
     return syncScheduledPublicationToYouTube(updated.id);
   }
   return updated;
@@ -1108,10 +1154,12 @@ export async function deleteChannelPublicationWithRemoteSync(
     });
   }
   const youtubeVideoId = publication.youtubeVideoId;
-  const shouldDeleteRemote =
+  const shouldDeleteRemote = Boolean(
     youtubeVideoId &&
-    (publication.status === "scheduled" || (publication.status === "published" && options?.allowPublished));
-  if (shouldDeleteRemote) {
+      publication.status !== "canceled" &&
+      (publication.status !== "published" || options?.allowPublished)
+  );
+  if (shouldDeleteRemote && youtubeVideoId) {
     auditYoutubeDelete("publication.delete.attempted", publication, "attempted", {
       userId: options?.userId ?? null
     });
@@ -1133,7 +1181,8 @@ export async function deleteChannelPublicationWithRemoteSync(
     }
   }
   return cancelChannelPublication(publicationId, {
-    allowPublished: Boolean(options?.allowPublished)
+    allowPublished: Boolean(options?.allowPublished),
+    remoteDeleteConfirmed: Boolean(shouldDeleteRemote)
   });
 }
 

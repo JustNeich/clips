@@ -41,6 +41,7 @@ function makePublication(
     youtubeVideoUrl: null,
     publishedAt: null,
     canceledAt: null,
+    remoteDeletedAt: null,
     lastError: null,
     renderFileName: "render.mp4",
     sourceUrl: "https://example.com/source",

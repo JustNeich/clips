@@ -26,6 +26,7 @@ import {
   markChannelPublicationScheduled,
   pauseChannelPublication,
   publishNowChannelPublication,
+  restoreCanceledChannelPublication,
   retryChannelPublication,
   saveChannelPublishIntegration
 } from "../lib/publication-store";
@@ -158,13 +159,21 @@ async function seedChannelPublicationScenario(slotIndexes: number[]): Promise<{
   };
 }
 
-function connectChannelPublishing(channelId: string): void {
+function connectChannelPublishing(channelId: string, withCredential = false): void {
   saveChannelPublishIntegration({
     workspaceId: "w1",
     channelId,
     userId: "u1",
     status: "connected",
-    credential: null,
+    credential: withCredential
+      ? {
+          refreshToken: "refresh-token",
+          accessToken: "access-token",
+          expiryDate: "2099-01-01T00:00:00.000Z",
+          tokenType: "Bearer",
+          scopes: ["youtube.upload"]
+        }
+      : null,
     googleAccountEmail: "u@example.com",
     selectedYoutubeChannelId: "youtube-channel-1",
     selectedYoutubeChannelTitle: "Daily Dopamine",
@@ -178,6 +187,34 @@ function connectChannelPublishing(channelId: string): void {
     ],
     scopes: ["youtube.upload"]
   });
+}
+
+function insertCompletedStage3RenderJob(input: {
+  chatId: string;
+  channelId: string;
+  sourceUrl: string;
+  renderTitle: string;
+}): string {
+  const stage3JobId = newId();
+  const stamp = nowIso();
+  getDb()
+    .prepare(
+      `INSERT INTO stage3_jobs
+        (id, workspace_id, user_id, kind, status, dedupe_key, payload_json, result_json, error_code, error_message, recoverable, attempts, created_at, updated_at, started_at, completed_at)
+        VALUES (?, 'w1', 'u1', 'render', 'completed', NULL, ?, NULL, NULL, NULL, 1, 0, ?, ?, NULL, NULL)`
+    )
+    .run(
+      stage3JobId,
+      JSON.stringify({
+        chatId: input.chatId,
+        channelId: input.channelId,
+        sourceUrl: input.sourceUrl,
+        renderTitle: input.renderTitle
+      }),
+      stamp,
+      stamp
+    );
+  return stage3JobId;
 }
 
 test("moveChannelPublicationToSlot moves a publication into an empty slot within the same day", async () => {
@@ -366,6 +403,210 @@ test("stale publication lease cannot overwrite a newer queued state", async () =
     assert.equal(result.status, "queued");
     assert.equal(result.youtubeVideoId, null);
     assert.equal(result.youtubeVideoUrl, null);
+  });
+});
+
+test("scheduled YouTube-bound publications cannot be locally canceled without confirmed remote delete", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    const publicationId = scenario.publications[0]!.id;
+    markChannelPublicationScheduled({
+      publicationId,
+      youtubeVideoId: "youtube-video-remote-cancel",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-remote-cancel"
+    });
+
+    assert.throws(
+      () => cancelChannelPublication(publicationId),
+      (error: unknown) =>
+        error instanceof PublicationMutationError &&
+        error.code === "REMOTE_DELETE_REQUIRED"
+    );
+
+    const canceled = cancelChannelPublication(publicationId, {
+      remoteDeleteConfirmed: true
+    });
+    assert.equal(canceled.status, "canceled");
+    assert.ok(canceled.remoteDeletedAt);
+  });
+});
+
+test("canceled YouTube-bound publications cannot be restored without confirmed remote delete", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    const publicationId = scenario.publications[0]!.id;
+    markChannelPublicationScheduled({
+      publicationId,
+      youtubeVideoId: "youtube-video-unsafe-restore",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-unsafe-restore"
+    });
+    const canceledAt = nowIso();
+    getDb()
+      .prepare(
+        `UPDATE channel_publications
+            SET status = 'canceled',
+                canceled_at = ?,
+                remote_deleted_at = NULL,
+                updated_at = ?
+          WHERE id = ?`
+      )
+      .run(canceledAt, canceledAt, publicationId);
+
+    assert.throws(
+      () => restoreCanceledChannelPublication(publicationId),
+      (error: unknown) =>
+        error instanceof PublicationMutationError &&
+        error.code === "REMOTE_DELETE_REQUIRED"
+    );
+
+    getDb()
+      .prepare(
+        `UPDATE channel_publications
+            SET remote_deleted_at = ?
+          WHERE id = ?`
+      )
+      .run(nowIso(), publicationId);
+    const restored = restoreCanceledChannelPublication(publicationId);
+    assert.equal(restored.status, "queued");
+    assert.equal(restored.youtubeVideoId, null);
+    assert.equal(restored.remoteDeletedAt, null);
+  });
+});
+
+test("duplicate guard blocks a canceled YouTube-bound publication without confirmed remote delete", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    connectChannelPublishing(scenario.channelId);
+    const original = listChannelPublications(scenario.channelId)[0]!;
+    markChannelPublicationScheduled({
+      publicationId: original.id,
+      youtubeVideoId: "youtube-video-unsafe-canceled",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-unsafe-canceled"
+    });
+    const canceledAt = nowIso();
+    getDb()
+      .prepare(
+        `UPDATE channel_publications
+            SET status = 'canceled',
+                canceled_at = ?,
+                remote_deleted_at = NULL,
+                updated_at = ?
+          WHERE id = ?`
+      )
+      .run(canceledAt, canceledAt, original.id);
+
+    const chat = await createOrGetChatByUrl(original.sourceUrl, scenario.channelId);
+    const stage3JobId = insertCompletedStage3RenderJob({
+      chatId: chat.id,
+      channelId: scenario.channelId,
+      sourceUrl: original.sourceUrl,
+      renderTitle: original.title
+    });
+
+    const completion = completeRenderExportAndMaybeQueue({
+      workspaceId: "w1",
+      channelId: scenario.channelId,
+      chatId: chat.id,
+      chatTitle: chat.title,
+      stage3JobId,
+      artifactFileName: "unsafe-canceled.mp4",
+      artifactFilePath: "/tmp/unsafe-canceled.mp4",
+      artifactMimeType: "video/mp4",
+      artifactSizeBytes: 1024,
+      renderTitle: original.title,
+      sourceUrl: original.sourceUrl,
+      snapshotJson: "{}",
+      createdByUserId: "u1",
+      stage2Result: null
+    });
+
+    assert.equal(completion.publication?.status, "failed");
+    assert.match(completion.publication?.lastError ?? "", /того же исходника/i);
+    assert.match(completion.publication?.lastError ?? "", new RegExp(original.id));
+  });
+});
+
+test("scheduled YouTube sync failure does not move the local publication time", async () => {
+  await withIsolatedAppData(async () => {
+    const scenario = await seedChannelPublicationScenario([0]);
+    connectChannelPublishing(scenario.channelId, true);
+    const publicationId = scenario.publications[0]!.id;
+    const scheduled = markChannelPublicationScheduled({
+      publicationId,
+      youtubeVideoId: "youtube-video-sync-failure",
+      youtubeVideoUrl: "https://www.youtube.com/watch?v=youtube-video-sync-failure"
+    });
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; method: string }> = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+      requests.push({ url, method });
+      if (url.includes("/channels?part=snippet&mine=true")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "youtube-channel-1",
+                snippet: {
+                  title: "Daily Dopamine",
+                  customUrl: "@dailydopamine"
+                }
+              }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/videos?part=snippet&id=")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                snippet: {
+                  categoryId: "22"
+                }
+              }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/videos?part=snippet,status") && method === "PUT") {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "Video is already public."
+            }
+          }),
+          { status: 400 }
+        );
+      }
+      throw new Error(`Unexpected fetch ${method} ${url}`);
+    }) as typeof fetch;
+
+    try {
+      await assert.rejects(
+        () =>
+          updateChannelPublicationFromEditor({
+            publicationId,
+            patch: {
+              scheduleMode: "custom",
+              scheduledAtLocal: "2040-05-05T21:07"
+            }
+          }),
+        /already public/i
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const stored = listChannelPublications(scenario.channelId).find((item) => item.id === publicationId);
+    assert.equal(stored?.scheduleMode, scheduled.scheduleMode);
+    assert.equal(stored?.scheduledAt, scheduled.scheduledAt);
+    assert.equal(stored?.slotDate, scheduled.slotDate);
+    assert.equal(stored?.slotIndex, scheduled.slotIndex);
+    assert.ok(requests.some((request) => request.url.includes("/videos?part=snippet,status") && request.method === "PUT"));
   });
 });
 
