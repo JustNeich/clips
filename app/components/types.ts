@@ -15,6 +15,7 @@ import type {
 } from "../../lib/stage2-caption-provider";
 import type { Stage3TemplateConfig } from "../../lib/stage3-template";
 import type { TemplateCaptionHighlights } from "../../lib/template-highlights";
+import type { Stage3DurationMode } from "../../lib/stage3-duration";
 import type {
   ChannelEditorialFeedbackEvent,
   Stage2ExplorationMode,
@@ -850,6 +851,7 @@ export type Stage3SourceCrop = {
 
 export type Stage3RenderPlan = {
   targetDurationSec: number;
+  durationMode?: Stage3DurationMode;
   timingMode: Stage3TimingMode;
   normalizeToTargetEnabled: boolean;
   editorSelectionMode?: Stage3EditorSelectionMode;

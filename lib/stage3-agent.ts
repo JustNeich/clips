@@ -43,7 +43,11 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
-import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
+import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  normalizeStage3DurationMode,
+  resolveStage3OutputDurationSec
+} from "./stage3-duration";
 import { resolveStage3TemplateDefaultTextScales } from "./stage3-template-fonts";
 
 export type {
@@ -687,6 +691,7 @@ function createDefaultRenderPlan(
   const textScaleDefaults = resolveStage3TemplateDefaultTextScales(templateConfig, DEFAULT_TEXT_SCALE);
   return {
     targetDurationSec,
+    durationMode: "channel_default",
     timingMode: sourceDurationSec !== null && sourceDurationSec < targetDurationSec ? "stretch" : "auto",
     normalizeToTargetEnabled: sourceDurationSec !== null && sourceDurationSec < targetDurationSec,
     audioMode: "source_only",
@@ -726,10 +731,13 @@ function createDefaultRenderPlan(
 function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurationSec: number | null): Stage3RenderPlan {
   const incomingTemplateId =
     typeof input?.templateId === "string" && input.templateId.trim() ? input.templateId.trim() : undefined;
-  const targetDurationSec = normalizeStage3ClipDurationSec(
-    input?.targetDurationSec,
-    DEFAULT_STAGE3_CLIP_DURATION_SEC
-  );
+  const durationMode = normalizeStage3DurationMode(input?.durationMode);
+  const targetDurationSec = resolveStage3OutputDurationSec({
+    mode: durationMode,
+    targetDurationSec: input?.targetDurationSec,
+    sourceDurationSec,
+    fallback: DEFAULT_STAGE3_CLIP_DURATION_SEC
+  });
   const defaultPlan = createDefaultRenderPlan(sourceDurationSec, incomingTemplateId, targetDurationSec);
   const timingMode = input?.timingMode;
   const audioMode = input?.audioMode;
@@ -761,10 +769,12 @@ function normalizePlan(input: Partial<Stage3RenderPlan> | undefined, sourceDurat
       : input?.timingMode === "compress" ||
           input?.timingMode === "stretch" ||
           input?.policy === "full_source_normalize" ||
-          defaultPlan.normalizeToTargetEnabled;
+          defaultPlan.normalizeToTargetEnabled ||
+          durationMode === "source_full";
 
   return {
     targetDurationSec,
+    durationMode,
     timingMode:
       timingMode === "auto" || timingMode === "compress" || timingMode === "stretch"
         ? timingMode

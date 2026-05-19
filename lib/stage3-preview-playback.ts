@@ -4,6 +4,7 @@ import type {
   Stage3Segment,
   Stage3TimingMode
 } from "../app/components/types";
+import type { Stage3DurationMode } from "./stage3-duration";
 import {
   buildStage3EditorSession,
   buildStage3EditorTimingKey,
@@ -72,6 +73,7 @@ export function buildStage3PlaybackPlan(params: {
   clipStartSec: number;
   clipDurationSec: number;
   targetDurationSec: number;
+  durationMode?: Stage3DurationMode;
   timingMode: Stage3TimingMode;
   policy: Stage3RenderPolicy;
   selectionMode?: Stage3EditorSelectionMode;
@@ -81,6 +83,7 @@ export function buildStage3PlaybackPlan(params: {
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
     targetDurationSec: params.targetDurationSec,
+    durationMode: params.durationMode,
     sourceDurationSec: params.sourceDurationSec,
     selectionMode:
       params.selectionMode === "window" || params.selectionMode === "fragments"
@@ -132,6 +135,7 @@ export function buildStage3PlaybackTimingKey(plan: Stage3PlaybackPlan): string {
     output: plan,
     renderPlanPatch: {
       segments: [],
+      durationMode: "channel_default",
       timingMode: plan.timingMode,
       normalizeToTargetEnabled: true,
       policy: "fixed_segments",

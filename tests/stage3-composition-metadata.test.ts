@@ -16,9 +16,10 @@ test("stage3 remotion metadata uses the requested channel render duration", () =
   assert.equal(metadata.durationInFrames, 9 * STAGE3_REMOTION_FPS);
 });
 
-test("stage3 composition duration clamps to supported channel duration bounds", () => {
-  assert.equal(resolveStage3CompositionDurationInFrames(2), 3 * STAGE3_REMOTION_FPS);
+test("stage3 composition duration preserves source-full durations with broad safety bounds", () => {
+  assert.equal(resolveStage3CompositionDurationInFrames(2), 2 * STAGE3_REMOTION_FPS);
   assert.equal(resolveStage3CompositionDurationInFrames(7), 7 * STAGE3_REMOTION_FPS);
-  assert.equal(resolveStage3CompositionDurationInFrames(16), 15 * STAGE3_REMOTION_FPS);
+  assert.equal(resolveStage3CompositionDurationInFrames(16), 16 * STAGE3_REMOTION_FPS);
+  assert.equal(resolveStage3CompositionDurationInFrames(181), 180 * STAGE3_REMOTION_FPS);
   assert.equal(resolveStage3CompositionDurationInFrames(undefined), 6 * STAGE3_REMOTION_FPS);
 });

@@ -29,7 +29,8 @@ import {
 } from "../app/components/types";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
-  normalizeStage3ClipDurationSec
+  normalizeStage3DurationMode,
+  resolveStage3OutputDurationSec
 } from "./stage3-duration";
 import { ensureCodexHomeForSession, normalizeCodexSessionId } from "./codex-session";
 import { ensureCodexLoggedIn } from "./codex-runner";
@@ -583,8 +584,8 @@ function buildRequiredDirectiveOps(
       segments: intent.segments
     });
   } else if (
-    intent.timingMode &&
-    goalSignal.guidance.useFullSource &&
+    (intent.timingMode || snapshot.renderPlan.durationMode === "source_full") &&
+    (goalSignal.guidance.useFullSource || snapshot.renderPlan.durationMode === "source_full") &&
     snapshot.sourceDurationSec &&
     snapshot.sourceDurationSec > 0.05
   ) {
@@ -941,7 +942,7 @@ function clampRenderOp(op: Stage3Operation, snapshot: Stage3StateSnapshot, itera
     case "set_clip_start": {
       return {
         ...op,
-        clipStartSec: clampClipStart(op.clipStartSec, snapshot.sourceDurationSec, CLIP_DURATION_SEC)
+        clipStartSec: clampClipStart(op.clipStartSec, snapshot.sourceDurationSec, snapshot.clipDurationSec)
       };
     }
     case "set_top_font_scale":
@@ -1013,8 +1014,34 @@ function guardAndNormalizePlan(
   }
 
   if (
-    goalSignal.goalType === "timing" &&
-    goalSignal.guidance.useFullSource &&
+    snapshot.renderPlan.durationMode === "source_full" &&
+    snapshot.sourceDurationSec &&
+    snapshot.sourceDurationSec > 0.05
+  ) {
+    const preserved = next.filter(
+      (op) => op.op !== "set_segments" && op.op !== "append_segment" && op.op !== "clear_segments"
+    );
+    next.length = 0;
+    next.push(...preserved, {
+      op: "set_segments",
+      segments: [
+        {
+          startSec: 0,
+          endSec: snapshot.sourceDurationSec,
+          label: `0-${snapshot.sourceDurationSec.toFixed(2)}`,
+          speed: 1
+        }
+      ]
+    });
+    if (snapshot.clipStartSec !== 0 && !next.some((op) => op.op === "set_clip_start")) {
+      next.push({
+        op: "set_clip_start",
+        clipStartSec: 0
+      });
+    }
+  } else if (
+    (goalSignal.goalType === "timing" || snapshot.renderPlan.durationMode === "source_full") &&
+    (goalSignal.guidance.useFullSource || snapshot.renderPlan.durationMode === "source_full") &&
     snapshot.sourceDurationSec &&
     snapshot.sourceDurationSec > 0.05 &&
     !coversFullSource(snapshot) &&
@@ -1136,7 +1163,11 @@ function computeTimingFit(
             ? 0.42
             : 0.18
         : 1;
-  const targetFit = Math.abs(snapshot.renderPlan.targetDurationSec - CLIP_DURATION_SEC) <= 0.01 ? 1 : 0.3;
+  const expectedTargetSec =
+    snapshot.renderPlan.durationMode === "source_full" && snapshot.sourceDurationSec
+      ? snapshot.sourceDurationSec
+      : CLIP_DURATION_SEC;
+  const targetFit = Math.abs(snapshot.renderPlan.targetDurationSec - expectedTargetSec) <= 0.05 ? 1 : 0.3;
 
   if (!hasFullSourceCue(promptLower) || !snapshot.sourceDurationSec || snapshot.sourceDurationSec <= CLIP_DURATION_SEC) {
     return clamp(0.48 * timingModeFit + 0.32 * durationDirectionFit + 0.2 * targetFit, 0, 1);
@@ -1781,10 +1812,13 @@ function resolveDefaultSnapshot(
   }
 ): Stage3StateSnapshot {
   const renderPlan = input.currentSnapshot?.renderPlan as Partial<Stage3StateSnapshot["renderPlan"]> | undefined;
-  const targetDurationSec = normalizeStage3ClipDurationSec(
-    renderPlan?.targetDurationSec,
-    input.currentSnapshot?.clipDurationSec ?? CLIP_DURATION_SEC
-  );
+  const durationMode = normalizeStage3DurationMode(renderPlan?.durationMode);
+  const targetDurationSec = resolveStage3OutputDurationSec({
+    mode: durationMode,
+    targetDurationSec: renderPlan?.targetDurationSec,
+    sourceDurationSec: input.sourceDurationSec,
+    fallback: input.currentSnapshot?.clipDurationSec ?? CLIP_DURATION_SEC
+  });
   return createSnapshot({
     topText: typeof input.currentSnapshot?.topText === "string" ? input.currentSnapshot.topText : "",
     bottomText: typeof input.currentSnapshot?.bottomText === "string" ? input.currentSnapshot.bottomText : "",
@@ -1803,8 +1837,9 @@ function resolveDefaultSnapshot(
     ),
     sourceDurationSec: input.sourceDurationSec,
     renderPlan: {
-      targetDurationSec,
       ...renderPlan,
+      targetDurationSec,
+      durationMode,
       prompt: typeof renderPlan?.prompt === "string" ? renderPlan.prompt : ""
     } as Stage3StateSnapshot["renderPlan"]
   });
@@ -1988,10 +2023,15 @@ export async function runAutonomousOptimization(input: RunAutonomousInput): Prom
       );
 
       const sourceDurationSec = autoInfo.sourceDurationSec ?? input.sourceDurationSec ?? null;
+      const requestedDurationMode = normalizeStage3DurationMode(input.currentSnapshot?.renderPlan?.durationMode);
+      const autoClipDurationSec =
+        requestedDurationMode === "source_full" && sourceDurationSec
+          ? sourceDurationSec
+          : CLIP_DURATION_SEC;
       const autoClipStartSec = clampClipStart(
         parseFiniteNumber(input.autoClipStartSec) ?? autoInfo.clipStartSec,
         sourceDurationSec,
-        CLIP_DURATION_SEC
+        autoClipDurationSec
       );
       const autoFocusY = sanitizeFocusY(parseFiniteNumber(input.autoFocusY) ?? autoInfo.focusY);
 

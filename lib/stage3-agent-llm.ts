@@ -382,6 +382,14 @@ export async function planStage3OperationsWithCodex(input: {
     const schemaPath = path.join(tmpDir, "stage3.plan.schema.json");
     const outputPath = path.join(tmpDir, "stage3.plan.output.json");
     await fs.writeFile(schemaPath, JSON.stringify(PLANNER_SCHEMA, null, 2), "utf-8");
+    const plannerTargetDurationSec =
+      input.snapshot.renderPlan.durationMode === "source_full" && input.sourceDurationSec
+        ? input.sourceDurationSec
+        : input.snapshot.renderPlan.targetDurationSec || input.snapshot.clipDurationSec;
+    const durationConstraint =
+      input.snapshot.renderPlan.durationMode === "source_full"
+        ? `- Target duration must stay the full source duration (${plannerTargetDurationSec.toFixed(3)}s); do not create timing operations that shorten, fragment, or speed-ramp the source.`
+        : `- Target duration remains the current render timeline (${plannerTargetDurationSec.toFixed(3)}s).`;
 
     const prompt = [
       "You are Stage 3 video redactor planner.",
@@ -390,7 +398,7 @@ export async function planStage3OperationsWithCodex(input: {
       "Use only allowed ops. If no change is needed, return empty operations array.",
       "",
       "Hard constraints:",
-      "- Target duration remains exactly 6.0s.",
+      durationConstraint,
       "- focusY must stay within 0.12..0.88.",
       `- videoZoom must stay within ${STAGE3_MIN_VIDEO_ZOOM.toFixed(1)}..${STAGE3_MAX_VIDEO_ZOOM.toFixed(1)}.`,
       `- topFontScale and bottomFontScale must stay within ${STAGE3_TEXT_SCALE_UI_MIN.toFixed(2)}..${STAGE3_TEXT_SCALE_UI_MAX.toFixed(2)}.`,

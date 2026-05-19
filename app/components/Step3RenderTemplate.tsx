@@ -147,6 +147,7 @@ import type {
   Stage2ToStage3HandoffSummary,
   Stage3CaptionApplyMode
 } from "../../lib/stage2-stage3-handoff";
+import type { Stage3DurationMode } from "../../lib/stage3-duration";
 
 export type Step3ManagedTemplateState = Stage3SnapshotManagedTemplateState & {
   name: string;
@@ -226,6 +227,7 @@ type Step3RenderTemplateProps = {
   isUploadingMusic: boolean;
   clipStartSec: number;
   clipDurationSec: number;
+  durationMode?: Stage3DurationMode;
   sourceDurationSec: number | null;
   focusX: number;
   focusY: number;
@@ -280,6 +282,7 @@ type Step3RenderTemplateProps = {
     segments: Stage3Segment[];
     editorSelectionMode: Stage3EditorSelectionMode;
   }) => void;
+  onDurationModeChange?: (value: Stage3DurationMode) => void;
   onClipStartChange: (value: number) => void;
   onFocusXChange: (value: number) => void;
   onFocusYChange: (value: number) => void;
@@ -1174,6 +1177,7 @@ type Stage3LivePreviewPanelProps = {
   previewTemplateSnapshot: TemplateRenderSnapshot;
   clipStartSec: number;
   clipDurationSec: number;
+  durationMode: Stage3DurationMode;
   sourceDurationSec: number | null;
   segments: Stage3Segment[];
   editorSelectionMode?: Stage3EditorSelectionMode;
@@ -1234,6 +1238,7 @@ function Stage3LivePreviewPanel({
   previewTemplateSnapshot,
   clipStartSec,
   clipDurationSec,
+  durationMode,
   sourceDurationSec,
   segments,
   editorSelectionMode,
@@ -1344,11 +1349,21 @@ function Stage3LivePreviewPanel({
         clipStartSec,
         clipDurationSec,
         targetDurationSec: clipDurationSec,
+        durationMode,
         timingMode,
         policy: renderPolicy,
         selectionMode: editorSelectionMode
       }),
-    [clipDurationSec, clipStartSec, editorSelectionMode, renderPolicy, resolvedSourceDurationSec, segments, timingMode]
+    [
+      clipDurationSec,
+      clipStartSec,
+      durationMode,
+      editorSelectionMode,
+      renderPolicy,
+      resolvedSourceDurationSec,
+      segments,
+      timingMode
+    ]
   );
   const playbackDurationSec =
     playbackPlan.totalOutputDurationSec > 0 ? playbackPlan.totalOutputDurationSec : clipDurationSec;
@@ -1915,7 +1930,7 @@ function Stage3LivePreviewPanel({
       <header className="preview-header preview-header-wrap">
         <div>
           <h3>Живой предпросмотр</h3>
-          <p className="subtle-text">Черновой live draft на каноническом 6-секундном таймлайне.</p>
+          <p className="subtle-text">Черновой live draft на текущем таймлайне render plan.</p>
           <p className="subtle-text preview-summary-inline">{summaryLine}</p>
         </div>
 
@@ -2306,6 +2321,7 @@ export function Step3RenderTemplate({
   isUploadingMusic,
   clipStartSec,
   clipDurationSec,
+  durationMode = "channel_default",
   sourceDurationSec,
   focusX,
   focusY,
@@ -2349,6 +2365,7 @@ export function Step3RenderTemplate({
   onSelectPassIndex,
   onAgentPromptChange,
   onFragmentStateChange,
+  onDurationModeChange = () => undefined,
   onClipStartChange,
   onFocusXChange,
   onFocusYChange,
@@ -2750,10 +2767,12 @@ export function Step3RenderTemplate({
             : localClipStartSec,
         clipDurationSec,
         targetDurationSec: clipDurationSec,
+        durationMode,
         sourceDurationSec: fragmentSourceDurationSec
       }),
     [
       clipDurationSec,
+      durationMode,
       editorAlwaysNormalize,
       fragmentSourceDurationSec,
       localClipStartSec,
@@ -2771,11 +2790,12 @@ export function Step3RenderTemplate({
         clipStartSec: editorSession.source.windowStartSec,
         clipDurationSec,
         targetDurationSec: clipDurationSec,
+        durationMode,
         timingMode: editorSession.renderPlanPatch.timingMode,
         policy: "fixed_segments",
         selectionMode: editorSession.source.selectionMode
       }),
-    [clipDurationSec, editorSession, fragmentSourceDurationSec]
+    [clipDurationSec, durationMode, editorSession, fragmentSourceDurationSec]
   );
   const effectiveOutputDurationSec = fragmentPlaybackPlan.totalOutputDurationSec;
   const sourceSelectionDurationSec = useMemo(
@@ -2793,12 +2813,15 @@ export function Step3RenderTemplate({
   const isPreviewBusy =
     previewState === "debouncing" || previewState === "loading" || previewState === "retrying";
   const isRendering = renderState === "queued" || renderState === "rendering";
+  const sourceFullDurationEnabled = durationMode === "source_full";
   const normalizationModeLabel =
-    fragmentPlaybackPlan.durationScale > 1.02
-      ? "Растягиваем до 6с"
-      : fragmentPlaybackPlan.durationScale < 0.98
-        ? "Сжимаем до 6с"
-        : "Ровно 6с";
+    sourceFullDurationEnabled
+      ? "Полный исходник"
+      : fragmentPlaybackPlan.durationScale > 1.02
+        ? `Растягиваем до ${formatTimeSec(clipDurationSec)}`
+        : fragmentPlaybackPlan.durationScale < 0.98
+          ? `Сжимаем до ${formatTimeSec(clipDurationSec)}`
+          : `Ровно ${formatTimeSec(clipDurationSec)}`;
   const sourceDisplayDurationSec = sourceSelectionDurationSec > 0 ? sourceSelectionDurationSec : clipDurationSec;
   const wholeClipWindowLabel =
     resolvedEditorSelectionMode === "window"
@@ -2864,7 +2887,12 @@ export function Step3RenderTemplate({
   }, [editorSession.source.coverageRanges, fragmentSourceDurationSec, minimumSelectionDurationSec]);
   const wholeClipWindowRange =
     resolvedEditorSelectionMode === "window" ? sourceTimelineRanges[0] ?? null : null;
-  const canDragWholeClipWindow = Boolean(wholeClipWindowRange && maxStartSec > 0 && hasFragmentSourceTimelineData);
+  const canDragWholeClipWindow = Boolean(
+    !sourceFullDurationEnabled &&
+      wholeClipWindowRange &&
+      maxStartSec > 0 &&
+      hasFragmentSourceTimelineData
+  );
   const sourceTimelineScaleMarks = useMemo(() => {
     if (fragmentSourceDurationSec === null || fragmentSourceDurationSec <= 0) {
       return ["0с", "источник"];
@@ -2970,7 +2998,7 @@ export function Step3RenderTemplate({
     fragmentSourceDurationSec,
     sourceUrl
   ]);
-  const canAppendFragment = Boolean(nextFragmentSuggestion);
+  const canAppendFragment = !sourceFullDurationEnabled && Boolean(nextFragmentSuggestion);
   const fragmentRows = useMemo(
     () =>
       normalizedSegments.map((segment, index) => {
@@ -4377,6 +4405,22 @@ export function Step3RenderTemplate({
     [fragmentSourceDurationSec, onFragmentStateChange]
   );
 
+  const handleSourceFullDurationToggle = useCallback(
+    (checked: boolean) => {
+      if (checked) {
+        const nextDurationSec = fragmentSourceDurationSec ?? clipDurationSec;
+        setActiveFragmentIndex(null);
+        setLocalClipStartSec(0);
+        setLocalWholeClipWindowEndSec(nextDurationSec);
+        onClipStartChange(0);
+        onDurationModeChange("source_full");
+        return;
+      }
+      onDurationModeChange("channel_default");
+    },
+    [clipDurationSec, fragmentSourceDurationSec, onClipStartChange, onDurationModeChange]
+  );
+
   const buildCommittedSegmentsFromDrafts = useCallback((): Stage3Segment[] => {
     const draftedSegments = normalizedSegments.map((segment, index) => {
       const key = buildFragmentRowKey(index, segment);
@@ -4429,6 +4473,7 @@ export function Step3RenderTemplate({
         selectionMode: "window",
         legacyRenderPolicy: renderPolicy,
         legacyNormalizeToTargetEnabled: editorAlwaysNormalize,
+        durationMode,
         clipStartSec: wholeClipWindowSegment?.startSec ?? localClipStartSec,
         clipDurationSec,
         targetDurationSec: clipDurationSec,
@@ -4452,6 +4497,7 @@ export function Step3RenderTemplate({
       selectionMode: nextSelectionMode,
       legacyRenderPolicy: renderPolicy,
       legacyNormalizeToTargetEnabled: editorAlwaysNormalize,
+      durationMode,
       clipStartSec: localClipStartSec,
       clipDurationSec,
       targetDurationSec: clipDurationSec,
@@ -4473,6 +4519,7 @@ export function Step3RenderTemplate({
     buildCommittedSegmentsFromDrafts,
     clipDurationSec,
     commitFragments,
+    durationMode,
     editorAlwaysNormalize,
     localClipStartSec,
     normalizedSegments,
@@ -5304,7 +5351,9 @@ export function Step3RenderTemplate({
               <div className="control-section-head">
                 <div>
                   <h3>Единый preview</h3>
-                  <p className="subtle-text">Главная поверхность всегда показывает live draft на каноническом 6-секундном таймлайне.</p>
+                  <p className="subtle-text">
+                    Главная поверхность показывает live draft на текущем таймлайне: канал по умолчанию или вся длина исходника.
+                  </p>
                 </div>
               </div>
 
@@ -5312,7 +5361,7 @@ export function Step3RenderTemplate({
                 <span className={`meta-pill ${hasManualCaptionOverride ? "warn" : ""}`}>{finishTextStatusLabel}</span>
                 <span className="meta-pill">Фон {backgroundModeLabel}</span>
                 <span className="meta-pill">Звук {audioModeLabel}</span>
-                <span className="meta-pill">Таймлайн 0 → 6с</span>
+                <span className="meta-pill">Таймлайн 0 → {formatTimeSec(clipDurationSec)}</span>
               </div>
             </section>
 
@@ -5574,10 +5623,20 @@ export function Step3RenderTemplate({
                 <div className="quick-edit-grid">
                   <div className="quick-edit-card quick-edit-span-2 fragment-card">
                     <div className="fragment-toolbar">
+                      <label className="field-label fragment-toggle source-full-toggle">
+                        <input
+                          type="checkbox"
+                          checked={sourceFullDurationEnabled}
+                          disabled={isRendering || (!sourceFullDurationEnabled && !hasFragmentSourceTimelineData)}
+                          onChange={(event) => handleSourceFullDurationToggle(event.target.checked)}
+                        />
+                        <span>Вся длина исходника</span>
+                      </label>
                       {normalizedSegments.length > 0 ? (
                         <button
                           type="button"
                           className="btn btn-ghost"
+                          disabled={sourceFullDurationEnabled}
                           onClick={() => {
                             setActiveFragmentIndex(null);
                             commitFragments([], "window");
@@ -5617,7 +5676,9 @@ export function Step3RenderTemplate({
 	                            {isFragmentTimelineLoading
 	                              ? "Подтягиваем точную длительность исходника, после чего покажем реальное покрытие и позиции фрагментов."
 	                              : fragmentSourceDurationSec !== null
-	                                ? resolvedEditorSelectionMode === "window"
+	                                ? sourceFullDurationEnabled
+	                                  ? "Включен режим полного исходника: берём весь MP4 от начала до конца без фрагментации и без сжатия в фиксированный таймлайн."
+	                                  : resolvedEditorSelectionMode === "window"
 	                                  ? canDragWholeClipWindow
 	                                    ? `Перетаскивайте синее окно по линии и тяните его края, чтобы выбрать нужный диапазон источника перед сжатием или растяжением в ${clipDurationSec} секунд.`
 	                                    : "Цельное окно можно растягивать по краям, как только станет доступна точная длина исходника."
@@ -6367,6 +6428,7 @@ export function Step3RenderTemplate({
             onMeasuredTextFitChange={handlePreviewMeasuredTextFitChange}
             clipStartSec={localClipStartSec}
             clipDurationSec={clipDurationSec}
+            durationMode={durationMode}
             sourceDurationSec={fragmentSourceDurationSec}
             segments={editorSession.renderPlanPatch.segments}
             editorSelectionMode={editorSession.renderPlanPatch.editorSelectionMode}

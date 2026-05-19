@@ -62,6 +62,62 @@ test("CopScopes quality gate accepts dense text with avatar, yellow highlights, 
   assert.equal(createCopscopesTightSourceCrop().source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
 });
 
+test("CopScopes quality gate accepts source-full duration when it matches the source", () => {
+  const highlights = ensureCopscopesCaptionHighlights({
+    topText: "THE PASSENGER FIRST",
+    bottomText: denseBody
+  });
+  const result = validateCopscopesRenderBodyForPublication({
+    bottomText: denseBody,
+    clipDurationSec: 44,
+    renderPlan: {
+      durationMode: "source_full",
+      targetDurationSec: 44,
+      sourceCrop: createCopscopesTightSourceCrop(),
+      avatarAssetId: "avatar_123",
+      videoZoom: 1.02,
+      mirrorEnabled: false
+    },
+    snapshot: {
+      bottomText: denseBody,
+      clipDurationSec: 44,
+      sourceDurationSec: 44,
+      focusY: 0.47,
+      captionHighlights: highlights
+    }
+  });
+
+  assert.equal(result.passed, true);
+});
+
+test("CopScopes quality gate rejects source-full duration drift", () => {
+  const result = validateCopscopesRenderBodyForPublication({
+    bottomText: denseBody,
+    clipDurationSec: 6,
+    renderPlan: {
+      durationMode: "source_full",
+      targetDurationSec: 44,
+      sourceCrop: createCopscopesTightSourceCrop(),
+      avatarAssetId: "avatar_123",
+      videoZoom: 1.02,
+      mirrorEnabled: false
+    },
+    snapshot: {
+      bottomText: denseBody,
+      clipDurationSec: 6,
+      sourceDurationSec: 44,
+      focusY: 0.47,
+      captionHighlights: ensureCopscopesCaptionHighlights({
+        topText: "THE PASSENGER FIRST",
+        bottomText: denseBody
+      })
+    }
+  });
+
+  assert.equal(result.passed, false);
+  assert.ok(result.reasons.includes("duration_not_matching_full_source"));
+});
+
 test("CopScopes quality gate rejects source windows that can expose lower meta bands", () => {
   const result = validateCopscopesRenderBodyForPublication({
     bottomText: denseBody,

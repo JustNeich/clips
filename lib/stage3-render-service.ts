@@ -72,7 +72,11 @@ import { repairStage3BlankFlashFrames } from "./stage3-video-flash-guard";
 import { resolveStage3BackgroundMode } from "./stage3-background-mode";
 import type { Stage3PreparedBrowser } from "./stage3-browser-runtime";
 import type { TemplateCaptionHighlights } from "./template-highlights";
-import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
+import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  normalizeStage3DurationMode,
+  resolveStage3OutputDurationSec
+} from "./stage3-duration";
 
 export const REMOTION_RENDER_TIMEOUT_MS = 9 * 60_000;
 export const RENDER_WAIT_TIMEOUT_MS = 60_000;
@@ -750,10 +754,13 @@ export function normalizeRenderPlan(
   const textScaleDefaults = resolveStage3TemplateDefaultTextScales(template, DEFAULT_TEXT_SCALE);
   const policyFallback =
     sourceDurationSec !== null && sourceDurationSec > 12 ? "adaptive_window" : "full_source_normalize";
-  const targetDurationSec = normalizeStage3ClipDurationSec(
-    rawPlan?.targetDurationSec,
-    DEFAULT_STAGE3_CLIP_DURATION_SEC
-  );
+  const durationMode = normalizeStage3DurationMode(rawPlan?.durationMode);
+  const targetDurationSec = resolveStage3OutputDurationSec({
+    mode: durationMode,
+    targetDurationSec: rawPlan?.targetDurationSec,
+    sourceDurationSec,
+    fallback: DEFAULT_STAGE3_CLIP_DURATION_SEC
+  });
   const videoZoom =
     typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
@@ -773,9 +780,11 @@ export function normalizeRenderPlan(
       ? rawPlan.normalizeToTargetEnabled
       : rawPlan?.timingMode === "compress" ||
           rawPlan?.timingMode === "stretch" ||
-          rawPlan?.policy === "full_source_normalize";
+          rawPlan?.policy === "full_source_normalize" ||
+          durationMode === "source_full";
   return {
     targetDurationSec,
+    durationMode,
     timingMode:
       rawPlan?.timingMode === "compress" || rawPlan?.timingMode === "stretch" || rawPlan?.timingMode === "auto"
         ? rawPlan.timingMode

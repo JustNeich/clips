@@ -7,7 +7,9 @@ import type {
 } from "../app/components/types";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
-  normalizeStage3ClipDurationSec
+  normalizeStage3DurationMode,
+  resolveStage3OutputDurationSec,
+  type Stage3DurationMode
 } from "./stage3-duration";
 
 const MIN_EDITOR_TIMING_GUARD_SEC = 0.1;
@@ -77,9 +79,13 @@ function finalizeNormalizedEditorRange(params: {
 function resolveSelectionKind(params: {
   rawSegments: Stage3Segment[];
   selectionMode?: Stage3EditorSelectionMode | null;
+  durationMode?: Stage3DurationMode | null;
   legacyRenderPolicy?: Stage3RenderPolicy | null;
   legacyNormalizeToTargetEnabled?: boolean;
-}): "window" | "fragments" | "legacy_full_source" | "legacy_adaptive_window" {
+}): "window" | "fragments" | "source_full" | "legacy_full_source" | "legacy_adaptive_window" {
+  if (normalizeStage3DurationMode(params.durationMode) === "source_full") {
+    return "source_full";
+  }
   if (params.selectionMode === "fragments" && params.rawSegments.length > 0) {
     return "fragments";
   }
@@ -140,7 +146,7 @@ export type Stage3EditorFragment = {
 
 export type Stage3EditorSourceSelection = {
   selectionMode: Stage3EditorSelectionMode;
-  selectionKind: "window" | "fragments" | "legacy_full_source" | "legacy_adaptive_window";
+  selectionKind: "window" | "fragments" | "source_full" | "legacy_full_source" | "legacy_adaptive_window";
   sourceDurationSec: number | null;
   windowStartSec: number;
   windowEndSec: number;
@@ -181,7 +187,7 @@ export type Stage3EditorSession = {
   output: Stage3EditorOutputPlan;
   renderPlanPatch: Pick<
     Stage3RenderPlan,
-    "segments" | "timingMode" | "normalizeToTargetEnabled" | "policy" | "editorSelectionMode"
+    "segments" | "durationMode" | "timingMode" | "normalizeToTargetEnabled" | "policy" | "editorSelectionMode"
   >;
 };
 
@@ -342,6 +348,7 @@ function buildWindowFragment(params: {
 function buildSourceSelection(params: {
   rawSegments: Stage3Segment[];
   selectionMode?: Stage3EditorSelectionMode | null;
+  durationMode?: Stage3DurationMode | null;
   legacyRenderPolicy?: Stage3RenderPolicy | null;
   legacyNormalizeToTargetEnabled?: boolean;
   clipStartSec: number;
@@ -351,6 +358,7 @@ function buildSourceSelection(params: {
   const selectionKind = resolveSelectionKind({
     rawSegments: params.rawSegments,
     selectionMode: params.selectionMode,
+    durationMode: params.durationMode,
     legacyRenderPolicy: params.legacyRenderPolicy,
     legacyNormalizeToTargetEnabled: params.legacyNormalizeToTargetEnabled
   });
@@ -362,6 +370,21 @@ function buildSourceSelection(params: {
   let fragments: Stage3EditorFragment[] = [];
   if (selectionKind === "fragments" && explicitFragments.length > 0) {
     fragments = explicitFragments;
+  } else if (selectionKind === "source_full") {
+    const sourceDuration = params.sourceDurationSec ?? params.clipDurationSec;
+    fragments = [
+      {
+        label: "Полный исходник",
+        startSec: 0,
+        endSec: roundToTenth(sourceDuration),
+        sourceDurationSec: roundToThousandth(Math.max(MIN_EDITOR_TIMING_GUARD_SEC, sourceDuration)),
+        speed: 1,
+        focusXOverride: null,
+        focusYOverride: null,
+        videoZoomOverride: null,
+        mirrorEnabledOverride: null
+      }
+    ];
   } else if (selectionKind === "legacy_full_source") {
     const sourceDuration = params.sourceDurationSec ?? params.clipDurationSec;
     fragments = [
@@ -419,7 +442,7 @@ function buildSourceSelection(params: {
   );
 
   return {
-    selectionMode: selectionKind === "window" ? "window" : "fragments",
+    selectionMode: selectionKind === "fragments" ? "fragments" : "window",
     selectionKind,
     sourceDurationSec: params.sourceDurationSec,
     windowStartSec,
@@ -434,11 +457,14 @@ function buildSourceSelection(params: {
 function buildOutputPlan(params: {
   source: Stage3EditorSourceSelection;
   targetDurationSec: number;
+  durationMode?: Stage3DurationMode | null;
 }): Stage3EditorOutputPlan {
-  const targetDurationSec = normalizeStage3ClipDurationSec(
-    params.targetDurationSec,
-    DEFAULT_STAGE3_CLIP_DURATION_SEC
-  );
+  const targetDurationSec = resolveStage3OutputDurationSec({
+    mode: params.durationMode,
+    targetDurationSec: params.targetDurationSec,
+    sourceDurationSec: params.durationMode === "source_full" ? params.source.sourceDurationSec : null,
+    fallback: DEFAULT_STAGE3_CLIP_DURATION_SEC
+  });
   const totalBaseOutputDurationSec = Math.max(
     MIN_EDITOR_TIMING_GUARD_SEC,
     params.source.totalBaseOutputDurationSec || targetDurationSec
@@ -490,6 +516,7 @@ export function buildStage3EditorSession(params: {
   selectionMode?: Stage3EditorSelectionMode | null;
   legacyRenderPolicy?: Stage3RenderPolicy | null;
   legacyNormalizeToTargetEnabled?: boolean;
+  durationMode?: Stage3DurationMode | null;
   clipStartSec: number;
   clipDurationSec: number;
   targetDurationSec?: number;
@@ -498,6 +525,7 @@ export function buildStage3EditorSession(params: {
   const source = buildSourceSelection({
     rawSegments: params.rawSegments,
     selectionMode: params.selectionMode,
+    durationMode: params.durationMode,
     legacyRenderPolicy: params.legacyRenderPolicy,
     legacyNormalizeToTargetEnabled: params.legacyNormalizeToTargetEnabled,
     clipStartSec: params.clipStartSec,
@@ -506,8 +534,10 @@ export function buildStage3EditorSession(params: {
   });
   const output = buildOutputPlan({
     source,
-    targetDurationSec: params.targetDurationSec ?? params.clipDurationSec
+    targetDurationSec: params.targetDurationSec ?? params.clipDurationSec,
+    durationMode: params.durationMode
   });
+  const durationMode = normalizeStage3DurationMode(params.durationMode);
 
   return {
     source,
@@ -523,6 +553,7 @@ export function buildStage3EditorSession(params: {
         videoZoom: fragment.videoZoomOverride,
         mirrorEnabled: fragment.mirrorEnabledOverride
       })),
+      durationMode,
       timingMode: output.timingMode,
       normalizeToTargetEnabled: true,
       policy: "fixed_segments",

@@ -20,7 +20,11 @@ import {
   normalizeStage3VideoExposure,
   normalizeStage3VideoSaturation
 } from "./stage3-video-adjustments";
-import { DEFAULT_STAGE3_CLIP_DURATION_SEC, normalizeStage3ClipDurationSec } from "./stage3-duration";
+import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  normalizeStage3DurationMode,
+  resolveStage3OutputDurationSec
+} from "./stage3-duration";
 import {
   clampStage3FocusX,
   normalizeStage3CameraKeyframes,
@@ -234,10 +238,13 @@ function normalizeRenderPlan(
   }).templateConfig;
   const templateVideoAdjustments = template.videoAdjustments;
   const textScaleDefaults = resolveStage3TemplateDefaultTextScales(template, DEFAULT_TEXT_SCALE);
-  const targetDurationSec = normalizeStage3ClipDurationSec(
-    rawPlan?.targetDurationSec,
-    DEFAULT_STAGE3_CLIP_DURATION_SEC
-  );
+  const durationMode = normalizeStage3DurationMode(rawPlan?.durationMode);
+  const targetDurationSec = resolveStage3OutputDurationSec({
+    mode: durationMode,
+    targetDurationSec: rawPlan?.targetDurationSec,
+    sourceDurationSec,
+    fallback: DEFAULT_STAGE3_CLIP_DURATION_SEC
+  });
   const videoZoom =
     typeof rawPlan?.videoZoom === "number" && Number.isFinite(rawPlan.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, rawPlan.videoZoom))
@@ -258,10 +265,12 @@ function normalizeRenderPlan(
       ? rawPlan.normalizeToTargetEnabled
       : rawPlan?.timingMode === "compress" ||
           rawPlan?.timingMode === "stretch" ||
-          rawPlan?.policy === "full_source_normalize";
+          rawPlan?.policy === "full_source_normalize" ||
+          durationMode === "source_full";
 
   return {
     targetDurationSec,
+    durationMode,
     timingMode:
       rawPlan?.timingMode === "compress" || rawPlan?.timingMode === "stretch" || rawPlan?.timingMode === "auto"
         ? rawPlan.timingMode

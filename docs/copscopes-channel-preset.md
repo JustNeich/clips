@@ -5,7 +5,7 @@ This document records the channel-specific Stage 2 / Stage 3 setup for the exist
 
 ## Scope
 
-- Target channel username: `copscopes`
+- Target channel username: `copscopes-x2e`
 - Source profile inspected: `https://www.instagram.com/copscopes`
 - Reference window: `2026-04-22` through `2026-05-13`
 - Reference sources:
@@ -21,29 +21,30 @@ It contains:
 - A Copscopes-specific caption highlighting prompt.
 - A `Channel + Story` managed template snapshot with white body text and yellow keyword highlights.
 - A patch builder that sets `stage2ExamplesConfig`, `stage2PromptConfig`, `stage2HardConstraints`,
-  `stage2SourceOverlayConfig`, `templateId`, and default clip duration.
+  `stage2SourceOverlayConfig`, `templateId`, and the channel fallback clip duration.
 - For an already-designed production channel, apply with template preservation so the existing
   channel template is kept and only the Stage 2 preset, constraints, source overlay policy, and
-  6-second duration are updated.
+  fallback duration are updated. CopScopes production runs now override the fallback per Reel with
+  `durationMode: source_full`.
 
 ## Applying
 
 Run a dry-run first:
 
 ```bash
-npm exec tsx scripts/apply-copscopes-channel-preset.ts -- --username copscopes --dry-run
+npm exec tsx scripts/apply-copscopes-channel-preset.ts -- --username copscopes-x2e --dry-run
 ```
 
 Apply to the active `APP_DATA_DIR` database:
 
 ```bash
-npm exec tsx scripts/apply-copscopes-channel-preset.ts -- --username copscopes
+npm exec tsx scripts/apply-copscopes-channel-preset.ts -- --username copscopes-x2e
 ```
 
 Apply while preserving the current production template assignment:
 
 ```bash
-npm exec tsx scripts/apply-copscopes-channel-preset.ts -- --username copscopes --preserve-template
+npm exec tsx scripts/apply-copscopes-channel-preset.ts -- --username copscopes-x2e --preserve-template
 ```
 
 The script refuses to create a missing channel. It expects the channel to already exist, because
@@ -107,9 +108,10 @@ URLs, shortcodes, category, secondary tags, quality score, source crop metadata,
 status: `available`, `in_progress`, `consumed`, `needs_review`, `skipped`, or `failed`.
 
 Daily pool runs select from the active category with a default limit of 3 finished videos and a
-small attempt budget. The runner only marks a Reel `consumed` after the Stage 3 review gate confirms
-the crop, exact 6-second duration, no CopScopes meta-layer leakage, and a publication-queue-safe
-render outcome.
+small attempt budget. The runner resolves the Reel source duration before Stage 3, sets
+`durationMode: source_full`, uses one full-source segment from `0` to source duration, and only marks
+a Reel `consumed` after the Stage 3 review gate confirms the crop, duration matching the source Reel,
+no CopScopes meta-layer leakage, and a publication-queue-safe render outcome.
 
 CopScopes source crops use `copscopes-readable-source-window-v5`: a readable inner source-footage
 window with safe focus, mirror disabled, and only light zoom. Older `v2`/`v3`/`v4` crops are

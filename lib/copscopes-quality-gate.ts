@@ -242,7 +242,24 @@ export function validateCopscopesRenderBodyForPublication(
   if (highlights.bottom.length < 2) {
     reasons.push("missing_yellow_caption_highlights");
   }
-  if (clipDurationSec === null || Math.abs(clipDurationSec - DEFAULT_STAGE3_CLIP_DURATION_SEC) > 0.05) {
+  const sourceDurationSec =
+    typeof snapshot?.sourceDurationSec === "number" && Number.isFinite(snapshot.sourceDurationSec)
+      ? snapshot.sourceDurationSec
+      : null;
+  if (renderPlan?.durationMode === "source_full") {
+    const expectedDurationSec =
+      sourceDurationSec ??
+      (typeof renderPlan.targetDurationSec === "number" && Number.isFinite(renderPlan.targetDurationSec)
+        ? renderPlan.targetDurationSec
+        : null);
+    if (
+      clipDurationSec === null ||
+      expectedDurationSec === null ||
+      Math.abs(clipDurationSec - expectedDurationSec) > 0.05
+    ) {
+      reasons.push("duration_not_matching_full_source");
+    }
+  } else if (clipDurationSec === null || Math.abs(clipDurationSec - DEFAULT_STAGE3_CLIP_DURATION_SEC) > 0.05) {
     reasons.push("duration_not_exactly_6_seconds");
   }
 

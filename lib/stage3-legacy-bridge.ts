@@ -28,7 +28,8 @@ import {
 } from "./stage3-video-adjustments";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
-  normalizeStage3ClipDurationSec
+  normalizeStage3DurationMode,
+  resolveStage3OutputDurationSec
 } from "./stage3-duration";
 
 const CLIP_DURATION_SEC = DEFAULT_STAGE3_CLIP_DURATION_SEC;
@@ -45,6 +46,7 @@ export type Stage3AgentSessionRef = {
 function fallbackRenderPlan(): Stage3RenderPlan {
   return {
     targetDurationSec: CLIP_DURATION_SEC,
+    durationMode: "channel_default",
     timingMode: "auto",
     normalizeToTargetEnabled: false,
     audioMode: "source_only",
@@ -83,7 +85,12 @@ function fallbackRenderPlan(): Stage3RenderPlan {
 
 function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): Stage3RenderPlan {
   const candidate = value && typeof value === "object" ? (value as Partial<Stage3RenderPlan>) : undefined;
-  const targetDurationSec = normalizeStage3ClipDurationSec(candidate?.targetDurationSec, fallback.targetDurationSec);
+  const durationMode = normalizeStage3DurationMode(candidate?.durationMode ?? fallback.durationMode);
+  const targetDurationSec = resolveStage3OutputDurationSec({
+    mode: durationMode,
+    targetDurationSec: candidate?.targetDurationSec,
+    fallback: fallback.targetDurationSec
+  });
   const videoZoom =
     typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
@@ -109,6 +116,7 @@ function normalizeRenderPlan(value: unknown, fallback = fallbackRenderPlan()): S
 
   return {
     targetDurationSec,
+    durationMode,
     timingMode:
       candidate?.timingMode === "auto" ||
       candidate?.timingMode === "compress" ||

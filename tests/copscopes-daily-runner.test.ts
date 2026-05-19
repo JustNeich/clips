@@ -126,6 +126,36 @@ test("CopScopes quality gate allows queue only after crop and review pass", () =
     }),
     false
   );
+  assert.equal(
+    shouldQueueCopscopesStage3Render({
+      status: "queued",
+      qualityGatePassed: true,
+      review: {
+        qualityGatePassed: true,
+        cropPassed: true,
+        sourceMetaLeakDetected: false,
+        finalDurationSec: 44,
+        expectedDurationSec: 44,
+        notes: []
+      }
+    }),
+    true
+  );
+  assert.equal(
+    shouldQueueCopscopesStage3Render({
+      status: "queued",
+      qualityGatePassed: true,
+      review: {
+        qualityGatePassed: true,
+        cropPassed: true,
+        sourceMetaLeakDetected: false,
+        finalDurationSec: 43.7,
+        expectedDurationSec: 44,
+        notes: []
+      }
+    }),
+    false
+  );
 });
 
 test("CopScopes daily run processes up to 3 queued items in isolated DB", async () => {
@@ -437,13 +467,16 @@ test("CopScopes render snapshot hardening clamps unsafe zoom and focus before qu
     authorHandle: "@copscopes-x2e"
   });
 
-  assert.equal(hardened.clipDurationSec, 6);
+  assert.equal(hardened.clipDurationSec, 44);
   assert.equal(hardened.focusY, COPSCOPES_MAX_FOCUS_Y);
-  assert.equal(hardened.renderPlan.targetDurationSec, 6);
+  assert.equal(hardened.renderPlan.targetDurationSec, 44);
+  assert.equal(hardened.renderPlan.durationMode, "source_full");
   assert.equal(hardened.renderPlan.videoZoom, COPSCOPES_MAX_VIDEO_ZOOM);
   assert.equal(hardened.renderPlan.mirrorEnabled, false);
   assert.equal(hardened.renderPlan.sourceCrop?.source, COPSCOPES_TIGHT_SOURCE_CROP_SOURCE);
   assert.equal(hardened.renderPlan.avatarAssetId, "avatar-1");
+  assert.equal(hardened.renderPlan.segments[0]?.startSec, 0);
+  assert.equal(hardened.renderPlan.segments[0]?.endSec, 44);
   assert.equal(hardened.renderPlan.segments[0]?.focusY, COPSCOPES_MAX_FOCUS_Y);
   assert.equal(hardened.renderPlan.segments[0]?.videoZoom, COPSCOPES_MAX_VIDEO_ZOOM);
   assert.equal(hardened.renderPlan.segments[0]?.mirrorEnabled, false);

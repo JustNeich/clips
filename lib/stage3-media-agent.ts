@@ -998,6 +998,7 @@ function normalizeSegments(params: {
     selectionMode: params.renderPlan.editorSelectionMode,
     legacyRenderPolicy: params.renderPlan.policy,
     legacyNormalizeToTargetEnabled: params.renderPlan.normalizeToTargetEnabled,
+    durationMode: params.renderPlan.durationMode,
     clipStartSec: params.clipStartSec,
     clipDurationSec: params.clipDurationSec,
     targetDurationSec: params.renderPlan.targetDurationSec,

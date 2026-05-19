@@ -1,6 +1,6 @@
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
-  normalizeStage3ClipDurationSec
+  normalizeStage3SourceFullDurationSec
 } from "../lib/stage3-duration";
 
 export const STAGE3_REMOTION_FPS = 30;
@@ -13,7 +13,7 @@ export function resolveStage3CompositionDurationInFrames(
   clipDurationSec: unknown,
   fps = STAGE3_REMOTION_FPS
 ): number {
-  const normalizedDurationSec = normalizeStage3ClipDurationSec(
+  const normalizedDurationSec = normalizeStage3SourceFullDurationSec(
     clipDurationSec,
     DEFAULT_STAGE3_CLIP_DURATION_SEC
   );

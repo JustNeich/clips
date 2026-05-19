@@ -123,7 +123,12 @@ import {
   readStage3VideoAdjustmentsFromRenderPlan,
   type Stage3VideoAdjustments
 } from "../lib/stage3-video-adjustments";
-import { normalizeStage3ClipDurationSec } from "../lib/stage3-duration";
+import {
+  normalizeStage3ClipDurationSec,
+  normalizeStage3DurationMode,
+  normalizeStage3SourceFullDurationSec,
+  resolveStage3OutputDurationSec
+} from "../lib/stage3-duration";
 import {
   cloneTemplateCaptionHighlights,
   createEmptyTemplateCaptionHighlights,
@@ -1144,6 +1149,7 @@ export default function HomePage() {
             channel.defaultClipDurationSec,
             base.targetDurationSec
           ),
+          durationMode: "channel_default",
           templateId: resolvedTemplateId,
           authorName: channel.name || base.authorName,
           authorHandle: channel.username.startsWith("@")
@@ -1162,7 +1168,31 @@ export default function HomePage() {
     },
     []
   );
-  const resolvedStage3ClipDurationSec = normalizeStage3ClipDurationSec(stage3RenderPlan.targetDurationSec);
+  const resolvedStage3ClipDurationSec = resolveStage3OutputDurationSec({
+    mode: stage3RenderPlan.durationMode,
+    targetDurationSec: stage3RenderPlan.targetDurationSec,
+    sourceDurationSec,
+    fallback: activeChannel?.defaultClipDurationSec ?? undefined
+  });
+  const buildSourceFullRenderPlanPatch = useCallback((durationSec: number | null) => {
+    const targetDurationSec = normalizeStage3SourceFullDurationSec(durationSec, resolvedStage3ClipDurationSec);
+    return {
+      targetDurationSec,
+      durationMode: "source_full" as const,
+      editorSelectionMode: "window" as const,
+      timingMode: "auto" as const,
+      normalizeToTargetEnabled: true,
+      policy: "fixed_segments" as const,
+      segments: [
+        {
+          startSec: 0,
+          endSec: targetDurationSec,
+          speed: 1 as const,
+          label: "Полный исходник"
+        }
+      ]
+    };
+  }, [resolvedStage3ClipDurationSec]);
 
   const getCaptionHighlightsSignature = useCallback((value: unknown): string => {
     return JSON.stringify(value ?? createEmptyTemplateCaptionHighlights());
@@ -2564,7 +2594,7 @@ export default function HomePage() {
         typeof draftOverrides?.focusY === "number" && Number.isFinite(draftOverrides.focusY)
           ? Math.min(0.88, Math.max(0.12, draftOverrides.focusY))
           : stage3FocusY;
-      const normalizedRenderPlan = normalizeRenderPlan(
+      const normalizedBaseRenderPlan = normalizeRenderPlan(
         {
           ...stage3RenderPlan,
           focusX:
@@ -2643,11 +2673,27 @@ export default function HomePage() {
         },
         fallbackRenderPlan()
       );
+      const effectiveTargetDurationSec = resolveStage3OutputDurationSec({
+        mode: normalizedBaseRenderPlan.durationMode,
+        targetDurationSec: normalizedBaseRenderPlan.targetDurationSec,
+        sourceDurationSec
+      });
+      const normalizedRenderPlan =
+        Math.abs(effectiveTargetDurationSec - normalizedBaseRenderPlan.targetDurationSec) > 0.001
+          ? normalizeRenderPlan(
+              {
+                ...normalizedBaseRenderPlan,
+                targetDurationSec: effectiveTargetDurationSec
+              },
+              fallbackRenderPlan()
+            )
+          : normalizedBaseRenderPlan;
       const editorSession = buildStage3EditorSession({
         rawSegments: normalizedRenderPlan.segments,
         selectionMode: normalizedRenderPlan.editorSelectionMode,
         legacyRenderPolicy: normalizedRenderPlan.policy,
         legacyNormalizeToTargetEnabled: normalizedRenderPlan.normalizeToTargetEnabled,
+        durationMode: normalizedRenderPlan.durationMode,
         clipStartSec: snapshotClipStart,
         clipDurationSec: normalizedRenderPlan.targetDurationSec,
         targetDurationSec: normalizedRenderPlan.targetDurationSec,
@@ -5251,6 +5297,15 @@ export default function HomePage() {
         const duration = body.durationSec;
         setSourceDurationSec(duration);
         setStage3RenderPlan((prev) => {
+          if (normalizeStage3DurationMode(prev.durationMode) === "source_full") {
+            return normalizeRenderPlan(
+              {
+                ...prev,
+                ...buildSourceFullRenderPlanPatch(duration)
+              },
+              fallbackRenderPlan()
+            );
+          }
           if (prev.prompt.trim()) {
             return prev;
           }
@@ -5288,6 +5343,7 @@ export default function HomePage() {
     return () => controller.abort();
   }, [
     activeChat?.url,
+    buildSourceFullRenderPlanPatch,
     currentStep,
     parseError,
     resolvedStage3ClipDurationSec,
@@ -7353,6 +7409,7 @@ export default function HomePage() {
           showWorkerControls={stage3WorkerControlsEnabled}
           clipStartSec={stage3ClipStartSec}
           clipDurationSec={resolvedStage3ClipDurationSec}
+          durationMode={stage3RenderPlan.durationMode}
           sourceDurationSec={sourceDurationSec}
           focusX={stage3RenderPlan.focusX}
           focusY={stage3FocusY}
@@ -7437,6 +7494,7 @@ export default function HomePage() {
               clipStartSec: stage3ClipStartSec,
               clipDurationSec: resolvedStage3ClipDurationSec,
               targetDurationSec: resolvedStage3ClipDurationSec,
+              durationMode: stage3RenderPlan.durationMode,
               sourceDurationSec
             });
 
@@ -7447,6 +7505,7 @@ export default function HomePage() {
                 {
                   ...prev,
                   segments: session.renderPlanPatch.segments,
+                  durationMode: session.renderPlanPatch.durationMode,
                   editorSelectionMode: session.renderPlanPatch.editorSelectionMode,
                   timingMode: session.renderPlanPatch.timingMode,
                   normalizeToTargetEnabled: session.renderPlanPatch.normalizeToTargetEnabled,
@@ -7455,6 +7514,48 @@ export default function HomePage() {
                 fallbackRenderPlan()
               )
             );
+          }}
+          onDurationModeChange={(value) => {
+            const mode = normalizeStage3DurationMode(value);
+            if (mode === "source_full") {
+              const patch = buildSourceFullRenderPlanPatch(sourceDurationSec);
+              setStage3ClipStartSec(0);
+              setStage3RenderPlan((prev) =>
+                normalizeRenderPlan(
+                  {
+                    ...prev,
+                    ...patch
+                  },
+                  fallbackRenderPlan()
+                )
+              );
+              return;
+            }
+            const channelDurationSec = normalizeStage3ClipDurationSec(
+              activeChannel?.defaultClipDurationSec,
+              fallbackRenderPlan().targetDurationSec
+            );
+            setStage3RenderPlan((prev) =>
+              normalizeRenderPlan(
+                {
+                  ...prev,
+                  durationMode: "channel_default",
+                  targetDurationSec: channelDurationSec,
+                  editorSelectionMode: "window",
+                  timingMode: "auto",
+                  normalizeToTargetEnabled: true,
+                  policy: "fixed_segments",
+                  segments: []
+                },
+                fallbackRenderPlan()
+              )
+            );
+            setStage3ClipStartSec((prev) => {
+              if (!sourceDurationSec || sourceDurationSec <= channelDurationSec) {
+                return 0;
+              }
+              return Math.min(prev, Math.max(0, sourceDurationSec - channelDurationSec));
+            });
           }}
           onSelectVersionId={(runId) => {
             const version = stage3Versions.find((item) => item.runId === runId);

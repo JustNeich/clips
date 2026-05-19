@@ -65,6 +65,29 @@ test("window mode can keep an explicit source window longer than 6 seconds and c
   assert.equal(Number(session.output.segments[0]!.resolvedPlaybackRate.toFixed(3)), Number((20 / 6).toFixed(3)));
 });
 
+test("source-full duration mode uses the entire source without compressing to channel duration", () => {
+  const session = buildStage3EditorSession({
+    rawSegments: [{ startSec: 8, endSec: 11, speed: 3, label: "Ignored manual fragment" }],
+    selectionMode: "fragments",
+    durationMode: "source_full",
+    clipStartSec: 8,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    sourceDurationSec: 42.37
+  });
+
+  assert.equal(session.source.selectionKind, "source_full");
+  assert.equal(session.source.selectionMode, "window");
+  assert.equal(session.renderPlanPatch.durationMode, "source_full");
+  assert.equal(session.renderPlanPatch.segments.length, 1);
+  assert.equal(session.renderPlanPatch.segments[0]?.startSec, 0);
+  assert.equal(session.renderPlanPatch.segments[0]?.endSec, 42.4);
+  assert.equal(session.output.targetDurationSec, 42.37);
+  assert.equal(session.output.totalOutputDurationSec, 42.37);
+  assert.equal(session.output.timingMode, "auto");
+  assert.equal(session.output.segments[0]?.resolvedPlaybackRate, 1);
+});
+
 test("manual fragments are sorted, clamped, and de-overlapped before output planning", () => {
   const normalized = normalizeStage3EditorFragments({
     segments: [

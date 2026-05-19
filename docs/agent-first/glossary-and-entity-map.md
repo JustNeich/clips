@@ -41,7 +41,7 @@
 | "полный прогон" | rerun full Stage 2 pipeline | Step 2 |
 | "история запусков" | Stage 2 run history | Step 2 run pills |
 | "превью" / "preview" | live Stage 3 preview | Step 3 |
-| "единый preview" | canonical 6-second Stage 3 preview | Step 3 |
+| "единый preview" | canonical Stage 3 preview using the render plan duration; usually channel default, or full source when `durationMode: source_full` is enabled | Step 3 |
 | "черновик" / "draft" | live unsaved Stage 3 state | Step 3 |
 | "версия" | saved Stage 3 version или template version | Step 3 drawer / template-road |
 | "internal passes" | agent/internal Stage 3 pass breakdown | Step 3 versions drawer |

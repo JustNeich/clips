@@ -48,7 +48,9 @@ import {
 } from "../lib/stage3-video-adjustments";
 import {
   DEFAULT_STAGE3_CLIP_DURATION_SEC,
-  normalizeStage3ClipDurationSec
+  normalizeStage3ClipDurationSec,
+  normalizeStage3DurationMode,
+  resolveStage3OutputDurationSec
 } from "../lib/stage3-duration";
 import {
   normalizeStage3SegmentFocusOverride,
@@ -591,6 +593,7 @@ export function mergeSavedChannelIntoList(channels: Channel[], savedChannel: Cha
 export function fallbackRenderPlan(): Stage3RenderPlan {
   return {
     targetDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
+    durationMode: "channel_default",
     timingMode: "auto",
     normalizeToTargetEnabled: false,
     editorSelectionMode: "window",
@@ -707,6 +710,7 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
   return {
     ...fallback,
     targetDurationSec: plan.targetDurationSec,
+    durationMode: plan.durationMode,
     timingMode: plan.timingMode,
     audioMode: plan.audioMode,
     sourceAudioEnabled: plan.sourceAudioEnabled,
@@ -735,7 +739,12 @@ export function stripRenderPlanForPreview(plan: Stage3RenderPlan): Stage3RenderP
 export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan): Stage3RenderPlan {
   const candidate = value && typeof value === "object" ? (value as Partial<Stage3RenderPlan>) : undefined;
   const base = fallback ?? fallbackRenderPlan();
-  const targetDurationSec = normalizeStage3ClipDurationSec(candidate?.targetDurationSec, base.targetDurationSec);
+  const durationMode = normalizeStage3DurationMode(candidate?.durationMode ?? base.durationMode);
+  const targetDurationSec = resolveStage3OutputDurationSec({
+    mode: durationMode,
+    targetDurationSec: candidate?.targetDurationSec,
+    fallback: base.targetDurationSec
+  });
   const videoZoom =
     typeof candidate?.videoZoom === "number" && Number.isFinite(candidate.videoZoom)
       ? Math.min(STAGE3_MAX_VIDEO_ZOOM, Math.max(STAGE3_MIN_VIDEO_ZOOM, candidate.videoZoom))
@@ -781,6 +790,7 @@ export function normalizeRenderPlan(value: unknown, fallback?: Stage3RenderPlan)
 
   return {
     targetDurationSec,
+    durationMode,
     timingMode:
       candidate?.timingMode === "auto" ||
       candidate?.timingMode === "compress" ||

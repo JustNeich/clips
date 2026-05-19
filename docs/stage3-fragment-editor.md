@@ -11,7 +11,9 @@ This note captures the reliability rules for the manual fragment editor in Stage
 - `Position X`, `Position Y`, and `Zoom` use sliders instead of numeric-only inputs because these values are tuned iteratively while watching preview.
 - Changing `Position X` or `Position Y` must not silently raise `Zoom`; only the explicit zoom control changes scale.
 - The destructive action stays in the header, isolated from the timing fields, so accidental deletes are less likely during rapid editing.
-- The editor now has a single canonical output model: every Stage 3 edit produces exactly the channel render target duration.
+- The editor has a canonical output model per render plan:
+  - normal mode produces exactly the channel render target duration;
+  - `source_full` mode produces exactly the source media duration for that individual video.
 - The red playhead always represents output time `0..targetDurationSec`; it is never allowed to drift onto source time.
 - Any timing edit resets preview playback back to `0s`.
 - The source overview rail is the primary direct-manipulation surface:
@@ -20,8 +22,9 @@ This note captures the reliability rules for the manual fragment editor in Stage
   - drag the fragment body to move a manual fragment;
   - drag the left handle to trim `От`;
   - drag the right handle to trim `До`.
-- The old `Подогнать к 6с` toggle is removed. The editor always normalizes the selected material to the exact channel render target timeline.
-- Whole-window mode is no longer fixed to a 6-second source slice. The selected source range may be shorter or longer than the target duration, and Stage 3 stretches or compresses it into the canonical output timeline.
+- The old `Подогнать к 6с` toggle is removed. Normal mode always normalizes the selected material to the exact channel render target timeline.
+- The `Вся длина исходника` toggle switches the render plan to `durationMode: source_full`; Stage 3 uses one full-source segment from `0` to the source duration, disables routine fragmentation, and keeps playback at `1x`.
+- Whole-window mode is no longer fixed to a 6-second source slice. In normal mode the selected source range may be shorter or longer than the channel target duration, and Stage 3 stretches or compresses it into that fixed output timeline. In `source_full` mode the selected range is always the full source and the output timeline expands to match it.
 
 ## Per-fragment transforms
 

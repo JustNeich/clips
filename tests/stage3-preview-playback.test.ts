@@ -67,6 +67,29 @@ test("buildStage3PlaybackPlan compresses the full source when normalize mode is 
   assert.equal(Number(plan.segments[0]!.playbackRate.toFixed(3)), Number((11.9 / 6).toFixed(3)));
 });
 
+test("buildStage3PlaybackPlan source-full mode maps output one-to-one to full source duration", () => {
+  const plan = buildStage3PlaybackPlan({
+    segments: [{ startSec: 4, endSec: 6, speed: 5, label: "Ignored" }],
+    selectionMode: "fragments",
+    durationMode: "source_full",
+    sourceDurationSec: 30,
+    clipStartSec: 4,
+    clipDurationSec: 6,
+    targetDurationSec: 6,
+    timingMode: "auto",
+    policy: "fixed_segments"
+  });
+
+  assert.equal(plan.segments.length, 1);
+  assert.equal(plan.segments[0]?.sourceStartSec, 0);
+  assert.equal(plan.segments[0]?.sourceEndSec, 30);
+  assert.equal(plan.totalOutputDurationSec, 30);
+  assert.equal(plan.segments[0]?.playbackRate, 1);
+
+  const position = resolveStage3PlaybackPosition(plan, 12.5);
+  assert.equal(position?.sourceTimeSec, 12.5);
+});
+
 test("buildStage3PlaybackPlan maps multi-segment auto timing into a 6 second editor timeline", () => {
   const plan = buildStage3PlaybackPlan({
     segments: [

@@ -26,11 +26,15 @@ import { enqueueAndScheduleStage2Run, getStage2RunOrThrow } from "./stage2-run-r
 import { enqueueAndScheduleSourceJob, getSourceJobOrThrow } from "./source-job-runtime";
 import { runAutonomousOptimization } from "./stage3-agent-autonomous";
 import { getVersion } from "./stage3-session-store";
-import { DEFAULT_STAGE3_CLIP_DURATION_SEC } from "./stage3-duration";
+import {
+  DEFAULT_STAGE3_CLIP_DURATION_SEC,
+  normalizeStage3SourceFullDurationSec
+} from "./stage3-duration";
 import { resolveStage3Execution } from "./stage3-execution";
 import { enqueueAndScheduleStage3Job } from "./stage3-job-runtime";
 import { buildStage3RenderRequestDedupeKey } from "./stage3-render-request";
 import { normalizeRenderPlan, type Stage3RenderRequestBody } from "./stage3-render-service";
+import { ensureStage3SourceCached } from "./stage3-server-control";
 import { listFutureActivePublicationsForChannel } from "./publication-store";
 import { findCopscopesDuplicateStory } from "./copscopes-story-dedupe";
 import type { Stage3Segment, Stage3SourceCrop, Stage3StateSnapshot } from "../app/components/types";
@@ -42,6 +46,7 @@ export type CopscopesStage3Review = {
   cropPassed: boolean;
   sourceMetaLeakDetected: boolean;
   finalDurationSec: number | null;
+  expectedDurationSec?: number | null;
   notes: string[];
 };
 
@@ -99,9 +104,9 @@ export function buildCopscopesStage3EditorGoal(input: {
     "You are the CopScopes Stage 3 editor.",
     "Build a police/bodycam short that feels like PaleWitness: clean white captions with selective yellow emphasis.",
     `Winning caption: ${caption}`,
-    "Pick one to three exact source moments that make the caption feel earned.",
-    "Allowed speeds: 1, 1.5, 2, 2.5, 3, 4, 5.",
-    "Final output must be exactly 6 seconds.",
+    "Use the entire source video from start to finish; do not fragment the source into selected moments.",
+    "Keep playback speed at 1x unless a later explicit human instruction overrides this channel rule.",
+    "Final output duration must match the source Reel duration exactly.",
     "Reject and revise if CopScopes source-frame text, black border, captions, handles, watermarks, or other channel meta leaks into our source window.",
     "Treat the lower source band as unsafe: keep the action framed above any @copscopes handle, bottom caption strip, or black post chrome.",
     "Do not solve source hygiene with a huge zoom: the incident must stay readable, with enough context to name the subject and action in the first second.",
@@ -113,7 +118,11 @@ export function buildCopscopesStage3EditorGoal(input: {
 
 export function shouldQueueCopscopesStage3Render(result: CopscopesDailyExecutionResult): boolean {
   const duration = result.review?.finalDurationSec ?? null;
-  const durationOk = duration === null || Math.abs(duration - DEFAULT_STAGE3_CLIP_DURATION_SEC) <= 0.05;
+  const expectedDuration = result.review?.expectedDurationSec ?? DEFAULT_STAGE3_CLIP_DURATION_SEC;
+  const durationOk =
+    duration !== null &&
+    duration > 0 &&
+    Math.abs(duration - expectedDuration) <= 0.05;
   return (
     result.status === "queued" &&
     result.qualityGatePassed &&
@@ -182,6 +191,7 @@ function hardenCopscopesSegmentForPublication(segment: Stage3Segment): Stage3Seg
 export function hardenCopscopesRenderSnapshotForPublication(
   snapshot: Stage3StateSnapshot,
   input: {
+    targetDurationSec?: number | null;
     sourceCrop: Stage3SourceCrop;
     avatarAssetId: string | null;
     avatarAssetMimeType: string | null;
@@ -189,17 +199,36 @@ export function hardenCopscopesRenderSnapshotForPublication(
     authorHandle: string;
   }
 ): Stage3StateSnapshot {
+  const targetDurationSec = normalizeStage3SourceFullDurationSec(
+    input.targetDurationSec,
+    snapshot.sourceDurationSec ?? snapshot.clipDurationSec ?? DEFAULT_STAGE3_CLIP_DURATION_SEC
+  );
   return {
     ...snapshot,
-    clipDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
+    clipDurationSec: targetDurationSec,
     focusY: clampCopscopesFocusY(snapshot.focusY),
     renderPlan: {
       ...snapshot.renderPlan,
-      targetDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
+      targetDurationSec,
+      durationMode: "source_full",
+      timingMode: "auto",
+      normalizeToTargetEnabled: true,
+      editorSelectionMode: "window",
+      policy: "fixed_segments",
       sourceCrop: input.sourceCrop,
       videoZoom: clampCopscopesVideoZoom(snapshot.renderPlan.videoZoom),
       mirrorEnabled: false,
-      segments: snapshot.renderPlan.segments.map(hardenCopscopesSegmentForPublication),
+      segments: [
+        hardenCopscopesSegmentForPublication({
+          startSec: 0,
+          endSec: targetDurationSec,
+          speed: 1,
+          label: "Полный исходник",
+          focusY: snapshot.focusY,
+          videoZoom: snapshot.renderPlan.videoZoom,
+          mirrorEnabled: false
+        })
+      ],
       avatarAssetId: input.avatarAssetId,
       avatarAssetMimeType: input.avatarAssetMimeType,
       authorName: input.authorName,
@@ -395,6 +424,11 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       error: completedSource.errorMessage ?? completedSource.progress.error ?? "source_ingest_failed"
     };
   }
+  const stage3Source = await ensureStage3SourceCached(input.reel.canonicalUrl);
+  const targetDurationSec = normalizeStage3SourceFullDurationSec(
+    stage3Source.sourceDurationSec,
+    input.targetDurationSec || DEFAULT_STAGE3_CLIP_DURATION_SEC
+  );
 
   const stage2Run = enqueueAndScheduleStage2Run({
     workspaceId: input.workspaceId,
@@ -403,7 +437,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
     request: buildStage2RunRequestSnapshot({
       sourceUrl: input.reel.canonicalUrl,
       userInstruction:
-        "CopScopes daily pool: generate the strongest police/bodycam story caption for a 6-second short. Ignore source-post engagement fiction and unsupported legal claims.",
+        "CopScopes daily pool: generate the strongest police/bodycam story caption for a full-source short. The final video keeps the complete Instagram source duration, so write a caption with enough story density for the whole incident. Ignore source-post engagement fiction and unsupported legal claims.",
       mode: "manual",
       baseRunId: null,
       debugMode: "summary",
@@ -462,7 +496,8 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
   });
   const renderPlan = normalizeRenderPlan(
     {
-      targetDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
+      targetDurationSec,
+      durationMode: "source_full",
       templateId: channel.templateId,
       sourceCrop,
       videoZoom: COPSCOPES_DEFAULT_VIDEO_ZOOM,
@@ -471,10 +506,20 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       avatarAssetMimeType: avatarAsset?.mimeType ?? null,
       authorName: channel.name,
       authorHandle: `@${channel.username}`,
-      editorSelectionMode: "fragments",
-      segments: []
+      editorSelectionMode: "window",
+      timingMode: "auto",
+      normalizeToTargetEnabled: true,
+      policy: "fixed_segments",
+      segments: [
+        {
+          startSec: 0,
+          endSec: targetDurationSec,
+          speed: 1,
+          label: "Полный исходник"
+        }
+      ]
     },
-    null,
+    targetDurationSec,
     channel.templateId,
     goalText,
     undefined,
@@ -489,6 +534,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       userId: input.userId,
       executionTarget: resolveStage3Execution("host").resolvedTarget,
       sourceUrl: input.reel.canonicalUrl,
+      sourceDurationSec: targetDurationSec,
       goalText,
       options: {
         maxIterations: 5,
@@ -502,9 +548,9 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
         sourceOverlayText: "",
         captionHighlights: copy.captionHighlights,
         clipStartSec: 0,
-        clipDurationSec: DEFAULT_STAGE3_CLIP_DURATION_SEC,
+        clipDurationSec: targetDurationSec,
         focusY: COPSCOPES_MAX_FOCUS_Y,
-        sourceDurationSec: null,
+        sourceDurationSec: targetDurationSec,
         renderPlan
       },
       idempotencyKey: `copscopes-daily:${input.runId}:${input.reel.id}`
@@ -548,6 +594,7 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
     ...snapshot,
     captionHighlights: copy.captionHighlights
   }, {
+    targetDurationSec,
     sourceCrop,
     avatarAssetId: avatarAsset?.id ?? null,
     avatarAssetMimeType: avatarAsset?.mimeType ?? null,
@@ -575,7 +622,8 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
         qualityGatePassed: false,
         cropPassed,
         sourceMetaLeakDetected: !cropPassed,
-        finalDurationSec: snapshot.clipDurationSec,
+        finalDurationSec: renderSnapshot.clipDurationSec,
+        expectedDurationSec: targetDurationSec,
         notes: [
           scorePassed
             ? `Stage 3 score ${stage3.finalScore.toFixed(3)} passed, but the CopScopes publication gate failed.`
@@ -641,7 +689,8 @@ export const copscopesProductionDailyExecutor: CopscopesDailyExecutor = async (i
       qualityGatePassed: true,
       cropPassed: true,
       sourceMetaLeakDetected: false,
-      finalDurationSec: snapshot.clipDurationSec,
+      finalDurationSec: renderSnapshot.clipDurationSec,
+      expectedDurationSec: targetDurationSec,
       notes: [
         `Stage 3 cleared queue gate with score ${stage3.finalScore.toFixed(3)}.`,
         "Render job was queued; CopScopes source pool is marked consumed only after post-render quality gate and publication queueing pass."
