@@ -128,6 +128,11 @@ import {
   normalizeStage3VideoSaturation
 } from "../../lib/stage3-video-adjustments";
 import {
+  STAGE3_MAX_VIDEO_SCALE_Y,
+  STAGE3_MIN_VIDEO_SCALE_Y,
+  normalizeStage3VideoScaleY
+} from "../../lib/stage3-video-scale";
+import {
   buildStage3VideoPlacementStyle,
   type Stage3VideoPlacementStyle
 } from "../../lib/stage3-video-placement";
@@ -237,6 +242,7 @@ type Step3RenderTemplateProps = {
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   mirrorEnabled: boolean;
   videoZoom: number;
+  videoScaleY: number;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -290,6 +296,7 @@ type Step3RenderTemplateProps = {
   onCameraScaleKeyframesChange: (value: Stage3ScaleKeyframe[]) => void;
   onMirrorEnabledChange: (value: boolean) => void;
   onVideoZoomChange: (value: number) => void;
+  onVideoScaleYChange: (value: number) => void;
   onVideoBrightnessChange: (value: number) => void;
   onVideoExposureChange: (value: number) => void;
   onVideoContrastChange: (value: number) => void;
@@ -1191,6 +1198,7 @@ type Stage3LivePreviewPanelProps = {
   cameraScaleKeyframes: Stage3ScaleKeyframe[];
   mirrorEnabled: boolean;
   videoZoom: number;
+  videoScaleY: number;
   videoBrightness: number;
   videoExposure: number;
   videoContrast: number;
@@ -1252,6 +1260,7 @@ function Stage3LivePreviewPanel({
   cameraScaleKeyframes,
   mirrorEnabled,
   videoZoom,
+  videoScaleY,
   videoBrightness,
   videoExposure,
   videoContrast,
@@ -1410,6 +1419,7 @@ function Stage3LivePreviewPanel({
     focusX: playbackTransformState.focusX,
     focusY: cameraState.focusY,
     videoZoom: cameraState.zoom,
+    videoScaleY,
     mirrorEnabled: playbackTransformState.mirrorEnabled
   });
   const backgroundPlacementStyle = buildStage3VideoPlacementStyle({
@@ -2331,6 +2341,7 @@ export function Step3RenderTemplate({
   cameraScaleKeyframes,
   mirrorEnabled,
   videoZoom,
+  videoScaleY,
   videoBrightness,
   videoExposure,
   videoContrast,
@@ -2373,6 +2384,7 @@ export function Step3RenderTemplate({
   onCameraScaleKeyframesChange,
   onMirrorEnabledChange,
   onVideoZoomChange,
+  onVideoScaleYChange,
   onVideoBrightnessChange,
   onVideoExposureChange,
   onVideoContrastChange,
@@ -2390,6 +2402,7 @@ export function Step3RenderTemplate({
   const focusXCommitTimerRef = useRef<number | null>(null);
   const focusCommitTimerRef = useRef<number | null>(null);
   const videoZoomCommitTimerRef = useRef<number | null>(null);
+  const videoScaleYCommitTimerRef = useRef<number | null>(null);
   const videoBrightnessCommitTimerRef = useRef<number | null>(null);
   const videoExposureCommitTimerRef = useRef<number | null>(null);
   const videoContrastCommitTimerRef = useRef<number | null>(null);
@@ -2405,6 +2418,7 @@ export function Step3RenderTemplate({
   const [localFocusX, setLocalFocusX] = useState(focusX);
   const [localFocusY, setLocalFocusY] = useState(focusY);
   const [localVideoZoom, setLocalVideoZoom] = useState(videoZoom);
+  const [localVideoScaleY, setLocalVideoScaleY] = useState(videoScaleY);
   const [localVideoBrightness, setLocalVideoBrightness] = useState(videoBrightness);
   const [localVideoExposure, setLocalVideoExposure] = useState(videoExposure);
   const [localVideoContrast, setLocalVideoContrast] = useState(videoContrast);
@@ -2960,6 +2974,7 @@ export function Step3RenderTemplate({
       ? `Фрагменты ${normalizedSegments.length} · выход ${formatTimeSec(effectiveOutputDurationSec)}`
       : `Окно ${formatTimeSec(sourceDisplayDurationSec)}`;
   const editorZoomLabel = `x${localVideoZoom.toFixed(2)}`;
+  const videoScaleYLabel = `${Math.round(localVideoScaleY * 100)}%`;
   const videoBrightnessLabel = `${Math.round(localVideoBrightness * 100)}%`;
   const videoExposureLabel = `${localVideoExposure >= 0 ? "+" : ""}${localVideoExposure.toFixed(2)} EV`;
   const videoContrastLabel = `${Math.round(localVideoContrast * 100)}%`;
@@ -3207,6 +3222,10 @@ export function Step3RenderTemplate({
   }, [videoZoom]);
 
   useEffect(() => {
+    setLocalVideoScaleY(normalizeStage3VideoScaleY(videoScaleY));
+  }, [videoScaleY]);
+
+  useEffect(() => {
     setLocalVideoBrightness(normalizeStage3VideoBrightness(videoBrightness));
   }, [videoBrightness]);
 
@@ -3376,6 +3395,9 @@ export function Step3RenderTemplate({
       if (videoZoomCommitTimerRef.current !== null) {
         window.clearTimeout(videoZoomCommitTimerRef.current);
       }
+      if (videoScaleYCommitTimerRef.current !== null) {
+        window.clearTimeout(videoScaleYCommitTimerRef.current);
+      }
       if (videoBrightnessCommitTimerRef.current !== null) {
         window.clearTimeout(videoBrightnessCommitTimerRef.current);
       }
@@ -3489,6 +3511,26 @@ export function Step3RenderTemplate({
     videoZoomCommitTimerRef.current = window.setTimeout(() => {
       onVideoZoomChange(next);
       videoZoomCommitTimerRef.current = null;
+    }, 320);
+  };
+
+  const flushVideoScaleYCommit = (value: number) => {
+    if (videoScaleYCommitTimerRef.current !== null) {
+      window.clearTimeout(videoScaleYCommitTimerRef.current);
+      videoScaleYCommitTimerRef.current = null;
+    }
+    onVideoScaleYChange(normalizeStage3VideoScaleY(value));
+  };
+
+  const scheduleVideoScaleYCommit = (value: number) => {
+    const next = normalizeStage3VideoScaleY(value);
+    setLocalVideoScaleY(next);
+    if (videoScaleYCommitTimerRef.current !== null) {
+      window.clearTimeout(videoScaleYCommitTimerRef.current);
+    }
+    videoScaleYCommitTimerRef.current = window.setTimeout(() => {
+      onVideoScaleYChange(next);
+      videoScaleYCommitTimerRef.current = null;
     }, 320);
   };
 
@@ -3724,6 +3766,7 @@ export function Step3RenderTemplate({
       focusX: clampStage3FocusX(localFocusX),
       focusY: clampStage3FocusY(localFocusY),
       videoZoom: clampStage3CameraZoom(localVideoZoom),
+      videoScaleY: normalizeStage3VideoScaleY(localVideoScaleY),
       videoBrightness: normalizeStage3VideoBrightness(localVideoBrightness),
       videoExposure: normalizeStage3VideoExposure(localVideoExposure),
       videoContrast: normalizeStage3VideoContrast(localVideoContrast),
@@ -3744,6 +3787,7 @@ export function Step3RenderTemplate({
     flushFocusXCommit(overrides.focusX);
     flushFocusCommit(overrides.focusY);
     flushVideoZoomCommit(overrides.videoZoom);
+    flushVideoScaleYCommit(overrides.videoScaleY);
     flushVideoBrightnessCommit(overrides.videoBrightness);
     flushVideoExposureCommit(overrides.videoExposure);
     flushVideoContrastCommit(overrides.videoContrast);
@@ -4072,6 +4116,12 @@ export function Step3RenderTemplate({
     const next = clampStage3CameraZoom(value);
     setLocalVideoZoom(next);
     flushVideoZoomCommit(next);
+  };
+
+  const applyVideoScaleYImmediate = (value: number) => {
+    const next = normalizeStage3VideoScaleY(value);
+    setLocalVideoScaleY(next);
+    flushVideoScaleYCommit(next);
   };
 
   const applyVideoBrightnessImmediate = (value: number) => {
@@ -6247,6 +6297,40 @@ export function Step3RenderTemplate({
                         </div>
                         <p className="subtle-text">Масштаб применяется ко всему клипу целиком.</p>
                       </div>
+
+                      <div className="quick-edit-card slider-field">
+                        <div className="quick-edit-label-row">
+                          <label className="field-label" htmlFor="videoScaleYRange">
+                            Высота исходника
+                          </label>
+                          <span className="quick-edit-value">{videoScaleYLabel}</span>
+                        </div>
+                        <input
+                          id="videoScaleYRange"
+                          type="range"
+                          min={STAGE3_MIN_VIDEO_SCALE_Y}
+                          max={STAGE3_MAX_VIDEO_SCALE_Y}
+                          step={0.01}
+                          value={localVideoScaleY}
+                          onChange={(event) => scheduleVideoScaleYCommit(Number.parseFloat(event.target.value))}
+                          onMouseUp={() => flushVideoScaleYCommit(localVideoScaleY)}
+                          onTouchEnd={() => flushVideoScaleYCommit(localVideoScaleY)}
+                          onBlur={() => flushVideoScaleYCommit(localVideoScaleY)}
+                        />
+                        <div className="preset-row">
+                          {[0.75, 0.9, 1, 1.15].map((value) => (
+                            <button
+                              key={`video-scale-y-${value}`}
+                              type="button"
+                              className="preset-chip"
+                              onClick={() => applyVideoScaleYImmediate(value)}
+                            >
+                              {Math.round(value * 100)}%
+                            </button>
+                          ))}
+                        </div>
+                        <p className="subtle-text">Сжимает или растягивает только исходное видео по вертикали.</p>
+                      </div>
                     </>
                   ) : (
                     <div className="quick-edit-card quick-edit-span-2">
@@ -6442,6 +6526,7 @@ export function Step3RenderTemplate({
             cameraScaleKeyframes={[]}
             mirrorEnabled={mirrorEnabled}
             videoZoom={previewVideoZoom}
+            videoScaleY={localVideoScaleY}
             videoBrightness={localVideoBrightness}
             videoExposure={localVideoExposure}
             videoContrast={localVideoContrast}

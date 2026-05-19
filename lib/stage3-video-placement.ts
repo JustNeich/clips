@@ -1,5 +1,6 @@
 import { STAGE3_MAX_VIDEO_ZOOM, STAGE3_MIN_VIDEO_ZOOM } from "./stage3-constants";
 import { clampStage3FocusX, clampStage3FocusY } from "./stage3-camera";
+import { normalizeStage3VideoScaleY } from "./stage3-video-scale";
 
 export type Stage3VideoPlacementStyle = {
   objectPosition: string;
@@ -18,6 +19,7 @@ export function buildStage3VideoPlacementStyle(input: {
   focusX: number;
   focusY: number;
   videoZoom?: number | null;
+  videoScaleY?: number | null;
   mirrorEnabled?: boolean | null;
   extraScale?: number;
 }): Stage3VideoPlacementStyle {
@@ -36,13 +38,14 @@ export function buildStage3VideoPlacementStyle(input: {
       ? input.extraScale
       : 1;
   const scale = zoom * extraScale;
+  const scaleY = scale * normalizeStage3VideoScaleY(input.videoScaleY);
   const scaleX = input.mirrorEnabled ? -scale : scale;
   const xPercent = (focusX * 100).toFixed(3);
   const yPercent = (focusY * 100).toFixed(3);
   const translateX = buildTranslatePercent(focusX, scale);
-  const translateY = buildTranslatePercent(focusY, scale);
+  const translateY = buildTranslatePercent(focusY, scaleY);
   const transformTranslate = `translate(${translateX.toFixed(3)}%, ${translateY.toFixed(3)}%)`;
-  const transformScale = `scale(${scaleX.toFixed(3)}, ${scale.toFixed(3)})`;
+  const transformScale = `scale(${scaleX.toFixed(3)}, ${scaleY.toFixed(3)})`;
 
   return {
     objectPosition: `${xPercent}% ${yPercent}%`,

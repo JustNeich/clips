@@ -10,6 +10,7 @@ This note captures the reliability rules for the manual fragment editor in Stage
   - control area with separate `Тайминг` and `Кадрирование` cards.
 - `Position X`, `Position Y`, and `Zoom` use sliders instead of numeric-only inputs because these values are tuned iteratively while watching preview.
 - Changing `Position X` or `Position Y` must not silently raise `Zoom`; only the explicit zoom control changes scale.
+- `Высота исходника` changes only the source video's vertical scale. It must not scale the card, text, source-blur background, or surrounding template chrome.
 - The destructive action stays in the header, isolated from the timing fields, so accidental deletes are less likely during rapid editing.
 - The editor has a canonical output model per render plan:
   - normal mode produces exactly the channel render target duration;

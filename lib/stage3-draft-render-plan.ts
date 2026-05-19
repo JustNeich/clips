@@ -14,6 +14,7 @@ const STAGE3_DRAFT_RENDER_PLAN_OVERRIDE_KEYS = [
   "cameraScaleKeyframes",
   "focusX",
   "videoZoom",
+  "videoScaleY",
   "videoBrightness",
   "videoExposure",
   "videoContrast",

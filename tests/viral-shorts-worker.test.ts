@@ -920,6 +920,7 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     cameraScaleKeyframes: [],
     mirrorEnabled: false,
     videoZoom: 1,
+    videoScaleY: 1,
     videoBrightness: 1,
     videoExposure: 0,
     videoContrast: 1,
@@ -955,6 +956,7 @@ function makeStep3RenderTemplateProps(overrides?: Partial<React.ComponentProps<t
     onCameraScaleKeyframesChange: () => undefined,
     onMirrorEnabledChange: () => undefined,
     onVideoZoomChange: () => undefined,
+    onVideoScaleYChange: () => undefined,
     onVideoBrightnessChange: () => undefined,
     onVideoExposureChange: () => undefined,
     onVideoContrastChange: () => undefined,
@@ -4614,6 +4616,7 @@ test("stage 3 draft render-plan override strips channel-managed template fields"
     cameraScaleKeyframes: base.cameraScaleKeyframes,
     focusX: base.focusX,
     videoZoom: 1.4,
+    videoScaleY: base.videoScaleY,
     videoBrightness: base.videoBrightness,
     videoExposure: base.videoExposure,
     videoContrast: base.videoContrast,
@@ -4646,6 +4649,7 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
       ...originalBase,
       templateId: "hedges-of-honor-v1",
       videoZoom: 1.35,
+      videoScaleY: 0.82,
       topFontScale: 1.55
     },
     fallbackRenderPlan()
@@ -4654,6 +4658,7 @@ test("stage 3 draft render-plan override persists only editable diffs and keeps 
   const persistedOverride = buildStage3DraftRenderPlanOverride(current, originalBase);
   assert.deepEqual(persistedOverride, {
     videoZoom: 1.35,
+    videoScaleY: 0.82,
     topFontScale: 1.55
   });
 

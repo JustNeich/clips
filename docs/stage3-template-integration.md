@@ -160,6 +160,7 @@ Source of truth:
 - редактор в Stage 3 может менять эти значения только для текущего ролика, не перетирая template defaults;
 - preview и final render обязаны использовать один и тот же video adjustment contract;
 - если template defaults меняются, старый draft не должен терять уже внесённый per-video override.
+- отдельный `Высота исходника` является per-video transform, а не template-level color adjustment: он должен применяться только к source video внутри media slot и одинаково доходить до live preview и final render.
 
 Практический смысл:
 - template задаёт “look” канала по умолчанию;

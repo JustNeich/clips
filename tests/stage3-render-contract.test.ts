@@ -168,6 +168,33 @@ test("stage3 mirrored video placement keeps the same visual pan while flipping X
   assert.equal(style.transformOrigin, "center center");
 });
 
+test("stage3 video placement can vertically squeeze only the source video", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.5,
+    focusY: 0.18,
+    videoZoom: 1,
+    videoScaleY: 0.75,
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.objectPosition, "50.000% 18.000%");
+  assert.equal(style.transform, "translate(0.000%, 0.000%) scale(1.000, 0.750)");
+  assert.equal(style.transformOrigin, "center center");
+});
+
+test("stage3 vertical source scale keeps Y pan based on effective vertical overflow", () => {
+  const style = buildStage3VideoPlacementStyle({
+    focusX: 0.82,
+    focusY: 0.18,
+    videoZoom: 1.4,
+    videoScaleY: 0.8,
+    mirrorEnabled: false
+  });
+
+  assert.equal(style.objectPosition, "82.000% 18.000%");
+  assert.equal(style.transform, "translate(-12.800%, 3.840%) scale(1.400, 1.120)");
+});
+
 test("render segment extraction uses decode-accurate timestamps to reduce boundary flashes", () => {
   assert.equal(resolveStage3SegmentExtractionMode("render"), "accurate");
   const args = buildStage3ExtractSegmentFfmpegArgs({

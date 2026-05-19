@@ -425,6 +425,7 @@ test("CopScopes render snapshot hardening clamps unsafe zoom and focus before qu
       cameraScaleKeyframes: [],
       focusX: 0.5,
       videoZoom: 1.42,
+      videoScaleY: 1,
       videoBrightness: 1,
       videoExposure: 0,
       videoContrast: 1,

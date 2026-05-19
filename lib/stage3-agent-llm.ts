@@ -347,6 +347,7 @@ function buildStage3PlannerSnapshotDigest(snapshot: Stage3StateSnapshot): Stage3
       timingMode: snapshot.renderPlan.timingMode,
       audioMode: snapshot.renderPlan.audioMode,
       videoZoom: snapshot.renderPlan.videoZoom,
+      videoScaleY: snapshot.renderPlan.videoScaleY,
       topFontScale: snapshot.renderPlan.topFontScale,
       bottomFontScale: snapshot.renderPlan.bottomFontScale,
       textPolicy: snapshot.renderPlan.textPolicy,

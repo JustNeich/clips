@@ -417,6 +417,7 @@
     - button `Вернуть цельный клип`
     - source rail with draggable window / fragments
     - dynamic fragment controls `Фрагмент {n}`
+    - global source-video controls `Position X`, `Position Y`, `Отзеркаливание`, `Zoom`, `Высота исходника`
     - window/fragment coverage pills
   - preview toolbar:
     - play/pause

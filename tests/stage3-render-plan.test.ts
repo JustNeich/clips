@@ -113,3 +113,24 @@ test("normalizeRenderPlan preserves Stage 3 source crop", () => {
   assert.equal(normalized.sourceCrop?.height, 0.66);
   assert.equal(normalized.sourceCrop?.confidence, 0.62);
 });
+
+test("normalizeRenderPlan preserves and clamps Stage 3 vertical source scale", () => {
+  const base = fallbackRenderPlan();
+  const normalized = normalizeRenderPlan(
+    {
+      ...base,
+      videoScaleY: 0.72
+    },
+    base
+  );
+  const clamped = normalizeRenderPlan(
+    {
+      ...base,
+      videoScaleY: 3
+    },
+    base
+  );
+
+  assert.equal(normalized.videoScaleY, 0.72);
+  assert.equal(clamped.videoScaleY, 1.5);
+});
