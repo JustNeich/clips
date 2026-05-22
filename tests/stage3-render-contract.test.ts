@@ -310,6 +310,7 @@ test("final render args re-encode video into a stable limited-range contract", (
   assert.ok(args.includes("libx264"));
   assert.ok(args.includes("tv"));
   assert.ok(args.includes("bt709"));
+  assert.ok(args.includes("-bitexact"));
   assert.equal(
     args.some((value, index) => value === "-c" && args[index + 1] === "copy"),
     false

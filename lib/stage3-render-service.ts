@@ -479,6 +479,7 @@ export function buildFinalizeRenderedOutputArgs(params: {
     args.push("-metadata", `title=${params.metadataTitle}`);
   }
 
+  args.push("-bitexact");
   args.push(params.outputPath);
   return args;
 }
